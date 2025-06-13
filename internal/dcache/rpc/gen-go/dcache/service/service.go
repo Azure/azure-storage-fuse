@@ -65,7 +65,7 @@ type ChunkService interface {
 	PutChunk(ctx context.Context, request *models.PutChunkRequest) (_r *models.PutChunkResponse, _err error)
 	// Parameters:
 	//  - Request
-	PutChunkEx(ctx context.Context, request *models.PutChunkExRequest) (_r *models.PutChunkExResponse, _err error)
+	PutChunkDC(ctx context.Context, request *models.PutChunkDCRequest) (_r *models.PutChunkDCResponse, _err error)
 	// Parameters:
 	//  - Request
 	RemoveChunk(ctx context.Context, request *models.RemoveChunkRequest) (_r *models.RemoveChunkResponse, _err error)
@@ -195,12 +195,12 @@ func (p *ChunkServiceClient) PutChunk(ctx context.Context, request *models.PutCh
 
 // Parameters:
 //   - Request
-func (p *ChunkServiceClient) PutChunkEx(ctx context.Context, request *models.PutChunkExRequest) (_r *models.PutChunkExResponse, _err error) {
-	var _args12 ChunkServicePutChunkExArgs
+func (p *ChunkServiceClient) PutChunkDC(ctx context.Context, request *models.PutChunkDCRequest) (_r *models.PutChunkDCResponse, _err error) {
+	var _args12 ChunkServicePutChunkDCArgs
 	_args12.Request = request
-	var _result14 ChunkServicePutChunkExResult
+	var _result14 ChunkServicePutChunkDCResult
 	var _meta13 thrift.ResponseMeta
-	_meta13, _err = p.Client_().Call(ctx, "PutChunkEx", &_args12, &_result14)
+	_meta13, _err = p.Client_().Call(ctx, "PutChunkDC", &_args12, &_result14)
 	p.SetLastResponseMeta_(_meta13)
 	if _err != nil {
 		return
@@ -213,7 +213,7 @@ func (p *ChunkServiceClient) PutChunkEx(ctx context.Context, request *models.Put
 	if _ret15 := _result14.GetSuccess(); _ret15 != nil {
 		return _ret15, nil
 	}
-	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "PutChunkEx failed: unknown result")
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "PutChunkDC failed: unknown result")
 }
 
 // Parameters:
@@ -401,7 +401,7 @@ func NewChunkServiceProcessor(handler ChunkService) *ChunkServiceProcessor {
 	self44.processorMap["Hello"] = &chunkServiceProcessorHello{handler: handler}
 	self44.processorMap["GetChunk"] = &chunkServiceProcessorGetChunk{handler: handler}
 	self44.processorMap["PutChunk"] = &chunkServiceProcessorPutChunk{handler: handler}
-	self44.processorMap["PutChunkEx"] = &chunkServiceProcessorPutChunkEx{handler: handler}
+	self44.processorMap["PutChunkDC"] = &chunkServiceProcessorPutChunkDC{handler: handler}
 	self44.processorMap["RemoveChunk"] = &chunkServiceProcessorRemoveChunk{handler: handler}
 	self44.processorMap["JoinMV"] = &chunkServiceProcessorJoinMV{handler: handler}
 	self44.processorMap["UpdateMV"] = &chunkServiceProcessorUpdateMV{handler: handler}
@@ -683,17 +683,17 @@ func (p *chunkServiceProcessorPutChunk) Process(ctx context.Context, seqId int32
 	return true, err
 }
 
-type chunkServiceProcessorPutChunkEx struct {
+type chunkServiceProcessorPutChunkDC struct {
 	handler ChunkService
 }
 
-func (p *chunkServiceProcessorPutChunkEx) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	args := ChunkServicePutChunkExArgs{}
+func (p *chunkServiceProcessorPutChunkDC) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	args := ChunkServicePutChunkDCArgs{}
 	var err2 error
 	if err2 = args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
 		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
-		oprot.WriteMessageBegin(ctx, "PutChunkEx", thrift.EXCEPTION, seqId)
+		oprot.WriteMessageBegin(ctx, "PutChunkDC", thrift.EXCEPTION, seqId)
 		x.Write(ctx, oprot)
 		oprot.WriteMessageEnd(ctx)
 		oprot.Flush(ctx)
@@ -727,9 +727,9 @@ func (p *chunkServiceProcessorPutChunkEx) Process(ctx context.Context, seqId int
 		}(tickerCtx, cancel)
 	}
 
-	result := ChunkServicePutChunkExResult{}
-	var retval *models.PutChunkExResponse
-	if retval, err2 = p.handler.PutChunkEx(ctx, args.Request); err2 != nil {
+	result := ChunkServicePutChunkDCResult{}
+	var retval *models.PutChunkDCResponse
+	if retval, err2 = p.handler.PutChunkDC(ctx, args.Request); err2 != nil {
 		tickerCancel()
 		switch v := err2.(type) {
 		case *models.ResponseError:
@@ -738,8 +738,8 @@ func (p *chunkServiceProcessorPutChunkEx) Process(ctx context.Context, seqId int
 			if err2 == thrift.ErrAbandonRequest {
 				return false, thrift.WrapTException(err2)
 			}
-			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing PutChunkEx: "+err2.Error())
-			oprot.WriteMessageBegin(ctx, "PutChunkEx", thrift.EXCEPTION, seqId)
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing PutChunkDC: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "PutChunkDC", thrift.EXCEPTION, seqId)
 			x.Write(ctx, oprot)
 			oprot.WriteMessageEnd(ctx)
 			oprot.Flush(ctx)
@@ -749,7 +749,7 @@ func (p *chunkServiceProcessorPutChunkEx) Process(ctx context.Context, seqId int
 		result.Success = retval
 	}
 	tickerCancel()
-	if err2 = oprot.WriteMessageBegin(ctx, "PutChunkEx", thrift.REPLY, seqId); err2 != nil {
+	if err2 = oprot.WriteMessageBegin(ctx, "PutChunkDC", thrift.REPLY, seqId); err2 != nil {
 		err = thrift.WrapTException(err2)
 	}
 	if err2 = result.Write(ctx, oprot); err == nil && err2 != nil {
@@ -2160,27 +2160,27 @@ func (p *ChunkServicePutChunkResult) String() string {
 
 // Attributes:
 //   - Request
-type ChunkServicePutChunkExArgs struct {
-	Request *models.PutChunkExRequest `thrift:"request,1" db:"request" json:"request"`
+type ChunkServicePutChunkDCArgs struct {
+	Request *models.PutChunkDCRequest `thrift:"request,1" db:"request" json:"request"`
 }
 
-func NewChunkServicePutChunkExArgs() *ChunkServicePutChunkExArgs {
-	return &ChunkServicePutChunkExArgs{}
+func NewChunkServicePutChunkDCArgs() *ChunkServicePutChunkDCArgs {
+	return &ChunkServicePutChunkDCArgs{}
 }
 
-var ChunkServicePutChunkExArgs_Request_DEFAULT *models.PutChunkExRequest
+var ChunkServicePutChunkDCArgs_Request_DEFAULT *models.PutChunkDCRequest
 
-func (p *ChunkServicePutChunkExArgs) GetRequest() *models.PutChunkExRequest {
+func (p *ChunkServicePutChunkDCArgs) GetRequest() *models.PutChunkDCRequest {
 	if !p.IsSetRequest() {
-		return ChunkServicePutChunkExArgs_Request_DEFAULT
+		return ChunkServicePutChunkDCArgs_Request_DEFAULT
 	}
 	return p.Request
 }
-func (p *ChunkServicePutChunkExArgs) IsSetRequest() bool {
+func (p *ChunkServicePutChunkDCArgs) IsSetRequest() bool {
 	return p.Request != nil
 }
 
-func (p *ChunkServicePutChunkExArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+func (p *ChunkServicePutChunkDCArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
 	}
@@ -2219,16 +2219,16 @@ func (p *ChunkServicePutChunkExArgs) Read(ctx context.Context, iprot thrift.TPro
 	return nil
 }
 
-func (p *ChunkServicePutChunkExArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Request = &models.PutChunkExRequest{}
+func (p *ChunkServicePutChunkDCArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &models.PutChunkDCRequest{}
 	if err := p.Request.Read(ctx, iprot); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
 	}
 	return nil
 }
 
-func (p *ChunkServicePutChunkExArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "PutChunkEx_args"); err != nil {
+func (p *ChunkServicePutChunkDCArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "PutChunkDC_args"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
@@ -2245,7 +2245,7 @@ func (p *ChunkServicePutChunkExArgs) Write(ctx context.Context, oprot thrift.TPr
 	return nil
 }
 
-func (p *ChunkServicePutChunkExArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+func (p *ChunkServicePutChunkDCArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
 	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
 	}
@@ -2258,51 +2258,51 @@ func (p *ChunkServicePutChunkExArgs) writeField1(ctx context.Context, oprot thri
 	return err
 }
 
-func (p *ChunkServicePutChunkExArgs) String() string {
+func (p *ChunkServicePutChunkDCArgs) String() string {
 	if p == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("ChunkServicePutChunkExArgs(%+v)", *p)
+	return fmt.Sprintf("ChunkServicePutChunkDCArgs(%+v)", *p)
 }
 
 // Attributes:
 //   - Success
 //   - Err
-type ChunkServicePutChunkExResult struct {
-	Success *models.PutChunkExResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+type ChunkServicePutChunkDCResult struct {
+	Success *models.PutChunkDCResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
 	Err     *models.ResponseError      `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
-func NewChunkServicePutChunkExResult() *ChunkServicePutChunkExResult {
-	return &ChunkServicePutChunkExResult{}
+func NewChunkServicePutChunkDCResult() *ChunkServicePutChunkDCResult {
+	return &ChunkServicePutChunkDCResult{}
 }
 
-var ChunkServicePutChunkExResult_Success_DEFAULT *models.PutChunkExResponse
+var ChunkServicePutChunkDCResult_Success_DEFAULT *models.PutChunkDCResponse
 
-func (p *ChunkServicePutChunkExResult) GetSuccess() *models.PutChunkExResponse {
+func (p *ChunkServicePutChunkDCResult) GetSuccess() *models.PutChunkDCResponse {
 	if !p.IsSetSuccess() {
-		return ChunkServicePutChunkExResult_Success_DEFAULT
+		return ChunkServicePutChunkDCResult_Success_DEFAULT
 	}
 	return p.Success
 }
 
-var ChunkServicePutChunkExResult_Err_DEFAULT *models.ResponseError
+var ChunkServicePutChunkDCResult_Err_DEFAULT *models.ResponseError
 
-func (p *ChunkServicePutChunkExResult) GetErr() *models.ResponseError {
+func (p *ChunkServicePutChunkDCResult) GetErr() *models.ResponseError {
 	if !p.IsSetErr() {
-		return ChunkServicePutChunkExResult_Err_DEFAULT
+		return ChunkServicePutChunkDCResult_Err_DEFAULT
 	}
 	return p.Err
 }
-func (p *ChunkServicePutChunkExResult) IsSetSuccess() bool {
+func (p *ChunkServicePutChunkDCResult) IsSetSuccess() bool {
 	return p.Success != nil
 }
 
-func (p *ChunkServicePutChunkExResult) IsSetErr() bool {
+func (p *ChunkServicePutChunkDCResult) IsSetErr() bool {
 	return p.Err != nil
 }
 
-func (p *ChunkServicePutChunkExResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+func (p *ChunkServicePutChunkDCResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
 	}
@@ -2351,15 +2351,15 @@ func (p *ChunkServicePutChunkExResult) Read(ctx context.Context, iprot thrift.TP
 	return nil
 }
 
-func (p *ChunkServicePutChunkExResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Success = &models.PutChunkExResponse{}
+func (p *ChunkServicePutChunkDCResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &models.PutChunkDCResponse{}
 	if err := p.Success.Read(ctx, iprot); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
 	}
 	return nil
 }
 
-func (p *ChunkServicePutChunkExResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+func (p *ChunkServicePutChunkDCResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
 	p.Err = &models.ResponseError{}
 	if err := p.Err.Read(ctx, iprot); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
@@ -2367,8 +2367,8 @@ func (p *ChunkServicePutChunkExResult) ReadField1(ctx context.Context, iprot thr
 	return nil
 }
 
-func (p *ChunkServicePutChunkExResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "PutChunkEx_result"); err != nil {
+func (p *ChunkServicePutChunkDCResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "PutChunkDC_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
@@ -2388,7 +2388,7 @@ func (p *ChunkServicePutChunkExResult) Write(ctx context.Context, oprot thrift.T
 	return nil
 }
 
-func (p *ChunkServicePutChunkExResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+func (p *ChunkServicePutChunkDCResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
 	if p.IsSetSuccess() {
 		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
@@ -2403,7 +2403,7 @@ func (p *ChunkServicePutChunkExResult) writeField0(ctx context.Context, oprot th
 	return err
 }
 
-func (p *ChunkServicePutChunkExResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+func (p *ChunkServicePutChunkDCResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
 	if p.IsSetErr() {
 		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
@@ -2418,11 +2418,11 @@ func (p *ChunkServicePutChunkExResult) writeField1(ctx context.Context, oprot th
 	return err
 }
 
-func (p *ChunkServicePutChunkExResult) String() string {
+func (p *ChunkServicePutChunkDCResult) String() string {
 	if p == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("ChunkServicePutChunkExResult(%+v)", *p)
+	return fmt.Sprintf("ChunkServicePutChunkDCResult(%+v)", *p)
 }
 
 // Attributes:

@@ -60,7 +60,7 @@ func Usage() {
 	fmt.Fprintln(os.Stderr, "  HelloResponse Hello(HelloRequest request)")
 	fmt.Fprintln(os.Stderr, "  GetChunkResponse GetChunk(GetChunkRequest request)")
 	fmt.Fprintln(os.Stderr, "  PutChunkResponse PutChunk(PutChunkRequest request)")
-	fmt.Fprintln(os.Stderr, "  PutChunkExResponse PutChunkEx(PutChunkExRequest request)")
+	fmt.Fprintln(os.Stderr, "  PutChunkDCResponse PutChunkDC(PutChunkDCRequest request)")
 	fmt.Fprintln(os.Stderr, "  RemoveChunkResponse RemoveChunk(RemoveChunkRequest request)")
 	fmt.Fprintln(os.Stderr, "  JoinMVResponse JoinMV(JoinMVRequest request)")
 	fmt.Fprintln(os.Stderr, "  UpdateMVResponse UpdateMV(UpdateMVRequest request)")
@@ -265,9 +265,9 @@ func main() {
 		fmt.Print(client.PutChunk(context.Background(), value0))
 		fmt.Print("\n")
 		break
-	case "PutChunkEx":
+	case "PutChunkDC":
 		if flag.NArg()-1 != 1 {
-			fmt.Fprintln(os.Stderr, "PutChunkEx requires 1 args")
+			fmt.Fprintln(os.Stderr, "PutChunkDC requires 1 args")
 			flag.Usage()
 		}
 		arg64 := flag.Arg(1)
@@ -280,14 +280,14 @@ func main() {
 		}
 		factory67 := thrift.NewTJSONProtocolFactory()
 		jsProt68 := factory67.GetProtocol(mbTrans65)
-		argvalue0 := models.NewPutChunkExRequest()
+		argvalue0 := models.NewPutChunkDCRequest()
 		err69 := argvalue0.Read(context.Background(), jsProt68)
 		if err69 != nil {
 			Usage()
 			return
 		}
 		value0 := argvalue0
-		fmt.Print(client.PutChunkEx(context.Background(), value0))
+		fmt.Print(client.PutChunkDC(context.Background(), value0))
 		fmt.Print("\n")
 		break
 	case "RemoveChunk":

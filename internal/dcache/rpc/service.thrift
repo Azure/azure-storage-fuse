@@ -13,7 +13,7 @@ service ChunkService {
     // store the chunk on the node on the given rvID
     models.PutChunkResponse PutChunk(1: models.PutChunkRequest request) throws (1:models.ResponseError err)
 
-    models.PutChunkExResponse PutChunkEx(1: models.PutChunkExRequest request) throws (1:models.ResponseError err)
+    models.PutChunkDCResponse PutChunkDC(1: models.PutChunkDCRequest request) throws (1:models.ResponseError err)
 
     // delete the chunk from the node from the given rvID
     models.RemoveChunkResponse RemoveChunk(1: models.RemoveChunkRequest request) throws (1:models.ResponseError err)

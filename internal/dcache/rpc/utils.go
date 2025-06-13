@@ -143,16 +143,16 @@ func PutChunkResponseToString(resp *models.PutChunkResponse) string {
 		resp.TimeTaken, resp.AvailableSpace, ComponentRVsToString(resp.ComponentRV))
 }
 
-// convert *models.PutChunkExRequest to string
+// convert *models.PutChunkDCRequest to string
 // used for logging
-func PutChunkExRequestToString(req *models.PutChunkExRequest) string {
+func PutChunkDCRequestToString(req *models.PutChunkDCRequest) string {
 	return fmt.Sprintf("{PutChunkRequest %s, NextRVs %v}",
-		PutChunkRequestToString(req.Request), ComponentRVsToString(req.NextRVs))
+		PutChunkRequestToString(req.Request), req.NextRVs)
 }
 
-// convert *models.PutChunkExRequest to string
+// convert *models.PutChunkDCRequest to string
 // used for logging
-func PutChunkExResponseToString(response *models.PutChunkExResponse) string {
+func PutChunkDCResponseToString(response *models.PutChunkDCResponse) string {
 	str := strings.Builder{}
 	str.WriteString("[\n")
 

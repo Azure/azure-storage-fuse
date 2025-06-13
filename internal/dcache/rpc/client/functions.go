@@ -359,7 +359,7 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 		targetNodeID, reqStr)
 }
 
-func PutChunkEx(ctx context.Context, targetNodeID string, req *models.PutChunkExRequest) (*models.PutChunkExResponse, error) {
+func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
 	common.Assert(req != nil &&
 		req.Request != nil &&
 		req.Request.Chunk != nil &&
@@ -369,8 +369,8 @@ func PutChunkEx(ctx context.Context, targetNodeID string, req *models.PutChunkEx
 	common.Assert(len(req.Request.SenderNodeID) == 0, req.Request.SenderNodeID)
 	req.Request.SenderNodeID = myNodeId
 
-	reqStr := rpc.PutChunkExRequestToString(req)
-	log.Debug("rpc_client::PutChunkEx: Sending PutChunkEx request to node %s: %v", targetNodeID, reqStr)
+	reqStr := rpc.PutChunkDCRequestToString(req)
+	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to node %s: %v", targetNodeID, reqStr)
 
 	//
 	// We retry once after resetting bad connections.
@@ -379,15 +379,15 @@ func PutChunkEx(ctx context.Context, targetNodeID string, req *models.PutChunkEx
 		// Get RPC client from the client pool.
 		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
-			log.Err("rpc_client::PutChunkEx: Failed to get RPC client for node %s %v: %v",
+			log.Err("rpc_client::PutChunkDC: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
 		}
 
 		// Call the rpc method.
-		resp, err := client.svcClient.PutChunkEx(ctx, req)
+		resp, err := client.svcClient.PutChunkDC(ctx, req)
 		if err != nil {
-			log.Err("rpc_client::PutChunkEx: PutChunkEx failed to node %s %v: %v",
+			log.Err("rpc_client::PutChunkDC: PutChunkDC failed to node %s %v: %v",
 				targetNodeID, reqStr, err)
 
 			//
@@ -397,7 +397,7 @@ func PutChunkEx(ctx context.Context, targetNodeID string, req *models.PutChunkEx
 			if rpc.IsBrokenPipe(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::PutChunkEx: resetAllRPCClients failed for node %s: %v",
+					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
 					// Connection refused and timeout are the only viable errors.
@@ -407,7 +407,7 @@ func PutChunkEx(ctx context.Context, targetNodeID string, req *models.PutChunkEx
 					return nil, err
 				}
 
-				// Retry PutChunkEx once more with fresh connection.
+				// Retry PutChunkDC once more with fresh connection.
 				continue
 			}
 
@@ -431,9 +431,9 @@ func PutChunkEx(ctx context.Context, targetNodeID string, req *models.PutChunkEx
 		// Release RPC client back to the pool.
 		err1 := cp.releaseRPCClient(client)
 		if err1 != nil {
-			log.Err("rpc_client::PutChunkEx: Failed to release RPC client for node %s %v: %v",
+			log.Err("rpc_client::PutChunkDC: Failed to release RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err1)
-			// Assert, but not fail the PutChunkEx call.
+			// Assert, but not fail the PutChunkDC call.
 			common.Assert(false, err1)
 		}
 
@@ -445,7 +445,7 @@ func PutChunkEx(ctx context.Context, targetNodeID string, req *models.PutChunkEx
 	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
 	// quick succession.
 	//
-	return nil, fmt.Errorf("rpc_client::PutChunkEx: Could not find a valid RPC client for node %s %v",
+	return nil, fmt.Errorf("rpc_client::PutChunkDC: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
 

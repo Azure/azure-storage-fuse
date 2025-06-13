@@ -1885,17 +1885,17 @@ refreshFromClustermapAndRetry:
 	return resp, nil
 }
 
-// PutChunkEx RPC takes the PutChunkRequest and a list of next RVs to forward the request to as parameters.
+// PutChunkDC RPC takes the PutChunkRequest and a list of next RVs to forward the request to as parameters.
 // The PutChunkRequest is for the local RV. If the RV mentioned in the PutChunkRequest is not the local RV,
 // it will return an InvalidRVID error.
 // Parallelly, it also forwards the PutChunkRequest to the next RVs in the list.
 //
 // For the local RV, it calls the PutChunk RPC via the handler directly.
 // The errors returned by the PutChunk calls to the local RVs and next RVs are returned in the
-// PutChunkExResponse, with the RV name as the key and its PutChunkResponse or error as the value.
-// The PutChunkExResponse will have the responses for all the RVs in the list, including the local RV.
-// If the PutChunkExRequest is for an RV that is not hosted by this node, it will return an InvalidRVID error.
-func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChunkExRequest) (*models.PutChunkExResponse, error) {
+// PutChunkDCResponse, with the RV name as the key and its PutChunkResponse or error as the value.
+// The PutChunkDCResponse will have the responses for all the RVs in the list, including the local RV.
+// If the PutChunkDCRequest is for an RV that is not hosted by this node, it will return an InvalidRVID error.
+func (h *ChunkServiceHandler) PutChunkDC(ctx context.Context, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
 
@@ -1904,26 +1904,26 @@ func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChu
 	common.Assert(req.Request.Chunk != nil)
 	common.Assert(req.Request.Chunk.Address != nil)
 
-	log.Debug("ChunkServiceHandler::PutChunkEx: Received PutChunkEx request: %v",
-		rpc.PutChunkExRequestToString(req))
+	log.Debug("ChunkServiceHandler::PutChunkDC: Received PutChunkDC request: %v",
+		rpc.PutChunkDCRequestToString(req))
 
 	// rvID must refer to one of of out local RVs.
 	rvInfo, ok := h.rvIDMap[req.Request.Chunk.Address.RvID]
 	if !ok || rvInfo == nil {
 		errStr := fmt.Sprintf("Invalid rvID %s", req.Request.Chunk.Address.RvID)
-		log.Err("ChunkServiceHandler::PutChunkEx: %s", errStr)
+		log.Err("ChunkServiceHandler::PutChunkDC: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRVID, errStr)
 	}
 
-	var rpcResp *models.PutChunkExResponse
+	var rpcResp *models.PutChunkDCResponse
 	var err error
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	//
-	// Parallelly forward the PutChunkEx request to the next RVs in the list.
+	// Parallelly forward the PutChunkDC request to the next RVs in the list.
 	//
 	go func() {
 		defer wg.Done()
@@ -1934,7 +1934,7 @@ func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChu
 	}()
 
 	//
-	// The PutChunkRequest in the PutChunkExRequest corresponds to the PutChunk call to the local RV.
+	// The PutChunkRequest in the PutChunkDCRequest corresponds to the PutChunk call to the local RV.
 	// So, call PutChunk from the handler directly.
 	//
 	resp, err := h.PutChunk(ctx, req.Request)
@@ -1946,12 +1946,12 @@ func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChu
 	// So, we can assert that the error if nil, is of the type *models.ResponseError.
 	//
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunkEx: PutChunk failed for local RV %v/%v, request: %v [%v]",
+		log.Err("ChunkServiceHandler::PutChunkDC: PutChunk failed for local RV %v/%v, request: %v [%v]",
 			rvInfo.rvName, req.Request.Chunk.Address.MvName, rpc.PutChunkRequestToString(req.Request), err)
 		rpcErr = rpc.GetRPCResponseError(err)
 		common.Assert(rpcErr != nil, err)
 	} else {
-		log.Debug("ChunkServiceHandler::PutChunkEx: PutChunk succeeded for local RV %v/%v, request: %v, response: %v",
+		log.Debug("ChunkServiceHandler::PutChunkDC: PutChunk succeeded for local RV %v/%v, request: %v, response: %v",
 			rvInfo.rvName, req.Request.Chunk.Address.MvName,
 			rpc.PutChunkRequestToString(req.Request), rpc.PutChunkResponseToString(resp))
 	}
@@ -1963,16 +1963,16 @@ func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChu
 		Error:    rpcErr,
 	}
 
-	log.Debug("ChunkServiceHandler::PutChunkEx: Received response for %s/%s (file id %s, offset in MiB %v): %v",
+	log.Debug("ChunkServiceHandler::PutChunkDC: Received response for %s/%s (file id %s, offset in MiB %v): %v",
 		rvInfo.rvName, req.Request.Chunk.Address.MvName, req.Request.Chunk.Address.FileID,
-		req.Request.Chunk.Address.OffsetInMiB, rpc.PutChunkExResponseToString(rpcResp))
+		req.Request.Chunk.Address.OffsetInMiB, rpc.PutChunkDCResponseToString(rpcResp))
 
 	return rpcResp, nil
 }
 
 // This method forwards the PutChunk request to the next RVs in the list.
-// It calls the PutChunkEx to the first RV in the list passing the next RVs to it.
-func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.PutChunkRequest, rvs []*models.RVNameAndState) *models.PutChunkExResponse {
+// It calls the PutChunkDC to the first RV in the list passing the next RVs to it.
+func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.PutChunkRequest, rvs []*models.RVNameAndState) *models.PutChunkDCResponse {
 	common.Assert(req != nil)
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
@@ -1984,7 +1984,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 	// No more RVs to forward the PutChunk request to, so return empty response.
 	//
 	if len(rvs) == 0 {
-		return &models.PutChunkExResponse{
+		return &models.PutChunkDCResponse{
 			Responses: make(map[string]*models.PutChunkResponseOrError),
 		}
 	}
@@ -1999,7 +1999,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 		nextRVs = rvs[1:]
 	}
 
-	var rpcResp *models.PutChunkExResponse
+	var rpcResp *models.PutChunkDCResponse
 	var err error
 
 	//
@@ -2056,25 +2056,25 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 			MaybeOverwrite: req.MaybeOverwrite,
 		}
 
-		putChunkExReq := &models.PutChunkExRequest{
+		putChunkDCReq := &models.PutChunkDCRequest{
 			Request: putChunkReq,
 			NextRVs: nextRVs,
 		}
 
-		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkEx request for %s/%s to node %s: %v",
-			currRV.Name, req.Chunk.Address.MvName, targetNodeID, rpc.PutChunkExRequestToString(putChunkExReq))
+		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkDC request for %s/%s to node %s: %v",
+			currRV.Name, req.Chunk.Address.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
-		rpcResp, err = rpc_client.PutChunkEx(ctx, targetNodeID, putChunkExReq)
+		rpcResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
 
 		//
-		// If the PutChunkEx RPC call fails, the error returned can be,
+		// If the PutChunkDC RPC call fails, the error returned can be,
 		//     - RPC error of type *models.ResponseError returned by the server like InvalidRVID.
 		//     - Thrift error like connection error, timeout, etc.
 		//     - RPC client side error like failed to get RPC client for node.
 		// The Thrift errors and RPC client side errors can be classified under the error code ThriftError.
 		//
 		if err != nil {
-			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunkEx request for %s/%s to node %s: %v",
+			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunkDC request for %s/%s to node %s: %v",
 				currRV.Name, req.Chunk.Address.MvName, targetNodeID, err)
 			common.Assert(rpcResp == nil)
 
@@ -2090,11 +2090,11 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 			}
 
 			//
-			// If the PutChunkEx call fails for the current RV, it means that the call to the
+			// If the PutChunkDC call fails for the current RV, it means that the call to the
 			// next RVs were not forwarded.
 			// Note, the errors of the PutChunk calls to the individual RVs are stored in the
-			// PutChunkExResponse.
-			// If the error returned by the PutChunkEx call is nil, it means that the PutChunk call
+			// PutChunkDCResponse.
+			// If the error returned by the PutChunkDC call is nil, it means that the PutChunk call
 			// was made to the local RV and also forwarded to the next RVs successfully.
 			// For non-nil error, we will have to forward the call to the next RVs here.
 			//
@@ -2103,7 +2103,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 			common.Assert(rpcResp1.Responses != nil) // rpcResp1.Responses should not be nil
 
 			rpcResp1.Responses[currRV.Name] = &models.PutChunkResponseOrError{
-				Response: nil,    // PutChunkEx failed for the current RV
+				Response: nil,    // PutChunkDC failed for the current RV
 				Error:    rpcErr, // Error for the current RV
 			}
 
@@ -2115,7 +2115,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 
 	log.Debug("ChunkServiceHandler::forwardPutChunk: Received response for %s/%s (file id %s, offset in MiB %v): %s",
 		currRV.Name, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB,
-		rpc.PutChunkExResponseToString(rpcResp))
+		rpc.PutChunkDCResponseToString(rpcResp))
 
 	return rpcResp
 }

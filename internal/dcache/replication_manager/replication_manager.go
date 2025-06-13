@@ -296,8 +296,8 @@ const (
 	OriginatorSendsToAll PutChunkStyleEnum = iota
 
 	//
-	// Originator writes to the local component RV (if any) and calls PutChunkEx (with the list of remaining
-	// component RV) to the next component RV, which will then write locally and send PutChunkEx to the next
+	// Originator writes to the local component RV (if any) and calls PutChunkDC (with the list of remaining
+	// component RV) to the next component RV, which will then write locally and send PutChunkDC to the next
 	// component RV (with a smaller list of component RVs) and so on.
 	// This has the advantage that the overall file write throughput is not limited by the egress throughput
 	// of the originator node.
@@ -361,16 +361,16 @@ retry:
 	rvsWritten = nil
 
 	//
-	// Allocate the PutChunkExRequest for orchestrating the required PutChunk calls as per the PutChunkStyle
+	// Allocate the PutChunkDCRequest for orchestrating the required PutChunk calls as per the PutChunkStyle
 	// selected. If PutChunkStyle is OriginatorSendsToAll then we will send the PutChunk request to each
-	// component RV in putChunkExReq.Request and putChunkExReq.NextRVs, while for PutChunkStyle DaisyChain, we
-	// will just send the PutChunkEx request to the first RV (in putChunkExReq.Request).
+	// component RV in putChunkDCReq.Request and putChunkDCReq.NextRVs, while for PutChunkStyle DaisyChain, we
+	// will just send the PutChunkDC request to the first RV (in putChunkDCReq.Request).
 	//
 	// We set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server know that this
 	// could potentially be an overwrite of a chunk that we previously wrote, so that it relaxes its
 	// overwrite checks. To be safe we set MaybeOverwrite to true when retryCnt > 0.
 	//
-	putChunkExReq := &models.PutChunkExRequest{
+	putChunkDCReq := &models.PutChunkDCRequest{
 		Request: &models.PutChunkRequest{
 			Chunk: &models.Chunk{
 				Address: &models.Address{
@@ -390,12 +390,12 @@ retry:
 	}
 
 	//
-	// Go over all the component RVs and populate the putChunkExReq.
-	// If any of the component RVs is local, then putChunkExReq.Request refers to that and
-	// putChunkExReq.NextRVs contains all the other RVs. If none of the component RVs is local, then
-	// putChunkExReq.Request refers to the first component RV in the componentRVs list and
-	// putChunkExReq.NextRVs contains all the other RVs.
-	// We don't write to offline and outofsync component RVs, so they won't be added to putChunkExReq.
+	// Go over all the component RVs and populate the putChunkDCReq.
+	// If any of the component RVs is local, then putChunkDCReq.Request refers to that and
+	// putChunkDCReq.NextRVs contains all the other RVs. If none of the component RVs is local, then
+	// putChunkDCReq.Request refers to the first component RV in the componentRVs list and
+	// putChunkDCReq.NextRVs contains all the other RVs.
+	// We don't write to offline and outofsync component RVs, so they won't be added to putChunkDCReq.
 	//
 	for componentRVIdx, rv := range componentRVs {
 		//
@@ -434,14 +434,14 @@ retry:
 			log.Debug("ReplicationManager::WriteMV: Writing to %s/%s (rvID: %s, state: %s) on node %s",
 				rv.Name, req.MvName, rvID, rv.State, targetNodeID)
 
-			// Add local component RV to putChunkExReq.Request.
+			// Add local component RV to putChunkDCReq.Request.
 			if targetNodeID == common.GetNodeUUID {
 				// Only one component RV can be local.
-				common.Assert(putChunkExReq.Request.Address.RvID == "", putChunkExReq.Request.Address)
-				putChunkExReq.Request.Address.RvID = rvID
+				common.Assert(putChunkDCReq.Request.Address.RvID == "", putChunkDCReq.Request.Address)
+				putChunkDCReq.Request.Address.RvID = rvID
 			} else {
-				// Non-local component RVs get added to putChunkExReq.NextRVs.
-				putChunkExReq.NextRVs = append(putChunkExReq.NextRVs, rv.Name)
+				// Non-local component RVs get added to putChunkDCReq.NextRVs.
+				putChunkDCReq.NextRVs = append(putChunkDCReq.NextRVs, rv.Name)
 			}
 		} else {
 			common.Assert(false, "Unexpected RV state", rv.State, rv.Name, req.MvName)
@@ -449,42 +449,42 @@ retry:
 	}
 
 	//
-	// If none of the RVs was writeable, no PutChunk/PutChunkEx calls to make.
+	// If none of the RVs was writeable, no PutChunk/PutChunkDC calls to make.
 	//
 	if len(responseChannel) == len(componentRVs) {
 		goto processResponses
 	}
 
 	//
-	// If no component RV is local, then set the putChunkExReq nexthop to the first component RV.
+	// If no component RV is local, then set the putChunkDCReq nexthop to the first component RV.
 	//
-	if putChunkExReq.Request.Address.RvID == "" {
-		common.Assert(len(putChunkExReq.NextRVs) > 0)
+	if putChunkDCReq.Request.Address.RvID == "" {
+		common.Assert(len(putChunkDCReq.NextRVs) > 0)
 
-		rvName := putChunkExReq.NextRVs[0]
+		rvName := putChunkDCReq.NextRVs[0]
 		rvID := getRvIDFromRvName(rvName)
 		common.Assert(common.IsValidUUID(rvID))
 
-		putChunkExReq.Request.Address.RvID = rvID
-		putChunkExReq.Request.NextRVs = putChunkExReq.Request.NextRVs[1:]
+		putChunkDCReq.Request.Address.RvID = rvID
+		putChunkDCReq.Request.NextRVs = putChunkDCReq.Request.NextRVs[1:]
 	}
 
-	common.Assert(common.IsValidUUID(putChunkExReq.Request.Address.RvID), putChunkExReq.Request.Address)
+	common.Assert(common.IsValidUUID(putChunkDCReq.Request.Address.RvID), putChunkDCReq.Request.Address)
 
-	if PutChunkStyle == OriginatorSendsToAll || len(putChunkExReq.Request.NextRVs) == 0 {
+	if PutChunkStyle == OriginatorSendsToAll || len(putChunkDCReq.Request.NextRVs) == 0 {
 		//
 		// Write to the next hop component RV.
 		//
 
 		// TODO: Add rvName to Address to avoid potentially expensive search for RV name.
-		rvName := getRvNameFromRvID(putChunkExReq.Request.Address.RvID)
+		rvName := getRvNameFromRvID(putChunkDCReq.Request.Address.RvID)
 
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 		common.Assert(targetNodeID == common.GetNodeUUID(), targetNodeID, common.GetNodeUUID())
 
 		log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
-			rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkExReq.Request))
+			rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
 
 		//
 		// Schedule PutChunk RPC call to the target node.
@@ -493,18 +493,18 @@ retry:
 		// can start processing the individual responses we send the last replica
 		// inline and save one threadpool thread.
 		//
-		isLastComponentRV := len(putChunkExReq.NextRVs) == 0
+		isLastComponentRV := len(putChunkDCReq.NextRVs) == 0
 		rm.tp.schedule(&workitem{
 			targetNodeID: targetNodeID,
 			rvName:       rvName,
-			putChunkReq:  putChunkExReq.Request,
+			putChunkReq:  putChunkDCReq.Request,
 			respChannel:  responseChannel,
 		}, isLastComponentRV /* runInline */)
 
 		//
 		// Write to all remaining component RVs.
 		//
-		for componentRVIdx, rvName := range putChunkExReq.NextRVs {
+		for componentRVIdx, rvName := range putChunkDCReq.NextRVs {
 			rvID := getRvIDFromRvName(rvName)
 			common.Assert(common.IsValidUUID(rvID))
 
@@ -532,7 +532,7 @@ retry:
 			log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
 				rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkReq))
 
-			isLastComponentRV := componentRVIdx == (len(putChunkExReq.NextRVs) - 1)
+			isLastComponentRV := componentRVIdx == (len(putChunkDCReq.NextRVs) - 1)
 			rm.tp.schedule(&workitem{
 				targetNodeID: targetNodeID,
 				rvName:       rvName,
@@ -541,31 +541,31 @@ retry:
 			}, isLastComponentRV /* runInline */)
 		}
 	} else if PutChunkStyle == DaisyChain {
-		rvName := getRvNameFromRvID(putChunkExReq.Request.Address.RvID)
+		rvName := getRvNameFromRvID(putChunkDCReq.Request.Address.RvID)
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::WriteMVEx: Sending PutChunkEx request for %s/%s to node %s: %s",
-			rvName, req.MvName, targetNodeID, rpc.PutChunkExRequestToString(putChunkExReq))
+		log.Debug("ReplicationManager::WriteMVEx: Sending PutChunkDC request for %s/%s to node %s: %s",
+			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		putChunkExResp, err := rpc_client.PutChunkEx(ctx, targetNodeID, putChunkExReq)
+		putChunkDCResp, err := rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
 
 		//
 		// [Sourav]
-		// Write a function that converts putChunkExResp to proper responses on the responseChannel, nil
-		// response for all if PutChunkEx() call failed to send the request.
+		// Write a function that converts putChunkDCResp to proper responses on the responseChannel, nil
+		// response for all if PutChunkDC() call failed to send the request.
 		//
 		if err != nil {
-			log.Err("ReplicationManager::WriteMVEx: Failed to send PutChunkEx request for %s/%s to node %s: %v",
+			log.Err("ReplicationManager::WriteMVEx: Failed to send PutChunkDC request for %s/%s to node %s: %v",
 				rv.Name, req.MvName, targetNodeID, err)
-			common.Assert(putChunkExResp == nil)
+			common.Assert(putChunkDCResp == nil)
 		} else {
-			log.Debug("ReplicationManager::WriteMVEx: Received PutChunkEx response for %s/%s from node %s: %s",
-				rv.Name, req.MvName, targetNodeID, rpc.PutChunkExResponseToString(putChunkExResp))
-			common.Assert(putChunkExResp != nil)
+			log.Debug("ReplicationManager::WriteMVEx: Received PutChunkDC response for %s/%s from node %s: %s",
+				rv.Name, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp))
+			common.Assert(putChunkDCResp != nil)
 		}
 	}
 
@@ -796,7 +796,7 @@ retry:
 
 	//
 	// Sort and move the local RV to the front of the componentRVs list, if present.
-	// This is to ensure that we send the PutChunkEx RPC to the local RV, which writes the
+	// This is to ensure that we send the PutChunkDC RPC to the local RV, which writes the
 	// chunk to its local cache and then forwards the request to the next RVs in the list.
 	// This saves us one network hop if the local RV is not present at the front of the list.
 	//
@@ -816,18 +816,18 @@ retry:
 	//
 	rvsWritten = nil
 
-	var rpcResp *models.PutChunkExResponse
+	var rpcResp *models.PutChunkDCResponse
 
 	//
-	// When we send the PutChunkEx RPC request to the target node, it sends the PutChunk call to its
+	// When we send the PutChunkDC RPC request to the target node, it sends the PutChunk call to its
 	// local RV and parallelly forwards the call to the next RVs in the list. This is the ideal case where
-	// error returned by the PutChunkEx RPC is nil. The errors of the individual PutChunk calls to the
-	// component RVs are returned in the PutChunkExResponse where the response or error of each RV is
+	// error returned by the PutChunkDC RPC is nil. The errors of the individual PutChunk calls to the
+	// component RVs are returned in the PutChunkDCResponse where the response or error of each RV is
 	// mapped to the RV name.
-	// If the PutChunkEx RPC call to the first RV is successful, then the WriteMVEx doesn't need to worry
+	// If the PutChunkDC RPC call to the first RV is successful, then the WriteMVEx doesn't need to worry
 	// about the PutChunk going to next RVs.
 	//
-	// However the PutChunkEx RPC to the first RV can fail due to,
+	// However the PutChunkDC RPC to the first RV can fail due to,
 	//     - Thrift errors like connection closed, connection reset, timeout, etc.
 	//     - RPC client side error where we failed to get the RPC client for the target node.
 	//     - InvalidRVID RPC error, where the RV for which the PutChunk request was sent is not local
@@ -835,10 +835,10 @@ retry:
 	//       target node we get from the clustermap for the given RV name.
 	//
 	// If we get the above errors for the first RV, it means that the PutChunk call to the next RVs
-	// were not forwarded. So, we will need to send the PutChunkEx RPC request to the next RV in the
+	// were not forwarded. So, we will need to send the PutChunkDC RPC request to the next RV in the
 	// componentRVs list till we get a nil error or we reach the end of the list.
 	// The errors got for the previous RVs are stored in the thriftErrors map, which later is added
-	// to the PutChunkExResponse.
+	// to the PutChunkDCResponse.
 	//
 	thriftErrors := make(map[string]error)
 
@@ -881,27 +881,27 @@ retry:
 			nextRVs = componentRVs[idx+1:]
 		}
 
-		putChunkExReq := &models.PutChunkExRequest{
+		putChunkDCReq := &models.PutChunkDCRequest{
 			Request: putChunkReq,
 			NextRVs: nextRVs,
 		}
 
-		log.Debug("ReplicationManager::WriteMVEx: Sending PutChunkEx request for %s/%s to node %s: %s",
-			rv.Name, req.MvName, targetNodeID, rpc.PutChunkExRequestToString(putChunkExReq))
+		log.Debug("ReplicationManager::WriteMVEx: Sending PutChunkDC request for %s/%s to node %s: %s",
+			rv.Name, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		rpcResp1, err := rpc_client.PutChunkEx(ctx, targetNodeID, putChunkExReq)
+		rpcResp1, err := rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
 
 		if err != nil {
-			log.Err("ReplicationManager::WriteMVEx: Failed to send PutChunkEx request for %s/%s to node %s: %v",
+			log.Err("ReplicationManager::WriteMVEx: Failed to send PutChunkDC request for %s/%s to node %s: %v",
 				rv.Name, req.MvName, targetNodeID, err)
 			common.Assert(rpcResp1 == nil)
 			thriftErrors[rv.Name] = err
 		} else {
-			log.Debug("ReplicationManager::WriteMVEx: Received PutChunkEx response for %s/%s from node %s: %s",
-				rv.Name, req.MvName, targetNodeID, rpc.PutChunkExResponseToString(rpcResp1))
+			log.Debug("ReplicationManager::WriteMVEx: Received PutChunkDC response for %s/%s from node %s: %s",
+				rv.Name, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(rpcResp1))
 			common.Assert(rpcResp1 != nil)
 			rpcResp = rpcResp1
 			break
@@ -909,11 +909,11 @@ retry:
 	}
 
 	//
-	// Add the errors received for the RVs in the thriftErrors map to the PutChunkExResponse.
+	// Add the errors received for the RVs in the thriftErrors map to the PutChunkDCResponse.
 	//
 	if rpcResp == nil {
-		// This means that the PutChunkEx RPC call to all the RVs failed.
-		rpcResp = &models.PutChunkExResponse{
+		// This means that the PutChunkDC RPC call to all the RVs failed.
+		rpcResp = &models.PutChunkDCResponse{
 			Responses: make(map[string]*models.PutChunkResponseOrError),
 		}
 	}
@@ -922,7 +922,7 @@ retry:
 		common.Assert(err != nil)
 
 		_, ok := rpcResp.Responses[rvName]
-		common.Assert(!ok, rvName, rpc.PutChunkExResponseToString(rpcResp))
+		common.Assert(!ok, rvName, rpc.PutChunkDCResponseToString(rpcResp))
 
 		rpcErr := rpc.GetRPCResponseError(err)
 		if rpcErr == nil {
@@ -935,13 +935,13 @@ retry:
 		}
 
 		rpcResp.Responses[rvName] = &models.PutChunkResponseOrError{
-			Response: nil, // PutChunkEx failed for this RV
+			Response: nil, // PutChunkDC failed for this RV
 			Error:    rpcErr,
 		}
 	}
 
-	log.Debug("ReplicationManager::WriteMVEx: PutChunkEx response for %s: %s",
-		req.MvName, rpc.PutChunkExResponseToString(rpcResp))
+	log.Debug("ReplicationManager::WriteMVEx: PutChunkDC response for %s: %s",
+		req.MvName, rpc.PutChunkDCResponseToString(rpcResp))
 
 	//
 	// Non-retriable error that we should fail the WriteMVEx() with.
