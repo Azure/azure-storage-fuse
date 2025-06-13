@@ -204,6 +204,16 @@ func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 	common.Assert(false, rpc.ComponentRVsToString(rvs), rvName)
 }
 
+func shiftOnlineRVsToStart(componentRVs []*models.RVNameAndState) {
+	i := 0
+	for j := 0; j < len(componentRVs); j++ {
+		if componentRVs[j].State == string(dcache.StateOnline) {
+			componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
+			i++
+		}
+	}
+}
+
 func init() {
 	common.Assert(MAX_SIMUL_SYNC_JOBS < cm.MAX_SIMUL_RV_STATE_UPDATES,
 		MAX_SIMUL_SYNC_JOBS, cm.MAX_SIMUL_RV_STATE_UPDATES)

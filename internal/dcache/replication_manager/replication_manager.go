@@ -614,6 +614,142 @@ retry:
 	return &WriteMvResponse{}, nil
 }
 
+func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
+	common.Assert(req != nil)
+
+	log.Debug("ReplicationManager::RemoveMV: Received RemoveMV request: FileID: %s, MV: %s", req.FileID, req.MvName)
+
+	if err := req.isValid(); err != nil {
+		err = fmt.Errorf("invalid RemoveMV request FileID: %s, MV: %s [%v]", req.FileID, req.MvName, err)
+		log.Err("ReplicationManager::RemoveMV: %v", err)
+		common.Assert(false, err)
+		return nil, err
+	}
+
+	//
+	// The following set would be used while retring the skipping the repeated deletion from the RV's which have already
+	// got success in removing their chunks, while retrying for its clustermap update. RvName->struct{}.
+	//
+	deleteProgressForRvs := make(map[string]struct{})
+	retryCnt := 0
+
+retry:
+
+	log.Debug("ReplicationManager::RemoveMV: RemoveMV request: %v, retryCnt: %d, FileID: %s, MV: %s",
+		req.FileID, req.MvName, retryCnt)
+
+	mvState, rvs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+
+	shiftOnlineRVsToStart(rvs)
+
+	//
+	// Initially delete all the chunks from the all the online RV's first then move on to the syncing rv's.
+	// If we delete the chunk from all the online rvs then this chunk may get listed in the sync job when syncing
+	// the online rv to other outofsync rvs. So It is necessary to also make a removeChunk rpc request to all the
+	// other rvs which are having the state syncing.
+	//
+
+	for _, rv := range rvs {
+		// Check if this RV dont need deletion
+		if _, ok := deleteProgressForRvs[rv.Name]; ok {
+			continue
+		}
+
+		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
+			log.Info("ReplicationManager::RemoveMV: skip deleting the chunks from rv: %s, rv state: %s",
+				rv, rv.State)
+			continue
+		}
+
+		if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
+			// MV should not be offline.
+			common.Assert(mvState != dcache.StateOffline)
+
+			// Remove all the chunks which were present in this RV..
+			rvId := getRvIDFromRvName(rv.Name)
+			targetNodeId := getNodeIDFromRVName(rv.Name)
+
+			rpcReq := &models.RemoveChunkRequest{
+				Address: &models.Address{
+					FileID:      req.FileID,
+					RvID:        rvId,
+					MvName:      req.MvName,
+					OffsetInMiB: -1,
+				},
+				ComponentRV: rvs,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
+			defer cancel()
+
+			rpcResp, err := rpc_client.RemoveChunk(ctx, targetNodeId, rpcReq)
+			if err == nil {
+				//
+				// GC would retry for this MV again.
+				//
+				if rpcResp.NeedRetry {
+					err = fmt.Errorf("Delete partially success for fileID: %s, RV: %s, node %s [%v]",
+						req.FileID, rv.Name, targetNodeId, err)
+					log.Err("ReplicationManager::RemoveMV: %v", err)
+					common.Assert(false, err)
+					return nil, err
+				}
+				//
+				// Update this deleted status of the RV.
+				//
+				deleteProgressForRvs[rv.Name] = struct{}{}
+			} else {
+
+				rpcErr := rpc.GetRPCResponseError(err)
+				log.Err("ReplicationManager::RemoveMV: Failed to delete chunks from RV: %d: %v", rv.Name, rpcErr)
+
+				if rpcErr == nil {
+					// TODO: This error must be handled
+					log.Err("ReplicationManager::RemoveMV: Delete failed for fileID: %s, RV: %s, node %s [%v]",
+						req.FileID, rv.Name, targetNodeId, err)
+					return nil, err
+				}
+
+				if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+					log.Info("ReplicationManager::RemoveMV: Need to refresh the cluster map, rv: %s, err: %v",
+						rv.Name, rpcErr)
+
+					//
+					// We allow 5 refreshes of the clustermap for resiliency, before we fail the delete of a file.
+					// This is to allow multiple changes to the MV during the course of a deleting.
+					// It's unlikely but we need to be resilient.
+					//
+					if retryCnt > 5 {
+						err = fmt.Errorf("Max retries for updating the clusermap exhausted, RV: %v, file: %s: %v",
+							rv, req.FileID, rpcErr)
+						log.Err("ReplicationManager::RemoveMV: %v", err)
+						common.Assert(false, req.FileID, rpcErr)
+						return nil, err
+					}
+
+					//
+					// Retry till the next epoch, ensuring that the clustermap is refreshed from what we
+					// have cached right now.
+					//
+					errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
+					if errCM != nil {
+						log.Err("ReplicationManager::RemoveMV: Failed to refresh the cluster map, RV: %s, file ID: %s: %v",
+							rv.Name, req.FileID, errCM)
+						common.Assert(false, req.FileID, errCM)
+						return nil, errCM
+					}
+
+					retryCnt++
+					goto retry
+				}
+
+			}
+		}
+	}
+
+	return &RemoveMvResponse{}, nil
+}
+
 func periodicResyncMVs() {
 	defer rm.wg.Done()
 

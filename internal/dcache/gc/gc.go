@@ -34,34 +34,37 @@
 package gc
 
 import (
-	"context"
-	"fmt"
 	"sync"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
-	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 )
 
 type GcInfo struct {
 	// Deletes this many number of files async at any time. Excess files get blocked.
 	numGcWorkers     int
-	deletedFileQueue chan *dcache.FileMetadata
+	deletedFileQueue chan *gcFile
 	wg               sync.WaitGroup
 }
 
 var gc *GcInfo
 
+type gcFile struct {
+	file *dcache.FileMetadata
+	//
+	// When deletion failed for one or more MVs, it will be retired from this here.
+	//
+	retryMvList []string
+	retryCnt    int
+}
+
 func NewGC() {
 	gc = &GcInfo{
-		numGcWorkers:     100, // TODO: This number should be decided.
-		deletedFileQueue: make(chan *dcache.FileMetadata, 100),
+		numGcWorkers:     100,
+		deletedFileQueue: make(chan *gcFile, 100),
 	}
 
 	for range gc.numGcWorkers {
@@ -80,173 +83,59 @@ func (gc *GcInfo) worker() {
 	gc.wg.Add(1)
 	defer gc.wg.Done()
 
-	for deletedDcFile := range gc.deletedFileQueue {
-		gc.removeAllChunksForFile(deletedDcFile)
+	for gcFile := range gc.deletedFileQueue {
+		gc.removeAllChunksForFile(gcFile)
 	}
 }
 
-func (gc *GcInfo) removeAllChunksForFile(file *dcache.FileMetadata) {
-	log.Debug("GC::removeAllChunksForFile: file: %s", file.Filename)
-	common.Assert(file.Size > 0, file)
+func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
+	log.Debug("GC::removeAllChunksForFile: file: %s, retryCnt: %d", gcFile.file.Filename, gcFile.retryCnt)
+	gcFile.retryCnt++
+	common.Assert(gcFile.file.Size > 0, gcFile.file)
 
-	mvs := file.FileLayout.MVList
-	numMvs := int64(len(mvs))
-	retryCnt := 0
-	numChunks := getNumChunksForFile(file)
+	mvs := gcFile.file.FileLayout.MVList
 
-	for i, mv := range mvs {
-	retry:
+	if gcFile.retryMvList != nil {
+		mvs = gcFile.retryMvList
+	}
 
-		// The following map would be used while resuming the deletion of the chunks for an mv, while retrying for its
-		// clustermap update. RvName->offsetInMB of chunk.
-		deleteProgressForRvs := make(map[string]int64)
+	common.Assert(mvs != nil)
+	newRetryMvList := make([]string, 0)
 
-		mvState, rvs, lastClusterMapEpoch := getComponentRVsForMV(mv)
-		log.Debug("GC::removeAllChunksForFile: retry cnt: %d, mv: %s, state: %s, file: %s", retryCnt, mv, mvState, file.Filename)
+	for _, mvName := range mvs {
+		removeMvRequest := &rm.RemoveMvRequest{
+			FileID: gcFile.file.FileID,
+			MvName: mvName,
+		}
 
-		shiftOnlineRVsToStart(rvs)
-
-		//
-		// Initially delete all the chunks from the all the online RV's first then move on to the syncing rv's.
-		// If we delete the chunk from all the online rvs then this chunk may get listed in the sync job when syncing
-		// the online rv to other outofsync rvs. So It is necessary to also make a removeChunk rpc request to all the
-		// other rvs which are having the state syncing.
-		//
-
-		for _, rv := range rvs {
-			if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
-				log.Info("GC::removeAllChunksForFile: skip deleting the chunks from rv: %s, rv state: %s, file: %s",
-					rv, rv.State, file.Filename)
-				continue
-			}
-
-			if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
-				// mv should not be offline.
-				common.Assert(mvState != dcache.StateOffline)
-
-				// Remove all the chunks which were present in this RV..
-				rvId := getRvIDFromRvName(rv.Name)
-				targetNodeId := getNodeIDFromRVName(rv.Name)
-				chunkIdx := int64(i)
-
-				// Resume the progress of deletion of the chunks if it's a retry.
-				if resumeChunkIdx, ok := deleteProgressForRvs[rv.Name]; ok {
-					common.Assert(resumeChunkIdx >= chunkIdx && retryCnt > 0,
-						retryCnt, chunkIdx, resumeChunkIdx, file.Filename, rv, rvs)
-					chunkIdx = max(chunkIdx, resumeChunkIdx)
-				}
-
-				// TODO: remove all the chunks corresponding to an RV in one RPC call.
-				for ; chunkIdx < numChunks; chunkIdx = getNextChunkIdxInMV(chunkIdx, numMvs) {
-					log.Debug("GC::removeAllChunksForFile: removing chunkIdx: %d, file: %s", chunkIdx, file.Filename)
-
-					rpcReq := &models.RemoveChunkRequest{
-						Address: &models.Address{
-							FileID:      file.FileID,
-							RvID:        rvId,
-							MvName:      mv,
-							OffsetInMiB: chunkIdx * file.FileLayout.ChunkSize / common.MbToBytes,
-						},
-						ComponentRV: rvs,
-					}
-
-					ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
-					defer cancel()
-
-					rpcResp, err := rpc_client.RemoveChunk(ctx, targetNodeId, rpcReq)
-					if err != nil {
-						rpcErr := rpc.GetRPCResponseError(err)
-						log.Err("GC::removeAllChunksForFile: Failed to delete the chunk idx: %d, file: %s, rv: %s: %v",
-							chunkIdx, file.Filename, rv.Name, rpcErr)
-
-						if rpcErr == nil {
-							// We should now run the inband RV offline detection workflow, basically we
-							// call the clustermap's UpdateComponentRVState() API to mark this
-							// component RV as offline and force the fix-mv workflow which will eventually
-							// trigger the resync-mv workflow.
-							//
-							log.Err("GC::removeAllChunksForFile: Delete chunk %s/%s, failed to reach node %s [%v]",
-								chunkIdx, file.Filename, targetNodeId, err)
-
-							errRV := cm.UpdateComponentRVState(mv, rv.Name, dcache.StateOffline)
-							if errRV != nil {
-								//
-								// If we fail to update the component RV as offline, we cannot safely complete
-								// the chunk write or else the failed replica may not be resynced causing data
-								// consistency issues.
-								//
-								errStr := fmt.Sprintf("failed to update %s/%s state to offline [%v] file: %s",
-									rv.Name, mv, errRV, file.Filename)
-								log.Err("GC::removeAllChunksForFile: %s", errStr)
-								common.Assert(false, errStr)
-								// As the deletion is asynchrnous, continue deleting the chunks from the other RVs.
-								// There is no need for deletion of the other chunks in this RV, as the RV went offline.
-								break
-							}
-
-							//
-							// If UpdateComponentRVState() succeeds, marking this component RV as offline,
-							// we can safely carry on with the write since we are guaranteed that these
-							// chunks which we could not write to this component RV will be later sync'ed
-							// from one of the good component RVs.
-							//
-							log.Warn("GC::removeAllChunksForFile: Deletion of chunk: %d to %s/%s on node %s failed, "+
-								"marked RV offline, file: %s", chunkIdx, rv.Name, mv, targetNodeId)
-							// There is no need for deletion of the other chunks in this RV, as the RV went offline.
-							break
-						}
-
-						if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-							log.Info("GC::removeAllChunksForFile: Need to refresh the cluster map, file: %s, rv: %s, err: %v",
-								file.Filename, rv.Name, rpcErr)
-
-							//
-							// We allow 5 refreshes of the clustermap for resiliency, before we fail the delete of a file.
-							// This is to allow multiple changes to the MV during the course of a deleting.
-							// It's unlikely but we need to be resilient.
-							//
-							if retryCnt > 5 {
-								log.Err("GC::removeAllChunksForFile: Max retries for updating the clusermap exhausted, "+
-									"rv: %v, file: %s: %v", rv, file.Filename, rpcErr)
-								common.Assert(false, file, rpcErr)
-								return
-							}
-
-							//
-							// Retry till the next epoch, ensuring that the clustermap is refreshed from what we
-							// have cached right now.
-							//
-							errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
-							if errCM != nil {
-								log.Err("GC::removeAllChunksForFile: Failed to refresh the cluster map, rv: %s, file: %s: %v",
-									rv.Name, file.Filename, errCM)
-								common.Assert(false, file, errCM)
-								return
-							}
-
-							retryCnt++
-							goto retry
-						}
-
-						common.Assert(rpcErr.GetCode() == models.ErrorCode_ChunkNotFound &&
-							rv.State == string(dcache.StateSyncing), file.Filename, rv, rvs, rpcErr, rpcResp)
-					}
-
-					// Update the progress of deletion for the RV.
-					deleteProgressForRvs[rv.Name] = getNextChunkIdxInMV(chunkIdx, numMvs)
-				}
-			}
+		_, err := rm.RemoveMV(removeMvRequest)
+		if err != nil {
+			log.Err("GC::removeAllChunksForFile: Failed to delete chunks from MV: %s, file: %s: %v",
+				mvName, gcFile.file.Filename, err)
+			newRetryMvList = append(newRetryMvList, mvName)
 		}
 	}
 
+	if len(newRetryMvList) != 0 {
+		//
+		// Retry this gcFile with new MVs again. Schedule the file Non-blocking to release this worker for the other
+		// files which are need to be GC'ed.
+		//
+		go func() {
+			gc.deletedFileQueue <- gcFile
+		}()
+
+		return
+	}
+
 	// After removing all the chunks from all the rvs, we can remove the file layout.
-	deletedFile := dcache.GetDeletedFileName(file.Filename, file.FileID)
+	deletedFile := dcache.GetDeletedFileName(gcFile.file.Filename, gcFile.file.FileID)
 	log.Debug("GC::removeAllChunksForFile: removing file layout for file: %s", deletedFile)
 
 	err := metadata_manager.DeleteFile(deletedFile)
 	if err != nil {
 		log.Err("GC::removeAllChunksForFile: failed to remove file layout for file: %s: %v", deletedFile, err)
-		common.Assert(false, file, err)
+		common.Assert(false, gcFile.file, err)
 		return
 	}
 
@@ -254,6 +143,10 @@ func (gc *GcInfo) removeAllChunksForFile(file *dcache.FileMetadata) {
 
 func AsyncFileChunkGarbageCollector(file *dcache.FileMetadata) {
 	if file.Size != 0 {
-		gc.deletedFileQueue <- file
+		gcFile := &gcFile{
+			file:     file,
+			retryCnt: 1,
+		}
+		gc.deletedFileQueue <- gcFile
 	}
 }

@@ -1928,6 +1928,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 
 	cacheDir := rvInfo.cacheDir
 	numChunksDeleted := int64(0)
+	needRetry := false
 
 	// MV directory containing the requested chunks.
 	mvDir := filepath.Join(cacheDir, req.Address.MvName)
@@ -1965,6 +1966,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 			// NumChunksDeleted == 0.
 			//
 			if numChunksDeleted > 0 {
+				needRetry = true
 				break
 			}
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
@@ -1978,6 +1980,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
 			common.Assert(false, err)
 			if numChunksDeleted > 0 {
+				needRetry = true
 				break
 			}
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
@@ -2002,6 +2005,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		AvailableSpace:   availableSpace,
 		ComponentRV:      mvInfo.getComponentRVs(),
 		NumChunksDeleted: numChunksDeleted,
+		NeedRetry:        needRetry,
 	}
 
 	return resp, nil

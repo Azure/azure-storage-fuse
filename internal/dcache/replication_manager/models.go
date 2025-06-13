@@ -215,6 +215,22 @@ func (req *WriteMvRequest) isValid() error {
 type WriteMvResponse struct {
 }
 
+type RemoveMvRequest struct {
+	FileID string // unique guid of the file, as stored in metadata blob
+	MvName string // name of the MV where this chunk will be written, e.g., "mv0", "mv1", etc.
+}
+
+// check if the request is valid
+func (req *RemoveMvRequest) isValid() error {
+	common.Assert(common.IsValidUUID(req.FileID))
+	common.Assert(cm.IsValidMVName(req.MvName))
+
+	return nil
+}
+
+type RemoveMvResponse struct {
+}
+
 // syncJob tracks resync of one MV replica, srcRVName/mvName -> destRVName/mvName.
 type syncJob struct {
 	mvName       string                   // name of the MV to be synced
