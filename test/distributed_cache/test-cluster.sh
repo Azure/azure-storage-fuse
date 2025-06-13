@@ -295,6 +295,14 @@ get_node_count()
     echo "$cm" | jq '."rv-list" | map(.node_id) | unique | length'
 }
 
+get_offline_rv_list()
+{
+    local cm=$1
+    local vm_node_id=$2
+
+    echo "$cm" | jq -r '.["rv-list"] | to_entries[] | select(.value.node_id == "'$vm_node_id'") | select(.value.state != "offline") | .key'
+}
+
 #
 # Given a clustermap, return the count of MVs in mv-list.
 #
@@ -306,33 +314,28 @@ get_mv_count()
 }
 
 #
-# Given a clustermap, return the count of online MVs in mv-list.
+# Given a clustermap, return the count of MVs with given state in mv-list.
 #
-get_online_mv_count()
+get_mv_count_with_state()
 {
     local cm="$1"
+    local mv_state="$2"
 
-    echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "online")] | length'
+    echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "'"$mv_state"'")] | length'
 }
 
-#
-# Given a clustermap, return the count of syncing MVs in mv-list.
-#
-get_syncing_mv_count()
+# Given a clustermap and RV list and state, return the count of MVs where this RV exist.
+get_mvs_count_for_given_rv_with_state()
 {
     local cm="$1"
+    local rv_list="$2"
+    local rv_state="$3"
 
-    echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "syncing")] | length'
-}
-
-#
-# Given a clustermap, return the count of degraded MVs in mv-list.
-#
-get_degraded_mv_count()
-{
-    local cm="$1"
-
-    echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "degraded")] | length'
+    echo "$cm" | jq --arg state "$rv_state" --arg rv_list "$rv_list" '
+        [ $rv_list | split(",") as $rvs |
+          ."mv-list" | to_entries[] |
+          select(any($rvs[]; .value.rvs[.] == $state))
+        ] | length'
 }
 
 #
@@ -672,7 +675,7 @@ mv_count=$(get_mv_count "$cm")
 log_status $? "is $mv_count"
 
 becho -n "All MVs must be online (mv_count == online_mv_count)"
-online_mv_count=$(get_online_mv_count "$cm")
+online_mv_count=$(get_mv_count_with_state "$cm" "online")
 [ "$online_mv_count" -eq "$mv_count" ]
 log_status $? "online MVs: $online_mv_count, total MVs: $mv_count"
 
@@ -702,14 +705,23 @@ cm=$(read_clustermap_from_node vm3)
 log_status $?
 
 becho -n "All MVs must be degraded (mv_count == degraded_mv_count)"
-degraded_mv_count=$(get_degraded_mv_count "$cm")
+degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
 [ "$degraded_mv_count" -eq "$mv_count" ]
 log_status $? "degraded MVs: $degraded_mv_count, total MVs: $mv_count"
 
-becho -n "All component RV for vm2 will be offline"
-degraded_mv_count=$(get_degraded_mv_count "$cm")
-[ "$degraded_mv_count" -eq "$mv_count" ]
-log_status $? "degraded MVs: $degraded_mv_count, total MVs: $mv_count"
+
+becho -n "All component RV for vm2 must be offline"
+# Get node_id for vm2
+vm2_node_id=$(get_node_id vm2)
+echo $vm2_node_id
+# Extract all RVs from clustermap that belong to vm2
+offline_rv_list=$(get_offline_rv_list "$cm" "$vm2_node_id")
+# [ "rv2", "rv3" ]
+echo $offline_rv_list
+offline_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$offline_rv_list" "offline")
+degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
+[ "$degraded_mv_count" -eq "$offline_rv_component_count" ]
+log_status $? "degraded MVs: $degraded_mv_count, offline component RVs count: $offline_rv_component_count"
 
 
 # ############################################################################
@@ -738,8 +750,8 @@ log_status $? "degraded MVs: $degraded_mv_count, total MVs: $mv_count"
 # log_status $?
 
 # becho -n "All MVs must be degraded and rvs state is outofsync"
-# syncing_mv_count=$(get_syncing_mv_count "$cm")
-# online_mv_count=$(get_online_mv_count "$cm")
+# syncing_mv_count=$(get_mv_count_with_state "$cm" "syncing")
+# online_mv_count=$(get_mv_count_with_state "$cm" "online")
 # mv_count=$(get_mv_count "$cm")
 # total_online_syncing=$((syncing_mv_count + online_mv_count))
 # [ "$total_online_syncing" -eq "$mv_count" ]
