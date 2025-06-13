@@ -2803,10 +2803,12 @@ func (p *RemoveChunkRequest) String() string {
 //   - TimeTaken
 //   - AvailableSpace
 //   - ComponentRV
+//   - NumChunksDeleted
 type RemoveChunkResponse struct {
-	TimeTaken      int64             `thrift:"timeTaken,1" db:"timeTaken" json:"timeTaken"`
-	AvailableSpace int64             `thrift:"availableSpace,2" db:"availableSpace" json:"availableSpace"`
-	ComponentRV    []*RVNameAndState `thrift:"componentRV,3" db:"componentRV" json:"componentRV"`
+	TimeTaken        int64             `thrift:"timeTaken,1" db:"timeTaken" json:"timeTaken"`
+	AvailableSpace   int64             `thrift:"availableSpace,2" db:"availableSpace" json:"availableSpace"`
+	ComponentRV      []*RVNameAndState `thrift:"componentRV,3" db:"componentRV" json:"componentRV"`
+	NumChunksDeleted int64             `thrift:"numChunksDeleted,4" db:"numChunksDeleted" json:"numChunksDeleted"`
 }
 
 func NewRemoveChunkResponse() *RemoveChunkResponse {
@@ -2823,6 +2825,10 @@ func (p *RemoveChunkResponse) GetAvailableSpace() int64 {
 
 func (p *RemoveChunkResponse) GetComponentRV() []*RVNameAndState {
 	return p.ComponentRV
+}
+
+func (p *RemoveChunkResponse) GetNumChunksDeleted() int64 {
+	return p.NumChunksDeleted
 }
 func (p *RemoveChunkResponse) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -2861,6 +2867,16 @@ func (p *RemoveChunkResponse) Read(ctx context.Context, iprot thrift.TProtocol) 
 		case 3:
 			if fieldTypeId == thrift.LIST {
 				if err := p.ReadField3(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 4:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField4(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -2921,6 +2937,15 @@ func (p *RemoveChunkResponse) ReadField3(ctx context.Context, iprot thrift.TProt
 	return nil
 }
 
+func (p *RemoveChunkResponse) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 4: ", err)
+	} else {
+		p.NumChunksDeleted = v
+	}
+	return nil
+}
+
 func (p *RemoveChunkResponse) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "RemoveChunkResponse"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
@@ -2933,6 +2958,9 @@ func (p *RemoveChunkResponse) Write(ctx context.Context, oprot thrift.TProtocol)
 			return err
 		}
 		if err := p.writeField3(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField4(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2992,6 +3020,19 @@ func (p *RemoveChunkResponse) writeField3(ctx context.Context, oprot thrift.TPro
 	return err
 }
 
+func (p *RemoveChunkResponse) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "numChunksDeleted", thrift.I64, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:numChunksDeleted: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.NumChunksDeleted)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.numChunksDeleted (4) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:numChunksDeleted: ", p), err)
+	}
+	return err
+}
+
 func (p *RemoveChunkResponse) Equals(other *RemoveChunkResponse) bool {
 	if p == other {
 		return true
@@ -3012,6 +3053,9 @@ func (p *RemoveChunkResponse) Equals(other *RemoveChunkResponse) bool {
 		if !_tgt.Equals(_src19) {
 			return false
 		}
+	}
+	if p.NumChunksDeleted != other.NumChunksDeleted {
+		return false
 	}
 	return true
 }
