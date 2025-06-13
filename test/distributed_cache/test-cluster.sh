@@ -19,6 +19,7 @@
 
 MOUNTDIR=/home/dcacheuser/mnt/
 LOGDIR=/tmp/cluster_validator/
+RESYNC_INTERVAL=12
 
 #
 # some common colour escape sequences
@@ -295,12 +296,37 @@ get_node_count()
     echo "$cm" | jq '."rv-list" | map(.node_id) | unique | length'
 }
 
-get_offline_rv_list()
+# Given a clustermap, node_id and state, return the list of RVs for that node.
+get_rv_list_for_node_with_state()
+{
+    local cm=$1
+    local vm_node_id=$2
+    local desired_state="$3"
+
+    echo "$cm" | jq -r --arg node_id "$vm_node_id" --arg state "$desired_state" '
+        (
+          .["rv-list"] | map(to_entries[])? | from_entries
+        ) as $rvs |
+        $rvs | to_entries[] |
+        select(.value.node_id == $node_id and .value.state == $state) |
+        .key' | paste -sd, -
+
+}
+
+# Given a clustermap, node_id, return the list of RVs for that node.
+get_rv_list_for_node()
 {
     local cm=$1
     local vm_node_id=$2
 
-    echo "$cm" | jq -r '.["rv-list"] | to_entries[] | select(.value.node_id == "'$vm_node_id'") | select(.value.state != "offline") | .key'
+    echo "$cm" | jq -r --arg node_id "$vm_node_id" '
+        (
+          .["rv-list"] | map(to_entries[])? | from_entries
+        ) as $rvs |
+        $rvs | to_entries[] |
+        select(.value.node_id == $node_id) |
+        .key' | paste -sd, -
+
 }
 
 #
@@ -324,17 +350,26 @@ get_mv_count_with_state()
     echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "'"$mv_state"'")] | length'
 }
 
-# Given a clustermap and RV list and state, return the count of MVs where this RV exist.
+# Given a clustermap, RV list and state, return the count of MVs where these RV exist.
 get_mvs_count_for_given_rv_with_state()
 {
     local cm="$1"
     local rv_list="$2"
     local rv_state="$3"
 
-    echo "$cm" | jq --arg state "$rv_state" --arg rv_list "$rv_list" '
-        [ $rv_list | split(",") as $rvs |
-          ."mv-list" | to_entries[] |
-          select(any($rvs[]; .value.rvs[.] == $state))
+    echo "$cm" | jq --arg state "$rv_state" --arg rv_names_str "$rv_list" '
+        ($rv_names_str | split(",")) as $target_rvs |
+        (
+          .["mv-list"] | map(to_entries[])? | from_entries
+        ) as $mvs |
+        [
+          $mvs | to_entries[] |
+          select(
+            .value.rvs | to_entries[]? |
+            select(
+              (.key | IN($target_rvs[])) and (.value == $state)
+            )
+          )
         ] | length'
 }
 
@@ -674,7 +709,7 @@ mv_count=$(get_mv_count "$cm")
 [ "$mv_count" -eq "$MVS_PER_RV" ]
 log_status $? "is $mv_count"
 
-becho -n "All MVs must be online (mv_count == online_mv_count)"
+becho -n "All MVs must be online"
 online_mv_count=$(get_mv_count_with_state "$cm" "online")
 [ "$online_mv_count" -eq "$mv_count" ]
 log_status $? "online MVs: $online_mv_count, total MVs: $mv_count"
@@ -704,55 +739,89 @@ becho -n "Reading clustermap on vm3"
 cm=$(read_clustermap_from_node vm3)
 log_status $?
 
-becho -n "All MVs must be degraded (mv_count == degraded_mv_count)"
+becho -n "All MVs must be degraded"
 degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
 [ "$degraded_mv_count" -eq "$mv_count" ]
 log_status $? "degraded MVs: $degraded_mv_count, total MVs: $mv_count"
 
 
-becho -n "All component RV for vm2 must be offline"
-# Get node_id for vm2
+becho -n "Reading offline RV count"
 vm2_node_id=$(get_node_id vm2)
-echo $vm2_node_id
-# Extract all RVs from clustermap that belong to vm2
-offline_rv_list=$(get_offline_rv_list "$cm" "$vm2_node_id")
-# [ "rv2", "rv3" ]
-echo $offline_rv_list
+offline_rv_list=$(get_rv_list_for_node_with_state "$cm" "$vm2_node_id" "offline")
+log_status $? "RV list: $offline_rv_list"
+
+
+becho -n "All component RV for vm2 must be offline"
 offline_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$offline_rv_list" "offline")
 degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
-[ "$degraded_mv_count" -eq "$offline_rv_component_count" ]
-log_status $? "degraded MVs: $degraded_mv_count, offline component RVs count: $offline_rv_component_count"
+[ "$degraded_mv_count" -eq "$offline_component_rv_count" ]
+log_status $? "degraded MVs: $degraded_mv_count, offline component RVs count: $offline_component_rv_count"
 
 
-# ############################################################################
-# ##              Start node2 And Verify Fix Workflow                      ##
-# ############################################################################
+############################################################################
+##              Start node2 And Verify Fix Workflow                      ##
+############################################################################
 
-# echo
-# wbecho ">> Starting blobfuse on vm2"
-# echo
-# start_blobfuse_on_node vm2
+echo
+wbecho ">> Starting blobfuse on vm2"
+echo
+start_blobfuse_on_node vm2
 
-# becho -n "Reading clustermap on vm2"
-# cm=$(read_clustermap_from_node vm2)
-# log_status $?
+becho -n "Reading clustermap on vm2"
+cm=$(read_clustermap_from_node vm2)
+log_status $?
 
-# LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
+LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
 
-# #
-# # Wait for next epoch on vm3.
-# # After that it'll get the degraded clustermap updated by vm3.
-# #
-# wait_till_next_scheduled_epoch
+#
+# Wait for next epoch on vm2.
+# After that it'll run the Fix mv workflow.
+#
+wait_till_next_scheduled_epoch
 
-# becho -n "Reading clustermap on vm2"
-# cm=$(read_clustermap_from_node vm2)
-# log_status $?
+becho -n "Reading clustermap on vm2"
+cm=$(read_clustermap_from_node vm2)
+log_status $?
 
-# becho -n "All MVs must be degraded and rvs state is outofsync"
-# syncing_mv_count=$(get_mv_count_with_state "$cm" "syncing")
-# online_mv_count=$(get_mv_count_with_state "$cm" "online")
-# mv_count=$(get_mv_count "$cm")
-# total_online_syncing=$((syncing_mv_count + online_mv_count))
-# [ "$total_online_syncing" -eq "$mv_count" ]
-# log_status $? "Syncing MVs: $syncing_mv_count, Online MVs: $online_mv_count, total MVs: $mv_count"
+becho -n "All degraded MV's replacement rv is outofsync"
+outofsync_rv_list=$(get_rv_list_for_node "$cm" "$vm2_node_id")
+outofsync_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$outofsync_rv_list" "outofsync")
+degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
+[ "$degraded_mv_count" -eq "$offline_component_rv_count" ]
+log_status $? "degraded MVs: $degraded_mv_count, offline component RVs count: $offline_component_rv_count"
+
+becho -n "last_updated_by must be vm2"
+last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
+[ "$last_updated_by" == "$(get_node_id vm2)" ]
+log_status $? "is $last_updated_by"
+
+############################################################################
+##                           Verify Re-Sync Workflow                      ##
+############################################################################
+
+becho -n "Reading clustermap on vm1"
+cm=$(read_clustermap_from_node vm1)
+log_status $?
+
+LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
+
+#
+# Wait for next epoch on vm1 to read the current outofsync components.
+#
+wait_till_next_scheduled_epoch
+
+#
+# Wait for resync workflow to get triggered.
+#
+sleep $RESYNC_INTERVAL
+
+becho -n "Reading clustermap on vm1"
+cm=$(read_clustermap_from_node vm1)
+log_status $?
+
+becho -n "All MVs must be syncing/online"
+syncing_mv_count=$(get_mv_count_with_state "$cm" "syncing")
+online_mv_count=$(get_mv_count_with_state "$cm" "online")
+total_active_mvs=$(($syncing_mv_count + $online_mv_count))
+[ "$total_active_mvs" -eq "$mv_count" ]
+log_status $? "Syncing MVs: $syncing_mv_count, Online MVs: $online_mv_count, Total MVs: $mv_count"
