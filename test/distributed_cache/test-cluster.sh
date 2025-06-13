@@ -779,7 +779,7 @@ log_status $?
 ############################################################################
 
 echo
-wbecho ">> Stoping blobfuse on vm2"
+wbecho ">> Stoping blobfuse on vm2 for Degraded workflow"
 echo
 stop_blobfuse_on_node vm2
 
@@ -823,7 +823,7 @@ log_status $? "degraded MVs: $degraded_mv_count, offline component RVs count: $o
 ############################################################################
 
 echo
-wbecho ">> Starting blobfuse on vm2"
+wbecho ">> Starting blobfuse on vm2 for Fix workflow"
 echo
 start_blobfuse_on_node vm2
 
