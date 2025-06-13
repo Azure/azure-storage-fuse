@@ -222,3 +222,44 @@ func EndSyncRequestToString(req *models.EndSyncRequest) string {
 func GetMVSizeRequestToString(req *models.GetMVSizeRequest) string {
 	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v}", req.SenderNodeID, req.MV, req.RVName)
 }
+
+// The caller of PutChunkDC() RPC can make this call to handle the error returned by PutChunkDC().
+// It converts the error received for the current RV to ThriftError.
+// This error indicates that the PutChunkDC call was not forwarded to the next RVs.
+// so, it adds BrokenChain error for the next RVs.
+func HandlePutChunkDCError(currRV string, nextRVs []string, mvName string, err error) *models.PutChunkDCResponse {
+	rpcErr := GetRPCResponseError(err)
+	if rpcErr == nil {
+		//
+		// This error indicates some Thrift error like connection error, timeout, etc. or,
+		// it could be an RPC client side error like failed to get RPC client for target node.
+		// We wrap this error in *models.ResponseError with code ThriftError.
+		// This is to ensure that the client can take appropriate action based on this error code.
+		//
+		rpcErr = NewResponseError(models.ErrorCode_ThriftError, err.Error())
+	}
+
+	dcResp := &models.PutChunkDCResponse{
+		Responses: map[string]*models.PutChunkResponseOrError{
+			currRV: {
+				Response: nil,    // PutChunkDC failed for the current RV
+				Error:    rpcErr, // Error for the current RV
+			},
+		},
+	}
+
+	for _, rvName := range nextRVs {
+		//
+		// For the next RVs, we will return a BrokenChain error indicating that the PutChunkDC call
+		// was not forwarded to them.
+		//
+		dcResp.Responses[rvName] = &models.PutChunkResponseOrError{
+			Response: nil, // PutChunkDC was not forwarded to this RV
+			Error: NewResponseError(models.ErrorCode_BrokenChain,
+				fmt.Sprintf("PutChunkDC call was not forwarded to %s/%s after %s/%s",
+					rvName, mvName, currRV, mvName)),
+		}
+	}
+
+	return dcResp
+}

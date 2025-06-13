@@ -266,6 +266,28 @@ func updateComponentRVs(rvs []*models.RVNameAndState) []*models.RVNameAndState {
 	return updatedRVs
 }
 
+// Add the PutChunkDCResponse to the response channel.
+func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, responseChannel chan *responseItem) {
+	common.Assert(response != nil)
+	common.Assert(response.Responses != nil)
+
+	for rvName, resp := range response.Responses {
+		common.Assert(cm.IsValidRVName(rvName), rvName)
+		common.Assert(resp != nil)
+		common.Assert(len(responseChannel) < int(getNumReplicas()),
+			len(responseChannel), getNumReplicas())
+
+		responseChannel <- &responseItem{
+			rvName:       rvName,
+			putChunkResp: resp.Response,
+			err:          resp.Error,
+		}
+	}
+
+	common.Assert(len(responseChannel) == int(getNumReplicas()),
+		len(responseChannel), getNumReplicas())
+}
+
 func init() {
 	common.Assert(MAX_SIMUL_SYNC_JOBS < cm.MAX_SIMUL_RV_STATE_UPDATES,
 		MAX_SIMUL_SYNC_JOBS, cm.MAX_SIMUL_RV_STATE_UPDATES)

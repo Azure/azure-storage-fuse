@@ -2090,44 +2090,14 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 				currRV, req.Chunk.Address.MvName, targetNodeID, err)
 			common.Assert(dcResp == nil)
 
-			rpcErr := rpc.GetRPCResponseError(err)
-			if rpcErr == nil {
-				//
-				// This error indicates some Thrift error like connection error, timeout, etc. or,
-				// it could be an RPC client side error like failed to get RPC client for target node.
-				// We wrap this error in *models.ResponseError with code ThriftError.
-				// This is to ensure that the client can take appropriate action based on this error code.
-				//
-				rpcErr = rpc.NewResponseError(models.ErrorCode_ThriftError, err.Error())
-			}
-
-			dcResp = &models.PutChunkDCResponse{
-				Responses: map[string]*models.PutChunkResponseOrError{
-					currRV: {
-						Response: nil,    // PutChunkDC failed for the current RV
-						Error:    rpcErr, // Error for the current RV
-					},
-				},
-			}
-
-			for _, rvName := range nextRVs {
-				//
-				// For the next RVs, we will return a BrokenChain error indicating that the PutChunkDC call
-				// was not forwarded to them.
-				//
-				dcResp.Responses[rvName] = &models.PutChunkResponseOrError{
-					Response: nil, // PutChunkDC was not forwarded to this RV
-					Error: rpc.NewResponseError(models.ErrorCode_BrokenChain,
-						fmt.Sprintf("PutChunkDC call was not forwarded to %s/%s after %s/%s",
-							rvName, req.Chunk.Address.MvName, currRV, req.Chunk.Address.MvName)),
-				}
-			}
+			dcResp = rpc.HandlePutChunkDCError(currRV, nextRVs, req.Chunk.Address.MvName, err)
 		} else {
 			log.Debug("ChunkServiceHandler::forwardPutChunk: Received response for %s/%s (file id %s, offset in MiB %v): %s",
 				currRV, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB,
 				rpc.PutChunkDCResponseToString(dcResp))
 		}
 
+		common.Assert(dcResp != nil)
 		return dcResp
 	}
 }
