@@ -52,6 +52,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 type replicationMgr struct {
@@ -479,6 +480,20 @@ retry:
 			// component RV as offline and force the fix-mv workflow which will eventually
 			// trigger the resync-mv workflow.
 			//
+			// <IMPORTANT>
+			// TODO: We should not mark an RV offline using inband detection.
+			//       This has a very serious risk of a bad node (that's not able to communicate with other nodes)
+			//       marking most RVs offline which might eventually cause some or all MVs to be marked offline,
+			//       even though the RVs might be reachable perfectly fine from other nodes, just this node might
+			//       have some problem.
+			//       We should mark and RV offline only when enough heartbeats are missed.
+			//       For handling this inband RV communication failure, we should convey this to WriteMV()
+			//       caller with a failure status an a list of RVs to which the WriteMV() could not write,
+			//       due to inband PutChunk errors. The caller (file manager) should then pick new set of MVs
+			//       which do not use those RVs.
+			//       Disallow StateOffline as a valid state change in UpdateComponentRVState().
+			// </IMPORTANT>
+			//
 			log.Err("ReplicationManager::WriteMV: PutChunk %s/%s, failed to reach node %s [%v]",
 				respItem.rvName, req.MvName, respItem.targetNodeID, respItem.err)
 
@@ -844,6 +859,19 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	}
 
 	//
+	// StartSync causes mvInfo state to be changed to "syncing" but server can purge it after GetMvInfoTimeout()
+	// time if the state change is not committed in the clustermap. If we have spent more than that, we have to
+	// abort the sync.
+	//
+	if time.Since(startTime) > rpc_server.GetMvInfoTimeout() {
+		errStr := fmt.Sprintf("StartSync for %s/%s (%s, %s) took longer than %s, aborting sync",
+			targetRVName, mvName, srcSyncId, dstSyncId, rpc_server.GetMvInfoTimeout())
+		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
+		common.Assert(false, errStr)
+		return
+	}
+
+	//
 	// Update the destination RV from outofsync to syncing state. The cluster manager will take care of
 	// updating the MV state to syncing if all component RVs have either online or syncing state.
 	//
@@ -854,6 +882,10 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
 		return
 	}
+
+	common.Assert(time.Since(startTime) < rpc_server.GetMvInfoTimeout(),
+		time.Since(startTime), rpc_server.GetMvInfoTimeout(),
+		lioRV, targetRVName, mvName, srcSyncId, dstSyncId)
 
 	//
 	// Now that the target RV state is updated to syncing from outofsync, the WriteMV() workflow will
@@ -1208,8 +1240,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to reach node %s [%v]",
 					destNodeID, err)
 
-				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName,
-					dcache.StateOffline)
+				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOffline)
 				if errRV != nil {
 					errStr := fmt.Sprintf("Failed to mark %s/%s as offline [%v]",
 						job.destRVName, job.mvName, errRV)

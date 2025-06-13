@@ -40,7 +40,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -610,16 +609,19 @@ func cleanupRV(rv dcache.RawVolume) error {
 // An RV that's offline in the RV list is guaranteed to be offline in the MV list also, i.e., no MV will contact
 // this RV for for chunk IO (read or write).
 //
+// Before proceeding, ensure no duplicate RV IDs (filesystem GUIDs) exist across different cache paths,
+// i.e., if an RV ID appears in both the input list and clustermap, it must refer to the *same* path.
+// Any mismatch indicates a RVId collision, in that case, the startup will be aborted.
+//
 // In case of success the boolean return value indicates the following:
 // true  -> Found a clustermap and RV(s) were either not present in the RV list or waited for RV(s) to be marked
-//
-//	offline and then cleaned up the RVs if any.
-//
+//          offline and then cleaned up the RVs if any.
 // false -> Did not find clustermap, cleaned up the RVs if any.
 //
 // In case of success it'll return only after all RV directories are fully cleaned up.
 // If it finds any unexpected file/dir in the RV it complains and bails out. Note that this is the only place where
 // we check if RV contains any unexpected file/dir.
+
 func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, error) {
 	log.Info("ClusterManager::safeCleanupMyRVs: Cleaning up %d RV(s) %v", len(myRVs), myRVs)
 
@@ -713,6 +715,37 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			//
 			common.Assert(failedRV.Load() == 0, failedRV.Load())
 			return false, cleanupAllMyOfflineRVs()
+		}
+
+		//
+		// For all of our RVs that we will be adding to the cluster, ensure:
+		// - No other node has an RV with the same RVid.
+		// - There isn't a new RV being added which has RVid matching one of our existing RVs but a different
+		//   cache path. If cache path and RVid are same for an existing and new RV, it's the same RV being
+		//   added, this is the common case of a node rejoining the cluster w/o any change in RVs. updateRVList()
+		//   will let this RV continue to be used as the existing RV name.
+		// The bottomline is that we don't want two RVs with same RVid.
+		//
+		allRVsFromClustermap := cm.GetAllRVs()
+		for _, myRV := range myRVs {
+			common.Assert(myRV.NodeId == cmi.myNodeId, cmi.myNodeId, myRV)
+
+			for _, cmRV := range allRVsFromClustermap {
+				if myRV.RvId != cmRV.RvId {
+					continue
+				}
+
+				//
+				// The 2nd check prevents re-adding an existing RV with a different cache-dir.
+				// If the user needs to do this, they will need to re-format the drive or change the
+				// filesystem GUID.
+				//
+				if myRV.NodeId != cmRV.NodeId || myRV.LocalCachePath != cmRV.LocalCachePath {
+					return false, fmt.Errorf(
+						"ClusterManager::safeCleanupMyRVs: Duplicate RVid %s detected, cache-dir %s being added by this node %s has the same RVid as existing cache-dir %s from node %s",
+						myRV.RvId, myRV.LocalCachePath, myRV.NodeId, cmRV.LocalCachePath, cmRV.NodeId)
+				}
+			}
 		}
 
 		//
@@ -909,20 +942,12 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//
 UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
-	// Punch the first heartbeat. updateStorageClusterMapWithMyRVs() fetches this heartbeat to get info on local RVs.
-	err = cmi.punchHeartBeat(rvs)
-	if err != nil {
-		log.Err("ClusterManager::ensureInitialClusterMap: Initial punchHeartBeat failed: %v", err)
-		common.Assert(false, err)
-		return err
-	}
-	log.Info("ClusterManager::ensureInitialClusterMap: Initial Heartbeat punched")
-
 	//
 	// Ensure our RVs are added to the clustermap. If already present in the clustermap, this will be a no-op,
 	// else it updates the clustermap with our local RVs added to the RV list.
-	///
-	err = cmi.updateStorageClusterMapWithMyRVs()
+	// This also punches the initial heartbeat.
+	//
+	err = cmi.updateStorageClusterMapWithMyRVs(rvs)
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: updateStorageClusterMapWithMyRVs failed: %v %+v",
 			err, clusterMap)
@@ -950,7 +975,7 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
 // Add my RVs to clustermap, if not already added.
 // This helps get a unique RV name for each of our RVs, which is needed by the RPC server.
-func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
+func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVolume) error {
 	startTime := time.Now()
 	maxWait := 120 * time.Second
 
@@ -1009,7 +1034,19 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 			continue
 		}
 
-		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: Updating RV list")
+		//
+		// Punch the first heartbeat. updateRVList() below fetches this heartbeat to get info on local RVs.
+		// We punch the heartbeat after claiming ownership of clusterMap to make sure no other node starts
+		// processing these RVs and the heartbeat doesn't expire if there's a delay in getting clusterMap ownership.
+		//
+		err = cmi.punchHeartBeat(myRVs)
+		if err != nil {
+			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: Initial punchHeartBeat failed: %v", err)
+			common.Assert(false, err)
+			return err
+		}
+
+		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: Initial Heartbeat punched, now updating RV list")
 
 		_, err = cmi.updateRVList(clusterMap.RVMap, true /* onlyMyRVs */)
 		if err != nil {
@@ -2188,7 +2225,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		existingMVMap, runFixMvNewMv)
 
 	//
-	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be gnerated, so we run
+	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be generated, so we run
 	// those only when updateMVList() is called from the periodic updateStorageClusterMapIfRequired().
 	//
 	if !runFixMvNewMv {
@@ -2474,10 +2511,10 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 
 	//
 	// TODO: Call JoinMV/UpdateMV on all RVs in parallel.
-	// TODO: If JoinMV() fails to any RV, need to send LeaveMV() to the RVs which succeeded for undoing the
-	//       reserveBytes. We can also achieve the same result in a better way by the target RV automatically
-	//       undoing the reserveBytes (and the JoinMV) if it doesn't get a SyncMV within certain timeout period.
+	// Note: If JoinMV RPC fails to any RV, we do not send LeaveMV() to the RVs which succeeded, for undoing the
+	//       reserveBytes, instead server is supposed to correctly undo that after timeout.
 	//
+	startTime := time.Now()
 	for _, rv := range componentRVs {
 		//
 		// Offline component RVs need not be sent JoinMV/UpdateMV RPC.
@@ -2532,6 +2569,24 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 			log.Err("ClusterManager::joinMV: %v", err)
 			return rv.Name, err
 		}
+
+		//
+		// A fix-mv/new-mv can only succeed when all the RVs correctly update the component RVs state in their
+		// respective mvInfo and the state change is committed in the clustermap. Since our state change is
+		// not transactional, each RV holds an mvInfo state change till some timeout period and if the clustermap
+		// state change is not observed till the timeout, it assumes that the sender failed to commit and rolls
+		// back the mvInfo state change. We need to make sure the first RV and all other RVs to which we sent
+		// JoinMV have not timed out it's mvInfo state change. We will have some margin for caller to update the
+		// clustermap.
+		//
+		if time.Since(startTime) > rpc_server.GetMvInfoTimeout() {
+			errStr := fmt.Sprintf("JoinMV (action: %s, new-mv: %v) for %s/%s took longer than %s, aborting joinMV",
+				action, newMV, rv.Name, mvName, rpc_server.GetMvInfoTimeout())
+			log.Err("ClusterManager::joinMV: %s", errStr)
+			common.Assert(false, errStr)
+			// TODO: This RV is not necessarily the real culprit.
+			return rv.Name, err
+		}
 	}
 
 	return "", nil
@@ -2577,12 +2632,14 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	//
 	// Ok, now we have all the RVs from heartbeats in rVsByRvIdFromHB[].
 	// We need to do two things:
-	// 1. For existing RVs (in existingRVMap), update RV State and AvailableSpace in existingRVMap if it's different
-	//    from the RV State and AvailableSpace as seen in the HB, or if HB has expired set RV state to offline if not
-	//    already offline.
-	//    If any of the existing RVs is not found in the latest HBs, for such RVs too the state in existingRVMap is
-	//    set to offline. Note that for onlyMyRVs==true case we cannot do this as we don't have the exhaustive list of
-	//    HBs.
+	// 1. For existing RVs (in existingRVMap), update RV State and AvailableSpace in existingRVMap if it's
+	//    different from the RV State and AvailableSpace as seen in the HB, or if HB has expired set RV state
+	//    to offline if not already offline. If the expired HB belongs to an old RV from our node, delete it
+	//    from RV map.
+	//    If any of the existing RVs is not found in the latest HBs, for such RVs too the state in existingRVMap
+	//    is set to offline. This will only happen when a HB blob is deleted out-of-band, which is an unsupported
+	//    operation. Note that for onlyMyRVs==true case we cannot do this as we don't have the exhaustive
+	//    list of HBs.
 	// 2. All RVs in rVsByRvIdFromHB[] which are not present in existingRVMap, i.e., those RVs are newly seen,
 	//    add those to existingRVMap.
 	//
@@ -2593,36 +2650,30 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 
 	// (1.b) Update RVs present in existingRVMap and which have changed State or AvailableSpace.
 	for rvName, rvInClusterMap := range existingRVMap {
-
 		if rvHb, found := rVsByRvIdFromHB[rvInClusterMap.RvId]; found {
 			lastHB, found := rvLastHB[rvHb.RvId]
 
 			// If an RV is present in rVsByRvIdFromHB, it MUST have a valid HB in rvLastHB.
 			common.Assert(found)
 
-			// We just came here after punching the heartbeat, which indicates this is online RV.
-			common.Assert(!onlyMyRVs || rvHb.State == dcache.StateOnline)
-
 			if lastHB < hbExpiry {
 				//
-				// HB expired, mark RV offline if not already offline.
+				// HB expired, if onlyMyRVs is true then we are called from
+				// updateStorageClusterMapWithMyRVs() i.e., a newly started node wants to join the
+				// cluster. It must have punched its initial heartbeat just before calling updateRVList(),
+				// so if we see hb as expired for a particular RV that RV was present in the prev
+				// incarnation of this node and not present now, we must remove that RV from the RV
+				// map, else if onlyMyRVs is false, then we want to check RVs from all the nodes and
+				// if any RV's HB has expired mark the RV offline if not already offline.
 				//
-
-				//
-				// TODO
-				// Saw this assert fire when one node died keeping clusterMap in checking state.
-				// This caused updateStorageClusterMapWithMyRVs() to take a long time. It would have timed out,
-				// but some other node became the leader updating the clusterMap and hence clearing thec
-				// checking status, allowing updateStorageClusterMapWithMyRVs() to proceed, but by the time
-				// the node's heartbeat expired.
-				//
-				// We just came here after punching the heartbeat, which must not expired.
-				//
-				common.Assert(!onlyMyRVs)
-
-				if rvInClusterMap.State != dcache.StateOffline {
-					log.Warn("ClusterManager::updateRVList: Online RV %s lastHeartbeat (%d) is expired, hbExpiry (%d), marking RV offline",
-						rvName, lastHB, hbExpiry)
+				if onlyMyRVs {
+					log.Warn("ClusterManager::updateRVList: Removing RV %s %+v present from prev incarnation of this node (lastHeartbeat (%d) < hbExpiry (%d))",
+						rvName, rvInClusterMap, lastHB, hbExpiry)
+					delete(existingRVMap, rvName)
+					changed = true
+				} else if rvInClusterMap.State != dcache.StateOffline {
+					log.Warn("ClusterManager::updateRVList: Online RV %s %+v lastHeartbeat (%d) has expired, hbExpiry (%d), marking RV offline",
+						rvName, rvInClusterMap, lastHB, hbExpiry)
 					rvInClusterMap.State = dcache.StateOffline
 					existingRVMap[rvName] = rvInClusterMap
 					changed = true
@@ -2646,13 +2697,16 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// rVsByRvIdFromHB must only contain new RVs, delete this as it is in existingRVMap.
 			delete(rVsByRvIdFromHB, rvHb.RvId)
 		} else if !onlyMyRVs {
+			// This can only happen when an HB file is deleted out-of-band.
+			common.Assert(false, "HB missing for RV in clustermap", rvInClusterMap)
+
 			//
 			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
 			// This is not a common occurrence, emit a warning log.
 			//
 			// For onlyMyRV==true, case we cannot perfrom this operation as we don't have the exhaustive list of  HBs.
 			if rvInClusterMap.State != dcache.StateOffline {
-				log.Warn("ClusterManager::updateRVList: Online Rv %s missing in new heartbeats", rvName)
+				log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats, did you delete the hb file out-of-band?", rvName, rvInClusterMap)
 				rvInClusterMap.State = dcache.StateOffline
 				existingRVMap[rvName] = rvInClusterMap
 				changed = true
@@ -2668,20 +2722,30 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		log.Info("ClusterManager::updateRVList: %d new RV(s) to add to clusterMap: %v",
 			len(rVsByRvIdFromHB), rVsByRvIdFromHB)
 
-		// Find max index RV.
-		maxIdx := -1
-		for name := range existingRVMap {
-			if i, err := strconv.Atoi(strings.TrimPrefix(name, "rv")); err == nil && i > maxIdx {
-				maxIdx = i
+		//
+		// Return next free RV index after (not including) lastIdx.
+		//
+		getNextFreeRVIdx := func(lastIdx int64) int64 {
+			idx := lastIdx + 1
+			for {
+				rvName := fmt.Sprintf("rv%d", idx)
+				if _, exists := existingRVMap[rvName]; !exists {
+					return idx
+				}
+				idx++
 			}
 		}
 
+		//
 		// Add new RV(s) into clusterMap, starting from the next available index.
-		idx := maxIdx + 1
+		// Since we may remove old RVs not being exported this time by the node, we may have some
+		// gaps in the RV index space. We pick the first available RV index.
+		//
+		nextFreeIdx := int64(-1)
 		for _, rv := range rVsByRvIdFromHB {
-			rvName := fmt.Sprintf("rv%d", idx)
+			nextFreeIdx = getNextFreeRVIdx(nextFreeIdx)
+			rvName := fmt.Sprintf("rv%d", nextFreeIdx)
 			existingRVMap[rvName] = rv
-			idx++
 			changed = true
 			log.Info("ClusterManager::updateRVList: Adding new RV %s to cluster map: %+v", rvName, rv)
 		}
@@ -3024,7 +3088,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 		// We can pass runFixMvNewMv as true for the inband rv offlining case as those will be fewer, but it's
 		// ok to wait for fix-mv till the next clusterMap epoch.
 		//
-		// TODO: See if we want to pass runFixMvNewMv as true.
+		// TODO: See if we want to pass runFixMvNewMv as true for the inband rv offlining case.
 		//
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, false /* runFixMvNewMv */)
 
