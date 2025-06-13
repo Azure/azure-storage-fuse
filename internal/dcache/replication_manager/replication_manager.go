@@ -287,28 +287,6 @@ retry:
 	return resp, nil
 }
 
-type PutChunkStyleEnum int
-
-const (
-	//
-	// Originator calls PutChunk for each component RV in parallel.
-	//
-	OriginatorSendsToAll PutChunkStyleEnum = iota
-
-	//
-	// Originator writes to the local component RV (if any) and calls PutChunkDC (with the list of remaining
-	// component RV) to the next component RV, which will then write locally and send PutChunkDC to the next
-	// component RV (with a smaller list of component RVs) and so on.
-	// This has the advantage that the overall file write throughput is not limited by the egress throughput
-	// of the originator node.
-	//
-	DaisyChain
-)
-
-// We will experiment with various PutChunk styles on various cluster sizes (with varying storage and n/w throughput
-// and different NumReplicas configuration).
-var PutChunkStyle PutChunkStyleEnum = DaisyChain
-
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
@@ -386,7 +364,7 @@ retry:
 			ComponentRV:    componentRVs,
 			MaybeOverwrite: retryCnt > 0,
 		},
-		NextRVs: make([]string),
+		NextRVs: make([]string, 0),
 	}
 
 	//
@@ -397,7 +375,7 @@ retry:
 	// putChunkDCReq.NextRVs contains all the other RVs.
 	// We don't write to offline and outofsync component RVs, so they won't be added to putChunkDCReq.
 	//
-	for componentRVIdx, rv := range componentRVs {
+	for _, rv := range componentRVs {
 		//
 		// Omit writing to RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not
 		// written to them will be copied to them when the mv is (soon) resynced.
@@ -421,6 +399,7 @@ retry:
 			common.Assert(len(responseChannel) < len(componentRVs),
 				len(responseChannel), len(componentRVs))
 			responseChannel <- nil
+
 		} else if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
 			// Offline MV has all replicas offline.
 			common.Assert(mvState != dcache.StateOffline, req.MvName)
@@ -435,10 +414,11 @@ retry:
 				rv.Name, req.MvName, rvID, rv.State, targetNodeID)
 
 			// Add local component RV to putChunkDCReq.Request.
-			if targetNodeID == common.GetNodeUUID {
+			if targetNodeID == rpc.GetMyNodeUUID() {
 				// Only one component RV can be local.
-				common.Assert(putChunkDCReq.Request.Address.RvID == "", putChunkDCReq.Request.Address)
-				putChunkDCReq.Request.Address.RvID = rvID
+				common.Assert(putChunkDCReq.Request.Chunk.Address.RvID == "",
+					putChunkDCReq.Request.Chunk.Address)
+				putChunkDCReq.Request.Chunk.Address.RvID = rvID
 			} else {
 				// Non-local component RVs get added to putChunkDCReq.NextRVs.
 				putChunkDCReq.NextRVs = append(putChunkDCReq.NextRVs, rv.Name)
@@ -458,30 +438,30 @@ retry:
 	//
 	// If no component RV is local, then set the putChunkDCReq nexthop to the first component RV.
 	//
-	if putChunkDCReq.Request.Address.RvID == "" {
+	if putChunkDCReq.Request.Chunk.Address.RvID == "" {
 		common.Assert(len(putChunkDCReq.NextRVs) > 0)
 
 		rvName := putChunkDCReq.NextRVs[0]
 		rvID := getRvIDFromRvName(rvName)
 		common.Assert(common.IsValidUUID(rvID))
 
-		putChunkDCReq.Request.Address.RvID = rvID
-		putChunkDCReq.Request.NextRVs = putChunkDCReq.Request.NextRVs[1:]
+		putChunkDCReq.Request.Chunk.Address.RvID = rvID
+		putChunkDCReq.NextRVs = putChunkDCReq.NextRVs[1:]
 	}
 
-	common.Assert(common.IsValidUUID(putChunkDCReq.Request.Address.RvID), putChunkDCReq.Request.Address)
+	common.Assert(common.IsValidUUID(putChunkDCReq.Request.Chunk.Address.RvID),
+		putChunkDCReq.Request.Chunk.Address)
 
-	if PutChunkStyle == OriginatorSendsToAll || len(putChunkDCReq.Request.NextRVs) == 0 {
+	if PutChunkStyle == OriginatorSendsToAll || len(putChunkDCReq.NextRVs) == 0 {
 		//
 		// Write to the next hop component RV.
 		//
 
 		// TODO: Add rvName to Address to avoid potentially expensive search for RV name.
-		rvName := getRvNameFromRvID(putChunkDCReq.Request.Address.RvID)
+		rvName := getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID)
 
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
-		common.Assert(targetNodeID == common.GetNodeUUID(), targetNodeID, common.GetNodeUUID())
 
 		log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
 			rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
@@ -510,7 +490,7 @@ retry:
 
 			targetNodeID := getNodeIDFromRVName(rvName)
 			common.Assert(common.IsValidUUID(targetNodeID))
-			common.Assert(targetNodeID != common.GetNodeUUID(), targetNodeID, common.GetNodeUUID())
+			common.Assert(targetNodeID != rpc.GetMyNodeUUID(), targetNodeID, rpc.GetMyNodeUUID())
 
 			putChunkReq := &models.PutChunkRequest{
 				Chunk: &models.Chunk{
@@ -541,7 +521,7 @@ retry:
 			}, isLastComponentRV /* runInline */)
 		}
 	} else if PutChunkStyle == DaisyChain {
-		rvName := getRvNameFromRvID(putChunkDCReq.Request.Address.RvID)
+		rvName := getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID)
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
@@ -560,11 +540,11 @@ retry:
 		//
 		if err != nil {
 			log.Err("ReplicationManager::WriteMVEx: Failed to send PutChunkDC request for %s/%s to node %s: %v",
-				rv.Name, req.MvName, targetNodeID, err)
+				rvName, req.MvName, targetNodeID, err)
 			common.Assert(putChunkDCResp == nil)
 		} else {
 			log.Debug("ReplicationManager::WriteMVEx: Received PutChunkDC response for %s/%s from node %s: %s",
-				rv.Name, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp))
+				rvName, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp))
 			common.Assert(putChunkDCResp != nil)
 		}
 	}
@@ -842,7 +822,7 @@ retry:
 	//
 	thriftErrors := make(map[string]error)
 
-	for idx, rv := range componentRVs {
+	for _, rv := range componentRVs {
 		rvID := getRvIDFromRvName(rv.Name)
 		common.Assert(common.IsValidUUID(rvID))
 
@@ -875,15 +855,17 @@ retry:
 			MaybeOverwrite: retryCnt > 0,
 		}
 
-		var nextRVs []*models.RVNameAndState
-		if idx < len(componentRVs)-1 {
-			// If this is not the last RV, we will send the next RVs to the target node.
-			nextRVs = componentRVs[idx+1:]
-		}
+		/*
+			var nextRVs []*models.RVNameAndState
+			if idx < len(componentRVs)-1 {
+				// If this is not the last RV, we will send the next RVs to the target node.
+				nextRVs = componentRVs[idx+1:]
+			}
+		*/
 
 		putChunkDCReq := &models.PutChunkDCRequest{
 			Request: putChunkReq,
-			NextRVs: nextRVs,
+			// NextRVs: nextRVs,
 		}
 
 		log.Debug("ReplicationManager::WriteMVEx: Sending PutChunkDC request for %s/%s to node %s: %s",

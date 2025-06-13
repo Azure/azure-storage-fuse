@@ -48,7 +48,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
-	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	gouuid "github.com/google/uuid"
@@ -1972,13 +1971,13 @@ func (h *ChunkServiceHandler) PutChunkDC(ctx context.Context, req *models.PutChu
 
 // This method forwards the PutChunk request to the next RVs in the list.
 // It calls the PutChunkDC to the first RV in the list passing the next RVs to it.
-func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.PutChunkRequest, rvs []*models.RVNameAndState) *models.PutChunkDCResponse {
+func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.PutChunkRequest, rvs []string) *models.PutChunkDCResponse {
 	common.Assert(req != nil)
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
 
 	log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunk to RVs: %v, request: %v",
-		rpc.ComponentRVsToString(rvs), rpc.PutChunkRequestToString(req))
+		rvs, rpc.PutChunkRequestToString(req))
 
 	//
 	// No more RVs to forward the PutChunk request to, so return empty response.
@@ -1990,131 +1989,132 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 	}
 
 	currRV := rvs[0]
-	common.Assert(currRV != nil)
-	common.Assert(cm.IsValidRVName(currRV.Name), currRV.Name)
-	common.Assert(cm.IsValidComponentRVState(dcache.StateEnum(currRV.State)), currRV.State)
+	common.Assert(cm.IsValidRVName(currRV), currRV)
 
-	var nextRVs []*models.RVNameAndState
-	if len(rvs) > 1 {
-		nextRVs = rvs[1:]
-	}
+	// var nextRVs []string
+	// if len(rvs) > 1 {
+	// 	nextRVs = rvs[1:]
+	// }
 
 	var rpcResp *models.PutChunkDCResponse
-	var err error
 
-	//
-	// Omit writing to RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not
-	// written to them will be copied to them when the mv is (soon) resynced.
-	// Otoh if an RV is in “syncing” state then any new chunk written to it may not be copied by the
-	// ongoing resync operation as the source RV may have been already gone past the enumeration stage
-	// and hence won’t consider this chunk for resync, and hence those MUST have the chunks mandatorily
-	// copied to them.
-	//
-	// For outofsync or offline RVs, add nil PutChunkResponseOrError to the responses map so that
-	// the client can know that these RVs were skipped and the chunk was not written to them.
-	//
-	if currRV.State == string(dcache.StateOffline) ||
-		currRV.State == string(dcache.StateOutOfSync) {
-		log.Debug("ChunkServiceHandler::forwardPutChunk: Skipping %s/%s (RV state: %s, MV state: %s)",
-			currRV.Name, req.Chunk.Address.MvName, currRV.State)
-
-		rpcResp = h.forwardPutChunk(ctx, req, nextRVs)
-		common.Assert(rpcResp != nil)
-		common.Assert(rpcResp.Responses != nil) // rpcResp.Responses should not be nil
-
-		rpcResp.Responses[currRV.Name] = nil // nil PutChunkResponseOrError for skipped RVs
-
-	} else if currRV.State == string(dcache.StateOnline) || currRV.State == string(dcache.StateSyncing) {
-
-		rvID := cm.RvNameToId(currRV.Name)
-		common.Assert(common.IsValidUUID(rvID))
-
-		targetNodeID := cm.RVNameToNodeId(currRV.Name)
-		common.Assert(common.IsValidUUID(targetNodeID))
-
-		log.Debug("ChunkServiceHandler::forwardPutChunk: Writing to %s/%s (rvID: %s, state: %s) on node %s",
-			currRV.Name, req.Chunk.Address.MvName, rvID, currRV.State, targetNodeID)
+	/*
+		var err error
 
 		//
-		// Create PutChunkRequest for the target RV.
-		// The ony updated fields in the request are SenderNodeID and RvID.
+		// Omit writing to RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not
+		// written to them will be copied to them when the mv is (soon) resynced.
+		// Otoh if an RV is in “syncing” state then any new chunk written to it may not be copied by the
+		// ongoing resync operation as the source RV may have been already gone past the enumeration stage
+		// and hence won’t consider this chunk for resync, and hence those MUST have the chunks mandatorily
+		// copied to them.
 		//
-		putChunkReq := &models.PutChunkRequest{
-			Chunk: &models.Chunk{
-				Address: &models.Address{
-					FileID:      req.Chunk.Address.FileID,
-					RvID:        rvID,
-					MvName:      req.Chunk.Address.MvName,
-					OffsetInMiB: req.Chunk.Address.OffsetInMiB,
+		// For outofsync or offline RVs, add nil PutChunkResponseOrError to the responses map so that
+		// the client can know that these RVs were skipped and the chunk was not written to them.
+		//
+		if currRV.State == string(dcache.StateOffline) ||
+			currRV.State == string(dcache.StateOutOfSync) {
+			log.Debug("ChunkServiceHandler::forwardPutChunk: Skipping %s/%s (RV state: %s, MV state: %s)",
+				currRV.Name, req.Chunk.Address.MvName, currRV.State)
+
+			rpcResp = h.forwardPutChunk(ctx, req, nextRVs)
+			common.Assert(rpcResp != nil)
+			common.Assert(rpcResp.Responses != nil) // rpcResp.Responses should not be nil
+
+			rpcResp.Responses[currRV.Name] = nil // nil PutChunkResponseOrError for skipped RVs
+
+		} else if currRV.State == string(dcache.StateOnline) || currRV.State == string(dcache.StateSyncing) {
+
+			rvID := cm.RvNameToId(currRV.Name)
+			common.Assert(common.IsValidUUID(rvID))
+
+			targetNodeID := cm.RVNameToNodeId(currRV.Name)
+			common.Assert(common.IsValidUUID(targetNodeID))
+
+			log.Debug("ChunkServiceHandler::forwardPutChunk: Writing to %s/%s (rvID: %s, state: %s) on node %s",
+				currRV.Name, req.Chunk.Address.MvName, rvID, currRV.State, targetNodeID)
+
+			//
+			// Create PutChunkRequest for the target RV.
+			// The ony updated fields in the request are SenderNodeID and RvID.
+			//
+			putChunkReq := &models.PutChunkRequest{
+				Chunk: &models.Chunk{
+					Address: &models.Address{
+						FileID:      req.Chunk.Address.FileID,
+						RvID:        rvID,
+						MvName:      req.Chunk.Address.MvName,
+						OffsetInMiB: req.Chunk.Address.OffsetInMiB,
+					},
+					Data: req.Chunk.Data,
+					Hash: req.Chunk.Hash,
 				},
-				Data: req.Chunk.Data,
-				Hash: req.Chunk.Hash,
-			},
-			Length:         req.Length,
-			SyncID:         req.SyncID,
-			ComponentRV:    req.ComponentRV,
-			MaybeOverwrite: req.MaybeOverwrite,
-		}
-
-		putChunkDCReq := &models.PutChunkDCRequest{
-			Request: putChunkReq,
-			NextRVs: nextRVs,
-		}
-
-		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkDC request for %s/%s to node %s: %v",
-			currRV.Name, req.Chunk.Address.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
-
-		rpcResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
-
-		//
-		// If the PutChunkDC RPC call fails, the error returned can be,
-		//     - RPC error of type *models.ResponseError returned by the server like InvalidRVID.
-		//     - Thrift error like connection error, timeout, etc.
-		//     - RPC client side error like failed to get RPC client for node.
-		// The Thrift errors and RPC client side errors can be classified under the error code ThriftError.
-		//
-		if err != nil {
-			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunkDC request for %s/%s to node %s: %v",
-				currRV.Name, req.Chunk.Address.MvName, targetNodeID, err)
-			common.Assert(rpcResp == nil)
-
-			rpcErr := rpc.GetRPCResponseError(err)
-			if rpcErr == nil {
-				//
-				// This error indicates some Thrift error like connection error, timeout, etc. or,
-				// it could be an RPC client side error like failed to get RPC client for target node.
-				// We wrap this error in *models.ResponseError with code ThriftError.
-				// This is to ensure that the client can take appropriate action based on this error code.
-				//
-				rpcErr = rpc.NewResponseError(models.ErrorCode_ThriftError, err.Error())
+				Length:         req.Length,
+				SyncID:         req.SyncID,
+				ComponentRV:    req.ComponentRV,
+				MaybeOverwrite: req.MaybeOverwrite,
 			}
 
-			//
-			// If the PutChunkDC call fails for the current RV, it means that the call to the
-			// next RVs were not forwarded.
-			// Note, the errors of the PutChunk calls to the individual RVs are stored in the
-			// PutChunkDCResponse.
-			// If the error returned by the PutChunkDC call is nil, it means that the PutChunk call
-			// was made to the local RV and also forwarded to the next RVs successfully.
-			// For non-nil error, we will have to forward the call to the next RVs here.
-			//
-			rpcResp1 := h.forwardPutChunk(ctx, req, nextRVs)
-			common.Assert(rpcResp1 != nil)
-			common.Assert(rpcResp1.Responses != nil) // rpcResp1.Responses should not be nil
-
-			rpcResp1.Responses[currRV.Name] = &models.PutChunkResponseOrError{
-				Response: nil,    // PutChunkDC failed for the current RV
-				Error:    rpcErr, // Error for the current RV
+			putChunkDCReq := &models.PutChunkDCRequest{
+				Request: putChunkReq,
+				NextRVs: nextRVs,
 			}
 
-			rpcResp = rpcResp1
+			log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkDC request for %s/%s to node %s: %v",
+				currRV.Name, req.Chunk.Address.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
+
+			rpcResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+
+			//
+			// If the PutChunkDC RPC call fails, the error returned can be,
+			//     - RPC error of type *models.ResponseError returned by the server like InvalidRVID.
+			//     - Thrift error like connection error, timeout, etc.
+			//     - RPC client side error like failed to get RPC client for node.
+			// The Thrift errors and RPC client side errors can be classified under the error code ThriftError.
+			//
+			if err != nil {
+				log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunkDC request for %s/%s to node %s: %v",
+					currRV.Name, req.Chunk.Address.MvName, targetNodeID, err)
+				common.Assert(rpcResp == nil)
+
+				rpcErr := rpc.GetRPCResponseError(err)
+				if rpcErr == nil {
+					//
+					// This error indicates some Thrift error like connection error, timeout, etc. or,
+					// it could be an RPC client side error like failed to get RPC client for target node.
+					// We wrap this error in *models.ResponseError with code ThriftError.
+					// This is to ensure that the client can take appropriate action based on this error code.
+					//
+					rpcErr = rpc.NewResponseError(models.ErrorCode_ThriftError, err.Error())
+				}
+
+				//
+				// If the PutChunkDC call fails for the current RV, it means that the call to the
+				// next RVs were not forwarded.
+				// Note, the errors of the PutChunk calls to the individual RVs are stored in the
+				// PutChunkDCResponse.
+				// If the error returned by the PutChunkDC call is nil, it means that the PutChunk call
+				// was made to the local RV and also forwarded to the next RVs successfully.
+				// For non-nil error, we will have to forward the call to the next RVs here.
+				//
+				rpcResp1 := h.forwardPutChunk(ctx, req, nextRVs)
+				common.Assert(rpcResp1 != nil)
+				common.Assert(rpcResp1.Responses != nil) // rpcResp1.Responses should not be nil
+
+				rpcResp1.Responses[currRV.Name] = &models.PutChunkResponseOrError{
+					Response: nil,    // PutChunkDC failed for the current RV
+					Error:    rpcErr, // Error for the current RV
+				}
+
+				rpcResp = rpcResp1
+			}
+		} else {
+			common.Assert(false, "Unexpected RV state", currRV.State, currRV.Name, req.Chunk.Address.MvName)
 		}
-	} else {
-		common.Assert(false, "Unexpected RV state", currRV.State, currRV.Name, req.Chunk.Address.MvName)
-	}
+	*/
 
 	log.Debug("ChunkServiceHandler::forwardPutChunk: Received response for %s/%s (file id %s, offset in MiB %v): %s",
-		currRV.Name, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB,
+		currRV, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB,
 		rpc.PutChunkDCResponseToString(rpcResp))
 
 	return rpcResp

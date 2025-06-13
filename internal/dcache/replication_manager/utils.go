@@ -73,6 +73,28 @@ const (
 	MAX_SIMUL_SYNC_JOBS = 1000
 )
 
+type PutChunkStyleEnum int
+
+const (
+	//
+	// Originator calls PutChunk for each component RV in parallel.
+	//
+	OriginatorSendsToAll PutChunkStyleEnum = iota
+
+	//
+	// Originator writes to the local component RV (if any) and calls PutChunkDC (with the list of remaining
+	// component RV) to the next component RV, which will then write locally and send PutChunkDC to the next
+	// component RV (with a smaller list of component RVs) and so on.
+	// This has the advantage that the overall file write throughput is not limited by the egress throughput
+	// of the originator node.
+	//
+	DaisyChain
+)
+
+// We will experiment with various PutChunk styles on various cluster sizes (with varying storage and n/w throughput
+// and different NumReplicas configuration).
+var PutChunkStyle PutChunkStyleEnum = DaisyChain
+
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
 	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v",
 		rpc.ComponentRVsToString(componentRVs), excludeRVs)
