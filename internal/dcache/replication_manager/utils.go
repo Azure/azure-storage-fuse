@@ -157,6 +157,11 @@ func getRvIDFromRvName(rvName string) string {
 	return cm.RvNameToId(rvName)
 }
 
+// return the RV name for the given RV ID
+func getRvNameFromRvID(rvId string) string {
+	return cm.RvIdToName(rvId)
+}
+
 // return the node ID for the given rvName
 func getNodeIDFromRVName(rvName string) string {
 	return cm.RVNameToNodeId(rvName)

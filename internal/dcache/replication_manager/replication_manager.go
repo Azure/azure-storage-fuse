@@ -287,6 +287,28 @@ retry:
 	return resp, nil
 }
 
+type PutChunkStyleEnum int
+
+const (
+	//
+	// Originator calls PutChunk for each component RV in parallel.
+	//
+	OriginatorSendsToAll PutChunkStyleEnum = iota
+
+	//
+	// Originator writes to the local component RV (if any) and calls PutChunkEx (with the list of remaining
+	// component RV) to the next component RV, which will then write locally and send PutChunkEx to the next
+	// component RV (with a smaller list of component RVs) and so on.
+	// This has the advantage that the overall file write throughput is not limited by the egress throughput
+	// of the originator node.
+	//
+	DaisyChain
+)
+
+// We will experiment with various PutChunk styles on various cluster sizes (with varying storage and n/w throughput
+// and different NumReplicas configuration).
+var PutChunkStyle PutChunkStyleEnum = DaisyChain
+
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
@@ -338,6 +360,43 @@ retry:
 	//
 	rvsWritten = nil
 
+	//
+	// Allocate the PutChunkExRequest for orchestrating the required PutChunk calls as per the PutChunkStyle
+	// selected. If PutChunkStyle is OriginatorSendsToAll then we will send the PutChunk request to each
+	// component RV in putChunkExReq.Request and putChunkExReq.NextRVs, while for PutChunkStyle DaisyChain, we
+	// will just send the PutChunkEx request to the first RV (in putChunkExReq.Request).
+	//
+	// We set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server know that this
+	// could potentially be an overwrite of a chunk that we previously wrote, so that it relaxes its
+	// overwrite checks. To be safe we set MaybeOverwrite to true when retryCnt > 0.
+	//
+	putChunkExReq := &models.PutChunkExRequest{
+		Request: &models.PutChunkRequest{
+			Chunk: &models.Chunk{
+				Address: &models.Address{
+					FileID:      req.FileID,
+					MvName:      req.MvName,
+					OffsetInMiB: req.ChunkIndex * req.ChunkSizeInMiB,
+				},
+				Data: req.Data,
+				Hash: "", // TODO: hash validation will be done later
+			},
+			Length:         int64(len(req.Data)),
+			SyncID:         "", // this is regular client write
+			ComponentRV:    componentRVs,
+			MaybeOverwrite: retryCnt > 0,
+		},
+		NextRVs: make([]string),
+	}
+
+	//
+	// Go over all the component RVs and populate the putChunkExReq.
+	// If any of the component RVs is local, then putChunkExReq.Request refers to that and
+	// putChunkExReq.NextRVs contains all the other RVs. If none of the component RVs is local, then
+	// putChunkExReq.Request refers to the first component RV in the componentRVs list and
+	// putChunkExReq.NextRVs contains all the other RVs.
+	// We don't write to offline and outofsync component RVs, so they won't be added to putChunkExReq.
+	//
 	for componentRVIdx, rv := range componentRVs {
 		//
 		// Omit writing to RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not
@@ -375,18 +434,90 @@ retry:
 			log.Debug("ReplicationManager::WriteMV: Writing to %s/%s (rvID: %s, state: %s) on node %s",
 				rv.Name, req.MvName, rvID, rv.State, targetNodeID)
 
-			//
-			// Set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server know that this
-			// could potentially be an overwrite of a chunk that we previously wrote, so that
-			// it relaxes its overwrite checks.
-			// To be safe we can set MaybeOverwrite to true when retryCnt > 0.
-			//
-			rpcReq := &models.PutChunkRequest{
+			// Add local component RV to putChunkExReq.Request.
+			if targetNodeID == common.GetNodeUUID {
+				// Only one component RV can be local.
+				common.Assert(putChunkExReq.Request.Address.RvID == "", putChunkExReq.Request.Address)
+				putChunkExReq.Request.Address.RvID = rvID
+			} else {
+				// Non-local component RVs get added to putChunkExReq.NextRVs.
+				putChunkExReq.NextRVs = append(putChunkExReq.NextRVs, rv.Name)
+			}
+		} else {
+			common.Assert(false, "Unexpected RV state", rv.State, rv.Name, req.MvName)
+		}
+	}
+
+	//
+	// If none of the RVs was writeable, no PutChunk/PutChunkEx calls to make.
+	//
+	if len(responseChannel) == len(componentRVs) {
+		goto processResponses
+	}
+
+	//
+	// If no component RV is local, then set the putChunkExReq nexthop to the first component RV.
+	//
+	if putChunkExReq.Request.Address.RvID == "" {
+		common.Assert(len(putChunkExReq.NextRVs) > 0)
+
+		rvName := putChunkExReq.NextRVs[0]
+		rvID := getRvIDFromRvName(rvName)
+		common.Assert(common.IsValidUUID(rvID))
+
+		putChunkExReq.Request.Address.RvID = rvID
+		putChunkExReq.Request.NextRVs = putChunkExReq.Request.NextRVs[1:]
+	}
+
+	common.Assert(common.IsValidUUID(putChunkExReq.Request.Address.RvID), putChunkExReq.Request.Address)
+
+	if PutChunkStyle == OriginatorSendsToAll || len(putChunkExReq.Request.NextRVs) == 0 {
+		//
+		// Write to the next hop component RV.
+		//
+
+		// TODO: Add rvName to Address to avoid potentially expensive search for RV name.
+		rvName := getRvNameFromRvID(putChunkExReq.Request.Address.RvID)
+
+		targetNodeID := getNodeIDFromRVName(rvName)
+		common.Assert(common.IsValidUUID(targetNodeID))
+		common.Assert(targetNodeID == common.GetNodeUUID(), targetNodeID, common.GetNodeUUID())
+
+		log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
+			rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkExReq.Request))
+
+		//
+		// Schedule PutChunk RPC call to the target node.
+		// One of the threadpool threads will pick this request and call PutChunk.
+		// Since we have to wait for all the replica writes to complete before we
+		// can start processing the individual responses we send the last replica
+		// inline and save one threadpool thread.
+		//
+		isLastComponentRV := len(putChunkExReq.NextRVs) == 0
+		rm.tp.schedule(&workitem{
+			targetNodeID: targetNodeID,
+			rvName:       rvName,
+			putChunkReq:  putChunkExReq.Request,
+			respChannel:  responseChannel,
+		}, isLastComponentRV /* runInline */)
+
+		//
+		// Write to all remaining component RVs.
+		//
+		for componentRVIdx, rvName := range putChunkExReq.NextRVs {
+			rvID := getRvIDFromRvName(rvName)
+			common.Assert(common.IsValidUUID(rvID))
+
+			targetNodeID := getNodeIDFromRVName(rvName)
+			common.Assert(common.IsValidUUID(targetNodeID))
+			common.Assert(targetNodeID != common.GetNodeUUID(), targetNodeID, common.GetNodeUUID())
+
+			putChunkReq := &models.PutChunkRequest{
 				Chunk: &models.Chunk{
 					Address: &models.Address{
 						FileID:      req.FileID,
-						RvID:        rvID,
 						MvName:      req.MvName,
+						RvID:        rvID,
 						OffsetInMiB: req.ChunkIndex * req.ChunkSizeInMiB,
 					},
 					Data: req.Data,
@@ -399,27 +530,46 @@ retry:
 			}
 
 			log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
-				rv.Name, req.MvName, targetNodeID, rpc.PutChunkRequestToString(rpcReq))
+				rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkReq))
 
-			//
-			// Schedule PutChunk RPC call to the target node.
-			// One of the threadpool threads will pick this request and call PutChunk.
-			// Since we have to wait for all the replica writes to complete before we
-			// can start processing the individual responses we send the last replica
-			// inline and save one threadpool thread.
-			//
-			isLastComponentRV := componentRVIdx == (len(componentRVs) - 1)
+			isLastComponentRV := componentRVIdx == (len(putChunkExReq.NextRVs) - 1)
 			rm.tp.schedule(&workitem{
 				targetNodeID: targetNodeID,
-				rvName:       rv.Name,
-				putChunkReq:  rpcReq,
+				rvName:       rvName,
+				putChunkReq:  putChunkReq,
 				respChannel:  responseChannel,
 			}, isLastComponentRV /* runInline */)
+		}
+	} else if PutChunkStyle == DaisyChain {
+		rvName := getRvNameFromRvID(putChunkExReq.Request.Address.RvID)
+		targetNodeID := getNodeIDFromRVName(rvName)
+		common.Assert(common.IsValidUUID(targetNodeID))
+
+		log.Debug("ReplicationManager::WriteMVEx: Sending PutChunkEx request for %s/%s to node %s: %s",
+			rvName, req.MvName, targetNodeID, rpc.PutChunkExRequestToString(putChunkExReq))
+
+		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
+		defer cancel()
+
+		putChunkExResp, err := rpc_client.PutChunkEx(ctx, targetNodeID, putChunkExReq)
+
+		//
+		// [Sourav]
+		// Write a function that converts putChunkExResp to proper responses on the responseChannel, nil
+		// response for all if PutChunkEx() call failed to send the request.
+		//
+		if err != nil {
+			log.Err("ReplicationManager::WriteMVEx: Failed to send PutChunkEx request for %s/%s to node %s: %v",
+				rv.Name, req.MvName, targetNodeID, err)
+			common.Assert(putChunkExResp == nil)
 		} else {
-			common.Assert(false, "Unexpected RV state", rv.State, rv.Name, req.MvName)
+			log.Debug("ReplicationManager::WriteMVEx: Received PutChunkEx response for %s/%s from node %s: %s",
+				rv.Name, req.MvName, targetNodeID, rpc.PutChunkExResponseToString(putChunkExResp))
+			common.Assert(putChunkExResp != nil)
 		}
 	}
 
+processResponses:
 	//
 	// Non-retriable error that we should fail the WriteMV() with.
 	// It could be non-retriable error returned by any of the replica PutChunks.
