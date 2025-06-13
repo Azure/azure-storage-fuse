@@ -99,6 +99,11 @@ func GetMyRVs() map[string]dcache.RawVolume {
 	return clusterMap.getMyRVs()
 }
 
+// It will return the RVs Map <rvName, RV> as per local cache copy of cluster map.
+func GetAllRVs() map[string]dcache.RawVolume {
+	return clusterMap.getAllRVs()
+}
+
 // Is rvName hosted on this node.
 func IsMyRV(rvName string) bool {
 	return clusterMap.isMyRV(rvName)
@@ -284,7 +289,7 @@ const (
 	//
 	// This is the size of the channel where RV updates are queued.
 	// These many max updates can be batched. This must be greater than rm.MAX_SIMUL_SYNC_JOBS as each
-	// sync job can generate one outstanding updae.
+	// sync job can generate one outstanding update.
 	//
 	MAX_SIMUL_RV_STATE_UPDATES = 10000
 )
@@ -455,6 +460,10 @@ func (c *ClusterMap) getMyRVs() map[string]dcache.RawVolume {
 		}
 	}
 	return myRvs
+}
+
+func (c *ClusterMap) getAllRVs() map[string]dcache.RawVolume {
+	return c.getLocalMap().RVMap
 }
 
 func (c *ClusterMap) isMyRV(rvName string) bool {
