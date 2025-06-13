@@ -265,6 +265,46 @@ read_clustermap_from_node()
     ssh $vm "cat $clustermap_path" 2>>$logfile | tee -a $logfile
 }
 
+write_data_in_dcache()
+{
+    local vm=$1
+    local file_name=$2
+    local block_size=$3
+    local count=$4
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/fs=dcache/$file_name bs=$block_size count=$count"
+}
+
+write_data_in_azure()
+{
+    local vm=$1
+    local file_name=$2
+    local block_size=$3
+    local count=$4
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/fs=azure/$file_name bs=$block_size count=$count"
+}
+
+write_data_in_mountdir()
+{
+    local vm=$1
+    local file_name=$2
+    local block_size=$3
+    local count=$4
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/$file_name bs=$block_size count=$count"
+}
+
+get_md5sum()
+{
+    local vm=$1
+    local file_name=$2
+    local namespace=$3 #optional
+
+    if [ -n "$namespace" ]; then
+        ssh $vm "md5sum $MOUNTDIR/fs=$namespace/$file_name | cut -d' ' -f1"
+    else
+        ssh $vm "md5sum $MOUNTDIR/$file_name | cut -d' ' -f1"
+    fi
+}
+
 #
 # Given a clustermap, return the state of the given RV.
 #
@@ -457,6 +497,13 @@ else
     [ "$readonly_flag" == "true" ]
 fi
 log_status $? "is $readonly_flag"
+
+becho -n "Write 10MB data in azure"
+file_name="10MB.azure"
+write_data_in_azure vm1 $file_name 1M 10
+md5sum=$(get_md5sum vm1 $file_name azure)
+log_status $?
+
 
 ############################################################################
 ##                             Start node2                                ##
@@ -714,6 +761,19 @@ online_mv_count=$(get_mv_count_with_state "$cm" "online")
 [ "$online_mv_count" -eq "$mv_count" ]
 log_status $? "online MVs: $online_mv_count, total MVs: $mv_count"
 
+
+becho -n "Write 10MB data in dcache"
+file_name="10MB.dcache"
+write_data_in_dcache vm3 $file_name 1M 10
+dcache_10MB_md5sum=$(get_md5sum vm3 $file_name dcache)
+log_status $?
+
+becho -n "Write 10MB data at cachepoint"
+file_name="10MB.both"
+write_data_in_mountdir vm3 $file_name 1M 10
+both_10MB_md5sum=$(get_md5sum vm3 $file_name)
+log_status $?
+
 ############################################################################
 ##              Stop node2 And Verify Degraded Workflow                  ##
 ############################################################################
@@ -783,7 +843,7 @@ becho -n "Reading clustermap on vm2"
 cm=$(read_clustermap_from_node vm2)
 log_status $?
 
-becho -n "All degraded MV's replacement rv is outofsync"
+becho -n "All degraded MV's replacement rv must be outofsync"
 outofsync_rv_list=$(get_rv_list_for_node "$cm" "$vm2_node_id")
 outofsync_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$outofsync_rv_list" "outofsync")
 degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
@@ -825,3 +885,16 @@ online_mv_count=$(get_mv_count_with_state "$cm" "online")
 total_active_mvs=$(($syncing_mv_count + $online_mv_count))
 [ "$total_active_mvs" -eq "$mv_count" ]
 log_status $? "Syncing MVs: $syncing_mv_count, Online MVs: $online_mv_count, Total MVs: $mv_count"
+
+becho -n "last_updated_by must be vm1"
+last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
+[ "$last_updated_by" == "$(get_node_id vm1)" ]
+log_status $? "is $last_updated_by"
+
+becho -n "File Md5sum must be intact after resync"
+dcache_10MB_md5sum_after_resync=$(get_md5sum vm2 10MB.dcache dcache)
+both_10MB_md5sum_after_resync=$(get_md5sum vm2 10MB.both)
+[ "$dcache_10MB_md5sum_after_resync" == "$dcache_10MB_md5sum" ]
+log_status $? "dcache md5sum before resync: $dcache_10MB_md5sum, after resync: $dcache_10MB_md5sum_after_resync"
+[ "$both_10MB_md5sum_after_resync" == "$both_10MB_md5sum" ]
+log_status $? "both md5sum before resync: $both_10MB_md5sum, after resync: $both_10MB_md5sum_after_resync"  
