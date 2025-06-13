@@ -57,7 +57,7 @@ func getChunkAndHashPath(cacheDir string, mvName string, fileID string, offsetIn
 
 // Sort the component RVs in the MV.
 // The RVs are sorted in increasing order of their names.
-func SortComponentRVs(rvs []*models.RVNameAndState) {
+func sortComponentRVs(rvs []*models.RVNameAndState) {
 	sort.Slice(rvs, func(i, j int) bool {
 		return rvs[i].Name < rvs[j].Name
 	})
@@ -82,7 +82,7 @@ func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNa
 			rpc.ComponentRVsToString(rvInReq), rpc.ComponentRVsToString(rvInMV))
 	}
 
-	SortComponentRVs(rvInReq)
+	sortComponentRVs(rvInReq)
 
 	isValid := true
 	for i := 0; i < len(rvInMV); i++ {

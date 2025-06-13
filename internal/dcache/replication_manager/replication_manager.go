@@ -543,11 +543,6 @@ retry:
 
 		putChunkDCResp, err := rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
 
-		//
-		// [Sourav]
-		// Write a function that converts putChunkDCResp to proper responses on the responseChannel, nil
-		// response for all if PutChunkDC() call failed to send the request.
-		//
 		if err != nil {
 			log.Err("ReplicationManager::WriteMV: Failed to send PutChunkDC request for %s/%s to node %s: %v",
 				rvName, req.MvName, targetNodeID, err)
