@@ -39,6 +39,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -47,6 +48,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -570,6 +572,52 @@ func (suite *xloadTestSuite) validateMD5WithOpenFile(localPath string, remotePat
 			suite.assert.Nil(err)
 		}
 	}
+}
+
+func (suite *xloadTestSuite) TestWriteOperationsBlockedInReadOnlyMode() {
+	defer suite.cleanupTest(true)
+	config.ResetConfig()
+
+	createTestDirsAndFiles(suite.fake_storage_path, suite.assert)
+
+	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, suite.fake_storage_path)
+	err := suite.setupTestHelper(testConfig, true)
+	suite.assert.Nil(err)
+
+	// Test CreateFile should return an error (expecting EROFS)
+	_, err = suite.xload.CreateFile(internal.CreateFileOptions{Name: "new_file.txt"})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(err, syscall.EROFS)
+
+	// Test DeleteFile should return an error (expecting EROFS)
+	err = suite.xload.DeleteFile(internal.DeleteFileOptions{Name: "file_1"})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(err, syscall.EROFS)
+
+	// Test CreateDir should return an error (expecting EROFS)
+	err = suite.xload.CreateDir(internal.CreateDirOptions{Name: "new_dir"})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(err, syscall.EROFS)
+
+	// Test RenameDir should return an error (expecting EROFS)
+	err = suite.xload.RenameDir(internal.RenameDirOptions{Src: "dir_1", Dst: "dir_1_renamed"})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(err, syscall.EROFS)
+
+	// For the following tests, we just verify they return an error, since the specific error might vary
+	// based on the underlying implementation
+
+	// Test WriteFile should return an error
+	_, err = suite.xload.WriteFile(internal.WriteFileOptions{Handle: &handlemap.Handle{Path: "file_1"}, Data: []byte("test")})
+	suite.assert.NotNil(err)
+
+	// Test DeleteDir should return an error
+	err = suite.xload.DeleteDir(internal.DeleteDirOptions{Name: "dir_1"})
+	suite.assert.NotNil(err)
+
+	// Test RenameFile should return an error
+	err = suite.xload.RenameFile(internal.RenameFileOptions{Src: "file_1", Dst: "file_1_renamed"})
+	suite.assert.NotNil(err)
 }
 
 func TestXloadTestSuite(t *testing.T) {
