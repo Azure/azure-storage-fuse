@@ -63,13 +63,13 @@ type ExportedStat struct {
 }
 
 type StatsExporter struct {
-	channel             chan ExportedStat
-	wg                  sync.WaitGroup
-	opFile              *os.File
-	outputList          []*Output
-	lastBytesUploaded   float64
-	lastBytesDownloaded float64
-	hasPrev             bool
+	channel    chan ExportedStat
+	wg         sync.WaitGroup
+	opFile     *os.File
+	outputList []*Output
+	//lastBytesUploaded   float64
+	//lastBytesDownloaded float64
+	//hasPrev             bool
 }
 
 type Output struct {
@@ -86,6 +86,17 @@ const monitorURL = "https://westus2.monitoring.azure.com/subscriptions/ba45b233-
 
 var expLock sync.Mutex
 var se *StatsExporter
+var hostname string
+
+func init() {
+	var err error
+	hostname, err = os.Hostname()
+	if err != nil {
+		log.Warn("Unable to get hostname: %v", err)
+		hostname = "unknown"
+	}
+	log.Debug("Hostname initialized: %s", hostname)
+}
 
 // atomic variable to prevent writing to channel after it has been closed
 var pidStatus int32 = 0
@@ -172,7 +183,6 @@ func (se *StatsExporter) StatsExporter() {
 		} else {
 			// Keep max 3 timestamps in memory
 			if len(se.outputList) >= 3 {
-				log.Info("✅ New version of bfusemon has started")
 
 				metrics := se.parseAndValidateMetrics(se.outputList[0])
 				if len(metrics) > 0 {
@@ -413,6 +423,12 @@ func buildAzureMonitorPayload(metricName string, value float64, timestampStr str
 		log.Err("buildAzureMonitorPayload: Invalid timestamp format [%v]", err)
 		return nil
 	}
+	//mountPath := common.MountPath
+	log.Debug("buildAzureMonitorPayload: Using mount path [%s]", hmcommon.MountPath)
+	if hmcommon.MountPath == "" {
+		log.Warn("buildAzureMonitorPayload: Mount path is empty, using default value")
+		hmcommon.MountPath = "/mnt/blobfuse2"
+	}
 
 	payload := map[string]interface{}{
 		"time": timestamp,
@@ -420,10 +436,10 @@ func buildAzureMonitorPayload(metricName string, value float64, timestampStr str
 			"baseData": map[string]interface{}{
 				"metric":    metricName,
 				"namespace": "CustomMetrics",
-				"dimNames":  []string{"host"},
+				"dimNames":  []string{"MountPath", "HostName"},
 				"series": []map[string]interface{}{
 					{
-						"dimValues": []string{"host1"},
+						"dimValues": []string{hmcommon.MountPath, hostname},
 						"min":       value,
 						"max":       value,
 						"sum":       value,
@@ -493,15 +509,49 @@ func sendToAzureMonitorAPI(payload []byte, token string) error {
 	return nil
 }
 
-var lastBytesTransferred float64 = -1
-var lastBytesDownloaded float64 = -1
+//var lastBytesTransferred float64 = -1
+//var lastBytesDownloaded float64 = -1
 
 func computeBlobfuseByteDeltas(bfsList []stats_manager.PipeMsg) map[string]float64 {
 	metrics := make(map[string]float64)
-	var transferred, downloaded float64
-	var foundTransferred, foundDownloaded bool
+	/*var transferred, downloaded float64
+	var foundTransferred, foundDownloaded bool*/
+	if len(bfsList) == 0 {
+		return metrics
+	}
 
-	for _, bfs := range bfsList {
+	latest := bfsList[len(bfsList)-1]
+
+	for k, v := range latest.Value {
+		switch k {
+		case
+			"InformationalCount",
+			"SuccessCount",
+			"RedirectCount",
+			"ClientErrorCount",
+			"ServerErrorCount",
+			"FailureCount",
+			"totalRequests",
+			"GetRequestCount",
+			"PostRequestCount",
+			"PutRequestCount",
+			"DeleteRequestCount",
+			"HeadRequestCount",
+			"Bytes Downloaded",
+			"Bytes Uploaded",
+			"OtherRequestCount":
+
+			if val, ok := v.(int); ok {
+				metrics[k] = float64(val)
+			} else if val64, ok := v.(int64); ok {
+				metrics[k] = float64(val64)
+			} else if valFloat, ok := v.(float64); ok {
+				metrics[k] = valFloat
+			}
+		}
+	}
+
+	/*for _, bfs := range bfsList {
 		// Handle "Bytes Transferred"
 		if btRaw, ok := bfs.Value["Bytes Transferred"]; ok {
 			if bt, ok := btRaw.(float64); ok {
@@ -532,7 +582,7 @@ func computeBlobfuseByteDeltas(bfsList []stats_manager.PipeMsg) map[string]float
 	}
 	if foundDownloaded {
 		lastBytesDownloaded = downloaded
-	}
+	}*/
 
 	return metrics
 }

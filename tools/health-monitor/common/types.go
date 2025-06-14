@@ -71,6 +71,7 @@ var (
 	OutputPath    string
 
 	CheckVersion bool
+	MountPath    string
 )
 
 const BfuseMonitorVersion = "1.0.0-preview.1"

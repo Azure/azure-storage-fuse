@@ -85,7 +85,6 @@ func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Policy to track all http requests and responses
-
 // In your metricsPolicy struct constructor or initializer, create the StatsCollector:
 // var policystatscollector *stats_manager.StatsCollector
 type metricsPolicy struct {
@@ -105,6 +104,24 @@ func (p *metricsPolicy) Do(req *policy.Request) (*http.Response, error) {
 	if azStatsCollector != nil {
 		azStatsCollector.UpdateStats(stats_manager.Increment, TotalRequests, (int64)(1))
 
+		//track http method
+
+		switch req.Raw().Method {
+		case http.MethodGet:
+			azStatsCollector.UpdateStats(stats_manager.Increment, GetRequestCount, (int64)(1))
+		case http.MethodPost:
+			azStatsCollector.UpdateStats(stats_manager.Increment, PostRequestCount, (int64)(1))
+		case http.MethodPut:
+			azStatsCollector.UpdateStats(stats_manager.Increment, PutRequestCount, (int64)(1))
+		case http.MethodDelete:
+			azStatsCollector.UpdateStats(stats_manager.Increment, DeleteRequestCount, (int64)(1))
+		case http.MethodHead:
+			azStatsCollector.UpdateStats(stats_manager.Increment, HeadRequestCount, (int64)(1))
+		default:
+			azStatsCollector.UpdateStats(stats_manager.Increment, OtherRequestCount, (int64)(1))
+		}
+
+		//track response status code
 		var statusCode int
 		if resp != nil {
 			statusCode = resp.StatusCode
