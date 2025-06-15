@@ -311,6 +311,20 @@ func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState,
 	}
 }
 
+// This is a test trick to dummy out the reads/writes in order to test files larger than the RV available space.
+// Dummy writes simply skip and no chunks are created, while dummy reads return 0s.
+func performDummyReadWrite() bool {
+	if !common.IsDebugBuild() {
+		return false
+	}
+
+	// Test for the presence of the special marker file.
+	dummyFile := "/tmp/DCACHE_DUMMY_RW"
+
+	_, err := os.Stat(dummyFile)
+	return err == nil
+}
+
 // Check if the given mvPath is valid on this node.
 func (rv *rvInfo) isMvPathValid(mvPath string) bool {
 	mvName := filepath.Base(mvPath)
@@ -1546,28 +1560,40 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
-	fh, err := os.Open(chunkPath)
+	//
+	// Allocate byte slice, data from the chunk file will be read into this.
+	//
+	data := make([]byte, req.Length)
+	var lmt string
+	var n int
+	var chunkSize int64
+	var fh *os.File
+	var fInfo os.FileInfo
+
+	if performDummyReadWrite() {
+		goto dummy_read
+	}
+
+	fh, err = os.Open(chunkPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to open chunk file %s [%v]", chunkPath, err.Error())
 		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to open chunk file %s [%v]", chunkPath, err.Error()))
 	}
 	defer fh.Close()
 
-	fInfo, err := fh.Stat()
+	fInfo, err = fh.Stat()
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
 		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
 		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
-	chunkSize := fInfo.Size()
-	lmt := fInfo.ModTime().UTC().String()
+	chunkSize = fInfo.Size()
+	lmt = fInfo.ModTime().UTC().String()
 
 	common.Assert(req.OffsetInChunk+req.Length <= chunkSize, fmt.Sprintf("chunkSize %d is less than OffsetInChunk %d + Length %d", chunkSize, req.OffsetInChunk, req.Length))
 
-	// TODO: data buffer should come in the request
-	data := make([]byte, req.Length)
-	n, err := fh.ReadAt(data, req.OffsetInChunk)
+	n, err = fh.ReadAt(data, req.OffsetInChunk)
 	common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to read chunk file %s [%v]", chunkPath, err.Error())
@@ -1586,6 +1612,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//      hash = string(hashData)
 	// }
 
+dummy_read:
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
@@ -1776,6 +1803,8 @@ refreshFromClustermapAndRetry:
 
 	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
+	var availableSpace int64
+
 	// Chunk file must not be present.
 	_, err = os.Stat(chunkPath)
 	if err == nil {
@@ -1801,7 +1830,7 @@ refreshFromClustermapAndRetry:
 					chunkPath)
 			}
 
-			availableSpace, err := rvInfo.getAvailableSpace()
+			availableSpace, err = rvInfo.getAvailableSpace()
 			if err != nil {
 				log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space [%v]",
 					req.SyncID, err)
@@ -1820,8 +1849,14 @@ refreshFromClustermapAndRetry:
 		}
 	}
 
+	var tmpChunkPath string
+
+	if performDummyReadWrite() {
+		goto dummy_write
+	}
+
 	// Write to .tmp file first and rename it to the final file.
-	tmpChunkPath := fmt.Sprintf("%s.tmp", chunkPath)
+	tmpChunkPath = fmt.Sprintf("%s.tmp", chunkPath)
 	err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
@@ -1835,11 +1870,6 @@ refreshFromClustermapAndRetry:
 	//      log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
 	//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
 	// }
-
-	availableSpace, err := rvInfo.getAvailableSpace()
-	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
-	}
 
 	// TODO: should we verify the hash after writing the chunk
 
@@ -1875,6 +1905,12 @@ refreshFromClustermapAndRetry:
 		common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
+	}
+
+dummy_write:
+	availableSpace, err = rvInfo.getAvailableSpace()
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
 	}
 
 	resp := &models.PutChunkResponse{
