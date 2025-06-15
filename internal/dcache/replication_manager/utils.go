@@ -90,6 +90,18 @@ const (
 	DaisyChain
 )
 
+func (s PutChunkStyleEnum) String() string {
+	switch s {
+	case OriginatorSendsToAll:
+		return "OriginatorSendsToAll"
+	case DaisyChain:
+		return "DaisyChain"
+	default:
+		common.Assert(false, s)
+		return "Unknown"
+	}
+}
+
 // We will experiment with various PutChunk styles on various cluster sizes (with varying storage and n/w throughput
 // and different NumReplicas configuration).
 var PutChunkStyle PutChunkStyleEnum = DaisyChain
@@ -235,6 +247,8 @@ func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, responseChannel chan *responseItem) {
 	common.Assert(response != nil)
 	common.Assert(response.Responses != nil)
+	// There shouldn't be any PutChunkDCResponse with no responses.
+	common.Assert(len(response.Responses) > 0)
 
 	for rvName, resp := range response.Responses {
 		common.Assert(cm.IsValidRVName(rvName), rvName)

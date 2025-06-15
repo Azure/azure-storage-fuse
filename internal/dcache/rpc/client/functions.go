@@ -359,18 +359,28 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 		targetNodeID, reqStr)
 }
 
+// This is the daisy chain PutChunk function.
+// Unlike PutChunk() that writes a chunk to one component RV, PutChunkDC() writes the chunk to one RV (called
+// the nexthop RV) and additionally provides a list of other component RVs to which the chunk must be written.
+// The node receiving the PutChunkDCRequest (which hosts the nexthop RV) writes the chunk to its local RV, and
+// relays the request to the new nexthop along with the remaining RV list. This goes on in a daisy chain fashion
+// till all the component RVs are covered.
 func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
 	common.Assert(req != nil &&
 		req.Request != nil &&
 		req.Request.Chunk != nil &&
 		req.Request.Chunk.Address != nil)
 
+	// Caller must call PutChunkDC() only if it wants the request to be daisy chained to at least one more RV.
+	common.Assert(len(req.NextRVs) > 0)
+
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.Request.SenderNodeID) == 0, req.Request.SenderNodeID)
 	req.Request.SenderNodeID = myNodeId
 
 	reqStr := rpc.PutChunkDCRequestToString(req)
-	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to node %s: %v", targetNodeID, reqStr)
+	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to nexthop node %s and %d daisy chain RV(s): %v",
+		targetNodeID, len(req.NextRVs), reqStr)
 
 	//
 	// We retry once after resetting bad connections.

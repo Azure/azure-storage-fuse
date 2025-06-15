@@ -290,7 +290,7 @@ retry:
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
-	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: %v", req.toString())
+	log.Debug("ReplicationManager::WriteMV: Received WriteMV request (%v): %v", PutChunkStyle, req.toString())
 
 	if err := req.isValid(); err != nil {
 		err = fmt.Errorf("invalid WriteMV request %s [%v]", req.toString(), err)
@@ -305,10 +305,10 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	//
 	// Flag to check if we have a BrokenChain error in the PutChunkDC response.
 	// If we have a BrokenChain error for an RV, it means that the PutChunkDC request was not
-	// forwarded to it. This can happen if the RV to which we sent the PutChunkDC request went
-	// down/offline. So, we will get ThriftError for that RV and BrokenChain error for the next RVs.
-	// In case of BrokenChain error, retry the WriteMV() operation after marking the RV that went down
-	// as offline and refreshing the clustermap (if needed).
+	// forwarded to it as the nexthop RV was down/offline. We will get ThriftError for the nexthop RV
+	// and BrokenChain error for the subsequent RVs.
+	// In case of BrokenChain error, we retry the WriteMV() operation skipping the nexthop RV and refreshing
+	// the clustermap (if needed).
 	//
 	brokenChain := false
 
@@ -318,7 +318,7 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 
 retry:
 	if retryCnt > 0 || brokenChain {
-		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh or broken chain(%v), RVs written in prev attempt: %v",
+		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh or broken chain (%v), RVs written in prev attempt: %v",
 			retryCnt, req.toString(), brokenChain, rvsWritten)
 	}
 
@@ -356,13 +356,15 @@ retry:
 	//
 	// We set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server know that this
 	// could potentially be an overwrite of a chunk that we previously wrote, so that it relaxes its
-	// overwrite checks. To be safe we set MaybeOverwrite to true when retryCnt > 0.
+	// overwrite checks. To be safe we set MaybeOverwrite to true when retryCnt > 0 or we are retrying
+	// because of brokenChain error for one of the RVs.
 	//
 	putChunkDCReq := &models.PutChunkDCRequest{
 		Request: &models.PutChunkRequest{
 			Chunk: &models.Chunk{
 				Address: &models.Address{
 					FileID:      req.FileID,
+					RvID:        "", // will be set later down
 					MvName:      req.MvName,
 					OffsetInMiB: req.ChunkIndex * req.ChunkSizeInMiB,
 				},
@@ -374,7 +376,7 @@ retry:
 			ComponentRV:    componentRVs,
 			MaybeOverwrite: retryCnt > 0 || brokenChain,
 		},
-		NextRVs: make([]string, 0),
+		NextRVs: make([]string, 0), // will be added later down, if needed
 	}
 
 	//
@@ -453,7 +455,6 @@ retry:
 
 		rvName := putChunkDCReq.NextRVs[0]
 		rvID := getRvIDFromRvName(rvName)
-		common.Assert(common.IsValidUUID(rvID))
 
 		putChunkDCReq.Request.Chunk.Address.RvID = rvID
 		putChunkDCReq.NextRVs = putChunkDCReq.NextRVs[1:]
@@ -462,11 +463,11 @@ retry:
 	common.Assert(common.IsValidUUID(putChunkDCReq.Request.Chunk.Address.RvID),
 		putChunkDCReq.Request.Chunk.Address.String())
 
+	//
+	// Use PutChunk to write if PutChunkStyle is OriginatorSendsToAll or we have only the nexthop
+	// RV to send the request to.
+	//
 	if PutChunkStyle == OriginatorSendsToAll || len(putChunkDCReq.NextRVs) == 0 {
-		//
-		// Write to the next hop component RV.
-		//
-
 		// TODO: Add rvName to Address to avoid potentially expensive search for RV name.
 		rvName := getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID)
 
@@ -477,7 +478,7 @@ retry:
 			rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
 
 		//
-		// Schedule PutChunk RPC call to the target node.
+		// Schedule PutChunk RPC call to the nexthop RV.
 		// One of the threadpool threads will pick this request and call PutChunk.
 		// Since we have to wait for all the replica writes to complete before we
 		// can start processing the individual responses we send the last replica
@@ -516,7 +517,7 @@ retry:
 				Length:         int64(len(req.Data)),
 				SyncID:         "", // this is regular client write
 				ComponentRV:    componentRVs,
-				MaybeOverwrite: retryCnt > 0,
+				MaybeOverwrite: retryCnt > 0 || brokenChain,
 			}
 
 			log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
@@ -542,7 +543,6 @@ retry:
 		defer cancel()
 
 		putChunkDCResp, err := rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
-
 		if err != nil {
 			log.Err("ReplicationManager::WriteMV: Failed to send PutChunkDC request for %s/%s to node %s: %v",
 				rvName, req.MvName, targetNodeID, err)
@@ -557,6 +557,8 @@ retry:
 		} else {
 			log.Debug("ReplicationManager::WriteMV: Received PutChunkDC response for %s/%s from node %s: %s",
 				rvName, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp))
+			common.Assert(len(putChunkDCResp.Responses) == len(putChunkDCReq.NextRVs)+1,
+				len(putChunkDCResp.Responses), len(putChunkDCReq.NextRVs))
 		}
 
 		common.Assert(putChunkDCResp != nil)
@@ -607,7 +609,7 @@ processResponses:
 		if respItem.err == nil {
 			common.Assert(respItem.putChunkResp != nil)
 
-			log.Debug("ReplicationManager::WriteMV: PutChunk successful for %s/%s, RPC response: %v",
+			log.Debug("ReplicationManager::WriteMV: PutChunk successful for %s/%s, RPC response: %s",
 				respItem.rvName, req.MvName, rpc.PutChunkResponseToString(respItem.putChunkResp))
 
 			//
@@ -619,9 +621,10 @@ processResponses:
 
 			continue
 		}
-
 		log.Err("ReplicationManager::WriteMV: PutChunk to %s/%s failed [%v]",
 			respItem.rvName, req.MvName, respItem.err)
+
+		common.Assert(respItem.putChunkResp == nil)
 
 		rpcErr := rpc.GetRPCResponseError(respItem.err)
 		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
@@ -685,7 +688,6 @@ processResponses:
 
 			log.Debug("ReplicationManager::WriteMV: PutChunkDC call not forwarded to %s/%s [%v]",
 				respItem.rvName, req.MvName, respItem.err)
-
 		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
 			//
 			// We allow 5 refreshes of the clustermap for resiliency, before we fail the write.
@@ -752,6 +754,8 @@ processResponses:
 		// If we got BrokenChain error, it means that we need to retry the entire write MV operation again.
 		// This might mean re-writing some of the replicas which were successfully written in this iteration.
 		// Note the retryCnt is not incremented here.
+		//
+		// TODO: Can this result in infinite retries?
 		//
 		goto retry
 	}

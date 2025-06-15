@@ -146,24 +146,30 @@ func PutChunkResponseToString(resp *models.PutChunkResponse) string {
 // convert *models.PutChunkDCRequest to string
 // used for logging
 func PutChunkDCRequestToString(req *models.PutChunkDCRequest) string {
-	return fmt.Sprintf("{PutChunkRequest %s, NextRVs %v}",
-		PutChunkRequestToString(req.Request), req.NextRVs)
+	return fmt.Sprintf("{PutChunkRequest %s, NextRVs (%d) %v}",
+		PutChunkRequestToString(req.Request), len(req.NextRVs), req.NextRVs)
 }
 
 // convert *models.PutChunkDCRequest to string
 // used for logging
 func PutChunkDCResponseToString(response *models.PutChunkDCResponse) string {
+	// We should never have a PutChunkDCResponse with no responses.
+	common.Assert(len(response.Responses) > 0)
+
 	str := strings.Builder{}
 	str.WriteString("[\n")
 
 	for rvName, resp := range response.Responses {
 		common.Assert(resp != nil)
-		if resp == nil {
-			// PutChunkResponseOrError can be nil if the state of the RV is outofsync or offline.
-			str.WriteString(fmt.Sprintf("{%s : <nil>}\n", rvName))
+		// One and only one of Response or Error will be nil/non-nil.
+		if resp.Response != nil {
+			common.Assert(resp.Error == nil)
+			str.WriteString(fmt.Sprintf("{%s : {PutChunkResponse %s}}\n",
+				rvName, PutChunkResponseToString(resp.Response)))
 		} else {
-			str.WriteString(fmt.Sprintf("{%s : {PutChunkResponse %s, Error %s}}\n",
-				rvName, PutChunkResponseToString(resp.Response), resp.Error.String()))
+			common.Assert(resp.Error != nil)
+			str.WriteString(fmt.Sprintf("{%s : {Error: %s}}\n",
+				rvName, resp.Error.String()))
 		}
 	}
 
@@ -224,11 +230,11 @@ func GetMVSizeRequestToString(req *models.GetMVSizeRequest) string {
 }
 
 // The caller of PutChunkDC() RPC can make this call to handle the error returned by PutChunkDC().
-// It converts the error received for the current RV to ThriftError.
-// This error indicates that the PutChunkDC call was not forwarded to the next RVs.
-// so, it adds BrokenChain error for the next RVs.
-func HandlePutChunkDCError(currRV string, nextRVs []string, mvName string, err error) *models.PutChunkDCResponse {
-	rpcErr := GetRPCResponseError(err)
+// It converts the error received from the nexthop RV to ThriftError.
+// This error indicates that the PutChunkDC call was not forwarded to the next RVs, so it adds BrokenChain
+// error for all the next RVs.
+func HandlePutChunkDCError(nexthopRV string, nextRVs []string, mvName string, nexthopErr error) *models.PutChunkDCResponse {
+	rpcErr := GetRPCResponseError(nexthopErr)
 	if rpcErr == nil {
 		//
 		// This error indicates some Thrift error like connection error, timeout, etc. or,
@@ -236,12 +242,12 @@ func HandlePutChunkDCError(currRV string, nextRVs []string, mvName string, err e
 		// We wrap this error in *models.ResponseError with code ThriftError.
 		// This is to ensure that the client can take appropriate action based on this error code.
 		//
-		rpcErr = NewResponseError(models.ErrorCode_ThriftError, err.Error())
+		rpcErr = NewResponseError(models.ErrorCode_ThriftError, nexthopErr.Error())
 	}
 
 	dcResp := &models.PutChunkDCResponse{
 		Responses: map[string]*models.PutChunkResponseOrError{
-			currRV: {
+			nexthopRV: {
 				Response: nil,    // PutChunkDC failed for the current RV
 				Error:    rpcErr, // Error for the current RV
 			},
@@ -249,6 +255,8 @@ func HandlePutChunkDCError(currRV string, nextRVs []string, mvName string, err e
 	}
 
 	for _, rvName := range nextRVs {
+		common.Assert(rvName != nexthopRV, rvName, nexthopRV)
+
 		//
 		// For the next RVs, we will return a BrokenChain error indicating that the PutChunkDC call
 		// was not forwarded to them.
@@ -256,8 +264,8 @@ func HandlePutChunkDCError(currRV string, nextRVs []string, mvName string, err e
 		dcResp.Responses[rvName] = &models.PutChunkResponseOrError{
 			Response: nil, // PutChunkDC was not forwarded to this RV
 			Error: NewResponseError(models.ErrorCode_BrokenChain,
-				fmt.Sprintf("PutChunkDC call was not forwarded to %s/%s after %s/%s",
-					rvName, mvName, currRV, mvName)),
+				fmt.Sprintf("PutChunkDC call was not forwarded to %s/%s by nexthop %s/%s",
+					rvName, mvName, nexthopRV, mvName)),
 		}
 	}
 
