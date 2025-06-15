@@ -256,10 +256,17 @@ func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, respons
 		common.Assert(len(responseChannel) < int(getNumReplicas()),
 			len(responseChannel), getNumReplicas())
 
+		var err error
+
+		if resp.Error != nil {
+			common.Assert(resp.Response == nil)
+			err = resp.Error
+		}
+
 		responseChannel <- &responseItem{
 			rvName:       rvName,
 			putChunkResp: resp.Response,
-			err:          resp.Error,
+			err:          err,
 		}
 	}
 
