@@ -614,10 +614,13 @@ retry:
 	return &WriteMvResponse{}, nil
 }
 
+// File IO manager can use this to delete all chunks belonging to a file from a given MV.
+// Note that files chunks could be striped across multiple MVs, so file IO manager needs to call this
+// for every MV from the file layout.
 func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	common.Assert(req != nil)
 
-	log.Debug("ReplicationManager::RemoveMV: Received RemoveMV request: FileID: %s, MV: %s", req.FileID, req.MvName)
+	log.Debug("ReplicationManager::RemoveMV: Received RemoveMV request: %s", req.toString())
 
 	if err := req.isValid(); err != nil {
 		err = fmt.Errorf("invalid RemoveMV request FileID: %s, MV: %s [%v]", req.FileID, req.MvName, err)
@@ -627,37 +630,31 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	}
 
 	//
-	// The following set would be used while retring the skipping the repeated deletion from the RV's which have already
-	// got success in removing their chunks, while retrying for its clustermap update. RvName->struct{}.
+	// Map to hold component RVs which are fully cleaned up, we will skip these when retrying.
 	//
-	deleteProgressForRvs := make(map[string]struct{})
+	componentRVsFullyCleanedUp := make(map[string]struct{})
 	retryCnt := 0
 
 retry:
-
-	log.Debug("ReplicationManager::RemoveMV: RemoveMV request: %v, retryCnt: %d, FileID: %s, MV: %s",
-		req.FileID, req.MvName, retryCnt)
+	log.Debug("ReplicationManager::RemoveMV: RemoveMV request: %s, retryCnt: %d", req.toString(), retryCnt)
 
 	mvState, rvs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	shiftOnlineRVsToStart(rvs)
-
 	//
-	// Initially delete all the chunks from the all the online RV's first then move on to the syncing rv's.
-	// If we delete the chunk from all the online rvs then this chunk may get listed in the sync job when syncing
-	// the online rv to other outofsync rvs. So It is necessary to also make a removeChunk rpc request to all the
-	// other rvs which are having the state syncing.
+	// Delete file chunks from all the online RVs first then move on to the syncing RVs (if any).
+	// This ensures that those chunks cannot be copied to syncing RVs after we delete them from online RVs.
 	//
+	moveOnlineRVsToFront(rvs)
 
 	for _, rv := range rvs {
-		// Check if this RV dont need deletion
-		if _, ok := deleteProgressForRvs[rv.Name]; ok {
+		// Skip RV if already fully cleaned up.
+		if _, ok := componentRVsFullyCleanedUp[rv.Name]; ok {
 			continue
 		}
 
 		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
-			log.Info("ReplicationManager::RemoveMV: skip deleting the chunks from rv: %s, rv state: %s",
-				rv, rv.State)
+			log.Info("ReplicationManager::RemoveMV: skip deleting fileId %s chunks from %s/%s, rv state: %s",
+				req.FileID, rv.Name, req.MvName, rv.State)
 			continue
 		}
 
@@ -697,7 +694,7 @@ retry:
 				//
 				// Update this deleted status of the RV.
 				//
-				deleteProgressForRvs[rv.Name] = struct{}{}
+				componentRVsFullyCleanedUp[rv.Name] = struct{}{}
 			} else {
 
 				rpcErr := rpc.GetRPCResponseError(err)

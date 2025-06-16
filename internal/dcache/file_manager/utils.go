@@ -288,14 +288,23 @@ func DeleteDcacheFile(fileName string) error {
 	// Unique name for the deleted file.
 	deletedFileName := dcache.GetDeletedFileName(fileName, fileMetadata.FileID)
 
+	//
+	// Deleting a dcache file amounts to renaming it to a special name.
+	// This is useful for tracking file chunks for garbage collection as well as for the POSIX requirement
+	// that the file data should be available till the last open fd is closed.
+	//
 	err = mm.RenameFileToDeleting(fileName, deletedFileName)
 	if err != nil {
-		log.Err("DistributedCache[FM]::DeleteDcacheFile: Failed to rename the file to deleting, file: %s: %v",
-			fileName, err)
+		log.Err("DistributedCache[FM]::DeleteDcacheFile: Failed to rename file %s -> %s: %v",
+			fileName, deletedFileName, err)
 		return err
 	}
 
-	// Pass the file to Gabage collector, so that the chunks for this file would be deleted in the background.
+	//
+	// Pass the file to garbage collector, which will later delete the chunks when safe to do so.
+	// If safe-deletes config option is off then the file chunks can be deleted immediately o/w they
+	// can be deleted when the file OpenCount falls to 0.
+	//
 	gc.AsyncFileChunkGarbageCollector(fileMetadata)
 
 	return nil

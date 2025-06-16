@@ -204,7 +204,8 @@ func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 	common.Assert(false, rpc.ComponentRVsToString(rvs), rvName)
 }
 
-func shiftOnlineRVsToStart(componentRVs []*models.RVNameAndState) {
+// Move all online RVs to the front of the componentRVs list.
+func moveOnlineRVsToFront(componentRVs []*models.RVNameAndState) {
 	i := 0
 	for j := 0; j < len(componentRVs); j++ {
 		if componentRVs[j].State == string(dcache.StateOnline) {

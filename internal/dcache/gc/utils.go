@@ -82,16 +82,6 @@ func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*mod
 	return componentRVs
 }
 
-func shiftOnlineRVsToStart(componentRVs []*models.RVNameAndState) {
-	i := 0
-	for j := 0; j < len(componentRVs); j++ {
-		if componentRVs[j].State == string(dcache.StateOnline) {
-			componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
-			i++
-		}
-	}
-}
-
 // return the number of replicas
 func getNumReplicas() uint32 {
 	return cm.GetCacheConfig().NumReplicas

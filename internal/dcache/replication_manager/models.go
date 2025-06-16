@@ -216,8 +216,12 @@ type WriteMvResponse struct {
 }
 
 type RemoveMvRequest struct {
-	FileID string // unique guid of the file, as stored in metadata blob
-	MvName string // name of the MV where this chunk will be written, e.g., "mv0", "mv1", etc.
+	FileID string // unique guid of the file whose chunks need to be removed, as stored in metadata blob
+	MvName string // name of the MV from where the chunks need to be removed
+}
+
+func (req *RemoveMvRequest) toString() string {
+	return fmt.Sprintf("{FileID: %s, MvName: %s}", req.FileID, req.MvName)
 }
 
 // check if the request is valid

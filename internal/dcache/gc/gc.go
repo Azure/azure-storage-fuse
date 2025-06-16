@@ -44,7 +44,10 @@ import (
 )
 
 type GcInfo struct {
-	// Deletes this many number of files async at any time. Excess files get blocked.
+	//
+	// Deletes these many number of files at any time, excess files need to wait for one or more
+	// workers to get freed.
+	//
 	numGcWorkers     int
 	deletedFileQueue chan *gcFile
 	wg               sync.WaitGroup
@@ -62,6 +65,10 @@ type gcFile struct {
 }
 
 func NewGC() {
+	//
+	// GC'ing 100 files chunks at a time should be sufficient.
+	// TODO: Experiment on large clusters and large files see if we need to increase/decrease.
+	//
 	gc = &GcInfo{
 		numGcWorkers:     100,
 		deletedFileQueue: make(chan *gcFile, 100),
@@ -83,6 +90,7 @@ func (gc *GcInfo) worker() {
 	gc.wg.Add(1)
 	defer gc.wg.Done()
 
+	// Get the next deleted file from the queue and remove its chunks.
 	for gcFile := range gc.deletedFileQueue {
 		gc.removeAllChunksForFile(gcFile)
 	}
