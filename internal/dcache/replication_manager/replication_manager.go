@@ -678,11 +678,12 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 			rpcResp, err := rpc_client.RemoveChunk(ctx, targetNodeId, rpcReq)
 			if err == nil {
 				//
-				// GC would retry for this MV again.
+				// numChunksdeleted would be zero if the call dont need any retries. GC must retry for this MV again if
+				// it is non zero.
 				//
-				if rpcResp.NeedRetry {
-					err = fmt.Errorf("Delete partially success for fileID: %s, RV: %s, node %s [%v]",
-						req.FileID, rv.Name, targetNodeId, err)
+				if rpcResp.NumChunksDeleted != 0 {
+					err = fmt.Errorf("Delete partially success for fileID: %s, RV: %s, node %s, NumChunksDeleted: %d",
+						req.FileID, rv.Name, targetNodeId, rpcResp.NumChunksDeleted)
 					log.Err("ReplicationManager::RemoveMV: %v", err)
 					common.Assert(false, err)
 					return nil, err

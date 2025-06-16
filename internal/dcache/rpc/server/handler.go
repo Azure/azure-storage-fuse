@@ -2000,12 +2000,18 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		availableSpace = 0
 	}
 
+	//
+	// If there is no retry needed, Set the numChunksDeleted to zero to tell success to the caller.
+	//
+	if !needRetry {
+		numChunksDeleted = 0
+	}
+
 	resp := &models.RemoveChunkResponse{
 		TimeTaken:        time.Since(startTime).Microseconds(),
 		AvailableSpace:   availableSpace,
 		ComponentRV:      mvInfo.getComponentRVs(),
 		NumChunksDeleted: numChunksDeleted,
-		NeedRetry:        needRetry,
 	}
 
 	return resp, nil
