@@ -294,21 +294,29 @@ func (ac *AttrCache) backgroundCleanup() {
 // cleanupExpiredEntries: removes expired entries from the cache map
 // This runs in a background goroutine to prevent memory leaks
 func (ac *AttrCache) cleanupExpiredEntries() {
-	ac.cacheLock.Lock()
-	defer ac.cacheLock.Unlock()
-	
-	// Collect keys to delete to avoid modifying map while iterating
+	// First pass: collect keys to delete under read lock to minimize write lock duration
 	var keysToDelete []string
+	ac.cacheLock.RLock()
 	for path, item := range ac.cacheMap {
 		// Check if entry has exceeded the cache timeout
 		if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
 			keysToDelete = append(keysToDelete, path)
 		}
 	}
+	ac.cacheLock.RUnlock()
 	
-	// Delete expired entries
-	for _, path := range keysToDelete {
-		delete(ac.cacheMap, path)
+	// Second pass: delete expired entries under write lock, re-checking expiration
+	if len(keysToDelete) > 0 {
+		ac.cacheLock.Lock()
+		for _, path := range keysToDelete {
+			// Re-check if entry still exists and is still expired
+			if item, exists := ac.cacheMap[path]; exists {
+				if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
+					delete(ac.cacheMap, path)
+				}
+			}
+		}
+		ac.cacheLock.Unlock()
 	}
 }
 
