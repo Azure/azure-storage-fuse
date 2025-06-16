@@ -78,8 +78,6 @@ struct RemoveChunkResponse {
     3: list<RVNameAndState> componentRV,
     //
     // Total number of chunks deleted by this request.
-    // When a RemoveChunkResponse carries a status of success and numChunksDeleted==0, it would indicate
-    // to the caller that all chunks of the file are deleted from the specified rv/mv directory.
     //
     4: i64 numChunksDeleted,
     //
