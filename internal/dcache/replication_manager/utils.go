@@ -259,8 +259,11 @@ func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, respons
 		var err error
 
 		if resp.Error != nil {
+			// One and only one of Response and Error will be nil/non-nil.
 			common.Assert(resp.Response == nil)
 			err = resp.Error
+		} else {
+			common.Assert(resp.Response != nil)
 		}
 
 		responseChannel <- &responseItem{

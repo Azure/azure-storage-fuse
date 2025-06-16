@@ -234,6 +234,9 @@ func GetMVSizeRequestToString(req *models.GetMVSizeRequest) string {
 // This error indicates that the PutChunkDC call was not forwarded to the next RVs, so it adds BrokenChain
 // error for all the next RVs.
 func HandlePutChunkDCError(nexthopRV string, nextRVs []string, mvName string, nexthopErr error) *models.PutChunkDCResponse {
+	// We should be called only when nexthop error is not nil.
+	common.Assert(nexthopErr != nil)
+
 	rpcErr := GetRPCResponseError(nexthopErr)
 	if rpcErr == nil {
 		//
