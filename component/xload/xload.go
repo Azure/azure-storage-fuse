@@ -41,7 +41,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -465,93 +464,6 @@ func (xl *Xload) CloseFile(options internal.CloseFileOptions) error {
 
 	flock.Dec()
 	return nil
-}
-
-// Read-only mode enforcement: Override write operations to return EROFS
-
-func (xl *Xload) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
-	log.Trace("Xload::CreateFile : %s - rejecting write operation in read-only mode", options.Name)
-	return nil, syscall.EROFS
-}
-
-func (xl *Xload) DeleteFile(options internal.DeleteFileOptions) error {
-	log.Trace("Xload::DeleteFile : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("Xload::WriteFile : %s - rejecting write operation in read-only mode", options.Handle.Path)
-	return 0, syscall.EROFS
-}
-
-func (xl *Xload) TruncateFile(options internal.TruncateFileOptions) error {
-	log.Trace("Xload::TruncateFile : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) CreateDir(options internal.CreateDirOptions) error {
-	log.Trace("Xload::CreateDir : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) DeleteDir(options internal.DeleteDirOptions) error {
-	log.Trace("Xload::DeleteDir : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) RenameFile(options internal.RenameFileOptions) error {
-	log.Trace("Xload::RenameFile : %s -> %s - rejecting write operation in read-only mode", options.Src, options.Dst)
-	return syscall.EROFS
-}
-
-func (xl *Xload) RenameDir(options internal.RenameDirOptions) error {
-	log.Trace("Xload::RenameDir : %s -> %s - rejecting write operation in read-only mode", options.Src, options.Dst)
-	return syscall.EROFS
-}
-
-func (xl *Xload) SetAttr(options internal.SetAttrOptions) error {
-	log.Trace("Xload::SetAttr : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) Chmod(options internal.ChmodOptions) error {
-	log.Trace("Xload::Chmod : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) Chown(options internal.ChownOptions) error {
-	log.Trace("Xload::Chown : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) SyncFile(options internal.SyncFileOptions) error {
-	log.Trace("Xload::SyncFile : %s - rejecting write operation in read-only mode", options.Handle.Path)
-	return syscall.EROFS
-}
-
-func (xl *Xload) FlushFile(options internal.FlushFileOptions) error {
-	log.Trace("Xload::FlushFile : %s - rejecting write operation in read-only mode", options.Handle.Path)
-	return syscall.EROFS
-}
-
-func (xl *Xload) CreateLink(options internal.CreateLinkOptions) error {
-	log.Trace("Xload::CreateLink : %s -> %s - rejecting write operation in read-only mode", options.Name, options.Target)
-	return syscall.EROFS
-}
-
-func (xl *Xload) UnlinkFile(options internal.UnlinkFileOptions) error {
-	log.Trace("Xload::UnlinkFile : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) StageData(options internal.StageDataOptions) error {
-	log.Trace("Xload::StageData : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
-}
-
-func (xl *Xload) CommitData(options internal.CommitDataOptions) error {
-	log.Trace("Xload::CommitData : %s - rejecting write operation in read-only mode", options.Name)
-	return syscall.EROFS
 }
 
 // ------------------------- Factory -------------------------------------------
