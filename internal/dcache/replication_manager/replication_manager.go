@@ -629,36 +629,32 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 		return nil, err
 	}
 
-	//
-	// Map to hold component RVs which are fully cleaned up, we will skip these when retrying.
-	//
-	componentRVsFullyCleanedUp := make(map[string]struct{})
-	retryCnt := 0
-
-retry:
-	log.Debug("ReplicationManager::RemoveMV: RemoveMV request: %s, retryCnt: %d", req.toString(), retryCnt)
-
-	mvState, rvs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+	mvState, rvs, _ := getComponentRVsForMV(req.MvName)
 
 	//
-	// Delete file chunks from all the online RVs first then move on to the syncing RVs (if any).
-	// This ensures that those chunks cannot be copied to syncing RVs after we delete them from online RVs.
+	// Delete file chunks from all the online RVs first and return the retry error when there is an RV which is of state
+	// outofsync or syncing. RemoveMV would only return success when the component RVs have only online and offline state
+	// RVs and the deletion of the chunks from the online RVs are success.
 	//
-	moveOnlineRVsToFront(rvs)
+	retryNeeded := false
 
 	for _, rv := range rvs {
-		// Skip RV if already fully cleaned up.
-		if _, ok := componentRVsFullyCleanedUp[rv.Name]; ok {
-			continue
-		}
 
-		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
+		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) ||
+			rv.State == string(dcache.StateSyncing) {
 			log.Info("ReplicationManager::RemoveMV: skip deleting fileId %s chunks from %s/%s, rv state: %s",
 				req.FileID, rv.Name, req.MvName, rv.State)
+
+			if rv.State != string(dcache.StateOffline) {
+				//
+				// GC must retry for this MV again, till this RV state changes to the StateOnline.
+				//
+				retryNeeded = true
+			}
 			continue
 		}
 
-		if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
+		if rv.State == string(dcache.StateOnline) {
 			// MV should not be offline.
 			common.Assert(mvState != dcache.StateOffline)
 
@@ -691,10 +687,6 @@ retry:
 					common.Assert(false, err)
 					return nil, err
 				}
-				//
-				// Update this deleted status of the RV.
-				//
-				componentRVsFullyCleanedUp[rv.Name] = struct{}{}
 			} else {
 
 				rpcErr := rpc.GetRPCResponseError(err)
@@ -708,40 +700,23 @@ retry:
 				}
 
 				if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-					log.Info("ReplicationManager::RemoveMV: Need to refresh the cluster map, rv: %s, err: %v",
-						rv.Name, rpcErr)
-
-					//
-					// We allow 5 refreshes of the clustermap for resiliency, before we fail the delete of a file.
-					// This is to allow multiple changes to the MV during the course of a deleting.
-					// It's unlikely but we need to be resilient.
-					//
-					if retryCnt > 5 {
-						err = fmt.Errorf("Max retries for updating the clusermap exhausted, RV: %v, file: %s: %v",
-							rv, req.FileID, rpcErr)
-						log.Err("ReplicationManager::RemoveMV: %v", err)
-						common.Assert(false, req.FileID, rpcErr)
-						return nil, err
-					}
-
-					//
-					// Retry till the next epoch, ensuring that the clustermap is refreshed from what we
-					// have cached right now.
-					//
-					errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
-					if errCM != nil {
-						log.Err("ReplicationManager::RemoveMV: Failed to refresh the cluster map, RV: %s, file ID: %s: %v",
-							rv.Name, req.FileID, errCM)
-						common.Assert(false, req.FileID, errCM)
-						return nil, errCM
-					}
-
-					retryCnt++
-					goto retry
+					// This error will be retried by the gc.
+					return nil, err
 				}
 
+				//
+				// ErrorCode_ChunkNotFound is a valid error when the chunks were not present in the corresponding RV,
+				// hence there is no necessary for retring.
+				//
 			}
 		}
+	}
+
+	if retryNeeded {
+		err := fmt.Errorf("Retry needed as not all RVs are in online/offline state for fileID: %s, RVs: %x",
+			req.FileID, rvs)
+		log.Err("ReplicationManager::RemoveMV: %v", err)
+		return nil, err
 	}
 
 	return &RemoveMvResponse{}, nil

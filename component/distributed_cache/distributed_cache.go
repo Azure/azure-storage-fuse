@@ -188,7 +188,7 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start fileio manager : %v]", err))
 	}
 
-	gc.NewGC()
+	gc.Start()
 
 	log.Info("DistributedCache::Start : component started successfully")
 
@@ -282,7 +282,7 @@ func (dc *DistributedCache) Stop() error {
 
 	dc.pw.destroyParallelWriter()
 	fm.EndFileIOManager()
-	gc.EndGC()
+	gc.End()
 	rm.Stop()
 	clustermanager.Stop()
 	rpc_client.Cleanup()
