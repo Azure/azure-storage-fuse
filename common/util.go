@@ -103,6 +103,9 @@ func IsMountActive(path string) (bool, error) {
 		}
 	}
 
+	// Normalize the input path by removing trailing slashes
+	path = strings.TrimRight(path, "/")
+
 	// out contains the list of pids of the processes that are running
 	pidString := strings.Replace(out.String(), "\n", " ", -1)
 	pids := strings.Split(pidString, " ")
@@ -110,11 +113,11 @@ func IsMountActive(path string) (bool, error) {
 		// Get the mount path for this pid
 		// For this we need to check the command line arguments given to this command
 		// If the path is same then we need to return true
-		if pid == "" {
+		if strings.TrimSpace(pid) == "" {
 			continue
 		}
 
-		cmd = exec.Command("ps", "-o", "args=", "-p", pid)
+		cmd = exec.Command("ps", "-o", "args=", "-p", strings.TrimSpace(pid))
 		out.Reset()
 		cmd.Stdout = &out
 
@@ -123,8 +126,26 @@ func IsMountActive(path string) (bool, error) {
 			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v]", pid, err.Error())
 		}
 
-		if strings.Contains(out.String(), path) {
-			return true, nil
+		cmdLine := out.String()
+		args := strings.Fields(cmdLine)
+		
+		// Handle both command formats:
+		// 1. New format: [path/to/]blobfuse2 mount <path> [options]
+		// 2. Legacy format: [path/to/]blobfuse2 <path> [options]
+		for i, arg := range args {
+			if arg == "mount" && i+1 < len(args) {
+				// New format: blobfuse2 mount <path>
+				mountPath := strings.TrimRight(args[i+1], "/")
+				if mountPath == path {
+					return true, nil
+				}
+			} else if i > 0 && strings.HasSuffix(args[i-1], "blobfuse2") && !strings.HasPrefix(arg, "-") {
+				// Legacy format: [path/to/]blobfuse2 <path> (path is first non-flag argument after blobfuse2)
+				mountPath := strings.TrimRight(arg, "/")
+				if mountPath == path {
+					return true, nil
+				}
+			}
 		}
 	}
 
