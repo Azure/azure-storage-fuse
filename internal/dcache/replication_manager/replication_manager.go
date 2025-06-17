@@ -164,7 +164,7 @@ retry:
 	//
 	var excludeRVs []string
 	for {
-		readerRV := getReaderRV(componentRVs, excludeRVs)
+		readerRV, isLocalRV := getReaderRV(componentRVs, excludeRVs)
 		if readerRV == nil {
 			//
 			// An MV once marked offline can never become online, so save the trip to clustermap.
@@ -230,7 +230,11 @@ retry:
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
+		if !isLocalRV {
+			rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
+		} else {
+			rpcResp, err = rpc_server.GetChunk(ctx, targetNodeID, rpcReq)
+		}
 
 		// Exclude this RV from further iterations (if any).
 		excludeRVs = append(excludeRVs, readerRV.Name)
@@ -1524,7 +1528,7 @@ retry:
 	var excludeRVs []string
 
 	for {
-		readerRV := getReaderRV(componentRVs, excludeRVs)
+		readerRV, _ := getReaderRV(componentRVs, excludeRVs)
 
 		if readerRV == nil {
 			//

@@ -106,7 +106,7 @@ func (s PutChunkStyleEnum) String() string {
 // and different NumReplicas configuration).
 var PutChunkStyle PutChunkStyleEnum = DaisyChain
 
-func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
+func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) (*models.RVNameAndState, bool) {
 	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v",
 		rpc.ComponentRVsToString(componentRVs), excludeRVs)
 
@@ -128,7 +128,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 		common.Assert(common.IsValidUUID(nodeIDForRV))
 		if nodeIDForRV == myNodeID {
 			// Prefer local RV.
-			return rv
+			return rv, true
 		}
 
 		onlineRVs = append(onlineRVs, rv)
@@ -137,14 +137,14 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 	if len(onlineRVs) == 0 {
 		log.Debug("utils::getReaderRV: no suitable RVs found for component RVs %v",
 			rpc.ComponentRVsToString(componentRVs))
-		return nil
+		return nil, false
 	}
 
 	// select random online RV
 	// TODO: add logic for sending Hello RPC call to check if the node hosting this RV is online
 	// If not, select another RV from the list
 	index := rand.Intn(len(onlineRVs))
-	return onlineRVs[index]
+	return onlineRVs[index], false
 }
 
 // TODO: hash validation will be done later

@@ -34,6 +34,7 @@
 package rpc_server
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -139,4 +140,17 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 // return mvs-per-rv from dcache config
 func getMVsPerRV() int64 {
 	return int64(cm.GetCacheConfig().MvsPerRv)
+}
+
+func GetChunk(ctc context.Context, myNodeId string, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
+	common.Assert(req != nil)
+	common.Assert(req.Address != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
+
+	common.Assert(handler != nil)
+
+	return handler.GetChunk(ctc, req)
 }
