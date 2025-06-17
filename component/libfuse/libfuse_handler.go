@@ -48,10 +48,10 @@ import "C" //nolint
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -410,17 +410,26 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 	if ignore, found := ignoreFiles[name]; found && ignore {
 		return -C.ENOENT
 	}
-
-	// Get attributes
-	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
-	if err != nil {
-		// log.Err("Libfuse::libfuse_getattr : Failed to get attributes of %s [%s]", name, err.Error())
-		if err == syscall.ENOENT {
-			return -C.ENOENT
-		} else if err == syscall.EACCES {
-			return -C.EACCES
-		} else {
-			return -C.EIO
+	var attr *internal.ObjAttr
+	if name == "foo" {
+		attr = &internal.ObjAttr{
+			Name:  "foo",
+			Size:  10 * 1024 * 1024 * 1024,
+			Mtime: time.Now(),
+		}
+	} else {
+		var err error
+		// Get attributes
+		attr, err = fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
+		if err != nil {
+			// log.Err("Libfuse::libfuse_getattr : Failed to get attributes of %s [%s]", name, err.Error())
+			if err == syscall.ENOENT {
+				return -C.ENOENT
+			} else if err == syscall.EACCES {
+				return -C.EACCES
+			} else {
+				return -C.EIO
+			}
 		}
 	}
 
@@ -697,59 +706,23 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
 
-	if !fuseFS.disableWritebackCache {
-		if fi.flags&C.O_ACCMODE == C.O_WRONLY || fi.flags&C.O_APPEND != 0 {
-			if fuseFS.ignoreOpenFlags {
-				log.Warn("Libfuse::libfuse_open : Flags (%X) not supported to open %s when write back cache is on. Ignoring unsupported flags.", fi.flags, name)
-				// O_ACCMODE disables both RDONLY, WRONLY and RDWR flags
-				fi.flags = fi.flags &^ (C.O_APPEND | C.O_ACCMODE)
-				fi.flags = fi.flags | C.O_RDWR
-			} else {
-				log.Err("Libfuse::libfuse_open : Flag (%X) not supported to open %s when write back cache is on. Pass --disable-writeback-cache=true or --ignore-open-flags=true via CLI", fi.flags, name)
-				return -C.EINVAL
-			}
+	if name == "foo" {
+		fi.fh = C.ulong(69)
+
+		handle := &handlemap.Handle{
+			UnixFD: 69,
+			Size:   10 * 1024 * 1024 * 1024,
 		}
-	}
 
-	handle, err := fuseFS.NextComponent().OpenFile(
-		internal.OpenFileOptions{
-			Name:  name,
-			Flags: int(int(fi.flags) & 0xffffffff),
-			Mode:  fs.FileMode(fuseFS.filePermission),
-		})
-
-	if err != nil {
-		log.Err("Libfuse::libfuse_open : Failed to open %s [%s]", name, err.Error())
-		if os.IsNotExist(err) {
-			return -C.ENOENT
-		} else if os.IsPermission(err) {
-			return -C.EACCES
-		} else {
-			return -C.EIO
+		handlemap.Add(handle)
+		//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+		ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+		if !handle.Cached() {
+			ret_val.fd = 0
 		}
+		log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
+		fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 	}
-
-	handlemap.Add(handle)
-	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
-	if !handle.Cached() {
-		ret_val.fd = 0
-	}
-	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
-
-	if handle.IsFsDebug() {
-		// This is not an actual file i.e., present in the filesystem but a file which was implemented by respective component
-		// to emit metrics/state of the filesystem. Hence the size of the file is not known at the stat and also the stat
-		// must receive the file size to be zero for such files. But If page-cache is enabled, the file size is checked before
-		// making a read call. As we're returning the file size to be zero, we don't get the read calls if the page cache is
-		// turned on for the mount point. Hence we make the handle to be direct-io, so that we get read calls regardless of
-		// its size.
-		C.make_file_handle_direct_io(fi)
-	}
-
-	// increment open file handles count
-	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
 
 	return 0
 }
@@ -758,36 +731,11 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-
 	offset := uint64(off)
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
-
-	var err error
-	var bytesRead int
-
-	if handle.Cached() {
-		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
-		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
-	} else {
-		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
-			internal.ReadInBufferOptions{
-				Handle: handle,
-				Offset: int64(offset),
-				Data:   data[:size],
-			})
+	if offset == 10*1024*1024*1024 {
+		return 0
 	}
-
-	if err == io.EOF {
-		err = nil
-	}
-	if err != nil {
-		log.Err("Libfuse::libfuse_read : error reading file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
-	}
-
-	return C.int(bytesRead)
+	return C.int(size)
 }
 
 // libfuse_write writes data to an open file
@@ -820,31 +768,6 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 //
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
-
-	// If the file handle is not dirty, there is no need to flush
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
-
-	if !handle.Dirty() {
-		return 0
-	}
-
-	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
-	if err != nil {
-		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		if err == syscall.ENOENT {
-			return -C.ENOENT
-		} else if err == syscall.EACCES {
-			return -C.EACCES
-		} else {
-			return -C.EIO
-		}
-	}
-
 	return 0
 }
 
@@ -875,34 +798,6 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_release
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-
-	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
-
-	// If the file handle is dirty then file-cache needs to flush this file
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
-
-	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
-	if err != nil {
-		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		if err == syscall.ENOENT {
-			return -C.ENOENT
-		} else if err == syscall.EACCES {
-			return -C.EACCES
-		} else {
-			return -C.EIO
-		}
-	}
-
-	handlemap.Delete(handle.ID)
-	C.release_native_file_object(fi)
-
-	// decrement open file handles count
-	libfuseStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
-
 	return 0
 }
 
