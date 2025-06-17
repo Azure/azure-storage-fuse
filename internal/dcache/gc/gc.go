@@ -35,12 +35,13 @@ package gc
 
 import (
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 )
 
@@ -59,10 +60,11 @@ var gc *GcInfo
 type gcFile struct {
 	file *dcache.FileMetadata
 	//
-	// When deletion failed for one or more MVs, it will be retired from this here.
+	// List of MVs to remove. It starts as file.FileLayout.MVList, but as MVs get deleted and one or more
+	// MVs fail, this will contain only those MVs which still need to be deleted in later retries.
 	//
-	retryMvList []string
-	retryCnt    int
+	removeMVList []string
+	retryCnt     int
 }
 
 func Start() {
@@ -71,15 +73,16 @@ func Start() {
 	// TODO: Experiment on large clusters and large files see if we need to increase/decrease.
 	//
 	gc = &GcInfo{
-		numGcWorkers:     100,
-		deletedFileQueue: make(chan *gcFile, 100),
+		numGcWorkers: 100,
+		// Allow more requests to be queued than workers.
+		deletedFileQueue: make(chan *gcFile, 1000),
 	}
 
 	for range gc.numGcWorkers {
 		go gc.worker()
 	}
 
-	log.Info("GC::startGC: started %d go routines for GC", gc.numGcWorkers)
+	log.Info("GC::startGC: started %d go routines for GC for deleted files chunks", gc.numGcWorkers)
 }
 
 func End() {
@@ -98,37 +101,43 @@ func (gc *GcInfo) worker() {
 }
 
 func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
-	if gcFile.retryCnt > 20 {
-		//
-		// The periodic GC thread will soon schedule this gcFile again for the deletion while listing the deleted files.
-		//
-		log.Warn("GC::removeAllChunksForFile: file: %s, retryCnt: %d, skipping the deletion of the chunks as max retries used",
-			gcFile.file.Filename, gcFile.retryCnt)
+	// We should be called only when we have at least one MV to delete.
+	common.Assert(len(gcFile.removeMVList) > 0, gcFile.file)
+
+	log.Debug("GC::removeAllChunksForFile: file: %s (%s), retryCnt: %d, MVs to delete: %v",
+		gcFile.file.Filename, gcFile.file.FileID, gcFile.retryCnt, gcFile.removeMVList)
+
+	//
+	// Log a warning log if we are not able to delete the file chunks after too many retries.
+	// In the common case we should be able to delete all the chunks in one/few call(s).
+	//
+	if gcFile.retryCnt > 100 {
+		log.Warn("GC::removeAllChunksForFile: file: %s (%s), retryCnt: %d, too many failures! %v of %v still need to be deleted",
+			gcFile.file.Filename, gcFile.file.FileID, gcFile.retryCnt,
+			gcFile.removeMVList, gcFile.file.FileLayout.MVList)
+		// TODO: This may fail when resync takes a long time due to too many chunks.
+		common.Assert(false, gcFile.file, gcFile)
 	}
 
-	log.Debug("GC::removeAllChunksForFile: file: %s, retryCnt: %d", gcFile.file.Filename, gcFile.retryCnt)
 	var errCM error
-	newRetryMvList := make([]string, 0)
-	gcFile.retryCnt++
-
-	mvs := gcFile.file.FileLayout.MVList
-	common.Assert(mvs != nil)
-
-	if len(gcFile.retryMvList) != 0 {
-		mvs = gcFile.retryMvList
-	}
+	retryMVList := make([]string, 0)
 
 	if gcFile.file.Size == 0 {
 		//
-		// There are no chunks assosiated with this file, remove the metadata file directly.
+		// There are no chunks associated with this file, remove the metadata file directly.
 		//
+		log.Debug("GC::removeAllChunksForFile: file: %s (%s), 0 byte file, no chunks to remove",
+			gcFile.file.Filename, gcFile.file.FileID)
+		common.Assert(gcFile.retryCnt == 0, gcFile.file, gcFile)
 		goto deleteMetadataFile
 	}
 
+	gcFile.retryCnt++
+
 	//
-	// Ensure the clustermap is refreshed from what we have cached right now. If there is an error while doing an RPC
-	// call for retrying the clustermap. We fail the call here and GC will retry the RemoveMV call again for those
-	// failed MV's.
+	// Refresh the clustermap to make sure we have the latest list of component RVs for each of the file MVs.
+	// Note that we need to delete chunks from all the component RVs. In case of any error in this function,
+	// we simply requeue the file for deletion and it'll be attempted again by one of the GC workers.
 	//
 	errCM = cm.RefreshClusterMap(0)
 	if errCM != nil {
@@ -138,10 +147,15 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 		//
 		// Schedule the delete file again for this file in GC.
 		//
-		newRetryMvList = mvs
+		retryMVList = gcFile.removeMVList
 	} else {
-
-		for _, mvName := range mvs {
+		//
+		// Call RemoveMV() for each MV of the file.
+		// It'll cause file chunks to be deleted from all component RVs by sending a RemoveChunk request to
+		// each of them.
+		// RemoveMV() returns success when all chunks of the file are successfully deleted from all component RVs.
+		//
+		for _, mvName := range gcFile.removeMVList {
 			removeMvRequest := &rm.RemoveMvRequest{
 				FileID: gcFile.file.FileID,
 				MvName: mvName,
@@ -149,21 +163,29 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 
 			_, err := rm.RemoveMV(removeMvRequest)
 			if err != nil {
-				log.Err("GC::removeAllChunksForFile: Failed to delete chunks from MV: %s, file: %s: %v",
-					mvName, gcFile.file.Filename, err)
-				newRetryMvList = append(newRetryMvList, mvName)
+				log.Err("GC::removeAllChunksForFile: Failed to delete one or more chunks from MV: %s, file: %s (%s): %v",
+					mvName, gcFile.file.Filename, gcFile.file.FileID, err)
+				// Queue the failed MV for deletion when GC retries file deletion.
+				retryMVList = append(retryMVList, mvName)
+			} else {
+				log.Debug("GC::removeAllChunksForFile: deleted all chunks from MV: %s, file: %s (%s)",
+					mvName, gcFile.file.Filename, gcFile.file.FileID)
 			}
 		}
 	}
 
-	if len(newRetryMvList) != 0 {
+	if len(retryMVList) != 0 {
 		//
-		// Retry this gcFile with new MVs again. Schedule the file Non-blocking to release this worker for the other
-		// files which are need to be GC'ed.
+		// Not all MVs fully deleted, schedule file deletion with the remaining MVs.
+		// We queue it to the end of the deletedFileQueue to let other file deletes proceed.
+		// We queue it for retrying after a wait hoping for the error condition to improve.
 		//
-		gcFile.retryMvList = newRetryMvList
+		// TODO: Make sure this doesn't cause too many go routines to be created.
+		//
+		gcFile.removeMVList = retryMVList
 
 		go func() {
+			time.Sleep(5 * time.Second)
 			gc.deletedFileQueue <- gcFile
 		}()
 
@@ -175,20 +197,20 @@ deleteMetadataFile:
 	deletedFile := dcache.GetDeletedFileName(gcFile.file.Filename, gcFile.file.FileID)
 	log.Debug("GC::removeAllChunksForFile: removing file layout for file: %s", deletedFile)
 
-	err := metadata_manager.DeleteFile(deletedFile)
+	err := mm.DeleteFile(deletedFile)
 	if err != nil {
+		// This will cause the file to hang around for ever.
 		log.Err("GC::removeAllChunksForFile: failed to remove file layout for file: %s: %v", deletedFile, err)
 		common.Assert(false, gcFile.file, err)
 		return
 	}
-
 }
 
-func AsyncFileChunkGarbageCollector(file *dcache.FileMetadata) {
+func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 	gcFile := &gcFile{
-		file:        file,
-		retryCnt:    1,
-		retryMvList: make([]string, 0),
+		file:         file,
+		retryCnt:     0,
+		removeMVList: file.FileLayout.MVList,
 	}
 	gc.deletedFileQueue <- gcFile
 }

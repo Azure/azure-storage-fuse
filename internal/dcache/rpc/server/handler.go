@@ -1928,7 +1928,6 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 
 	cacheDir := rvInfo.cacheDir
 	numChunksDeleted := int64(0)
-	needRetry := false
 
 	// MV directory containing the requested chunks.
 	mvDir := filepath.Join(cacheDir, req.Address.MvName)
@@ -1966,7 +1965,6 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 			// NumChunksDeleted == 0.
 			//
 			if numChunksDeleted > 0 {
-				needRetry = true
 				break
 			}
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
@@ -1979,8 +1977,8 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 			err = fmt.Errorf("Failed to remove chunk file: %s [%v]", dirent.Name(), err)
 			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
 			common.Assert(false, err)
+
 			if numChunksDeleted > 0 {
-				needRetry = true
 				break
 			}
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
@@ -1998,13 +1996,6 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
 		availableSpace = 0
-	}
-
-	//
-	// If there is no retry needed, Set the numChunksDeleted to zero to tell success to the caller.
-	//
-	if !needRetry {
-		numChunksDeleted = 0
 	}
 
 	resp := &models.RemoveChunkResponse{

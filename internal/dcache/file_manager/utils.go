@@ -305,7 +305,7 @@ func DeleteDcacheFile(fileName string) error {
 	// If safe-deletes config option is off then the file chunks can be deleted immediately o/w they
 	// can be deleted when the file OpenCount falls to 0.
 	//
-	gc.AsyncFileChunkGarbageCollector(fileMetadata)
+	gc.ScheduleChunkDeletion(fileMetadata)
 
 	return nil
 }

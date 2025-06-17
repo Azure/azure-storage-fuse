@@ -629,17 +629,24 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 		return nil, err
 	}
 
+	//
+	// Deleting file chunks from an MV amounts to deleting chunks for that file from all component RVs.
+	// Get the list of component RVs and send a RemoveChunk RPC to each.
+	//
 	mvState, rvs, _ := getComponentRVsForMV(req.MvName)
-
-	//
-	// Delete file chunks from all the online RVs first and return the retry error when there is an RV which is of state
-	// outofsync or syncing. RemoveMV would only return success when the component RVs have only online and offline state
-	// RVs and the deletion of the chunks from the online RVs are success.
-	//
 	retryNeeded := false
 
 	for _, rv := range rvs {
-
+		//
+		// We can only safely delete chunks from component RVs that are online.
+		// From offline RVs we cannot delete, as they may not be reachable.
+		// outofsync RVs may not yet have any chunks.
+		// syncing RVs may have chunks added to them while we are deleting, so we may miss some chunks.
+		//
+		// RemoveMV() succeeds only when it has deleted chunks from all online RVs and there are no
+		// outofsync or syncing RVs. If yes, then we simply return an error asking caller to retry after
+		// some time.
+		//
 		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) ||
 			rv.State == string(dcache.StateSyncing) {
 			log.Info("ReplicationManager::RemoveMV: skip deleting fileId %s chunks from %s/%s, rv state: %s",
@@ -651,71 +658,58 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 				//
 				retryNeeded = true
 			}
+
 			continue
 		}
 
-		if rv.State == string(dcache.StateOnline) {
-			// MV should not be offline.
-			common.Assert(mvState != dcache.StateOffline)
+		common.Assert(rv.State == string(dcache.StateOnline), rv.Name, req.MvName, rv.State)
+		// At least one RV online, MV should not be offline.
+		common.Assert(mvState != dcache.StateOffline)
 
-			// Remove all the chunks which were present in this RV..
-			rvId := getRvIDFromRvName(rv.Name)
-			targetNodeId := getNodeIDFromRVName(rv.Name)
+		// Remove all the chunks for the file which are present in this RV.
+		rvId := getRvIDFromRvName(rv.Name)
+		targetNodeId := getNodeIDFromRVName(rv.Name)
 
-			rpcReq := &models.RemoveChunkRequest{
-				Address: &models.Address{
-					FileID:      req.FileID,
-					RvID:        rvId,
-					MvName:      req.MvName,
-					OffsetInMiB: -1,
-				},
-				ComponentRV: rvs,
+		rpcReq := &models.RemoveChunkRequest{
+			Address: &models.Address{
+				FileID:      req.FileID,
+				RvID:        rvId,
+				MvName:      req.MvName,
+				OffsetInMiB: -1,
+			},
+			ComponentRV: rvs,
+		}
+
+		// Removing all chunks may take time, so we wait longer than usual RPCs.
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		rpcResp, err := rpc_client.RemoveChunk(ctx, targetNodeId, rpcReq)
+		if err == nil {
+			//
+			// Status success with numChunksdeleted==0 signifies RemoveChunk was able to successfully delete all
+			// chunks for the file and there are no more chunks left.
+			// Note that even if RemoveChunk is able to delete all chunks we still retry once and only in the
+			// next RemoveChunk call which does not find any chunks to be deleted, we consider rv/mv as fully
+			// deleted.
+			//
+			if rpcResp.NumChunksDeleted != 0 {
+				err = fmt.Errorf("Delete partial success for %s/%s fileID: %s, node %s, NumChunksDeleted: %d",
+					rv.Name, req.MvName, req.FileID, targetNodeId, rpcResp.NumChunksDeleted)
+				log.Debug("ReplicationManager::RemoveMV: %v", err)
+				return nil, err
 			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
-			defer cancel()
-
-			rpcResp, err := rpc_client.RemoveChunk(ctx, targetNodeId, rpcReq)
-			if err == nil {
-				//
-				// numChunksdeleted would be zero if the call dont need any retries. GC must retry for this MV again if
-				// it is non zero.
-				//
-				if rpcResp.NumChunksDeleted != 0 {
-					err = fmt.Errorf("Delete partially success for fileID: %s, RV: %s, node %s, NumChunksDeleted: %d",
-						req.FileID, rv.Name, targetNodeId, rpcResp.NumChunksDeleted)
-					log.Err("ReplicationManager::RemoveMV: %v", err)
-					common.Assert(false, err)
-					return nil, err
-				}
-			} else {
-
-				rpcErr := rpc.GetRPCResponseError(err)
-				log.Err("ReplicationManager::RemoveMV: Failed to delete chunks from RV: %d: %v", rv.Name, rpcErr)
-
-				if rpcErr == nil {
-					// TODO: This error must be handled
-					log.Err("ReplicationManager::RemoveMV: Delete failed for fileID: %s, RV: %s, node %s [%v]",
-						req.FileID, rv.Name, targetNodeId, err)
-					return nil, err
-				}
-
-				if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-					// This error will be retried by the gc.
-					return nil, err
-				}
-
-				//
-				// ErrorCode_ChunkNotFound is a valid error when the chunks were not present in the corresponding RV,
-				// hence there is no necessary for retring.
-				//
-			}
+		} else {
+			log.Err("ReplicationManager::RemoveMV: Failed to delete chunks from %s/%s, fileID: %s: %v",
+				rv.Name, req.MvName, req.FileID, err)
+			// Any error in deletion will cause GC to requeue and retry.
+			return nil, err
 		}
 	}
 
 	if retryNeeded {
-		err := fmt.Errorf("Retry needed as not all RVs are in online/offline state for fileID: %s, RVs: %x",
-			req.FileID, rvs)
+		err := fmt.Errorf("Retry needed as some RVs of %s may be synchronizing, fileID: %s, RVs: %v",
+			req.MvName, req.FileID, rvs)
 		log.Err("ReplicationManager::RemoveMV: %v", err)
 		return nil, err
 	}
