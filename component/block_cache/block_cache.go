@@ -43,11 +43,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"slices"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -1566,7 +1567,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 
 	// Make three attempts to upload all pending blocks
 	cnt := 0
-	for cnt = 0; cnt < 3; cnt++ {
+	for cnt = range 3 {
 		if handle.Buffers.Cooking.Len() == 0 {
 			break
 		}
@@ -1641,7 +1642,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 				restaged = true
 
 				// Next item after this block was a semi zero filler so remove that from the list now
-				blockIDList = append(blockIDList[:i+1], blockIDList[i+2:]...)
+				blockIDList = slices.Delete(blockIDList, i+1, i+2)
 				break
 			}
 		}
@@ -1667,7 +1668,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []stri
 	for k := range listMap {
 		offsets = append(offsets, k)
 	}
-	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+	slices.Sort(offsets)
 
 	zeroBlockStaged := false
 	zeroBlockID := ""

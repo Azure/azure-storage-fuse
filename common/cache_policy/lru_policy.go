@@ -168,7 +168,7 @@ func getKeyPair(node *list.Element) KeyPair {
 func (cache *LRUCache) evict() bool {
 	node := cache.List.Back()
 	pair := getKeyPair(node)
-	for i := 0; i < cache.List.Len(); i++ {
+	for range cache.List.Len() {
 		if !pair.value.Dirty() {
 			cache.Remove(pair.key)
 			return true

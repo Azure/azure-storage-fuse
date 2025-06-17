@@ -201,7 +201,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	go func() {
 		defer wg.Done()
 
-		for i := 0; i < int(numBlocks); i++ {
+		for range int(numBlocks) {
 			respSplitItem := <-responseChannel
 			if respSplitItem.Err != nil {
 				log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
@@ -223,7 +223,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		}
 	}()
 
-	for i := 0; i < int(numBlocks); i++ {
+	for i := range int(numBlocks) {
 		block := ds.blockPool.GetBlock(item.Priority)
 		if block == nil {
 			responseChannel <- &WorkItem{Err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.Path, offset)}

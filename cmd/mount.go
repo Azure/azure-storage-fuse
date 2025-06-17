@@ -58,6 +58,7 @@ import (
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
+	"slices"
 )
 
 type LogOptions struct {
@@ -445,11 +446,8 @@ var mountCmd = &cobra.Command{
 		common.EnableMonitoring = options.MonitorOpt.EnableMon
 
 		// check if blobfuse stats monitor is added in the disable list
-		for _, mon := range options.MonitorOpt.DisableList {
-			if mon == common.BfuseStats {
-				common.BfsDisabled = true
-				break
-			}
+		if slices.Contains(options.MonitorOpt.DisableList, common.BfuseStats) {
+			common.BfsDisabled = true
 		}
 
 		config.Set("mount-path", options.MountPath)
@@ -467,7 +465,7 @@ var mountCmd = &cobra.Command{
 			// Directio is enabled, so remove the attr-cache from the pipeline
 			for i, name := range options.Components {
 				if name == "attr_cache" {
-					options.Components = append(options.Components[:i], options.Components[i+1:]...)
+					options.Components = slices.Delete(options.Components, i, i+1)
 					log.Crit("Mount::runPipeline : Direct IO enabled, removing attr_cache from pipeline")
 					break
 				}

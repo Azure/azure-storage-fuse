@@ -89,7 +89,7 @@ func (suite *splitterTestSuite) TearDownSuite() {
 func createTestDirsAndFiles(path string, assert *assert.Assertions) {
 	createTestFiles(path, assert)
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		dirName := filepath.Join(path, fmt.Sprintf("dir_%v", i))
 		err := os.MkdirAll(dirName, 0777)
 		assert.Nil(err)
@@ -99,7 +99,7 @@ func createTestDirsAndFiles(path string, assert *assert.Assertions) {
 }
 
 func createTestFiles(path string, assert *assert.Assertions) {
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		filePath := filepath.Join(path, fmt.Sprintf("file_%v", i))
 		f, err := os.Create(filePath)
 		defer func() {

@@ -54,6 +54,7 @@ import (
 	"syscall"
 
 	"gopkg.in/ini.v1"
+	"slices"
 )
 
 var RootMount bool
@@ -71,7 +72,7 @@ func IsDirectoryMounted(path string) bool {
 	// removing trailing / from the path
 	path = strings.TrimRight(path, "/")
 
-	for _, line := range strings.Split(string(mntList), "\n") {
+	for line := range strings.SplitSeq(string(mntList), "\n") {
 		if strings.TrimSpace(line) != "" {
 			mntPoint := strings.Split(line, " ")[1]
 			if path == mntPoint {
@@ -105,8 +106,8 @@ func IsMountActive(path string) (bool, error) {
 
 	// out contains the list of pids of the processes that are running
 	pidString := strings.Replace(out.String(), "\n", " ", -1)
-	pids := strings.Split(pidString, " ")
-	for _, pid := range pids {
+	pids := strings.SplitSeq(pidString, " ")
+	for pid := range pids {
 		// Get the mount path for this pid
 		// For this we need to check the command line arguments given to this command
 		// If the path is same then we need to return true
@@ -533,13 +534,7 @@ func GetMD5(fi *os.File) ([]byte, error) {
 }
 
 func ComponentInPipeline(pipeline []string, component string) bool {
-	for _, comp := range pipeline {
-		if comp == component {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(pipeline, component)
 }
 
 func ValidatePipeline(pipeline []string) error {
