@@ -142,6 +142,8 @@ func getMVsPerRV() int64 {
 	return int64(cm.GetCacheConfig().MvsPerRv)
 }
 
+// This method is wrapper for the GetChunk() RPC call. It is used when the both the client and server
+// belong to the same node, i.e. the RPC is called locally.
 func GetChunk(ctc context.Context, myNodeId string, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(req.Address != nil)
@@ -153,4 +155,18 @@ func GetChunk(ctc context.Context, myNodeId string, req *models.GetChunkRequest)
 	common.Assert(handler != nil)
 
 	return handler.GetChunk(ctc, req)
+}
+
+// This method is wrapper for the GetMVSize() RPC call. It is used when the both the client and server
+// belong to the same node, i.e. the RPC is called locally.
+func GetMVSize(ctc context.Context, myNodeId string, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
+	common.Assert(req != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
+
+	common.Assert(handler != nil)
+
+	return handler.GetMVSize(ctc, req)
 }

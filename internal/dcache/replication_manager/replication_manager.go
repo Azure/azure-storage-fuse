@@ -230,10 +230,14 @@ retry:
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		if !isLocalRV {
-			rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
-		} else {
+		//
+		// If the selected RV is local, then we directly call the GetChunk() method using the
+		// local server's handler. Else we call the GetChunk() RPC via the Thrift RPC client.
+		//
+		if isLocalRV {
 			rpcResp, err = rpc_server.GetChunk(ctx, targetNodeID, rpcReq)
+		} else {
+			rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
 		}
 
 		// Exclude this RV from further iterations (if any).
@@ -1528,7 +1532,7 @@ retry:
 	var excludeRVs []string
 
 	for {
-		readerRV, _ := getReaderRV(componentRVs, excludeRVs)
+		readerRV, isLocalRV := getReaderRV(componentRVs, excludeRVs)
 
 		if readerRV == nil {
 			//
@@ -1583,7 +1587,18 @@ retry:
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		resp, err := rpc_client.GetMVSize(ctx, targetNodeID, req)
+		//
+		// If the selected RV is local, then we directly call the GetMVSize() method using the
+		// local server's handler. Else we call the GetMVSize() RPC via the Thrift RPC client.
+		//
+		var resp *models.GetMVSizeResponse
+		var err error
+
+		if isLocalRV {
+			resp, err = rpc_server.GetMVSize(ctx, targetNodeID, req)
+		} else {
+			resp, err = rpc_client.GetMVSize(ctx, targetNodeID, req)
+		}
 
 		// Exclude this RV from further iterations (if any).
 		excludeRVs = append(excludeRVs, readerRV.Name)

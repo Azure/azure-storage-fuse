@@ -106,6 +106,15 @@ func (s PutChunkStyleEnum) String() string {
 // and different NumReplicas configuration).
 var PutChunkStyle PutChunkStyleEnum = DaisyChain
 
+// Return the most suitable online RV from the list of component RVs to which we should send the RPC call.
+// The RV is selected based on the following criteria:
+//  1. Local online RV is preferred, if available.
+//  2. Else, select a random online RV from the list of component RVs.
+//
+// This method also takes an excludeRVs list, which is used to skip the RVs that should not be selected.
+// If local RV is selected, return true to indicate the caller that local RV is selected.
+// This is useful for the caller to decide if the RV is local, it can directly call the RPC methods
+// using the server's handler, without going through the general Thirft RPC flow.
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) (*models.RVNameAndState, bool) {
 	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v",
 		rpc.ComponentRVsToString(componentRVs), excludeRVs)
