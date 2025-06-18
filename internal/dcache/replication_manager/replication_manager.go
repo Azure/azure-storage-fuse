@@ -693,7 +693,7 @@ processResponses:
 
 			// BrokenChain error should not be returned for the nexthop RV to which we send the
 			// PutChunkDC request. It should only be returned for the next RVs.
-			common.Assert(respItem.rvName != getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID),
+			common.Assert(getRvIDFromRvName(respItem.rvName) != putChunkDCReq.Request.Chunk.Address.RvID,
 				respItem.rvName, putChunkDCReq.Request.Chunk.Address.RvID)
 
 			brokenChain = true
