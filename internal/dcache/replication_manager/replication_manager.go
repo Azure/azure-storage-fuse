@@ -331,6 +331,13 @@ retry:
 	}
 
 	//
+	// Flag to indicate if we are writing to a local RV.
+	// If yes, we can call the PutChunk() or PutChunkDC() method directly on the local server's handler.
+	// Else we will call the PutChunk() or PutChunkDC() RPC via the Thrift RPC client.
+	//
+	isLocalRV := false
+
+	//
 	// Get component RVs for MV, from clustermap and also the corresponding clustermap epoch.
 	// If server returns NeedToRefreshClusterMap, we will ask cm.RefreshClusterMap() to update
 	// the clustermap to a value higher than this epoch.
@@ -436,8 +443,12 @@ retry:
 			if targetNodeID == rpc.GetMyNodeUUID() {
 				// Only one component RV can be local.
 				common.Assert(putChunkDCReq.Request.Chunk.Address.RvID == "",
-					putChunkDCReq.Request.Chunk.Address.String())
+					putChunkDCReq.Request.Chunk.Address.String(), rv.Name, rvID)
+				common.Assert(!isLocalRV,
+					putChunkDCReq.Request.Chunk.Address.String(), rv.Name, rvID)
+
 				putChunkDCReq.Request.Chunk.Address.RvID = rvID
+				isLocalRV = true
 			} else {
 				// Non-local component RVs get added to putChunkDCReq.NextRVs.
 				putChunkDCReq.NextRVs = append(putChunkDCReq.NextRVs, rv.Name)
@@ -463,6 +474,8 @@ retry:
 	if putChunkDCReq.Request.Chunk.Address.RvID == "" {
 		// There is at least one component RV that we want to write to.
 		common.Assert(len(putChunkDCReq.NextRVs) > 0)
+
+		common.Assert(!isLocalRV)
 
 		rvName := putChunkDCReq.NextRVs[0]
 		rvID := getRvIDFromRvName(rvName)
@@ -499,6 +512,7 @@ retry:
 		rm.tp.schedule(&workitem{
 			targetNodeID: targetNodeID,
 			rvName:       rvName,
+			isLocalRV:    isLocalRV,
 			putChunkReq:  putChunkDCReq.Request,
 			respChannel:  responseChannel,
 		}, isLastComponentRV /* runInline */)
@@ -553,7 +567,19 @@ retry:
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		putChunkDCResp, err := rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+		var putChunkDCResp *models.PutChunkDCResponse
+		var err error
+
+		//
+		// If the selected RV is local, then we directly call the PutChunkDC() method using the
+		// local server's handler. Else we call the PutChunkDC() RPC via the Thrift RPC client.
+		//
+		if isLocalRV {
+			putChunkDCResp, err = rpc_server.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+		} else {
+			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+		}
+
 		if err != nil {
 			log.Err("ReplicationManager::WriteMV: Failed to send PutChunkDC request for nexthop %s/%s to node %s: %v",
 				rvName, req.MvName, targetNodeID, err)
@@ -1593,13 +1619,13 @@ retry:
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
+		var resp *models.GetMVSizeResponse
+		var err error
+
 		//
 		// If the selected RV is local, then we directly call the GetMVSize() method using the
 		// local server's handler. Else we call the GetMVSize() RPC via the Thrift RPC client.
 		//
-		var resp *models.GetMVSizeResponse
-		var err error
-
 		if isLocalRV {
 			resp, err = rpc_server.GetMVSize(ctx, targetNodeID, req)
 		} else {

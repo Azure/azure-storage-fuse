@@ -45,6 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 type threadpool struct {
@@ -64,6 +65,9 @@ type workitem struct {
 
 	// RV name of the target node.
 	rvName string
+
+	// Flag to indicate if the request is for the local RV.
+	isLocalRV bool
 
 	// Put Chunk RPC request.
 	putChunkReq *models.PutChunkRequest
@@ -143,7 +147,7 @@ func (tp *threadpool) runItem(item *workitem) {
 	common.Assert(item.isValid(), item.toString())
 
 	if item.putChunkReq != nil {
-		resp, err := processPutChunk(item.targetNodeID, item.putChunkReq)
+		resp, err := processPutChunk(item.targetNodeID, item.putChunkReq, item.isLocalRV)
 
 		item.respChannel <- &responseItem{
 			rvName:       item.rvName,
@@ -196,15 +200,19 @@ func (item *workitem) isValid() bool {
 	return true
 }
 
-func processPutChunk(targetNodeID string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
+func processPutChunk(targetNodeID string, req *models.PutChunkRequest, isLocalRV bool) (*models.PutChunkResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(common.IsValidUUID(targetNodeID), targetNodeID)
 
-	log.Debug("ReplicationManager::processPutChunk: Sending PutChunk request to node %s: %s",
-		targetNodeID, rpc.PutChunkRequestToString(req))
+	log.Debug("ReplicationManager::processPutChunk: Sending PutChunk request to node %s (local=%v): %s",
+		targetNodeID, isLocalRV, rpc.PutChunkRequestToString(req))
 
 	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 	defer cancel()
 
-	return rpc_client.PutChunk(ctx, targetNodeID, req)
+	if isLocalRV {
+		return rpc_server.PutChunk(ctx, targetNodeID, req)
+	} else {
+		return rpc_client.PutChunk(ctx, targetNodeID, req)
+	}
 }
