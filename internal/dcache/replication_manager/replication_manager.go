@@ -690,6 +690,12 @@ processResponses:
 			// BrokenChain error can only be returned for PutChunkStyle DaisyChain.
 			common.Assert(PutChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
 				PutChunkStyle, len(putChunkDCReq.NextRVs))
+
+			// BrokenChain error should not be returned for the nexthop RV to which we send the
+			// PutChunkDC request. It should only be returned for the next RVs.
+			common.Assert(respItem.rvName != getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID),
+				respItem.rvName, putChunkDCReq.Request.Chunk.Address.RvID)
+
 			brokenChain = true
 
 			log.Debug("ReplicationManager::WriteMV: PutChunkDC call not forwarded to %s/%s [%v]",
