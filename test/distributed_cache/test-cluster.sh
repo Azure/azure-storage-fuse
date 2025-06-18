@@ -6,10 +6,12 @@
 # scenarios. It runs from one of the cluster node and uses passwordless ssh
 # login to other nodes to run commands on remote nodes for simulating various
 # node (un) reachability scenarios.
+#
 # Here are some pre-requisites for this script:
 # - passwordless ssh must be configured from any node to any node in the cluster.
 # - /etc/hosts must have entries added so that vmN can be used to connect to
 #   node N, f.e., vm1, vm2, etc.
+# - 'jq' command-line JSON processor must be installed on the nodes.
 #
 # Q: What does this script do?
 # A: It starts/stops blobfuse on various nodes and checks cluster health by
@@ -181,13 +183,39 @@ wait_till_next_scheduled_epoch()
     sleep $secs_to_next_epoch
     echo "Done"
 }
+
+wait_till_hb_expiry()
+{
+    local next_epoch=$(expr $LAST_UPDATED_AT + $CLUSTERMAP_EPOCH)
+
+    local now=$(date +%s)
+    local secs_to_next_epoch=$(expr $next_epoch - $now)
+   # Check if we're close to the heartbeat timeout boundary
+    local heartbeat_timeout=$(expr $HB_SECONDS \* $HB_TILL_NODE_DOWN - 2)
+    local secs_to_next_epoch_with_buffer
+
+    if [ $secs_to_next_epoch -lt $heartbeat_timeout ]; then
+    # Add an additional epoch period if we're close to timeout
+    secs_to_next_epoch_with_buffer=$(expr $secs_to_next_epoch + $CLUSTERMAP_EPOCH + 5)
+    echo "Close to heartbeat timeout boundary, adding extra epoch wait time"
+    else
+        # Otherwise just add a small buffer
+        secs_to_next_epoch_with_buffer=$(expr $secs_to_next_epoch + 5)
+    fi
+
+    echo "Sleeping $secs_to_next_epoch_with_buffer seconds till next epoch..."
+    sleep $secs_to_next_epoch_with_buffer
+    echo "Done"
+}
+
 cleanup()
 {
     wbecho "Stopping blobfuse on started nodes..."
 
-    stop_blobfuse_on_node vm1
-    stop_blobfuse_on_node vm2
-    stop_blobfuse_on_node vm3
+    # Assuming `NODES_STARTED` contains the list of started nodes (e.g., "vm1 vm2 vm3")
+    for vm_name in $NODES_STARTED; do
+        stop_blobfuse_on_node $vm_name
+    done
 
     wbecho "Stop completed."
 }
@@ -204,6 +232,7 @@ start_blobfuse_on_node()
 
     # Give some time for blobfuse process to start.
     sleep 2
+    NODES_STARTED="$NODES_STARTED $vm" # Add to list of started nodes for cleanup
 }
 
 stop_blobfuse_on_node()
@@ -419,6 +448,8 @@ get_mvs_count_for_given_rv_with_state()
 mkdir -p $LOGDIR
 rm -rf $LOGDIR/*
 
+# List of nodes that have been started, for cleanup
+NODES_STARTED=""
 trap cleanup EXIT
 
 ############################################################################
@@ -498,11 +529,41 @@ else
 fi
 log_status $? "is $readonly_flag"
 
-becho -n "Write 10MB data in azure"
-file_name="10MB.azure"
-write_data_in_azure vm1 $file_name 1M 10
-md5sum=$(get_md5sum vm1 $file_name azure)
+becho -n "Azure File creation must work"
+echo azure > $MOUNTDIR/fs=azure/file1.azure
+[ -f $MOUNTDIR/fs=azure/file1.azure ]
 log_status $?
+
+becho -n "List file must return 1 file over azure ns"
+file_count=$(ls $MOUNTDIR/fs=azure | wc -l)
+[ "$file_count" -eq 1 ]
+log_status $? "Expected 1 file but found $file_count"
+
+becho -n "Azure file Read must work"
+buf=$(cat $MOUNTDIR/fs=azure/file1.azure)
+[ $? -eq 0 -a "$buf" == "azure" ]
+log_status $? "buf: $buf"
+
+becho -n "Dcache File creation must fail"
+echo dcache > $MOUNTDIR/fs=dcache/file1.dcache
+[ ! -f $MOUNTDIR/fs=dcache/file1.dcache ]
+log_status $?
+
+becho -n "List file must fail over dcache ns"
+file_count=$(ls $MOUNTDIR/fs=dcache | wc -l)
+[ "$file_count" -eq 0 ]
+log_status $? "Expected 0 file but found $file_count"
+
+becho -n "Unqualified path File creation must fail"
+echo both > $MOUNTDIR/file1.both
+[ ! -f $MOUNTDIR/file1.both ]
+log_status $?
+
+becho -n "List file must succeed over unqualified path"
+file_count=$(ls $MOUNTDIR | wc -l)
+[ "$file_count" -eq 1 ]
+log_status $? "Expected 1 file but found $file_count"
+
 
 
 ############################################################################
@@ -608,6 +669,41 @@ becho -n "Epoch must be 3 on vm2"
 epoch=$(echo "$cm" | jq '."epoch"')
 [ "$epoch" == "3" ]
 log_status $? "is $epoch"
+
+becho -n "Azure File creation must work"
+echo azure > $MOUNTDIR/fs=azure/file2.azure
+[ -f $MOUNTDIR/fs=azure/file2.azure ]
+log_status $?
+
+becho -n "List file must return 2 file over azure ns"
+file_count=$(ls $MOUNTDIR/fs=azure | wc -l)
+[ "$file_count" -eq 2 ]
+log_status $? "Expected 2 file but found $file_count"
+
+becho -n "Azure file Read must work"
+buf=$(cat $MOUNTDIR/fs=azure/file2.azure)
+[ $? -eq 0 -a "$buf" == "azure" ]
+log_status $? "buf: $buf"
+
+becho -n "Dcache File creation must fail"
+echo dcache > $MOUNTDIR/fs=dcache/file1.dcache
+[ ! -f $MOUNTDIR/fs=dcache/file1.dcache ]
+log_status $?
+
+becho -n "List file must fail over dcache ns"
+file_count=$(ls $MOUNTDIR/fs=dcache | wc -l)
+[ "$file_count" -eq 0 ]
+log_status $? "Expected 0 file but found $file_count"
+
+becho -n "Unqualified path File creation must fail"
+echo both > $MOUNTDIR/file1.both
+[ ! -f $MOUNTDIR/file1.both ]
+log_status $?
+
+becho -n "List file must return 2 file over unqualified path"
+file_count=$(ls $MOUNTDIR | wc -l)
+[ "$file_count" -eq 2 ]
+log_status $? "Expected 2 file but found $file_count"
 
 LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
 LAST_EPOCH=$(echo "$cm" | jq '."epoch"')
@@ -729,15 +825,25 @@ becho -n "Reading clustermap on vm3"
 cm=$(read_clustermap_from_node vm3)
 log_status $?
 
-becho -n "RV count must be 3"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "3" ]
-log_status $? "is $rv_count"
-
 becho -n "Epoch must be 5 on vm3"
 epoch=$(echo "$cm" | jq '."epoch"')
 [ "$epoch" == "5" ]
 log_status $? "is $epoch"
+
+LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
+#
+# Wait for other VMs to get the updated clustermap.
+#
+wait_till_next_scheduled_epoch
+
+becho -n "Reading clustermap on vm1"
+cm=$(read_clustermap_from_node vm1)
+log_status $?
+
+becho -n "RV count must be 3"
+rv_count=$(get_rv_count "$cm")
+[ "$rv_count" == "3" ]
+log_status $? "is $rv_count"
 
 becho -n "Cluster readonly flag must be false"
 readonly_flag=$(echo "$cm" | jq '."readonly"')
@@ -761,140 +867,51 @@ online_mv_count=$(get_mv_count_with_state "$cm" "online")
 [ "$online_mv_count" -eq "$mv_count" ]
 log_status $? "online MVs: $online_mv_count, total MVs: $mv_count"
 
-
-becho -n "Write 10MB data in dcache"
-file_name="10MB.dcache"
-write_data_in_dcache vm3 $file_name 1M 10
-dcache_10MB_md5sum=$(get_md5sum vm3 $file_name dcache)
+becho -n "Azure File creation must work"
+echo azure > $MOUNTDIR/fs=azure/file3.azure
+[ -f $MOUNTDIR/fs=azure/file3.azure ]
 log_status $?
 
-becho -n "Write 10MB data at cachepoint"
-file_name="10MB.both"
-write_data_in_mountdir vm3 $file_name 1M 10
-both_10MB_md5sum=$(get_md5sum vm3 $file_name)
+becho -n "List file must return 3 file over azure ns"
+file_count=$(ls $MOUNTDIR/fs=azure | wc -l)
+[ "$file_count" -eq 3 ]
+log_status $? "Expected 3 file but found $file_count"
+
+becho -n "Azure file Read must work"
+buf=$(cat $MOUNTDIR/fs=azure/file3.azure)
+[ $? -eq 0 -a "$buf" == "azure" ]
+log_status $? "buf: $buf"
+
+becho -n "Dcache File creation must work"
+echo dcache > $MOUNTDIR/fs=dcache/file1.dcache
+[ -f $MOUNTDIR/fs=dcache/file1.dcache ]
 log_status $?
 
-############################################################################
-##              Stop node2 And Verify Degraded Workflow                  ##
-############################################################################
+becho -n "List file over dcache path must return 1 filed"
+file_count=$(ls $MOUNTDIR/fs=dcache | wc -l)
+[ "$file_count" -eq 1 ]
+log_status $? "Expected 1 file but found $file_count"
 
-echo
-wbecho ">> Stoping blobfuse on vm2 for Degraded workflow"
-echo
-stop_blobfuse_on_node vm2
-
-becho -n "Reading clustermap on vm3"
-cm=$(read_clustermap_from_node vm3)
+becho -n "Unqualified path File creation must work"
+echo both > $MOUNTDIR/file1.both
+[ -f $MOUNTDIR/file1.both ]
 log_status $?
 
-LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
+becho -n "List file must return 5 file over unqualified path"
+file_count=$(ls $MOUNTDIR | wc -l)
+[ "$file_count" -eq 5 ]
+log_status $? "Expected 5 but found $file_count"
 
-#
-# Wait for next epoch on vm3.
-# After that it'll get the degraded clustermap updated by vm3.
-#
-wait_till_next_scheduled_epoch
-
-becho -n "Reading clustermap on vm3"
-cm=$(read_clustermap_from_node vm3)
+becho -n "Write 4GB data in dcache"
+file_name="4GB.dcache"
+write_data_in_dcache vm3 $file_name 1G 4
+dcache_4GB_md5sum=$(get_md5sum vm3 $file_name dcache)
 log_status $?
 
-becho -n "All MVs must be degraded"
-degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
-[ "$degraded_mv_count" -eq "$mv_count" ]
-log_status $? "degraded MVs: $degraded_mv_count, total MVs: $mv_count"
-
-
-becho -n "Reading offline RV count"
-vm2_node_id=$(get_node_id vm2)
-offline_rv_list=$(get_rv_list_for_node_with_state "$cm" "$vm2_node_id" "offline")
-log_status $? "RV list: $offline_rv_list"
-
-
-becho -n "All component RV for vm2 must be offline"
-offline_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$offline_rv_list" "offline")
-degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
-[ "$degraded_mv_count" -eq "$offline_component_rv_count" ]
-log_status $? "degraded MVs: $degraded_mv_count, offline component RVs count: $offline_component_rv_count"
-
-
-############################################################################
-##              Start node2 And Verify Fix Workflow                      ##
-############################################################################
-
-echo
-wbecho ">> Starting blobfuse on vm2 for Fix workflow"
-echo
-start_blobfuse_on_node vm2
-
-becho -n "Reading clustermap on vm2"
-cm=$(read_clustermap_from_node vm2)
+becho -n "Write 4GB data at cachepoint"
+file_name="4GB.both"
+write_data_in_mountdir vm3 $file_name 1G 4
+both_4GB_md5sum=$(get_md5sum vm3 $file_name)
 log_status $?
 
-LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
-
-#
-# Wait for next epoch on vm2.
-# After that it'll run the Fix mv workflow.
-#
-wait_till_next_scheduled_epoch
-
-becho -n "Reading clustermap on vm2"
-cm=$(read_clustermap_from_node vm2)
-log_status $?
-
-becho -n "All degraded MV's replacement rv must be outofsync"
-outofsync_rv_list=$(get_rv_list_for_node "$cm" "$vm2_node_id")
-outofsync_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$outofsync_rv_list" "outofsync")
-degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
-[ "$degraded_mv_count" -eq "$offline_component_rv_count" ]
-log_status $? "degraded MVs: $degraded_mv_count, offline component RVs count: $offline_component_rv_count"
-
-becho -n "last_updated_by must be vm2"
-last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
-[ "$last_updated_by" == "$(get_node_id vm2)" ]
-log_status $? "is $last_updated_by"
-
-############################################################################
-##                           Verify Re-Sync Workflow                      ##
-############################################################################
-
-becho -n "Reading clustermap on vm1"
-cm=$(read_clustermap_from_node vm1)
-log_status $?
-
-LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
-
-#
-# Wait for next epoch on vm1 to read the current outofsync components.
-#
-wait_till_next_scheduled_epoch
-
-#
-# Wait for resync workflow to get triggered.
-#
-sleep $RESYNC_INTERVAL
-
-becho -n "Reading clustermap on vm1"
-cm=$(read_clustermap_from_node vm1)
-log_status $?
-
-becho -n "All MVs must be syncing/online"
-syncing_mv_count=$(get_mv_count_with_state "$cm" "syncing")
-online_mv_count=$(get_mv_count_with_state "$cm" "online")
-total_active_mvs=$(($syncing_mv_count + $online_mv_count))
-[ "$total_active_mvs" -eq "$mv_count" ]
-log_status $? "Syncing MVs: $syncing_mv_count, Online MVs: $online_mv_count, Total MVs: $mv_count"
-
-becho -n "last_updated_by must be vm1"
-last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
-[ "$last_updated_by" == "$(get_node_id vm1)" ]
-log_status $? "is $last_updated_by"
-
-becho -n "File Md5sum must be intact after resync"
-dcache_10MB_md5sum_after_resync=$(get_md5sum vm2 10MB.dcache dcache)
-both_10MB_md5sum_after_resync=$(get_md5sum vm2 10MB.both)
-[ "$dcache_10MB_md5sum_after_resync" == "$dcache_10MB_md5sum" ]
-log_status $? "dcache md5sum before resync: $dcache_10MB_md5sum, after resync: $dcache_10MB_md5sum_after_resync"
-[ "$both_10MB_md5sum_after_resync" == "$both_10MB_md5sum" ]
-log_status $? "both md5sum before resync: $both_10MB_md5sum, after resync: $both_10MB_md5sum_after_resync"  
+LAST_EPOCH=$(echo "$cm" | jq '."epoch"')
