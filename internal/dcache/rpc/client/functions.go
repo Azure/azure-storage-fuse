@@ -359,6 +359,106 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 		targetNodeID, reqStr)
 }
 
+// This is the daisy chain PutChunk function.
+// Unlike PutChunk() that writes a chunk to one component RV, PutChunkDC() writes the chunk to one RV (called
+// the nexthop RV) and additionally provides a list of other component RVs to which the chunk must be written.
+// The node receiving the PutChunkDCRequest (which hosts the nexthop RV) writes the chunk to its local RV, and
+// relays the request to the new nexthop along with the remaining RV list. This goes on in a daisy chain fashion
+// till all the component RVs are covered.
+func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
+	common.Assert(req != nil &&
+		req.Request != nil &&
+		req.Request.Chunk != nil &&
+		req.Request.Chunk.Address != nil)
+
+	// Caller must call PutChunkDC() only if it wants the request to be daisy chained to at least one more RV.
+	common.Assert(len(req.NextRVs) > 0)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.Request.SenderNodeID) == 0, req.Request.SenderNodeID)
+	req.Request.SenderNodeID = myNodeId
+
+	reqStr := rpc.PutChunkDCRequestToString(req)
+	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to nexthop node %s and %d daisy chain RV(s): %v",
+		targetNodeID, len(req.NextRVs), reqStr)
+
+	//
+	// We retry once after resetting bad connections.
+	//
+	for i := 0; i < 2; i++ {
+		// Get RPC client from the client pool.
+		client, err := cp.getRPCClient(targetNodeID)
+		if err != nil {
+			log.Err("rpc_client::PutChunkDC: Failed to get RPC client for node %s %v: %v",
+				targetNodeID, reqStr, err)
+			return nil, err
+		}
+
+		// Call the rpc method.
+		resp, err := client.svcClient.PutChunkDC(ctx, req)
+		if err != nil {
+			log.Err("rpc_client::PutChunkDC: PutChunkDC failed to node %s %v: %v",
+				targetNodeID, reqStr, err)
+
+			//
+			// If the failure is due to a stale connection to a node that has restarted, reset the connections
+			// and retry once more.
+			//
+			if rpc.IsBrokenPipe(err) {
+				err1 := cp.resetAllRPCClients(client)
+				if err1 != nil {
+					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
+						targetNodeID, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					return nil, err
+				}
+
+				// Retry PutChunkDC once more with fresh connection.
+				continue
+			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			// Fall through to release the RPC client.
+			resp = nil
+		}
+
+		// Release RPC client back to the pool.
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
+			log.Err("rpc_client::PutChunkDC: Failed to release RPC client for node %s %v: %v",
+				targetNodeID, reqStr, err1)
+			// Assert, but not fail the PutChunkDC call.
+			common.Assert(false, err1)
+		}
+
+		return resp, err
+	}
+
+	//
+	// We come here when we could not succeed even after resetting stale connections and retrying.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
+	//
+	return nil, fmt.Errorf("rpc_client::PutChunkDC: Could not find a valid RPC client for node %s %v",
+		targetNodeID, reqStr)
+}
+
 func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
 	common.Assert(req != nil && req.Address != nil)
 
