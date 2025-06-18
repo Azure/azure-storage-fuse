@@ -143,6 +143,40 @@ func PutChunkResponseToString(resp *models.PutChunkResponse) string {
 		resp.TimeTaken, resp.AvailableSpace, ComponentRVsToString(resp.ComponentRV))
 }
 
+// convert *models.PutChunkDCRequest to string
+// used for logging
+func PutChunkDCRequestToString(req *models.PutChunkDCRequest) string {
+	return fmt.Sprintf("{PutChunkRequest %s, NextRVs (%d) %v}",
+		PutChunkRequestToString(req.Request), len(req.NextRVs), req.NextRVs)
+}
+
+// convert *models.PutChunkDCRequest to string
+// used for logging
+func PutChunkDCResponseToString(response *models.PutChunkDCResponse) string {
+	// We should never have a PutChunkDCResponse with no responses.
+	common.Assert(len(response.Responses) > 0)
+
+	str := strings.Builder{}
+	str.WriteString("[\n")
+
+	for rvName, resp := range response.Responses {
+		common.Assert(resp != nil)
+		// One and only one of Response or Error will be nil/non-nil.
+		if resp.Response != nil {
+			common.Assert(resp.Error == nil)
+			str.WriteString(fmt.Sprintf("{%s : {PutChunkResponse %s}}\n",
+				rvName, PutChunkResponseToString(resp.Response)))
+		} else {
+			common.Assert(resp.Error != nil)
+			str.WriteString(fmt.Sprintf("{%s : {Error: %s}}\n",
+				rvName, resp.Error.String()))
+		}
+	}
+
+	str.WriteString("]")
+	return str.String()
+}
+
 // convert *models.RemoveChunkRequest to string
 // used for logging
 func RemoveChunkRequestToString(req *models.RemoveChunkRequest) string {
@@ -193,4 +227,50 @@ func EndSyncRequestToString(req *models.EndSyncRequest) string {
 // used for logging
 func GetMVSizeRequestToString(req *models.GetMVSizeRequest) string {
 	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v}", req.SenderNodeID, req.MV, req.RVName)
+}
+
+// The caller of PutChunkDC() RPC can make this call to handle the error returned by PutChunkDC().
+// It converts the error received from the nexthop RV to ThriftError.
+// This error indicates that the PutChunkDC call was not forwarded to the next RVs, so it adds BrokenChain
+// error for all the next RVs.
+func HandlePutChunkDCError(nexthopRV string, nextRVs []string, mvName string, nexthopErr error) *models.PutChunkDCResponse {
+	// We should be called only when nexthop error is not nil.
+	common.Assert(nexthopErr != nil)
+
+	rpcErr := GetRPCResponseError(nexthopErr)
+	if rpcErr == nil {
+		//
+		// This error indicates some Thrift error like connection error, timeout, etc. or,
+		// it could be an RPC client side error like failed to get RPC client for target node.
+		// We wrap this error in *models.ResponseError with code ThriftError.
+		// This is to ensure that the client can take appropriate action based on this error code.
+		//
+		rpcErr = NewResponseError(models.ErrorCode_ThriftError, nexthopErr.Error())
+	}
+
+	dcResp := &models.PutChunkDCResponse{
+		Responses: map[string]*models.PutChunkResponseOrError{
+			nexthopRV: {
+				Response: nil,    // PutChunkDC failed for the current RV
+				Error:    rpcErr, // Error for the current RV
+			},
+		},
+	}
+
+	for _, rvName := range nextRVs {
+		common.Assert(rvName != nexthopRV, rvName, nexthopRV)
+
+		//
+		// For the next RVs, we will return a BrokenChain error indicating that the PutChunkDC call
+		// was not forwarded to them.
+		//
+		dcResp.Responses[rvName] = &models.PutChunkResponseOrError{
+			Response: nil, // PutChunkDC was not forwarded to this RV
+			Error: NewResponseError(models.ErrorCode_BrokenChain,
+				fmt.Sprintf("PutChunkDC call was not forwarded to %s/%s by nexthop %s/%s",
+					rvName, mvName, nexthopRV, mvName)),
+		}
+	}
+
+	return dcResp
 }

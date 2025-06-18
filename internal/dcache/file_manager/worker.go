@@ -166,7 +166,7 @@ func (wp *workerPool) writeChunk(task *task) {
 		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),
 	}
 
-	// Call MvWrite method for writing the chunk.
+	// Call WriteMV method for writing the chunk.
 	_, err := rm.WriteMV(writeMVReq)
 	if err == nil {
 		// WriteMV completed successfully, staged chunk is now no more dirty.

@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -48,6 +49,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	gouuid "github.com/google/uuid"
@@ -307,6 +309,20 @@ func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState,
 		lmt:          time.Now(),
 		lmb:          joinedBy,
 	}
+}
+
+// This is a test trick to dummy out the reads/writes in order to test files larger than the RV available space.
+// Dummy writes simply skip and no chunks are created, while dummy reads return 0s.
+func performDummyReadWrite() bool {
+	if !common.IsDebugBuild() {
+		return false
+	}
+
+	// Test for the presence of the special marker file.
+	dummyFile := "/tmp/DCACHE_DUMMY_RW"
+
+	_, err := os.Stat(dummyFile)
+	return err == nil
 }
 
 // Check if the given mvPath is valid on this node.
@@ -1544,28 +1560,40 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
-	fh, err := os.Open(chunkPath)
+	//
+	// Allocate byte slice, data from the chunk file will be read into this.
+	//
+	data := make([]byte, req.Length)
+	var lmt string
+	var n int
+	var chunkSize int64
+	var fh *os.File
+	var fInfo os.FileInfo
+
+	if performDummyReadWrite() {
+		goto dummy_read
+	}
+
+	fh, err = os.Open(chunkPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to open chunk file %s [%v]", chunkPath, err.Error())
 		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to open chunk file %s [%v]", chunkPath, err.Error()))
 	}
 	defer fh.Close()
 
-	fInfo, err := fh.Stat()
+	fInfo, err = fh.Stat()
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
 		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
 		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
-	chunkSize := fInfo.Size()
-	lmt := fInfo.ModTime().UTC().String()
+	chunkSize = fInfo.Size()
+	lmt = fInfo.ModTime().UTC().String()
 
 	common.Assert(req.OffsetInChunk+req.Length <= chunkSize, fmt.Sprintf("chunkSize %d is less than OffsetInChunk %d + Length %d", chunkSize, req.OffsetInChunk, req.Length))
 
-	// TODO: data buffer should come in the request
-	data := make([]byte, req.Length)
-	n, err := fh.ReadAt(data, req.OffsetInChunk)
+	n, err = fh.ReadAt(data, req.OffsetInChunk)
 	common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to read chunk file %s [%v]", chunkPath, err.Error())
@@ -1584,6 +1612,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//      hash = string(hashData)
 	// }
 
+dummy_read:
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
@@ -1774,6 +1803,8 @@ refreshFromClustermapAndRetry:
 
 	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
+	var availableSpace int64
+
 	// Chunk file must not be present.
 	_, err = os.Stat(chunkPath)
 	if err == nil {
@@ -1799,7 +1830,7 @@ refreshFromClustermapAndRetry:
 					chunkPath)
 			}
 
-			availableSpace, err := rvInfo.getAvailableSpace()
+			availableSpace, err = rvInfo.getAvailableSpace()
 			if err != nil {
 				log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space [%v]",
 					req.SyncID, err)
@@ -1818,8 +1849,14 @@ refreshFromClustermapAndRetry:
 		}
 	}
 
+	var tmpChunkPath string
+
+	if performDummyReadWrite() {
+		goto dummy_write
+	}
+
 	// Write to .tmp file first and rename it to the final file.
-	tmpChunkPath := fmt.Sprintf("%s.tmp", chunkPath)
+	tmpChunkPath = fmt.Sprintf("%s.tmp", chunkPath)
 	err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
@@ -1833,11 +1870,6 @@ refreshFromClustermapAndRetry:
 	//      log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
 	//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
 	// }
-
-	availableSpace, err := rvInfo.getAvailableSpace()
-	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
-	}
 
 	// TODO: should we verify the hash after writing the chunk
 
@@ -1875,6 +1907,12 @@ refreshFromClustermapAndRetry:
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
 	}
 
+dummy_write:
+	availableSpace, err = rvInfo.getAvailableSpace()
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
+	}
+
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
 		AvailableSpace: availableSpace,
@@ -1882,6 +1920,248 @@ refreshFromClustermapAndRetry:
 	}
 
 	return resp, nil
+}
+
+// PutChunkDC RPC processes a PutChunkDCRequest that has a PutChunkRequest to process and a list of one or more next
+// RVs to forward the request to. The PutChunkRequest must be for one of our local RVs. If the RV mentioned in the
+// PutChunkRequest is not the local RV, it will return an InvalidRVID error.
+// Parallelly, it also forwards the PutChunkRequest to the next RV in the list, making a daisy chain.
+//
+// For the local RV, it calls the PutChunk RPC via the handler directly.
+// The response/error returned by the PutChunk calls to the local RV and next RVs are returned in the
+// PutChunkDCResponse, with the RV name as the key and its PutChunkResponse or a ResponseError as the value.
+// The PutChunkDCResponse will have the responses for all the RVs in the list, including the local RV.
+func (h *ChunkServiceHandler) PutChunkDC(ctx context.Context, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	// Thrift should not be calling us with nil Request, Chunk or Address.
+	common.Assert(req.Request != nil)
+	common.Assert(req.Request.Chunk != nil)
+	common.Assert(req.Request.Chunk.Address != nil)
+
+	//
+	// Caller should not be calling us with empty NextRVs.
+	// It should call PutChunkDC only if it needs to be forwarded to at least one RV, else it should simply
+	// call PutChunk.
+	//
+	common.Assert(len(req.NextRVs) > 0)
+
+	log.Debug("ChunkServiceHandler::PutChunkDC: Received PutChunkDC request: %v",
+		rpc.PutChunkDCRequestToString(req))
+
+	// Nexthop RV must be one of our local RVs.
+	rvInfo, ok := h.rvIDMap[req.Request.Chunk.Address.RvID]
+	if !ok {
+		errStr := fmt.Sprintf("Nexthop RV is not local: %s", req.Request.Chunk.Address.String())
+		log.Err("ChunkServiceHandler::PutChunkDC: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRVID, errStr)
+	}
+
+	common.Assert(rvInfo != nil, req.Request.Chunk.Address.String())
+
+	// Nexthop RV must not be repeated in NextRVs.
+	common.Assert(!slices.Contains(req.NextRVs, rvInfo.rvName), rvInfo.rvName, req.NextRVs)
+
+	var rpcResp *models.PutChunkDCResponse
+	var err error
+	var wg sync.WaitGroup
+
+	//
+	// Parallelly forward the PutChunkDC request to the next RV in the list.
+	// The first RV in req.NextRVs will become the nexthop RV to which forwardPutChunk() will forward the
+	// PutChunkDCRequest, it'll be removed from the NextRVs list, and the remaining NextRVs list will be
+	// sent to the nexthop RV to further forward the request.
+	//
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		rpcResp = h.forwardPutChunk(ctx, req.Request, req.NextRVs)
+		common.Assert(rpcResp != nil)
+		// Must return status for every RV.
+		common.Assert(len(rpcResp.Responses) == len(req.NextRVs))
+	}()
+
+	//
+	// The PutChunkRequest in the PutChunkDCRequest corresponds to the PutChunk call to the local RV.
+	// So, call PutChunk from the handler directly.
+	//
+	resp, err := h.PutChunk(ctx, req.Request)
+	var rpcErr *models.ResponseError
+
+	//
+	// The PutChunk call made here is for the local RV. So, the error returned here will be
+	// an RPC error, if the PutChunk call failed, or nil if it succeeded.
+	// So, we can assert that the error if non-nil, is of type *models.ResponseError.
+	//
+	if err != nil {
+		common.Assert(resp == nil)
+		log.Err("ChunkServiceHandler::PutChunkDC: PutChunk failed for local RV %s/%s, request: %s [%v]",
+			rvInfo.rvName, req.Request.Chunk.Address.MvName,
+			rpc.PutChunkRequestToString(req.Request), err)
+		rpcErr = rpc.GetRPCResponseError(err)
+		common.Assert(rpcErr != nil, err)
+	} else {
+		common.Assert(resp != nil)
+		log.Debug("ChunkServiceHandler::PutChunkDC: PutChunk succeeded for local RV %s/%s, request: %s, response: %s",
+			rvInfo.rvName, req.Request.Chunk.Address.MvName,
+			rpc.PutChunkRequestToString(req.Request), rpc.PutChunkResponseToString(resp))
+	}
+
+	// Wait for the forwarded request to complete.
+	wg.Wait()
+
+	common.Assert(rpcResp != nil)
+	// forwardPutChunk() must return status for every RV.
+	common.Assert(len(rpcResp.Responses) == len(req.NextRVs))
+
+	rpcResp.Responses[rvInfo.rvName] = &models.PutChunkResponseOrError{
+		Response: resp,
+		Error:    rpcErr,
+	}
+
+	log.Debug("ChunkServiceHandler::PutChunkDC: Completing for nexthop %s/%s (file id: %s, offset in MiB: %d): %s",
+		rvInfo.rvName, req.Request.Chunk.Address.MvName, req.Request.Chunk.Address.FileID,
+		req.Request.Chunk.Address.OffsetInMiB, rpc.PutChunkDCResponseToString(rpcResp))
+
+	// We must return status for every RV we were asked to write to.
+	common.Assert(len(rpcResp.Responses) == len(req.NextRVs)+1, len(rpcResp.Responses), len(req.NextRVs))
+
+	return rpcResp, nil
+}
+
+// This method sends the PutChunkRequest 'req' to all the RVs in 'rvs' list in a daisy chain fashion.
+// The first RV in rvs[] becomes the nexthop RV to which the PutChunkDCRequest is sent and the remaining RVs in rvs[]
+// will be set as the NextRVs for the PutChunkDCRequest. The nexthop will run the PutChunkRequest and send the
+// request to its nexthop and set NextRVs to the remaining, and so on, till the request reaches all the RVs in rvs[].
+func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.PutChunkRequest, rvs []string) *models.PutChunkDCResponse {
+	common.Assert(req != nil)
+	common.Assert(req.Chunk != nil)
+	common.Assert(req.Chunk.Address != nil)
+	common.Assert(len(rvs) > 0)
+
+	nexthopRV := rvs[0]
+	common.Assert(cm.IsValidRVName(nexthopRV), nexthopRV, rvs)
+
+	var nextRVs []string
+	if len(rvs) > 1 {
+		nextRVs = rvs[1:]
+	}
+
+	log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunk to nexthop RV %s, daisy chaining to %d more RV(s): %v, request: %s",
+		nexthopRV, len(nextRVs), nextRVs, rpc.PutChunkRequestToString(req))
+
+	nexthopRVId := cm.RvNameToId(nexthopRV)
+	common.Assert(common.IsValidUUID(nexthopRVId))
+
+	nexthopNodeId := cm.RVNameToNodeId(nexthopRV)
+	common.Assert(common.IsValidUUID(nexthopNodeId))
+
+	log.Debug("ChunkServiceHandler::forwardPutChunk: Writing to nexthop RV %s/%s (RVId: %s) on node %s",
+		nexthopRV, req.Chunk.Address.MvName, nexthopRVId, nexthopNodeId)
+
+	//
+	// Create PutChunkRequest for the nexthop RV.
+	// The ony updated fields in the request is RvID.
+	//
+	putChunkReq := &models.PutChunkRequest{
+		Chunk: &models.Chunk{
+			Address: &models.Address{
+				FileID:      req.Chunk.Address.FileID,
+				RvID:        nexthopRVId,
+				MvName:      req.Chunk.Address.MvName,
+				OffsetInMiB: req.Chunk.Address.OffsetInMiB,
+			},
+			Data: req.Chunk.Data,
+			Hash: req.Chunk.Hash,
+		},
+		Length:         req.Length,
+		SyncID:         req.SyncID,
+		ComponentRV:    req.ComponentRV,
+		MaybeOverwrite: req.MaybeOverwrite,
+	}
+
+	//
+	// This is the last RV in the list, so we will call PutChunk directly on it.
+	// Else, we will call PutChunkDC on it with the next RVs in the list.
+	//
+	if len(nextRVs) == 0 {
+		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunk request to last RV %s/%s on node %s: %s",
+			nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, rpc.PutChunkRequestToString(putChunkReq))
+
+		var rpcErr *models.ResponseError
+
+		putChunkResp, err := rpc_client.PutChunk(ctx, nexthopNodeId, putChunkReq)
+		if err != nil {
+			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunk request to last RV %s/%s on node %s: %v",
+				nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, err)
+			common.Assert(putChunkResp == nil)
+
+			rpcErr = rpc.GetRPCResponseError(err)
+			if rpcErr == nil {
+				//
+				// This error indicates some Thrift error like connection error, timeout, etc. or,
+				// it could be an RPC client side error like failed to get RPC client for target node.
+				// We wrap this error in *models.ResponseError with code ThriftError.
+				// This is to ensure that the client can take appropriate action based on this error
+				// code.
+				//
+				rpcErr = rpc.NewResponseError(models.ErrorCode_ThriftError, err.Error())
+			}
+		} else {
+			common.Assert(putChunkResp != nil)
+		}
+
+		common.Assert(len(rvs) == 1, rvs)
+		return &models.PutChunkDCResponse{
+			Responses: map[string]*models.PutChunkResponseOrError{
+				nexthopRV: {
+					Response: putChunkResp,
+					Error:    rpcErr,
+				},
+			},
+		}
+	} else {
+		putChunkDCReq := &models.PutChunkDCRequest{
+			Request: putChunkReq,
+			NextRVs: nextRVs,
+		}
+
+		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkDC request to nexthop %s/%s on node %s: %s",
+			nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, rpc.PutChunkDCRequestToString(putChunkDCReq))
+
+		dcResp, err := rpc_client.PutChunkDC(ctx, nexthopNodeId, putChunkDCReq)
+
+		//
+		// If the PutChunkDC RPC call fails, the error returned can be,
+		// - Thrift error like connection error, timeout, etc.
+		// - RPC client side error like failed to get RPC client for node.
+		// - RPC error of type *models.ResponseError returned by the server like InvalidRVID.
+		// We classify the first two as ThriftError. This indicates the caller that the PutChunk calls
+		// were not forwarded after this RV and the caller can take appropriate action like marking
+		// this RV as offline and retrying the PutChunkDC call.
+		// For the next RVs in this call, the PutChunk calls were not forwarded. So, it returns
+		// BrokenChain error for these RVs indicating that the PutChunkDC call was not forwarded
+		// to them and the caller can retry.
+		//
+		if err != nil {
+			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunkDC request to nexthop %s/%s on node %s: %s",
+				nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, err)
+			common.Assert(dcResp == nil)
+
+			dcResp = rpc.HandlePutChunkDCError(nexthopRV, nextRVs, req.Chunk.Address.MvName, err)
+		} else {
+			log.Debug("ChunkServiceHandler::forwardPutChunk: Received response from nexthop %s/%s (file id %s, offset in MiB %d): %s",
+				nexthopRV, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB,
+				rpc.PutChunkDCResponseToString(dcResp))
+		}
+
+		common.Assert(dcResp != nil)
+		common.Assert(len(dcResp.Responses) == len(rvs), len(dcResp.Responses), rvs)
+		return dcResp
+	}
 }
 
 func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
@@ -1942,7 +2222,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 
 	dirEntries, err := os.ReadDir(mvDir)
 	if err != nil {
-		err = fmt.Errorf("Failed to read mv directory: %s [%v]", mvDir, err)
+		err = fmt.Errorf("failed to read mv directory: %s [%v]", mvDir, err)
 		log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
 		common.Assert(false, err)
 		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
@@ -1956,7 +2236,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 
 		fileInfo, err := dirent.Info()
 		if err != nil {
-			err = fmt.Errorf("Failed to stat chunk file: %s [%v]", dirent.Name(), err)
+			err = fmt.Errorf("failed to stat chunk file: %s [%v]", dirent.Name(), err)
 			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
 			common.Assert(false, err)
 			//
@@ -1974,7 +2254,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 
 		err = os.Remove(chunkPath)
 		if err != nil {
-			err = fmt.Errorf("Failed to remove chunk file: %s [%v]", dirent.Name(), err)
+			err = fmt.Errorf("failed to remove chunk file: %s [%v]", dirent.Name(), err)
 			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
 			common.Assert(false, err)
 			if numChunksDeleted > 0 {

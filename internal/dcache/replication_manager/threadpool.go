@@ -77,10 +77,6 @@ type workitem struct {
 }
 
 type responseItem struct {
-	// Node ID of the target node that processed the request.
-	// Used for logging purpose.
-	targetNodeID string
-
 	// RV name of the target node that processed the request.
 	// Used for logging purpose.
 	rvName string
@@ -150,7 +146,6 @@ func (tp *threadpool) runItem(item *workitem) {
 		resp, err := processPutChunk(item.targetNodeID, item.putChunkReq)
 
 		item.respChannel <- &responseItem{
-			targetNodeID: item.targetNodeID,
 			rvName:       item.rvName,
 			putChunkResp: resp,
 			err:          err,
