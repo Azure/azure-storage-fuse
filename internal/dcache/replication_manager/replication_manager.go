@@ -802,6 +802,109 @@ processResponses:
 	return &WriteMvResponse{}, nil
 }
 
+// File IO manager can use this to delete all chunks belonging to a file from a given MV.
+// Note that files chunks could be striped across multiple MVs, so file IO manager needs to call this
+// for every MV from the file layout.
+func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
+	common.Assert(req != nil)
+
+	log.Debug("ReplicationManager::RemoveMV: Received RemoveMV request: %s", req.toString())
+
+	if err := req.isValid(); err != nil {
+		err = fmt.Errorf("invalid RemoveMV request FileID: %s, MV: %s [%v]", req.FileID, req.MvName, err)
+		log.Err("ReplicationManager::RemoveMV: %v", err)
+		common.Assert(false, err)
+		return nil, err
+	}
+
+	//
+	// Deleting file chunks from an MV amounts to deleting chunks for that file from all component RVs.
+	// Get the list of component RVs and send a RemoveChunk RPC to each.
+	//
+	mvState, rvs, _ := getComponentRVsForMV(req.MvName)
+	retryNeeded := false
+
+	for _, rv := range rvs {
+		//
+		// We can only safely delete chunks from component RVs that are online.
+		// From offline RVs we cannot delete, as they may not be reachable.
+		// outofsync RVs may not yet have any chunks.
+		// syncing RVs may have chunks added to them while we are deleting, so we may miss some chunks.
+		//
+		// RemoveMV() succeeds only when it has deleted chunks from all online RVs and there are no
+		// outofsync or syncing RVs. If yes, then we simply return an error asking caller to retry after
+		// some time.
+		//
+		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) ||
+			rv.State == string(dcache.StateSyncing) {
+			log.Info("ReplicationManager::RemoveMV: skip deleting fileId %s chunks from %s/%s, rv state: %s",
+				req.FileID, rv.Name, req.MvName, rv.State)
+
+			if rv.State != string(dcache.StateOffline) {
+				//
+				// GC must retry for this MV again, till this RV state changes to the StateOnline.
+				//
+				retryNeeded = true
+			}
+
+			continue
+		}
+
+		common.Assert(rv.State == string(dcache.StateOnline), rv.Name, req.MvName, rv.State)
+		// At least one RV online, MV should not be offline.
+		common.Assert(mvState != dcache.StateOffline)
+
+		// Remove all the chunks for the file which are present in this RV.
+		rvId := getRvIDFromRvName(rv.Name)
+		targetNodeId := getNodeIDFromRVName(rv.Name)
+
+		rpcReq := &models.RemoveChunkRequest{
+			Address: &models.Address{
+				FileID:      req.FileID,
+				RvID:        rvId,
+				MvName:      req.MvName,
+				OffsetInMiB: -1,
+			},
+			ComponentRV: rvs,
+		}
+
+		// Removing all chunks may take time, so we wait longer than usual RPCs.
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		rpcResp, err := rpc_client.RemoveChunk(ctx, targetNodeId, rpcReq)
+		if err == nil {
+			//
+			// Status success with numChunksdeleted==0 signifies RemoveChunk was able to successfully delete all
+			// chunks for the file and there are no more chunks left.
+			// Note that even if RemoveChunk is able to delete all chunks we still retry once and only in the
+			// next RemoveChunk call which does not find any chunks to be deleted, we consider rv/mv as fully
+			// deleted.
+			//
+			if rpcResp.NumChunksDeleted != 0 {
+				err = fmt.Errorf("Delete partial success for %s/%s fileID: %s, node %s, NumChunksDeleted: %d",
+					rv.Name, req.MvName, req.FileID, targetNodeId, rpcResp.NumChunksDeleted)
+				log.Debug("ReplicationManager::RemoveMV: %v", err)
+				return nil, err
+			}
+		} else {
+			log.Err("ReplicationManager::RemoveMV: Failed to delete chunks from %s/%s, fileID: %s: %v",
+				rv.Name, req.MvName, req.FileID, err)
+			// Any error in deletion will cause GC to requeue and retry.
+			return nil, err
+		}
+	}
+
+	if retryNeeded {
+		err := fmt.Errorf("Retry needed as some RVs of %s may be synchronizing, fileID: %s, RVs: %v",
+			req.MvName, req.FileID, rvs)
+		log.Err("ReplicationManager::RemoveMV: %v", err)
+		return nil, err
+	}
+
+	return &RemoveMvResponse{}, nil
+}
+
 func periodicResyncMVs() {
 	defer rm.wg.Done()
 
