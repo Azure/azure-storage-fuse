@@ -35,6 +35,7 @@ package xload
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -52,12 +53,11 @@ type ThreadPool struct {
 	priorityItems chan *WorkItem
 	workItems     chan *WorkItem
 
-	// context with cancellation method to close all the workers
-	ctx    context.Context
-	cancel context.CancelFunc
-
 	// Reader method that will actually read the data
 	callback func(*WorkItem) (int, error)
+
+	// Context to cancel the thread pool
+	ctx context.Context
 }
 
 // NewThreadPool creates a new thread pool
@@ -66,19 +66,18 @@ func NewThreadPool(count uint32, callback func(*WorkItem) (int, error)) *ThreadP
 		return nil
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
 	return &ThreadPool{
 		worker:        count,
 		callback:      callback,
 		priorityItems: make(chan *WorkItem, count*2),
 		workItems:     make(chan *WorkItem, count*4),
-		ctx:           ctx,
-		cancel:        cancel,
 	}
 }
 
 // Start all the workers and wait till they start receiving requests
-func (threadPool *ThreadPool) Start() {
+func (threadPool *ThreadPool) Start(ctx context.Context) {
+	threadPool.ctx = ctx
+
 	// 10% threads will listne only on high priority channel
 	highPriority := (threadPool.worker * 10) / 100
 
@@ -90,21 +89,30 @@ func (threadPool *ThreadPool) Start() {
 
 // Stop all the workers threads
 func (threadPool *ThreadPool) Stop() {
-	threadPool.cancel()
-	threadPool.waitGroup.Wait()
+	log.Debug("threadPool::Stop : Closing Channels")
 	close(threadPool.priorityItems)
 	close(threadPool.workItems)
+	threadPool.waitGroup.Wait()
+	log.Debug("threadPool::Stop : Threads terminated")
 }
 
 // Schedule the download of a block
-func (threadPool *ThreadPool) Schedule(item *WorkItem) {
+func (threadPool *ThreadPool) Schedule(item *WorkItem) error {
 	// item.Priority specifies the priority of this task.
 	// true means high priority and false means low priority
-	if item.Priority {
-		threadPool.priorityItems <- item
-	} else {
-		threadPool.workItems <- item
+	select {
+	case <-threadPool.ctx.Done():
+		log.Err("ThreadPool::Schedule : Thread pool is closed, cannot schedule workitem %s", item.Path)
+		return fmt.Errorf("thread pool is closed, cannot schedule workitem %s", item.Path)
+	default:
+		if item.Priority {
+			threadPool.priorityItems <- item
+		} else {
+			threadPool.workItems <- item
+		}
 	}
+
+	return nil
 }
 
 // Do is the core task to be executed by each worker thread
@@ -117,14 +125,11 @@ func (threadPool *ThreadPool) Do(priority bool) {
 			select {
 			case <-threadPool.ctx.Done(): // listen to cancellation signal
 				return
-
-			default:
-				select {
-				case <-threadPool.ctx.Done(): // listen to cancellation signal
+			case item, ok := <-threadPool.priorityItems:
+				if !ok {
 					return
-				case item := <-threadPool.priorityItems:
-					threadPool.process(item)
 				}
+				threadPool.process(item)
 			}
 		}
 	} else {
@@ -133,23 +138,16 @@ func (threadPool *ThreadPool) Do(priority bool) {
 			select {
 			case <-threadPool.ctx.Done(): // listen to cancellation signal
 				return
-
-			default:
-				select {
-				case <-threadPool.ctx.Done(): // listen to cancellation signal
+			case item, ok := <-threadPool.priorityItems:
+				if !ok {
 					return
-				case item := <-threadPool.priorityItems:
-					threadPool.process(item)
-				default:
-					select {
-					case <-threadPool.ctx.Done(): // listen to cancellation signal
-						return
-					case item := <-threadPool.priorityItems:
-						threadPool.process(item)
-					case item := <-threadPool.workItems:
-						threadPool.process(item)
-					}
 				}
+				threadPool.process(item)
+			case item, ok := <-threadPool.workItems:
+				if !ok {
+					return
+				}
+				threadPool.process(item)
 			}
 		}
 	}
