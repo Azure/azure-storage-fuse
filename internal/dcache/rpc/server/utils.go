@@ -55,8 +55,8 @@ func getChunkAndHashPath(cacheDir string, mvName string, fileID string, offsetIn
 	return chunkPath, hashPath
 }
 
-// sort the component RVs in the MV
-// The RVs are sorted in increasing order of their names
+// Sort the component RVs in the MV.
+// The RVs are sorted in increasing order of their names.
 func sortComponentRVs(rvs []*models.RVNameAndState) {
 	sort.Slice(rvs, func(i, j int) bool {
 		return rvs[i].Name < rvs[j].Name

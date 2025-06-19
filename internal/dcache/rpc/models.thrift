@@ -64,6 +64,21 @@ struct PutChunkResponse {
     3: list<RVNameAndState> componentRV
 }
 
+struct PutChunkDCRequest {
+    1: PutChunkRequest request,
+    2: list<string> nextRVs
+}
+
+// Type for the individual PutChunkResponse or error.
+struct PutChunkResponseOrError {
+    1: optional PutChunkResponse response,
+    2: optional ResponseError error
+}
+
+struct PutChunkDCResponse {
+    1: map<string, PutChunkResponseOrError> responses // map of RV name to the PutChunk response or error to that RV
+}
+
 // Remove chunks belonging to a file.
 struct RemoveChunkRequest {
     1: string senderNodeID,
@@ -165,7 +180,9 @@ enum ErrorCode {
     ChunkNotFound = 5,
     ChunkAlreadyExists = 6,
     MaxMVsExceeded = 7,
-    NeedToRefreshClusterMap = 8
+    NeedToRefreshClusterMap = 8,
+    ThriftError = 9,
+    BrokenChain = 10
 }
 
 // Custom error returned by the RPC APIs
