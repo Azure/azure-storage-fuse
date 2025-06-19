@@ -2257,6 +2257,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 			err = fmt.Errorf("failed to remove chunk file: %s [%v]", dirent.Name(), err)
 			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
 			common.Assert(false, err)
+
 			if numChunksDeleted > 0 {
 				break
 			}
