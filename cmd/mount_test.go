@@ -41,6 +41,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -493,6 +494,90 @@ func (suite *mountTestSuite) TestMountOptionVaildate() {
 	suite.assert.Contains(opts.Logging.LogFilePath, opts.DefaultWorkingDir)
 	suite.assert.Equal(common.DefaultWorkDir, opts.DefaultWorkingDir)
 	suite.assert.Equal(common.DefaultLogFilePath, opts.Logging.LogFilePath)
+}
+
+func (suite *mountTestSuite) TestCleanUpOnStartFlag() {
+	defer suite.cleanupTest()
+	// Create a test directory
+	testDir := filepath.Join(os.TempDir(), "cleanup_test")
+	os.RemoveAll(testDir)
+	os.MkdirAll(testDir, 0755)
+
+	defer func() {
+		os.RemoveAll(testDir)
+	}()
+
+	testPath := filepath.Join(testDir, "dir1")
+	testPath2 := filepath.Join(testDir, "dir2")
+	testPath3 := filepath.Join(testDir, "dir3")
+	os.MkdirAll(testPath, 0755)
+	os.MkdirAll(testPath2, 0755)
+	os.MkdirAll(testPath3, 0755)
+
+	createFilesInCacheDirs := func() {
+		// Create some test files
+		testFile := filepath.Join(testPath, "testfile")
+		err := os.WriteFile(testFile, []byte("test"), 0644)
+		suite.assert.Nil(err)
+
+		testFile2 := filepath.Join(testPath2, "testfile")
+		err = os.WriteFile(testFile2, []byte("test"), 0644)
+		suite.assert.Nil(err)
+
+		testFile3 := filepath.Join(testPath3, "testfile")
+		err = os.WriteFile(testFile3, []byte("test"), 0644)
+		suite.assert.Nil(err)
+	}
+
+	comps := []string{"file_cache", "block_cache", "xload"}
+	var cachedirs []string
+	cachedirs = append(cachedirs, testPath, testPath2, testPath3)
+
+	// Set the path for the cache directory.
+	config.Set(comps[0]+".path", testPath)
+	config.Set(comps[1]+".path", testPath2)
+	config.Set(comps[2]+".path", testPath3)
+
+	for i, comp := range comps {
+		// Set up test component
+		testComponent := comp
+		options.Components = []string{testComponent}
+
+		// Test case 1: Global flag true, component flag false
+		createFilesInCacheDirs()
+		config.Set("cleanup-on-start", "true")
+		config.Set(testComponent+".cleanup-on-start", "false")
+
+		err := options.tempCacheCleanup()
+		suite.assert.Nil(err)
+		suite.assert.True(common.IsDirectoryEmpty(cachedirs[i]))
+		// This should not delete the other cache dirs of other components.
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+1)%3]))
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+2)%3]))
+
+		// Test case 2: Global flag false, component flag true
+		createFilesInCacheDirs()
+		config.Set(testComponent+".cleanup-on-start", "true")
+		config.Set("cleanup-on-start", "false")
+
+		err = options.tempCacheCleanup()
+		suite.assert.Nil(err)
+		suite.assert.True(common.IsDirectoryEmpty(cachedirs[i]))
+		// This should not delete the other cache dirs of other components.
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+1)%3]))
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+2)%3]))
+
+		// Test case 3: Both flags false
+		createFilesInCacheDirs()
+		config.Set(testComponent+".cleanup-on-start", "false")
+		config.Set("cleanup-on-start", "false")
+		err = options.tempCacheCleanup()
+		suite.assert.Nil(err)
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[i]))
+		// This should not delete the other cache dirs of other components.
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+1)%3]))
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+2)%3]))
+	}
 }
 
 func TestMountCommand(t *testing.T) {

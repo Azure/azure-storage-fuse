@@ -79,6 +79,7 @@ xload:
   path: <path to local disk cache where downloaded files will be stored>
   export-progress: <preload progress will be exported to a json fil. Default output file is '~/.blobfuse2/xload_stats_{PID}.json'. Default - not exported> 
   validate-md5: <if md5 sum is present in the blob, validate it post download. Default - false>
+  cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty. Default - false>
 
 # Block cache related configuration
 block_cache:
@@ -88,7 +89,8 @@ block_cache:
   disk-size-mb: <maximum disk cache size allowed. Default - 80% of free disk space>
   disk-timeout-sec: <default disk cache eviction timeout (in sec). Default - 120 sec>
   prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>
-  parallelism: <number of parallel threads downloading the data and writing to disk cache. Default - 3 times number of CPU cores> 
+  parallelism: <number of parallel threads downloading the data and writing to disk cache. Default - 3 times number of CPU cores>
+  cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty. Default - false>
 
 # Disk cache related configuration
 file_cache:
@@ -99,7 +101,7 @@ file_cache:
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
-  cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
+  cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty. Default - false>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
   refresh-sec: <number of seconds after which compare lmt of file in local cache and container and refresh file if container has the latest copy>
   ignore-sync: true|false <sync call will be ignored and locally cached file will not be deleted>
