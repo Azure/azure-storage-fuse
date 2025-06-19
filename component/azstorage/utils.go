@@ -288,9 +288,31 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 			} else if strings.ToLower(k) == symlinkKey && *v == "true" {
 				attr.Flags = internal.NewSymlinkBitMap()
 				attr.Mode = attr.Mode | os.ModeSymlink
+			} else if strings.ToLower(k) == common.POSIXOwnerMeta {
+				attr.Flags.Set(internal.PropFlagOwnerInfoFound)
+				attr.Owner = common.ParseUint32(*v)
+			} else if strings.ToLower(k) == common.POSIXGroupMeta {
+				attr.Group = common.ParseUint32(*v)
+			} else if strings.ToLower(k) == common.POSIXModeMeta {
+				attr.Mode, _ = getFileMode(*v)
 			}
 		}
 	}
+}
+
+func AddMetadata(metadata map[string]*string, key, value string) bool {
+	lowerKey := strings.ToLower(key)
+	for k := range metadata {
+		if strings.ToLower(k) == lowerKey {
+			if *metadata[k] == value {
+				return false
+			}
+			metadata[k] = &value
+			return true
+		}
+	}
+	metadata[key] = &value
+	return true
 }
 
 //    ----------- Content-type handling  ---------------

@@ -66,6 +66,23 @@ func (suite *utilTestSuite) SetupTest() {
 func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
 }
+func (suite *utilTestSuite) TestParseUint32() {
+	// Test with a valid string
+	result := ParseUint32("12345")
+	suite.assert.Equal(uint32(12345), result)
+
+	// Test with an empty string
+	result = ParseUint32("")
+	suite.assert.Equal(uint32(0), result)
+
+	// Test with an invalid string
+	result = ParseUint32("invalid")
+	suite.assert.Equal(uint32(0), result)
+
+	// Test with a string representing a number larger than uint32
+	result = ParseUint32("4294967296") // 2^32
+	suite.assert.Equal(uint32(0), result)
+}
 
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	var out bytes.Buffer
