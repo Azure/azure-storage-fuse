@@ -164,7 +164,7 @@ retry:
 	//
 	var excludeRVs []string
 	for {
-		readerRV, isLocalRV := getReaderRV(componentRVs, excludeRVs)
+		readerRV := getReaderRV(componentRVs, excludeRVs)
 		if readerRV == nil {
 			//
 			// An MV once marked offline can never become online, so save the trip to clustermap.
@@ -231,11 +231,12 @@ retry:
 		defer cancel()
 
 		//
-		// If the selected RV is local, then we directly call the GetChunk() method using the
-		// local server's handler. Else we call the GetChunk() RPC via the Thrift RPC client.
+		// If the node to which the GetChunk() RPC call must be made is local,
+		// then we directly call the GetChunk() method using the local server's handler.
+		// Else we call the GetChunk() RPC via the Thrift RPC client.
 		//
-		if isLocalRV {
-			rpcResp, err = rpc_server.GetChunk(ctx, targetNodeID, rpcReq)
+		if targetNodeID == rpc.GetMyNodeUUID() {
+			rpcResp, err = rpc_server.GetChunkLocal(ctx, rpcReq)
 		} else {
 			rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
 		}
@@ -329,13 +330,6 @@ retry:
 		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh or broken chain (%v), RVs written in prev attempt: %v",
 			retryCnt, req.toString(), brokenChain, rvsWritten)
 	}
-
-	//
-	// Flag to indicate if we are writing to a local RV.
-	// If yes, we can call the PutChunk() or PutChunkDC() method directly on the local server's handler.
-	// Else we will call the PutChunk() or PutChunkDC() RPC via the Thrift RPC client.
-	//
-	isLocalRV := false
 
 	//
 	// Get component RVs for MV, from clustermap and also the corresponding clustermap epoch.
@@ -444,11 +438,7 @@ retry:
 				// Only one component RV can be local.
 				common.Assert(putChunkDCReq.Request.Chunk.Address.RvID == "",
 					putChunkDCReq.Request.Chunk.Address.String(), rv.Name, rvID)
-				common.Assert(!isLocalRV,
-					putChunkDCReq.Request.Chunk.Address.String(), rv.Name, rvID)
-
 				putChunkDCReq.Request.Chunk.Address.RvID = rvID
-				isLocalRV = true
 			} else {
 				// Non-local component RVs get added to putChunkDCReq.NextRVs.
 				putChunkDCReq.NextRVs = append(putChunkDCReq.NextRVs, rv.Name)
@@ -474,8 +464,6 @@ retry:
 	if putChunkDCReq.Request.Chunk.Address.RvID == "" {
 		// There is at least one component RV that we want to write to.
 		common.Assert(len(putChunkDCReq.NextRVs) > 0)
-
-		common.Assert(!isLocalRV)
 
 		rvName := putChunkDCReq.NextRVs[0]
 		rvID := getRvIDFromRvName(rvName)
@@ -512,7 +500,6 @@ retry:
 		rm.tp.schedule(&workitem{
 			targetNodeID: targetNodeID,
 			rvName:       rvName,
-			isLocalRV:    isLocalRV,
 			putChunkReq:  putChunkDCReq.Request,
 			respChannel:  responseChannel,
 		}, isLastComponentRV /* runInline */)
@@ -571,11 +558,12 @@ retry:
 		var err error
 
 		//
-		// If the selected RV is local, then we directly call the PutChunkDC() method using the
-		// local server's handler. Else we call the PutChunkDC() RPC via the Thrift RPC client.
+		// If the node to which the PutChunkDC() RPC call must be made is local,
+		// then we directly call the PutChunkDC() method using the local server's handler.
+		// Else we call the PutChunkDC() RPC via the Thrift RPC client.
 		//
-		if isLocalRV {
-			putChunkDCResp, err = rpc_server.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+		if targetNodeID == rpc.GetMyNodeUUID() {
+			putChunkDCResp, err = rpc_server.PutChunkDCLocal(ctx, putChunkDCReq)
 		} else {
 			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
 		}
@@ -1564,7 +1552,7 @@ retry:
 	var excludeRVs []string
 
 	for {
-		readerRV, isLocalRV := getReaderRV(componentRVs, excludeRVs)
+		readerRV := getReaderRV(componentRVs, excludeRVs)
 
 		if readerRV == nil {
 			//
@@ -1623,11 +1611,12 @@ retry:
 		var err error
 
 		//
-		// If the selected RV is local, then we directly call the GetMVSize() method using the
-		// local server's handler. Else we call the GetMVSize() RPC via the Thrift RPC client.
+		// If the node to which the GetMVSize() RPC call must be made is local,
+		// then we directly call the GetMVSize() method using the local server's handler.
+		// Else we call the GetMVSize() RPC via the Thrift RPC client.
 		//
-		if isLocalRV {
-			resp, err = rpc_server.GetMVSize(ctx, targetNodeID, req)
+		if targetNodeID == rpc.GetMyNodeUUID() {
+			resp, err = rpc_server.GetMVSizeLocal(ctx, req)
 		} else {
 			resp, err = rpc_client.GetMVSize(ctx, targetNodeID, req)
 		}

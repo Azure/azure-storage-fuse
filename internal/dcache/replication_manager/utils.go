@@ -112,10 +112,7 @@ var PutChunkStyle PutChunkStyleEnum = DaisyChain
 //  2. Else, select a random online RV from the list of component RVs.
 //
 // This method also takes an excludeRVs list, which is used to skip the RVs that should not be selected.
-// If local RV is selected, return true to indicate the caller that local RV is selected.
-// This is useful for the caller to decide if the RV is local, it can directly call the RPC methods
-// using the server's handler, without going through the general Thirft RPC flow.
-func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) (*models.RVNameAndState, bool) {
+func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
 	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v",
 		rpc.ComponentRVsToString(componentRVs), excludeRVs)
 
@@ -137,7 +134,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) (*m
 		common.Assert(common.IsValidUUID(nodeIDForRV))
 		if nodeIDForRV == myNodeID {
 			// Prefer local RV.
-			return rv, true
+			return rv
 		}
 
 		onlineRVs = append(onlineRVs, rv)
@@ -146,14 +143,14 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) (*m
 	if len(onlineRVs) == 0 {
 		log.Debug("utils::getReaderRV: no suitable RVs found for component RVs %v",
 			rpc.ComponentRVsToString(componentRVs))
-		return nil, false
+		return nil
 	}
 
 	// select random online RV
 	// TODO: add logic for sending Hello RPC call to check if the node hosting this RV is online
 	// If not, select another RV from the list
 	index := rand.Intn(len(onlineRVs))
-	return onlineRVs[index], false
+	return onlineRVs[index]
 }
 
 // TODO: hash validation will be done later

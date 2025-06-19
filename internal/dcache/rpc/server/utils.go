@@ -144,16 +144,13 @@ func getMVsPerRV() int64 {
 
 // This method is wrapper for the GetChunk() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
-func GetChunk(ctc context.Context, myNodeId string, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
+func GetChunkLocal(ctc context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(req.Address != nil)
 
-	common.Assert(myNodeId == rpc.GetMyNodeUUID(),
-		myNodeId, rpc.GetMyNodeUUID())
-
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
-	req.SenderNodeID = myNodeId
+	req.SenderNodeID = rpc.GetMyNodeUUID()
 
 	common.Assert(handler != nil)
 
@@ -162,17 +159,14 @@ func GetChunk(ctc context.Context, myNodeId string, req *models.GetChunkRequest)
 
 // This method is wrapper for the PutChunk() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
-func PutChunk(ctc context.Context, myNodeId string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
+func PutChunkLocal(ctc context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
 
-	common.Assert(myNodeId == rpc.GetMyNodeUUID(),
-		myNodeId, rpc.GetMyNodeUUID())
-
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
-	req.SenderNodeID = myNodeId
+	req.SenderNodeID = rpc.GetMyNodeUUID()
 
 	common.Assert(handler != nil)
 
@@ -181,19 +175,16 @@ func PutChunk(ctc context.Context, myNodeId string, req *models.PutChunkRequest)
 
 // This method is wrapper for the PutChunkDC() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
-func PutChunkDC(ctc context.Context, myNodeId string, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
+func PutChunkDCLocal(ctc context.Context, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(req.Request != nil)
 	common.Assert(req.Request.Chunk != nil)
 	common.Assert(req.Request.Chunk.Address != nil)
 	common.Assert(len(req.NextRVs) > 0)
 
-	common.Assert(myNodeId == rpc.GetMyNodeUUID(),
-		myNodeId, rpc.GetMyNodeUUID())
-
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.Request.SenderNodeID) == 0, req.Request.SenderNodeID)
-	req.Request.SenderNodeID = myNodeId
+	req.Request.SenderNodeID = rpc.GetMyNodeUUID()
 
 	common.Assert(handler != nil)
 
@@ -202,15 +193,12 @@ func PutChunkDC(ctc context.Context, myNodeId string, req *models.PutChunkDCRequ
 
 // This method is wrapper for the GetMVSize() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
-func GetMVSize(ctc context.Context, myNodeId string, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
+func GetMVSizeLocal(ctc context.Context, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
 	common.Assert(req != nil)
-
-	common.Assert(myNodeId == rpc.GetMyNodeUUID(),
-		myNodeId, rpc.GetMyNodeUUID())
 
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
-	req.SenderNodeID = myNodeId
+	req.SenderNodeID = rpc.GetMyNodeUUID()
 
 	common.Assert(handler != nil)
 

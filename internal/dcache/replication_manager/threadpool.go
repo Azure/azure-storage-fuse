@@ -66,9 +66,6 @@ type workitem struct {
 	// RV name of the target node.
 	rvName string
 
-	// Flag to indicate if the request is for the local RV.
-	isLocalRV bool
-
 	// Put Chunk RPC request.
 	putChunkReq *models.PutChunkRequest
 
@@ -147,7 +144,7 @@ func (tp *threadpool) runItem(item *workitem) {
 	common.Assert(item.isValid(), item.toString())
 
 	if item.putChunkReq != nil {
-		resp, err := processPutChunk(item.targetNodeID, item.putChunkReq, item.isLocalRV)
+		resp, err := processPutChunk(item.targetNodeID, item.putChunkReq)
 
 		item.respChannel <- &responseItem{
 			rvName:       item.rvName,
@@ -200,18 +197,23 @@ func (item *workitem) isValid() bool {
 	return true
 }
 
-func processPutChunk(targetNodeID string, req *models.PutChunkRequest, isLocalRV bool) (*models.PutChunkResponse, error) {
+func processPutChunk(targetNodeID string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(common.IsValidUUID(targetNodeID), targetNodeID)
 
-	log.Debug("ReplicationManager::processPutChunk: Sending PutChunk request to node %s (local=%v): %s",
-		targetNodeID, isLocalRV, rpc.PutChunkRequestToString(req))
+	log.Debug("ReplicationManager::processPutChunk: Sending PutChunk request to node %s: %s",
+		targetNodeID, rpc.PutChunkRequestToString(req))
 
 	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 	defer cancel()
 
-	if isLocalRV {
-		return rpc_server.PutChunk(ctx, targetNodeID, req)
+	//
+	// If the node to which the PutChunk() RPC call must be made is local,
+	// then we directly call the PutChunk() method using the local server's handler.
+	// Else we call the PutChunk() RPC via the Thrift RPC client.
+	//
+	if targetNodeID == rpc.GetMyNodeUUID() {
+		return rpc_server.PutChunkLocal(ctx, req)
 	} else {
 		return rpc_client.PutChunk(ctx, targetNodeID, req)
 	}
