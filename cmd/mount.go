@@ -70,8 +70,9 @@ type LogOptions struct {
 }
 
 type mountOptions struct {
-	MountPath  string
-	ConfigFile string
+	MountPath      string
+	inputMountPath string
+	ConfigFile     string
 
 	Logging           LogOptions     `config:"logging"`
 	Components        []string       `config:"components"`
@@ -110,7 +111,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	} else if common.IsDirectoryMounted(opt.MountPath) {
 		// Try to cleanup the stale mount
 		log.Info("Mount::validate : Mount directory is already mounted, trying to cleanup")
-		active, err := common.IsMountActive(opt.MountPath)
+		active, err := common.IsMountActive(opt.inputMountPath)
 		if active || err != nil {
 			// Previous mount is still active so we need to fail this mount
 			return fmt.Errorf("directory is already mounted")
@@ -264,6 +265,7 @@ var mountCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(_ *cobra.Command, args []string) error {
+		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])
 		common.MountPath = options.MountPath
 
