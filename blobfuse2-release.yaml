@@ -1726,7 +1726,7 @@ stages:
                     echo "Skipping for ARM type on $distro"
                   else
                     if [[ $distro == *"Mariner-"* ]]; then
-                        if [ "$(is_preview)" = "true" ]; then
+                        if [ "$is_preview" = "true" ]; then
                           repoName=$(echo $repoName | sed 's/prod/preview/')
                         fi
                     fi
