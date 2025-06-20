@@ -60,6 +60,11 @@ type BlockPool struct {
 
 	// Number of block that this pool can handle at max
 	maxBlocks uint32
+
+	// Add these:
+	totalBlocks uint32
+	capBlocks   uint32
+	mu          sync.Mutex
 }
 
 // NewBlockPool allocates a new pool of blocks
@@ -72,23 +77,25 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 
 	// Calculate how many blocks can be allocated
 	blockCount := uint32(memSize / blockSize)
-
+	poolBlockCount := uint32(0.9 * float64(blockCount))
 	pool := &BlockPool{
-		blocksCh:     make(chan *Block, blockCount-1),
-		resetBlockCh: make(chan *Block, blockCount-1),
-		maxBlocks:    uint32(blockCount),
+		blocksCh:     make(chan *Block, poolBlockCount-1),
+		resetBlockCh: make(chan *Block, poolBlockCount-1),
+		maxBlocks:    uint32(poolBlockCount),
 		blockSize:    blockSize,
+		capBlocks:    uint32(blockCount),
+		totalBlocks:  uint32(poolBlockCount),
 	}
 
 	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
-	for i := (uint32)(0); i < blockCount; i++ {
+	for i := (uint32)(0); i < poolBlockCount; i++ {
 		b, err := AllocateBlock(blockSize)
 		if err != nil {
 			log.Err("BlockPool::NewBlockPool : Failed to allocate block [%v]", err.Error())
 			return nil
 		}
 
-		if i == blockCount-1 {
+		if i == poolBlockCount-1 {
 			pool.zeroBlock = b
 		} else {
 			pool.blocksCh <- b
@@ -136,16 +143,26 @@ func (pool *BlockPool) MustGet() *Block {
 		break
 
 	default:
-		// There are no free blocks so we must allocate one and return here
-		// As the consumer of the pool needs a block immediately
-		log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
-		var err error
-		b, err = AllocateBlock(pool.blockSize)
-		if err != nil {
-			return nil
+		pool.mu.Lock()
+		if pool.totalBlocks < pool.capBlocks {
+			// There are no free blocks so we must allocate one and return here
+			// As the consumer of the pool needs a block immediately
+			log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
+			var err error
+			b, err = AllocateBlock(pool.blockSize)
+			if err == nil {
+				pool.totalBlocks++
+			}
+			pool.mu.Unlock()
+			if err != nil {
+				return nil
+			}
+			break
 		}
+		pool.mu.Unlock()
+		// Wait for a block to be released if cap is reached
+		b = <-pool.blocksCh
 	}
-
 	// Mark the buffer ready for reuse now
 	b.ReUse()
 	return b
