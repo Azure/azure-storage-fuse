@@ -6,10 +6,15 @@
 # scenarios. It runs from one of the cluster node and uses passwordless ssh
 # login to other nodes to run commands on remote nodes for simulating various
 # node (un) reachability scenarios.
+#
+# Usage: ./test_cluster.sh <number_of_nodes>
+# Example: ./test_cluster.sh 5
+#
 # Here are some pre-requisites for this script:
 # - passwordless ssh must be configured from any node to any node in the cluster.
 # - /etc/hosts must have entries added so that vmN can be used to connect to
 #   node N, f.e., vm1, vm2, etc.
+# - 'jq' command-line JSON processor must be installed on the nodes.
 #
 # Q: What does this script do?
 # A: It starts/stops blobfuse on various nodes and checks cluster health by
@@ -17,8 +22,37 @@
 #    cluster nodes.
 #
 
+# Check if number of nodes is provided
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <number_of_nodes>"
+    echo "Example: $0 5"
+    exit 1
+fi
+
+NUM_NODES=$1
+
+# Validate input
+if ! [[ "$NUM_NODES" =~ ^[0-9]+$ ]] || [ "$NUM_NODES" -lt 1 ]; then
+    echo "Error: Number of nodes must be a positive integer"
+    exit 1
+fi
+
+echo "Starting cluster test with $NUM_NODES nodes (vm1 to vm$NUM_NODES)"
+
+# Generate list of node names
+generate_node_list()
+{
+    local count=$1
+    local node_list=""
+    for ((i=1; i<=count; i++)); do
+        node_list="$node_list vm$i"
+    done
+    echo "$node_list"
+}
+
 MOUNTDIR=/home/dcacheuser/mnt/
 LOGDIR=/tmp/cluster_validator/
+RESYNC_INTERVAL=12
 
 #
 # some common colour escape sequences
@@ -165,11 +199,11 @@ get_node_id()
     fi
 }
 
-wait_till_next_epoch()
+wait_till_next_scheduled_epoch()
 {
     local next_epoch=$(expr $LAST_UPDATED_AT + $CLUSTERMAP_EPOCH)
     local now=$(date +%s)
-    local secs_to_next_epoch=$(expr $next_epoch - $now + 2)
+    local secs_to_next_epoch=$(expr $next_epoch - $now + 5)
 
     if [ $secs_to_next_epoch -le 0 ]; then
         wbecho "Next epoch already over"
@@ -179,6 +213,42 @@ wait_till_next_epoch()
     echo "Sleeping $secs_to_next_epoch seconds till next epoch..."
     sleep $secs_to_next_epoch
     echo "Done"
+}
+
+wait_till_hb_expiry()
+{
+    local next_epoch=$(expr $LAST_UPDATED_AT + $CLUSTERMAP_EPOCH)
+
+    local now=$(date +%s)
+    local secs_to_next_epoch=$(expr $next_epoch - $now)
+   # Check if we're close to the heartbeat timeout boundary
+    local heartbeat_timeout=$(expr $HB_SECONDS \* $HB_TILL_NODE_DOWN - 2)
+    local secs_to_next_epoch_with_buffer
+
+    if [ $secs_to_next_epoch -lt $heartbeat_timeout ]; then
+    # Add an additional epoch period if we're close to timeout
+    secs_to_next_epoch_with_buffer=$(expr $secs_to_next_epoch + $CLUSTERMAP_EPOCH + 5)
+    echo "Close to heartbeat timeout boundary, adding extra epoch wait time"
+    else
+        # Otherwise just add a small buffer
+        secs_to_next_epoch_with_buffer=$(expr $secs_to_next_epoch + 5)
+    fi
+
+    echo "Sleeping $secs_to_next_epoch_with_buffer seconds till next epoch..."
+    sleep $secs_to_next_epoch_with_buffer
+    echo "Done"
+}
+
+cleanup()
+{
+    wbecho "Stopping blobfuse on started nodes..."
+
+    # Assuming `NODES_STARTED` contains the list of started nodes (e.g., "vm1 vm2 vm3")
+    for vm_name in $NODES_STARTED; do
+        stop_blobfuse_on_node $vm_name
+    done
+
+    wbecho "Stop completed."
 }
 
 start_blobfuse_on_node()
@@ -192,7 +262,8 @@ start_blobfuse_on_node()
     )&
 
     # Give some time for blobfuse process to start.
-    sleep 1
+    sleep 2
+    NODES_STARTED="$NODES_STARTED $vm" # Add to list of started nodes for cleanup
 }
 
 stop_blobfuse_on_node()
@@ -200,8 +271,8 @@ stop_blobfuse_on_node()
     local vm=$1
     local logfile=$(vmlog $vm)
 
-    echo "Stopping blobfuse @ $(date)" >> $logfile
-    ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
+        echo "Stopping blobfuse @ $(date)" >> $logfile
+        ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
 }
 
 kill_blobfuse_on_node()
@@ -254,6 +325,46 @@ read_clustermap_from_node()
     ssh $vm "cat $clustermap_path" 2>>$logfile | tee -a $logfile
 }
 
+write_data_in_dcache()
+{
+    local vm=$1
+    local file_name=$2
+    local block_size=$3
+    local count=$4
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/fs=dcache/$file_name bs=$block_size count=$count"
+}
+
+write_data_in_azure()
+{
+    local vm=$1
+    local file_name=$2
+    local block_size=$3
+    local count=$4
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/fs=azure/$file_name bs=$block_size count=$count"
+}
+
+write_data_in_mountdir()
+{
+    local vm=$1
+    local file_name=$2
+    local block_size=$3
+    local count=$4
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/$file_name bs=$block_size count=$count"
+}
+
+get_md5sum()
+{
+    local vm=$1
+    local file_name=$2
+    local namespace=$3 #optional
+
+    if [ -n "$namespace" ]; then
+        ssh $vm "md5sum $MOUNTDIR/fs=$namespace/$file_name | cut -d' ' -f1"
+    else
+        ssh $vm "md5sum $MOUNTDIR/$file_name | cut -d' ' -f1"
+    fi
+}
+
 #
 # Given a clustermap, return the state of the given RV.
 #
@@ -276,6 +387,49 @@ get_rv_count()
 }
 
 #
+# Given a clustermap, return the count of nodes in rv-list.
+#
+get_node_count()
+{
+    local cm="$1"
+
+    echo "$cm" | jq '."rv-list" | map(.[]) | map(.node_id) | unique | length'
+}
+
+# Given a clustermap, node_id and state, return the list of RVs for that node.
+get_rv_list_for_node_with_state()
+{
+    local cm=$1
+    local vm_node_id=$2
+    local desired_state="$3"
+
+    echo "$cm" | jq -r --arg node_id "$vm_node_id" --arg state "$desired_state" '
+        (
+          .["rv-list"] | map(to_entries[])? | from_entries
+        ) as $rvs |
+        $rvs | to_entries[] |
+        select(.value.node_id == $node_id and .value.state == $state) |
+        .key' | paste -sd, -
+
+}
+
+# Given a clustermap, node_id, return the list of RVs for that node.
+get_rv_list_for_node()
+{
+    local cm=$1
+    local vm_node_id=$2
+
+    echo "$cm" | jq -r --arg node_id "$vm_node_id" '
+        (
+          .["rv-list"] | map(to_entries[])? | from_entries
+        ) as $rvs |
+        $rvs | to_entries[] |
+        select(.value.node_id == $node_id) |
+        .key' | paste -sd, -
+
+}
+
+#
 # Given a clustermap, return the count of MVs in mv-list.
 #
 get_mv_count()
@@ -286,272 +440,561 @@ get_mv_count()
 }
 
 #
+# Given a clustermap, return the count of MVs with given state in mv-list.
+#
+get_mv_count_with_state()
+{
+    local cm="$1"
+    local mv_state="$2"
+
+    echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "'"$mv_state"'")] | length'
+}
+
+# Given a clustermap, RV list and state, return the count of MVs where these RV exist.
+get_mvs_count_for_given_rv_with_state()
+{
+    local cm="$1"
+    local rv_list="$2"
+    local rv_state="$3"
+
+    echo "$cm" | jq --arg state "$rv_state" --arg rv_names_str "$rv_list" '
+        ($rv_names_str | split(",")) as $target_rvs |
+        (
+          .["mv-list"] | map(to_entries[])? | from_entries
+        ) as $mvs |
+        [
+          $mvs | to_entries[] |
+          select(
+            .value.rvs | to_entries[]? |
+            select(
+              (.key | IN($target_rvs[])) and (.value == $state)
+            )
+          )
+        ] | length'
+}
+
+# Validate that all RVs (rv0 to rv{n-1}) are online
+validate_all_rvs_online()
+{
+    local cm="$1"
+    local expected_rv_count=$2
+    
+    for ((i=0; i<expected_rv_count; i++)); do
+        becho -n "rv$i must be online"
+        rv_state=$(get_rv_state "$cm" "rv$i")
+        [ "$rv_state" == "online" ]
+        log_status $? "is $rv_state"
+    done
+}
+
+# Test file operations on a specific node
+test_file_operations()
+{
+    local vm=$1
+    local node_num=$2
+    local cluster_readonly=$3
+    
+    if [ "$cluster_readonly" == "true" ]; then
+        # In readonly mode, only azure operations should work
+        # Dcache operations should fail
+        becho -n "Dcache File creation must fail on $vm"
+        ssh $vm "echo dcache > $MOUNTDIR/fs=dcache/file${node_num}.dcache"
+        [ ! -f "$MOUNTDIR/fs=dcache/file${node_num}.dcache" ]
+        log_status $?
+
+        # Unqualified path operations should fail
+        becho -n "Unqualified path File creation must fail on $vm"
+        ssh $vm "echo both > $MOUNTDIR/file${node_num}.both"
+        [ ! -f "$MOUNTDIR/file${node_num}.both" ]
+        log_status $?
+
+       
+    else
+        # Test Dcache file operations should work
+        becho -n "Dcache File creation must work on $vm"
+        ssh $vm "echo dcache > $MOUNTDIR/fs=dcache/file${node_num}.dcache"
+        TOTAL_DCACHE_FILES=$((TOTAL_DCACHE_FILES + 1))
+        TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
+        [ $? -eq 0 ]
+        log_status $?
+
+        becho -n "Dcache file Read must work on $vm"
+        buf=$(ssh $vm "cat $MOUNTDIR/fs=dcache/file${node_num}.dcache")
+        [ $? -eq 0 -a "$buf" == "dcache" ]
+        log_status $? "buf: $buf"
+
+        # Test unqualified path file operations should work
+        becho -n "Unqualified path File creation must work on $vm"
+        ssh $vm "echo both > $MOUNTDIR/file${node_num}.both"
+        TOTAL_DCACHE_FILES=$((TOTAL_DCACHE_FILES + 1))
+        TOTAL_AZURE_FILES=$((TOTAL_AZURE_FILES + 1))
+        TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
+        [ $? -eq 0 ]
+        log_status $?
+
+        
+    fi
+
+    becho -n "Azure File creation must work on $vm"
+    ssh $vm "echo azure > $MOUNTDIR/fs=azure/file${node_num}.azure"
+    TOTAL_AZURE_FILES=$((TOTAL_AZURE_FILES + 1))
+    TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
+    [ $? -eq 0 ]
+    log_status $?
+
+    becho -n "Azure file Read must work on $vm"
+    buf=$(ssh $vm "cat $MOUNTDIR/fs=azure/file${node_num}.azure")
+    [ $? -eq 0 -a "$buf" == "azure" ]
+    log_status $? "buf: $buf"
+}
+
+
+# Validate clustermap consistency across all nodes
+validate_clustermap_consistency()
+{
+    local expected_rv_count=$1
+    local nodes_to_check="$2"
+    
+    for vm in $nodes_to_check; do
+        becho -n "Reading clustermap on $vm"
+        cm=$(read_clustermap_from_node $vm)
+        log_status $?
+
+        if [ -n "$expected_rv_count" ]; then
+            becho -n "RV count must be $expected_rv_count on $vm"
+            rv_count=$(get_rv_count "$cm")
+            [ "$rv_count" == "$expected_rv_count" ]
+            log_status $? "is $rv_count"
+        fi
+
+        becho -n "Epoch validation on $vm"
+        current_epoch=$(echo "$cm" | jq '."epoch"')
+        
+        # Check if current epoch is within acceptable range (at most 2 less than highest seen)
+        epoch_diff=$((HIGHEST_EPOCH_SEEN - current_epoch))
+        [ "$epoch_diff" -le 2 ] && [ "$epoch_diff" -ge 0 ] || [ "$current_epoch" -gt "$HIGHEST_EPOCH_SEEN" ]
+        log_status $? "Current epoch: $current_epoch, Highest seen: $HIGHEST_EPOCH_SEEN, Diff: $epoch_diff"
+        
+        # Update the highest epoch seen if current is higher
+        if [ "$current_epoch" -gt "$HIGHEST_EPOCH_SEEN" ]; then
+            HIGHEST_EPOCH_SEEN=$current_epoch
+        fi
+    done
+}
+
+# Function to validate RV node mapping consistency
+validate_rv_node_mapping_consistency()
+{
+    local nodes_to_check="$1"
+    local expected_node_count=$2
+    
+    for vm in $nodes_to_check; do
+        becho -n "Reading clustermap on $vm for node mapping"
+        cm=$(read_clustermap_from_node $vm)
+        log_status $?
+        
+        becho -n "Node count must match expected count on $vm"
+        node_count=$(get_node_count "$cm")
+        [ "$node_count" -eq "$expected_node_count" ]
+        log_status $? "Found $node_count nodes, expected $expected_node_count"
+        
+        # Validate each node has appropriate RVs assigned
+        for test_vm in $nodes_to_check; do
+            test_vm_id=$(get_node_id $test_vm)
+            becho -n "Checking RVs assigned to $test_vm on $vm"
+            rv_list=$(get_rv_list_for_node "$cm" "$test_vm_id")
+            [ -n "$rv_list" ]
+            log_status $? "No RVs found for $test_vm"
+            
+            if [ "$cluster_readonly" == "false" ]; then
+                becho -n "Checking online RVs for $test_vm"
+                online_rv_list=$(get_rv_list_for_node_with_state "$cm" "$test_vm_id" "online")
+                [ -n "$online_rv_list" ]
+                log_status $? "No online RVs found for $test_vm"
+            fi
+        done
+    done
+}
+
+# Add the missing function to validate file listing consistency
+test_file_listing_consistency()
+{
+    local nodes_to_check="$1"
+    local expected_azure_files=$2
+    local expected_dcache_files=$3
+    local expected_both_files=$4
+    
+    for vm in $nodes_to_check; do
+        # Check dcache files only if cluster is not readonly
+        cluster_readonly_status=$(read_clustermap_from_node $vm | jq '."readonly"')
+        if [ "$cluster_readonly_status" == "true" ]; then
+            becho -n "List file must fail over dcache ns on $vm"
+            file_count=$(ssh $vm "ls $MOUNTDIR/fs=dcache | wc -l")
+            [ "$file_count" -eq 0 ]
+            log_status $? "Expected 0 files but found $file_count"
+        else
+            becho -n "List file over dcache path must return $expected_dcache_files files on $vm"
+            file_count=$(ssh $vm "ls $MOUNTDIR/fs=dcache | wc -l")
+            [ "$file_count" -eq "$expected_dcache_files" ]
+            log_status $? "Expected $expected_dcache_files files but found $file_count"
+        fi
+
+        becho -n "List file must return $expected_azure_files files over azure ns on $vm"
+        file_count=$(ssh $vm "ls $MOUNTDIR/fs=azure | wc -l")
+        [ "$file_count" -eq "$expected_azure_files" ]
+        log_status $? "Expected $expected_azure_files files but found $file_count"
+        
+        becho -n "List file must return $expected_both_files files over unqualified path on $vm"
+        file_count=$(ssh $vm "ls $MOUNTDIR | wc -l")
+        [ "$file_count" -eq "$expected_both_files" ]
+        log_status $? "Expected $expected_both_files files but found $file_count"
+    done
+}
+
+test_cross_node_consistency()
+{
+    local node1=$1
+    local node2=$2
+    local file_num=$3
+    local large_file_test=${4:-false}
+    
+    if [ "$large_file_test" == "true" ]; then
+        if [ -n "$dcache_4GB_md5sum" ]; then
+            becho -n "Cross-node large file consistency check for 4GB.dcache between $node1 and $node2"
+            dcache_file_md5_node1=$(get_md5sum $node1 "4GB.dcache" dcache)
+            dcache_file_md5_node2=$(get_md5sum $node2 "4GB.dcache" dcache)
+            [ "$dcache_file_md5_node1" == "$dcache_file_md5_node2" ]
+            log_status $? "$node1: $dcache_file_md5_node1, $node2: $dcache_file_md5_node2"
+        fi
+        
+        if [ -n "$both_4GB_md5sum" ]; then
+            becho -n "Cross-node large file consistency check for 4GB.both between $node1 and $node2"
+            both_file_md5_node1=$(get_md5sum $node1 "4GB.both")
+            both_file_md5_node2=$(get_md5sum $node2 "4GB.both")
+            [ "$both_file_md5_node1" == "$both_file_md5_node2" ]
+            log_status $? "$node1: $both_file_md5_node1, $node2: $both_file_md5_node2"
+        fi
+        
+        if [ -n "$dcache_2GB_md5sum" ]; then
+            becho -n "Cross-node large file consistency check for 2GB.dcache between $node1 and $node2"
+            dcache_file_md5_node1=$(get_md5sum $node1 "2GB.dcache" dcache)
+            dcache_file_md5_node2=$(get_md5sum $node2 "2GB.dcache" dcache)
+            [ "$dcache_file_md5_node1" == "$dcache_file_md5_node2" ]
+            log_status $? "$node1: $dcache_file_md5_node1, $node2: $dcache_file_md5_node2"
+        fi
+        
+        if [ -n "$both_2GB_md5sum" ]; then
+            becho -n "Cross-node large file consistency check for 2GB.both between $node1 and $node2"
+            both_file_md5_node1=$(get_md5sum $node1 "2GB.both")
+            both_file_md5_node2=$(get_md5sum $node2 "2GB.both")
+            [ "$both_file_md5_node1" == "$both_file_md5_node2" ]
+            log_status $? "$node1: $both_file_md5_node1, $node2: $both_file_md5_node2"
+        fi
+    else
+        becho -n "Cross-node dcache file consistency check between $node1 and $node2"
+        dcache_file_md5_node1=$(get_md5sum $node1 "file${file_num}.dcache" dcache)
+        dcache_file_md5_node2=$(get_md5sum $node2 "file${file_num}.dcache" dcache)
+        [ "$dcache_file_md5_node1" == "$dcache_file_md5_node2" ]
+        log_status $? "$node1: $dcache_file_md5_node1, $node2: $dcache_file_md5_node2"
+    
+        becho -n "Cross-node azure file consistency check between $node1 and $node2"
+        azure_file_md5_node1=$(get_md5sum $node1 "file${file_num}.azure" azure)
+        azure_file_md5_node2=$(get_md5sum $node2 "file${file_num}.azure" azure)
+        [ "$azure_file_md5_node1" == "$azure_file_md5_node2" ]
+        log_status $? "$node1: $azure_file_md5_node1, $node2: $azure_file_md5_node2"
+    
+        becho -n "Cross-node unqualified path file consistency check between $node1 and $node2"
+        unqualified_file_md5_node1=$(get_md5sum $node1 "file${file_num}.both")
+        unqualified_file_md5_node2=$(get_md5sum $node2 "file${file_num}.both")
+        [ "$unqualified_file_md5_node1" == "$unqualified_file_md5_node2" ]
+        log_status $? "$node1: $unqualified_file_md5_node1, $node2: $unqualified_file_md5_node2"
+    fi
+}
+
+
+
+#
 # Action starts here
 #
 mkdir -p $LOGDIR
+rm -rf $LOGDIR/*
+
+# List of nodes that have been started, for cleanup
+NODES_STARTED=""
+trap cleanup EXIT
+# Generate list of all nodes
+ALL_NODES=$(generate_node_list $NUM_NODES)
+
+# Track global state
+TOTAL_AZURE_FILES=0
+TOTAL_DCACHE_FILES=0
+TOTAL_BOTH_FILES=0
+HIGHEST_EPOCH_SEEN=0
 
 ############################################################################
-##                             Start node1                                ##
+##                             Start nodes                                ##
+############################################################################
+
+for ((current_node=1; current_node<=NUM_NODES; current_node++)); do
+    vm_name="vm$current_node"
+    echo
+    wbecho ">> Starting blobfuse on $vm_name"
+    echo
+    start_blobfuse_on_node $vm_name
+
+    #
+    # As soon as we start blobfuse on the first node, it should update the clustermap with its rv
+    #
+    becho -n "Reading clustermap on $vm_name"
+    cm=$(read_clustermap_from_node $vm_name)
+    log_status $?
+
+    # Save some config variables, for later use.
+    # For the first node, save configuration variables
+    if [ $current_node -eq 1 ]; then
+        CLUSTERMAP_EPOCH=$(echo "$cm" | jq '."config"."clustermap-epoch"')
+        INITIAL_EPOCH=$(echo "$cm" | jq '."epoch"')
+        HIGHEST_EPOCH_SEEN=$INITIAL_EPOCH
+        MIN_NODES=$(echo "$cm" | jq '."config"."min-nodes"')
+        NUM_REPLICAS=$(echo "$cm" | jq '."config"."num-replicas"')
+        HB_SECONDS=$(echo "$cm" | jq '."config"."heartbeat-seconds"')
+        HB_TILL_NODE_DOWN=$(echo "$cm" | jq '."config"."heartbeats-till-node-down"')
+        LAST_UPDATED_AT=$(echo "$cm" | jq '."config"."last_updated_at"')
+        MVS_PER_RV=$(echo "$cm" | jq '."config"."mvs-per-rv"')
+
+        echo
+        echo -e "epoch:\033[50D\033[30C$INITIAL_EPOCH"
+        echo -e "clustermap-epoch:\033[50D\033[30C$CLUSTERMAP_EPOCH"
+        echo -e "min-nodes:\033[50D\033[30C$MIN_NODES"
+        echo -e "num-replicas:\033[50D\033[30C$NUM_REPLICAS"
+        echo -e "heartbeat-seconds:\033[50D\033[30C$HB_SECONDS"
+        echo -e "heartbeats-till-node-down:\033[50D\033[30C$HB_TILL_NODE_DOWN"
+        echo -e "mvs-per-rv:\033[50D\033[30C$MVS_PER_RV"
+        echo
+    fi
+
+    # Validate basic clustermap properties
+    becho -n "last_updated_by must be $vm_name"
+    LAST_UPDATED_BY=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
+    [ "$LAST_UPDATED_BY" == "$(get_node_id $vm_name)" ]
+    log_status $? "is $LAST_UPDATED_BY"
+
+    becho -n "last_updated_at must be uptodate"
+    LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
+    now=$(date +%s)
+    # Not more than 5secs old.
+    [ $(expr $now - $LAST_UPDATED_AT) -lt 5 ]
+    log_status $? "now is $now and last_updated_at is $LAST_UPDATED_AT"
+
+    becho -n "Cluster state must be ready"
+    cluster_state=$(echo "$cm" | jq '."state"' | tr -d '"')
+    [ "$cluster_state" == "ready" ]
+    log_status $? "is $cluster_state"
+
+    # Validate RV count and states
+    #considering 1 rv per node for now
+    becho -n "RV count must be count of nodes"
+    rv_count=$(get_rv_count "$cm")
+    [ "$rv_count" == "$current_node" ]
+    log_status $? "is $rv_count"
+
+    # Validate all RVs are online
+    validate_all_rvs_online "$cm" $current_node
+
+    # Wait for the next scheduled epoch to ensure clustermap is updated
+    becho "Sleeping $CLUSTERMAP_EPOCH seconds for clustermap updates..."
+    sleep $CLUSTERMAP_EPOCH
+
+    becho -n "Reading clustermap on $vm_name"
+    cm=$(read_clustermap_from_node $vm_name)
+    log_status $?
+
+    # Check readonly flag
+    becho -n "Cluster readonly flag validation"
+    node_count=$(get_node_count "$cm")
+    readonly_flag=$(echo "$cm" | jq '."readonly"')
+    if [ "$node_count" -ge "$MIN_NODES" ]; then
+        [ "$readonly_flag" == "false" ]
+        cluster_readonly="false"
+    else
+        [ "$readonly_flag" == "true" ]
+        cluster_readonly="true"
+    fi
+    log_status $? "readonly flag is $readonly_flag for $node_count nodes"
+    
+
+    # Check MV count when cluster is not readonly
+    if [ "$cluster_readonly" == "false" ]; then
+        becho -n "MV count validation"
+        mv_count=$(get_mv_count "$cm")
+        # Calculate max expected MV count: (rv_count * MVS_PER_RV) / NUM_REPLICAS
+        max_mv_count=$(( (rv_count * MVS_PER_RV) / NUM_REPLICAS ))
+        [ "$mv_count" -le "$max_mv_count" ]
+        log_status $? "MV count: $mv_count, Max expected: $max_mv_count (based on $rv_count RVs)"
+
+        becho -n "All MVs must be online"
+        online_mv_count=$(get_mv_count_with_state "$cm" "online")
+        [ "$online_mv_count" -eq "$mv_count" ]
+        log_status $? "online MVs: $online_mv_count, total MVs: $mv_count"
+    fi
+
+    
+
+    # Test file operations on current node
+    test_file_operations $vm_name $current_node $cluster_readonly
+
+    # Test large file operations on specific nodes
+    if [ "$cluster_readonly" == "false" ]; then
+        if [ $current_node -eq $MIN_NODES ]; then
+            becho -n "Write 4GB data in dcache on $vm_name"
+            file_name="4GB.dcache"
+            write_data_in_dcache $vm_name $file_name 1G 4
+            TOTAL_DCACHE_FILES=$((TOTAL_DCACHE_FILES + 1))
+            TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
+            dcache_4GB_md5sum=$(get_md5sum $vm_name $file_name dcache)
+            log_status $?
+
+            becho -n "Write 4GB data over unqalified path on $vm_name"
+            file_name="4GB.both"
+            write_data_in_mountdir $vm_name $file_name 1G 4
+            TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
+            
+            # When we write file in unqualified path, it writes in azure as well as dcache path. So updating the counter for azure file as well.
+            TOTAL_DCACHE_FILES=$((TOTAL_DCACHE_FILES + 1))
+            TOTAL_AZURE_FILES=$((TOTAL_AZURE_FILES + 1))
+            
+            both_4GB_md5sum=$(get_md5sum $vm_name $file_name)
+            log_status $?
+        fi
+
+        if [ $current_node -eq 5 ]; then
+            becho -n "Write 2GB data in dcache on $vm_name"
+            file_name="2GB.dcache"
+            write_data_in_dcache $vm_name $file_name 1G 2
+            TOTAL_DCACHE_FILES=$((TOTAL_DCACHE_FILES + 1))
+            TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
+            dcache_2GB_md5sum=$(get_md5sum $vm_name $file_name dcache)
+            log_status $?
+
+            becho -n "Write 2GB data over unqalified path on $vm_name"
+            file_name="2GB.both"
+            write_data_in_mountdir $vm_name $file_name 1G 2
+
+            TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
+            
+            # When we write file in unqualified path, it writes in azure as well as dcache path. So updating the counter for azure file as well.
+            TOTAL_DCACHE_FILES=$((TOTAL_DCACHE_FILES + 1))
+            TOTAL_AZURE_FILES=$((TOTAL_AZURE_FILES + 1))
+            both_2GB_md5sum=$(get_md5sum $vm_name $file_name)
+            log_status $?
+        
+        fi
+
+        # Test accessibility of files created on different nodes
+        if [ -n "$dcache_4GB_md5sum" ]; then
+            becho -n "Verify 4GB dcache file is accessible from $vm_name"
+            dcache_4GB_md5sum_current=$(get_md5sum $vm_name "4GB.dcache" dcache)
+            [ "$dcache_4GB_md5sum" == "$dcache_4GB_md5sum_current" ]
+            log_status $? "Original: $dcache_4GB_md5sum, Current: $dcache_4GB_md5sum_current"
+        fi
+
+        if [ -n "$both_4GB_md5sum" ]; then
+            becho -n "Verify 4GB both file is accessible from $vm_name"
+            both_4GB_md5sum_current=$(get_md5sum $vm_name "4GB.both")
+            [ "$both_4GB_md5sum" == "$both_4GB_md5sum_current" ]
+            log_status $? "Original: $both_4GB_md5sum, Current: $both_4GB_md5sum_current"
+        fi
+    fi
+
+    
+
+    # Validate clustermap consistency across all nodes
+    CURRENT_NODES=$(generate_node_list $current_node)
+    echo
+    wbecho ">> Validating clustermap consistency across all $current_node nodes"
+    echo
+    validate_clustermap_consistency $current_node "$CURRENT_NODES"
+
+    # Cross-node file consistency testing
+    if [ $current_node -gt 1 ]; then
+
+        # File listing consistency validation
+        echo
+        wbecho ">> Validating file listing consistency across all nodes"
+        echo
+        test_file_listing_consistency "$CURRENT_NODES" $TOTAL_AZURE_FILES $TOTAL_DCACHE_FILES $TOTAL_BOTH_FILES
+
+        echo
+        wbecho ">> Testing cross-node file consistency"
+        echo
+
+        # Test middle node with current node
+        middle_node=$((current_node / 2))
+        test_cross_node_consistency "vm$middle_node" "$vm_name" $middle_node false
+        
+        # Test large files if we have the minimum nodes
+        if [ $current_node -ge $MIN_NODES ]; then
+            echo
+            wbecho ">> Testing large file consistency across nodes"
+            echo
+            test_cross_node_consistency "vm1" "$vm_name" 0 true
+            
+            if [ $current_node -ge 5 ]; then
+                test_cross_node_consistency "vm$MIN_NODES" "vm5" 0 true
+            fi
+        fi
+    fi
+
+done
+
+############################################################################
+##                    Final Comprehensive Validation                      ##
 ############################################################################
 
 echo
-wbecho ">> Starting blobfuse on vm1"
-echo
-start_blobfuse_on_node vm1
-
-#
-# As soon as we start blobfuse on the first node, it should update the clustermap with its rv
-#
-becho -n "Reading clustermap on vm1"
-cm=$(read_clustermap_from_node vm1)
-log_status $?
-
-# Save some config variables, for later use.
-CLUSTERMAP_EPOCH=$(echo "$cm" | jq '."config"."clustermap-epoch"')
-MIN_NODES=$(echo "$cm" | jq '."config"."min-nodes"')
-NUM_REPLICAS=$(echo "$cm" | jq '."config"."num-replicas"')
-HB_SECONDS=$(echo "$cm" | jq '."config"."heartbeat-seconds"')
-HB_TILL_NODE_DOWN=$(echo "$cm" | jq '."config"."heartbeats-till-node-down"')
-LAST_UPDATED_AT=$(echo "$cm" | jq '."config"."last_updated_at"')
-
-echo
-echo -e "clustermap-epoch:\033[50D\033[30C$CLUSTERMAP_EPOCH"
-echo -e "min-nodes:\033[50D\033[30C$MIN_NODES"
-echo -e "num-replicas:\033[50D\033[30C$NUM_REPLICAS"
-echo -e "heartbeat-seconds:\033[50D\033[30C$HB_SECONDS"
-echo -e "heartbeats-till-node-down:\033[50D\033[30C$HB_TILL_NODE_DOWN"
+echo "======================================================================"
+wbecho ">> Final Comprehensive Cluster Validation"
+echo "======================================================================"
 echo
 
-becho -n "last_updated_by must be vm1"
-LAST_UPDATED_BY=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
-[ "$LAST_UPDATED_BY" == "$(get_node_id vm1)" ]
-log_status $? "is $LAST_UPDATED_BY"
+# Final clustermap consistency validation
+echo
+wbecho ">> clustermap consistency validation across all nodes"
+echo
+validate_clustermap_consistency $NUM_NODES "$ALL_NODES"
 
-becho -n "last_updated_at must be uptodate"
-LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
-now=$(date +%s)
-# Not more than 5secs old.
-[ $(expr $now - $LAST_UPDATED_AT) -lt 5 ]
-log_status $? "now is $now and last_updated_at is $LAST_UPDATED_AT"
+# Final RV-node mapping validation
+echo
+wbecho ">> RV-node mapping consistency validation"
+echo
+validate_rv_node_mapping_consistency "$ALL_NODES" $NUM_NODES
 
-becho -n "Cluster must be readonly"
-readonly_status=$(echo "$cm" | jq '."readonly"')
-[ "$readonly_status" == "true" ]
-log_status $? "is $readonly_status"
+# Final file listing consistency validation
+echo
+wbecho ">> File listing consistency validation"
+echo
+test_file_listing_consistency "$ALL_NODES" $TOTAL_AZURE_FILES $TOTAL_DCACHE_FILES $TOTAL_BOTH_FILES
 
-becho -n "Cluster state must be ready"
-cluster_state=$(echo "$cm" | jq '."state"' | tr -d '"')
-[ "$cluster_state" == "ready" ]
-log_status $? "is $cluster_state"
+# Comprehensive cross-node file consistency testing
+echo
+wbecho ">> Comprehensive cross-node file consistency testing"
+echo
 
-# Epoch is 1 for initial clustermap and then updated by 1 when RV is added to rv-list.
-becho -n "Epoch must be 2"
-LAST_EPOCH=$(echo "$cm" | jq '."epoch"')
-[ "$LAST_EPOCH" == "2" ]
-log_status $? "is $LAST_EPOCH"
 
-becho -n "rv0 must be online"
-rv0_state=$(get_rv_state "$cm" "rv0")
-[ "$rv0_state" == "online" ]
-log_status $? "is $rv0_state"
+# Test all file types between first and last nodes
+test_cross_node_consistency "vm1" "vm$NUM_NODES" $NUM_NODES false
 
-becho -n "RV count must be 1"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "1" ]
-log_status $? "is $rv_count"
-
-############################################################################
-##                             Start node2                                ##
-############################################################################
+# Test large file consistency across multiple node pairs
+if [ $NUM_NODES -ge $MIN_NODES ]; then
+    test_cross_node_consistency "vm1" "vm$NUM_NODES" 0 true
+    
+    if [ $NUM_NODES -ge 5 ]; then
+        test_cross_node_consistency "vm$MIN_NODES" "vm5" 0 true
+        test_cross_node_consistency "vm1" "vm5" 0 true
+    fi
+fi
 
 echo
-wbecho ">> Starting blobfuse on vm2"
-echo
-start_blobfuse_on_node vm2
-
-#
-# As soon as we start blobfuse on node2, it should update the clustermap with its rv, but
-# node1 will come to know about the updated clustermap only when it refreshes the clustermap
-# on next epoch.
-#
-becho -n "Reading clustermap on vm1"
-cm=$(read_clustermap_from_node vm1)
-log_status $?
-
-becho -n "RV count must be 1"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "1" ]
-log_status $? "is $rv_count"
-
-becho -n "Reading clustermap on vm2"
-cm=$(read_clustermap_from_node vm2)
-log_status $?
-
-becho -n "last_updated_by must be vm2"
-last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
-[ "$last_updated_by" == "$(get_node_id vm2)" ]
-log_status $? "is $last_updated_by"
-
-becho -n "last_updated_at must be uptodate"
-last_updated_at=$(echo "$cm" | jq '."last_updated_at"')
-now=$(date +%s)
-# Not more than 5secs old.
-[ $(expr $now - $last_updated_at) -lt 5 ]
-log_status $? "now is $now and last_updated_at is $last_updated_at"
-
-becho -n "Cluster must be readonly"
-readonly_status=$(echo "$cm" | jq '."readonly"')
-[ "$readonly_status" == "true" ]
-log_status $? "is $readonly_status"
-
-becho -n "Cluster state must be ready"
-cluster_state=$(echo "$cm" | jq '."state"' | tr -d '"')
-[ "$cluster_state" == "ready" ]
-log_status $? "is $cluster_state"
-
-# vm2 nust have updated it once.
-becho -n "Epoch must be 3"
-epoch=$(echo "$cm" | jq '."epoch"')
-[ "$epoch" == "3" ]
-log_status $? "is $epoch"
-
-becho -n "rv0 must be online"
-rv0_state=$(get_rv_state "$cm" "rv0")
-[ "$rv0_state" == "online" ]
-log_status $? "is $rv0_state"
-
-becho -n "rv1 must be online"
-rv1_state=$(get_rv_state "$cm" "rv1")
-[ "$rv1_state" == "online" ]
-log_status $? "is $rv1_state"
-
-becho -n "RV count must be 2"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "2" ]
-log_status $? "is $rv_count"
-
-#
-# Wait for clustermap update on vm1.
-# After that it'll get the clustermap updated by vm2.
-#
-wait_till_next_epoch
-
-becho -n "Reading clustermap on vm1"
-cm=$(read_clustermap_from_node vm1)
-log_status $?
-
-becho -n "RV count must be 2"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "2" ]
-log_status $? "is $rv_count"
-
-LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
-LAST_EPOCH=$(echo "$cm" | jq '."epoch"')
-
-############################################################################
-##                             Start node3                                ##
-############################################################################
-
-echo
-wbecho ">> Starting blobfuse on vm3"
-echo
-start_blobfuse_on_node vm3
-
-#
-# As soon as we start blobfuse on node3, it should update the clustermap with its rv, but
-# node1 and node2 will come to know about the updated clustermap only when they refreshe
-# their clustermaps on their next epochs.
-#
-becho -n "Reading clustermap on vm1"
-cm=$(read_clustermap_from_node vm1)
-log_status $?
-
-becho -n "RV count must be 2"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "2" ]
-log_status $? "is $rv_count"
-
-becho -n "Reading clustermap on vm2"
-cm=$(read_clustermap_from_node vm2)
-log_status $?
-
-becho -n "RV count must be 2"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "2" ]
-log_status $? "is $rv_count"
-
-
-becho -n "Reading clustermap on vm3"
-cm=$(read_clustermap_from_node vm3)
-log_status $?
-
-becho -n "last_updated_by must be vm3"
-last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
-[ "$last_updated_by" == "$(get_node_id vm3)" ]
-log_status $? "is $last_updated_by"
-
-becho -n "last_updated_at must be uptodate"
-last_updated_at=$(echo "$cm" | jq '."last_updated_at"')
-now=$(date +%s)
-# Not more than 5secs old.
-[ $(expr $now - $last_updated_at) -lt 5 ]
-log_status $? "now is $now and last_updated_at is $last_updated_at"
-
-#
-# Cluster will still be readonly, it'll be marked read-write when the next leader node
-# updates the clustermap including creating new MVs
-# TODO: Make this dependent on min-nodes.
-#
-becho -n "Cluster must be readonly"
-readonly_status=$(echo "$cm" | jq '."readonly"')
-[ "$readonly_status" == "true" ]
-log_status $? "is $readonly_status"
-
-becho -n "Cluster state must be ready"
-cluster_state=$(echo "$cm" | jq '."state"' | tr -d '"')
-[ "$cluster_state" == "ready" ]
-log_status $? "is $cluster_state"
-
-# vm3 nust have updated it once.
-becho -n "Epoch must be 4"
-epoch=$(echo "$cm" | jq '."epoch"')
-[ "$epoch" == "4" ]
-log_status $? "is $epoch"
-
-becho -n "rv0 must be online"
-rv0_state=$(get_rv_state "$cm" "rv0")
-[ "$rv0_state" == "online" ]
-log_status $? "is $rv0_state"
-
-becho -n "rv1 must be online"
-rv1_state=$(get_rv_state "$cm" "rv1")
-[ "$rv1_state" == "online" ]
-log_status $? "is $rv1_state"
-
-becho -n "rv2 must be online"
-rv2_state=$(get_rv_state "$cm" "rv2")
-[ "$rv2_state" == "online" ]
-log_status $? "is $rv2_state"
-
-becho -n "RV count must be 3"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "2" ]
-log_status $? "is $rv_count"
-
-#
-# Wait for clustermap update on vm1.
-# After that it'll get the clustermap updated by vm3.
-#
-wait_till_next_epoch
-
-becho -n "Reading clustermap on vm1"
-cm=$(read_clustermap_from_node vm1)
-log_status $?
-
-becho -n "RV count must be 3"
-rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "3" ]
-log_status $? "is $rv_count"
-
-LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
-LAST_EPOCH=$(echo "$cm" | jq '."epoch"')
+sbecho "======================================================================"
+sbecho "All cluster validation tests completed successfully!"
+sbecho "======================================================================"

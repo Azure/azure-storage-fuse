@@ -47,7 +47,7 @@ type StorageCallbacks interface {
 	//It will Get the properties of the blob from storage
 	GetPropertiesFromStorage(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
 
-	//It will Put the blob in storage, Returns Etag of the blob incase of success
+	//It will Put the blob in storage, Returns Etag of the blob in case of success
 	PutBlobInStorage(opt internal.WriteFromBufferOptions) (string, error)
 
 	//It will Read the directory from storage
@@ -65,7 +65,7 @@ type StorageCallbacks interface {
 	//It will Get the properties of the blob through next Component whichever is in pipeline
 	GetProperties(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
 
-	//It will Put the blob through next Component whichever is in pipeline, Returns Etag of the blob incase of success
+	//It will Put the blob through next Component whichever is in pipeline, Returns Etag of the blob in case of success
 	PutBlob(opt internal.WriteFromBufferOptions) (string, error)
 
 	//It will Read the directory through next Component whichever is in pipeline
