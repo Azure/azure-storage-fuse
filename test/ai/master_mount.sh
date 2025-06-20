@@ -3,6 +3,9 @@ export AZURE_STORAGE_ACCOUNT=blobfuseuksouthgputest
 #export AZURE_STORAGE_ACCESS_KEY=<key>
 export AZURE_STORAGE_AUTH_TYPE="msi"
 export AZURE_STORAGE_IDENTITY_CLIENT_ID="ba74e24e-15a1-45cb-be86-9e00a4facac5"
+
+sudo mkdir -p -m 777 /mnt/blobfuse/mnt
+
 # Base directory for entire container mount
 MOUNT_PATH=/mnt/blobfuse/mnt
 
