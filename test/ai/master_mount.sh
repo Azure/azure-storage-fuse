@@ -1,5 +1,5 @@
 # Mast mount script that allows you to mount blobfuse in RW mode where all your models are stored
-export AZURE_STORAGE_ACCOUNT=blobfuseuksouthgputest
+export AZURE_STORAGE_ACCOUNT=blobperfuksouth001
 #export AZURE_STORAGE_ACCESS_KEY=<key>
 export AZURE_STORAGE_AUTH_TYPE="msi"
 
@@ -18,6 +18,8 @@ sudo umount /mnt/ramdisk
 sudo mkdir /mnt/ramdisk
 sudo chmod 777 /mnt/ramdisk
 sudo mount -t tmpfs -o rw,size=200G tmpfs /mnt/ramdisk
+pip install transformers argparse
+pip install torch
 
 sudo rm -rf $MOUNT_PATH/*
 
