@@ -2,9 +2,9 @@
 export AZURE_STORAGE_ACCOUNT=blobfuseuksouthgputest
 #export AZURE_STORAGE_ACCESS_KEY=<key>
 export AZURE_STORAGE_AUTH_TYPE="msi"
-export AZURE_STORAGE_IDENTITY_CLIENT_ID="ba74e24e-15a1-45cb-be86-9e00a4facac5"
+export AZURE_STORAGE_IDENTITY_CLIENT_ID=""
 
-sudo mkdir -p -m 777 /mnt/blobfuse/mnt
+sudo mkdir -p -m 777 /mnt/blobfuse/mnt /mnt/blobfuse/cache
 
 # Base directory for entire container mount
 MOUNT_PATH=/mnt/blobfuse/mnt
@@ -23,6 +23,8 @@ sudo rm -rf $MOUNT_PATH/*
 
 blobfuse2 mount $MOUNT_PATH --tmp-path=/mnt/ramdisk --container-name="models" --block-cache --log-type base --log-file-path=./master_blobfuse2.log
 sleep 5
+
+
 
 
 
