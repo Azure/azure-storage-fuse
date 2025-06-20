@@ -45,6 +45,7 @@ fi
 # export AZURE_STORAGE_ACCOUNT=blobfuseaitest2
 export AZURE_STORAGE_ACCOUNT=blobfuseuksouthgputest 
 export AZURE_STORAGE_AUTH_TYPE="msi"
+export AZURE_STORAGE_IDENTITY_CLIENT_ID="ba74e24e-15a1-45cb-be86-9e00a4facac5"
 
 # export AZURE_STORAGE_ACCESS_KEY=<key>
 
