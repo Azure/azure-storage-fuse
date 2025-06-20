@@ -42,9 +42,11 @@ then
 fi
 
 
-export AZURE_STORAGE_ACCOUNT=blobfuseaitest2
-#export AZURE_STORAGE_ACCESS_KEY=<key>
+# export AZURE_STORAGE_ACCOUNT=blobfuseaitest2
+export AZURE_STORAGE_ACCOUNT=blobfuseuksouthgputest 
 export AZURE_STORAGE_AUTH_TYPE="msi"
+
+# export AZURE_STORAGE_ACCESS_KEY=<key>
 
 #MOUNT_PATH=/mnt/blobfuse/checkpoint
 MOUNT_PATH=/home/blobfuse/mnt
@@ -125,7 +127,7 @@ for mode in "${fusemode[@]}"; do
 
 		echo "Running script now"
 
-		python3 load.py --checkpoint_path $MOUNT_PATH --cache_path $HUG_CACHE  >> stats.log
+		python3 load.py --checkpoint_path $MOUNT_PATH --cache_path $HUG_CACHE --device cpu  >> stats.log
 	done
 done
 
