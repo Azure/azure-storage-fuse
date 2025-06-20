@@ -45,6 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 type threadpool struct {
@@ -206,5 +207,14 @@ func processPutChunk(targetNodeID string, req *models.PutChunkRequest) (*models.
 	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 	defer cancel()
 
-	return rpc_client.PutChunk(ctx, targetNodeID, req)
+	//
+	// If the node to which the PutChunk() RPC call must be made is local,
+	// then we directly call the PutChunk() method using the local server's handler.
+	// Else we call the PutChunk() RPC via the Thrift RPC client.
+	//
+	if targetNodeID == rpc.GetMyNodeUUID() {
+		return rpc_server.PutChunkLocal(ctx, req)
+	} else {
+		return rpc_client.PutChunk(ctx, targetNodeID, req)
+	}
 }
