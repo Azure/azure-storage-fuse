@@ -2,7 +2,7 @@
 export AZURE_STORAGE_ACCOUNT=blobfuseuksouthgputest
 #export AZURE_STORAGE_ACCESS_KEY=<key>
 export AZURE_STORAGE_AUTH_TYPE="msi"
-export AZURE_STORAGE_IDENTITY_CLIENT_ID=""
+
 
 sudo mkdir -p -m 777 /mnt/blobfuse/mnt /mnt/blobfuse/cache
 
@@ -21,7 +21,7 @@ sudo mount -t tmpfs -o rw,size=200G tmpfs /mnt/ramdisk
 
 sudo rm -rf $MOUNT_PATH/*
 
-blobfuse2 mount $MOUNT_PATH --tmp-path=/mnt/ramdisk --container-name="models" --block-cache --log-type base --log-file-path=./master_blobfuse2.log
+blobfuse2 mount $MOUNT_PATH --tmp-path=/mnt/ramdisk --container-name="vibhansa" --block-cache --log-type base --log-file-path=./master_blobfuse2.log
 sleep 5
 
 
