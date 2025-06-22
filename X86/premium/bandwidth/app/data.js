@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1749965981836,
+  "lastUpdate": 1750570854206,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1257,6 +1257,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 2669.2959984540253,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "truealex81",
+            "username": "truealex81",
+            "email": "45783672+truealex81@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "8b5b9be10c43d6477ae33aa791c04c31537e3902",
+          "message": "Update MIGRATION.md (#1837)",
+          "timestamp": "2025-06-17T04:53:08Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8b5b9be10c43d6477ae33aa791c04c31537e3902"
+        },
+        "date": 1750570853939,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1121.47746899986,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_10GB",
+            "value": 1779.4431701649612,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_100GB",
+            "value": 1938.0545861807248,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_40GB",
+            "value": 2064.8251979066363,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_1GB",
+            "value": 1168.2679999006768,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_10GB",
+            "value": 2551.50742769486,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_100GB",
+            "value": 2733.7798648338867,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_40GB",
+            "value": 2737.2616531780145,
             "unit": "MiB/s"
           }
         ]
