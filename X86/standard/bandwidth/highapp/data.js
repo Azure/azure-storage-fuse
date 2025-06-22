@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1749972430751,
+  "lastUpdate": 1750578012647,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -555,6 +555,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 3.847706874203452,
+            "unit": "GiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "truealex81",
+            "username": "truealex81",
+            "email": "45783672+truealex81@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "8b5b9be10c43d6477ae33aa791c04c31537e3902",
+          "message": "Update MIGRATION.md (#1837)",
+          "timestamp": "2025-06-17T04:53:08Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8b5b9be10c43d6477ae33aa791c04c31537e3902"
+        },
+        "date": 1750578012363,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 7.218879052333537,
+            "unit": "GiB/s"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 3.8510972903608716,
             "unit": "GiB/s"
           }
         ]
