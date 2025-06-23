@@ -37,6 +37,8 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -414,15 +416,25 @@ func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 	for k := range cm.RVMap {
 		rvKeys = append(rvKeys, k)
 	}
-	// TODO: The following sorting is lexigographic, should be changed to human sort.
-	sort.Strings(rvKeys)
+	// Sort rvKeys by their names.
+	sort.Slice(rvKeys, func(i, j int) bool {
+		// Strip the "MV" prefix and convert the numeric part to integers
+		numI, _ := strconv.Atoi(strings.TrimPrefix(rvKeys[i], "rv"))
+		numJ, _ := strconv.Atoi(strings.TrimPrefix(rvKeys[j], "rv"))
+		return numI < numJ
+	})
 
 	mvKeys := make([]string, 0, len(cm.MVMap))
 	for k := range cm.MVMap {
 		mvKeys = append(mvKeys, k)
 	}
-	// TODO: The following sorting is lexigographic, should be changed to human sort.
-	sort.Strings(mvKeys)
+	// Sort mvKeys by their names.
+	sort.Slice(mvKeys, func(i, j int) bool {
+		// Strip the "MV" prefix and convert the numeric part to integers
+		numI, _ := strconv.Atoi(strings.TrimPrefix(mvKeys[i], "mv"))
+		numJ, _ := strconv.Atoi(strings.TrimPrefix(mvKeys[j], "mv"))
+		return numI < numJ
+	})
 
 	// Create sorted slices
 	rvList := make([]map[string]dcache.RawVolume, 0, len(rvKeys))
