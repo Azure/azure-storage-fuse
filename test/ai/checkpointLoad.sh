@@ -63,7 +63,7 @@ COMMON_ARGS="--container-name="vibhansa" --log-type base --log-level=LOG_ERR --l
 # Unmount Ramdisk and recreate it
 #fusemode=("file-cache" "block-cache" "preload")
 fusemode=("preload" "file-cache" "block-cache")
-devices=("cpu" " cuda" "mcuda")
+devices=("cpu" "cuda" "mcuda")
 #devices=("mcuda", "cpu" "cuda")
 
 for device in "${devices[@]}"; do
