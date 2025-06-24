@@ -61,10 +61,11 @@ type BlockPool struct {
 	// Number of block that this pool can handle at max
 	maxBlocks uint32
 
-	// Add these:
+	// Total number of blocks allocated to the pool
 	totalBlocks uint32
-	capBlocks   uint32
-	mu          sync.Mutex
+
+	// Mutex to protect the totalBlocks count
+	mu sync.Mutex
 }
 
 // NewBlockPool allocates a new pool of blocks
@@ -81,9 +82,8 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	pool := &BlockPool{
 		blocksCh:     make(chan *Block, poolBlockCount-1),
 		resetBlockCh: make(chan *Block, poolBlockCount-1),
-		maxBlocks:    uint32(poolBlockCount),
+		maxBlocks:    uint32(blockCount),
 		blockSize:    blockSize,
-		capBlocks:    uint32(blockCount),
 		totalBlocks:  uint32(poolBlockCount),
 	}
 
@@ -144,7 +144,7 @@ func (pool *BlockPool) MustGet() *Block {
 
 	default:
 		pool.mu.Lock()
-		if pool.totalBlocks < pool.capBlocks {
+		if pool.totalBlocks < pool.maxBlocks {
 			// There are no free blocks so we must allocate one and return here
 			// As the consumer of the pool needs a block immediately
 			log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
@@ -160,7 +160,7 @@ func (pool *BlockPool) MustGet() *Block {
 			break
 		}
 		pool.mu.Unlock()
-		// Wait for a block to be released if cap is reached
+		// Wait for a block to be released if max is reached
 		b = <-pool.blocksCh
 	}
 	// Mark the buffer ready for reuse now
