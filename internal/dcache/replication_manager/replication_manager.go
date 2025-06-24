@@ -230,7 +230,16 @@ retry:
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
+		//
+		// If the node to which the GetChunk() RPC call must be made is local,
+		// then we directly call the GetChunk() method using the local server's handler.
+		// Else we call the GetChunk() RPC via the Thrift RPC client.
+		//
+		if targetNodeID == rpc.GetMyNodeUUID() {
+			rpcResp, err = rpc_server.GetChunkLocal(ctx, rpcReq)
+		} else {
+			rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
+		}
 
 		// Exclude this RV from further iterations (if any).
 		excludeRVs = append(excludeRVs, readerRV.Name)
@@ -428,7 +437,7 @@ retry:
 			if targetNodeID == rpc.GetMyNodeUUID() {
 				// Only one component RV can be local.
 				common.Assert(putChunkDCReq.Request.Chunk.Address.RvID == "",
-					putChunkDCReq.Request.Chunk.Address.String())
+					putChunkDCReq.Request.Chunk.Address.String(), rv.Name, rvID)
 				putChunkDCReq.Request.Chunk.Address.RvID = rvID
 			} else {
 				// Non-local component RVs get added to putChunkDCReq.NextRVs.
@@ -545,7 +554,20 @@ retry:
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		putChunkDCResp, err := rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+		var putChunkDCResp *models.PutChunkDCResponse
+		var err error
+
+		//
+		// If the node to which the PutChunkDC() RPC call must be made is local,
+		// then we directly call the PutChunkDC() method using the local server's handler.
+		// Else we call the PutChunkDC() RPC via the Thrift RPC client.
+		//
+		if targetNodeID == rpc.GetMyNodeUUID() {
+			putChunkDCResp, err = rpc_server.PutChunkDCLocal(ctx, putChunkDCReq)
+		} else {
+			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+		}
+
 		if err != nil {
 			log.Err("ReplicationManager::WriteMV: Failed to send PutChunkDC request for nexthop %s/%s to node %s: %v",
 				rvName, req.MvName, targetNodeID, err)
@@ -1688,7 +1710,19 @@ retry:
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		resp, err := rpc_client.GetMVSize(ctx, targetNodeID, req)
+		var resp *models.GetMVSizeResponse
+		var err error
+
+		//
+		// If the node to which the GetMVSize() RPC call must be made is local,
+		// then we directly call the GetMVSize() method using the local server's handler.
+		// Else we call the GetMVSize() RPC via the Thrift RPC client.
+		//
+		if targetNodeID == rpc.GetMyNodeUUID() {
+			resp, err = rpc_server.GetMVSizeLocal(ctx, req)
+		} else {
+			resp, err = rpc_client.GetMVSize(ctx, targetNodeID, req)
+		}
 
 		// Exclude this RV from further iterations (if any).
 		excludeRVs = append(excludeRVs, readerRV.Name)
