@@ -14,8 +14,7 @@ clear_cache() {
 	sudo sysctl -w vm.drop_caches=3
 }
 	
-#models=("Qwen/Qwen3-30B-A3B" "mistralai/Mistral-Nemo-Instruct-2407" "mistralai/Mistral-7B-Instruct-v0.2" "meta-llama/Llama-3.1-8B-Instruct" "meta-llama/Llama-Guard-3-8B" "microsoft/Phi-4-reasoning-plus" "EleutherAI/gpt-neox-20b" "facebook/opt-30b")
-models=("Qwen/Qwen3-30B-A3B")
+models=("Qwen/Qwen3-30B-A3B" "mistralai/Mistral-Nemo-Instruct-2407" "mistralai/Mistral-7B-Instruct-v0.2" "meta-llama/Llama-3.1-8B-Instruct" "meta-llama/Llama-Guard-3-8B" "microsoft/Phi-4-reasoning-plus" "EleutherAI/gpt-neox-20b" "facebook/opt-30b")
 
 clear_cache
 
@@ -63,8 +62,8 @@ COMMON_ARGS="--container-name="vibhansa" --log-type base --log-level=LOG_ERR --l
 
 # Unmount Ramdisk and recreate it
 #fusemode=("file-cache" "block-cache" "preload")
-fusemode=("preload")
-devices=("cpu")
+fusemode=("preload" "file-cache" "block-cache")
+devices=("cpu" " cuda" "mcuda")
 #devices=("mcuda", "cpu" "cuda")
 
 for device in "${devices[@]}"; do
@@ -83,7 +82,7 @@ for device in "${devices[@]}"; do
 		elif [ "$mode" == "preload" ]
 		then
 			#MODE_ARGS="--preload --tmp-path=/mnt/blobfuse/cache"
-			MODE_ARGS="--preload --tmp-path=$RAMDISK_PATH --workers=300" #73 for 300 and above it gets capped to 65/66 for 1200 workers as well
+			MODE_ARGS="--preload --tmp-path=$RAMDISK_PATH --workers=300" 
 			wait_time=25
 		fi
 
