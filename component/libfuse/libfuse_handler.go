@@ -290,9 +290,12 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	}
 
 	// Allow fuse to read a file in parallel on different offsets
+	// TODO: turning of this capability to make the readahead simpler in dcache.
+	// Make the kernel readahead synchronous, that would make the readahead implementation inside the blobfuse easier.
+	// Default behaviour for FUSE is to do asynchronous readahead if its capable.
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
-		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_READ")
-		conn.want |= C.FUSE_CAP_ASYNC_READ
+		log.Info("Libfuse::libfuse_init : Disable Capability : FUSE_CAP_ASYNC_READ")
+		conn.want &= ^C.uint(C.FUSE_CAP_ASYNC_READ)
 	}
 
 	if (conn.capable & C.FUSE_CAP_SPLICE_WRITE) != 0 {
@@ -471,11 +474,13 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// For each handle created using opendir we create
 	// this structure here to hold current block of children to serve readdir
 	handle.SetValue("cache", &dirChildCache{
-		sIndex:   0,
-		eIndex:   0,
-		token:    "",
-		length:   0,
-		children: make([]*internal.ObjAttr, 0),
+		sIndex:        0,
+		eIndex:        0,
+		token:         "",
+		length:        0,
+		children:      make([]*internal.ObjAttr, 0),
+		isFsDcache:    true,
+		dcacheEntries: make(map[string]struct{}),
 	})
 
 	handlemap.Add(handle)
@@ -516,10 +521,12 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 	if off_64 == 0 ||
 		(off_64 >= cacheInfo.eIndex && cacheInfo.token != "") {
 		attrs, token, err := fuseFS.NextComponent().StreamDir(internal.StreamDirOptions{
-			Name:   handle.Path,
-			Offset: off_64,
-			Token:  cacheInfo.token,
-			Count:  common.MaxDirListCount,
+			Name:          handle.Path,
+			Offset:        off_64,
+			Token:         cacheInfo.token,
+			Count:         common.MaxDirListCount,
+			IsFsDcache:    &cacheInfo.isFsDcache,
+			DcacheEntries: cacheInfo.dcacheEntries,
 		})
 
 		if err != nil {
@@ -647,6 +654,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 			return -C.EEXIST
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if err == syscall.EROFS {
+			return -C.EROFS
 		} else {
 			return -C.EIO
 		}
@@ -687,6 +696,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		fi.flags = fi.flags &^ C.O_SYNC
 		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
+
 	if !fuseFS.disableWritebackCache {
 		if fi.flags&C.O_ACCMODE == C.O_WRONLY || fi.flags&C.O_APPEND != 0 {
 			if fuseFS.ignoreOpenFlags {
@@ -727,6 +737,16 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+
+	if handle.IsFsDebug() {
+		// This is not an actual file i.e., present in the filesystem but a file which was implemented by respective component
+		// to emit metrics/state of the filesystem. Hence the size of the file is not known at the stat and also the stat
+		// must receive the file size to be zero for such files. But If page-cache is enabled, the file size is checked before
+		// making a read call. As we're returning the file size to be zero, we don't get the read calls if the page cache is
+		// turned on for the mount point. Hence we make the handle to be direct-io, so that we get read calls regardless of
+		// its size.
+		C.make_file_handle_direct_io(fi)
+	}
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
