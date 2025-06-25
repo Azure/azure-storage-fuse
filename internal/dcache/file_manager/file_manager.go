@@ -39,6 +39,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -192,7 +193,7 @@ type DcacheFile struct {
 	nextWriteOffset int64
 
 	// Chunk index (inclusive) till which we have done readahead.
-	lastReadaheadChunkIdx int64
+	lastReadaheadChunkIdx atomic.Int64
 
 	//
 	// Chunk Idx -> *chunk
@@ -724,13 +725,13 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 	//
 	if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
 		// Start readahead after the last chunk readahead by prev read calls.
-		readAheadStartChunkIdx := max(file.lastReadaheadChunkIdx+1, chunkIdx+1)
+		readAheadStartChunkIdx := max(file.lastReadaheadChunkIdx.Load()+1, chunkIdx+1)
 		for i := readAheadStartChunkIdx; i <= readAheadEndChunkIdx; i++ {
 			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, false /* sync */)
 			if err != nil {
 				return nil, err
 			}
-			file.lastReadaheadChunkIdx = i
+			file.lastReadaheadChunkIdx.Store(i)
 		}
 	}
 

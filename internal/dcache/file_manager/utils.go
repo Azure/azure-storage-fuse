@@ -256,11 +256,13 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		common.Assert(newOpenCount > 0, newOpenCount, fileName)
 	}
 
-	return &DcacheFile{
-		FileMetadata:          fileMetadata,
-		attr:                  prop,
-		lastReadaheadChunkIdx: -1,
-	}, nil
+	dcacheFile := &DcacheFile{
+		FileMetadata: fileMetadata,
+		attr:         prop,
+	}
+	dcacheFile.lastReadaheadChunkIdx.Store(-1)
+
+	return dcacheFile, nil
 }
 
 func DeleteDcacheFile(fileName string) error {

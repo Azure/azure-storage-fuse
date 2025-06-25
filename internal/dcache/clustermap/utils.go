@@ -430,7 +430,7 @@ func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 	}
 	// Sort mvKeys by their names.
 	sort.Slice(mvKeys, func(i, j int) bool {
-		// Strip the "rv" prefix and convert the numeric part to integers for human sort order.
+		// Strip the "mv" prefix and convert the numeric part to integers for human sort order.
 		numI, _ := strconv.Atoi(strings.TrimPrefix(mvKeys[i], "mv"))
 		numJ, _ := strconv.Atoi(strings.TrimPrefix(mvKeys[j], "mv"))
 		return numI < numJ
