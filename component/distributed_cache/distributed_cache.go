@@ -366,6 +366,12 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".chunk-size") {
 		distributedCache.cfg.ChunkSize = defaultChunkSize
 	}
+
+	if distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
+		return fmt.Errorf("config error in %s: [chunk-size must be a multiple of %d bytes]",
+			distributedCache.Name(), common.FS_BLOCK_SIZE)
+	}
+
 	if !config.IsSet(compName + ".min-nodes") {
 		distributedCache.cfg.MinNodes = defaultMinNodes
 	}
@@ -1190,6 +1196,7 @@ func init() {
 
 	cacheDirFlag := config.AddStringSliceFlag("cache-dirs", []string{}, "One or more local cache directories for distributed cache (comma-separated), e.g. --cache-dirs=/mnt/tmp,/mnt/abc")
 	config.BindPFlag(compName+".cache-dirs", cacheDirFlag)
+
 	chunkSize := config.AddUint64Flag("chunk-size", defaultChunkSize, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)
 

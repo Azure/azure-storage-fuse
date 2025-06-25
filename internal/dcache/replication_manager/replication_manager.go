@@ -380,7 +380,7 @@ retry:
 				Data: req.Data,
 				Hash: "", // TODO: hash validation will be done later
 			},
-			Length:         int64(len(req.Data)),
+			Length:         req.Length,
 			SyncID:         "", // this is regular client write
 			ComponentRV:    componentRVs,
 			MaybeOverwrite: retryCnt > 0 || brokenChain,
@@ -526,7 +526,7 @@ retry:
 					Data: req.Data,
 					Hash: "", // TODO: hash validation will be done later
 				},
-				Length:         int64(len(req.Data)),
+				Length:         req.Length,
 				SyncID:         "", // this is regular client write
 				ComponentRV:    componentRVs,
 				MaybeOverwrite: retryCnt > 0 || brokenChain,
@@ -1520,8 +1520,8 @@ func copyOutOfSyncChunks(job *syncJob) error {
 					MvName:      job.mvName,
 					OffsetInMiB: offsetInMiB,
 				},
-				Data: srcData,
-				Hash: "", // TODO: hash validation will be done later
+				Data: srcData, // TODO: expand the buffer to align to 4096 bytes needed for direct I/O
+				Hash: "",      // TODO: hash validation will be done later
 			},
 			Length: int64(len(srcData)),
 			// this is sync write RPC call, so the sync ID should be that of the target RV.

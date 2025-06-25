@@ -42,6 +42,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -1850,18 +1851,59 @@ refreshFromClustermapAndRetry:
 	}
 
 	var tmpChunkPath string
+	var fh *os.File
+	var fd, bytesWritten int
 
 	if performDummyReadWrite() {
 		goto dummy_write
 	}
 
+	//
+	// The chunk data length must be aligned with the FS_BLOCK_SIZE for direct IO writes.
+	// Otherwise, the write will fail with EINVAL.
+	//
+	common.Assert(len(req.Chunk.Data)%common.FS_BLOCK_SIZE == 0,
+		len(req.Chunk.Data), common.FS_BLOCK_SIZE)
+
 	// Write to .tmp file first and rename it to the final file.
 	tmpChunkPath = fmt.Sprintf("%s.tmp", chunkPath)
-	err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
+
+	fd, err = syscall.Open(tmpChunkPath,
+		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
+	if err != nil {
+		errStr := fmt.Sprintf("Failed to open temp chunk file descriptor %s [%v]", tmpChunkPath, err)
+		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+	}
+
+	defer syscall.Close(fd)
+
+	fh = os.NewFile(uintptr(fd), tmpChunkPath)
+	defer fh.Close()
+
+	common.Assert(fh != nil, tmpChunkPath)
+
+	bytesWritten, err = fh.Write(req.Chunk.Data)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+	}
+
+	common.Assert(bytesWritten == len(req.Chunk.Data),
+		bytesWritten, len(req.Chunk.Data))
+
+	//
+	// If this is the last chunk of the file, truncate it to its correct size.
+	//
+	if req.Length != int64(len(req.Chunk.Data)) {
+		err = fh.Truncate(req.Length)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to truncate chunk file %s to %d bytes [%v]",
+				chunkPath, req.Length, err)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
 	}
 
 	// TODO: hash validation will be done later

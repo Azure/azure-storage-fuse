@@ -161,7 +161,8 @@ func (wp *workerPool) writeChunk(task *task) {
 		FileID:         task.file.FileMetadata.FileID,
 		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
 		ChunkIndex:     task.chunk.Idx,
-		Data:           task.chunk.Buf[:task.chunk.Len],
+		Data:           task.chunk.Buf,
+		Length:         task.chunk.Len,
 		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
 		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),
 	}
