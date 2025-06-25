@@ -203,7 +203,7 @@ wait_till_next_scheduled_epoch()
 {
     local next_epoch=$(expr $LAST_UPDATED_AT + $CLUSTERMAP_EPOCH)
     local now=$(date +%s)
-    local secs_to_next_epoch=$(expr $next_epoch - $now + 5)
+    local secs_to_next_epoch=$(expr $next_epoch - $now + 2)
 
     if [ $secs_to_next_epoch -le 0 ]; then
         wbecho "Next epoch already over"
@@ -331,7 +331,7 @@ write_data_in_dcache()
     local file_name=$2
     local block_size=$3
     local count=$4
-    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/fs=dcache/$file_name bs=$block_size count=$count"
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/fs=dcache/$file_name bs=$block_size count=$count conv=fsync"
 }
 
 write_data_in_azure()
@@ -340,16 +340,16 @@ write_data_in_azure()
     local file_name=$2
     local block_size=$3
     local count=$4
-    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/fs=azure/$file_name bs=$block_size count=$count"
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/fs=azure/$file_name bs=$block_size count=$count conv=fsync"
 }
 
-write_data_in_mountdir()
+write_data_on_both()
 {
     local vm=$1
     local file_name=$2
     local block_size=$3
     local count=$4
-    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/$file_name bs=$block_size count=$count"
+    ssh $vm "dd if=/dev/urandom of=$MOUNTDIR/$file_name bs=$block_size count=$count conv=fsync"
 }
 
 get_md5sum()
@@ -856,7 +856,7 @@ for ((current_node=1; current_node<=NUM_NODES; current_node++)); do
 
             becho -n "Write 4GB data over unqalified path on $vm_name"
             file_name="4GB.both"
-            write_data_in_mountdir $vm_name $file_name 1G 4
+            write_data_on_both $vm_name $file_name 1G 4
             TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
             
             # When we write file in unqualified path, it writes in azure as well as dcache path. So updating the counter for azure file as well.
@@ -878,7 +878,7 @@ for ((current_node=1; current_node<=NUM_NODES; current_node++)); do
 
             becho -n "Write 2GB data over unqalified path on $vm_name"
             file_name="2GB.both"
-            write_data_in_mountdir $vm_name $file_name 1G 2
+            write_data_on_both $vm_name $file_name 1G 2
 
             TOTAL_BOTH_FILES=$((TOTAL_BOTH_FILES + 1))
             
