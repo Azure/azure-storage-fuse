@@ -257,9 +257,9 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	return &DcacheFile{
-		FileMetadata:     fileMetadata,
-		attr:             prop,
-		prevReadChunkIdx: -1,
+		FileMetadata:          fileMetadata,
+		attr:                  prop,
+		lastReadaheadChunkIdx: -1,
 	}, nil
 }
 

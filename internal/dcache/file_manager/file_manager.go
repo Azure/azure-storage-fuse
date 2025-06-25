@@ -191,8 +191,8 @@ type DcacheFile struct {
 	// data and we don't support that.
 	nextWriteOffset int64
 
-	// Previous Chunk Index of read call
-	prevReadChunkIdx int64
+	// Chunk index (inclusive) till which we have done readahead.
+	lastReadaheadChunkIdx int64
 
 	//
 	// Chunk Idx -> *chunk
@@ -266,7 +266,6 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 
 		offset += int64(copied)
 		bufOffset += copied
-		file.prevReadChunkIdx = chunk.Idx
 	}
 
 	// Must exactly read what's determined above (what user asks, capped by file size).
@@ -714,28 +713,24 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 	log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, offset: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, offset, chunkIdx)
 
+	readAheadEndChunkIdx := min(chunkIdx+int64(fileIOMgr.numReadAheadChunks),
+		getChunkIdxFromFileOffset(file.FileMetadata.Size-1, &file.FileMetadata.FileLayout))
+	common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
+
 	//
 	// Schedule downloads for the readahead chunks. The chunk at chunkIdx is to be read synchronously,
 	// for the remaining we do async/readahead read.
 	// We do it only when reading the start of a chunk.
 	//
 	if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
-		readAheadStartChunkIdx := chunkIdx + 1
-		// Skip the readaheads done by the previous read chunk.
-		if chunkIdx > file.prevReadChunkIdx && file.prevReadChunkIdx != -1 {
-			readAheadStartChunkIdx = max(readAheadStartChunkIdx,
-				file.prevReadChunkIdx+int64(fileIOMgr.numReadAheadChunks)+1)
-		}
-
-		readAheadEndChunkIdx := min(chunkIdx+int64(fileIOMgr.numReadAheadChunks),
-			getChunkIdxFromFileOffset(file.FileMetadata.Size-1, &file.FileMetadata.FileLayout))
-		common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
-
+		// Start readahead after the last chunk readahead by prev read calls.
+		readAheadStartChunkIdx := max(file.lastReadaheadChunkIdx+1, chunkIdx+1)
 		for i := readAheadStartChunkIdx; i <= readAheadEndChunkIdx; i++ {
 			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, false /* sync */)
 			if err != nil {
 				return nil, err
 			}
+			file.lastReadaheadChunkIdx = i
 		}
 	}
 
