@@ -1876,16 +1876,9 @@ refreshFromClustermapAndRetry:
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
-	// defer syscall.Close(fd)
+	defer syscall.Close(fd)
 
-	// syscall.Write(fd, req.Chunk.Data)
-
-	fh = os.NewFile(uintptr(fd), tmpChunkPath)
-	defer fh.Close()
-
-	common.Assert(fh != nil, tmpChunkPath)
-
-	bytesWritten, err = fh.Write(req.Chunk.Data)
+	bytesWritten, err = syscall.Write(fd, req.Chunk.Data)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
