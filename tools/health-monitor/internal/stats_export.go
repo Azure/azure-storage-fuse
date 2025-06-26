@@ -67,9 +67,6 @@ type StatsExporter struct {
 	wg         sync.WaitGroup
 	opFile     *os.File
 	outputList []*Output
-	//lastBytesUploaded   float64
-	//lastBytesDownloaded float64
-	//hasPrev             bool
 }
 
 type Output struct {
@@ -82,6 +79,7 @@ type Output struct {
 	Policy    string                  `json:"Policy,omitempty"`
 }
 
+// monitorURL is the Azure Monitor API endpoint for sending metrics.
 const monitorURL = "https://westus2.monitoring.azure.com/subscriptions/ba45b233-e2ef-4169-8808-49eb0d8eba0d/resourceGroups/sanjsingh-rg/providers/Microsoft.Compute/virtualMachines/sanjanavm2/metrics"
 
 var expLock sync.Mutex
@@ -218,7 +216,6 @@ func (se *StatsExporter) StatsExporter() {
 				Timestamp: st.Timestamp,
 			})
 			se.addToList(&st, len(se.outputList)-1)
-			log.Info("✅ New version of bfusemon has started")
 
 			metrics := se.parseAndValidateMetrics(se.outputList[len(se.outputList)-1])
 			if len(metrics) > 0 {
@@ -408,7 +405,7 @@ func (se *StatsExporter) parseAndValidateMetrics(out *Output) map[string]float64
 		validMetrics[metricName] = value
 	}
 
-	blobfuseMetrics := computeBlobfuseByteDeltas(out.Bfs)
+	blobfuseMetrics := blobfuseStats(out.Bfs)
 	for k, v := range blobfuseMetrics {
 		validMetrics[k] = v
 	}
@@ -423,7 +420,7 @@ func buildAzureMonitorPayload(metricName string, value float64, timestampStr str
 		log.Err("buildAzureMonitorPayload: Invalid timestamp format [%v]", err)
 		return nil
 	}
-	//mountPath := common.MountPath
+
 	log.Debug("buildAzureMonitorPayload: Using mount path [%s]", hmcommon.MountPath)
 	if hmcommon.MountPath == "" {
 		log.Warn("buildAzureMonitorPayload: Mount path is empty, using default value")
@@ -509,13 +506,11 @@ func sendToAzureMonitorAPI(payload []byte, token string) error {
 	return nil
 }
 
-//var lastBytesTransferred float64 = -1
-//var lastBytesDownloaded float64 = -1
-
-func computeBlobfuseByteDeltas(bfsList []stats_manager.PipeMsg) map[string]float64 {
+// parse and extract blobfuse stats from the PipeMsg list
+// This function extracts specific metrics from the PipeMsg list and returns them as a map.
+func blobfuseStats(bfsList []stats_manager.PipeMsg) map[string]float64 {
 	metrics := make(map[string]float64)
-	/*var transferred, downloaded float64
-	var foundTransferred, foundDownloaded bool*/
+
 	if len(bfsList) == 0 {
 		return metrics
 	}
@@ -538,6 +533,7 @@ func computeBlobfuseByteDeltas(bfsList []stats_manager.PipeMsg) map[string]float
 			"DeleteRequestCount",
 			"HeadRequestCount",
 			"Bytes Downloaded",
+			"Bytes Transferred",
 			"Bytes Uploaded",
 			"OtherRequestCount":
 
@@ -550,39 +546,6 @@ func computeBlobfuseByteDeltas(bfsList []stats_manager.PipeMsg) map[string]float
 			}
 		}
 	}
-
-	/*for _, bfs := range bfsList {
-		// Handle "Bytes Transferred"
-		if btRaw, ok := bfs.Value["Bytes Transferred"]; ok {
-			if bt, ok := btRaw.(float64); ok {
-				transferred += bt
-				foundTransferred = true
-			}
-		}
-		// Handle "BytesDownloaded"
-		if bdRaw, ok := bfs.Value["BytesDownloaded"]; ok {
-			if bd, ok := bdRaw.(float64); ok {
-				downloaded += bd
-				foundDownloaded = true
-			}
-		}
-	}
-
-	// Compute deltas
-	if foundTransferred && lastBytesTransferred >= 0 {
-		metrics["BytesTransferredDelta"] = transferred - lastBytesTransferred
-	}
-	if foundDownloaded && lastBytesDownloaded >= 0 {
-		metrics["BytesDownloadedDelta"] = downloaded - lastBytesDownloaded
-	}
-
-	// Update last values
-	if foundTransferred {
-		lastBytesTransferred = transferred
-	}
-	if foundDownloaded {
-		lastBytesDownloaded = downloaded
-	}*/
 
 	return metrics
 }
