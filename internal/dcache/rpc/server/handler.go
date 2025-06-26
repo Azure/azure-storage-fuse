@@ -1878,6 +1878,8 @@ refreshFromClustermapAndRetry:
 
 	defer syscall.Close(fd)
 
+	// syscall.Write(fd, req.Chunk.Data)
+
 	fh = os.NewFile(uintptr(fd), tmpChunkPath)
 	defer fh.Close()
 
