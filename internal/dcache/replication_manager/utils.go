@@ -164,8 +164,6 @@ func alignBufferToBlockSize(data []byte) []byte {
 	}
 
 	padding := common.FS_BLOCK_SIZE - r
-	common.Assert(padding > 0, padding, len(data))
-
 	alignedBuf := append(data, make([]byte, padding)...)
 	common.Assert(len(alignedBuf)%common.FS_BLOCK_SIZE == 0, len(data), len(alignedBuf))
 

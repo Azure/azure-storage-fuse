@@ -39,6 +39,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 )
 
 type task struct {
@@ -157,11 +158,23 @@ func (wp *workerPool) writeChunk(task *task) {
 	// Only dirty StagedChunk must be written.
 	common.Assert(task.chunk.Dirty.Load())
 
+	var dataBufferSize int64
+	if rpc.IOType == rpc.BufferedIO {
+		dataBufferSize = task.chunk.Len
+	} else if rpc.IOType == rpc.DirectIO {
+		//
+		// For DirectIO, we must align the data buffer size to the filesystem block size.
+		//
+		dataBufferSize = common.AlignToBlockSize(task.chunk.Len)
+	} else {
+		common.Assert(false, "Unexpected IOType", rpc.IOType)
+	}
+
 	writeMVReq := &rm.WriteMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
 		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
 		ChunkIndex:     task.chunk.Idx,
-		Data:           task.chunk.Buf[:common.AlignToBlockSize(task.chunk.Len)],
+		Data:           task.chunk.Buf[:dataBufferSize],
 		Length:         task.chunk.Len,
 		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
 		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),

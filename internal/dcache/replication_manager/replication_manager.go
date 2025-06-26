@@ -1512,13 +1512,20 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			continue
 		}
 
-		dataLength := len(srcData)
+		dataLength := int64(len(srcData))
 
-		//
-		// Align the source data to the block size (4096 bytes) for direct IO.
-		// This alignment will only be done for the last chunk of the file.
-		//
-		alignedData := alignBufferToBlockSize(srcData)
+		var dataBuffer []byte
+		if rpc.IOType == rpc.BufferedIO {
+			dataBuffer = srcData
+		} else if rpc.IOType == rpc.DirectIO {
+			//
+			// Align the source data to the block size (4096 bytes) for direct IO.
+			// This alignment will only be done for the last chunk of the file.
+			//
+			dataBuffer = alignBufferToBlockSize(srcData)
+		} else {
+			common.Assert(false, "Unexpected IOType", rpc.IOType)
+		}
 
 		putChunkReq := &models.PutChunkRequest{
 			Chunk: &models.Chunk{
@@ -1528,10 +1535,10 @@ func copyOutOfSyncChunks(job *syncJob) error {
 					MvName:      job.mvName,
 					OffsetInMiB: offsetInMiB,
 				},
-				Data: alignedData,
+				Data: dataBuffer,
 				Hash: "", // TODO: hash validation will be done later
 			},
-			Length: int64(dataLength),
+			Length: dataLength,
 			// this is sync write RPC call, so the sync ID should be that of the target RV.
 			SyncID:      job.destSyncID,
 			ComponentRV: job.componentRVs,
