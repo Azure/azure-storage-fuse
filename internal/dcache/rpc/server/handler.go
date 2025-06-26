@@ -1876,7 +1876,7 @@ refreshFromClustermapAndRetry:
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
-	defer syscall.Close(fd)
+	// defer syscall.Close(fd)
 
 	// syscall.Write(fd, req.Chunk.Data)
 
