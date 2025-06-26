@@ -153,6 +153,25 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 	return onlineRVs[index]
 }
 
+// Align the data buffer to the block size(4096 bytes) used by the file system.
+// This is done for direct IO writes.
+// Alignment of buffer will only be for the last chunk, since other chunks of size equal to the
+// chunk size specified in the config (4MB by default), is already aligned to the block size.
+func alignBufferToBlockSize(data []byte) []byte {
+	r := len(data) % common.FS_BLOCK_SIZE
+	if r == 0 {
+		return data
+	}
+
+	padding := common.FS_BLOCK_SIZE - r
+	common.Assert(padding > 0, padding, len(data))
+
+	alignedBuf := append(data, make([]byte, padding)...)
+	common.Assert(len(alignedBuf)%common.FS_BLOCK_SIZE == 0, len(data), len(alignedBuf))
+
+	return alignedBuf
+}
+
 // TODO: hash validation will be done later
 // TODO: should byte array be used for storing hash instead of string?
 // check is md5sum can be used for hash or crc should be used

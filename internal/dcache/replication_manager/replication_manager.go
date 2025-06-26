@@ -1512,6 +1512,14 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			continue
 		}
 
+		dataLength := len(srcData)
+
+		//
+		// Align the source data to the block size (4096 bytes) for direct IO.
+		// This alignment will only be done for the last chunk of the file.
+		//
+		alignedData := alignBufferToBlockSize(srcData)
+
 		putChunkReq := &models.PutChunkRequest{
 			Chunk: &models.Chunk{
 				Address: &models.Address{
@@ -1520,10 +1528,10 @@ func copyOutOfSyncChunks(job *syncJob) error {
 					MvName:      job.mvName,
 					OffsetInMiB: offsetInMiB,
 				},
-				Data: srcData, // TODO: expand the buffer to align to 4096 bytes needed for direct I/O
-				Hash: "",      // TODO: hash validation will be done later
+				Data: alignedData,
+				Hash: "", // TODO: hash validation will be done later
 			},
-			Length: int64(len(srcData)),
+			Length: int64(dataLength),
 			// this is sync write RPC call, so the sync ID should be that of the target RV.
 			SyncID:      job.destSyncID,
 			ComponentRV: job.componentRVs,
