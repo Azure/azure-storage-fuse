@@ -419,14 +419,15 @@ get_rv_list_for_node()
     local cm=$1
     local vm_node_id=$2
 
-    echo "$cm" | jq -r --arg node_id "$vm_node_id" '
-        (
-          .["rv-list"] | map(to_entries[])? | from_entries
-        ) as $rvs |
-        $rvs | to_entries[] |
-        select(.value.node_id == $node_id) |
-        .key' | paste -sd, -
-
+    rv_list=$(echo "$cm" | jq -r --arg node_id "$vm_node_id" '
+        [.["rv-list"][] | 
+        to_entries[] | 
+        select(.value.node_id == $node_id) | 
+        .key] | join(",")
+    ')
+    
+    # Return the original result
+    echo "$rv_list"
 }
 
 #
@@ -939,121 +940,155 @@ for ((current_node=1; current_node<=NUM_NODES; current_node++)); do
 
 done  # End of the main loop starting nodes
 
-############################################################################
-##    Test blobfuse Process Failure Over a node Degraded Workflow         ##
-############################################################################
+# Initialize variables
+failed_node_vm=""
 
-echo
-echo "======================================================================"
-wbecho ">> Testing blobfuse process Failure over a node Degraded Workflow"
-echo "======================================================================"
-echo
+# Only run degraded workflow test if we have more than 1 node
+if [ "$NUM_NODES" -gt 1 ]; then
+    ############################################################################
+    ##    Test blobfuse Process Failure Over a node Degraded Workflow         ##
+    ############################################################################
 
-# Choose the first node to stop blobfuse - this is typically a more critical node
-failed_node_vm="vm1"
-failed_node_id=$(get_node_id $failed_node_vm)
 
-# We'll use the second node to read clustermap info (since we're taking down vm1)
-monitoring_node="vm2"
+    echo
+    echo "======================================================================"
+    wbecho ">> Testing blobfuse process Failure over a node Degraded Workflow"
+    echo "======================================================================"
+    echo
 
-# Read current clustermap from the monitoring node to get RVs on the failing node
-becho -n "Reading clustermap before node failure"
-cm_before=$(read_clustermap_from_node $monitoring_node)
-log_status $?
+    # Choose the first node to stop blobfuse - this is typically a more critical node
+    failed_node_vm="vm1"
+    failed_node_id=$(get_node_id $failed_node_vm) 
 
-# Get the list of RVs assigned to the node we're about to take down
-becho -n "Identifying RVs assigned to $failed_node_vm"
-rvs_on_failing_node=$(get_rv_list_for_node "$cm_before" "$failed_node_id")
-[ -n "$rvs_on_failing_node" ]
-log_status $? "No RVs found on $failed_node_vm"
+    # We'll use the second node to read clustermap info (since we're taking down vm1)
+    monitoring_node="vm2"
 
-# Find MVs that use these RVs
-becho -n "Finding MVs that use RVs on $failed_node_vm"
-mvs_using_rvs=$(get_mvs_count_for_given_rv_with_state "$cm_before" "$rvs_on_failing_node" "online")
-[ "$mvs_using_rvs" -gt 0 ]
-log_status $? "Found $mvs_using_rvs MVs using RVs on $failed_node_vm"
+    # Read current clustermap from the monitoring node to get RVs on the failing node
+    becho -n "Reading clustermap before node failure"
+    cm_before=$(read_clustermap_from_node $monitoring_node)
+    log_status $?
 
-# Take down the blobfuse over the node
-wbecho ">> Taking down blobfuse over node $failed_node_vm to simulate failure"
-stop_blobfuse_on_node $failed_node_vm
+    # Get the list of RVs assigned to the node we're about to take down
+    becho -n "Identifying RVs assigned to $failed_node_vm"
+    rvs_on_failing_node=$(get_rv_list_for_node "$cm_before" "$failed_node_id")
+    [ -n "$rvs_on_failing_node" ]
+    log_status $? "No RVs found on $failed_node_vm"
 
-# Wait for heartbeat expiry (HB_SECONDS * HB_TILL_NODE_DOWN + CLUSTERMAP_EPOCH+ buffer)
-hb_timeout=$((HB_SECONDS * HB_TILL_NODE_DOWN + $CLUSTERMAP_EPOCH + 5))
-wbecho ">> Waiting $hb_timeout seconds for heartbeat timeout..."
-sleep $hb_timeout
-wbecho ">> Heartbeat timeout period completed"
+    # Take down the blobfuse over the node
+    wbecho ">> Taking down blobfuse over node $failed_node_vm to simulate failure"
+    stop_blobfuse_on_node $failed_node_vm
 
-# Read the clustermap from the monitoring node to verify the node is marked as down
-becho -n "Reading clustermap after node failure"
-cm_after=$(read_clustermap_from_node $monitoring_node)
-log_status $?
+    # Wait for heartbeat expiry (HB_SECONDS * HB_TILL_NODE_DOWN + CLUSTERMAP_EPOCH+ buffer)
+    hb_timeout=$((HB_SECONDS * HB_TILL_NODE_DOWN + $CLUSTERMAP_EPOCH + 5))
+    wbecho ">> Waiting $hb_timeout seconds for heartbeat timeout..."
+    sleep $hb_timeout
+    wbecho ">> Heartbeat timeout period completed"
 
-# Check if the RVs on the failed node are now marked as offline
-becho -n "Checking if RVs on $failed_node_vm are now offline"
-for rv in $(echo $rvs_on_failing_node | tr ',' ' '); do
-    rv_state=$(get_rv_state "$cm_after" "$rv")
-    [ "$rv_state" != "online" ]
-    if [ $? -ne 0 ]; then
-        log_status 1 "RV $rv is still online after node failure"
+    # Read the clustermap from the monitoring node to verify the node is marked as down
+    becho -n "Reading clustermap after blobfuse process stop"
+    cm_after=$(read_clustermap_from_node $monitoring_node)
+    log_status $?
+
+    # Check if the RVs on the failed node are now marked as offline
+    becho -n "Checking if RVs on $failed_node_vm are now offline"
+    for rv in $(echo $rvs_on_failing_node | tr ',' ' '); do
+        rv_state=$(get_rv_state "$cm_after" "$rv")
+        [ "$rv_state" != "online" ]
+        if [ $? -ne 0 ]; then
+            log_status 1 "RV $rv is still online after node failure"
+        fi
+    done
+    log_status 0 "RVs on failed node are now offline"
+
+    # Check if mv-list in clustermap is non-empty before running MV-related tests
+    mv_count_before=$(echo "$cm_before" | jq '."mv-list" | length')
+    
+    if [ "$mv_count_before" -gt 0 ]; then
+        # Find MVs that use these RVs
+        becho -n "Finding MVs that use RVs on $failed_node_vm"
+        mvs_using_rvs=$(get_mvs_count_for_given_rv_with_state "$cm_before" "$rvs_on_failing_node" "online")
+        [ "$mvs_using_rvs" -gt 0 ]
+        log_status $? "Found $mvs_using_rvs MVs using RVs on $failed_node_vm"
+
+        # Check if MVs that used the RVs on the failed node are now in degraded state
+        becho -n "Checking if MVs using RVs on $failed_node_vm are now degraded"
+        degraded_mvs=$(get_mv_count_with_state "$cm_after" "degraded")
+        [ "$degraded_mvs" -gt 0 ]
+        log_status $? "Found $degraded_mvs degraded MVs"
+    else
+        wbecho ">> Skipping MV validation tests - no MVs found in clustermap"
     fi
-done
-log_status 0 "RVs on failed node are now offline"
 
-# Check if MVs that used the RVs on the failed node are now in degraded state
-becho -n "Checking if MVs using RVs on $failed_node_vm are now degraded"
-degraded_mvs=$(get_mv_count_with_state "$cm_after" "degraded")
-[ "$degraded_mvs" -gt 0 ]
-log_status $? "Found $degraded_mvs degraded MVs"
+else
+    wbecho ">> Skipping degraded workflow test - requires at least 2 nodes"
+fi
 
 # Create a list of active nodes (excluding the failed node) for Comprehensive validation
-ACTIVE_NODES=""
-for node in $ALL_NODES; do
+if [ -z "$failed_node_vm" ]; then
+    wbecho ">> No node failure detected, proceeding with all nodes"
+    ACTIVE_NODES="$ALL_NODES"
+else
+    for node in $ALL_NODES; do
     if [ "$node" != "$failed_node_vm" ]; then
         ACTIVE_NODES="$ACTIVE_NODES $node"
     fi
 done
-becho "Active nodes for validation: $ACTIVE_NODES"
-
-############################################################################
-##                    Comprehensive Validation                      ##
-############################################################################
-
-# Comprehensive clustermap consistency validation
-echo
-wbecho ">> clustermap consistency validation across active nodes"
-echo
-validate_clustermap_consistency $NUM_NODES "$ACTIVE_NODES"
-
-# Comprehensive RV-node mapping validation
-echo
-wbecho ">> RV-node mapping consistency validation"
-echo
-validate_rv_node_mapping_consistency "$ACTIVE_NODES" $NUM_NODES
-
-# Comprehensive file listing consistency validation
-echo
-wbecho ">> File listing consistency validation"
-echo
-test_file_listing_consistency "$ACTIVE_NODES" $TOTAL_AZURE_FILES $TOTAL_DCACHE_FILES $TOTAL_BOTH_FILES
-
-# Comprehensive cross-node file consistency testing
-echo
-wbecho ">> Comprehensive cross-node file consistency testing"
-echo
-
-# Use active nodes for cross-node consistency tests
-if [ "$NUM_NODES" -gt 2 ]; then
-    # Find a node that's not the failed node for testing
-    second_node=$(echo $ACTIVE_NODES | awk '{print $1}')
-    last_node=$(echo $ACTIVE_NODES | awk '{print $NF}')
-    
-    test_cross_node_consistency "$second_node" "$last_node" $NUM_NODES false
-    
-    # Test large file consistency across multiple node pairs
-    if [ $NUM_NODES -ge $MIN_NODES ] && [ "$cluster_readonly" == "false" ]; then
-        test_cross_node_consistency "$second_node" "$last_node" 0 true
-    fi
 fi
+
+
+# Count how many active nodes we have
+ACTIVE_NODE_COUNT=$(echo $ACTIVE_NODES | wc -w)
+becho "Active nodes for validation: $ACTIVE_NODES (count: $ACTIVE_NODE_COUNT)"
+
+# Only proceed with comprehensive validation if we have at least one active node
+if [ "$ACTIVE_NODE_COUNT" -gt 0 ]; then
+    ############################################################################
+    ##                    Comprehensive Validation                      ##
+    ############################################################################
+
+    # Comprehensive clustermap consistency validation
+    echo
+    wbecho ">> clustermap consistency validation across active nodes"
+    echo
+    validate_clustermap_consistency $NUM_NODES "$ACTIVE_NODES"
+
+    # Comprehensive RV-node mapping validation
+    echo
+    wbecho ">> RV-node mapping consistency validation"
+    echo
+    validate_rv_node_mapping_consistency "$ACTIVE_NODES" $NUM_NODES
+
+    # Comprehensive file listing consistency validation
+    echo
+    wbecho ">> File listing consistency validation"
+    echo
+    test_file_listing_consistency "$ACTIVE_NODES" $TOTAL_AZURE_FILES $TOTAL_DCACHE_FILES $TOTAL_BOTH_FILES
+
+    # Comprehensive cross-node file consistency testing
+    echo
+    wbecho ">> Comprehensive cross-node file consistency testing"
+    echo
+
+    # Use active nodes for cross-node consistency tests
+    if [ "$ACTIVE_NODE_COUNT" -gt 2 ]; then
+        # Find nodes for testing - use the first and last active nodes
+        second_node=$(echo $ACTIVE_NODES | awk '{print $1}')
+        last_node=$(echo $ACTIVE_NODES | awk '{print $NF}')
+        
+        test_cross_node_consistency "$second_node" "$last_node" $NUM_NODES false
+        
+        # Test large file consistency across multiple node pairs
+        if [ $NUM_NODES -ge $MIN_NODES ] && [ "$cluster_readonly" == "false" ]; then
+            test_cross_node_consistency "$second_node" "$last_node" 0 true
+        fi
+    else
+        wbecho ">> Skipping cross-node consistency tests - need at least 2 active nodes"
+    fi
+else
+    wbecho ">> No active nodes available for validation after $failed_node_vm failure"
+    wbecho ">> Skipping comprehensive validation steps"
+fi
+
 
 echo
 sbecho "======================================================================"
