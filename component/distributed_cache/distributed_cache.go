@@ -56,6 +56,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/gc"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
@@ -367,7 +368,10 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		distributedCache.cfg.ChunkSize = defaultChunkSize
 	}
 
-	if distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
+	//
+	// In direct IO RW operations, the chunk size must be a multiple of filesystem block size.
+	//
+	if rpc.IOType == rpc.DirectIO && distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
 		return fmt.Errorf("config error in %s: [chunk-size must be a multiple of %d bytes]",
 			distributedCache.Name(), common.FS_BLOCK_SIZE)
 	}

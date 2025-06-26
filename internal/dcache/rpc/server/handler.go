@@ -1691,7 +1691,8 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: %v", rpc.PutChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request (%v): %v",
+		rpc.IOType, rpc.PutChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1905,64 +1906,74 @@ refreshFromClustermapAndRetry:
 	}
 
 	var tmpChunkPath string
-	var fh *os.File
 	var fd, bytesWritten int
 
 	if performDummyReadWrite() {
 		goto dummy_write
 	}
 
-	//
-	// The chunk data length must be aligned with the FS_BLOCK_SIZE for direct IO writes.
-	// Otherwise, the write will fail with EINVAL.
-	//
-	common.Assert(len(req.Chunk.Data)%common.FS_BLOCK_SIZE == 0,
-		len(req.Chunk.Data), common.FS_BLOCK_SIZE)
-
 	// Write to .tmp file first and rename it to the final file.
 	tmpChunkPath = fmt.Sprintf("%s.tmp", chunkPath)
 
-	fd, err = syscall.Open(tmpChunkPath,
-		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to open temp chunk file descriptor %s [%v]", tmpChunkPath, err)
-		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-	}
-
-	defer syscall.Close(fd)
-
-	bytesWritten, err = syscall.Write(fd, req.Chunk.Data)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
-		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-	}
-
-	common.Assert(bytesWritten == len(req.Chunk.Data),
-		bytesWritten, len(req.Chunk.Data))
-
-	//
-	// If this is the last chunk of the file, truncate it to its correct size.
-	//
-	if req.Length != int64(len(req.Chunk.Data)) {
-		err = fh.Truncate(req.Length)
+	if rpc.IOType == rpc.BufferedIO {
+		err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 		if err != nil {
-			errStr := fmt.Sprintf("Failed to truncate chunk file %s to %d bytes [%v]",
-				chunkPath, req.Length, err)
+			errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
+
+		// TODO: hash validation will be done later
+		// err = os.WriteFile(hashPath, []byte(req.Chunk.Hash), 0400)
+		// if err != nil {
+		//      log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
+		//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
+		// }
+
+		// TODO: should we verify the hash after writing the chunk
+	} else if rpc.IOType == rpc.DirectIO {
+		//
+		// The chunk data length must be aligned with the FS_BLOCK_SIZE for direct IO writes.
+		// Otherwise, the write will fail with EINVAL.
+		//
+		common.Assert(len(req.Chunk.Data)%common.FS_BLOCK_SIZE == 0,
+			len(req.Chunk.Data), common.FS_BLOCK_SIZE)
+
+		fd, err = syscall.Open(tmpChunkPath,
+			syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to open temp chunk file descriptor %s [%v]", tmpChunkPath, err)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		defer syscall.Close(fd)
+
+		bytesWritten, err = syscall.Write(fd, req.Chunk.Data)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		common.Assert(bytesWritten == len(req.Chunk.Data),
+			bytesWritten, len(req.Chunk.Data))
+
+		//
+		// If this is the last chunk of the file, truncate it to its correct size.
+		//
+		if req.Length != int64(len(req.Chunk.Data)) {
+			err = os.Truncate(tmpChunkPath, req.Length)
+			if err != nil {
+				errStr := fmt.Sprintf("Failed to truncate chunk file %s to %d bytes [%v]",
+					chunkPath, req.Length, err)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+			}
+		}
+	} else {
+		common.Assert(false, "Unexpected IO type", rpc.IOType)
 	}
-
-	// TODO: hash validation will be done later
-	// err = os.WriteFile(hashPath, []byte(req.Chunk.Hash), 0400)
-	// if err != nil {
-	//      log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
-	//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
-	// }
-
-	// TODO: should we verify the hash after writing the chunk
 
 	// rename the .tmp file to the final file
 	err = os.Rename(tmpChunkPath, chunkPath)
