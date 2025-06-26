@@ -47,6 +47,36 @@ const (
 	defaultPort = 9090
 )
 
+type IOTypeEnum int
+
+const (
+	//
+	// Buffered IO for reading and writing chunks.
+	//
+	BufferedIO IOTypeEnum = iota
+
+	//
+	// Direct IO for reading and writing chunks.
+	//
+	DirectIO
+)
+
+func (s IOTypeEnum) String() string {
+	switch s {
+	case BufferedIO:
+		return "BufferedIO"
+	case DirectIO:
+		return "DirectIO"
+	default:
+		common.Assert(false, s)
+		return "Unknown"
+	}
+}
+
+// We will experiment with various IO types on various RW operations (with varying storage and n/w throughput
+// and different NumReplicas configuration).
+var IOType IOTypeEnum = DirectIO
+
 // return the node address for the given node ID
 // the node address is of the form <ip>:<port>
 func GetNodeAddressFromID(nodeID string) string {

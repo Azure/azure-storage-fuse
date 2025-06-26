@@ -1477,7 +1477,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request: %v", rpc.GetChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v", rpc.IOType, rpc.GetChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1561,59 +1561,113 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
+	// These variables are needed for direct IO read.
+	alignedOffset := req.OffsetInChunk / common.FS_BLOCK_SIZE * common.FS_BLOCK_SIZE
+	offsetInBlock := req.OffsetInChunk - alignedOffset
+	alignedSize := common.AlignToBlockSize(offsetInBlock + req.Length)
+
 	//
 	// Allocate byte slice, data from the chunk file will be read into this.
 	//
-	data := make([]byte, req.Length)
+	var data []byte
+	if rpc.IOType == rpc.BufferedIO {
+		data = make([]byte, req.Length)
+	} else if rpc.IOType == rpc.DirectIO {
+		data = make([]byte, alignedSize)
+	} else {
+		common.Assert(false, "Unexpected IO type", rpc.IOType)
+	}
+
 	var lmt string
-	var n int
+	var n, fd int
 	var chunkSize int64
 	var fh *os.File
-	var fInfo os.FileInfo
+	var stat syscall.Stat_t
 
 	if performDummyReadWrite() {
 		goto dummy_read
 	}
 
-	fh, err = os.Open(chunkPath)
+	err = syscall.Stat(chunkPath, &stat)
 	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to open chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to open chunk file %s [%v]", chunkPath, err.Error()))
-	}
-	defer fh.Close()
-
-	fInfo, err = fh.Stat()
-	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
-		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+		errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
+		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 	}
 
-	chunkSize = fInfo.Size()
-	lmt = fInfo.ModTime().UTC().String()
+	chunkSize = stat.Size
+	lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
 
-	common.Assert(req.OffsetInChunk+req.Length <= chunkSize, fmt.Sprintf("chunkSize %d is less than OffsetInChunk %d + Length %d", chunkSize, req.OffsetInChunk, req.Length))
+	common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
+		fmt.Sprintf("chunkSize %d is less than OffsetInChunk %d + Length %d", chunkSize, req.OffsetInChunk, req.Length))
 
-	n, err = fh.ReadAt(data, req.OffsetInChunk)
-	common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
-	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to read chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err.Error()))
+	if rpc.IOType == rpc.BufferedIO {
+		fh, err = os.Open(chunkPath)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to open chunk file %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+		}
+		defer fh.Close()
+
+		n, err = fh.ReadAt(data, req.OffsetInChunk)
+		common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to read chunk file %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		// TODO: hash validation will be done later
+		// get hash if requested for entire chunk
+		// hash := ""
+		// if req.OffsetInChunk == 0 && req.Length == chunkSize {
+		//      hashData, err := os.ReadFile(hashPath)
+		//      if err != nil {
+		//              log.Err("ChunkServiceHandler::GetChunk: Failed to read hash file %s [%v]", hashPath, err.Error())
+		//              return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read hash file %s [%v]", hashPath, err.Error()))
+		//      }
+		//      hash = string(hashData)
+		// }
+	} else {
+		//
+		// Direct IO read.
+		//
+		fd, err = syscall.Open(chunkPath, syscall.O_RDONLY|syscall.O_DIRECT, 0)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to open chunk file descriptor %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		defer syscall.Close(fd)
+
+		_, err = syscall.Seek(fd, int64(alignedOffset), 0)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to seek in chunk file descriptor %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		n, err = syscall.Read(fd, data)
+		common.Assert(int64(n) >= offsetInBlock+req.Length,
+			fmt.Sprintf("read %d bytes, needed at least %d", n, offsetInBlock+req.Length))
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to read chunk file %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
 	}
-
-	// TODO: hash validation will be done later
-	// get hash if requested for entire chunk
-	// hash := ""
-	// if req.OffsetInChunk == 0 && req.Length == chunkSize {
-	//      hashData, err := os.ReadFile(hashPath)
-	//      if err != nil {
-	//              log.Err("ChunkServiceHandler::GetChunk: Failed to read hash file %s [%v]", hashPath, err.Error())
-	//              return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read hash file %s [%v]", hashPath, err.Error()))
-	//      }
-	//      hash = string(hashData)
-	// }
 
 dummy_read:
+	//
+	// Trim the data to the requested length from the offset if read is done in direct IO mode.
+	//
+	if rpc.IOType == rpc.DirectIO {
+		data = data[offsetInBlock : offsetInBlock+req.Length]
+	}
+
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
