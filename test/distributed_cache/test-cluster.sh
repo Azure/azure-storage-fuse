@@ -22,14 +22,81 @@
 #    cluster nodes.
 #
 
-# Check if number of nodes is provided
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <number_of_nodes>"
-    echo "Example: $0 5"
+# Function to discover available nodes
+discover_nodes() {
+    # This function could be implemented to dynamically discover available nodes
+    # For now, we'll use a simple method that accepts comma-separated node names
+    # via environment variable or command line argument
+    
+    local nodes_arg="$1"
+    
+    if [ -n "$CLUSTER_NODES" ]; then
+        # Use environment variable if set
+        echo "$CLUSTER_NODES" | tr ',' ' '
+    elif [ -n "$nodes_arg" ]; then
+        # Use command line argument if provided
+        echo "$nodes_arg" | tr ',' ' '
+    else
+        # Fall back to default naming pattern if no nodes specified
+        local count="$NUM_NODES"
+        local node_list=""
+        for ((i=1; i<=count; i++)); do
+            node_list="$node_list vm$i"
+        done
+        echo "$node_list"
+    fi
+}
+
+# Generate list of node names
+generate_node_list() {
+    local count=$1
+    local all_nodes="$ALL_NODES"
+    
+    # If we have a list of all nodes, just take the first $count of them
+    if [ -n "$all_nodes" ]; then
+        echo "$all_nodes" | tr ' ' '\n' | head -n "$count" | tr '\n' ' '
+    else
+        # Fall back to default naming pattern if no nodes discovered
+        local node_list=""
+        for ((i=1; i<=count; i++)); do
+            node_list="$node_list vm$i"
+        done
+        echo "$node_list"
+    fi
+}
+
+# Get a specific node by index
+get_node_by_index() {
+    local index=$1
+    local all_nodes=($ALL_NODES)
+    
+    if [ $index -gt 0 ] && [ $index -le ${#all_nodes[@]} ]; then
+        echo "${all_nodes[$((index-1))]}"
+    else
+        echo "Invalid node index: $index" >&2
+        return 1
+    fi
+}
+
+# Update usage information
+usage() {
+    echo "Usage: ./test_cluster.sh <number_of_nodes> [node_list]"
+    echo "Example: ./test_cluster.sh 5"
+    echo "Example with custom node names: ./test_cluster.sh 3 node1,node2,node3"
+    echo
+    echo "You can also set CLUSTER_NODES environment variable:"
+    echo "CLUSTER_NODES=\"node1 node2 node3\" $0 3"
+    exit 1
+}
+
+# Check if at least the number of nodes is provided
+if [ $# -lt 1 ]; then
+    usage
     exit 1
 fi
 
 NUM_NODES=$1
+shift  # Remove first argument
 
 # Validate input
 if ! [[ "$NUM_NODES" =~ ^[0-9]+$ ]] || [ "$NUM_NODES" -lt 1 ]; then
@@ -37,18 +104,26 @@ if ! [[ "$NUM_NODES" =~ ^[0-9]+$ ]] || [ "$NUM_NODES" -lt 1 ]; then
     exit 1
 fi
 
-echo "Starting cluster test with $NUM_NODES nodes (vm1 to vm$NUM_NODES)"
+# Check for optional node list argument
+NODE_LIST=""
+if [ $# -gt 0 ]; then
+    NODE_LIST="$1"
+    shift
+fi
 
-# Generate list of node names
-generate_node_list()
-{
-    local count=$1
-    local node_list=""
-    for ((i=1; i<=count; i++)); do
-        node_list="$node_list vm$i"
-    done
-    echo "$node_list"
-}
+# Discover available nodes
+ALL_NODES=$(discover_nodes "$NODE_LIST")
+
+# Count how many nodes we found
+FOUND_NODES=$(echo "$ALL_NODES" | wc -w)
+
+# Verify we have enough nodes
+if [ "$FOUND_NODES" -lt "$NUM_NODES" ]; then
+    echo "Error: Requested $NUM_NODES nodes but only found $FOUND_NODES: $ALL_NODES"
+    exit 1
+fi
+
+echo "Starting cluster test with $NUM_NODES nodes: $ALL_NODES"
 
 MOUNTDIR=/home/dcacheuser/mnt/
 LOGDIR=/tmp/cluster_validator/
@@ -269,10 +344,16 @@ start_blobfuse_on_node()
 stop_blobfuse_on_node()
 {
     local vm=$1
+    local remove_from_list=${2:-false}  # Optional parameter, default is false
     local logfile=$(vmlog $vm)
 
-        echo "Stopping blobfuse @ $(date)" >> $logfile
-        ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
+    echo "Stopping blobfuse @ $(date)" >> $logfile
+    ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
+    
+    # If requested, remove the node from the NODES_STARTED list
+    if [ "$remove_from_list" == "true" ]; then
+        NODES_STARTED=$(echo "$NODES_STARTED" | sed "s/ $vm / /g" | sed "s/^ $vm//" | sed "s/$vm $//")
+    fi
 }
 
 kill_blobfuse_on_node()
@@ -374,6 +455,19 @@ get_rv_state()
     local rv=$2
 
     echo "$cm" | jq '."rv-list"[] | to_entries[] | select(.key | startswith("'$rv'")).value.state' | tr -d '"'
+}
+
+# Fix the get_node_ip function
+get_node_ip()
+{
+    local cm="$1"
+    local node_id="$2"
+
+    echo "$cm" | jq -r --arg node_id "$node_id" '
+    .["rv-list"][]
+    | to_entries[]
+    | select(.value.node_id == $node_id)
+    | .value.ipaddr'
 }
 
 #
@@ -717,27 +811,31 @@ test_cross_node_consistency()
 #
 # Action starts here
 #
+ 
+# Create log directory
 mkdir -p $LOGDIR
 rm -rf $LOGDIR/*
 
-# List of nodes that have been started, for cleanup
+# Initialize globals
 NODES_STARTED=""
-trap cleanup EXIT
-# Generate list of all nodes
-ALL_NODES=$(generate_node_list $NUM_NODES)
-
-# Track global state
 TOTAL_AZURE_FILES=0
 TOTAL_DCACHE_FILES=0
 TOTAL_BOTH_FILES=0
 HIGHEST_EPOCH_SEEN=0
+
+# Setup cleanup on exit
+trap cleanup EXIT
+
+# Generate list of all nodes
+ALL_NODES=$(generate_node_list $NUM_NODES)
+
 
 ############################################################################
 ##                             Start nodes                                ##
 ############################################################################
 
 for ((current_node=1; current_node<=NUM_NODES; current_node++)); do
-    vm_name="vm$current_node"
+    vm_name=$(get_node_by_index $current_node)
     echo
     wbecho ">> Starting blobfuse on $vm_name"
     echo
@@ -868,7 +966,8 @@ for ((current_node=1; current_node<=NUM_NODES; current_node++)); do
             log_status $?
         fi
 
-        if [ $current_node -eq 5 ]; then
+        # Instead of hardcoding vm5, use the 5th node if available
+        if [ $current_node -eq 5 ] && [ "$NUM_NODES" -ge 5 ]; then
             becho -n "Write 1GB data in dcache on $vm_name"
             file_name="1GB.dcache"
             write_data_in_dcache $vm_name $file_name 1G 1
@@ -930,10 +1029,15 @@ for ((current_node=1; current_node<=NUM_NODES; current_node++)); do
             echo
             wbecho ">> Testing large file consistency across nodes"
             echo
-            test_cross_node_consistency "vm1" "$vm_name" 0 true
             
-            if [ $current_node -ge 5 ]; then
-                test_cross_node_consistency "vm$MIN_NODES" "vm5" 0 true
+            # Use node indices instead of hardcoded node names
+            first_node=$(get_node_by_index 1)
+            test_cross_node_consistency "$first_node" "$vm_name" 0 true
+            
+            if [ $current_node -ge 5 ] && [ "$NUM_NODES" -ge 5 ]; then
+                min_node=$(get_node_by_index $MIN_NODES)
+                node5=$(get_node_by_index 5)
+                test_cross_node_consistency "$min_node" "$node5" 0 true
             fi
         fi
     fi
@@ -957,16 +1061,30 @@ if [ "$NUM_NODES" -gt 1 ]; then
     echo
 
     # Choose the first node to stop blobfuse - this is typically a more critical node
-    failed_node_vm="vm1"
-    failed_node_id=$(get_node_id $failed_node_vm) 
+    failed_node_vm=$(get_node_by_index 1)
+    failed_node_id=$(get_node_id $failed_node_vm)
 
-    # We'll use the second node to read clustermap info (since we're taking down vm1)
-    monitoring_node="vm2"
-
-    # Read current clustermap from the monitoring node to get RVs on the failing node
-    becho -n "Reading clustermap before node failure"
-    cm_before=$(read_clustermap_from_node $monitoring_node)
+    # Read current clustermap from the failing node to get RVs
+    becho -n "Reading clustermap before node failure over $failed_node_vm"
+    cm_before=$(read_clustermap_from_node $failed_node_vm)
     log_status $?
+
+    # Get the node that last updated the clustermap
+    LAST_UPDATED_BY=$(echo "$cm_before" | jq -r '."last_updated_by"')
+    
+    # Determine monitoring node and adjust heartbeat timeout if needed
+    if [ "$failed_node_id" == "$LAST_UPDATED_BY" ]; then
+        # If the failing node is also the last updater, we need extra time
+        hb_timeout=$((HB_SECONDS * HB_TILL_NODE_DOWN + CLUSTERMAP_EPOCH + 5 + 60))
+        # Pick a random node other than the failed one for monitoring
+        monitoring_node=$(get_random_monitoring_node "$failed_node_vm")
+        wbecho "Failed node was last updater, using random node $monitoring_node for monitoring with extended timeout"
+    else
+        # Standard heartbeat timeout
+        hb_timeout=$((HB_SECONDS * HB_TILL_NODE_DOWN + CLUSTERMAP_EPOCH + 5))
+        # Use the second node for monitoring
+        monitoring_node=$(get_node_ip "$cm_before" "$LAST_UPDATED_BY")
+    fi
 
     # Get the list of RVs assigned to the node we're about to take down
     becho -n "Identifying RVs assigned to $failed_node_vm"
@@ -976,16 +1094,15 @@ if [ "$NUM_NODES" -gt 1 ]; then
 
     # Take down the blobfuse over the node
     wbecho ">> Taking down blobfuse over node $failed_node_vm to simulate failure"
-    stop_blobfuse_on_node $failed_node_vm
+    stop_blobfuse_on_node $failed_node_vm true  # Added true to remove from NODES_STARTED
 
-    # Wait for heartbeat expiry (HB_SECONDS * HB_TILL_NODE_DOWN + CLUSTERMAP_EPOCH+ buffer)
-    hb_timeout=$((HB_SECONDS * HB_TILL_NODE_DOWN + $CLUSTERMAP_EPOCH + 5))
+    # Wait for heartbeat expiry
     wbecho ">> Waiting $hb_timeout seconds for heartbeat timeout..."
     sleep $hb_timeout
     wbecho ">> Heartbeat timeout period completed"
 
     # Read the clustermap from the monitoring node to verify the node is marked as down
-    becho -n "Reading clustermap after blobfuse process stop"
+    becho -n "Reading clustermap after blobfuse process stop over $monitoring_node"
     cm_after=$(read_clustermap_from_node $monitoring_node)
     log_status $?
 
@@ -1011,7 +1128,7 @@ if [ "$NUM_NODES" -gt 1 ]; then
         log_status $? "Found $mvs_using_rvs MVs using RVs on $failed_node_vm"
 
         # Check if MVs that used the RVs on the failed node are now in degraded state
-        becho -n "Checking if MVs using RVs on $failed_node_vm are now degraded"
+        becho -n "Checking if MVs using RVs of $failed_node_vm are now degraded"
         degraded_mvs=$(get_mv_count_with_state "$cm_after" "degraded")
         [ "$degraded_mvs" -gt 0 ]
         log_status $? "Found $degraded_mvs degraded MVs"
