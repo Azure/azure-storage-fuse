@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1750578430239,
+  "lastUpdate": 1751187075019,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -497,6 +497,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "rename_5000_1MB_files",
             "value": 132.4434552192688,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "ashruti-msft",
+            "username": "ashruti-msft",
+            "email": "137055338+ashruti-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "75a19ccf157f5497d79103bb0f99ddd55b4a5906",
+          "message": "Ashruti/script fix (#1842)",
+          "timestamp": "2025-06-24T10:29:37Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/75a19ccf157f5497d79103bb0f99ddd55b4a5906"
+        },
+        "date": 1751187074715,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "rename_5000_1MB_files",
+            "value": 130.45191597938538,
             "unit": "seconds"
           }
         ]
