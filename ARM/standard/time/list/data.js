@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1750589751574,
+  "lastUpdate": 1751198716691,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -519,6 +519,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "787.75000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "ashruti-msft",
+            "username": "ashruti-msft",
+            "email": "137055338+ashruti-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "75a19ccf157f5497d79103bb0f99ddd55b4a5906",
+          "message": "Ashruti/script fix (#1842)",
+          "timestamp": "2025-06-24T10:29:37Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/75a19ccf157f5497d79103bb0f99ddd55b4a5906"
+        },
+        "date": 1751198716375,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "21.41000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "753.46000",
             "unit": "seconds"
           }
         ]
