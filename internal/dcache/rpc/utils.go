@@ -49,17 +49,29 @@ const (
 	DirectIO    = "direct"
 )
 
-var IOMode string
+var ReadIOMode, WriteIOMode string
 
-// Set the IO mode for read/write operations.
-func SetIOMode(mode string) error {
-	common.Assert(len(IOMode) == 0, IOMode)
+// Set the IO mode for read operations.
+func SetReadIOMode(mode string) error {
+	common.Assert(len(ReadIOMode) == 0, ReadIOMode)
 
 	if mode != BufferedIO && mode != DirectIO {
-		return fmt.Errorf("invalid IO mode: %s", mode)
+		return fmt.Errorf("invalid read IO mode: %s", mode)
 	}
 
-	IOMode = mode
+	ReadIOMode = mode
+	return nil
+}
+
+// Set the IO mode for write operations.
+func SetWriteIOMode(mode string) error {
+	common.Assert(len(WriteIOMode) == 0, WriteIOMode)
+
+	if mode != BufferedIO && mode != DirectIO {
+		return fmt.Errorf("invalid write IO mode: %s", mode)
+	}
+
+	WriteIOMode = mode
 	return nil
 }
 

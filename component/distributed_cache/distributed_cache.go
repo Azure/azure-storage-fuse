@@ -109,7 +109,8 @@ type DistributedCacheOptions struct {
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
 	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
-	IOMode              string `config:"io-mode" yaml:"io-mode,omitempty"` // "direct" or "buffered", default is "direct"
+	readIOMode          string `config:"read-io-mode" yaml:"read-io-mode,omitempty"`
+	writeIOMode         string `config:"write-io-mode" yaml:"write-io-mode,omitempty"`
 }
 
 const (
@@ -395,19 +396,29 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".cache-access") {
 		distributedCache.cfg.CacheAccess = defaultCacheAccess
 	}
-	if !config.IsSet(compName + ".io-mode") {
-		distributedCache.cfg.IOMode = rpc.DirectIO
+	if !config.IsSet(compName + ".read-io-mode") {
+		distributedCache.cfg.readIOMode = rpc.DirectIO
+	}
+	if !config.IsSet(compName + ".write-io-mode") {
+		distributedCache.cfg.writeIOMode = rpc.DirectIO
 	}
 
-	err = rpc.SetIOMode(distributedCache.cfg.IOMode)
+	err = rpc.SetReadIOMode(distributedCache.cfg.readIOMode)
+	if err != nil {
+		log.Err("DistributedCache::Configure : [%v]", err)
+	}
+
+	err = rpc.SetWriteIOMode(distributedCache.cfg.writeIOMode)
 	if err != nil {
 		log.Err("DistributedCache::Configure : [%v]", err)
 	}
 
 	//
-	// In direct IO RW operations, the chunk size must be a multiple of filesystem block size.
+	// In direct IO read or write operations, the chunk size must be a multiple
+	// of filesystem block size.
 	//
-	if rpc.IOMode == rpc.DirectIO && distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
+	if (rpc.ReadIOMode == rpc.DirectIO || rpc.WriteIOMode == rpc.DirectIO) &&
+		distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
 		return fmt.Errorf("config error in %s: [chunk-size must be a multiple of %d bytes]",
 			distributedCache.Name(), common.FS_BLOCK_SIZE)
 	}
@@ -1252,6 +1263,9 @@ func init() {
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
 
-	ioMode := config.AddStringFlag("io-mode", rpc.DirectIO, "IO mode for read/write operations (direct/buffered)")
-	config.BindPFlag(compName+".io-mode", ioMode)
+	readIOMode := config.AddStringFlag("read-io-mode", rpc.DirectIO, "IO mode for read operations (direct/buffered)")
+	config.BindPFlag(compName+".read-io-mode", readIOMode)
+
+	writeIOMode := config.AddStringFlag("write-io-mode", rpc.DirectIO, "IO mode for write operations (direct/buffered)")
+	config.BindPFlag(compName+".write-io-mode", writeIOMode)
 }

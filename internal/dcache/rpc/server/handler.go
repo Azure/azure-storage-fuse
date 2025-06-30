@@ -1477,7 +1477,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v", rpc.IOMode, rpc.GetChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v", rpc.ReadIOMode, rpc.GetChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1597,7 +1597,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//     for the last chunk of the file.
 	//   - The requested offset and length is not aligned to file system block size.
 	//
-	if rpc.IOMode == rpc.BufferedIO ||
+	if rpc.ReadIOMode == rpc.BufferedIO ||
 		chunkSize%common.FS_BLOCK_SIZE != 0 ||
 		(req.OffsetInChunk+req.Length)%common.FS_BLOCK_SIZE != 0 {
 		fh, err = os.Open(chunkPath)
@@ -1683,7 +1683,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	startTime := time.Now()
 
 	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request (%v): %v",
-		rpc.IOMode, rpc.PutChunkRequestToString(req))
+		rpc.WriteIOMode, rpc.PutChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1912,7 +1912,7 @@ refreshFromClustermapAndRetry:
 	//   - The chunk size is not aligned with the file system block size. This can happen only
 	//     for the last chunk of the file.
 	//
-	if rpc.IOMode == rpc.BufferedIO || req.Length%common.FS_BLOCK_SIZE != 0 {
+	if rpc.WriteIOMode == rpc.BufferedIO || req.Length%common.FS_BLOCK_SIZE != 0 {
 		err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
