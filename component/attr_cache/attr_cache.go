@@ -110,7 +110,7 @@ func (ac *AttrCache) Start(ctx context.Context) error {
 
 	// AttrCache : start code goes here
 	ac.cacheMap = make(map[string]*attrCacheItem)
-	
+
 	// Start background cleanup goroutine
 	ac.cleanupCtx, ac.cleanupStop = context.WithCancel(ctx)
 	ac.cleanupDone = make(chan bool)
@@ -197,17 +197,10 @@ func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
 	// Add a trailing / so that we only delete child paths under the directory and not paths that have the same prefix
 	prefix := internal.ExtendDirName(path)
 
-	// Collect keys to delete to avoid modifying map while iterating
-	var keysToDelete []string
-	for key := range ac.cacheMap {
+	for key, value := range ac.cacheMap {
 		if strings.HasPrefix(key, prefix) {
-			keysToDelete = append(keysToDelete, key)
+			value.markDeleted(time)
 		}
-	}
-
-	// Remove the entries from the cache map
-	for _, key := range keysToDelete {
-		delete(ac.cacheMap, key)
 	}
 
 	// We need to delete the path itself since we only handle children above.
@@ -217,8 +210,10 @@ func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
 // deletePath: removes a path from cache
 func (ac *AttrCache) deletePath(path string, time time.Time) {
 	// Keys in the cache map do not contain trailing /, truncate the path before referencing a key in the map.
-	truncatedPath := internal.TruncateDirName(path)
-	delete(ac.cacheMap, truncatedPath)
+	value, found := ac.cacheMap[internal.TruncateDirName(path)]
+	if found {
+		value.markDeleted(time)
+	}
 }
 
 // invalidateDirectory: recursively marks a directory invalid
@@ -268,18 +263,18 @@ func (ac *AttrCache) invalidatePath(path string) {
 // backgroundCleanup: runs in a separate goroutine to periodically clean up expired entries
 func (ac *AttrCache) backgroundCleanup() {
 	defer close(ac.cleanupDone)
-	
+
 	// Ensure minimum interval to prevent panic with NewTicker.
 	// Note: `cacheTimeout` is immutable post-start and should not be modified during runtime.
 	interval := time.Duration(ac.cacheTimeout) * time.Second
 	if interval <= 0 {
 		interval = time.Second // Use 1 second as minimum interval
 	}
-	
+
 	// Create ticker based on cache timeout interval
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ac.cleanupCtx.Done():
@@ -304,7 +299,7 @@ func (ac *AttrCache) cleanupExpiredEntries() {
 		}
 	}
 	ac.cacheLock.RUnlock()
-	
+
 	// Second pass: delete expired entries under write lock, re-checking expiration
 	if len(keysToDelete) > 0 {
 		ac.cacheLock.Lock()
