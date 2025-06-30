@@ -1564,7 +1564,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// These variables are needed for direct IO read.
 	alignedOffset := req.OffsetInChunk / common.FS_BLOCK_SIZE * common.FS_BLOCK_SIZE
 	offsetInBlock := req.OffsetInChunk - alignedOffset
-	alignedSize := common.AlignToBlockSize(offsetInBlock + req.Length)
+	alignedSize := rpc.AlignToBlockSize(offsetInBlock + req.Length)
 
 	//
 	// Allocate byte slice, data from the chunk file will be read into this.
@@ -1688,6 +1688,8 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// Thrift should not be calling us with nil Address.
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
+	common.Assert(req.Length == int64(len(req.Chunk.Data)),
+		req.Length, len(req.Chunk.Data))
 
 	startTime := time.Now()
 
@@ -1915,7 +1917,11 @@ refreshFromClustermapAndRetry:
 	// Write to .tmp file first and rename it to the final file.
 	tmpChunkPath = fmt.Sprintf("%s.tmp", chunkPath)
 
-	if rpc.IOType == rpc.BufferedIO {
+	//
+	// If the IO type is BufferedIO, or if it is the last chunk of the file where the chunk size
+	// may not align with the file system block size, we write using the buffered IO mode.
+	//
+	if rpc.IOType == rpc.BufferedIO || uint64(req.Length) != cm.GetCacheConfig().ChunkSize {
 		err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
@@ -1936,8 +1942,14 @@ refreshFromClustermapAndRetry:
 		// The chunk data length must be aligned with the FS_BLOCK_SIZE for direct IO writes.
 		// Otherwise, the write will fail with EINVAL.
 		//
-		common.Assert(len(req.Chunk.Data)%common.FS_BLOCK_SIZE == 0,
-			len(req.Chunk.Data), common.FS_BLOCK_SIZE)
+		common.Assert(req.Length%common.FS_BLOCK_SIZE == 0,
+			req.Length, common.FS_BLOCK_SIZE)
+
+		//
+		// We should not do direct IO writes for the last chunk of the file.
+		//
+		common.Assert(uint64(req.Length) == cm.GetCacheConfig().ChunkSize,
+			req.Length, cm.GetCacheConfig().ChunkSize)
 
 		fd, err = syscall.Open(tmpChunkPath,
 			syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
@@ -1958,19 +1970,6 @@ refreshFromClustermapAndRetry:
 
 		common.Assert(bytesWritten == len(req.Chunk.Data),
 			bytesWritten, len(req.Chunk.Data))
-
-		//
-		// If this is the last chunk of the file, truncate it to its correct size.
-		//
-		if req.Length != int64(len(req.Chunk.Data)) {
-			err = os.Truncate(tmpChunkPath, req.Length)
-			if err != nil {
-				errStr := fmt.Sprintf("Failed to truncate chunk file %s to %d bytes [%v]",
-					chunkPath, req.Length, err)
-				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-			}
-		}
 	} else {
 		common.Assert(false, "Unexpected IO type", rpc.IOType)
 	}

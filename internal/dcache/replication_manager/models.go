@@ -164,7 +164,6 @@ type WriteMvRequest struct {
 	//
 	ChunkIndex     int64
 	Data           []byte // Data to be written
-	Length         int64  // Length in bytes of data to be written
 	ChunkSizeInMiB int64  // Chunk size in MiB
 	IsLastChunk    bool   // boolean flag to indicate if this is the last chunk
 }
@@ -172,8 +171,8 @@ type WriteMvRequest struct {
 // helper method which can be used for logging the request contents except the data buffer
 // Use this instead of %+v to avoid printing the data buffer
 func (req *WriteMvRequest) toString() string {
-	return fmt.Sprintf("{FileID: %s, MvName: %s, ChunkIndex: %d, ChunkSizeInMiB: %d, IsLastChunk: %v, Bytes to write: %d, Data buffer size: %d}",
-		req.FileID, req.MvName, req.ChunkIndex, req.ChunkSizeInMiB, req.IsLastChunk, req.Length, len(req.Data))
+	return fmt.Sprintf("{FileID: %s, MvName: %s, ChunkIndex: %d, ChunkSizeInMiB: %d, IsLastChunk: %v, Data buffer size: %d}",
+		req.FileID, req.MvName, req.ChunkIndex, req.ChunkSizeInMiB, req.IsLastChunk, len(req.Data))
 }
 
 // check if the request is valid
@@ -203,16 +202,7 @@ func (req *WriteMvRequest) isValid() error {
 		return err
 	}
 
-	if req.Length == 0 || req.Length > req.ChunkSizeInMiB*common.MbToBytes {
-		reqStr := req.toString()
-		err := fmt.Errorf("length of bytes to be written is invalid in request: %s", reqStr)
-		log.Err("WriteMvRequest::isValid: %v", err)
-		return err
-	}
-
-	if !req.IsLastChunk &&
-		len(req.Data) != int(req.ChunkSizeInMiB*common.MbToBytes) &&
-		len(req.Data) != int(req.Length) {
+	if !req.IsLastChunk && len(req.Data) != int(req.ChunkSizeInMiB*common.MbToBytes) {
 		reqStr := req.toString()
 		err := fmt.Errorf("data buffer length is not equal to chunk size in request: %s", reqStr)
 		log.Err("WriteMvRequest::isValid: %v", err)

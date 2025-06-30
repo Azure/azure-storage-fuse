@@ -322,18 +322,6 @@ func GetIdLength(id string) int64 {
 	return int64(len(existingBlockId))
 }
 
-// Align up the size of the file to the file system block size
-// This is required when doing direct IO operations.
-func AlignToBlockSize(size int64) int64 {
-	Assert(size >= 0, size)
-
-	if size%FS_BLOCK_SIZE == 0 {
-		return size
-	}
-
-	return ((size / FS_BLOCK_SIZE) + 1) * FS_BLOCK_SIZE
-}
-
 func init() {
 	val, present := os.LookupEnv("HOME")
 	if !present {
