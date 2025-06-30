@@ -75,6 +75,7 @@ type XloadOptions struct {
 	Path           string  `config:"path" yaml:"path,omitempty"`
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
 	ValidateMD5    bool    `config:"validate-md5" yaml:"validate-md5,omitempty"`
+	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 	Workers        int32   `config:"workers" yaml:"workers,omitempty"`
 	PoolSize       uint32  `config:"pool-size" yaml:"pool-size,omitempty"`
 	// TODO:: xload : add parallelism parameter
