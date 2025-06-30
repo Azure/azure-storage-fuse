@@ -4,7 +4,7 @@
 - Added support for listing directories and files on HNS accounts mounted as FNS account by customers.
 - Fixed bug where preload feature used to continue to download even after unmount was successful.
 - [#1765](https://github.com/Azure/azure-storage-fuse/issues/1765) Make `cleanup-on-start` CLI flag common for file-cache, block-cache, xload components.
-
+- [#1808](https://github.com/Azure/azure-storage-fuse/issues/1808) Fixed memory leak in attribute cache by periodic cleanup of cached entries.
 
 ## 2.5.0~preview.1 (2025-04-30)
 **Features**
