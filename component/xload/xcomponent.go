@@ -34,15 +34,17 @@
 package xload
 
 import (
+	"context"
+
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 type XComponent interface {
 	Init()
-	Start()
+	Start(context.Context)
 	Stop()
-	Schedule(*WorkItem)
+	Schedule(*WorkItem) error
 	Process(*WorkItem) (int, error)
 	GetNext() XComponent
 	SetNext(XComponent)
@@ -70,15 +72,15 @@ var _ XComponent = &XBase{}
 func (xb *XBase) Init() {
 }
 
-func (xb *XBase) Start() {
+func (xb *XBase) Start(_ context.Context) {
 }
 
 func (xb *XBase) Stop() {
 }
 
-func (xb *XBase) Schedule(item *WorkItem) {
+func (xb *XBase) Schedule(item *WorkItem) error {
 	if xb.GetThreadPool() != nil {
-		xb.GetThreadPool().Schedule(item)
+		return xb.GetThreadPool().Schedule(item)
 	} else {
 		// TODO:: xload : check if this call goes to the process method of the calling component
 		_, err := xb.Process(item)
@@ -86,6 +88,7 @@ func (xb *XBase) Schedule(item *WorkItem) {
 			log.Err("xcomponent::Schedule : Failed to process for %v [%v]", item.CompName, err.Error())
 		}
 	}
+	return nil
 }
 
 func (xb *XBase) Process(item *WorkItem) (int, error) {
