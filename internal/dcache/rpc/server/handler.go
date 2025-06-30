@@ -1918,10 +1918,12 @@ refreshFromClustermapAndRetry:
 	tmpChunkPath = fmt.Sprintf("%s.tmp", chunkPath)
 
 	//
-	// If the IO type is BufferedIO, or if it is the last chunk of the file where the chunk size
-	// may not align with the file system block size, we write using the buffered IO mode.
+	// We write the chunk using the buffered IO mode if,
+	//   - The IO type is BufferedIO, or
+	//   - The chunk size is not aligned with the file system block size. This can happen only
+	//     for the last chunk of the file.
 	//
-	if rpc.IOType == rpc.BufferedIO || uint64(req.Length) != cm.GetCacheConfig().ChunkSize {
+	if rpc.IOType == rpc.BufferedIO || req.Length%common.FS_BLOCK_SIZE != 0 {
 		err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
@@ -1944,12 +1946,6 @@ refreshFromClustermapAndRetry:
 		//
 		common.Assert(req.Length%common.FS_BLOCK_SIZE == 0,
 			req.Length, common.FS_BLOCK_SIZE)
-
-		//
-		// We should not do direct IO writes for the last chunk of the file.
-		//
-		common.Assert(uint64(req.Length) == cm.GetCacheConfig().ChunkSize,
-			req.Length, cm.GetCacheConfig().ChunkSize)
 
 		fd, err = syscall.Open(tmpChunkPath,
 			syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
