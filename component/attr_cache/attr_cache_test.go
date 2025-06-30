@@ -1106,16 +1106,16 @@ func (suite *attrCacheTestSuite) TestCacheCleanupExpiredEntries() {
 	maxWait := 3 * time.Second
 	waitInterval := 100 * time.Millisecond
 	waited := time.Duration(0)
-	
+
 	for waited < maxWait {
 		suite.attrCache.cacheLock.RLock()
 		cacheSize := len(suite.attrCache.cacheMap)
 		suite.attrCache.cacheLock.RUnlock()
-		
+
 		if cacheSize == 0 {
 			break
 		}
-		
+
 		time.Sleep(waitInterval)
 		waited += waitInterval
 	}
@@ -1128,7 +1128,7 @@ func (suite *attrCacheTestSuite) TestCacheCleanupExpiredEntries() {
 func (suite *attrCacheTestSuite) TestCacheCleanupDuringBulkCaching() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default attr cache generated
-	cacheTimeout := 3 // Use a longer timeout for this test
+	cacheTimeout := 3   // Use a longer timeout for this test
 	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d", cacheTimeout)
 	suite.setupTestHelper(config) // setup a new attr cache with a custom config
 	suite.assert.EqualValues(suite.attrCache.cacheTimeout, cacheTimeout)
@@ -1150,16 +1150,16 @@ func (suite *attrCacheTestSuite) TestCacheCleanupDuringBulkCaching() {
 	maxWait := 2 * time.Second
 	waitInterval := 100 * time.Millisecond
 	waited := time.Duration(0)
-	
+
 	for waited < maxWait {
 		suite.attrCache.cacheLock.RLock()
 		cacheSize := len(suite.attrCache.cacheMap)
 		suite.attrCache.cacheLock.RUnlock()
-		
+
 		if cacheSize == 0 {
 			break
 		}
-		
+
 		time.Sleep(waitInterval)
 		waited += waitInterval
 	}
