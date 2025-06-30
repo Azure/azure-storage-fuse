@@ -11,6 +11,7 @@
 
 **Bug Fixes**
 - [#1687](https://github.com/Azure/azure-storage-fuse/issues/1687) `rmdir` will not allow to delete non-empty directories.
+- [#1765](https://github.com/Azure/azure-storage-fuse/issues/1765) Make `cleanup-on-start` CLI flag common for file-cache, block-cache, xload components.
 
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**
