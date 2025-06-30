@@ -3,6 +3,8 @@
 - Mount on already mounted path resulting in unmount and remount, instead of failure.
 - Added support for listing directories and files on HNS accounts mounted as FNS account by customers.
 - Fixed bug where preload feature used to continue to download even after unmount was successful.
+- [#1765](https://github.com/Azure/azure-storage-fuse/issues/1765) Make `cleanup-on-start` CLI flag common for file-cache, block-cache, xload components.
+
 
 ## 2.5.0~preview.1 (2025-04-30)
 **Features**
@@ -11,7 +13,6 @@
 
 **Bug Fixes**
 - [#1687](https://github.com/Azure/azure-storage-fuse/issues/1687) `rmdir` will not allow to delete non-empty directories.
-- [#1765](https://github.com/Azure/azure-storage-fuse/issues/1765) Make `cleanup-on-start` CLI flag common for file-cache, block-cache, xload components.
 
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**
