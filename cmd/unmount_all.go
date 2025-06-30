@@ -61,7 +61,7 @@ var umntAllCmd = &cobra.Command{
 
 		for _, mntPath := range lstMnt {
 			mountfound += 1
-			err := unmountBlobfuse2(mntPath, lazy)
+			err := unmountBlobfuse2(mntPath, lazy, false)
 			if err == nil {
 				unmounted += 1
 			} else {
