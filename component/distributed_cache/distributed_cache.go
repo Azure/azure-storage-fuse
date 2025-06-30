@@ -368,7 +368,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".chunk-size") {
 		distributedCache.cfg.ChunkSize = defaultChunkSize
 	}
-
 	if !config.IsSet(compName + ".min-nodes") {
 		distributedCache.cfg.MinNodes = defaultMinNodes
 	}

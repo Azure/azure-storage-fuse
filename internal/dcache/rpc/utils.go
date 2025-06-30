@@ -79,18 +79,6 @@ func GetMyNodeUUID() string {
 	return nodeID
 }
 
-// Align up the size of the file to the file system block size
-// This is required when doing direct IO operations.
-func AlignToBlockSize(size int64) int64 {
-	common.Assert(size >= 0, size)
-
-	if size%common.FS_BLOCK_SIZE == 0 {
-		return size
-	}
-
-	return ((size / common.FS_BLOCK_SIZE) + 1) * common.FS_BLOCK_SIZE
-}
-
 // convert *models.RVNameAndState to string
 // used for logging
 func ComponentRVsToString(rvs []*models.RVNameAndState) string {
