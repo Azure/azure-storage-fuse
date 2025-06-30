@@ -1,6 +1,7 @@
 ## 2.5.0 (Unreleased)
 **Bug Fixes**
 - Mount on already mounted path resulting in unmount and remount, instead of failure.
+- Added support for listing directories and files on HNS accounts mounted as FNS account by customers.
 
 ## 2.5.0~preview.1 (2025-04-30)
 **Features**
@@ -9,7 +10,6 @@
 
 **Bug Fixes**
 - [#1687](https://github.com/Azure/azure-storage-fuse/issues/1687) `rmdir` will not allow to delete non-empty directories.
-- Added support for listing directories and files on HNS accounts mounted as FNS account by customers.
 
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**
