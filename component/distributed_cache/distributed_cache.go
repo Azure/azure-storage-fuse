@@ -128,7 +128,6 @@ const (
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
 	dcacheDirContToken               = "__DCDIRENT__"
-	defaultIOMode                    = "direct"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -398,7 +397,7 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		distributedCache.cfg.CacheAccess = defaultCacheAccess
 	}
 	if !config.IsSet(compName + ".io-mode") {
-		distributedCache.cfg.IOMode = defaultIOMode
+		distributedCache.cfg.IOMode = rpc.DirectIO
 	}
 
 	err = rpc.SetIOMode(distributedCache.cfg.IOMode)
@@ -1254,6 +1253,6 @@ func init() {
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
 
-	ioMode := config.AddStringFlag("io-mode", defaultIOMode, "IO mode for read/write operations (direct/buffered)")
+	ioMode := config.AddStringFlag("io-mode", rpc.DirectIO, "IO mode for read/write operations (direct/buffered)")
 	config.BindPFlag(compName+".io-mode", ioMode)
 }
