@@ -2,6 +2,7 @@
 **Bug Fixes**
 - Mount on already mounted path resulting in unmount and remount, instead of failure.
 - Added support for listing directories and files on HNS accounts mounted as FNS account by customers.
+- Fixed bug where preload feature used to continue to download even after unmount was successful.
 
 ## 2.5.0~preview.1 (2025-04-30)
 **Features**
