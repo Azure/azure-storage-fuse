@@ -2568,6 +2568,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 			err = fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
 			log.Err("ClusterManager::joinMV: %v", err)
 			return rv.Name, err
+		} else {
+			log.Debug("ClusterManager::joinMV: Successfully %s MV %s with RV %s", action, mvName, rv.Name)
 		}
 
 		//
