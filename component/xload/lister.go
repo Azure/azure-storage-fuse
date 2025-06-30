@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,10 +108,10 @@ func (rl *remoteLister) Init() {
 	}
 }
 
-func (rl *remoteLister) Start() {
+func (rl *remoteLister) Start(ctx context.Context) {
 	log.Debug("remoteLister::Start : start remote lister for %s", rl.path)
-	rl.GetThreadPool().Start()
-	rl.Schedule(&WorkItem{CompName: rl.GetName()})
+	rl.GetThreadPool().Start(ctx)
+	_ = rl.Schedule(&WorkItem{CompName: rl.GetName()})
 }
 
 func (rl *remoteLister) Stop() {
@@ -118,7 +119,7 @@ func (rl *remoteLister) Stop() {
 	if rl.GetThreadPool() != nil {
 		rl.GetThreadPool().Stop()
 	}
-	rl.GetNext().Stop()
+	log.Debug("remoteLister::Stop : stop successful")
 }
 
 // wait for the configured block-list-on-mount-sec to make the list call
@@ -191,10 +192,14 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 					}
 
 					// push the directory to input pool for its listing
-					rl.Schedule(&WorkItem{
+					err := rl.Schedule(&WorkItem{
 						CompName: rl.GetName(),
 						Path:     name,
 					})
+					if err != nil {
+						log.Err("remoteLister::Process : Failed to schedule directory listing for %s [%s]", name, err.Error())
+						return
+					}
 				}(entry.Path)
 			} else {
 				fileMode := rl.defaultPermission
@@ -203,7 +208,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 				}
 
 				// send file to the splitter's channel for chunking
-				rl.GetNext().Schedule(&WorkItem{
+				err := rl.GetNext().Schedule(&WorkItem{
 					CompName: rl.GetNext().GetName(),
 					Path:     entry.Path,
 					DataLen:  uint64(entry.Size),
@@ -212,6 +217,10 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 					Mtime:    entry.Mtime,
 					MD5:      entry.MD5,
 				})
+				if err != nil {
+					log.Err("remoteLister::Process : Failed to schedule file %s for processing [%s]", entry.Path, err.Error())
+					return 0, err
+				}
 			}
 		}
 

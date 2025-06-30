@@ -6,6 +6,7 @@ import os
 import time
 import argparse
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from torch.nn import DataParallel
 
 def get_directory_size(directory):
     total_size = 0
@@ -57,8 +58,21 @@ def load_checkpoint(checkpoint_path, cache_path, device):
                                               use_safetensors=True,
                                               cache_dir=cache_path)
     
-    # Load the model
-    model = AutoModelForCausalLM.from_pretrained(checkpoint_path,
+    if device == "mcuda":
+        # Load the model on multiple GPUs
+        print("Loading to multiple gpus")
+        model = AutoModelForCausalLM.from_pretrained(checkpoint_path,
+                                                 torch_dtype="auto", 
+                                                 device_map="auto",
+                                                 trust_remote_code=True,
+                                                 use_safetensors=True,
+                                                 cache_dir=cache_path)
+        print(model.hf_device_map)
+        #model = DataParallel(model)
+        #model = model.to("cuda")
+    else:
+        # Load the model on CPU or single GPU
+        model = AutoModelForCausalLM.from_pretrained(checkpoint_path,
                                                  torch_dtype="auto", 
                                                  trust_remote_code=True,
                                                  use_safetensors=True,
@@ -120,14 +134,14 @@ def main():
 
     # Optional parameters not used casually
     parser.add_argument("--shard_size", type=str, default="5GB", help="Name of the model to load.")
-    parser.add_argument("--device", type=str, default="cpu", help="Device to load the model on (e.g., 'cpu', 'cuda').")
+    parser.add_argument("--device", type=str, default="cpu", help="Device to load the model on (e.g., 'cpu', 'cuda', 'mcuda').")
     
     # Parse the arguments
     args = parser.parse_args()
     
     # Check if the device is valid
-    if args.device not in ["cpu", "cuda"]:
-        raise ValueError("Invalid device. Choose 'cpu' or 'cuda'.")
+    if args.device not in ["cpu", "cuda", "mcuda"]:
+        raise ValueError("Invalid device. Choose 'cpu' or 'cuda' or 'mcuda'.")
     
     # Load the model and tokenizer
     # if model_name is provided, load the model from the model hub
