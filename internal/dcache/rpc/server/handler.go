@@ -1561,22 +1561,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
-	// These variables are needed for direct IO read.
-	alignedOffset := req.OffsetInChunk / common.FS_BLOCK_SIZE * common.FS_BLOCK_SIZE
-	offsetInBlock := req.OffsetInChunk - alignedOffset
-	alignedSize := rpc.AlignToBlockSize(offsetInBlock + req.Length)
-
 	//
 	// Allocate byte slice, data from the chunk file will be read into this.
 	//
-	var data []byte
-	if rpc.IOType == rpc.BufferedIO {
-		data = make([]byte, req.Length)
-	} else if rpc.IOType == rpc.DirectIO {
-		data = make([]byte, alignedSize)
-	} else {
-		common.Assert(false, "Unexpected IO type", rpc.IOType)
-	}
+	data := make([]byte, req.Length)
 
 	var lmt string
 	var n, fd int
@@ -1602,7 +1590,16 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
 		fmt.Sprintf("chunkSize %d is less than OffsetInChunk %d + Length %d", chunkSize, req.OffsetInChunk, req.Length))
 
-	if rpc.IOType == rpc.BufferedIO {
+	//
+	// Read the chunk using buffered IO mode if,
+	//   - The IO type is BufferedIO, or
+	//   - The size of chunk is not multiple of file system block size. This can happen only
+	//     for the last chunk of the file.
+	//   - The requested offset and length is not aligned to file system block size.
+	//
+	if rpc.IOType == rpc.BufferedIO ||
+		chunkSize%common.FS_BLOCK_SIZE != 0 ||
+		(req.OffsetInChunk+req.Length)%common.FS_BLOCK_SIZE != 0 {
 		fh, err = os.Open(chunkPath)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to open chunk file %s [%v]", chunkPath, err)
@@ -1612,7 +1609,6 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		defer fh.Close()
 
 		n, err = fh.ReadAt(data, req.OffsetInChunk)
-		common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to read chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
@@ -1630,7 +1626,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		//      }
 		//      hash = string(hashData)
 		// }
-	} else {
+	} else if rpc.IOType == rpc.DirectIO {
 		//
 		// Direct IO read.
 		//
@@ -1643,7 +1639,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 		defer syscall.Close(fd)
 
-		_, err = syscall.Seek(fd, int64(alignedOffset), 0)
+		_, err = syscall.Seek(fd, int64(req.OffsetInChunk), 0)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to seek in chunk file descriptor %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
@@ -1651,23 +1647,18 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		}
 
 		n, err = syscall.Read(fd, data)
-		common.Assert(int64(n) >= offsetInBlock+req.Length,
-			fmt.Sprintf("read %d bytes, needed at least %d", n, offsetInBlock+req.Length))
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to read chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
+	} else {
+		common.Assert(false, "Unexpected IO type", rpc.IOType)
 	}
+
+	common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
 
 dummy_read:
-	//
-	// Trim the data to the requested length from the offset if read is done in direct IO mode.
-	//
-	if rpc.IOType == rpc.DirectIO {
-		data = data[offsetInBlock : offsetInBlock+req.Length]
-	}
-
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
@@ -1918,7 +1909,7 @@ refreshFromClustermapAndRetry:
 	tmpChunkPath = fmt.Sprintf("%s.tmp", chunkPath)
 
 	//
-	// We write the chunk using the buffered IO mode if,
+	// Write the chunk using the buffered IO mode if,
 	//   - The IO type is BufferedIO, or
 	//   - The chunk size is not aligned with the file system block size. This can happen only
 	//     for the last chunk of the file.
