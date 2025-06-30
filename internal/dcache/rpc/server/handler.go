@@ -1477,7 +1477,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v", rpc.IOType, rpc.GetChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v", rpc.IOMode, rpc.GetChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1597,7 +1597,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//     for the last chunk of the file.
 	//   - The requested offset and length is not aligned to file system block size.
 	//
-	if rpc.IOType == rpc.BufferedIO ||
+	if rpc.IOMode == rpc.BufferedIO ||
 		chunkSize%common.FS_BLOCK_SIZE != 0 ||
 		(req.OffsetInChunk+req.Length)%common.FS_BLOCK_SIZE != 0 {
 		fh, err = os.Open(chunkPath)
@@ -1626,7 +1626,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		//      }
 		//      hash = string(hashData)
 		// }
-	} else if rpc.IOType == rpc.DirectIO {
+	} else {
 		//
 		// Direct IO read.
 		//
@@ -1652,8 +1652,6 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
-	} else {
-		common.Assert(false, "Unexpected IO type", rpc.IOType)
 	}
 
 	common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
@@ -1685,7 +1683,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	startTime := time.Now()
 
 	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request (%v): %v",
-		rpc.IOType, rpc.PutChunkRequestToString(req))
+		rpc.IOMode, rpc.PutChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1914,7 +1912,7 @@ refreshFromClustermapAndRetry:
 	//   - The chunk size is not aligned with the file system block size. This can happen only
 	//     for the last chunk of the file.
 	//
-	if rpc.IOType == rpc.BufferedIO || req.Length%common.FS_BLOCK_SIZE != 0 {
+	if rpc.IOMode == rpc.BufferedIO || req.Length%common.FS_BLOCK_SIZE != 0 {
 		err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
@@ -1930,7 +1928,7 @@ refreshFromClustermapAndRetry:
 		// }
 
 		// TODO: should we verify the hash after writing the chunk
-	} else if rpc.IOType == rpc.DirectIO {
+	} else {
 		//
 		// The chunk data length must be aligned with the FS_BLOCK_SIZE for direct IO writes.
 		// Otherwise, the write will fail with EINVAL.
@@ -1957,8 +1955,6 @@ refreshFromClustermapAndRetry:
 
 		common.Assert(bytesWritten == len(req.Chunk.Data),
 			bytesWritten, len(req.Chunk.Data))
-	} else {
-		common.Assert(false, "Unexpected IO type", rpc.IOType)
 	}
 
 	// rename the .tmp file to the final file

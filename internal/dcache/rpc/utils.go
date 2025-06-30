@@ -45,37 +45,23 @@ import (
 const (
 	// defaultPort is the default port for the RPC server
 	defaultPort = 9090
+	BufferedIO  = "buffered"
+	DirectIO    = "direct"
 )
 
-type IOTypeEnum int
+var IOMode string
 
-const (
-	//
-	// Buffered IO for reading and writing chunks.
-	//
-	BufferedIO IOTypeEnum = iota
+// Set the IO mode for read/write operations.
+func SetIOMode(mode string) error {
+	common.Assert(len(IOMode) == 0, IOMode)
 
-	//
-	// Direct IO for reading and writing chunks.
-	//
-	DirectIO
-)
-
-func (s IOTypeEnum) String() string {
-	switch s {
-	case BufferedIO:
-		return "BufferedIO"
-	case DirectIO:
-		return "DirectIO"
-	default:
-		common.Assert(false, s)
-		return "Unknown"
+	if mode != BufferedIO && mode != DirectIO {
+		return fmt.Errorf("invalid IO mode: %s", mode)
 	}
-}
 
-// We will experiment with various IO types on various RW operations (with varying storage and n/w throughput
-// and different NumReplicas configuration).
-var IOType IOTypeEnum = DirectIO
+	IOMode = mode
+	return nil
+}
 
 // return the node address for the given node ID
 // the node address is of the form <ip>:<port>

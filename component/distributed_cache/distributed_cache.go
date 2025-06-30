@@ -109,6 +109,7 @@ type DistributedCacheOptions struct {
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
 	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
+	IOMode              string `config:"io-mode" yaml:"io-mode,omitempty"` // "direct" or "buffered", default is "direct"
 }
 
 const (
@@ -127,6 +128,7 @@ const (
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
 	dcacheDirContToken               = "__DCDIRENT__"
+	defaultIOMode                    = "direct"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -368,14 +370,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		distributedCache.cfg.ChunkSize = defaultChunkSize
 	}
 
-	//
-	// In direct IO RW operations, the chunk size must be a multiple of filesystem block size.
-	//
-	if rpc.IOType == rpc.DirectIO && distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
-		return fmt.Errorf("config error in %s: [chunk-size must be a multiple of %d bytes]",
-			distributedCache.Name(), common.FS_BLOCK_SIZE)
-	}
-
 	if !config.IsSet(compName + ".min-nodes") {
 		distributedCache.cfg.MinNodes = defaultMinNodes
 	}
@@ -403,6 +397,23 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".cache-access") {
 		distributedCache.cfg.CacheAccess = defaultCacheAccess
 	}
+	if !config.IsSet(compName + ".io-mode") {
+		distributedCache.cfg.IOMode = defaultIOMode
+	}
+
+	err = rpc.SetIOMode(distributedCache.cfg.IOMode)
+	if err != nil {
+		log.Err("DistributedCache::Configure : [%v]", err)
+	}
+
+	//
+	// In direct IO RW operations, the chunk size must be a multiple of filesystem block size.
+	//
+	if rpc.IOMode == rpc.DirectIO && distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
+		return fmt.Errorf("config error in %s: [chunk-size must be a multiple of %d bytes]",
+			distributedCache.Name(), common.FS_BLOCK_SIZE)
+	}
+
 	return nil
 }
 
@@ -1242,4 +1253,7 @@ func init() {
 
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
+
+	ioMode := config.AddStringFlag("io-mode", defaultIOMode, "IO mode for read/write operations (direct/buffered)")
+	config.BindPFlag(compName+".io-mode", ioMode)
 }
