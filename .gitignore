@@ -22,3 +22,7 @@ azure-storage-fuse
 bfusemon
 test/scripts/dirIterate.go
 component/azstorage/logfile.txt
+# Ignore all log files
+logfile.txt
+**/logfile.txt
+**/logfile.txt.*
