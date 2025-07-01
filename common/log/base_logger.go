@@ -236,7 +236,7 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 		pkgName = "DCACHE"
 	}
 
-	base := fmt.Sprintf("%s : %s [%s][%d][%d] : [%s] %s",
+	base := fmt.Sprintf("%s : [%s] %s[%d][%d] : [%s] %s",
 		time.Now().Format("Mon Jan _2 15:04:05.000 MST 2006"),
 		hostname,
 		l.fileConfig.LogTag,
