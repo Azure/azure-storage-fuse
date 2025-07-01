@@ -771,7 +771,7 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 					// As we are using writeback policy to upload the data.
 					// Better to fail early.
 					releaseChunk.Err <- err
-					return nil, errors.New("DistributedCache::WriteChunk: failed to upload the previous chunk")
+					return nil, fmt.Errorf("DistributedCache::WriteChunk: failed to upload the previous chunk [%v]", err)
 				}
 				file.removeChunk(releaseChunkIdx)
 			}

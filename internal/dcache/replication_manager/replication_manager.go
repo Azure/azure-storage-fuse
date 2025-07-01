@@ -904,7 +904,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 			// deleted.
 			//
 			if rpcResp.NumChunksDeleted != 0 {
-				err = fmt.Errorf("Delete partial success for %s/%s fileID: %s, node %s, NumChunksDeleted: %d",
+				err = fmt.Errorf("delete partial success for %s/%s fileID: %s, node %s, NumChunksDeleted: %d",
 					rv.Name, req.MvName, req.FileID, targetNodeId, rpcResp.NumChunksDeleted)
 				log.Debug("ReplicationManager::RemoveMV: %v", err)
 				return nil, err
@@ -918,7 +918,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	}
 
 	if retryNeeded {
-		err := fmt.Errorf("Retry needed as some RVs of %s may be synchronizing, fileID: %s, RVs: %v",
+		err := fmt.Errorf("retry needed as some RVs of %s may be synchronizing, fileID: %s, RVs: %v",
 			req.MvName, req.FileID, rvs)
 		log.Err("ReplicationManager::RemoveMV: %v", err)
 		return nil, err
