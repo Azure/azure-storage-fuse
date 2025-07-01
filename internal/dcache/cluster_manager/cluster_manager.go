@@ -2520,6 +2520,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 	//       reserveBytes, instead server is supposed to correctly undo that after timeout.
 	//
 	startTime := time.Now()
+	var wg sync.WaitGroup
 	for _, rv := range componentRVs {
 		rvName := rv.Name
 		rvState := mv.RVs[rvName]
@@ -2531,9 +2532,9 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 			continue
 		}
 
-		cmi.wg.Add(1)
+		wg.Add(1)
 		go func(rvName string, rvState dcache.StateEnum) {
-			defer cmi.wg.Done()
+			defer wg.Done()
 			log.Debug("ClusterManager::joinMV: Joining MV %s with RV %s", mvName, rvName)
 
 			joinMvReq := &models.JoinMVRequest{
@@ -2600,7 +2601,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 			}
 		}(rvName, rvState)
 	}
-	cmi.wg.Wait()
+	wg.Wait()
 	close(errCh)
 
 	var allErrs []string
@@ -2644,7 +2645,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	}
 
 	// Both these maps are indexed by RV id.
-	rVsByRvIdFromHB, rvLastHB, err := cmi.collectHBForGivenNodeIds(nodeIds)
+	rVsByRvIdFromHB, rvLastHB, err := collectHBForGivenNodeIds(nodeIds)
 	if err != nil {
 		return false, err
 	}
@@ -2792,13 +2793,14 @@ func getAllNodesFromRVMap(rvMap map[string]dcache.RawVolume) map[string]struct{}
 }
 
 // For all the given NodeIds, fetch the heartbeat parallely controlled by semaphore to 100 simultaneous requests and return the map of RVs and map of their last heartbeat by RVId.
-func (cmi *ClusterManager) collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, map[string]uint64, error) {
+func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, map[string]uint64, error) {
 	// Results channel to collect data from each goroutine
 	type rvHBResult struct {
 		rvs map[string]dcache.RawVolume
 		hbs map[string]uint64
 	}
 	resultCh := make(chan rvHBResult, len(nodeIds))
+	var wg sync.WaitGroup
 
 	// Limit concurrency to 100 goroutines.
 	sem := make(chan struct{}, 100)
@@ -2806,9 +2808,9 @@ func (cmi *ClusterManager) collectHBForGivenNodeIds(nodeIds []string) (map[strin
 	errCh := make(chan error, len(nodeIds))
 
 	for _, nodeId := range nodeIds {
-		cmi.wg.Add(1)
+		wg.Add(1)
 		go func(nodeId string) {
-			defer cmi.wg.Done()
+			defer wg.Done()
 
 			// Acquire a semaphore slot to limit concurrency.
 			sem <- struct{}{}
@@ -2853,7 +2855,8 @@ func (cmi *ClusterManager) collectHBForGivenNodeIds(nodeIds []string) (map[strin
 			resultCh <- rvHBResult{rvs: localRVs, hbs: localLastHB}
 		}(nodeId)
 	}
-	cmi.wg.Wait()
+	wg.Wait()
+
 	close(errCh)
 	close(resultCh)
 
