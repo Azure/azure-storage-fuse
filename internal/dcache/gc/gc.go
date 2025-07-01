@@ -35,9 +35,11 @@ package gc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -163,6 +165,35 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 		common.Assert(false, gcFile.file, gcFile)
 	}
 
+	rescheduleFile := func() {
+		if gcFile.file.OpenCount == 0 {
+			time.Sleep(5 * time.Second)
+		} else {
+			//
+			// This is kept to higher value to avoid frequent storage calls as there is file IO going on this handle.
+			//
+			time.Sleep(30 * time.Second)
+		}
+		gc.deletedFileQueue <- gcFile
+	}
+
+	// Refresh the OpenCount for this file.
+	if gcFile.file.OpenCount > 0 {
+		dcFile, err := getDeletedFile(gcFile.file.FileID)
+		if err != nil {
+			log.Err("GC::removeAllChunksForFile: Failed to Refresh the opencount for file: %s[%s]: %v", gcFile.file.Filename,
+				gcFile.file.FileID, err)
+			common.Assert(false, *gcFile.file, err)
+		} else {
+			gcFile.file = dcFile
+		}
+
+		if gcFile.file.OpenCount > 0 {
+			go rescheduleFile()
+			return
+		}
+	}
+
 	var errCM error
 	retryMVList := make([]string, 0)
 
@@ -228,10 +259,7 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 		//
 		gcFile.removeMVList = retryMVList
 
-		go func() {
-			time.Sleep(5 * time.Second)
-			gc.deletedFileQueue <- gcFile
-		}()
+		go rescheduleFile()
 
 		return
 	}
@@ -339,7 +367,8 @@ func getOpenCountForDeletedFile(attr *internal.ObjAttr) (int, error) {
 func getDeletedFile(fileId string) (*dcache.FileMetadata, error) {
 	fileMetadataBytes, fileSize, _, openCount, _, err := mm.GetFile(fileId, true)
 	if err != nil {
-
+		log.Err("GC::getDeletedFile: Failed to get metadata file content for file %s: %v", fileId, err)
+		common.Assert(errors.Is(err, syscall.ENOENT), err)
 	}
 
 	var fileMetadata dcache.FileMetadata
