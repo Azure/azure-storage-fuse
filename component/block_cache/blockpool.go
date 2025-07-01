@@ -137,7 +137,7 @@ func releaseBlock(ch chan *Block) {
 
 // Usage provides % usage of this block pool
 func (pool *BlockPool) Usage() uint32 {
-	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.priorityCh))) * 100) / pool.maxBlocks
+	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.priorityCh)+len(pool.resetBlockCh))) * 100) / pool.maxBlocks
 }
 
 // MustGet a Block from the pool, wait until something is free
