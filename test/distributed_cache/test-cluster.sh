@@ -240,11 +240,12 @@ log_status()
 {
     local status=$1
     local err_msg=$2
+    local timestamp=$(date +"%Y-%m-%d %H:%M:%S.%3N")
 
     if [ $status -eq 0 ]; then
-        sbecho  "\033[50D\033[70C[ok]"
+        sbecho  "\033[50D\033[70C[ok] [$timestamp]"
     else
-        ebecho "\033[50D\033[70C[failed]"
+        ebecho "\033[50D\033[70C[failed] [$timestamp]"
 
         # Log error message if provided.
         if [ -n "$err_msg" ]; then
@@ -1047,7 +1048,7 @@ done  # End of the main loop starting nodes
 # Initialize variables
 failed_node_vm=""
 
-# Only run degraded workflow test if we have more than 1 node
+# Only run degraded/Fix/Re-Sync workflow test if we have more than 1 node
 if [ "$NUM_NODES" -gt 1 ]; then
     ############################################################################
     ##    Test blobfuse Process Failure Over a node Degraded Workflow         ##
@@ -1129,9 +1130,59 @@ if [ "$NUM_NODES" -gt 1 ]; then
 
         # Check if MVs that used the RVs on the failed node are now in degraded state
         becho -n "Checking if MVs using RVs of $failed_node_vm are now degraded"
+        offline_rv_list=$(get_rv_list_for_node "$cm_after" "$failed_node_id")
+        offline_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$offline_rv_list" "offline")
         degraded_mvs=$(get_mv_count_with_state "$cm_after" "degraded")
         [ "$degraded_mvs" -gt 0 ]
         log_status $? "Found $degraded_mvs degraded MVs"
+
+        ############################################################################
+        ##                         Verify Fix Workflow                            ##
+        ############################################################################
+
+        echo
+        wbecho ">> Starting blobfuse on $failed_node_vm for Fix workflow"
+        echo
+        start_blobfuse_on_node $failed_node_vm
+
+        becho -n "Reading clustermap on $failed_node_vm"
+        cm=$(read_clustermap_from_node $failed_node_vm)
+        log_status $?
+
+        outofsync_component_rv_count=0
+        local max_retries=3
+        local retry_count=0
+        
+        # Wait for the next epoch if no outofsync RVs are found, up to a maximum number of retries
+        while [ "$outofsync_component_rv_count" -eq 0 ] && [ "$retry_count" -lt "$max_retries" ]; do
+            wbecho ">> Waiting for next scheduled epoch to get outofsync RVs... $((retry_count + 1))/$max_retries"
+            LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
+            
+             #
+            # Wait for next epoch on $failed_node_vm.
+            # After that it'll run the Fix mv workflow to mark RVs state to outofsync.
+            #
+            wait_till_next_scheduled_epoch
+            
+            # Re-read clustermap and re-calculate the outofsync count
+            cm=$(read_clustermap_from_node $failed_node_vm)
+            outofsync_rv_list=$(get_rv_list_for_node "$cm" "$vm2_node_id")
+            outofsync_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$outofsync_rv_list" "outofsync")
+            retry_count=$((retry_count + 1))
+        done
+
+        becho -n "All degraded MV's replacement rv must be outofsync"
+        outofsync_rv_list=$(get_rv_list_for_node "$cm" "$vm2_node_id")
+        outofsync_component_rv_count=$(get_mvs_count_for_given_rv_with_state "$cm" "$outofsync_rv_list" "outofsync")
+        degraded_mv_count=$(get_mv_count_with_state "$cm" "degraded")
+        [ "$degraded_mv_count" -eq "$outofsync_component_rv_count" ]
+        log_status $? "degraded MVs: $degraded_mv_count, offline component RVs count: $offline_component_rv_count"
+
+        becho -n "last_updated_by must be $failed_node_vm"
+        last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
+        [ "$last_updated_by" == "$(get_node_id "$failed_node_vm")" ]
+        log_status $? "is $last_updated_by"
+
     else
         wbecho ">> Skipping MV validation tests - no MVs found in clustermap"
     fi
