@@ -66,7 +66,7 @@ type MetadataManager interface {
 	// Also returns, file size, file state, opencount and attributes.
 	getFile(filePath string, isDeleted bool) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error)
 
-	// Renames the metadata file to mdRoot/deleted/<fileId>
+	// Renames the metadata file to mdRoot/Deleted/<fileId>
 	// This would fail if the dest file already exists, which is unlikely due to the fileid in the name.
 	renameFileToDeleting(filePath string, fileId string) error
 

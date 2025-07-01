@@ -318,9 +318,11 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 		if err != nil {
 			log.Info("GC::scheduleDeleteForStaleFiles: Failed to get the opencount for file %s[%s]", attr.Path, attr.Name)
 			common.Assert(false, *attr, err)
+			continue
 		}
 
-		// Assuming the Node responsible for deletion of this file went down.
+		// Assuming the Node responsible for deletion of this file went down when the metadata file is not deleted
+		// before deleteTimeOut.
 		if time.Since(attr.Mtime) >= gc.deleteTimeOut && openCount == 0 {
 			log.Info("GC::scheduleDeleteForStaleFiles: Deleting stale fileID %s", attr.Name)
 
