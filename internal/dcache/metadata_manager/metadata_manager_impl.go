@@ -116,7 +116,8 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 	//
 	directories := []string{metadataManagerInstance.mdRoot,
 		metadataManagerInstance.mdRoot + "/Nodes",
-		metadataManagerInstance.mdRoot + "/Objects"}
+		metadataManagerInstance.mdRoot + "/Objects",
+		metadataManagerInstance.mdRoot + "/Deleted"}
 	for _, dir := range directories {
 		if err = storageCallback.CreateDir(
 			internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
@@ -152,17 +153,21 @@ func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eT
 	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize, eTag)
 }
 
-func GetFile(filePath string) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error) {
-	return metadataManagerInstance.getFile(filePath)
+func GetFile(filePath string, isDeleted bool) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error) {
+	return metadataManagerInstance.getFile(filePath, isDeleted)
 }
 
 // Renames file only when dst dont exist, else returns error EEXIST.
-func RenameFileToDeleting(filePath string, deletedFilePath string) error {
-	return metadataManagerInstance.renameFileToDeleting(filePath, deletedFilePath)
+func RenameFileToDeleting(filePath string, fileID string) error {
+	return metadataManagerInstance.renameFileToDeleting(filePath, fileID)
 }
 
-func DeleteFile(filePath string) error {
-	return metadataManagerInstance.deleteFile(filePath)
+func DeleteFile(fileID string) error {
+	return metadataManagerInstance.deleteFile(fileID)
+}
+
+func ListDeletedFiles() ([]*internal.ObjAttr, error) {
+	return metadataManagerInstance.listDeletedFiles()
 }
 
 func OpenFile(filePath string, attr *internal.ObjAttr) (int64, error) {
@@ -424,10 +429,16 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 // GetFile reads and returns the content of metadata for a file.
 // TODO: Replace the two REST API calls with a single call to DownloadStream.
-func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error) {
+func (m *BlobMetadataManager) getFile(filePath string, isDeleted bool) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error) {
 	common.Assert(len(filePath) > 0)
+	var path string
 
-	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	if !isDeleted {
+		path = filepath.Join(m.mdRoot, "Objects", filePath)
+	} else {
+		path = filepath.Join(m.mdRoot, "Deleted", filePath)
+	}
+
 	// Get the metadata content from storage.
 	data, prop, err := m.getBlobSafe(path)
 	if err != nil {
@@ -518,12 +529,12 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 	return data, fileSize, fileState, openCount, prop, nil
 }
 
-func (m *BlobMetadataManager) renameFileToDeleting(filePath string, deletedFilePath string) error {
+func (m *BlobMetadataManager) renameFileToDeleting(filePath string, fileID string) error {
 	common.Assert(len(filePath) > 0)
-	common.Assert(len(deletedFilePath) > 0)
+	common.Assert(len(fileID) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	deletedFilePath = filepath.Join(m.mdRoot, "Objects", deletedFilePath)
+	deletedFilePath := filepath.Join(m.mdRoot, "Deleted", fileID)
 
 	log.Debug("renameFileToDeleting::  %s -> %s", path, deletedFilePath)
 
@@ -551,10 +562,10 @@ func (m *BlobMetadataManager) renameFileToDeleting(filePath string, deletedFileP
 }
 
 // DeleteFile removes metadata for a file.
-func (m *BlobMetadataManager) deleteFile(filePath string) error {
-	common.Assert(len(filePath) > 0)
+func (m *BlobMetadataManager) deleteFile(fileID string) error {
+	common.Assert(len(fileID) > 0)
 
-	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	path := filepath.Join(m.mdRoot, "Deleted", fileID)
 	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
 		Name: path,
 	})
@@ -575,11 +586,25 @@ func (m *BlobMetadataManager) deleteFile(filePath string) error {
 	return err
 }
 
+func (m *BlobMetadataManager) listDeletedFiles() ([]*internal.ObjAttr, error) {
+	deletedFilesDirPath := filepath.Join(m.mdRoot, "Deleted")
+
+	list, err := m.storageCallback.ReadDirFromStorage(internal.ReadDirOptions{
+		Name: deletedFilesDirPath,
+	})
+	if err != nil {
+		log.Err("ListDeletedFiles:: Failed to enumerate deleted files from %s: %v", deletedFilesDirPath, err)
+		common.Assert(false, deletedFilesDirPath, err)
+		return nil, err
+	}
+
+	return list, err
+}
+
 // OpenFile increments the open count for a file and returns the updated count,
 // also updates the Etag in attr on success
 //
 // Note: This must be called only with safe-deletes config set.
-
 func (m *BlobMetadataManager) openFile(filePath string, attr *internal.ObjAttr) (int64, error) {
 	common.Assert(len(filePath) > 0)
 	common.Assert(attr != nil)

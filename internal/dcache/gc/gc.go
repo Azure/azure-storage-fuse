@@ -34,11 +34,15 @@
 package gc
 
 import (
+	"encoding/json"
+	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
@@ -53,6 +57,11 @@ type GcInfo struct {
 	numGcWorkers     int
 	deletedFileQueue chan *gcFile
 	wg               sync.WaitGroup
+	// Channel to signal that periodic GC go routine to stop.
+	done chan struct{}
+	// If the metadata file for the "file that was deleted" is not deleted in this timeout then periodic GC will
+	// reschedule the delete from the node where the timeout has triggered.
+	deleteTimeOut time.Duration
 }
 
 var gc *GcInfo
@@ -76,7 +85,27 @@ func Start() {
 		numGcWorkers: 100,
 		// Allow more requests to be queued than workers.
 		deletedFileQueue: make(chan *gcFile, 1000),
+		done:             make(chan struct{}),
+		deleteTimeOut:    10 * time.Minute,
 	}
+
+	//
+	// Start polling the files which were deleted but there might be a chance that the node that scheduled the deletion
+	// has been down the actual deletion of the chunks.
+	//
+	go func() {
+		pollTicker := time.NewTicker(10 * time.Minute)
+		for {
+			select {
+			case <-gc.done:
+				log.Info("GC::Stopping Periodic GC go routine")
+				break
+			case <-pollTicker.C:
+				log.Debug("GC:: Periodic GC triggered")
+				gc.scheduleDeleteForStaleFiles()
+			}
+		}
+	}()
 
 	for range gc.numGcWorkers {
 		go gc.worker()
@@ -87,6 +116,7 @@ func Start() {
 
 func End() {
 	close(gc.deletedFileQueue)
+	gc.done <- struct{}{}
 	gc.wg.Wait()
 }
 
@@ -194,13 +224,12 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 
 deleteMetadataFile:
 	// After removing all the chunks from all the rvs, we can remove the file layout.
-	deletedFile := dcache.GetDeletedFileName(gcFile.file.Filename, gcFile.file.FileID)
-	log.Debug("GC::removeAllChunksForFile: removing file layout for file: %s", deletedFile)
+	log.Debug("GC::removeAllChunksForFile: removing file layout for file: %s [%s]", gcFile.file.Filename, gcFile.file.FileID)
 
-	err := mm.DeleteFile(deletedFile)
+	err := mm.DeleteFile(gcFile.file.FileID)
 	if err != nil {
-		// This will cause the file to hang around for ever.
-		log.Err("GC::removeAllChunksForFile: failed to remove file layout for file: %s: %v", deletedFile, err)
+		// This will cause the file to hang around for ever. Such files would be GC'ed in the periodic scan.
+		log.Err("GC::removeAllChunksForFile: failed to remove file layout for file: %s[%s]: %v", gcFile.file.Filename, gcFile.file.FileID, err)
 		common.Assert(false, gcFile.file, err)
 		return
 	}
@@ -213,4 +242,108 @@ func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 		removeMVList: file.FileLayout.MVList,
 	}
 	gc.deletedFileQueue <- gcFile
+}
+
+// A file can be in stale state if,
+//  1. The node who is. responsible for deletion has crashed before the removal of the chunks.
+//  2. OpenCount of the file will not comeback to zero, if the node responsible for opening the file has crashed before
+//     closing the file.
+//
+// TODO: for the case2, can we assume that, file for which the opencount not getting to zero for certain amount of time
+// can be deleted?
+func (gc *GcInfo) scheduleDeleteForStaleFiles() {
+	//
+	// List all the deleted files in the storage.
+	//
+	deletedFiles, err := mm.ListDeletedFiles()
+	if err != nil {
+		log.Err("GC::scheduleDeleteForStaleFiles: Failed to List the Deleted Files directory [%v]", err)
+		common.Assert(false, err)
+	}
+
+	// Schedule the delete for all the files that were timedout in the cache directory.
+	for _, attr := range deletedFiles {
+		// Extract the openCount from the attribute.
+		openCount, err := getOpenCountForDeletedFile(attr)
+		if err != nil {
+			log.Info("GC::scheduleDeleteForStaleFiles: failed to get the opencount for file %s[%s]", attr.Path, attr.Name)
+			common.Assert(false, *attr, err)
+		}
+
+		// Assuming the Node responsible for deletion of this file went down.
+		if time.Since(attr.Mtime) >= gc.deleteTimeOut && openCount == 0 {
+			log.Info("GC::scheduleDeleteForStaleFiles: Deleting stale fileID %s", attr.Name)
+
+			// Get the metadata of the deleted file and schedule the delete.
+			dcFile, err := getDeletedFile(attr.Name)
+			if err != nil {
+				log.Err("GC::scheduleDeleteForStaleFiles: Failed to get the deleted file %s: %v", err)
+			}
+
+			// Schedule the file for GC.
+			gcFile := &gcFile{
+				file:         dcFile,
+				retryCnt:     0,
+				removeMVList: dcFile.FileLayout.MVList,
+			}
+			gc.deletedFileQueue <- gcFile
+		}
+	}
+}
+
+func getOpenCountForDeletedFile(attr *internal.ObjAttr) (int, error) {
+	openCountStr, ok := attr.Metadata["opencount"]
+	if !ok {
+		err := fmt.Errorf("GC::getOpenCountForDeletedFile: File opencount not found in metadata for path %s", attr.Path)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return -1, err
+	}
+
+	openCount, err := strconv.Atoi(*openCountStr)
+	if err != nil {
+		err := fmt.Errorf("GC::getOpenCountForDeletedFile: Failed to parse open count for path %s with value %s: %v",
+			attr.Path, *openCountStr, err)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return -1, err
+	}
+
+	if openCount < 0 {
+		err := fmt.Errorf("GC::getOpenCountForDeletedFile: open count -ve for path %s with value %d: %v",
+			attr.Path, openCount, err)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return -1, err
+	}
+
+	return openCount, nil
+}
+
+// Get the file metadata of the deleted file based by their fileID.
+func getDeletedFile(fileId string) (*dcache.FileMetadata, error) {
+	fileMetadataBytes, fileSize, _, openCount, _, err := mm.GetFile(fileId, true)
+	if err != nil {
+
+	}
+
+	var fileMetadata dcache.FileMetadata
+	err = json.Unmarshal(fileMetadataBytes, &fileMetadata)
+	if err != nil {
+		err = fmt.Errorf("File metadata unmarshal failed for fileId %s: %v", fileId, err)
+		common.Assert(false, err)
+		return nil, err
+	}
+
+	// Following fields must be ignored by unmarshal.
+	common.Assert(len(fileMetadata.State) == 0, fileMetadata.State, fileMetadata)
+	common.Assert(fileMetadata.Size == 0, fileMetadata.Size, fileMetadata)
+	common.Assert(fileMetadata.OpenCount == 0, fileMetadata.OpenCount, fileMetadata)
+	common.Assert(fileSize >= 0, fileId, fileMetadata, fileSize)
+	common.Assert(openCount >= 0, fileId, fileMetadata.OpenCount, fileMetadata)
+
+	fileMetadata.Size = fileSize
+	fileMetadata.OpenCount = openCount
+
+	return &fileMetadata, nil
 }

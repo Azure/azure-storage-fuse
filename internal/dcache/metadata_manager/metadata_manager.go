@@ -62,15 +62,19 @@ type MetadataManager interface {
 	createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error
 
 	// GetFile reads and returns the content of metadata for a file.
+	// caller tells the file they are looking is deleted or not using isDeleted.
 	// Also returns, file size, file state, opencount and attributes.
-	getFile(filePath string) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error)
+	getFile(filePath string, isDeleted bool) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error)
 
-	// Renames the metadata file to <fileName>.<fileId>.dcache.deleting
+	// Renames the metadata file to mdRoot/deleted/<fileId>
 	// This would fail if the dest file already exists, which is unlikely due to the fileid in the name.
 	renameFileToDeleting(filePath string, fileId string) error
 
 	// DeleteFile removes metadata for a file.
-	deleteFile(filePath string) error
+	deleteFile(fileID string) error
+
+	// Lists the deleted files in the dcache, whose chunks are yet to be reclaimed.
+	listDeletedFiles() ([]*internal.ObjAttr, error)
 
 	// OpenFile must be called when a file is opened by the application.
 	// This will increment the open count for the file and return the updated open count.
