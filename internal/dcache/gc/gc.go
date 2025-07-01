@@ -181,9 +181,16 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 	if gcFile.file.OpenCount > 0 {
 		dcFile, err := getDeletedFile(gcFile.file.FileID)
 		if err != nil {
-			log.Err("GC::removeAllChunksForFile: Failed to Refresh the opencount for file: %s[%s]: %v", gcFile.file.Filename,
-				gcFile.file.FileID, err)
-			common.Assert(false, *gcFile.file, err)
+			if err == syscall.ENOENT {
+				log.Warn("GC::removeAllChunksForFile: Failed to Refresh the opencount for file: %s[%s]: %v, skipping",
+					gcFile.file.Filename, gcFile.file.FileID, err)
+				return
+			} else {
+				// Reschedule the file again in this case.
+				log.Err("GC::removeAllChunksForFile: Failed to Refresh the opencount for file: %s[%s]: %v",
+					gcFile.file.Filename, gcFile.file.FileID, err)
+				common.Assert(false, *gcFile.file, err)
+			}
 		} else {
 			gcFile.file = dcFile
 		}
@@ -320,7 +327,12 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 			// Get the metadata of the deleted file and schedule the delete.
 			dcFile, err := getDeletedFile(attr.Name)
 			if err != nil {
-				log.Err("GC::scheduleDeleteForStaleFiles: Failed to get the deleted file %s: %v", err)
+				if err == syscall.ENOENT {
+					log.Warn("GC::scheduleDeleteForStaleFiles: Failed to get the deleted file %s: %v", err)
+				} else {
+					log.Err("GC::scheduleDeleteForStaleFiles: Failed to get the deleted file %s: %v", err)
+				}
+				continue
 			}
 
 			// Schedule the file for GC.
@@ -369,6 +381,7 @@ func getDeletedFile(fileId string) (*dcache.FileMetadata, error) {
 	if err != nil {
 		log.Err("GC::getDeletedFile: Failed to get metadata file content for file %s: %v", fileId, err)
 		common.Assert(errors.Is(err, syscall.ENOENT), err)
+		return nil, err
 	}
 
 	var fileMetadata dcache.FileMetadata
@@ -383,6 +396,7 @@ func getDeletedFile(fileId string) (*dcache.FileMetadata, error) {
 	common.Assert(len(fileMetadata.State) == 0, fileMetadata.State, fileMetadata)
 	common.Assert(fileMetadata.Size == 0, fileMetadata.Size, fileMetadata)
 	common.Assert(fileMetadata.OpenCount == 0, fileMetadata.OpenCount, fileMetadata)
+
 	common.Assert(fileSize >= 0, fileId, fileMetadata, fileSize)
 	common.Assert(openCount >= 0, fileId, fileMetadata.OpenCount, fileMetadata)
 
