@@ -46,6 +46,9 @@ type BlockPool struct {
 	// Channel holding free blocks
 	blocksCh chan *Block
 
+	// Channel holding free blocks for priority threads
+	priorityCh chan *Block
+
 	// block having null data
 	zeroBlock *Block
 
@@ -78,27 +81,30 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 
 	// Calculate how many blocks can be allocated
 	blockCount := uint32(memSize / blockSize)
-	poolBlockCount := uint32(0.9 * float64(blockCount))
+	highPriority := (blockCount * 10) / 100
+
 	pool := &BlockPool{
-		blocksCh:     make(chan *Block, poolBlockCount-1),
-		resetBlockCh: make(chan *Block, poolBlockCount-1),
+		blocksCh:     make(chan *Block, blockCount-highPriority),
+		priorityCh:   make(chan *Block, highPriority),
+		resetBlockCh: make(chan *Block, blockCount),
 		maxBlocks:    uint32(blockCount),
 		blockSize:    blockSize,
-		totalBlocks:  uint32(poolBlockCount),
 	}
 
 	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
-	for i := (uint32)(0); i < poolBlockCount; i++ {
-		b, err := AllocateBlock(blockSize)
+	for i := (uint32)(0); i < blockCount; i++ {
+		block, err := AllocateBlock(blockSize)
 		if err != nil {
 			log.Err("BlockPool::NewBlockPool : Failed to allocate block [%v]", err.Error())
 			return nil
 		}
 
-		if i == poolBlockCount-1 {
-			pool.zeroBlock = b
+		if i == blockCount-1 {
+			pool.zeroBlock = block
+		} else if i < highPriority {
+			pool.priorityCh <- block
 		} else {
-			pool.blocksCh <- b
+			pool.blocksCh <- block
 		}
 	}
 
@@ -116,64 +122,52 @@ func (pool *BlockPool) Terminate() {
 	pool.wg.Wait()
 
 	close(pool.blocksCh)
+	close(pool.priorityCh)
 
 	_ = pool.zeroBlock.Delete()
 
-	// Release back the memory allocated to each block
+	releaseBlock(pool.blocksCh)
+	releaseBlock(pool.priorityCh)
+}
+
+// release back the memory allocated to each block
+func releaseBlock(ch chan *Block) {
 	for {
-		b := <-pool.blocksCh
-		if b == nil {
+		block := <-ch
+		if block == nil {
 			break
 		}
-		_ = b.Delete()
+		_ = block.Delete()
 	}
 }
 
 // Usage provides % usage of this block pool
 func (pool *BlockPool) Usage() uint32 {
-	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.resetBlockCh))) * 100) / pool.maxBlocks
+	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.priorityCh))) * 100) / pool.maxBlocks
 }
 
 // MustGet a Block from the pool, wait until something is free
 func (pool *BlockPool) MustGet() *Block {
-	var b *Block = nil
+	var block *Block = nil
 
 	select {
-	case b = <-pool.blocksCh:
+	case block = <-pool.priorityCh:
 		break
-
-	default:
-		pool.mu.Lock()
-		if pool.totalBlocks < pool.maxBlocks {
-			// There are no free blocks so we must allocate one and return here
-			// As the consumer of the pool needs a block immediately
-			log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
-			var err error
-			b, err = AllocateBlock(pool.blockSize)
-			if err == nil {
-				pool.totalBlocks++
-			}
-			pool.mu.Unlock()
-			if err != nil {
-				return nil
-			}
-			break
-		}
-		pool.mu.Unlock()
-		// Wait for a block to be released if max is reached
-		b = <-pool.blocksCh
+	case block = <-pool.blocksCh:
+		break
 	}
+
 	// Mark the buffer ready for reuse now
-	b.ReUse()
-	return b
+	block.ReUse()
+	return block
 }
 
 // TryGet a Block from the pool, return back if nothing is available
 func (pool *BlockPool) TryGet() *Block {
-	var b *Block = nil
+	var block *Block = nil
 
 	select {
-	case b = <-pool.blocksCh:
+	case block = <-pool.blocksCh:
 		break
 
 	default:
@@ -181,8 +175,8 @@ func (pool *BlockPool) TryGet() *Block {
 	}
 
 	// Mark the buffer ready for reuse now
-	b.ReUse()
-	return b
+	block.ReUse()
+	return block
 }
 
 // Release back the Block to the pool
@@ -199,15 +193,20 @@ func (pool *BlockPool) Release(b *Block) {
 func (pool *BlockPool) resetBlock() {
 	defer pool.wg.Done()
 
-	for b := range pool.resetBlockCh {
+	for block := range pool.resetBlockCh {
 		// reset the data with null entries
-		copy(b.data, pool.zeroBlock.data)
+		copy(block.data, pool.zeroBlock.data)
 
 		select {
-		case pool.blocksCh <- b:
+		case pool.priorityCh <- block:
 			continue
 		default:
-			_ = b.Delete()
+			select {
+			case pool.blocksCh <- block:
+				break
+			default:
+				_ = block.Delete()
+			}
 		}
 	}
 }
