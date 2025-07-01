@@ -74,8 +74,8 @@ type ClusterMap struct {
 	LastUpdatedAt int64                     `json:"last_updated_at"`
 	LastUpdatedBy string                    `json:"last_updated_by"`
 	Config        DCacheConfig              `json:"config"`
-	RVMap         map[string]RawVolume      `json:"rv-map"`
-	MVMap         map[string]MirroredVolume `json:"mv-map"`
+	RVMap         map[string]RawVolume      `json:"rv-list"`
+	MVMap         map[string]MirroredVolume `json:"mv-list"`
 }
 
 // This struct is used for better interpreting the ClusterMap struct while reading the data as json.
