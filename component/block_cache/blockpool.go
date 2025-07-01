@@ -63,12 +63,6 @@ type BlockPool struct {
 
 	// Number of block that this pool can handle at max
 	maxBlocks uint32
-
-	// Total number of blocks allocated to the pool
-	totalBlocks uint32
-
-	// Mutex to protect the totalBlocks count
-	mu sync.Mutex
 }
 
 // NewBlockPool allocates a new pool of blocks
@@ -84,7 +78,7 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	highPriority := (blockCount * 10) / 100
 
 	pool := &BlockPool{
-		blocksCh:     make(chan *Block, blockCount-highPriority),
+		blocksCh:     make(chan *Block, blockCount-highPriority-1),
 		priorityCh:   make(chan *Block, highPriority),
 		resetBlockCh: make(chan *Block, blockCount-1), // -1 because one block is used for zero data
 		maxBlocks:    uint32(blockCount),
