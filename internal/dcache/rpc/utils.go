@@ -38,6 +38,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -51,8 +52,9 @@ const (
 
 var ReadIOMode, WriteIOMode string
 
-// Set the IO mode for read operations.
+// Set the IO mode for chunk read operations.
 func SetReadIOMode(mode string) error {
+	// Must be called only once.
 	common.Assert(len(ReadIOMode) == 0, ReadIOMode)
 
 	if mode != BufferedIO && mode != DirectIO {
@@ -60,11 +62,14 @@ func SetReadIOMode(mode string) error {
 	}
 
 	ReadIOMode = mode
+	log.Info("rpc::SetReadIOMode: Set chunk file read mode to %s", ReadIOMode)
+
 	return nil
 }
 
-// Set the IO mode for write operations.
+// Set the IO mode for chunk write operations.
 func SetWriteIOMode(mode string) error {
+	// Must be called only once.
 	common.Assert(len(WriteIOMode) == 0, WriteIOMode)
 
 	if mode != BufferedIO && mode != DirectIO {
@@ -72,6 +77,8 @@ func SetWriteIOMode(mode string) error {
 	}
 
 	WriteIOMode = mode
+	log.Info("rpc::SetWriteIOMode: Set chunk file write mode to %s", WriteIOMode)
+
 	return nil
 }
 

@@ -68,8 +68,13 @@ const (
 	BfuseStats    = "blobfuse_stats"
 	BlockIDLength = 16
 
-	// File system block size
-	FS_BLOCK_SIZE = 4096
+	//
+	// File system block size.
+	// IO size and offset must be aligned to this, for direct IOs.
+	// TODO: Though 512 bytes should work for most common filesystems, but let's see if we need to
+	//       query it using statx(STATX_DIOALIGN).
+	//
+	FS_BLOCK_SIZE = 512
 
 	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
