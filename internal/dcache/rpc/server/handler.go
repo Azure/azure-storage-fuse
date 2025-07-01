@@ -1530,14 +1530,14 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 	//
 	fd, err = syscall.Open(*chunkPath, syscall.O_RDONLY|syscall.O_DIRECT, 0)
 	if err != nil {
-		return -1, "", fmt.Errorf("Failed to open chunk file %s [%v]", *chunkPath, err)
+		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
 	}
 	defer syscall.Close(fd)
 
 	if readOffset != 0 {
 		_, err = syscall.Seek(fd, readOffset, 0)
 		if err != nil {
-			return -1, "", fmt.Errorf("Failed to seek in chunk file %s at offset %d [%v]",
+			return -1, "", fmt.Errorf("failed to seek in chunk file %s at offset %d [%v]",
 				*chunkPath, readOffset, err)
 		}
 	}
@@ -1558,7 +1558,7 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 
 	// For EINVAL, fall through to buffered read.
 	if !errors.Is(err, syscall.EINVAL) {
-		return -1, "", fmt.Errorf("Failed to read chunk file %s offset %d [%v]", *chunkPath, readOffset, err)
+		return -1, "", fmt.Errorf("failed to read chunk file %s offset %d [%v]", *chunkPath, readOffset, err)
 	}
 
 	// TODO: Remove this once this is tested sufficiently.
@@ -1568,13 +1568,13 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 bufferedRead:
 	fh, err = os.Open(*chunkPath)
 	if err != nil {
-		return -1, "", fmt.Errorf("Failed to open chunk file %s [%v]", *chunkPath, err)
+		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
 	}
 	defer fh.Close()
 
 	n, err = fh.ReadAt(*data, readOffset)
 	if err != nil {
-		return -1, "", fmt.Errorf("Failed to read chunk file %s at offset %d [%v]", *chunkPath, readOffset, err)
+		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d [%v]", *chunkPath, readOffset, err)
 	}
 
 	common.Assert(n == readLength, n, readLength, *chunkPath)
@@ -1767,7 +1767,7 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 	//
 	// Write the chunk using buffered IO mode if,
 	//   - Write IO type is configured as BufferedIO, or
-	//   - The requested offset and length is not aligned to file system block size.
+	//   - The write length (or chunk size) is not aligned to file system block size.
 	//   - The buffer is not aligned to file system block size.
 	//
 	if rpc.WriteIOMode == rpc.BufferedIO ||
@@ -1782,14 +1782,14 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 	fd, err = syscall.Open(tmpChunkPath,
 		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
 	if err != nil {
-		return fmt.Errorf("Failed to open chunk file %s [%v]", tmpChunkPath, err)
+		return fmt.Errorf("failed to open chunk file %s [%v]", tmpChunkPath, err)
 	}
 	defer syscall.Close(fd)
 
 	n, err = syscall.Write(fd, *data)
 	if err == nil {
 		if n != len(*data) {
-			return fmt.Errorf("Partial write to chunk file %s (%d of %d) [%v]",
+			return fmt.Errorf("partial write to chunk file %s (%d of %d) [%v]",
 				tmpChunkPath, n, len(*data), err)
 		}
 		goto renameChunkFile
@@ -1797,21 +1797,21 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 
 	// For EINVAL, fall through to buffered write.
 	if !errors.Is(err, syscall.EINVAL) {
-		return fmt.Errorf("Failed to write chunk file %s [%v]", tmpChunkPath, err)
+		return fmt.Errorf("failed to write chunk file %s [%v]", tmpChunkPath, err)
 	}
 
 bufferedWrite:
 	err = os.WriteFile(tmpChunkPath, *data, 0400)
 	if err != nil {
-		return fmt.Errorf("Failed to write chunk file %s [%v]", tmpChunkPath, err)
+		return fmt.Errorf("failed to write chunk file %s [%v]", tmpChunkPath, err)
 	}
 
 renameChunkFile:
 	// Rename the .tmp file to the final file.
 	err = os.Rename(tmpChunkPath, *chunkPath)
 	if err != nil {
-		return fmt.Errorf("Failed to rename chunk file %s -> %s [%v]",
-			tmpChunkPath, chunkPath, err)
+		return fmt.Errorf("failed to rename chunk file %s -> %s [%v]",
+			tmpChunkPath, *chunkPath, err)
 	}
 
 	//
@@ -2057,7 +2057,8 @@ refreshFromClustermapAndRetry:
 		goto dummy_write
 	}
 
-	err = writeChunkAndHash(&chunkPath, &hashPath, &req.Chunk.Data, &req.Chunk.Hash)
+	// TODO: hash validation will be done later
+	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
 	if err != nil {
 		errStr := fmt.Sprintf("failed to write chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
