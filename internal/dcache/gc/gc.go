@@ -57,11 +57,19 @@ type GcInfo struct {
 	numGcWorkers     int
 	deletedFileQueue chan *gcFile
 	wg               sync.WaitGroup
+	//
 	// Channel to signal that periodic GC go routine to stop.
+	//
 	done chan struct{}
+	//
 	// If the metadata file for the "file that was deleted" is not deleted in this timeout then periodic GC will
 	// reschedule the delete from the node where the timeout has triggered.
+	//
 	deleteTimeOut time.Duration
+	//
+	// Time to trigger the Periodic GC go routine which will reclaim the chunks for the stale files.
+	//
+	interval time.Duration
 }
 
 var gc *GcInfo
@@ -86,15 +94,21 @@ func Start() {
 		// Allow more requests to be queued than workers.
 		deletedFileQueue: make(chan *gcFile, 1000),
 		done:             make(chan struct{}),
-		deleteTimeOut:    10 * time.Minute,
+		//
+		// The deleteTimeOut is kept to 5 minutes, The time taken to delete a file that was scheduled in worst case is:
+		// (((stripeSize / chunkSize) * numReplicas) RPC calls + timeTaken to delete Metadata file + clustermap Update) * (Queue Size / numWorkers) for GC
+		// (((16M/4M) * 3) 100ms for each RPC call + 300ms + 300ms) * (1000 / 100) = 18000ms in worst case maybe.
+		// The time taken to delete the last file that was scheduled into the GC queue in worst case would be ~18s
+		// Hence 5 minutes can be taken as reasonable time to say that the node which is deleting this file has went down.
+		//
+		deleteTimeOut: 5 * time.Minute,
+		interval:      10 * time.Minute,
 	}
 
-	//
-	// Start polling the files which were deleted but there might be a chance that the node that scheduled the deletion
-	// has been down the actual deletion of the chunks.
-	//
+	// Start Periodic GC to reclaim the chunks for the Stale files.
 	go func() {
-		pollTicker := time.NewTicker(10 * time.Minute)
+		pollTicker := time.NewTicker(gc.interval)
+
 		for {
 			select {
 			case <-gc.done:
@@ -245,19 +259,20 @@ func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 }
 
 // A file can be in stale state if,
-//  1. The node who is. responsible for deletion has crashed before the removal of the chunks.
+//  1. The node who is responsible for deletion has crashed before the removal of the chunks.
 //  2. OpenCount of the file will not comeback to zero, if the node responsible for opening the file has crashed before
 //     closing the file.
 //
-// TODO: for the case2, can we assume that, file for which the opencount not getting to zero for certain amount of time
-// can be deleted?
+// TODO: for the case2, deletion of such files can be given directly to the user where they can delete those files
+// explicitly thru debugfs?
 func (gc *GcInfo) scheduleDeleteForStaleFiles() {
+	log.Debug("GC::scheduleDeleteForStaleFiles: Started")
 	//
 	// List all the deleted files in the storage.
 	//
 	deletedFiles, err := mm.ListDeletedFiles()
 	if err != nil {
-		log.Err("GC::scheduleDeleteForStaleFiles: Failed to List the Deleted Files directory [%v]", err)
+		log.Err("GC::scheduleDeleteForStaleFiles: Failed to List the Deleted Files [%v]", err)
 		common.Assert(false, err)
 	}
 
@@ -266,7 +281,7 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 		// Extract the openCount from the attribute.
 		openCount, err := getOpenCountForDeletedFile(attr)
 		if err != nil {
-			log.Info("GC::scheduleDeleteForStaleFiles: failed to get the opencount for file %s[%s]", attr.Path, attr.Name)
+			log.Info("GC::scheduleDeleteForStaleFiles: Failed to get the opencount for file %s[%s]", attr.Path, attr.Name)
 			common.Assert(false, *attr, err)
 		}
 

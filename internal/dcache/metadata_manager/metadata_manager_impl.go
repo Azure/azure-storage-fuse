@@ -571,13 +571,13 @@ func (m *BlobMetadataManager) deleteFile(fileID string) error {
 	})
 	if err != nil {
 		// Treat BlobNotFound as success.
-		if bloberror.HasCode(err, bloberror.BlobNotFound) {
-			log.Warn("DeleteFile:: DeleteBlobInStorage failed since blob %s is already deleted: %v",
+		if err == syscall.ENOENT {
+			log.Warn("DeleteFile:: Failed to delete layout for file %s: %v",
 				path, err)
 			return nil
 		}
 
-		log.Err("DeleteFile:: Failed to delete blob %s in storage: %v", path, err)
+		log.Err("DeleteFile:: Failed to delete layout for file %s: %v", path, err)
 		common.Assert(false, err)
 		return err
 	}
