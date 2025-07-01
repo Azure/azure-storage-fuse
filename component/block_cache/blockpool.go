@@ -86,7 +86,7 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	pool := &BlockPool{
 		blocksCh:     make(chan *Block, blockCount-highPriority),
 		priorityCh:   make(chan *Block, highPriority),
-		resetBlockCh: make(chan *Block, blockCount),
+		resetBlockCh: make(chan *Block, blockCount-1), // -1 because one block is used for zero data
 		maxBlocks:    uint32(blockCount),
 		blockSize:    blockSize,
 	}
