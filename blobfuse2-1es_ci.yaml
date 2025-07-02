@@ -70,8 +70,8 @@ extends:
           - group: NightlyBlobFuse
           - name: ROOT_DIR
             value: '$(System.DefaultWorkingDirectory)'
-
-
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
           # Pull and build the code, Run the Unit Tests
