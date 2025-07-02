@@ -894,6 +894,9 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
+		//
+		// TODO: Issue RemoveChunk() call to all component RVs in parallel.
+		//
 		rpcResp, err := rpc_client.RemoveChunk(ctx, targetNodeId, rpcReq)
 		if err == nil {
 			//

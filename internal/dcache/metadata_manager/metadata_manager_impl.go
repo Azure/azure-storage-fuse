@@ -231,6 +231,10 @@ func IsErrConditionNotMet(err error) bool {
 // Helper function to read and return the content of the blob identifed by blobPath, safe from simultaneous
 // read/write, as a byte array and the attributes corresponding to the returned blob, returns error on failure.
 // It's resilient against changes to the Blob between GetProperties and GetBlob.
+//
+// Note: Callers expect this to return raw errors returned by the storage callback methods, f.e.,
+//
+//	if the blob is not present it MUST return the raw error syscall.ENOENT.
 func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.ObjAttr, error) {
 	//
 	// Note: Since GetBlobFromStorage() doesn't accept an If-Match Etag condition, we sandwich the GetBlob
