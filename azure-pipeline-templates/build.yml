@@ -201,7 +201,7 @@ steps:
   # azcli login, This is only for ubuntu distributions, where we create containers for the job
   - script: |
       az --version
-      az login --identity --username $(BF2_MSI_CLIENT_ID)
+      az login --identity --client-id $(BF2_MSI_CLIENT_ID)
     displayName: 'Azure CLI login'
     condition: eq('${{ parameters.skip_azcli }}', 'false')
 
