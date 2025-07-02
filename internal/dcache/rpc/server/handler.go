@@ -946,27 +946,6 @@ func (mv *mvInfo) refreshFromClustermap() error {
 			rvName, mv.mvName, rvState, oldRvNameAndState.State, time.Since(mv.lmt), mvInfoTimeout)
 
 		//
-		// StateOutOfSync -> StateOffline
-		//
-		// An outofsync component RV is marked by a JoinMV RPC call sent as a result of the fix-mv workflow.
-		// It marks reservedSpace in the mvInfo and rvInfo to reserve the space needed for sync'ing the MV
-		// replica. Normally this reserved space would be deducted from rvInfo.reservedSpace as part of
-		// the EndSync processing, after the sync has copied data to the new MV replica. At this point
-		// mvInfo.totalChunkBytes will be increased by mvInfo.reservedSpace, and rvInfo.reservedSpace will
-		// be reduced by mvInfo.reservedSpace and mvInfo.reservedSpace will be set to 0.
-		// If the mvInfo has the state as StateOutOfSync while clustermap has the state as StateOffline,
-		// this means the fix-mv workflow didn't complete successfully so we need to rollback the reserved
-		// space changes.
-		//
-		if oldRvNameAndState.State == string(dcache.StateOutOfSync) && rvState == dcache.StateOffline {
-			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
-				rvName, mv.mvName, oldRvNameAndState.State, rvState, mv.reservedSpace.Load())
-
-			mv.rv.decReservedSpace(mv.reservedSpace.Load())
-			mv.reservedSpace.Store(0)
-		}
-
-		//
 		// StateSyncing -> StateOutOfSync
 		//
 		// Consider the following case:
@@ -2373,6 +2352,14 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 				common.Assert(false, errStr)
 				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 			}
+
+			//
+			// Since this is a double join as a result of fix-mv workflow, we need to undo the
+			// reserved space for this MV replica in the RV. This will be added back later
+			// when we add the MV replica again at the end of JoinMV.
+			//
+			mvInfo.rv.decReservedSpace(mvInfo.reservedSpace.Load())
+			mvInfo.reservedSpace.Store(0)
 		}
 
 		// Remove the MV replica, we will add a fresh one later down.
