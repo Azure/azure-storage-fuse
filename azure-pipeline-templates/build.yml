@@ -60,18 +60,6 @@ steps:
         export http_proxy="127.0.0.1:8080"
       displayName: 'Configure Proxy'
 
-  # Clone the repo
-  - script: |
-      git clone https://github.com/Azure/azure-storage-fuse
-    displayName: 'Checkout Code'
-    workingDirectory: $(ROOT_DIR)
-
-  # Checkout the branch
-  - script: |
-      git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-    displayName: 'Checkout Branch'
-    workingDirectory: $(WORK_DIR)
-
   # Custom script to install Go-lang
   - task: ShellScript@2
     inputs:
