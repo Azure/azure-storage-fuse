@@ -1,6 +1,18 @@
-## 2.5.0~preview.1 (Unreleased)
+## 2.5.0 (Unreleased)
+**Bug Fixes**
+- Mount on already mounted path resulting in unmount and remount, instead of failure.
+- Added support for listing directories and files on HNS accounts mounted as FNS account by customers.
+- Fixed bug where preload feature used to continue to download even after unmount was successful.
+- [#1765](https://github.com/Azure/azure-storage-fuse/issues/1765) Make `cleanup-on-start` CLI flag common for file-cache, block-cache, xload components.
+- [#1808](https://github.com/Azure/azure-storage-fuse/issues/1808) Fixed memory leak in attribute cache by periodic cleanup of cached entries.
+
+## 2.5.0~preview.1 (2025-04-30)
 **Features**
 - Preload feature added to download entire dataset on mount, to accelerate model training.
+- Added support for lazy unmounts. Lazy unmount will wait for device to be free and unmount automatically, instead of giving "device or resource busy" on executing unmount. `--lazy` CLI option in unmount command will enable lazy unmount.
+
+**Bug Fixes**
+- [#1687](https://github.com/Azure/azure-storage-fuse/issues/1687) `rmdir` will not allow to delete non-empty directories.
 
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**

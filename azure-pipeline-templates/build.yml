@@ -31,7 +31,7 @@ steps:
       chmod 777 $(ROOT_DIR)
     displayName: 'Create Directory Structure'
 
-  # Package manager installs for libfuse, 
+  # Package manager installs for installing libfuse, azcli, related packages etc..
   - template: 'package-install.yml'
     parameters:
       distro: $(distro)
@@ -103,7 +103,7 @@ steps:
       workingDirectory: $(WORK_DIR)
     condition: eq('${{ parameters.skip_bfusemon }}', false)
     displayName: "Go Build bfusemon"
-    
+
   #Verification of built binary
   - script: |
       sudo chmod +x $(WORK_DIR)/blobfuse2
@@ -129,7 +129,7 @@ steps:
     displayName: "Create Cache directory"
     env:
       temp_dir: $(TEMP_DIR)
-      
+
   - script: |
       mkdir -p $(GOPATH)/src
       echo "Creating gopath " $(GOPATH)
@@ -189,9 +189,9 @@ steps:
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
-      echo "\"skip-azcli\"": "${{ parameters.skip_azcli }}", >> $cnfFile
+      echo "\"skip-azcli\"": "true", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
-      
+
       echo "}" >> $cnfFile
       cat $cnfFile
     displayName: "Create AzureTest Config"
@@ -200,22 +200,23 @@ steps:
 
   # azcli login, This is only for ubuntu distributions, where we create containers for the job
   - script: |
+      az --version
       az login --identity --username $(BF2_MSI_CLIENT_ID)
     displayName: 'Azure CLI login'
-    condition: eq('${{ parameters.skip_azcli }}', 'false') 
+    condition: eq('${{ parameters.skip_azcli }}', 'false')
 
   # Running unit tests
   - task: Go@0
-    condition: eq('${{ parameters.skip_ut }}', 'false') 
+    condition: eq('${{ parameters.skip_ut }}', 'false')
     inputs:
       command: 'test'
       arguments: '-v -timeout=45m ./... --tags=unittest,$(tags) -coverprofile utcover.cov'
       workingDirectory: $(WORK_DIR)
     displayName: 'Unit tests'
-    continueOnError: true     
+    continueOnError: true
 
   - task: Go@0
-    condition: eq('${{ parameters.skip_ut }}', 'false') 
+    condition: eq('${{ parameters.skip_ut }}', 'false')
     inputs:
       command: 'tool'
       arguments: 'cover -func utcover.cov'

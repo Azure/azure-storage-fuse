@@ -6,7 +6,7 @@
 # 3. Clear the _work or work directory which must be in myagent or $(HOME) directory
 # 4. Verify whether system is online from the Azure pipelines portal
 
-stages: 
+stages:
   - stage: BuildAndTest
     jobs:
       - job: Coverage
@@ -24,7 +24,7 @@ stages:
               distro: 'ubuntu'
               distro_version: 'ubuntu_22_x86'
               fuselib: 'libfuse3-dev'
-              tags: 'fuse3'          
+              tags: 'fuse3'
 
         pool:
           name: "blobfuse-ubuntu-pool"
@@ -44,7 +44,7 @@ stages:
           - name: GOPATH
             value: '$(Pipeline.Workspace)/go'
           - name: ROOT_DIR
-            value: '$(System.DefaultWorkingDirectory)' 
+            value: '$(System.DefaultWorkingDirectory)'
           - name: WORK_DIR
             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
@@ -61,7 +61,7 @@ stages:
               go test -v -timeout=1h ./... --tags=unittest,$(tags) -covermode count -coverprofile ./blobfuse2_ut.cov
             workingDirectory: $(WORK_DIR)
             displayName: "UT Code Coverage"
-      
+
           # -------------------------------------------------------
           # Build code coverage binary
           - script: |
@@ -84,7 +84,7 @@ stages:
             displayName: 'Create Config File - Block Blob'
             workingDirectory: $(WORK_DIR)
             continueOnError: false
-          
+
           # Code Coverage with e2e-tests for block blob
           - script: |
               rm -rf $(MOUNT_DIR)/*
@@ -96,7 +96,7 @@ stages:
               cd test/e2e_tests
               go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
               cd -
-              sudo fusermount -u $(MOUNT_DIR) 
+              sudo fusermount -u $(MOUNT_DIR)
               sleep 5
             workingDirectory: $(WORK_DIR)
             displayName: "Block Blob Coverage"
@@ -122,7 +122,7 @@ stages:
               cd test/e2e_tests
               go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
               cd -
-              sudo fusermount -u $(MOUNT_DIR) 
+              sudo fusermount -u $(MOUNT_DIR)
               sleep 5
             workingDirectory: $(WORK_DIR)
             displayName: "Block Blob Coverage with profilers"
@@ -178,7 +178,7 @@ stages:
               cd test/e2e_tests
               go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
               cd -
-              sudo fusermount -u $(MOUNT_DIR) 
+              sudo fusermount -u $(MOUNT_DIR)
               sleep 5
             workingDirectory: $(WORK_DIR)
             displayName: "ADLS Coverage with profilers"
@@ -224,7 +224,7 @@ stages:
                 exit 1
               fi
 
-              sleep 20     
+              sleep 20
 
               ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/list_cmd_all.cov mount list
               if [ $? -ne 0 ]; then
@@ -372,7 +372,7 @@ stages:
               rm -rf $(MOUNT_DIR)/*
               rm -rf $(TEMP_DIR)/*
               ./blobfuse2 unmount all
-              
+
               ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_foreg_2.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
               if [ $? -ne 0 ]; then
                 exit 1
@@ -393,7 +393,7 @@ stages:
               rm -rf $(TEMP_DIR)/*
               ./blobfuse2 unmount all
               ./blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-              
+
               ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt.cov secure encrypt --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
               if [ $? -ne 0 ]; then
                 exit 1
@@ -491,7 +491,7 @@ stages:
             displayName: 'Create Config File - Block Blob Proxy'
             workingDirectory: $(WORK_DIR)
             continueOnError: false
-          
+
           # Code Coverage with e2e-tests for block blob Proxy
           - script: |
               rm -rf $(MOUNT_DIR)/*
@@ -503,7 +503,7 @@ stages:
               cd test/e2e_tests
               go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
               cd -
-              sudo fusermount -u $(MOUNT_DIR) 
+              sudo fusermount -u $(MOUNT_DIR)
               sleep 5
             workingDirectory: $(WORK_DIR)
             displayName: "Block Blob Coverage Proxy"
@@ -573,7 +573,7 @@ stages:
             workingDirectory: $(WORK_DIR)
             displayName: "File level coverage check"
             condition: always()
-      
+
           # CleanUp the mount and delete the containers.
           - template: 'azure-pipeline-templates/cleanup.yml'
             parameters:

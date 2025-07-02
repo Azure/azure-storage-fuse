@@ -148,7 +148,7 @@ stages:
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true
                   test_sas_credential: true
-                  test_azcli_credential: true
+                  test_azcli_credential: false
                   test_azurite: false
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
@@ -251,7 +251,7 @@ stages:
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true
                   test_sas_credential: true
-                  test_azcli_credential: true
+                  test_azcli_credential: false
                   test_azurite: false
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)

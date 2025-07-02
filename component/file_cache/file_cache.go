@@ -67,7 +67,6 @@ type FileCache struct {
 	createEmptyFile bool
 	allowNonEmpty   bool
 	cacheTimeout    float64
-	cleanupOnStart  bool
 	policyTrace     bool
 	missedChmodList sync.Map
 	mountPath       string
@@ -153,13 +152,6 @@ func (c *FileCache) Priority() internal.ComponentPriority {
 //	this shall not block the call otherwise pipeline will not start
 func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
-
-	if c.cleanupOnStart {
-		err := common.TempCacheCleanup(c.tmpPath)
-		if err != nil {
-			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", c.Name())
-		}
-	}
 
 	if c.policy == nil {
 		return fmt.Errorf("config error in %s error [cache policy missing]", c.Name())
@@ -253,7 +245,6 @@ func (c *FileCache) Configure(_ bool) error {
 	} else {
 		c.allowNonEmpty = conf.AllowNonEmpty
 	}
-	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.syncToFlush = conf.SyncToFlush
@@ -351,7 +342,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, conf.CleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
 }
@@ -618,41 +609,27 @@ func (fc *FileCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("FileCache::IsDirEmpty : %s", options.Name)
 
-	// If the directory does not exist locally then call the next component
-	localPath := filepath.Join(fc.tmpPath, options.Name)
-	f, err := os.Open(localPath)
-	if err == nil {
-		log.Debug("FileCache::IsDirEmpty : %s found in local cache", options.Name)
-
-		// Check local cache directory is empty or not
-		path, err := f.Readdirnames(1)
-
-		// If the local directory has a path in it, it is likely due to !createEmptyFile.
-		if err == nil && !fc.createEmptyFile && len(path) > 0 {
-			log.Debug("FileCache::IsDirEmpty : %s had a subpath in the local cache", options.Name)
-			return false
-		}
-
-		// If there are files in local cache then dont allow deletion of directory
-		if err != io.EOF {
-			// Local directory is not empty fail the call
-			log.Debug("FileCache::IsDirEmpty : %s was not empty in local cache", options.Name)
-			return false
-		}
-	} else if os.IsNotExist(err) {
-		// Not found in local cache so check with container
-		log.Debug("FileCache::IsDirEmpty : %s not found in local cache", options.Name)
-	} else {
-		// Unknown error, check with container
-		log.Err("FileCache::IsDirEmpty : %s failed while checking local cache [%s]", options.Name, err.Error())
+	// Check if directory is empty at remote or not, if container is not empty then return false
+	emptyAtRemote := fc.NextComponent().IsDirEmpty(options)
+	if !emptyAtRemote {
+		log.Debug("FileCache::IsDirEmpty : %s is not empty at remote", options.Name)
+		return emptyAtRemote
 	}
 
-	log.Debug("FileCache::IsDirEmpty : %s checking with container", options.Name)
-	return fc.NextComponent().IsDirEmpty(options)
+	// Remote is empty so we need to check for the local directory
+	// While checking local directory we need to ensure that we delete all empty directories and then
+	// return the result.
+	cleanup, err := fc.deleteEmptyDirs(internal.DeleteDirOptions(options))
+	if err != nil {
+		log.Debug("FileCache::IsDirEmpty : %s failed to delete empty directories [%s]", options.Name, err.Error())
+		return false
+	}
+
+	return cleanup
 }
 
 // DeleteEmptyDirs: delete empty directories in local cache, return error if directory is not empty
-func (fc *FileCache) DeleteEmptyDirs(options internal.DeleteDirOptions) (bool, error) {
+func (fc *FileCache) deleteEmptyDirs(options internal.DeleteDirOptions) (bool, error) {
 	localPath := options.Name
 	if !strings.Contains(options.Name, fc.tmpPath) {
 		localPath = filepath.Join(fc.tmpPath, options.Name)
@@ -662,21 +639,25 @@ func (fc *FileCache) DeleteEmptyDirs(options internal.DeleteDirOptions) (bool, e
 
 	entries, err := os.ReadDir(localPath)
 	if err != nil {
+		if err == syscall.ENOENT || os.IsNotExist(err) {
+			return true, nil
+		}
+
 		log.Debug("FileCache::DeleteEmptyDirs : Unable to read directory %s [%s]", localPath, err.Error())
 		return false, err
 	}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
-			val, err := fc.DeleteEmptyDirs(internal.DeleteDirOptions{
+			val, err := fc.deleteEmptyDirs(internal.DeleteDirOptions{
 				Name: filepath.Join(localPath, entry.Name()),
 			})
 			if err != nil {
-				log.Err("FileCache::DeleteEmptyDirs : Unable to delete directory %s [%s]", localPath, err.Error())
+				log.Err("FileCache::deleteEmptyDirs : Unable to delete directory %s [%s]", localPath, err.Error())
 				return val, err
 			}
 		} else {
-			log.Err("FileCache::DeleteEmptyDirs : Directory %s is not empty, contains file %s", localPath, entry.Name())
+			log.Err("FileCache::deleteEmptyDirs : Directory %s is not empty, contains file %s", localPath, entry.Name())
 			return false, fmt.Errorf("unable to delete directory %s, contains file %s", localPath, entry.Name())
 		}
 	}

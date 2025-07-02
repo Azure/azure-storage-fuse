@@ -1,0 +1,148 @@
+# Do not trigger this pipeline automatically
+trigger: none
+
+# Execute this for every PR on main
+pr:
+- main
+
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    # The SDL Source analysis stage can only run in a windows environment due to limitations of Guardian tools. 
+    # If you use Linux pool, we require an additional windows image in your pool to run the source analysis.
+    sdl:
+      sourceAnalysisPool:
+        name: blobfuse2-pool  # Name of your hosted pool
+        image: windows2022-1espt
+        os: windows  # OS of the image. Allowed values: windows, linux, macOS
+
+    stages:
+    - stage: CI
+      jobs:
+
+      - job: test
+        displayName: blobfuse
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20'
+              poolName: 'blobfuse2-pool'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
+              poolName: 'blobfuse2-pool'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+            Ubuntu-22-ARM64:
+              AgentName: 'blobfuse-ubn22-arm64'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_arm'
+              poolName: 'blobfuse2-arm-pool'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+
+        pool:
+          name: $(poolName)
+          os: linux
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+
+
+        steps:
+          # Pull and build the code, Run the Unit Tests
+          - template: 'azure-pipeline-templates/build.yml@self'
+            parameters:
+              skip_azcli: "false"
+              skip_ut: "false"
+
+          # Code lint checks (Static-analysis)
+          - script: |
+              curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+              $(go env GOPATH)/bin/golangci-lint --version
+              $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags $(tags) --exclude-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --exclude-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
+              result=$(cat lint.log | wc -l)
+              if [ $result -ne 0 ]; then
+                echo "-----------------------------------"
+                echo "Below issues are found in SA"
+                cat lint.log
+                echo "-----------------------------------"
+                exit 1
+              else
+                echo "-----------------------------------"
+                echo "No issues are found in SA"
+                echo "-----------------------------------"
+              fi
+            displayName: 'Static Analysis (Lint)'
+            condition: always()
+            workingDirectory: $(WORK_DIR)
+
+          # Copyright checks
+          - script: |
+              result=$(grep -L -r --include \*.go "`date +%Y` Microsoft Corporation" ./ | wc -l)
+              if [ $result -ne 0 ]; then
+                exit 1
+              else
+                echo "Copyright statements are up to date"
+              fi
+            displayName: 'Copyright check'
+            condition: always()
+            failOnStderr: true
+            workingDirectory: $(WORK_DIR)
+
+          # Go code formatting checks
+          - script: |
+              gofmt -s -l -d . | tee >&2
+            displayName: 'Go Format Check'
+            failOnStderr: true
+            workingDirectory: $(WORK_DIR)
+
+          # Notices files check
+          - script: |
+              ./notices_fix.sh
+              result=$(git diff NOTICE | wc -l)
+              if [ $result -ne 0 ]; then
+                echo "Notices needs a fix. Run ./notices_fix.sh and commit NOTICE file."
+                exit 1
+              else
+                echo "Notices are up to date."
+              fi
+            displayName: 'Notice file check'
+            condition: always()
+            failOnStderr: true
+            workingDirectory: $(WORK_DIR)
+
+          # CleanUp the mount and delete the containers.
+          - template: 'azure-pipeline-templates/cleanup.yml@self'
+            parameters:
+              unmount: false
+              delete_containers: true
+
+          - task: ComponentGovernanceComponentDetection@0
+            inputs:
+              scanType: 'Register'
+              verbosity: 'Verbose'
+              alertWarningLevel: 'High'
+            displayName: "Component governance"
+            condition: always()
