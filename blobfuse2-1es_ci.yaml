@@ -68,7 +68,7 @@ extends:
 
         variables:
           - group: NightlyBlobFuse
-	  - name: ROOT_DIR
+          - name: ROOT_DIR
             value: '$(System.DefaultWorkingDirectory)'
 
 
