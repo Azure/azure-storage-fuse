@@ -36,7 +36,7 @@ extends:
         strategy:
           matrix:
             Ubuntu-20:
-              AgentName: 'blobfuse-ubuntu20'
+              AgentName: 'ubn20-custom1espt'
               distro: 'ubuntu'
               distro_version: 'ubuntu_20'
               poolName: 'blobfuse2-pool'
@@ -44,7 +44,7 @@ extends:
               tags: 'fuse2'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
             Ubuntu-22:
-              AgentName: 'blobfuse-ubuntu22'
+              AgentName: 'ubuntu22-1espt'
               distro: 'ubuntu'
               distro_version: 'ubuntu_22_x86'
               poolName: 'blobfuse2-pool'
@@ -52,7 +52,7 @@ extends:
               tags: 'fuse3'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
             Ubuntu-22-ARM64:
-              AgentName: 'blobfuse-ubn22-arm64'
+              AgentName: 'ubn22armblobfuse-1espt'
               distro: 'ubuntu'
               distro_version: 'ubuntu_22_arm'
               poolName: 'blobfuse2-arm-pool'
