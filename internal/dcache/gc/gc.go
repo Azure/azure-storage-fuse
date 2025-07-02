@@ -378,6 +378,30 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 			continue
 		}
 
+		// The node belonging to the lowest indexed RV(lexicographical) of the first MV in the MV list of the deleted
+		// file will delete the stale file.
+		if len(dcFile.FileLayout.MVList) > 0 {
+			rvs := cm.GetRVs(dcFile.FileLayout.MVList[0])
+			if len(rvs) == 0 {
+				log.Err("GC::scheduleDeleteForStaleFiles: No RVs present for the MV: %v, file: %s",
+					dcFile.FileLayout.MVList[0], dcFile.Filename)
+				common.Assert(false, dcFile.FileLayout.MVList[0], *dcFile)
+			}
+
+			rv := getLowestIndexRv(rvs)
+
+			if cm.IsMyRV(rv) {
+				// If the node is part of the lowest indexed RV, then it will delete the file.
+				log.Info("GC::scheduleDeleteForStaleFiles: Lowest index RV %s is hosted in my node for MV %s, scheduling file %s for deletion",
+					rv, dcFile.FileLayout.MVList[0], dcFile.Filename)
+			} else {
+				// If the node is not part of the lowest indexed RV, then it will not delete the file.
+				log.Info("GC::scheduleDeleteForStaleFiles: Lowest index RV %s is not hosted in my node, for MV %s, skipping file %s",
+					rv, dcFile.FileLayout.MVList[0], dcFile.Filename)
+				continue
+			}
+		}
+
 		// Schedule the file for GC.
 		gcFile := &gcFile{
 			file:         dcFile,
@@ -387,6 +411,23 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 
 		gc.deletedFileQueue <- gcFile
 	}
+}
+
+func getLowestIndexRv(rvs map[string]dcache.StateEnum) string {
+	var lowestIndexRV string
+	for rv := range rvs {
+		if lowestIndexRV == "" || rv < lowestIndexRV {
+			lowestIndexRV = rv
+		}
+	}
+	if lowestIndexRV == "" {
+		err := fmt.Errorf("GC::getLowestIndexRvs: No RVs found in the map %v", rvs)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return ""
+	}
+
+	return lowestIndexRV
 }
 
 func getOpenCountForDeletedFile(attr *internal.ObjAttr) (int, error) {
