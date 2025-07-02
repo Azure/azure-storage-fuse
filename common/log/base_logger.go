@@ -67,6 +67,7 @@ type BaseLogger struct {
 	logger        *log.Logger
 	logFileHandle io.WriteCloser
 	procPID       int
+	hostname      string
 
 	fileConfig LogFileConfig
 }
@@ -165,6 +166,13 @@ func (l *BaseLogger) SetLogLevel(level common.LogLevel) {
 func (l *BaseLogger) init() error {
 	l.procPID = os.Getpid()
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		l.hostname = "unknown-host"
+	} else {
+		l.hostname = hostname
+	}
+
 	// Set default for config
 	if l.fileConfig.LogFile == "" {
 		err := l.SetLogFile("stdout")
@@ -225,12 +233,6 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 	// full func name: e.g. github.com/Azure/…/common/log.(*BaseLogger).Info
 	fullName := runtime.FuncForPC(pc).Name()
 
-	// Get hostname for the log line
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "unknown-host"
-	}
-
 	pkgName := ""
 	if strings.Contains(fullName, "distributed_cache") || strings.Contains(fullName, "dcache") {
 		pkgName = "DCACHE"
@@ -238,7 +240,7 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 
 	base := fmt.Sprintf("%s : [%s] %s[%d][%d] : [%s] %s",
 		time.Now().Format("Mon Jan _2 15:04:05.000 MST 2006"),
-		hostname,
+		l.hostname,
 		l.fileConfig.LogTag,
 		l.procPID,
 		getGoRoutineID(),
