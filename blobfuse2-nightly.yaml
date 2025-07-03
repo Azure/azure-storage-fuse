@@ -53,6 +53,60 @@ parameters:
     default: true
 
 stages:
+  # Clear all the temporary containers that were present in the storage accounts before starting the test.
+  # This is done as it is observed that backend GC is not always deleteing the containers when there are
+  # large number of containers in the storage account.
+  - stage: AccountCleanUp
+    jobs:
+      - job: CleanupContainers
+        timeoutInMinutes: 10
+
+        pool:
+          name: blobfuse-ubuntu-pool
+          demands:
+            - ImageOverride -equals blobfuse-ubuntu22
+
+        variables:
+          - group: NightlyBlobFuse
+
+        steps:
+          - checkout: self
+            displayName: 'Checkout code'
+          # -------------------------------------------------------
+          # Custom script to install Go-lang
+          - script:
+              ./go_installer.sh $(ROOT_DIR)
+            displayName: "GoTool Custom Setup"
+
+          # -------------------------------------------------------
+          # Run the cleanup script to delete all the containers
+          # Run the cleanup for Block Blob account.
+          - task: Go@0
+            inputs:
+              command: 'test'
+              arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
+              workingDirectory:  $(WORK_DIR)
+            displayName: 'Block Blob cleanup'
+            timeoutInMinutes: 120
+            continueOnError: true
+            env:
+              STORAGE_ACCOUNT_NAME: $(BF2_BLK_ACC_NAME)
+              STORAGE_ACCOUNT_KEY: $(BF2_BLK_ACC_KEY)
+
+          # Run the cleanup for ADLS account.
+          - task: Go@0
+            inputs:
+              command: 'test'
+              arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
+              workingDirectory:  $(WORK_DIR)
+            displayName: 'Gen2 cleanup'
+            timeoutInMinutes: 120
+            continueOnError: true
+            env:
+              STORAGE_ACCOUNT_NAME: $(BF2_ADLS_ACC_NAME)
+              STORAGE_ACCOUNT_KEY: $(BF2_ADLS_ACC_KEY)
+
+
   - ${{ if eq(parameters.base_test, true) }}:
     - stage: BuildAndTest
       jobs:
