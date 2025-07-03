@@ -36,8 +36,8 @@ steps:
   - script: |
       git branch
       ls -lrt
-      echo $(ROOT_DIR)
-      echo $(WORK_DIR)
+      echo "ROOT_DIR : " $(ROOT_DIR)
+      echo "WORK_DIR : " $(WORK_DIR)
       ls -l $(WORK_DIR)/go_installer.sh
       df -h
       sudo rm -rf $(ROOT_DIR)

@@ -34,21 +34,29 @@ steps:
       az --version
     displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
     condition: eq(variables['distro'], 'ubuntu')
-  
-  # RHEL PACKAGE INSTALLATION
 
+  # RHEL PACKAGE INSTALLATION
   - script: |
-      sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
-      sudo yum update -y
-      sudo yum groupinstall "Development Tools" -y
       if [ $(AgentName) == "blobfuse-rhel9" ]; then
-        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
+        sudo yum update -y
+	sudo yum groupinstall "Development Tools" -y
+	sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
       else
-        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
+	sudo yum config-manager --disable rhel-8-for-x86_64-appstream-eus-rhui-rpms
+	sudo yum config-manager --enable rhel-8-for-x86_64-appstream-rhui-rpms
+	sudo yum config-manager --enable rhel-8-for-x86_64-baseos-rhui-rpms
+	yum repolist all
+	sudo yum clean all
+	#
+	# Normal update is not able fetch the repos hence doing the above config.
+	#
+	sudo yum update -y
+	sudo yum groupinstall "Development Tools" -y
+	sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
       fi
     displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
     condition: eq(variables['distro'], 'rhel')
-  
+
   # CENTOS PACKAGE INSTALLATION
   - script: |
       if [ "$(AgentName)" == "blobfuse-centos8" ]
@@ -64,14 +72,14 @@ steps:
       fi
     displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
     condition: eq(variables['distro'], 'centos')
-  
+
   # ORACLE PACKAGE INSTALLATION
   - script: |
       sudo yum update -y
       sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing 
     displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
     condition: eq(variables['distro'], 'oracle')
-  
+
   # ROCKY PACKAGE INSTALLATION
   - script: |
       sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
@@ -80,7 +88,7 @@ steps:
       sudo yum install wget git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
     displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
     condition: eq(variables['distro'], 'rocky')
-  
+
   # SUSE PACKAGE INSTALLATION
   - script: |
       sudo zypper update -y
@@ -92,7 +100,7 @@ steps:
       sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
     displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
     condition: eq(variables['distro'], 'suse')
-  
+
   # MARINER PACKAGE INSTALLATION
   - script: |
       sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
