@@ -191,11 +191,11 @@ steps:
     workingDirectory: $(WORK_DIR)
 
   # azcli login, This is only for ubuntu distributions, where we create containers for the job
-  - script: |
-      az --version
-      az login --identity --client-id $(BF2_MSI_CLIENT_ID)
-    displayName: 'Azure CLI login'
-    condition: eq('${{ parameters.skip_azcli }}', 'false')
+  # - script: |
+  #     az --version
+  #     az login --identity --client-id $(BF2_MSI_CLIENT_ID)
+  #   displayName: 'Azure CLI login'
+  #   condition: eq('${{ parameters.skip_azcli }}', 'false')
 
   # Running unit tests
   - task: Go@0
