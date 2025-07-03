@@ -23,8 +23,12 @@ parameters:
     default: false
 
 steps:
-  - checkout: none
+  - checkout: self
   - script: |
+      git branch
+      ls $(HOME)
+      cd azure-storage-fuse
+      git branch
       sudo rm -rf $(ROOT_DIR)
       sudo mkdir -p $(ROOT_DIR)
       sudo chown -R `whoami` $(ROOT_DIR)
