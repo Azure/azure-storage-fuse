@@ -26,7 +26,9 @@ steps:
   - checkout: self
   - script: |
       git branch
-      ls $(HOME)
+      pwd
+      pwd $HOME
+      ls -lrt $HOME
       cd azure-storage-fuse
       git branch
       sudo rm -rf $(ROOT_DIR)
