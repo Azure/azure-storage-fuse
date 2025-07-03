@@ -23,7 +23,15 @@ parameters:
     default: false
 
 steps:
+  # Checkout's the code in the recent commit for PR/ manual run.
   - checkout: self
+
+  # Package manager installs for installing libfuse, azcli, related packages etc..
+  - template: 'package-install.yml'
+    parameters:
+      distro: $(distro)
+      distro_version: $(distro_version)
+
   - script: |
       git branch
       ls -lrt
@@ -35,13 +43,7 @@ steps:
       sudo mkdir -p $(ROOT_DIR)
       sudo chown -R `whoami` $(ROOT_DIR)
       chmod 777 $(ROOT_DIR)
-    displayName: 'Create Directory Structure'
-
-  # Package manager installs for installing libfuse, azcli, related packages etc..
-  - template: 'package-install.yml'
-    parameters:
-      distro: $(distro)
-      distro_version: $(distro_version)
+    displayName: 'Show Info'
 
 
   # If proxy is given, Install and setup the proxy, these tests can only be done on ubuntu

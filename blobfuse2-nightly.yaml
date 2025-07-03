@@ -114,9 +114,9 @@ stages:
             - name: GOPATH
               value: '$(Pipeline.Workspace)/go'
             - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)'
+              value: '$(Agent.TempDirectory)'
             - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+              value: '$(Build.SourcesDirectory)'
 
           steps:
             # -------------------------------------------------------
@@ -219,9 +219,9 @@ stages:
             - name: GOPATH
               value: '$(Pipeline.Workspace)/go'
             - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)'
+              value: '$(Agent.TempDirectory)'
             - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+              value: '$(Build.SourcesDirectory)'
 
           steps:
             # -------------------------------------------------------
@@ -297,9 +297,9 @@ stages:
               - name: GOPATH
                 value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)'
+                value: '$(Agent.TempDirectory)'
               - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+                value: '$(Build.SourcesDirectory)'
 
             steps:
               # -------------------------------------------------------
@@ -441,9 +441,9 @@ stages:
               - name: GOPATH
                 value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)'
+                value: '$(Agent.TempDirectory)'
               - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+                value: '$(Build.SourcesDirectory)'
               - name: skipComponentGovernanceDetection
                 value: true
 
@@ -617,9 +617,9 @@ stages:
               - name: GOPATH
                 value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)'
+                value: '$(Agent.TempDirectory)'
               - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+                value: '$(Build.SourcesDirectory)'
               - name: skipComponentGovernanceDetection
                 value: true
 
@@ -704,9 +704,9 @@ stages:
           - name: GOPATH
             value: '$(Pipeline.Workspace)/go'
           - name: ROOT_DIR
-            value: '$(System.DefaultWorkingDirectory)'
+            value: '$(Agent.TempDirectory)'
           - name: WORK_DIR
-            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+            value: '$(Build.SourcesDirectory)'
 
         steps:
           # -------------------------------------------------------
@@ -779,9 +779,9 @@ stages:
           - name: GOPATH
             value: '$(Pipeline.Workspace)/go'
           - name: ROOT_DIR
-            value: '$(System.DefaultWorkingDirectory)'
+            value: '$(Agent.TempDirectory)'
           - name: WORK_DIR
-            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+            value: '$(Build.SourcesDirectory)'
 
         steps:
           # -------------------------------------------------------
@@ -843,9 +843,9 @@ stages:
             - name: GOPATH
               value: '$(Pipeline.Workspace)/go'
             - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)'
+              value: '$(Agent.TempDirectory)'
             - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+              value: '$(Build.SourcesDirectory)'
 
           steps:
             # -------------------------------------------------------
