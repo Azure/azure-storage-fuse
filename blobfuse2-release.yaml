@@ -1637,6 +1637,16 @@ stages:
                 downloadPath: $(Build.ArtifactStagingDirectory)
 
             - script: |
+                blobfuseBinaryName=`ls blobfuse2-* | head -n 1`
+                echo "Binary name: $blobfuseBinaryName"
+                if [[ $blobfuseBinaryName == *"preview"* ]]; then
+                  for f in ./blobfuse2-2*; do mv -v "$f" "${f/blobfuse2-/blobfuse2-preview-}" ; done
+                fi
+                ls -l 
+              displayName: 'Rename preview binaries'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
+            - script: |
                 cd mariner
                 for f in ./blobfuse2*fuse3*.rpm; do mv -v "$f" "${f/-fuse3./-cm2.}"; done
                 ls -lRt
