@@ -23,14 +23,15 @@ parameters:
     default: false
 
 steps:
-  # Checkout's the code in the recent commit for PR/ manual run.
-  - checkout: self
 
   # Package manager installs for installing libfuse, azcli, related packages etc..
   - template: 'package-install.yml'
     parameters:
       distro: $(distro)
       distro_version: $(distro_version)
+
+  # Checkout's the blobfuse code of the recent commit for PR/ manual run.
+  - checkout: self
 
   - script: |
       git branch
