@@ -69,9 +69,9 @@ extends:
         variables:
           - group: NightlyBlobFuse
           - name: ROOT_DIR
-            value: '$(Pipeline.Workspace)/s'
+            value: '$(Build.SourcesDirectory)'
           - name: WORK_DIR
-            value: '$(Pipeline.Workspace)/s'
+            value: '$(Build.SourcesDirectory)'
 
         steps:
           # Pull and build the code, Run the Unit Tests
