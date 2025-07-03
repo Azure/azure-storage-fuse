@@ -54,7 +54,7 @@ parameters:
 
 stages:
   # Clear all the temporary containers that were present in the storage accounts before starting the test.
-  # This is done as it is observed that backend GC is not always deleteing the containers when there are
+  # This is done as it is observed that backend GC is not always deleting the containers when there are
   # large number of containers in the storage account.
   - stage: AccountCleanUp
     jobs:
