@@ -69,8 +69,15 @@ steps:
   # Custom script to install Go-lang
   - task: ShellScript@2
     inputs:
-      scriptPath: "$(WORK_DIR)/go_installer.sh"
-      args: "$(ROOT_DIR)/"
+      scriptPath: '$(Build.SourcesDirectory)/go_installer.sh'
+      args: '$(ROOT_DIR)/'
+    displayName: "GoTool Custom Setup"
+
+  # Custom script to install Go-lang
+  - task: ShellScript@2
+    inputs:
+      scriptPath: '$(WORK_DIR)/go_installer.sh'
+      args: '$(ROOT_DIR)/'
     displayName: "GoTool Custom Setup"
 
   # Downloading Go dependency packages
