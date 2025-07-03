@@ -69,7 +69,7 @@ extends:
         variables:
           - group: NightlyBlobFuse
           - name: ROOT_DIR
-            value: '$(System.DefaultWorkingDirectory)'
+            value: '$(Pipeline.Workspace)'
           - name: WORK_DIR
             value: '$(Pipeline.Workspace)/s'
 

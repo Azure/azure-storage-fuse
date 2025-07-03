@@ -29,6 +29,8 @@ steps:
       ls -lrt
       echo $(ROOT_DIR)
       echo $(WORK_DIR)
+      ls -l $(WORK_DIR)/go_installer.sh
+      df -h
       sudo rm -rf $(ROOT_DIR)
       sudo mkdir -p $(ROOT_DIR)
       sudo chown -R `whoami` $(ROOT_DIR)
