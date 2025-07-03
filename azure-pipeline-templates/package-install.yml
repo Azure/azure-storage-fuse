@@ -38,7 +38,7 @@ steps:
   # RHEL PACKAGE INSTALLATION
   - script: |
       if [ $(AgentName) == "blobfuse-rhel9" ]; then
-	sudo yum update -y
+        sudo yum update -y
 	sudo yum groupinstall "Development Tools" -y
 	sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
       else
