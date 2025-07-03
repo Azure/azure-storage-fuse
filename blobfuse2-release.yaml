@@ -127,7 +127,13 @@ stages:
           # using fpm tool for packaging of our binary & performing post-install operations
           # for additional information about fpm refer https://fpm.readthedocs.io/en/v1.13.1/
           - script: |
-              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+              packageName="blobfuse2"
+              # If the version string has preview in it then packageName shall be "blobfuse2-preview"
+              if [[ `./pkgDir/usr/bin/blobfuse2 --version` == *"preview"* ]]; then
+                echo "Preview binary package created"
+                packageName="blobfuse2-preview"
+              fi
+              fpm -s dir -t deb -n $packageName -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).x86_64.deb
@@ -136,7 +142,13 @@ stages:
             displayName: 'Make deb Package'
 
           - script: |
-              fpm -s dir -t rpm -n blobfuse2 --rpm-digest sha256 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+              packageName="blobfuse2"
+              # If the version string has preview in it then packageName shall be "blobfuse2-preview"
+              if [[ `./pkgDir/usr/bin/blobfuse2 --version` == *"preview"* ]]; then
+                echo "Preview binary package created"
+                packageName="blobfuse2-preview"
+              fi
+              fpm -s dir -t rpm -n $packageName --rpm-digest sha256 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).x86_64.rpm
@@ -227,7 +239,13 @@ stages:
           # using fpm tool for packaging of our binary & performing post-install operations
           # for additional information about fpm refer https://fpm.readthedocs.io/en/v1.13.1/
           - script: |
-              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+              packageName="blobfuse2"
+              # If the version string has preview in it then packageName shall be "blobfuse2-preview"
+              if [[ `./pkgDir/usr/bin/blobfuse2 --version` == *"preview"* ]]; then
+                echo "Preview binary package created"
+                packageName="blobfuse2-preview"
+              fi
+              fpm -s dir -t deb -n $packageName -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).arm64.deb
@@ -236,7 +254,13 @@ stages:
             displayName: 'Make deb Package'
 
           - script: |
-              fpm -s dir -t rpm -n blobfuse2 --rpm-digest sha256 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+              packageName="blobfuse2"
+              # If the version string has preview in it then packageName shall be "blobfuse2-preview"
+              if [[ `./pkgDir/usr/bin/blobfuse2 --version` == *"preview"* ]]; then
+                echo "Preview binary package created"
+                packageName="blobfuse2-preview"
+              fi
+              fpm -s dir -t rpm -n $packageName --rpm-digest sha256 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).aarch64.rpm
