@@ -26,11 +26,9 @@ steps:
   - checkout: self
   - script: |
       git branch
-      pwd
-      pwd $HOME
-      ls -lrt $HOME
-      cd azure-storage-fuse
-      git branch
+      ls -lrt
+      echo $(ROOT_DIR)
+      echo $(WORK_DIR)
       sudo rm -rf $(ROOT_DIR)
       sudo mkdir -p $(ROOT_DIR)
       sudo chown -R `whoami` $(ROOT_DIR)
