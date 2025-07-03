@@ -75,8 +75,8 @@ stages:
           # -------------------------------------------------------
           # Custom script to install Go-lang
           - script:
-              ./go_installer.sh $(ROOT_DIR)
-            displayName: "GoTool Custom Setup"
+              ./go_installer.sh $(Agent.TempDirectory)
+            displayName: "Install Go"
 
           # -------------------------------------------------------
           # Run the cleanup script to delete all the containers
@@ -84,7 +84,7 @@ stages:
           - task: Go@0
             inputs:
               command: 'test'
-              arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
+              arguments: '-timeout 10m -v test/accoutcleanup/accountcleanup_test.go'
               workingDirectory:  $(WORK_DIR)
             displayName: 'Block Blob cleanup'
             timeoutInMinutes: 120
@@ -97,7 +97,7 @@ stages:
           - task: Go@0
             inputs:
               command: 'test'
-              arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
+              arguments: '-timeout 10m -v test/accoutcleanup/accountcleanup_test.go'
               workingDirectory:  $(WORK_DIR)
             displayName: 'Gen2 cleanup'
             timeoutInMinutes: 120
