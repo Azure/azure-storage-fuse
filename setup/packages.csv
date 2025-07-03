@@ -1,3 +1,3 @@
 # Do not remove these comments
 # Format of the file : <Distro Name>,<Fuse Version, Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
-Ubuntu-22.04,fuse3AmdDeb,microsoft-ubuntu-jammy-prod-apt,jammy
+Ubuntu-18.04,fuse2AmdDeb,microsoft-ubuntu-bionic-prod-apt,bionic
