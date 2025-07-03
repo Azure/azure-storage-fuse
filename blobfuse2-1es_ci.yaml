@@ -69,9 +69,15 @@ extends:
         variables:
           - group: NightlyBlobFuse
           - name: ROOT_DIR
-            value: '$(Build.SourcesDirectory)'
+            value: '$(Agent.TempDirectory)'
           - name: WORK_DIR
             value: '$(Build.SourcesDirectory)'
+          - name: TEMP_DIR
+            value: '$(Agent.TempDirectory)'
+          - name: MOUNT_DIR
+            value: '$(Agent.TempDirectory)/blob_mnt'
+          - name: GOPATH
+            value: '$(Agent.TempDirectory)/go'
 
         steps:
           # Pull and build the code, Run the Unit Tests
