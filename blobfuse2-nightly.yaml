@@ -85,7 +85,6 @@ stages:
             inputs:
               command: 'test'
               arguments: '-timeout 10m -v test/accoutcleanup/accountcleanup_test.go'
-              workingDirectory:  $(WORK_DIR)
             displayName: 'Block Blob cleanup'
             timeoutInMinutes: 120
             continueOnError: true
@@ -98,7 +97,6 @@ stages:
             inputs:
               command: 'test'
               arguments: '-timeout 10m -v test/accoutcleanup/accountcleanup_test.go'
-              workingDirectory:  $(WORK_DIR)
             displayName: 'Gen2 cleanup'
             timeoutInMinutes: 120
             continueOnError: true
