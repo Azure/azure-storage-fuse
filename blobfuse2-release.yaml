@@ -3,7 +3,7 @@ parameters:
     displayName: 'New Release Tag'
     type: string
     default: 'blobfuse2-'
-  
+
   - name: unit_test
     displayName: 'Execute Unit Tests'
     type: boolean
