@@ -732,8 +732,6 @@ stages:
                   installStep:
                     script: |
                       sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
-                      sudo yum clean all
-                      sudo yum makecache
                       sudo yum update -y
                       sudo yum groupinstall "Development Tools" -y
                       if [ $(AgentName) == "blobfuse-rhel9" ]; then
