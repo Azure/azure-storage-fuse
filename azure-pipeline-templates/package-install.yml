@@ -42,11 +42,11 @@ steps:
         sudo yum groupinstall "Development Tools" -y
         sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
       else
-        sudo yum config-manager --disable rhel-8-for-x86_64-appstream-eus-rhui-rpms
-        sudo yum config-manager --enable rhel-8-for-x86_64-appstream-rhui-rpms
-        sudo yum config-manager --enable rhel-8-for-x86_64-baseos-rhui-rpms
-        yum repolist all
         sudo yum clean all
+        sudo yum -y --disablerepo='*' --enablerepo='*microsoft*' install rhui-azure-rhel8-eus
+        sudo dnf clean all
+        sudo dnf repolist
+        sudo dnf update -y
         #
         # Normal update is not able fetch the repos hence doing the above config.
         #

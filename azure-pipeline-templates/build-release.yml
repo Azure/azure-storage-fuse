@@ -28,14 +28,14 @@ steps:
       workingDirectory: ${{ parameters.work_dir }}
     displayName: "Installing Blobfuse2 Dependencies"
 
-  # Build the binary  
+  # Build the binary
   - task: Go@0
     inputs:
       command: 'build'
       arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
       workingDirectory: ${{ parameters.work_dir }}
     displayName: 'Building Blobfuse2'
-  
+
   # Verifying whether built binary is correct
   - script: |
       sudo chmod +x ./blobfuse2
@@ -51,7 +51,7 @@ steps:
     workingDirectory: ${{ parameters.work_dir }}
     displayName: "Building health-monitor binary"
     continueOnError: false
-  
+
   # Verifying whether built binary is correct
   - script: |
       sudo chmod +x ./bfusemon
@@ -83,7 +83,6 @@ steps:
           echo "\"skip-msi\"": "true", >> $cnfFile
           echo "\"skip-azcli\"": "true", >> $cnfFile
           echo "\"proxy-address\"": "\"\"" >> $cnfFile
-          
           echo "}" >> $cnfFile
           cat $cnfFile
         displayName: "Create AzureTest Config"
@@ -96,5 +95,3 @@ steps:
           arguments: '-v -timeout=2h ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
           workingDirectory: ${{ parameters.work_dir }}
         displayName: "Unit tests"
-
-
