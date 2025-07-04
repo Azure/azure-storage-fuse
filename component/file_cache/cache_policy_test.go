@@ -89,7 +89,7 @@ func (suite *cachePolicyTestSuite) TestGetUsagePercentage() {
 	result = getUsagePercentage("/", 0)
 	// since the value might defer a little distro to distro
 	suite.assert.GreaterOrEqual(result, float64(0))
-	suite.assert.LessOrEqual(result, float64(95))
+	suite.assert.LessOrEqual(result, float64(90))
 }
 
 func (suite *cachePolicyTestSuite) TestDeleteFile() {

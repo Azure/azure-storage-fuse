@@ -101,11 +101,6 @@ func addPathToCache(assert *assert.Assertions, attrCache *AttrCache, path string
 }
 
 func assertDeleted(suite *attrCacheTestSuite, path string) {
-	// With the new implementation, deleted entries are removed from the cache map
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
-}
-
-func assertMarkedDeleted(suite *attrCacheTestSuite, path string) {
 	suite.assert.Contains(suite.attrCache.cacheMap, path)
 	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
 	suite.assert.True(suite.attrCache.cacheMap[path].valid())
@@ -346,7 +341,7 @@ func (suite *attrCacheTestSuite) TestDeleteDir() {
 			// a paths should be deleted
 			for p := a.Front(); p != nil; p = p.Next() {
 				truncatedPath = internal.TruncateDirName(p.Value.(string))
-				// assertMarkedDeleted(suite, truncatedPath)
+				assertDeleted(suite, truncatedPath)
 			}
 			ab.PushBackList(ac) // ab and ac paths should be untouched
 			for p := ab.Front(); p != nil; p = p.Next() {
@@ -514,8 +509,8 @@ func (suite *attrCacheTestSuite) TestRenameDir() {
 			suite.assert.Nil(err)
 			// a paths should be deleted
 			for p := a.Front(); p != nil; p = p.Next() {
-				_ = internal.TruncateDirName(p.Value.(string))
-				// assertMarkedDeleted(suite, truncatedPath)
+				truncatedPath := internal.TruncateDirName(p.Value.(string))
+				assertDeleted(suite, truncatedPath)
 			}
 			// ab paths should be invalidated
 			for p := ab.Front(); p != nil; p = p.Next() {
@@ -590,7 +585,7 @@ func (suite *attrCacheTestSuite) TestDeleteFile() {
 
 	err = suite.attrCache.DeleteFile(options)
 	suite.assert.Nil(err)
-	// assertMarkedDeleted(suite, path)
+	assertDeleted(suite, path)
 }
 
 // Tests Sync File
@@ -714,7 +709,7 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 	suite.mock.EXPECT().RenameFile(options).Return(nil)
 	err = suite.attrCache.RenameFile(options)
 	suite.assert.Nil(err)
-	// assertMarkedDeleted(suite, src)
+	assertDeleted(suite, src)
 	modifiedDstAttr := suite.attrCache.cacheMap[dst].attr
 	assertSrcAttributeTimeChanged(suite, options.SrcAttr, srcAttrCopy)
 	// Check the attributes of the dst are same as the src.
@@ -731,7 +726,7 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 	suite.mock.EXPECT().RenameFile(options).Return(nil)
 	err = suite.attrCache.RenameFile(options)
 	suite.assert.Nil(err)
-	// assertMarkedDeleted(suite, src)
+	assertDeleted(suite, src)
 	modifiedDstAttr = suite.attrCache.cacheMap[dst].attr
 	assertSrcAttributeTimeChanged(suite, options.SrcAttr, srcAttrCopy)
 	assertAttributesTransferred(suite, options.SrcAttr, modifiedDstAttr)
