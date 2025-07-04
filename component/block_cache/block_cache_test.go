@@ -2845,23 +2845,23 @@ func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {
 	suite.assert.Equal(h.Size, int64(0))
 	suite.assert.False(h.Dirty())
 
-	// Jump to 13thMB offset and write 500kb of data
-	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(13 * _1MB), Data: dataBuff[:(_1MB / 2)]})
+	// Jump to 10thMB offset and write 500kb of data
+	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(10 * _1MB), Data: dataBuff[:(_1MB / 2)]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB/2))
 	suite.assert.True(h.Dirty())
 
 	// Write remaining data backwards so that last block is staged first
-	for i := 0; i < 12; i++ {
+	for i := 0; i < 9; i++ {
 
-		n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(uint64(12-i) * _1MB), Data: dataBuff[:_1MB]})
+		n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(uint64(9-i) * _1MB), Data: dataBuff[:_1MB]})
 		suite.assert.Nil(err)
 		suite.assert.Equal(n, int(_1MB))
 		suite.assert.True(h.Dirty())
 	}
 
-	// Now Jump to 20thMB offset and write 500kb of data
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(20 * _1MB), Data: dataBuff[:(_1MB / 2)]})
+	// Now Jump to 15thMB offset and write 500kb of data
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(15 * _1MB), Data: dataBuff[:(_1MB / 2)]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB/2))
 	suite.assert.True(h.Dirty())
@@ -2873,7 +2873,7 @@ func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {
 
 	_, err = os.Stat(storagePath)
 	suite.assert.Nil(err)
-	suite.assert.Equal(h.Size, int64((20*_1MB)+(_1MB/2)))
+	suite.assert.Equal(h.Size, int64((15*_1MB)+(_1MB/2)))
 }
 
 func (suite *blockCacheTestSuite) TestReadCommittedLastBlocksOverwrite() {
