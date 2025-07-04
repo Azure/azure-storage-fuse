@@ -202,6 +202,10 @@ func (suite *blockpoolTestSuite) TestBufferExhaution() {
 	b := bp.TryGet()
 	suite.assert.Nil(b)
 
+	// MustGet should return nil as no blocks are available
+	b = bp.MustGet()
+	suite.assert.Nil(b)
+
 	for _, blk := range blocks {
 		bp.Release(blk)
 	}

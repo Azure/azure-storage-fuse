@@ -35,6 +35,7 @@ package block_cache
 
 import (
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
@@ -143,12 +144,17 @@ func (pool *BlockPool) Usage() uint32 {
 // MustGet a Block from the pool, wait until something is free
 func (pool *BlockPool) MustGet() *Block {
 	var block *Block = nil
+	defaultTimeout := time.After(5 * time.Second)
 
 	select {
 	case block = <-pool.priorityCh:
 		break
 	case block = <-pool.blocksCh:
 		break
+	// Return error in case no blocks are available after default timeout
+	case <-defaultTimeout:
+		log.Err("BlockPool::MustGet : No blocks available after 10 seconds. Returning nil.")
+		return nil
 	}
 
 	// Mark the buffer ready for reuse now
