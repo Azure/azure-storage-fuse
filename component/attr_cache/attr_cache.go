@@ -186,10 +186,10 @@ func (ac *AttrCache) OnConfigChange() {
 }
 
 // Helper Methods
-// deleteDirectory: recursively removes a directory and its children from cache
-// Previously marked entries as deleted to serve ENOENT responses, but now removes them to save memory
+// deleteDirectory: recursively marks a directory and its children from cache
+// these entries are then marked as deleted to serve ENOENT responses.
 func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
-	// Recursively delete the children of the path, then delete the path
+	// Recursively mark the children of the path as deleted, then delete the path
 	// For example, filesystem: a/, a/b, a/c, aa/, ab.
 	// When we delete directory a, we only want to delete a/, a/b, and a/c.
 	// If we do not conditionally extend a, we would accidentally delete aa/ and ab
