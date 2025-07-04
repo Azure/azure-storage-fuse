@@ -6,7 +6,7 @@
 - [#1765](https://github.com/Azure/azure-storage-fuse/issues/1765) Make `cleanup-on-start` CLI flag common for file-cache, block-cache, xload components.
 - [#1808](https://github.com/Azure/azure-storage-fuse/issues/1808) Fixed memory leak in attribute cache by periodic cleanup of cached entries.
 - Fixed a crash in blobfuse2 triggered by throttling events in the block-cache component.
-- [#1639](https://github.com/Azure/azure-storage-fuse/issues/1639) Ensured block-cache correctly enforces the memory limit specified in the configuration.
+- Ensured block-cache correctly enforces the memory limit specified in the configuration.
 
 ## 2.5.0~preview.1 (2025-04-30)
 **Features**
