@@ -863,7 +863,7 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 // membership details from the clustermap and if there still is a mismatch indicating client using stale
 // clustermap, fail the call with NeedToRefreshClusterMap asking the sender to refresh too. This function
 // helps to refresh the rvInfo component RV details.
-func (mv *mvInfo) refreshFromClustermap() (models.ErrorCode, error) {
+func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 	log.Debug("mvInfo::refreshFromClustermap: %s/%s", mv.rv.rvName, mv.mvName)
 
 	//
@@ -872,26 +872,26 @@ func (mv *mvInfo) refreshFromClustermap() (models.ErrorCode, error) {
 	//
 	err := cm.RefreshClusterMap(0 /* higherThanEpoch */)
 	if err != nil {
-		err := fmt.Errorf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rv.rvName, mv.mvName, err)
-		log.Err("%v", err)
-		common.Assert(false, err)
-		return ErrorCode_InternalServerError, err
+		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rv.rvName, mv.mvName, err)
+		log.Err("%s", errStr)
+		common.Assert(false, errStr)
+		return rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
 	// Get component RV details from the just refreshed clustermap.
 	newRVs := cm.GetRVs(mv.mvName)
 	if newRVs == nil {
-		err := fmt.Errorf("mvInfo::refreshFromClustermap: GetRVs(%s) failed", mv.mvName)
-		log.Err("%v", err)
-		common.Assert(false, err)
-		return ErrorCode_InternalServerError, err
+		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: GetRVs(%s) failed", mv.mvName)
+		log.Err("%s", errStr)
+		common.Assert(false, errStr)
+		return rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
 	//
 	// Must have the hosting RV in the componentRVs list.
 	//
-	rvInfo := mv.getComponentRVNameAndState(mv.rv.rvName)
-	common.Assert(rvInfo != nil, mv.rv.rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs))
+	myRvInfo := mv.getComponentRVNameAndState(mv.rv.rvName)
+	common.Assert(myRvInfo != nil, mv.rv.rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs))
 
 	// Convert newRVs from RV Name->State map, to RVNameAndState slice.
 	var newComponentRVs []*models.RVNameAndState
@@ -949,183 +949,99 @@ func (mv *mvInfo) refreshFromClustermap() (models.ErrorCode, error) {
 	//   of an ongoing transaction.
 	//
 	clusterMapWantsToChangeMyRV := false
-	newState, ok := newRVs[mv.rv.rvName]
-	if !ok {
-		// My RV is being removed from the component RV list for this MV.
-		clusterMapWantsToChangeMyRV = true
-	} else if newState != rvInfo.State {
-		// My RV state is being changed.
+
+	newState, isPresentInClusterMap := newRVs[mv.rv.rvName]
+	if !isPresentInClusterMap || string(newState) != myRvInfo.State {
+		//
+		// My RV is being removed from the component RV list for this MV, or
+		// my RV state is being changed.
+		//
 		clusterMapWantsToChangeMyRV = true
 	}
 
-	//
-	// Don't allow rvInfo/mvInfo changes corresponding to ongoing updates to be reverted .
-	//
-	if clusterMapWantsToChangeMyRV && time.Since(mv.lmt) < mvInfoTimeout {
-		err := fmt.Errorf("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s)",
-			rvName, mv.mvName, rvState, oldRvNameAndState.State, time.Since(mv.lmt), mvInfoTimeout)
-		log.Err("%v", err)
-		common.Assert(false, err)
-		return ErrorCode_InvalidRV, err
-	}
-
-	/*
-		// Convert newRVs from RV Name->State map, to RVNameAndState slice.
-		var newComponentRVs []*models.RVNameAndState
-		for rvName, rvState := range newRVs {
-			common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState)
-
-			//
-			// degrade-mv workflow marks component RVs as offline, for the RVs which are marked offline,
-			// but it doesn't commit the changes to clustermap before it runs the fix-mv workflow, the
-			// following achieves that w/o a clustermap update being forced after degrade-mv.
-			// Note that this is one of those "safe deductions" that we can do while taking the risk of
-			// deviating away from the actual clustermap, but note that clustermap will soon be updated
-			// to reflect it.
-			//
-			if cm.GetRVState(rvName) == dcache.StateOffline && rvState != dcache.StateOffline {
-				log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is offline, marking component RV state as offline",
-					rvName, mv.mvName, rvState)
-				rvState = dcache.StateOffline
-				newRVs[rvName] = rvState
-			}
-
-			newComponentRVs = append(newComponentRVs, &models.RVNameAndState{
-				Name:  rvName,
-				State: string(rvState),
-			})
-
-			//
-			// If it's the RV hosting this MV locally we have some more checks/updates, else continue.
-			// Some state transitions require few things to be updated. See below.
-			//
-			if mv.rv.rvName != rvName {
-				continue
-			}
-
-			//
-			// Must have the hosting RV in the componentRVs list.
-			//
-			oldRvNameAndState := mv.getComponentRVNameAndState(rvName)
-			common.Assert(oldRvNameAndState != nil, rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs))
-
-			//
-			// Following code checks for various cases of stale/stuck mvInfo due to incomplete state change
-			// transaction. Note that our state changes are not strictly transactional, we provide a semblance
-			// of transaction by sender sending the state change RPC (JoinMV/UpdateMV/StartSync/EndSync) to all
-			// involved RVs and only when all of them respond successfully, it commits the change in the clustermap.
-			// If any of the RV fails the RPC the sender doesn't commit the state change but it doesn't send undo
-			// RPCs, so the RVs which responded positively have invalid state not matching the clustermap. Any
-			// future RPC will see that the sender's state (which it got from clustermap) doesn't match the rvInfo
-			// state, this will trigger a clustermap refresh at the server as well as sender, causing update of the
-			// RV state from the clustermap (our rollback mechanism). This has one issue though, we cannot let the
-			// state be reverted till some reasonable timeout period since the sender will take some time to commit
-			// the state change in the clustermap. This is to not revert a legitimate ongoing state change.
-			// Timeout must be large enough to safely consider the state difference between rvInfo and clustermap
-			// as being due to incomplete state change workflow (JoinMV/StartSync etc) and not a transient state
-			// of an ongoing transaction.
-			//
-			if time.Since(mv.lmt) < mvInfoTimeout {
-				log.Debug("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s)",
-					rvName, mv.mvName, rvState, oldRvNameAndState.State, time.Since(mv.lmt), mvInfoTimeout)
-				continue
-			}
-
-			log.Info("mvInfo::refreshFromClustermap: %s/%s state change (clustermap:%s -> rvInfo:%s), timed out (%s >= %s)",
-				rvName, mv.mvName, rvState, oldRvNameAndState.State, time.Since(mv.lmt), mvInfoTimeout)
-
-			//
-			// Rollback from:
-			// StateSyncing -> StateOutOfSync
-			//
-			// Consider the following case:
-			// client is running the sync-mv workflow and decides to sync rv0/mv0 -> rv2/mv0
-			// it'll send a StartSync request and the mvInfo.syncJobs will have a new sync job added.
-			// If all went well, the client would send EndSync on completion of the sync job, which will
-			// remove the sync job from mvInfo.syncJobs, but let's say sync didn't proceed normally and
-			// was aborted. Next time when the mv was again picked for sync'ing, this time rv0 went offline
-			// and hence rv1 was picked as the source replica, so now the client sends a fresh StartSync
-			// request for rv1/mv0 -> rv2/mv0. This will find the rvInfo in StateSyncing which it doesn't
-			// expect so refreshFromClustermap() is called. If we do not remove the older syncJob from
-			// mvInfo.syncJobs, we will have multiple syncJobs queued for a target RV. Note that we consider
-			// an mvInfo with more than one syncJobs as being a source replica (ref mvInfo.isSourceOrTargetOfSync).
-			// So we wrongly treat it as a being a source replica.
-			// Hence whenever we have refreshFromClustermap() see a state transition from StateSyncing to
-			// StateOutOfSync, it means that it's this case and we must clear the old syncJob.
-			//
-			// Note: We also must consider "offline" RVs, as an "outofsync" RV in clustermap can also go offline.
-			//
-			if oldRvNameAndState.State == string(dcache.StateSyncing) &&
-				(rvState == dcache.StateOutOfSync || rvState == dcache.StateOffline) {
-				//
-				// Only a target replica can be in StateSyncing and a target replica MUST have one and
-				// only one syncJob, clear that.
-				//
-				common.Assert(mv.syncJobsCount.Load() == 1, rvName, mv.mvName, mv.syncJobsCount.Load(),
-					mv.getSyncJobs(), rpc.ComponentRVsToString(mv.componentRVs))
-
-				log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
-					rvName, mv.mvName, oldRvNameAndState.State, rvState, mv.getSyncJobs())
-
-				mv.deleteAllSyncJobs()
-			}
-
-			//
-			// TODO: If an RV is being added in "outofsync" or "syncing" state (and it was in a different
-			//       state earlier) we must also update rvInfo.reservedSpace.
-			//
-		}
-	*/
-
-	//
-	//
-	// Rollback from:
-	// StateOutOfSync -> StateOffline
-	//
-	// An outofsync component RV is marked by a JoinMV RPC call sent as a result of the fix-mv workflow.
-	// It marks reservedSpace in the mvInfo and rvInfo to reserve the space needed for sync'ing the MV
-	// replica. Normally this reserved space would be deducted from rvInfo.reservedSpace as part of
-	// the EndSync processing, after the sync has copied data to the new MV replica. At this point
-	// mvInfo.totalChunkBytes will be increased by mvInfo.reservedSpace, and rvInfo.reservedSpace will
-	// be reduced by mvInfo.reservedSpace and mvInfo.reservedSpace will be set to 0.
-	//
-	// Hence if our in-core mvInfo has the state of a component RV as StateOutOfSync while clustermap either
-	// - has the same RV with state StateOffline, or,
-	// - doesn't have that component RV present,
-	// it means the fix-mv workflow didn't complete successfully so we need to rollback the reserved space
-	// changes.
-	// Note that the first one represents the case where same RV was used as the replacement RV as it came
-	// back online, while the second one is the more common case of a different RV picked as the replacement
-	// RV.
-	//
 	if clusterMapWantsToChangeMyRV {
 		//
-		// check for various undo state transitions and perform the required undo
+		// Don't allow rvInfo/mvInfo changes corresponding to ongoing updates to be reverted .
+		//
+		if time.Since(mv.lmt) < mvInfoTimeout {
+			errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s)",
+				mv.rv.rvName, mv.mvName, newState, myRvInfo.State, time.Since(mv.lmt), mvInfoTimeout)
+			log.Err("%s", errStr)
+			common.Assert(false, errStr)
+			return rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
+		}
+
+		//
+		// Rollback from:
+		// StateOutOfSync -> StateOffline, or
+		// StateOutOfSync -> not present in clustermap.
+		//
+		// An outofsync component RV is marked by a JoinMV RPC call sent as a result of the fix-mv workflow.
+		// It marks reservedSpace in the mvInfo and rvInfo to reserve the space needed for sync'ing the MV
+		// replica. Normally this reserved space would be deducted from rvInfo.reservedSpace as part of
+		// the EndSync processing, after the sync has copied data to the new MV replica. At this point
+		// mvInfo.totalChunkBytes will be increased by mvInfo.reservedSpace, and rvInfo.reservedSpace will
+		// be reduced by mvInfo.reservedSpace and mvInfo.reservedSpace will be set to 0.
+		//
+		// Hence if our in-core mvInfo has the state of a component RV as StateOutOfSync while clustermap either
+		// - has the same RV with state StateOffline, or,
+		// - doesn't have that component RV present,
+		// it means the fix-mv workflow didn't complete successfully so we need to rollback the reserved space
+		// changes.
+		// Note that the first one represents the case where same RV was used as the replacement RV as it came
+		// back online, while the second one is the more common case of a different RV picked as the replacement
+		// RV.
+		//
+		if myRvInfo.State == string(dcache.StateOutOfSync) &&
+			(newState == dcache.StateOffline || !isPresentInClusterMap) {
+			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s (present: %v)), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
+				mv.rv.rvName, mv.mvName, myRvInfo.State, newState, isPresentInClusterMap, mv.reservedSpace.Load())
+
+			mv.rv.decReservedSpace(mv.reservedSpace.Load())
+			mv.reservedSpace.Store(0)
+		}
+
+		//
+		// Rollback from:
+		// StateSyncing -> StateOutOfSync
+		//
+		// Consider the following case:
+		// client is running the sync-mv workflow and decides to sync rv0/mv0 -> rv2/mv0
+		// it'll send a StartSync request and the mvInfo.syncJobs will have a new sync job added.
+		// If all went well, the client would send EndSync on completion of the sync job, which will
+		// remove the sync job from mvInfo.syncJobs, but let's say sync didn't proceed normally and
+		// was aborted. Next time when the mv was again picked for sync'ing, this time rv0 went offline
+		// and hence rv1 was picked as the source replica, so now the client sends a fresh StartSync
+		// request for rv1/mv0 -> rv2/mv0. This will find the rvInfo in StateSyncing which it doesn't
+		// expect so refreshFromClustermap() is called. If we do not remove the older syncJob from
+		// mvInfo.syncJobs, we will have multiple syncJobs queued for a target RV. Note that we consider
+		// an mvInfo with more than one syncJobs as being a source replica (ref mvInfo.isSourceOrTargetOfSync).
+		// So we wrongly treat it as a being a source replica.
+		// Hence whenever we have refreshFromClustermap() see a state transition from StateSyncing to
+		// StateOutOfSync, it means that it's this case and we must clear the old syncJob.
+		//
+		// Note: We also must consider "offline" RVs, as an "outofsync" RV in clustermap can also go offline.
+		//
+		if myRvInfo.State == string(dcache.StateSyncing) &&
+			(newState == dcache.StateOutOfSync || newState == dcache.StateOffline) {
+			//
+			// Only a target replica can be in StateSyncing and a target replica MUST have one and
+			// only one syncJob, clear that.
+			//
+			common.Assert(mv.syncJobsCount.Load() == 1, mv.rv.rvName, mv.mvName, mv.syncJobsCount.Load(),
+				mv.getSyncJobs(), rpc.ComponentRVsToString(mv.componentRVs))
+
+			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
+				mv.rv.rvName, mv.mvName, myRvInfo.State, newState, mv.getSyncJobs())
+
+			mv.deleteAllSyncJobs()
+		}
+
+		//
+		// TODO: If an RV is being added in "outofsync" or "syncing" state (and it was in a different
+		//       state earlier) we must also update rvInfo.reservedSpace.
 		//
 	}
-
-	/*
-		for _, oldRv := range mv.componentRVs {
-			common.Assert(oldRv != nil)
-			if mv.rv.rvName != oldRv.Name {
-				continue
-			}
-
-			newState, ok := newRVs[oldRv.Name]
-			if ok && string(newState) == oldRv.State {
-				continue
-			} else if ok {
-				common.Assert(newState == dcache.StateOffline)
-			}
-			if oldRv.State == string(dcache.StateOutOfSync) {
-				log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
-					oldRv.Name, mv.mvName, oldRv.State, rvState, mv.reservedSpace.Load())
-
-				mv.rv.decReservedSpace(mv.reservedSpace.Load())
-				mv.reservedSpace.Store(0)
-			}
-		}
-	*/
 
 	//
 	// Update unconditionally, even if it may not have changed, doesn't matter.
@@ -2485,22 +2401,14 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		// For newMV, we won't have the MV in clustermap yet, so no need to refresh.
 		//
 		if !newMV {
-			err := mvInfo.refreshFromClustermap()
-			if err != nil {
+			rpcErr := mvInfo.refreshFromClustermap()
+			if rpcErr != nil {
 				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV: %v",
-					errStr, err)
+					errStr, rpcErr.String())
 				log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
 				common.Assert(false, errStr)
-				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+				return nil, rpc.NewResponseError(rpcErr.Code, errStr)
 			}
-
-			//
-			// Since this is a double join as a result of fix-mv workflow, we need to undo the
-			// reserved space for this MV replica in the RV. This will be added back later
-			// when we add the MV replica again at the end of JoinMV.
-			//
-			mvInfo.rv.decReservedSpace(mvInfo.reservedSpace.Load())
-			mvInfo.reservedSpace.Store(0)
 		}
 
 		// Remove the MV replica, we will add a fresh one later down.
