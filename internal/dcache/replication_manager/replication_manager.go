@@ -848,6 +848,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	//
 	mvState, rvs, _ := getComponentRVsForMV(req.MvName)
 	retryNeeded := false
+
 	//
 	// Response channel to receive response for the RemoveChunk RPCs sent to each component RV.
 	//

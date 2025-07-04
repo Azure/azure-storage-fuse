@@ -67,17 +67,34 @@ type GcInfo struct {
 	// If the metadata file for a "deleted file" is not deleted till this timeout then periodic GC will
 	// reschedule the delete from the node that enumerates the deleted file.
 	//
-	deleteTimeOut time.Duration
+	deleteTimeout time.Duration
+	//
+	// If file OpenCount doesn't change for so long we consider it as hung (the node that opened the file
+	// crashed) and force delete the file chunks.
+	//
+	openCountHungTimeout time.Duration
 	//
 	// Time to trigger the Periodic GC go routine which will reclaim the chunks for the stale files.
 	//
 	interval time.Duration
+	//
+	// Map of all stale files which are currently schedule for deletion.
+	// A file deletion can take very long (especially with openCount not 0) so we don't want to
+	// requeue the same file again.
+	//
+	staleFilesScheduled sync.Map
 }
 
 var gc *GcInfo
 
 type gcFile struct {
 	file *dcache.FileMetadata
+	//
+	// file.OpenCount is the last open count.
+	// This is the time when it was seen to be changed.
+	// If openCount is stuck for more than gc.openCountHungTimeout we force delete the file chunks.
+	//
+	lastOpenCountChangedAt time.Time
 	//
 	// List of MVs to remove. It starts as file.FileLayout.MVList, but as MVs get deleted and one or more
 	// MVs fail, this will contain only those MVs which still need to be deleted in later retries.
@@ -99,24 +116,34 @@ func Start() {
 		//
 		// File chunks are deleted by RemoveChunk() RPC which enumerates and deletes all chunks of
 		// the file from all RVs where one or more file chunks are present. These calls are made
-		// serially to each MV and for each component RV for the MV. The time taken will depend on
-		// the size of the file as bigger files will have more chunks to be deleted.
+		// serially to each MV and parallely for each component RV for the MV. The time taken will
+		// depend on the size of the file as bigger files will have more chunks to be deleted.
 		//
-		// We set deleteTimeOut to a reasonable value of 5 minutes.
+		// We set deleteTimeout to a reasonable value of 5 minutes.
 		//
-		deleteTimeOut: 5 * time.Minute,
-		interval:      10 * time.Minute,
+		deleteTimeout: 5 * time.Minute,
+		//
+		// We are not too eager in deleting openCount hung files, to avoid deleting legitimately
+		// open files. We don't know the usecases yet, hence play safe.
+		//
+		// Note: If the leader node changes, the hung counter will be reset, so for this to work
+		//       the same node must be leader for at least openCountHungTimeout period.
+		//
+		openCountHungTimeout: 1 * time.Hour,
+		interval:             10 * time.Minute,
 	}
 
 	// Start Periodic GC to reclaim the chunks for the Stale files.
+	gc.wg.Add(1)
 	go func() {
+		defer gc.wg.Done()
 		pollTicker := time.NewTicker(gc.interval)
 
 		for {
 			select {
 			case <-gc.done:
-				log.Info("GC::Stopping Periodic GC go routine")
-				break
+				log.Info("GC:: Stopping Periodic GC go routine")
+				return
 			case <-pollTicker.C:
 				log.Debug("GC:: Periodic GC triggered")
 				gc.scheduleDeleteForStaleFiles()
@@ -167,6 +194,8 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 	}
 
 	rescheduleFile := func() {
+		defer gc.wg.Done()
+
 		if gcFile.file.OpenCount == 0 {
 			time.Sleep(5 * time.Second)
 		} else {
@@ -197,15 +226,34 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 				common.Assert(false, *gcFile.file, err)
 			}
 		} else {
+			if dcFile.OpenCount != gcFile.file.OpenCount {
+				// For deleted files, opencount can only go down.
+				common.Assert(dcFile.OpenCount < gcFile.file.OpenCount,
+					dcFile.OpenCount, gcFile.file.OpenCount,
+					gcFile.file.Filename, gcFile.file.FileID)
+				gcFile.lastOpenCountChangedAt = time.Now()
+			}
 			gcFile.file = dcFile
 		}
 
 		//
-		// TODO: If file openCount is stuck for a long time, then we can force delete the file chunks.
+		// OpenCount still not 0, can't delete the file, skip till next iteration.
+		// If file openCount is stuck for a long time, we force delete the file chunks.
 		//
 		if gcFile.file.OpenCount > 0 {
-			go rescheduleFile()
-			return
+			common.Assert(!gcFile.lastOpenCountChangedAt.IsZero(),
+				gcFile.file.OpenCount, gcFile.file.Filename, gcFile.file.FileID)
+
+			openCountStuckFor := time.Since(gcFile.lastOpenCountChangedAt)
+			if openCountStuckFor < gc.openCountHungTimeout {
+				gc.wg.Add(1)
+				go rescheduleFile()
+				return
+			} else {
+				log.Warn("GC::removeAllChunksForFile: Opencount for file: %s [%s] stuck at %d for %s, force deleting chunks",
+					gcFile.file.Filename, gcFile.file.FileID,
+					gcFile.file.OpenCount, openCountStuckFor)
+			}
 		}
 	}
 
@@ -231,7 +279,7 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 	//
 	errCM = cm.RefreshClusterMap(0)
 	if errCM != nil {
-		log.Err("ReplicationManager::RemoveMV: Failed to refresh the cluster map, file: %s, file ID: %s: %v",
+		log.Err("GC::removeAllChunksForFile: Failed to refresh the cluster map, file: %s, file ID: %s: %v",
 			gcFile.file.Filename, gcFile.file.FileID, errCM)
 		common.Assert(false, gcFile.file.Filename, errCM)
 		//
@@ -253,7 +301,7 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 
 			_, err := rm.RemoveMV(removeMvRequest)
 			if err != nil {
-				log.Err("GC::removeAllChunksForFile: Failed to delete one or more chunks from MV: %s, file: %s (%s): %v",
+				log.Warn("GC::removeAllChunksForFile: Could not delete all chunks from MV: %s, file: %s (%s): %v",
 					mvName, gcFile.file.Filename, gcFile.file.FileID, err)
 				// Queue the failed MV for deletion when GC retries file deletion.
 				retryMVList = append(retryMVList, mvName)
@@ -274,20 +322,27 @@ func (gc *GcInfo) removeAllChunksForFile(gcFile *gcFile) {
 		//
 		gcFile.removeMVList = retryMVList
 
+		gc.wg.Add(1)
 		go rescheduleFile()
 
 		return
 	}
 
 deleteMetadataFile:
-	// After removing all the chunks from all the rvs, we can remove the file layout.
-	log.Debug("GC::removeAllChunksForFile: removing file layout for file: %s [%s]",
+	//
+	// If this file was scheduled by the stale file deletion goroutine, then we need to
+	// remove the file from gc.staleFilesScheduled. If not, this will be a no-op.
+	//
+	defer gc.staleFilesScheduled.Delete(gcFile.file.FileID)
+
+	// After removing all the chunks from all the rvs, we can remove the metadata file.
+	log.Debug("GC::removeAllChunksForFile: removing metadata file for %s [%s]",
 		gcFile.file.Filename, gcFile.file.FileID)
 
 	err := mm.DeleteFile(gcFile.file.FileID)
 	if err != nil {
 		// Periodic GC should delete this metadata file.
-		log.Err("GC::removeAllChunksForFile: failed to remove file layout for file: %s[%s]: %v",
+		log.Err("GC::removeAllChunksForFile: failed to remove metadata file for %s [%s]: %v",
 			gcFile.file.Filename, gcFile.file.FileID, err)
 		common.Assert(false, gcFile.file, err)
 		return
@@ -296,9 +351,10 @@ deleteMetadataFile:
 
 func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 	gcFile := &gcFile{
-		file:         file,
-		retryCnt:     0,
-		removeMVList: file.FileLayout.MVList,
+		file:                   file,
+		lastOpenCountChangedAt: time.Now(),
+		retryCnt:               0,
+		removeMVList:           file.FileLayout.MVList,
 	}
 	gc.deletedFileQueue <- gcFile
 }
@@ -312,21 +368,24 @@ func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 // In such case, a periodic thread calls scheduleDeleteForStaleFiles() to requeue such files for deletion.
 //
 // Note that a file cannot be deleted till its openCount drops to zero, so if a node crashes after opening
-// a file and before closing it, the file openCount will be stuck at non-zero and such files will never
-// be deleted.
-//
-// TODO: Deletion of such files can be given directly to the user where they can delete those files
-//	     explicitly thru debugfs? Or, we can have a timeout after which we force delete such files.
+// a file and before closing it, the file openCount will be stuck at non-zero and such files can never be
+// techincally deleted. We define openCountHungTimeout and delete files which are stuck with unchanging
+// openCount for longer than that, indicating node that opened the file crashed.
 
 func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 	log.Debug("GC::scheduleDeleteForStaleFiles: Started")
 
+	//
+	// Only the leader node runs the stale file deletin logic, to avoid too many calls for
+	// listing deleted files and then all nodes attempting deletion.
+	//
 	if !isMyNodeLeaderToDeleteStaleFiles() {
-		log.Info("GC::scheduleDeleteForStaleFiles: Skipping deletion of the Stale Files")
+		log.Debug("GC::scheduleDeleteForStaleFiles: Skipping as not leader")
 		return
 	}
 
-	log.Debug("GC::scheduleDeleteForStaleFiles: I am picked as Leader to delete stale files, Starting Deletion")
+	log.Info("GC::scheduleDeleteForStaleFiles: Leader for deleting stale files, starting deletion")
+
 	//
 	// List all the deleted files in the storage.
 	//
@@ -338,36 +397,40 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 		return
 	}
 
-	// Schedule the delete for all the files that timed out in the cache directory.
+	//
+	// Schedule delete for all files that could not be deleted for gc.deleteTimeout.
+	// This would indicate some issue, most likely the node that deleted the file
+	// and hence was responsible for deleting he file chunks, crashed.
+	//
 	for _, attr := range deletedFiles {
+		//
+		// If already scheduled in previous iterations, don't requeue.
+		//
+		val, ok := gc.staleFilesScheduled.Load(attr.Name)
+		if ok {
+			log.Info("GC::scheduleDeleteForStaleFiles: File %s (%s) already scheduled, skipping",
+				attr.Name, val.(string))
+			continue
+		}
+
 		// Extract the openCount from the attribute.
 		openCount, err := getOpenCountForDeletedFile(attr)
 		if err != nil {
-			log.Info("GC::scheduleDeleteForStaleFiles: Failed to get the opencount for file %s [%s]",
+			log.Info("GC::scheduleDeleteForStaleFiles: Failed to get opencount for file %s [%s]",
 				attr.Path, attr.Name)
 			common.Assert(false, *attr, err)
 			continue
 		}
 
 		//
-		// attr.Mtime will be the time when the file was delete (and its metadata file added
+		// attr.Mtime will be the time when the file was deleted (and its metadata file added
 		// to mdRoot/Deleted/ folder. We let the "owner node" (that ran DeleteDcacheFile())
-		// to delete the file and only after gc.deleteTimeOut period we assume that the node
-		// went down and hence the period deleter has the responsibility of deleting the file.
+		// delete the file and only after gc.deleteTimeout period we assume that the node
+		// went down and hence the periodic deleter has the responsibility of deleting the file.
 		//
-		if time.Since(attr.Mtime) < gc.deleteTimeOut {
+		if time.Since(attr.Mtime) < gc.deleteTimeout {
 			continue
 		}
-
-		// Cannot delete files that are open.
-		if openCount != 0 {
-			log.Info("GC::scheduleDeleteForStaleFiles: Skipping file %s [%s] with openCount %d",
-				attr.Path, attr.Name, openCount)
-			continue
-		}
-
-		log.Info("GC::scheduleDeleteForStaleFiles: Deleting stale fileID %s (deleted %s back)",
-			attr.Name, time.Since(attr.Mtime))
 
 		// Get the metadata of the deleted file and schedule the delete.
 		dcFile, err := getDeletedFile(attr.Name)
@@ -377,29 +440,34 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 				// Some other node delete the file after we enumerated deleted files
 				// and before we could fetch its metadata.
 				//
-				log.Warn("GC::scheduleDeleteForStaleFiles: Failed to get deleted file %s: %v", err)
+				log.Warn("GC::scheduleDeleteForStaleFiles: getDeletedFile(%s) failed: %v", attr.Name, err)
 			} else {
-				log.Err("GC::scheduleDeleteForStaleFiles: Failed to get deleted file %s: %v", err)
+				log.Err("GC::scheduleDeleteForStaleFiles: getDeletedFile(%s) failed: %v", attr.Name, err)
 			}
 
 			continue
 		}
 
-		log.Info("GC::scheduleDeleteForStaleFiles: Scheduling file %s for deletion", dcFile.Filename)
-		// Schedule the file for GC.
-		gcFile := &gcFile{
-			file:         dcFile,
-			retryCnt:     0,
-			removeMVList: dcFile.FileLayout.MVList,
-		}
+		// Store it in the map to avoid requeue in the next iteration.
+		gc.staleFilesScheduled.Store(dcFile.FileID, dcFile.Filename)
 
-		gc.deletedFileQueue <- gcFile
+		//
+		// Schedule deletion of file regardless of the opencount.
+		// removeAllChunksForFile() will honor the openCount correctly, it also handles
+		// files whose openCount is stuck.
+		//
+		log.Info("GC::scheduleDeleteForStaleFiles: Scheduling stale file %s (%s) for deletion (deleted %s back, openCount: %d)",
+			dcFile.Filename, dcFile.FileID, time.Since(attr.Mtime), openCount)
+
+		ScheduleChunkDeletion(dcFile)
 	}
 }
 
 // Are we the leader node to delete the stale files?
-// Currenlty Leader Node that is responsible for clustermap Update is also responsible for deletion of
+// Currently Leader Node that is responsible for clustermap Update is also responsible for deletion of
 // the stale files.
+// TODO: See if we need to have a different leader for stale file deletion.
+
 func isMyNodeLeaderToDeleteStaleFiles() bool {
 	leaderNode := cm.GetClusterMap().LastUpdatedBy
 	myNodeID, err := common.GetNodeUUID()
@@ -445,7 +513,7 @@ func getOpenCountForDeletedFile(attr *internal.ObjAttr) (int, error) {
 
 // Get the file metadata of the deleted file based by their fileID.
 func getDeletedFile(fileId string) (*dcache.FileMetadata, error) {
-	fileMetadataBytes, fileSize, _, openCount, _, err := mm.GetFile(fileId, true)
+	fileMetadataBytes, fileSize, _, openCount, _, err := mm.GetFile(fileId, true /* isDeleted */)
 	if err != nil {
 		log.Err("GC::getDeletedFile: Failed to get metadata file content for file %s: %v", fileId, err)
 		common.Assert(errors.Is(err, syscall.ENOENT), err)

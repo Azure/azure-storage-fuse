@@ -77,7 +77,7 @@ type workitem struct {
 	// Rpc Request.
 	rpcReq any
 
-	// Type to decode the Request.
+	// Type to decode rpcReq.
 	reqType requestType
 
 	// Channel to send the RPC response back to the caller.
@@ -89,10 +89,10 @@ type responseItem struct {
 	// Used for logging purpose.
 	rvName string
 
-	// Put Chunk RPC response.
+	// RPC response.
 	rpcResp any
 
-	// Error returned from the RPC call.
+	// Error returned from the RPC call, nil if success.
 	err error
 }
 
@@ -166,7 +166,6 @@ func (tp *threadpool) runItem(item *workitem) {
 	}
 
 	item.respChannel <- respItem
-
 }
 
 func (tp *threadpool) do() {
