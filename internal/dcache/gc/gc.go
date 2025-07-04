@@ -320,6 +320,13 @@ func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 
 func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 	log.Debug("GC::scheduleDeleteForStaleFiles: Started")
+
+	if !isMyNodeLeaderToDeleteStaleFiles() {
+		log.Info("GC::scheduleDeleteForStaleFiles: Skipping deletion of the Stale Files")
+		return
+	}
+
+	log.Debug("GC::scheduleDeleteForStaleFiles: I am picked as Leader to delete stale files, Starting Deletion")
 	//
 	// List all the deleted files in the storage.
 	//
@@ -378,50 +385,6 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 			continue
 		}
 
-		// The node belonging to the lexicographical lowest indexed online RV of the first valid MV in the MV list
-		// will delete the stale file.
-		if len(dcFile.FileLayout.MVList) == 0 {
-			log.Err("GC::scheduleDeleteForStaleFiles: No MVs present for the file: %s", dcFile.Filename)
-			common.Assert(false, dcFile.FileLayout.MVList, *dcFile)
-			continue
-		}
-
-		var scheduleDelete bool
-
-		for _, mv := range dcFile.FileLayout.MVList {
-			rvs := cm.GetRVs(mv)
-			if len(rvs) == 0 {
-				log.Err("GC::scheduleDeleteForStaleFiles: No RVs present for the MV: %v, file: %s",
-					mv, dcFile.Filename)
-				common.Assert(false, mv, *dcFile)
-				continue
-			}
-
-			rv := getLowestIndexRv(rvs)
-
-			if cm.IsMyRV(rv) {
-				// If the node is part of the lowest indexed RV, then it will delete the file.
-				log.Info("GC::scheduleDeleteForStaleFiles: Lowest index RV %s is hosted in my node for MV %s, scheduling file %s for deletion",
-					rv, mv, dcFile.Filename)
-				scheduleDelete = true
-				break
-			} else {
-				// If the node is not part of the lowest indexed RV, then it will not delete the file.
-				log.Info("GC::scheduleDeleteForStaleFiles: Lowest index RV %s is not hosted in my node, for MV %s, skipping file %s",
-					rv, mv, dcFile.Filename)
-				continue
-			}
-		}
-
-		if !scheduleDelete {
-			log.Debug("GC::scheduleDeleteForStaleFiles: Not scheduling file %s for deletion as it is not hosted in my node",
-				dcFile.Filename)
-			// If the node is not part of the lowest indexed RV, then it will not delete the file.
-			// We can skip scheduling the file for deletion as it will be deleted by the node that hosts the lowest
-			// indexed RV.
-			continue
-		}
-
 		log.Info("GC::scheduleDeleteForStaleFiles: Scheduling file %s for deletion", dcFile.Filename)
 		// Schedule the file for GC.
 		gcFile := &gcFile{
@@ -434,17 +397,21 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 	}
 }
 
-// getLowestIndexRv returns the lexicographically lowest indexed online RV from the given map of RVs.
-func getLowestIndexRv(rvs map[string]dcache.StateEnum) string {
-	var lowestIndexRV string = "rv999999999" // Initialize with a high value RV.
-
-	for rv, state := range rvs {
-		if rv < lowestIndexRV && state == dcache.StateOnline {
-			lowestIndexRV = rv
-		}
+// Are we the leader node to delete the stale files?
+// Currenlty Leader Node that is responsible for clustermap Update is also responsible for deletion of
+// the stale files.
+func isMyNodeLeaderToDeleteStaleFiles() bool {
+	leaderNode := cm.GetClusterMap().LastUpdatedBy
+	myNodeID, err := common.GetNodeUUID()
+	if err != nil {
+		log.Err("GC::isLeaderToDeleteStaleFiles: Failed to Get My NodeId [%v]", err)
+		common.Assert(false, err)
+		return false
 	}
 
-	return lowestIndexRV
+	log.Debug("GC::isLeaderToDeleteStaleFiles: myNodeID: %s, leaderNode: %s", myNodeID, leaderNode)
+
+	return (leaderNode == myNodeID)
 }
 
 func getOpenCountForDeletedFile(attr *internal.ObjAttr) (int, error) {
