@@ -27,7 +27,7 @@ attr_cache:
 
 azstorage:
   type: block
-  endpoint: { ACCOUNT_ENDPOINT }
+  endpoint: { STO_ACC_ENDPOINT }
   use-http: false
   account-name: { NIGHTLY_SPN_ACC_NAME }
   mode: spn

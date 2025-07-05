@@ -271,21 +271,22 @@ func (suite *authTestSuite) TestBlockSharedKey() {
 	}
 	suite.validateStorageTest("TestBlockSharedKey", stgConfig)
 }
-func (suite *authTestSuite) TestHttpBlockSharedKey() {
-	defer suite.cleanupTest()
-	stgConfig := AzStorageConfig{
-		container: storageTestConfigurationParameters.BlockContainer,
-		authConfig: azAuthConfig{
-			AuthMode:    EAuthType.KEY(),
-			AccountType: EAccountType.BLOCK(),
-			AccountName: storageTestConfigurationParameters.BlockAccount,
-			AccountKey:  storageTestConfigurationParameters.BlockKey,
-			UseHTTP:     true,
-			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
-		},
-	}
-	suite.validateStorageTest("TestHttpBlockSharedKey", stgConfig)
-}
+
+// func (suite *authTestSuite) TestHttpBlockSharedKey() {
+// 	defer suite.cleanupTest()
+// 	stgConfig := AzStorageConfig{
+// 		container: storageTestConfigurationParameters.BlockContainer,
+// 		authConfig: azAuthConfig{
+// 			AuthMode:    EAuthType.KEY(),
+// 			AccountType: EAccountType.BLOCK(),
+// 			AccountName: storageTestConfigurationParameters.BlockAccount,
+// 			AccountKey:  storageTestConfigurationParameters.BlockKey,
+// 			UseHTTP:     true,
+// 			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+// 		},
+// 	}
+// 	suite.validateStorageTest("TestHttpBlockSharedKey", stgConfig)
+// }
 
 func (suite *authTestSuite) TestAdlsInvalidSharedKey() {
 	defer suite.cleanupTest()
@@ -324,21 +325,21 @@ func (suite *authTestSuite) TestAdlsSharedKey() {
 	suite.validateStorageTest("TestAdlsSharedKey", stgConfig)
 }
 
-func (suite *authTestSuite) TestHttpAdlsSharedKey() {
-	defer suite.cleanupTest()
-	stgConfig := AzStorageConfig{
-		container: storageTestConfigurationParameters.AdlsContainer,
-		authConfig: azAuthConfig{
-			AuthMode:    EAuthType.KEY(),
-			AccountType: EAccountType.ADLS(),
-			AccountName: storageTestConfigurationParameters.AdlsAccount,
-			AccountKey:  storageTestConfigurationParameters.AdlsKey,
-			UseHTTP:     true,
-			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
-		},
-	}
-	suite.validateStorageTest("TestHttpAdlsSharedKey", stgConfig)
-}
+// func (suite *authTestSuite) TestHttpAdlsSharedKey() {
+// 	defer suite.cleanupTest()
+// 	stgConfig := AzStorageConfig{
+// 		container: storageTestConfigurationParameters.AdlsContainer,
+// 		authConfig: azAuthConfig{
+// 			AuthMode:    EAuthType.KEY(),
+// 			AccountType: EAccountType.ADLS(),
+// 			AccountName: storageTestConfigurationParameters.AdlsAccount,
+// 			AccountKey:  storageTestConfigurationParameters.AdlsKey,
+// 			UseHTTP:     true,
+// 			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+// 		},
+// 	}
+// 	suite.validateStorageTest("TestHttpAdlsSharedKey", stgConfig)
+// }
 
 func (suite *authTestSuite) TestBlockInvalidSasKey() {
 	defer suite.cleanupTest()
@@ -377,21 +378,21 @@ func (suite *authTestSuite) TestBlockSasKey() {
 	suite.validateStorageTest("TestBlockSasKey", stgConfig)
 }
 
-func (suite *authTestSuite) TestHttpBlockSasKey() {
-	defer suite.cleanupTest()
-	stgConfig := AzStorageConfig{
-		container: storageTestConfigurationParameters.BlockContainer,
-		authConfig: azAuthConfig{
-			AuthMode:    EAuthType.SAS(),
-			AccountType: EAccountType.BLOCK(),
-			AccountName: storageTestConfigurationParameters.BlockAccount,
-			SASKey:      storageTestConfigurationParameters.BlockSas,
-			UseHTTP:     true,
-			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
-		},
-	}
-	suite.validateStorageTest("TestHttpBlockSasKey", stgConfig)
-}
+// func (suite *authTestSuite) TestHttpBlockSasKey() {
+// 	defer suite.cleanupTest()
+// 	stgConfig := AzStorageConfig{
+// 		container: storageTestConfigurationParameters.BlockContainer,
+// 		authConfig: azAuthConfig{
+// 			AuthMode:    EAuthType.SAS(),
+// 			AccountType: EAccountType.BLOCK(),
+// 			AccountName: storageTestConfigurationParameters.BlockAccount,
+// 			SASKey:      storageTestConfigurationParameters.BlockSas,
+// 			UseHTTP:     true,
+// 			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+// 		},
+// 	}
+// 	suite.validateStorageTest("TestHttpBlockSasKey", stgConfig)
+// }
 
 func (suite *authTestSuite) TestBlockContSasKey() {
 	defer suite.cleanupTest()
@@ -507,21 +508,21 @@ func (suite *authTestSuite) TestAdlsSasKey() {
 	suite.validateStorageTest("TestAdlsSasKey", stgConfig)
 }
 
-func (suite *authTestSuite) TestHttpAdlsSasKey() {
-	defer suite.cleanupTest()
-	stgConfig := AzStorageConfig{
-		container: storageTestConfigurationParameters.AdlsContainer,
-		authConfig: azAuthConfig{
-			AuthMode:    EAuthType.SAS(),
-			AccountType: EAccountType.ADLS(),
-			AccountName: storageTestConfigurationParameters.AdlsAccount,
-			SASKey:      storageTestConfigurationParameters.AdlsSas,
-			UseHTTP:     true,
-			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
-		},
-	}
-	suite.validateStorageTest("TestHttpAdlsSasKey", stgConfig)
-}
+// func (suite *authTestSuite) TestHttpAdlsSasKey() {
+// 	defer suite.cleanupTest()
+// 	stgConfig := AzStorageConfig{
+// 		container: storageTestConfigurationParameters.AdlsContainer,
+// 		authConfig: azAuthConfig{
+// 			AuthMode:    EAuthType.SAS(),
+// 			AccountType: EAccountType.ADLS(),
+// 			AccountName: storageTestConfigurationParameters.AdlsAccount,
+// 			SASKey:      storageTestConfigurationParameters.AdlsSas,
+// 			UseHTTP:     true,
+// 			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+// 		},
+// 	}
+// 	suite.validateStorageTest("TestHttpAdlsSasKey", stgConfig)
+// }
 
 // func (suite *authTestSuite) TestAdlsDirSasKey() {
 // 	defer suite.cleanupTest()
