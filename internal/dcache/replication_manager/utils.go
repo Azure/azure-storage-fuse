@@ -273,9 +273,9 @@ func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, respons
 		}
 
 		responseChannel <- &responseItem{
-			rvName:       rvName,
-			putChunkResp: resp.Response,
-			err:          err,
+			rvName:  rvName,
+			rpcResp: resp.Response,
+			err:     err,
 		}
 	}
 

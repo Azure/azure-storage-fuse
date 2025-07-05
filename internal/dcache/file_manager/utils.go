@@ -175,7 +175,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 // Gets the metadata of the file from the metadata store.
 func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, error) {
 	// Fetch file metadata from metadata store.
-	fileMetadataBytes, fileSize, fileState, openCount, prop, err := mm.GetFile(fileName)
+	fileMetadataBytes, fileSize, fileState, openCount, prop, err := mm.GetFile(fileName, false /* isDeleted */)
 	if err != nil {
 		//todo : See if we can have error other that ENOENT here.
 		return nil, nil, err
@@ -288,25 +288,22 @@ func DeleteDcacheFile(fileName string) error {
 		return syscall.ENOENT
 	}
 
-	// Unique name for the deleted file.
-	deletedFileName := dcache.GetDeletedFileName(fileName, fileMetadata.FileID)
-
 	//
-	// Deleting a dcache file amounts to renaming it to a special name.
+	// Deleting a dcache file amounts to renaming it to a special name mdRoot/Objects/<fileId>.
 	// This is useful for tracking file chunks for garbage collection as well as for the POSIX requirement
 	// that the file data should be available till the last open fd is closed.
 	//
-	err = mm.RenameFileToDeleting(fileName, deletedFileName)
+	err = mm.RenameFileToDeleting(fileName, fileMetadata.FileID)
 	if err != nil {
 		log.Err("DistributedCache[FM]::DeleteDcacheFile: Failed to rename file %s -> %s: %v",
-			fileName, deletedFileName, err)
+			fileName, fileMetadata.FileID, err)
 		return err
 	}
 
 	//
 	// Pass the file to garbage collector, which will later delete the chunks when safe to do so.
 	// If safe-deletes config option is off then the file chunks can be deleted immediately o/w they
-	// can be deleted when the file OpenCount falls to 0.
+	// will be deleted when the file OpenCount falls to 0.
 	//
 	gc.ScheduleChunkDeletion(fileMetadata)
 
