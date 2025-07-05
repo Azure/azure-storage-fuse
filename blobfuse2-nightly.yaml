@@ -461,6 +461,7 @@ stages:
               - script: |
                   kill -9 $(pgrep mitmdump)
                 displayName: 'Kill Proxy'
+
         - ${{ if eq(parameters.msi_test, true) }}:
           # -----------------------------------------------------------
           # Ubuntu-20.04 MSI tests
