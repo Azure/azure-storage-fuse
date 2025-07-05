@@ -228,12 +228,16 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 
 	s.serviceClient = s.az.storage.(*BlockBlob).Service // Grab the service client to do some validation
 	s.containerClient = s.serviceClient.NewContainerClient(s.container)
-	_, _ = s.containerClient.Create(ctx, nil)
+	if create {
+		_, _ = s.containerClient.Create(ctx, nil)
+	}
 }
 
 func (s *blockBlobTestSuite) tearDownTestHelper(delete bool) {
 	_ = s.az.Stop()
-	_, _ = s.containerClient.Delete(ctx, nil)
+	if delete {
+		_, _ = s.containerClient.Delete(ctx, nil)
+	}
 }
 
 func (s *blockBlobTestSuite) cleanupTest() {
