@@ -50,6 +50,8 @@ import (
 	gouuid "github.com/google/uuid"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 func getChunkStartOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
 	return getChunkIdxFromFileOffset(offset, fileLayout) * fileLayout.ChunkSize
 }
@@ -246,6 +248,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	//
 	if fileIOMgr.safeDeletes {
 		newOpenCount, err := mm.OpenFile(fileName, prop)
+		_ = newOpenCount
 		if err != nil {
 			err = fmt.Errorf("failed to increment open count for file %s: %v", fileName, err)
 			log.Err("DistributedCache[FM]::OpenDcacheFile: %v", err)
@@ -332,4 +335,9 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 		Uptodate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
 	}, nil
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

@@ -46,6 +46,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 func NewResponseError(errorCode models.ErrorCode, errorMessage string) *models.ResponseError {
 	return &models.ResponseError{
 		Code:    errorCode,
@@ -93,6 +95,7 @@ func IsBrokenPipe(err error) bool {
 	}
 
 	te := thrift.NewTTransportExceptionFromError(err)
+	_ = te
 	// Note: This doesn't work.
 	//return te.TypeId() == thrift.NOT_OPEN
 
@@ -131,6 +134,7 @@ func IsConnectionReset(err error) bool {
 	}
 
 	te := thrift.NewTTransportExceptionFromError(err)
+	_ = te
 	// Note: This doesn't work.
 	//return te.TypeId() == thrift.NOT_OPEN
 	log.Debug("IsConnectionReset: err: %v, type: %T, te.TypeId(): %d, Is syscall.ECONNRESET: %v",
@@ -212,4 +216,10 @@ func IsTimedOut(err error) bool {
 		errors.Is(err, syscall.ETIMEDOUT) ||
 		errors.Is(err, syscall.EAGAIN) ||
 		strings.Contains(err.Error(), connectionTimedOut)
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	log.Info("")
 }

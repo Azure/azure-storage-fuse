@@ -52,6 +52,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 var (
 	// MetadataManagerInstance is the singleton instance of BlobMetadataManager.
 	metadataManagerInstance *BlobMetadataManager
@@ -1042,4 +1044,12 @@ func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 		return nil, nil, err
 	}
 	return data, &attr.ETag, err
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	fmt.Printf("")
+	var err error
+	errors.Is(err, syscall.ENOENT)
 }

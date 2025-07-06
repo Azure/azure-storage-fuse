@@ -60,6 +60,8 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 var RootMount bool
 var ForegroundMount bool
 var IsDistributedCacheEnabled bool
