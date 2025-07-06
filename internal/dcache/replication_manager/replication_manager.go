@@ -55,6 +55,8 @@ import (
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type replicationMgr struct {
 	ticker *time.Ticker // ticker for periodic resync of degraded MVs
 
@@ -844,6 +846,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	// Get the list of component RVs and send a RemoveChunk RPC to each.
 	//
 	mvState, rvs, _ := getComponentRVsForMV(req.MvName)
+	_ = mvState
 	retryNeeded := false
 
 	for _, rv := range rvs {
@@ -1536,6 +1539,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		defer cancel()
 
 		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq)
+		_ = putChunkResp
 		if err != nil {
 			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to put chunk to %s/%s [%v]: %v",
 				job.destRVName, job.mvName, err, rpc.PutChunkRequestToString(putChunkReq))
@@ -1608,6 +1612,7 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 	req.SenderNodeID = ""
 
 	resp, err := rpc_client.EndSync(ctx, targetNodeID, req)
+	_ = resp
 	if err != nil {
 		log.Err("ReplicationManager::sendEndSyncRequest: EndSync failed for %s/%s %v: %v",
 			rvName, req.MV, rpc.EndSyncRequestToString(req), err)
@@ -1741,4 +1746,10 @@ retry:
 	}
 
 	return mvSize, nil
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	slices.Contains([]int{0}, 0)
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

@@ -35,8 +35,15 @@ package dcache
 
 import "github.com/Azure/azure-storage-fuse/v2/common"
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // Get the deleted file name.
 func GetDeletedFileName(fileName string, fileId string) string {
 	common.Assert(common.IsValidUUID(fileId), fileName, fileId)
 	return fileName + "." + fileId + DcacheDeletingFileNameSuffix
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

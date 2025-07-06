@@ -45,6 +45,8 @@ import (
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type GcInfo struct {
 	//
 	// Deletes these many number of files at any time, excess files need to wait for one or more
@@ -213,4 +215,9 @@ func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 		removeMVList: file.FileLayout.MVList,
 	}
 	gc.deletedFileQueue <- gcFile
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

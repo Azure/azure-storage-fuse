@@ -44,6 +44,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // clientPool manages multiple rpc clients efficiently
 type clientPool struct {
 	mu         sync.Mutex
@@ -252,6 +254,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 	}
 
 	ncPool, exists := cp.clients[client.nodeID]
+	_ = exists
 	common.Assert(exists)
 	//
 	// resetRPCClientInternal() MUST be called after removing client from the client pool, so
@@ -316,6 +319,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 
 	numConnReset := 0
 	ncPool, exists := cp.clients[client.nodeID]
+	_ = exists
 
 	// client is allocated from the pool, so pool must exist.
 	common.Assert(exists)
@@ -469,6 +473,7 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 // Caller must hold the clientPool lock.
 func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
 	ncPool, exists := cp.clients[nodeID]
+	_ = exists
 
 	// Caller must not call us for a non-existent pool.
 	common.Assert(exists)
@@ -553,6 +558,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 
 		for client := range ncPool.clientChan {
 			err1 := client.close()
+			_ = err1
 			// close() should not fail, even if it does there's nothing left to do.
 			common.Assert(err1 == nil, err1)
 		}
@@ -595,4 +601,9 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 	common.Assert(len(ncPool.clientChan) == 0, len(ncPool.clientChan))
 
 	return nil
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

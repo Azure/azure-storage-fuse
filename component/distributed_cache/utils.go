@@ -49,6 +49,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 func getBlockDeviceUUId(path string) (string, error) {
 	// TODO{Akku}: support non‐disk filesystems (e.g. NFS).
 	// For example, create/lookup a “.rvid” file inside the RV folder and use that UUID.

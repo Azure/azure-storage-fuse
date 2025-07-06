@@ -55,6 +55,8 @@ import (
 	gouuid "github.com/google/uuid"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
 var _ service.ChunkService = &ChunkServiceHandler{}
 
@@ -399,6 +401,7 @@ func (rv *rvInfo) getMVs() []string {
 // Caller must ensure that the RV is not already hosting the MV replica.
 func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
 	mvPath := filepath.Join(rv.cacheDir, mvName)
+	_ = mvPath
 	common.Assert(common.DirectoryExists(mvPath), mvPath)
 	common.Assert(mv.rv == rv, mv.rv.rvName, rv.rvName)
 
@@ -486,6 +489,7 @@ func (mv *mvInfo) addSyncJob(sourceRVName string, targetRVName string) string {
 	_, ok := mv.syncJobs.Load(syncID)
 	common.Assert(!ok, fmt.Sprintf("[BUG] %s already has syncJob with syncID %s: %+v",
 		mv.mvName, syncID, mv.getSyncJobs()))
+	_ = ok
 
 	newSyncJob := syncJob{
 		syncID:       syncID,
@@ -551,6 +555,7 @@ func (mv *mvInfo) getSyncJobs() []string {
 
 		common.Assert(syncJob != nil, syncID)
 		common.Assert(syncID == syncJob.syncID, syncID, syncJob.syncID)
+		_ = syncID
 
 		syncJobs = append(syncJobs, mv.syncJobToString(syncJob))
 		return true
@@ -564,9 +569,11 @@ func (mv *mvInfo) deleteSyncJob(syncID string) {
 	val, ok := mv.syncJobs.Load(syncID)
 	common.Assert(ok, fmt.Sprintf("%s does not have syncJob with syncID %s: %+v",
 		mv.mvName, syncID, mv.getSyncJobs()))
+	_ = ok
 
 	syncJob := val.(*syncJob)
 	common.Assert(syncJob.syncID == syncID, syncJob.syncID, syncID, mv.mvName)
+	_ = syncJob
 
 	mv.syncJobs.Delete(syncID)
 
@@ -1078,6 +1085,7 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 		//
 		rvState, ok := rvs[rv.rvName]
 		if !ok {
+			_ = rvState
 			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: deleting stale replica %s/%s (state: %s)",
 				rv.rvName, mvName, rvState)
 			// Remove the stale MV replica.
@@ -1388,6 +1396,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 func (h *ChunkServiceHandler) getRVInfoFromRVName(rvName string) *rvInfo {
 	var rvInfo *rvInfo
 	for rvID, info := range h.rvIDMap {
+		_ = rvID
 		common.Assert(info != nil, rvID)
 
 		if info.rvName == rvName {
@@ -1558,6 +1567,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	cacheDir := rvInfo.cacheDir
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
+	_ = hashPath
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
 	//
@@ -1566,7 +1576,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	data := make([]byte, req.Length)
 	var lmt string
 	var n int
+	_ = n
 	var chunkSize int64
+	_ = chunkSize
 	var fh *os.File
 	var fInfo os.FileInfo
 
@@ -1685,6 +1697,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 refreshFromClustermapAndRetry:
 	componentRVsInMV := mvInfo.getComponentRVs()
+	_ = componentRVsInMV
 
 	if len(req.SyncID) == 0 {
 		//
@@ -1775,6 +1788,7 @@ refreshFromClustermapAndRetry:
 	_, isTgtOfSync := mvInfo.isSourceOrTargetOfSync()
 
 	var chunkPath, hashPath string
+	_ = hashPath
 	if len(req.SyncID) > 0 {
 		//
 		// Sync PutChunk call (as opposed to a client write PutChunk call).
@@ -2297,6 +2311,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	//
 	newMV := false
 	found := false
+	_ = found
 	for _, rv := range req.ComponentRV {
 		if rv.Name == req.RVName {
 			// Must be either online for new-mv and outofsync for fix-mv.
@@ -2492,6 +2507,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		}
 
 		componentRVsInMV := mvInfo.getComponentRVs()
+		_ = componentRVsInMV
 
 		log.Debug("ChunkServiceHandler::UpdateMV: Updating %s from (%s -> %s)",
 			req.MV, rpc.ComponentRVsToString(componentRVsInMV), rpc.ComponentRVsToString(req.ComponentRV))
@@ -2870,4 +2886,9 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 	return &models.GetMVSizeResponse{
 		MvSize: mvInfo.totalChunkBytes.Load(),
 	}, nil
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	slices.Contains([]int{0}, 0)
 }
