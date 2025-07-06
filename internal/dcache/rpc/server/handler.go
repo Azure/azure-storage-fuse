@@ -159,8 +159,8 @@ type mvInfo struct {
 	// transaction as incomplete and can revert it. See mvInfoTimeout.
 	//
 	// Thus, after a workflow like JoinMV/StartSync/EndSync updates the rvInfo state and till mvInfoTimeout,
-	// we do not allow the rvInfo state to be changed, hence RPCs that want to change the componentRVs will
-	// fail with ErrorCode_InvalidRV and the caller will need to handle this appropriately. For a JoinMV, it
+	// we do not allow the rvInfo state to be changed, during that time RPCs that want to change the componentRVs
+	// will fail with ErrorCode_InvalidRV and the caller will need to handle this appropriately. For a JoinMV, it
 	// will skip this RV, for a StartSync it'll defer the sync for later.
 	//
 	// lmt - Last Modified Time
@@ -857,12 +857,14 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 //
 // Thus, an incoming request's component RVs may not match the rvInfo's component RVs for one of two reasons:
 // 1. The sender has a stale clustermap.
-// 2. rvInfo has inconsistent info due to the partially applied change.
+// 2. rvInfo has inconsistent info due to the previous partially applied change.
 //
 // So, whenever a request and mvInfo's component RV details don't match, the server needs to refresh its
 // membership details from the clustermap and if there still is a mismatch indicating client using stale
 // clustermap, fail the call with NeedToRefreshClusterMap asking the sender to refresh too. This function
-// helps to refresh the rvInfo component RV details.
+// helps to refresh the rvInfo component RV details from the clustermap.
+//
+// Note that it returns a failure if the rvInfo state change corresponds to a valid ongoing transaction.
 func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 	log.Debug("mvInfo::refreshFromClustermap: %s/%s", mv.rv.rvName, mv.mvName)
 
@@ -896,7 +898,7 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 	// Convert newRVs from RV Name->State map, to RVNameAndState slice.
 	var newComponentRVs []*models.RVNameAndState
 	for rvName, rvState := range newRVs {
-		common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState)
+		common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState, mv.rv.rvName)
 
 		//
 		// degrade-mv workflow marks component RVs as offline, for the RVs which are marked offline,
@@ -950,13 +952,25 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 	//
 	clusterMapWantsToChangeMyRV := false
 
-	newState, isPresentInClusterMap := newRVs[mv.rv.rvName]
-	if !isPresentInClusterMap || string(newState) != myRvInfo.State {
+	stateAsPerClustermap, isPresentInClusterMap := newRVs[mv.rv.rvName]
+	if !isPresentInClusterMap || string(stateAsPerClustermap) != myRvInfo.State {
 		//
 		// My RV is being removed from the component RV list for this MV, or
 		// my RV state is being changed.
 		//
 		clusterMapWantsToChangeMyRV = true
+
+		if !isPresentInClusterMap {
+			//
+			// clustermap doesn't have my RV, indicate that by StateInvalid.
+			// A likely case is if an offline RV is replaced by a new RV by the fix-mv workflow,
+			// the first JoinMV RPC will cause rvInfo for the new RV to be set to StateOutOfSync.
+			// Before the clustermap is updated with this new RV, if some node also runs the fix-mv
+			// workflow with the same new RV, it'll be a case of double join and to us (the hosting RV)
+			// it'll appear as if the new RV is being removed from the component RVs list.
+			//
+			stateAsPerClustermap = dcache.StateInvalid
+		}
 	}
 
 	if clusterMapWantsToChangeMyRV {
@@ -965,12 +979,14 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 		//
 		if time.Since(mv.lmt) < mvInfoTimeout {
 			errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s)",
-				mv.rv.rvName, mv.mvName, newState, myRvInfo.State, time.Since(mv.lmt), mvInfoTimeout)
+				mv.rv.rvName, mv.mvName, stateAsPerClustermap, myRvInfo.State, time.Since(mv.lmt), mvInfoTimeout)
 			log.Err("%s", errStr)
-			common.Assert(false, errStr)
 			return rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
 		}
 
+		//
+		// OK, it's not the case of an ongoing state change, so we can safely revert the rvInfo/mvInfo.
+		// Look for various valid rollback scenarios and revert the rvInfo/mvInfo.
 		//
 		// Rollback from:
 		// StateOutOfSync -> StateOffline, or
@@ -992,10 +1008,17 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 		// back online, while the second one is the more common case of a different RV picked as the replacement
 		// RV.
 		//
-		if myRvInfo.State == string(dcache.StateOutOfSync) &&
-			(newState == dcache.StateOffline || !isPresentInClusterMap) {
-			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s (present: %v)), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
-				mv.rv.rvName, mv.mvName, myRvInfo.State, newState, isPresentInClusterMap, mv.reservedSpace.Load())
+		if myRvInfo.State == string(dcache.StateOutOfSync) {
+			//
+			// Since all state transitions of an RV must be approved by the RV before they are committed
+			// to clustermap, there can only be the following valid transitions for an RV.
+			//
+			common.Assert(!isPresentInClusterMap || stateAsPerClustermap == dcache.StateOffline,
+				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap, isPresentInClusterMap)
+
+			log.Warn("mvInfo::refreshFromClustermap: Rolling back %s/%s (%s -> %s (present: %v)), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
+				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap,
+				isPresentInClusterMap, mv.reservedSpace.Load())
 
 			mv.rv.decReservedSpace(mv.reservedSpace.Load())
 			mv.reservedSpace.Store(0)
@@ -1022,8 +1045,10 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 		//
 		// Note: We also must consider "offline" RVs, as an "outofsync" RV in clustermap can also go offline.
 		//
-		if myRvInfo.State == string(dcache.StateSyncing) &&
-			(newState == dcache.StateOutOfSync || newState == dcache.StateOffline) {
+		if myRvInfo.State == string(dcache.StateSyncing) {
+			common.Assert(stateAsPerClustermap == dcache.StateOutOfSync ||
+				stateAsPerClustermap == dcache.StateOffline,
+				mv.rv.rvName, mv.mvName, stateAsPerClustermap)
 			//
 			// Only a target replica can be in StateSyncing and a target replica MUST have one and
 			// only one syncJob, clear that.
@@ -1031,8 +1056,8 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 			common.Assert(mv.syncJobsCount.Load() == 1, mv.rv.rvName, mv.mvName, mv.syncJobsCount.Load(),
 				mv.getSyncJobs(), rpc.ComponentRVsToString(mv.componentRVs))
 
-			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
-				mv.rv.rvName, mv.mvName, myRvInfo.State, newState, mv.getSyncJobs())
+			log.Warn("mvInfo::refreshFromClustermap: Rolling back %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
+				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap, mv.getSyncJobs())
 
 			mv.deleteAllSyncJobs()
 		}
@@ -1048,10 +1073,6 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 	// We force the update as this is the membership info that we got from clustermap.
 	//
 	mv.updateComponentRVs(newComponentRVs, true /* forceUpdate */, rpc.GetMyNodeUUID())
-
-	//
-	// TODO: Remove any syncJobs which are no longer running.
-	//
 
 	return nil
 }
@@ -1224,7 +1245,13 @@ func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState
 		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq, checkState)
 		if err != nil {
 			if !clustermapRefreshed {
-				mv.refreshFromClustermap()
+				rpcErr := mv.refreshFromClustermap()
+				if rpcErr != nil {
+					errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]",
+						mv.mvName, rpcErr.String())
+					log.Err("ChunkServiceHandler::isComponentRVsValid: %s", errStr)
+					return rpc.NewResponseError(rpcErr.Code, errStr)
+				}
 				clustermapRefreshed = true
 				continue
 			}
@@ -1348,7 +1375,10 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 				errStr, clustermapRefreshed)
 
 			if !clustermapRefreshed {
-				mv.refreshFromClustermap()
+				rpcErr := mv.refreshFromClustermap()
+				if rpcErr != nil {
+					return rpcErr
+				}
 				clustermapRefreshed = true
 				continue
 			}
@@ -1771,7 +1801,10 @@ refreshFromClustermapAndRetry:
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 
 				if !clustermapRefreshed {
-					mvInfo.refreshFromClustermap()
+					rpcErr := mvInfo.refreshFromClustermap()
+					if rpcErr != nil {
+						return nil, rpcErr
+					}
 					clustermapRefreshed = true
 					goto refreshFromClustermapAndRetry
 				}
@@ -2406,7 +2439,6 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV: %v",
 					errStr, rpcErr.String())
 				log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
-				common.Assert(false, errStr)
 				return nil, rpc.NewResponseError(rpcErr.Code, errStr)
 			}
 		}
@@ -2546,7 +2578,10 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		err := mvInfo.updateComponentRVs(req.ComponentRV, false /* forceUpdate */, req.SenderNodeID)
 		if err != nil {
 			if !clustermapRefreshed {
-				mvInfo.refreshFromClustermap()
+				rpcErr := mvInfo.refreshFromClustermap()
+				if rpcErr != nil {
+					return nil, rpcErr
+				}
 				clustermapRefreshed = true
 				continue
 			}
