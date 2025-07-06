@@ -39,6 +39,8 @@ import (
 	"time"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type debugLogger func(format string, args ...interface{})
 
 var logD debugLogger

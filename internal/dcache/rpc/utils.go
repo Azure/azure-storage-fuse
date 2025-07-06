@@ -42,6 +42,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 const (
 	// defaultPort is the default port for the RPC server
 	defaultPort = 9090
@@ -58,6 +60,7 @@ func GetNodeAddressFromID(nodeID string) string {
 // return the node ID of this node
 func GetMyNodeUUID() string {
 	nodeID, err := common.GetNodeUUID()
+	_ = err
 	common.Assert(err == nil, err)
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
 	return nodeID

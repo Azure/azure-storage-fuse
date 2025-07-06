@@ -56,6 +56,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/service"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type Datalake struct {
 	AzStorageConnection
 	Auth           azAuth

@@ -41,6 +41,8 @@ import (
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type task struct {
 	file      *DcacheFile
 	chunk     *StagedChunk

@@ -44,6 +44,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 var (
 	cp       *clientPool
 	myNodeId string

@@ -41,6 +41,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // Pipeline: Base pipeline structure holding list of components deployed along with the head of pipeline
 type Pipeline struct {
 	components []Component
