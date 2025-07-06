@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1751196203258,
+  "lastUpdate": 1751796596249,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -786,6 +786,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.09933365086366668,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "9fd527bf3c9d1c94ddb1f97083248208392e9fdb",
+          "message": "fix rhel package installer in nightly pipeline (#1853)",
+          "timestamp": "2025-07-04T12:07:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/9fd527bf3c9d1c94ddb1f97083248208392e9fdb"
+        },
+        "date": 1751796595991,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "test",
+            "value": 2.7066057499999996,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write",
+            "value": 0.09814658759966666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.12622597387599999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.09719016662666667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.09165712435366667,
             "unit": "milliseconds"
           }
         ]
