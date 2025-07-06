@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1751186660556,
+  "lastUpdate": 1751787306616,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1189,6 +1189,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 21.306249141693115,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "9fd527bf3c9d1c94ddb1f97083248208392e9fdb",
+          "message": "fix rhel package installer in nightly pipeline (#1853)",
+          "timestamp": "2025-07-04T12:07:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/9fd527bf3c9d1c94ddb1f97083248208392e9fdb"
+        },
+        "date": 1751787306354,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.5057575702667236,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 5.620743274688721,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 55.675841331481934,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 21.387011528015137,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.9227001667022705,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 4.476873397827148,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 44.220998764038086,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 15.955574989318848,
             "unit": "seconds"
           }
         ]
