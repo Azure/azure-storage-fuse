@@ -46,6 +46,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 const (
 	// TODO: For prod we should increase it for resilience, but not too much as to affect
 	// our responsiveness.
@@ -215,6 +217,7 @@ func getCachePathForRVName(rvName string) string {
 	common.Assert(len(myRVs) > 0)
 
 	rv, ok := myRVs[rvName]
+	_ = ok
 
 	common.Assert(ok, fmt.Sprintf("%s not hosted by this node, %+v", rvName, myRVs))
 	common.Assert(rv.LocalCachePath != "", rvName)
@@ -286,4 +289,11 @@ func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, respons
 func init() {
 	common.Assert(MAX_SIMUL_SYNC_JOBS < cm.MAX_SIMUL_RV_STATE_UPDATES,
 		MAX_SIMUL_SYNC_JOBS, cm.MAX_SIMUL_RV_STATE_UPDATES)
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	log.Info("")
+	fmt.Printf("")
 }

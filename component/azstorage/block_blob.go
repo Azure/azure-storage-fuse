@@ -63,6 +63,8 @@ import (
 	"github.com/vibhansa-msft/blobfilter"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 const (
 	folderKey           = "hdi_isfolder"
 	symlinkKey          = "is_symlink"

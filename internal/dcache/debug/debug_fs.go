@@ -46,6 +46,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // This package gives the debug facility to the dcache. Users can use top level sub-directory as "fs=debug" to know the
 // state of the cluster/cache(maybe regarding clusterinfo, rpc calls, etc...). The files this package serves would be
 // created on the fly and not stored anywhere in the filesystem.
@@ -181,4 +183,12 @@ func closeProcFile(pFile *procFile) {
 	defer pFile.mu.Unlock()
 	common.Assert(pFile.openCnt > 0)
 	pFile.openCnt--
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	var i atomic.Int32
+	i.Store(0)
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	fmt.Printf("")
 }

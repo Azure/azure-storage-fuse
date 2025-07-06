@@ -42,6 +42,8 @@ import (
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // The functions that were implemented inside this file should have Callback as the suffix for their functionName.
 // The function should have this decl func(*procFile) error.
 
@@ -67,4 +69,9 @@ func getAttrClusterMapCallback(pFile *procFile) {
 	pFile.attr.Mtime = time.Unix(lmt, 0)
 	pFile.attr.Ctime = pFile.attr.Mtime
 	pFile.attr.Atime = pFile.attr.Mtime
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }
