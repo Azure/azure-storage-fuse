@@ -44,6 +44,8 @@ import (
 	"github.com/apache/thrift/lib/go/thrift"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // NodeServer struct holds the Thrift server
 type NodeServer struct {
 	address string

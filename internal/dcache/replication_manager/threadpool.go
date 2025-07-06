@@ -48,6 +48,8 @@ import (
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type threadpool struct {
 	// Number of workers in the thread pool.
 	worker uint32

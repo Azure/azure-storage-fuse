@@ -60,6 +60,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type LogOptions struct {
 	Type           string `config:"type" yaml:"type,omitempty"`
 	LogLevel       string `config:"level" yaml:"level,omitempty"`

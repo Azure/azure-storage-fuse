@@ -47,6 +47,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 func Stop() {
 	clusterMap.stop()
 }
@@ -451,6 +453,7 @@ func (c *ClusterMap) getClusterMap() dcache.ClusterMap {
 // Get RVs belonging to this node.
 func (c *ClusterMap) getMyRVs() map[string]dcache.RawVolume {
 	nodeId, err := common.GetNodeUUID()
+	_ = err
 	common.Assert(err == nil, fmt.Sprintf("Error getting nodeId: %v", err))
 
 	myRvs := make(map[string]dcache.RawVolume)
@@ -468,6 +471,7 @@ func (c *ClusterMap) getAllRVs() map[string]dcache.RawVolume {
 
 func (c *ClusterMap) isMyRV(rvName string) bool {
 	myNodeID, err := common.GetNodeUUID()
+	_ = err
 	common.Assert(err == nil, err)
 
 	return c.rVNameToNodeId(rvName) == myNodeID

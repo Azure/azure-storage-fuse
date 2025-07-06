@@ -45,6 +45,8 @@ import (
 	"go.uber.org/atomic"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type HandleID uint64
 
 const InvalidHandleID HandleID = 0
@@ -237,6 +239,7 @@ func (handle *Handle) SetDcacheAllowReads() {
 func (handle *Handle) IsDcacheAllowWrites() bool {
 	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
 	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
+	_ = allowReads
 	// Read and write to dcache are not allowed from the same handle.
 	common.Assert(!(allowWrites && allowReads))
 	return allowWrites
@@ -245,6 +248,7 @@ func (handle *Handle) IsDcacheAllowWrites() bool {
 func (handle *Handle) IsDcacheAllowReads() bool {
 	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
 	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
+	_ = allowWrites
 	// Read and write to dcache are not allowed from the same handle.
 	common.Assert(!(allowWrites && allowReads))
 	return allowReads

@@ -45,6 +45,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type ReadMvRequest struct {
 	FileID string // unique guid of the file, as stored in metadata blob
 	MvName string // name of the MV to be read, e.g., "mv0", "mv1", etc.

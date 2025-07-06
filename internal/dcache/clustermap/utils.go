@@ -44,6 +44,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 var (
 	MinUnixEpoch int64 = 1735689600 // Jan 1 2025, safe lowerlimit for Unix epoch validity check
 	MaxUnixEpoch int64 = 2524608000 // Jan 1 2050, safe upperlimit for Unix epoch validity check
@@ -315,6 +317,7 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 // If myRVs is true it means that rvs is a list of my RVs.
 func IsValidRVList(rvs []dcache.RawVolume, myRVs bool) (bool, error) {
 	myNodeID, err := common.GetNodeUUID()
+	_ = err
 	common.Assert(err == nil, fmt.Sprintf("Failed to get our NodeId [%v]", err))
 	common.Assert(len(rvs) > 0)
 
