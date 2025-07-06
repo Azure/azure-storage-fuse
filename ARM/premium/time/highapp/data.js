@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1751192423624,
+  "lastUpdate": 1751792995173,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -585,6 +585,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 30.42447566986084,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "9fd527bf3c9d1c94ddb1f97083248208392e9fdb",
+          "message": "fix rhel package installer in nightly pipeline (#1853)",
+          "timestamp": "2025-07-04T12:07:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/9fd527bf3c9d1c94ddb1f97083248208392e9fdb"
+        },
+        "date": 1751792994909,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 24.102647304534912,
+            "unit": "seconds"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 30.47691798210144,
             "unit": "seconds"
           }
         ]
