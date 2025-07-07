@@ -241,6 +241,10 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
+			if !os.IsNotExist(err) && err != syscall.ENOENT {
+				// Any error other than ENOENT, we should retry.
+				continue
+			}
 			return nil, nil, err
 		}
 
@@ -254,7 +258,11 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
 			common.Assert(false, err)
-			return nil, nil, err
+			//
+			// Since GetPropertiesFromStorage() succeeded this must be a transient error, so retry.
+			// In the rare case that the Blob is deleted, it'll cause just one additional retry.
+			//
+			continue
 		}
 
 		attr1, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
@@ -262,7 +270,8 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
-			return nil, nil, err
+			// Must be transient error, so retry.
+			continue
 		}
 
 		// Must have a valid etag.
