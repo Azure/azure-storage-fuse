@@ -500,7 +500,8 @@ retry:
 		rm.tp.schedule(&workitem{
 			targetNodeID: targetNodeID,
 			rvName:       rvName,
-			putChunkReq:  putChunkDCReq.Request,
+			reqType:      putChunkRequest,
+			rpcReq:       putChunkDCReq.Request,
 			respChannel:  responseChannel,
 		}, isLastComponentRV /* runInline */)
 
@@ -539,7 +540,8 @@ retry:
 			rm.tp.schedule(&workitem{
 				targetNodeID: targetNodeID,
 				rvName:       rvName,
-				putChunkReq:  putChunkReq,
+				reqType:      putChunkRequest,
+				rpcReq:       putChunkReq,
 				respChannel:  responseChannel,
 			}, isLastComponentRV /* runInline */)
 		}
@@ -632,10 +634,11 @@ processResponses:
 		}
 
 		if respItem.err == nil {
-			common.Assert(respItem.putChunkResp != nil)
+			common.Assert(respItem.rpcResp != nil)
+			common.Assert(respItem.rpcResp.(*models.PutChunkResponse) != nil)
 
 			log.Debug("ReplicationManager::WriteMV: PutChunk successful for %s/%s, RPC response: %s",
-				respItem.rvName, req.MvName, rpc.PutChunkResponseToString(respItem.putChunkResp))
+				respItem.rvName, req.MvName, rpc.PutChunkResponseToString(respItem.rpcResp.(*models.PutChunkResponse)))
 
 			//
 			// Write to this component RV was successful, add it to the list of RVs successfully written
@@ -649,7 +652,7 @@ processResponses:
 		log.Err("ReplicationManager::WriteMV: PutChunk to %s/%s failed [%v]",
 			respItem.rvName, req.MvName, respItem.err)
 
-		common.Assert(respItem.putChunkResp == nil)
+		common.Assert(respItem.rpcResp == nil)
 
 		rpcErr := rpc.GetRPCResponseError(respItem.err)
 		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
@@ -846,7 +849,12 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	mvState, rvs, _ := getComponentRVsForMV(req.MvName)
 	retryNeeded := false
 
-	for _, rv := range rvs {
+	//
+	// Response channel to receive response for the RemoveChunk RPCs sent to each component RV.
+	//
+	responseChannel := make(chan *responseItem, len(rvs))
+
+	isRvEligibleForDeletion := func(rv *models.RVNameAndState) bool {
 		//
 		// We can only safely delete chunks from component RVs that are online.
 		// From offline RVs we cannot delete, as they may not be reachable.
@@ -868,7 +876,16 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 				//
 				retryNeeded = true
 			}
+			return false
+		}
+		return true
+	}
 
+	// Schedule rpc Requests for RemoveChunk RPC for all RVs in parallel.
+	for i, rv := range rvs {
+
+		if !isRvEligibleForDeletion(rv) {
+			responseChannel <- nil
 			continue
 		}
 
@@ -880,7 +897,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 		rvId := getRvIDFromRvName(rv.Name)
 		targetNodeId := getNodeIDFromRVName(rv.Name)
 
-		rpcReq := &models.RemoveChunkRequest{
+		removeChunkReq := &models.RemoveChunkRequest{
 			Address: &models.Address{
 				FileID:      req.FileID,
 				RvID:        rvId,
@@ -890,11 +907,26 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 			ComponentRV: rvs,
 		}
 
-		// Removing all chunks may take time, so we wait longer than usual RPCs.
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+		isLastComponentRV := (i == (len(rvs) - 1))
+		rm.tp.schedule(&workitem{
+			targetNodeID: targetNodeId,
+			rvName:       rv.Name,
+			reqType:      removeChunkRequest,
+			rpcReq:       removeChunkReq,
+			respChannel:  responseChannel,
+		}, isLastComponentRV /* runInline */)
+	}
 
-		rpcResp, err := rpc_client.RemoveChunk(ctx, targetNodeId, rpcReq)
+	// Get the responses for all the RPC requests.
+	for _, rv := range rvs {
+		respItem := <-responseChannel
+		if respItem == nil {
+			// The request for this RV is not Scheduled.
+			continue
+		}
+
+		err := respItem.err
+		rpcResp := respItem.rpcResp.(*models.RemoveChunkResponse)
 		if err == nil {
 			//
 			// Status success with numChunksdeleted==0 signifies RemoveChunk was able to successfully delete all
@@ -904,16 +936,15 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 			// deleted.
 			//
 			if rpcResp.NumChunksDeleted != 0 {
-				err = fmt.Errorf("delete partial success for %s/%s fileID: %s, node %s, NumChunksDeleted: %d",
-					rv.Name, req.MvName, req.FileID, targetNodeId, rpcResp.NumChunksDeleted)
-				log.Debug("ReplicationManager::RemoveMV: %v", err)
-				return nil, err
+				log.Info("ReplicationManager::RemoveMV: Delete partial success for %s/%s fileID: %s, NumChunksDeleted: %d",
+					rv.Name, req.MvName, req.FileID, rpcResp.NumChunksDeleted)
+				retryNeeded = true
 			}
 		} else {
+			// Any error in deletion will cause GC to requeue and retry.
 			log.Err("ReplicationManager::RemoveMV: Failed to delete chunks from %s/%s, fileID: %s: %v",
 				rv.Name, req.MvName, req.FileID, err)
-			// Any error in deletion will cause GC to requeue and retry.
-			return nil, err
+			retryNeeded = true
 		}
 	}
 
