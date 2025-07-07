@@ -949,7 +949,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	}
 
 	if retryNeeded {
-		err := fmt.Errorf("Retry needed as some RVs of %s may be synchronizing, fileID: %s, RVs: %v",
+		err := fmt.Errorf("retry needed as some RVs of %s may be synchronizing, fileID: %s, RVs: %v",
 			req.MvName, req.FileID, rvs)
 		log.Err("ReplicationManager::RemoveMV: %v", err)
 		return nil, err
