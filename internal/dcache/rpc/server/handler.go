@@ -1402,6 +1402,8 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 			if !clustermapRefreshed {
 				rpcErr := mv.refreshFromClustermap()
 				if rpcErr != nil {
+					log.Err("ChunkServiceHandler::validateComponentRVsInSync: Failed to refresh clustermap [%s]",
+						rpcErr.String())
 					return rpcErr
 				}
 				clustermapRefreshed = true
@@ -1828,6 +1830,8 @@ refreshFromClustermapAndRetry:
 				if !clustermapRefreshed {
 					rpcErr := mvInfo.refreshFromClustermap()
 					if rpcErr != nil {
+						log.Err("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
+							rpcErr.String())
 						return nil, rpcErr
 					}
 					clustermapRefreshed = true
@@ -2605,6 +2609,8 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 			if !clustermapRefreshed {
 				rpcErr := mvInfo.refreshFromClustermap()
 				if rpcErr != nil {
+					log.Err("ChunkServiceHandler::UpdateMV: Failed to refresh clustermap [%s]",
+						rpcErr.String())
 					return nil, rpcErr
 				}
 				clustermapRefreshed = true
