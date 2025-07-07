@@ -21,7 +21,13 @@ parameters:
 
   - name: exhaustive_test
     # Quick test or an exhaustive test
-    displayName: 'Run E2E tests on all distros'
+    displayName: 'Run E2E tests on all UBUNTU distros'
+    type: boolean
+    default: true
+
+  - name: include_other_distros
+    # Quick test or an exhaustive test
+    displayName: 'Run E2E tests on all non-UBUNTU distros'
     type: boolean
     default: true
 
@@ -576,7 +582,7 @@ stages:
                   delete_containers: true
 
 
-        - ${{ if eq(parameters.exhaustive_test, true) }}:
+        - ${{ if eq(parameters.include_other_distros, true) }}:
           # Run E2E tests on different distros
           - job: Set_5
             continueOnError: true

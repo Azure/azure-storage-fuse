@@ -35,7 +35,7 @@ steps:
   # Huge Directory Listing Testing
 
   # Directory Listing Tests
-  - script: ls -1 $(MOUNT_DIR)/huge | wc -l
+  - script: ls -1 $(MOUNT_DIR)/ | wc -l
     timeoutInMinutes: 120
     displayName: 'HugeList: ${{ parameters.idstring }} Listing'
     continueOnError: false
