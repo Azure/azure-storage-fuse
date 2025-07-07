@@ -1700,7 +1700,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	}
 
 	//
-	// Helper function to remove an RV from a given node.
+	// Helper function to remove given RV(s) from their corresponding node in nodeToRvs.
 	// This is called when an RV is found to be "bad" and we don't want to use it for subsequent RV
 	// allocations.
 	//
@@ -2079,7 +2079,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// If we fail to fix the MV we simply return leaving the broken MV in existingMVMap.
 			// TODO: We should add retries here.
 			//
-			log.Err("ClusterManager::fixMV: Error joining RVs %v with MV %s: %v, reverting [%+v -> %+v]",
+			log.Err("ClusterManager::fixMV: Error joining RV(s) %v with MV %s: %v, reverting [%+v -> %+v]",
 				failedRVs, mvName, err, mv.RVs, savedRVs)
 
 			mv.RVs = savedRVs
@@ -2409,7 +2409,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			common.Assert(numUsableMVs <= len(existingMVMap), numUsableMVs, len(existingMVMap))
 		} else {
 			// TODO: Give up reallocating RVs after a few failed attempts.
-			log.Err("ClusterManager::updateMVList: Error joining RVs %v with MV %s: %v",
+			log.Err("ClusterManager::updateMVList: Error joining RV(s) %v with MV %s: %v",
 				failedRVs, mvName, err)
 
 			deleteRVsFromNode(failedRVs)
@@ -2577,7 +2577,10 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 
 			if err != nil {
 				log.Err("ClusterManager::joinMV: error %s MV %s with RV %s: %v", action, mvName, rvName, err)
-				errCh <- rpcCallComponentRVError{rvName: rvName, err: fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rvName, err)}
+				errCh <- rpcCallComponentRVError{
+					rvName: rvName,
+					err:    fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rvName, err),
+				}
 				return
 			}
 			log.Debug("ClusterManager::joinMV: Success %s MV %s with RV %s", action, mvName, rvName)
@@ -2588,7 +2591,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 			// not transactional, each RV holds an mvInfo state change till some timeout period and if the clustermap
 			// state change is not observed till the timeout, it assumes that the sender failed to commit and rolls
 			// back the mvInfo state change. We need to make sure the first RV and all other RVs to which we sent
-			// JoinMV have not timed out it's mvInfo state change. We will have some margin for caller to update the
+			// JoinMV have not timed out their mvInfo state change. We will have some margin for caller to update the
 			// clustermap.
 			//
 			if time.Since(startTime) > rpc_server.GetMvInfoTimeout() {
@@ -2597,7 +2600,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 				log.Err("ClusterManager::joinMV: %s", errStr)
 				common.Assert(false, errStr)
 				// TODO: This RV is not necessarily the real culprit.
-				errCh <- rpcCallComponentRVError{rvName, fmt.Errorf(errStr)}
+				errCh <- rpcCallComponentRVError{rvName: rvName, err: fmt.Errorf(errStr)}
 			}
 		}(rvName, rvState)
 	}
@@ -2611,6 +2614,9 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 		failedRVs = append(failedRVs, errRes.rvName)
 	}
 
+	//
+	// Error from any JoinMV/UpdateMV RPC call is considered a failure and we return the list of failed RVs.
+	//
 	if len(allErrs) > 0 {
 		return failedRVs, fmt.Errorf("ClusterManager::joinMV: errors:\n%s", strings.Join(allErrs, "\n"))
 	}
@@ -2624,8 +2630,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 // existingRVMap is updated in-place.
 //
 // Note: updateRVList() MUST be called after successfully claiming ownership of clusterMap update, by a successful
-//
-//	call to UpdateClusterMapStart().
+//       call to UpdateClusterMapStart().
+
 func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolume, onlyMyRVs bool) (bool, error) {
 	hbTillNodeDown := int64(cmi.config.HeartbeatsTillNodeDown)
 	hbSeconds := int64(cmi.config.HeartbeatSeconds)
@@ -2730,7 +2736,9 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
 			// This is not a common occurrence, emit a warning log.
 			//
-			// For onlyMyRV==true, case we cannot perfrom this operation as we don't have the exhaustive list of  HBs.
+			// For onlyMyRV==true, case we cannot perfrom this operation as we don't have the exhaustive
+			// list of  HBs.
+			//
 			if rvInClusterMap.State != dcache.StateOffline {
 				log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats, did you delete the hb file out-of-band?", rvName, rvInClusterMap)
 				rvInClusterMap.State = dcache.StateOffline
@@ -2792,20 +2800,27 @@ func getAllNodesFromRVMap(rvMap map[string]dcache.RawVolume) map[string]struct{}
 	return nodesMap
 }
 
-// For all the given NodeIds, fetch the heartbeat parallely controlled by semaphore to 100 simultaneous requests and return the map of RVs and map of their last heartbeat by RVId.
+// For all the nodes in nodeIds, fetch their latest heartbeats.
+// It returns the following:
+// - All the RVs present in those nodes.
+// - The last heartbeat epoch for each of the RVs.
+// Both these are returned as maps indexed by RVId.
+//
+// Note: It fetches the heartbeat for multiple nodes in parallel, currently limited to 100 parallel calls.
 func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, map[string]uint64, error) {
-	// Results channel to collect data from each goroutine
+	// Results channel to collect data from each goroutine.
 	type rvHBResult struct {
+		// Raw volumes, indexed by RVId.
 		rvs map[string]dcache.RawVolume
+		// Last heartbeat epoch for the raw volume, indexed by RVId.
 		hbs map[string]uint64
 	}
 	resultCh := make(chan rvHBResult, len(nodeIds))
+	errCh := make(chan error, len(nodeIds))
 	var wg sync.WaitGroup
 
 	// Limit concurrency to 100 goroutines.
 	sem := make(chan struct{}, 100)
-
-	errCh := make(chan error, len(nodeIds))
 
 	for _, nodeId := range nodeIds {
 		wg.Add(1)
@@ -2831,9 +2846,9 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 				common.Assert(false, err)
 				errCh <- fmt.Errorf("failed to parse heartbeat bytes (%d) for node %s: %v",
 					len(bytes), nodeId, err)
-
 				return
 			}
+
 			isValidHb, err := cm.IsValidHeartbeat(&hbData)
 			if !isValidHb {
 				common.Assert(false, err)
@@ -2842,17 +2857,17 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 				return
 			}
 
-			// Process RVs locally
-			localRVs := make(map[string]dcache.RawVolume)
-			localLastHB := make(map[string]uint64)
+			// Process RVs and their last heartbeat from the heartbeat data for this node.
+			nodeRVs := make(map[string]dcache.RawVolume)
+			nodeHBs := make(map[string]uint64)
 
 			for _, rv := range hbData.RVList {
-				localRVs[rv.RvId] = rv
-				localLastHB[rv.RvId] = hbData.LastHeartbeat
+				nodeRVs[rv.RvId] = rv
+				nodeHBs[rv.RvId] = hbData.LastHeartbeat
 			}
 
-			// Send result to channel
-			resultCh <- rvHBResult{rvs: localRVs, hbs: localLastHB}
+			// Send result to channel.
+			resultCh <- rvHBResult{rvs: nodeRVs, hbs: nodeHBs}
 		}(nodeId)
 	}
 	wg.Wait()
@@ -2860,6 +2875,9 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 	close(errCh)
 	close(resultCh)
 
+	//
+	// Aggregated results from all nodes.
+	//
 	rVsByRvIdFromHB := make(map[string]dcache.RawVolume)
 	rvLastHB := make(map[string]uint64)
 
@@ -2867,25 +2885,35 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 	for result := range resultCh {
 		for rvId, rv := range result.rvs {
 			if existingRv, exists := rVsByRvIdFromHB[rvId]; exists {
-				msg := fmt.Sprintf("Overlapping RVId %s in heartbeat with node %s)",
-					rv.RvId, existingRv.NodeId)
-				common.Assert(false, msg)
+				msg := fmt.Sprintf("RVId %s from node %s overlaps with existing RV from node %s",
+					rv.RvId, rv.NodeId, existingRv.NodeId)
 				log.Err("ClusterManager::collectHBForGivenNodeIds: %s, skipping!", msg)
+				common.Assert(false, msg)
 				continue
 			}
 
+			// For every RVId in result.rvs, we must have the last heartbeat in result.hbs.
+			lastHB, ok := result.hbs[rvId]
+			common.Assert(ok, rvId)
+
 			rVsByRvIdFromHB[rvId] = rv
-			rvLastHB[rvId] = result.hbs[rvId]
+			rvLastHB[rvId] = lastHB
 		}
 	}
 
-	var allErrs []string
-	for err := range errCh {
-		allErrs = append(allErrs, err.Error())
+	if len(errCh) > 0 {
+		log.Err("ClusterManager::collectHBForGivenNodeIds: Errors encountered while fetching heartbeats:")
+		for err := range errCh {
+			log.Err("ClusterManager::collectHBForGivenNodeIds: %v", err)
+		}
 	}
 
-	if len(allErrs) > 0 {
-		return nil, nil, fmt.Errorf("ClusterManager::collectHBForGivenNodeIds: errors:\n%s", strings.Join(allErrs, "\n"))
+	//
+	// If we are able to collect heartbeats for any node, return the fetched heartbeats, else treat the entire
+	// operation as failure.
+	//
+	if len(rVsByRvIdFromHB) == 0 {
+		return nil, nil, fmt.Errorf("ClusterManager::collectHBForGivenNodeIds: Could not fetch any HB")
 	}
 
 	return rVsByRvIdFromHB, rvLastHB, nil
