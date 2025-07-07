@@ -72,6 +72,46 @@ const (
 	MAX_SIMUL_SYNC_JOBS = 1000
 )
 
+type PutChunkStyleEnum int
+
+const (
+	//
+	// Originator calls PutChunk for each component RV in parallel.
+	//
+	OriginatorSendsToAll PutChunkStyleEnum = iota
+
+	//
+	// Originator writes to the local component RV (if any) and calls PutChunkDC (with the list of remaining
+	// component RV) to the next component RV, which will then write locally and send PutChunkDC to the next
+	// component RV (with a smaller list of component RVs) and so on.
+	// This has the advantage that the overall file write throughput is not limited by the egress throughput
+	// of the originator node.
+	//
+	DaisyChain
+)
+
+func (s PutChunkStyleEnum) String() string {
+	switch s {
+	case OriginatorSendsToAll:
+		return "OriginatorSendsToAll"
+	case DaisyChain:
+		return "DaisyChain"
+	default:
+		common.Assert(false, s)
+		return "Unknown"
+	}
+}
+
+// We will experiment with various PutChunk styles on various cluster sizes (with varying storage and n/w throughput
+// and different NumReplicas configuration).
+var PutChunkStyle PutChunkStyleEnum = DaisyChain
+
+// Return the most suitable online RV from the list of component RVs to which we should send the RPC call.
+// The RV is selected based on the following criteria:
+//  1. Local online RV is preferred, if available.
+//  2. Else, select a random online RV from the list of component RVs.
+//
+// This method also takes an excludeRVs list, which is used to skip the RVs that should not be selected.
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
 	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v",
 		rpc.ComponentRVsToString(componentRVs), excludeRVs)
@@ -156,6 +196,11 @@ func getRvIDFromRvName(rvName string) string {
 	return cm.RvNameToId(rvName)
 }
 
+// return the RV name for the given RV ID
+func getRvNameFromRvID(rvId string) string {
+	return cm.RvIdToName(rvId)
+}
+
 // return the node ID for the given rvName
 func getNodeIDFromRVName(rvName string) string {
 	return cm.RVNameToNodeId(rvName)
@@ -202,6 +247,40 @@ func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 
 	// RV is not present in the list.
 	common.Assert(false, rpc.ComponentRVsToString(rvs), rvName)
+}
+
+// Add the PutChunkDCResponse to the response channel.
+func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, responseChannel chan *responseItem) {
+	common.Assert(response != nil)
+	common.Assert(response.Responses != nil)
+	// There shouldn't be any PutChunkDCResponse with no responses.
+	common.Assert(len(response.Responses) > 0)
+
+	for rvName, resp := range response.Responses {
+		common.Assert(cm.IsValidRVName(rvName), rvName)
+		common.Assert(resp != nil)
+		common.Assert(len(responseChannel) < int(getNumReplicas()),
+			len(responseChannel), getNumReplicas())
+
+		var err error
+
+		if resp.Error != nil {
+			// One and only one of Response and Error will be nil/non-nil.
+			common.Assert(resp.Response == nil)
+			err = resp.Error
+		} else {
+			common.Assert(resp.Response != nil)
+		}
+
+		responseChannel <- &responseItem{
+			rvName:       rvName,
+			putChunkResp: resp.Response,
+			err:          err,
+		}
+	}
+
+	common.Assert(len(responseChannel) == int(getNumReplicas()),
+		len(responseChannel), getNumReplicas())
 }
 
 func init() {

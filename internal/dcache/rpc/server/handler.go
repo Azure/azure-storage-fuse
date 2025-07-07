@@ -35,18 +35,24 @@ package rpc_server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	gouuid "github.com/google/uuid"
@@ -154,6 +160,11 @@ type mvInfo struct {
 	// Since there's a finite time before a node responds positively to an RPC and before the update can be
 	// committed in the clustermap, we have to wait for some timeout period before we can consider the
 	// transaction as incomplete and can revert it. See mvInfoTimeout.
+	//
+	// Thus, after a workflow like JoinMV/StartSync/EndSync updates the rvInfo state and till mvInfoTimeout,
+	// we do not allow the rvInfo state to be changed, during that time RPCs that want to change the componentRVs
+	// will fail with ErrorCode_InvalidRV and the caller will need to handle this appropriately. For a JoinMV, it
+	// will skip this RV, for a StartSync it'll defer the sync for later.
 	//
 	// lmt - Last Modified Time
 	// lmb - Last Modified By
@@ -306,6 +317,20 @@ func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState,
 		lmt:          time.Now(),
 		lmb:          joinedBy,
 	}
+}
+
+// This is a test trick to dummy out the reads/writes in order to test files larger than the RV available space.
+// Dummy writes simply skip and no chunks are created, while dummy reads return 0s.
+func performDummyReadWrite() bool {
+	if !common.IsDebugBuild() {
+		return false
+	}
+
+	// Test for the presence of the special marker file.
+	dummyFile := "/tmp/DCACHE_DUMMY_RW"
+
+	_, err := os.Stat(dummyFile)
+	return err == nil
 }
 
 // Check if the given mvPath is valid on this node.
@@ -803,6 +828,7 @@ func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcach
 
 // From the list of component RVs for this MV return RVNameAndState for the requested RV, if not found returns nil.
 func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndState {
+	common.Assert(cm.IsValidRVName(rvName), rvName, mv.mvName, mv.rv.rvName)
 	mv.rwMutex.RLock()
 	defer mv.rwMutex.RUnlock()
 
@@ -825,7 +851,7 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 	return nil
 }
 
-// Refresh componentRVs for the MV.
+// Refresh componentRVs for the MV, from the clustermap.
 //
 // Description:
 // Any workflow that updates an MV's membership information (either component RVs and/or their states)
@@ -838,13 +864,26 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 //
 // Thus, an incoming request's component RVs may not match the rvInfo's component RVs for one of two reasons:
 // 1. The sender has a stale clustermap.
-// 2. rvInfo has inconsistent info due to the partially applied change.
+// 2. rvInfo has inconsistent info due to the previous partially applied change.
 //
 // So, whenever a request and mvInfo's component RV details don't match, the server needs to refresh its
 // membership details from the clustermap and if there still is a mismatch indicating client using stale
 // clustermap, fail the call with NeedToRefreshClusterMap asking the sender to refresh too. This function
-// helps to refresh the rvInfo component RV details.
-func (mv *mvInfo) refreshFromClustermap() error {
+// helps to refresh the rvInfo component RV details from the clustermap.
+//
+// Note that it returns a failure if the rvInfo state change corresponds to a valid ongoing transaction
+// for which the clustermap is not yet updated and hence we cannot revert the rvInfo change to match the
+// clustermap.
+//
+// Return values:
+// - nil on success, in which case the mvInfo componentRVs are updated to match the clustermap.
+// - models.ErrorCode_InvalidRV if rvInfo cannot be refreshed from the clustermap due to an ongoing transaction.
+// - models.ErrorCode_NeedToRefreshClusterMap on any failure, in which case the mvInfo componentRVs are not
+//   updated. We return this error anyways so that the client can refresh its clustermap and retry the RPC.
+//   This provides resilience against any temporary error in reading clustermap as we will again get to perform
+//   this check when client retries.
+
+func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 	log.Debug("mvInfo::refreshFromClustermap: %s/%s", mv.rv.rvName, mv.mvName)
 
 	//
@@ -853,25 +892,37 @@ func (mv *mvInfo) refreshFromClustermap() error {
 	//
 	err := cm.RefreshClusterMap(0 /* higherThanEpoch */)
 	if err != nil {
-		err := fmt.Errorf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rv.rvName, mv.mvName, err)
-		log.Err("%v", err)
-		common.Assert(false, err)
-		return err
+		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rv.rvName, mv.mvName, err)
+		log.Err("%s", errStr)
+		common.Assert(false, errStr)
+		return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
 	// Get component RV details from the just refreshed clustermap.
 	newRVs := cm.GetRVs(mv.mvName)
 	if newRVs == nil {
-		err := fmt.Errorf("mvInfo::refreshFromClustermap: GetRVs(%s) failed", mv.mvName)
-		log.Err("%v", err)
-		common.Assert(false, err)
-		return err
+		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: GetRVs(%s) failed", mv.mvName)
+		log.Err("%s", errStr)
+		common.Assert(false, errStr)
+		return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
+	//
+	// Must have the hosting RV in the componentRVs list.
+	//
+	myRvInfo := mv.getComponentRVNameAndState(mv.rv.rvName)
+	common.Assert(myRvInfo != nil, mv.rv.rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs))
+
+	//
 	// Convert newRVs from RV Name->State map, to RVNameAndState slice.
+	// Later we will use this to update the mvInfo componentRVs.
+	//
+	// Note: We do it before checking the RV states, so that we can correctly update the component RV
+	//       state to offline if the RV is offline in the clustermap.
+	//
 	var newComponentRVs []*models.RVNameAndState
 	for rvName, rvState := range newRVs {
-		common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState)
+		common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState, mv.rv.rvName)
 
 		//
 		// degrade-mv workflow marks component RVs as offline, for the RVs which are marked offline,
@@ -885,54 +936,87 @@ func (mv *mvInfo) refreshFromClustermap() error {
 			log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is offline, marking component RV state as offline",
 				rvName, mv.mvName, rvState)
 			rvState = dcache.StateOffline
+			newRVs[rvName] = rvState
 		}
 
 		newComponentRVs = append(newComponentRVs, &models.RVNameAndState{
 			Name:  rvName,
 			State: string(rvState),
 		})
+	}
 
+	//
+	// We should refresh our incore rvInfo/mvInfo details from the clustermap but only if it doesn't amount
+	// to reverting a legitimate change that was done by a very recent RPC and for which the corresponding
+	// clustermap update might be in progress. Note that we are responsible for our local RV (mv.rv) and we
+	// MUST NOT allow any illegal change to that component RV state. For other component RVs we simply accept
+	// the change suggested by the clustermap.
+	//
+	// What we want to do?
+	// - Clear/revert stale/stuck mvInfo/rvInfo due to incomplete state change transaction where the incore
+	//   mvInfo/rvInfo was changed but the change couldn't be persisted in the clustermap.
+	//
+	// What we want to avoid?
+	// - Clear/revert a legitimate ongoing mvInfo/rvInfo change in case some other node makes an invalid RPC
+	//   call as the change was still not persisted in the clustermap.
+	//
+	// Why can't we unconditionally refresh the mvInfo/rvInfo state from the latest clustermap?
+	// - Note that our state changes are not strictly transactional, we provide a semblance of transaction
+	//   by sender sending the state change RPC (JoinMV/UpdateMV/StartSync/EndSync) to all involved RVs and
+	//   only when all of them respond successfully, it commits the change in the clustermap. If any of the
+	//   RV fails the RPC the sender doesn't commit the state change but it doesn't send undo RPCs, so the
+	//   RVs which responded positively have invalid state not matching the clustermap in rvInfo/mvInfo.
+	//   Any future RPC will find that the sender's state (which it got from clustermap) doesn't match the
+	//   rvInfo state, this will trigger a clustermap refresh at the server as well as sender, causing update
+	//   of the RV state from the clustermap (our rollback mechanism). This has one issue though, we cannot
+	//   let the state be reverted till some reasonable timeout period since the sender will take some time
+	//   to commit the state change in the clustermap. This is to not revert a legitimate ongoing state change.
+	//   Timeout must be large enough to safely consider the state difference between rvInfo and clustermap
+	//   as being due to incomplete state change workflow (JoinMV/StartSync etc) and not a transient state
+	//   of an ongoing transaction.
+	//
+	clusterMapWantsToChangeMyRV := false
+
+	stateAsPerClustermap, isPresentInClusterMap := newRVs[mv.rv.rvName]
+	if !isPresentInClusterMap || string(stateAsPerClustermap) != myRvInfo.State {
 		//
-		// If it's the RV hosting this MV locally we have some more checks/updates, else continue.
-		// Some state transitions require few things to be updated. See below.
+		// My RV is being removed from the component RV list for this MV, or
+		// my RV state is being changed.
 		//
-		if mv.rv.rvName != rvName {
-			continue
+		clusterMapWantsToChangeMyRV = true
+
+		if !isPresentInClusterMap {
+			//
+			// clustermap doesn't have my RV, indicate that by StateInvalid.
+			// A likely case is if an offline RV is replaced by a new RV by the fix-mv workflow,
+			// the first JoinMV RPC will cause rvInfo for the new RV to be set to StateOutOfSync.
+			// Before the clustermap is updated with this new RV, if some node also runs the fix-mv
+			// workflow with the same new RV, it'll be a case of double join and to us (the hosting RV)
+			// it'll appear as if the new RV is being removed from the clustermap's component RVs list.
+			//
+			stateAsPerClustermap = dcache.StateInvalid
 		}
+	}
 
+	if clusterMapWantsToChangeMyRV {
 		//
-		// Must have the hosting RV in the componentRVs list.
-		//
-		oldRvNameAndState := mv.getComponentRVNameAndState(rvName)
-		common.Assert(oldRvNameAndState != nil, rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs))
-
-		//
-		// Following code checks for various cases of stale/stuck mvInfo due to incomplete state change
-		// transaction. Note that our state changes are not strictly transactional, we provide a semblance
-		// of transaction by sender sending the state change RPC (JoinMV/UpdateMV/StartSync/EndSync) to all
-		// involved RVs and only when all of them respond successfully, it commits the change in the clustermap.
-		// If any of the RV fails the RPC the sender doesn't commit the state change but it doesn't send undo
-		// RPCs, so the RVs which responded positively have invalid state not matching the clustermap. Any
-		// future RPC will see that the sender's state (which it got from clustermap) doesn't match the rvInfo
-		// state, this will trigger a clustermap refresh at the server as well as sender, causing update of the
-		// RV state from the clustermap (our rollback mechanism). This has one issue though, we cannot let the
-		// state be reverted till some reasonable timeout period since the sender will take some time to commit
-		// the state change in the clustermap. This is to not revert a legitimate ongoing state change.
-		// Timeout must be large enough to safely consider the state difference between rvInfo and clustermap
-		// as being due to incomplete state change workflow (JoinMV/StartSync etc) and not a transient state
-		// of an ongoing transaction.
+		// Don't allow rvInfo/mvInfo changes corresponding to ongoing updates to be reverted.
 		//
 		if time.Since(mv.lmt) < mvInfoTimeout {
-			log.Debug("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s)",
-				rvName, mv.mvName, rvState, oldRvNameAndState.State, time.Since(mv.lmt), mvInfoTimeout)
-			continue
+			errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s)",
+				mv.rv.rvName, mv.mvName, stateAsPerClustermap, myRvInfo.State, time.Since(mv.lmt), mvInfoTimeout)
+			log.Err("%s", errStr)
+			return rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
 		}
 
-		log.Info("mvInfo::refreshFromClustermap: %s/%s state change (clustermap:%s -> rvInfo:%s), timed out (%s >= %s)",
-			rvName, mv.mvName, rvState, oldRvNameAndState.State, time.Since(mv.lmt), mvInfoTimeout)
-
 		//
-		// StateOutOfSync -> StateOffline
+		// OK, it's not the case of an ongoing state change, so we can safely revert the rvInfo/mvInfo.
+		// Look for various valid rollback scenarios and revert the rvInfo/mvInfo along with anything
+		// else needed.
+		//
+		// Rollback from:
+		// StateOutOfSync -> StateOffline, or
+		// StateOutOfSync -> not present in clustermap.
 		//
 		// An outofsync component RV is marked by a JoinMV RPC call sent as a result of the fix-mv workflow.
 		// It marks reservedSpace in the mvInfo and rvInfo to reserve the space needed for sync'ing the MV
@@ -940,19 +1024,34 @@ func (mv *mvInfo) refreshFromClustermap() error {
 		// the EndSync processing, after the sync has copied data to the new MV replica. At this point
 		// mvInfo.totalChunkBytes will be increased by mvInfo.reservedSpace, and rvInfo.reservedSpace will
 		// be reduced by mvInfo.reservedSpace and mvInfo.reservedSpace will be set to 0.
-		// If the mvInfo has the state as StateOutOfSync while clustermap has the state as StateOffline,
-		// this means the fix-mv workflow didn't complete successfully so we need to rollback the reserved
-		// space changes.
 		//
-		if oldRvNameAndState.State == string(dcache.StateOutOfSync) && rvState == dcache.StateOffline {
-			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
-				rvName, mv.mvName, oldRvNameAndState.State, rvState, mv.reservedSpace.Load())
+		// Hence if our in-core mvInfo has the state of a component RV as StateOutOfSync while clustermap either
+		// - has the same RV with state StateOffline, or,
+		// - doesn't have that component RV present,
+		// it means the fix-mv workflow didn't complete successfully so we need to rollback the reserved space
+		// changes.
+		// Note that the first one represents the case where same RV was used as the replacement RV as it came
+		// back online, while the second one is the more common case of a different RV picked as the replacement
+		// RV.
+		//
+		if myRvInfo.State == string(dcache.StateOutOfSync) {
+			//
+			// Since all state transitions of an RV must be approved by the RV before they are committed
+			// to clustermap, there can only be the following valid transitions for an RV.
+			//
+			common.Assert(!isPresentInClusterMap || stateAsPerClustermap == dcache.StateOffline,
+				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap, isPresentInClusterMap)
+
+			log.Warn("mvInfo::refreshFromClustermap: Rolling back %s/%s (%s -> %s (present: %v)), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
+				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap,
+				isPresentInClusterMap, mv.reservedSpace.Load())
 
 			mv.rv.decReservedSpace(mv.reservedSpace.Load())
 			mv.reservedSpace.Store(0)
 		}
 
 		//
+		// Rollback from:
 		// StateSyncing -> StateOutOfSync
 		//
 		// Consider the following case:
@@ -972,17 +1071,24 @@ func (mv *mvInfo) refreshFromClustermap() error {
 		//
 		// Note: We also must consider "offline" RVs, as an "outofsync" RV in clustermap can also go offline.
 		//
-		if oldRvNameAndState.State == string(dcache.StateSyncing) &&
-			(rvState == dcache.StateOutOfSync || rvState == dcache.StateOffline) {
+		if myRvInfo.State == string(dcache.StateSyncing) {
+			//
+			// Since all state transitions of an RV must be approved by the RV before they are committed
+			// to clustermap, there can only be the following valid transitions for an RV.
+			//
+			common.Assert(isPresentInClusterMap &&
+				(stateAsPerClustermap == dcache.StateOutOfSync ||
+					stateAsPerClustermap == dcache.StateOffline),
+				mv.rv.rvName, mv.mvName, stateAsPerClustermap, isPresentInClusterMap)
 			//
 			// Only a target replica can be in StateSyncing and a target replica MUST have one and
 			// only one syncJob, clear that.
 			//
-			common.Assert(mv.syncJobsCount.Load() == 1, rvName, mv.mvName, mv.syncJobsCount.Load(),
+			common.Assert(mv.syncJobsCount.Load() == 1, mv.rv.rvName, mv.mvName, mv.syncJobsCount.Load(),
 				mv.getSyncJobs(), rpc.ComponentRVsToString(mv.componentRVs))
 
-			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
-				rvName, mv.mvName, oldRvNameAndState.State, rvState, mv.getSyncJobs())
+			log.Warn("mvInfo::refreshFromClustermap: Rolling back %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
+				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap, mv.getSyncJobs())
 
 			mv.deleteAllSyncJobs()
 		}
@@ -998,10 +1104,6 @@ func (mv *mvInfo) refreshFromClustermap() error {
 	// We force the update as this is the membership info that we got from clustermap.
 	//
 	mv.updateComponentRVs(newComponentRVs, true /* forceUpdate */, rpc.GetMyNodeUUID())
-
-	//
-	// TODO: Remove any syncJobs which are no longer running.
-	//
 
 	return nil
 }
@@ -1174,7 +1276,13 @@ func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState
 		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq, checkState)
 		if err != nil {
 			if !clustermapRefreshed {
-				mv.refreshFromClustermap()
+				rpcErr := mv.refreshFromClustermap()
+				if rpcErr != nil {
+					errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]",
+						mv.mvName, rpcErr.String())
+					log.Err("ChunkServiceHandler::isComponentRVsValid: %s", errStr)
+					return rpc.NewResponseError(rpcErr.Code, errStr)
+				}
 				clustermapRefreshed = true
 				continue
 			}
@@ -1298,7 +1406,12 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 				errStr, clustermapRefreshed)
 
 			if !clustermapRefreshed {
-				mv.refreshFromClustermap()
+				rpcErr := mv.refreshFromClustermap()
+				if rpcErr != nil {
+					log.Err("ChunkServiceHandler::validateComponentRVsInSync: Failed to refresh clustermap [%s]",
+						rpcErr.String())
+					return rpcErr
+				}
 				clustermapRefreshed = true
 				continue
 			}
@@ -1329,6 +1442,11 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	common.Assert(common.IsValidUUID(address.FileID), address.FileID)
 	common.Assert(common.IsValidUUID(address.RvID), address.RvID)
 	common.Assert(cm.IsValidMVName(address.MvName), address.MvName)
+	//
+	// OffsetInMiB will be -1 when address identifies not one chunk but all chunks belonging to a file.
+	// This is used by RemoveChunk to remove all chunks for a file from the given mv.
+	//
+	common.Assert(address.OffsetInMiB >= -1, address.OffsetInMiB)
 
 	// rvID must refer to one of of out local RVs.
 	rvInfo, ok := h.rvIDMap[address.RvID]
@@ -1449,6 +1567,117 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 	}, nil
 }
 
+// Helper function to read given chunk and (optionally) the hash file.
+// It performs direct or buffered read as per the configured setting or may fallback to buffered read for
+// cases where direct read cannot be performed due to alignment restrictions.
+func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byte) (int /* read bytes */, string /* hash */, error) {
+	var fh *os.File
+	var n, fd int
+	var err error
+	var hash string
+
+	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
+	common.Assert(data != nil && len(*data) > 0)
+	common.Assert(readOffset >= 0)
+
+	readLength := len(*data)
+
+	//
+	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered read.
+	//
+	dataAddr := unsafe.Pointer(&(*data)[0])
+	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
+	common.Assert(isDataBufferAligned, uintptr(dataAddr), common.FS_BLOCK_SIZE)
+
+	//
+	// Hash file is small, perform buffered read.
+	//
+	if hashPath != nil {
+		// Caller must ask hash only for full chunk reads.
+		common.Assert(readOffset == 0)
+		common.Assert(len(*hashPath) > 0)
+		hashData, err := os.ReadFile(*hashPath)
+		if err != nil {
+			return -1, "", fmt.Errorf("failed to read hash file %s [%v]", *hashPath, err)
+		}
+		//
+		// Just a sanity check.
+		// TODO: Make it accurate once we decide on the hash algo
+		//
+		common.Assert(len(hashData) >= 16)
+		hash = string(hashData)
+	}
+
+	//
+	// Read the chunk using buffered IO mode if,
+	//   - Read IO type is configured as BufferedIO, or
+	//   - The requested offset and length is not aligned to file system block size.
+	//   - The buffer is not aligned to file system block size.
+	//
+	if rpc.ReadIOMode == rpc.BufferedIO ||
+		readLength%common.FS_BLOCK_SIZE != 0 ||
+		readOffset%common.FS_BLOCK_SIZE != 0 ||
+		!isDataBufferAligned {
+		goto bufferedRead
+	}
+
+	//
+	// Direct IO read.
+	//
+	fd, err = syscall.Open(*chunkPath, syscall.O_RDONLY|syscall.O_DIRECT, 0)
+	if err != nil {
+		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
+	}
+	defer syscall.Close(fd)
+
+	if readOffset != 0 {
+		_, err = syscall.Seek(fd, readOffset, 0)
+		if err != nil {
+			return -1, "", fmt.Errorf("failed to seek in chunk file %s at offset %d [%v]",
+				*chunkPath, readOffset, err)
+		}
+	}
+
+	n, err = syscall.Read(fd, *data)
+	if err == nil {
+		//
+		// Partial reads should be rare, if it happens fallback to the buffered ReadAt() call which will
+		// try to read all the requested byted.
+		// TODO: Make sure this is not common path.
+		//
+		if n != readLength {
+			common.Assert(false, n, readLength, *chunkPath)
+			goto bufferedRead
+		}
+		return n, hash, nil
+	}
+
+	// For EINVAL, fall through to buffered read.
+	if !errors.Is(err, syscall.EINVAL) {
+		return -1, "", fmt.Errorf("failed to read chunk file %s offset %d [%v]", *chunkPath, readOffset, err)
+	}
+
+	// TODO: Remove this once this is tested sufficiently.
+	log.Warn("Direct read failed with EINVAL, performing buffered read, file: %s, offset: %d, err: %v",
+		*chunkPath, readOffset, err)
+
+bufferedRead:
+	fh, err = os.Open(*chunkPath)
+	if err != nil {
+		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
+	}
+	defer fh.Close()
+
+	n, err = fh.ReadAt(*data, readOffset)
+	if err != nil {
+		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d [%v]", *chunkPath, readOffset, err)
+	}
+
+	common.Assert(n == readLength, n, readLength, *chunkPath)
+
+	return n, hash, nil
+}
+
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
@@ -1457,7 +1686,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request: %v", rpc.GetChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v", rpc.ReadIOMode, rpc.GetChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1541,46 +1770,55 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
-	fh, err := os.Open(chunkPath)
-	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to open chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to open chunk file %s [%v]", chunkPath, err.Error()))
-	}
-	defer fh.Close()
-
-	fInfo, err := fh.Stat()
-	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
-		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-	}
-
-	chunkSize := fInfo.Size()
-	lmt := fInfo.ModTime().UTC().String()
-
-	common.Assert(req.OffsetInChunk+req.Length <= chunkSize, fmt.Sprintf("chunkSize %d is less than OffsetInChunk %d + Length %d", chunkSize, req.OffsetInChunk, req.Length))
-
-	// TODO: data buffer should come in the request
+	//
+	// Allocate byte slice, data from the chunk file will be read into this.
+	//
+	// TODO: Need to ensure this is FS_BLOCK_SIZE aligned.
+	//
 	data := make([]byte, req.Length)
-	n, err := fh.ReadAt(data, req.OffsetInChunk)
-	common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
-	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to read chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err.Error()))
+
+	var lmt string
+	var n int
+	var chunkSize int64
+	var stat syscall.Stat_t
+	var hashPathPtr *string
+
+	if performDummyReadWrite() {
+		goto dummy_read
 	}
 
-	// TODO: hash validation will be done later
-	// get hash if requested for entire chunk
-	// hash := ""
-	// if req.OffsetInChunk == 0 && req.Length == chunkSize {
-	//      hashData, err := os.ReadFile(hashPath)
-	//      if err != nil {
-	//              log.Err("ChunkServiceHandler::GetChunk: Failed to read hash file %s [%v]", hashPath, err.Error())
-	//              return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read hash file %s [%v]", hashPath, err.Error()))
-	//      }
-	//      hash = string(hashData)
-	// }
+	err = syscall.Stat(chunkPath, &stat)
+	if err != nil {
+		errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
+		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+	}
 
+	chunkSize = stat.Size
+	lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
+
+	common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
+		"Read beyond eof", req.OffsetInChunk, req.Length, chunkSize)
+
+	//
+	// TODO: hash validation will be done later
+	// Only read hash if read is requested for entire chunk.
+	//
+	//if req.OffsetInChunk == 0 && req.Length == chunkSize {
+	//	hashPathPtr := &hashPath
+	//}
+	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
+	if err != nil {
+		errStr := fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err)
+		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+	}
+
+	common.Assert(n == len(data),
+		fmt.Sprintf("bytes read %d is less than expected buffer size %d", n, len(data)))
+
+dummy_read:
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
@@ -1595,16 +1833,110 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	return resp, nil
 }
 
+// Helper function to write given chunk and (optionally) the hash file.
+// It performs direct or buffered write as per the configured setting or may fallback to buffered write for
+// cases where direct write cannot be performed due to alignment restrictions.
+func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) error {
+	var n, fd int
+	var err error
+
+	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
+	common.Assert(data != nil)
+	common.Assert(len(*data) > 0)
+	common.Assert(hashPath == nil || (len(*hashPath) > 0 && hash != nil && len(*hash) > 0), hashPath, hash)
+
+	writeLength := len(*data)
+
+	//
+	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered write.
+	//
+	dataAddr := unsafe.Pointer(&(*data)[0])
+	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
+	common.Assert(isDataBufferAligned, uintptr(dataAddr), common.FS_BLOCK_SIZE)
+
+	//
+	// Write to .tmp file first and rename it to the final file after successful write.
+	// TODO: Get rid of an extra rename() call for every chunk write.
+	//
+	tmpChunkPath := fmt.Sprintf("%s.tmp", *chunkPath)
+
+	//
+	// Write the chunk using buffered IO mode if,
+	//   - Write IO type is configured as BufferedIO, or
+	//   - The write length (or chunk size) is not aligned to file system block size.
+	//   - The buffer is not aligned to file system block size.
+	//
+	if rpc.WriteIOMode == rpc.BufferedIO ||
+		writeLength%common.FS_BLOCK_SIZE != 0 ||
+		!isDataBufferAligned {
+		goto bufferedWrite
+	}
+
+	//
+	// Direct IO write.
+	//
+	fd, err = syscall.Open(tmpChunkPath,
+		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
+	if err != nil {
+		return fmt.Errorf("failed to open chunk file %s [%v]", tmpChunkPath, err)
+	}
+	defer syscall.Close(fd)
+
+	n, err = syscall.Write(fd, *data)
+	if err == nil {
+		if n != len(*data) {
+			return fmt.Errorf("partial write to chunk file %s (%d of %d) [%v]",
+				tmpChunkPath, n, len(*data), err)
+		}
+		goto renameChunkFile
+	}
+
+	// For EINVAL, fall through to buffered write.
+	if !errors.Is(err, syscall.EINVAL) {
+		return fmt.Errorf("failed to write chunk file %s [%v]", tmpChunkPath, err)
+	}
+
+bufferedWrite:
+	err = os.WriteFile(tmpChunkPath, *data, 0400)
+	if err != nil {
+		return fmt.Errorf("failed to write chunk file %s [%v]", tmpChunkPath, err)
+	}
+
+renameChunkFile:
+	// Rename the .tmp file to the final file.
+	err = os.Rename(tmpChunkPath, *chunkPath)
+	if err != nil {
+		return fmt.Errorf("failed to rename chunk file %s -> %s [%v]",
+			tmpChunkPath, *chunkPath, err)
+	}
+
+	//
+	// Write hash file after successful chunk file write.
+	// Hash file is small, perform buffered write.
+	//
+	if hashPath != nil {
+		err = os.WriteFile(*hashPath, []byte(*hash), 0400)
+		if err != nil {
+			return fmt.Errorf("failed to write hash file %s [%v]", *hashPath, err)
+		}
+	}
+
+	return nil
+}
+
 func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
 	// Thrift should not be calling us with nil Address.
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
+	common.Assert(req.Length == int64(len(req.Chunk.Data)),
+		req.Length, len(req.Chunk.Data))
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: %v", rpc.PutChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request (%v): %v",
+		rpc.WriteIOMode, rpc.PutChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1703,7 +2035,12 @@ refreshFromClustermapAndRetry:
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 
 				if !clustermapRefreshed {
-					mvInfo.refreshFromClustermap()
+					rpcErr := mvInfo.refreshFromClustermap()
+					if rpcErr != nil {
+						log.Err("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
+							rpcErr.String())
+						return nil, rpcErr
+					}
 					clustermapRefreshed = true
 					goto refreshFromClustermapAndRetry
 				}
@@ -1771,6 +2108,8 @@ refreshFromClustermapAndRetry:
 
 	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
+	var availableSpace int64
+
 	// Chunk file must not be present.
 	_, err = os.Stat(chunkPath)
 	if err == nil {
@@ -1796,7 +2135,7 @@ refreshFromClustermapAndRetry:
 					chunkPath)
 			}
 
-			availableSpace, err := rvInfo.getAvailableSpace()
+			availableSpace, err = rvInfo.getAvailableSpace()
 			if err != nil {
 				log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space [%v]",
 					req.SyncID, err)
@@ -1815,36 +2154,15 @@ refreshFromClustermapAndRetry:
 		}
 	}
 
-	// Write to .tmp file first and rename it to the final file.
-	tmpChunkPath := fmt.Sprintf("%s.tmp", chunkPath)
-	err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
-		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+	if performDummyReadWrite() {
+		goto dummy_write
 	}
 
 	// TODO: hash validation will be done later
-	// err = os.WriteFile(hashPath, []byte(req.Chunk.Hash), 0400)
-	// if err != nil {
-	//      log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
-	//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
-	// }
-
-	availableSpace, err := rvInfo.getAvailableSpace()
+	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
-	}
-
-	// TODO: should we verify the hash after writing the chunk
-
-	// rename the .tmp file to the final file
-	err = os.Rename(tmpChunkPath, chunkPath)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to rename chunk file %s -> %s [%v]",
-			tmpChunkPath, chunkPath, err)
+		errStr := fmt.Sprintf("failed to write chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
@@ -1872,6 +2190,12 @@ refreshFromClustermapAndRetry:
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
 	}
 
+dummy_write:
+	availableSpace, err = rvInfo.getAvailableSpace()
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
+	}
+
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
 		AvailableSpace: availableSpace,
@@ -1879,6 +2203,248 @@ refreshFromClustermapAndRetry:
 	}
 
 	return resp, nil
+}
+
+// PutChunkDC RPC processes a PutChunkDCRequest that has a PutChunkRequest to process and a list of one or more next
+// RVs to forward the request to. The PutChunkRequest must be for one of our local RVs. If the RV mentioned in the
+// PutChunkRequest is not the local RV, it will return an InvalidRVID error.
+// Parallelly, it also forwards the PutChunkRequest to the next RV in the list, making a daisy chain.
+//
+// For the local RV, it calls the PutChunk RPC via the handler directly.
+// The response/error returned by the PutChunk calls to the local RV and next RVs are returned in the
+// PutChunkDCResponse, with the RV name as the key and its PutChunkResponse or a ResponseError as the value.
+// The PutChunkDCResponse will have the responses for all the RVs in the list, including the local RV.
+func (h *ChunkServiceHandler) PutChunkDC(ctx context.Context, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	// Thrift should not be calling us with nil Request, Chunk or Address.
+	common.Assert(req.Request != nil)
+	common.Assert(req.Request.Chunk != nil)
+	common.Assert(req.Request.Chunk.Address != nil)
+
+	//
+	// Caller should not be calling us with empty NextRVs.
+	// It should call PutChunkDC only if it needs to be forwarded to at least one RV, else it should simply
+	// call PutChunk.
+	//
+	common.Assert(len(req.NextRVs) > 0)
+
+	log.Debug("ChunkServiceHandler::PutChunkDC: Received PutChunkDC request: %v",
+		rpc.PutChunkDCRequestToString(req))
+
+	// Nexthop RV must be one of our local RVs.
+	rvInfo, ok := h.rvIDMap[req.Request.Chunk.Address.RvID]
+	if !ok {
+		errStr := fmt.Sprintf("Nexthop RV is not local: %s", req.Request.Chunk.Address.String())
+		log.Err("ChunkServiceHandler::PutChunkDC: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRVID, errStr)
+	}
+
+	common.Assert(rvInfo != nil, req.Request.Chunk.Address.String())
+
+	// Nexthop RV must not be repeated in NextRVs.
+	common.Assert(!slices.Contains(req.NextRVs, rvInfo.rvName), rvInfo.rvName, req.NextRVs)
+
+	var rpcResp *models.PutChunkDCResponse
+	var err error
+	var wg sync.WaitGroup
+
+	//
+	// Parallelly forward the PutChunkDC request to the next RV in the list.
+	// The first RV in req.NextRVs will become the nexthop RV to which forwardPutChunk() will forward the
+	// PutChunkDCRequest, it'll be removed from the NextRVs list, and the remaining NextRVs list will be
+	// sent to the nexthop RV to further forward the request.
+	//
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		rpcResp = h.forwardPutChunk(ctx, req.Request, req.NextRVs)
+		common.Assert(rpcResp != nil)
+		// Must return status for every RV.
+		common.Assert(len(rpcResp.Responses) == len(req.NextRVs))
+	}()
+
+	//
+	// The PutChunkRequest in the PutChunkDCRequest corresponds to the PutChunk call to the local RV.
+	// So, call PutChunk from the handler directly.
+	//
+	resp, err := h.PutChunk(ctx, req.Request)
+	var rpcErr *models.ResponseError
+
+	//
+	// The PutChunk call made here is for the local RV. So, the error returned here will be
+	// an RPC error, if the PutChunk call failed, or nil if it succeeded.
+	// So, we can assert that the error if non-nil, is of type *models.ResponseError.
+	//
+	if err != nil {
+		common.Assert(resp == nil)
+		log.Err("ChunkServiceHandler::PutChunkDC: PutChunk failed for local RV %s/%s, request: %s [%v]",
+			rvInfo.rvName, req.Request.Chunk.Address.MvName,
+			rpc.PutChunkRequestToString(req.Request), err)
+		rpcErr = rpc.GetRPCResponseError(err)
+		common.Assert(rpcErr != nil, err)
+	} else {
+		common.Assert(resp != nil)
+		log.Debug("ChunkServiceHandler::PutChunkDC: PutChunk succeeded for local RV %s/%s, request: %s, response: %s",
+			rvInfo.rvName, req.Request.Chunk.Address.MvName,
+			rpc.PutChunkRequestToString(req.Request), rpc.PutChunkResponseToString(resp))
+	}
+
+	// Wait for the forwarded request to complete.
+	wg.Wait()
+
+	common.Assert(rpcResp != nil)
+	// forwardPutChunk() must return status for every RV.
+	common.Assert(len(rpcResp.Responses) == len(req.NextRVs))
+
+	rpcResp.Responses[rvInfo.rvName] = &models.PutChunkResponseOrError{
+		Response: resp,
+		Error:    rpcErr,
+	}
+
+	log.Debug("ChunkServiceHandler::PutChunkDC: Completing for nexthop %s/%s (file id: %s, offset in MiB: %d): %s",
+		rvInfo.rvName, req.Request.Chunk.Address.MvName, req.Request.Chunk.Address.FileID,
+		req.Request.Chunk.Address.OffsetInMiB, rpc.PutChunkDCResponseToString(rpcResp))
+
+	// We must return status for every RV we were asked to write to.
+	common.Assert(len(rpcResp.Responses) == len(req.NextRVs)+1, len(rpcResp.Responses), len(req.NextRVs))
+
+	return rpcResp, nil
+}
+
+// This method sends the PutChunkRequest 'req' to all the RVs in 'rvs' list in a daisy chain fashion.
+// The first RV in rvs[] becomes the nexthop RV to which the PutChunkDCRequest is sent and the remaining RVs in rvs[]
+// will be set as the NextRVs for the PutChunkDCRequest. The nexthop will run the PutChunkRequest and send the
+// request to its nexthop and set NextRVs to the remaining, and so on, till the request reaches all the RVs in rvs[].
+func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.PutChunkRequest, rvs []string) *models.PutChunkDCResponse {
+	common.Assert(req != nil)
+	common.Assert(req.Chunk != nil)
+	common.Assert(req.Chunk.Address != nil)
+	common.Assert(len(rvs) > 0)
+
+	nexthopRV := rvs[0]
+	common.Assert(cm.IsValidRVName(nexthopRV), nexthopRV, rvs)
+
+	var nextRVs []string
+	if len(rvs) > 1 {
+		nextRVs = rvs[1:]
+	}
+
+	log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunk to nexthop RV %s, daisy chaining to %d more RV(s): %v, request: %s",
+		nexthopRV, len(nextRVs), nextRVs, rpc.PutChunkRequestToString(req))
+
+	nexthopRVId := cm.RvNameToId(nexthopRV)
+	common.Assert(common.IsValidUUID(nexthopRVId))
+
+	nexthopNodeId := cm.RVNameToNodeId(nexthopRV)
+	common.Assert(common.IsValidUUID(nexthopNodeId))
+
+	log.Debug("ChunkServiceHandler::forwardPutChunk: Writing to nexthop RV %s/%s (RVId: %s) on node %s",
+		nexthopRV, req.Chunk.Address.MvName, nexthopRVId, nexthopNodeId)
+
+	//
+	// Create PutChunkRequest for the nexthop RV.
+	// The ony updated fields in the request is RvID.
+	//
+	putChunkReq := &models.PutChunkRequest{
+		Chunk: &models.Chunk{
+			Address: &models.Address{
+				FileID:      req.Chunk.Address.FileID,
+				RvID:        nexthopRVId,
+				MvName:      req.Chunk.Address.MvName,
+				OffsetInMiB: req.Chunk.Address.OffsetInMiB,
+			},
+			Data: req.Chunk.Data,
+			Hash: req.Chunk.Hash,
+		},
+		Length:         req.Length,
+		SyncID:         req.SyncID,
+		ComponentRV:    req.ComponentRV,
+		MaybeOverwrite: req.MaybeOverwrite,
+	}
+
+	//
+	// This is the last RV in the list, so we will call PutChunk directly on it.
+	// Else, we will call PutChunkDC on it with the next RVs in the list.
+	//
+	if len(nextRVs) == 0 {
+		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunk request to last RV %s/%s on node %s: %s",
+			nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, rpc.PutChunkRequestToString(putChunkReq))
+
+		var rpcErr *models.ResponseError
+
+		putChunkResp, err := rpc_client.PutChunk(ctx, nexthopNodeId, putChunkReq)
+		if err != nil {
+			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunk request to last RV %s/%s on node %s: %v",
+				nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, err)
+			common.Assert(putChunkResp == nil)
+
+			rpcErr = rpc.GetRPCResponseError(err)
+			if rpcErr == nil {
+				//
+				// This error indicates some Thrift error like connection error, timeout, etc. or,
+				// it could be an RPC client side error like failed to get RPC client for target node.
+				// We wrap this error in *models.ResponseError with code ThriftError.
+				// This is to ensure that the client can take appropriate action based on this error
+				// code.
+				//
+				rpcErr = rpc.NewResponseError(models.ErrorCode_ThriftError, err.Error())
+			}
+		} else {
+			common.Assert(putChunkResp != nil)
+		}
+
+		common.Assert(len(rvs) == 1, rvs)
+		return &models.PutChunkDCResponse{
+			Responses: map[string]*models.PutChunkResponseOrError{
+				nexthopRV: {
+					Response: putChunkResp,
+					Error:    rpcErr,
+				},
+			},
+		}
+	} else {
+		putChunkDCReq := &models.PutChunkDCRequest{
+			Request: putChunkReq,
+			NextRVs: nextRVs,
+		}
+
+		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkDC request to nexthop %s/%s on node %s: %s",
+			nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, rpc.PutChunkDCRequestToString(putChunkDCReq))
+
+		dcResp, err := rpc_client.PutChunkDC(ctx, nexthopNodeId, putChunkDCReq)
+
+		//
+		// If the PutChunkDC RPC call fails, the error returned can be,
+		// - Thrift error like connection error, timeout, etc.
+		// - RPC client side error like failed to get RPC client for node.
+		// - RPC error of type *models.ResponseError returned by the server like InvalidRVID.
+		// We classify the first two as ThriftError. This indicates the caller that the PutChunk calls
+		// were not forwarded after this RV and the caller can take appropriate action like marking
+		// this RV as offline and retrying the PutChunkDC call.
+		// For the next RVs in this call, the PutChunk calls were not forwarded. So, it returns
+		// BrokenChain error for these RVs indicating that the PutChunkDC call was not forwarded
+		// to them and the caller can retry.
+		//
+		if err != nil {
+			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunkDC request to nexthop %s/%s on node %s: %s",
+				nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, err)
+			common.Assert(dcResp == nil)
+
+			dcResp = rpc.HandlePutChunkDCError(nexthopRV, nextRVs, req.Chunk.Address.MvName, err)
+		} else {
+			log.Debug("ChunkServiceHandler::forwardPutChunk: Received response from nexthop %s/%s (file id %s, offset in MiB %d): %s",
+				nexthopRV, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB,
+				rpc.PutChunkDCResponseToString(dcResp))
+		}
+
+		common.Assert(dcResp != nil)
+		common.Assert(len(dcResp.Responses) == len(rvs), len(dcResp.Responses), rvs)
+		return dcResp
+	}
 }
 
 func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
@@ -1894,17 +2460,20 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
 
-	// check if the chunk address is valid
+	// Check if the chunk address is valid.
 	err := h.checkValidChunkAddress(req.Address)
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Invalid chunk address %v [%s]", req.Address.String(), err.Error())
 		return nil, err
 	}
 
+	// RemoveChunk must not address a specific chunk but all chunks of a file.
+	common.Assert(req.Address.OffsetInMiB == -1, req.Address.OffsetInMiB)
+
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
-	// validate the component RVs list
+	// Validate the component RVs list.
 	err = mvInfo.isComponentRVsValid(req.ComponentRV, true /* checkState */)
 	if err != nil {
 		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", req.Address.MvName, err)
@@ -1912,62 +2481,91 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		return nil, err
 	}
 
-	// acquire read lock on the opMutex for this MV
+	//
+	// Acquire read lock on the opMutex for this MV to prevent sync from starting for this MV while
+	// we are deleting file chunks to avoid situations where a chunk is read by the sync thread but before
+	// it can read and copy, it's deleted.
+	//
 	mvInfo.acquireSyncOpReadLock()
-
-	// release the read lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpReadLock()
 
-	// TODO: check if lock is needed for RemoveChunk
-	// acquire lock for the chunk address to prevent concurrent delete operations
-	// chunkAddress := getChunkAddress(req.Address.FileID, req.Address.RvID, req.Address.MvName, req.Address.OffsetInMiB)
-	// flock := h.locks.Get(chunkAddress)
-	// flock.Lock()
-	// defer flock.Unlock()
-
 	cacheDir := rvInfo.cacheDir
+	numChunksDeleted := int64(0)
 
-	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
-	log.Debug("ChunkServiceHandler::RemoveChunk: chunk path %s, hash path %s", chunkPath, hashPath)
+	// MV directory containing the requested chunks.
+	mvDir := filepath.Join(cacheDir, req.Address.MvName)
 
-	// check if the chunk is present
-	fInfo, err := os.Stat(chunkPath)
+	//
+	// Enumerate all chunks and hashes in the MV directory, filter out the ones belonging to the
+	// requested file and delete them.
+	//
+	// TODO: Replace this with chunked readdir to support huge number of chunks.
+	//
+	log.Debug("ChunkServiceHandler::RemoveChunk: Starting listing MV directory: %s", mvDir)
+
+	dirEntries, err := os.ReadDir(mvDir)
 	if err != nil {
-		log.Err("ChunkServiceHandler::RemoveChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
-		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+		err = fmt.Errorf("failed to read mv directory: %s [%v]", mvDir, err)
+		log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
+		common.Assert(false, err)
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
 	}
 
-	err = os.Remove(chunkPath)
-	if err != nil {
-		log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to remove chunk file %s [%v]", chunkPath, err.Error()))
+	// Iterate and remove chunks and hashes belonging to the requested file.
+	for _, dirent := range dirEntries {
+		if !strings.HasPrefix(dirent.Name(), req.Address.FileID) {
+			continue
+		}
+
+		fileInfo, err := dirent.Info()
+		if err != nil {
+			err = fmt.Errorf("failed to stat chunk file: %s [%v]", dirent.Name(), err)
+			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
+			common.Assert(false, err)
+			//
+			// If we are able to delete at least one chunk, respond with success.
+			// Caller should assume all chunks of file deleted only when a RemoveChunk call succeeds with
+			// NumChunksDeleted == 0.
+			//
+			if numChunksDeleted > 0 {
+				break
+			}
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
+		}
+
+		chunkPath := filepath.Join(mvDir, dirent.Name())
+
+		err = os.Remove(chunkPath)
+		if err != nil {
+			err = fmt.Errorf("failed to remove chunk file: %s [%v]", dirent.Name(), err)
+			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
+			common.Assert(false, err)
+
+			if numChunksDeleted > 0 {
+				break
+			}
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
+		}
+
+		// Decrement the total chunk bytes for this MV.
+		mvInfo.decTotalChunkBytes(fileInfo.Size())
+
+		numChunksDeleted++
 	}
 
-	// TODO: hash validation will be done later
-	// err = os.Remove(hashPath)
-	// if err != nil {
-	//      log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
-	//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
-	// }
+	common.Assert(numChunksDeleted >= 0)
 
 	availableSpace, err := rvInfo.getAvailableSpace()
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
+		availableSpace = 0
 	}
 
-	// TODO: should we also consider the hash file size in the total chunk bytes
-	//       For accurate accounting we can, but we should not do an extra stat() call for the hash file
-	//       but instead use a hardcoded value which will be true for a given hash algo.
-	//       Also we need to be sure that hash is calculated uniformly (either always or never)
-
-	// decrement the total chunk bytes for this MV
-	mvInfo.decTotalChunkBytes(fInfo.Size())
-
 	resp := &models.RemoveChunkResponse{
-		TimeTaken:      time.Since(startTime).Microseconds(),
-		AvailableSpace: availableSpace,
-		ComponentRV:    mvInfo.getComponentRVs(),
+		TimeTaken:        time.Since(startTime).Microseconds(),
+		AvailableSpace:   availableSpace,
+		ComponentRV:      mvInfo.getComponentRVs(),
+		NumChunksDeleted: numChunksDeleted,
 	}
 
 	return resp, nil
@@ -2050,13 +2648,12 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		// For newMV, we won't have the MV in clustermap yet, so no need to refresh.
 		//
 		if !newMV {
-			err := mvInfo.refreshFromClustermap()
-			if err != nil {
-				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV: %v",
-					errStr, err)
+			rpcErr := mvInfo.refreshFromClustermap()
+			if rpcErr != nil {
+				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV: %s",
+					errStr, rpcErr.String())
 				log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
-				common.Assert(false, errStr)
-				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+				return nil, rpc.NewResponseError(rpcErr.Code, errStr)
 			}
 		}
 
@@ -2195,7 +2792,12 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		err := mvInfo.updateComponentRVs(req.ComponentRV, false /* forceUpdate */, req.SenderNodeID)
 		if err != nil {
 			if !clustermapRefreshed {
-				mvInfo.refreshFromClustermap()
+				rpcErr := mvInfo.refreshFromClustermap()
+				if rpcErr != nil {
+					log.Err("ChunkServiceHandler::UpdateMV: Failed to refresh clustermap [%s]",
+						rpcErr.String())
+					return nil, rpcErr
+				}
 				clustermapRefreshed = true
 				continue
 			}

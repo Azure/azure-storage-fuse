@@ -34,6 +34,7 @@
 package rpc_server
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -55,8 +56,8 @@ func getChunkAndHashPath(cacheDir string, mvName string, fileID string, offsetIn
 	return chunkPath, hashPath
 }
 
-// sort the component RVs in the MV
-// The RVs are sorted in increasing order of their names
+// Sort the component RVs in the MV.
+// The RVs are sorted in increasing order of their names.
 func sortComponentRVs(rvs []*models.RVNameAndState) {
 	sort.Slice(rvs, func(i, j int) bool {
 		return rvs[i].Name < rvs[j].Name
@@ -139,4 +140,67 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 // return mvs-per-rv from dcache config
 func getMVsPerRV() int64 {
 	return int64(cm.GetCacheConfig().MvsPerRv)
+}
+
+// This method is wrapper for the GetChunk() RPC call. It is used when the both the client and server
+// belong to the same node, i.e. the RPC is called locally.
+func GetChunkLocal(ctc context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
+	common.Assert(req != nil)
+	common.Assert(req.Address != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = rpc.GetMyNodeUUID()
+
+	common.Assert(handler != nil)
+
+	return handler.GetChunk(ctc, req)
+}
+
+// This method is wrapper for the PutChunk() RPC call. It is used when the both the client and server
+// belong to the same node, i.e. the RPC is called locally.
+func PutChunkLocal(ctc context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
+	common.Assert(req != nil)
+	common.Assert(req.Chunk != nil)
+	common.Assert(req.Chunk.Address != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = rpc.GetMyNodeUUID()
+
+	common.Assert(handler != nil)
+
+	return handler.PutChunk(ctc, req)
+}
+
+// This method is wrapper for the PutChunkDC() RPC call. It is used when the both the client and server
+// belong to the same node, i.e. the RPC is called locally.
+func PutChunkDCLocal(ctc context.Context, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
+	common.Assert(req != nil)
+	common.Assert(req.Request != nil)
+	common.Assert(req.Request.Chunk != nil)
+	common.Assert(req.Request.Chunk.Address != nil)
+	common.Assert(len(req.NextRVs) > 0)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.Request.SenderNodeID) == 0, req.Request.SenderNodeID)
+	req.Request.SenderNodeID = rpc.GetMyNodeUUID()
+
+	common.Assert(handler != nil)
+
+	return handler.PutChunkDC(ctc, req)
+}
+
+// This method is wrapper for the GetMVSize() RPC call. It is used when the both the client and server
+// belong to the same node, i.e. the RPC is called locally.
+func GetMVSizeLocal(ctc context.Context, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
+	common.Assert(req != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = rpc.GetMyNodeUUID()
+
+	common.Assert(handler != nil)
+
+	return handler.GetMVSize(ctc, req)
 }

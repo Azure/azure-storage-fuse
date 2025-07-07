@@ -215,6 +215,26 @@ func (req *WriteMvRequest) isValid() error {
 type WriteMvResponse struct {
 }
 
+type RemoveMvRequest struct {
+	FileID string // unique guid of the file whose chunks need to be removed, as stored in metadata blob
+	MvName string // name of the MV from where the chunks need to be removed
+}
+
+func (req *RemoveMvRequest) toString() string {
+	return fmt.Sprintf("{FileID: %s, MvName: %s}", req.FileID, req.MvName)
+}
+
+// check if the request is valid
+func (req *RemoveMvRequest) isValid() error {
+	common.Assert(common.IsValidUUID(req.FileID))
+	common.Assert(cm.IsValidMVName(req.MvName))
+
+	return nil
+}
+
+type RemoveMvResponse struct {
+}
+
 // syncJob tracks resync of one MV replica, srcRVName/mvName -> destRVName/mvName.
 type syncJob struct {
 	mvName       string                   // name of the MV to be synced

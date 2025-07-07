@@ -45,6 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/gc"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	gouuid "github.com/google/uuid"
 )
@@ -255,10 +256,13 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		common.Assert(newOpenCount > 0, newOpenCount, fileName)
 	}
 
-	return &DcacheFile{
+	dcacheFile := &DcacheFile{
 		FileMetadata: fileMetadata,
 		attr:         prop,
-	}, nil
+	}
+	dcacheFile.lastReadaheadChunkIdx.Store(-1)
+
+	return dcacheFile, nil
 }
 
 func DeleteDcacheFile(fileName string) error {
@@ -285,14 +289,26 @@ func DeleteDcacheFile(fileName string) error {
 	}
 
 	// Unique name for the deleted file.
-	deletedFileName := getDeletedFileName(fileName, fileMetadata.FileID)
+	deletedFileName := dcache.GetDeletedFileName(fileName, fileMetadata.FileID)
 
+	//
+	// Deleting a dcache file amounts to renaming it to a special name.
+	// This is useful for tracking file chunks for garbage collection as well as for the POSIX requirement
+	// that the file data should be available till the last open fd is closed.
+	//
 	err = mm.RenameFileToDeleting(fileName, deletedFileName)
 	if err != nil {
+		log.Err("DistributedCache[FM]::DeleteDcacheFile: Failed to rename file %s -> %s: %v",
+			fileName, deletedFileName, err)
 		return err
 	}
 
-	// TODO: pass this path to GC to later evict this file from dcache.
+	//
+	// Pass the file to garbage collector, which will later delete the chunks when safe to do so.
+	// If safe-deletes config option is off then the file chunks can be deleted immediately o/w they
+	// can be deleted when the file OpenCount falls to 0.
+	//
+	gc.ScheduleChunkDeletion(fileMetadata)
 
 	return nil
 }
@@ -319,10 +335,4 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 		Uptodate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
 	}, nil
-}
-
-// Get the deleted file name.
-func getDeletedFileName(fileName string, fileId string) string {
-	common.Assert(common.IsValidUUID(fileId), fileName, fileId)
-	return fileName + "." + fileId + dcache.DcacheDeletingFileNameSuffix
 }

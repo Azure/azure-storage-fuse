@@ -521,7 +521,8 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 
 	// Create RPC clients and add them to the channel.
 	for i := 0; i < int(numClients); i++ {
-		client, err := newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
+		var client *rpcClient
+		client, err = newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
 		if err != nil {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]",
 				ncPool.nodeID, err)

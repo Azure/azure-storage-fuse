@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -131,7 +132,7 @@ type testComponent struct {
 func getTestcomponent() *testComponent {
 	tc := &testComponent{}
 	tc.SetThreadPool(NewThreadPool(1, tc.Process))
-	tc.GetThreadPool().Start()
+	tc.GetThreadPool().Start(context.TODO())
 	return tc
 }
 
@@ -157,7 +158,7 @@ func setupTestLister() (*testLister, error) {
 		return nil, err
 	}
 
-	tl.stMgr, err = NewStatsManager(1, false)
+	tl.stMgr, err = NewStatsManager(1, false, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +213,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
-	statsMgr, err := NewStatsManager(1, false)
+	statsMgr, err := NewStatsManager(1, false, nil)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
@@ -250,7 +251,7 @@ func (suite *listTestSuite) TestListerStartStop() {
 	testComp := getTestcomponent()
 	rl.SetNext(testComp)
 
-	rl.Start()
+	rl.Start(context.TODO())
 	time.Sleep(5 * time.Second)
 	rl.Stop()
 

@@ -62,14 +62,14 @@ var unmountCmd = &cobra.Command{
 			for _, mntPath := range lstMnt {
 				match, _ := regexp.MatchString(mntPathPrefix, mntPath)
 				if match {
-					err := unmountBlobfuse2(mntPath, lazy)
+					err := unmountBlobfuse2(mntPath, lazy, false)
 					if err != nil {
 						return fmt.Errorf("failed to unmount %s [%s]", mntPath, err.Error())
 					}
 				}
 			}
 		} else {
-			err := unmountBlobfuse2(args[0], lazy)
+			err := unmountBlobfuse2(args[0], lazy, false)
 			if err != nil {
 				return err
 			}
@@ -87,7 +87,7 @@ var unmountCmd = &cobra.Command{
 }
 
 // Attempts to unmount the directory and returns true if the operation succeeded
-func unmountBlobfuse2(mntPath string, lazy bool) error {
+func unmountBlobfuse2(mntPath string, lazy bool, silent bool) error {
 	unmountCmd := []string{"fusermount3", "fusermount"}
 
 	var errb bytes.Buffer
@@ -103,7 +103,10 @@ func unmountBlobfuse2(mntPath string, lazy bool) error {
 		_, err = cliOut.Output()
 
 		if err == nil {
-			fmt.Println("Successfully unmounted", mntPath)
+			log.Info("unmountBlobfuse2 : successfully unmounted %s", mntPath)
+			if !silent {
+				fmt.Println("Successfully unmounted", mntPath)
+			}
 			return nil
 		}
 
