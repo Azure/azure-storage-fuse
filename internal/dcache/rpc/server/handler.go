@@ -35,6 +35,7 @@ package rpc_server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -1561,6 +1564,117 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 	}, nil
 }
 
+// Helper function to read given chunk and (optionally) the hash file.
+// It performs direct or buffered read as per the configured setting or may fallback to buffered read for
+// cases where direct read cannot be performed due to alignment restrictions.
+func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byte) (int /* read bytes */, string /* hash */, error) {
+	var fh *os.File
+	var n, fd int
+	var err error
+	var hash string
+
+	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
+	common.Assert(data != nil && len(*data) > 0)
+	common.Assert(readOffset >= 0)
+
+	readLength := len(*data)
+
+	//
+	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered read.
+	//
+	dataAddr := unsafe.Pointer(&(*data)[0])
+	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
+	common.Assert(isDataBufferAligned, uintptr(dataAddr), common.FS_BLOCK_SIZE)
+
+	//
+	// Hash file is small, perform buffered read.
+	//
+	if hashPath != nil {
+		// Caller must ask hash only for full chunk reads.
+		common.Assert(readOffset == 0)
+		common.Assert(len(*hashPath) > 0)
+		hashData, err := os.ReadFile(*hashPath)
+		if err != nil {
+			return -1, "", fmt.Errorf("failed to read hash file %s [%v]", *hashPath, err)
+		}
+		//
+		// Just a sanity check.
+		// TODO: Make it accurate once we decide on the hash algo
+		//
+		common.Assert(len(hashData) >= 16)
+		hash = string(hashData)
+	}
+
+	//
+	// Read the chunk using buffered IO mode if,
+	//   - Read IO type is configured as BufferedIO, or
+	//   - The requested offset and length is not aligned to file system block size.
+	//   - The buffer is not aligned to file system block size.
+	//
+	if rpc.ReadIOMode == rpc.BufferedIO ||
+		readLength%common.FS_BLOCK_SIZE != 0 ||
+		readOffset%common.FS_BLOCK_SIZE != 0 ||
+		!isDataBufferAligned {
+		goto bufferedRead
+	}
+
+	//
+	// Direct IO read.
+	//
+	fd, err = syscall.Open(*chunkPath, syscall.O_RDONLY|syscall.O_DIRECT, 0)
+	if err != nil {
+		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
+	}
+	defer syscall.Close(fd)
+
+	if readOffset != 0 {
+		_, err = syscall.Seek(fd, readOffset, 0)
+		if err != nil {
+			return -1, "", fmt.Errorf("failed to seek in chunk file %s at offset %d [%v]",
+				*chunkPath, readOffset, err)
+		}
+	}
+
+	n, err = syscall.Read(fd, *data)
+	if err == nil {
+		//
+		// Partial reads should be rare, if it happens fallback to the buffered ReadAt() call which will
+		// try to read all the requested byted.
+		// TODO: Make sure this is not common path.
+		//
+		if n != readLength {
+			common.Assert(false, n, readLength, *chunkPath)
+			goto bufferedRead
+		}
+		return n, hash, nil
+	}
+
+	// For EINVAL, fall through to buffered read.
+	if !errors.Is(err, syscall.EINVAL) {
+		return -1, "", fmt.Errorf("failed to read chunk file %s offset %d [%v]", *chunkPath, readOffset, err)
+	}
+
+	// TODO: Remove this once this is tested sufficiently.
+	log.Warn("Direct read failed with EINVAL, performing buffered read, file: %s, offset: %d, err: %v",
+		*chunkPath, readOffset, err)
+
+bufferedRead:
+	fh, err = os.Open(*chunkPath)
+	if err != nil {
+		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
+	}
+	defer fh.Close()
+
+	n, err = fh.ReadAt(*data, readOffset)
+	if err != nil {
+		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d [%v]", *chunkPath, readOffset, err)
+	}
+
+	common.Assert(n == readLength, n, readLength, *chunkPath)
+
+	return n, hash, nil
+}
+
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
@@ -1569,7 +1683,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request: %v", rpc.GetChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v", rpc.ReadIOMode, rpc.GetChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1656,54 +1770,50 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//
 	// Allocate byte slice, data from the chunk file will be read into this.
 	//
+	// TODO: Need to ensure this is FS_BLOCK_SIZE aligned.
+	//
 	data := make([]byte, req.Length)
+
 	var lmt string
 	var n int
 	var chunkSize int64
-	var fh *os.File
-	var fInfo os.FileInfo
+	var stat syscall.Stat_t
+	var hashPathPtr *string
 
 	if performDummyReadWrite() {
 		goto dummy_read
 	}
 
-	fh, err = os.Open(chunkPath)
+	err = syscall.Stat(chunkPath, &stat)
 	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to open chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to open chunk file %s [%v]", chunkPath, err.Error()))
-	}
-	defer fh.Close()
-
-	fInfo, err = fh.Stat()
-	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
-		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+		errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
+		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 	}
 
-	chunkSize = fInfo.Size()
-	lmt = fInfo.ModTime().UTC().String()
+	chunkSize = stat.Size
+	lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
 
-	common.Assert(req.OffsetInChunk+req.Length <= chunkSize, fmt.Sprintf("chunkSize %d is less than OffsetInChunk %d + Length %d", chunkSize, req.OffsetInChunk, req.Length))
+	common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
+		"Read beyond eof", req.OffsetInChunk, req.Length, chunkSize)
 
-	n, err = fh.ReadAt(data, req.OffsetInChunk)
-	common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
-	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Failed to read chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err.Error()))
-	}
-
+	//
 	// TODO: hash validation will be done later
-	// get hash if requested for entire chunk
-	// hash := ""
-	// if req.OffsetInChunk == 0 && req.Length == chunkSize {
-	//      hashData, err := os.ReadFile(hashPath)
-	//      if err != nil {
-	//              log.Err("ChunkServiceHandler::GetChunk: Failed to read hash file %s [%v]", hashPath, err.Error())
-	//              return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read hash file %s [%v]", hashPath, err.Error()))
-	//      }
-	//      hash = string(hashData)
-	// }
+	// Only read hash if read is requested for entire chunk.
+	//
+	//if req.OffsetInChunk == 0 && req.Length == chunkSize {
+	//	hashPathPtr := &hashPath
+	//}
+	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
+	if err != nil {
+		errStr := fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err)
+		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+	}
+
+	common.Assert(n == len(data),
+		fmt.Sprintf("bytes read %d is less than expected buffer size %d", n, len(data)))
 
 dummy_read:
 	resp := &models.GetChunkResponse{
@@ -1720,16 +1830,110 @@ dummy_read:
 	return resp, nil
 }
 
+// Helper function to write given chunk and (optionally) the hash file.
+// It performs direct or buffered write as per the configured setting or may fallback to buffered write for
+// cases where direct write cannot be performed due to alignment restrictions.
+func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) error {
+	var n, fd int
+	var err error
+
+	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
+	common.Assert(data != nil)
+	common.Assert(len(*data) > 0)
+	common.Assert(hashPath == nil || (len(*hashPath) > 0 && hash != nil && len(*hash) > 0), hashPath, hash)
+
+	writeLength := len(*data)
+
+	//
+	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered write.
+	//
+	dataAddr := unsafe.Pointer(&(*data)[0])
+	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
+	common.Assert(isDataBufferAligned, uintptr(dataAddr), common.FS_BLOCK_SIZE)
+
+	//
+	// Write to .tmp file first and rename it to the final file after successful write.
+	// TODO: Get rid of an extra rename() call for every chunk write.
+	//
+	tmpChunkPath := fmt.Sprintf("%s.tmp", *chunkPath)
+
+	//
+	// Write the chunk using buffered IO mode if,
+	//   - Write IO type is configured as BufferedIO, or
+	//   - The write length (or chunk size) is not aligned to file system block size.
+	//   - The buffer is not aligned to file system block size.
+	//
+	if rpc.WriteIOMode == rpc.BufferedIO ||
+		writeLength%common.FS_BLOCK_SIZE != 0 ||
+		!isDataBufferAligned {
+		goto bufferedWrite
+	}
+
+	//
+	// Direct IO write.
+	//
+	fd, err = syscall.Open(tmpChunkPath,
+		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
+	if err != nil {
+		return fmt.Errorf("failed to open chunk file %s [%v]", tmpChunkPath, err)
+	}
+	defer syscall.Close(fd)
+
+	n, err = syscall.Write(fd, *data)
+	if err == nil {
+		if n != len(*data) {
+			return fmt.Errorf("partial write to chunk file %s (%d of %d) [%v]",
+				tmpChunkPath, n, len(*data), err)
+		}
+		goto renameChunkFile
+	}
+
+	// For EINVAL, fall through to buffered write.
+	if !errors.Is(err, syscall.EINVAL) {
+		return fmt.Errorf("failed to write chunk file %s [%v]", tmpChunkPath, err)
+	}
+
+bufferedWrite:
+	err = os.WriteFile(tmpChunkPath, *data, 0400)
+	if err != nil {
+		return fmt.Errorf("failed to write chunk file %s [%v]", tmpChunkPath, err)
+	}
+
+renameChunkFile:
+	// Rename the .tmp file to the final file.
+	err = os.Rename(tmpChunkPath, *chunkPath)
+	if err != nil {
+		return fmt.Errorf("failed to rename chunk file %s -> %s [%v]",
+			tmpChunkPath, *chunkPath, err)
+	}
+
+	//
+	// Write hash file after successful chunk file write.
+	// Hash file is small, perform buffered write.
+	//
+	if hashPath != nil {
+		err = os.WriteFile(*hashPath, []byte(*hash), 0400)
+		if err != nil {
+			return fmt.Errorf("failed to write hash file %s [%v]", *hashPath, err)
+		}
+	}
+
+	return nil
+}
+
 func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
 	// Thrift should not be calling us with nil Address.
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
+	common.Assert(req.Length == int64(len(req.Chunk.Data)),
+		req.Length, len(req.Chunk.Data))
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: %v", rpc.PutChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request (%v): %v",
+		rpc.WriteIOMode, rpc.PutChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
@@ -1947,37 +2151,15 @@ refreshFromClustermapAndRetry:
 		}
 	}
 
-	var tmpChunkPath string
-
 	if performDummyReadWrite() {
 		goto dummy_write
 	}
 
-	// Write to .tmp file first and rename it to the final file.
-	tmpChunkPath = fmt.Sprintf("%s.tmp", chunkPath)
-	err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
-		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-	}
-
 	// TODO: hash validation will be done later
-	// err = os.WriteFile(hashPath, []byte(req.Chunk.Hash), 0400)
-	// if err != nil {
-	//      log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
-	//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
-	// }
-
-	// TODO: should we verify the hash after writing the chunk
-
-	// rename the .tmp file to the final file
-	err = os.Rename(tmpChunkPath, chunkPath)
+	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to rename chunk file %s -> %s [%v]",
-			tmpChunkPath, chunkPath, err)
+		errStr := fmt.Sprintf("failed to write chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 

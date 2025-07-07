@@ -38,6 +38,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -45,7 +46,41 @@ import (
 const (
 	// defaultPort is the default port for the RPC server
 	defaultPort = 9090
+	BufferedIO  = "buffered"
+	DirectIO    = "direct"
 )
+
+var ReadIOMode, WriteIOMode string
+
+// Set the IO mode for chunk read operations.
+func SetReadIOMode(mode string) error {
+	// Must be called only once.
+	common.Assert(len(ReadIOMode) == 0, ReadIOMode)
+
+	if mode != BufferedIO && mode != DirectIO {
+		return fmt.Errorf("invalid read IO mode: %s", mode)
+	}
+
+	ReadIOMode = mode
+	log.Info("rpc::SetReadIOMode: Set chunk file read mode to %s", ReadIOMode)
+
+	return nil
+}
+
+// Set the IO mode for chunk write operations.
+func SetWriteIOMode(mode string) error {
+	// Must be called only once.
+	common.Assert(len(WriteIOMode) == 0, WriteIOMode)
+
+	if mode != BufferedIO && mode != DirectIO {
+		return fmt.Errorf("invalid write IO mode: %s", mode)
+	}
+
+	WriteIOMode = mode
+	log.Info("rpc::SetWriteIOMode: Set chunk file write mode to %s", WriteIOMode)
+
+	return nil
+}
 
 // return the node address for the given node ID
 // the node address is of the form <ip>:<port>

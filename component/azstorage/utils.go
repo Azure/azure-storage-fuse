@@ -137,8 +137,11 @@ func getAzDatalakeServiceClientOptions(conf *AzStorageConfig) (*serviceBfs.Clien
 }
 
 // getLogOptions : to configure the SDK logging policy
+// The SDK logging is disabled if,
+//   - "BLOBFUSE_DISABLE_SDK_LOG" env var is set to true
+//   - logging type is silent
+//   - logging level is less than debug
 func getSDKLogOptions() policy.LogOptions {
-	// If "BLOBFUSE_DISABLE_SDK_LOG" env var is set to true, then disable the SDK logging
 	if os.Getenv("BLOBFUSE_DISABLE_SDK_LOG") == "true" || log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		return policy.LogOptions{}
 	} else {
@@ -152,10 +155,10 @@ func getSDKLogOptions() policy.LogOptions {
 
 // setSDKLogListener : log the requests and responses.
 // It is disabled if,
+//   - "BLOBFUSE_DISABLE_SDK_LOG" env var is set to true
 //   - logging type is silent
 //   - logging level is less than debug
 func setSDKLogListener() {
-	// If "BLOBFUSE_DISABLE_SDK_LOG" env var is set to true, then disable the SDK logging
 	if os.Getenv("BLOBFUSE_DISABLE_SDK_LOG") == "true" || log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		// reset listener
 		azlog.SetListener(nil)
