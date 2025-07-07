@@ -91,7 +91,8 @@ func IsValidComponentRVState(rvState dcache.StateEnum) bool {
 	case dcache.StateOnline,
 		dcache.StateOffline,
 		dcache.StateOutOfSync,
-		dcache.StateSyncing:
+		dcache.StateSyncing,
+		dcache.StateInbandOffline:
 		return true
 	}
 	return false
