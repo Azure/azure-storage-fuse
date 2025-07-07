@@ -22,6 +22,7 @@ steps:
 
   # Check blobfuse2 is mounted or not    
   - script: |
+      sleep 10
       ps -aux | grep blobfuse2
       df
       echo "-------------------------------------------------------------------"
