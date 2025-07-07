@@ -63,8 +63,7 @@ var _ service.ChunkService = &ChunkServiceHandler{}
 
 // ChunkServiceHandler struct implements the ChunkService interface
 type ChunkServiceHandler struct {
-	locks *common.LockMap
-
+	//
 	// map to store the rvID to rvInfo mapping
 	// rvIDMap contains any and all cluster awareness information that a node needs to have,
 	// things like, what all RVs are hosted by this node, state of each of those RVs,
@@ -79,6 +78,7 @@ type ChunkServiceHandler struct {
 	// [readonly] -
 	// the map itself will not have any new entries added after startup, but
 	// some of the fields of those entries may change.
+	//
 	rvIDMap map[string]*rvInfo
 }
 
@@ -296,7 +296,6 @@ func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) {
 	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
 	handler = &ChunkServiceHandler{
-		locks:   common.NewLockMap(),
 		rvIDMap: getRvIDMap(rvs),
 	}
 
@@ -404,11 +403,9 @@ func (rv *rvInfo) getMVs() []string {
 }
 
 // Add a new MV replica to the given RV.
-// Caller must ensure that the RV is not already hosting the MV replica.
+// Caller must ensure that the RV is not already hosting the MV replica and
+// that the rvInfo.rwMutex lock is acquired.
 func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
-	rv.rwMutex.Lock()
-	defer rv.rwMutex.Unlock()
-
 	mvPath := filepath.Join(rv.cacheDir, mvName)
 	common.Assert(common.DirectoryExists(mvPath), mvPath)
 	common.Assert(mv.rv == rv, mv.rv.rvName, rv.rvName)
@@ -428,10 +425,9 @@ func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
 	common.Assert(rv.mvCount.Load() <= getMVsPerRV(), rv.rvName, rv.mvCount.Load(), getMVsPerRV())
 }
 
+// Delete the MV replica from the given RV.
+// Caller must ensure that the rvInfo.rwMutex lock is acquired.
 func (rv *rvInfo) deleteFromMVMap(mvName string) {
-	rv.rwMutex.Lock()
-	defer rv.rwMutex.Unlock()
-
 	_, ok := rv.mvMap.Load(mvName)
 	if !ok {
 		common.Assert(false, fmt.Sprintf("mvMap[%s] not found", mvName))
@@ -2618,9 +2614,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	cacheDir := rvInfo.cacheDir
 
 	// Acquire lock for the RV to prevent concurrent JoinMV calls for different MVs.
-	flock := h.locks.Get(rvInfo.rvID)
-	flock.Lock()
-	defer flock.Unlock()
+	rvInfo.rwMutex.Lock()
+	defer rvInfo.rwMutex.Unlock()
 
 	// Check if RV is already part of the given MV.
 	mvInfo := rvInfo.getMVInfo(req.MV)
@@ -2834,6 +2829,10 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	cacheDir := rvInfo.cacheDir
 
+	// Acquire lock for the RV to prevent concurrent LeaveMV calls for different MVs.
+	rvInfo.rwMutex.Lock()
+	defer rvInfo.rwMutex.Unlock()
+
 	//
 	// LeaveMV() RPC is only sent to RVs which are already members of the MV, and it is sent
 	// when the membership changes (due to rebalancing workflow).
@@ -2862,9 +2861,6 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	// delete the MV directory
 	mvPath := filepath.Join(cacheDir, req.MV)
-	flock := h.locks.Get(mvPath) // TODO: check if lock is needed in directory deletion
-	flock.Lock()
-	defer flock.Unlock()
 
 	err = os.RemoveAll(mvPath)
 	if err != nil {
