@@ -361,6 +361,7 @@ func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 	gc.deletedFileQueue <- gcFile
 }
 
+<<<<<<< HEAD
 // Normally file chunks are deleted when DeleteDcacheFile() queues a file for chunk deletion by a call
 // to ScheduleChunkDeletion(). This works fine for the most common cases, but this fails to delete file
 // chunks in the following case:
