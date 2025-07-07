@@ -2,12 +2,14 @@
 
 #
 # For making debug builds with asserts, run as:
-# RELEASE_BUILD=0 ./build.sh
-#
-# For making release builds with all calls to asserts stripped off, run as:
 # ./build.sh
 #
-export RELEASE_BUILD=${RELEASE_BUILD:-1}
+# For making release builds with all calls to asserts stripped off, run as:
+# RELEASE_BUILD=1 ./build.sh
+#
+# TODO: Change default value of RELEASE_BUILD to 1 when we are done with testing.
+#
+export RELEASE_BUILD=${RELEASE_BUILD:-0}
 
 echo "Using Go - $(go version)"
 if [ "$1" == "fuse2" ]
