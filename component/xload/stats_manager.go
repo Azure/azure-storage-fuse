@@ -54,11 +54,13 @@ type StatsManager struct {
 	dirs            uint64          // number of directories processed
 	bytesDownloaded uint64          // total number of bytes downloaded
 	bytesUploaded   uint64          // total number of bytes uploaded
+	diskIOBytes     uint64          // total number of bytes written to disk
 	startTime       time.Time       // variable indicating the time at which the stats manager started
 	fileHandle      *os.File        // file where stats will be dumped
 	waitGroup       sync.WaitGroup  // wait group to wait for stats manager thread to finish
 	items           chan *StatsItem // channel to hold the stats items
 	done            chan bool       // channel to indicate if the stats manager has completed or not
+	pool            *BlockPool      // Object of block pool
 }
 
 type StatsItem struct {
@@ -68,6 +70,7 @@ type StatsItem struct {
 	Dir              bool   // flag to indicate if the item is a directory
 	Success          bool   // flag to indicate if the file has been processed successfully or not
 	Download         bool   // flag to denote upload or download
+	DiskIO           bool   // flag to denote if the item is a disk IO
 	BytesTransferred uint64 // bytes uploaded or downloaded for this file
 }
 
@@ -88,7 +91,7 @@ const (
 	JSON_FILE_NAME = "xload_stats_{PID}.json" // json file name where the stats manager will dump the stats
 )
 
-func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) {
+func NewStatsManager(count uint32, isExportEnabled bool, pool *BlockPool) (*StatsManager, error) {
 	var fh *os.File
 	var err error
 	if isExportEnabled {
@@ -106,6 +109,7 @@ func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) 
 		fileHandle: fh,
 		items:      make(chan *StatsItem, count*2),
 		done:       make(chan bool, 1),
+		pool:       pool,
 	}, nil
 }
 
@@ -116,6 +120,7 @@ func (sm *StatsManager) Start() {
 	_ = sm.writeToJSON([]byte("[\n"), false)
 	_ = sm.marshalStatsData(&statsJSONData{Timestamp: sm.startTime.Format(time.RFC1123)}, false)
 	_ = sm.writeToJSON([]byte("\n]"), false)
+
 	go sm.statsProcessor()
 	go sm.statsExporter()
 }
@@ -145,6 +150,10 @@ func (sm *StatsManager) updateSuccessFailedCtr(isSuccess bool) {
 	}
 }
 
+func (sm *StatsManager) updateDiskStats(count uint64) {
+	sm.diskIOBytes += count
+}
+
 func (sm *StatsManager) statsProcessor() {
 	defer sm.waitGroup.Done()
 
@@ -160,7 +169,11 @@ func (sm *StatsManager) statsProcessor() {
 
 		case SPLITTER:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
-			sm.updateSuccessFailedCtr(item.Success)
+			if item.DiskIO {
+				sm.updateDiskStats(item.BytesTransferred)
+			} else {
+				sm.updateSuccessFailedCtr(item.Success)
+			}
 
 		case DATA_MANAGER:
 			// log.Debug("statsManager::statsProcessor : data manager: Name %v, success %v, download %v, bytes transferred %v", item.name, item.success, item.download, item.bytesTransferred)
@@ -210,11 +223,22 @@ func (sm *StatsManager) calculateBandwidth() {
 	filesPending := sm.totalFiles - filesProcessed
 	percentCompleted := (float64(filesProcessed) / float64(sm.totalFiles)) * 100
 	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(MB))
+	diskSpeedMbps := float64(sm.diskIOBytes*8) / (timeLapsed * float64(MB))
+
+	var max, pr, reg uint32
+	var waiting int32
+	var poolusage uint32
+
+	if sm.pool != nil {
+		max, pr, reg, waiting = sm.pool.GetUsageDetails()
+		sm.pool.Usage()
+	}
 
 	log.Crit("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
-		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f",
+		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f, Disk Speed (Mbps): %.2f, Blockpool usage: %v%%, (%v / %v / %v : %v), Time: %.2f",
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
-		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps)
+		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps, diskSpeedMbps, poolusage,
+		max, pr, reg, waiting, timeLapsed)
 
 	if sm.fileHandle != nil {
 		err := sm.marshalStatsData(&statsJSONData{
