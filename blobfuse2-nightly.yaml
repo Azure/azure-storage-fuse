@@ -731,12 +731,21 @@ stages:
                   tags: $(tags) 
                   installStep:
                     script: |
-                      sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
-                      sudo yum update -y
-                      sudo yum groupinstall "Development Tools" -y
                       if [ $(AgentName) == "blobfuse-rhel9" ]; then
+                        sudo yum update -y
+                        sudo yum groupinstall "Development Tools" -y
                         sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
                       else
+                        sudo yum clean all
+                        sudo yum -y --disablerepo='*' --enablerepo='*microsoft*' install rhui-azure-rhel8-eus
+                        sudo dnf clean all
+                        sudo dnf repolist
+                        sudo dnf update -y
+                        #
+                        # Normal update is not able fetch the repos hence doing the above config.
+                        #
+                        sudo yum update -y
+                        sudo yum groupinstall "Development Tools" -y
                         sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
                       fi
                     displayName: 'Install fuse'
