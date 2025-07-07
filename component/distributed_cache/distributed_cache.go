@@ -61,6 +61,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 /* NOTES:
    - Component shall have a structure which inherits "internal.BaseComponent" to participate in pipeline
    - Component shall register a name and its constructor to participate in pipeline  (add by default by generator)

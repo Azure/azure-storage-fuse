@@ -48,6 +48,8 @@ import (
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type requestType int
 
 const (
