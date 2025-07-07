@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func (suite *threadPoolTestSuite) TestThreadPoolStartStop() {
 	suite.assert.NotNil(tp)
 	suite.assert.Equal(tp.worker, uint32(2))
 
-	tp.Start()
+	tp.Start(context.TODO())
 	suite.assert.NotNil(tp.priorityItems)
 	suite.assert.NotNil(tp.workItems)
 
@@ -92,7 +93,7 @@ func (suite *threadPoolTestSuite) TestThreadPoolSchedule() {
 	suite.assert.NotNil(tp)
 	suite.assert.Equal(tp.worker, uint32(2))
 
-	tp.Start()
+	tp.Start(context.TODO())
 	suite.assert.NotNil(tp.priorityItems)
 	suite.assert.NotNil(tp.workItems)
 
@@ -116,7 +117,7 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 	suite.assert.NotNil(tp)
 	suite.assert.Equal(tp.worker, uint32(10))
 
-	tp.Start()
+	tp.Start(context.TODO())
 	suite.assert.NotNil(tp.priorityItems)
 	suite.assert.NotNil(tp.workItems)
 
