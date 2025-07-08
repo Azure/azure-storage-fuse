@@ -376,8 +376,8 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	//
 	storageBytes, etag, err := getClusterMap()
 	if err != nil {
-		err = fmt.Errorf("failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
-		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
+		err1 := fmt.Errorf("failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
+		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err1)
 
 		common.Assert(len(storageBytes) == 0)
 		common.Assert(etag == nil)
@@ -385,7 +385,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		// Only when called from safeCleanupMyRVs(), we may not have the global clustermap yet.
 		// Post that, once cmi.config is set, it should never fail.
 		//
-		common.Assert(cmi.config == nil, err)
+		common.Assert(cmi.config == nil, err1)
 		return nil, nil, err
 	}
 
@@ -693,15 +693,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		_, _, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
-			isClusterMapExists, err1 := cmi.checkIfClusterMapExists()
-			if err1 != nil {
-				//
-				// Fail to fetch clustermap, not safe to proceed.
-				//
-				common.Assert(false, err1, err)
-				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to fetch clustermap: %v, %v",
-					err1, err)
-			}
+			isClusterMapExists := err != syscall.ENOENT
 
 			//
 			// This implies some other error in fetchAndUpdateLocalClusterMap(), maybe clustermap
@@ -1273,19 +1265,6 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 	}
 
 	return nil
-}
-
-func (cmi *ClusterManager) checkIfClusterMapExists() (bool, error) {
-	_, _, err := getClusterMap()
-	if err != nil {
-		if os.IsNotExist(err) || err == syscall.ENOENT {
-			return false, nil
-		} else {
-			return false, err
-		}
-	}
-
-	return true, nil
 }
 
 // This should only be called from fetchAndUpdateLocalClusterMap(), all other users must call
