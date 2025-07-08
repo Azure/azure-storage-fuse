@@ -1719,7 +1719,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			common.Assert(rvMap[deleteRvName].State == dcache.StateOnline,
 				deleteRvName, rvMap[deleteRvName].State)
 			found := false
-      		_ = found
+			_ = found
 
 			for i, rv := range nodeToRvs[nodeId].rvs {
 				if rv.rvName != deleteRvName {
