@@ -903,12 +903,7 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	//
 
 	if err != nil {
-		// Already-exists is fine as we may race with some other node
-		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-			log.Info("CreateInitialClusterMap:: PutBlobInStorage Failed to create file as it is already existing, treating as success: %v",
-				clustermapPath, err)
-			return nil
-		}
+
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Info("CreateInitialClusterMap:: PutBlobInStorage failed for %s due to ETag mismatch, treating as success: %v",
 				clustermapPath, err)

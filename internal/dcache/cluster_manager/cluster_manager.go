@@ -373,8 +373,8 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	//
 	storageBytes, etag, err := getClusterMap()
 	if err != nil {
-		err = fmt.Errorf("failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
-		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
+		err1 := fmt.Errorf("failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
+		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err1)
 
 		common.Assert(len(storageBytes) == 0)
 		common.Assert(etag == nil)
@@ -382,7 +382,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		// Only when called from safeCleanupMyRVs(), we may not have the global clustermap yet.
 		// Post that, once cmi.config is set, it should never fail.
 		//
-		common.Assert(cmi.config == nil, err)
+		common.Assert(cmi.config == nil, err1)
 		return nil, nil, err
 	}
 
@@ -690,17 +690,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		_, _, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
-			log.Err("ClusterManager::safeCleanupMyRVs: fetchAndUpdateLocalClusterMap failed: %v", err)
-			isClusterMapExists, err1 := cmi.checkIfClusterMapExists(err)
-			log.Err("ClusterManager::safeCleanupMyRVs: checkIfClusterMapExists returned isClusterMapExists: %t, err: %v", isClusterMapExists, err1)
-			if err1 != nil {
-				//
-				// Fail to fetch clustermap, not safe to proceed.
-				//
-				common.Assert(false, err1, err)
-				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to fetch clustermap: %v, %v",
-					err1, err)
-			}
+			isClusterMapExists := err != syscall.ENOENT
 
 			//
 			// This implies some other error in fetchAndUpdateLocalClusterMap(), maybe clustermap
@@ -875,6 +865,8 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//       from all MVs, clean up the RV directory and then add back.
 	//
 	isClusterMapExists, err := cmi.safeCleanupMyRVs(rvs)
+	err = nil
+	isClusterMapExists = false
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: Failed to check clustermap: %v", err)
 		common.Assert(false)
