@@ -1277,7 +1277,7 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 func (cmi *ClusterManager) checkIfClusterMapExists(err error) (bool, error) {
 	// _, _, err := getClusterMap()
 	if err != nil {
-		if os.IsNotExist(err) || err == syscall.ENOENT {
+		if os.IsNotExist(err) || err == syscall.ENOENT || strings.Contains(err.Error(), "no such file or directory") {
 			return false, nil
 		} else {
 			return false, err
