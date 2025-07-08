@@ -690,7 +690,9 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		_, _, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
-			isClusterMapExists, err1 := cmi.checkIfClusterMapExists()
+			log.Err("ClusterManager::safeCleanupMyRVs: fetchAndUpdateLocalClusterMap failed: %v", err)
+			isClusterMapExists, err1 := cmi.checkIfClusterMapExists(err)
+			log.Err("ClusterManager::safeCleanupMyRVs: checkIfClusterMapExists returned isClusterMapExists: %t, err: %v", isClusterMapExists, err1)
 			if err1 != nil {
 				//
 				// Fail to fetch clustermap, not safe to proceed.
@@ -1272,8 +1274,8 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 	return nil
 }
 
-func (cmi *ClusterManager) checkIfClusterMapExists() (bool, error) {
-	_, _, err := getClusterMap()
+func (cmi *ClusterManager) checkIfClusterMapExists(err error) (bool, error) {
+	// _, _, err := getClusterMap()
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			return false, nil
