@@ -54,9 +54,6 @@ steps:
 
     - bash: |
         md5sum * | tee ~/checklist.chk
-        for file in $(DATA_DIR)/*; do
-          md5sum "$(MOUNT_DIR)/$(basename "$file")" | tee -a ~/mc1.chk
-        done
         cat ~/checklist.chk | cut -d " " -f1 > ~/checklist.chk1
       displayName: "Generate md5sum of the generated files"
       workingDirectory: $(DATA_DIR)

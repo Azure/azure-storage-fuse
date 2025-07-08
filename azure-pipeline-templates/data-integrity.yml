@@ -55,7 +55,7 @@ steps:
     # Mount in File cache with direct-io
     - template: 'mount.yml'
       parameters:
-        prefix: ${{ parameters.idstring }}-FILECACHE-DIRECTIO
+        prefix: ${{ parameters.idstring }}-FILECACHE-DIRECT_IO
         mountStep:
           script: |
             $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 -o direct_io
@@ -93,7 +93,7 @@ steps:
     # Mount in Block Cache direct-io
     - template: 'mount.yml'
       parameters:
-        prefix: ${{ parameters.idstring }}-BLOCKCACHE-DIRECTIO
+        prefix: ${{ parameters.idstring }}-BLOCKCACHE-DIRECT_IO
         mountStep:
           script: |
             $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o direct_io
@@ -119,7 +119,7 @@ steps:
     # Mount in Block Cache with Disk path
     - template: 'mount.yml'
       parameters:
-        prefix: ${{ parameters.idstring }}-BLOCKCACHE-DIO-TEMPPATH
+        prefix: ${{ parameters.idstring }}-BLOCKCACHE-DIRECT_IO-TEMPPATH
         mountStep:
           script: |
             $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o direct_io --block-cache-path block_cache --block-cache-block-size 8
