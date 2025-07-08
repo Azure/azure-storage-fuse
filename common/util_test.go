@@ -269,7 +269,7 @@ func (suite *utilTestSuite) TestExpandPath() {
 	suite.assert.Contains(path, "$web")
 }
 
-func (suite *utilTestSuite) TestGetUSage() {
+func (suite *utilTestSuite) TestGetUsage() {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return
@@ -310,6 +310,110 @@ func (suite *utilTestSuite) TestGetDiskUsage() {
 	suite.assert.NotEqual(usagePercent, 0)
 	suite.assert.NotEqual(usagePercent, 100)
 	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
+}
+
+func (suite *utilTestSuite) TestGetUsageWithSymlinks() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	dir1 := filepath.Join(pwd, "util_test_dir1")
+	dir2 := filepath.Join(pwd, "util_test_dir2")
+	err = os.Mkdir(dir1, 0777)
+	suite.assert.Nil(err)
+	defer os.RemoveAll(dir1)
+
+	err = os.Mkdir(dir2, 0777)
+	suite.assert.Nil(err)
+	defer os.RemoveAll(dir2)
+
+	data := make([]byte, 1024*1024)
+	file1 := filepath.Join(dir1, "file1.txt")
+	file2 := filepath.Join(dir2, "file2.txt")
+
+	err = os.WriteFile(file1, data, 0777)
+	suite.assert.Nil(err)
+
+	err = os.WriteFile(file2, data, 0777)
+	suite.assert.Nil(err)
+
+	symlink := filepath.Join(dir1, "link_to_file2")
+	err = os.Symlink(file2, symlink)
+	suite.assert.Nil(err)
+
+	linkInfo, err := os.Lstat(symlink)
+	suite.assert.Nil(err)
+	symlinkSize := linkInfo.Size()
+
+	usage, err := GetUsage(dir1)
+	suite.assert.Nil(err)
+
+	file1ExpectedSize := float64(1024 * 1024)
+	expectedUsageMB := (file1ExpectedSize + float64(symlinkSize)) / (1024 * 1024)
+
+	/* Usage should be greater than 1MB (size of the file plus the symlink size)
+	   but less than 1.5MB since dereferencing the symlink will result in a size
+	   over this amount. The results of InDelta() may depend on the underlying
+	   file system. */
+	suite.assert.InDelta(expectedUsageMB, usage, 0.1)
+	suite.assert.Less(usage, 1.5)           // Should be much less than 2MB
+	suite.assert.GreaterOrEqual(usage, 1.0) // Should be at least 1MB
+}
+
+func (suite *utilTestSuite) TestGetUsageWithSubdirectories() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	tempDir := filepath.Join(pwd, "util_test_subdir")
+	err = os.Mkdir(tempDir, 0777)
+	suite.assert.Nil(err)
+	defer os.RemoveAll(tempDir)
+
+	data := make([]byte, 1024*1024)
+	file1 := filepath.Join(tempDir, "file1.txt")
+	err = os.WriteFile(file1, data, 0777)
+	suite.assert.Nil(err)
+
+	subDir := filepath.Join(tempDir, "subdir")
+	err = os.Mkdir(subDir, 0777)
+	suite.assert.Nil(err)
+
+	data2 := make([]byte, 2*1024*1024)
+	file2 := filepath.Join(subDir, "file2.txt")
+	err = os.WriteFile(file2, data2, 0777)
+	suite.assert.Nil(err)
+
+	subDir2 := filepath.Join(tempDir, "subdir2")
+	err = os.Mkdir(subDir2, 0777)
+	suite.assert.Nil(err)
+
+	data3 := make([]byte, 512*1024)
+	file3 := filepath.Join(subDir2, "file3.txt")
+	err = os.WriteFile(file3, data3, 0777)
+	suite.assert.Nil(err)
+
+	dirInfo, err := os.Lstat(subDir)
+	suite.assert.Nil(err)
+	dirSize := dirInfo.Size()
+
+	dirInfo2, err := os.Lstat(subDir2)
+	suite.assert.Nil(err)
+	dirSize2 := dirInfo2.Size()
+
+	usage, err := GetUsage(tempDir)
+	suite.assert.Nil(err)
+
+	file1ExpectedSize := float64(1024 * 1024)
+	file2ExpectedSize := float64(2 * 1024 * 1024)
+	file3ExpectedSize := float64(512 * 1024)
+	expectedSizeMB := (file1ExpectedSize + file2ExpectedSize + file3ExpectedSize + float64(dirSize+dirSize2)) / (1024 * 1024)
+
+	suite.assert.InDelta(expectedSizeMB, usage, 0.1)
+	suite.assert.GreaterOrEqual(usage, 3.5)
+	suite.assert.Less(usage, 4.5)
 }
 
 func (suite *utilTestSuite) TestDirectoryCleanup() {

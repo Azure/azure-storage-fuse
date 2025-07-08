@@ -363,65 +363,49 @@ func NotifyMountToParent() error {
 	return nil
 }
 
-var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
-var selectedDuPath string = ""
+// Defining this wrapper function to preserve the original API.
+func GetUsageInBytes(path string) (int64, error) {
+	totalUsage := int64(0)
 
-// GetUsage: The current disk usage in MB
-func GetUsage(path string) (float64, error) {
-	var currSize float64
-	var out bytes.Buffer
-
-	if selectedDuPath == "" {
-		selectedDuPath = "-"
-		for _, dup := range duPath {
-			_, err := os.Stat(dup)
-			if err == nil {
-				selectedDuPath = dup
-				break
-			}
+	err := filepath.WalkDir(path, func(path string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-	}
 
-	if selectedDuPath == "-" {
-		return 0, fmt.Errorf("failed to find du")
-	}
+		/*
+			Use os.Lstat() to get the file information. The previous implementation of this function
+			used du, and it did not include the -L flag to follow symlinks.
+			Using os.Stat() will resolve symlinks and return the size of the target file,
+			which will change the behavior of this function.
+		*/
+		fileInfo, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
 
-	// du - estimates file space usage
-	// https://man7.org/linux/man-pages/man1/du.1.html
-	// Note: We cannot just pass -BM as a parameter here since it will result in less accurate estimates of the size of the path
-	// (i.e. du will round up to 1M if the path is smaller than 1M).
-	cmd := exec.Command(selectedDuPath, "-sh", path)
-	cmd.Stdout = &out
+		totalUsage += fileInfo.Size()
+		return nil
+	})
 
-	err := cmd.Run()
 	if err != nil {
 		return 0, err
 	}
 
-	size := strings.Split(out.String(), "\t")[0]
-	if size == "0" {
-		return 0, nil
-	}
+	return totalUsage, nil
+}
 
-	// some OS's use "," instead of "." that will not work for float parsing - replace it
-	size = strings.Replace(size, ",", ".", 1)
-	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
+func GetUsageInMegabytes(path string) (float64, error) {
+	return GetUsage(path)
+}
+
+// GetUsage: The current disk usage in MB using Go libraries
+// Deprecated: Use GetUsageInBytes or GetUsageInMegabytes instead, which provide more clarity on the return units.
+func GetUsage(path string) (float64, error) {
+	totalUsageInBytes, err := GetUsageInBytes(path)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse du output")
+		return 0, err
 	}
-
-	switch size[len(size)-1] {
-	case 'K':
-		currSize = parsed / float64(1024)
-	case 'M':
-		currSize = parsed
-	case 'G':
-		currSize = parsed * 1024
-	case 'T':
-		currSize = parsed * 1024 * 1024
-	}
-
-	return currSize, nil
+	return float64(totalUsageInBytes) / (1024 * 1024), nil
 }
 
 var currentUID int = -1
