@@ -1582,8 +1582,8 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //     In this case runFixMvNewMv parameter is passed as true.
 //  2. From batchUpdateComponentRVState(), when some other workflow wants to explicitly update component RV state for
 //     some MV, f.e., resync workflow may want to change an "outofsync" component RV to "syncing" or a failed PutChunk
-//     call may indicate an RV as down and hence we would want to change the component RV state to "offline". There
-//     could be more such examples of inband RV state detection resulting in MV list update.
+//     call may indicate an RV as down and hence we would want to change the component RV state to "inband-offline".
+//     There could be more such examples of inband RV state detection resulting in MV list update.
 //     In this case runFixMvNewMv parameter is passed as false, as we do not want to overwhelm the receivers with
 //     too many RPCs as a result of potentially many parallel sync jobs running.
 //
@@ -1845,12 +1845,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 
 			//
-			// If this component RV is not offline, its containing node must be excluded for replacement RV(s).
+			// If this component RV is not offline/inband-offline, its containing node must be excluded for replacement RV(s).
 			// We don't exclude the node if the component RV is offline to support the case where the same node
 			// comes back up online and we may want to use the same RV or another RV from the same node, as
 			// replacement RV.
 			//
-			if mv.RVs[rvName] != dcache.StateOffline {
+			if mv.RVs[rvName] != dcache.StateOffline && mv.RVs[rvName] != dcache.StateInbandOffline {
 				excludeNodes[rvMap[rvName].NodeId] = struct{}{}
 				continue
 			}
@@ -1875,7 +1875,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		if offlineRVs == 0 {
 			// If not offline, must have at least one outofsync, else why the MV is degraded.
 			common.Assert(outofsyncRVs > 0, mvName)
-			log.Debug("ClusterManager::fixMV: %s has no offline component RV, nothing to fix %+v",
+			log.Debug("ClusterManager::fixMV: %s has no offline/inband-offline component RV, nothing to fix %+v",
 				mvName, mv.RVs)
 			return
 		}
@@ -1893,7 +1893,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		var availableNodes []node
 		for _, n := range nodeToRvs {
 			availableNodes = append(availableNodes, n)
-
 		}
 
 		rand.Shuffle(len(availableNodes), func(i, j int) {
@@ -1942,8 +1941,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				alreadyOutOfSync[rvName] = struct{}{}
 			}
 
-			// Only offline component RVs need to be "fixed" (aka replaced).
-			if mv.RVs[rvName] != dcache.StateOffline {
+			// Only offline/inband-offline component RVs need to be "fixed" (aka replaced).
+			if mv.RVs[rvName] != dcache.StateOffline && mv.RVs[rvName] != dcache.StateInbandOffline {
 				continue
 			}
 
@@ -2136,8 +2135,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// per rvMap, then the component RV is force marked offline. Then it sets the MV state based on the cumulative
 	// state of all of it's component RVs as follows:
 	// - If all component RVs of an MV are online, the MV is marked as online, else
-	// - If no component RV of an MV is online (they are either offline, outofsync or syncing), the MV
-	//   is marked as offline, else
+	// - If no component RV of an MV is online (they are either offline, outofsync, syncing or inband-offline),
+	//   the MV is marked as offline, else
 	// - If at least one component RV is online, the MV is marked as degraded, else
 	// - All component RVs are either online or syncing, then MV is marked as syncing.
 	//
@@ -2145,12 +2144,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// online, online, online => online
 	// online, online, offline => degraded
 	// online, online, outofsync => degraded
+	// online, online, inband-offline => degraded
 	// online, outofsync, outofsync => degraded
 	// online, syncing, outofsync => degraded
 	// online, syncing, syncing => syncing
 	// online, online, syncing => syncing
 	// offline, syncing, syncing => offline
+	// offline, inband-offline, syncing => offline
 	// offline, outofsync, syncing => offline
+	// offline, outofsync, inband-offline => offline
 	// offline, outofsync, outofsync => offline
 	// offline, offline, offline => offline
 	//
@@ -2159,6 +2161,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		syncingRVs := 0
 		onlineRVs := 0
 		outofsyncRVs := 0
+		inbandOfflineRVs := 0
 
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
@@ -2179,6 +2182,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				outofsyncRVs++
 			} else if mv.RVs[rvName] == dcache.StateSyncing {
 				syncingRVs++
+			} else if mv.RVs[rvName] == dcache.StateInbandOffline {
+				inbandOfflineRVs++
 			}
 
 			//
@@ -2193,21 +2198,21 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// RV, so we don't reduce it now.
 			//
 			if rvMap[rvName].State != dcache.StateOffline {
-				if mv.RVs[rvName] != dcache.StateOffline {
+				if mv.RVs[rvName] != dcache.StateOffline && mv.RVs[rvName] != dcache.StateInbandOffline {
 					consumeRVSlot(mvName, rvName)
 				}
 			}
 		}
 
-		common.Assert((onlineRVs+offlineRVs+outofsyncRVs+syncingRVs) == len(mv.RVs),
+		common.Assert((onlineRVs+offlineRVs+outofsyncRVs+syncingRVs+inbandOfflineRVs) == len(mv.RVs),
 			onlineRVs, offlineRVs, outofsyncRVs, syncingRVs, len(mv.RVs))
 
-		if (offlineRVs + outofsyncRVs + syncingRVs) == len(mv.RVs) {
+		if (offlineRVs + outofsyncRVs + syncingRVs + inbandOfflineRVs) == len(mv.RVs) {
 			// No component RV is online, offline-mv.
 			mv.State = dcache.StateOffline
 		} else if onlineRVs == len(mv.RVs) {
 			mv.State = dcache.StateOnline
-		} else if offlineRVs > 0 || outofsyncRVs > 0 {
+		} else if offlineRVs > 0 || outofsyncRVs > 0 || inbandOfflineRVs > 0 {
 			common.Assert(onlineRVs > 0 && onlineRVs < len(mv.RVs), onlineRVs, len(mv.RVs))
 			// At least one component RV is not online but at least one is online, degrade-mv.
 			mv.State = dcache.StateDegraded
