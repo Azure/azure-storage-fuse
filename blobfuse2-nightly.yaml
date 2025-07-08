@@ -723,11 +723,10 @@ stages:
                   delete_containers: true
 
 
-  - stage: DataIntegrity
+  - stage: FileCacheValidation
     dependsOn: BuildAndTest
     jobs:
-      # Ubuntu Tests
-      - job: Set_1
+      - job: Set_1_BLOCK
         timeoutInMinutes: 300
         strategy:
           matrix:
@@ -779,16 +778,71 @@ stages:
             parameters:
               config_file: $(BLOBFUSE2_CFG)
               idstring: BLOCK
+              cache_mode: file_cache
               account_name: $(BF2_BLK_ACC_NAME)
               account_key: $(BF2_BLK_ACC_KEY)
               account_type: block
               verbose_log: ${{ parameters.verbose_log }}
+
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              unmount: true
+              delete_containers: true
+
+      - job: Set_2_ADLS
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20_x86'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: GOPATH
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(Agent.TempDirectory)'
+          - name: WORK_DIR
+            value: '$(Build.SourcesDirectory)'
+
+        steps:
+          # -------------------------------------------------------
+          # Pull and build the code and create the containers
+          - template: 'azure-pipeline-templates/build.yml'
+            parameters:
+              skip_ut: true
 
           # Check data consistency for adls accounts
           - template: 'azure-pipeline-templates/data-integrity.yml'
             parameters:
               config_file: $(BLOBFUSE2_CFG)
               idstring: ADLS
+              cache_mode: file_cache
               account_name: $(BF2_ADLS_ACC_NAME)
               account_key: $(BF2_ADLS_ACC_KEY)
               account_type: adls
@@ -798,6 +852,137 @@ stages:
             parameters:
               unmount: true
               delete_containers: true
+
+  - stage: BlockCacheValidation
+    dependsOn: BuildAndTest
+    jobs:
+      - job: Set_1_BLOCK
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20_x86'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: GOPATH
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(Agent.TempDirectory)'
+          - name: WORK_DIR
+            value: '$(Build.SourcesDirectory)'
+
+        steps:
+          # -------------------------------------------------------
+          # Pull and build the code and create the containers
+          - template: 'azure-pipeline-templates/build.yml'
+            parameters:
+              skip_ut: true
+          # Check data consistency for block accounts
+          - template: 'azure-pipeline-templates/data-integrity.yml'
+            parameters:
+              config_file: $(BLOBFUSE2_CFG)
+              idstring: BLOCK
+              cache_mode: block_cache
+              account_name: $(BF2_BLK_ACC_NAME)
+              account_key: $(BF2_BLK_ACC_KEY)
+              account_type: block
+              verbose_log: ${{ parameters.verbose_log }}
+
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              unmount: true
+              delete_containers: true
+
+      - job: Set_2_ADLS
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20_x86'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: GOPATH
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(Agent.TempDirectory)'
+          - name: WORK_DIR
+            value: '$(Build.SourcesDirectory)'
+
+        steps:
+          # -------------------------------------------------------
+          # Pull and build the code and create the containers
+          - template: 'azure-pipeline-templates/build.yml'
+            parameters:
+              skip_ut: true
+
+          # Check data consistency for adls accounts
+          - template: 'azure-pipeline-templates/data-integrity.yml'
+            parameters:
+              config_file: $(BLOBFUSE2_CFG)
+              idstring: ADLS
+              cache_mode: block_cache
+              account_name: $(BF2_ADLS_ACC_NAME)
+              account_key: $(BF2_ADLS_ACC_KEY)
+              account_type: adls
+              verbose_log: ${{ parameters.verbose_log }}
+
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              unmount: true
+              delete_containers: true
+
 
   - stage: XloadValidation
     dependsOn: BuildAndTest
