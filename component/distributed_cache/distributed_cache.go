@@ -56,9 +56,12 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/gc"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
+
+//go:generate $ASSERT_REMOVER $GOFILE
 
 /* NOTES:
    - Component shall have a structure which inherits "internal.BaseComponent" to participate in pipeline
@@ -108,6 +111,8 @@ type DistributedCacheOptions struct {
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
 	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
+	ReadIOMode          string `config:"read-io-mode" yaml:"read-io-mode,omitempty"`
+	WriteIOMode         string `config:"write-io-mode" yaml:"write-io-mode,omitempty"`
 }
 
 const (
@@ -393,6 +398,37 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".cache-access") {
 		distributedCache.cfg.CacheAccess = defaultCacheAccess
 	}
+
+	// Both read/write default to direct IO.
+	if !config.IsSet(compName + ".read-io-mode") {
+		distributedCache.cfg.ReadIOMode = rpc.DirectIO
+	}
+	if !config.IsSet(compName + ".write-io-mode") {
+		distributedCache.cfg.WriteIOMode = rpc.DirectIO
+	}
+
+	err = rpc.SetReadIOMode(distributedCache.cfg.ReadIOMode)
+	if err != nil {
+		return fmt.Errorf("config error in %s: [cannot set read-io-mode (%s)]: %v",
+			distributedCache.Name(), distributedCache.cfg.ReadIOMode, err)
+	}
+
+	err = rpc.SetWriteIOMode(distributedCache.cfg.WriteIOMode)
+	if err != nil {
+		return fmt.Errorf("config error in %s: [cannot set write-io-mode (%s)]: %v",
+			distributedCache.Name(), distributedCache.cfg.WriteIOMode, err)
+	}
+
+	//
+	// In direct IO read or write operations, the chunk size must be a multiple
+	// of filesystem block size.
+	//
+	if (rpc.ReadIOMode == rpc.DirectIO || rpc.WriteIOMode == rpc.DirectIO) &&
+		distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
+		return fmt.Errorf("config error in %s: [chunk-size (%d) must be a multiple of %d bytes]",
+			distributedCache.Name(), distributedCache.cfg.ChunkSize, common.FS_BLOCK_SIZE)
+	}
+
 	return nil
 }
 
@@ -1181,8 +1217,36 @@ func NewDistributedCacheComponent() internal.Component {
 	return comp
 }
 
+// Very first call to common.GetNodeUUID() queries the UUID from the file and caches it for later
+// use. Make sure we don't proceed w/o a valid UUID.
+func ensureUUID() {
+	// This one should query from the uuid file or create and store in the file.
+	uuid1, err := common.GetNodeUUID()
+	if err != nil {
+		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(1) failed: %v", err)
+	}
+
+	// This one (and all subsequent calls) should return the cached UUID.
+	uuid2, err := common.GetNodeUUID()
+	if err != nil {
+		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(2) failed: %v", err)
+	}
+
+	if uuid1 != uuid2 {
+		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID() returned different values, %s and %s",
+			uuid1, uuid2)
+	}
+
+	if !common.IsValidUUID(uuid2) {
+		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID() returned invalid UUID %s",
+			uuid2)
+	}
+}
+
 // On init register this component to pipeline and supply your constructor
 func init() {
+	ensureUUID()
+
 	internal.AddComponent(compName, NewDistributedCacheComponent)
 
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
@@ -1190,6 +1254,7 @@ func init() {
 
 	cacheDirFlag := config.AddStringSliceFlag("cache-dirs", []string{}, "One or more local cache directories for distributed cache (comma-separated), e.g. --cache-dirs=/mnt/tmp,/mnt/abc")
 	config.BindPFlag(compName+".cache-dirs", cacheDirFlag)
+
 	chunkSize := config.AddUint64Flag("chunk-size", defaultChunkSize, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)
 
@@ -1231,4 +1296,10 @@ func init() {
 
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
+
+	readIOMode := config.AddStringFlag("read-io-mode", rpc.DirectIO, "IO mode for reading chunk files (direct/buffered)")
+	config.BindPFlag(compName+".read-io-mode", readIOMode)
+
+	writeIOMode := config.AddStringFlag("write-io-mode", rpc.DirectIO, "IO mode for writing chunk files (direct/buffered)")
+	config.BindPFlag(compName+".write-io-mode", writeIOMode)
 }

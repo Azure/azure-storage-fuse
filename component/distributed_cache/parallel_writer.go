@@ -40,6 +40,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // The following go-routines are used when writing the file to Unqualified Path(i.e., Dcache, Azure) at the same time.
 
 type writeReq struct {
@@ -97,4 +99,9 @@ func (pw *parallelWriter) EnqueuAzureWrite(azureWrite func() error) <-chan error
 	pw.azureWriterQueue <- azureWriteWorkItem
 
 	return azureWriteWorkItem.err
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

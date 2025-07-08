@@ -50,6 +50,8 @@ import (
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type fileIOManager struct {
 	// If SafeDeletes is enabled we always increment and decrement the file descriptor count while opening
 	// and closing the file. This ensures the delete/unlink of a file works as per the POSIX semantics
@@ -483,6 +485,7 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 		common.Assert(file.attr != nil, file.FileMetadata)
 
 		openCount, err := mm.CloseFile(file.FileMetadata.Filename, file.attr)
+		_ = openCount
 		if err != nil {
 			err = fmt.Errorf("Failed to decrement open count for file %s: %v",
 				file.FileMetadata.Filename, err)
@@ -771,7 +774,7 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 					// As we are using writeback policy to upload the data.
 					// Better to fail early.
 					releaseChunk.Err <- err
-					return nil, errors.New("DistributedCache::WriteChunk: failed to upload the previous chunk")
+					return nil, fmt.Errorf("DistributedCache::WriteChunk: failed to upload the previous chunk [%v]", err)
 				}
 				file.removeChunk(releaseChunkIdx)
 			}

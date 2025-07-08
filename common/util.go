@@ -60,10 +60,13 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 var RootMount bool
 var ForegroundMount bool
 var IsDistributedCacheEnabled bool
 var IsStream bool
+var MyNodeUUID string
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -111,11 +114,12 @@ func IsMountActive(path string) (bool, error) {
 	// out contains the list of pids of the processes that are running
 	pidString := strings.Replace(out.String(), "\n", " ", -1)
 	pids := strings.Split(pidString, " ")
+	myPid := strconv.Itoa(os.Getpid())
 	for _, pid := range pids {
 		// Get the mount path for this pid
 		// For this we need to check the command line arguments given to this command
 		// If the path is same then we need to return true
-		if pid == "" {
+		if pid == "" || pid == myPid {
 			continue
 		}
 
@@ -652,6 +656,10 @@ func UpdatePipeline(pipeline []string, component string) []string {
 }
 
 func GetNodeUUID() (string, error) {
+	if MyNodeUUID != "" {
+		return MyNodeUUID, nil
+	}
+
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
 
 	// Read the UUID file.
@@ -662,6 +670,8 @@ func GetNodeUUID() (string, error) {
 		if !isValidUUID {
 			return "", fmt.Errorf("not a valid UUID in UUID File at :%s UUID - %s", uuidFilePath, string(data))
 		}
+
+		MyNodeUUID = stringData
 		return stringData, nil
 	}
 
@@ -672,6 +682,8 @@ func GetNodeUUID() (string, error) {
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 			return "", err
 		}
+
+		MyNodeUUID = newUuid
 		return newUuid, nil
 	}
 

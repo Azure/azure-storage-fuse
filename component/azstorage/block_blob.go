@@ -63,6 +63,8 @@ import (
 	"github.com/vibhansa-msft/blobfilter"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 const (
 	folderKey           = "hdi_isfolder"
 	symlinkKey          = "is_symlink"
@@ -785,7 +787,9 @@ func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, d
 				// marker file not found in current iteration, so we need to manually check attributes via REST
 				_, err := bb.getAttrUsingRest(*blobInfo.Name)
 				// marker file also not found via manual check, safe to add to list
-				if err == syscall.ENOENT {
+				// For HNS accounts mounted as FNS we used to list directories and files in blobfusev1,
+				// in blobfusev2 to replicate this behaviour the below check of blobInfo.Properties != nil is added.
+				if err == syscall.ENOENT || blobInfo.Properties != nil {
 					attr := bb.createDirAttr(*blobInfo.Name)
 					*blobList = append(*blobList, attr)
 				}

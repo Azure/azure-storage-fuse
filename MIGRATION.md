@@ -88,7 +88,7 @@ Note: For an exhaustive list of the blobfuse2 config file options and the format
 Note: Blobfuse2 accepts all CLI parameters that Blobfuse does, but may ignore parameters that are no longer applicable. 
 | Blobfuse CLI Flag Parameter             | Blobfuse2 Replacement CLI Parameter           | Blobfuse2 Replacement Config File     | Notes                                                     |
 |-----------------------------------------|-----------------------------------------------|---------------------------------------|-----------------------------------------------------------|
-| -o allow_other                          | --allow_other                                 | allow-other                           |                                                           |
+| -o allow_other                          | --allow-other                                 | allow-other                           |                                                           |
 | -o ro                                   | --read-only                                   | read-only                             |                                                           |
 | --tmp-path=PATH                         | --tmp-path=PATH                               | file_cache.path                       |                                                           |
 | --empty-dir-check=false                 | --empty-dir-check=false                       | file_cache.allow-non-empty-temp       |                                                           |

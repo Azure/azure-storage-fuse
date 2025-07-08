@@ -60,6 +60,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type LogOptions struct {
 	Type           string `config:"type" yaml:"type,omitempty"`
 	LogLevel       string `config:"level" yaml:"level,omitempty"`
@@ -70,8 +72,9 @@ type LogOptions struct {
 }
 
 type mountOptions struct {
-	MountPath  string
-	ConfigFile string
+	MountPath      string
+	inputMountPath string
+	ConfigFile     string
 
 	Logging           LogOptions     `config:"logging"`
 	Components        []string       `config:"components"`
@@ -111,28 +114,15 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	} else if common.IsDirectoryMounted(opt.MountPath) {
 		// Try to cleanup the stale mount
 		log.Info("Mount::validate : Mount directory is already mounted, trying to cleanup")
-		active, err := common.IsMountActive(opt.MountPath)
+		active, err := common.IsMountActive(opt.inputMountPath)
 		if active || err != nil {
 			// Previous mount is still active so we need to fail this mount
 			return fmt.Errorf("directory is already mounted")
 		} else {
 			// Previous mount is in stale state so lets cleanup the state
 			log.Info("Mount::validate : Cleaning up stale mount")
-			if err = unmountBlobfuse2(opt.MountPath, true); err != nil {
+			if err = unmountBlobfuse2(opt.MountPath, true, true); err != nil {
 				return fmt.Errorf("directory is already mounted, unmount manually before remount [%v]", err.Error())
-			}
-
-			// Clean up the file-cache temp directory if any
-			var tempCachePath string
-			_ = config.UnmarshalKey("file_cache.path", &tempCachePath)
-
-			var cleanupOnStart bool
-			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &cleanupOnStart)
-
-			if tempCachePath != "" && cleanupOnStart {
-				if err = common.TempCacheCleanup(tempCachePath); err != nil {
-					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
-				}
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
@@ -265,6 +255,7 @@ var mountCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(_ *cobra.Command, args []string) error {
+		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])
 		common.MountPath = options.MountPath
 
@@ -484,6 +475,13 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
+		// Clean up any cache directory if cleanup-on-start is set from the cli parameter or specified in parameter in
+		// config file for a specific component for file-cache, block-cache, xload.
+		err = options.tempCacheCleanup()
+		if err != nil {
+			return err
+		}
+
 		common.ForegroundMount = options.Foreground
 
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
@@ -522,10 +520,18 @@ var mountCmd = &cobra.Command{
 				}()
 			}
 
+		retry:
+			// If the .pid file is locked and there no blobfuse process owning it then we need to try
+			// a cleanup of the .pid file. If cleanup goes through then retry the daemonization.
 			child, err := dmnCtx.Reborn()
 			if err != nil {
-				log.Err("mount : failed to daemonize application [%v]", err)
-				return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
+				log.Err("mount : failed to daemonize application [%s], trying auto cleanup", err.Error())
+				rmErr := os.Remove(pidFileName)
+				if rmErr != nil {
+					log.Err("mount : auto cleanup failed [%v]", rmErr.Error())
+					return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
+				}
+				goto retry
 			}
 
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
@@ -681,6 +687,51 @@ func startMonitor(pid int) {
 	}
 }
 
+// cleanupCachePath is a helper function to clean up cache directory for a component that is present in the pipeline.
+// componentName: the name of the component (e.g., "file_cache", "block_cache")
+func (opt *mountOptions) tempCacheCleanup() error {
+	// Check for global cleanup-on-start flag from cli.
+	var cleanupOnStart bool
+	_ = config.UnmarshalKey("cleanup-on-start", &cleanupOnStart)
+
+	components := []string{"file_cache", "block_cache", "xload"}
+
+	for _, component := range components {
+		if common.ComponentInPipeline(options.Components, component) {
+			err := cleanupCachePath(component, cleanupOnStart)
+			if err != nil {
+				return fmt.Errorf("failed to clean up  cache for %s: %v", component, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
+	// Get the path for the component
+	var cachePath string
+	_ = config.UnmarshalKey(componentName+".path", &cachePath)
+
+	if cachePath == "" {
+		// No path configured for this component
+		return nil
+	}
+
+	// Check for component-specific cleanup flag
+	var componentCleanupFlag bool
+	_ = config.UnmarshalKey(componentName+".cleanup-on-start", &componentCleanupFlag)
+
+	// Clean up if either global or component-specific flag is set
+	if globalCleanupFlag || componentCleanupFlag {
+		if err := common.TempCacheCleanup(cachePath); err != nil {
+			return fmt.Errorf("failed to cleanup temp cache path: %s for %s component: %v", cachePath, componentName, err)
+		}
+	}
+
+	return nil
+}
+
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
 	return func(sig os.Signal) error {
 		log.Crit("Mount::sigusrHandler : Signal %d received", sig)
@@ -761,6 +812,10 @@ func init() {
 	_ = mountCmd.RegisterFlagCompletionFunc("log-type", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"silent", "base", "syslog"}, cobra.ShellCompDirectiveNoFileComp
 	})
+
+	// Add a generic cleanup-on-start flag that applies to all cache components
+	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache, block_cache, xload components.")
+	config.BindPFlag("cleanup-on-start", mountCmd.PersistentFlags().Lookup("cleanup-on-start"))
 
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")
