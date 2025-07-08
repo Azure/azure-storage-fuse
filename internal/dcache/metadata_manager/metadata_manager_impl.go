@@ -950,16 +950,21 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// TODO:
 	// Caller has to check if the error is ConditionNotMet or something else
 	// and take appropriate action.
-	// If the error is ConditionNotMet\BlobAlreadyExists, it means the clustermap already exists
+	// If the error is ConditionNotMet/BlobAlreadyExists, it means the clustermap already exists
 	// and the caller should not overwrite it.
 	// For now we treat "already exists" as success.
 	//
 	if err != nil {
+		//
+		// Note: Even though we use IsNoneMatchEtagEnabled = true, we have seen the PutBlobInStorage()
+		//       fail with BlobAlreadyExists and not ConditionNotMet.
+		//
 		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 			log.Info("CreateInitialClusterMap:: PutBlobInStorage Blob %s already exists. Treating it as success: %v",
 				clustermapPath, err)
 			return nil
 		}
+
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Info("CreateInitialClusterMap:: PutBlobInStorage failed for %s due to ETag mismatch, treating as success: %v",
 				clustermapPath, err)

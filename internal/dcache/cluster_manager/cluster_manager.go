@@ -173,10 +173,11 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//
 	// Now we can start the RPC server.
 	//
-	// TODO: Since ensureInitialClusterMap() would send the heartbeat and make the cluster aware of this
+	// Note: Since ensureInitialClusterMap() would send the heartbeat and make the cluster aware of this
 	//       node, it's possible that some other cluster node runs the new-mv workflow and sends a JoinMV
-	//       RPC request to this node, before we can start the RPC server. We should add resiliency for this
-	//       by trying JoinMV RPC a few times.
+	//       RPC request to this node, before we can start the RPC server. We add resiliency for this
+	//       by retrying JoinMV RPC after a small wait if RPC connection creation fails.
+	//       Ref functions.go:JoinMV() for more details.
 	//
 	log.Info("ClusterManager::start: Starting RPC server")
 
@@ -386,6 +387,8 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		// Post that, once cmi.config is set, it should never fail.
 		//
 		common.Assert(cmi.config == nil, err1)
+		// ENOENT is the only viable error, for everything else we retry.
+		common.Assert(err == syscall.ENOENT, err)
 		return nil, nil, err
 	}
 
@@ -421,7 +424,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	//
 	// 3. If we've already loaded this exact version, skip the local update.
 	//
-	if etag != nil && cmi.localMapETag != nil && *etag == *cmi.localMapETag {
+	if cmi.localMapETag != nil && *etag == *cmi.localMapETag {
 		log.Debug("ClusterManager::fetchAndUpdateLocalClusterMap: ETag (%s) unchanged, not updating local clustermap",
 			*etag)
 		// Cache config must have been saved when we saved the clustermap.
@@ -693,7 +696,11 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		_, _, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
-			isClusterMapExists := err != syscall.ENOENT
+			//
+			// fetchAndUpdateLocalClusterMap() returns the raw error syscall.ENOENT when it cannot find
+			// the clustermap in the metadata store.
+			//
+			isClusterMapExists := (err != syscall.ENOENT)
 
 			//
 			// This implies some other error in fetchAndUpdateLocalClusterMap(), maybe clustermap
@@ -986,6 +993,8 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		if err != nil {
 			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: fetchAndUpdateLocalClusterMap() failed: %v",
 				err)
+			// When updateStorageClusterMapWithMyRVs() is called, clustermap must be present.
+			common.Assert(err != syscall.ENOENT, err)
 			common.Assert(false, err)
 			return err
 		}
