@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug"
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/gc"
@@ -106,7 +107,8 @@ type DistributedCacheOptions struct {
 	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"max-cache-size,omitempty"`
 
 	MinNodes            uint32 `config:"min-nodes" yaml:"min-nodes,omitempty"`
-	MVsPerRv            uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
+	MaxRVs              uint32 `config:"max-rvs" yaml:"max-rvs,omitempty"`
+	MVsPerRV            uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
 	RebalancePercentage uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
@@ -118,12 +120,13 @@ type DistributedCacheOptions struct {
 const (
 	compName                         = "distributed_cache"
 	defaultHeartBeatDurationInSecond = 30
-	defaultReplicas                  = 1
+	defaultReplicas                  = 3
 	defaultMaxMissedHBs              = 3
 	defaultChunkSize                 = 4 * 1024 * 1024 // 4 MB
 	defaultMinNodes                  = 1
+	defaultMaxRVs                    = 100
 	defaultStripeSize                = 16 * 1024 * 1024 // 16 MB
-	defaultMvsPerRv                  = 10
+	defaultMVsPerRV                  = 10
 	defaultRvFullThreshold           = 95
 	defaultRvNearfullThreshold       = 80
 	defaultClustermapEpoch           = 300
@@ -205,10 +208,11 @@ func (dc *DistributedCache) startClusterManager() string {
 	dCacheConfig := &dcache.DCacheConfig{
 		CacheId:                dc.cfg.CacheID,
 		MinNodes:               dc.cfg.MinNodes,
+		MaxRVs:                 dc.cfg.MaxRVs,
 		ChunkSize:              dc.cfg.ChunkSize,
 		StripeSize:             dc.cfg.StripeSize,
 		NumReplicas:            dc.cfg.Replicas,
-		MvsPerRv:               dc.cfg.MVsPerRv,
+		MVsPerRV:               dc.cfg.MVsPerRV,
 		HeartbeatSeconds:       dc.cfg.HeartbeatDuration,
 		HeartbeatsTillNodeDown: dc.cfg.MaxMissedHeartbeats,
 		ClustermapEpoch:        dc.cfg.ClustermapEpoch,
@@ -222,6 +226,10 @@ func (dc *DistributedCache) startClusterManager() string {
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
 	}
+
+	//
+	// If user sets some invalid value for any config, clustermanager startup will fail.
+	//
 	err = clustermanager.Start(dCacheConfig, rvList)
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to start cluster manager : %v]", err)
@@ -374,11 +382,48 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".min-nodes") {
 		distributedCache.cfg.MinNodes = defaultMinNodes
 	}
+	if !config.IsSet(compName + ".max-rvs") {
+		distributedCache.cfg.MaxRVs = defaultMaxRVs
+	}
 	if !config.IsSet(compName + ".stripe-size") {
 		distributedCache.cfg.StripeSize = defaultStripeSize
 	}
 	if !config.IsSet(compName + ".mvs-per-rv") {
-		distributedCache.cfg.MVsPerRv = defaultMvsPerRv
+		//
+		// If user sets mvs-per-rv in the config then we use that value and that decides the number of MVs,
+		// depending on the number of RVs and replicas, but the more common case is that user does not specify
+		// mvs-per-rv in the config, but instead they specify max-rvs, in that case we need to calculate the
+		// MV count accordingly.
+		//
+
+		// This is the minimum number of MVs possible, what we get if we host one MV per RV.
+		minMVs := int64(distributedCache.cfg.MaxRVs / distributedCache.cfg.Replicas)
+		common.Assert(minMVs > 0, distributedCache.cfg)
+		minMVs = max(minMVs, 1)
+
+		// For the given cfg.MaxRVs value, this is the maximum number of MVs that we can have.
+		maxMVs := minMVs * cm.MaxMVsPerRV
+
+		// Start with the minimum number of MVs.
+		numMVs := minMVs
+
+		// Try to create at least cm.PreferredMVs number of MVs.
+		if numMVs < cm.PreferredMVs {
+			numMVs = cm.PreferredMVs
+		}
+
+		// but not more than the maximum number of MVs possible with cm.MaxMVsPerRV.
+		if numMVs > maxMVs {
+			numMVs = maxMVs
+		}
+
+		// Set MVsPerRV needed to achieve these many MVs.
+		distributedCache.cfg.MVsPerRV = uint64(numMVs / minMVs)
+
+		// Our calculated MVsPerRV must be within the allowed range.
+		common.Assert(distributedCache.cfg.MVsPerRV >= uint64(cm.MinMVsPerRV) &&
+			distributedCache.cfg.MVsPerRV <= uint64(cm.MaxMVsPerRV),
+			distributedCache.cfg, numMVs, minMVs, maxMVs)
 	}
 	if !config.IsSet(compName + ".rv-full-threshold") {
 		distributedCache.cfg.RVFullThreshold = defaultRvFullThreshold
@@ -1276,7 +1321,7 @@ func init() {
 	stripeSize := config.AddUint64Flag("stripe-size", defaultStripeSize, "Stripe size for the cache")
 	config.BindPFlag(compName+".stripe-size", stripeSize)
 
-	mvsPerRv := config.AddUint64Flag("mvs-per-rv", defaultMvsPerRv, "Number of MVs per raw volume")
+	mvsPerRv := config.AddUint64Flag("mvs-per-rv", defaultMVsPerRV, "Number of MVs per raw volume")
 	config.BindPFlag(compName+".mvs-per-rv", mvsPerRv)
 
 	rvFullThreshold := config.AddUint64Flag("rv-full-threshold", defaultRvFullThreshold, "Percent to mark RV full")
@@ -1285,8 +1330,11 @@ func init() {
 	rvNearfullThreshold := config.AddUint64Flag("rv-nearfull-threshold", defaultRvNearfullThreshold, "Percent to mark RV near full")
 	config.BindPFlag(compName+".rv-nearfull-threshold", rvNearfullThreshold)
 
-	minNodes := config.AddUint32Flag("min-nodes", defaultMinNodes, "Minimum number of nodes required")
+	minNodes := config.AddUint32Flag("min-nodes", defaultMinNodes, "Minimum number of nodes required to make the cache functional")
 	config.BindPFlag(compName+".min-nodes", minNodes)
+
+	maxRVs := config.AddUint32Flag("max-rvs", defaultMaxRVs, "Estimate of maximum number of RVs (raw volumes) that the cluster will have")
+	config.BindPFlag(compName+".max-rvs", maxRVs)
 
 	rebalancePercentage := config.AddUint8Flag("rebalance-percentage", defaultRebalancePercentage, "Rebalance threshold percentage")
 	config.BindPFlag(compName+".rebalance-percentage", rebalancePercentage)
