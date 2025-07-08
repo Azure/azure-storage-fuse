@@ -1871,7 +1871,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		common.Assert((offlineRVs+outofsyncRVs) != 0 && (offlineRVs+outofsyncRVs) < NumReplicas,
 			mvName, offlineRVs, outofsyncRVs, NumReplicas)
 
-		// No component RV is offline, nothing to fix, return.
+		// No component RV is offline/inband-offline, nothing to fix, return.
 		if offlineRVs == 0 {
 			// If not offline, must have at least one outofsync, else why the MV is degraded.
 			common.Assert(outofsyncRVs > 0, mvName)
@@ -1985,6 +1985,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 								rvName, mvName, newRvName, mvName)
 							continue
 						}
+					} else if mv.RVs[rvName] == dcache.StateInbandOffline {
+						//
+						// The rv selected for replacement is the same as the one we are trying to replace.
+						// If the state of the RV in the MV is inband-offline, we do not want to replace it
+						// with itself. So, we skip this and move to the next RV.
+						//
+						log.Debug("ClusterManager::fixMV: Not replacing %s/%s with itself as it is inband-offline",
+							rvName, mvName)
+						continue
 					}
 
 					//
@@ -2528,10 +2537,10 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 	startTime := time.Now()
 	for _, rv := range componentRVs {
 		//
-		// Offline component RVs need not be sent JoinMV/UpdateMV RPC.
+		// Offline/inband-offline component RVs need not be sent JoinMV/UpdateMV RPC.
 		// TODO: Shall we send them LeaveMV RPC?
 		//
-		if mv.RVs[rv.Name] == dcache.StateOffline {
+		if mv.RVs[rv.Name] == dcache.StateOffline || mv.RVs[rv.Name] == dcache.StateInbandOffline {
 			continue
 		}
 
@@ -2900,13 +2909,13 @@ done:
 // or there's some error.
 //
 // Only following RV state transitions are valid, any other state transitions are failed with an error.
-// StateOutOfSync   -> StateSyncing     [Resync start]
-// StateSyncing     -> StateOnline      [Resync end]
-// StateSyncing     -> StateOutOfSync   [Resync revert]
-// StateOutOfSync   -> StateOutOfSync   [Resync defer]
-// StateOnline      -> StateOnline      [Resync skip good RVs]
-// StateOnline      -> StateOffline     [Inband detection of offline RV during PutChunk(client)]
-// StateSyncing     -> StateOffline     [Inband detection of offline RV during PutChunk(sync)]
+// StateOutOfSync   -> StateSyncing           [Resync start]
+// StateSyncing     -> StateOnline            [Resync end]
+// StateSyncing     -> StateOutOfSync         [Resync revert]
+// StateOutOfSync   -> StateOutOfSync         [Resync defer]
+// StateOnline      -> StateOnline            [Resync skip good RVs]
+// StateOnline      -> StateInbandOffline     [Inband detection of offline RV during PutChunk(client)]
+// StateSyncing     -> StateInbandOffline     [Inband detection of offline RV during PutChunk(sync)]
 //
 // After setting the component RV states correctly in the clustermap, it calls updateMVList() which will set the
 // MV state appropriately. See updateMVList() for how MV state is set based on component RVs state.
@@ -3023,8 +3032,8 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			if currentState == dcache.StateOutOfSync && rvNewState == dcache.StateSyncing ||
 				currentState == dcache.StateSyncing && rvNewState == dcache.StateOnline ||
 				currentState == dcache.StateSyncing && rvNewState == dcache.StateOutOfSync ||
-				currentState == dcache.StateSyncing && rvNewState == dcache.StateOffline ||
-				currentState == dcache.StateOnline && rvNewState == dcache.StateOffline {
+				currentState == dcache.StateSyncing && rvNewState == dcache.StateInbandOffline ||
+				currentState == dcache.StateOnline && rvNewState == dcache.StateInbandOffline {
 
 				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s, state change (%s -> %s)",
 					rvName, mvName, currentState, rvNewState)
@@ -3032,14 +3041,14 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			} else {
 				//
 				// Following transitions are reported when an inband PutChunk failure suggests an RV as offline.
-				// StateOnline  -> StateOffline
-				// StateSyncing -> StateOffline
+				// StateOnline  -> StateInbandOffline
+				// StateSyncing -> StateInbandOffline
 				//
 				// Since we can have multiple PutChunk requests outstanding, all but the first one will find the
-				// currentState as StateOffline, we need to ignore such update requests.
+				// currentState as StateInbandOffline, we need to ignore such update requests.
 				//
 				if currentState == rvNewState {
-					common.Assert(currentState == dcache.StateOffline, currentState)
+					common.Assert(currentState == dcache.StateInbandOffline, currentState)
 					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s ignoring state change (%s -> %s)",
 						rvName, mvName, currentState, rvNewState)
 
@@ -3080,6 +3089,9 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			//       If we don't do this we will have unwanted side effects, f.e., if a component RV is marked
 			//       offline but the RV is online in the RV list, then updateMVList()->fixMV() might pick the same
 			//       RV as a replacement RV, which would be wrong as RV, for all purposes, is offline.
+			//
+			// TODO: discuss, this will never happen as we are not calling UpdateComponentRVState() from
+			//       replication manager with offline state as the new state of the RV.
 			//
 			if rvNewState == dcache.StateOffline {
 				rv := clusterMap.RVMap[rvName]

@@ -680,7 +680,7 @@ processResponses:
 				// the chunk write or else the failed replica may not be resynced causing data
 				// consistency issues.
 				//
-				errStr := fmt.Sprintf("failed to update %s/%s state to offline [%v]",
+				errStr := fmt.Sprintf("failed to update %s/%s state to inband-offline [%v]",
 					respItem.rvName, req.MvName, errRV)
 				log.Err("ReplicationManager::WriteMV: %s", errStr)
 				errWriteMV = errRV
@@ -1387,7 +1387,7 @@ func runSyncJob(job *syncJob) error {
 
 			errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline)
 			if errRV != nil {
-				errStr := fmt.Sprintf("Failed to mark %s/%s as offline for job %s [%v]",
+				errStr := fmt.Sprintf("Failed to mark %s/%s as inband-offline for job %s [%v]",
 					job.destRVName, job.mvName, job.toString(), errRV)
 				log.Err("ReplicationManager::runSyncJob: %s", errStr)
 			}
@@ -1578,7 +1578,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 
 				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline)
 				if errRV != nil {
-					errStr := fmt.Sprintf("Failed to mark %s/%s as offline [%v]",
+					errStr := fmt.Sprintf("Failed to mark %s/%s as inband-offline [%v]",
 						job.destRVName, job.mvName, errRV)
 					log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
 					common.Assert(false, errStr)
