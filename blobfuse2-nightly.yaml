@@ -724,6 +724,7 @@ stages:
 
 
   - stage: DataIntegrity
+    dependsOn: BuildAndTest
     jobs:
       # Ubuntu Tests
       - job: Set_1
@@ -799,7 +800,7 @@ stages:
               delete_containers: true
 
   - stage: XloadValidation
-    dependsOn: []
+    dependsOn: BuildAndTest
     jobs:
       # Ubuntu Tests
       - job: Set_1
