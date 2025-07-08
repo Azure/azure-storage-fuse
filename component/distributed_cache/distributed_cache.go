@@ -420,6 +420,9 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		// Set MVsPerRV needed to achieve these many MVs.
 		distributedCache.cfg.MVsPerRV = uint64(numMVs / minMVs)
 
+		log.Info("DistributedCache::Configure : cfg.MVsPerRV set to %d, minMVs: %d, maxMVs: %d",
+			distributedCache.cfg.MVsPerRV, minMVs, maxMVs)
+
 		// Our calculated MVsPerRV must be within the allowed range.
 		common.Assert(distributedCache.cfg.MVsPerRV >= uint64(cm.MinMVsPerRV) &&
 			distributedCache.cfg.MVsPerRV <= uint64(cm.MaxMVsPerRV),
