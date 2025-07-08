@@ -865,8 +865,6 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//       from all MVs, clean up the RV directory and then add back.
 	//
 	isClusterMapExists, err := cmi.safeCleanupMyRVs(rvs)
-	err = nil
-	isClusterMapExists = false
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: Failed to check clustermap: %v", err)
 		common.Assert(false)
@@ -1264,18 +1262,6 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 	}
 
 	return nil
-}
-
-func (cmi *ClusterManager) checkIfClusterMapExists(err error) (bool, error) {
-	if err != nil {
-		if os.IsNotExist(err) || err == syscall.ENOENT {
-			return false, nil
-		} else {
-			return false, err
-		}
-	}
-
-	return true, nil
 }
 
 // This should only be called from fetchAndUpdateLocalClusterMap(), all other users must call
