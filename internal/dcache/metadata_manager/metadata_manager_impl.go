@@ -908,7 +908,9 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	//
 
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+		isBlobAlreadyExistsError := bloberror.HasCode(err, bloberror.BlobAlreadyExists)
+		log.Err("CreateInitialClusterMap::PutBlobInStorage %s isBlobAlreadyExistsError:%t Error is: %v", clustermapPath, isBlobAlreadyExistsError, err)
+		if isBlobAlreadyExistsError {
 			log.Info("CreateInitialClusterMap:: PutBlobInStorage Blob %s already exists. Treating it as success: %v",
 				clustermapPath, err)
 			return nil
