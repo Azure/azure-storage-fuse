@@ -20,7 +20,7 @@ parameters:
 
 stages:
   - stage: BuildAndTest
-    condition: eq(parameters.coverage_test, true)
+    condition: ${{ eq(parameters.coverage_test, true) }}
     jobs:
       - job: Coverage
         timeoutInMinutes: 300
@@ -597,7 +597,7 @@ stages:
   # This is done as it is observed that backend GC is not always deleting the containers when there are
   # large number of containers in the storage account.
   - stage: AccountCleanUp
-    condition: eq(parameters.cleanup_test, true)
+    condition: ${{ eq(parameters.cleanup_test, true) }}
     jobs:
       - job: CleanupContainers
         timeoutInMinutes: 10
