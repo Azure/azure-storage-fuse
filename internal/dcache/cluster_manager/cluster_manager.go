@@ -59,6 +59,8 @@ import (
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // Cluster manager's job is twofold:
 //  1. Keep the global clustermap up-to-date. One of the nodes takes up the role of the leader who periodically
 //     gather information about all nodes/RVs from the heartbeats and updates the clustermap according to that.
@@ -1685,6 +1687,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// We don't add offline RVs to nodeToRvs, so we must not update their slot count.
 		common.Assert(rvMap[rvName].State == dcache.StateOnline, mvName, rvName, rvMap[rvName].State)
 		found := false
+		_ = found
 
 		// Decrease the slot count for the RV in nodeToRvs
 		for i := range nodeToRvs[nodeId].rvs {
@@ -1711,11 +1714,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		for _, deleteRvName := range deleteRvNames {
 			nodeId := rvMap[deleteRvName].NodeId
 			// Simple assert to make sure deleteRvName is present in rvMap.
-			common.Assert(len(nodeId) > 0, deleteRvName, deleteRvNames)
+			common.Assert(len(nodeId) > 0, deleteRvName)
 			// We don't add offline RVs to nodeToRvs, so we must not be deleting them from nodeToRvs.
 			common.Assert(rvMap[deleteRvName].State == dcache.StateOnline,
-				deleteRvName, rvMap[deleteRvName].State, deleteRvNames)
+				deleteRvName, rvMap[deleteRvName].State)
 			found := false
+      		_ = found
 
 			for i, rv := range nodeToRvs[nodeId].rvs {
 				if rv.rvName != deleteRvName {
@@ -1803,6 +1807,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
 			_, exists := rvMap[rvName]
+			_ = exists
 			common.Assert(exists)
 
 			//
@@ -2166,6 +2171,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
 			_, exists := rvMap[rvName]
+			_ = exists
 			common.Assert(exists)
 
 			// First things first, an offline RV MUST be marked as an offline component RV.
@@ -2697,6 +2703,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	for rvName, rvInClusterMap := range existingRVMap {
 		if rvHb, found := rVsByRvIdFromHB[rvInClusterMap.RvId]; found {
 			lastHB, found := rvLastHB[rvHb.RvId]
+			_ = found
 
 			// If an RV is present in rVsByRvIdFromHB, it MUST have a valid HB in rvLastHB.
 			common.Assert(found)

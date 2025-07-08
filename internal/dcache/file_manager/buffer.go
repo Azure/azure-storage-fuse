@@ -41,6 +41,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type bufferPool struct {
 	pool       sync.Pool    // sync.Pool to relieve GC
 	bufSize    int          // size of buffers in this pool
@@ -82,4 +84,9 @@ func (bp *bufferPool) putBuffer(buf []byte) {
 
 	bp.pool.Put(buf)
 	bp.curBuffers.Add(-1)
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

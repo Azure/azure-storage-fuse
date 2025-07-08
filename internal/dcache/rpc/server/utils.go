@@ -47,6 +47,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // returns the chunk and hash path for the given fileID and offsetInMB from RV/MV directory as,
 // <cache dir>/<mvName>/<fileID>.<offsetInMB>.data and
 // <cache dir>/<mvName>/<fileID>.<offsetInMB>.hash
@@ -203,4 +205,9 @@ func GetMVSizeLocal(ctc context.Context, req *models.GetMVSizeRequest) (*models.
 	common.Assert(handler != nil)
 
 	return handler.GetMVSize(ctc, req)
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

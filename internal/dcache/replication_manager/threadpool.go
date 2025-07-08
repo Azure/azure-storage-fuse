@@ -48,6 +48,16 @@ import (
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
+type requestType int
+
+const (
+	invalidRequest requestType = iota // Make the zero value invalid to catch errors.
+	putChunkRequest
+	removeChunkRequest
+)
+
 type threadpool struct {
 	// Number of workers in the thread pool.
 	worker uint32
@@ -66,12 +76,11 @@ type workitem struct {
 	// RV name of the target node.
 	rvName string
 
-	// Put Chunk RPC request.
-	putChunkReq *models.PutChunkRequest
+	// Rpc Request.
+	rpcReq any
 
-	// TODO: Add other RPC request types as needed.
-	// For now, we only handle client PutChunk requests, but it can be extended to handle
-	// other requests like StartSync, EndSync, sync PutChunk, etc.
+	// Type to decode rpcReq.
+	reqType requestType
 
 	// Channel to send the RPC response back to the caller.
 	respChannel chan *responseItem
@@ -82,12 +91,10 @@ type responseItem struct {
 	// Used for logging purpose.
 	rvName string
 
-	// Put Chunk RPC response.
-	putChunkResp *models.PutChunkResponse
+	// RPC response.
+	rpcResp any
 
-	// TODO: Add other RPC response types as needed.
-
-	// Error returned from the RPC call.
+	// Error returned from the RPC call, nil if success.
 	err error
 }
 
@@ -143,20 +150,24 @@ func (tp *threadpool) schedule(item *workitem, runInline bool) {
 func (tp *threadpool) runItem(item *workitem) {
 	common.Assert(item.isValid(), item.toString())
 
-	if item.putChunkReq != nil {
-		resp, err := processPutChunk(item.targetNodeID, item.putChunkReq)
-
-		item.respChannel <- &responseItem{
-			rvName:       item.rvName,
-			putChunkResp: resp,
-			err:          err,
-		}
-	} else {
-		// TODO: Handle other RPC request types as needed.
-
-		// Unsupported request type, should not happen.
-		common.Assert(false)
+	respItem := &responseItem{
+		rvName: item.rvName,
 	}
+
+	switch item.reqType {
+	case putChunkRequest:
+		putChunkReq := item.rpcReq.(*models.PutChunkRequest)
+		respItem.rpcResp, respItem.err = processPutChunk(item.targetNodeID, putChunkReq)
+
+	case removeChunkRequest:
+		removeChunkRequest := item.rpcReq.(*models.RemoveChunkRequest)
+		respItem.rpcResp, respItem.err = processRemoveChunk(item.targetNodeID, removeChunkRequest)
+
+	default:
+		common.Assert(false, *item)
+	}
+
+	item.respChannel <- respItem
 }
 
 func (tp *threadpool) do() {
@@ -175,9 +186,22 @@ func (item *workitem) toString() string {
 		return "<nil>"
 	}
 
-	return fmt.Sprintf("{targetNodeID: %s, rvName: %s, putChunkReq: %s, respChannel size: %d}",
-		item.targetNodeID, item.rvName,
-		rpc.PutChunkRequestToString(item.putChunkReq), cap(item.respChannel))
+	var reqType, reqString string
+
+	switch item.reqType {
+	case putChunkRequest:
+		reqType = "putChunkReq"
+		reqString = rpc.PutChunkRequestToString(item.rpcReq.(*models.PutChunkRequest))
+	case removeChunkRequest:
+		reqType = "removeChunkReq"
+		reqString = rpc.RemoveChunkRequestToString(item.rpcReq.(*models.RemoveChunkRequest))
+	default:
+		reqType = "invalid"
+		reqString = "invalid"
+	}
+
+	return fmt.Sprintf("{targetNodeID: %s, rvName: %s, %s: %s, respChannel size: %d}",
+		item.targetNodeID, item.rvName, reqType, reqString, cap(item.respChannel))
 }
 
 func (item *workitem) isValid() bool {
@@ -188,9 +212,11 @@ func (item *workitem) isValid() bool {
 		return false
 	}
 
-	//TODO: when other RPC requests are added,
-	// extend this check to check that only one RPC request is set.
-	if item.putChunkReq == nil {
+	if item.rpcReq == nil {
+		return false
+	}
+
+	if item.reqType == invalidRequest {
 		return false
 	}
 
@@ -217,4 +243,18 @@ func processPutChunk(targetNodeID string, req *models.PutChunkRequest) (*models.
 	} else {
 		return rpc_client.PutChunk(ctx, targetNodeID, req)
 	}
+}
+
+func processRemoveChunk(targetNodeID string, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
+	common.Assert(req != nil)
+	common.Assert(common.IsValidUUID(targetNodeID), targetNodeID)
+
+	log.Debug("ReplicationManager::processRemoveChunk: Sending RemoveChunk request to node %s: %s",
+		targetNodeID, rpc.RemoveChunkRequestToString(req))
+
+	// Removing all chunks may take time, so we wait longer than usual RPCs.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	return rpc_client.RemoveChunk(ctx, targetNodeID, req)
 }
