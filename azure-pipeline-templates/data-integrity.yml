@@ -24,7 +24,7 @@ steps:
 
   # Test data consistency for various Config options.
   #
-  # Geneate Config file for File cache
+  # Generate Config file for File cache
 
   - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
       

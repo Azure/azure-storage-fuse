@@ -1056,6 +1056,7 @@ stages:
 # Run bfusemon tests optionally when user invokes.
   - ${{ if eq(parameters.healthmon, true) }}:
     - stage: Healthmon
+      dependsOn: BuildAndTest
       jobs:
         # Ubuntu Tests
         - job: Set_1
