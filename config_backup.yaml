@@ -1,0 +1,13 @@
+# Refer ./setup/baseConfig.yaml for full set of config parameters
+
+components:
+  - libfuse
+  - file_cache
+  - attr_cache
+  - azstorage
+
+azstorage:
+  account-name: blobfusedcachetest
+  mode: msi
+  appid: 7ed25f6f-7eb1-4086-b8c7-8a9819187cfe
+  container: test
