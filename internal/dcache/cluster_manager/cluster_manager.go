@@ -1395,7 +1395,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
 	// The max time till which the clusterMap may not be updated in the event of leader going down is
 	// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
-	// ClustermapEpoch is suffcient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+	// ClustermapEpoch is sufficient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
 	// of 20 seconds.
 	//
 	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
@@ -2260,7 +2260,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 	// Note that we can/must only fix degraded MVs, offline MVs cannot be fixed as there's no good component
 	// RV to copy chunks from. Once an MV is offline it won't be used by File Manager to put any file's data.
-	// Offline MVs will just be lying around like satelite debris in space.
+	// Offline MVs will just be lying around like satellite debris in space.
 	//
 	// TODO: See if we need delete-mv workflow to clean those up.
 	//
