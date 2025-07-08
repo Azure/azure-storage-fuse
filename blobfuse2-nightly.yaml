@@ -799,6 +799,7 @@ stages:
               delete_containers: true
 
   - stage: XloadValidation
+    dependsOn: []
     jobs:
       # Ubuntu Tests
       - job: Set_1
