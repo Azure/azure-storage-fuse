@@ -49,6 +49,11 @@ import (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
+func Start() {
+	// This MUST match localClusterMapPath in clustermanager.
+	clusterMap.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
+}
+
 func Stop() {
 	clusterMap.stop()
 }
@@ -338,8 +343,6 @@ func (c *ClusterMap) getLocalMap() *dcache.ClusterMap {
 }
 
 func (c *ClusterMap) loadLocalMap() {
-	// This MUST match localClusterMapPath in clustermanager.
-	c.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
 	data, err := os.ReadFile(c.localClusterMapPath)
 	if err != nil {
 		log.Err("ClusterMap::loadLocalMap: Failed to read %s: %v", c.localClusterMapPath, err)

@@ -170,10 +170,10 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError("DistributedCache::Start error [azstorage component not found]")
 	}
 
-	// We are creating UUID before initialising any of the dcache component. So that UUID is available for all components
+	// Create UUID before initializing any of the dcache components, so that UUID is correctly available for all components.
 	ensureUUID()
 
-	// rpc client should be initialised before any of its user.
+	// rpc client must be initialized before any of its users.
 	rpc_client.Start()
 
 	dc.storageCallback = initStorageCallback(

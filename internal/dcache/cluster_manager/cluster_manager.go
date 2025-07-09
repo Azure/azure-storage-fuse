@@ -3266,6 +3266,9 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 
 	clusterManager = &ClusterManager{}
 
+	// Intialize the clustermap before any of its users.
+	cm.Start()
+
 	// Register hook for refreshing the clustermap from the metadata store, through clustermap package.
 	cm.RegisterClusterMapRefresher(clusterManager.updateClusterMapLocalCopy)
 
