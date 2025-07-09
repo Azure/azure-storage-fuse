@@ -139,7 +139,6 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 		}
 	}
 
-	common.Assert(err == nil, "Failed to create directories", err)
 	return nil
 }
 

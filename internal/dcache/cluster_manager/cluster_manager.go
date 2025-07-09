@@ -2303,7 +2303,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// offline and they don't consume any RV slot, so they should be omitted from usable MVs.
 		//
 		// Q: Why do we need to limit numUsableMVs to maxMVsPossible?
-		//    IOW, why is the the above check "len(nodeToRvs) < NumReplicas" not suffcient.
+		//    IOW, why is the the above check "len(nodeToRvs) < NumReplicas" not sufficient.
 		// A: "len(nodeToRvs) < NumReplicas" check will try to create as many MVs as we can with the available
 		//    RVs, but it might create more than maxMVsPossible if some of the MVs have offline RVs (fixMV() would
 		//    have attempted to replace offline RVs for all degraded MVs but if joinMV() fails or any other error
@@ -2336,7 +2336,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		// Take the first NumReplicas nodes.
 		// Since only those nodes are present in nodeToRvs/availableNodes which have at least one RV
-		// slot available, we are guaranted to get NumReplicas component RVs from selectedNodes.
+		// slot available, we are guaranteed to get NumReplicas component RVs from selectedNodes.
 		// Simply go over the selectedNodes and pick the first available RV from each selected node.
 		//
 		selectedNodes := availableNodes[:NumReplicas]
@@ -2389,8 +2389,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// reserveBytes is 0 for a new-mv workflow.
 		//
 		// Iff joinMV() is successful, consume one slot for each component RV, else if joinMV() fails
-		// delete the failed RV fom nodeToRvs to prevent this RV from being picked again and failing.
-		// Also we need to remove mv frome existingMVMap.
+		// delete the failed RV from nodeToRvs to prevent this RV from being picked again and failing.
+		// Also we need to remove mv from existingMVMap.
 		//
 		failedRVs, err := cmi.joinMV(mvName, existingMVMap[mvName])
 		if err == nil {
@@ -2754,7 +2754,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
 			// This is not a common occurrence, emit a warning log.
 			//
-			// For onlyMyRV==true, case we cannot perfrom this operation as we don't have the exhaustive
+			// For onlyMyRV==true, case we cannot perform this operation as we don't have the exhaustive
 			// list of  HBs.
 			//
 			if rvInClusterMap.State != dcache.StateOffline {
@@ -3265,6 +3265,9 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	common.Assert(len(rvs) > 0)
 
 	clusterManager = &ClusterManager{}
+
+	// Intialize the clustermap before any of its users.
+	cm.Start()
 
 	// Register hook for refreshing the clustermap from the metadata store, through clustermap package.
 	cm.RegisterClusterMapRefresher(clusterManager.updateClusterMapLocalCopy)
