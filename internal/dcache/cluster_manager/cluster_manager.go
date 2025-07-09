@@ -173,10 +173,11 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//
 	// Now we can start the RPC server.
 	//
-	// TODO: Since ensureInitialClusterMap() would send the heartbeat and make the cluster aware of this
+	// Note: Since ensureInitialClusterMap() would send the heartbeat and make the cluster aware of this
 	//       node, it's possible that some other cluster node runs the new-mv workflow and sends a JoinMV
-	//       RPC request to this node, before we can start the RPC server. We should add resiliency for this
-	//       by trying JoinMV RPC a few times.
+	//       RPC request to this node, before we can start the RPC server. We add resiliency for this
+	//       by retrying JoinMV RPC after a small wait if RPC connection creation fails.
+	//       Ref functions.go:JoinMV() for more details.
 	//
 	log.Info("ClusterManager::start: Starting RPC server")
 
@@ -376,8 +377,8 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	//
 	storageBytes, etag, err := getClusterMap()
 	if err != nil {
-		err = fmt.Errorf("failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
-		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
+		err1 := fmt.Errorf("failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
+		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err1)
 
 		common.Assert(len(storageBytes) == 0)
 		common.Assert(etag == nil)
@@ -385,7 +386,9 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		// Only when called from safeCleanupMyRVs(), we may not have the global clustermap yet.
 		// Post that, once cmi.config is set, it should never fail.
 		//
-		common.Assert(cmi.config == nil, err)
+		common.Assert(cmi.config == nil, err1)
+		// ENOENT is the only viable error, for everything else we retry.
+		common.Assert(err == syscall.ENOENT, err)
 		return nil, nil, err
 	}
 
@@ -421,7 +424,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	//
 	// 3. If we've already loaded this exact version, skip the local update.
 	//
-	if etag != nil && cmi.localMapETag != nil && *etag == *cmi.localMapETag {
+	if cmi.localMapETag != nil && *etag == *cmi.localMapETag {
 		log.Debug("ClusterManager::fetchAndUpdateLocalClusterMap: ETag (%s) unchanged, not updating local clustermap",
 			*etag)
 		// Cache config must have been saved when we saved the clustermap.
@@ -693,15 +696,11 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		_, _, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
-			isClusterMapExists, err1 := cmi.checkIfClusterMapExists()
-			if err1 != nil {
-				//
-				// Fail to fetch clustermap, not safe to proceed.
-				//
-				common.Assert(false, err1, err)
-				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to fetch clustermap: %v, %v",
-					err1, err)
-			}
+			//
+			// fetchAndUpdateLocalClusterMap() returns the raw error syscall.ENOENT when it cannot find
+			// the clustermap in the metadata store.
+			//
+			isClusterMapExists := (err != syscall.ENOENT)
 
 			//
 			// This implies some other error in fetchAndUpdateLocalClusterMap(), maybe clustermap
@@ -994,6 +993,8 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		if err != nil {
 			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: fetchAndUpdateLocalClusterMap() failed: %v",
 				err)
+			// When updateStorageClusterMapWithMyRVs() is called, clustermap must be present.
+			common.Assert(err != syscall.ENOENT, err)
 			common.Assert(false, err)
 			return err
 		}
@@ -1275,19 +1276,6 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 	return nil
 }
 
-func (cmi *ClusterManager) checkIfClusterMapExists() (bool, error) {
-	_, _, err := getClusterMap()
-	if err != nil {
-		if os.IsNotExist(err) || err == syscall.ENOENT {
-			return false, nil
-		} else {
-			return false, err
-		}
-	}
-
-	return true, nil
-}
-
 // This should only be called from fetchAndUpdateLocalClusterMap(), all other users must call
 // fetchAndUpdateLocalClusterMap().
 var getClusterMap = func() ([]byte, *string, error) {
@@ -1395,7 +1383,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
 	// The max time till which the clusterMap may not be updated in the event of leader going down is
 	// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
-	// ClustermapEpoch is suffcient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+	// ClustermapEpoch is sufficient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
 	// of 20 seconds.
 	//
 	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
@@ -2260,7 +2248,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 	// Note that we can/must only fix degraded MVs, offline MVs cannot be fixed as there's no good component
 	// RV to copy chunks from. Once an MV is offline it won't be used by File Manager to put any file's data.
-	// Offline MVs will just be lying around like satelite debris in space.
+	// Offline MVs will just be lying around like satellite debris in space.
 	//
 	// TODO: See if we need delete-mv workflow to clean those up.
 	//
