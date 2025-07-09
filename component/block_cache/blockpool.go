@@ -142,7 +142,7 @@ func (pool *BlockPool) Usage() uint32 {
 	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.priorityCh)+len(pool.resetBlockCh))) * 100) / pool.maxBlocks
 }
 
-// MustGet a Block from the pool, Waits until defaulTimeout period before giving up the allocation of the buffer.
+// MustGet a Block from the pool, waits until defaultTimeout period before giving up the allocation of the buffer.
 func (pool *BlockPool) MustGet() (*Block, error) {
 	var block *Block = nil
 	defaultTimeout := time.After(5 * time.Second)
