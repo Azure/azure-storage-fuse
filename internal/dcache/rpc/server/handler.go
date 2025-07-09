@@ -112,6 +112,10 @@ type rvInfo struct {
 	//
 	rwMutex sync.RWMutex
 
+	// Companion boolean flag to rwMutex to check if the lock is held or not.
+	// [DEBUG ONLY]
+	rwMutexDbgFlag atomic.Bool
+
 	// reserved space for the RV is the space reserved for chunks which will be synced
 	// to the RV after the StartSync() call. This is used to calculate the available space
 	// in the RV after subtracting the reserved space from the actual disk space available.
@@ -408,6 +412,8 @@ func (rv *rvInfo) getMVs() []string {
 // Caller must ensure that the RV is not already hosting the MV replica and
 // that the rvInfo.rwMutex lock is acquired.
 func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
+	common.Assert(rv.isRvInfoLocked(), rv.rvName)
+
 	mvPath := filepath.Join(rv.cacheDir, mvName)
 	_ = mvPath
 	common.Assert(common.DirectoryExists(mvPath), mvPath)
@@ -431,6 +437,8 @@ func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
 // Delete the MV replica from the given RV.
 // Caller must ensure that the rvInfo.rwMutex lock is acquired.
 func (rv *rvInfo) deleteFromMVMap(mvName string) {
+	common.Assert(rv.isRvInfoLocked(), rv.rvName)
+
 	_, ok := rv.mvMap.Load(mvName)
 	if !ok {
 		common.Assert(false, fmt.Sprintf("mvMap[%s] not found", mvName))
@@ -476,6 +484,29 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 		rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
 	return availableSpace, err
+}
+
+// Acquire lock on rvInfo.
+// This is used to ensure that only one operation among JoinMVs or LeaveMVs for an RV is in progress at a time.
+func (rv *rvInfo) acquireRvInfoLock() {
+	rv.rwMutex.Lock()
+
+	common.Assert(!rv.rwMutexDbgFlag.Load(), rv.rvName)
+	rv.rwMutexDbgFlag.Store(true)
+}
+
+// Release lock on rvInfo.
+func (rv *rvInfo) releaseRvInfoLock() {
+	common.Assert(rv.rwMutexDbgFlag.Load(), rv.rvName)
+	rv.rwMutexDbgFlag.Store(false)
+
+	rv.rwMutex.Unlock()
+}
+
+// Check if lock is held on rvInfo.
+// [DEBUG ONLY]
+func (rv *rvInfo) isRvInfoLocked() bool {
+	return rv.rwMutexDbgFlag.Load()
 }
 
 // Check if this MV replica is the source or target of any sync job.
@@ -2628,9 +2659,11 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	cacheDir := rvInfo.cacheDir
 
-	// Acquire lock for the RV to prevent concurrent JoinMV calls for different MVs.
-	rvInfo.rwMutex.Lock()
-	defer rvInfo.rwMutex.Unlock()
+	// Acquire lock on rvInfo.rwMutex to prevent concurrent JoinMV calls for different MVs.
+	rvInfo.acquireRvInfoLock()
+
+	// Release lock on rvInfo.rwMutex for this RV when the function returns.
+	defer rvInfo.releaseRvInfoLock()
 
 	// Check if RV is already part of the given MV.
 	mvInfo := rvInfo.getMVInfo(req.MV)
@@ -2845,9 +2878,11 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	cacheDir := rvInfo.cacheDir
 
-	// Acquire lock for the RV to prevent concurrent LeaveMV calls for different MVs.
-	rvInfo.rwMutex.Lock()
-	defer rvInfo.rwMutex.Unlock()
+	// Acquire lock on rvInfo.rwMutex to prevent concurrent JoinMV or LeaveMV calls for different MVs.
+	rvInfo.acquireRvInfoLock()
+
+	// Release lock on rvInfo.rwMutex for this RV when the function returns.
+	defer rvInfo.releaseRvInfoLock()
 
 	//
 	// LeaveMV() RPC is only sent to RVs which are already members of the MV, and it is sent
