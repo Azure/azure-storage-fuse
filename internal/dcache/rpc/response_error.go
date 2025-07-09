@@ -94,13 +94,13 @@ func IsBrokenPipe(err error) bool {
 		return false
 	}
 
-	te := thrift.NewTTransportExceptionFromError(err)
-	_ = te
+	transportEx := thrift.NewTTransportExceptionFromError(err)
+	_ = transportEx
 	// Note: This doesn't work.
-	//return te.TypeId() == thrift.NOT_OPEN
+	//return transportEx.TypeId() == thrift.NOT_OPEN
 
-	log.Debug("IsBrokenPipe: err: %v, type: %T, te.TypeId(): %d, Is syscall.EPIPE: %v",
-		err, err, te.TypeId(), errors.Is(err, syscall.EPIPE))
+	log.Debug("IsBrokenPipe: err: %v, type: %T, transportEx.TypeId(): %d, Is syscall.EPIPE: %v",
+		err, err, transportEx.TypeId(), errors.Is(err, syscall.EPIPE))
 
 	//
 	// In this case I've seen syscall.EPIPE check to work, but since it's not documented
@@ -133,12 +133,12 @@ func IsConnectionReset(err error) bool {
 		return false
 	}
 
-	te := thrift.NewTTransportExceptionFromError(err)
-	_ = te
+	transportEx := thrift.NewTTransportExceptionFromError(err)
+	_ = transportEx
 	// Note: This doesn't work.
-	//return te.TypeId() == thrift.NOT_OPEN
-	log.Debug("IsConnectionReset: err: %v, type: %T, te.TypeId(): %d, Is syscall.ECONNRESET: %v",
-		err, err, te.TypeId(), errors.Is(err, syscall.ECONNRESET))
+	//return transportEx.TypeId() == thrift.NOT_OPEN
+	log.Debug("IsConnectionReset: err: %v, type: %T, transportEx.TypeId(): %d, Is syscall.ECONNRESET: %v",
+		err, err, transportEx.TypeId(), errors.Is(err, syscall.ECONNRESET))
 
 	//
 	// In this case I've seen syscall.ECONNRESET check to work, but since it's not documented

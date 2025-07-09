@@ -139,7 +139,6 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 		}
 	}
 
-	common.Assert(err == nil, "Failed to create directories", err)
 	return nil
 }
 
@@ -230,7 +229,7 @@ func IsErrConditionNotMet(err error) bool {
 	return bloberror.HasCode(err, bloberror.ConditionNotMet)
 }
 
-// Helper function to read and return the content of the blob identifed by blobPath, safe from simultaneous
+// Helper function to read and return the content of the blob identified by blobPath, safe from simultaneous
 // read/write, as a byte array and the attributes corresponding to the returned blob, returns error on failure.
 // It's resilient against changes to the Blob between GetProperties and GetBlob.
 //
@@ -247,7 +246,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 	//       after the GetProperties call to query the size, since GetBlobFromStorage() assumes that the
 	//       Blob won't be changed after GetProperties and GetBlob.
 	//       The second GetProperties call solves both these problems.
-	//       We retry 50 times, that should provide suffcient resilience even with very large clusters.
+	//       We retry 50 times, that should provide sufficient resilience even with very large clusters.
 	//
 	// TODO: See if this can be improved.
 	//
@@ -360,17 +359,11 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 	// creation of file metadata blob.
 	//
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) || bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Err("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
 				path, err)
 			return "", err
 		}
-		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Err("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
-				path, err)
-			return "", err
-		}
-
 		log.Err("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)
 		common.Assert(false, err)
 		return "", err
@@ -385,7 +378,7 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 }
 
 // CreateFileFinalize() finalizes the metadata for a file.
-// Must be called only after prior call to CreateFileInit() suceeded.
+// Must be called only after prior call to CreateFileInit() succeeded.
 func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
 	common.Assert(len(filePath) > 0)
 	common.Assert(len(fileMetadata) > 0)
@@ -956,19 +949,23 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// TODO:
 	// Caller has to check if the error is ConditionNotMet or something else
 	// and take appropriate action.
-	// If the error is ConditionNotMet\BlobAlreadyExists, it means the clustermap already exists
+	// If the error is ConditionNotMet/BlobAlreadyExists, it means the clustermap already exists
 	// and the caller should not overwrite it.
 	// For now we treat "already exists" as success.
 	//
 
 	if err != nil {
-		isBlobAlreadyExistsError := bloberror.HasCode(err, bloberror.BlobAlreadyExists)
-		log.Err("CreateInitialClusterMap::PutBlobInStorage %s isBlobAlreadyExistsError:%t Error is: %v", clustermapPath, isBlobAlreadyExistsError, err)
-		if isBlobAlreadyExistsError {
+		//
+		// Note: Even though we use IsNoneMatchEtagEnabled = true, we have seen the PutBlobInStorage()
+		//       fail with BlobAlreadyExists and not ConditionNotMet.
+		//
+		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 			log.Info("CreateInitialClusterMap:: PutBlobInStorage Blob %s already exists. Treating it as success: %v",
 				clustermapPath, err)
 			return nil
 		}
+
+    
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Info("CreateInitialClusterMap:: PutBlobInStorage failed for %s due to ETag mismatch, treating as success: %v",
 				clustermapPath, err)

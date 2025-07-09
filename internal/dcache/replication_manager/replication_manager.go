@@ -350,7 +350,7 @@ retry:
 
 	//
 	// List of RVs to which the chunk was written successfully in this WriteMV attempt, used for logging.
-	// Note that everytime we refresh clustermap we need to write all the replicas according to the
+	// Note that every time we refresh clustermap we need to write all the replicas according to the
 	// latest component RVs. An MV write should be considered a transaction that is applied to the cluster
 	// in a given state. Once a transaction is applied successfully, then we are guaranteed that any change
 	// to the MV composition will ensure that any chunk written will be correctly synchronized.
@@ -1045,7 +1045,7 @@ func resyncSyncableMVs() {
 	}
 }
 
-// syncMV is used for resyncing the degraded MV to online state. To be precice it will synchronize all component
+// syncMV is used for resyncing the degraded MV to online state. To be precise it will synchronize all component
 // RVs which are outofsync. It first finds the lowest index online RV (LIORV) for the given MV. If the LIORV is
 // not hosted by this node, it will not take the responsibility of resyncing the MV and bails out. If it does
 // host the LIORV then it takes the responsibility of syncing this MV. For that it starts a sync job for each

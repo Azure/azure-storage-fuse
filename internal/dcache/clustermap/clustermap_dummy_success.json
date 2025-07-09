@@ -7,6 +7,7 @@
 	"config": {
         "cache-id":"mycache1",
 		"min-nodes": 1,
+		"max-rvs": 100,
 		"chunk-size": 4194304,
         "stripe-size": 16777216,
         "num-replicas": 2,

@@ -141,7 +141,7 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 
 // return mvs-per-rv from dcache config
 func getMVsPerRV() int64 {
-	return int64(cm.GetCacheConfig().MvsPerRv)
+	return int64(cm.GetCacheConfig().MVsPerRV)
 }
 
 // This method is wrapper for the GetChunk() RPC call. It is used when the both the client and server
