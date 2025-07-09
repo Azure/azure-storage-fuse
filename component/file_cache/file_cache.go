@@ -377,12 +377,19 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 		return nil, false, nil
 	}
 
-	usage, _ := common.GetUsage(c.tmpPath)
-	usage = usage * MB
+	usage := int64(0)
+	var err error
+	if c.tmpPath != "" {
+		usage, err = common.GetUsageInBytes(c.tmpPath)
+		if err != nil {
+			log.Debug("FileCache::StatFs : GetUsageInBytes err [%s].", err.Error())
+			return nil, false, err
+		}
+	}
 
-	available := maxCacheSize - usage
+	available := maxCacheSize - float64(usage)
 	statfs := &syscall.Statfs_t{}
-	err := syscall.Statfs("/", statfs)
+	err = syscall.Statfs("/", statfs)
 	if err != nil {
 		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
@@ -951,7 +958,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 		if fileSize > 0 {
 			if fc.diskHighWaterMark != 0 {
-				currSize, err := common.GetUsage(fc.tmpPath)
+				currSize, err := common.GetUsageInMegabytes(fc.tmpPath)
 				if err != nil {
 					log.Err("FileCache::OpenFile : error getting current usage of cache [%s]", err.Error())
 				} else {
@@ -1175,7 +1182,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	}
 
 	if fc.diskHighWaterMark != 0 {
-		currSize, err := common.GetUsage(fc.tmpPath)
+		currSize, err := common.GetUsageInMegabytes(fc.tmpPath)
 		if err != nil {
 			log.Err("FileCache::WriteFile : error getting current usage of cache [%s]", err.Error())
 		} else {
@@ -1480,7 +1487,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("FileCache::TruncateFile : name=%s, size=%d", options.Name, options.Size)
 
 	if fc.diskHighWaterMark != 0 {
-		currSize, err := common.GetUsage(fc.tmpPath)
+		currSize, err := common.GetUsageInMegabytes(fc.tmpPath)
 		if err != nil {
 			log.Err("FileCache::TruncateFile : error getting current usage of cache [%s]", err.Error())
 		} else {

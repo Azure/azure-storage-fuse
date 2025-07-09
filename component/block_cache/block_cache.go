@@ -1785,7 +1785,15 @@ func (bc *BlockCache) diskEvict(node *list.Element) {
 
 // checkDiskUsage : Callback to check usage of disk and decide whether eviction is needed
 func (bc *BlockCache) checkDiskUsage() bool {
-	data, _ := common.GetUsage(bc.tmpPath)
+	var data = float64(0)
+	var err error
+	if bc.tmpPath != "" {
+		data, err = common.GetUsageInMegabytes(bc.tmpPath)
+		if err != nil {
+			log.Err("BlockCache::checkDiskUsage : Failed to get disk usage for %s [%s]", bc.tmpPath, err.Error())
+			return false
+		}
+	}
 	usage := uint32((data * 100) / float64(bc.diskSize/_1MB))
 
 	if bc.maxDiskUsageHit {
@@ -1930,12 +1938,22 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 		return nil, false, nil
 	}
 
-	usage, _ := common.GetUsage(bc.tmpPath)
-	usage = usage * float64(_1MB)
+	// Previously, this section ignored the error returned by a call to GetUsage.
+	// In order to preserve the behavior of GetUsage, I'll check for an empty value
+	// for bc.tmpPath. If it's empty, use 0 for usage.
+	usage := int64(0)
+	var err error
+	if bc.tmpPath != "" {
+		usage, err = common.GetUsageInBytes(bc.tmpPath)
+		if err != nil {
+			log.Err("BlockCache::StatFs : Failed to get disk usage for %s [%s]", bc.tmpPath, err.Error())
+			return nil, false, err
+		}
+	}
 
-	available := (float64)(maxCacheSize) - usage
+	available := (float64)(maxCacheSize) - float64(usage)
 	statfs := &syscall.Statfs_t{}
-	err := syscall.Statfs("/", statfs)
+	err = syscall.Statfs("/", statfs)
 	if err != nil {
 		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
