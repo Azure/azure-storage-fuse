@@ -35,7 +35,6 @@ package clustermap
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -333,7 +332,7 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 
 // If myRVs is true it means that rvs is a list of my RVs.
 func IsValidRVList(rvs []dcache.RawVolume, myRVs bool) (bool, error) {
-	myNodeID, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
+	myNodeID, err := common.GetNodeUUID()
 	_ = err
 	common.Assert(err == nil, fmt.Sprintf("Failed to get our NodeId [%v]", err))
 	common.Assert(len(rvs) > 0)

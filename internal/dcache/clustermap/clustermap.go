@@ -451,7 +451,7 @@ func (c *ClusterMap) getClusterMap() dcache.ClusterMap {
 
 // Get RVs belonging to this node.
 func (c *ClusterMap) getMyRVs() map[string]dcache.RawVolume {
-	nodeId, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
+	nodeId, err := common.GetNodeUUID()
 	_ = err
 	common.Assert(err == nil, fmt.Sprintf("Error getting nodeId: %v", err))
 
@@ -469,7 +469,7 @@ func (c *ClusterMap) getAllRVs() map[string]dcache.RawVolume {
 }
 
 func (c *ClusterMap) isMyRV(rvName string) bool {
-	myNodeID, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
+	myNodeID, err := common.GetNodeUUID()
 	_ = err
 	common.Assert(err == nil, err)
 

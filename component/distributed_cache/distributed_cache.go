@@ -248,9 +248,8 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	if err != nil {
 		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
 	}
-	uuidFilePath := filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid")
-	log.Info("DistributedCache::Start : Reading node UUID from %s", uuidFilePath)
-	uuidVal, err := common.GetNodeUUID(uuidFilePath)
+
+	uuidVal, err := common.GetNodeUUID()
 	if err != nil {
 		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
 	}
@@ -1276,15 +1275,13 @@ func NewDistributedCacheComponent() internal.Component {
 // use. Make sure we don't proceed w/o a valid UUID.
 func ensureUUID() {
 	// This one should query from the uuid file or create and store in the file.
-	uuidFilePath := filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid")
-	log.Info("DistributedCache::ensureUUID : Reading node UUID from %s", uuidFilePath)
-	uuid1, err := common.GetNodeUUID(uuidFilePath)
+	uuid1, err := common.GetNodeUUID()
 	if err != nil {
 		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(1) failed: %v", err)
 	}
 
 	// This one (and all subsequent calls) should return the cached UUID.
-	uuid2, err := common.GetNodeUUID(uuidFilePath)
+	uuid2, err := common.GetNodeUUID()
 	if err != nil {
 		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(2) failed: %v", err)
 	}

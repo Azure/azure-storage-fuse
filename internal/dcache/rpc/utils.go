@@ -35,7 +35,6 @@ package rpc
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -95,7 +94,7 @@ func GetNodeAddressFromID(nodeID string) string {
 
 // return the node ID of this node
 func GetMyNodeUUID() string {
-	nodeID, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
+	nodeID, err := common.GetNodeUUID()
 	_ = err
 	common.Assert(err == nil, err)
 	common.Assert(common.IsValidUUID(nodeID), nodeID)

@@ -37,7 +37,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -1110,7 +1109,7 @@ func Start() {
 	}
 
 	var err error
-	myNodeId, err = common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
+	myNodeId, err = common.GetNodeUUID()
 	if err != nil {
 		// Cannot proceed w/o our node id.
 		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to get my node id [%v]", err)

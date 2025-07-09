@@ -35,7 +35,6 @@ package rpc_server
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -55,7 +54,7 @@ type NodeServer struct {
 
 // NewNodeServer creates a Thrift server for the node
 func NewNodeServer() (*NodeServer, error) {
-	nodeID, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
+	nodeID, err := common.GetNodeUUID()
 	if err != nil {
 		common.Assert(false, "failed to get node ID [%v]", err.Error())
 		log.Err("NodeServer::NewNodeServer: Failed to get node ID [%v]", err.Error())
