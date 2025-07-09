@@ -953,7 +953,6 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// and the caller should not overwrite it.
 	// For now we treat "already exists" as success.
 	//
-
 	if err != nil {
 		//
 		// Note: Even though we use IsNoneMatchEtagEnabled = true, we have seen the PutBlobInStorage()
@@ -965,7 +964,6 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 			return nil
 		}
 
-    
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Info("CreateInitialClusterMap:: PutBlobInStorage failed for %s due to ETag mismatch, treating as success: %v",
 				clustermapPath, err)

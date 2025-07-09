@@ -387,10 +387,8 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		// Post that, once cmi.config is set, it should never fail.
 		//
 		common.Assert(cmi.config == nil, err1)
-
 		// ENOENT is the only viable error, for everything else we retry.
 		common.Assert(err == syscall.ENOENT, err)
-
 		return nil, nil, err
 	}
 
@@ -2614,7 +2612,6 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 	}
 	wg.Wait()
 	close(errCh)
-  
 	var allErrs []string
 	var failedRVs []string
 
