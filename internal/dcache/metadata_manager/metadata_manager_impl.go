@@ -229,7 +229,7 @@ func IsErrConditionNotMet(err error) bool {
 	return bloberror.HasCode(err, bloberror.ConditionNotMet)
 }
 
-// Helper function to read and return the content of the blob identifed by blobPath, safe from simultaneous
+// Helper function to read and return the content of the blob identified by blobPath, safe from simultaneous
 // read/write, as a byte array and the attributes corresponding to the returned blob, returns error on failure.
 // It's resilient against changes to the Blob between GetProperties and GetBlob.
 //
@@ -246,7 +246,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 	//       after the GetProperties call to query the size, since GetBlobFromStorage() assumes that the
 	//       Blob won't be changed after GetProperties and GetBlob.
 	//       The second GetProperties call solves both these problems.
-	//       We retry 50 times, that should provide suffcient resilience even with very large clusters.
+	//       We retry 50 times, that should provide sufficient resilience even with very large clusters.
 	//
 	// TODO: See if this can be improved.
 	//
@@ -378,7 +378,7 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 }
 
 // CreateFileFinalize() finalizes the metadata for a file.
-// Must be called only after prior call to CreateFileInit() suceeded.
+// Must be called only after prior call to CreateFileInit() succeeded.
 func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
 	common.Assert(len(filePath) > 0)
 	common.Assert(len(fileMetadata) > 0)
