@@ -170,6 +170,12 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError("DistributedCache::Start error [azstorage component not found]")
 	}
 
+	// We are creating UUID before initialising any of the dcache component. So that UUID is available for all components
+	ensureUUID()
+
+	// rpc client should be initialised before any of its user.
+	rpc_client.Start()
+
 	dc.storageCallback = initStorageCallback(
 		dc.NextComponent(),
 		dc.azstorage)
@@ -1270,13 +1276,15 @@ func NewDistributedCacheComponent() internal.Component {
 // use. Make sure we don't proceed w/o a valid UUID.
 func ensureUUID() {
 	// This one should query from the uuid file or create and store in the file.
-	uuid1, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
+	uuidFilePath := filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid")
+	log.Info("DistributedCache::ensureUUID : Reading node UUID from %s", uuidFilePath)
+	uuid1, err := common.GetNodeUUID(uuidFilePath)
 	if err != nil {
 		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(1) failed: %v", err)
 	}
 
 	// This one (and all subsequent calls) should return the cached UUID.
-	uuid2, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
+	uuid2, err := common.GetNodeUUID(uuidFilePath)
 	if err != nil {
 		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(2) failed: %v", err)
 	}
@@ -1294,7 +1302,6 @@ func ensureUUID() {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
-	ensureUUID()
 
 	internal.AddComponent(compName, NewDistributedCacheComponent)
 
