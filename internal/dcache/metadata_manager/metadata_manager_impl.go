@@ -258,6 +258,10 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
+			if !os.IsNotExist(err) && err != syscall.ENOENT {
+				// Any error other than ENOENT, we should retry.
+				continue
+			}
 			return nil, nil, err
 		}
 
@@ -271,7 +275,11 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
 			common.Assert(false, err)
-			return nil, nil, err
+			//
+			// Since GetPropertiesFromStorage() succeeded this must be a transient error, so retry.
+			// In the rare case that the Blob is deleted, it'll cause just one additional retry.
+			//
+			continue
 		}
 
 		attr1, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
@@ -279,7 +287,8 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
-			return nil, nil, err
+			// Must be transient error, so retry.
+			continue
 		}
 
 		// Must have a valid etag.
@@ -351,12 +360,11 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 	// creation of file metadata blob.
 	//
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
+		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) || bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Err("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
 				path, err)
 			return "", err
 		}
-
 		log.Err("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)
 		common.Assert(false, err)
 		return "", err
@@ -942,11 +950,21 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// TODO:
 	// Caller has to check if the error is ConditionNotMet or something else
 	// and take appropriate action.
-	// If the error is ConditionNotMet, it means the clustermap already exists
+	// If the error is ConditionNotMet/BlobAlreadyExists, it means the clustermap already exists
 	// and the caller should not overwrite it.
 	// For now we treat "already exists" as success.
 	//
 	if err != nil {
+		//
+		// Note: Even though we use IsNoneMatchEtagEnabled = true, we have seen the PutBlobInStorage()
+		//       fail with BlobAlreadyExists and not ConditionNotMet.
+		//
+		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+			log.Info("CreateInitialClusterMap:: PutBlobInStorage Blob %s already exists. Treating it as success: %v",
+				clustermapPath, err)
+			return nil
+		}
+
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Info("CreateInitialClusterMap:: PutBlobInStorage failed for %s due to ETag mismatch, treating as success: %v",
 				clustermapPath, err)

@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -567,7 +568,17 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 		if err != nil {
 			log.Err("rpc_client::JoinMV: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
-			return nil, err
+			//
+			// This code is special only for JoinMV and specifically for the new-mv case.
+			// Note that ClusterManager.start() has a tiny window where it publishes its RVs into the
+			// clustermap but it has not started the RPC server yet.
+			// If some other node starts a new-mv workflow in the meantime, its attempt to create RPC
+			// client connections will fail with connection refused.
+			// Retry after a small wait.
+			//
+			log.Info("rpc_client::JoinMV: Retrying after 5 secs in case the RPC server is just starting on the target")
+			time.Sleep(5 * time.Second)
+			continue
 		}
 
 		// Call the rpc method.

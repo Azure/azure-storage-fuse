@@ -74,8 +74,8 @@ type ClusterMap struct {
 	LastUpdatedAt int64                     `json:"last_updated_at"`
 	LastUpdatedBy string                    `json:"last_updated_by"`
 	Config        DCacheConfig              `json:"config"`
-	RVMap         map[string]RawVolume      `json:"rv-map"`
-	MVMap         map[string]MirroredVolume `json:"mv-map"`
+	RVMap         map[string]RawVolume      `json:"rv-list"`
+	MVMap         map[string]MirroredVolume `json:"mv-list"`
 }
 
 // This struct is used for better interpreting the ClusterMap struct while reading the data as json.
@@ -107,7 +107,8 @@ type DCacheConfig struct {
 	ChunkSize              uint64 `json:"chunk-size"`
 	StripeSize             uint64 `json:"stripe-size"`
 	NumReplicas            uint32 `json:"num-replicas"`
-	MvsPerRv               uint64 `json:"mvs-per-rv"`
+	MaxRVs                 uint32 `json:"max-rvs"`
+	MVsPerRV               uint64 `json:"mvs-per-rv"`
 	RvFullThreshold        uint64 `json:"rv-full-threshold"`
 	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold"`
 	HeartbeatSeconds       uint16 `json:"heartbeat-seconds"`
