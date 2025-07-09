@@ -1637,7 +1637,7 @@ stages:
               name: pmcCertificate
               displayName: 'Download pmc pem file'
               inputs:
-                secureFile: 'blobfusebuildvault-blobfuse-release-pmc1-20230911.pem'
+                secureFile: 'azstorage-devex-kv-blobfuse-release-pmc1-10102025.pem'
 
             - task: DownloadSecureFile@1
               name: settings
