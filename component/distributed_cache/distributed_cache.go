@@ -1270,13 +1270,13 @@ func NewDistributedCacheComponent() internal.Component {
 // use. Make sure we don't proceed w/o a valid UUID.
 func ensureUUID() {
 	// This one should query from the uuid file or create and store in the file.
-	uuid1, err := common.GetNodeUUID()
+	uuid1, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
 	if err != nil {
 		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(1) failed: %v", err)
 	}
 
 	// This one (and all subsequent calls) should return the cached UUID.
-	uuid2, err := common.GetNodeUUID()
+	uuid2, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
 	if err != nil {
 		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(2) failed: %v", err)
 	}

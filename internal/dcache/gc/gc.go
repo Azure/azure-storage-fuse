@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -472,7 +473,7 @@ func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 
 func isMyNodeLeaderToDeleteStaleFiles() bool {
 	leaderNode := cm.GetClusterMap().LastUpdatedBy
-	myNodeID, err := common.GetNodeUUID()
+	myNodeID, err := common.GetNodeUUID(filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid"))
 	if err != nil {
 		log.Err("GC::isLeaderToDeleteStaleFiles: Failed to Get My NodeId [%v]", err)
 		common.Assert(false, err)
