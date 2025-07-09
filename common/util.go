@@ -55,7 +55,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	gouuid "github.com/google/uuid"
 	"github.com/prometheus/procfs"
 	"gopkg.in/ini.v1"
@@ -662,7 +661,6 @@ func GetNodeUUID() (string, error) {
 	}
 
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
-	log.Info(uuidFilePath, " : Reading node UUID from file")
 
 	// Read the UUID file.
 	data, err := os.ReadFile(uuidFilePath)
