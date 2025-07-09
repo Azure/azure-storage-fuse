@@ -79,6 +79,12 @@ func main() {
 		return
 	}
 
+	log.Debug("Parsed mount path: [%s]", hmcommon.MountPath)
+
+	if strings.TrimSpace(hmcommon.MountPath) == "" {
+		fmt.Printf("Mount path of blobfuse2 instance not provided\n")
+	}
+
 	err := log.SetDefaultLogger("syslog", common.LogConfig{
 		Level:       common.ELogLevel.LOG_DEBUG(),
 		FilePath:    common.ExpandPath(hmcommon.DefaultLogFile),
@@ -159,4 +165,7 @@ func init() {
 	flag.Float64Var(&hmcommon.MaxCacheSize, "max-size-mb", 0, "maximum cache size allowed. Default - 0 (unlimited)")
 
 	flag.BoolVar(&hmcommon.CheckVersion, "version", false, "Print the current version of health-monitor")
+	// Mount path is the path where blobfuse2 instance is mounted
+	flag.StringVar(&hmcommon.MountPath, "mount-path", "", "Mount path of the blobfuse2 instance")
+
 }
