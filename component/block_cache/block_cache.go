@@ -1211,7 +1211,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 		// Either the block is not fetched yet or offset goes beyond the file size
 		block, err = bc.blockPool.MustGet()
-		if block != nil {
+		if err != nil {
 			log.Err("BlockCache::getOrCreateBlock : Unable to allocate block %v=>%s (index %v) %v", handle.ID, handle.Path, index, err)
 			return nil, err
 		}
