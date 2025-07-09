@@ -49,6 +49,11 @@ import (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
+func Start() {
+	// This MUST match localClusterMapPath in clustermanager.
+	clusterMap.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
+}
+
 func Stop() {
 	clusterMap.stop()
 }
@@ -298,10 +303,7 @@ const (
 
 var (
 	clusterMapRefresher func() error
-	clusterMap          = &ClusterMap{
-		// This MUST match localClusterMapPath in clustermanager.
-		localClusterMapPath: filepath.Join(common.DefaultWorkDir, "clustermap.json"),
-	}
+	clusterMap          = &ClusterMap{}
 
 	//
 	// All go routines calling UpdateComponentRVState() around the same time will end up adding a corresponding

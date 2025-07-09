@@ -1098,7 +1098,7 @@ func Cleanup() error {
 	return err
 }
 
-func init() {
+func Start() {
 	// Must be called only once.
 	common.Assert(len(myNodeId) == 0)
 

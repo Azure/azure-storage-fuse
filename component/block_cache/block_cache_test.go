@@ -2827,7 +2827,7 @@ func (suite *blockCacheTestSuite) TestStrongConsistency() {
 
 func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {
 	prefetch := 12
-	cfg := fmt.Sprintf("block_cache:\n  block-size-mb: 1\n  mem-size-mb: 12\n  prefetch: %v\n  parallelism: 10", prefetch)
+	cfg := fmt.Sprintf("block_cache:\n  block-size-mb: 1\n  mem-size-mb: 25\n  prefetch: %v\n  parallelism: 10", prefetch)
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
@@ -2860,7 +2860,7 @@ func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {
 		suite.assert.True(h.Dirty())
 	}
 
-	// Now Jump to 20thMB offset and write 500kb of data
+	// Now Jump to 15thMB offset and write 500kb of data
 	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(20 * _1MB), Data: dataBuff[:(_1MB / 2)]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB/2))
