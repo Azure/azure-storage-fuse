@@ -412,7 +412,7 @@ func (rv *rvInfo) getMVs() []string {
 // Caller must ensure that the RV is not already hosting the MV replica and
 // that the rvInfo.rwMutex lock is acquired.
 func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
-	common.Assert(rv.isRvInfoLocked(), rv.rvName)
+	common.Assert(rv.isRvInfoLocked(), rv.rvName, mvName, reservedSpace)
 
 	mvPath := filepath.Join(rv.cacheDir, mvName)
 	_ = mvPath
@@ -1145,7 +1145,10 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 // Refresh clustermap and remove any stale MV entries from rvInfo.mvMap.
 // This is used for deleting any MVs by a prior JoinMV call which were never committed by the sender in the
 // clustermap. Note that these could be MVs added by new-mv or fix-mv workflows.
+// Caller must ensure that the rvInfo.rwMutex lock is acquired.
 func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
+	common.Assert(rv.isRvInfoLocked(), rv.rvName)
+
 	log.Debug("mvInfo::pruneStaleEntriesFromMvMap: %s hosts %d MVs", rv.rvName, rv.mvCount.Load())
 
 	//
@@ -2892,8 +2895,8 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	// from all component RVs, we *must* have the MV replica in our rvInfo.
 	//
 	// TODO: There is one scenario in which this is possible, if a node responds to LeaveMV() successfully
-	// but the sender cannot commit it to clustermap for some reason, then when LeaveMV() is retried
-	// it'll not find the MV.
+	//       but the sender cannot commit it to clustermap for some reason, then when LeaveMV() is retried
+	//       it'll not find the MV.
 	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
