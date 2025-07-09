@@ -82,13 +82,13 @@ func getUsagePercentage(path string, maxSize float64) float64 {
 	if maxSize == 0 {
 		currSize, usagePercent, err = common.GetDiskUsageFromStatfs(path)
 		if err != nil {
-			log.Err("cachePolicy::getUsagePercentage : failed to get disk usage for %s [%v]", path, err.Error)
+			log.Err("cachePolicy::getUsagePercentage : failed to get disk usage for %s [%v]", path, err.Error())
 		}
 	} else {
 		// We need to compuate % usage of temp directory against configured limit
 		currSize, err = common.GetUsageInMegabytes(path)
 		if err != nil {
-			log.Err("cachePolicy::getUsagePercentage : failed to get directory usage for %s [%v]", path, err.Error)
+			log.Err("cachePolicy::getUsagePercentage : failed to get directory usage for %s [%v]", path, err.Error())
 		}
 
 		usagePercent = (currSize / float64(maxSize)) * 100
