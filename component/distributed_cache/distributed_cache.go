@@ -244,7 +244,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	}
 	uuidFilePath := filepath.Join(common.DefaultWorkDir, "blobfuse_node_uuid")
 	log.Info("DistributedCache::Start : Reading node UUID from %s", uuidFilePath)
-	uuidVal, err := common.GetNodeUUID()
+	uuidVal, err := common.GetNodeUUID(uuidFilePath)
 	if err != nil {
 		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
 	}

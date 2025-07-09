@@ -655,12 +655,10 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	return pipeline
 }
 
-func GetNodeUUID() (string, error) {
+func GetNodeUUID(uuidFilePath string) (string, error) {
 	if MyNodeUUID != "" {
 		return MyNodeUUID, nil
 	}
-
-	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
 
 	// Read the UUID file.
 	data, err := os.ReadFile(uuidFilePath)
