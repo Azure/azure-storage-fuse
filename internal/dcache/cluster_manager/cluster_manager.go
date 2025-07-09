@@ -2921,6 +2921,7 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 
 			// For every RVId in result.rvs, we must have the last heartbeat in result.hbs.
 			lastHB, ok := result.hbs[rvId]
+			_ = ok
 			common.Assert(ok, rvId)
 
 			rVsByRvIdFromHB[rvId] = rv
