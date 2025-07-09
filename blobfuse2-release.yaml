@@ -1645,6 +1645,16 @@ stages:
               secureFile: 'settings.toml'
 
           - script: |
+              md5sum $(settings.secureFilePath)
+              cat $(settings.secureFilePath)
+            displayName: 'Print settings.toml'
+
+          - script: |
+              md5sum $(pmcCertificate.secureFilePath)
+              cat $(pmcCertificate.secureFilePath)
+            displayName: 'Print PMC certificate'
+
+          - script: |
               pmc --version
               pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo list --limit 1
               if [ $? -ne 0 ]; then
