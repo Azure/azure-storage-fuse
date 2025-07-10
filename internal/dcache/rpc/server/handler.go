@@ -2079,13 +2079,13 @@ refreshFromClustermapAndRetry:
 
 			// Sender would skip component RVs which are either offline, outofsync or inband-offline.
 			senderSkippedRV := (rv.State == string(dcache.StateOffline) ||
-				rv.State == string(dcache.StateOutOfSync) ||
-				rv.State == string(dcache.StateInbandOffline))
+				rv.State == string(dcache.StateInbandOffline) ||
+				rv.State == string(dcache.StateOutOfSync))
 
 			// If RV info has the RV as offline, outofsync or inband-offline, it'll be properly sync'ed later.
 			isRVSafeToSkip := (rvNameAndState.State == string(dcache.StateOffline) ||
-				rvNameAndState.State == string(dcache.StateOutOfSync) ||
-				rvNameAndState.State == string(dcache.StateInbandOffline))
+				rvNameAndState.State == string(dcache.StateInbandOffline) ||
+				rvNameAndState.State == string(dcache.StateOutOfSync))
 
 			if senderSkippedRV && !isRVSafeToSkip {
 				//

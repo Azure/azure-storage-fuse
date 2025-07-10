@@ -400,7 +400,7 @@ retry:
 	//
 	for _, rv := range componentRVs {
 		//
-		// Omit writing to RVs in “offline”, “outofsync” or "inband-offline" state. It’s ok to omit them as the chunks not
+		// Omit writing to RVs in “offline”, "inband-offline" or “outofsync” state. It’s ok to omit them as the chunks not
 		// written to them will be copied to them when the mv is (soon) resynced.
 		// Otoh if an RV is in “syncing” state then any new chunk written to it may not be copied by the
 		// ongoing resync operation as the source RV may have been already gone past the enumeration stage
@@ -408,8 +408,8 @@ retry:
 		// copied to them.
 		//
 		if rv.State == string(dcache.StateOffline) ||
-			rv.State == string(dcache.StateOutOfSync) ||
-			rv.State == string(dcache.StateInbandOffline) {
+			rv.State == string(dcache.StateInbandOffline) ||
+			rv.State == string(dcache.StateOutOfSync) {
 			log.Debug("ReplicationManager::WriteMV: Skipping %s/%s (RV state: %s, MV state: %s)",
 				rv.Name, req.MvName, rv.State, mvState)
 
