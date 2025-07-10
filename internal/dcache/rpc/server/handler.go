@@ -788,6 +788,10 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 					continue
 				}
 
+				// For same RV, we cannot have old state as inband-offline.
+				common.Assert(oldState != string(dcache.StateInbandOffline),
+					mv.mvName, oldName, oldState, newState)
+
 				errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s)",
 					mv.mvName, oldName, oldState, oldName, newState)
 				log.Info("mvInfo::updateComponentRVs: %s", errStr)

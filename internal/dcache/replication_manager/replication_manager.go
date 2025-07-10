@@ -856,8 +856,8 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 		// outofsync or syncing RVs. If yes, then we simply return an error asking caller to retry after
 		// some time.
 		//
-		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) ||
-			rv.State == string(dcache.StateSyncing) || rv.State == string(dcache.StateInbandOffline) {
+		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateInbandOffline) ||
+			rv.State == string(dcache.StateSyncing) || rv.State == string(dcache.StateOutOfSync) {
 			log.Info("ReplicationManager::RemoveMV: skip deleting fileId %s chunks from %s/%s, rv state: %s",
 				req.FileID, rv.Name, req.MvName, rv.State)
 
