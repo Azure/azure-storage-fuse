@@ -37,9 +37,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
-	"syscall"
 	"testing"
 	"time"
 
@@ -82,36 +80,6 @@ func (suite *ClusterManagerTestSuite) TearDownTest() {
 	// restore originals
 	getAllNodes = suite.origGetAllNodes
 	getHeartbeat = suite.origGetHeartbeat
-}
-
-func (suite *ClusterManagerTestSuite) TestCheckIfClusterMapExists() {
-	orig := getClusterMap
-	defer func() { getClusterMap = orig }()
-
-	// 1) success
-	getClusterMap = func() ([]byte, *string, error) { return nil, nil, nil }
-	exists, err := suite.cm.checkIfClusterMapExists()
-	suite.NoError(err)
-	suite.True(exists)
-
-	// 2) os.ErrNotExist
-	getClusterMap = func() ([]byte, *string, error) { return nil, nil, os.ErrNotExist }
-	exists, err = suite.cm.checkIfClusterMapExists()
-	suite.NoError(err)
-	suite.False(exists)
-
-	// 3) syscall.ENOENT
-	getClusterMap = func() ([]byte, *string, error) { return nil, nil, syscall.ENOENT }
-	exists, err = suite.cm.checkIfClusterMapExists()
-	suite.NoError(err)
-	suite.False(exists)
-
-	// 4) other error
-	testErr := errors.New("boom")
-	getClusterMap = func() ([]byte, *string, error) { return nil, nil, testErr }
-	exists, err = suite.cm.checkIfClusterMapExists()
-	suite.EqualError(err, "boom")
-	suite.False(exists)
 }
 
 // replace the old mockHeartbeat with this:

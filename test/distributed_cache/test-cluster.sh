@@ -327,7 +327,7 @@ LAST_UPDATED_BY=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
 [ "$LAST_UPDATED_BY" == "$(get_node_id vm1)" ]
 log_status $? "is $LAST_UPDATED_BY"
 
-becho -n "last_updated_at must be uptodate"
+becho -n "last_updated_at must be up-to-date"
 LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
 now=$(date +%s)
 # Not more than 5secs old.
@@ -392,7 +392,7 @@ last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
 [ "$last_updated_by" == "$(get_node_id vm2)" ]
 log_status $? "is $last_updated_by"
 
-becho -n "last_updated_at must be uptodate"
+becho -n "last_updated_at must be up-to-date"
 last_updated_at=$(echo "$cm" | jq '."last_updated_at"')
 now=$(date +%s)
 # Not more than 5secs old.
@@ -490,7 +490,7 @@ last_updated_by=$(echo "$cm" | jq '."last_updated_by"' | tr -d '"')
 [ "$last_updated_by" == "$(get_node_id vm3)" ]
 log_status $? "is $last_updated_by"
 
-becho -n "last_updated_at must be uptodate"
+becho -n "last_updated_at must be up-to-date"
 last_updated_at=$(echo "$cm" | jq '."last_updated_at"')
 now=$(date +%s)
 # Not more than 5secs old.

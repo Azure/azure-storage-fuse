@@ -118,7 +118,7 @@ func (tree *Tree) GetSubTree(key string) *TreeNode {
 }
 
 // parseValue is a utility function that accepts a val and returns the parsed value of that type.
-// Apart from primitve types it also handles the slice type where value is a comma separated string
+// Apart from primitive types it also handles the slice type where value is a comma separated string
 func parseValue(val string, toType reflect.Type) interface{} {
 	switch toType.Kind() {
 	case reflect.Slice:

@@ -102,7 +102,7 @@ func (suite *distributedCacheTestSuite) TestManadatoryConfigMissing() {
 	suite.assert.EqualValues(300, suite.distributedCache.cfg.ClustermapEpoch)
 	suite.assert.EqualValues(3, suite.distributedCache.cfg.MaxMissedHeartbeats)
 	suite.assert.EqualValues(1, suite.distributedCache.cfg.MinNodes)
-	suite.assert.EqualValues(uint64(10), suite.distributedCache.cfg.MVsPerRv)
+	suite.assert.EqualValues(uint64(10), suite.distributedCache.cfg.MVsPerRV)
 	suite.assert.EqualValues(uint64(80), suite.distributedCache.cfg.RebalancePercentage)
 	suite.assert.EqualValues(95, suite.distributedCache.cfg.RVFullThreshold)
 	suite.assert.EqualValues(80, suite.distributedCache.cfg.RVNearfullThreshold)

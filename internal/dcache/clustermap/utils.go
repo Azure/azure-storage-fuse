@@ -67,8 +67,17 @@ var (
 	MinNumReplicas int64 = 1
 	MaxNumReplicas int64 = 256
 
-	MinMvsPerRv int64 = 10
-	MaxMvsPerRv int64 = 100
+	//
+	// Unless explicitly set, the system sets cfg.MVsPerRV in a way so as to get close to PreferredMVs
+	// number of MVs. Obviously it'll honour MaxMVsPerRV.
+	//
+	// TODO: See if we need to make this a config option.
+	// TODO: Test if 1000 is a good number.
+	//
+	PreferredMVs int64 = 1000
+
+	MinMVsPerRV int64 = 1
+	MaxMVsPerRV int64 = 100
 
 	MinRvFullThreshold int64 = 80
 	MaxRvFullThreshold int64 = 100
@@ -175,6 +184,13 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 		return false, fmt.Errorf("DCacheConfig: Invalid MinNodes: %d +%v", cfg.MinNodes, *cfg)
 	}
 
+	// Every node must contribute at least one RV.
+	// We must have RVs no less than NumReplicas.
+	// 100K is an arbitrary upper limit for the number of RVs in the cluster.
+	if cfg.MaxRVs < cfg.MinNodes || cfg.MaxRVs < cfg.NumReplicas || cfg.MaxRVs > 100000 {
+		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d +%v", cfg.MaxRVs, *cfg)
+	}
+
 	if int64(cfg.HeartbeatSeconds) < MinHeartbeatFrequency ||
 		int64(cfg.HeartbeatSeconds) > MaxHeartbeatFrequency {
 		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatSeconds: %d %+v", cfg.HeartbeatSeconds, *cfg)
@@ -208,14 +224,14 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 		return false, fmt.Errorf("DCacheConfig: Invalid NumReplicas: %d %+v", cfg.NumReplicas, *cfg)
 	}
 
-	if int64(cfg.MvsPerRv) < MinMvsPerRv || int64(cfg.MvsPerRv) > MaxMvsPerRv {
-		return false, fmt.Errorf("DCacheConfig: Invalid MvsPerRv: %d %+v", cfg.MvsPerRv, *cfg)
+	if int64(cfg.MVsPerRV) < MinMVsPerRV || int64(cfg.MVsPerRV) > MaxMVsPerRV {
+		return false, fmt.Errorf("DCacheConfig: Invalid MVsPerRV: %d %+v", cfg.MVsPerRV, *cfg)
 	}
 
-	// MvsPerRv less than NumReplicas is usually pointless.
-	if int64(cfg.MvsPerRv) < int64(cfg.NumReplicas) {
-		return false, fmt.Errorf("DCacheConfig: MvsPerRv(%d) < NumReplicas(%d) %+v",
-			cfg.MvsPerRv, cfg.NumReplicas, *cfg)
+	// MVsPerRV less than NumReplicas is usually pointless.
+	if int64(cfg.MVsPerRV) < int64(cfg.NumReplicas) {
+		return false, fmt.Errorf("DCacheConfig: MVsPerRV(%d) < NumReplicas(%d) %+v",
+			cfg.MVsPerRV, cfg.NumReplicas, *cfg)
 	}
 
 	if int64(cfg.RvFullThreshold) < MinRvFullThreshold || int64(cfg.RvFullThreshold) > MaxRvFullThreshold {

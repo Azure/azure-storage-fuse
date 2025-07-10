@@ -71,7 +71,7 @@ type StreamDirOptions struct {
 	// else we enumerate from Azure FS. This is used when user enumerates through an unqualified path.
 	IsFsDcache *bool
 	// This is used when reading the directory for unqualified path. Initially all the entries from the dcache are put
-	// into the map to later compare them with the Azure entries to avoid double occurence of the same entry.
+	// into the map to later compare them with the Azure entries to avoid double occurrence of the same entry.
 	DcacheEntries map[string]struct{}
 }
 
@@ -109,7 +109,7 @@ type RenameFileOptions struct {
 	SrcAttr   *ObjAttr
 	DstAttr   *ObjAttr
 	NoReplace bool // Don't  overwrite newpath of the rename.  Return an error if new‐path already exists.
-	// This option is similar to the RENAME_NOREPLACE flag supported by renameat2() functin by the system.
+	// This option is similar to the RENAME_NOREPLACE flag supported by renameat2() function by the system.
 }
 
 type ReadFileOptions struct {
