@@ -367,23 +367,16 @@ func NotifyMountToParent() error {
 func GetUsageInBytes(path string) (int64, error) {
 	totalUsage := int64(0)
 
-	err := filepath.WalkDir(path, func(path string, _ os.DirEntry, err error) error {
+	const blockSize = 512
+	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
-		/*
-			Use os.Lstat() to get the file information. The previous implementation of this function
-			used du, and it did not include the -L flag to follow symlinks.
-			Using os.Stat() will resolve symlinks and return the size of the target file,
-			which will change the behavior of this function.
-		*/
-		fileInfo, err := os.Lstat(path)
-		if err != nil {
-			return err
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			totalUsage += stat.Blocks * blockSize
+		} else {
+			totalUsage += info.Size()
 		}
-
-		totalUsage += fileInfo.Size()
 		return nil
 	})
 
@@ -395,17 +388,17 @@ func GetUsageInBytes(path string) (int64, error) {
 }
 
 func GetUsageInMegabytes(path string) (float64, error) {
-	return GetUsage(path)
-}
-
-// GetUsage: The current disk usage in MB using Go libraries
-// Deprecated: Use GetUsageInBytes or GetUsageInMegabytes instead, which provide more clarity on the return units.
-func GetUsage(path string) (float64, error) {
 	totalUsageInBytes, err := GetUsageInBytes(path)
 	if err != nil {
 		return 0, err
 	}
 	return float64(totalUsageInBytes) / (1024 * 1024), nil
+}
+
+// GetUsage: The current disk usage in MB using Go libraries
+// Deprecated: Use GetUsageInBytes or GetUsageInMegabytes instead, which provide more clarity on the return units.
+func GetUsage(path string) (float64, error) {
+	return GetUsageInMegabytes(path)
 }
 
 var currentUID int = -1

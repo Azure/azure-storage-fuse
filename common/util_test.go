@@ -342,23 +342,18 @@ func (suite *utilTestSuite) TestGetUsageWithSymlinks() {
 	err = os.Symlink(file2, symlink)
 	suite.assert.Nil(err)
 
-	linkInfo, err := os.Lstat(symlink)
-	suite.assert.Nil(err)
-	symlinkSize := linkInfo.Size()
-
-	usage, err := GetUsage(dir1)
+	usage, err := GetUsageInMegabytes(dir1)
 	suite.assert.Nil(err)
 
-	file1ExpectedSize := float64(1024 * 1024)
-	expectedUsageMB := (file1ExpectedSize + float64(symlinkSize)) / (1024 * 1024)
+	expectedSizeMB := float64(1.0)
 
-	/* Usage should be greater than 1MB (size of the file plus the symlink size)
-	   but less than 1.5MB since dereferencing the symlink will result in a size
-	   over this amount. The results of InDelta() may depend on the underlying
-	   file system. */
-	suite.assert.InDelta(expectedUsageMB, usage, 0.1)
-	suite.assert.Less(usage, 1.5)           // Should be much less than 2MB
-	suite.assert.GreaterOrEqual(usage, 1.0) // Should be at least 1MB
+	/*
+	   GetUsageInMegabytes() returns the size of the directory based on block size.
+	   The result should be between 0.9 and 1.1 MB but not greater, otherwise the
+	   symlink may have been dereferenced.
+	*/
+	suite.assert.Less(usage, expectedSizeMB+0.1)       // Should be less than 1.1MB
+	suite.assert.GreaterOrEqual(usage, expectedSizeMB) // Should be at least 1MB
 }
 
 func (suite *utilTestSuite) TestGetUsageWithSubdirectories() {
@@ -403,7 +398,7 @@ func (suite *utilTestSuite) TestGetUsageWithSubdirectories() {
 	suite.assert.Nil(err)
 	dirSize2 := dirInfo2.Size()
 
-	usage, err := GetUsage(tempDir)
+	usage, err := GetUsageInMegabytes(tempDir)
 	suite.assert.Nil(err)
 
 	file1ExpectedSize := float64(1024 * 1024)
@@ -411,9 +406,56 @@ func (suite *utilTestSuite) TestGetUsageWithSubdirectories() {
 	file3ExpectedSize := float64(512 * 1024)
 	expectedSizeMB := (file1ExpectedSize + file2ExpectedSize + file3ExpectedSize + float64(dirSize+dirSize2)) / (1024 * 1024)
 
-	suite.assert.InDelta(expectedSizeMB, usage, 0.1)
-	suite.assert.GreaterOrEqual(usage, 3.5)
-	suite.assert.Less(usage, 4.5)
+	suite.assert.GreaterOrEqual(usage, expectedSizeMB-0.1)
+	suite.assert.Less(usage, expectedSizeMB+0.1)
+}
+
+func (suite *utilTestSuite) TestGetUsageInMegabytesWithNonAlignedSizes() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	tempDir := filepath.Join(pwd, "util_test_nonaligned")
+	err = os.Mkdir(tempDir, 0777)
+	suite.assert.Nil(err)
+	defer os.RemoveAll(tempDir)
+
+	data1 := make([]byte, 1000)
+	for i := range data1 {
+		data1[i] = byte(i % 256)
+	}
+	file1 := filepath.Join(tempDir, "file1.txt")
+	err = os.WriteFile(file1, data1, 0777)
+	suite.assert.Nil(err)
+
+	data2 := make([]byte, 1500)
+	for i := range data2 {
+		data2[i] = byte(i % 256)
+	}
+	file2 := filepath.Join(tempDir, "file2.txt")
+	err = os.WriteFile(file2, data2, 0777)
+	suite.assert.Nil(err)
+
+	data3 := make([]byte, 777)
+	for i := range data3 {
+		data3[i] = byte(i % 256)
+	}
+	file3 := filepath.Join(tempDir, "file3.txt")
+	err = os.WriteFile(file3, data3, 0777)
+	suite.assert.Nil(err)
+
+	usage, err := GetUsageInMegabytes(tempDir)
+	suite.assert.Nil(err)
+
+	totalLogicalBytes := float64(1000 + 1500 + 777)
+	expectedLogicalMB := totalLogicalBytes / (1024 * 1024)
+
+	suite.assert.Greater(usage, 0.0)
+	suite.assert.Less(usage, 1.0)
+
+	suite.assert.GreaterOrEqual(usage, expectedLogicalMB-0.001)
+	suite.assert.LessOrEqual(usage, expectedLogicalMB+0.1)
 }
 
 func (suite *utilTestSuite) TestDirectoryCleanup() {
