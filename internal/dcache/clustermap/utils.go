@@ -68,7 +68,7 @@ var (
 	MaxNumReplicas int64 = 256
 
 	//
-	// Unless explictly set, the system sets cfg.MVsPerRV in a way so as to get close to PreferredMVs
+	// Unless explicitly set, the system sets cfg.MVsPerRV in a way so as to get close to PreferredMVs
 	// number of MVs. Obviously it'll honour MaxMVsPerRV.
 	//
 	// TODO: See if we need to make this a config option.

@@ -118,7 +118,7 @@ func Start() {
 		//
 		// File chunks are deleted by RemoveChunk() RPC which enumerates and deletes all chunks of
 		// the file from all RVs where one or more file chunks are present. These calls are made
-		// serially to each MV and parallely for each component RV for the MV. The time taken will
+		// serially to each MV and parallelly for each component RV for the MV. The time taken will
 		// depend on the size of the file as bigger files will have more chunks to be deleted.
 		//
 		// We set deleteTimeout to a reasonable value of 5 minutes.
@@ -371,14 +371,14 @@ func ScheduleChunkDeletion(file *dcache.FileMetadata) {
 //
 // Note that a file cannot be deleted till its openCount drops to zero, so if a node crashes after opening
 // a file and before closing it, the file openCount will be stuck at non-zero and such files can never be
-// techincally deleted. We define openCountHungTimeout and delete files which are stuck with unchanging
+// technically deleted. We define openCountHungTimeout and delete files which are stuck with unchanging
 // openCount for longer than that, indicating node that opened the file crashed.
 
 func (gc *GcInfo) scheduleDeleteForStaleFiles() {
 	log.Debug("GC::scheduleDeleteForStaleFiles: Started")
 
 	//
-	// Only the leader node runs the stale file deletin logic, to avoid too many calls for
+	// Only the leader node runs the stale file deleting logic, to avoid too many calls for
 	// listing deleted files and then all nodes attempting deletion.
 	//
 	if !isMyNodeLeaderToDeleteStaleFiles() {
