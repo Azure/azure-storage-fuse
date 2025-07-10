@@ -191,7 +191,7 @@ func IsClusterReadonly() bool {
 // If you do not care about any specific clusterMap epoch but just want it to be refreshed once, pass 0 for
 // higherThanEpoch.
 //
-// Note: Usually you will not need to work on the most uptodate clustermap, the last periodically refreshed copy
+// Note: Usually you will not need to work on the most up-to-date clustermap, the last periodically refreshed copy
 //       of clustermap should be fine for most users. This API must be used by callers which cannot safely proceed
 //       w/o knowing the latest clustermap. This should not be a common requirement and codepaths calling it should
 //       be very infrequently executed.

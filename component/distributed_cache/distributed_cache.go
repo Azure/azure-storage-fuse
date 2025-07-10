@@ -657,7 +657,7 @@ startListingWithNewToken:
 				return dirList, token, err
 			}
 
-			// Ignore the dirent if it's already retured by the dcache listing.
+			// Ignore the dirent if it's already returned by the dcache listing.
 			var modifiedDirList []*internal.ObjAttr = make([]*internal.ObjAttr, 0, len(dirList))
 			for _, attr := range dirList {
 				if _, ok := options.DcacheEntries[attr.Name]; !ok {
@@ -714,7 +714,7 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 		return syscall.EACCES
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
-		// Semantics for creating a directory, when path doesnt have explicit namespace.
+		// Semantics for creating a directory, when path doesn't have explicit namespace.
 		// Create in Azure and Dcache, fail the call if any one of them fail.
 
 		// Create Dir in Azure
@@ -1016,7 +1016,7 @@ func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, e
 
 	if options.Handle.IsFsDcache() && options.Handle.IsFsAzure() {
 
-		// Parallely write to azure and dcache.
+		// Parallelly write to azure and dcache.
 		// Enqueue the work of azure to the parallel writers and continue writing to the dcache from here.
 		azureErrChan := dc.pw.EnqueuAzureWrite(azureWrite)
 		dcacheErr = dcacheWrite()
@@ -1194,7 +1194,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		//
 		// Semantics for Unqualified Path, Delete from both Azure and Dcache. If file is present in only one qualified
 		// path, then delete only from that path. If the call has come here it already means that the file is present
-		// in atleast one qualified path as stat would be checked before doing deletion of a file.
+		// in at least one qualified path as stat would be checked before doing deletion of a file.
 		//
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 

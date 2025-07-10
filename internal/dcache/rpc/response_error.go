@@ -159,11 +159,11 @@ func IsConnectionClosed(err error) bool {
 		return false
 	}
 
-	te := thrift.NewTTransportExceptionFromError(err)
-	log.Debug("IsConnectionClosed: err: %v, type: %T, te.TypeId(): %d", err, err, te.TypeId())
+	transportEx := thrift.NewTTransportExceptionFromError(err)
+	log.Debug("IsConnectionClosed: err: %v, type: %T, transportEx.TypeId(): %d", err, err, transportEx.TypeId())
 
 	// TODO: See which one of these works.
-	return te.TypeId() == thrift.END_OF_FILE || err.Error() == "EOF"
+	return transportEx.TypeId() == thrift.END_OF_FILE || err.Error() == "EOF"
 }
 
 // Check if the error returned by thrift indicates connect attempt being refused by the peer node.
@@ -202,9 +202,9 @@ func IsTimedOut(err error) bool {
 		return false
 	}
 
-	te := thrift.NewTTransportExceptionFromError(err)
-	log.Debug("IsTimedOut: err: %v, type: %T, te.TypeId(): %d, Is syscall.ETIMEDOUT: %v, Is syscall.EAGAIN: %v",
-		err, err, te.TypeId(), errors.Is(err, syscall.ETIMEDOUT), errors.Is(err, syscall.EAGAIN))
+	transportEx := thrift.NewTTransportExceptionFromError(err)
+	log.Debug("IsTimedOut: err: %v, type: %T, transportEx.TypeId(): %d, Is syscall.ETIMEDOUT: %v, Is syscall.EAGAIN: %v",
+		err, err, transportEx.TypeId(), errors.Is(err, syscall.ETIMEDOUT), errors.Is(err, syscall.EAGAIN))
 
 	//
 	// Timeout can happen at various points.
@@ -212,7 +212,7 @@ func IsTimedOut(err error) bool {
 	// Try various errors for completeness.
 	//
 	connectionTimedOut := "onnection timed out"
-	return te.TypeId() == thrift.TIMED_OUT ||
+	return transportEx.TypeId() == thrift.TIMED_OUT ||
 		errors.Is(err, syscall.ETIMEDOUT) ||
 		errors.Is(err, syscall.EAGAIN) ||
 		strings.Contains(err.Error(), connectionTimedOut)

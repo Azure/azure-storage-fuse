@@ -350,7 +350,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		// source to target file. We fill in the gap with zeroes.
 		//
 		if chunkOffset > chunk.Len {
-			// TODO: Use a static zero buffer instead of allocating one everytime.
+			// TODO: Use a static zero buffer instead of allocating one every time.
 			resetBytes := copy(chunk.Buf[chunk.Len:chunkOffset], make([]byte, chunkOffset-chunk.Len))
 			common.Assert(resetBytes > 0)
 			chunk.Len += int64(resetBytes)
