@@ -229,6 +229,8 @@ func init() {
 	logObj, _ = NewLogger("syslog", common.LogConfig{
 		Level: common.ELogLevel.LOG_DEBUG(),
 	})
+
+	common.InitErrorInjection(logObj.Debug)
 }
 
 // TimeTracker : Dump time taken by a call
@@ -244,4 +246,9 @@ func TimeTrackDiff(diff time.Duration, location string, name string) {
 	if timeTracker {
 		logObj.Crit("TimeTracker :: [%s] %s => %s", location, name, diff)
 	}
+}
+
+func LogAndReturnError(msg string) error {
+	Err(msg)
+	return errors.New(msg)
 }
