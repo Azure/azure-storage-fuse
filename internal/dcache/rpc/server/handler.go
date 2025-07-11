@@ -780,9 +780,17 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 				}
 
 				if oldState == string(dcache.StateOffline) && newState == string(dcache.StateOutOfSync) {
+					//
 					// Same RV (now online) being reused by fix-mv.
+					// Note: we don't check if the oldstate is inband-offline here, since in case of
+					//       inband-offline state, same RV is not resued by the fix-mv workflow.
+					//
 					continue
 				}
+
+				// For same RV, we cannot have old state as inband-offline.
+				common.Assert(oldState != string(dcache.StateInbandOffline),
+					mv.mvName, oldName, oldState, newState)
 
 				errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s)",
 					mv.mvName, oldName, oldState, oldName, newState)
@@ -809,7 +817,11 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 
 				common.Assert(oldName != newName, oldName, newName)
 
-				if oldState == string(dcache.StateOffline) && newState == string(dcache.StateOutOfSync) {
+				//
+				// fix-mv workflow replaces an offline/inband-offline RV with a new outofsync RV.
+				//
+				if (oldState == string(dcache.StateOffline) || oldState == string(dcache.StateInbandOffline)) &&
+					newState == string(dcache.StateOutOfSync) {
 					// New RV replaced by fix-mv.
 					continue
 				}
@@ -1073,6 +1085,10 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 			// Since all state transitions of an RV must be approved by the RV before they are committed
 			// to clustermap, there can only be the following valid transitions for an RV.
 			//
+			// Note: We do not check StateInbandOffline here, since StateOutOfSync -> StateOffline is when
+			//       the same RV was used as the replacement RV. Whereas in StateInbandOffline case, the
+			//       same RV is not reused for replacement by the fix-mv workflow.
+			//
 			common.Assert(!isPresentInClusterMap || stateAsPerClustermap == dcache.StateOffline,
 				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap, isPresentInClusterMap)
 
@@ -1112,7 +1128,8 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 			//
 			common.Assert(isPresentInClusterMap &&
 				(stateAsPerClustermap == dcache.StateOutOfSync ||
-					stateAsPerClustermap == dcache.StateOffline),
+					stateAsPerClustermap == dcache.StateOffline ||
+					stateAsPerClustermap == dcache.StateInbandOffline),
 				mv.rv.rvName, mv.mvName, stateAsPerClustermap, isPresentInClusterMap)
 			//
 			// Only a target replica can be in StateSyncing and a target replica MUST have one and
@@ -1459,7 +1476,8 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 			// at any point, w/o we knowing about it. This will happen when the node hosting the component
 			// RV goes offline.
 			//
-			common.Assert(targetRVNameAndState.State == string(dcache.StateOffline),
+			common.Assert(targetRVNameAndState.State == string(dcache.StateOffline) ||
+				targetRVNameAndState.State == string(dcache.StateInbandOffline),
 				targetRVNameAndState.State, validState, sourceRVName, targetRVName, mv.mvName, errStr)
 
 			return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
@@ -2059,11 +2077,14 @@ refreshFromClustermapAndRetry:
 				return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 			}
 
-			// Sender would skip component RVs which are either offline or outofsync.
+			// Sender would skip component RVs which are either offline, outofsync or inband-offline.
 			senderSkippedRV := (rv.State == string(dcache.StateOffline) ||
+				rv.State == string(dcache.StateInbandOffline) ||
 				rv.State == string(dcache.StateOutOfSync))
-			// If RV info has the RV as offline or outofsync it'll be properly sync'ed later.
+
+			// If RV info has the RV as offline, outofsync or inband-offline, it'll be properly sync'ed later.
 			isRVSafeToSkip := (rvNameAndState.State == string(dcache.StateOffline) ||
+				rvNameAndState.State == string(dcache.StateInbandOffline) ||
 				rvNameAndState.State == string(dcache.StateOutOfSync))
 
 			if senderSkippedRV && !isRVSafeToSkip {
