@@ -97,6 +97,22 @@ components:
   - azstorage
 `
 
+var configDirectIOTest string = `
+libfuse:
+  direct-io: true
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+  max-retries: 1
+components:
+  - libfuse
+  - attr_cache
+  - azstorage
+`
+
 var confFileMntTest, confFilePriorityTest string
 
 type mountTestSuite struct {
@@ -237,6 +253,34 @@ func (suite *mountTestSuite) TestComponentPrioritySetWrong() {
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 	suite.assert.Contains(op, "component libfuse is out of order")
+}
+
+func (suite *mountTestSuite) TestDirectIOInConfig() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDirectIOTest)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
+	suite.assert.Error(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
+
+	directIO := false
+	err = config.UnmarshalKey("direct-io", &directIO)
+	suite.assert.NoError(err)
+	suite.assert.True(directIO)
+
+	suite.assert.NotContains(options.Components, "attr_cache")
 }
 
 func (suite *mountTestSuite) TestDefaultConfigFile() {
