@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1751792704630,
+  "lastUpdate": 1752397687914,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -617,6 +617,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "494.03000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "fa5351e70e3db2fddf8251d9b7d3e8b2b99fe4eb",
+          "message": "Update PMC certificate (#1864)",
+          "timestamp": "2025-07-09T11:19:04Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/fa5351e70e3db2fddf8251d9b7d3e8b2b99fe4eb"
+        },
+        "date": 1752397687632,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "11.11000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "539.70000",
             "unit": "seconds"
           }
         ]
