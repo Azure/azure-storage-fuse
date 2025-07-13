@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1751776577090,
+  "lastUpdate": 1752381622178,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1903,6 +1903,73 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 74.01561840612167,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "fa5351e70e3db2fddf8251d9b7d3e8b2b99fe4eb",
+          "message": "Update PMC certificate (#1864)",
+          "timestamp": "2025-07-09T11:19:04Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/fa5351e70e3db2fddf8251d9b7d3e8b2b99fe4eb"
+        },
+        "date": 1752381621898,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.081256506026,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 74.18465600112133,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.09152116622900001,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.19872968427299997,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09144764162933333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 73.60651031393932,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.164209584299,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 0.8556925418903333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 71.452348237764,
             "unit": "milliseconds"
           }
         ]
