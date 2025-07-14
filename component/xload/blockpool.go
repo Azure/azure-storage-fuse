@@ -34,6 +34,8 @@
 package xload
 
 import (
+	"context"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -55,10 +57,13 @@ type BlockPool struct {
 
 	// Number of threads waiting for block
 	waitLength atomic.Int32
+
+	// Context to cancel new block allocation
+	ctx context.Context
 }
 
 // NewBlockPool allocates a new pool of blocks
-func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
+func NewBlockPool(blockSize uint64, blockCount uint32, ctx context.Context) *BlockPool {
 	// Ignore if config is invalid
 	if blockSize == 0 || blockCount == 0 {
 		log.Err("BlockPool::NewBlockPool : blockSize : %v, block count : %v", blockSize, blockCount)
@@ -72,6 +77,7 @@ func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 		priorityCh: make(chan *Block, highPriority),
 		maxBlocks:  uint32(blockCount),
 		blockSize:  blockSize,
+		ctx:        ctx,
 	}
 
 	pool.waitLength.Store(0)
@@ -142,8 +148,18 @@ func (pool *BlockPool) GetBlock(priority bool) *Block {
 
 // TryGet a block from the pool. If the pool is empty, wait till a block is released back to the pool
 func (pool *BlockPool) tryGet() *Block {
+	var block *Block = nil
+
+	select {
 	// getting a block from pool will be a blocking operation if the pool is empty
-	block := <-pool.blocksCh
+	case block = <-pool.blocksCh:
+		break
+	case <-pool.ctx.Done():
+		err := fmt.Errorf("Failed to Allocate Buffer as the process was cancelled, Len (blocksCh: %d, priorityCh: %d), MaxBlocks: %d",
+			len(pool.blocksCh), len(pool.priorityCh), pool.maxBlocks)
+		log.Warn("BlockPool::GetBlock : %v", err)
+		return nil
+	}
 
 	// Mark the buffer ready for reuse now
 	block.ReUse()
@@ -158,6 +174,11 @@ func (pool *BlockPool) mustGet() *Block {
 		break
 	case block = <-pool.blocksCh:
 		break
+	case <-pool.ctx.Done():
+		err := fmt.Errorf("Failed to Allocate Buffer as the process was cancelled, Len (priorityCh: %d, blockCh: %d), MaxBlocks: %d",
+			len(pool.priorityCh), len(pool.blocksCh), pool.maxBlocks)
+		log.Err("BlockPool::MustGet : %v", err)
+		return nil
 	}
 
 	// Mark the buffer ready for reuse now

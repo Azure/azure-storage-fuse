@@ -237,7 +237,7 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
-	xl.blockPool = NewBlockPool(xl.blockSize, xl.poolSize)
+	xl.blockPool = NewBlockPool(xl.blockSize, xl.poolSize, xl.poolctx)
 	if xl.blockPool == nil {
 		log.Err("Xload::Start : Failed to create block pool")
 		return fmt.Errorf("failed to create block pool")
