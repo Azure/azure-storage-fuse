@@ -204,6 +204,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		for i := 0; i < int(numBlocks); i++ {
 			select {
 			case <-ds.GetThreadPool().ctx.Done(): // check if the thread pool is closed
+				operationSuccess = false
 				return
 			case respSplitItem := <-responseChannel:
 				if respSplitItem.Err != nil {
