@@ -253,6 +253,8 @@ type mvInfo struct {
 // transaction, it can cause real confusion.
 var mvInfoTimeout time.Duration = 60 * time.Second
 
+var dummyBuf []byte = make([]byte, 4*1024*1024)
+
 // Users performing transactional changes like JoinMV/UpdateMV/StartSync/EndSync, which send RPCs to one or
 // more component RVs and on getting success responses from all, commit state change in clustermap, can assume
 // state change caused by RPC to be valid only for this much time. After this, if the clustermap state change
@@ -1864,7 +1866,7 @@ dummy_read:
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
-			Data:    data,
+			Data:    dummyBuf,
 			Hash:    "", // TODO: hash validation will be done later
 		},
 		ChunkWriteTime: lmt,
