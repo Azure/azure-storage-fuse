@@ -943,7 +943,7 @@ stages:
           - checkout: none
 
           - script: |
-              if [ $(AgentName) == "blobfuse-rhel9" ]; then
+              if [ "$(AgentName)" == "blobfuse-rhel9" ]; then
                 sudo yum update -y
                 sudo yum groupinstall "Development Tools" -y
                 sudo yum install git -y --nobest --allowerasing
