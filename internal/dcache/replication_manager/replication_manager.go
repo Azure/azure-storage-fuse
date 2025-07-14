@@ -632,17 +632,21 @@ processResponses:
 		respItem := <-responseChannel
 		if respItem == nil {
 			//
-			// This means that we skipped writing to this RV, as it was in offline/outofsync state.
+			// This means that we skipped writing to this RV, as it was in offline/inband-offline/outofsync state.
 			//
 			continue
 		}
 
+		putChunkResp, ok := respItem.rpcResp.(*models.PutChunkResponse)
+		_ = putChunkResp
+		_ = ok
+		common.Assert(ok)
+
 		if respItem.err == nil {
-			common.Assert(respItem.rpcResp != nil)
-			common.Assert(respItem.rpcResp.(*models.PutChunkResponse) != nil)
+			common.Assert(putChunkResp != nil)
 
 			log.Debug("ReplicationManager::WriteMV: PutChunk successful for %s/%s, RPC response: %s",
-				respItem.rvName, req.MvName, rpc.PutChunkResponseToString(respItem.rpcResp.(*models.PutChunkResponse)))
+				respItem.rvName, req.MvName, rpc.PutChunkResponseToString(putChunkResp))
 
 			//
 			// Write to this component RV was successful, add it to the list of RVs successfully written
@@ -656,7 +660,7 @@ processResponses:
 		log.Err("ReplicationManager::WriteMV: PutChunk to %s/%s failed [%v]",
 			respItem.rvName, req.MvName, respItem.err)
 
-		common.Assert(respItem.rpcResp == nil)
+		common.Assert(putChunkResp == nil)
 
 		rpcErr := rpc.GetRPCResponseError(respItem.err)
 		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
@@ -693,7 +697,7 @@ processResponses:
 			// chunks which we could not write to this component RV will be later sync'ed
 			// from one of the good component RVs.
 			//
-			log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed, marked RV offline",
+			log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed, marked RV inband-offline",
 				respItem.rvName, req.MvName)
 			continue
 		}
@@ -917,7 +921,9 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 		}
 
 		err := respItem.err
-		rpcResp := respItem.rpcResp.(*models.RemoveChunkResponse)
+		rpcResp, ok := respItem.rpcResp.(*models.RemoveChunkResponse)
+		_ = ok
+		common.Assert(ok)
 		if err == nil {
 			//
 			// Status success with numChunksdeleted==0 signifies RemoveChunk was able to successfully delete all
