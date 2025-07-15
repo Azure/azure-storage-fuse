@@ -150,6 +150,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	case <-time.After(maxWait):
 		err := fmt.Errorf("no free RPC client for node %s, even after waiting for %s",
 			nodeID, maxWait)
+		log.Err("clientPool::getRPCClient: %v", err)
 		log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
 		return nil, err
 	}
