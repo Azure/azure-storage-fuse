@@ -750,3 +750,9 @@ func IsFuseHiddenFile(filePath string) bool {
 	fileName := filepath.Base(filePath)
 	return strings.HasPrefix(fileName, ".fuse_hidden")
 }
+
+// Returns true if we are faking scale test.
+// This is used to test scale scenarios by allowing multiple RVs from the same local filesystem.
+func IsFakingScaleTest() bool {
+	return (os.Getenv("BLOBFUSE_FAKE_SCALE_TEST") == "1")
+}
