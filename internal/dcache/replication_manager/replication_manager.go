@@ -654,7 +654,7 @@ processResponses:
 		log.Err("ReplicationManager::WriteMV: PutChunk to %s/%s failed [%v]",
 			respItem.rvName, req.MvName, respItem.err)
 
-		common.Assert(respItem.rpcResp == nil)
+		common.Assert(respItem.rpcResp.(*models.PutChunkResponse) == nil)
 
 		rpcErr := rpc.GetRPCResponseError(respItem.err)
 		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
