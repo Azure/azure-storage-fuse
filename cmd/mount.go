@@ -260,6 +260,7 @@ var mountCmd = &cobra.Command{
 		common.MountPath = options.MountPath
 
 		configFileExists := true
+		directIO := false
 
 		if options.ConfigFile == "" {
 			// Config file is not set in cli parameters
@@ -389,9 +390,18 @@ var mountCmd = &cobra.Command{
 				} else if v == "direct_io" || v == "direct_io=true" {
 					config.Set("lfuse.direct-io", "true")
 					config.Set("direct-io", "true")
+					directIO = true
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}
+			}
+		}
+
+		// Check if direct-io is enabled in the config file.
+		if !directIO {
+			_ = config.UnmarshalKey("libfuse.direct-io", &directIO)
+			if directIO {
+				config.Set("direct-io", "true")
 			}
 		}
 
@@ -462,10 +472,8 @@ var mountCmd = &cobra.Command{
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
 
-		directIO := false
-		_ = config.UnmarshalKey("direct-io", &directIO)
 		if directIO {
-			// Directio is enabled, so remove the attr-cache from the pipeline
+			// Direct IO is enabled, so remove the attr-cache from the pipeline
 			for i, name := range options.Components {
 				if name == "attr_cache" {
 					options.Components = append(options.Components[:i], options.Components[i+1:]...)
