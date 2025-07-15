@@ -3172,8 +3172,17 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				// Since we can have multiple PutChunk requests outstanding, all but the first one will find the
 				// currentState as StateInbandOffline, we need to ignore such update requests.
 				//
-				if currentState == rvNewState {
-					common.Assert(currentState == dcache.StateInbandOffline, currentState)
+				// We can also get this transition,
+				// StateOffline -> StateInbandOffline
+				// We can get this when the RV is offline and its status has been updated in the clustermap.
+				// However in inband PutChunk failure, we send to update the RV state to InbandOffline.
+				// Since, the RV is already marked offline in the clustermap, we ignore this request.
+				//
+				if currentState == rvNewState ||
+					(currentState == dcache.StateOffline && rvNewState == dcache.StateInbandOffline) {
+					common.Assert(currentState != rvNewState ||
+						currentState == dcache.StateInbandOffline, currentState)
+
 					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s ignoring state change (%s -> %s)",
 						rvName, mvName, currentState, rvNewState)
 
