@@ -1812,13 +1812,6 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	_ = hashPath
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
-	//
-	// Allocate byte slice, data from the chunk file will be read into this.
-	//
-	// TODO: Need to ensure this is FS_BLOCK_SIZE aligned.
-	//
-	data := make([]byte, req.Length)
-
 	var lmt string
 	var n int
 	_ = n
@@ -1826,10 +1819,18 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	_ = chunkSize
 	var stat syscall.Stat_t
 	var hashPathPtr *string
+	var data []byte
 
 	if performDummyReadWrite() {
 		goto dummy_read
 	}
+
+	//
+	// Allocate byte slice, data from the chunk file will be read into this.
+	//
+	// TODO: Need to ensure this is FS_BLOCK_SIZE aligned.
+	//
+	data = make([]byte, req.Length)
 
 	err = syscall.Stat(chunkPath, &stat)
 	if err != nil {
