@@ -1837,13 +1837,19 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 
 			//
-			// If this component RV is not offline/inband-offline, its containing node must be excluded for replacement RV(s).
+			// If this component RV is not offline, its containing node must be excluded for replacement RV(s).
 			// We don't exclude the node if the component RV is offline to support the case where the same node
 			// comes back up online and we may want to use the same RV or another RV from the same node, as
 			// replacement RV.
+			// If it the component RV is inband-offline, we exclude its node because we don't want other RVs in
+			// that node to be used as replacement RV. But we still count it as offline, so that it is replaced
+			// with a good RV.
 			//
 			if mv.RVs[rvName] != dcache.StateOffline {
 				excludeNodes[rvMap[rvName].NodeId] = struct{}{}
+				if mv.RVs[rvName] == dcache.StateInbandOffline {
+					offlineRVs++
+				}
 				continue
 			}
 
@@ -1859,7 +1865,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			offlineRVs++
 		}
 
-		// Degraded MVs must have one or more but not all component RVs as offline/outofsync.
+		// Degraded MVs must have one or more but not all component RVs as offline, inband-offline or outofsync.
 		common.Assert((offlineRVs+outofsyncRVs) != 0 && (offlineRVs+outofsyncRVs) < NumReplicas,
 			mvName, offlineRVs, outofsyncRVs, NumReplicas)
 
