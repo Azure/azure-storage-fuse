@@ -177,7 +177,7 @@ func (suite *blockpoolTestSuite) TestUsage() {
 	suite.assert.Equal(len(bp.zeroBlock.data), 0)
 }
 
-func (suite *blockpoolTestSuite) TestBufferExhaution() {
+func (suite *blockpoolTestSuite) TestBufferExhaustion() {
 	suite.assert = assert.New(suite.T())
 
 	bp := NewBlockPool(1, 5)

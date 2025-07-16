@@ -151,14 +151,14 @@ func (pool *BlockPool) tryGet() *Block {
 	var block *Block = nil
 
 	select {
-	// getting a block from pool will be a blocking operation if the pool is empty
-	case block = <-pool.blocksCh:
-		break
 	case <-pool.ctx.Done():
 		err := fmt.Errorf("Failed to Allocate Buffer as the process was cancelled, Len (blocksCh: %d, priorityCh: %d), MaxBlocks: %d",
 			len(pool.blocksCh), len(pool.priorityCh), pool.maxBlocks)
 		log.Warn("BlockPool::GetBlock : %v", err)
 		return nil
+	// getting a block from pool will be a blocking operation if the pool is empty
+	case block = <-pool.blocksCh:
+		break
 	}
 
 	// Mark the buffer ready for reuse now
@@ -170,15 +170,15 @@ func (pool *BlockPool) mustGet() *Block {
 	var block *Block = nil
 
 	select {
-	case block = <-pool.priorityCh:
-		break
-	case block = <-pool.blocksCh:
-		break
 	case <-pool.ctx.Done():
 		err := fmt.Errorf("Failed to Allocate Buffer as the process was cancelled, Len (priorityCh: %d, blockCh: %d), MaxBlocks: %d",
 			len(pool.priorityCh), len(pool.blocksCh), pool.maxBlocks)
 		log.Err("BlockPool::MustGet : %v", err)
 		return nil
+	case block = <-pool.priorityCh:
+		break
+	case block = <-pool.blocksCh:
+		break
 	}
 
 	// Mark the buffer ready for reuse now
