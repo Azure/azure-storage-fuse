@@ -486,12 +486,18 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	return availableSpace, err
 }
 
-// Return available space for our local RV with the given rvId.
+// Return available space for our local RV.
 // It queries the file system to get the available space in the cache directory for the RV and subtracts
 // any space reserved for the RV by the JoinMV RPC call.
-func GetAvailableSpaceForRV(rvId string) (int64, error) {
-	// Must be called after NewChunkServiceHandler() is called.
-	common.Assert(handler != nil)
+func GetAvailableSpaceForRV(rvId, rvName string) (int64, error) {
+	//
+	// Initial call(s) before RPC server is started must simply return the available space as reported
+	// by the file system, else we must subtract the reserved space for the RV
+	//
+	if handler == nil {
+		_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(rvName)
+		return int64(availableSpace), err
+	}
 
 	// rvId passed must refer to one of of our local RVs.
 	rvInfo, ok := handler.rvIDMap[rvId]

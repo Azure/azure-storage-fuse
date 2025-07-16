@@ -2955,7 +2955,7 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 // Refresh AvailableSpace in my RVs.
 func refreshMyRVs(myRVs []dcache.RawVolume) {
 	for index, rv := range myRVs {
-		availableSpace, err := rpc_server.GetAvailableSpaceForRV(rv.RvId)
+		availableSpace, err := rpc_server.GetAvailableSpaceForRV(rv.RvId, rv.LocalCachePath)
 		common.Assert(err == nil, rv, err)
 		if err != nil {
 			availableSpace = 0
