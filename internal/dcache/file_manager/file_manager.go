@@ -790,7 +790,7 @@ func scheduleDownload(chunk *StagedChunk, file *DcacheFile) {
 	if !chunk.XferScheduled.Swap(true) {
 		// Cannot be overwriting a dirty staged chunk.
 		common.Assert(!chunk.Dirty.Load())
-		// Cannot be reading an already uptodate chunk.
+		// Cannot be reading an already up-to-date chunk.
 		common.Assert(!chunk.UpToDate.Load())
 
 		fileIOMgr.wp.queueWork(file, chunk, true /* get_chunk */)

@@ -132,8 +132,8 @@ func (wp *workerPool) readChunk(task *task) {
 		common.Assert(len(readMVresp.Data) == int(task.chunk.Len))
 
 		//
-		// ReadMV completed successfully, staged chunk is now uptodate.
-		// We should copy data to user buffer only from uptodate staged chunks.
+		// ReadMV completed successfully, staged chunk is now up-to-date.
+		// We should copy data to user buffer only from up-to-date staged chunks.
 		//
 		common.Assert(!task.chunk.UpToDate.Load())
 
