@@ -2983,7 +2983,12 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 // must not be in the same batch.
 func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRVUpdateMessage {
 	msgBatch := []*dcache.ComponentRVUpdateMessage{}
-	existing := make(map[string]struct{})
+
+	//
+	// Map to track the RV/MV combinations that we have already seen in this batch.
+	// Key for this map is "mvName+rvName", value is the new RV state.
+	//
+	existing := make(map[string]dcache.StateEnum)
 
 	for {
 		select {
@@ -2999,14 +3004,26 @@ func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRV
 			common.Assert(msg.Err != nil)
 			common.Assert(len(msg.Err) == 0, len(msg.Err))
 
-			if _, ok := existing[msg.MvName+msg.RvName]; ok {
+			if rvPrevState, ok := existing[msg.MvName+msg.RvName]; ok {
+				//
+				// If we have already seen this RV/MV combination in this batch, check if the new RV state
+				// is same as the one we have already seen. If yes, we add it to te batch.
+				// Later on in the batchUpdateComponentRVState() we will check if there are mutiple entries
+				// for the same RV/MV combination, we will skip the duplicate updates.
+				//
+				if rvPrevState == msg.RvNewState {
+					msgBatch = append(msgBatch, &msg)
+					continue
+				}
+
 				//
 				// This is not commonly expected, so make it info log.
 				// The only dup update we can possibly get is an update to offline state while some other update
 				// is pending.
 				//
-				log.Info("ClusterManager::getNextComponentRVUpdateBatch: breaking due to dup update for %s/%s, new state = %s",
-					msg.MvName, msg.RvName, msg.RvNewState)
+				log.Info("ClusterManager::getNextComponentRVUpdateBatch: breaking due to dup update for %s/%s, %s -> %s",
+					msg.RvName, msg.MvName, rvPrevState, msg.RvNewState)
+
 				//
 				// Queue this message back to the channel.
 				// I'd have loved to queue it to the head, but we cannot do that.
@@ -3018,7 +3035,7 @@ func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRV
 			}
 
 			msgBatch = append(msgBatch, &msg)
-			existing[msg.MvName+msg.RvName] = struct{}{}
+			existing[msg.MvName+msg.RvName] = msg.RvNewState
 		default:
 			log.Debug("ClusterManager::getNextComponentRVUpdateBatch: breaking due to no more queued messages")
 			goto done
@@ -3117,6 +3134,12 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 		}
 
 		//
+		// Map to track the RV/MV combinations that we have already seen in this batch.
+		// Key for this map is "mvName+rvName", value is the new RV state.
+		//
+		existing := make(map[string]dcache.StateEnum)
+
+		//
 		// Now that we have the global clusterMap lock, apply all updates in sequence, taking the clusterMap to
 		// a state with all the requested changes.
 		// Note that the caller has ensured that no two updates will target the same rv/mv.
@@ -3153,6 +3176,20 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				close(msg.Err)
 				msg.Err = nil
 				failureCount++
+				continue
+			}
+
+			//
+			// If the RV/MV combination is already present in the batch, we can ignore this update as it
+			// was already processed in the previous iteration. We do assert that the previous state
+			// is same as the new state requested, so that we don't end up with multiple updates for the same
+			// RV/MV combination in the batch.
+			//
+			if rvPrevState, ok := existing[mvName+rvName]; ok {
+				common.Assert(rvPrevState == rvNewState)
+				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s, ignoring duplicate state change (%s -> %s)",
+					rvName, mvName, currentState, rvNewState)
+				ignoredCount++
 				continue
 			}
 
@@ -3210,13 +3247,14 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			}
 
 			//
-			// Update requested Mv in the cluster Map.
+			// Update requested MV in the cluster Map.
 			// MV state is not important as it'll be correctly set by updateMVList().
 			// We force it to a StateOffline to catch any bug in setting the MV state correctly.
 			//
 			clusterMapMV.State = dcache.StateOffline
 			clusterMapMV.RVs[rvName] = rvNewState
 			clusterMap.MVMap[mvName] = clusterMapMV
+			existing[mvName+rvName] = rvNewState
 		}
 
 		//

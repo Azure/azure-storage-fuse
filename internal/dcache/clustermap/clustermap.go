@@ -271,7 +271,7 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	defer func() {
 		timeTaken := time.Since(startTime).Microseconds()
 		_ = timeTaken
-		log.Debug("ClusterMap::UpdateComponentRVState: request took %d microseconds: %s/%s, %v",
+		log.Debug("ClusterMap::UpdateComponentRVState: request took %d microseconds: %s/%s -> %v",
 			timeTaken, rvName, mvName, rvNewState)
 	}()
 
