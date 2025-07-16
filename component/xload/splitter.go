@@ -272,22 +272,6 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 
 	wg.Wait()
 
-	// update the last modified time
-	// TODO:: xload : verify if the lmt is updated correctly
-	err = os.Chtimes(localPath, item.Atime, item.Mtime)
-	if err != nil {
-		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
-	}
-
-	if ds.validateMD5 && operationSuccess {
-		err = ds.checkConsistency(item)
-		if err != nil {
-			// TODO:: xload : retry if md5 validation fails
-			log.Err("downloadSplitter::Process : unable to validate md5 for %s [%s]", item.Path, err.Error())
-			operationSuccess = false
-		}
-	}
-
 	// send the download status to stats manager
 	ds.GetStatsManager().AddStats(&StatsItem{
 		Component: SPLITTER,
@@ -306,6 +290,22 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		}
 
 		return -1, fmt.Errorf("failed to download data for file %s", item.Path)
+	}
+
+	// update the last modified time
+	// TODO:: xload : verify if the lmt is updated correctly
+	err = os.Chtimes(localPath, item.Atime, item.Mtime)
+	if err != nil {
+		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
+	}
+
+	if ds.validateMD5 {
+		err = ds.checkConsistency(item)
+		if err != nil {
+			// TODO:: xload : retry if md5 validation fails
+			log.Err("downloadSplitter::Process : unable to validate md5 for %s [%s]", item.Path, err.Error())
+			operationSuccess = false
+		}
 	}
 
 	log.Debug("downloadSplitter::Process : Download completed for file %s, priority %v", item.Path, item.Priority)
