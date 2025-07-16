@@ -50,6 +50,6 @@ type StagedChunk struct {
 	//
 	IsBufExternal bool
 	Dirty         atomic.Bool // Chunk has application data that must be written to the dcache.
-	Uptodate      atomic.Bool // Chunk has been read from the cache and data matches dcache data.
+	UpToDate      atomic.Bool // Chunk has been read from the cache and data matches dcache data.
 	XferScheduled atomic.Bool // Is read/write from/to dcache already scheduled for this staged chunk?
 }
