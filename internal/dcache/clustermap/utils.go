@@ -227,12 +227,6 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 		return false, fmt.Errorf("DCacheConfig: Invalid MVsPerRV: %d %+v", cfg.MVsPerRV, *cfg)
 	}
 
-	// MVsPerRV less than NumReplicas is usually pointless.
-	if int64(cfg.MVsPerRV) < int64(cfg.NumReplicas) {
-		return false, fmt.Errorf("DCacheConfig: MVsPerRV(%d) < NumReplicas(%d) %+v",
-			cfg.MVsPerRV, cfg.NumReplicas, *cfg)
-	}
-
 	if int64(cfg.RvFullThreshold) < MinRvFullThreshold || int64(cfg.RvFullThreshold) > MaxRvFullThreshold {
 		return false, fmt.Errorf("DCacheConfig: Invalid RvFullThreshold: %d %+v", cfg.RvFullThreshold, *cfg)
 	}
