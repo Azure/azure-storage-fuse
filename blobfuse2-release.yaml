@@ -943,8 +943,23 @@ stages:
           - checkout: none
 
           - script: |
-              sudo yum update -y
-              sudo yum install git -y
+              if [ "$(AgentName)" == "blobfuse-rhel9" ]; then
+                sudo yum update -y
+                sudo yum groupinstall "Development Tools" -y
+                sudo yum install git -y --nobest --allowerasing
+              else
+                sudo yum clean all
+                sudo yum -y --disablerepo='*' --enablerepo='*microsoft*' install rhui-azure-rhel8-eus
+                sudo dnf clean all
+                sudo dnf repolist
+                sudo dnf update -y
+                #
+                # Normal update is not able fetch the repos hence doing the above config.
+                #
+                sudo yum update -y
+                sudo yum groupinstall "Development Tools" -y
+                sudo yum install git -y --nobest --allowerasing
+              fi
             displayName: 'Install Git'
 
           - script: |
