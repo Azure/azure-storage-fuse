@@ -2955,14 +2955,16 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 // Refresh AvailableSpace in my RVs.
 func refreshMyRVs(myRVs []dcache.RawVolume) {
 	for index, rv := range myRVs {
-		_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(rv.LocalCachePath)
-		common.Assert(err == nil, fmt.Sprintf("Error getting disk space metrics for path %s for punching heartbeat: %v", rv.LocalCachePath, err))
+		availableSpace, err := rpc_server.GetAvailableSpaceForRV(rv.RvId)
+		common.Assert(err == nil, rv, err)
 		if err != nil {
 			availableSpace = 0
 
 			log.Warn("ClusterManager::refreshMyRVs: Error getting disk space metrics for path %s for punching heartbeat, forcing available space to zero: %v", rv.LocalCachePath, err)
 		}
-		myRVs[index].AvailableSpace = availableSpace
+
+		common.Assert(availableSpace >= 0, rv, availableSpace)
+		myRVs[index].AvailableSpace = uint64(availableSpace)
 		myRVs[index].State = dcache.StateOnline
 	}
 }

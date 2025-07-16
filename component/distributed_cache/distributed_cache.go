@@ -1310,6 +1310,8 @@ func ensureUUID() {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
+	// Silence unused import error for release builds.
+	gouuid.New()
 
 	internal.AddComponent(compName, NewDistributedCacheComponent)
 

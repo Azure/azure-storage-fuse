@@ -486,6 +486,21 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	return availableSpace, err
 }
 
+// Return available space for our local RV with the given rvId.
+// It queries the file system to get the available space in the cache directory for the RV and subtracts
+// any space reserved for the RV by the JoinMV RPC call.
+func GetAvailableSpaceForRV(rvId string) (int64, error) {
+	// Must be called after NewChunkServiceHandler() is called.
+	common.Assert(handler != nil)
+
+	// rvId passed must refer to one of of our local RVs.
+	rvInfo, ok := handler.rvIDMap[rvId]
+	_ = ok
+	common.Assert(ok && rvInfo != nil, rvId, handler.rvIDMap)
+
+	return rvInfo.getAvailableSpace()
+}
+
 // Acquire lock on rvInfo.
 // This is used to ensure that only one operation among JoinMVs or LeaveMVs for an RV is in progress at a time.
 func (rv *rvInfo) acquireRvInfoLock() {
@@ -1486,7 +1501,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	//
 	common.Assert(address.OffsetInMiB >= -1, address.OffsetInMiB)
 
-	// rvID must refer to one of of out local RVs.
+	// rvID must refer to one of of our local RVs.
 	rvInfo, ok := h.rvIDMap[address.RvID]
 	common.Assert(!ok || rvInfo != nil, address.RvID)
 	if !ok {
