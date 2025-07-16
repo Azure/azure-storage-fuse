@@ -3005,8 +3005,8 @@ func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRV
 				// The only dup update we can possibly get is an update to offline state while some other update
 				// is pending.
 				//
-				log.Info("ClusterManager::getNextComponentRVUpdateBatch: breaking due to dup update for %s/%s",
-					msg.MvName, msg.RvName)
+				log.Info("ClusterManager::getNextComponentRVUpdateBatch: breaking due to dup update for %s/%s, new state = %s",
+					msg.MvName, msg.RvName, msg.RvNewState)
 				//
 				// Queue this message back to the channel.
 				// I'd have loved to queue it to the head, but we cannot do that.
