@@ -3186,6 +3186,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			// RV/MV combination in the batch.
 			//
 			if rvPrevState, ok := existing[mvName+rvName]; ok {
+				_ = rvPrevState
 				common.Assert(rvPrevState == rvNewState)
 				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s, ignoring duplicate state change (%s -> %s)",
 					rvName, mvName, currentState, rvNewState)
