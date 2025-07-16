@@ -1761,7 +1761,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 		}
 
-		log.Debug("ClusterManager::trimNodeToRvs: After trimming nodeToRvs %+v", nodeToRvs)
+		//
+		// TODO: This should be log.Verbose() since for large clusters it can be quite verbose.
+		//       Since it could be useful for debugging new-mv/fix-mv workflows we keep it here.
+		//       Uncomment for using.
+		//
+		//log.Debug("ClusterManager::trimNodeToRvs: After trimming nodeToRvs %+v", nodeToRvs)
 	}
 
 	//
