@@ -3007,7 +3007,7 @@ func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRV
 			if rvPrevState, ok := existing[msg.MvName+msg.RvName]; ok {
 				//
 				// If we have already seen this RV/MV combination in this batch, check if the new RV state
-				// is same as the one we have already seen. If yes, we add it to te batch.
+				// is same as the one we have already seen. If yes, we add it to the batch.
 				// Later on in the batchUpdateComponentRVState() we will check if there are mutiple entries
 				// for the same RV/MV combination, we will skip the duplicate updates.
 				//
