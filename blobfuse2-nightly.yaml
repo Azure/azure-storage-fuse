@@ -667,8 +667,9 @@ stages:
                   working_dir: $(WORK_DIR)
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
+
               - script: |
-                  kill -9 $(pgrep mitmdump)
+                  kill -9 $(pgrep mitmdump) || true
                 displayName: 'Kill Proxy'
         
         - ${{ if eq(parameters.exhaustive_test, true) }}:
