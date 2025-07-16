@@ -200,6 +200,9 @@ type ReadLinkOptions struct {
 type GetAttrOptions struct {
 	Name             string
 	RetrieveMetadata bool
+	//This Direct flag we are adding to take a decision whether to call getProperties directly or go with List call to fetch the attributes.
+	//This is used in the case of dcache where we want to directly call GetProperties to fetch the attributes of the file.
+	Direct bool
 }
 
 type SetMetadataOptions struct {

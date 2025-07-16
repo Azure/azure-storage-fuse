@@ -2629,7 +2629,7 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name1)
-	attr, err := s.az.storage.(*Datalake).GetAttr(name1)
+	attr, err := s.az.storage.(*Datalake).GetAttr(internal.GetAttrOptions{Name: name1})
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
 

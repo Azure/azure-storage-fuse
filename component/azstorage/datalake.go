@@ -392,10 +392,10 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 }
 
 // GetAttr : Retrieve attributes of the path
-func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error) {
-	log.Trace("Datalake::GetAttr : name %s", name)
+func (dl *Datalake) GetAttr(options internal.GetAttrOptions) (blobAttr *internal.ObjAttr, err error) {
+	log.Trace("Datalake::GetAttr : name %s", options.Name)
 
-	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, options.Name))
 	prop, err := fileClient.GetProperties(context.Background(), &file.GetPropertiesOptions{
 		CPKInfo: dl.datalakeCPKOpt,
 	})
@@ -404,23 +404,23 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		if e == ErrFileNotFound {
 			return blobAttr, syscall.ENOENT
 		} else if e == InvalidPermission {
-			log.Err("Datalake::GetAttr : Insufficient permissions for %s [%s]", name, err.Error())
+			log.Err("Datalake::GetAttr : Insufficient permissions for %s [%s]", options.Name, err.Error())
 			return blobAttr, syscall.EACCES
 		} else {
-			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", name, err.Error())
+			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", options.Name, err.Error())
 			return blobAttr, err
 		}
 	}
 
 	mode, err := getFileMode(*prop.Permissions)
 	if err != nil {
-		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
+		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", options.Name, err.Error())
 		return blobAttr, err
 	}
 
 	blobAttr = &internal.ObjAttr{
-		Path:   name,
-		Name:   filepath.Base(name),
+		Path:   options.Name,
+		Name:   filepath.Base(options.Name),
 		Size:   *prop.ContentLength,
 		Mode:   mode,
 		Mtime:  *prop.LastModified,
@@ -441,11 +441,11 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		acl, err := fileClient.GetAccessControl(context.Background(), nil)
 		if err != nil {
 			// Just ignore the error here as rest of the attributes have been retrieved
-			log.Err("Datalake::GetAttr : Failed to get ACL for %s [%s]", name, err.Error())
+			log.Err("Datalake::GetAttr : Failed to get ACL for %s [%s]", options.Name, err.Error())
 		} else {
 			mode, err := getFileModeFromACL(dl.Config.authConfig.ObjectID, *acl.ACL, *acl.Owner)
 			if err != nil {
-				log.Err("Datalake::GetAttr : Failed to get file mode from ACL for %s [%s]", name, err.Error())
+				log.Err("Datalake::GetAttr : Failed to get file mode from ACL for %s [%s]", options.Name, err.Error())
 			} else {
 				blobAttr.Mode = mode
 			}
@@ -458,7 +458,7 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 			Mtime: blobAttr.Mtime,
 			Size:  blobAttr.Size,
 		}) {
-			log.Debug("Datalake::GetAttr : Filtered out %s", name)
+			log.Debug("Datalake::GetAttr : Filtered out %s", options.Name)
 			return nil, syscall.ENOENT
 		}
 	}

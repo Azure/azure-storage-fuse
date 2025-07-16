@@ -387,7 +387,7 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("AzStorage::OpenFile : %s", options.Name)
 
-	attr, err := az.storage.GetAttr(options.Name)
+	attr, err := az.storage.GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +550,7 @@ func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) 
 // Attribute operations
 func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.ObjAttr, err error) {
 	//log.Trace("AzStorage::GetAttr : Get attributes of file %s", name)
-	return az.storage.GetAttr(options.Name)
+	return az.storage.GetAttr(options)
 }
 
 func (az *AzStorage) Chmod(options internal.ChmodOptions) error {

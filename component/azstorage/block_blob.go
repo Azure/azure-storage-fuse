@@ -595,14 +595,14 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 }
 
 // GetAttr : Retrieve attributes of the blob
-func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
-	log.Trace("BlockBlob::GetAttr : name %s", name)
+func (bb *BlockBlob) GetAttr(options internal.GetAttrOptions) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::GetAttr : name %s", options.Name)
 
 	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
-	if bb.Config.virtualDirectory {
-		attr, err = bb.getAttrUsingList(name)
+	if options.Direct || !bb.Config.virtualDirectory {
+		attr, err = bb.getAttrUsingRest(options.Name)
 	} else {
-		attr, err = bb.getAttrUsingRest(name)
+		attr, err = bb.getAttrUsingList(options.Name)
 	}
 
 	if bb.Config.filter != nil && attr != nil {
@@ -611,7 +611,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			Mtime: attr.Mtime,
 			Size:  attr.Size,
 		}) {
-			log.Debug("BlockBlob::GetAttr : Filtered out %s", name)
+			log.Debug("BlockBlob::GetAttr : Filtered out %s", options.Name)
 			return nil, syscall.ENOENT
 		}
 	}
@@ -938,7 +938,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 	log.Trace("BlockBlob::ReadBuffer : name %s, offset %v, len %v", name, offset, len)
 	var buff []byte
 	if len == 0 {
-		attr, err := bb.GetAttr(name)
+		attr, err := bb.GetAttr(internal.GetAttrOptions{Name: name})
 		if err != nil {
 			return buff, err
 		}
@@ -1309,7 +1309,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 
 func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 	// log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
-	attr, err := bb.GetAttr(name)
+	attr, err := bb.GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
 		log.Err("BlockBlob::TruncateFile : Failed to get attributes of file %s [%s]", name, err.Error())
 		if err == syscall.ENOENT {
@@ -1740,7 +1740,7 @@ func (bb *BlockBlob) SetMetadata(filePath string, newMetadata map[string]*string
 	log.Trace("BlockBlob::SetMetadata : name %s", filePath)
 
 	if !overwrite {
-		attr, err := bb.GetAttr(filePath)
+		attr, err := bb.GetAttr(internal.GetAttrOptions{Name: filePath})
 		if err != nil {
 			log.Err("BlockBlob::SetMetadata : Failed to get attributes of file %s [%s]", filePath, err.Error())
 			return err

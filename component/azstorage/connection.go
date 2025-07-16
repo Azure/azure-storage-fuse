@@ -115,7 +115,7 @@ type AzConnection interface {
 	RenameFile(options internal.RenameFileOptions) error
 	RenameDirectory(string, string) error
 
-	GetAttr(name string) (attr *internal.ObjAttr, err error)
+	GetAttr(options internal.GetAttrOptions) (attr *internal.ObjAttr, err error)
 
 	// Standard operations to be supported by any account type
 	List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error)

@@ -2907,7 +2907,7 @@ func (s *blockBlobTestSuite) TestMD5SetOnUpload() {
 			err = s.az.storage.WriteFromFile(name, nil, f)
 			s.assert.Nil(err)
 
-			prop, err := s.az.storage.GetAttr(name)
+			prop, err := s.az.storage.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
 			s.assert.NotEmpty(prop.MD5)
 
@@ -2960,7 +2960,7 @@ func (s *blockBlobTestSuite) TestMD5NotSetOnUpload() {
 			err = s.az.storage.WriteFromFile(name, nil, f)
 			s.assert.Nil(err)
 
-			prop, err := s.az.storage.GetAttr(name)
+			prop, err := s.az.storage.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
 			s.assert.Empty(prop.MD5)
 
@@ -3008,7 +3008,7 @@ func (s *blockBlobTestSuite) TestMD5AutoSetOnUpload() {
 			err = s.az.storage.WriteFromFile(name, nil, f)
 			s.assert.Nil(err)
 
-			prop, err := s.az.storage.GetAttr(name)
+			prop, err := s.az.storage.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
 			s.assert.NotEmpty(prop.MD5)
 
@@ -3064,7 +3064,7 @@ func (s *blockBlobTestSuite) TestInvalidateMD5PostUpload() {
 			blobClient := s.containerClient.NewBlobClient(name)
 			_, _ = blobClient.SetHTTPHeaders(context.Background(), blob.HTTPHeaders{BlobContentMD5: []byte("blobfuse")}, nil)
 
-			prop, err := s.az.storage.GetAttr(name)
+			prop, err := s.az.storage.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
 			s.assert.NotEmpty(prop.MD5)
 
@@ -3119,7 +3119,7 @@ func (s *blockBlobTestSuite) TestValidateAutoMD5OnRead() {
 			_ = f.Close()
 			_ = os.Remove(name)
 
-			prop, err := s.az.storage.GetAttr(name)
+			prop, err := s.az.storage.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
 			s.assert.NotEmpty(prop.MD5)
 
@@ -3175,7 +3175,7 @@ func (s *blockBlobTestSuite) TestValidateManualMD5OnRead() {
 			_ = f.Close()
 			_ = os.Remove(name)
 
-			prop, err := s.az.storage.GetAttr(name)
+			prop, err := s.az.storage.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
 			s.assert.NotEmpty(prop.MD5)
 
@@ -3234,7 +3234,7 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnRead() {
 			blobClient := s.containerClient.NewBlobClient(name)
 			_, _ = blobClient.SetHTTPHeaders(context.Background(), blob.HTTPHeaders{BlobContentMD5: []byte("blobfuse")}, nil)
 
-			prop, err := s.az.storage.GetAttr(name)
+			prop, err := s.az.storage.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
 			s.assert.NotEmpty(prop.MD5)
 
@@ -3294,7 +3294,7 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnReadNoVaildate() {
 			blobClient := s.containerClient.NewBlobClient(name)
 			_, _ = blobClient.SetHTTPHeaders(context.Background(), blob.HTTPHeaders{BlobContentMD5: []byte("blobfuse")}, nil)
 
-			prop, err := s.az.storage.GetAttr(name)
+			prop, err := s.az.storage.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
 			s.assert.NotEmpty(prop.MD5)
 

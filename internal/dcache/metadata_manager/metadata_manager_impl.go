@@ -253,7 +253,8 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 	var i int
 	for i = 0; i < 50; i++ {
 		attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-			Name: blobPath,
+			Name:   blobPath,
+			Direct: true,
 		})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
@@ -282,7 +283,8 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		}
 
 		attr1, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-			Name: blobPath,
+			Name:   blobPath,
+			Direct: true,
 		})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
@@ -990,7 +992,7 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 	// Caller must call us only to update an existing clustermap.json.
 	if common.IsDebugBuild() {
 		_, err := m.storageCallback.GetPropertiesFromStorage(
-			internal.GetAttrOptions{Name: clustermapPath})
+			internal.GetAttrOptions{Name: clustermapPath, Direct: true})
 		common.Assert(err == nil, err)
 	}
 
@@ -1033,7 +1035,7 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	// Caller must call us only to update an existing clustermap.json.
 	if common.IsDebugBuild() {
 		_, err := m.storageCallback.GetPropertiesFromStorage(
-			internal.GetAttrOptions{Name: clustermapPath})
+			internal.GetAttrOptions{Name: clustermapPath, Direct: true})
 		common.Assert(err == nil, err)
 	}
 
