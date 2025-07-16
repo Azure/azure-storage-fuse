@@ -698,7 +698,7 @@ func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
 // UpdateMV RPC can only replace one or more component RVs and must not change the state of the unchanged
 // RVs, also for the RVs which are changed the state should change from offline (for the old RV) to outofsync
 // (for the replacement RV).
-// Also note that since UpdateMV (like all ther RPCs) is not transactional, sender will send multiple of these
+// Also note that since UpdateMV (like all their RPCs) is not transactional, sender will send multiple of these
 // RPCs in order to run one high level workflow (like fix-mv, new-mv, start-sync, end-sync, etc) and each of them
 // can fail independently. The workflow will complete, causing a change to be committed to clustermap, only
 // if all these RPCs complete successfully. When a workflow fails due to one or more RPCs failing, the sender
@@ -2391,7 +2391,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 
 	//
 	// Create PutChunkRequest for the nexthop RV.
-	// The ony updated fields in the request is RvID.
+	// The only updated fields in the request is RvID.
 	//
 	putChunkReq := &models.PutChunkRequest{
 		Chunk: &models.Chunk{
