@@ -804,7 +804,7 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) {
 	if !chunk.XferScheduled.Swap(true) {
 		// Only dirty staged chunk should be written to dcache.
 		common.Assert(chunk.Dirty.Load())
-		// Uptodate chunk should not be written.
+		// Up-to-date chunk should not be written.
 		common.Assert(!chunk.UpToDate.Load())
 
 		fileIOMgr.wp.queueWork(file, chunk, false /* get_chunk */)
