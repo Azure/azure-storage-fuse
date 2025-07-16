@@ -255,8 +255,8 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 			return 0, err
 		}
 
-		// We should only be reading from an uptodate chunk (that has been successfully read from dcache).
-		common.Assert(chunk.Uptodate.Load())
+		// We should only be reading from an up-to-date chunk (that has been successfully read from dcache).
+		common.Assert(chunk.UpToDate.Load())
 
 		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
 
@@ -790,8 +790,8 @@ func scheduleDownload(chunk *StagedChunk, file *DcacheFile) {
 	if !chunk.XferScheduled.Swap(true) {
 		// Cannot be overwriting a dirty staged chunk.
 		common.Assert(!chunk.Dirty.Load())
-		// Cannot be reading an already uptodate chunk.
-		common.Assert(!chunk.Uptodate.Load())
+		// Cannot be reading an already up-to-date chunk.
+		common.Assert(!chunk.UpToDate.Load())
 
 		fileIOMgr.wp.queueWork(file, chunk, true /* get_chunk */)
 	}
@@ -804,8 +804,8 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) {
 	if !chunk.XferScheduled.Swap(true) {
 		// Only dirty staged chunk should be written to dcache.
 		common.Assert(chunk.Dirty.Load())
-		// Uptodate chunk should not be written.
-		common.Assert(!chunk.Uptodate.Load())
+		// Up-to-date chunk should not be written.
+		common.Assert(!chunk.UpToDate.Load())
 
 		fileIOMgr.wp.queueWork(file, chunk, false /* get_chunk */)
 	}
