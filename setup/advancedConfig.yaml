@@ -34,7 +34,7 @@ foreground: true|false <run blobfuse2 in foreground or background>
 # Common configurations
 allow-other: true|false <allow other users to access the mounted directory - used for FUSE and File Cache>
 nonempty: true|false <allow mounting on non-empty directory>
-disable-kernel-cache: true|false <disable kernel cache but keep blobfuse2 cache>
+disable-kernel-cache: true|false <disable kernel cache but keep blobfuse2 cache. Default - false>
 
 # Dynamic profiler related configuration. This helps to root-cause high memory/cpu usage related issues.
 dynamic-profile: true|false <allows to turn on dynamic profiler for cpu/memory usage monitoring. Only for debugging, shall not be used in production>
