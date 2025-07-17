@@ -155,12 +155,12 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			waitTime += 2
 
 			//
-			// There can be a case when the client pool for the node is deleted.
-			// For example, the node goes down and the RPC fails with BrokenPipe error. In this case,
+			// There can be a case when client pool for the node is deleted.
+			// For example, the node goes down and RPC fails with BrokenPipe error. In this case,
 			// we reset the connections available for the node, which first closes the stale connections
-			// and then creates new connections. Since, the node is down, the creating new RPC connection
+			// and then creates new connections. Since, the node is down, creating new RPC connection
 			// to the node fails with connection refused error. So, eventually all the connections in the
-			// pool are closed and the client pool for the node is deleted. In this case, we do not wait
+			// pool are closed and client pool for the node is deleted. In this case, we do not wait
 			// for a client to become available and return error to the caller.
 			//
 			if ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0 {
