@@ -94,6 +94,7 @@ type statsManagerOpt struct {
 var stMgrOpt statsManagerOpt
 
 func NewStatsCollector(componentName string) *StatsCollector {
+	log.Debug("stats_manager::NewStatsCollector : componentName: %v", componentName)
 	sc := &StatsCollector{}
 
 	if common.MonitorBfs() {
@@ -169,6 +170,7 @@ func (sc *StatsCollector) PushEvents(op string, path string, mp map[string]inter
 }
 
 func (sc *StatsCollector) UpdateStats(op string, key string, val interface{}) {
+	log.Debug("stats_manager::UpdateStats : op: %v, key: %v, val: %v", op, key, val)
 	if common.MonitorBfs() {
 		st := Stats{
 			Timestamp: time.Now().Format(time.RFC3339),
@@ -182,6 +184,7 @@ func (sc *StatsCollector) UpdateStats(op string, key string, val interface{}) {
 			// remove the first element from the channel
 			<-sc.channel
 		}
+		//putting data into the channel
 
 		sc.channel <- ChannelMsg{
 			IsEvent: false,
@@ -191,6 +194,8 @@ func (sc *StatsCollector) UpdateStats(op string, key string, val interface{}) {
 }
 
 func (sc *StatsCollector) statsDumper() {
+	log.Debug("stats_manager::statsDumper : stats dumper started")
+
 	defer sc.workerDone.Done()
 
 	err := createPipe(common.TransferPipe)
