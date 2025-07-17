@@ -1841,9 +1841,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// We don't exclude the node if the component RV is offline to support the case where the same node
 			// comes back up online and we may want to use the same RV or another RV from the same node, as
 			// replacement RV.
-			// If it the component RV is inband-offline, we exclude its node because we don't want other RVs in
-			// that node to be used as replacement RV. But we still count it as offline, so that it is replaced
-			// with a good RV.
+			// If the component RV is inband-offline, we exclude its node because we don't want other RVs in
+			// that node to be used as replacement RV (since it's likely that the entire node is down),
+			// but we still count it as offline, as it needs to be replaced with a good RV.
 			//
 			if mv.RVs[rvName] != dcache.StateOffline {
 				excludeNodes[rvMap[rvName].NodeId] = struct{}{}
@@ -2145,7 +2145,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// per rvMap, then the component RV is force marked offline. Then it sets the MV state based on the cumulative
 	// state of all of it's component RVs as follows:
 	// - If all component RVs of an MV are online, the MV is marked as online, else
-	// - If no component RV of an MV is online (they are either offline, outofsync, syncing or inband-offline),
+	// - If no component RV of an MV is online (they are either offline/inband-offline, outofsync or syncing),
 	//   the MV is marked as offline, else
 	// - If at least one component RV is online, the MV is marked as degraded, else
 	// - All component RVs are either online or syncing, then MV is marked as syncing.
@@ -3006,10 +3006,21 @@ func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRV
 
 			if rvPrevState, ok := existing[msg.MvName+msg.RvName]; ok {
 				//
-				// If we have already seen this RV/MV combination in this batch, check if the new RV state
-				// is same as the one we have already seen. If yes, we add it to the batch.
-				// Later on in the batchUpdateComponentRVState() we will check if there are mutiple entries
-				// for the same RV/MV combination, we will skip the duplicate updates.
+				// This RV/MV combination has already been added to the batch.
+				// We don't support multiple updates to the same RV/MV in the same batch,
+				// but if multiple updates are all updating the RV state to the same value,
+				// we can safely ignore the duplicate updates.
+				// Note that we still need to add the message to the batch, so that the batch
+				// updater later correctly notifies the caller waiting for its update to complete
+				// (by reading from the msg.Err channel).
+				// Later on in the batchUpdateComponentRVState() we will check if there are
+				// mutiple updates for the same RV/MV combination, we will skip such duplicate
+				// updates.
+				//
+				// Note that this is an optimization, w/o this multiple updates queued by inline
+				// write failures (which could be many, since we perform multiple parallel writes
+				// to different chunks for the same file) will be processed in different ticks
+				// taking lot of time to update the clustermap.
 				//
 				if rvPrevState == msg.RvNewState {
 					msgBatch = append(msgBatch, &msg)
@@ -3136,6 +3147,8 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 		//
 		// Map to track the RV/MV combinations that we have already seen in this batch.
 		// Key for this map is "mvName+rvName", value is the new RV state.
+		// See getNextComponentRVUpdateBatch() for how it can add duplicate updates for the same
+		// RV/MV combination to the batch.
 		//
 		existing := make(map[string]dcache.StateEnum)
 
@@ -3156,6 +3169,9 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			common.Assert(cm.IsValidComponentRVState(rvNewState), rvNewState)
 			common.Assert(msg.Err != nil)
 			common.Assert(len(msg.Err) == 0, len(msg.Err))
+
+			// Individual component RV state is never moved to offline, but instead to inband-offline.
+			common.Assert(rvNewState != dcache.StateOffline, rvNewState)
 
 			// Requested MV must be valid.
 			clusterMapMV, found := clusterMap.MVMap[mvName]

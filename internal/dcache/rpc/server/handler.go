@@ -783,7 +783,7 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 					//
 					// Same RV (now online) being reused by fix-mv.
 					// Note: we don't check if the oldstate is inband-offline here, since in case of
-					//       inband-offline state, same RV is not resued by the fix-mv workflow.
+					//       inband-offline state, same RV is not reused by the fix-mv workflow.
 					//
 					continue
 				}

@@ -141,9 +141,6 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	//
 	maxWaitTime := 60 // in seconds
 
-	waitTicker := time.NewTicker(2 * time.Second)
-	defer waitTicker.Stop()
-
 	// Time in seconds we have waited for a client to become available.
 	waitTime := 0
 
@@ -154,7 +151,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
 			ncPool.numActive.Add(1)
 			return client, nil
-		case <-waitTicker.C:
+		case <-time.After(2 * time.Second): // Timeout after 2 second
 			waitTime += 2
 
 			//

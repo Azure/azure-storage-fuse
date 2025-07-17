@@ -267,13 +267,14 @@ func ReportRVOffline(rvName string) error {
 // to the clustermap. The success or failure of this batched update will decide the success/failure of each
 // of the individual updates.
 func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
-	startTime := time.Now()
-	defer func() {
-		timeTaken := time.Since(startTime).Microseconds()
-		_ = timeTaken
-		log.Debug("ClusterMap::UpdateComponentRVState: request took %d microseconds: %s/%s -> %v",
-			timeTaken, rvName, mvName, rvNewState)
-	}()
+	if common.IsDebugBuild() {
+		startTime := time.Now()
+		defer func() {
+			timeTaken := time.Since(startTime).Microseconds()
+			log.Debug("ClusterMap::UpdateComponentRVState: request took %d microseconds: %s/%s -> %v",
+				timeTaken, rvName, mvName, rvNewState)
+		}()
+	}
 
 	updateRVMessage := dcache.ComponentRVUpdateMessage{
 		MvName:     mvName,

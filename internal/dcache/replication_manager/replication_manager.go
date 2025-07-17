@@ -301,12 +301,13 @@ retry:
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
-	startTime := time.Now()
-	defer func() {
-		timeTaken := time.Since(startTime).Microseconds()
-		_ = timeTaken
-		log.Debug("ReplicationManager::WriteMV: WriteMV request took %d microseconds: %v", timeTaken, req.toString())
-	}()
+	if common.IsDebugBuild() {
+		startTime := time.Now()
+		defer func() {
+			timeTaken := time.Since(startTime).Microseconds()
+			log.Debug("ReplicationManager::WriteMV: WriteMV request took %d microseconds: %v", timeTaken, req.toString())
+		}()
+	}
 
 	log.Debug("ReplicationManager::WriteMV: Received WriteMV request (%v): %v", PutChunkStyle, req.toString())
 

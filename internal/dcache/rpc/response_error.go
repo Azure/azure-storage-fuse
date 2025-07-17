@@ -115,15 +115,15 @@ func IsBrokenPipe(err error) bool {
 // Thrift fails with an error like:
 // [read tcp 10.0.0.7:33842->10.0.0.6:9090: read: connection reset by peer]
 //
-// Note: read()/recv() fails with this, i.e., only when the blobfuse process goes down after we successfully
-//
-//	     send the RPC request but before it could respond, the sender read/recv call fails with this error.
-//	     If the blobfuse process goes down before the send()/write() can send the RPC request, it fails
-//	     with IsBrokenPipe().
-//	     Another important thing to note is that IsBrokenPipe() can come when the target blobfuse process
-//		 might have restarted at some point in the past and may be running now, so it may make sense to
-//		 retry connection attempt on getting IsBrokenPipe(), whereas IsConnectionReset() means the process
-//		 just stopped/restarted, so trying connection attempt immediately may not help.
+// Note:
+// read()/recv() fails with this, i.e., only when the blobfuse process goes down after we successfully
+// send the RPC request but before it could respond, the sender read/recv call fails with this error.
+// If the blobfuse process goes down before the send()/write() can send the RPC request, it fails
+// with IsBrokenPipe().
+// Another important thing to note is that IsBrokenPipe() can come when the target blobfuse process
+// might have restarted at some point in the past and may be running now, so it may make sense to
+// retry connection attempt on getting IsBrokenPipe(), whereas IsConnectionReset() means the process
+// just stopped/restarted, so trying connection attempt immediately may not help.
 func IsConnectionReset(err error) bool {
 	common.Assert(err != nil)
 
