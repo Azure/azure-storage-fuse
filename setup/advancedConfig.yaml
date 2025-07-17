@@ -68,7 +68,7 @@ libfuse:
   negative-entry-expiration-sec: <time kernel can cache attributes of non existent paths (in sec). Default - 120 sec>
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
   extension: <physical path to extension library>
-  direct-io: true|false <enable to bypass the kernel cache. Also disable blobfuse2 data and metadata cache>
+  direct-io: true|false <enable to bypass the kernel cache. It also disables blobfuse2 data and metadata caching. Default - false>
 
 # Entry Cache configuration
 entry_cache:
