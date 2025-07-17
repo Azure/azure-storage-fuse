@@ -1,3 +1,8 @@
+## 2.6.0 (Unreleased)
+**Bug Fixes**
+- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse).
+
+
 ## 2.5.0 (Unreleased)
 **Bug Fixes**
 - Mount on already mounted path resulting in unmount and remount, instead of failure.
