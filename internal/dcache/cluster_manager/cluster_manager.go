@@ -3207,10 +3207,14 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			// was already processed in the previous iteration. We do assert that the previous state
 			// is same as the new state requested, so that we don't end up with multiple updates for the same
 			// RV/MV combination in the batch.
+			// We also assert that the new state is same as the current state because the current state would
+			// have been updated by the previous update in the batch. So, if we are here it means that the
+			// current state is same as the new state requested, so we can ignore this update.
 			//
 			if rvPrevState, ok := existing[mvName+rvName]; ok {
 				_ = rvPrevState
-				common.Assert(rvPrevState == rvNewState)
+				common.Assert(rvPrevState == rvNewState && currentState == rvNewState,
+					currentState, rvPrevState, rvNewState)
 				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s, ignoring duplicate state change (%s -> %s)",
 					rvName, mvName, currentState, rvNewState)
 				ignoredCount++
@@ -3218,7 +3222,9 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			}
 
 			//
-			// and the new state requested must be valid.
+			// We will reach here only for the first update for this RV/MV combination. The duplicate updates
+			// to this RV/MV will be ignored above.
+			// The new state requested must be valid.
 			// Note that we support only few distinct state transitions.
 			//
 			if currentState == dcache.StateOutOfSync && rvNewState == dcache.StateSyncing ||
@@ -3236,8 +3242,12 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				// StateOnline  -> StateInbandOffline
 				// StateSyncing -> StateInbandOffline
 				//
-				// Since we can have multiple PutChunk requests outstanding, all but the first one will find the
-				// currentState as StateInbandOffline, we need to ignore such update requests.
+				// We can have multiple PutChunk requests outstanding where there can be multiple updates for
+				// an RV/MV to inband-offline in different batches.
+				// The first request in the first batch will update the RV/MV state to inband-offline in the
+				// clustermap. The requests in the subsequent batches, wanting to update the RV/MV state to
+				// inband-offline, will find the RV/MV state already set to inband-offline in the clustermap.
+				// So, we ignore those requests.
 				//
 				// We can also get this transition,
 				// StateOffline -> StateInbandOffline

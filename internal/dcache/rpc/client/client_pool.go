@@ -164,9 +164,6 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			// for a client to become available and return error to the caller.
 			//
 			if ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0 {
-				_, exists := cp.clients[nodeID]
-				_ = exists
-				common.Assert(!exists, nodeID, cp.clients)
 				err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %d seconds",
 					nodeID, waitTime)
 				log.Err("clientPool::getRPCClient: %v", err)
