@@ -199,6 +199,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	if lf.disableKernelCache {
 		opt.DirectIO = true
 		lf.directIO = true
+		log.Crit("Libfuse::Validate : Kernel cache disabled, setting direct-io mode in fuse")
 	}
 
 	if opt.allowOther {
