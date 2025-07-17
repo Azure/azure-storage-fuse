@@ -871,7 +871,7 @@ func init() {
 
 	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
 
-	mountCmd.PersistentFlags().Bool("no-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
+	mountCmd.PersistentFlags().Bool("no-kernel-cache", false, "Disable kernel cache, but keep blobfuse cache. Default value false.")
 	config.BindPFlag("no-kernel-cache", mountCmd.PersistentFlags().Lookup("no-kernel-cache"))
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
