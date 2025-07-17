@@ -34,7 +34,7 @@ foreground: true|false <run blobfuse2 in foreground or background>
 # Common configurations
 allow-other: true|false <allow other users to access the mounted directory - used for FUSE and File Cache>
 nonempty: true|false <allow mounting on non-empty directory>
-disable-kernel-cache: true|false <disable kernel cache for blobfuse2 mount>
+disable-kernel-cache: true|false <disable kernel cache but keep blobfuse2 cache>
 
 # Dynamic profiler related configuration. This helps to root-cause high memory/cpu usage related issues.
 dynamic-profile: true|false <allows to turn on dynamic profiler for cpu/memory usage monitoring. Only for debugging, shall not be used in production>
@@ -68,7 +68,7 @@ libfuse:
   negative-entry-expiration-sec: <time kernel can cache attributes of non existent paths (in sec). Default - 120 sec>
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
   extension: <physical path to extension library>
-  direct-io: true|false <enable to bypass the kernel cache>
+  direct-io: true|false <enable to bypass the kernel cache. Also disable blobfuse2 data and metadata cache>
 
 # Entry Cache configuration
 entry_cache:
