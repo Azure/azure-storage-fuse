@@ -394,6 +394,11 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
+		if config.IsSet("disable-kernel-cache") && directIO {
+			// Both flag shall not be enable together
+			return fmt.Errorf("direct-io and disable-kernel-cache cannot be enabled together")
+		}
+
 		if !config.IsSet("logging.file-path") {
 			options.Logging.LogFilePath = common.DefaultLogFilePath
 		}
