@@ -486,6 +486,27 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	return availableSpace, err
 }
 
+// Return available space for our local RV.
+// It queries the file system to get the available space in the cache directory for the RV and subtracts
+// any space reserved for the RV by the JoinMV RPC call.
+func GetAvailableSpaceForRV(rvId, rvName string) (int64, error) {
+	//
+	// Initial call(s) before RPC server is started must simply return the available space as reported
+	// by the file system, else we must subtract the reserved space for the RV
+	//
+	if handler == nil {
+		_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(rvName)
+		return int64(availableSpace), err
+	}
+
+	// rvId passed must refer to one of of our local RVs.
+	rvInfo, ok := handler.rvIDMap[rvId]
+	_ = ok
+	common.Assert(ok && rvInfo != nil, rvId, handler.rvIDMap)
+
+	return rvInfo.getAvailableSpace()
+}
+
 // Acquire lock on rvInfo.
 // This is used to ensure that only one operation among JoinMVs or LeaveMVs for an RV is in progress at a time.
 func (rv *rvInfo) acquireRvInfoLock() {
@@ -698,7 +719,7 @@ func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
 // UpdateMV RPC can only replace one or more component RVs and must not change the state of the unchanged
 // RVs, also for the RVs which are changed the state should change from offline (for the old RV) to outofsync
 // (for the replacement RV).
-// Also note that since UpdateMV (like all ther RPCs) is not transactional, sender will send multiple of these
+// Also note that since UpdateMV (like all their RPCs) is not transactional, sender will send multiple of these
 // RPCs in order to run one high level workflow (like fix-mv, new-mv, start-sync, end-sync, etc) and each of them
 // can fail independently. The workflow will complete, causing a change to be committed to clustermap, only
 // if all these RPCs complete successfully. When a workflow fails due to one or more RPCs failing, the sender
@@ -1504,7 +1525,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	//
 	common.Assert(address.OffsetInMiB >= -1, address.OffsetInMiB)
 
-	// rvID must refer to one of of out local RVs.
+	// rvID must refer to one of of our local RVs.
 	rvInfo, ok := h.rvIDMap[address.RvID]
 	common.Assert(!ok || rvInfo != nil, address.RvID)
 	if !ok {
@@ -2412,7 +2433,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 
 	//
 	// Create PutChunkRequest for the nexthop RV.
-	// The ony updated fields in the request is RvID.
+	// The only updated fields in the request is RvID.
 	//
 	putChunkReq := &models.PutChunkRequest{
 		Chunk: &models.Chunk{

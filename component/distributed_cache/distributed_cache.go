@@ -60,6 +60,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	gouuid "github.com/google/uuid"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -261,6 +262,16 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		rvId, err := getBlockDeviceUUId(path)
 		if err != nil {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+		}
+
+		if common.IsDebugBuild() {
+			if common.IsFakingScaleTest() {
+				//
+				// Generate UUID using SHA1 of the path string.
+				// Additionally, append the node UUID to ensure uniqueness across nodes.
+				//
+				rvId = gouuid.NewSHA1(gouuid.NameSpaceDNS, []byte(uuidVal+path)).String()
+			}
 		}
 
 		//
@@ -1299,6 +1310,8 @@ func ensureUUID() {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
+	// Silence unused import error for release builds.
+	gouuid.New()
 
 	internal.AddComponent(compName, NewDistributedCacheComponent)
 
