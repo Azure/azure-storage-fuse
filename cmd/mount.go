@@ -89,6 +89,7 @@ type mountOptions struct {
 	MonitorOpt        monitorOptions `config:"health_monitor"`
 	WaitForMount      time.Duration  `config:"wait-for-mount"`
 	LazyWrite         bool           `config:"lazy-write"`
+	NoKernelCache     bool           `config:"no-kernel-cache"`
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
@@ -869,6 +870,9 @@ func init() {
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
 
 	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
+
+	mountCmd.PersistentFlags().Bool("no-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
+	config.BindPFlag("no-kernel-cache", mountCmd.PersistentFlags().Lookup("no-kernel-cache"))
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
