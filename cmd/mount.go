@@ -74,22 +74,22 @@ type mountOptions struct {
 	inputMountPath string
 	ConfigFile     string
 
-	Logging           LogOptions     `config:"logging"`
-	Components        []string       `config:"components"`
-	Foreground        bool           `config:"foreground"`
-	NonEmpty          bool           `config:"nonempty"`
-	DefaultWorkingDir string         `config:"default-working-dir"`
-	CPUProfile        string         `config:"cpu-profile"`
-	MemProfile        string         `config:"mem-profile"`
-	PassPhrase        string         `config:"passphrase"`
-	SecureConfig      bool           `config:"secure-config"`
-	DynamicProfiler   bool           `config:"dynamic-profile"`
-	ProfilerPort      int            `config:"profiler-port"`
-	ProfilerIP        string         `config:"profiler-ip"`
-	MonitorOpt        monitorOptions `config:"health_monitor"`
-	WaitForMount      time.Duration  `config:"wait-for-mount"`
-	LazyWrite         bool           `config:"lazy-write"`
-	NoKernelCache     bool           `config:"no-kernel-cache"`
+	Logging            LogOptions     `config:"logging"`
+	Components         []string       `config:"components"`
+	Foreground         bool           `config:"foreground"`
+	NonEmpty           bool           `config:"nonempty"`
+	DefaultWorkingDir  string         `config:"default-working-dir"`
+	CPUProfile         string         `config:"cpu-profile"`
+	MemProfile         string         `config:"mem-profile"`
+	PassPhrase         string         `config:"passphrase"`
+	SecureConfig       bool           `config:"secure-config"`
+	DynamicProfiler    bool           `config:"dynamic-profile"`
+	ProfilerPort       int            `config:"profiler-port"`
+	ProfilerIP         string         `config:"profiler-ip"`
+	MonitorOpt         monitorOptions `config:"health_monitor"`
+	WaitForMount       time.Duration  `config:"wait-for-mount"`
+	LazyWrite          bool           `config:"lazy-write"`
+	disableKernelCache bool           `config:"disable-kernel-cache"`
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
@@ -871,8 +871,8 @@ func init() {
 
 	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
 
-	mountCmd.PersistentFlags().Bool("no-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
-	config.BindPFlag("no-kernel-cache", mountCmd.PersistentFlags().Lookup("no-kernel-cache"))
+	mountCmd.PersistentFlags().Bool("disable-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
+	config.BindPFlag("disable-kernel-cache", mountCmd.PersistentFlags().Lookup("disable-kernel-cache"))
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
