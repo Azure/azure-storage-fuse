@@ -38,7 +38,8 @@ struct GetChunkRequest {
     2: Address address,
     3: i64 offsetInChunk,
     4: i64 length,
-    5: list<RVNameAndState> componentRV // used to validate the component RV for the MV
+    5: bool isLocalRV, // true, if both server and client are on the same node
+    6: list<RVNameAndState> componentRV // used to validate the component RV for the MV
 }
 
 struct GetChunkResponse {

@@ -1836,7 +1836,25 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//
 	// TODO: Need to ensure this is FS_BLOCK_SIZE aligned.
 	//
-	data := make([]byte, req.Length)
+	var data []byte
+
+	if req.IsLocalRV {
+		//
+		// Allocate the buffer from the buffer pool.
+		//
+		data, err = dcache.BufPool.GetBuffer()
+		if err != nil {
+			errStr := fmt.Sprintf("failed to Allocate Buffer for chunk file %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			common.Assert(false, err)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+		// Reslice the data buffer accordingly, length of the buffer that we get from the BufferPool is of
+		// maximum size(i.e., Chunk Size)
+		data = data[:req.Length]
+	} else {
+		data = make([]byte, req.Length)
+	}
 
 	var lmt string
 	var n int
@@ -1873,6 +1891,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//}
 	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
 	if err != nil {
+		if req.IsLocalRV {
+			// Return the Buffer that was taken from the BufferPool.
+			dcache.BufPool.PutBuffer(data)
+		}
 		errStr := fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
