@@ -154,7 +154,7 @@ func (pool *BlockPool) tryGet() *Block {
 	case <-pool.ctx.Done():
 		err := fmt.Errorf("Failed to Allocate Buffer as the process was cancelled, Len (blocksCh: %d, priorityCh: %d), MaxBlocks: %d",
 			len(pool.blocksCh), len(pool.priorityCh), pool.maxBlocks)
-		log.Warn("BlockPool::GetBlock : %v", err)
+		log.Debug("BlockPool::GetBlock : %v", err)
 		return nil
 	// getting a block from pool will be a blocking operation if the pool is empty
 	case block = <-pool.blocksCh:
@@ -173,7 +173,7 @@ func (pool *BlockPool) mustGet() *Block {
 	case <-pool.ctx.Done():
 		err := fmt.Errorf("Failed to Allocate Buffer as the process was cancelled, Len (priorityCh: %d, blockCh: %d), MaxBlocks: %d",
 			len(pool.priorityCh), len(pool.blocksCh), pool.maxBlocks)
-		log.Err("BlockPool::MustGet : %v", err)
+		log.Debug("BlockPool::MustGet : %v", err)
 		return nil
 	case block = <-pool.priorityCh:
 		break
