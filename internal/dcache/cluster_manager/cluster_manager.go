@@ -224,7 +224,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 			case <-cmi.hbTicker.C:
 				log.Debug("ClusterManager::start: Scheduled task \"Punch Heartbeat\" triggered")
 
-				err = cmi.punchHeartBeat(rvs)
+				err = cmi.punchHeartBeat(rvs, false /* initialHB */)
 				if err == nil {
 					consecutiveFailures = 0
 				} else {
@@ -981,6 +981,22 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 	startTime := time.Now()
 	maxWait := 120 * time.Second
 
+	//
+	// Punch the initial heartbeat before proceeding to update the clusterMap with my RVs.
+	// This allows one node (that successfully claims ownership of the clusterMap) to add RVs
+	// for many nodes that have punched their initial heartbeats. This helps improve cluster startup
+	// dramatically, else if a node only adds its RVs to clusterMap then the clusterMap needs to be
+	// updated many times, each time requiring one node to claim ownership of the clusterMap.
+	//
+	err := cmi.punchHeartBeat(myRVs, true /* initialHB */)
+	if err != nil {
+		log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: Initial punchHeartBeat failed: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: Initial Heartbeat punched, now updating RV list: %+v", myRVs)
+
 	for {
 		// Time check.
 		elapsed := time.Since(startTime)
@@ -1000,7 +1016,44 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		}
 
 		//
-		// Now we want to add our RVs to the clustermap RV list.
+		// Since we punched our initial heartbeat, it's possible that some other node may have added
+		// our RVs to the clustermap, if so, we are done, else we need to add our RVs to the clustermap.
+		// Note that we let one node add RVs for all the nodes that have punched their initial heartbeats
+		// in close proximity.
+		// This helps avoid multiple nodes trying to update the clustermap at the same time, which can lead
+		// to really long delays in cluster startup, as each node has to get exclusive ownership of the
+		// clustermap.
+		//
+		myRVsFromClustermap := cm.GetMyRVs()
+		if len(myRVsFromClustermap) > 0 {
+			found := 0
+			for _, myRv := range myRVs {
+				for _, rv := range myRVsFromClustermap {
+					if myRv.RvId == rv.RvId {
+						found++
+						break
+					}
+				}
+			}
+
+			common.Assert(found <= len(myRVs), found, myRVs, myRVsFromClustermap)
+
+			if found == len(myRVs) {
+				//
+				// The clustermap has all our RVs in the RV list added by some other node, thank it and
+				// proceed.
+				//
+				log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: All myRVs added by node %s: %+v",
+					clusterMap.LastUpdatedBy, clusterMap)
+				return nil
+			} else {
+				//
+				// Our initial heartbeat had *all* our RVs, so either all of them are added or none.
+				//
+				common.Assert(found == 0, found, myRVs, myRVsFromClustermap)
+			}
+		}
+
 		//
 		// If some other node/context is currently updating clustermap, we need to wait and retry.
 		//
@@ -1024,9 +1077,12 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		common.Assert(clusterMap.State == dcache.StateReady)
 
 		//
+		// Ok, no other node has added our RVs to the clustermap, we need to add them now.
+		//
+
+		//
 		// Claim ownership of clustermap and add our RVs.
-		// If some other node gets there before us, we retry. Note that we don't add a wait before
-		// the retry as that other node is not updating the clustermap, it's done updating.
+		// If some other node gets there before us, we retry.
 		//
 		// Note: We retry even if the failure is not due to etag mismatch, hoping the error to be transient.
 		//       Anyways, we have a timeout.
@@ -1035,26 +1091,25 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		if err != nil {
 			log.Warn("ClusterManager::updateStorageClusterMapWithMyRVs: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
+
+			// Allow some time for the other node to finish updating the clustermap.
+			time.Sleep(1 * time.Second)
 			continue
 		}
 
 		//
-		// Punch the first heartbeat. updateRVList() below fetches this heartbeat to get info on local RVs.
-		// We punch the heartbeat after claiming ownership of clusterMap to make sure no other node starts
-		// processing these RVs and the heartbeat doesn't expire if there's a delay in getting clusterMap ownership.
+		// Add our RVs and any other nodes' RVs which are simultaneously starting up.
+		// Note that we pass initialHB as true so that we only look at initial heartbeats, that's
+		// what the new nodes have posted.
 		//
-		err = cmi.punchHeartBeat(myRVs)
-		if err != nil {
-			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: Initial punchHeartBeat failed: %v", err)
-			common.Assert(false, err)
-			return err
-		}
-
-		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: Initial Heartbeat punched, now updating RV list")
-
-		_, err = cmi.updateRVList(clusterMap.RVMap, true /* onlyMyRVs */)
+		_, err = cmi.updateRVList(clusterMap.RVMap, true /* initialHB */)
 		if err != nil {
 			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: updateRVList() failed: %v", err)
+			//
+			// Best effort end clusterMap update. If this fails other nodes will be able to claim ownership
+			// albeit after some timeout period.
+			//
+			cmi.endClusterMapUpdate(clusterMap)
 			common.Assert(false, err)
 			return err
 		}
@@ -1290,11 +1345,14 @@ var getAllNodes = func() ([]string, error) {
 	return mm.GetAllNodes()
 }
 
-func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume) error {
+// Publishes the heartbeat for this node.
+// initialHB indicates if this is the initial heartbeat for this node.
+func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bool) error {
 	// Refresh AvailableSpace for my RVs, before publishing in the heartbeat.
 	refreshMyRVs(myRVs)
 
 	hbData := dcache.HeartbeatData{
+		InitialHB:     initialHB,
 		IPAddr:        cmi.myIPAddress,
 		NodeID:        cmi.myNodeId,
 		Hostname:      cmi.myHostName,
@@ -1320,7 +1378,7 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume) error {
 		return err
 	}
 
-	log.Debug("ClusterManager::punchHeartBeat: heartbeat updated for node %+v", hbData)
+	log.Debug("ClusterManager::punchHeartBeat: heartbeat (initialHB=%v) updated for node %+v", initialHB, hbData)
 	return nil
 }
 
@@ -2652,145 +2710,174 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 	return nil, nil
 }
 
-// Given the list of existing RVs in clusterMap, add any new RVs available.
-// If onlyMyRVs is true then the only RV(s) added/updated are the ones exported by the current node, else it queries
-// the heartbeats from all nodes and adds all new RVs available and updates all RVs.
-// existingRVMap is updated in-place.
+// updateRVList updates the RV list in clustermap based on the heartbeats received from nodes in the
+// cluster.
+//
+// It has two modes of operation (controlled by initialHB):
+// 1. initialHB=true:
+//    This is called from updateStorageClusterMapWithMyRVs() when the node starts up and wants to add its RVs
+//    to the clusterMap for the first time. As an optimization it not only adds its own RVs but also RVs
+//    from other nodes which have sent InitialHB=true heartbeats in close proximity. This helps reduce cluster
+//    startup time for very large clusters.
+//    In this mode it can add new RVs or remove some old RVs but doesn't change the state of any RV in
+//    existingRVMap.
+//    This is called only once.
+// 2. initialHB=false:
+//    This is the more common mode and is called from the periodic updateStorageClusterMapIfRequired(), to
+//    update RV states based on the heartbeats received from their corresponding nodes.
+//    In this mode it doesn't add (or remove) any new RVs to the clusterMap, but it can mark some RV as
+//    offline.
+//
+// Any update to existingRVMap is done in-place.
 //
 // Note: updateRVList() MUST be called after successfully claiming ownership of clusterMap update, by a successful
 //       call to UpdateClusterMapStart().
 
-func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolume, onlyMyRVs bool) (bool, error) {
+func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolume, initialHB bool) (bool, error) {
 	hbTillNodeDown := int64(cmi.config.HeartbeatsTillNodeDown)
 	hbSeconds := int64(cmi.config.HeartbeatSeconds)
-	nodeIds := []string{cmi.myNodeId}
-	var err error
 
-	//
-	// If onlyMyRVs is false then we need to query heartbeats for all the nodes, else just this node.
-	//
-	if !onlyMyRVs {
-		nodeIds, err = getAllNodes()
-		if err != nil {
-			common.Assert(false, err)
-			return false, fmt.Errorf("ClusterManager::updateRVList: getAllNodes() failed: %v", err)
-		}
-		log.Debug("ClusterManager::updateRVList: Found %d nodes in cluster: %v", len(nodeIds), nodeIds)
+	// Get all nodes by enumerating all the HBs from Nodes/ folder.
+	nodeIds, err := getAllNodes()
+	if err != nil {
+		common.Assert(false, err)
+		return false, fmt.Errorf("ClusterManager::updateRVList: getAllNodes() failed: %v", err)
 	}
+	log.Debug("ClusterManager::updateRVList: Found %d nodes in cluster (initialHB=%v): %+v",
+		len(nodeIds), initialHB, nodeIds)
 
-	// Both these maps are indexed by RV id.
-	rVsByRvIdFromHB, rvLastHB, failedToReadNodes, err := collectHBForGivenNodeIds(nodeIds)
+	//
+	// Fetch heartbeats for the given nodeIds but only those matching the initialHB flag.
+	// rVsByRvIdFromHB and rvLastHB are maps are indexed by RV id, while nodes and failedToReadNodes
+	// are list of node ids.
+	// nodes is the list of nodes for which we successfully read the heartbeats matching the initialHB flag.
+	//
+	rVsByRvIdFromHB, rvLastHB, nodes, failedToReadNodes, err := collectHBForGivenNodeIds(nodeIds, initialHB)
+	_ = nodes
 	if err != nil {
 		return false, err
 	}
+
 	// Both the RV and the RV HB map must have the exact same RVs.
 	common.Assert(len(rVsByRvIdFromHB) == len(rvLastHB), len(rVsByRvIdFromHB), len(rvLastHB))
+	common.Assert(len(nodes)+len(failedToReadNodes) <= len(nodeIds), nodes, failedToReadNodes, nodeIds)
 
-	// Set to true if we add any new RV to existingRVMap or update the state of any existing RV.
+	//
+	// This is later set to true if existingRVMap is changed in any way, i.e., we add any new RV to
+	// existingRVMap (for initialHB=true) or update the state of any existing RV (for initialHB=false).
+	//
 	changed := false
 
 	//
-	// Ok, now we have all the RVs from heartbeats in rVsByRvIdFromHB[].
-	// We need to do two things:
-	// 1. For existing RVs (in existingRVMap), update RV State and AvailableSpace in existingRVMap if it's
-	//    different from the RV State and AvailableSpace as seen in the HB, or if HB has expired set RV state
-	//    to offline if not already offline. If the expired HB belongs to an old RV from our node, delete it
-	//    from RV map.
-	//    If any of the existing RVs is not found in the latest HBs, for such RVs too the state in existingRVMap
-	//    is set to offline. This will only happen when a HB blob is deleted out-of-band, which is an unsupported
-	//    operation. Note that for onlyMyRVs==true case we cannot do this as we don't have the exhaustive
-	//    list of HBs.
-	// 2. All RVs in rVsByRvIdFromHB[] which are not present in existingRVMap, i.e., those RVs are newly seen,
-	//    add those to existingRVMap.
+	// We process the heartbeats differently based on the initialHB flag:
+	// 1. If initialHB is true, we are only interested in adding new RVs to existingRVMap.
+	//    We first remove all RVs belonging to any node for which we see an initial HB.
+	//    This node is just getting started so any RV from this node if present in existingRVMap
+	//    is stale and must be removed.
+	//    Post that we add RVs seen from all nodes that posted initial HB.
+	// 2. If initialHB is false, we are interested in updating the state of existing RVs in existingRVMap,
+	//    offlining RVs which have expired or missing heartbeats.
 	//
+	if !initialHB {
+		// If an RV has the LastHeartbeat less than hbExpiry, it needs to be offlined.
+		now := uint64(time.Now().Unix())
+		hbExpiry := now - uint64(hbTillNodeDown*hbSeconds)
 
-	// If an RV has the LastHeartbeat less than hbExpiry, it needs to be offlined.
-	now := uint64(time.Now().Unix())
-	hbExpiry := now - uint64(hbTillNodeDown*hbSeconds)
+		// Update RVs present in existingRVMap and which have changed State or AvailableSpace.
+		for rvName, rvInClusterMap := range existingRVMap {
+			if rvHb, found := rVsByRvIdFromHB[rvInClusterMap.RvId]; found {
+				lastHB, found := rvLastHB[rvHb.RvId]
+				_ = found
 
-	// (1.b) Update RVs present in existingRVMap and which have changed State or AvailableSpace.
-	for rvName, rvInClusterMap := range existingRVMap {
-		if rvHb, found := rVsByRvIdFromHB[rvInClusterMap.RvId]; found {
-			lastHB, found := rvLastHB[rvHb.RvId]
-			_ = found
+				// If an RV is present in rVsByRvIdFromHB, it MUST have a valid HB in rvLastHB.
+				common.Assert(found)
 
-			// If an RV is present in rVsByRvIdFromHB, it MUST have a valid HB in rvLastHB.
-			common.Assert(found)
-
-			if lastHB < hbExpiry {
+				if lastHB < hbExpiry {
+					if rvInClusterMap.State != dcache.StateOffline {
+						log.Warn("ClusterManager::updateRVList: Online RV %s %+v lastHeartbeat (%d) has expired, hbExpiry (%d), marking RV offline",
+							rvName, rvInClusterMap, lastHB, hbExpiry)
+						rvInClusterMap.State = dcache.StateOffline
+						existingRVMap[rvName] = rvInClusterMap
+						changed = true
+					}
+				} else {
+					//
+					// HB not expired.
+					// If either the State or AvailableSpace from HB is different from what is stored
+					// in existingRVMap, update it.
+					//
+					if (rvInClusterMap.State != rvHb.State) ||
+						(rvInClusterMap.AvailableSpace != rvHb.AvailableSpace) {
+						rvInClusterMap.State = rvHb.State
+						rvInClusterMap.AvailableSpace = rvHb.AvailableSpace
+						//TODO{Akku}: IF available space is less than 10% of total space, we might need to update the state
+						existingRVMap[rvName] = rvInClusterMap
+						changed = true
+					}
+				}
+			} else if slices.Contains(failedToReadNodes, rvInClusterMap.NodeId) {
 				//
-				// HB expired, if onlyMyRVs is true then we are called from
-				// updateStorageClusterMapWithMyRVs() i.e., a newly started node wants to join the
-				// cluster. It must have punched its initial heartbeat just before calling updateRVList(),
-				// so if we see hb as expired for a particular RV that RV was present in the prev
-				// incarnation of this node and not present now, we must remove that RV from the RV
-				// map, else if onlyMyRVs is false, then we want to check RVs from all the nodes and
-				// if any RV's HB has expired mark the RV offline if not already offline.
+				// If we failed to read the HB for the node this indicates some unusual problem with the storage,
+				// since we only fetch hbs from nodes returned by getAllNodes() which actually enumerates all the
+				// hbs in the Nodes/ folder.
+				// Play safe and skip this RV for now. If its hb is indeed missing, it will be removed in the next
+				// iteration of updateRVList() call.
 				//
-				if onlyMyRVs {
-					log.Warn("ClusterManager::updateRVList: Removing RV %s %+v present from prev incarnation of this node (lastHeartbeat (%d) < hbExpiry (%d))",
-						rvName, rvInClusterMap, lastHB, hbExpiry)
-					delete(existingRVMap, rvName)
-					changed = true
-				} else if rvInClusterMap.State != dcache.StateOffline {
-					log.Warn("ClusterManager::updateRVList: Online RV %s %+v lastHeartbeat (%d) has expired, hbExpiry (%d), marking RV offline",
-						rvName, rvInClusterMap, lastHB, hbExpiry)
+				log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats (could not read HB for node %s), ignoring for now",
+					rvName, rvInClusterMap, rvInClusterMap.NodeId)
+			} else {
+				// This can only happen when an HB file is deleted out-of-band.
+				common.Assert(false, "HB missing for RV in clustermap", rvInClusterMap)
+
+				//
+				// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
+				// This is not a common occurrence, emit a warning log.
+				//
+				if rvInClusterMap.State != dcache.StateOffline {
+					log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats, did you delete the hb file out-of-band?", rvName, rvInClusterMap)
 					rvInClusterMap.State = dcache.StateOffline
 					existingRVMap[rvName] = rvInClusterMap
 					changed = true
 				}
-			} else {
-				//
-				// HB not expired.
-				// If either the State or AvailableSpace from HB is different from what is stored
-				// in existingRVMap, update it.
-				//
-				if (rvInClusterMap.State != rvHb.State) ||
-					(rvInClusterMap.AvailableSpace != rvHb.AvailableSpace) {
-					rvInClusterMap.State = rvHb.State
-					rvInClusterMap.AvailableSpace = rvHb.AvailableSpace
-					//TODO{Akku}: IF available space is less than 10% of total space, we might need to update the state
-					existingRVMap[rvName] = rvInClusterMap
+			}
+		}
+
+		return changed, nil
+	}
+
+	//
+	// initialHB=true
+	// Add new RVs posted by nodes in their initial heartbeats.
+	//
+
+	//
+	// Before adding new RVs for all nodes in 'nodes', remove any RVs belonging to those nodes in clustermap,
+	// but not present in the recent initial heartbeats posted by these nodes. Those would be stale RVs from
+	// the previous incarnation of the node, not present anymore, and must be removed.
+	//
+	if len(nodes) > 0 {
+		// list->map for faster lookup in the following loop.
+		nodeIdMap := make(map[string]struct{})
+		for _, nodeId := range nodes {
+			nodeIdMap[nodeId] = struct{}{}
+		}
+
+		// For all RVs in existingRVMap.
+		for rvName, rvInClusterMap := range existingRVMap {
+			// If the RV belongs to one of the nodes we are adding RVs for.
+			if _, found := nodeIdMap[rvInClusterMap.NodeId]; found {
+				// And if the RV is not present in the latest RVs list, this RV is stale and must be removed.
+				if _, exists := rVsByRvIdFromHB[rvInClusterMap.RvId]; !exists {
+					log.Warn("ClusterManager::updateRVList: Removing stale RV %s %+v belonging to node %s",
+						rvName, rvInClusterMap, rvInClusterMap.NodeId)
+					delete(existingRVMap, rvName)
 					changed = true
 				}
-			}
-
-			// rVsByRvIdFromHB must only contain new RVs, delete this as it is in existingRVMap.
-			delete(rVsByRvIdFromHB, rvHb.RvId)
-		} else if slices.Contains(failedToReadNodes, rvInClusterMap.NodeId) {
-			//
-			// If we failed to read the HB for the node this indicates some unusual problem with the storage,
-			// since we only fetch hbs from nodes returned by getAllNodes() which actually enumerates all the
-			// hbs in the Nodes/ folder.
-			// Play safe and skip this RV for now. If its hb is indeed missing, it will be removed in the next
-			// iteration of updateRVList() call.
-			//
-			log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats (could not read HB for node %s), ignoring for now",
-				rvName, rvInClusterMap, rvInClusterMap.NodeId)
-		} else if !onlyMyRVs {
-			// This can only happen when an HB file is deleted out-of-band.
-			common.Assert(false, "HB missing for RV in clustermap", rvInClusterMap)
-
-			//
-			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
-			// This is not a common occurrence, emit a warning log.
-			//
-			// For onlyMyRV==true, case we cannot perform this operation as we don't have the exhaustive
-			// list of  HBs.
-			//
-			if rvInClusterMap.State != dcache.StateOffline {
-				log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats, did you delete the hb file out-of-band?", rvName, rvInClusterMap)
-				rvInClusterMap.State = dcache.StateOffline
-				existingRVMap[rvName] = rvInClusterMap
-				changed = true
 			}
 		}
 	}
 
-	//
-	// (2) Add any new RVs.
-	// Now rVsByRvIdFromHB must only have RVs which are not already in existingRVMap.
-	//
+	// Now add all the new RVs from initial heartbeats seen from all nodes.
 	if len(rVsByRvIdFromHB) != 0 {
 		log.Info("ClusterManager::updateRVList: %d new RV(s) to add to clusterMap: %v",
 			len(rVsByRvIdFromHB), rVsByRvIdFromHB)
@@ -2809,6 +2896,8 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			}
 		}
 
+		allRVsById := cm.GetAllRVsById()
+
 		//
 		// Add new RV(s) into clusterMap, starting from the next available index.
 		// Since we may remove old RVs not being exported this time by the node, we may have some
@@ -2816,6 +2905,17 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		//
 		nextFreeIdx := int64(-1)
 		for _, rv := range rVsByRvIdFromHB {
+			//
+			// If the RV is already present in existingRVMap, skip it.
+			// This can happen if the node added its RVs but since the initialHB was lying around we
+			// also decided to add RVs for that node.
+			//
+			if _, exists := allRVsById[rv.RvId]; exists {
+				log.Debug("ClusterManager::updateRVList: Skipping already added RV %s for node %s",
+					rv.RvId, rv.NodeId)
+				continue
+			}
+
 			nextFreeIdx = getNextFreeRVIdx(nextFreeIdx)
 			rvName := fmt.Sprintf("rv%d", nextFreeIdx)
 			existingRVMap[rvName] = rv
@@ -2839,17 +2939,24 @@ func getAllNodesFromRVMap(rvMap map[string]dcache.RawVolume) map[string]struct{}
 	return nodesMap
 }
 
-// For all the nodes in nodeIds, fetch their latest heartbeats.
+// For all the nodes in nodeIds, fetch their latest heartbeats, skip those heartbeats which do not match
+// the initialHB flag, and for the ones that do match, collect the RVs and their last heartbeat.
+//
 // It returns the following:
-// - All the RVs present in those nodes.
-// - The last heartbeat epoch for each of the RVs.
-// - A list of nodeIds for which the heartbeat could not be fetched.
+//   - All the RVs present in those nodes.
+//   - The last heartbeat epoch for each of those RVs.
+//   - List of nodeIds for which the heartbeat was found.
+//     This is only valid if initialHB is true.
+//   - List of nodeIds for which the heartbeat could not be fetched.
+//
 // The first two are returned as maps indexed by RVId.
 //
 // Note: It fetches the heartbeat for multiple nodes in parallel, currently limited to 100 parallel calls.
-func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, map[string]uint64, []string, error) {
+func collectHBForGivenNodeIds(nodeIds []string, initialHB bool) (map[string]dcache.RawVolume, map[string]uint64, []string, []string, error) {
 	// Status result struct to hold the result from each goroutine.
 	type rvHBResult struct {
+		// NodeId for which the heartbeat (matching initialHB) was fetched.
+		nodeId string
 		// Raw volumes, indexed by RVId.
 		rvs map[string]dcache.RawVolume
 		// Last heartbeat epoch for the raw volume, indexed by RVId.
@@ -2863,6 +2970,7 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 	// Limit concurrency to 100 goroutines.
 	sem := make(chan struct{}, 100)
 
+	// Nodes from which fetching heartbeat failed.
 	mu := &sync.Mutex{}
 	failedToReadNodes := make([]string, 0)
 
@@ -2875,7 +2983,8 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			log.Debug("ClusterManager::collectHBForGivenNodeIds: Fetching heartbeat for node %s", nodeId)
+			log.Debug("ClusterManager::collectHBForGivenNodeIds: Fetching heartbeat (initialHB=%v) for node %s",
+				initialHB, nodeId)
 
 			bytes, err := getHeartbeat(nodeId)
 			if err != nil {
@@ -2905,6 +3014,13 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 				return
 			}
 
+			//
+			// Skip heartbeats not matching the initialHB flag.
+			//
+			if hbData.InitialHB != initialHB {
+				return
+			}
+
 			// Process RVs and their last heartbeat from the heartbeat data for this node.
 			nodeRVs := make(map[string]dcache.RawVolume)
 			nodeHBs := make(map[string]uint64)
@@ -2915,7 +3031,7 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 			}
 
 			// Send result to channel.
-			resultCh <- rvHBResult{rvs: nodeRVs, hbs: nodeHBs}
+			resultCh <- rvHBResult{nodeId: nodeId, rvs: nodeRVs, hbs: nodeHBs}
 		}(nodeId)
 	}
 	wg.Wait()
@@ -2928,9 +3044,15 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 	//
 	rVsByRvIdFromHB := make(map[string]dcache.RawVolume)
 	rvLastHB := make(map[string]uint64)
+	// Nodes which had heartbeat matching initialHB flag.
+	successfulNodeIdsMap := make(map[string]struct{})
 
 	// Go over all RVs, and add them to rVsByRvIdFromHB, to be processed later.
 	for result := range resultCh {
+		if initialHB {
+			successfulNodeIdsMap[result.nodeId] = struct{}{}
+		}
+
 		for rvId, rv := range result.rvs {
 			if existingRv, exists := rVsByRvIdFromHB[rvId]; exists {
 				msg := fmt.Sprintf("RVId %s from node %s overlaps with existing RV from node %s",
@@ -2950,6 +3072,14 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 		}
 	}
 
+	// Convert to list for returning.
+	successfulNodeIds := make([]string, 0)
+	if initialHB {
+		for nodeId := range successfulNodeIdsMap {
+			successfulNodeIds = append(successfulNodeIds, nodeId)
+		}
+	}
+
 	if len(errCh) > 0 {
 		log.Err("ClusterManager::collectHBForGivenNodeIds: Errors encountered while fetching heartbeats:")
 		for err := range errCh {
@@ -2962,10 +3092,10 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 	// operation as failure.
 	//
 	if len(rVsByRvIdFromHB) == 0 {
-		return nil, nil, nil, fmt.Errorf("ClusterManager::collectHBForGivenNodeIds: Could not fetch any HB")
+		return nil, nil, nil, nil, fmt.Errorf("ClusterManager::collectHBForGivenNodeIds: Could not fetch any HB")
 	}
 
-	return rVsByRvIdFromHB, rvLastHB, failedToReadNodes, nil
+	return rVsByRvIdFromHB, rvLastHB, successfulNodeIds, failedToReadNodes, nil
 }
 
 // Refresh AvailableSpace in my RVs.

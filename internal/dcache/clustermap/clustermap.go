@@ -111,6 +111,11 @@ func GetAllRVs() map[string]dcache.RawVolume {
 	return clusterMap.getAllRVs()
 }
 
+// It will return the RVs Map <rvId, RV> as per local cache copy of cluster map.
+func GetAllRVsById() map[string]dcache.RawVolume {
+	return clusterMap.getAllRVsById()
+}
+
 // Is rvName hosted on this node.
 func IsMyRV(rvName string) bool {
 	return clusterMap.isMyRV(rvName)
@@ -478,6 +483,14 @@ func (c *ClusterMap) getMyRVs() map[string]dcache.RawVolume {
 
 func (c *ClusterMap) getAllRVs() map[string]dcache.RawVolume {
 	return c.getLocalMap().RVMap
+}
+
+func (c *ClusterMap) getAllRVsById() map[string]dcache.RawVolume {
+	rvsById := make(map[string]dcache.RawVolume)
+	for _, rv := range c.getLocalMap().RVMap {
+		rvsById[rv.RvId] = rv
+	}
+	return rvsById
 }
 
 func (c *ClusterMap) isMyRV(rvName string) bool {

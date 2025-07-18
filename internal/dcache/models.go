@@ -99,6 +99,7 @@ type ClusterMapExport struct {
 }
 
 type HeartbeatData struct {
+	InitialHB     bool        `json:"initial_hb"`
 	Hostname      string      `json:"hostname"`
 	IPAddr        string      `json:"ipaddr"`
 	NodeID        string      `json:"nodeid"`
