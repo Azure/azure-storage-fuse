@@ -612,7 +612,8 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 	// We never have a partially allocated client pool and we only clean up a client pool when all
 	// previously allocated clients have been released back to the pool
 	//
-	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode), len(ncPool.clientChan), cp.maxPerNode)
+	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode),
+		len(ncPool.clientChan), cp.maxPerNode, ncPool.nodeID)
 
 	close(ncPool.clientChan)
 
