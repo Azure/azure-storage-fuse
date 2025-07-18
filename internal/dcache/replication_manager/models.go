@@ -128,7 +128,8 @@ func (req *ReadMvRequest) isValid() error {
 }
 
 type ReadMvResponse struct {
-	Data []byte // buffer containing data read from the chunk.
+	Data          []byte // buffer containing data read from the chunk.
+	IsBufExternal bool   // false if the buffer is allocated from the bufferPool.
 }
 
 func (resp *ReadMvResponse) isValid(req *ReadMvRequest) error {

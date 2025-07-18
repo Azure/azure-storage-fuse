@@ -175,6 +175,7 @@ func GetChunkLocal(ctc context.Context, req *models.GetChunkRequest) (*models.Ge
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = rpc.GetMyNodeUUID()
+	req.IsLocalRV = true
 
 	common.Assert(handler != nil)
 

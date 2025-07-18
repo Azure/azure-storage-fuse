@@ -1398,13 +1398,15 @@ func (p *RVNameAndState) String() string {
 //   - Address
 //   - OffsetInChunk
 //   - Length
+//   - IsLocalRV
 //   - ComponentRV
 type GetChunkRequest struct {
 	SenderNodeID  string            `thrift:"senderNodeID,1" db:"senderNodeID" json:"senderNodeID"`
 	Address       *Address          `thrift:"address,2" db:"address" json:"address"`
 	OffsetInChunk int64             `thrift:"offsetInChunk,3" db:"offsetInChunk" json:"offsetInChunk"`
 	Length        int64             `thrift:"length,4" db:"length" json:"length"`
-	ComponentRV   []*RVNameAndState `thrift:"componentRV,5" db:"componentRV" json:"componentRV"`
+	IsLocalRV     bool              `thrift:"isLocalRV,5" db:"isLocalRV" json:"isLocalRV"`
+	ComponentRV   []*RVNameAndState `thrift:"componentRV,6" db:"componentRV" json:"componentRV"`
 }
 
 func NewGetChunkRequest() *GetChunkRequest {
@@ -1430,6 +1432,10 @@ func (p *GetChunkRequest) GetOffsetInChunk() int64 {
 
 func (p *GetChunkRequest) GetLength() int64 {
 	return p.Length
+}
+
+func (p *GetChunkRequest) GetIsLocalRV() bool {
+	return p.IsLocalRV
 }
 
 func (p *GetChunkRequest) GetComponentRV() []*RVNameAndState {
@@ -1494,8 +1500,18 @@ func (p *GetChunkRequest) Read(ctx context.Context, iprot thrift.TProtocol) erro
 				}
 			}
 		case 5:
-			if fieldTypeId == thrift.LIST {
+			if fieldTypeId == thrift.BOOL {
 				if err := p.ReadField5(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 6:
+			if fieldTypeId == thrift.LIST {
+				if err := p.ReadField6(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -1554,6 +1570,15 @@ func (p *GetChunkRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol
 }
 
 func (p *GetChunkRequest) ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadBool(ctx); err != nil {
+		return thrift.PrependError("error reading field 5: ", err)
+	} else {
+		p.IsLocalRV = v
+	}
+	return nil
+}
+
+func (p *GetChunkRequest) ReadField6(ctx context.Context, iprot thrift.TProtocol) error {
 	_, size, err := iprot.ReadListBegin(ctx)
 	if err != nil {
 		return thrift.PrependError("error reading list begin: ", err)
@@ -1591,6 +1616,9 @@ func (p *GetChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) err
 			return err
 		}
 		if err := p.writeField5(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField6(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -1656,8 +1684,21 @@ func (p *GetChunkRequest) writeField4(ctx context.Context, oprot thrift.TProtoco
 }
 
 func (p *GetChunkRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 5); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:componentRV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "isLocalRV", thrift.BOOL, 5); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:isLocalRV: ", p), err)
+	}
+	if err := oprot.WriteBool(ctx, bool(p.IsLocalRV)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.isLocalRV (5) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:isLocalRV: ", p), err)
+	}
+	return err
+}
+
+func (p *GetChunkRequest) writeField6(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 6); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:componentRV: ", p), err)
 	}
 	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
@@ -1671,7 +1712,7 @@ func (p *GetChunkRequest) writeField5(ctx context.Context, oprot thrift.TProtoco
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:componentRV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 6:componentRV: ", p), err)
 	}
 	return err
 }
@@ -1692,6 +1733,9 @@ func (p *GetChunkRequest) Equals(other *GetChunkRequest) bool {
 		return false
 	}
 	if p.Length != other.Length {
+		return false
+	}
+	if p.IsLocalRV != other.IsLocalRV {
 		return false
 	}
 	if len(p.ComponentRV) != len(other.ComponentRV) {
