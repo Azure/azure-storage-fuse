@@ -41,6 +41,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -237,7 +238,7 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
-	xl.blockPool = NewBlockPool(xl.blockSize, xl.poolSize)
+	xl.blockPool = NewBlockPool(xl.blockSize, xl.poolSize, xl.poolctx)
 	if xl.blockPool == nil {
 		log.Err("Xload::Start : Failed to create block pool")
 		return fmt.Errorf("failed to create block pool")
@@ -280,14 +281,27 @@ func (xl *Xload) Start(ctx context.Context) error {
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
+	terminateTimeout := time.After(2 * time.Second)
+	stopCh := make(chan int, 1)
+
 	xl.poolCancelFunc()
 
-	for i := 0; i < len(xl.comps); i++ {
-		xl.comps[i].Stop()
-	}
+	go func() {
+		for i := 0; i < len(xl.comps); i++ {
+			xl.comps[i].Stop()
+		}
 
-	xl.statsMgr.Stop()
-	xl.blockPool.Terminate()
+		xl.statsMgr.Stop()
+		xl.blockPool.Terminate()
+		stopCh <- 1
+	}()
+
+	select {
+	case <-stopCh:
+		log.Debug("Xload::Stop : Stop successful")
+	case <-terminateTimeout:
+		log.Warn("Xload::Stop : Stop timeout")
+	}
 
 	// TODO:: xload : should we delete the files from local path
 	err := common.TempCacheCleanup(xl.path)
@@ -295,7 +309,6 @@ func (xl *Xload) Stop() error {
 		log.Err("unable to clean xload local path [%s]", err.Error())
 		return err
 	}
-
 	return nil
 }
 

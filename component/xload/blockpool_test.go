@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,13 +49,13 @@ type blockpoolTestSuite struct {
 func (suite *blockpoolTestSuite) TestBlockPoolAllocate() {
 	suite.assert = assert.New(suite.T())
 
-	bp := NewBlockPool(0, 0)
+	bp := NewBlockPool(0, 0, context.TODO())
 	suite.assert.Nil(bp)
 
-	bp = NewBlockPool(1, 0)
+	bp = NewBlockPool(1, 0, context.TODO())
 	suite.assert.Nil(bp)
 
-	bp = NewBlockPool(1, 1)
+	bp = NewBlockPool(1, 1, context.TODO())
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
 	suite.assert.NotNil(bp.priorityCh)
@@ -71,7 +72,7 @@ func (suite *blockpoolTestSuite) TestBlockPoolAllocate() {
 func (suite *blockpoolTestSuite) TestBlockPoolGetRelease() {
 	suite.assert = assert.New(suite.T())
 
-	bp := NewBlockPool(1, 5)
+	bp := NewBlockPool(1, 5, context.TODO())
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
 	suite.assert.NotNil(bp.priorityCh)
@@ -101,7 +102,7 @@ func (suite *blockpoolTestSuite) TestBlockPoolGetRelease() {
 func (suite *blockpoolTestSuite) TestBlockPoolUsage() {
 	suite.assert = assert.New(suite.T())
 
-	bp := NewBlockPool(1, 10)
+	bp := NewBlockPool(1, 10, context.TODO())
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
 	suite.assert.NotNil(bp.priorityCh)
@@ -140,7 +141,7 @@ func (suite *blockpoolTestSuite) TestBlockPoolUsage() {
 func (suite *blockpoolTestSuite) TestBlockPoolBufferExhaution() {
 	suite.assert = assert.New(suite.T())
 
-	bp := NewBlockPool(1, 10)
+	bp := NewBlockPool(1, 10, context.TODO())
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
 	suite.assert.NotNil(bp.priorityCh)
