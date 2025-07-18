@@ -413,8 +413,9 @@ stages:
                 parameters:
                   unmount: true
                   delete_containers: true
+
               - script: |
-                  kill -9 $(pgrep mitmdump)
+                  kill -9 $(pgrep mitmdump) || true
                 displayName: 'Kill Proxy'
 
         - ${{ if eq(parameters.msi_test, true) }}:

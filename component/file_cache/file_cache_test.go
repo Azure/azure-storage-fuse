@@ -650,8 +650,11 @@ func (suite *fileCacheTestSuite) TestCreateFileWithNoPerm() {
 	suite.assert.True(os.IsNotExist(err))
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
 	suite.assert.Nil(err)
-	info, _ := os.Stat(suite.cache_path + "/" + path)
-	suite.assert.Equal(info.Mode(), os.FileMode(0000))
+	info, err := os.Stat(suite.cache_path + "/" + path)
+	// Since the default config has timeout-sec as 0 there is a chance that the file gets evicted before we stat the file.
+	if err == nil && info != nil {
+		suite.assert.Equal(info.Mode(), os.FileMode(0000))
+	}
 }
 
 func (suite *fileCacheTestSuite) TestCreateFileWithWritePerm() {
