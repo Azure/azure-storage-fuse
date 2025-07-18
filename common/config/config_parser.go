@@ -46,7 +46,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
