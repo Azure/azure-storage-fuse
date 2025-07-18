@@ -145,8 +145,8 @@ func getMVsPerRV() int64 {
 }
 
 // Check if any of the RV present in the component RVs has inband-offline state.
-func containsInbandOfflineState(componentRVs []*models.RVNameAndState) bool {
-	for _, rv := range componentRVs {
+func containsInbandOfflineState(componentRVs *[]*models.RVNameAndState) bool {
+	for _, rv := range *componentRVs {
 		common.Assert(rv != nil)
 		if rv.State == string(dcache.StateInbandOffline) {
 			return true
@@ -157,8 +157,8 @@ func containsInbandOfflineState(componentRVs []*models.RVNameAndState) bool {
 }
 
 // Update the inband-offline state to offline for all the component RVs in the request.
-func updateInbandOfflineToOffline(componentRVs []*models.RVNameAndState) {
-	for _, rv := range componentRVs {
+func updateInbandOfflineToOffline(componentRVs *[]*models.RVNameAndState) {
+	for _, rv := range *componentRVs {
 		common.Assert(rv != nil)
 		if rv.State == string(dcache.StateInbandOffline) {
 			rv.State = string(dcache.StateOffline)

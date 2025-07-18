@@ -3213,8 +3213,15 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			//
 			if rvPrevState, ok := existing[mvName+rvName]; ok {
 				_ = rvPrevState
-				common.Assert(rvPrevState == rvNewState && currentState == rvNewState,
-					currentState, rvPrevState, rvNewState)
+
+				// We cannot have multiple updates to different states for an RV/MV in the batch.
+				// The state updated in the previous iteration must be same as the new state for an RV/MV.
+				common.Assert(rvPrevState == rvNewState, rvPrevState, rvNewState)
+
+				// The previous update must have updated the current state. So, we assert that the current
+				// state is same as the new state requested.
+				common.Assert(currentState == rvNewState, currentState, rvNewState)
+
 				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s, ignoring duplicate state change (%s -> %s)",
 					rvName, mvName, currentState, rvNewState)
 				ignoredCount++

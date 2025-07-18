@@ -314,7 +314,7 @@ func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) {
 // Create new mvInfo instance. This is used by the JoinMV() RPC call to create a new mvInfo.
 func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState, joinedBy string) *mvInfo {
 	common.Assert(common.IsValidUUID(joinedBy), rv.rvName, mvName, joinedBy)
-	common.Assert(!containsInbandOfflineState(componentRVs), componentRVs)
+	common.Assert(!containsInbandOfflineState(&componentRVs), componentRVs)
 
 	return &mvInfo{
 		rv:           rv,
@@ -741,7 +741,6 @@ func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
 func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forceUpdate bool, senderNodeId string) error {
 	common.Assert(len(componentRVs) == int(cm.GetCacheConfig().NumReplicas),
 		len(componentRVs), cm.GetCacheConfig().NumReplicas)
-	common.Assert(!containsInbandOfflineState(componentRVs), componentRVs)
 
 	mv.rwMutex.Lock()
 	defer mv.rwMutex.Unlock()
@@ -803,9 +802,7 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 				}
 
 				if oldState == string(dcache.StateOffline) && newState == string(dcache.StateOutOfSync) {
-					//
 					// Same RV (now online) being reused by fix-mv.
-					//
 					continue
 				}
 
@@ -846,6 +843,9 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 			}
 		}
 	}
+
+	// We cannot have inband offline state in the componentRVs.
+	common.Assert(!containsInbandOfflineState(&componentRVs), componentRVs)
 
 	// Valid membership changes, update the saved componentRVs.
 	mv.componentRVs = componentRVs
@@ -1329,7 +1329,7 @@ func (mv *mvInfo) isSyncOpWriteLocked() bool {
 // if the component RV details don't match. Caller should then pass on the error eventually failing the
 // RPC server method with NeedToRefreshClusterMap.
 func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState, checkState bool) error {
-	common.Assert(!containsInbandOfflineState(componentRVsInReq), componentRVsInReq)
+	common.Assert(!containsInbandOfflineState(&componentRVsInReq), componentRVsInReq)
 
 	var componentRVsInMV []*models.RVNameAndState
 	clustermapRefreshed := false
@@ -1388,7 +1388,7 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 	common.Assert(cm.IsValidRVName(sourceRVName) &&
 		cm.IsValidRVName(targetRVName) &&
 		sourceRVName != targetRVName, sourceRVName, targetRVName)
-	common.Assert(!containsInbandOfflineState(componentRVsInReq), componentRVsInReq)
+	common.Assert(!containsInbandOfflineState(&componentRVsInReq), componentRVsInReq)
 
 	//
 	// validate the component RVs in request against the component RVs in mvInfo.
@@ -2025,8 +2025,11 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	rvInfo := h.rvIDMap[req.Chunk.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Chunk.Address.MvName)
 
+	//
 	// If the component RVs list has any RV with inband-offline state, update it to offline.
-	updateInbandOfflineToOffline(req.ComponentRV)
+	// This is done because we don't allow inband-offline state in the rvInfo.
+	//
+	updateInbandOfflineToOffline(&req.ComponentRV)
 
 	//
 	// RVInfo validation. PutChunk(client) and PutChunk(sync) need different validations.
@@ -2552,8 +2555,11 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
+	//
 	// If the component RVs list has any RV with inband-offline state, update it to offline.
-	updateInbandOfflineToOffline(req.ComponentRV)
+	// This is done because we don't allow inband-offline state in the rvInfo.
+	//
+	updateInbandOfflineToOffline(&req.ComponentRV)
 
 	// Validate the component RVs list.
 	err = mvInfo.isComponentRVsValid(req.ComponentRV, true /* checkState */)
@@ -2812,7 +2818,13 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// JoinMV calls [TODO].
 	//
 	sortComponentRVs(req.ComponentRV)
-	updateInbandOfflineToOffline(req.ComponentRV)
+
+	//
+	// If the component RVs list has any RV with inband-offline state, update it to offline.
+	// This is done because we don't allow inband-offline state in the rvInfo.
+	//
+	updateInbandOfflineToOffline(&req.ComponentRV)
+
 	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo, req.MV, req.ComponentRV, req.SenderNodeID), req.ReserveSpace)
 
 	return &models.JoinMVResponse{}, nil
@@ -2864,8 +2876,11 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		log.Debug("ChunkServiceHandler::UpdateMV: Updating %s from (%s -> %s)",
 			req.MV, rpc.ComponentRVsToString(componentRVsInMV), rpc.ComponentRVsToString(req.ComponentRV))
 
+		//
 		// If the component RVs list has any RV with inband-offline state, update it to offline.
-		updateInbandOfflineToOffline(req.ComponentRV)
+		// This is done because we don't allow inband-offline state in the rvInfo.
+		//
+		updateInbandOfflineToOffline(&req.ComponentRV)
 
 		//
 		// update the component RVs list for this MV
@@ -2948,8 +2963,11 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
+	//
 	// If the component RVs list has any RV with inband-offline state, update it to offline.
-	updateInbandOfflineToOffline(req.ComponentRV)
+	// This is done because we don't allow inband-offline state in the rvInfo.
+	//
+	updateInbandOfflineToOffline(&req.ComponentRV)
 
 	// validate the component RVs list
 	err := mvInfo.isComponentRVsValid(req.ComponentRV, true /* checkState */)
@@ -3033,8 +3051,11 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
+	//
 	// If the component RVs list has any RV with inband-offline state, update it to offline.
-	updateInbandOfflineToOffline(req.ComponentRV)
+	// This is done because we don't allow inband-offline state in the rvInfo.
+	//
+	updateInbandOfflineToOffline(&req.ComponentRV)
 
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName, true /* isStartSync */)
 	if err != nil {
@@ -3147,8 +3168,11 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
+	//
 	// If the component RVs list has any RV with inband-offline state, update it to offline.
-	updateInbandOfflineToOffline(req.ComponentRV)
+	// This is done because we don't allow inband-offline state in the rvInfo.
+	//
+	updateInbandOfflineToOffline(&req.ComponentRV)
 
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName, false /* isStartSync */)
 	if err != nil {
