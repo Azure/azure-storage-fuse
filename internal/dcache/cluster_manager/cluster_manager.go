@@ -3021,7 +3021,7 @@ func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRV
 				// updater later correctly notifies the caller waiting for its update to complete
 				// (by reading from the msg.Err channel).
 				// Later on in the batchUpdateComponentRVState() we will check if there are
-				// mutiple updates for the same RV/MV combination, we will skip such duplicate
+				// multiple updates for the same RV/MV combination, we will skip such duplicate
 				// updates.
 				//
 				// Note that this is an optimization, w/o this multiple updates queued by inline
