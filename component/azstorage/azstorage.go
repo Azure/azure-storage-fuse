@@ -448,7 +448,7 @@ func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, er
 }
 
 func (az *AzStorage) ReadFileWithName(options internal.ReadFileWithNameOptions) (data []byte, err error) {
-	return az.storage.ReadBuffer(options.Path, 0, 0)
+	return az.storage.ReadBuffer(options.Path, 0, options.Size)
 }
 
 func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length int, err error) {

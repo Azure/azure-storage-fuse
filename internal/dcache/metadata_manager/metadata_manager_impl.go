@@ -271,6 +271,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 
 		data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
 			Path: blobPath,
+			Size: attr.Size,
 		})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
