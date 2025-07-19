@@ -1,7 +1,7 @@
 .idea/
 .vscode/
 *.out
-config.yaml
+config*.yaml
 testcnf.yaml
 blobfuse2.log
 blobfuse2.test
