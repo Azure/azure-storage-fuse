@@ -134,6 +134,12 @@ func GetRVsEx(mvName string) (dcache.StateEnum, map[string]dcache.StateEnum, int
 	return clusterMap.getRVsEx(mvName)
 }
 
+// Get a map of all component RVs in the cluster map.
+// The map is of the form <rvName, count> where count is the number of MVs that have this RV as a component.
+func GetAllComponentRVs() map[string]int {
+	return clusterMap.getAllComponentRVs()
+}
+
 // Return the state of the given RV from the local cache copy of cluster map.
 func GetRVState(rvName string) dcache.StateEnum {
 	return clusterMap.getRVState(rvName)
@@ -524,6 +530,20 @@ func (c *ClusterMap) getRVsEx(mvName string) (dcache.StateEnum, map[string]dcach
 		return dcache.StateInvalid, nil, -1
 	}
 	return mv.State, mv.RVs, localMap.Epoch
+}
+
+func (c *ClusterMap) getAllComponentRVs() map[string]int {
+	allComponentRVs := make(map[string]int)
+	for _, mv := range c.getLocalMap().MVMap {
+		for rvName := range mv.RVs {
+			if _, ok := allComponentRVs[rvName]; !ok {
+				allComponentRVs[rvName] = 1
+			} else {
+				allComponentRVs[rvName]++
+			}
+		}
+	}
+	return allComponentRVs
 }
 
 func (c *ClusterMap) getRVState(rvName string) dcache.StateEnum {

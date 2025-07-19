@@ -2266,12 +2266,11 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
-			_, exists := rvMap[rvName]
-			_ = exists
+			rv, exists := rvMap[rvName]
 			common.Assert(exists, rvName, mvName)
 
 			// First things first, an offline RV MUST be marked as an offline component RV.
-			if rvMap[rvName].State == dcache.StateOffline {
+			if rv.State == dcache.StateOffline {
 				mv.RVs[rvName] = dcache.StateOffline
 			}
 
@@ -2298,7 +2297,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// come back up online) and at that time we will not increase the slot count of the outgoing component
 			// RV, so we don't reduce it now.
 			//
-			if rvMap[rvName].State != dcache.StateOffline {
+			if rv.State != dcache.StateOffline {
 				if mv.RVs[rvName] != dcache.StateOffline {
 					consumeRVSlot(mvName, rvName)
 				}
@@ -2946,6 +2945,9 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		nodeIdMap[nodeId] = struct{}{}
 	}
 
+	// Get all the component RVs in the clusterMap, to perform "is RV in use" check below.
+	allComponentRVs := cm.GetAllComponentRVs()
+
 	for rvName, rvInClusterMap := range existingRVMap {
 		// Only look for stale RVs that belong to the nodes for which we are adding new RVs.
 		if _, found := nodeIdMap[rvInClusterMap.NodeId]; !found {
@@ -2957,6 +2959,18 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		// It can be duplicate but that we will check later.
 		//
 		if _, exists := rVsByRvIdFromHB[rvInClusterMap.RvId]; exists {
+			continue
+		}
+
+		//
+		// If the RV is being used as a component RV to some MV, we cannot remove it.
+		// This is regardless of the state of the component RV, as we refer to RV map
+		// even for finding the state of the RV. This will soon be replaced by some
+		// other RV and then we can remove it from the clusterMap.
+		//
+		if _, exists := allComponentRVs[rvName]; exists {
+			log.Warn("ClusterManager::updateRVList: Stale RV %s %+v still used by %d MV(s), not removing it",
+				rvName, rvInClusterMap, allComponentRVs[rvName])
 			continue
 		}
 
