@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1752385601795,
+  "lastUpdate": 1752990480224,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1441,6 +1441,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 15.018871307373047,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "05bb0853557011f6824b7738d633b063cf404bcc",
+          "message": "Provide a mode to just disable kernel cache not the blobfuse cache (#1882)",
+          "timestamp": "2025-07-17T13:55:25Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/05bb0853557011f6824b7738d633b063cf404bcc"
+        },
+        "date": 1752990479928,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.0923922061920166,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 5.245521783828735,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 49.18844223022461,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 19.139386415481567,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.7159140110015869,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 5.209001779556274,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 49.206809759140015,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 15.574819803237915,
             "unit": "seconds"
           }
         ]
