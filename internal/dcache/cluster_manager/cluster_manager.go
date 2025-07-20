@@ -1613,7 +1613,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 	log.Debug("ClusterManager::updateStorageClusterMapIfRequired: updating RV list")
 
-	_, err = cmi.updateRVList(clusterMap.RVMap, false /* onlyMyRVs */)
+	_, err = cmi.updateRVList(clusterMap.RVMap, false /* initialHB */)
 	if err != nil {
 		err = fmt.Errorf("failed to reconcile RV mapping: %v", err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
@@ -2015,7 +2015,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//         A suitable RV is one, that:
 		//         - Does not come from any node in excludeNodes list.
 		//         - Is not one of excludeRVNames.
-		//         - Has the higher availableSpace/
+		//         - Has same or higher availableSpace.
 		//
 		// Shuffle the nodes to encourage random selection of replacement RV(s).
 		// We then iterate over the availableNodes list and pick the 1st suitable RV.
