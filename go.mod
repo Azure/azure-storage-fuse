@@ -9,6 +9,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.4.1
 	github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/golang/mock v1.6.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/montanaflynn/stats v0.7.0
@@ -32,7 +33,6 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

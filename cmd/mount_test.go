@@ -173,6 +173,13 @@ func (suite *mountTestSuite) TestMountDirNotEmpty() {
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
 
+func (suite *mountTestSuite) TestNoMountPath() {
+	defer suite.cleanupTest()
+	out, err := executeCommandC(rootCmd, "mount")
+	suite.assert.Contains(out, "accepts 1 arg(s), received 0")
+	suite.assert.NotNil(err)
+}
+
 // mount failure test where the mount path is not provided
 func (suite *mountTestSuite) TestMountPathNotProvided() {
 	defer suite.cleanupTest()
