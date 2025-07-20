@@ -111,6 +111,11 @@ func GetAllRVs() map[string]dcache.RawVolume {
 	return clusterMap.getAllRVs()
 }
 
+// It will return the RVs Map <rvId, RV> as per local cache copy of cluster map.
+func GetAllRVsById() map[string]dcache.RawVolume {
+	return clusterMap.getAllRVsById()
+}
+
 // Is rvName hosted on this node.
 func IsMyRV(rvName string) bool {
 	return clusterMap.isMyRV(rvName)
@@ -127,6 +132,12 @@ func GetRVs(mvName string) map[string]dcache.StateEnum {
 // to the component RVs which were dismissed by the server.
 func GetRVsEx(mvName string) (dcache.StateEnum, map[string]dcache.StateEnum, int64) {
 	return clusterMap.getRVsEx(mvName)
+}
+
+// Get a map of all component RVs in the cluster map.
+// The map is of the form <rvName, count> where count is the number of MVs that have this RV as a component.
+func GetAllComponentRVs() map[string]int {
+	return clusterMap.getAllComponentRVs()
 }
 
 // Return the state of the given RV from the local cache copy of cluster map.
@@ -480,6 +491,14 @@ func (c *ClusterMap) getAllRVs() map[string]dcache.RawVolume {
 	return c.getLocalMap().RVMap
 }
 
+func (c *ClusterMap) getAllRVsById() map[string]dcache.RawVolume {
+	rvsById := make(map[string]dcache.RawVolume)
+	for _, rv := range c.getLocalMap().RVMap {
+		rvsById[rv.RvId] = rv
+	}
+	return rvsById
+}
+
 func (c *ClusterMap) isMyRV(rvName string) bool {
 	myNodeID, err := common.GetNodeUUID()
 	_ = err
@@ -511,6 +530,20 @@ func (c *ClusterMap) getRVsEx(mvName string) (dcache.StateEnum, map[string]dcach
 		return dcache.StateInvalid, nil, -1
 	}
 	return mv.State, mv.RVs, localMap.Epoch
+}
+
+func (c *ClusterMap) getAllComponentRVs() map[string]int {
+	allComponentRVs := make(map[string]int)
+	for _, mv := range c.getLocalMap().MVMap {
+		for rvName := range mv.RVs {
+			if _, ok := allComponentRVs[rvName]; !ok {
+				allComponentRVs[rvName] = 1
+			} else {
+				allComponentRVs[rvName]++
+			}
+		}
+	}
+	return allComponentRVs
 }
 
 func (c *ClusterMap) getRVState(rvName string) dcache.StateEnum {
