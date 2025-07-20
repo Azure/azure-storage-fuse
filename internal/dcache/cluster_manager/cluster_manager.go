@@ -161,7 +161,8 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	}
 
 	//
-	// Not all of my RVs must have been added to clustermap, so we should heartbeat only those that got added.
+	// It's unlikely, but due to some misconfiguration all of my RVs may not have been added to clustermap,
+	// we should heartbeat only those that got added.
 	//
 	hbRVs := getMyRVsInClustermap(rvs)
 
@@ -170,16 +171,27 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	// We call the cm.GetCacheConfig() below to validate that.
 	//
 	if len(hbRVs) == len(rvs) {
+		// Common case.
 		log.Info("ClusterManager::start: ==> Cluster map now ready with my RVs %+v, config: %+v",
 			rvs, *cm.GetCacheConfig())
 	} else if len(hbRVs) > 0 {
 		log.Warn("ClusterManager::start: ==> Cluster map now ready, but only using %d of %d RVs, config: %+v",
 			len(hbRVs), len(rvs), *cm.GetCacheConfig())
 	} else {
-		log.Warn("ClusterManager::start: ==> Cluster map now ready, but cannot use any of my RVs, config: %+v",
-			*cm.GetCacheConfig())
+		//
+		// Even though this node is not contributing any RVs to the cluster, we still add it to allow
+		// it to access the cluster storage. If many nodes are not contributing any RVs, it becomes an
+		// issue, since the cluster will not have enough RVs to store data.
+		//
+		// TODO: Shall we block such nodes from joining the cluster?
+		//
+		log.Warn("ClusterManager::start: ==> Cluster map now ready, but cannot use any of my RVs %+v, config: %+v",
+			rvs, *cm.GetCacheConfig())
 	}
 
+	//
+	// Rest of the code works on rvs, so update that.
+	//
 	rvs = hbRVs
 
 	//
@@ -220,6 +232,9 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 
 	const maxConsecutiveFailures = 3
 
+	//
+	// No RVs, no periodic heartbeat.
+	//
 	if len(rvs) > 0 {
 		cmi.hbTicker = time.NewTicker(time.Duration(cmi.config.HeartbeatSeconds) * time.Second)
 		cmi.hbTickerDone = make(chan bool)
@@ -526,7 +541,8 @@ func (cmi *ClusterManager) stop() error {
 	return nil
 }
 
-// This function checks the local clustermap to see if all myRVs are present in the RV list.
+// This function checks the local clustermap to see how many of myRVs are present in the RV list
+// and returns a list of those RVs.
 // It compares all the fields of the RVs, not just the RV Id. This is important to ensure that
 // we do not treat a stale RV Id as a match. This also means that this function can only be used
 // during startup when the RV AvailableSpace has not changed in clustermap from what it was in the
@@ -535,36 +551,38 @@ func getMyRVsInClustermap(myRVs []dcache.RawVolume) []dcache.RawVolume {
 	// Must be passed with a valid non-empty RV list.
 	common.Assert(len(myRVs) > 0)
 
+	// My RVs which actually are in the clustermap.
 	var cmRVs []dcache.RawVolume
 
+	//
 	// Fetch all RVs owned by this node from the clustermap.
+	// Some of them could be outside myRVs.
+	//
 	myRVsFromClustermap := cm.GetMyRVs()
 	if len(myRVsFromClustermap) == 0 {
 		return cmRVs
 	}
 
-	numFound := 0
 	for _, myRv := range myRVs {
 		for _, rv := range myRVsFromClustermap {
 			if myRv == rv {
-				numFound++
 				cmRVs = append(cmRVs, rv)
 				break
 			}
 		}
 	}
 
-	common.Assert(numFound <= len(myRVs), numFound, myRVs, myRVsFromClustermap)
+	common.Assert(len(cmRVs) <= len(myRVs), cmRVs, myRVs, myRVsFromClustermap)
 
-	if numFound == len(myRVs) {
+	if len(cmRVs) == len(myRVs) {
 		return cmRVs
-	} else if numFound > 0 {
+	} else if len(cmRVs) > 0 {
 		//
 		// This can happen if a node was previously part of the cluster and then it left and joined
 		// again, but this time with a different set of RVs but with at least one common RV.
 		//
-		log.Warn("ClusterManager::getMyRVsInClustermap: Found %d of my %d RV(s) in clustermap, not all RVs present, myRVs: %+v, clustermap RVs: %+v",
-			numFound, len(myRVs), myRVs, myRVsFromClustermap)
+		log.Warn("ClusterManager::getMyRVsInClustermap: Found %d of my %d RV(s) in clustermap, not all RVs present, found: %+v, expected: %+v, clustermap RVs: %+v",
+			len(cmRVs), len(myRVs), cmRVs, myRVs, myRVsFromClustermap)
 	}
 
 	return cmRVs
@@ -1062,8 +1080,8 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		return err
 	}
 
-	log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: ==> Initial Heartbeat punched, now adding my RVs: %+v",
-		myRVs)
+	log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: ==> Initial Heartbeat punched, now adding %d my RV(s): %+v",
+		len(myRVs), myRVs)
 
 	for {
 		// Time check.
@@ -1097,8 +1115,8 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 			// The clustermap has all our RVs in the RV list added by some other node, thank it and
 			// proceed.
 			//
-			log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: All myRVs added by node %s (took %s): %+v",
-				clusterMap.LastUpdatedBy, time.Since(startTime), clusterMap)
+			log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: All (%d) myRVs added by node %s (took %s): %+v",
+				len(myRVs), clusterMap.LastUpdatedBy, time.Since(startTime), clusterMap)
 			return nil
 		}
 
@@ -1174,7 +1192,7 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		// The clustermap must now have our RVs added to RV list.
 		// Only RVs which clash with existing RVs in the clustermap would not be added.
 		//
-		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: cluster map updated by %s at %d (took %s):%+v",
+		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: cluster map updated by %s at %d (took %s): %+v",
 			cmi.myNodeId, clusterMap.LastUpdatedAt, time.Since(startTime), clusterMap)
 
 		break
@@ -2287,6 +2305,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
 			rv, exists := rvMap[rvName]
+			_ = exists
 			common.Assert(exists, rvName, mvName)
 
 			// First things first, an offline RV MUST be marked as an offline component RV.
@@ -2882,7 +2901,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				// node's RV list published in the initial heartbeat. If the RV is not being used by any MV
 				// then we wil remove it from the existingRVMap, but if the old RV is being used as a component
 				// RV by some MV, it will not be removed by updateRVList(). Since it won't be present in later
-				// heartbeats too, we will reach here.
+				// heartbeats, we will reach here.
 				//
 				//common.Assert(false, "HB missing for RV in clustermap", rvInClusterMap)
 
@@ -2953,6 +2972,9 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			for rvName, rv := range existingRVMap {
 				existingRVMapByRvId[rv.RvId] = &nameAndRV{rvName, &rv}
 			}
+
+			common.Assert(len(existingRVMapByRvId) == len(existingRVMap),
+				len(existingRVMapByRvId), len(existingRVMap))
 		}
 
 		if namedRV, exists := existingRVMapByRvId[rvId]; exists {
@@ -2971,6 +2993,8 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	for _, nodeId := range nodes {
 		nodeIdMap[nodeId] = struct{}{}
 	}
+	// nodes[] must have unique node ids.
+	common.Assert(len(nodeIdMap) == len(nodes), len(nodeIdMap), len(nodes))
 
 	// Get all the component RVs in the clusterMap, to perform "is RV in use" check below.
 	allComponentRVs := cm.GetAllComponentRVs()
@@ -3027,7 +3051,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	}
 
 	//
-	// Add new RV(s) into clusterMap, starting from the next available index.
+	// Add new RV(s) into clusterMap, starting from the next available index (starting from 0).
 	// Since we may remove old RVs not being exported this time by the node, we may have some
 	// gaps in the RV index space. We pick the first available RV index.
 	//
@@ -3047,8 +3071,8 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			//       Drop the new RV and keep the existing one.
 			//
 			if namedRV.rv.NodeId != rv.NodeId {
-				log.Warn("ClusterManager::updateRVList: RVId %s from node %s conflicts with existing RV from node %s, skipping",
-					rv.RvId, rv.NodeId, namedRV.rv.NodeId)
+				log.Warn("ClusterManager::updateRVList: RVId %s from node %s conflicts with existing RV %s from node %s, skipping",
+					rv.RvId, rv.NodeId, namedRV.rvName, namedRV.rv.NodeId)
 				continue
 			}
 
@@ -3097,7 +3121,7 @@ func getAllNodesFromRVMap(rvMap map[string]dcache.RawVolume) map[string]struct{}
 //   - All the RVs present in those nodes.
 //   - The last heartbeat epoch for each of those RVs.
 //   - List of nodeIds for which the heartbeat was found.
-//     This is only valid if initialHB is true.
+//     This is only valid if initialHB is true, else it is empty.
 //   - List of nodeIds for which the heartbeat could not be fetched.
 //
 // The first two are returned as maps indexed by RVId.
@@ -3200,10 +3224,6 @@ func collectHBForGivenNodeIds(nodeIds []string, initialHB bool) (map[string]dcac
 
 	// Go over all RVs, and add them to rVsByRvIdFromHB, to be processed later.
 	for result := range resultCh {
-		if initialHB {
-			successfulNodeIdsMap[result.nodeId] = struct{}{}
-		}
-
 		for rvId, rv := range result.rvs {
 			if existingRv, exists := rVsByRvIdFromHB[rvId]; exists {
 				msg := fmt.Sprintf("RVId %s from node %s conflicts with existing RV from node %s",
@@ -3220,6 +3240,11 @@ func collectHBForGivenNodeIds(nodeIds []string, initialHB bool) (map[string]dcac
 
 			rVsByRvIdFromHB[rvId] = rv
 			rvLastHB[rvId] = lastHB
+
+			// This node contributed at least one RV in rVsByRvIdFromHB.
+			if initialHB {
+				successfulNodeIdsMap[result.nodeId] = struct{}{}
+			}
 		}
 	}
 
