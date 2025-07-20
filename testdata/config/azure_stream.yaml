@@ -17,7 +17,7 @@ libfuse:
 
 stream:
   block-size-mb: 16
-  max-buffers: 200
+  max-buffers: 300
   buffer-size-mb: 8
 
 attr_cache:
