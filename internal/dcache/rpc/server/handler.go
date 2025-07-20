@@ -3266,11 +3266,17 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 	// must have sent it and if we don't have it, refreshing from clustermap cannot add it.
 	// This cannot happen unless sender is doing something wrong, hence assert.
 	//
+	// Update: This can happen if a component RV which is still part of the MV is no longer published
+	//         by the owning node after it restarted. Client who fetches the component RV info from
+	//         clustermap will find the RV as part of the MV and hence it may send the GetMVSize request
+	//         to the node but the node that has now restarted doesn't have the component RV, hence it
+	//         fails with "InvalidRequest" error.
+	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
-		common.Assert(false, errStr)
+		//common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
