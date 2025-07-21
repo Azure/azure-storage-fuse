@@ -202,33 +202,39 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		defer wg.Done()
 
 		for i := 0; i < int(numBlocks); i++ {
-			respSplitItem := <-responseChannel
-			if respSplitItem.Err != nil {
-				log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
+			select {
+			case <-ds.GetThreadPool().ctx.Done(): // check if the thread pool is closed
 				operationSuccess = false
-				cancel() // cancel the context to stop download of other chunks
-			} else {
-				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data[:respSplitItem.DataLen], respSplitItem.Block.Offset)
-				if err != nil {
-					log.Err("downloadSplitter::Process : Failed to write data to file %s [%s]", item.Path, err.Error())
+				cancel()
+				return
+			case respSplitItem := <-responseChannel:
+				if respSplitItem.Err != nil {
+					log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
 					operationSuccess = false
 					cancel() // cancel the context to stop download of other chunks
+				} else {
+					_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data[:respSplitItem.DataLen], respSplitItem.Block.Offset)
+					if err != nil {
+						log.Err("downloadSplitter::Process : Failed to write data to file %s [%s]", item.Path, err.Error())
+						operationSuccess = false
+						cancel() // cancel the context to stop download of other chunks
+					}
+
+					// send the download status to stats manager
+					ds.GetStatsManager().AddStats(&StatsItem{
+						Component:        SPLITTER,
+						Name:             item.Path,
+						Success:          false,
+						Download:         false,
+						DiskIO:           true,
+						BytesTransferred: respSplitItem.DataLen,
+					})
 				}
 
-				// send the download status to stats manager
-				ds.GetStatsManager().AddStats(&StatsItem{
-					Component:        SPLITTER,
-					Name:             item.Path,
-					Success:          false,
-					Download:         false,
-					DiskIO:           true,
-					BytesTransferred: respSplitItem.DataLen,
-				})
-			}
-
-			if respSplitItem.Block != nil {
-				// log.Debug("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
-				ds.blockPool.Release(respSplitItem.Block)
+				if respSplitItem.Block != nil {
+					// log.Debug("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
+					ds.blockPool.Release(respSplitItem.Block)
+				}
 			}
 		}
 	}()
@@ -266,19 +272,21 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 
 	wg.Wait()
 
-	// update the last modified time
-	// TODO:: xload : verify if the lmt is updated correctly
-	err = os.Chtimes(localPath, item.Atime, item.Mtime)
-	if err != nil {
-		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
-	}
-
-	if ds.validateMD5 && operationSuccess {
-		err = ds.checkConsistency(item)
+	if operationSuccess {
+		// update the last modified time
+		// TODO:: xload : verify if the lmt is updated correctly
+		err = os.Chtimes(localPath, item.Atime, item.Mtime)
 		if err != nil {
-			// TODO:: xload : retry if md5 validation fails
-			log.Err("downloadSplitter::Process : unable to validate md5 for %s [%s]", item.Path, err.Error())
-			operationSuccess = false
+			log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
+		}
+
+		if ds.validateMD5 {
+			err = ds.checkConsistency(item)
+			if err != nil {
+				// TODO:: xload : retry if md5 validation fails
+				log.Err("downloadSplitter::Process : unable to validate md5 for %s [%s]", item.Path, err.Error())
+				operationSuccess = false
+			}
 		}
 	}
 

@@ -1,27 +1,47 @@
+# Responsible for Unmounting the blobfuse and Deletion of the Containers.
+# Default behaviour on calling this script will delete the containers on the storage account.
+# caution: When this is script is called for at the end of the job make sure to set the delete_containers:false.
 parameters:
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
-    type: string
+  - name: unmount
+    type: boolean
+  - name: delete_containers
+    type: boolean
 
 steps:
-  - script: |
-      ps -ef | grep blobfuse2
-      df -h
-    displayName: 'Check process info'
+  - ${{ if eq(parameters.unmount, true) }}:
+    - script: |
+        ps -ef | grep blobfuse2
+        df -h
+      displayName: 'Check process info'
 
-  - script: |
-      sudo fusermount -u ${mount_dir}
-      sudo fusermount3 -u ${mount_dir}
-      sudo kill -9 `pidof blobfuse2` || true
-      rm -rf ${mount_dir}/*
-      rm -rf ${temp_dir}/*
-    timeoutInMinutes: 20
-    env:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-    displayName: 'Cleanup'
-    condition: always()
+    - script: |
+        sudo umount -f $(MOUNT_DIR)
+        sleep 10
+        ps aux | grep blobfuse2
+        sudo kill -9 `pidof blobfuse2` &> /dev/null
+        rm -rf $(MOUNT_DIR)/*
+        rm -rf $(TEMP_DIR)/*
+        sudo cat /etc/mtab
+      timeoutInMinutes: 5
+      displayName: 'Unmount Container'
+      condition: always()
+
+  # delete the container in block account
+  - ${{ if eq(parameters.delete_containers, true) }}:
+    - template: 'container.yml'
+      parameters:
+        delete_container: true
+        account_type: "block"
+        account_name: $(BF2_BLK_ACC_NAME)
+        account_key: $(BF2_BLK_ACC_KEY)
+        container_name: $(containerName)
+
+  # delete the container in adls account
+  - ${{ if eq(parameters.delete_containers, true) }}:
+    - template: 'container.yml'
+      parameters:
+        delete_container: true
+        account_type: "adls"
+        account_name: $(BF2_ADLS_ACC_NAME)
+        account_key: $(BF2_ADLS_ACC_KEY)
+        container_name: $(containerName)
