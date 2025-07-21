@@ -191,6 +191,11 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError(errString)
 	}
 
+	err = dcache.InitBufferPool(dc.cfg.ChunkSize)
+	if err != nil {
+		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to create BufferPool : %v]", err))
+	}
+
 	err = rm.Start()
 	if err != nil {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start replication manager : %v]", err))
