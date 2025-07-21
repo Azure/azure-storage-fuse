@@ -124,10 +124,10 @@ stages:
             cat $(BLOBFUSE2_CFG)
           displayName: "Generate v2 Config File"
           env:
-            NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
-            NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
-            ACCOUNT_TYPE: 'block'
-            ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+            STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
+            STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
+            STO_ACC_TYPE: 'block'
+            STO_ACC_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           continueOnError: false
         
         - script: |
@@ -145,10 +145,10 @@ stages:
             echo "---------------------------------------------------"
           displayName: "Generate v2 Config File for File vs Block"
           env:
-            NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
-            NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
-            ACCOUNT_TYPE: 'block'
-            ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+            STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
+            STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
+            STO_ACC_TYPE: 'block'
+            STO_ACC_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           continueOnError: false
 
         - script: |
@@ -351,10 +351,10 @@ stages:
               cat $(BLOBFUSE2_CFG)
             displayName: "Generate v2 Config File"
             env:
-              NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
-              NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
-              ACCOUNT_TYPE: 'block'
-              ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
+              STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
+              STO_ACC_TYPE: 'block'
+              STO_ACC_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
             continueOnError: false
             
           - script: |
@@ -383,10 +383,10 @@ stages:
               python3 $(WORK_DIR)/test/perf_test/resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='main' --log=$(ROOT_DIR)/blobfuse2-perf.json
             displayName: "Blobfuse2 ResNet50 on Main"
             env:
-              NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
-              NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
-              ACCOUNT_TYPE: 'block'
-              ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
+              STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
+              STO_ACC_TYPE: 'block'
+              STO_ACC_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
               VERBOSE_LOG: false
               USE_HTTP: false
             continueOnError: false

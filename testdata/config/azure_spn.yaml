@@ -26,8 +26,8 @@ attr_cache:
   timeout-sec: 3600
 
 azstorage:
-  type: { ACCOUNT_TYPE }
-  endpoint: { ACCOUNT_ENDPOINT }
+  type: { STO_ACC_TYPE }
+  endpoint: { STO_ACC_ENDPOINT }
   use-http: false
   account-name: { NIGHTLY_SPN_ACC_NAME }
   mode: spn
