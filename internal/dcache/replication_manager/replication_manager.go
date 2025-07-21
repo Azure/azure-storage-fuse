@@ -1083,7 +1083,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		return
 	}
 
-	componentRVs := convertRVMapToList(mvName, mvInfo.RVs)
+	componentRVs := cm.RVMapToList(mvName, mvInfo.RVs)
 
 	log.Debug("ReplicationManager::syncMV: Component RVs for MV %s are %v",
 		mvName, rpc.ComponentRVsToString(componentRVs))

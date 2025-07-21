@@ -139,3 +139,8 @@ func (ns *NodeServer) Stop() error {
 
 	return nil
 }
+
+// Silence unused import errors for release builds.
+func init() {
+	cm.IsValidMVName("mv0")
+}

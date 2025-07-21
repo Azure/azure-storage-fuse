@@ -352,6 +352,7 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 			//
 			componentRVMap := cm.GetRVs(mvName)
 			_, ok := componentRVMap[rvName]
+			_ = ok
 
 			// We should only have MV dirs for active MVs for the RV.
 			common.Assert(ok, rvName, mvName, componentRVMap)

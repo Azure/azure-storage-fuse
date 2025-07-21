@@ -168,24 +168,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // error.
 func getComponentRVsForMV(mvName string) (dcache.StateEnum, []*models.RVNameAndState, int64) {
 	mvState, rvMap, epoch := cm.GetRVsEx(mvName)
-	return mvState, convertRVMapToList(mvName, rvMap), epoch
-}
-
-func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {
-	var componentRVs []*models.RVNameAndState
-
-	for rvName, rvState := range rvMap {
-		common.Assert(cm.IsValidRVName(rvName), rvName)
-		common.Assert(cm.IsValidComponentRVState(rvState), rvName, rvState)
-
-		componentRVs = append(componentRVs,
-			&models.RVNameAndState{Name: rvName, State: string(rvState)})
-	}
-
-	common.Assert(len(componentRVs) == int(getNumReplicas()),
-		mvName, len(componentRVs), getNumReplicas(), rpc.ComponentRVsToString(componentRVs))
-
-	return componentRVs
+	return mvState, cm.RVMapToList(mvName, rvMap), epoch
 }
 
 // return the number of replicas

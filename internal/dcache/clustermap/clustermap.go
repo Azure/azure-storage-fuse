@@ -467,10 +467,12 @@ func (c *ClusterMap) getActiveMVsForRV(rvName string) map[string]struct{} {
 	localMap := c.getLocalMap()
 
 	rv, ok := localMap.RVMap[rvName]
-	rvIsOffline := false
-	if ok {
-		rvIsOffline = (rv.State == dcache.StateOffline)
+	if !ok {
+		common.Assert(false, rvName)
+		return nil
 	}
+
+	rvIsOffline := (rv.State == dcache.StateOffline)
 
 	activeMVs := make(map[string]struct{})
 	for mvName, mv := range localMap.MVMap {
@@ -490,6 +492,7 @@ func (c *ClusterMap) getActiveMVsForRV(rvName string) map[string]struct{} {
 			continue
 		}
 
+		// Else, it's an active MV for this RV.
 		activeMVs[mvName] = struct{}{}
 	}
 
