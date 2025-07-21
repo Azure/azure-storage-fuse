@@ -131,6 +131,9 @@ func PutBuffer(buf []byte) {
 	// Caller must free a buffer that's allocated using getBuffer().
 	common.Assert(bufPool.curBuffers.Load() > 0, bufPool.curBuffers.Load())
 
+	// This buffer must have been allocated from the pool and hence must have capacity at least bp.bufSize.
+	common.Assert(cap(buf) >= bufPool.bufSize, cap(buf), bufPool.bufSize)
+
 	// Reslice the length of the buffer to its original capacity if it got compacted.
 	buf = buf[:bufPool.bufSize]
 
