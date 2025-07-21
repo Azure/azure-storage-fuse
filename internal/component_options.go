@@ -118,6 +118,7 @@ type ReadFileOptions struct {
 
 type ReadFileWithNameOptions struct {
 	Path string
+	Size int64
 }
 
 type ReadInBufferOptions struct {
