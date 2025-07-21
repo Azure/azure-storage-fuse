@@ -960,8 +960,11 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 				} else {
 					if (currSize + float64(fileSize)) > fc.diskHighWaterMark {
 						log.Err("FileCache::OpenFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Name)
-						f.Close()
-						_ = os.Remove(localPath)
+						_ = f.Close()
+						err = os.Remove(localPath)
+						if err != nil {
+							log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
+						}
 						return nil, syscall.ENOSPC
 					}
 				}
