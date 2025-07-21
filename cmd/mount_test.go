@@ -38,6 +38,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -129,6 +130,14 @@ func (suite *mountTestSuite) SetupTest() {
 	}
 }
 
+func (suite *mountTestSuite) SetupSuite() {
+	out, err := executeCommandC(rootCmd, "mount")
+	strings.Contains(out, "accepts 1 arg(s), received 0")
+	if err == nil {
+		panic("Unable to parse the empty flags to mount command")
+	}
+}
+
 func (suite *mountTestSuite) cleanupTest() {
 	resetCLIFlags(*mountCmd)
 	resetCLIFlags(*mountAllCmd)
@@ -171,13 +180,6 @@ func (suite *mountTestSuite) TestMountDirNotEmpty() {
 	op, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "-o", "nonempty")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
-}
-
-func (suite *mountTestSuite) TestNoMountPath() {
-	defer suite.cleanupTest()
-	out, err := executeCommandC(rootCmd, "mount")
-	suite.assert.Contains(out, "accepts 1 arg(s), received 0")
-	suite.assert.NotNil(err)
 }
 
 // mount failure test where the mount path is not provided
