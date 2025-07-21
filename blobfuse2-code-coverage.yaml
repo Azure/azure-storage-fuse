@@ -19,661 +19,628 @@ parameters:
 
 
 stages:
-  - ${{ if eq(parameters.coverage_test, true) }}:    
-    - stage: BuildAndTest
-      jobs:
-        - job: Coverage
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                AgentName: 'blobfuse-ubuntu20'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse-dev'
-                fuselib2: 'fuse'
-                tags: 'fuse2'
-              Ubuntu-22:
-                AgentName: 'blobfuse-ubuntu22'
-                containerName: 'test-cnt-ubn-22'
-                fuselib: 'libfuse3-dev'
-                fuselib2: 'fuse3'
-                tags: 'fuse3'          
-
-          pool:
-            name: "blobfuse-ubuntu-pool"
-            demands:
-              - ImageOverride -equals $(AgentName)
-
-          variables:
-            - group: NightlyBlobFuse
-            - name: MOUNT_DIR
-              value: '$(Pipeline.Workspace)/blob_mnt'
-            - name: TEMP_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            - name: BLOBFUSE2_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: BLOBFUSE2_ADLS_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-            - name: GOPATH
-              value: '$(Pipeline.Workspace)/go'
-            - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)' 
-            - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-
-          steps:
-            # -------------------------------------------------------
-            # Pull and build the code
-            - template: 'azure-pipeline-templates/build.yml'
-              parameters:
-                working_directory: $(WORK_DIR)
-                root_dir: $(ROOT_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                gopath: $(GOPATH)
-                container: $(containerName)
-                tags: $(tags)
-                fuselib: $(fuselib)
-                skip_msi: "false"
-                skip_azcli: "false"
-
-            # -------------------------------------------------------
-            # UT based code coverage test
-            - script: |
-                go test -v -timeout=1h ./... --tags=unittest,$(tags) -covermode count -coverprofile ./blobfuse2_ut.cov
-              workingDirectory: $(WORK_DIR)
-              displayName: "UT Code Coverage"
-        
-            # -------------------------------------------------------
-            # Build code coverage binary
-            - script: |
-                go test -coverpkg="./..." -covermode=count -c --tags=$(tags) -o blobfuse2.test
-              workingDirectory: $(WORK_DIR)
-              displayName: "Build coverage binary"
-
-            # -------------------------------------------------------
-            # Config Generation (Block Blob)
-            - script: |
-                cd $(WORK_DIR)
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest1.cov gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-              env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-                USE_HTTP: false
-              displayName: 'Create Config File - Block Blob'
-              workingDirectory: $(WORK_DIR)
-              continueOnError: false
-            
-            # Code Coverage with e2e-tests for block blob
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
-                cd -
-                sudo fusermount -u $(MOUNT_DIR) 
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "Block Blob Coverage"
-
-            # Code Coverage with health monitor, dynamic, CPU and mem profilers enabled for block blob
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                cp $(BLOBFUSE2_CFG) /tmp/configBlockProfilerTemp.yaml
-                echo "dynamic-profile: true" >> /tmp/configBlockProfilerTemp.yaml
-                echo "cpu-profile: /tmp/cpuBlockProfTmp" >> /tmp/configBlockProfilerTemp.yaml
-                echo "mem-profile: /tmp/memBlockProfTmp" >> /tmp/configBlockProfilerTemp.yaml
-                echo "health_monitor:" >> /tmp/configBlockProfilerTemp.yaml
-                echo "  enable-monitoring: true" >> /tmp/configBlockProfilerTemp.yaml
-                echo "  monitor-disable-list:" >> /tmp/configBlockProfilerTemp.yaml
-                echo "    - blobfuse_stats" >> /tmp/configBlockProfilerTemp.yaml
-                cat /tmp/configBlockProfilerTemp.yaml
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_profiler.cov mount $(MOUNT_DIR) --config-file=/tmp/configBlockProfilerTemp.yaml --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
-                cd -
-                sudo fusermount -u $(MOUNT_DIR) 
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "Block Blob Coverage with profilers"
-
-            # Config Generation (ADLS)
-            - script: |
-                cd $(WORK_DIR)
-                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
-              env:
-                NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY:  $(AZTEST_ADLS_KEY)
-                ACCOUNT_TYPE: 'adls'
-                ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
-                VERBOSE_LOG: false
-                USE_HTTP: false
-              displayName: 'Create Config File - ADLS'
-              continueOnError: false
-
-            # Code Coverage with e2e-tests for ADLS
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
-                cd -
-                ./blobfuse2 unmount all
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "ADLS Coverage"
-
-            # Code Coverage with health monitor, dynamic, CPU and mem profilers enabled for adls
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                cp $(BLOBFUSE2_ADLS_CFG) /tmp/configAdlsProfilerTemp.yaml
-                echo "dynamic-profile: true" >> /tmp/configAdlsProfilerTemp.yaml
-                echo "cpu-profile: /tmp/cpuAdlsProfTmp" >> /tmp/configAdlsProfilerTemp.yaml
-                echo "mem-profile: /tmp/memAdlsProfTmp" >> /tmp/configAdlsProfilerTemp.yaml
-                echo "health_monitor:" >> /tmp/configAdlsProfilerTemp.yaml
-                echo "  enable-monitoring: true" >> /tmp/configAdlsProfilerTemp.yaml
-                echo "  monitor-disable-list:" >> /tmp/configAdlsProfilerTemp.yaml
-                echo "    - blobfuse_stats" >> /tmp/configAdlsProfilerTemp.yaml
-                cat /tmp/configAdlsProfilerTemp.yaml
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls_profiler.cov mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
-                cd -
-                sudo fusermount -u $(MOUNT_DIR) 
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "ADLS Coverage with profilers"
-
-            # -------------------------------------------------------
-            # Config Generation (Block Blob) for cli options
-            - script: |
-                cd $(WORK_DIR)
-                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-              displayName: 'Create Config File - Block Blob'
-              env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-                USE_HTTP: false
-
-            # Component generation code coverage
-            - script: |
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/generate_cmd.cov generate test_component
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Component Generation"
-
-            # Mount / Unmount / List code coverage
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/list_empty_cmd.cov mount list
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Mount List"
-
-            - script: |
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_cmd.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug 
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                sleep 20     
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/list_cmd_all.cov mount list
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-                ./blobfuse2 unmount all
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Mount all and List"
-
-            - script: |
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_cmd_all.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug 
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                sleep 20
-                cd $(MOUNT_DIR)/$(containerName)
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_cmd_cont_fail.cov unmount $(MOUNT_DIR)/$(containerName)
-                cd -
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_cmd_cont.cov unmount $(MOUNT_DIR)/$(containerName)
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_wild_cmd.cov unmount "testmut*"
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_wild_cmd.cov unmount "abcdef*"
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_negative_cmd.cov unmount abcdef
-                if [ $? -ne 1 ]; then
-                  exit 1
-                fi
-
-                for i in {1..5}; do ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_all_cmd$i.cov unmount all; done
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Unmount options"
-
-
-            # Mount / Unmount Negative tests
-            - script: |
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_neg.cov mount all /abc --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug
-                if [ $? -eq 0 ]; then
-                  exit 1
-                fi
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Invalid mount path"
-              timeoutInMinutes: 2
-
-            - script: |
-                ./blobfuse2 unmount all
-                cp $(BLOBFUSE2_CFG) /tmp/configMountall.yaml
-                echo "mountall:" >> /tmp/configMountall.yaml
-                echo "  container-allowlist:" >> /tmp/configMountall.yaml
-                echo "    - abcd" >> /tmp/configMountall.yaml
-                cat /tmp/configMountall.yaml
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt_all.cov secure encrypt --config-file=/tmp/configMountall.yaml --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_all_cmd_secure.cov mount all $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --log-level=log_debug --foreground=true &
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                sleep 5
-                ./blobfuse2 unmount all
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Mount all with secure config"
-              timeoutInMinutes: 2
-
-            - script: |
-                ./blobfuse2 unmount all
-                cp $(BLOBFUSE2_CFG) /tmp/configMountall.yaml
-                echo "mountall:" >> /tmp/configMountall.yaml
-                echo "  container-denylist:" >> /tmp/configMountall.yaml
-                echo "    - abcd" >> /tmp/configMountall.yaml
-                cat /tmp/configMountall.yaml
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt_all2.cov secure encrypt --config-file=/tmp/configMountall.yaml --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_all_cmd_secure2.cov mount all $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --log-level=log_debug --foreground=true &
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                sleep 5
-                ./blobfuse2 unmount all
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Mount all with secure config 2"
-              timeoutInMinutes: 2
-
-            - script: |
-                ./blobfuse2 unmount all
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_foreg.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                sleep 5
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_remount.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug
-                if [ $? -eq 0 ]; then
-                  exit 1
-                fi
-
-                sleep 5
-                ./blobfuse2 unmount all
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Remount test"
-              timeoutInMinutes: 2
-
-            # Doc generation tests
-            - script: |
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc1.cov doc
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc2.cov doc --output-location /notexists
-                touch ~/a.txt
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc2.cov doc --output-location ~/a.txt
-                rm -rf ~/a.txt
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : doc generation"
-              timeoutInMinutes: 2
-
-            # Version check
-            - script: |
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version1.cov --version
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version --check
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : version"
-              timeoutInMinutes: 2
-
-            # Simulate config change
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2 unmount all
-                
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_foreg_2.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-
-                sleep 5
-                echo -e "\n\nlogging:\n  level:log_debug\n  type:base" >> $(BLOBFUSE2_CFG)
-                sed -i 's/timeout:.*/timeout: 300/' $(BLOBFUSE2_CFG)
-                sleep 5
-
-                ./blobfuse2 unmount all
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Config change simulator"
-
-            # Secure Config, fine to use insecure passphrase as this is just for testing
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2 unmount all
-                ./blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-                
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt.cov secure encrypt --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_secure.cov mount $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=false -tmp-path=$(TEMP_DIR)
-                cd -
-
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_set.cov secure set --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --key=logging.level --value=log_debug
-                ./blobfuse2 unmount all
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Secure Config"
-              env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-                USE_HTTP: false
-
-            # stop health monitor binary associated with a given blobfuse2 pid
-            - script: |
-                ./blobfuse2 unmount all
-                sudo kill -9 `pidof blobfuse2.test`
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                mkdir -p $(MOUNT_DIR)/hmon_test
-
-                sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
-                ls -l /usr/local/bin/bfusemon*
-
-                cat /tmp/configAdlsProfilerTemp.yaml
-                ./blobfuse2 mount $(MOUNT_DIR)/hmon_test --config-file=/tmp/configAdlsProfilerTemp.yaml
-                sleep 10
-                ps -aux | grep blobfuse2
-                ps -aux | grep bfusemon
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/bfusemon_stop_pid.cov health-monitor stop --pid=`pidof blobfuse2`
-                ./blobfuse2 unmount all
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Health monitor stop pid"
-
-            # stop all health monitor binaries
-            - script: |
-                ./blobfuse2 unmount all
-                sudo kill -9 `pidof blobfuse2.test`
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                mkdir -p $(MOUNT_DIR)/hmon_test
-
-                cat /tmp/configAdlsProfilerTemp.yaml
-                ./blobfuse2 mount $(MOUNT_DIR)/hmon_test --config-file=/tmp/configAdlsProfilerTemp.yaml
-                sleep 10
-                ps -aux | grep blobfuse2
-                ps -aux | grep bfusemon
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/bfusemon_stop_all.cov health-monitor stop all
-                ./blobfuse2 unmount all
-              workingDirectory: $(WORK_DIR)
-              displayName: "CLI : Health monitor stop all"
-
-            # Start Proxy
-            - script: |
-                sudo apt-get update --fix-missing -y
-                sudo apt remove mitmproxy -y
-                sudo apt-get install python3-setuptools -y
-                sudo apt install python3-pip -y
-                sudo pip3 install mitmproxy
-                mitmdump -q -w proxy_logs.txt &
-              displayName: 'Install & Start Proxy'
-
-            # Configure Proxy cert & env
-            - script: |
-                sudo mkdir /usr/local/share/ca-certificates/extra
-                sudo cp ~/.mitmproxy/mitmproxy-ca-cert.cer /usr/local/share/ca-certificates/extra/mitmproxy-ca-cert.crt
-                sudo update-ca-certificates
-                export https_proxy="127.0.0.1:8080"
-                export http_proxy="127.0.0.1:8080"
-              displayName: 'Configure Proxy'
-
-            # Config Generation (Block Blob Proxy)
-            - script: |
-                cd $(WORK_DIR)
-                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-              env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-                USE_HTTP: false
-              displayName: 'Create Config File - Block Blob Proxy'
-              workingDirectory: $(WORK_DIR)
-              continueOnError: false
-            
-            # Code Coverage with e2e-tests for block blob Proxy
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_proxy.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --disable-compression=true --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
-                cd -
-                sudo fusermount -u $(MOUNT_DIR) 
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "Block Blob Coverage Proxy"
-
-            # Config Generation (ADLS Proxy)
-            - script: |
-                cd $(WORK_DIR)
-                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
-              env:
-                NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY:  $(AZTEST_ADLS_KEY)
-                ACCOUNT_TYPE: 'adls'
-                ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
-                VERBOSE_LOG: false
-                USE_HTTP: false
-              displayName: 'Create Config File - ADLS Proxy'
-              continueOnError: false
-
-            # Code Coverage with e2e-tests for ADLS Proxy
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls_proxy.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
-                cd -
-                ./blobfuse2 unmount all
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "ADLS Coverage Proxy"
-
-            # -------------------------------------------------------
-            # Coverage report consolidation
-            - script: |
-                echo 'mode: count' > ./blobfuse2_coverage_raw.rpt
-                tail -q -n +2 ./*.cov >> ./blobfuse2_coverage_raw.rpt
-                cat ./blobfuse2_coverage_raw.rpt | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v tools | grep -v "common/log" | grep -v "common/exectime" | grep -v "common/types.go" | grep -v "internal/stats_manager" | grep -v "main.go" | grep -v "component/azstorage/azauthmsi.go" | grep -v "component/azstorage/azauthspn.go" | grep -v "component/stream" | grep -v "component/custom" | grep -v "component/azstorage/azauthcli.go" | grep -v "exported/exported.go" |  grep -v "component/block_cache/stream.go"  | grep -v "component/azstorage/azAuthWorkloadIdentity.go" | grep -v "component/azstorage/azauthWorkloadIdentity.go" | grep -v "component/azstorage/policies.go" > ./blobfuse2_coverage.rpt 
-                go tool cover -func blobfuse2_coverage.rpt  > ./blobfuse2_func_cover.rpt
-                go tool cover -html=./blobfuse2_coverage.rpt -o ./blobfuse2_coverage.html
-                go tool cover -html=./blobfuse2_ut.cov -o ./blobfuse2_ut.html
-                cp ./*.rpt  $(Build.ArtifactStagingDirectory)/
-                cp ./*.cov  $(Build.ArtifactStagingDirectory)/
-                cp ./*.html $(Build.ArtifactStagingDirectory)/
-              workingDirectory: $(WORK_DIR)
-              displayName: "Save coverage report"
-
-            # Publish the Artifacts
-            - task: PublishBuildArtifacts@1
-              inputs:
-                artifactName: 'Blobfuse2 Coverage $(tags)'
-              displayName: 'Publish Artifacts for blobfuse2 code coverage'
-              condition: succeeded()
-
-            # Overall code coverage check
-            - script: |
-                chmod 777 ./test/scripts/coveragecheck.sh
-                ./test/scripts/coveragecheck.sh
-              workingDirectory: $(WORK_DIR)
-              displayName: "Overall coverage check"
-
-            # File level code coverage check
-            - script: |
-                ./test/scripts/coveragecheck.sh file
-              workingDirectory: $(WORK_DIR)
-              displayName: "File level coverage check"
-              condition: always()
-        
-    
-  
-  - ${{ if eq(parameters.cleanup_test, true) }}:   
-    - stage: AccountCleanup
-      condition: always()
-      jobs:
-        - job: Cleanup
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                AgentName: 'blobfuse-ubuntu20'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse3-dev'
-                fuselib2: 'fuse3'
-                tags: 'fuse3'          
-
-          pool:
-            name: "blobfuse-ubuntu-pool"
-            demands:
-              - ImageOverride -equals $(AgentName)
-
-          variables:
-            - group: NightlyBlobFuse
-            - name: MOUNT_DIR
-              value: '$(Pipeline.Workspace)/blob_mnt'
-            - name: TEMP_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            - name: BLOBFUSE2_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: BLOBFUSE2_ADLS_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-            - name: GOPATH
-              value: '$(Pipeline.Workspace)/go'
-            - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)' 
-            - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-
-          steps:
-            # -------------------------------------------------------
-            # Pull and build the code
-            - template: 'azure-pipeline-templates/build.yml'
-              parameters:
-                working_directory: $(WORK_DIR)
-                root_dir: $(ROOT_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                gopath: $(GOPATH)
-                container: $(containerName)
-                tags: $(tags)
-                fuselib: $(fuselib)
-                skip_msi: "false"
-                skip_azcli: "true"
-          
-            # Run the block blob cleanup
-            - task: Go@0
-              inputs:
-                command: 'test'
-                arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
-                workingDirectory:  $(WORK_DIR)
-              displayName: 'Block Blob cleanup'
-              timeoutInMinutes: 120
-              continueOnError: true
-              env:
-                STORAGE_ACCOUNT_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                STORAGE_ACCOUNT_Key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-
-            # Run the gen2 cleanup
-            - task: Go@0
-              inputs:
-                command: 'test'
-                arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
-                workingDirectory:  $(WORK_DIR)
-              displayName: 'Gen2 cleanup'
-              timeoutInMinutes: 120
-              continueOnError: true
-              env:
-                STORAGE_ACCOUNT_NAME: $(AZTEST_ADLS_ACC_NAME)
-                STORAGE_ACCOUNT_Key: $(AZTEST_ADLS_KEY)
-
+  - stage: BuildAndTest
+    condition: ${{ eq(parameters.coverage_test, true) }}
+    jobs:
+      - job: Coverage
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+          - name: GOPATH
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(Agent.TempDirectory)'
+          - name: WORK_DIR
+            value: '$(Build.SourcesDirectory)'
+
+        steps:
+          # -------------------------------------------------------
+          # Pull and build the code and create the containers.
+          - template: 'azure-pipeline-templates/build.yml'
+            parameters:
+              skip_msi: "false"
+
+          # -------------------------------------------------------
+          # UT based code coverage test.
+          - script: |
+              go test -v -timeout=1h ./... --tags=unittest,$(tags) -covermode count -coverprofile ./blobfuse2_ut.cov
+            workingDirectory: $(WORK_DIR)
+            displayName: "UT Code Coverage"
+
+          # -------------------------------------------------------
+          # Build code coverage binary
+          - script: |
+              go test -coverpkg="./..." -covermode=count -c --tags=$(tags) -o blobfuse2.test
+            workingDirectory: $(WORK_DIR)
+            displayName: "Build coverage binary"
+
+          # -------------------------------------------------------
+          # Config Generation (Block Blob)
+          - script: |
+              cd $(WORK_DIR)
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest1.cov gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            env:
+              STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
+              STO_ACC_TYPE: 'block'
+              STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: false
+              USE_HTTP: false
+            displayName: 'Create Config File - Block Blob'
+            workingDirectory: $(WORK_DIR)
+            continueOnError: false
+
+          # Code Coverage with e2e-tests for block blob
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
+              sleep 10
+              ps -aux | grep blobfuse2
+              rm -rf $(MOUNT_DIR)/*
+              cd test/e2e_tests
+              go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+              cd -
+              sudo fusermount -u $(MOUNT_DIR)
+              sleep 5
+            workingDirectory: $(WORK_DIR)
+            displayName: "Block Blob Coverage"
+
+          # Code Coverage with health monitor, dynamic, CPU and mem profilers enabled for block blob
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              cp $(BLOBFUSE2_CFG) /tmp/configBlockProfilerTemp.yaml
+              echo "dynamic-profile: true" >> /tmp/configBlockProfilerTemp.yaml
+              echo "cpu-profile: /tmp/cpuBlockProfTmp" >> /tmp/configBlockProfilerTemp.yaml
+              echo "mem-profile: /tmp/memBlockProfTmp" >> /tmp/configBlockProfilerTemp.yaml
+              echo "health_monitor:" >> /tmp/configBlockProfilerTemp.yaml
+              echo "  enable-monitoring: true" >> /tmp/configBlockProfilerTemp.yaml
+              echo "  monitor-disable-list:" >> /tmp/configBlockProfilerTemp.yaml
+              echo "    - blobfuse_stats" >> /tmp/configBlockProfilerTemp.yaml
+              cat /tmp/configBlockProfilerTemp.yaml
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_profiler.cov mount $(MOUNT_DIR) --config-file=/tmp/configBlockProfilerTemp.yaml --foreground=true &
+              sleep 10
+              ps -aux | grep blobfuse2
+              rm -rf $(MOUNT_DIR)/*
+              cd test/e2e_tests
+              go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+              cd -
+              sudo fusermount -u $(MOUNT_DIR)
+              sleep 5
+            workingDirectory: $(WORK_DIR)
+            displayName: "Block Blob Coverage with profilers"
+
+          # Config Generation (ADLS)
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
+            env:
+              STO_ACC_NAME: $(BF2_ADLS_ACC_NAME)
+              STO_ACC_KEY:  $(BF2_ADLS_ACC_KEY)
+              STO_ACC_TYPE: 'adls'
+              STO_ACC_ENDPOINT: 'https://$(BF2_ADLS_ACC_NAME).dfs.core.windows.net'
+              VERBOSE_LOG: false
+              USE_HTTP: false
+            displayName: 'Create Config File - ADLS'
+            continueOnError: false
+
+          # Code Coverage with e2e-tests for ADLS
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --foreground=true &
+              sleep 10
+              ps -aux | grep blobfuse2
+              rm -rf $(MOUNT_DIR)/*
+              cd test/e2e_tests
+              go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
+              cd -
+              ./blobfuse2 unmount all
+              sleep 5
+            workingDirectory: $(WORK_DIR)
+            displayName: "ADLS Coverage"
+
+          # Code Coverage with health monitor, dynamic, CPU and mem profilers enabled for adls
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              cp $(BLOBFUSE2_ADLS_CFG) /tmp/configAdlsProfilerTemp.yaml
+              echo "dynamic-profile: true" >> /tmp/configAdlsProfilerTemp.yaml
+              echo "cpu-profile: /tmp/cpuAdlsProfTmp" >> /tmp/configAdlsProfilerTemp.yaml
+              echo "mem-profile: /tmp/memAdlsProfTmp" >> /tmp/configAdlsProfilerTemp.yaml
+              echo "health_monitor:" >> /tmp/configAdlsProfilerTemp.yaml
+              echo "  enable-monitoring: true" >> /tmp/configAdlsProfilerTemp.yaml
+              echo "  monitor-disable-list:" >> /tmp/configAdlsProfilerTemp.yaml
+              echo "    - blobfuse_stats" >> /tmp/configAdlsProfilerTemp.yaml
+              cat /tmp/configAdlsProfilerTemp.yaml
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls_profiler.cov mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml --foreground=true &
+              sleep 10
+              ps -aux | grep blobfuse2
+              rm -rf $(MOUNT_DIR)/*
+              cd test/e2e_tests
+              go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+              cd -
+              sudo fusermount -u $(MOUNT_DIR)
+              sleep 5
+            workingDirectory: $(WORK_DIR)
+            displayName: "ADLS Coverage with profilers"
+
+          # -------------------------------------------------------
+          # Config Generation (Block Blob) for cli options
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: 'Create Config File - Block Blob'
+            env:
+              STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
+              STO_ACC_TYPE: 'block'
+              STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: false
+              USE_HTTP: false
+
+          # Component generation code coverage
+          - script: |
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/generate_cmd.cov generate test_component
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Component Generation"
+
+          # Mount / Unmount / List code coverage
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/list_empty_cmd.cov mount list
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Mount List"
+
+          - script: |
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_cmd.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug 
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              sleep 20
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/list_cmd_all.cov mount list
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+              ./blobfuse2 unmount all
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Mount all and List"
+
+          - script: |
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_cmd_all.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug 
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              sleep 20
+              cd $(MOUNT_DIR)/$(containerName)
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_cmd_cont_fail.cov unmount $(MOUNT_DIR)/$(containerName)
+              cd -
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_cmd_cont.cov unmount $(MOUNT_DIR)/$(containerName)
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_wild_cmd.cov unmount "testmut*"
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_wild_cmd.cov unmount "abcdef*"
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_negative_cmd.cov unmount abcdef
+              if [ $? -ne 1 ]; then
+                exit 1
+              fi
+
+              for i in {1..5}; do ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_all_cmd$i.cov unmount all; done
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Unmount options"
+
+
+          # Mount / Unmount Negative tests
+          - script: |
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_neg.cov mount all /abc --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug
+              if [ $? -eq 0 ]; then
+                exit 1
+              fi
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Invalid mount path"
+            timeoutInMinutes: 2
+
+          - script: |
+              ./blobfuse2 unmount all
+              cp $(BLOBFUSE2_CFG) /tmp/configMountall.yaml
+              echo "mountall:" >> /tmp/configMountall.yaml
+              echo "  container-allowlist:" >> /tmp/configMountall.yaml
+              echo "    - abcd" >> /tmp/configMountall.yaml
+              cat /tmp/configMountall.yaml
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt_all.cov secure encrypt --config-file=/tmp/configMountall.yaml --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_all_cmd_secure.cov mount all $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --log-level=log_debug --foreground=true &
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              sleep 5
+              ./blobfuse2 unmount all
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Mount all with secure config"
+            timeoutInMinutes: 2
+
+          - script: |
+              ./blobfuse2 unmount all
+              cp $(BLOBFUSE2_CFG) /tmp/configMountall.yaml
+              echo "mountall:" >> /tmp/configMountall.yaml
+              echo "  container-denylist:" >> /tmp/configMountall.yaml
+              echo "    - abcd" >> /tmp/configMountall.yaml
+              cat /tmp/configMountall.yaml
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt_all2.cov secure encrypt --config-file=/tmp/configMountall.yaml --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_all_cmd_secure2.cov mount all $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --log-level=log_debug --foreground=true &
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              sleep 5
+              ./blobfuse2 unmount all
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Mount all with secure config 2"
+            timeoutInMinutes: 2
+
+          - script: |
+              ./blobfuse2 unmount all
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_foreg.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              sleep 5
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_remount.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug
+              if [ $? -eq 0 ]; then
+                exit 1
+              fi
+
+              sleep 5
+              ./blobfuse2 unmount all
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Remount test"
+            timeoutInMinutes: 2
+
+          # Doc generation tests
+          - script: |
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc1.cov doc
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc2.cov doc --output-location /notexists
+              touch ~/a.txt
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc2.cov doc --output-location ~/a.txt
+              rm -rf ~/a.txt
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : doc generation"
+            timeoutInMinutes: 2
+
+          # Version check
+          - script: |
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version1.cov --version
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version --check
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : version"
+            timeoutInMinutes: 2
+
+          # Simulate config change
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              ./blobfuse2 unmount all
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_foreg_2.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+
+              sleep 5
+              echo -e "\n\nlogging:\n  level:log_debug\n  type:base" >> $(BLOBFUSE2_CFG)
+              sed -i 's/timeout:.*/timeout: 300/' $(BLOBFUSE2_CFG)
+              sleep 5
+
+              ./blobfuse2 unmount all
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Config change simulator"
+
+          # Secure Config, fine to use insecure passphrase as this is just for testing
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              ./blobfuse2 unmount all
+              ./blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt.cov secure encrypt --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_secure.cov mount $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 &
+              sleep 10
+              ps -aux | grep blobfuse2
+              rm -rf $(MOUNT_DIR)/*
+              cd test/e2e_tests
+              go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=false -tmp-path=$(TEMP_DIR)
+              cd -
+
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_set.cov secure set --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --key=logging.level --value=log_debug
+              ./blobfuse2 unmount all
+              sleep 5
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Secure Config"
+            env:
+              STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
+              STO_ACC_TYPE: 'block'
+              STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: false
+              USE_HTTP: false
+
+          # stop health monitor binary associated with a given blobfuse2 pid
+          - script: |
+              ./blobfuse2 unmount all
+              sudo kill -9 `pidof blobfuse2.test`
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              mkdir -p $(MOUNT_DIR)/hmon_test
+
+              sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
+              ls -l /usr/local/bin/bfusemon*
+
+              cat /tmp/configAdlsProfilerTemp.yaml
+              ./blobfuse2 mount $(MOUNT_DIR)/hmon_test --config-file=/tmp/configAdlsProfilerTemp.yaml
+              sleep 10
+              ps -aux | grep blobfuse2
+              ps -aux | grep bfusemon
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/bfusemon_stop_pid.cov health-monitor stop --pid=`pidof blobfuse2`
+              ./blobfuse2 unmount all
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Health monitor stop pid"
+
+          # stop all health monitor binaries
+          - script: |
+              ./blobfuse2 unmount all
+              sudo kill -9 `pidof blobfuse2.test`
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              mkdir -p $(MOUNT_DIR)/hmon_test
+
+              cat /tmp/configAdlsProfilerTemp.yaml
+              ./blobfuse2 mount $(MOUNT_DIR)/hmon_test --config-file=/tmp/configAdlsProfilerTemp.yaml
+              sleep 10
+              ps -aux | grep blobfuse2
+              ps -aux | grep bfusemon
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/bfusemon_stop_all.cov health-monitor stop all
+              ./blobfuse2 unmount all
+            workingDirectory: $(WORK_DIR)
+            displayName: "CLI : Health monitor stop all"
+
+          # Start Proxy
+          - script: |
+              sudo apt-get update --fix-missing -y
+              sudo apt remove mitmproxy -y
+              sudo apt-get install python3-setuptools -y
+              sudo apt install python3-pip -y
+              sudo pip3 install mitmproxy
+              mitmdump -q -w proxy_logs.txt &
+            displayName: 'Install & Start Proxy'
+
+          # Configure Proxy cert & env
+          - script: |
+              sudo mkdir /usr/local/share/ca-certificates/extra
+              sudo cp ~/.mitmproxy/mitmproxy-ca-cert.cer /usr/local/share/ca-certificates/extra/mitmproxy-ca-cert.crt
+              sudo update-ca-certificates
+              export https_proxy="127.0.0.1:8080"
+              export http_proxy="127.0.0.1:8080"
+            displayName: 'Configure Proxy'
+
+          # Config Generation (Block Blob Proxy)
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            env:
+              STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
+              STO_ACC_TYPE: 'block'
+              STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: false
+              USE_HTTP: false
+            displayName: 'Create Config File - Block Blob Proxy'
+            workingDirectory: $(WORK_DIR)
+            continueOnError: false
+
+          # Code Coverage with e2e-tests for block blob Proxy
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_proxy.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --disable-compression=true --foreground=true &
+              sleep 10
+              ps -aux | grep blobfuse2
+              rm -rf $(MOUNT_DIR)/*
+              cd test/e2e_tests
+              go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+              cd -
+              sudo fusermount -u $(MOUNT_DIR)
+              sleep 5
+            workingDirectory: $(WORK_DIR)
+            displayName: "Block Blob Coverage Proxy"
+
+          # Config Generation (ADLS Proxy)
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
+            env:
+              STO_ACC_NAME: $(BF2_ADLS_ACC_NAME)
+              STO_ACC_KEY:  $(BF2_ADLS_ACC_KEY)
+              STO_ACC_TYPE: 'adls'
+              STO_ACC_ENDPOINT: 'https://$(BF2_ADLS_ACC_NAME).dfs.core.windows.net'
+              VERBOSE_LOG: false
+              USE_HTTP: false
+            displayName: 'Create Config File - ADLS Proxy'
+            continueOnError: false
+
+          # Code Coverage with e2e-tests for ADLS Proxy
+          - script: |
+              rm -rf $(MOUNT_DIR)/*
+              rm -rf $(TEMP_DIR)/*
+              ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls_proxy.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --foreground=true &
+              sleep 10
+              ps -aux | grep blobfuse2
+              rm -rf $(MOUNT_DIR)/*
+              cd test/e2e_tests
+              go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
+              cd -
+              ./blobfuse2 unmount all
+              sleep 5
+            workingDirectory: $(WORK_DIR)
+            displayName: "ADLS Coverage Proxy"
+
+          # -------------------------------------------------------
+          # Coverage report consolidation
+          - script: |
+              echo 'mode: count' > ./blobfuse2_coverage_raw.rpt
+              tail -q -n +2 ./*.cov >> ./blobfuse2_coverage_raw.rpt
+              cat ./blobfuse2_coverage_raw.rpt | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v tools | grep -v "common/log" | grep -v "common/exectime" | grep -v "common/types.go" | grep -v "internal/stats_manager" | grep -v "main.go" | grep -v "component/azstorage/azauthmsi.go" | grep -v "component/azstorage/azauthspn.go" | grep -v "component/stream" | grep -v "component/custom" | grep -v "component/azstorage/azauthcli.go" | grep -v "exported/exported.go" |  grep -v "component/block_cache/stream.go"  | grep -v "component/azstorage/azauthWorkloadIdentity.go" | grep -v "component/azstorage/policies.go" | grep -v "cmd/health-monitor_stop.go" > ./blobfuse2_coverage.rpt
+              go tool cover -func blobfuse2_coverage.rpt  > ./blobfuse2_func_cover.rpt
+              go tool cover -html=./blobfuse2_coverage.rpt -o ./blobfuse2_coverage.html
+              go tool cover -html=./blobfuse2_ut.cov -o ./blobfuse2_ut.html
+              cp ./*.rpt  $(Build.ArtifactStagingDirectory)/
+              cp ./*.cov  $(Build.ArtifactStagingDirectory)/
+              cp ./*.html $(Build.ArtifactStagingDirectory)/
+            workingDirectory: $(WORK_DIR)
+            displayName: "Save coverage report"
+
+          # Publish the Artifacts
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'Blobfuse2 Coverage $(tags)'
+            displayName: 'Publish Artifacts for blobfuse2 code coverage'
+            condition: succeeded()
+
+          # Overall code coverage check
+          - script: |
+              chmod 777 ./test/scripts/coveragecheck.sh
+              ./test/scripts/coveragecheck.sh
+            workingDirectory: $(WORK_DIR)
+            displayName: "Overall coverage check"
+
+          # File level code coverage check
+          - script: |
+              ./test/scripts/coveragecheck.sh file
+            workingDirectory: $(WORK_DIR)
+            displayName: "File level coverage check"
+            condition: always()
+
+          # CleanUp the mount and delete the containers.
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              unmount: false
+              delete_containers: true
+
+  # Clear all the temporary containers that were present in the storage accounts before starting the test.
+  # This is done as it is observed that backend GC is not always deleting the containers when there are
+  # large number of containers in the storage account.
+  - stage: AccountCleanUp
+    condition: ${{ eq(parameters.cleanup_test, true) }}
+    jobs:
+      - job: CleanupContainers
+        timeoutInMinutes: 10
+
+        pool:
+          name: blobfuse-ubuntu-pool
+          demands:
+            - ImageOverride -equals blobfuse-ubuntu22
+
+        variables:
+          - group: NightlyBlobFuse
+
+        steps:
+          - checkout: self
+            displayName: 'Checkout code'
+          # -------------------------------------------------------
+          # Custom script to install Go-lang
+          - script:
+              ./go_installer.sh $(Agent.TempDirectory)
+            displayName: "Install Go"
+
+          # -------------------------------------------------------
+          # Run the cleanup script to delete all the containers
+          # Run the cleanup for Block Blob account.
+          - task: Go@0
+            inputs:
+              command: 'test'
+              arguments: '-timeout 10m -v test/accoutcleanup/accountcleanup_test.go'
+            displayName: 'Block Blob cleanup'
+            timeoutInMinutes: 120
+            continueOnError: true
+            env:
+              STORAGE_ACCOUNT_NAME: $(BF2_BLK_ACC_NAME)
+              STORAGE_ACCOUNT_KEY: $(BF2_BLK_ACC_KEY)
+
+          # Run the cleanup for ADLS account.
+          - task: Go@0
+            inputs:
+              command: 'test'
+              arguments: '-timeout 10m -v test/accoutcleanup/accountcleanup_test.go'
+            displayName: 'Gen2 cleanup'
+            timeoutInMinutes: 120
+            continueOnError: true
+            env:
+              STORAGE_ACCOUNT_NAME: $(BF2_ADLS_ACC_NAME)
+              STORAGE_ACCOUNT_KEY: $(BF2_ADLS_ACC_KEY)

@@ -1,72 +1,66 @@
-parameters:
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
-
 steps:
   - script: |
-      ${working_dir}/blobfuse2 --invalid-param &
+      $(WORK_DIR)/blobfuse2 --invalid-param &
       if [ $? = 2 ]; then
         exit 0
       fi
     displayName: 'Invalid Flag Root Command'
     continueOnError: false
     env:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
+      working_dir: $(WORK_DIR)
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
-      ${working_dir}/blobfuse2 mount ${mount_dir} --invalid-param &
+      $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --invalid-param &
       if [ $? = 2 ]; then
         exit 0
       fi
     displayName: 'Invalid Flag Mount Command'
     continueOnError: false
     env:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
+      working_dir: $(WORK_DIR)
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
-      ${working_dir}/blobfuse2 unmount ${mount_dir} --invalid-param &
+      $(WORK_DIR)/blobfuse2 unmount $(MOUNT_DIR) --invalid-param &
       if [ $? = 2 ]; then
         exit 0
       fi
     displayName: 'Invalid Flag Unmount Command'
     continueOnError: false
     env:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
+      working_dir: $(WORK_DIR)
+      mount_dir: $(MOUNT_DIR)
       
   - script: |
-      ${working_dir}/blobfuse2 mountv1 ${mount_dir} --invalid-param &
+      $(WORK_DIR)/blobfuse2 mountv1 $(MOUNT_DIR) --invalid-param &
       if [ $? = 2 ]; then
         exit 0
       fi
     displayName: 'Invalid Flag Mountv1 Command'
     continueOnError: false
     env:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
+      working_dir: $(WORK_DIR)
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
-      ${working_dir}/blobfuse2 secure ${mount_dir} --invalid-param &
+      $(WORK_DIR)/blobfuse2 secure $(MOUNT_DIR) --invalid-param &
       if [ $? = 2 ]; then
         exit 0
       fi
     displayName: 'Invalid Flag Secure Command'
     continueOnError: false
     env:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
+      working_dir: $(WORK_DIR)
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
-      ${working_dir}/blobfuse2 version ${mount_dir} --invalid-param &
+      $(WORK_DIR)/blobfuse2 version $(MOUNT_DIR) --invalid-param &
       if [ $? = 2 ]; then
         exit 0
       fi
     displayName: 'Invalid Flag Version Command'
     continueOnError: false
     env:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
+      working_dir: $(WORK_DIR)
+      mount_dir: $(MOUNT_DIR)

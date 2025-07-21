@@ -1,38 +1,29 @@
 parameters:
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
   - name: config
-    type: string
-  - name: temp_dir
     type: string
   - name: idstring
     type: string
     default: ''
-  - name: tags
-    type: string
 
 steps:
 
   # Cleanup
   - template: 'cleanup.yml'
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
+      unmount: true
+      delete_containers: false
 
   # Run the mount test script
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-timeout=120m -p 1 -v test/mount_test/mount_test.go -args -working-dir=${{ parameters.working_dir }} -mnt-path=${{ parameters.mount_dir }} -config-file=${{parameters.config}} -tags=${{ parameters.tags }}'
-      workingDirectory: ${{ parameters.working_dir }}
+      arguments: '-timeout=120m -p 1 -v test/mount_test/mount_test.go -args -working-dir=$(WORK_DIR) -mnt-path=$(MOUNT_DIR) -config-file=${{parameters.config}} -tags=$(tags)'
+      workingDirectory: $(WORK_DIR)
     displayName: 'MountTest: ${{ parameters.idstring }}'
     timeoutInMinutes: 120
     continueOnError: true
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
       cat blobfuse2-logs.txt
@@ -45,6 +36,5 @@ steps:
   # Cleanup 
   - template: 'cleanup.yml'
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
+      unmount: true
+      delete_containers: false

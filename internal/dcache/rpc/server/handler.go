@@ -1874,7 +1874,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		}()
 	} else {
 		//
-		// We cannnot make pool allocation here, as this call has come as part of handling the RPC request.
+		// We cannot make pool allocation here, as this call has come as part of handling the RPC request.
 		// TODO: Convert this to pooled allocation.
 		//
 		data = make([]byte, req.Length)
