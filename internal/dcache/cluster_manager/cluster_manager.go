@@ -2899,7 +2899,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				// This can happen when an HB file is deleted out-of-band.
 				// This can also happen when a node is restarted and an older RV is now excluded from the
 				// node's RV list published in the initial heartbeat. If the RV is not being used by any MV
-				// then we wil remove it from the existingRVMap, but if the old RV is being used as a component
+				// then we will remove it from the existingRVMap, but if the old RV is being used as a component
 				// RV by some MV, it will not be removed by updateRVList(). Since it won't be present in later
 				// heartbeats, we will reach here.
 				//
@@ -3327,7 +3327,7 @@ func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRV
 				// updater later correctly notifies the caller waiting for its update to complete
 				// (by reading from the msg.Err channel).
 				// Later on in the batchUpdateComponentRVState() we will check if there are
-				// mutiple updates for the same RV/MV combination, we will skip such duplicate
+				// multiple updates for the same RV/MV combination, we will skip such duplicate
 				// updates.
 				//
 				// Note that this is an optimization, w/o this multiple updates queued by inline
