@@ -146,6 +146,7 @@ func DecryptConfigFile(fileName string, passphrase string) error {
 		return fmt.Errorf("Failed to decrypt config file [%s]", err.Error())
 	}
 
+	viper.SetConfigType("yaml")
 	err = loadConfigFromBufferToViper(plainText)
 	if err != nil {
 		return fmt.Errorf("Failed to load decrypted config file [%s]", err.Error())
