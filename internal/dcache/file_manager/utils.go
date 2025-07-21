@@ -319,7 +319,7 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 	var err error
 
 	if allocateBuf {
-		buf, err = dcache.BufPool.GetBuffer()
+		buf, err = dcache.GetBuffer()
 		if err != nil {
 			return nil, err
 		}

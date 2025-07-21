@@ -191,7 +191,7 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError(errString)
 	}
 
-	err = dcache.CreateBufferPool(dc.cfg.ChunkSize)
+	err = dcache.InitBufferPool(dc.cfg.ChunkSize)
 	if err != nil {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to create BufferPool : %v]", err))
 	}

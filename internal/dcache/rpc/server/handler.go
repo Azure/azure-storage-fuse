@@ -1840,9 +1840,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	if req.IsLocalRV {
 		//
-		// Allocate the buffer from the buffer pool.
+		// As this call has not come through the RPC request this can be allocated from the pool, and also the buffer
+		// that is allocated here would be released by the file manager after its use.
 		//
-		data, err = dcache.BufPool.GetBuffer()
+		data, err = dcache.GetBuffer()
 		if err != nil {
 			errStr := fmt.Sprintf("failed to Allocate Buffer for chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
@@ -1852,7 +1853,20 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		// Reslice the data buffer accordingly, length of the buffer that we get from the BufferPool is of
 		// maximum size(i.e., Chunk Size)
 		data = data[:req.Length]
+
+		defer func() {
+			// For any error that was caused from here, We must release the buffer that was taken from the buffer pool.
+			if err != nil {
+				if req.IsLocalRV {
+					dcache.PutBuffer(data)
+				}
+			}
+		}()
 	} else {
+		//
+		// We cannnot make pool allocation here, as this call has come as part of handling the RPC request.
+		// TODO: Convert this to pooled allocation.
+		//
 		data = make([]byte, req.Length)
 	}
 
@@ -1891,10 +1905,6 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//}
 	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
 	if err != nil {
-		if req.IsLocalRV {
-			// Return the Buffer that was taken from the BufferPool.
-			dcache.BufPool.PutBuffer(data)
-		}
 		errStr := fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)

@@ -44,7 +44,11 @@ import (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
-var BufPool *BufferPool
+// This pool is shared across the dcache for allocation of the buffers, Currently this a fixed size singleton buffer
+// pool implementation, where caller needs to request the buffer using GetBuffer() and it's responsibility of the caller
+// to release the buffer using PutBuffer() after its use. The size of the buffers requested from the buffer will have
+// length bufSize.
+var bufPool *BufferPool
 
 type BufferPool struct {
 	pool       sync.Pool    // sync.Pool to relieve GC
@@ -53,8 +57,9 @@ type BufferPool struct {
 	curBuffers atomic.Int64 // buffers currently allocated
 }
 
-func CreateBufferPool(bufSize uint64) error {
-	common.Assert(BufPool == nil)
+func InitBufferPool(bufSize uint64) error {
+	common.Assert(bufPool == nil)
+
 	//
 	// Size of buffers managed by bufferPool.
 	// This should be equal to the chunk size we support, since each buffer can hold upto one chunk
@@ -92,7 +97,7 @@ func CreateBufferPool(bufSize uint64) error {
 	usableMemory := (ramMB * 1024 * 1024 * uint64(usablePercentSystemRAM)) / 100
 	maxBuffers = max(maxBuffers, usableMemory/bufSize)
 
-	BufPool = &BufferPool{
+	bufPool = &BufferPool{
 		pool: sync.Pool{
 			New: func() any {
 				return make([]byte, bufSize)
@@ -105,31 +110,32 @@ func CreateBufferPool(bufSize uint64) error {
 	return nil
 }
 
-func (bp *BufferPool) GetBuffer() ([]byte, error) {
-	if bp.curBuffers.Load() > bp.maxBuffers {
+func GetBuffer() ([]byte, error) {
+	if bufPool.curBuffers.Load() > bufPool.maxBuffers {
+		// TODO: Add a timeout to wait for the buffers to get free, and only fail after timeout.
 		return nil, errors.New("Buffers Exhausted")
 	}
 
-	buf := bp.pool.Get().([]byte)
+	buf := bufPool.pool.Get().([]byte)
 
 	// All buffers allocated must be of size bp.bufSize.
-	common.Assert(len(buf) == bp.bufSize, len(buf), bp.bufSize)
+	common.Assert(len(buf) == bufPool.bufSize, len(buf), bufPool.bufSize)
 
-	bp.curBuffers.Add(1)
+	bufPool.curBuffers.Add(1)
 	return buf, nil
 }
 
-func (bp *BufferPool) PutBuffer(buf []byte) {
+func PutBuffer(buf []byte) {
 	// All buffers allocated from the pool must be of the same size.
-	common.Assert(len(buf) <= bp.bufSize, len(buf), bp.bufSize)
+	common.Assert(len(buf) <= bufPool.bufSize, len(buf), bufPool.bufSize)
 	// Caller must free a buffer that's allocated using getBuffer().
-	common.Assert(bp.curBuffers.Load() > 0, bp.curBuffers.Load())
+	common.Assert(bufPool.curBuffers.Load() > 0, bufPool.curBuffers.Load())
 
 	// Reslice the length of the buffer to its original capacity if it got compacted.
-	buf = buf[:bp.bufSize]
+	buf = buf[:bufPool.bufSize]
 
-	bp.pool.Put(buf)
-	bp.curBuffers.Add(-1)
+	bufPool.pool.Put(buf)
+	bufPool.curBuffers.Add(-1)
 }
 
 // Silence unused import errors for release builds.

@@ -500,7 +500,7 @@ func (file *DcacheFile) finalizeFile() error {
 // Return the requested chunk from the staged chunks, if present, else create a new one and add to the staged chunks.
 // 'allocateBuf' controls if the StagedChunk returned has its buffer allocated by us. Note that ReadMV()
 // returns the buffer where the data is read by the GetChunk() RPC, so we don't want a pre-allocated buffer
-// in that case. We only use pre-allocated buffer when reading from the local RV, where there is no RPC involved.
+// in that case.
 func (file *DcacheFile) getChunk(chunkIdx int64, allocateBuf bool) (*StagedChunk, bool, error) {
 	log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d", file.FileMetadata.Filename, chunkIdx)
 
@@ -520,6 +520,9 @@ func (file *DcacheFile) getChunk(chunkIdx int64, allocateBuf bool) (*StagedChunk
 		return nil, false, err
 	}
 
+	// IsBufExternal is always true in here as the allocation of this buffer is decided by Replication manager
+	// when the actual chunk is read, where the buffer is allocated from the bufferPool only when reading the chunk
+	// from the local RV, So based on the response of ReadMV request, we will decide the buffer is external or not.
 	common.Assert(chunk.IsBufExternal == !allocateBuf, chunk.IsBufExternal)
 	common.Assert(chunk.IsBufExternal == (chunk.Buf == nil), chunk.IsBufExternal, len(chunk.Buf))
 
@@ -609,7 +612,7 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
 	if chunk.IsBufExternal {
 		chunk.Buf = nil
 	} else {
-		dcache.BufPool.PutBuffer(chunk.Buf)
+		dcache.PutBuffer(chunk.Buf)
 	}
 }
 

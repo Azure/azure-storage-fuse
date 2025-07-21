@@ -153,6 +153,12 @@ func GetChunkLocal(ctc context.Context, req *models.GetChunkRequest) (*models.Ge
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = rpc.GetMyNodeUUID()
+
+	//
+	// This chunk is being read locally without any RPC, so we can set IsLocalRV to true. This is used for
+	// taking the decision in the handler to allocate the chunk from the buffer pool instead of initializing
+	// a new buffer.
+	//
 	req.IsLocalRV = true
 
 	common.Assert(handler != nil)
