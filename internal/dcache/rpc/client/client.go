@@ -35,10 +35,19 @@ package rpc_client
 
 import (
 	"crypto/tls"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
+)
+
+const (
+	// defaultConnectionTimeout is the default timeout for establishing a new connection to the node.
+	defaultConnectionTimeout = 2 * time.Second
+
+	// defaultSocketTimeout is the default read/write timeout for the underlying socket.
+	defaultSocketTimeout = 4 * time.Second
 )
 
 // rpcClient struct holds the Thrift client to a node
@@ -108,6 +117,8 @@ func init() {
 	transportFactory = thrift.NewTTransportFactory()
 
 	thriftCfg = &thrift.TConfiguration{
+		ConnectTimeout: defaultConnectionTimeout,
+		SocketTimeout:  defaultSocketTimeout,
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
