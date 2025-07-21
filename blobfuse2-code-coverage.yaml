@@ -565,9 +565,14 @@ stages:
             - script: |
                 echo 'mode: count' > ./blobfuse2_coverage_raw.rpt
                 tail -q -n +2 ./*.cov >> ./blobfuse2_coverage_raw.rpt
-                cat ./blobfuse2_coverage_raw.rpt | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v tools | grep -v "common/log" | grep -v "common/exectime" | grep -v "common/types.go" | grep -v "internal/stats_manager" | grep -v "main.go" | grep -v "component/azstorage/azauthmsi.go" | grep -v "component/azstorage/azauthspn.go" | grep -v "component/stream" | grep -v "component/custom" | grep -v "component/azstorage/azauthcli.go" | grep -v "exported/exported.go" |  grep -v "component/block_cache/stream.go"  | grep -v "component/azstorage/azAuthWorkloadIdentity.go" | grep -v "component/azstorage/azauthWorkloadIdentity.go" | grep -v "component/azstorage/policies.go" > ./blobfuse2_coverage.rpt 
+                cat ./blobfuse2_coverage_raw.rpt | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v tools | grep -v "common/log" | grep -v "common/exectime" | grep -v "common/types.go" | grep -v "internal/stats_manager" | grep -v "main.go" | grep -v "component/azstorage/azauthmsi.go" | grep -v "component/azstorage/azauthspn.go" | grep -v "component/stream" | grep -v "component/custom" | grep -v "component/azstorage/azauthcli.go" | grep -v "exported/exported.go" |  grep -v "component/block_cache/stream.go"  | grep -v "component/azstorage/azAuthWorkloadIdentity.go" | grep -v "component/azstorage/azauthWorkloadIdentity.go" | grep -v "component/azstorage/policies.go" > ./blobfuse2_coverage.rpt
+                cat blobfuse2_coverage.rpt
                 go tool cover -func blobfuse2_coverage.rpt  > ./blobfuse2_func_cover.rpt
+                echo "**************************************************************************"
+                cat blobfuse2_func_cover.rpt
                 go tool cover -html=./blobfuse2_coverage.rpt -o ./blobfuse2_coverage.html
+                echo "**************************************************************************"
+                cat blobfuse2_coverage.html
                 go tool cover -html=./blobfuse2_ut.cov -o ./blobfuse2_ut.html
                 cp ./*.rpt  $(Build.ArtifactStagingDirectory)/
                 cp ./*.cov  $(Build.ArtifactStagingDirectory)/
