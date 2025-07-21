@@ -588,12 +588,13 @@ func getMyRVsInClustermap(myRVs []dcache.RawVolume) []dcache.RawVolume {
 	return cmRVs
 }
 
-// Cleanup one RV directory.
-// It returns success only if it's able to delete all the MV directories found in the RV, else if it's not able
-// to delete even one MV dir it'll return an error to prevent this node from joining the cluster.
+// Cleanup the given RV's directory. If doNotDeleteMVs is nil all MVs are deleted else those MVs
+// are skipped and everything else is deleted.
+// It returns failure if it fails to delete even a single matching MV. This is to ensure that
+// we prevent such a node from joining the cluster.
 //
 // TODO: Once we have sufficient runin we can let it join the cluster even on partial cleanup.
-func cleanupRV(rv dcache.RawVolume) error {
+func cleanupRV(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) error {
 	var wg sync.WaitGroup
 	var deleteSuccess atomic.Int64
 	var deleteFailures atomic.Int64
@@ -623,24 +624,20 @@ func cleanupRV(rv dcache.RawVolume) error {
 				rv.LocalCachePath, entry.Name(), entry)
 		}
 
-		//
-		// TODO: Once we remove .sync directory support, then we can remove the .sync related code.
-		//
 		mvName := entry.Name()
-		parts := strings.Split(mvName, ".")
-		if len(parts) > 1 {
-			mvName = parts[0]
-			if len(parts) > 2 || parts[1] != "sync" {
-				common.Assert(false, rv.LocalCachePath, entry.Name())
-				return fmt.Errorf("ClusterManager::cleanupRV %s/%s is not a valid MV directory %+v",
-					rv.LocalCachePath, entry.Name(), entry)
-			}
-		}
-
 		if !cm.IsValidMVName(mvName) {
 			common.Assert(false, rv.LocalCachePath, entry.Name())
 			return fmt.Errorf("ClusterManager::cleanupRV %s/%s is not a valid MV directory %+v",
 				rv.LocalCachePath, entry.Name(), entry)
+		}
+
+		//
+		// If user wants active MVs to be skipped, honor that.
+		//
+		if doNotDeleteMVs != nil {
+			if _, ok := doNotDeleteMVs[mvName]; ok {
+				continue
+			}
 		}
 
 		//
@@ -667,7 +664,7 @@ func cleanupRV(rv dcache.RawVolume) error {
 				log.Info("ClusterManager::cleanupRV: Deleted MV dir %s", dir)
 				deleteSuccess.Add(1)
 			}
-		}(filepath.Join(rv.LocalCachePath, entry.Name()))
+		}(filepath.Join(rv.LocalCachePath, mvName))
 	}
 
 	// Wait for all running deletes to finish.
@@ -688,11 +685,32 @@ func cleanupRV(rv dcache.RawVolume) error {
 	return nil
 }
 
-// Cleanup all my local RVs, deleting any mv folders (and the stored chunks if any) created if/when the RV was part
-// of the cluster in the past. Note that this cleans up the local RV directory only after making sure it's safe to
-// clean, and an RV is safe to clean when it's either not present in the clusterMap RV list or it's marked as offline.
-// An RV that's offline in the RV list is guaranteed to be offline in the MV list also, i.e., no MV will contact
-// this RV for for chunk IO (read or write).
+// When a node comes up and before it joins the cluster by posting its initial heartbeat, it's the right time
+// to cleanup any stale MV data that may have been left behind by the previous incarnation of the node.
+// Previous versions used to play safe and delete all hosted MVs' data on all local RVs (after waiting for the RVs
+// to be marked offline), but that was too aggressive and caused unnecessary data to be deleted. If a node crashes
+// and restarts it would result in all hosted MVs' data to be deleted. This may risk cluster stability if multiple
+// nodes happen to crash and restart around the same time. Also, this would cause unnecessary data movement even
+// for MVs which are not changing.
+//
+// With the following observations we can do better:
+// - If a hosted MV is written to by some node the PutChunk RPC would fail since the node is down. This will cause
+//   the client node to mark the component RV as inband-offline and from then on this RV won't be used for storing
+//   or accessing chunks of that MV. The MV's data can be safely deleted from the RV directory.
+// - While this node was down if a hosted MV was not accessed by any other node, it would not continue to be online
+//   in the MV's component RVs list and since the MV data has not changed, once this node comes back up it can
+//   correctly serve that MV. We do not need to delete the MV's data in this case.
+// - If the node stays down for long enough and misses sufficient heartbeats, its RV(s) will be marked offline in
+//   the clustermap and in all the MVs' component RVs lists. This means that no MV will try to access this RV for
+//   chunk IO (read or write), and in that case we can safely delete all the MVs' hosted on the node's RV(s).
+//
+// This helps protect data for cases where a node goes down for a short time and then comes back up.
+// This especially helps in cases where a node is restarted due to some transient issue, like a crash or some
+// accidental restart.
+//
+// So here's the plan:
+// For all RVs of this node, only delete those MVs' data for which the RV is marked offline/inband-offline in
+// the clustermap. If there's no clustermap delete all MVs' data in the RVs.
 //
 // Before proceeding, ensure no duplicate RV IDs (filesystem GUIDs) exist across different cache paths,
 // i.e., if an RV ID appears in both the input list and clustermap, it must refer to the *same* path.
@@ -732,7 +750,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			go func(rv dcache.RawVolume) {
 				defer wg.Done()
 
-				err := cleanupRV(rv)
+				err := cleanupRV(rv, nil /* doNotDeleteMVs */)
 				if err != nil {
 					log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
 						rv.LocalCachePath, err)
@@ -855,9 +873,11 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap")
 		}
 
-		rvStillOnline := false
 		for _, rv := range myRVs {
 			log.Info("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
+
+			// Active MVs that we should not delete.
+			var doNotDeleteMVs map[string]struct{}
 
 			// Check online status for this RV.
 			for rvName, rvInfo := range myRVsFromClustermap {
@@ -868,38 +888,26 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 					continue
 				}
 
-				if rvInfo.State != dcache.StateOffline {
-					log.Info("ClusterManager::safeCleanupMyRVs: My RV %+v still online, retry in 30sec", rv)
-					rvStillOnline = true
-				}
+				doNotDeleteMVs = cm.GetActiveMVsForRV(rvName)
 
 				break
 			}
 
-			if rvStillOnline {
-				break
-			}
-
-			// Offline RV (or RV not present in clustermap), clean up.
+			// Cleanup stale MVs from this RV.
 			wg.Add(1)
-			go func(rv dcache.RawVolume) {
+			go func(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) {
 				defer wg.Done()
 
-				err := cleanupRV(rv)
+				err := cleanupRV(rv, doNotDeleteMVs)
 				if err != nil {
 					log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
 						rv.LocalCachePath, err)
 					failedRV.Add(1)
 				}
-			}(rv)
+			}(rv, doNotDeleteMVs)
 		}
 
-		// None of my RV online, done.
-		if !rvStillOnline {
-			break
-		}
-
-		time.Sleep(30 * time.Second)
+		break
 	}
 
 	// Wait for all RVs to complete cleanup.

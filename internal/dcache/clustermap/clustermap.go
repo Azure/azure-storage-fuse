@@ -91,6 +91,16 @@ func GetOfflineMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getOfflineMVs()
 }
 
+// It will return a set of active MVs hosted by the given RV.
+// An MV is termed active for an RV if, as per the clusterMap:
+// 1. The RV is a component of the MV, and
+// 2. The component RV is in active use, i.e., its state is not offline or inband-offline.
+//
+// Any other MV is stale and can be safely deleted from the RV's directory.
+func GetActiveMVsForRV(rvName string) map[string]struct{} {
+	return clusterMap.getActiveMVsForRV(rvName)
+}
+
 // It will return the cache config as per local cache copy of cluster map.
 func GetCacheConfig() *dcache.DCacheConfig {
 	return clusterMap.getCacheConfig()
@@ -447,6 +457,43 @@ func (c *ClusterMap) getOfflineMVs() map[string]dcache.MirroredVolume {
 		}
 	}
 	return offlineMVs
+}
+
+func (c *ClusterMap) getActiveMVsForRV(rvName string) map[string]struct{} {
+	//
+	// Save a copy of the clusterMap pointer to use for accessing RVMap and MVMap, so that both
+	// correspond to the same instance of clusterMap.
+	//
+	localMap := c.getLocalMap()
+
+	rv, ok := localMap.RVMap[rvName]
+	rvIsOffline := false
+	if ok {
+		rvIsOffline = (rv.State == dcache.StateOffline)
+	}
+
+	activeMVs := make(map[string]struct{})
+	for mvName, mv := range localMap.MVMap {
+		// RV is offline in the RV list, so it cannot have any active MVs.
+		if rvIsOffline {
+			continue
+		}
+
+		rvState, ok := mv.RVs[rvName]
+		if !ok {
+			// RV is not a component of this MV (maybe it was in the past).
+			continue
+		}
+
+		// If the component RV is offline/inband-offline, then the MV is not active.
+		if rvState == dcache.StateOffline || rvState == dcache.StateInbandOffline {
+			continue
+		}
+
+		activeMVs[mvName] = struct{}{}
+	}
+
+	return activeMVs
 }
 
 // Scan through the RV list and return the set of all nodes which have contributed at least one RV.
