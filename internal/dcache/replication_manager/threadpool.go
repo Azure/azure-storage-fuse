@@ -36,6 +36,7 @@ package replication_manager
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -156,11 +157,15 @@ func (tp *threadpool) runItem(item *workitem) {
 
 	switch item.reqType {
 	case putChunkRequest:
-		putChunkReq := item.rpcReq.(*models.PutChunkRequest)
+		putChunkReq, ok := item.rpcReq.(*models.PutChunkRequest)
+		_ = ok
+		common.Assert(ok)
 		respItem.rpcResp, respItem.err = processPutChunk(item.targetNodeID, putChunkReq)
 
 	case removeChunkRequest:
-		removeChunkRequest := item.rpcReq.(*models.RemoveChunkRequest)
+		removeChunkRequest, ok := item.rpcReq.(*models.RemoveChunkRequest)
+		_ = ok
+		common.Assert(ok)
 		respItem.rpcResp, respItem.err = processRemoveChunk(item.targetNodeID, removeChunkRequest)
 
 	default:
@@ -191,10 +196,16 @@ func (item *workitem) toString() string {
 	switch item.reqType {
 	case putChunkRequest:
 		reqType = "putChunkReq"
-		reqString = rpc.PutChunkRequestToString(item.rpcReq.(*models.PutChunkRequest))
+		putChunkReq, ok := item.rpcReq.(*models.PutChunkRequest)
+		_ = ok
+		common.Assert(ok)
+		reqString = rpc.PutChunkRequestToString(putChunkReq)
 	case removeChunkRequest:
 		reqType = "removeChunkReq"
-		reqString = rpc.RemoveChunkRequestToString(item.rpcReq.(*models.RemoveChunkRequest))
+		removeChunkRequest, ok := item.rpcReq.(*models.RemoveChunkRequest)
+		_ = ok
+		common.Assert(ok)
+		reqString = rpc.RemoveChunkRequestToString(removeChunkRequest)
 	default:
 		reqType = "invalid"
 		reqString = "invalid"
@@ -212,7 +223,7 @@ func (item *workitem) isValid() bool {
 		return false
 	}
 
-	if item.rpcReq == nil {
+	if reflect.ValueOf(item.rpcReq).IsNil() {
 		return false
 	}
 
