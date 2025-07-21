@@ -298,17 +298,86 @@ var handler *ChunkServiceHandler
 
 // NewChunkServiceHandler creates a new ChunkServiceHandler instance.
 // This MUST be called only once by the RPC server, on startup.
-func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) {
+func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
 	handler = &ChunkServiceHandler{
-		rvIDMap: getRvIDMap(rvs),
+		rvIDMap: getRvIDMap(rvMap),
 	}
 
-	// Every node MUST contribute at least one RV.
-	// Note: We can probably relax this later if we want to support nodes which do not
-	//       contribute any storage.
+	// If no RVs are hosted by this node, we should not create the chunk service handler.
 	common.Assert(len(handler.rvIDMap) > 0)
+
+	//
+	// For active MVs that are hosted by this node, we must correctly update rvInfo.mvMap.
+	// See safeCleanupMyRVs()->cm.GetActiveMVsForRV() to see how we can have active MVs for an RV
+	// when a node starts up.
+	//
+	for rvName, rv := range rvMap {
+		rvInfo := handler.getRVInfoFromRVName(rvName)
+		common.Assert(rvInfo != nil, rvName, handler.rvIDMap)
+
+		entries, err := os.ReadDir(rv.LocalCachePath)
+		if err != nil {
+			common.Assert(false, err)
+			return fmt.Errorf("NewChunkServiceHandler: os.ReadDir(%s) failed: %v", rv.LocalCachePath, err)
+		}
+
+		// Must not have more than getMVsPerRV() MVs in the cache dir.
+		common.Assert(len(entries) <= int(getMVsPerRV()), rvName, len(entries), getMVsPerRV())
+
+		//
+		// Cache dir must contain only those MVs for which this RV is actively being used.
+		// We need to add such MVs to rvInfo.mvMap as if the RV was joined to those MVs using
+		// a JoinMV RPC call.
+		//
+		for _, entry := range entries {
+			log.Debug("NewChunkServiceHandler: Got %s/%s", rv.LocalCachePath, entry.Name())
+
+			if !entry.IsDir() {
+				common.Assert(false, rv.LocalCachePath, entry.Name())
+				return fmt.Errorf("NewChunkServiceHandler: %s/%s is not a directory %+v",
+					rv.LocalCachePath, entry.Name(), entry)
+			}
+
+			mvName := entry.Name()
+			if !cm.IsValidMVName(mvName) {
+				common.Assert(false, rv.LocalCachePath, entry.Name())
+				return fmt.Errorf("NewChunkServiceHandler: %s/%s is not a valid MV directory %+v",
+					rv.LocalCachePath, entry.Name(), entry)
+			}
+
+			//
+			// Component RVs for this MV, as per clustermap.
+			//
+			componentRVMap := cm.GetRVs(mvName)
+			_, ok := componentRVMap[rvName]
+
+			// We should only have MV dirs for active MVs for the RV.
+			common.Assert(ok, rvName, mvName, componentRVMap)
+
+			componentRVs := cm.RVMapToList(mvName, componentRVMap)
+			sortComponentRVs(componentRVs)
+
+			//
+			// If the component RVs list has any RV with inband-offline state, update it to offline.
+			// This is done because we don't allow inband-offline state in the rvInfo.
+			//
+			updateInbandOfflineToOffline(&componentRVs)
+
+			//
+			// Acquire lock on rvInfo.rwMutex.
+			// This is running from the single startup thread, so we don't really need the lock, but
+			// addToMVMap() asserts for that.
+			//
+			rvInfo.acquireRvInfoLock()
+			rvInfo.addToMVMap(mvName,
+				newMVInfo(rvInfo, mvName, componentRVs, rpc.GetMyNodeUUID()), 0 /* reservedSpace */)
+			rvInfo.releaseRvInfoLock()
+		}
+	}
+
+	return nil
 }
 
 // Create new mvInfo instance. This is used by the JoinMV() RPC call to create a new mvInfo.

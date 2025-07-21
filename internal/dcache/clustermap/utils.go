@@ -42,6 +42,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -472,4 +473,23 @@ func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 		RVList:        rvList,
 		MVList:        mvList,
 	}
+}
+
+// Convert an RVMap returned by clustermap APIs like GetRVs()/GetRVsEx() to a list of RVNameAndState
+// needed by rvInfo and others.
+func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {
+	var componentRVs []*models.RVNameAndState
+
+	for rvName, rvState := range rvMap {
+		common.Assert(IsValidRVName(rvName), rvName)
+		common.Assert(IsValidComponentRVState(rvState), rvName, rvState)
+
+		componentRVs = append(componentRVs,
+			&models.RVNameAndState{Name: rvName, State: string(rvState)})
+	}
+
+	common.Assert(len(componentRVs) == int(GetCacheConfig().NumReplicas),
+		mvName, len(componentRVs), GetCacheConfig().NumReplicas)
+
+	return componentRVs
 }

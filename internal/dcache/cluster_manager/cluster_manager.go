@@ -164,7 +164,13 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	// It's unlikely, but due to some misconfiguration all of my RVs may not have been added to clustermap,
 	// we should heartbeat only those that got added.
 	//
-	hbRVs := getMyRVsInClustermap(rvs)
+	rvsMap := getMyRVsInClustermap(rvs)
+	hbRVs := make([]dcache.RawVolume, 0, len(rvsMap))
+
+	// map[string]dcache.RawVolume to []dcache.RawVolume, shedding the RV names.
+	for _, rv := range rvsMap {
+		hbRVs = append(hbRVs, rv)
+	}
 
 	//
 	// clustermap MUST now have the in-core clustermap copy.
@@ -206,24 +212,29 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//       by retrying JoinMV RPC after a small wait if RPC connection creation fails.
 	//       Ref functions.go:JoinMV() for more details.
 	//
-	log.Info("ClusterManager::start: ==> Starting RPC server")
+	if len(rvsMap) > 0 {
+		log.Info("ClusterManager::start: ==> Starting RPC server")
 
-	common.Assert(cmi.rpcServer == nil)
-	cmi.rpcServer, err = rpc_server.NewNodeServer()
-	if err != nil {
-		log.Err("ClusterManager::start: Failed to create RPC server")
-		common.Assert(false, err)
-		return err
+		common.Assert(cmi.rpcServer == nil)
+		cmi.rpcServer, err = rpc_server.NewNodeServer(rvsMap)
+		if err != nil {
+			log.Err("ClusterManager::start: Failed to create RPC server")
+			common.Assert(false, err)
+			return err
+		}
+
+		err = cmi.rpcServer.Start()
+		if err != nil {
+			log.Err("ClusterManager::start: Failed to start RPC server")
+			common.Assert(false, err)
+			return err
+		}
+
+		log.Info("ClusterManager::start: ==> Started RPC server on node %s IP %s", cmi.myNodeId, cmi.myIPAddress)
+	} else {
+		// No RVs, no RPC server.
+		log.Info("ClusterManager::start: ==> No RVs exported, not starting RPC server")
 	}
-
-	err = cmi.rpcServer.Start()
-	if err != nil {
-		log.Err("ClusterManager::start: Failed to start RPC server")
-		common.Assert(false, err)
-		return err
-	}
-
-	log.Info("ClusterManager::start: ==> Started RPC server on node %s IP %s", cmi.myNodeId, cmi.myIPAddress)
 
 	// We don't intend to have different configs in different nodes, so assert.
 	common.Assert(dCacheConfig.HeartbeatSeconds == cmi.config.HeartbeatSeconds,
@@ -542,17 +553,17 @@ func (cmi *ClusterManager) stop() error {
 }
 
 // This function checks the local clustermap to see how many of myRVs are present in the RV list
-// and returns a list of those RVs.
+// and returns a list of those RVs with their RV names as selected.
 // It compares all the fields of the RVs, not just the RV Id. This is important to ensure that
 // we do not treat a stale RV Id as a match. This also means that this function can only be used
 // during startup when the RV AvailableSpace has not changed in clustermap from what it was in the
 // initial myRVs list created from data in the config.
-func getMyRVsInClustermap(myRVs []dcache.RawVolume) []dcache.RawVolume {
+func getMyRVsInClustermap(myRVs []dcache.RawVolume) map[string]dcache.RawVolume {
 	// Must be passed with a valid non-empty RV list.
 	common.Assert(len(myRVs) > 0)
 
-	// My RVs which actually are in the clustermap.
-	var cmRVs []dcache.RawVolume
+	// My RVs which actually are in the clustermap (along with their names in the clustermap).
+	cmRVs := make(map[string]dcache.RawVolume)
 
 	//
 	// Fetch all RVs owned by this node from the clustermap.
@@ -564,9 +575,9 @@ func getMyRVsInClustermap(myRVs []dcache.RawVolume) []dcache.RawVolume {
 	}
 
 	for _, myRv := range myRVs {
-		for _, rv := range myRVsFromClustermap {
+		for rvName, rv := range myRVsFromClustermap {
 			if myRv == rv {
-				cmRVs = append(cmRVs, rv)
+				cmRVs[rvName] = rv
 				break
 			}
 		}
