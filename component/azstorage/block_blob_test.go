@@ -171,9 +171,12 @@ type blockBlobTestSuite struct {
 }
 
 func newTestAzStorage(configuration string) (*AzStorage, error) {
-	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
+	err := config.ReadConfigFromReader(strings.NewReader(configuration))
+	if err != nil {
+		return nil, err
+	}
 	az := NewazstorageComponent()
-	err := az.Configure(true)
+	err = az.Configure(true)
 	return az.(*AzStorage), err
 }
 
