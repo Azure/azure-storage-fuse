@@ -959,7 +959,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 					log.Err("FileCache::OpenFile : error getting current usage of cache [%s]", err.Error())
 				} else {
 					if (currSize + float64(fileSize)) > fc.diskHighWaterMark {
-						log.Err("FileCache::OpenFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Name)
+						log.Err("FileCache::OpenFile : cache size limit reached [%f] failed to open %s", currSize, options.Name)
 						_ = f.Close()
 						err = os.Remove(localPath)
 						if err != nil {
@@ -982,7 +982,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 				// File was created locally and now download has failed so we need to delete it back from local cache
 				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
 				_ = f.Close()
-				_ = os.Remove(localPath)
+				err = os.Remove(localPath)
+				if err != nil {
+					log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
+				}
 				return nil, err
 			}
 		}
