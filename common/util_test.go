@@ -269,7 +269,7 @@ func (suite *utilTestSuite) TestExpandPath() {
 	suite.assert.Contains(path, "$web")
 }
 
-func (suite *utilTestSuite) TestGetUsage() {
+func (suite *utilTestSuite) TestGetUsageWithDu() {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return
@@ -286,7 +286,32 @@ func (suite *utilTestSuite) TestGetUsage() {
 	err = os.WriteFile(dirName+"/2.txt", data, 0777)
 	suite.assert.Nil(err)
 
-	usage, err := GetUsage(dirName)
+	usage, err := GetUsageWithDu(dirName)
+	suite.assert.Nil(err)
+	suite.assert.GreaterOrEqual(int(usage), 2)
+	suite.assert.LessOrEqual(int(usage), 4)
+
+	_ = os.RemoveAll(dirName)
+}
+
+func (suite *utilTestSuite) TestGetUsageWithWalkFunction() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	dirName := filepath.Join(pwd, "util_test")
+	err = os.Mkdir(dirName, 0777)
+	suite.assert.Nil(err)
+
+	data := make([]byte, 1024*1024)
+	err = os.WriteFile(dirName+"/1.txt", data, 0777)
+	suite.assert.Nil(err)
+
+	err = os.WriteFile(dirName+"/2.txt", data, 0777)
+	suite.assert.Nil(err)
+
+	usage, err := GetUsageWithWalkInMegabytes(dirName)
 	suite.assert.Nil(err)
 	suite.assert.GreaterOrEqual(int(usage), 2)
 	suite.assert.LessOrEqual(int(usage), 4)
@@ -312,14 +337,14 @@ func (suite *utilTestSuite) TestGetDiskUsage() {
 	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
 }
 
-func (suite *utilTestSuite) TestGetUsageWithSymlinks() {
+func (suite *utilTestSuite) TestGetUsageWithSymlinksWithWalkFunction() {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return
 	}
 
-	dir1 := filepath.Join(pwd, "util_test_dir1")
-	dir2 := filepath.Join(pwd, "util_test_dir2")
+	dir1 := filepath.Join(pwd, "util_test_dir1_walk")
+	dir2 := filepath.Join(pwd, "util_test_dir2_walk")
 	err = os.Mkdir(dir1, 0777)
 	suite.assert.Nil(err)
 	defer os.RemoveAll(dir1)
@@ -348,21 +373,60 @@ func (suite *utilTestSuite) TestGetUsageWithSymlinks() {
 	expectedSizeMB := float64(1.0)
 
 	/*
-	   GetUsageInMegabytes() returns the size of the directory based on block size.
+	   GetUsageWithWalkInMegabytes() returns the size of the directory based on block size.
 	   The result should be between 0.9 and 1.1 MB but not greater, otherwise the
 	   symlink may have been dereferenced.
 	*/
-	suite.assert.Less(usage, expectedSizeMB+0.1)       // Should be less than 1.1MB
-	suite.assert.GreaterOrEqual(usage, expectedSizeMB) // Should be at least 1MB
+	suite.assert.Less(usage, expectedSizeMB+0.1)
+	suite.assert.GreaterOrEqual(usage, expectedSizeMB)
 }
 
-func (suite *utilTestSuite) TestGetUsageWithSubdirectories() {
+func (suite *utilTestSuite) TestGetUsageWithSymlinksWithDu() {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return
 	}
 
-	tempDir := filepath.Join(pwd, "util_test_subdir")
+	dir1 := filepath.Join(pwd, "util_test_dir1_du")
+	dir2 := filepath.Join(pwd, "util_test_dir2_du")
+	err = os.Mkdir(dir1, 0777)
+	suite.assert.Nil(err)
+	defer os.RemoveAll(dir1)
+
+	err = os.Mkdir(dir2, 0777)
+	suite.assert.Nil(err)
+	defer os.RemoveAll(dir2)
+
+	data := make([]byte, 1024*1024)
+	file1 := filepath.Join(dir1, "file1.txt")
+	file2 := filepath.Join(dir2, "file2.txt")
+
+	err = os.WriteFile(file1, data, 0777)
+	suite.assert.Nil(err)
+
+	err = os.WriteFile(file2, data, 0777)
+	suite.assert.Nil(err)
+
+	symlink := filepath.Join(dir1, "link_to_file2")
+	err = os.Symlink(file2, symlink)
+	suite.assert.Nil(err)
+
+	usage, err := GetUsageWithDu(dir1)
+	suite.assert.Nil(err)
+
+	expectedSizeMB := float64(1.0)
+
+	suite.assert.LessOrEqual(usage, expectedSizeMB+0.1)
+	suite.assert.GreaterOrEqual(usage, expectedSizeMB)
+}
+
+func (suite *utilTestSuite) TestGetUsageWithSubdirectoriesWithWalkFunction() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	tempDir := filepath.Join(pwd, "util_test_subdir_walk")
 	err = os.Mkdir(tempDir, 0777)
 	suite.assert.Nil(err)
 	defer os.RemoveAll(tempDir)
@@ -410,13 +474,67 @@ func (suite *utilTestSuite) TestGetUsageWithSubdirectories() {
 	suite.assert.Less(usage, expectedSizeMB+0.1)
 }
 
-func (suite *utilTestSuite) TestGetUsageInMegabytesWithNonAlignedSizes() {
+func (suite *utilTestSuite) TestGetUsageWithSubdirectoriesWithDu() {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return
 	}
 
-	tempDir := filepath.Join(pwd, "util_test_nonaligned")
+	tempDir := filepath.Join(pwd, "util_test_subdir_du")
+	err = os.Mkdir(tempDir, 0777)
+	suite.assert.Nil(err)
+	defer os.RemoveAll(tempDir)
+
+	data := make([]byte, 1024*1024)
+	file1 := filepath.Join(tempDir, "file1.txt")
+	err = os.WriteFile(file1, data, 0777)
+	suite.assert.Nil(err)
+
+	subDir := filepath.Join(tempDir, "subdir")
+	err = os.Mkdir(subDir, 0777)
+	suite.assert.Nil(err)
+
+	data2 := make([]byte, 2*1024*1024)
+	file2 := filepath.Join(subDir, "file2.txt")
+	err = os.WriteFile(file2, data2, 0777)
+	suite.assert.Nil(err)
+
+	subDir2 := filepath.Join(tempDir, "subdir2")
+	err = os.Mkdir(subDir2, 0777)
+	suite.assert.Nil(err)
+
+	data3 := make([]byte, 512*1024)
+	file3 := filepath.Join(subDir2, "file3.txt")
+	err = os.WriteFile(file3, data3, 0777)
+	suite.assert.Nil(err)
+
+	dirInfo, err := os.Lstat(subDir)
+	suite.assert.Nil(err)
+	dirSize := dirInfo.Size()
+
+	dirInfo2, err := os.Lstat(subDir2)
+	suite.assert.Nil(err)
+	dirSize2 := dirInfo2.Size()
+
+	usage, err := GetUsageWithDu(tempDir)
+	suite.assert.Nil(err)
+
+	file1ExpectedSize := float64(1024 * 1024)
+	file2ExpectedSize := float64(2 * 1024 * 1024)
+	file3ExpectedSize := float64(512 * 1024)
+	expectedSizeMB := (file1ExpectedSize + file2ExpectedSize + file3ExpectedSize + float64(dirSize+dirSize2)) / (1024 * 1024)
+
+	suite.assert.GreaterOrEqual(usage, expectedSizeMB-0.1)
+	suite.assert.Less(usage, expectedSizeMB+0.1)
+}
+
+func (suite *utilTestSuite) TestGetUsageInMegabytesWithNonAlignedSizesWithWalkFunction() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	tempDir := filepath.Join(pwd, "util_test_nonaligned_walk")
 	err = os.Mkdir(tempDir, 0777)
 	suite.assert.Nil(err)
 	defer os.RemoveAll(tempDir)
@@ -446,6 +564,54 @@ func (suite *utilTestSuite) TestGetUsageInMegabytesWithNonAlignedSizes() {
 	suite.assert.Nil(err)
 
 	usage, err := GetUsageWithWalkInMegabytes(tempDir)
+	suite.assert.Nil(err)
+
+	totalLogicalBytes := float64(1000 + 1500 + 777)
+	expectedLogicalMB := totalLogicalBytes / (1024 * 1024)
+
+	suite.assert.Greater(usage, 0.0)
+	suite.assert.Less(usage, 1.0)
+
+	suite.assert.GreaterOrEqual(usage, expectedLogicalMB-0.001)
+	suite.assert.LessOrEqual(usage, expectedLogicalMB+0.1)
+}
+
+func (suite *utilTestSuite) TestGetUsageInMegabytesWithNonAlignedSizesWithDu() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	tempDir := filepath.Join(pwd, "util_test_nonaligned_du")
+	err = os.Mkdir(tempDir, 0777)
+	suite.assert.Nil(err)
+	defer os.RemoveAll(tempDir)
+
+	data1 := make([]byte, 1000)
+	for i := range data1 {
+		data1[i] = byte(i % 256)
+	}
+	file1 := filepath.Join(tempDir, "file1.txt")
+	err = os.WriteFile(file1, data1, 0777)
+	suite.assert.Nil(err)
+
+	data2 := make([]byte, 1500)
+	for i := range data2 {
+		data2[i] = byte(i % 256)
+	}
+	file2 := filepath.Join(tempDir, "file2.txt")
+	err = os.WriteFile(file2, data2, 0777)
+	suite.assert.Nil(err)
+
+	data3 := make([]byte, 777)
+	for i := range data3 {
+		data3[i] = byte(i % 256)
+	}
+	file3 := filepath.Join(tempDir, "file3.txt")
+	err = os.WriteFile(file3, data3, 0777)
+	suite.assert.Nil(err)
+
+	usage, err := GetUsageWithDu(tempDir)
 	suite.assert.Nil(err)
 
 	totalLogicalBytes := float64(1000 + 1500 + 777)
