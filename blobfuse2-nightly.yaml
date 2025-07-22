@@ -31,6 +31,15 @@ parameters:
     type: boolean
     default: true
 
+  - name: linux_git_test
+    displayName: 'Compile Linux Source and Run git clone Tests'
+    type: string
+    values:
+    - file_cache
+    - block_cache
+    - none
+    default: none
+
   - name: proxy_test
   # Proxy tests
     displayName: 'Proxy test'
@@ -1054,6 +1063,66 @@ stages:
 
             # checks for bfusemon
             - template: 'azure-pipeline-templates/bfusemon.yml'
+
+            - template: azure-pipeline-templates/cleanup.yml
+              parameters:
+                unmount: true
+                delete_containers: true
+
+  - ${{ if ne(parameters.linux_git_test, 'none') }}:
+    - stage: CompileLinux-GitClone
+      dependsOn: BuildAndTest
+      jobs:
+        # Ubuntu Tests
+        - job: Set_1
+          timeoutInMinutes: 300
+          strategy:
+            matrix:
+              Ubuntu-22:
+                AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+
+          pool:
+            name: "blobfuse-ubuntu-pool"
+            demands:
+              - ImageOverride -equals $(AgentName)
+
+          variables:
+            - group: NightlyBlobFuse
+            - name: MOUNT_DIR
+              value: '$(Pipeline.Workspace)/blob_mnt'
+            - name: TEMP_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+            - name: BLOBFUSE2_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+            - name: BLOBFUSE2_ADLS_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+            - name: skipComponentGovernanceDetection
+              value: true
+            - name: GOPATH
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(Agent.TempDirectory)'
+            - name: WORK_DIR
+              value: '$(Build.SourcesDirectory)'
+
+          steps:
+            # -------------------------------------------------------
+            # Pull and build the code and create the containers
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                skip_ut: true
+
+            - template: 'azure-pipeline-templates/linux-git.yml'
+              parameters:
+                config_file: $(BLOBFUSE2_CFG)
+                cache_mode: ${{ parameters.linux_git_test }}
+                account_name: $(BF2_BLK_ACC_NAME)
+                account_key: $(BF2_BLK_ACC_KEY)
+                account_type: block
 
             - template: azure-pipeline-templates/cleanup.yml
               parameters:
