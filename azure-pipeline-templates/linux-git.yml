@@ -9,6 +9,10 @@ parameters:
     type: string
   - name: account_type
     type: string
+  - name: verbose_log
+    type: boolean
+    default: false
+
 
 steps:
         # Generate config file for file cache
@@ -45,8 +49,9 @@ steps:
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
 
   - script: |
-      ls -l ${{ parameters.mount_dir }}
+      ls -lrt
     displayName: 'Print contents of Mountpoint'
+    workingDirectory: $(MOUNT_DIR)    
 
   - script: |
       wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.tar.xz 
