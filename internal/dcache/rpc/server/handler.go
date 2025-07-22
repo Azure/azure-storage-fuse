@@ -2208,12 +2208,20 @@ refreshFromClustermapAndRetry:
 			//    to all the component RVs. If we don't have the MV added to the rvInfo we must not have
 			//    responded positively to JoinMV/UpdateMV, so sender must not have updated the clustermap.
 			//    Hence we also assert for this.
+			// U: The RV may have been removed from the MV and the JoinMV/UpdateMV may be in progress and the
+			//    clustermap is not yet updated (hence the sender made this PutChunk call quoting the old RV).
+			//    Refreshing from the clustermap will not help (as we have the latest info, yet to be published
+			//    in the clustermap) but it's not an impossible situation, so we should not assert for this.
+			//    On receiving this error, client will refresh the clustermap and retry. Since the clustermap
+			//    is in the process of being updated, client may or may not get the updated clustermap on refresh.
+			//    This means the client retry may fail again, but eventually the clustermap will be updated
+			//    and client will get the updated clustermap.
 			//
 			if rvNameAndState == nil {
 				errStr := fmt.Sprintf("PutChunk(client) sender has a non-existent RV %s/%s",
 					rv.Name, req.Chunk.Address.MvName)
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-				common.Assert(false, errStr)
+				//common.Assert(false, errStr)
 				return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 			}
 
