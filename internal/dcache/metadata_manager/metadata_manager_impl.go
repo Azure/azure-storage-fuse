@@ -255,6 +255,12 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 			Name: blobPath,
 		})
+
+		injectErr := common.InjectError(common.PROB_LOW)
+		if injectErr != nil {
+			err = injectErr
+		}
+
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
 			if !os.IsNotExist(err) && err != syscall.ENOENT {
@@ -272,6 +278,12 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 			Path: blobPath,
 			Size: attr.Size,
 		})
+
+		injectErr = common.InjectError(common.PROB_LOW)
+		if injectErr != nil {
+			err = injectErr
+		}
+
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
 			common.Assert(false, err)
@@ -285,6 +297,12 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		attr1, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 			Name: blobPath,
 		})
+
+		injectErr = common.InjectError(common.PROB_LOW)
+		if injectErr != nil {
+			err = injectErr
+		}
+
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
 			// Must be transient error, so retry.
@@ -350,6 +368,11 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 		EtagMatchConditions:    "",
 	})
 
+	injectErr := common.InjectError(common.PROB_MODERATE)
+	if injectErr != nil {
+		err = injectErr
+	}
+
 	//
 	// PutBlobInStorage() can complete with following possible results:
 	// 1. Success, blob created
@@ -398,6 +421,12 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	if common.IsDebugBuild() {
 		prop, err := m.storageCallback.GetPropertiesFromStorage(
 			internal.GetAttrOptions{Name: path})
+
+		injectErr := common.InjectError(common.PROB_MODERATE)
+		if injectErr != nil {
+			err = injectErr
+		}
+
 		common.Assert(err == nil, err)
 
 		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
@@ -430,6 +459,11 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    eTag,
 	})
+
+	injectErr := common.InjectError(common.PROB_LOW)
+	if injectErr != nil {
+		err = injectErr
+	}
 
 	if err != nil {
 		//
@@ -595,6 +629,12 @@ func (m *BlobMetadataManager) deleteFile(fileID string) error {
 	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
 		Name: path,
 	})
+
+	injectErr := common.InjectError(common.PROB_MODERATE)
+	if injectErr != nil {
+		err = injectErr
+	}
+
 	if err != nil {
 		// Treat BlobNotFound as success.
 		if err == syscall.ENOENT {
@@ -742,6 +782,12 @@ func (m *BlobMetadataManager) updateHandleCount(path string, attr *internal.ObjA
 			Etag:      to.Ptr(azcore.ETag(newAttr.ETag)),
 			Overwrite: true,
 		})
+
+		injectErr = common.InjectError(common.PROB_MODERATE)
+		if injectErr != nil {
+			err = injectErr
+		}
+
 		if err != nil {
 			if bloberror.HasCode(err, bloberror.ConditionNotMet) {
 				log.Warn("updateHandleCount:: SetPropertiesInStorage failed for path %s due to ETag mismatch, retrying...", path)
@@ -800,6 +846,12 @@ func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
 	prop, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 		Name: path,
 	})
+
+	injectErr := common.InjectError(common.PROB_MODERATE)
+	if injectErr != nil {
+		err = injectErr
+	}
+
 	if err != nil {
 		log.Err("GetFileOpenCount:: Failed to get properties for path %s: %v", path, err)
 		return -1, err
@@ -839,6 +891,12 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    "",
 	})
+
+	injectErr := common.InjectError(common.PROB_LOW)
+	if injectErr != nil {
+		err = injectErr
+	}
+
 	if err != nil {
 		log.Err("UpdateHeartbeat:: Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err)
 		common.Assert(false, fmt.Sprintf("Failed to put heartbeat blob path %s in storage: %v",
@@ -859,6 +917,12 @@ func (m *BlobMetadataManager) deleteHeartbeat(nodeId string) error {
 	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
 		Name: heartbeatFilePath,
 	})
+
+	injectErr := common.InjectError(common.PROB_HIGH)
+	if injectErr != nil {
+		err = injectErr
+	}
+
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			log.Err("DeleteHeartbeat:: DeleteBlobInStorage failed since blob %s is already deleted: %v",
@@ -904,6 +968,12 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 	list, err := m.storageCallback.ReadDirFromStorage(internal.ReadDirOptions{
 		Name: path,
 	})
+
+	injectErr := common.InjectError(common.PROB_LOW)
+	if injectErr != nil {
+		err = injectErr
+	}
+
 	if err != nil {
 		log.Err("GetAllNodes:: Failed to enumerate nodes list from %s: %v", path, err)
 		common.Assert(false, fmt.Sprintf("Failed to enumerate nodes list from %s: %v", path, err))
@@ -944,6 +1014,11 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
 	})
+
+	injectErr := common.InjectError(common.PROB_VERY_HIGH)
+	if injectErr != nil {
+		err = injectErr
+	}
 
 	//
 	// TODO:
@@ -1001,6 +1076,11 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 		EtagMatchConditions:    *etag,
 	})
 
+	injectErr := common.InjectError(common.PROB_LOW)
+	if injectErr != nil {
+		err = injectErr
+	}
+
 	//
 	// Caller should add a check to identify the error is ConditionNotMet or something else
 	// and take appropriate action.
@@ -1043,6 +1123,12 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    "",
 	})
+
+	injectErr := common.InjectError(common.PROB_LOW)
+	if injectErr != nil {
+		err = injectErr
+	}
+
 	if err != nil {
 		log.Err("UpdateClusterMapEnd:: Failed to finalize clustermap update for %s: %v", clustermapPath, err)
 		common.Assert(false, err)
