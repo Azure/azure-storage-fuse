@@ -126,6 +126,20 @@ func (suite *libfuseTestSuite) TestConfigDefaultPermission() {
 	suite.assert.True(suite.libfuse.directIO)
 }
 
+func (suite *libfuseTestSuite) TestConfigDisableKernelCache() {
+	defer suite.cleanupTest()
+	suite.cleanupTest() // clean up the default libfuse generated
+	config := "read-only: true\ndisable-kernel-cache: true\n\n"
+	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
+
+	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
+	suite.assert.Empty(suite.libfuse.mountPath)
+	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(0))
+	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(0))
+	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(0))
+	suite.assert.True(suite.libfuse.directIO)
+}
+
 func (suite *libfuseTestSuite) TestConfigFuseTraceEnable() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated

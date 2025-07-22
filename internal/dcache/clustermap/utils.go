@@ -68,7 +68,7 @@ var (
 	MaxNumReplicas int64 = 256
 
 	//
-	// Unless explictly set, the system sets cfg.MVsPerRV in a way so as to get close to PreferredMVs
+	// Unless explicitly set, the system sets cfg.MVsPerRV in a way so as to get close to PreferredMVs
 	// number of MVs. Obviously it'll honour MaxMVsPerRV.
 	//
 	// TODO: See if we need to make this a config option.
@@ -99,6 +99,7 @@ func IsValidComponentRVState(rvState dcache.StateEnum) bool {
 	switch rvState {
 	case dcache.StateOnline,
 		dcache.StateOffline,
+		dcache.StateInbandOffline,
 		dcache.StateOutOfSync,
 		dcache.StateSyncing:
 		return true
@@ -225,12 +226,6 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 
 	if int64(cfg.MVsPerRV) < MinMVsPerRV || int64(cfg.MVsPerRV) > MaxMVsPerRV {
 		return false, fmt.Errorf("DCacheConfig: Invalid MVsPerRV: %d %+v", cfg.MVsPerRV, *cfg)
-	}
-
-	// MVsPerRV less than NumReplicas is usually pointless.
-	if int64(cfg.MVsPerRV) < int64(cfg.NumReplicas) {
-		return false, fmt.Errorf("DCacheConfig: MVsPerRV(%d) < NumReplicas(%d) %+v",
-			cfg.MVsPerRV, cfg.NumReplicas, *cfg)
 	}
 
 	if int64(cfg.RvFullThreshold) < MinRvFullThreshold || int64(cfg.RvFullThreshold) > MaxRvFullThreshold {

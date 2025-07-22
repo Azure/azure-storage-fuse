@@ -144,6 +144,28 @@ func getMVsPerRV() int64 {
 	return int64(cm.GetCacheConfig().MVsPerRV)
 }
 
+// Check if any of the RV present in the component RVs has inband-offline state.
+func containsInbandOfflineState(componentRVs *[]*models.RVNameAndState) bool {
+	for _, rv := range *componentRVs {
+		common.Assert(rv != nil)
+		if rv.State == string(dcache.StateInbandOffline) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Update the inband-offline state to offline for all the component RVs in the request.
+func updateInbandOfflineToOffline(componentRVs *[]*models.RVNameAndState) {
+	for _, rv := range *componentRVs {
+		common.Assert(rv != nil)
+		if rv.State == string(dcache.StateInbandOffline) {
+			rv.State = string(dcache.StateOffline)
+		}
+	}
+}
+
 // This method is wrapper for the GetChunk() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
 func GetChunkLocal(ctc context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
@@ -153,6 +175,13 @@ func GetChunkLocal(ctc context.Context, req *models.GetChunkRequest) (*models.Ge
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = rpc.GetMyNodeUUID()
+
+	//
+	// This chunk is being read locally without any RPC, so we can set IsLocalRV to true. This is used for
+	// taking the decision in the handler to allocate the chunk from the buffer pool instead of initializing
+	// a new buffer.
+	//
+	req.IsLocalRV = true
 
 	common.Assert(handler != nil)
 

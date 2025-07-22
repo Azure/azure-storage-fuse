@@ -630,7 +630,7 @@ test_file_operations()
 
         
     fi
-
+    
     becho -n "Azure File creation must work on $vm"
     ssh $vm "echo azure > $MOUNTDIR/fs=azure/file${node_num}.azure"
     TOTAL_AZURE_FILES=$((TOTAL_AZURE_FILES + 1))
@@ -806,8 +806,6 @@ test_cross_node_consistency()
         log_status $? "$node1: $unqualified_file_md5_node1, $node2: $unqualified_file_md5_node2"
     fi
 }
-
-
 
 #
 # Action starts here
@@ -1086,7 +1084,7 @@ if [ "$NUM_NODES" -gt 1 ]; then
         # Use the second node for monitoring
         monitoring_node=$(get_node_ip "$cm_before" "$LAST_UPDATED_BY")
     fi
-
+    
     # Get the list of RVs assigned to the node we're about to take down
     becho -n "Identifying RVs assigned to $failed_node_vm"
     rvs_on_failing_node=$(get_rv_list_for_node "$cm_before" "$failed_node_id")

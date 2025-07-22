@@ -106,7 +106,8 @@ func (suite *blockpoolTestSuite) TestGetRelease() {
 	suite.assert.Equal(len(bp.resetBlockCh), 0)
 	suite.assert.True(validateNullData(bp.zeroBlock))
 
-	b := bp.MustGet()
+	b, err := bp.MustGet()
+	suite.assert.Nil(err)
 	suite.assert.NotNil(b)
 	suite.assert.Equal(len(bp.blocksCh), 3)
 
@@ -144,7 +145,8 @@ func (suite *blockpoolTestSuite) TestUsage() {
 	suite.assert.True(validateNullData(bp.zeroBlock))
 
 	var blocks []*Block
-	b := bp.MustGet()
+	b, err := bp.MustGet()
+	suite.assert.Nil(err)
 	suite.assert.NotNil(b)
 	blocks = append(blocks, b)
 
@@ -175,7 +177,7 @@ func (suite *blockpoolTestSuite) TestUsage() {
 	suite.assert.Equal(len(bp.zeroBlock.data), 0)
 }
 
-func (suite *blockpoolTestSuite) TestBufferExhaution() {
+func (suite *blockpoolTestSuite) TestBufferExhaustion() {
 	suite.assert = assert.New(suite.T())
 
 	bp := NewBlockPool(1, 5)
@@ -191,7 +193,8 @@ func (suite *blockpoolTestSuite) TestBufferExhaution() {
 
 	var blocks []*Block
 	for i := 0; i < 4; i++ {
-		b := bp.MustGet()
+		b, err := bp.MustGet()
+		suite.assert.Nil(err)
 		suite.assert.NotNil(b)
 		blocks = append(blocks, b)
 	}
@@ -203,7 +206,8 @@ func (suite *blockpoolTestSuite) TestBufferExhaution() {
 	suite.assert.Nil(b)
 
 	// MustGet should return nil as no blocks are available
-	b = bp.MustGet()
+	b, err := bp.MustGet()
+	suite.assert.NotNil(err)
 	suite.assert.Nil(b)
 
 	for _, blk := range blocks {

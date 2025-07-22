@@ -319,7 +319,7 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 	var err error
 
 	if allocateBuf {
-		buf, err = fileIOMgr.bp.getBuffer()
+		buf, err = dcache.GetBuffer()
 		if err != nil {
 			return nil, err
 		}
@@ -332,7 +332,7 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 		Err:           make(chan error, 1),
 		IsBufExternal: !allocateBuf,
 		Dirty:         atomic.Bool{},
-		Uptodate:      atomic.Bool{},
+		UpToDate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
 	}, nil
 }

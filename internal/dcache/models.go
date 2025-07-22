@@ -63,6 +63,11 @@ const (
 	StateSyncing   StateEnum = "syncing"
 	StateReadOnly  StateEnum = "readOnly"
 	StateChecking  StateEnum = "checking"
+	//
+	// Inband offline is a state for RVs that are not reachable from a given node,
+	// but are not marked offline yet by the heartbeat mechanism.
+	//
+	StateInbandOffline StateEnum = "inband-offline"
 )
 
 // Please change the ClusterMapExport struct if you change this struct.
@@ -94,6 +99,7 @@ type ClusterMapExport struct {
 }
 
 type HeartbeatData struct {
+	InitialHB     bool        `json:"initial_hb"`
 	Hostname      string      `json:"hostname"`
 	IPAddr        string      `json:"ipaddr"`
 	NodeID        string      `json:"nodeid"`

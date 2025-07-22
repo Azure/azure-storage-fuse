@@ -111,6 +111,8 @@ func (wp *workerPool) readChunk(task *task) {
 		task.chunk.Idx, task.chunk.Len, task.file.FileMetadata.Filename)
 
 	// For read chunk, buffer must not be pre-allocated, ReadMV() returns the buffer.
+	// buffer is pre-allocated only when reading the chunk from the Local RV which would be decided after the ReadMV
+	// call from the replication manager.
 	common.Assert(task.chunk.IsBufExternal)
 	common.Assert(task.chunk.Buf == nil, len(task.chunk.Buf))
 
@@ -132,13 +134,18 @@ func (wp *workerPool) readChunk(task *task) {
 		common.Assert(len(readMVresp.Data) == int(task.chunk.Len))
 
 		//
-		// ReadMV completed successfully, staged chunk is now uptodate.
-		// We should copy data to user buffer only from uptodate staged chunks.
+		// ReadMV completed successfully, staged chunk is now up-to-date.
+		// We should copy data to user buffer only from up-to-date staged chunks.
 		//
-		common.Assert(!task.chunk.Uptodate.Load())
+		common.Assert(!task.chunk.UpToDate.Load())
 
-		task.chunk.Uptodate.Store(true)
+		task.chunk.UpToDate.Store(true)
 		task.chunk.Buf = readMVresp.Data
+		//
+		// While reading from the Local RV, The RPC handler allocate the buffer from the BufferPool which must be
+		// released by the file_manager after its use.
+		//
+		task.chunk.IsBufExternal = readMVresp.IsBufExternal
 
 		// Close the Err channel to indicate "no error".
 		close(task.chunk.Err)

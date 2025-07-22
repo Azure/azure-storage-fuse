@@ -60,6 +60,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	gouuid "github.com/google/uuid"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -190,6 +191,11 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError(errString)
 	}
 
+	err = dcache.InitBufferPool(dc.cfg.ChunkSize)
+	if err != nil {
+		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to create BufferPool : %v]", err))
+	}
+
 	err = rm.Start()
 	if err != nil {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start replication manager : %v]", err))
@@ -261,6 +267,16 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		rvId, err := getBlockDeviceUUId(path)
 		if err != nil {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+		}
+
+		if common.IsDebugBuild() {
+			if common.IsFakingScaleTest() {
+				//
+				// Generate UUID using SHA1 of the path string.
+				// Additionally, append the node UUID to ensure uniqueness across nodes.
+				//
+				rvId = gouuid.NewSHA1(gouuid.NameSpaceDNS, []byte(uuidVal+path)).String()
+			}
 		}
 
 		//
@@ -657,7 +673,7 @@ startListingWithNewToken:
 				return dirList, token, err
 			}
 
-			// Ignore the dirent if it's already retured by the dcache listing.
+			// Ignore the dirent if it's already returned by the dcache listing.
 			var modifiedDirList []*internal.ObjAttr = make([]*internal.ObjAttr, 0, len(dirList))
 			for _, attr := range dirList {
 				if _, ok := options.DcacheEntries[attr.Name]; !ok {
@@ -714,7 +730,7 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 		return syscall.EACCES
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
-		// Semantics for creating a directory, when path doesnt have explicit namespace.
+		// Semantics for creating a directory, when path doesn't have explicit namespace.
 		// Create in Azure and Dcache, fail the call if any one of them fail.
 
 		// Create Dir in Azure
@@ -1016,7 +1032,7 @@ func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, e
 
 	if options.Handle.IsFsDcache() && options.Handle.IsFsAzure() {
 
-		// Parallely write to azure and dcache.
+		// Parallelly write to azure and dcache.
 		// Enqueue the work of azure to the parallel writers and continue writing to the dcache from here.
 		azureErrChan := dc.pw.EnqueuAzureWrite(azureWrite)
 		dcacheErr = dcacheWrite()
@@ -1194,7 +1210,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		//
 		// Semantics for Unqualified Path, Delete from both Azure and Dcache. If file is present in only one qualified
 		// path, then delete only from that path. If the call has come here it already means that the file is present
-		// in atleast one qualified path as stat would be checked before doing deletion of a file.
+		// in at least one qualified path as stat would be checked before doing deletion of a file.
 		//
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 
@@ -1299,6 +1315,8 @@ func ensureUUID() {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
+	// Silence unused import error for release builds.
+	gouuid.New()
 
 	internal.AddComponent(compName, NewDistributedCacheComponent)
 

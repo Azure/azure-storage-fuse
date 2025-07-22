@@ -66,7 +66,8 @@ func newParallelWriter() *parallelWriter {
 		go pw.azureWriter()
 	}
 
-	log.Info("parallelWriter:: %d writers started for dcache, Used when writing to Unqualified path")
+	log.Info("parallelWriter:: %d writers started for dcache, Used when writing to Unqualified path",
+		pw.maxWriters)
 
 	return pw
 }
@@ -74,7 +75,8 @@ func newParallelWriter() *parallelWriter {
 func (pw *parallelWriter) destroyParallelWriter() {
 	close(pw.azureWriterQueue)
 	pw.wg.Wait()
-	log.Info("parallelWriter:: %d writers destroyed for dcache, Used when writing to Unqualified path")
+	log.Info("parallelWriter:: %d writers destroyed for dcache, Used when writing to Unqualified path",
+		pw.maxWriters)
 }
 
 func (pw *parallelWriter) azureWriter() {

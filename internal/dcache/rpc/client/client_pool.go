@@ -139,19 +139,45 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	// so we crash the program with a trace.
 	// Note that accessing clientChan is thread safe, so we don't need the clientPool lock.
 	//
-	maxWait := time.Duration(60 * time.Second)
+	maxWaitTime := 60 // in seconds
 
-	select {
-	case client := <-ncPool.clientChan:
-		ncPool.lastUsed.Store(time.Now().Unix())
-		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
-		ncPool.numActive.Add(1)
-		return client, nil
-	case <-time.After(maxWait):
-		err := fmt.Errorf("no free RPC client for node %s, even after waiting for %s",
-			nodeID, maxWait)
-		log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
-		return nil, err
+	// Time in seconds we have waited for a client to become available.
+	waitTime := 0
+
+	for {
+		select {
+		case client := <-ncPool.clientChan:
+			ncPool.lastUsed.Store(time.Now().Unix())
+			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
+			ncPool.numActive.Add(1)
+			return client, nil
+		case <-time.After(2 * time.Second): // Timeout after 2 second
+			waitTime += 2
+
+			//
+			// There can be a case when client pool for the node is deleted.
+			// For example, the node goes down and RPC fails with BrokenPipe error. In this case,
+			// we reset the connections available for the node, which first closes the stale connections
+			// and then creates new connections. Since, the node is down, creating new RPC connection
+			// to the node fails with connection refused error. So, eventually all the connections in the
+			// pool are closed and client pool for the node is deleted. In this case, we do not wait
+			// for a client to become available and return error to the caller.
+			//
+			if ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0 {
+				err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %d seconds",
+					nodeID, waitTime)
+				log.Err("clientPool::getRPCClient: %v", err)
+				return nil, err
+			}
+
+			if waitTime >= maxWaitTime {
+				err := fmt.Errorf("no free RPC client for node %s, even after waiting for %d seconds",
+					nodeID, waitTime)
+				log.Err("clientPool::getRPCClient: %v", err)
+				log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
+				return nil, err
+			}
+		}
 	}
 }
 
@@ -586,7 +612,8 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 	// We never have a partially allocated client pool and we only clean up a client pool when all
 	// previously allocated clients have been released back to the pool
 	//
-	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode), len(ncPool.clientChan), cp.maxPerNode)
+	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode),
+		len(ncPool.clientChan), cp.maxPerNode, ncPool.nodeID)
 
 	close(ncPool.clientChan)
 

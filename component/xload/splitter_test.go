@@ -135,7 +135,7 @@ func setupTestSplitter() (*testSplitter, error) {
 	}
 
 	ts.blockSize = 10
-	ts.blockPool = NewBlockPool(ts.blockSize, 10)
+	ts.blockPool = NewBlockPool(ts.blockSize, 10, context.TODO())
 	ts.locks = common.NewLockMap()
 
 	ts.stMgr, err = NewStatsManager(10, false, nil)
@@ -171,7 +171,7 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.NotNil(statsMgr)
 
 	ds, err = newDownloadSplitter(&downloadSplitterOptions{
-		blockPool:   NewBlockPool(1, 1),
+		blockPool:   NewBlockPool(1, 1, context.TODO()),
 		path:        "/home/user/random_path",
 		workerCount: 4,
 		remote:      remote,

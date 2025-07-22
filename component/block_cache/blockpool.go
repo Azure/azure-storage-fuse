@@ -34,6 +34,7 @@
 package block_cache
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -141,8 +142,8 @@ func (pool *BlockPool) Usage() uint32 {
 	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.priorityCh)+len(pool.resetBlockCh))) * 100) / pool.maxBlocks
 }
 
-// MustGet a Block from the pool, wait until something is free
-func (pool *BlockPool) MustGet() *Block {
+// MustGet a Block from the pool, waits until defaultTimeout period before giving up the allocation of the buffer.
+func (pool *BlockPool) MustGet() (*Block, error) {
 	var block *Block = nil
 	defaultTimeout := time.After(5 * time.Second)
 
@@ -153,13 +154,15 @@ func (pool *BlockPool) MustGet() *Block {
 		break
 	// Return error in case no blocks are available after default timeout
 	case <-defaultTimeout:
-		log.Err("BlockPool::MustGet : No blocks available after 10 seconds. Returning nil.")
-		return nil
+		err := fmt.Errorf("Failed to Allocate Buffer, Len (priorityCh: %d, blockCh: %d), MaxBlocks: %d",
+			len(pool.priorityCh), len(pool.blocksCh), pool.maxBlocks)
+		log.Err("BlockPool::MustGet : %v", err)
+		return nil, err
 	}
 
 	// Mark the buffer ready for reuse now
 	block.ReUse()
-	return block
+	return block, nil
 }
 
 // TryGet a Block from the pool, return back if nothing is available
