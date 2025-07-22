@@ -1070,7 +1070,7 @@ stages:
                 delete_containers: true
 
   - ${{ if ne(parameters.linux_git_test, 'none') }}:
-    - stage: CompileLinux-GitClone
+    - stage: CompileLinux_GitClone
       dependsOn: BuildAndTest
       jobs:
         # Ubuntu Tests
