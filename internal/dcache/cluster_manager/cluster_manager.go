@@ -1192,8 +1192,8 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		// The clustermap must now have our RVs added to RV list.
 		// Only RVs which clash with existing RVs in the clustermap would not be added.
 		//
-		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: cluster map updated by %s at %d (took %s): %+v",
-			cmi.myNodeId, clusterMap.LastUpdatedAt, time.Since(startTime), clusterMap)
+		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: cluster map updated by %s at %d (took %s)",
+			cmi.myNodeId, clusterMap.LastUpdatedAt, time.Since(startTime))
 
 		break
 	}
@@ -2812,7 +2812,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		common.Assert(false, err)
 		return false, fmt.Errorf("ClusterManager::updateRVList: getAllNodes() failed: %v", err)
 	}
-	log.Debug("ClusterManager::updateRVList: Found %d nodes in cluster (initialHB=%v): %+v",
+	log.Debug("ClusterManager::updateRVList: Found %d nodes in cluster (initialHB=%v), now start collecting heartbeats: %+v",
 		len(nodeIds), initialHB, nodeIds)
 
 	//
@@ -2826,6 +2826,8 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	if err != nil {
 		return false, err
 	}
+	log.Debug("ClusterManager::updateRVList: Collected %d heartbeats for %d nodes (initialHB=%v), failed to read HB for %d nodes: %+v",
+		len(rVsByRvIdFromHB), len(nodes), initialHB, len(failedToReadNodes), failedToReadNodes)
 
 	// Both the RV and the RV HB map must have the exact same RVs.
 	common.Assert(len(rVsByRvIdFromHB) == len(rvLastHB), len(rVsByRvIdFromHB), len(rvLastHB))
@@ -3157,9 +3159,6 @@ func collectHBForGivenNodeIds(nodeIds []string, initialHB bool) (map[string]dcac
 			// Acquire a semaphore slot to limit concurrency.
 			sem <- struct{}{}
 			defer func() { <-sem }()
-
-			log.Debug("ClusterManager::collectHBForGivenNodeIds: Fetching heartbeat (initialHB=%v) for node %s",
-				initialHB, nodeId)
 
 			bytes, err := getHeartbeat(nodeId)
 			if err != nil {
