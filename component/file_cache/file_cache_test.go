@@ -2028,6 +2028,31 @@ func (suite *fileCacheTestSuite) createRemoteDirectoryStructure() {
 	suite.assert.NoError(err)
 }
 
+func (suite *fileCacheTestSuite) TestHardLimit() {
+	defer suite.cleanupTest()
+	cacheTimeout := 0
+	maxSizeMb := 2
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  max-size-mb: %d\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, maxSizeMb, cacheTimeout, suite.fake_storage_path)
+	os.Mkdir(suite.cache_path, 0777)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	file := "file96"
+	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	data := make([]byte, 1024*1024)
+	for i := int64(0); i < 5; i++ {
+		suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: i * 1024 * 1024, Data: data})
+	}
+	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	time.Sleep(1)
+
+	// Now try to open the file and validate we get an error due to hard limit
+	handle, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: file, Mode: 0777})
+	suite.assert.NotNil(err)
+	suite.assert.Nil(handle)
+	suite.assert.Equal(err, syscall.ENOSPC)
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestFileCacheTestSuite(t *testing.T) {
