@@ -371,9 +371,16 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 			// This is running from the single startup thread, so we don't really need the lock, but
 			// addToMVMap() asserts for that.
 			//
+			mvDirSize, err := getMVDirSize(filepath.Join(rv.LocalCachePath, mvName))
+			if err != nil {
+				log.Err("NewChunkServiceHandler: %v", err)
+			}
+
+			mvInfo := newMVInfo(rvInfo, mvName, componentRVs, rpc.GetMyNodeUUID())
+			mvInfo.incTotalChunkBytes(mvDirSize)
+
 			rvInfo.acquireRvInfoLock()
-			rvInfo.addToMVMap(mvName,
-				newMVInfo(rvInfo, mvName, componentRVs, rpc.GetMyNodeUUID()), 0 /* reservedSpace */)
+			rvInfo.addToMVMap(mvName, mvInfo, 0 /* reservedSpace */)
 			rvInfo.releaseRvInfoLock()
 		}
 	}
@@ -393,6 +400,50 @@ func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState,
 		lmt:          time.Now(),
 		lmb:          joinedBy,
 	}
+}
+
+// Get the total chunk bytes for the MV path by summing up the size of all the chunks in the MV directory.
+func getMVDirSize(mvPath string) (int64, error) {
+	if !common.DirectoryExists(mvPath) {
+		return 0, fmt.Errorf("getMVDirSize: %s does not exist", mvPath)
+	}
+
+	totalBytes := int64(0)
+	chunksCount := int64(0)
+	err := filepath.Walk(mvPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			err = fmt.Errorf("getMVDirSize: filepath.Walk(%s) failed: %v", path, err)
+			return err
+		}
+
+		//
+		// There won't be directories inside an MV directory, but filepath.Walk() will return
+		// directories corresponding to "." and "..".
+		//
+		if info.IsDir() {
+			log.Debug("getMVDirSize: skipping directory %s", path)
+			return nil
+		}
+
+		// Only count chunks (not hashes).
+		if !strings.HasSuffix(info.Name(), ".data") {
+			return nil
+		}
+
+		chunksCount++
+		totalBytes += info.Size()
+
+		return nil
+	})
+
+	if err != nil {
+		log.Err("getMVDirSize: failed for %s: %v", mvPath, err)
+	} else {
+		log.Debug("getMVDirSize: %s has %d chunks with total size %d bytes",
+			mvPath, chunksCount, totalBytes)
+	}
+
+	return totalBytes, err
 }
 
 // This is a test trick to dummy out the reads/writes in order to test files larger than the RV available space.
