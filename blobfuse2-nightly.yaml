@@ -1071,7 +1071,7 @@ stages:
 
   - ${{ if ne(parameters.linux_git_test, 'none') }}:
     - stage: CompileLinux_GitClone
-      dependsOn: BuildAndTest
+      dependsOn: []
       jobs:
         # Ubuntu Tests
         - job: Set_1
