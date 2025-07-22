@@ -84,6 +84,7 @@ type FileCache struct {
 
 	lazyWrite    bool
 	fileCloseOpt sync.WaitGroup
+	useDu        bool
 }
 
 // Structure defining your config parameters
@@ -105,6 +106,8 @@ type FileCacheOptions struct {
 
 	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
 	OffloadIO         bool `config:"offload-io" yaml:"offload-io,omitempty"`
+
+	UseDu bool `config:"use-du" yaml:"use-du,omitempty"`
 
 	// v1 support
 	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds" yaml:"-"`
@@ -251,6 +254,7 @@ func (c *FileCache) Configure(_ bool) error {
 	c.syncToDelete = !conf.SyncNoOp
 	c.refreshSec = conf.RefreshSec
 	c.hardLimit = conf.HardLimit
+	c.useDu = conf.UseDu
 
 	err = config.UnmarshalKey("lazy-write", &c.lazyWrite)
 	if err != nil {
@@ -341,8 +345,8 @@ func (c *FileCache) Configure(_ bool) error {
 		c.diskHighWaterMark = (((conf.MaxSizeMB * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
-	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, conf.CleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
+	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v, useDu %t",
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, conf.CleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath, c.useDu)
 
 	return nil
 }
@@ -367,6 +371,18 @@ func (c *FileCache) OnConfigChange() {
 	_ = c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
+// getDiskUsage returns the current disk usage in MB
+func (c *FileCache) getDiskUsage() (float64, error) {
+	if c.tmpPath == "" {
+		return 0.0, nil
+	}
+
+	if c.useDu {
+		return common.GetUsageWithDu(c.tmpPath)
+	}
+	return common.GetUsageWithWalkInMegabytes(c.tmpPath)
+}
+
 func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	// cache_size = f_blocks * f_frsize/1024
 	// cache_size - used = f_frsize * f_bavail/1024
@@ -377,17 +393,16 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 		return nil, false, nil
 	}
 
-	usage := int64(0)
-	var err error
-	if c.tmpPath != "" {
-		usage, err = common.GetUsageInBytes(c.tmpPath)
-		if err != nil {
-			log.Debug("FileCache::StatFs : GetUsageInBytes err [%s].", err.Error())
-			return nil, false, err
-		}
+	var available float64 = 0.0
+	usage, err := c.getDiskUsage()
+	// To preserve previous behavior, if we fail to get the disk usage, we will
+	// set usage to 0
+	if err != nil {
+		log.Debug("FileCache::StatFs : GetUsageInBytes err [%s].", err.Error())
+		usage = 0.0
 	}
+	available = maxCacheSize - usage
 
-	available := maxCacheSize - float64(usage)
 	statfs := &syscall.Statfs_t{}
 	err = syscall.Statfs("/", statfs)
 	if err != nil {
@@ -422,6 +437,7 @@ func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 		maxSizeMB:     conf.MaxSizeMB,
 		fileLocks:     c.fileLocks,
 		policyTrace:   conf.EnablePolicyTrace,
+		useDu:         c.useDu,
 	}
 
 	return cacheConfig
@@ -958,7 +974,13 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 		if fileSize > 0 {
 			if fc.diskHighWaterMark != 0 {
-				currSize, err := common.GetUsageInMegabytes(fc.tmpPath)
+				var currSize float64
+				var err error
+				if fc.useDu {
+					currSize, err = common.GetUsageWithDu(fc.tmpPath)
+				} else {
+					currSize, err = common.GetUsageWithWalkInMegabytes(fc.tmpPath)
+				}
 				if err != nil {
 					log.Err("FileCache::OpenFile : error getting current usage of cache [%s]", err.Error())
 				} else {
@@ -1182,7 +1204,14 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	}
 
 	if fc.diskHighWaterMark != 0 {
-		currSize, err := common.GetUsageInMegabytes(fc.tmpPath)
+		var currSize float64
+		var err error
+		if fc.useDu {
+			currSize, err = common.GetUsageWithDu(fc.tmpPath)
+		} else {
+			currSize, err = common.GetUsageWithWalkInMegabytes(fc.tmpPath)
+		}
+
 		if err != nil {
 			log.Err("FileCache::WriteFile : error getting current usage of cache [%s]", err.Error())
 		} else {
@@ -1487,7 +1516,13 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("FileCache::TruncateFile : name=%s, size=%d", options.Name, options.Size)
 
 	if fc.diskHighWaterMark != 0 {
-		currSize, err := common.GetUsageInMegabytes(fc.tmpPath)
+		var currSize float64
+		var err error
+		if fc.useDu {
+			currSize, err = common.GetUsageWithDu(fc.tmpPath)
+		} else {
+			currSize, err = common.GetUsageWithWalkInMegabytes(fc.tmpPath)
+		}
 		if err != nil {
 			log.Err("FileCache::TruncateFile : error getting current usage of cache [%s]", err.Error())
 		} else {

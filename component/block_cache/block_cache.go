@@ -88,6 +88,7 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
+	useDu           bool           // Flag to indicate if du command should be used for disk usage calculation
 }
 
 // Structure defining your config parameters
@@ -102,6 +103,7 @@ type BlockCacheOptions struct {
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
 	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
+	UseDu          bool    `config:"use-du" yaml:"use-du,omitempty"`
 }
 
 const (
@@ -258,6 +260,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
 	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
+	bc.useDu = conf.UseDu
 
 	if (!config.IsSet(compName + ".mem-size-mb")) && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
 		bc.prefetch = (MIN_PREFETCH * 2) + 1
@@ -336,8 +339,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, use-du %t",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.useDu)
 
 	return nil
 }
@@ -1788,17 +1791,26 @@ func (bc *BlockCache) diskEvict(node *list.Element) {
 	_ = os.Remove(localPath)
 }
 
+// getDiskUsage returns the current disk usage in MB
+func (bc *BlockCache) getDiskUsage() (float64, error) {
+	if bc.tmpPath == "" {
+		return 0.0, nil
+	}
+
+	if bc.useDu {
+		return common.GetUsageWithDu(bc.tmpPath)
+	}
+	return common.GetUsageWithWalkInMegabytes(bc.tmpPath)
+}
+
 // checkDiskUsage : Callback to check usage of disk and decide whether eviction is needed
 func (bc *BlockCache) checkDiskUsage() bool {
-	var data = float64(0)
-	var err error
-	if bc.tmpPath != "" {
-		data, err = common.GetUsageInMegabytes(bc.tmpPath)
-		if err != nil {
-			log.Err("BlockCache::checkDiskUsage : Failed to get disk usage for %s [%s]", bc.tmpPath, err.Error())
-			return false
-		}
+	data, err := bc.getDiskUsage()
+	if err != nil {
+		log.Err("BlockCache::checkDiskUsage : Failed to get disk usage for %s [%s]", bc.tmpPath, err.Error())
+		return false
 	}
+
 	usage := uint32((data * 100) / float64(bc.diskSize/_1MB))
 
 	if bc.maxDiskUsageHit {
@@ -1944,19 +1956,16 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	}
 
 	// Previously, this section ignored the error returned by a call to GetUsage.
-	// In order to preserve the behavior of GetUsage, I'll check for an empty value
-	// for bc.tmpPath. If it's empty, use 0 for usage.
-	usage := int64(0)
-	var err error
-	if bc.tmpPath != "" {
-		usage, err = common.GetUsageInBytes(bc.tmpPath)
-		if err != nil {
-			log.Err("BlockCache::StatFs : Failed to get disk usage for %s [%s]", bc.tmpPath, err.Error())
-			return nil, false, err
-		}
+	// In order to preserve the behavior of GetUsage, if there's an error, don't
+	// return an error, but use 0 for usage.
+	usage, err := bc.getDiskUsage()
+	if err != nil {
+		log.Err("BlockCache::StatFs : Failed to get disk usage for %s [%s]", bc.tmpPath, err.Error())
+		usage = 0.0
 	}
+	usage = usage * float64(_1MB)
 
-	available := (float64)(maxCacheSize) - float64(usage)
+	available := (float64)(maxCacheSize) - usage
 	statfs := &syscall.Statfs_t{}
 	err = syscall.Statfs("/", statfs)
 	if err != nil {

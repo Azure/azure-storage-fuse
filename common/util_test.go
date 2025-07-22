@@ -342,7 +342,7 @@ func (suite *utilTestSuite) TestGetUsageWithSymlinks() {
 	err = os.Symlink(file2, symlink)
 	suite.assert.Nil(err)
 
-	usage, err := GetUsageInMegabytes(dir1)
+	usage, err := GetUsageWithWalkInMegabytes(dir1)
 	suite.assert.Nil(err)
 
 	expectedSizeMB := float64(1.0)
@@ -398,7 +398,7 @@ func (suite *utilTestSuite) TestGetUsageWithSubdirectories() {
 	suite.assert.Nil(err)
 	dirSize2 := dirInfo2.Size()
 
-	usage, err := GetUsageInMegabytes(tempDir)
+	usage, err := GetUsageWithWalkInMegabytes(tempDir)
 	suite.assert.Nil(err)
 
 	file1ExpectedSize := float64(1024 * 1024)
@@ -445,7 +445,7 @@ func (suite *utilTestSuite) TestGetUsageInMegabytesWithNonAlignedSizes() {
 	err = os.WriteFile(file3, data3, 0777)
 	suite.assert.Nil(err)
 
-	usage, err := GetUsageInMegabytes(tempDir)
+	usage, err := GetUsageWithWalkInMegabytes(tempDir)
 	suite.assert.Nil(err)
 
 	totalLogicalBytes := float64(1000 + 1500 + 777)

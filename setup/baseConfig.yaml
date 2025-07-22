@@ -28,6 +28,7 @@ block_cache:
   disk-timeout-sec: <default disk cache eviction timeout (in sec). Default - 120 sec>
   prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>
   parallelism: <number of parallel threads downloading the data and writing to disk cache. Default - 3 times number of CPU cores> 
+  use-du: <if true, du command will be used to calculate disk usage. Default - true>
 
 # Disk cache related configuration
 file_cache:
@@ -36,6 +37,7 @@ file_cache:
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
+  use-du: <if true, du command will be used to calculate disk usage. Default - true>
   
 # Azure storage configuration
 azstorage:
