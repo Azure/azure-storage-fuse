@@ -270,6 +270,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 
 		data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
 			Path: blobPath,
+			Size: attr.Size,
 		})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
@@ -912,7 +913,6 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 	// Extract the node IDs from the list of blobs.
 	var nodes []string
 	for _, blob := range list {
-		log.Debug("GetAllNodes:: Found blob: %s", blob.Name)
 
 		if strings.HasSuffix(blob.Name, ".hb") {
 			nodeId := blob.Name[:len(blob.Name)-3] // Remove the ".hb" extension
