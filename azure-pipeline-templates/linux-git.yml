@@ -15,7 +15,11 @@ parameters:
 
 
 steps:
-        # Generate config file for file cache
+  - script: |
+      sudo apt-get install bc binutils bison dwarves flex gcc git gnupg2 gzip libelf-dev libncurses5-dev libssl-dev make openssl perl-base rsync tar xz-utils -y
+    displayName: 'Install tools required to build linux source'
+
+    # Generate config file for file cache
   - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
     - script: |
         $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
