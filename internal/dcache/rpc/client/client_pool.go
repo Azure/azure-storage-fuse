@@ -150,6 +150,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			ncPool.lastUsed.Store(time.Now().Unix())
 			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
 			ncPool.numActive.Add(1)
+			log.Debug("clientPool::getRPCClient: Successfully reterived RPC client for node %s", nodeID)
 			return client, nil
 		case <-time.After(2 * time.Second): // Timeout after 2 second
 			waitTime += 2

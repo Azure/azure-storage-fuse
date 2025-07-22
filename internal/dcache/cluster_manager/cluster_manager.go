@@ -598,12 +598,12 @@ func getMyRVsInClustermap(myRVs []dcache.RawVolume) map[string]dcache.RawVolume 
 	return cmRVs
 }
 
-// Cleanup the given RV's directory. If doNotDeleteMVs is nil all MVs are deleted else those MVs
+// Cleanup the given RV's directory. If doNotDeleteMVs is nil, all MVs are deleted else those MVs
 // are skipped and everything else is deleted.
 // It returns failure if it fails to delete even a single matching MV. This is to ensure that
 // we prevent such a node from joining the cluster.
 //
-// TODO: Once we have sufficient runin we can let it join the cluster even on partial cleanup.
+// TODO: Once we have sufficient runs we can let it join the cluster even on partial cleanup.
 func cleanupRV(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) error {
 	var wg sync.WaitGroup
 	var deleteSuccess atomic.Int64
@@ -882,7 +882,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 
 				doNotDeleteMVs = cm.GetActiveMVsForRV(rvName)
 
-				if doNotDeleteMVs != nil && len(doNotDeleteMVs) > 0 {
+				if len(doNotDeleteMVs) > 0 {
 					log.Debug("ClusterManager::safeCleanupMyRVs: %s has %d active MVs %+v, will not delete them",
 						rvName, len(doNotDeleteMVs), doNotDeleteMVs)
 				}
