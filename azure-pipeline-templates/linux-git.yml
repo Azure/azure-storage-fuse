@@ -76,7 +76,7 @@ steps:
 
   - script: |
       make -j$(nproc) 2>&1 | tee log
-    displayName: 'Compile Source'
+    displayName: 'Compile Linux Source using parallel make'
     workingDirectory: $(MOUNT_DIR)
 
   - script: |
@@ -90,20 +90,17 @@ steps:
     displayName: 'Git clone libfuse'
     workingDirectory: $(MOUNT_DIR)
 
-    # Clone Blobfuse Repo on Blobfuse Mountpoint
   - script: |
       git clone https://github.com/Azure/azure-storage-fuse.git
     displayName: 'Git clone Blobfuse2'
     workingDirectory: $(MOUNT_DIR)
 
-    # Build Blobfuse Repo on Blobfuse Mountpoint
   - script: |
       ./build.sh
-    displayName: 'Build Blobfuse'
+    displayName: 'Build Blobfuse on the Mountpoint'
     workingDirectory: $(MOUNT_DIR)/azure-storage-fuse
 
-    # Run Blobfuse binaray on Blobfuse Mountpoint
   - script: |
       ./blobfuse2 --version
-    displayName: 'Run Blobfuse'
+    displayName: 'Run Blobfuse on the Mountpoint'
     workingDirectory: $(MOUNT_DIR)/azure-storage-fuse
