@@ -41,15 +41,21 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 )
 
+//
+// This test will delete the containers that were created in the pipeline runs and deleted but backend has not deleted
+// them by some reason. We use this test in nightly pipeline in the start which will prevent storage account to not
+// get exploded by these temporary containers that were used in the tests.
+//
+
 func getGenericCredential() (*service.SharedKeyCredential, error) {
 	accountNameEnvVar := "STORAGE_ACCOUNT_NAME"
-	accountKeyEnvVar := "STORAGE_ACCOUNT_Key"
+	accountKeyEnvVar := "STORAGE_ACCOUNT_KEY"
 	accountName, accountKey := os.Getenv(accountNameEnvVar), os.Getenv(accountKeyEnvVar)
 
 	if accountName == "" || accountKey == "" {
@@ -75,9 +81,7 @@ func TestDeleteAllTempContainers(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	pager := svcClient.NewListContainersPager(&service.ListContainersOptions{
-		Prefix: to.Ptr("fuseut"),
-	})
+	pager := svcClient.NewListContainersPager(&service.ListContainersOptions{})
 
 	for pager.More() {
 		resp, err := pager.NextPage(ctx)
@@ -85,12 +89,19 @@ func TestDeleteAllTempContainers(t *testing.T) {
 			log.Fatal(err)
 		}
 
-		for _, v := range resp.ContainerItems {
-			containerClient := svcClient.NewContainerClient(*v.Name)
-			t.Log("Deleting container :", v.Name)
-			_, err = containerClient.Delete(ctx, nil)
-			if err != nil {
-				t.Logf("Unable to delete %v : [%v]", v.Name, err.Error())
+		for _, cont := range resp.ContainerItems {
+			//
+			// containers created by block_blob_test.go start with prefix and containers created dynamically in
+			// pipelines runs have length 40. Delete all such containers if backend GC has skipped their deletion
+			// for some reason.
+			//
+			if strings.HasPrefix(*cont.Name, "fuseutc") || len(*cont.Name) == 40 {
+				containerClient := svcClient.NewContainerClient(*cont.Name)
+				t.Log("Deleting container :", cont.Name)
+				_, err = containerClient.Delete(ctx, nil)
+				if err != nil {
+					t.Logf("Unable to delete %v : [%v]", cont.Name, err.Error())
+				}
 			}
 		}
 	}

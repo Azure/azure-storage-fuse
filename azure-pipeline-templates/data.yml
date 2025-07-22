@@ -1,0 +1,116 @@
+# Generate files in Local Filesystem. files would be created at $(DATA_DIR)
+# Copy those files using to the mountpoint using CLI utilities.
+parameters:
+  - name: generate_data
+    type: boolean
+    default: false
+  - name: copy_data
+    type: boolean
+    default: false
+  - name: check_consistency
+    type: boolean
+    default: false
+
+steps:
+  - ${{ if eq(parameters.generate_data, true) }}:
+    - script: |
+        DATA_DIR=$(ROOT_DIR)/data_files
+        sudo rm -rf $DATA_DIR
+        sudo mkdir -p $DATA_DIR
+        sudo chown -R `whoami` $DATA_DIR
+        chmod 777 $DATA_DIR
+        echo "##vso[task.setvariable variable=DATA_DIR]$DATA_DIR"
+      displayName: "Create directory structure for storing files in local filesystem"
+
+    - bash: |
+        generate_random_file() {
+          local bs=$1
+
+          for count in "${file_counts[@]}"; do
+            file_name="$(DATA_DIR)/random_file_${size}_${bs}_${count}.txt"
+
+            echo "Generating file: $file_name"
+
+            # Use dd to create a file with random content
+            dd if=/dev/urandom of="$file_name" bs="$bs" count="$count" status=progress
+
+            echo "File $file_name generated successfully!"
+          done
+        }
+
+        file_counts=(1 2 4 7 8 9 10 20 30 50 100 200 1024 2048 4096)
+        echo "*************************Generate very small files*****************************"
+        generate_random_file "1"
+        echo "*************************Generating small files********************************"
+        generate_random_file "1K"
+        echo "*************************Generating medium files********************************"
+        generate_random_file "1M"
+      displayName: "Generate files with random data using dd command"
+
+    - bash: |
+        ls -lrt
+      displayName: "List the generated Files"
+      workingDirectory: $(DATA_DIR)
+
+    - bash: |
+        md5sum * | tee ~/checklist.chk
+        cat ~/checklist.chk | cut -d " " -f1 > ~/checklist.chk1
+      displayName: "Generate md5sum of the generated files"
+      workingDirectory: $(DATA_DIR)
+
+  - ${{ if eq(parameters.copy_data, true) }}:
+    - script: |
+        cp -v $(DATA_DIR)/* $(MOUNT_DIR)/
+      displayName: "Sequential Copy of Files [Local -> Mountpoint]"
+
+    - script: |
+        for file in $(MOUNT_DIR)/*; do
+          cp -v "$file" "$(MOUNT_DIR)/$(basename "$file").SEQ"
+        done
+      displayName: "Sequential Copy of Files [Mountpoint -> Mountpoint]"
+
+    - script: |
+        find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v {} $(MOUNT_DIR)/$(basename {}).TPAR'
+      displayName: "Parallel Copy of Files [Local -> Mountpoint]"
+
+    - script: |
+        find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v $(MOUNT_DIR)/$(basename {}) $(MOUNT_DIR)/$(basename {}).APAR'
+      displayName: "Parallel Copy of Files [Mountpoint -> Mountpoint]"
+
+  # drop kernel page cache before getting the md5sums as copy might happened just now
+  - ${{ if eq(parameters.check_consistency, true) }}:
+    - script: |
+        sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
+        rm -v ~/mc*
+        for file in $(DATA_DIR)/*; do
+          md5sum "$(MOUNT_DIR)/$(basename "$file")" | tee -a ~/mc1.chk
+        done
+        for file in $(DATA_DIR)/*; do
+          md5sum "$(MOUNT_DIR)/$(basename "$file").SEQ" | tee -a ~/mc2.chk
+        done
+        for file in $(DATA_DIR)/*; do
+          md5sum "$(MOUNT_DIR)/$(basename "$file").TPAR" | tee -a ~/mc3.chk
+        done
+        for file in $(DATA_DIR)/*; do
+          md5sum "$(MOUNT_DIR)/$(basename "$file").APAR" | tee -a ~/mc4.chk
+        done
+
+        cat ~/mc1.chk | cut -d " " -f1 > ~/mc1.chk1
+        cat ~/mc2.chk | cut -d " " -f1 > ~/mc2.chk1
+        cat ~/mc3.chk | cut -d " " -f1 > ~/mc3.chk1
+        cat ~/mc4.chk | cut -d " " -f1 > ~/mc4.chk1
+
+        compare_md5sum() {
+          local mount_hashes=$1
+          diff ~/checklist.chk1 ${mount_hashes}
+          if [ $? -ne 0 ]; then
+            exit 1
+          fi
+        }
+
+        compare_md5sum ~/mc1.chk1
+        compare_md5sum ~/mc2.chk1
+        compare_md5sum ~/mc3.chk1
+        compare_md5sum ~/mc4.chk1
+      displayName: "Compare the MD5sum of the Mount point with Local filesystem"
+      workingDirectory: $(MOUNT_DIR)

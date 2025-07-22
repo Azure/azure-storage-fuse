@@ -140,6 +140,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 	}
 
 	var rpcResp *models.GetChunkResponse
+	var isBufExternal bool = true
 	var err error
 
 	clusterMapRefreshed := false
@@ -238,7 +239,12 @@ retry:
 		// Else we call the GetChunk() RPC via the Thrift RPC client.
 		//
 		if targetNodeID == rpc.GetMyNodeUUID() {
-			rpcResp, err = rpc_server.GetChunkLocal(ctx, rpcReq)
+			if rpcResp, err = rpc_server.GetChunkLocal(ctx, rpcReq); err == nil {
+				//
+				// This Buffer is allocated from the in house bufferPool.
+				//
+				isBufExternal = false
+			}
 		} else {
 			rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
 		}
@@ -285,7 +291,8 @@ retry:
 	// }
 
 	resp := &ReadMvResponse{
-		Data: rpcResp.Chunk.Data,
+		Data:          rpcResp.Chunk.Data,
+		IsBufExternal: isBufExternal,
 	}
 
 	if err := resp.isValid(req); err != nil {

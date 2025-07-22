@@ -1967,7 +1967,39 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//
 	// TODO: Need to ensure this is FS_BLOCK_SIZE aligned.
 	//
-	data := make([]byte, req.Length)
+	var data []byte
+
+	if req.IsLocalRV {
+		//
+		// As this call has not come through the RPC request this can be allocated from the pool, and also the buffer
+		// that is allocated here would be released by the file manager after its use.
+		//
+		data, err = dcache.GetBuffer()
+		if err != nil {
+			errStr := fmt.Sprintf("failed to Allocate Buffer for chunk file %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			common.Assert(false, err)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+		// Reslice the data buffer accordingly, length of the buffer that we get from the BufferPool is of
+		// maximum size(i.e., Chunk Size)
+		data = data[:req.Length]
+
+		defer func() {
+			// For any error that was caused from here, We must release the buffer that was taken from the buffer pool.
+			if err != nil {
+				if req.IsLocalRV {
+					dcache.PutBuffer(data)
+				}
+			}
+		}()
+	} else {
+		//
+		// We cannot make pool allocation here, as this call has come as part of handling the RPC request.
+		// TODO: Convert this to pooled allocation.
+		//
+		data = make([]byte, req.Length)
+	}
 
 	var lmt string
 	var n int

@@ -1195,8 +1195,8 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		// The clustermap must now have our RVs added to RV list.
 		// Only RVs which clash with existing RVs in the clustermap would not be added.
 		//
-		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: cluster map updated by %s at %d (took %s): %+v",
-			cmi.myNodeId, clusterMap.LastUpdatedAt, time.Since(startTime), clusterMap)
+		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: cluster map updated by %s at %d (took %s)",
+			cmi.myNodeId, clusterMap.LastUpdatedAt, time.Since(startTime))
 
 		break
 	}
@@ -2815,7 +2815,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		common.Assert(false, err)
 		return false, fmt.Errorf("ClusterManager::updateRVList: getAllNodes() failed: %v", err)
 	}
-	log.Debug("ClusterManager::updateRVList: Found %d nodes in cluster (initialHB=%v): %+v",
+	log.Debug("ClusterManager::updateRVList: Found %d nodes in cluster (initialHB=%v), now start collecting heartbeats: %+v",
 		len(nodeIds), initialHB, nodeIds)
 
 	//
@@ -2829,6 +2829,8 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	if err != nil {
 		return false, err
 	}
+	log.Debug("ClusterManager::updateRVList: Collected %d heartbeats for %d nodes (initialHB=%v), failed to read HB for %d nodes: %+v",
+		len(rVsByRvIdFromHB), len(nodes), initialHB, len(failedToReadNodes), failedToReadNodes)
 
 	// Both the RV and the RV HB map must have the exact same RVs.
 	common.Assert(len(rVsByRvIdFromHB) == len(rvLastHB), len(rVsByRvIdFromHB), len(rvLastHB))
@@ -2902,7 +2904,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				// This can happen when an HB file is deleted out-of-band.
 				// This can also happen when a node is restarted and an older RV is now excluded from the
 				// node's RV list published in the initial heartbeat. If the RV is not being used by any MV
-				// then we wil remove it from the existingRVMap, but if the old RV is being used as a component
+				// then we will remove it from the existingRVMap, but if the old RV is being used as a component
 				// RV by some MV, it will not be removed by updateRVList(). Since it won't be present in later
 				// heartbeats, we will reach here.
 				//
@@ -3161,9 +3163,6 @@ func collectHBForGivenNodeIds(nodeIds []string, initialHB bool) (map[string]dcac
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			log.Debug("ClusterManager::collectHBForGivenNodeIds: Fetching heartbeat (initialHB=%v) for node %s",
-				initialHB, nodeId)
-
 			bytes, err := getHeartbeat(nodeId)
 			if err != nil {
 				common.Assert(false, err)
@@ -3330,7 +3329,7 @@ func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRV
 				// updater later correctly notifies the caller waiting for its update to complete
 				// (by reading from the msg.Err channel).
 				// Later on in the batchUpdateComponentRVState() we will check if there are
-				// mutiple updates for the same RV/MV combination, we will skip such duplicate
+				// multiple updates for the same RV/MV combination, we will skip such duplicate
 				// updates.
 				//
 				// Note that this is an optimization, w/o this multiple updates queued by inline
