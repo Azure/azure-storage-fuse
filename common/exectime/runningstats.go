@@ -83,3 +83,4 @@ func (rs *RunningStatistics) StandardDeviation() time.Duration {
 	dev := math.Sqrt(float64(rs.Variance()))
 	return time.Duration(dev)
 }
+good work
