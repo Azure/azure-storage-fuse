@@ -1202,6 +1202,11 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	//
 	// TODO: If we encounter some failure before we send EndSync, we need to undo this StartSync?
 	//
+	// TODO: (sourav) If StartSync fails it could be because the target RV is offline, in that case
+	//       we should mark the state as inband-offline, else we might get stuck in a loop as StartSync
+	//       will keep failing with NeedToRefreshClusterMap error.
+	//       THIS IS IMPORTANT!
+	//
 	srcSyncId, err := sendStartSyncRequest(lioRV, sourceNodeID, startSyncReq)
 	if err != nil {
 		log.Err("ReplicationManager::syncComponentRV: %v", err)

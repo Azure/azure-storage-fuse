@@ -603,7 +603,7 @@ func getMyRVsInClustermap(myRVs []dcache.RawVolume) map[string]dcache.RawVolume 
 // It returns failure if it fails to delete even a single matching MV. This is to ensure that
 // we prevent such a node from joining the cluster.
 //
-// TODO: Once we have sufficient runs we can let it join the cluster even on partial cleanup.
+// TODO: Once we have sufficient run-in we can let it join the cluster even on partial cleanup.
 func cleanupRV(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) error {
 	var wg sync.WaitGroup
 	var deleteSuccess atomic.Int64

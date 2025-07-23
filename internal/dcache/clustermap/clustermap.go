@@ -472,23 +472,26 @@ func (c *ClusterMap) getActiveMVsForRV(rvName string) map[string]struct{} {
 		return nil
 	}
 
-	rvIsOffline := (rv.State == dcache.StateOffline)
+	// RV is offline in the RV list, so it cannot have any active MVs.
+	if rv.State == dcache.StateOffline {
+		return nil
+	}
 
 	activeMVs := make(map[string]struct{})
 	for mvName, mv := range localMap.MVMap {
-		// RV is offline in the RV list, so it cannot have any active MVs.
-		if rvIsOffline {
-			continue
-		}
-
 		rvState, ok := mv.RVs[rvName]
 		if !ok {
 			// RV is not a component of this MV (maybe it was in the past).
 			continue
 		}
 
+		//
+		// We only leave the MV folder for component RVs that are online.
 		// If the component RV is offline/inband-offline, then the MV is not active.
-		if rvState == dcache.StateOffline || rvState == dcache.StateInbandOffline {
+		// We even delete if component RV is in outofsync or syncing state. Though it will work
+		// if we leave those MVs but it's safer to delete them and start afresh.
+		//
+		if rvState != dcache.StateOnline {
 			continue
 		}
 
