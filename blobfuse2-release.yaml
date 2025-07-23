@@ -1636,6 +1636,7 @@ stages:
                   if [ $? -ne 0 ]; then
                     exit 1
                   fi
+                  echo $idToken
 
           - task: AzureCLI@2
             displayName: 'set idToken'
@@ -1645,9 +1646,15 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
+                  echo $idToken
                   echo "##vso[task.setvariable variable=idToken;issecret=true]$idToken"
+                  echo "......"
+                  echo $(idToken)
 
           - script: |
+              echo $(idToken)
+              export idToken=$(idToken)
+              echo "idToken: $idToken
               pmc --version
               pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
               if [ $? -ne 0 ]; then
