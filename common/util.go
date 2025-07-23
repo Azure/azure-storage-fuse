@@ -363,11 +363,42 @@ func NotifyMountToParent() error {
 	return nil
 }
 
-var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
-var selectedDuPath string = ""
+func GetUsageWithWalkInBytes(path string) (int64, error) {
+	totalUsage := int64(0)
 
-// GetUsage: The current disk usage in MB
-func GetUsage(path string) (float64, error) {
+	const blockSize = 512
+	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			totalUsage += stat.Blocks * blockSize
+		} else {
+			totalUsage += info.Size()
+		}
+		return nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return totalUsage, nil
+}
+
+func GetUsageWithWalkInMegabytes(path string) (float64, error) {
+	totalUsageInBytes, err := GetUsageWithWalkInBytes(path)
+	if err != nil {
+		return 0, err
+	}
+	return float64(totalUsageInBytes) / (1024 * 1024), nil
+}
+
+// GetUsageWithDu: The current disk usage in MB
+func GetUsageWithDu(path string) (float64, error) {
+	var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
+	var selectedDuPath string = ""
+
 	var currSize float64
 	var out bytes.Buffer
 
@@ -422,6 +453,11 @@ func GetUsage(path string) (float64, error) {
 	}
 
 	return currSize, nil
+}
+
+// GetUsage: The current disk usage in MB
+func GetUsage(path string) (float64, error) {
+	return GetUsageWithDu(path)
 }
 
 var currentUID int = -1

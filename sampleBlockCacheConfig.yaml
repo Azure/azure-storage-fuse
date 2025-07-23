@@ -20,6 +20,7 @@ block_cache:
   mem-size-mb: 4096
   prefetch: 80
   parallelism: 128
+  use-du: true  # Use external 'du' command for disk usage calculation
 
 attr_cache:
   timeout-sec: 7200
