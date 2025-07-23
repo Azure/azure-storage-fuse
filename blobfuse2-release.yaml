@@ -327,16 +327,23 @@ stages:
               sudo dpkg -i packages-microsoft-prod.deb
               sudo apt update
               sudo apt install apt-transport-https -y
-              sudo apt install dotnet-sdk-3.1 -y
+              sudo apt install dotnet-sdk-9.0 -y
             displayName: "Update dependencies"
 
           # Send images for signing
-          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
-            displayName: 'ESRP CodeSigning blobfuse2'
+          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
+            displayName: 'ESRP CodeSigning Blobfuse2'
             inputs:
-              ConnectedServiceName: 'PMC ESRP Blobfuse2 Signing'
+              ConnectedServiceName: 'WIF_MI_ESRP_V5'
+              AppRegistrationClientId: $(ESRP_V5_APP_REGISTRATION_CLIENT_ID)
+              AppRegistrationTenantId: $(ESRP_V5_APP_REGISTRATION_TENANT_ID)
+              AuthAKVName: $(ESRP_V5_KEY_VAULT_NAME)
+              AuthCertName: $(ESRP_V5_AUTH_CERT_NAME)
+              AuthSignCertName: $(ESRP_V5_SIGN_CERT_NAME)
               FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-temp'
               Pattern: '*.rpm, *.deb'
+              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+              MaxConcurrency: 25
               signConfigType: inlineSignParams
               VerboseLogin: true
               inlineOperation: |
@@ -350,12 +357,19 @@ stages:
                   }
                 ]
 
-          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
-            displayName: 'ESRP CodeSigning blobfuse2 mariner'
+          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
+            displayName: 'ESRP CodeSigning Blobfuse2 for Mariner'
             inputs:
-              ConnectedServiceName: 'PMC ESRP Blobfuse2 Signing'
+              ConnectedServiceName: 'WIF_MI_ESRP_V5'
+              AppRegistrationClientId: $(ESRP_V5_APP_REGISTRATION_CLIENT_ID)
+              AppRegistrationTenantId: $(ESRP_V5_APP_REGISTRATION_TENANT_ID)
+              AuthAKVName: $(ESRP_V5_KEY_VAULT_NAME)
+              AuthCertName: $(ESRP_V5_AUTH_CERT_NAME)
+              AuthSignCertName: $(ESRP_V5_SIGN_CERT_NAME)
               FolderPath: '$(Build.ArtifactStagingDirectory)/mariner'
               Pattern: '*.rpm'
+              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+              MaxConcurrency: 25
               signConfigType: inlineSignParams
               VerboseLogin: true
               inlineOperation: |
@@ -1618,171 +1632,185 @@ stages:
                   isPreRelease: ${{ parameters.prerelease }}
                   assetUploadMode: replace
 
-  - ${{ if eq(parameters.publish_artifacts, true) }}:
-    - stage: PublishArtifacts
-      dependsOn: ReleaseArtifacts
-      condition: succeeded('ReleaseArtifacts')
-      jobs:
-        - job: PublishArtifacts
-          timeoutInMinutes: 120
-          pool:
-            vmImage: 'ubuntu-22.04'
-          variables:
-            - group: NightlyBlobFuse
-            - name: root_dir
-              value: '$(System.DefaultWorkingDirectory)'
+  # - ${{ if eq(parameters.publish_artifacts, true) }}:
+  - stage: PublishArtifacts
+    # dependsOn: ReleaseArtifacts
+    # condition: succeeded('ReleaseArtifacts')
+    jobs:
+      - job: PublishArtifacts
+        timeoutInMinutes: 120
+        pool:
+          vmImage: 'ubuntu-22.04'
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
 
-          steps:
-            - checkout: none
+        steps:
+          - checkout: none
 
-            - task: PipAuthenticate@1
-              inputs:
-                artifactFeeds: 'BlobFuse/Blobfuse'
-              displayName: 'Connect to PMC artifact'
+          - task: PipAuthenticate@1
+            inputs:
+              artifactFeeds: 'BlobFuse/Blobfuse'
+            displayName: 'Connect to PMC artifact'
 
-            - script: |
-                pip install pmc-cli
-              displayName: 'Install pmc-cli'
+          - script: |
+              pip install pmc-cli
+            displayName: 'Install pmc-cli'
 
-            - task: DownloadSecureFile@1
-              name: pmcCertificate
-              displayName: 'Download pmc pem file'
-              inputs:
-                secureFile: 'azstorage-devex-kv-blobfuse-release-pmc1-10102025.pem'
-
-            - task: DownloadSecureFile@1
-              name: settings
-              displayName: 'Download settings.toml file'
-              inputs:
-                secureFile: 'settings.toml'
-
-            - script: |
-                pmc --version
-                pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo list --limit 1
-                if [ $? -ne 0 ]; then
-                  exit 1
-                fi
-              displayName: 'Test PMC installation'
-
-            # download artifacts that need to be published
-            - task: DownloadBuildArtifacts@0
-              displayName: 'Download Signed Artifacts'
-              inputs:
-                artifactName: 'blobfuse2-signed'
-                downloadPath: $(Build.ArtifactStagingDirectory)
-
-            - script: |
-                blobfuseBinaryName=`ls blobfuse2-* | head -n 1`
-                echo "Binary name: $blobfuseBinaryName"
-                if [[ $blobfuseBinaryName == *"preview"* ]]; then
-                  for f in ./blobfuse2-2*; do mv -v "$f" "${f/blobfuse2-/blobfuse2-preview-}" ; done
-                fi
-                ls -l 
-              displayName: 'Rename preview binaries'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
-
-            - script: |
-                cd mariner
-                for f in ./blobfuse2*fuse3*.rpm; do mv -v "$f" "${f/-fuse3./-cm2.}"; done
-                ls -lRt
-                mv blobfuse2*.rpm ..
-                cd ..
-                rm -r mariner/
-              displayName: 'Rename Mariner binaries'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
-
-            - script: |
-                sudo ls -lRt $(Build.ArtifactStagingDirectory)
-              displayName: 'List Artifacts'
-
-            - script: |
-                pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2-signed
-              displayName: 'Upload packages'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/
-
-            - script: |
-                wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/setup/packages.csv -O packages.csv
-                cat ./packages.csv
-              displayName: 'Fetch packages.csv'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/
-
-            - script: |
-                fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
-                echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
-
-                fuse3ArmDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb`
-                echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
-
-                fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
-                echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
-
-                fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
-                echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
-
-                fuse2AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb`
-                echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
-
-                fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
-                echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
-
-                marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
-                marinerFuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm`
-                echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
-                echo "Mariner fuse3 AMD RPM $marinerAmdRpmFile"
-
-                marinerAarchRpmFile=$(ls blobfuse2* | grep 'cm2\.aarch64\.rpm')
-                marinerFuse3AarchRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.aarch64.rpm`
-                echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
-                echo "Mariner fuse3 ARM RPM: $marinerAarchRpmFile"
-
-                is_preview="false"
-                echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                if [[ $marinerAmdRpmFile == *"preview"* ]]; then
-                  is_preview="true"
-                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                fi
-
-                is_preview="false"
-                echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                if [[ $marinerFuse3AmdRpm == *"preview"* ]]; then
-                  is_preview="true"
-                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                fi
-
-                while IFS=, read -r distro fuseArchType repoName releaseName; do
-
-                  # If the package is preview, publish to mariner preview package
-                  if [[ $distro == *"Mariner-"* ]]; then
-                    if [ $is_preview = "true" ]; then
-                      repoName=$(echo $repoName | sed 's/prod/preview/')
-                    fi
+          - task: AzureCLI@2
+            displayName: 'Test PMC installation'
+            inputs:
+              addSpnToEnvironment: true
+              azureSubscription: 'WIF_MI_ESRP_V5'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                  pmc --version
+                  pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
+                  if [ $? -ne 0 ]; then
+                    exit 1
                   fi
 
-                  echo "Uploading packages for $distro"
-                  pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName
-                done < <(tail -n +3 ../packages.csv)
-              displayName: 'Add uploaded packages to repository'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+          # - task: DownloadSecureFile@1
+          #   name: pmcCertificate
+          #   displayName: 'Download pmc pem file'
+          #   inputs:
+          #     secureFile: 'azstorage-devex-kv-blobfuse-release-pmc1-10102025.pem'
 
-            - script: |
-                while IFS=, read -r distro fuseArchType repoName releaseName; do
-                  if [[ $fuseArchType == *"Arm"* ]]
-                  then
-                    echo "Skipping for ARM type on $distro"
-                  else
-                    if [[ $distro == *"Mariner-"* ]]; then
-                        if [ "$is_preview" = "true" ]; then
-                          repoName=$(echo $repoName | sed 's/prod/preview/')
-                        fi
-                    fi
-                    echo "Repository Name: $repoName"
+          # - task: DownloadSecureFile@1
+          #   name: settings
+          #   displayName: 'Download settings.toml file'
+          #   inputs:
+          #     secureFile: 'settings.toml'
 
-                    echo "Publishing for $distro"
-                    pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName
-                  fi
-                done < <(tail -n +3 ../packages.csv)
-              displayName: 'Publish the repository'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+          # - script: |
+          #     pmc --version
+          #     pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo list --limit 1
+          #     if [ $? -ne 0 ]; then
+          #       exit 1
+          #     fi
+          #   displayName: 'Test PMC installation'
+
+          # # download artifacts that need to be published
+          # - task: DownloadBuildArtifacts@0
+          #   displayName: 'Download Signed Artifacts'
+          #   inputs:
+          #     artifactName: 'blobfuse2-signed'
+          #     downloadPath: $(Build.ArtifactStagingDirectory)
+
+          # - script: |
+          #     blobfuseBinaryName=`ls blobfuse2-* | head -n 1`
+          #     echo "Binary name: $blobfuseBinaryName"
+          #     if [[ $blobfuseBinaryName == *"preview"* ]]; then
+          #       for f in ./blobfuse2-2*; do mv -v "$f" "${f/blobfuse2-/blobfuse2-preview-}" ; done
+          #     fi
+          #     ls -l 
+          #   displayName: 'Rename preview binaries'
+          #   workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
+          # - script: |
+          #     cd mariner
+          #     for f in ./blobfuse2*fuse3*.rpm; do mv -v "$f" "${f/-fuse3./-cm2.}"; done
+          #     ls -lRt
+          #     mv blobfuse2*.rpm ..
+          #     cd ..
+          #     rm -r mariner/
+          #   displayName: 'Rename Mariner binaries'
+          #   workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
+          # - script: |
+          #     sudo ls -lRt $(Build.ArtifactStagingDirectory)
+          #   displayName: 'List Artifacts'
+
+          # - script: |
+          #     pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2-signed
+          #   displayName: 'Upload packages'
+          #   workingDirectory: $(Build.ArtifactStagingDirectory)/
+
+          # - script: |
+          #     wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/setup/packages.csv -O packages.csv
+          #     cat ./packages.csv
+          #   displayName: 'Fetch packages.csv'
+          #   workingDirectory: $(Build.ArtifactStagingDirectory)/
+
+          # - script: |
+          #     fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
+          #     echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
+
+          #     fuse3ArmDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb`
+          #     echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
+
+          #     fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
+          #     echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
+
+          #     fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
+          #     echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
+
+          #     fuse2AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb`
+          #     echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
+
+          #     fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
+          #     echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
+
+          #     marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
+          #     marinerFuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm`
+          #     echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
+          #     echo "Mariner fuse3 AMD RPM $marinerAmdRpmFile"
+
+          #     marinerAarchRpmFile=$(ls blobfuse2* | grep 'cm2\.aarch64\.rpm')
+          #     marinerFuse3AarchRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.aarch64.rpm`
+          #     echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
+          #     echo "Mariner fuse3 ARM RPM: $marinerAarchRpmFile"
+
+          #     is_preview="false"
+          #     echo "##vso[task.setvariable variable=is_preview]$is_preview"
+          #     if [[ $marinerAmdRpmFile == *"preview"* ]]; then
+          #       is_preview="true"
+          #       echo "##vso[task.setvariable variable=is_preview]$is_preview"
+          #     fi
+
+          #     is_preview="false"
+          #     echo "##vso[task.setvariable variable=is_preview]$is_preview"
+          #     if [[ $marinerFuse3AmdRpm == *"preview"* ]]; then
+          #       is_preview="true"
+          #       echo "##vso[task.setvariable variable=is_preview]$is_preview"
+          #     fi
+
+          #     while IFS=, read -r distro fuseArchType repoName releaseName; do
+
+          #       # If the package is preview, publish to mariner preview package
+          #       if [[ $distro == *"Mariner-"* ]]; then
+          #         if [ $is_preview = "true" ]; then
+          #           repoName=$(echo $repoName | sed 's/prod/preview/')
+          #         fi
+          #       fi
+
+          #       echo "Uploading packages for $distro"
+          #       pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName
+          #     done < <(tail -n +3 ../packages.csv)
+          #   displayName: 'Add uploaded packages to repository'
+          #   workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
+          # - script: |
+          #     while IFS=, read -r distro fuseArchType repoName releaseName; do
+          #       if [[ $fuseArchType == *"Arm"* ]]
+          #       then
+          #         echo "Skipping for ARM type on $distro"
+          #       else
+          #         if [[ $distro == *"Mariner-"* ]]; then
+          #             if [ "$is_preview" = "true" ]; then
+          #               repoName=$(echo $repoName | sed 's/prod/preview/')
+          #             fi
+          #         fi
+          #         echo "Repository Name: $repoName"
+
+          #         echo "Publishing for $distro"
+          #         pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName
+          #       fi
+          #     done < <(tail -n +3 ../packages.csv)
+          #   displayName: 'Publish the repository'
+          #   workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
   - stage: UpdateLatestVersion
     dependsOn: ReleaseArtifacts
