@@ -1636,42 +1636,6 @@ stages:
                   if [ $? -ne 0 ]; then
                     exit 1
                   fi
-                  echo $idToken
-
-          - task: AzureCLI@2
-            displayName: 'set idToken'
-            inputs:
-              addSpnToEnvironment: true
-              azureSubscription: 'WIF_MI_ESRP_V5'
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                  echo $idToken
-                  echo "##vso[task.setvariable variable=idToken;issecret=true]$idToken"
-                  echo "......"
-                  echo $(idToken)
-
-          - script: |
-              echo $(idToken)
-              echo "......"
-              echo $idToken
-              echo "......"
-              export idToken=$(idToken)
-              echo "idToken: $idToken"
-              pmc --version
-              pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
-              if [ $? -ne 0 ]; then
-                exit 1
-              fi
-            displayName: 'Test1'
-
-          - script: |
-              pmc --version
-              pmc repo list --limit 1
-              if [ $? -ne 0 ]; then
-                exit 1
-              fi
-            displayName: 'Test2'
 
           # - task: DownloadSecureFile@1
           #   name: pmcCertificate
