@@ -74,13 +74,13 @@ steps:
 
 
   - script: |
-      cd linux-*
+      cd linux-*/
       make defconfig
     displayName: 'Make Config'
     workingDirectory: $(MOUNT_DIR)
 
   - script: |
-      cd linux-*
+      cd linux-*/
       make -j$(nproc) 2>&1 | tee log
     displayName: 'Compile Linux Source using parallel make'
     workingDirectory: $(MOUNT_DIR)
