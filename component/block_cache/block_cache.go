@@ -110,6 +110,7 @@ const (
 	compName                = "block_cache"
 	defaultTimeout          = 120
 	defaultBlockSize        = 16
+	defaultUseDu            = true
 	MAX_POOL_USAGE   uint32 = 80
 	MIN_POOL_USAGE   uint32 = 50
 	MIN_PREFETCH            = 5
@@ -255,12 +256,17 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
+	if !config.IsSet(compName + ".use-du") {
+		bc.useDu = defaultUseDu
+	} else {
+		bc.useDu = conf.UseDu
+	}
+
 	bc.consistency = conf.Consistency
 
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
 	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
-	bc.useDu = conf.UseDu
 
 	if (!config.IsSet(compName + ".mem-size-mb")) && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
 		bc.prefetch = (MIN_PREFETCH * 2) + 1

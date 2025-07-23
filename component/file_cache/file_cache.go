@@ -126,6 +126,7 @@ const (
 	defaultMinThreshold     = 60
 	defaultFileCacheTimeout = 120
 	defaultCacheUpdateCount = 100
+	defaultUseDu            = true
 	MB                      = 1024 * 1024
 )
 
@@ -248,13 +249,19 @@ func (c *FileCache) Configure(_ bool) error {
 	} else {
 		c.allowNonEmpty = conf.AllowNonEmpty
 	}
+
+	if !config.IsSet(compName + ".use-du") {
+		c.useDu = defaultUseDu
+	} else {
+		c.useDu = conf.UseDu
+	}
+
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.syncToFlush = conf.SyncToFlush
 	c.syncToDelete = !conf.SyncNoOp
 	c.refreshSec = conf.RefreshSec
 	c.hardLimit = conf.HardLimit
-	c.useDu = conf.UseDu
 
 	err = config.UnmarshalKey("lazy-write", &c.lazyWrite)
 	if err != nil {
