@@ -1653,8 +1653,11 @@ stages:
 
           - script: |
               echo $(idToken)
+              echo "......"
+              echo $idToken
+              echo "......"
               export idToken=$(idToken)
-              echo "idToken: $idToken
+              echo "idToken: $idToken"
               pmc --version
               pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
               if [ $? -ne 0 ]; then
