@@ -38,7 +38,8 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
@@ -52,8 +53,11 @@ type NodeServer struct {
 	server  thrift.TServer
 }
 
-// NewNodeServer creates a Thrift server for the node
-func NewNodeServer() (*NodeServer, error) {
+// NewNodeServer creates a Thrift server for the node.
+// rvMap is a map of raw volumes that the node will serve.
+func NewNodeServer(rvMap map[string]dcache.RawVolume) (*NodeServer, error) {
+	common.Assert(cm.IsValidRVMap(rvMap))
+
 	nodeID, err := common.GetNodeUUID()
 	if err != nil {
 		common.Assert(false, "failed to get node ID [%v]", err.Error())
@@ -62,7 +66,6 @@ func NewNodeServer() (*NodeServer, error) {
 	}
 
 	address := rpc.GetNodeAddressFromID(nodeID)
-	rvs := clustermap.GetMyRVs()
 
 	if !common.IsValidHostPort(address) {
 		common.Assert(false, "invalid node address %s", address)
@@ -70,11 +73,7 @@ func NewNodeServer() (*NodeServer, error) {
 		return nil, fmt.Errorf("invalid node address %s", address)
 	}
 
-	// TODO: add assert for IsValidRVMap()
-	common.Assert(rvs != nil, "raw volumes cannot be nil")
-	common.Assert(len(rvs) > 0, "raw volumes cannot be empty")
-
-	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s, RVs %+v", address, rvs)
+	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s, RVs %+v", address, rvMap)
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
 	transportFactory := thrift.NewTTransportFactory()
@@ -101,7 +100,10 @@ func NewNodeServer() (*NodeServer, error) {
 	// Create the chunk service handler.
 	// This must set the global var handler.
 	//
-	NewChunkServiceHandler(rvs)
+	err = NewChunkServiceHandler(rvMap)
+	if err != nil {
+		return nil, err
+	}
 	common.Assert(handler != nil)
 
 	processor := service.NewChunkServiceProcessor(handler)
@@ -136,4 +138,9 @@ func (ns *NodeServer) Stop() error {
 	}
 
 	return nil
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	cm.IsValidMVName("mv0")
 }

@@ -84,15 +84,15 @@ func SetWriteIOMode(mode string) error {
 	return nil
 }
 
-// return the node address for the given node ID
-// the node address is of the form <ip>:<port>
+// Return the node address for the given node ID.
+// The returned node address is of the form <ip>:<port>
 func GetNodeAddressFromID(nodeID string) string {
 	nodeAddress := fmt.Sprintf("%s:%d", clustermap.NodeIdToIP(nodeID), defaultPort)
 	common.Assert(common.IsValidHostPort(nodeAddress), fmt.Sprintf("node address is not valid: %s", nodeAddress))
 	return nodeAddress
 }
 
-// return the node ID of this node
+// Return the node ID of this node
 func GetMyNodeUUID() string {
 	nodeID, err := common.GetNodeUUID()
 	_ = err
@@ -101,8 +101,8 @@ func GetMyNodeUUID() string {
 	return nodeID
 }
 
-// convert *models.RVNameAndState to string
-// used for logging
+// Convert *models.RVNameAndState to string.
+// Used for logging.
 func ComponentRVsToString(rvs []*models.RVNameAndState) string {
 	str := strings.Builder{}
 	str.WriteString("[ ")

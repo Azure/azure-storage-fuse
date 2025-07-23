@@ -150,6 +150,8 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			ncPool.lastUsed.Store(time.Now().Unix())
 			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
 			ncPool.numActive.Add(1)
+			log.Debug("clientPool::getRPCClient: Successfully retrieved RPC client for node %s (now active: %d)",
+				nodeID, ncPool.numActive.Load())
 			return client, nil
 		case <-time.After(2 * time.Second): // Timeout after 2 second
 			waitTime += 2
@@ -222,8 +224,11 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
-	log.Debug("clientPool::releaseRPCClient: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode)
-	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), fmt.Sprintf("node client pool is full, cannot release client: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode))
+	log.Debug("clientPool::releaseRPCClient: node = %s, current node client pool size = %d, active clients = %d, max connections per node = %d",
+		client.nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), cp.maxPerNode)
+
+	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
+		fmt.Sprintf("node client pool is full, cannot release client: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode))
 
 	ncPool.clientChan <- client
 
@@ -257,8 +262,8 @@ func (cp *clientPool) closeRPCClient(client *rpcClient) error {
 // Close client and create a new one to the same target/node as client.
 //
 // Note: This is an internal function, use resetRPCClient() for resetting one connection and
-//
-//	resetAllRPCClients() for resetting all connections.
+//	     resetAllRPCClients() for resetting all connections.
+
 func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) error {
 	log.Debug("clientPool::resetRPCClientInternal: client %s for node %s",
 		client.nodeAddress, client.nodeID)
@@ -596,6 +601,9 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 
 	// We just got started, cannot have active clients.
 	common.Assert(ncPool.numActive.Load() == 0, ncPool.numActive.Load())
+
+	// We should have created exactly numClients clients.
+	common.Assert(len(ncPool.clientChan) == int(numClients), len(ncPool.clientChan), numClients)
 	return nil
 }
 
@@ -612,8 +620,11 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 	// We never have a partially allocated client pool and we only clean up a client pool when all
 	// previously allocated clients have been released back to the pool
 	//
-	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode),
-		len(ncPool.clientChan), cp.maxPerNode, ncPool.nodeID)
+	// Note: This assert can fail if resetRPCClientInternal() fails to reset one or more connections,
+	//       which can happen when the target node is down or the blobfuse service is not running.
+	//
+	//common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode),
+	//	len(ncPool.clientChan), cp.maxPerNode, ncPool.nodeID)
 
 	close(ncPool.clientChan)
 
