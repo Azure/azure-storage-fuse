@@ -1624,13 +1624,26 @@ stages:
             displayName: 'Install pmc-cli'
 
           - task: AzureCLI@2
+            displayName: 'Test PMC installation'
             inputs:
               addSpnToEnvironment: true
               azureSubscription: 'WIF_MI_ESRP_V5'
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
+                  pmc --version
+                  pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
+                  if [ $? -ne 0 ]; then
+                    exit 1
+                  fi
+
+          - script: |
+              pmc --version
+              pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
+            displayName: 'Test'
 
           # - task: DownloadSecureFile@1
           #   name: pmcCertificate
