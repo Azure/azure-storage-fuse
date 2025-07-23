@@ -1,6 +1,6 @@
 ## 2.6.0 (Unreleased)
 **Bug Fixes**
-- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in responce to file open call.
+- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
 
 ## 2.5.0 (2025-07-17)
 **Bug Fixes**
