@@ -111,6 +111,8 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 		// We need to override the service version
 		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceApiVersion))
 	}
+	//append the policy for request and response
+	perCallPolicies = append(perCallPolicies, NewMetricsPolicy())
 
 	return azcore.ClientOptions{
 		Retry:           retryOptions,
