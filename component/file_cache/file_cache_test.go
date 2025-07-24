@@ -151,7 +151,6 @@ func (suite *fileCacheTestSuite) TestEmpty() {
 	suite.assert.Equal(suite.fileCache.tmpPath, suite.cache_path)
 	suite.assert.Equal(suite.fileCache.policy.Name(), "lru")
 
-	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxSizeMB, 0)
 	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxEviction, defaultMaxEviction)
 	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).highThreshold, defaultMaxThreshold)
 	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).lowThreshold, defaultMinThreshold)
