@@ -1711,10 +1711,10 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  cd $(Build.ArtifactStagingDirectory)/
                   pwd
                   ls -lRt
                   # pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload blobfuse2-signed
+                workingDirectory: $(Build.ArtifactStagingDirectory)/
 
             - script: |
                 wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/setup/packages.csv -O packages.csv
@@ -1730,7 +1730,6 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  cd $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
                   pwd
                   ls -lRt
                   # fuse3AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.x86_64.deb`
@@ -1787,6 +1786,7 @@ stages:
                   #   echo "Uploading packages for $distro"
                   #   pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!fuseArchType} $repoName $releaseName
                   # done < <(tail -n +3 ../packages.csv)
+                workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
             - task: AzureCLI@2
               displayName: 'Publish the repository'
@@ -1796,7 +1796,6 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  cd $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
                   pwd
                   ls -lRt
                   # while IFS=, read -r distro fuseArchType repoName releaseName; do
@@ -1815,6 +1814,7 @@ stages:
                   #     pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
                   #   fi
                   # done < <(tail -n +3 ../packages.csv)
+                workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
   - stage: UpdateLatestVersion
     dependsOn: ReleaseArtifacts
