@@ -106,11 +106,12 @@ func IsMountActive(path string) (bool, error) {
 	// out contains the list of pids of the processes that are running
 	pidString := strings.Replace(out.String(), "\n", " ", -1)
 	pids := strings.Split(pidString, " ")
+	myPid := strconv.Itoa(os.Getpid())
 	for _, pid := range pids {
 		// Get the mount path for this pid
 		// For this we need to check the command line arguments given to this command
 		// If the path is same then we need to return true
-		if pid == "" {
+		if pid == "" || pid == myPid {
 			continue
 		}
 

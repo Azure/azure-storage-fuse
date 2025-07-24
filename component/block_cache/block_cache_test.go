@@ -56,6 +56,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/pbnjay/memory"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -2660,8 +2661,11 @@ func (suite *blockCacheTestSuite) TestReadWriteBlockInParallel() {
 }
 
 func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
+
+	free := memory.FreeMemory()
+	maxbuffers := max(1, free/_1MB-1)
 	common.IsStream = true
-	config := "read-only: true\n\nstream:\n  block-size-mb: 2\n  max-buffers: 30\n  buffer-size-mb: 8\n"
+	config := fmt.Sprintf("read-only: true\n\nstream:\n  block-size-mb: 2\n  max-buffers: %d\n  buffer-size-mb: 1\n", maxbuffers)
 	tobj, err := setupPipeline(config)
 	defer tobj.cleanupPipeline()
 
@@ -2669,7 +2673,7 @@ func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
 	if err == nil {
 		suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
 		suite.assert.EqualValues(tobj.blockCache.blockSize, 2*_1MB)
-		suite.assert.EqualValues(tobj.blockCache.memSize, 8*_1MB*30)
+		suite.assert.EqualValues(tobj.blockCache.memSize, 1*_1MB*maxbuffers)
 	}
 }
 
@@ -2827,7 +2831,7 @@ func (suite *blockCacheTestSuite) TestStrongConsistency() {
 
 func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {
 	prefetch := 12
-	cfg := fmt.Sprintf("block_cache:\n  block-size-mb: 1\n  mem-size-mb: 12\n  prefetch: %v\n  parallelism: 10", prefetch)
+	cfg := fmt.Sprintf("block_cache:\n  block-size-mb: 1\n  mem-size-mb: 25\n  prefetch: %v\n  parallelism: 10", prefetch)
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
@@ -2860,7 +2864,7 @@ func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {
 		suite.assert.True(h.Dirty())
 	}
 
-	// Now Jump to 20thMB offset and write 500kb of data
+	// Now Jump to 15thMB offset and write 500kb of data
 	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(20 * _1MB), Data: dataBuff[:(_1MB / 2)]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB/2))

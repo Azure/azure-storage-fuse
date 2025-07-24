@@ -151,7 +151,6 @@ func (suite *fileCacheTestSuite) TestEmpty() {
 	suite.assert.Equal(suite.fileCache.tmpPath, suite.cache_path)
 	suite.assert.Equal(suite.fileCache.policy.Name(), "lru")
 
-	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxSizeMB, 0)
 	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxEviction, defaultMaxEviction)
 	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).highThreshold, defaultMaxThreshold)
 	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).lowThreshold, defaultMinThreshold)
@@ -159,7 +158,6 @@ func (suite *fileCacheTestSuite) TestEmpty() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, false)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, false)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, 120)
-	suite.assert.Equal(suite.fileCache.cleanupOnStart, false)
 }
 
 // Tests configuration of file cache
@@ -191,7 +189,6 @@ func (suite *fileCacheTestSuite) TestConfig() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
-	suite.assert.Equal(suite.fileCache.cleanupOnStart, cleanupOnStart)
 }
 
 func (suite *fileCacheTestSuite) TestDefaultCacheSize() {
@@ -243,7 +240,6 @@ func (suite *fileCacheTestSuite) TestConfigPolicyTimeout() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
-	suite.assert.Equal(suite.fileCache.cleanupOnStart, cleanupOnStart)
 }
 
 func (suite *fileCacheTestSuite) TestConfigPolicyDefaultTimeout() {
@@ -275,7 +271,6 @@ func (suite *fileCacheTestSuite) TestConfigPolicyDefaultTimeout() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
-	suite.assert.Equal(suite.fileCache.cleanupOnStart, cleanupOnStart)
 }
 
 func (suite *fileCacheTestSuite) TestConfigZero() {
@@ -306,7 +301,6 @@ func (suite *fileCacheTestSuite) TestConfigZero() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
-	suite.assert.Equal(suite.fileCache.cleanupOnStart, cleanupOnStart)
 }
 
 // Tests CreateDir
@@ -655,8 +649,11 @@ func (suite *fileCacheTestSuite) TestCreateFileWithNoPerm() {
 	suite.assert.True(os.IsNotExist(err))
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
 	suite.assert.Nil(err)
-	info, _ := os.Stat(suite.cache_path + "/" + path)
-	suite.assert.Equal(info.Mode(), os.FileMode(0000))
+	info, err := os.Stat(suite.cache_path + "/" + path)
+	// Since the default config has timeout-sec as 0 there is a chance that the file gets evicted before we stat the file.
+	if err == nil && info != nil {
+		suite.assert.Equal(info.Mode(), os.FileMode(0000))
+	}
 }
 
 func (suite *fileCacheTestSuite) TestCreateFileWithWritePerm() {
@@ -2028,6 +2025,31 @@ func (suite *fileCacheTestSuite) createRemoteDirectoryStructure() {
 
 	err = os.MkdirAll(filepath.Join(suite.fake_storage_path, "h", "l", "m", "n"), 0777)
 	suite.assert.NoError(err)
+}
+
+func (suite *fileCacheTestSuite) TestHardLimit() {
+	defer suite.cleanupTest()
+	cacheTimeout := 0
+	maxSizeMb := 2
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  max-size-mb: %d\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, maxSizeMb, cacheTimeout, suite.fake_storage_path)
+	os.Mkdir(suite.cache_path, 0777)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	file := "file96"
+	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	data := make([]byte, 1024*1024)
+	for i := int64(0); i < 5; i++ {
+		suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: i * 1024 * 1024, Data: data})
+	}
+	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	time.Sleep(1)
+
+	// Now try to open the file and validate we get an error due to hard limit
+	handle, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: file, Mode: 0777})
+	suite.assert.NotNil(err)
+	suite.assert.Nil(handle)
+	suite.assert.Equal(err, syscall.ENOSPC)
 }
 
 // In order for 'go test' to run this suite, we need to create

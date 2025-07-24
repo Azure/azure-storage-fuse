@@ -67,7 +67,6 @@ type FileCache struct {
 	createEmptyFile bool
 	allowNonEmpty   bool
 	cacheTimeout    float64
-	cleanupOnStart  bool
 	policyTrace     bool
 	missedChmodList sync.Map
 	mountPath       string
@@ -153,13 +152,6 @@ func (c *FileCache) Priority() internal.ComponentPriority {
 //	this shall not block the call otherwise pipeline will not start
 func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
-
-	if c.cleanupOnStart {
-		err := common.TempCacheCleanup(c.tmpPath)
-		if err != nil {
-			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", c.Name())
-		}
-	}
 
 	if c.policy == nil {
 		return fmt.Errorf("config error in %s error [cache policy missing]", c.Name())
@@ -253,13 +245,12 @@ func (c *FileCache) Configure(_ bool) error {
 	} else {
 		c.allowNonEmpty = conf.AllowNonEmpty
 	}
-	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.syncToFlush = conf.SyncToFlush
 	c.syncToDelete = !conf.SyncNoOp
 	c.refreshSec = conf.RefreshSec
-	c.hardLimit = conf.HardLimit
+	c.hardLimit = true
 
 	err = config.UnmarshalKey("lazy-write", &c.lazyWrite)
 	if err != nil {
@@ -344,14 +335,17 @@ func (c *FileCache) Configure(_ bool) error {
 	if config.IsSet(compName + ".sync-to-flush") {
 		log.Warn("Sync will upload current contents of file.")
 	}
+	if config.IsSet(compName + ".hard-limit") {
+		c.hardLimit = conf.HardLimit
+	}
 
 	c.diskHighWaterMark = 0
-	if conf.HardLimit && conf.MaxSizeMB != 0 {
-		c.diskHighWaterMark = (((conf.MaxSizeMB * MB) * float64(cacheConfig.highThreshold)) / 100)
+	if c.hardLimit && c.maxCacheSize != 0 {
+		c.diskHighWaterMark = (((c.maxCacheSize * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
 	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(c.maxCacheSize), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, conf.CleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
 }
@@ -421,7 +415,7 @@ func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 		highThreshold: float64(conf.HighThreshold),
 		lowThreshold:  float64(conf.LowThreshold),
 		cacheTimeout:  uint32(c.cacheTimeout),
-		maxSizeMB:     conf.MaxSizeMB,
+		maxSizeMB:     c.maxCacheSize,
 		fileLocks:     c.fileLocks,
 		policyTrace:   conf.EnablePolicyTrace,
 	}
@@ -965,7 +959,12 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 					log.Err("FileCache::OpenFile : error getting current usage of cache [%s]", err.Error())
 				} else {
 					if (currSize + float64(fileSize)) > fc.diskHighWaterMark {
-						log.Err("FileCache::OpenFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Name)
+						log.Err("FileCache::OpenFile : cache size limit reached [%f] failed to open %s", currSize, options.Name)
+						_ = f.Close()
+						err = os.Remove(localPath)
+						if err != nil {
+							log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
+						}
 						return nil, syscall.ENOSPC
 					}
 				}
@@ -983,7 +982,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 				// File was created locally and now download has failed so we need to delete it back from local cache
 				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
 				_ = f.Close()
-				_ = os.Remove(localPath)
+				err = os.Remove(localPath)
+				if err != nil {
+					log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
+				}
 				return nil, err
 			}
 		}

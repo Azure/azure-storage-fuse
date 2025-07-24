@@ -1,6 +1,19 @@
-## 2.5.0 (Unreleased)
+## 2.6.0 (Unreleased)
 **Features**
 - Added support for `chmod` and `chown` file system capabilities for blockblob accounts, and `chown` capability for Datalake accounts.
+
+**Bug Fixes**
+- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
+
+## 2.5.0 (2025-07-17)
+**Bug Fixes**
+- Mount on already mounted path resulting in unmount and remount, instead of failure.
+- Added support for listing directories and files on HNS accounts mounted as FNS account by customers.
+- Fixed bug where preload feature used to continue to download even after unmount was successful.
+- [#1765](https://github.com/Azure/azure-storage-fuse/issues/1765) Make `cleanup-on-start` CLI flag common for file-cache, block-cache, xload components.
+- [#1808](https://github.com/Azure/azure-storage-fuse/issues/1808) Fixed memory leak in attribute cache by periodic cleanup of cached entries.
+- Fixed a crash in blobfuse2 triggered by throttling events in the block-cache component.
+- Ensured block-cache correctly enforces the memory limit specified in the configuration.
 
 ## 2.5.0~preview.1 (2025-04-30)
 **Features**

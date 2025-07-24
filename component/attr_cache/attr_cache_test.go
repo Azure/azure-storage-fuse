@@ -887,7 +887,6 @@ func (suite *attrCacheTestSuite) TestGetAttrExistsDeleted() {
 			_ = suite.attrCache.DeleteFile(internal.DeleteFileOptions{Name: "ac"})
 
 			options := internal.GetAttrOptions{Name: path}
-			// no call to mock component since attributes are accessible
 
 			result, err := suite.attrCache.GetAttr(options)
 			suite.assert.Equal(err, syscall.ENOENT)
@@ -1067,6 +1066,107 @@ func (suite *attrCacheTestSuite) TestCacheTimeout() {
 	suite.mock.EXPECT().GetAttr(options).Return(getPathAttr(path, defaultSize, fs.FileMode(defaultMode), true), nil)
 	_, err = suite.attrCache.GetAttr(options)
 	suite.assert.Nil(err)
+}
+
+// Tests Cache Cleanup - expired entries are actually removed from cache map
+func (suite *attrCacheTestSuite) TestCacheCleanupExpiredEntries() {
+	defer suite.cleanupTest()
+	suite.cleanupTest() // clean up the default attr cache generated
+	cacheTimeout := 2
+	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d", cacheTimeout)
+	suite.setupTestHelper(config) // setup a new attr cache with a custom config
+	suite.assert.EqualValues(suite.attrCache.cacheTimeout, cacheTimeout)
+
+	path1 := "file1"
+	path2 := "file2"
+	options1 := internal.GetAttrOptions{Name: path1}
+	options2 := internal.GetAttrOptions{Name: path2}
+
+	// Add two files to cache
+	suite.mock.EXPECT().GetAttr(options1).Return(getPathAttr(path1, defaultSize, fs.FileMode(defaultMode), true), nil)
+	suite.mock.EXPECT().GetAttr(options2).Return(getPathAttr(path2, defaultSize, fs.FileMode(defaultMode), true), nil)
+
+	suite.assert.Empty(suite.attrCache.cacheMap) // cacheMap should be empty before calls
+	_, err := suite.attrCache.GetAttr(options1)
+	suite.assert.Nil(err)
+	_, err = suite.attrCache.GetAttr(options2)
+	suite.assert.Nil(err)
+
+	// Verify both items are in cache
+	suite.assert.Len(suite.attrCache.cacheMap, 2)
+	assertUntouched(suite, path1)
+	assertUntouched(suite, path2)
+
+	// Wait for cache timeout to expire, plus additional time for background cleanup to run
+	time.Sleep(time.Second * time.Duration(cacheTimeout+1))
+
+	// Verify that the cache has been cleaned up by background cleanup
+	// Wait a bit more if cleanup is still in progress
+	maxWait := 3 * time.Second
+	waitInterval := 100 * time.Millisecond
+	waited := time.Duration(0)
+
+	for waited < maxWait {
+		suite.attrCache.cacheLock.RLock()
+		cacheSize := len(suite.attrCache.cacheMap)
+		suite.attrCache.cacheLock.RUnlock()
+
+		if cacheSize == 0 {
+			break
+		}
+
+		time.Sleep(waitInterval)
+		waited += waitInterval
+	}
+
+	// Verify that expired entries have been cleaned up
+	suite.assert.Len(suite.attrCache.cacheMap, 0)
+}
+
+// Tests Cache Cleanup during bulk caching operations
+func (suite *attrCacheTestSuite) TestCacheCleanupDuringBulkCaching() {
+	defer suite.cleanupTest()
+	suite.cleanupTest() // clean up the default attr cache generated
+	cacheTimeout := 3   // Use a longer timeout for this test
+	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d", cacheTimeout)
+	suite.setupTestHelper(config) // setup a new attr cache with a custom config
+	suite.assert.EqualValues(suite.attrCache.cacheTimeout, cacheTimeout)
+
+	// Add some items to cache manually with old timestamps
+	path1 := "oldfile1"
+	path2 := "oldfile2"
+	oldTime := time.Now().Add(-time.Second * time.Duration(cacheTimeout+1))
+	suite.attrCache.cacheMap[path1] = newAttrCacheItem(getPathAttr(path1, defaultSize, fs.FileMode(defaultMode), true), true, oldTime)
+	suite.attrCache.cacheMap[path2] = newAttrCacheItem(getPathAttr(path2, defaultSize, fs.FileMode(defaultMode), true), true, oldTime)
+
+	// Verify both old items are in cache
+	suite.assert.Len(suite.attrCache.cacheMap, 2)
+
+	// Wait a bit for background cleanup to run and remove expired items
+	time.Sleep(time.Second * time.Duration(cacheTimeout+1))
+
+	// Wait for cleanup to complete
+	maxWait := 2 * time.Second
+	waitInterval := 100 * time.Millisecond
+	waited := time.Duration(0)
+
+	for waited < maxWait {
+		suite.attrCache.cacheLock.RLock()
+		cacheSize := len(suite.attrCache.cacheMap)
+		suite.attrCache.cacheLock.RUnlock()
+
+		if cacheSize == 0 {
+			break
+		}
+
+		time.Sleep(waitInterval)
+		waited += waitInterval
+	}
+
+	// Verify that expired entries have been cleaned up
+	suite.assert.Len(suite.attrCache.cacheMap, 0)
+	suite.assert.NotContains(suite.attrCache.cacheMap, path1)
+	suite.assert.NotContains(suite.attrCache.cacheMap, path2)
 }
 
 // Tests CreateLink

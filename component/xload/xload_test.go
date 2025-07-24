@@ -148,7 +148,7 @@ func (suite *xloadTestSuite) TestConfigEmpty() {
 	suite.assert.Equal(suite.xload.mode, EMode.PRELOAD())
 	suite.assert.Equal(suite.xload.exportProgress, false)
 	suite.assert.Equal(suite.xload.defaultPermission, common.DefaultFilePermissionBits)
-	suite.assert.Equal(suite.xload.workerCount, uint32(0))
+	suite.assert.NotEqual(suite.xload.workerCount, uint32(0))
 	suite.assert.Nil(suite.xload.blockPool)
 	suite.assert.Nil(suite.xload.statsMgr)
 	suite.assert.NotNil(suite.xload.fileLocks)

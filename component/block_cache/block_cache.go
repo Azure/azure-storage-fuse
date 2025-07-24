@@ -88,7 +88,6 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
-	cleanupOnStart  bool           // Clear temp directory on startup
 }
 
 // Structure defining your config parameters
@@ -288,7 +287,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
-	bc.cleanupOnStart = conf.CleanupOnStart
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
@@ -311,13 +309,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 			if err != nil {
 				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
-			}
-		} else {
-			if bc.cleanupOnStart {
-				err := common.TempCacheCleanup(bc.tmpPath)
-				if err != nil {
-					return fmt.Errorf("error in %s error [fail to cleanup temp cache]", bc.Name())
-				}
 			}
 		}
 
@@ -345,8 +336,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart)
 
 	return nil
 }
@@ -688,7 +679,12 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 			if readoffset >= uint64(prop.Size) {
 				//create a null block and return
-				block := bc.blockPool.MustGet()
+				block, err := bc.blockPool.MustGet()
+				if err != nil {
+					log.Err("BlockCache::getBlock : Unable to allocate block %v=>%s (index %v) %v", handle.ID, handle.Path, index, err)
+					return nil, err
+				}
+
 				block.offset = readoffset
 				// block.flags.Set(BlockFlagSynced)
 				log.Debug("BlockCache::getBlock : Returning a null block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
@@ -917,10 +913,10 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 	if nodeList.Len() == 0 && !prefetch {
 		// User needs a block now but there is no free block available right now
 		// this might happen when all blocks are under download and no first reader is hit for any of them
-		block := bc.blockPool.MustGet()
-		if block == nil {
-			log.Err("BlockCache::refreshBlock : Unable to allocate block %v=>%s (index %v, prefetch %v)", handle.ID, handle.Path, index, prefetch)
-			return fmt.Errorf("unable to allocate block")
+		block, err := bc.blockPool.MustGet()
+		if err != nil {
+			log.Err("BlockCache::refreshBlock : Unable to allocate block %v=>%s (index %v, prefetch %v) %v", handle.ID, handle.Path, index, prefetch, err)
+			return err
 		}
 
 		block.node = handle.Buffers.Cooked.PushFront(block)
@@ -1214,10 +1210,10 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		}
 
 		// Either the block is not fetched yet or offset goes beyond the file size
-		block = bc.blockPool.MustGet()
-		if block == nil {
-			log.Err("BlockCache::getOrCreateBlock : Unable to allocate block %v=>%s (index %v)", handle.ID, handle.Path, index)
-			return nil, fmt.Errorf("unable to allocate block")
+		block, err = bc.blockPool.MustGet()
+		if err != nil {
+			log.Err("BlockCache::getOrCreateBlock : Unable to allocate block %v=>%s (index %v) %v", handle.ID, handle.Path, index, err)
+			return nil, err
 		}
 
 		block.node = nil
