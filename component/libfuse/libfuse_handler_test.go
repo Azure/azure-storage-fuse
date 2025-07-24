@@ -337,6 +337,14 @@ func (suite *libfuseTestSuite) TestChown() {
 	testChown(suite)
 }
 
+func (suite *libfuseTestSuite) TestChownNotExists() {
+	testChownNotExists(suite)
+}
+
+func (suite *libfuseTestSuite) TestChownError() {
+	testChownError(suite)
+}
+
 func (suite *libfuseTestSuite) TestUtimens() {
 	testUtimens(suite)
 }

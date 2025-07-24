@@ -43,6 +43,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -499,9 +500,10 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	}
 
 	parseMetadata(attr, prop.Metadata)
-
-	// We do not get permissions as part of this getAttr call hence setting the flag to true
-	attr.Flags.Set(internal.PropFlagModeDefault)
+	if attr.Mode == 0 {
+		// We do not get permissions as part of this getAttr call hence setting the flag to true
+		attr.Flags.Set(internal.PropFlagModeDefault)
+	}
 
 	return attr, nil
 }
@@ -687,17 +689,11 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		log.Trace("BlockBlob::List : blob is encrypted with customer provided key so fetching metadata explicitly using REST")
 		return bb.getAttrUsingRest(*blobInfo.Name)
 	}
-	mode, err := bb.getFileMode(blobInfo.Properties.Permissions)
-	if err != nil {
-		mode = 0
-		log.Warn("BlockBlob::getBlobAttr : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
-	}
 
 	attr := &internal.ObjAttr{
 		Path:   removePrefixPath(bb.Config.prefixPath, *blobInfo.Name),
 		Name:   filepath.Base(*blobInfo.Name),
 		Size:   *blobInfo.Properties.ContentLength,
-		Mode:   mode,
 		Mtime:  *blobInfo.Properties.LastModified,
 		Atime:  bb.dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
 		Ctime:  *blobInfo.Properties.LastModified,
@@ -708,19 +704,21 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 	}
 
 	parseMetadata(attr, blobInfo.Metadata)
-	if !bb.listDetails.Permissions {
+	if attr.Mode == 0 {
 		// In case of HNS account do not set this flag
 		attr.Flags.Set(internal.PropFlagModeDefault)
 	}
 
-	return attr, nil
-}
-
-func (bb *BlockBlob) getFileMode(permissions *string) (os.FileMode, error) {
-	if permissions == nil {
-		return 0, nil
+	if blobInfo.Properties.Owner != nil {
+		attr.Owner = common.ParseUint32(*blobInfo.Properties.Owner)
+		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
 	}
-	return getFileMode(*permissions)
+
+	if blobInfo.Properties.Group != nil {
+		attr.Group = common.ParseUint32(*blobInfo.Properties.Group)
+	}
+
+	return attr, nil
 }
 
 func (bb *BlockBlob) dereferenceTime(input *time.Time, defaultTime time.Time) time.Time {
@@ -790,7 +788,7 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		return nil, fmt.Errorf("failed to get properties of blobprefix %s", *blobInfo.Name)
 	}
 
-	mode, err := bb.getFileMode(blobInfo.Properties.Permissions)
+	mode, err := getFileMode(*blobInfo.Properties.Permissions)
 	if err != nil {
 		mode = 0
 		log.Warn("BlockBlob::createDirAttrWithPermissions : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
@@ -807,6 +805,19 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		Ctime:  *blobInfo.Properties.LastModified,
 		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 		Flags:  internal.NewDirBitMap(),
+	}
+
+	if attr.Mode == 0 {
+		attr.Flags.Set(internal.PropFlagModeDefault)
+	}
+
+	if blobInfo.Properties.Owner != nil {
+		attr.Owner = common.ParseUint32(*blobInfo.Properties.Owner)
+		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
+	}
+
+	if blobInfo.Properties.Group != nil {
+		attr.Group = common.ParseUint32(*blobInfo.Properties.Group)
 	}
 
 	return attr, nil
@@ -1550,31 +1561,98 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 }
 
 // ChangeMod : Change mode of a blob
-func (bb *BlockBlob) ChangeMod(name string, _ os.FileMode) error {
+func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("BlockBlob::ChangeMod : name %s", name)
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
-	if bb.Config.ignoreAccessModifiers {
-		// for operations like git clone where transaction fails if chmod is not successful
-		// return success instead of ENOSYS
-		return nil
+	// Fetch existing properties
+	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		CPKInfo: bb.blobCPKOpt,
+	})
+	if err != nil {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::ChangeMod : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("BlockBlob::ChangeMod : Failed to get blob properties for %s [%s]", name, err.Error())
+			return err
+		}
 	}
 
-	// This is not currently supported for a flat namespace account
-	return syscall.ENOTSUP
+	if prop.Metadata == nil {
+		prop.Metadata = make(map[string]*string)
+	}
+
+	updatedMode := AddMetadata(prop.Metadata, common.POSIXModeMeta, mode.String()[1:])
+
+	// Apply metadata update
+	if updatedMode {
+		_, err := blobClient.SetMetadata(context.Background(), prop.Metadata, &blob.SetMetadataOptions{
+			CPKInfo: bb.blobCPKOpt,
+		})
+		if err != nil {
+			log.Err("BlockBlob::ChangeMod : Failed to update Blob Metadata %s [%s]", name, err.Error())
+			return err
+		}
+	}
+
+	log.Info("BlockBlob::ChangeMod: Mod updated for %s - %v", name, mode)
+	return nil
 }
 
 // ChangeOwner : Change owner of a blob
-func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
+func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 	log.Trace("BlockBlob::ChangeOwner : name %s", name)
 
-	if bb.Config.ignoreAccessModifiers {
-		// for operations like git clone where transaction fails if chown is not successful
-		// return success instead of ENOSYS
-		return nil
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+
+	// Fetch existing properties
+	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		CPKInfo: bb.blobCPKOpt,
+	})
+	if err != nil {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::ChangeOwner : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("BlockBlob::ChangeOwner : Failed to get blob properties for %s [%s]", name, err.Error())
+			return err
+		}
 	}
 
-	// This is not currently supported for a flat namespace account
-	return syscall.ENOTSUP
+	if prop.Metadata == nil {
+		prop.Metadata = make(map[string]*string)
+	}
+
+	updatedOwner := AddMetadata(prop.Metadata, common.POSIXOwnerMeta, strconv.FormatUint(uint64(uid), 10))
+	updatedGroup := AddMetadata(prop.Metadata, common.POSIXGroupMeta, strconv.FormatUint(uint64(gid), 10))
+
+	// Apply metadata update
+	if updatedOwner || updatedGroup {
+		_, err := blobClient.SetMetadata(context.Background(), prop.Metadata, &blob.SetMetadataOptions{
+			CPKInfo: bb.blobCPKOpt,
+		})
+
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::ChangeOwner : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("BlockBlob::ChangeOwner : Failed to set blob properties for %s [%s]", name, err.Error())
+			return err
+		}
+	}
+
+	log.Info("BlockBlob::ChangeOwner: Owner updated for %s - %v", name, prop.Metadata)
+	return nil
 }
 
 // GetCommittedBlockList : Get the list of committed blocks
