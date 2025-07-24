@@ -1711,9 +1711,7 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  pwd
-                  ls -lRt
-                  # pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload blobfuse2-signed
+                  pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload blobfuse2-signed
                 workingDirectory: $(Build.ArtifactStagingDirectory)/
 
             - script: |
@@ -1730,62 +1728,60 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  pwd
-                  ls -lRt
-                  # fuse3AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.x86_64.deb`
-                  # echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
+                  fuse3AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.x86_64.deb`
+                  echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
 
-                  # fuse3ArmDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.arm64.deb`
-                  # echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
+                  fuse3ArmDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.arm64.deb`
+                  echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
 
-                  # fuse3AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.x86_64.rpm`
-                  # echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
+                  fuse3AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.x86_64.rpm`
+                  echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
 
-                  # fuse3ArmRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.aarch64.rpm`
-                  # echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
+                  fuse3ArmRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.aarch64.rpm`
+                  echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
 
-                  # fuse2AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse2.x86_64.deb`
-                  # echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
+                  fuse2AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse2.x86_64.deb`
+                  echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
 
-                  # fuse2AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse2.x86_64.rpm`
-                  # echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
+                  fuse2AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse2.x86_64.rpm`
+                  echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
 
-                  # marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
-                  # marinerFuse3AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*cm2.x86_64.rpm`
-                  # echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
-                  # echo "Mariner fuse3 AMD RPM $marinerAmdRpmFile"
+                  marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
+                  marinerFuse3AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*cm2.x86_64.rpm`
+                  echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
+                  echo "Mariner fuse3 AMD RPM $marinerAmdRpmFile"
 
-                  # marinerAarchRpmFile=$(ls blobfuse2* | grep 'cm2\.aarch64\.rpm')
-                  # marinerFuse3AarchRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*cm2.aarch64.rpm`
-                  # echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
-                  # echo "Mariner fuse3 ARM RPM: $marinerAarchRpmFile"
+                  marinerAarchRpmFile=$(ls blobfuse2* | grep 'cm2\.aarch64\.rpm')
+                  marinerFuse3AarchRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*cm2.aarch64.rpm`
+                  echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
+                  echo "Mariner fuse3 ARM RPM: $marinerAarchRpmFile"
 
-                  # is_preview="false"
-                  # echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                  # if [[ $marinerAmdRpmFile == *"preview"* ]]; then
-                  #   is_preview="true"
-                  #   echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                  # fi
+                  is_preview="false"
+                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                  if [[ $marinerAmdRpmFile == *"preview"* ]]; then
+                    is_preview="true"
+                    echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                  fi
 
-                  # is_preview="false"
-                  # echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                  # if [[ $marinerFuse3AmdRpm == *"preview"* ]]; then
-                  #   is_preview="true"
-                  #   echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                  # fi
+                  is_preview="false"
+                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                  if [[ $marinerFuse3AmdRpm == *"preview"* ]]; then
+                    is_preview="true"
+                    echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                  fi
 
-                  # while IFS=, read -r distro fuseArchType repoName releaseName; do
+                  while IFS=, read -r distro fuseArchType repoName releaseName; do
 
-                  #   # If the package is preview, publish to mariner preview package
-                  #   if [[ $distro == *"Mariner-"* ]]; then
-                  #     if [ $is_preview = "true" ]; then
-                  #       repoName=$(echo $repoName | sed 's/prod/preview/')
-                  #     fi
-                  #   fi
+                    # If the package is preview, publish to mariner preview package
+                    if [[ $distro == *"Mariner-"* ]]; then
+                      if [ $is_preview = "true" ]; then
+                        repoName=$(echo $repoName | sed 's/prod/preview/')
+                      fi
+                    fi
 
-                  #   echo "Uploading packages for $distro"
-                  #   pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!fuseArchType} $repoName $releaseName
-                  # done < <(tail -n +3 ../packages.csv)
+                    echo "Uploading packages for $distro"
+                    pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!fuseArchType} $repoName $releaseName
+                  done < <(tail -n +3 ../packages.csv)
                 workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
             - task: AzureCLI@2
@@ -1796,24 +1792,22 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  pwd
-                  ls -lRt
-                  # while IFS=, read -r distro fuseArchType repoName releaseName; do
-                  #   if [[ $fuseArchType == *"Arm"* ]]
-                  #   then
-                  #     echo "Skipping for ARM type on $distro"
-                  #   else
-                  #     if [[ $distro == *"Mariner-"* ]]; then
-                  #         if [ "$is_preview" = "true" ]; then
-                  #           repoName=$(echo $repoName | sed 's/prod/preview/')
-                  #         fi
-                  #     fi
-                  #     echo "Repository Name: $repoName"
+                  while IFS=, read -r distro fuseArchType repoName releaseName; do
+                    if [[ $fuseArchType == *"Arm"* ]]
+                    then
+                      echo "Skipping for ARM type on $distro"
+                    else
+                      if [[ $distro == *"Mariner-"* ]]; then
+                          if [ "$is_preview" = "true" ]; then
+                            repoName=$(echo $repoName | sed 's/prod/preview/')
+                          fi
+                      fi
+                      echo "Repository Name: $repoName"
 
-                  #     echo "Publishing for $distro"
-                  #     pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
-                  #   fi
-                  # done < <(tail -n +3 ../packages.csv)
+                      echo "Publishing for $distro"
+                      pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
+                    fi
+                  done < <(tail -n +3 ../packages.csv)
                 workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
   - stage: UpdateLatestVersion
