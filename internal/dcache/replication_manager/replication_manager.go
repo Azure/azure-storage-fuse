@@ -880,7 +880,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 			log.Info("ReplicationManager::RemoveMV: skip deleting fileId %s chunks from %s/%s, rv state: %s",
 				req.FileID, rv.Name, req.MvName, rv.State)
 
-			if rv.State != string(dcache.StateOffline) {
+			if rv.State != string(dcache.StateOffline) && rv.State != string(dcache.StateInbandOffline) {
 				//
 				// GC must retry for this MV again, till this RV state changes to the StateOnline.
 				//
