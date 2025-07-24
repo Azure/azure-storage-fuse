@@ -56,7 +56,7 @@ type cachePolicyConfig struct {
 	fileLocks *common.LockMap
 
 	policyTrace bool
-	useDu       bool
+	noDu        bool
 }
 
 type cachePolicy interface {
@@ -75,7 +75,7 @@ type cachePolicy interface {
 }
 
 // getUsagePercentage:  The current cache usage as a percentage of the maxSize
-func getUsagePercentage(path string, maxSize float64, useDu bool) float64 {
+func getUsagePercentage(path string, maxSize float64, noDu bool) float64 {
 	var currSize float64
 	var usagePercent float64
 	var err error
@@ -87,13 +87,12 @@ func getUsagePercentage(path string, maxSize float64, useDu bool) float64 {
 		}
 	} else {
 		// We need to compuate % usage of temp directory against configured limit
-		if useDu {
-			log.Debug("cachePolicy::getUsagePercentage : using du for disk usage calculation")
-			currSize, err = common.GetUsageWithDu(path)
-		} else {
-			// Use the statfs method if du is not used
+		if noDu {
 			log.Debug("cachePolicy::getUsagePercentage : using built-in function for disk usage calculation")
 			currSize, err = common.GetUsageWithWalkInMegabytes(path)
+		} else {
+			log.Debug("cachePolicy::getUsagePercentage : using du for disk usage calculation")
+			currSize, err = common.GetUsageWithDu(path)
 		}
 		if err != nil {
 			log.Err("cachePolicy::getUsagePercentage : failed to get directory usage for %s [%v]", path, err.Error())

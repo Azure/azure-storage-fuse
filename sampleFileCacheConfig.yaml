@@ -19,7 +19,6 @@ file_cache:
   path: /<PATH>/<TO>/<CACHE_DIR>
   timeout-sec: 120
   max-size-mb: 4096
-  use-du: true  # Use external 'du' command for disk usage calculation
 
 attr_cache:
   timeout-sec: 7200

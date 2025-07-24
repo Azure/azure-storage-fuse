@@ -844,11 +844,8 @@ func init() {
 	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
 	config.BindPFlag("use-attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))
 
-	mountCmd.Flags().Bool("file-cache-use-du", true, "Use du command for file cache disk usage calculation.")
-	config.BindPFlag("file_cache.use-du", mountCmd.Flags().Lookup("file-cache-use-du"))
-
-	mountCmd.Flags().Bool("block-cache-use-du", true, "Use du command for block cache disk usage calculation.")
-	config.BindPFlag("block_cache.use-du", mountCmd.Flags().Lookup("block-cache-use-du"))
+	mountCmd.Flags().Bool("no-du", true, "Use a built-in Go function for disk usage calculation instead of du.")
+	config.BindPFlag("no-du", mountCmd.Flags().Lookup("no-du"))
 
 	mountCmd.Flags().Bool("invalidate-on-sync", true, "Invalidate file/dir on sync/fsync.")
 	config.BindPFlag("invalidate-on-sync", mountCmd.Flags().Lookup("invalidate-on-sync"))

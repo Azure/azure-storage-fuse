@@ -88,7 +88,7 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
-	useDu           bool           // Flag to indicate if du command should be used for disk usage calculation
+	noDu            bool           // Flag to indicate if du command should be used for disk usage calculation
 }
 
 // Structure defining your config parameters
@@ -103,14 +103,13 @@ type BlockCacheOptions struct {
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
 	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
-	UseDu          bool    `config:"use-du" yaml:"use-du,omitempty"`
 }
 
 const (
 	compName                = "block_cache"
 	defaultTimeout          = 120
 	defaultBlockSize        = 16
-	defaultUseDu            = true
+	defaultNoDu             = false
 	MAX_POOL_USAGE   uint32 = 80
 	MIN_POOL_USAGE   uint32 = 50
 	MIN_PREFETCH            = 5
@@ -256,10 +255,11 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
-	if !config.IsSet(compName + ".use-du") {
-		bc.useDu = defaultUseDu
+	var globalNoDu bool
+	if err := config.UnmarshalKey("no-du", &globalNoDu); err == nil {
+		bc.noDu = globalNoDu
 	} else {
-		bc.useDu = conf.UseDu
+		bc.noDu = defaultNoDu
 	}
 
 	bc.consistency = conf.Consistency
@@ -345,8 +345,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, use-du %t",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.useDu)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, no-du %t",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.noDu)
 
 	return nil
 }
@@ -1803,10 +1803,10 @@ func (bc *BlockCache) getDiskUsage() (float64, error) {
 		return 0.0, nil
 	}
 
-	if bc.useDu {
-		return common.GetUsageWithDu(bc.tmpPath)
+	if bc.noDu {
+		return common.GetUsageWithWalkInMegabytes(bc.tmpPath)
 	}
-	return common.GetUsageWithWalkInMegabytes(bc.tmpPath)
+	return common.GetUsageWithDu(bc.tmpPath)
 }
 
 // checkDiskUsage : Callback to check usage of disk and decide whether eviction is needed
