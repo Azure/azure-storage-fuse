@@ -44,21 +44,29 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 
+	gouuid "github.com/google/uuid"
+	"github.com/prometheus/procfs"
 	"gopkg.in/ini.v1"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 var RootMount bool
 var ForegroundMount bool
+var IsDistributedCacheEnabled bool
 var IsStream bool
+var MyNodeUUID string
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -429,6 +437,16 @@ var currentUID int = -1
 // GetDiskUsageFromStatfs: Current disk usage of temp path
 func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	// We need to compute the disk usage percentage for the temp path
+	totalSpace, availableSpace, err := GetDiskSpaceMetricsFromStatfs(path)
+	if err != nil || totalSpace == 0 {
+		return 0, 0, err
+	}
+	usedSpace := float64(totalSpace - availableSpace)
+	return usedSpace, (usedSpace / float64(totalSpace)) * 100, nil
+}
+
+// It will return totalSpace, availableSpace, and error if any while evaluating the Current disk usage of path using statfs
+func GetDiskSpaceMetricsFromStatfs(path string) (uint64, uint64, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
 	if err != nil {
@@ -449,8 +467,44 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	}
 
 	totalSpace := stat.Blocks * uint64(stat.Frsize)
-	usedSpace := float64(totalSpace - availableSpace)
-	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
+	return totalSpace, availableSpace, nil
+}
+
+// GetTotalMemoryInMB returns the total RAM of the host running blobfuse.
+func GetTotalMemoryInMB() (uint64, error) {
+	fs, err := procfs.NewDefaultFS()
+	if err != nil {
+		return 0, fmt.Errorf("GetTotalMemoryInMB: procfs.NewDefaultFS() failed: %v", err)
+	}
+
+	// Get memory info.
+	memInfo, err := fs.Meminfo()
+	if err != nil {
+		return 0, fmt.Errorf("GetTotalMemoryInMB: fs.Meminfo() failed: %v", err)
+	}
+
+	// Convert default memory unit (KB) to MB and return.
+	return *(memInfo.MemTotal) / 1024, nil
+}
+
+// GetAvailableMemoryInMB returns the available RAM of the host running blobfuse.
+// Note that available memory includes free memory and reclaimable memory, so it's a good estimate for how
+// much memory blobfuse can practically use. Obviously if other processes or the kernel use up more memory
+// the available memory will change, caller should be mindful of that.
+func GetAvailableMemoryInMB() (uint64, error) {
+	fs, err := procfs.NewDefaultFS()
+	if err != nil {
+		return 0, fmt.Errorf("GetAvailableMemoryInMB: procfs.NewDefaultFS() failed: %v", err)
+	}
+
+	// Get memory info.
+	memInfo, err := fs.Meminfo()
+	if err != nil {
+		return 0, fmt.Errorf("GetAvailableMemoryInMB: fs.Meminfo() failed: %v", err)
+	}
+
+	// Convert default memory unit (KB) to MB and return.
+	return *(memInfo.MemAvailable) / 1024, nil
 }
 
 func GetFuseMinorVersion() int {
@@ -544,20 +598,32 @@ func ComponentInPipeline(pipeline []string, component string) bool {
 }
 
 func ValidatePipeline(pipeline []string) error {
+
+	isBlockCachePresent := ComponentInPipeline(pipeline, "block_cache")
+	isFileCachePresent := ComponentInPipeline(pipeline, "file_cache")
+	isXloadPresent := ComponentInPipeline(pipeline, "xload")
+	isDCachePresent := ComponentInPipeline(pipeline, "distributed_cache")
+
 	// file-cache, block-cache and xload are mutually exclusive
-	if ComponentInPipeline(pipeline, "file_cache") &&
-		ComponentInPipeline(pipeline, "block_cache") {
+	if isFileCachePresent && isBlockCachePresent {
 		return fmt.Errorf("mount: file-cache and block-cache cannot be used together")
 	}
 
-	if ComponentInPipeline(pipeline, "file_cache") &&
-		ComponentInPipeline(pipeline, "xload") {
+	if isFileCachePresent && isXloadPresent {
 		return fmt.Errorf("mount: file-cache and xload cannot be used together")
 	}
 
-	if ComponentInPipeline(pipeline, "block_cache") &&
-		ComponentInPipeline(pipeline, "xload") {
+	if isBlockCachePresent && isXloadPresent {
 		return fmt.Errorf("mount: block-cache and xload cannot be used together")
+	}
+
+	// If distributed_cache is present then don't allow file_cache/xload.
+	if isDCachePresent && isFileCachePresent {
+		return fmt.Errorf("mount: distributed-cache and file-cache cannot be used together")
+	}
+
+	if isDCachePresent && isXloadPresent {
+		return fmt.Errorf("mount: distributed_cache and xload cannot be used together")
 	}
 
 	return nil
@@ -587,4 +653,106 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	}
 
 	return pipeline
+}
+
+func GetNodeUUID() (string, error) {
+	if MyNodeUUID != "" {
+		return MyNodeUUID, nil
+	}
+
+	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+
+	// Read the UUID file.
+	data, err := os.ReadFile(uuidFilePath)
+	if err == nil {
+		stringData := string(data)
+		isValidUUID := IsValidUUID(stringData)
+		if !isValidUUID {
+			return "", fmt.Errorf("not a valid UUID in UUID File at :%s UUID - %s", uuidFilePath, string(data))
+		}
+
+		MyNodeUUID = stringData
+		return stringData, nil
+	}
+
+	if os.IsNotExist(err) {
+		// File doesn't exist, generate a new UUID.
+		newUuid := gouuid.New().String()
+		Assert(IsValidUUID(newUuid), fmt.Sprintf("Generated UUID %s is not valid", newUuid))
+		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
+			return "", err
+		}
+
+		MyNodeUUID = newUuid
+		return newUuid, nil
+	}
+
+	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
+}
+
+var (
+	// pre‑compile once at init
+	uuidRegex = regexp.MustCompile(
+		`^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$`,
+	)
+)
+
+// IsValidUUID returns true if the string is a valid UUID in the
+// 8-4-4-4-12 format.
+func IsValidUUID(guid string) bool {
+	return uuidRegex.MatchString(guid)
+}
+
+func IsValidIP(ipAddress string) bool {
+	return net.ParseIP(ipAddress) != nil
+}
+
+// IsValidHostPort checks if the given address is a valid host:port combination
+func IsValidHostPort(address string) bool {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+
+	if !IsValidIP(host) {
+		return false
+	}
+
+	p, err := strconv.Atoi(port)
+	if err != nil || p < 1 || p > 65535 {
+		return false
+	}
+
+	return true
+}
+
+func IsValidBlkDevice(device string) error {
+	fi, err := os.Stat(device)
+	if err != nil {
+		return fmt.Errorf("error stating device %s: %v", device, err)
+	}
+	mode := fi.Mode()
+	if mode&os.ModeDevice == 0 || mode&os.ModeCharDevice != 0 {
+		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode)
+	}
+	return nil
+}
+
+// If a file has open handle(s) at the time when unlink() is called to delete the file, fuse renames the file to
+// a special name of the form .fuse_hiddenXXX. This enables fuse to provide POSIX semantics of allowing file to be
+// accessed through existing open fds after the file is deleted. This only provides protection against processes
+// deleting the file on the same node where they were opened. For distributed cache this is not sufficient as we
+// want this protection across nodes (process having a file open and the process deleting it running on two
+// different nodes).
+// We have our own renaming scheme which works across nodes, so we don't want to depend on fuse's renaming scheme.
+// This function helps us check if a file was renamed like this by fuse, so that we can do the necessary things.
+func IsFuseHiddenFile(filePath string) bool {
+	fileName := filepath.Base(filePath)
+	return strings.HasPrefix(fileName, ".fuse_hidden")
+}
+
+// Returns true if we are faking scale test.
+// This is used to test scale scenarios by allowing multiple RVs from the same local filesystem.
+func IsFakingScaleTest() bool {
+	return (os.Getenv("BLOBFUSE_FAKE_SCALE_TEST") == "1")
 }
