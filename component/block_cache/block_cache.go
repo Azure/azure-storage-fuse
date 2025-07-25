@@ -68,27 +68,27 @@ import (
 type BlockCache struct {
 	internal.BaseComponent
 
-	blockSize       uint64          // Size of each block to be cached
-	memSize         uint64          // Mem size to be used for caching at the startup
-	mntPath         string          // Mount path
-	tmpPath         string          // Disk path where these blocks will be cached
-	diskSize        uint64          // Size of disk space allocated for the caching
-	diskTimeout     uint32          // Timeout for which disk blocks will be cached
-	workers         uint32          // Number of threads working to fetch the blocks
-	prefetch        uint32          // Number of blocks to be prefetched
-	diskPolicy      *tlru.TLRU      // Disk cache eviction policy
-	blockPool       *BlockPool      // Pool of blocks
-	threadPool      *ThreadPool     // Pool of threads
-	fileLocks       *common.LockMap // Locks for each file_blockid to avoid multiple threads to fetch same block
-	fileNodeMap     sync.Map        // Map holding files that are there in our cache
-	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
-	noPrefetch      bool            // Flag to indicate if prefetch is disabled
-	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
-	consistency     bool            // Flag to indicate if strong data consistency is enabled
-	stream          *Stream
-	lazyWrite       bool           // Flag to indicate if lazy write is enabled
-	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
-	noDu            bool           // Flag to indicate if du command should be used for disk usage calculation
+	blockSize              uint64          // Size of each block to be cached
+	memSize                uint64          // Mem size to be used for caching at the startup
+	mntPath                string          // Mount path
+	tmpPath                string          // Disk path where these blocks will be cached
+	diskSize               uint64          // Size of disk space allocated for the caching
+	diskTimeout            uint32          // Timeout for which disk blocks will be cached
+	workers                uint32          // Number of threads working to fetch the blocks
+	prefetch               uint32          // Number of blocks to be prefetched
+	diskPolicy             *tlru.TLRU      // Disk cache eviction policy
+	blockPool              *BlockPool      // Pool of blocks
+	threadPool             *ThreadPool     // Pool of threads
+	fileLocks              *common.LockMap // Locks for each file_blockid to avoid multiple threads to fetch same block
+	fileNodeMap            sync.Map        // Map holding files that are there in our cache
+	maxDiskUsageHit        bool            // Flag to indicate if we have hit max disk usage
+	noPrefetch             bool            // Flag to indicate if prefetch is disabled
+	prefetchOnOpen         bool            // Start prefetching on file open call instead of waiting for first read
+	consistency            bool            // Flag to indicate if strong data consistency is enabled
+	stream                 *Stream
+	lazyWrite              bool                          // Flag to indicate if lazy write is enabled
+	fileCloseOpt           sync.WaitGroup                // Wait group to wait for all async close operations to complete
+	diskUsageConfiguration common.DiskUsageConfiguration // Flag to indicate if du command should be used for disk usage calculation
 }
 
 // Structure defining your config parameters
@@ -109,7 +109,6 @@ const (
 	compName                = "block_cache"
 	defaultTimeout          = 120
 	defaultBlockSize        = 16
-	defaultNoDu             = false
 	MAX_POOL_USAGE   uint32 = 80
 	MIN_POOL_USAGE   uint32 = 50
 	MIN_PREFETCH            = 5
@@ -255,11 +254,21 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
-	var globalNoDu bool
-	if err := config.UnmarshalKey("no-du", &globalNoDu); err == nil {
-		bc.noDu = globalNoDu
+	var noDu bool
+	if err := config.UnmarshalKey("no-du", &noDu); err == nil {
+		if noDu {
+			bc.diskUsageConfiguration = common.DiskUsageConfiguration{
+				DiskUsageFunction: common.GetUsageWithWalkInMegabytes,
+				UsesDu:            false,
+			}
+		} else {
+			bc.diskUsageConfiguration = common.DiskUsageConfiguration{
+				DiskUsageFunction: common.GetUsageWithDu,
+				UsesDu:            true,
+			}
+		}
 	} else {
-		bc.noDu = defaultNoDu
+		bc.diskUsageConfiguration = common.DefaultUsageConfiguration
 	}
 
 	bc.consistency = conf.Consistency
@@ -345,8 +354,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, no-du %t",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.noDu)
+	usesDu := bc.diskUsageConfiguration.UsesDu
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, uses-du %v",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, usesDu)
 
 	return nil
 }
@@ -1802,11 +1812,7 @@ func (bc *BlockCache) getDiskUsage() (float64, error) {
 	if bc.tmpPath == "" {
 		return 0.0, nil
 	}
-
-	if bc.noDu {
-		return common.GetUsageWithWalkInMegabytes(bc.tmpPath)
-	}
-	return common.GetUsageWithDu(bc.tmpPath)
+	return bc.diskUsageConfiguration.DiskUsageFunction(bc.tmpPath)
 }
 
 // checkDiskUsage : Callback to check usage of disk and decide whether eviction is needed

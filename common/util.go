@@ -60,6 +60,18 @@ var RootMount bool
 var ForegroundMount bool
 var IsStream bool
 
+type DiskUsageFunction func(path string) (float64, error)
+
+type DiskUsageConfiguration struct {
+	DiskUsageFunction DiskUsageFunction
+	UsesDu            bool
+}
+
+var DefaultUsageConfiguration = DiskUsageConfiguration{
+	DiskUsageFunction: GetUsageWithDu,
+	UsesDu:            true,
+}
+
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
 	mntList, err := os.ReadFile("/etc/mtab")

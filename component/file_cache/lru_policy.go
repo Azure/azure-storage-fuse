@@ -123,10 +123,7 @@ func (p *lruPolicy) StartPolicy() error {
 	p.deleteEvent = make(chan string, 1000)
 	p.validateChan = make(chan string, 10000)
 
-	if p.noDu {
-		log.Info("lruPolicy::StartPolicy : Using built-in walk function for disk usage calculation, enabling disk usage checks")
-		p.diskUsageMonitor = time.Tick(time.Duration(DiskUsageCheckInterval * time.Minute))
-	} else {
+	if p.diskUsageConfiguration.UsesDu {
 		log.Info("lruPolicy::StartPolicy : Attempting to use 'du' command for disk usage calculation")
 		_, err := common.GetUsageWithDu(p.tmpPath)
 		if err == nil {
@@ -138,6 +135,9 @@ func (p *lruPolicy) StartPolicy() error {
 		if p.duPresent {
 			p.diskUsageMonitor = time.Tick(time.Duration(DiskUsageCheckInterval * time.Minute))
 		}
+	} else {
+		log.Info("lruPolicy::StartPolicy : Using built-in walk function for disk usage calculation, enabling disk usage checks")
+		p.diskUsageMonitor = time.Tick(time.Duration(DiskUsageCheckInterval * time.Minute))
 	}
 
 	// Only start the timeoutMonitor if evictTime is non-zero.
@@ -299,7 +299,7 @@ func (p *lruPolicy) clearCache() {
 		case <-p.diskUsageMonitor:
 			// File cache timeout has not occurred so just monitor the cache usage
 			cleanupCount := 0
-			pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB, p.noDu)
+			pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB, p.diskUsageConfiguration)
 			if pUsage > p.highThreshold {
 				continueDeletion := true
 				for continueDeletion {
@@ -310,7 +310,7 @@ func (p *lruPolicy) clearCache() {
 					p.printNodes()
 					p.deleteExpiredNodes()
 
-					pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB, p.noDu)
+					pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB, p.diskUsageConfiguration)
 					if pUsage < p.lowThreshold || cleanupCount >= 3 {
 						log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
 						continueDeletion = false

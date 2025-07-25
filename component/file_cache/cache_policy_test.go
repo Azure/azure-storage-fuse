@@ -80,13 +80,17 @@ func (suite *cachePolicyTestSuite) TestGetUsagePercentageWithDu() {
 
 	f, _ := os.Create(cache_path + "/test")
 	f.Write(data)
-	result := getUsagePercentage(cache_path, 4, true)
+	diskUsageConfiguration := common.DiskUsageConfiguration{
+		DiskUsageFunction: common.GetUsageWithDu,
+		UsesDu:            true,
+	}
+	result := getUsagePercentage(cache_path, 4, diskUsageConfiguration)
 	// since the value might defer a little distro to distro
 	suite.assert.GreaterOrEqual(result, float64(25))
 	suite.assert.LessOrEqual(result, float64(30))
 	f.Close()
 
-	result = getUsagePercentage("/", 0, true)
+	result = getUsagePercentage("/", 0, diskUsageConfiguration)
 	// since the value might defer a little distro to distro
 	suite.assert.GreaterOrEqual(result, float64(0))
 	suite.assert.LessOrEqual(result, float64(90))
@@ -98,13 +102,17 @@ func (suite *cachePolicyTestSuite) TestGetUsagePercentageWithWalkFunction() {
 
 	f, _ := os.Create(cache_path + "/test")
 	f.Write(data)
-	result := getUsagePercentage(cache_path, 4, false)
+	diskUsageConfiguration := common.DiskUsageConfiguration{
+		DiskUsageFunction: common.GetUsageWithWalkInMegabytes,
+		UsesDu:            false,
+	}
+	result := getUsagePercentage(cache_path, 4, diskUsageConfiguration)
 	// since the value might defer a little distro to distro
 	suite.assert.GreaterOrEqual(result, float64(25))
 	suite.assert.LessOrEqual(result, float64(30))
 	f.Close()
 
-	result = getUsagePercentage("/", 0, false)
+	result = getUsagePercentage("/", 0, diskUsageConfiguration)
 	// since the value might defer a little distro to distro
 	suite.assert.GreaterOrEqual(result, float64(0))
 	suite.assert.LessOrEqual(result, float64(90))
