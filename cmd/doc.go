@@ -80,3 +80,4 @@ func init() {
 	docCmd.PersistentFlags().StringVar(&docCmdInput.outputLocation, "output-location", "./doc",
 		"where to put the generated markdown files")
 }
+good work
