@@ -1,0 +1,110 @@
+# This File contains emualates various workloads using fio utility
+# to check the data integrity. If you are adding any tests make sure
+# to add integrity validation step in fio job file/command.
+#
+parameters:
+  - name: config_file
+    type: string
+  - name: cache_mode
+    type: string
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: verbose_log
+    type: boolean
+    default: false
+
+steps:
+    # Generate config file for file cache
+  - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for File Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+      continueOnError: false
+
+  # Generate Config file for block cache
+  - ${{ if eq(parameters.cache_mode, 'block_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for Block Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+
+
+  - template: 'mount.yml'
+    parameters:
+      prefix: ${{ parameters.cache_mode }}
+      mountStep:
+        script: |
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
+
+  - script:
+      sudo apt-get install fio -y
+    displayName: 'Install Utils'
+
+# Run fio on 1 file 10G size SEQ read,write
+  - script: |
+      ls $(MOUNT_DIR)
+      rm -rf ./*
+      echo "******FIO JOB STARTING******"
+      fio --rw=readwrite --bs=1M --size=10g --numjobs=1 $(WORK_DIR)/test/fio/rw.fio
+    displayName: 'SEQ-10G-1F-1T'
+    workingDirectory: $(MOUNT_DIR)
+
+# Run fio on 10 files 1G size SEQ read, write
+  - script: |
+      ls $(MOUNT_DIR)
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio --rw=readwrite --bs=1M --size=1g --numjobs=10 $(WORK_DIR)/test/fio/rw.fio
+    displayName: 'SEQ-1G-10F-10T'
+    workingDirectory: $(MOUNT_DIR)
+
+# Run fio on 1 file 10GB size RAND read, write
+  - script: |
+      ls $(MOUNT_DIR)
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio --rw=randwrite --bs=1M --size=10g --numjobs=1 $(WORK_DIR)/test/fio/rw.fio
+    displayName: 'RAND-10G-1F-1T'
+    workingDirectory: $(MOUNT_DIR)
+
+# Run fio on 10 files 1000M size RAND read, write
+  - script: |
+      ls $(MOUNT_DIR)
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio --rw=randwrite --bs=1M --size=1g --numjobs=10 $(WORK_DIR)/test/fio/rw.fio
+    displayName: 'RAND-1G-10F-10T'
+    workingDirectory: $(MOUNT_DIR)
+
+# Run fio on file having hole inside blocks.(hole can be at middle/at the edges)
+  - script: |
+      ls $(MOUNT_DIR)
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio $(WORK_DIR)/test/fio/hole_inside_blocks.fio
+    displayName: 'SEQ-HOLE3M-10G-1F-1T'
+    workingDirectory: $(MOUNT_DIR)
+
+# Run fio on file having hole over blocks.(whole blocks can be of holes)
+  - script: |
+      ls $(MOUNT_DIR)
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio $(WORK_DIR)/test/fio/hole_over_blocks.fio
+    displayName: 'SEQ-HOLE16M-10G-1F-1T'
+    workingDirectory: $(MOUNT_DIR)
