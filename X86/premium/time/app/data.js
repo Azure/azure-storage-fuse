@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1752990480224,
+  "lastUpdate": 1753595304907,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1503,6 +1503,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 15.574819803237915,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "7776998e3f031e791148482db29f8c40beb53255",
+          "message": "Add New stage to the Nightly pipeline (#1889)",
+          "timestamp": "2025-07-24T07:31:00Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/7776998e3f031e791148482db29f8c40beb53255"
+        },
+        "date": 1753595304627,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.0234029293060303,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 5.069915056228638,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 52.772685527801514,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 19.84092903137207,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.716057538986206,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 4.269829034805298,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 39.020596981048584,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 16.46171259880066,
             "unit": "seconds"
           }
         ]
