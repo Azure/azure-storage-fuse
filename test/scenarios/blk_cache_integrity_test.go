@@ -191,7 +191,7 @@ func TestFsyncWhileWriting(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, len(content), bytesWritten)
 
-			// We cannot do fsync for every 4K write, as the test takes an enternity to finish
+			// We cannot do fsync for every 4K write, as the test takes long time to finish
 			// do it for every 512K
 			if i%(512*1024) == 0 {
 				err = file.Sync()
