@@ -31,6 +31,11 @@ parameters:
     type: boolean
     default: true
 
+  - name: fio_test
+    displayName: 'Run fio workloads to check data integrity'
+    type: boolean
+    default: false
+
   - name: linux_git_test
     displayName: 'Compile Linux Source and Run git clone Tests'
     type: string
@@ -1069,80 +1074,81 @@ stages:
                 unmount: true
                 delete_containers: true
 
-  - stage: FioTests
-    dependsOn: []
-    jobs:
-      # Ubuntu Tests
-      - job: Set_1
-        timeoutInMinutes: 60
-        strategy:
-          matrix:
-            Ubuntu-20:
-              AgentName: 'blobfuse-ubuntu20'
-              distro: 'ubuntu'
-              distro_version: 'ubuntu_20_x86'
-              fuselib: 'libfuse-dev'
-              tags: 'fuse2'
-            Ubuntu-22:
-              AgentName: 'blobfuse-ubuntu22'
-              distro: 'ubuntu'
-              distro_version: 'ubuntu_22_x86'
-              fuselib: 'libfuse3-dev'
-              tags: 'fuse3'
+  - ${{ if eq(parameters.fio_test, true) }}:
+    - stage: FioTests
+      dependsOn: []
+      jobs:
+        # Ubuntu Tests
+        - job: Set_1
+          timeoutInMinutes: 60
+          strategy:
+            matrix:
+              Ubuntu-20:
+                AgentName: 'blobfuse-ubuntu20'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_20_x86'
+                fuselib: 'libfuse-dev'
+                tags: 'fuse2'
+              Ubuntu-22:
+                AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
 
-        pool:
-          name: "blobfuse-ubuntu-pool"
-          demands:
-            - ImageOverride -equals $(AgentName)
+          pool:
+            name: "blobfuse-ubuntu-pool"
+            demands:
+              - ImageOverride -equals $(AgentName)
 
-        variables:
-          - group: NightlyBlobFuse
-          - name: MOUNT_DIR
-            value: '$(Pipeline.Workspace)/blob_mnt'
-          - name: TEMP_DIR
-            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-          - name: BLOBFUSE2_CFG
-            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-          - name: BLOBFUSE2_ADLS_CFG
-            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-          - name: skipComponentGovernanceDetection
-            value: true
-          - name: GOPATH
-            value: '$(Pipeline.Workspace)/go'
-          - name: ROOT_DIR
-            value: '$(Agent.TempDirectory)'
-          - name: WORK_DIR
-            value: '$(Build.SourcesDirectory)'
+          variables:
+            - group: NightlyBlobFuse
+            - name: MOUNT_DIR
+              value: '$(Pipeline.Workspace)/blob_mnt'
+            - name: TEMP_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+            - name: BLOBFUSE2_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+            - name: BLOBFUSE2_ADLS_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+            - name: skipComponentGovernanceDetection
+              value: true
+            - name: GOPATH
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(Agent.TempDirectory)'
+            - name: WORK_DIR
+              value: '$(Build.SourcesDirectory)'
 
-        steps:
-          # -------------------------------------------------------
-          # Pull and build the code
-          - template: 'azure-pipeline-templates/build.yml'
-            parameters:
-              skip_ut: true
+          steps:
+            # -------------------------------------------------------
+            # Pull and build the code
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                skip_ut: true
 
-          - template: 'azure-pipeline-templates/fio-data-integrity.yml'
-            parameters:
-              cache_mode: file_cache
-              config_file: $(BLOBFUSE2_CFG)
-              account_name: $(BF2_BLK_ACC_NAME)
-              account_key: $(BF2_BLK_ACC_KEY)
-              account_type: block
-              verbose_log: ${{ parameters.verbose_log }}
+            - template: 'azure-pipeline-templates/fio-data-integrity.yml'
+              parameters:
+                cache_mode: file_cache
+                config_file: $(BLOBFUSE2_CFG)
+                account_name: $(BF2_BLK_ACC_NAME)
+                account_key: $(BF2_BLK_ACC_KEY)
+                account_type: block
+                verbose_log: ${{ parameters.verbose_log }}
 
-          - template: 'azure-pipeline-templates/fio-data-integrity.yml'
-            parameters:
-              cache_mode: block_cache
-              config_file: $(BLOBFUSE2_CFG)
-              account_name: $(BF2_BLK_ACC_NAME)
-              account_key: $(BF2_BLK_ACC_KEY)
-              account_type: block
-              verbose_log: ${{ parameters.verbose_log }}
+            - template: 'azure-pipeline-templates/fio-data-integrity.yml'
+              parameters:
+                cache_mode: block_cache
+                config_file: $(BLOBFUSE2_CFG)
+                account_name: $(BF2_BLK_ACC_NAME)
+                account_key: $(BF2_BLK_ACC_KEY)
+                account_type: block
+                verbose_log: ${{ parameters.verbose_log }}
 
-          - template: 'azure-pipeline-templates/cleanup.yml'
-            parameters:
-              unmount: true
-              delete_containers: true
+            - template: 'azure-pipeline-templates/cleanup.yml'
+              parameters:
+                unmount: true
+                delete_containers: true
 
 
   - ${{ if ne(parameters.linux_git_test, 'none') }}:
