@@ -844,7 +844,7 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 	var handle *handlemap.Handle
 	if fi == nil {
 		handle = nil
-		log.Trace("Libfuse::libfuse_truncate : %, size: %d", name, off)
+		log.Trace("Libfuse::libfuse_truncate : %s, size: %d", name, off)
 	} else {
 		fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 		handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
