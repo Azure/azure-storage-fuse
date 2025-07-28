@@ -334,7 +334,7 @@ func TestFileTruncateExpand(t *testing.T) {
 		{fmt.Sprintf("%s_20M_30M_truncate", filename), 20 * 1024 * 1024, 30 * 1024 * 1024, truncate},
 		{fmt.Sprintf("%s_5_20_ftruncate", filename), 5, 20, ftruncate},
 		{fmt.Sprintf("%s_5K_10M_ftruncate", filename), 5 * 1024, 10 * 1024 * 1024, ftruncate},
-		{fmt.Sprintf("%s5K_20M_ftruncate", filename), 5 * 1024, 20 * 1024 * 1024, ftruncate},
+		{fmt.Sprintf("%s_5K_20M_ftruncate", filename), 5 * 1024, 20 * 1024 * 1024, ftruncate},
 		{fmt.Sprintf("%s_20M_30M_ftruncate", filename), 20 * 1024 * 1024, 30 * 1024 * 1024, ftruncate},
 	}
 
