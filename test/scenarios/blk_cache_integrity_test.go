@@ -699,15 +699,15 @@ func TestStripeReading(t *testing.T) {
 		file2, err := os.OpenFile(filePath, os.O_RDWR, 0644)
 		assert.Nil(t, err)
 
-		bytesread, err := file0.ReadAt(tempbuf, offsets[0]) //writ at 0MB
+		bytesread, err := file0.ReadAt(tempbuf, offsets[0]) //read at 0MB
 		assert.Nil(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
-		bytesread, err = file1.ReadAt(tempbuf, offsets[1]) //write at 8MB
+		bytesread, err = file1.ReadAt(tempbuf, offsets[1]) //read at 8MB
 		assert.Nil(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
-		bytesread, err = file2.ReadAt(tempbuf, offsets[2]) //write at 16MB
+		bytesread, err = file2.ReadAt(tempbuf, offsets[2]) //read at 16MB
 		assert.Nil(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
