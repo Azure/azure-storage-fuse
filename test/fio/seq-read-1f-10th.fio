@@ -2,7 +2,7 @@
 name=blobfuse_file_integrity
 bs=1M
 size=10G
-filename=stripe_write_fio.data
+filename=seq_read_fio.data
 verify=crc32c
 verify_fatal=1
 ioengine=sync
