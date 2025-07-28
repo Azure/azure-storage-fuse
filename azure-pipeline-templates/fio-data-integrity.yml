@@ -91,7 +91,7 @@ steps:
     displayName: 'RAND-[RW]-1G-10F-10T'
     workingDirectory: $(MOUNT_DIR)
 
-# Run fio on 1 file 10G size SEQ read, with 10 threads from differet offsets(1, 1G, 2G,..)
+# Run fio on 1 file 10G size SEQ read, with 10 threads from different offsets(1, 1G, 2G,..)
   - script: |
       ls $(MOUNT_DIR)
       rm -rf ./*
@@ -100,7 +100,7 @@ steps:
     displayName: 'SEQ-[R]-1G-1F-10T'
     workingDirectory: $(MOUNT_DIR)
 
-# Run fio on 1 file 10G size SEQ write, with 10 threads from differet offsets(1, 1G, 2G,..)
+# Run fio on 1 file 10G size SEQ write, with 10 threads from different offsets(1, 1G, 2G,..)
   - script: |
       ls $(MOUNT_DIR)
       rm -rf ./*
