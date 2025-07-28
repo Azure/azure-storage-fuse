@@ -1032,7 +1032,7 @@ func TestParllelFlushCallsByDuping(t *testing.T) {
 			}
 		}()
 		// Write 40M data
-		for i := 0; i <= 40*1024*1024; i += 4 * 1024 {
+		for i := 0; i < 40*1024*1024; i += 4 * 1024 {
 			if i%(1*1024*1024) == 0 {
 				trigger_flush <- struct{}{}
 			}
