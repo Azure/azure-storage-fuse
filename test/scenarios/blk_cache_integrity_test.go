@@ -610,7 +610,7 @@ func TestStripeWriting(t *testing.T) {
 		file2, err := os.OpenFile(filePath, os.O_RDWR, 0644)
 		assert.Nil(t, err)
 
-		written, err := file0.WriteAt(content, int64(0)) //writ at 0MB
+		written, err := file0.WriteAt(content, int64(0)) //write at 0MB
 		assert.Nil(t, err)
 		assert.Equal(t, len(content), written)
 		written, err = file1.WriteAt(content, int64(8*1024*1024)) //write at 8MB
