@@ -97,7 +97,7 @@ steps:
       rm -rf ./*
       echo "******FIO JOB STARTING*******"
       fio $(WORK_DIR)/test/fio/seq-read-1f-10th.fio
-    displayName: 'SEQ-[R]-1G-1F-10T'
+    displayName: 'SEQ-[R]-10G-1F-10T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on 1 file 10G size SEQ write, with 10 threads from different offsets(1, 1G, 2G,..)
@@ -106,7 +106,7 @@ steps:
       rm -rf ./*
       echo "******FIO JOB STARTING*******"
       fio $(WORK_DIR)/test/fio/seq-write-1f-10th.fio
-    displayName: 'SEQ-[W]-1G-1F-10T'
+    displayName: 'SEQ-[W]-10G-1F-10T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on file having hole inside blocks.(hole can be at middle/at the edges)
