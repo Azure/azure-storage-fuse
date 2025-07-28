@@ -753,7 +753,7 @@ func TestStripeReadingWithDup(t *testing.T) {
 		assert.NotEqual(t, int(file.Fd()), fd1)
 		assert.Nil(t, err)
 
-		bytesread, err := file0.ReadAt(tempbuf, offsets[0]) //writ at 0MB
+		bytesread, err := file0.ReadAt(tempbuf, offsets[0]) //read at 0MB
 		assert.Nil(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
