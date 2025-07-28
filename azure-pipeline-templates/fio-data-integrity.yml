@@ -61,7 +61,7 @@ steps:
       rm -rf ./*
       echo "******FIO JOB STARTING******"
       fio --rw=readwrite --bs=1M --size=10g --numjobs=1 $(WORK_DIR)/test/fio/rw.fio
-    displayName: 'SEQ-10G-1F-1T'
+    displayName: 'SEQ-[RW]-10G-1F-1T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on 10 files 1G size SEQ read, write
@@ -70,7 +70,7 @@ steps:
       rm -rf ./*
       echo "******FIO JOB STARTING*******"
       fio --rw=readwrite --bs=1M --size=1g --numjobs=10 $(WORK_DIR)/test/fio/rw.fio
-    displayName: 'SEQ-1G-10F-10T'
+    displayName: 'SEQ-[RW]-1G-10F-10T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on 1 file 10GB size RAND read, write
@@ -79,7 +79,7 @@ steps:
       rm -rf ./*
       echo "******FIO JOB STARTING*******"
       fio --rw=randwrite --bs=1M --size=10g --numjobs=1 $(WORK_DIR)/test/fio/rw.fio
-    displayName: 'RAND-10G-1F-1T'
+    displayName: 'RAND-[RW]-10G-1F-1T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on 10 files 1000M size RAND read, write
@@ -88,7 +88,25 @@ steps:
       rm -rf ./*
       echo "******FIO JOB STARTING*******"
       fio --rw=randwrite --bs=1M --size=1g --numjobs=10 $(WORK_DIR)/test/fio/rw.fio
-    displayName: 'RAND-1G-10F-10T'
+    displayName: 'RAND-[RW]-1G-10F-10T'
+    workingDirectory: $(MOUNT_DIR)
+
+# Run fio on 1 file 10G size SEQ read, with 10 threads from differet offsets(1, 1G, 2G,..)
+  - script: |
+      ls $(MOUNT_DIR)
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio $(WORK_DIR)/test/fio/seq-read-1f-10th.fio
+    displayName: 'SEQ-[R]-1G-1F-10T'
+    workingDirectory: $(MOUNT_DIR)
+
+# Run fio on 1 file 10G size SEQ write, with 10 threads from differet offsets(1, 1G, 2G,..)
+  - script: |
+      ls $(MOUNT_DIR)
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio $(WORK_DIR)/test/fio/seq-write-1f-10th.fio
+    displayName: 'SEQ-[W]-1G-1F-10T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on file having hole inside blocks.(hole can be at middle/at the edges)
