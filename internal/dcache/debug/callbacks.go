@@ -40,6 +40,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -55,7 +56,7 @@ func readClusterMapCallback(pFile *procFile) error {
 	pFile.buf, err = json.MarshalIndent(exportedClusterMap, "", "    ")
 
 	if err != nil {
-		log.Err("DebugFS::readclusterMapCallback, err: %v", err)
+		log.Err("DebugFS::readClusterMapCallback, err: %v", err)
 		common.Assert(false, err)
 	}
 
@@ -69,6 +70,20 @@ func getAttrClusterMapCallback(pFile *procFile) {
 	pFile.attr.Mtime = time.Unix(lmt, 0)
 	pFile.attr.Ctime = pFile.attr.Mtime
 	pFile.attr.Atime = pFile.attr.Mtime
+}
+
+// proc file: stats
+func readStatsCallback(pFile *procFile) error {
+	var err error
+	stats.Stats.Preprocess()
+	pFile.buf, err = json.MarshalIndent(stats.Stats, "", "    ")
+
+	if err != nil {
+		log.Err("DebugFS::readStatsCallback, err: %v", err)
+		common.Assert(false, err)
+	}
+
+	return nil
 }
 
 // Silence unused import errors for release builds.

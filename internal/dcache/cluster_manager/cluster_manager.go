@@ -52,6 +52,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
@@ -140,6 +141,10 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		common.Assert(false, err)
 		return fmt.Errorf("ClusterManager::start Could not get hostname: %v", err)
 	}
+
+	stats.Stats.NodeId = cmi.myNodeId
+	stats.Stats.IPAddr = cmi.myIPAddress
+	stats.Stats.HostName = cmi.myHostName
 
 	cmi.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
 

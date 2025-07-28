@@ -160,7 +160,6 @@ func (dc *DistributedCache) Priority() internal.ComponentPriority {
 //
 //	this shall not block the call otherwise pipeline will not start
 func (dc *DistributedCache) Start(ctx context.Context) error {
-
 	log.Trace("DistributedCache::Start : Starting component %s", dc.Name())
 
 	dc.azstorage = dc.NextComponent()
