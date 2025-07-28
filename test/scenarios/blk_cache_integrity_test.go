@@ -383,7 +383,8 @@ func WriteTruncateClose(t *testing.T, filename string, writeSize int, truncSize 
 		assert.Nil(t, err)
 		assert.Equal(t, writeSize, written)
 		if call == truncate {
-			os.Truncate(filePath, int64(truncSize))
+			err := os.Truncate(filePath, int64(truncSize))
+			assert.Nil(t, err)
 		} else {
 			err := file.Truncate(int64(truncSize))
 			assert.Nil(t, err)
