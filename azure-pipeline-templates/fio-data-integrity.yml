@@ -1,4 +1,4 @@
-# This File contains emualates various workloads using fio utility
+# This File emulates various workloads using fio utility
 # to check the data integrity. If you are adding any tests make sure
 # to add integrity validation step in fio job file/command.
 #
