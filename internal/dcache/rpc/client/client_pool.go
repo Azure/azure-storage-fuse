@@ -49,13 +49,26 @@ import (
 // clientPool manages multiple rpc clients efficiently
 type clientPool struct {
 	mu sync.Mutex
+
+	//
 	// Companion boolean flag to mutex to check if the lock is held or not
 	// [DEBUG ONLY]
-	muDbgFlag  atomic.Bool
-	clients    map[string]*nodeClientPool // map of node ID to rpc node client pool
-	maxPerNode uint32                     // Maximum number of open RPC clients per node
-	maxNodes   uint32                     // Maximum number of nodes for which RPC clients are open
-	timeout    uint32                     // Duration in seconds after which a RPC client is closed
+	//
+	muDbgFlag atomic.Bool
+
+	clients map[string]*nodeClientPool // map of node ID to rpc node client pool
+
+	//
+	// Map of node ID to which this node cannot create RPC clients. The value of the map is
+	// time when the new RPC client creation to the node was last attempted.
+	// This is used to prevent creating new RPC clients to the node by different threads till
+	// the negative RPC client creation timeout expires.
+	//
+	negativeClients map[string]time.Time
+
+	maxPerNode uint32 // Maximum number of open RPC clients per node
+	maxNodes   uint32 // Maximum number of nodes for which RPC clients are open
+	timeout    uint32 // Duration in seconds after which a RPC client is closed
 }
 
 // newClientPool creates a new client pool with the specified parameters
@@ -67,10 +80,11 @@ type clientPool struct {
 func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPool {
 	log.Debug("clientPool::newClientPool: Creating new RPC client pool with maxPerNode: %d, maxNodes: %d, timeout: %d", maxPerNode, maxNodes, timeout)
 	return &clientPool{
-		clients:    make(map[string]*nodeClientPool),
-		maxPerNode: maxPerNode,
-		maxNodes:   maxNodes,
-		timeout:    timeout,
+		clients:         make(map[string]*nodeClientPool),
+		negativeClients: make(map[string]time.Time),
+		maxPerNode:      maxPerNode,
+		maxNodes:        maxNodes,
+		timeout:         timeout,
 	}
 
 	// TODO: start a goroutine to periodically close inactive RPC clients
@@ -106,6 +120,31 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 	var ncPool *nodeClientPool
 	ncPool, exists := cp.clients[nodeID]
 	if !exists {
+		//
+		// Check in the negative clients map if we should attempt creating RPC clients for this node ID.
+		//
+		t, ok := cp.negativeClients[nodeID]
+		if ok {
+			timeElapsed := int64(time.Since(t).Seconds())
+			if timeElapsed < defaultNegativeTimeout {
+				err := fmt.Errorf("not creating RPC clients for node %s, negative timeout not expired yet (%d seconds elapsed, %d seconds timeout)",
+					nodeID, timeElapsed, defaultNegativeTimeout)
+				log.Err("clientPool::getNodeClientPool: %v", err)
+				return nil, err
+			} else {
+				log.Debug("clientPool::getNodeClientPool: Negative timeout expired for node %s, removing from negative clients map",
+					nodeID)
+				delete(cp.negativeClients, nodeID)
+			}
+		}
+
+		//
+		// Assert that the node ID should not be present in the negativeClients map as we are
+		// creating a new nodeClientPool for it.
+		//
+		_, ok = cp.negativeClients[nodeID]
+		common.Assert(!ok, nodeID)
+
 		if len(cp.clients) >= int(cp.maxNodes) {
 			// TODO: remove this and rely on the closeInactiveRPCClients to close inactive clients
 			// getNodeClientPool should be small and fast, refer https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047993390
@@ -126,6 +165,13 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 		err := ncPool.createRPCClients(cp.maxPerNode)
 		if err != nil {
 			log.Err("clientPool::getNodeClientPool: createRPCClients(%s) failed: %v", nodeID, err)
+
+			//
+			// Add to negativeClients map to prevent creating new RPC clients to the node ID by other
+			// threads till the negative timeout expires.
+			//
+			cp.negativeClients[nodeID] = time.Now()
+
 			return nil, err
 		}
 

@@ -91,6 +91,12 @@ const (
 	// defaultTimeout is the default duration in seconds after which an idle RPC client is closed.
 	//
 	defaultTimeout = 60
+
+	//
+	// defaultNegativeTimeout is the default duration in seconds after which the node ID is deleted
+	// from the negative clients map and its RPC client creation is attempted again.
+	//
+	defaultNegativeTimeout = 60
 )
 
 // TODO: add asserts for function arguments and return values
