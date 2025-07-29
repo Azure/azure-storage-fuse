@@ -1778,7 +1778,8 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 	//
 	dataAddr := unsafe.Pointer(&(*data)[0])
 	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
-	common.Assert(isDataBufferAligned, uintptr(dataAddr), common.FS_BLOCK_SIZE)
+	common.Assert(readLength < common.FS_BLOCK_SIZE || isDataBufferAligned,
+		uintptr(dataAddr), readLength, common.FS_BLOCK_SIZE)
 
 	//
 	// Hash file is small, perform buffered read.
@@ -2078,7 +2079,8 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 	//
 	dataAddr := unsafe.Pointer(&(*data)[0])
 	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
-	common.Assert(isDataBufferAligned, uintptr(dataAddr), common.FS_BLOCK_SIZE)
+	common.Assert(writeLength < common.FS_BLOCK_SIZE || isDataBufferAligned,
+		uintptr(dataAddr), writeLength, common.FS_BLOCK_SIZE)
 
 	//
 	// Write to .tmp file first and rename it to the final file after successful write.
