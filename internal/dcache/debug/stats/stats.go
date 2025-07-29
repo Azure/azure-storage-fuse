@@ -34,7 +34,6 @@
 package stats
 
 import (
-	"math"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -45,66 +44,66 @@ import (
 // Metadata manager stats.
 type MMStats struct {
 	// Number of metadata folders created by this node.
-	MetadataFoldersCreatedByThisNode int64 `json:"metadata_folders_created_by_this_node"`
+	MetadataFoldersCreatedByThisNode int64 `json:"metadata_folders_created_by_this_node,omitempty"`
 
 	// getBlobSafe() stats.
 	GetBlobSafe struct {
 		// Number of calls to getBlobSafe().
 		Calls int64 `json:"calls"`
 		// How many times getBlobSafe() had to retry as the blob LMT changed due to simultaneous update.
-		Retries int64 `json:"retries"`
+		Retries int64 `json:"retries,omitempty"`
 		// How many times getBlobSafe() failed after exhausting all retries.
-		Failures  int64  `json:"failures"`
+		Failures  int64  `json:"failures,omitempty"`
 		LastError string `json:"last_error,omitempty"`
-		MinUsec   int64  `json:"min_usec"`
-		MaxUsec   int64  `json:"max_usec"`
+		MinUsec   *int64 `json:"min_usec,omitempty"`
+		MaxUsec   int64  `json:"max_usec,omitempty"`
 		TotalUsec int64  `json:"-"`
-		AvgUsec   int64  `json:"avg_usec"`
+		AvgUsec   int64  `json:"avg_usec,omitempty"`
 	} `json:"get_blob_safe"`
 
 	StorageGetBlob struct {
-		Calls     int64 `json:"calls"`
-		Failures  int64 `json:"failures"`
-		MinUsec   int64 `json:"min_usec"`
-		MaxUsec   int64 `json:"max_usec"`
-		TotalUsec int64 `json:"-"`
-		AvgUsec   int64 `json:"avg_usec"`
+		Calls     int64  `json:"calls"`
+		Failures  int64  `json:"failures,omitempty"`
+		MinUsec   *int64 `json:"min_usec,omitempty"`
+		MaxUsec   int64  `json:"max_usec,omitempty"`
+		TotalUsec int64  `json:"-"`
+		AvgUsec   int64  `json:"avg_usec,omitempty"`
 	} `json:"storage_get_blob"`
 
 	StorageGetProperties struct {
-		Calls     int64 `json:"calls"`
-		Failures  int64 `json:"failures"`
-		MinUsec   int64 `json:"min_usec"`
-		MaxUsec   int64 `json:"max_usec"`
-		TotalUsec int64 `json:"-"`
-		AvgUsec   int64 `json:"avg_usec"`
+		Calls     int64  `json:"calls"`
+		Failures  int64  `json:"failures,omitempty"`
+		MinUsec   *int64 `json:"min_usec,omitempty"`
+		MaxUsec   int64  `json:"max_usec,omitempty"`
+		TotalUsec int64  `json:"-"`
+		AvgUsec   int64  `json:"avg_usec,omitempty"`
 	} `json:"storage_get_properties"`
 
 	StoragePutBlob struct {
-		Calls     int64 `json:"calls"`
-		Failures  int64 `json:"failures"`
-		MinUsec   int64 `json:"min_usec"`
-		MaxUsec   int64 `json:"max_usec"`
-		TotalUsec int64 `json:"-"`
-		AvgUsec   int64 `json:"avg_usec"`
+		Calls     int64  `json:"calls"`
+		Failures  int64  `json:"failures,omitempty"`
+		MinUsec   *int64 `json:"min_usec,omitempty"`
+		MaxUsec   int64  `json:"max_usec,omitempty"`
+		TotalUsec int64  `json:"-"`
+		AvgUsec   int64  `json:"avg_usec,omitempty"`
 	} `json:"storage_put_blob"`
 
 	StorageListDir struct {
-		Calls     int64 `json:"calls"`
-		Failures  int64 `json:"failures"`
-		MinUsec   int64 `json:"min_usec"`
-		MaxUsec   int64 `json:"max_usec"`
-		TotalUsec int64 `json:"-"`
-		AvgUsec   int64 `json:"avg_usec"`
+		Calls     int64  `json:"calls"`
+		Failures  int64  `json:"failures,omitempty"`
+		MinUsec   *int64 `json:"min_usec,omitempty"`
+		MaxUsec   int64  `json:"max_usec,omitempty"`
+		TotalUsec int64  `json:"-"`
+		AvgUsec   int64  `json:"avg_usec,omitempty"`
 	} `json:"storage_list_dir"`
 
 	Heartbeat struct {
 		Published     int64     `json:"published"`
 		LastPublished time.Time `json:"last_published"`
 		SizeInBytes   int64     `json:"size_in_bytes"`
-		MinGapUsec    int64     `json:"min_gap_usec"`
+		MinGapUsec    *int64    `json:"min_gap_usec,omitempty"`
 		MaxGapUsec    int64     `json:"max_gap_usec"`
-		Fetched       int64     `json:"fetched"`
+		Fetched       int64     `json:"fetched,omitempty"`
 	} `json:"heartbeat"`
 
 	Clustermap struct {
@@ -112,27 +111,27 @@ type MMStats struct {
 		UpdateEndCalls   int64     `json:"update_end_calls"`
 		LastUpdateStart  time.Time `json:"-"`
 		LastUpdated      time.Time `json:"last_updated"`
-		MinUpdateUsec    int64     `json:"min_update_usec"`
-		MaxUpdateUsec    int64     `json:"max_update_usec"`
+		MinUpdateUsec    *int64    `json:"min_update_usec,omitempty"`
+		MaxUpdateUsec    int64     `json:"max_update_usec,omitempty"`
 		TotalUpdateUsec  int64     `json:"-"`
-		AvgUpdateUsec    int64     `json:"avg_update_usec"`
-		GetCalls         int64     `json:"get_calls"`
+		AvgUpdateUsec    int64     `json:"avg_update_usec,omitempty"`
+		GetCalls         int64     `json:"get_calls,omitempty"`
 		LastError        string    `json:"last_error,omitempty"`
 	} `json:"clustermap"`
 
 	CreateFile struct {
 		// Number of calls to createFileInit().
 		InitCalls     int64  `json:"init_calls"`
-		InitFailures  int64  `json:"init_failures"`
+		InitFailures  int64  `json:"init_failures,omitempty"`
 		LastErrorInit string `json:"last_error_init,omitempty"`
 		// Number of calls to createFileFinalize().
 		FinalizeCalls     int64  `json:"finalize_calls"`
-		FinalizeFailures  int64  `json:"finalize_failures"`
+		FinalizeFailures  int64  `json:"finalize_failures,omitempty"`
 		LastErrorFinalize string `json:"last_error_finalize,omitempty"`
-		MinSizeBytes      int64  `json:"min_size_bytes"`
-		MaxSizeBytes      int64  `json:"max_size_bytes"`
+		MinSizeBytes      *int64 `json:"min_size_bytes,omitempty"`
+		MaxSizeBytes      int64  `json:"max_size_bytes,omitempty"`
 		TotalSizeBytes    int64  `json:"-"`
-		AvgSizeBytes      int64  `json:"avg_size_bytes"`
+		AvgSizeBytes      int64  `json:"avg_size_bytes,omitempty"`
 	} `json:"create_file"`
 
 	GetFile struct {
@@ -224,14 +223,6 @@ func init() {
 	Stats = &DCacheStats{
 		NodeStart: time.Now(),
 	}
-
-	Stats.MM.GetBlobSafe.MinUsec = math.MaxInt64
-	Stats.MM.StorageGetBlob.MinUsec = math.MaxInt64
-	Stats.MM.StorageGetProperties.MinUsec = math.MaxInt64
-	Stats.MM.StoragePutBlob.MinUsec = math.MaxInt64
-	Stats.MM.StorageListDir.MinUsec = math.MaxInt64
-	Stats.MM.CreateFile.MinSizeBytes = math.MaxInt64
-	Stats.MM.Clustermap.MinUpdateUsec = math.MaxInt64
 
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }
