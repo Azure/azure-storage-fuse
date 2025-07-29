@@ -5,27 +5,18 @@ logging:
 
 components:
   - libfuse
-  - block_cache_new
+  - block_cache
   - attr_cache
   - azstorage
 
 libfuse:
-  attribute-expiration-sec: 300
-  entry-expiration-sec: 300
-  negative-entry-expiration-sec: 300
+  attribute-expiration-sec: 0
+  entry-expiration-sec: 0
+  negative-entry-expiration-sec: 0
   ignore-open-flags: true
-
-block_cache_new:
-  block-size-mb: 8
-  mem-size-mb: 128
-  prefetch: 5
-  parallelism: 64
 
 block_cache:
   block-size-mb: 8
-  mem-size-mb: 256
-  prefetch: 11
-  parallelism: 64
 
 attr_cache:
   timeout-sec: 3600
