@@ -48,7 +48,10 @@ import (
 
 // clientPool manages multiple rpc clients efficiently
 type clientPool struct {
-	mu         sync.Mutex
+	mu sync.Mutex
+	// Companion boolean flag to mutex to check if the lock is held or not
+	// [DEBUG ONLY]
+	muDbgFlag  atomic.Bool
 	clients    map[string]*nodeClientPool // map of node ID to rpc node client pool
 	maxPerNode uint32                     // Maximum number of open RPC clients per node
 	maxNodes   uint32                     // Maximum number of nodes for which RPC clients are open
@@ -73,9 +76,33 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 	// TODO: start a goroutine to periodically close inactive RPC clients
 }
 
+// Acquire client pool lock.
+func (cp *clientPool) acquireLock() {
+	cp.mu.Lock()
+
+	common.Assert(!cp.muDbgFlag.Load())
+	cp.muDbgFlag.Store(true)
+}
+
+// Release client pool lock.
+func (cp *clientPool) releaseLock() {
+	common.Assert(cp.muDbgFlag.Load())
+	cp.muDbgFlag.Store(false)
+
+	cp.mu.Unlock()
+}
+
+// Check if client pool lock is held.
+// [DEBUG ONLY]
+func (cp *clientPool) isLockHeld() bool {
+	return cp.muDbgFlag.Load()
+}
+
 // Give a nodeID return the corresponding nodeClientPool.
 // Caller MUST hold the clientPool lock.
 func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) {
+	common.Assert(cp.isLockHeld())
+
 	var ncPool *nodeClientPool
 	ncPool, exists := cp.clients[nodeID]
 	if !exists {
@@ -115,8 +142,6 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 // If the pool doesn't have any free client, it waits for 60secs for a client to become available and returns as
 // soon as an RPC client is released and added to the pool. If no client becomes available for 60secs, it
 // indicates some bug and it panics the program.
-//
-// Caller MUST NOT hold the clientPool lock.
 func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	log.Debug("clientPool::getRPCClient: Retrieving RPC client for node %s", nodeID)
 
@@ -124,9 +149,9 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	// Get the nodeClientPool for this node.
 	// This needs to be performed with the clientPool lock.
 	//
-	cp.mu.Lock()
+	cp.acquireLock()
 	ncPool, err := cp.getNodeClientPool(nodeID)
-	cp.mu.Unlock()
+	cp.releaseLock()
 
 	if err != nil {
 		return nil, fmt.Errorf("clientPool::getRPCClient: getNodeClientPool(%s) failed: %v",
@@ -191,6 +216,8 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 	log.Debug("clientPool::getRPCClientNoWait: Retrieving RPC client for node %s", nodeID)
 
+	common.Assert(cp.isLockHeld())
+
 	ncPool, err := cp.getNodeClientPool(nodeID)
 	if err != nil {
 		return nil, err
@@ -213,8 +240,8 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	log.Debug("clientPool::releaseRPCClient: Releasing RPC client for node %s", client.nodeID)
 
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
+	cp.acquireLock()
+	defer cp.releaseLock()
 
 	ncPool, exists := cp.clients[client.nodeID]
 	if !exists {
@@ -280,8 +307,8 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		client.nodeAddress, client.nodeID)
 
 	if needLock {
-		cp.mu.Lock()
-		defer cp.mu.Unlock()
+		cp.acquireLock()
+		defer cp.releaseLock()
 	}
 
 	ncPool, exists := cp.clients[client.nodeID]
@@ -345,8 +372,8 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	// resetAllRPCClients() will be called only when we know for sure that an RPC request made using 'client'
 	// failed with a "connection reset by peer" error, we reset that client and all others in the pool.
 	//
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
+	cp.acquireLock()
+	defer cp.releaseLock()
 
 	numConnReset := 0
 	ncPool, exists := cp.clients[client.nodeID]
@@ -428,6 +455,8 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 // Close the least recently used node client pool from the client pool
 // caller of this method should hold the lock
 func (cp *clientPool) closeLRUCNodeClientPool() error {
+	common.Assert(cp.isLockHeld())
+
 	// TODO: add assert to check that lock is held, mu.TryLock()
 	// TODO: add assert that the length of the client pool is greater than maxNodes
 	// Find the least recently used RPC client and close it
@@ -479,8 +508,8 @@ func (cp *clientPool) closeInactiveNodeClientPools() {
 // closeAllNodeClientPools closes all node client pools in the pool
 func (cp *clientPool) closeAllNodeClientPools() error {
 	// TODO: see if this is needed
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
+	cp.acquireLock()
+	defer cp.releaseLock()
 
 	for key, ncPool := range cp.clients {
 		err := ncPool.closeRPCClients()
@@ -503,6 +532,8 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 // Delete nodeClientPool for the given node, if no active connections and no connections in the pool.
 // Caller must hold the clientPool lock.
 func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
+	common.Assert(cp.isLockHeld())
+
 	ncPool, exists := cp.clients[nodeID]
 	_ = exists
 
