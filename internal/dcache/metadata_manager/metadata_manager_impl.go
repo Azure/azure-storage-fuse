@@ -368,13 +368,14 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 				Name: blobPath,
 			})
 		if err != nil {
-			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
+			err1 := fmt.Errorf("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
+			log.Err("%v", err1)
 			if !os.IsNotExist(err) && err != syscall.ENOENT {
 				// Any error other than ENOENT, we should retry.
 				continue
 			}
 			atomic.AddInt64(&stats.Stats.MM.GetBlobSafe.Failures, 1)
-			stats.Stats.MM.GetBlobSafe.LastError = err.Error()
+			stats.Stats.MM.GetBlobSafe.LastError = err1.Error()
 			return nil, nil, err
 		}
 
