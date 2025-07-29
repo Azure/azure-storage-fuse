@@ -261,6 +261,14 @@ func (suite *libfuseTestSuite) TestTruncateError() {
 	testTruncateError(suite)
 }
 
+func (suite *libfuseTestSuite) TestFTruncate() {
+	testFTruncate(suite)
+}
+
+func (suite *libfuseTestSuite) TestFTruncateError() {
+	testFTruncateError(suite)
+}
+
 // release
 
 func (suite *libfuseTestSuite) TestUnlink() {
