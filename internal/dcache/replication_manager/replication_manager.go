@@ -880,7 +880,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 			log.Info("ReplicationManager::RemoveMV: skip deleting fileId %s chunks from %s/%s, rv state: %s",
 				req.FileID, rv.Name, req.MvName, rv.State)
 
-			if rv.State != string(dcache.StateOffline) {
+			if rv.State != string(dcache.StateOffline) && rv.State != string(dcache.StateInbandOffline) {
 				//
 				// GC must retry for this MV again, till this RV state changes to the StateOnline.
 				//
@@ -1090,7 +1090,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		return
 	}
 
-	componentRVs := convertRVMapToList(mvName, mvInfo.RVs)
+	componentRVs := cm.RVMapToList(mvName, mvInfo.RVs)
 
 	log.Debug("ReplicationManager::syncMV: Component RVs for MV %s are %v",
 		mvName, rpc.ComponentRVsToString(componentRVs))
@@ -1201,6 +1201,11 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	//       This will matter when an MV starts syncing during client write.
 	//
 	// TODO: If we encounter some failure before we send EndSync, we need to undo this StartSync?
+	//
+	// TODO: (sourav) If StartSync fails it could be because the target RV is offline, in that case
+	//       we should mark the state as inband-offline, else we might get stuck in a loop as StartSync
+	//       will keep failing with NeedToRefreshClusterMap error.
+	//       THIS IS IMPORTANT!
 	//
 	srcSyncId, err := sendStartSyncRequest(lioRV, sourceNodeID, startSyncReq)
 	if err != nil {
