@@ -1775,10 +1775,12 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 
 	//
 	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered read.
+	// Smaller buffers (less than 4096 bytes) have been seen to be not aligned to FS_BLOCK_SIZE, we exclude
+	// those from the assert since for small IOs buffered IO is fine.
 	//
 	dataAddr := unsafe.Pointer(&(*data)[0])
 	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
-	common.Assert((readLength%common.FS_BLOCK_SIZE != 0) || isDataBufferAligned,
+	common.Assert((readLength < 4096) || isDataBufferAligned,
 		uintptr(dataAddr), readLength, common.FS_BLOCK_SIZE)
 
 	//
@@ -2076,10 +2078,12 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 
 	//
 	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered write.
+	// Smaller buffers (less than 4096 bytes) have been seen to be not aligned to FS_BLOCK_SIZE, we exclude
+	// those from the assert since for small IOs buffered IO is fine.
 	//
 	dataAddr := unsafe.Pointer(&(*data)[0])
 	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
-	common.Assert((writeLength%common.FS_BLOCK_SIZE != 0) || isDataBufferAligned,
+	common.Assert((writeLength < 4096) || isDataBufferAligned,
 		uintptr(dataAddr), writeLength, common.FS_BLOCK_SIZE)
 
 	//
