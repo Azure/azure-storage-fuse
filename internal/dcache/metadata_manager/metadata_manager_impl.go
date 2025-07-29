@@ -90,13 +90,13 @@ func GetPropertiesFromStorageWithStats(scb *dcache.StorageCallbacks,
 	// Note: The min/max are not atomically updated, so they may lose some values due to simultaneous
 	//       updates overwriting each other. Little bit of inaccuracy is fine for stats.
 	//
-	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetProperties.TotalUsec), int64(duration))
-	if stats.Stats.MM.StorageGetProperties.MinUsec == nil ||
-		*stats.Stats.MM.StorageGetProperties.MinUsec > duration {
-		stats.Stats.MM.StorageGetProperties.MinUsec = &duration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetProperties.TotalDur), int64(duration))
+	if stats.Stats.MM.StorageGetProperties.MinDur == nil ||
+		*stats.Stats.MM.StorageGetProperties.MinDur > duration {
+		stats.Stats.MM.StorageGetProperties.MinDur = &duration
 	}
-	stats.Stats.MM.StorageGetProperties.MaxUsec =
-		max(stats.Stats.MM.StorageGetProperties.MaxUsec, duration)
+	stats.Stats.MM.StorageGetProperties.MaxDur =
+		max(stats.Stats.MM.StorageGetProperties.MaxDur, duration)
 
 	return attr, err
 }
@@ -120,13 +120,13 @@ func GetBlobFromStorageWithStats(scb *dcache.StorageCallbacks,
 	// Note: The min/max are not atomically updated, so they may lose some values due to simultaneous
 	//       updates overwriting each other. Little bit of inaccuracy is fine for stats.
 	//
-	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetBlob.TotalUsec), int64(duration))
-	if stats.Stats.MM.StorageGetBlob.MinUsec == nil ||
-		*stats.Stats.MM.StorageGetBlob.MinUsec > duration {
-		stats.Stats.MM.StorageGetBlob.MinUsec = &duration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetBlob.TotalDur), int64(duration))
+	if stats.Stats.MM.StorageGetBlob.MinDur == nil ||
+		*stats.Stats.MM.StorageGetBlob.MinDur > duration {
+		stats.Stats.MM.StorageGetBlob.MinDur = &duration
 	}
-	stats.Stats.MM.StorageGetBlob.MaxUsec =
-		max(stats.Stats.MM.StorageGetBlob.MaxUsec, duration)
+	stats.Stats.MM.StorageGetBlob.MaxDur =
+		max(stats.Stats.MM.StorageGetBlob.MaxDur, duration)
 
 	return data, err
 }
@@ -150,13 +150,13 @@ func PutBlobInStorageWithStats(scb *dcache.StorageCallbacks,
 	// Note: The min/max are not atomically updated, so they may lose some values due to simultaneous
 	//       updates overwriting each other. Little bit of inaccuracy is fine for stats.
 	//
-	atomic.AddInt64((*int64)(&stats.Stats.MM.StoragePutBlob.TotalUsec), int64(duration))
-	if stats.Stats.MM.StoragePutBlob.MinUsec == nil ||
-		*stats.Stats.MM.StoragePutBlob.MinUsec > duration {
-		stats.Stats.MM.StoragePutBlob.MinUsec = &duration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.StoragePutBlob.TotalDur), int64(duration))
+	if stats.Stats.MM.StoragePutBlob.MinDur == nil ||
+		*stats.Stats.MM.StoragePutBlob.MinDur > duration {
+		stats.Stats.MM.StoragePutBlob.MinDur = &duration
 	}
-	stats.Stats.MM.StoragePutBlob.MaxUsec =
-		max(stats.Stats.MM.StoragePutBlob.MaxUsec, duration)
+	stats.Stats.MM.StoragePutBlob.MaxDur =
+		max(stats.Stats.MM.StoragePutBlob.MaxDur, duration)
 
 	return data, err
 }
@@ -180,13 +180,13 @@ func ReadDirFromStorageWithStats(scb *dcache.StorageCallbacks,
 	// Note: The min/max are not atomically updated, so they may lose some values due to simultaneous
 	//       updates overwriting each other. Little bit of inaccuracy is fine for stats.
 	//
-	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageListDir.TotalUsec), int64(duration))
-	if stats.Stats.MM.StorageListDir.MinUsec == nil ||
-		*stats.Stats.MM.StorageListDir.MinUsec > duration {
-		stats.Stats.MM.StorageListDir.MinUsec = &duration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageListDir.TotalDur), int64(duration))
+	if stats.Stats.MM.StorageListDir.MinDur == nil ||
+		*stats.Stats.MM.StorageListDir.MinDur > duration {
+		stats.Stats.MM.StorageListDir.MinDur = &duration
 	}
-	stats.Stats.MM.StorageListDir.MaxUsec =
-		max(stats.Stats.MM.StorageListDir.MaxUsec, duration)
+	stats.Stats.MM.StorageListDir.MaxDur =
+		max(stats.Stats.MM.StorageListDir.MaxDur, duration)
 
 	return list, err
 }
@@ -446,13 +446,13 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 			blobPath, len(data), attr1.ETag, i)
 
 		duration := stats.Duration(time.Since(start))
-		if stats.Stats.MM.GetBlobSafe.MinUsec == nil ||
-			*stats.Stats.MM.GetBlobSafe.MinUsec > duration {
-			stats.Stats.MM.GetBlobSafe.MinUsec = &duration
+		if stats.Stats.MM.GetBlobSafe.MinDur == nil ||
+			*stats.Stats.MM.GetBlobSafe.MinDur > duration {
+			stats.Stats.MM.GetBlobSafe.MinDur = &duration
 		}
-		stats.Stats.MM.GetBlobSafe.MaxUsec =
-			max(stats.Stats.MM.GetBlobSafe.MaxUsec, duration)
-		atomic.AddInt64((*int64)(&stats.Stats.MM.GetBlobSafe.TotalUsec), int64(duration))
+		stats.Stats.MM.GetBlobSafe.MaxDur =
+			max(stats.Stats.MM.GetBlobSafe.MaxDur, duration)
+		atomic.AddInt64((*int64)(&stats.Stats.MM.GetBlobSafe.TotalDur), int64(duration))
 
 		// Return the cluster map content and ETag
 		return data, attr1, nil
@@ -1049,12 +1049,12 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 	if !stats.Stats.MM.Heartbeat.LastPublished.IsZero() {
 		now := time.Now()
 		gap := stats.Duration(now.Sub(stats.Stats.MM.Heartbeat.LastPublished))
-		if stats.Stats.MM.Heartbeat.MinGapUsec == nil ||
-			*stats.Stats.MM.Heartbeat.MinGapUsec > gap {
-			stats.Stats.MM.Heartbeat.MinGapUsec = &gap
+		if stats.Stats.MM.Heartbeat.MinGapDur == nil ||
+			*stats.Stats.MM.Heartbeat.MinGapDur > gap {
+			stats.Stats.MM.Heartbeat.MinGapDur = &gap
 		}
-		stats.Stats.MM.Heartbeat.MaxGapUsec =
-			max(stats.Stats.MM.Heartbeat.MaxGapUsec, gap)
+		stats.Stats.MM.Heartbeat.MaxGapDur =
+			max(stats.Stats.MM.Heartbeat.MaxGapDur, gap)
 	}
 	stats.Stats.MM.Heartbeat.LastPublished = time.Now()
 	stats.Stats.MM.Heartbeat.SizeInBytes = int64(len(data))
@@ -1285,13 +1285,13 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	}
 
 	stats.Stats.MM.Clustermap.LastUpdated = time.Now()
-	stats.Stats.MM.Clustermap.TotalUpdateUsec += updateDuration
-	if stats.Stats.MM.Clustermap.MinUpdateUsec == nil ||
-		*stats.Stats.MM.Clustermap.MinUpdateUsec > updateDuration {
-		stats.Stats.MM.Clustermap.MinUpdateUsec = &updateDuration
+	stats.Stats.MM.Clustermap.TotalUpdateDur += updateDuration
+	if stats.Stats.MM.Clustermap.MinUpdateDur == nil ||
+		*stats.Stats.MM.Clustermap.MinUpdateDur > updateDuration {
+		stats.Stats.MM.Clustermap.MinUpdateDur = &updateDuration
 	}
-	stats.Stats.MM.Clustermap.MaxUpdateUsec =
-		max(stats.Stats.MM.Clustermap.MaxUpdateUsec, updateDuration)
+	stats.Stats.MM.Clustermap.MaxUpdateDur =
+		max(stats.Stats.MM.Clustermap.MaxUpdateDur, updateDuration)
 
 	log.Debug("UpdateClusterMapEnd:: Finalized clustermap %s (bytes: %d)", clustermapPath, len(clustermap))
 	return nil
