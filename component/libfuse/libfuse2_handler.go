@@ -780,13 +780,14 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 }
 
 // libfuse2_truncate changes the size of a file
-// // There are two filesystem calls which can lead to this callback:
+// There are two filesystem calls which can lead to this callback:
 //  1. Truncate() -> SetAttr() called on file path.
 //  2. ftruncate()-> SetAttr() called on file handle.
 //
 // man page:    https://man7.org/linux/man-pages/man2/truncate.2.html
-// Libfuse Doc: https://github.com/libfuse/libfuse/blob/fc95fd5076fd845e496bfbcec1ad9da16534b1c9/include/fuse_lowlevel.h#L328
-// In fuse2 we don't get the file handle hence we don't pass any handle.
+//
+// In fuse2, libfuse don't have the support for file handles in truncate callback, hence we don't get any handle here.
+// So both the truncate() and ftruncate() calls have the same behaviour.
 //
 //export libfuse2_truncate
 func libfuse2_truncate(path *C.char, off C.off_t) C.int {

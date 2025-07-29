@@ -52,7 +52,6 @@ import (
 	"io/fs"
 	"os"
 	"syscall"
-	"time"
 	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -738,25 +737,10 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	return 0
 }
 
-var readTime time.Duration
-
-func timer(name string) func() {
-	start := time.Now()
-	return func() {
-		t := time.Since(start)
-		readTime += t
-		if t > time.Millisecond {
-			// logy.WriteString(fmt.Sprintf("%s took %v\n", name, t))
-		}
-		// logy.WriteString(fmt.Sprintf("Total time of read %v\n", readTime))
-	}
-}
-
 // libfuse_read reads data from an open file
 //
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	defer timer(fmt.Sprintf("Read for path %s offet %d size %d", C.GoString(path), off, size))()
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
@@ -819,7 +803,6 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 //
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
-	defer timer(fmt.Sprintf("Flush for path %s ", C.GoString(path)))()
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
@@ -860,14 +843,15 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_truncate : %s size %d", name, off)
 
 	var handle *handlemap.Handle
 	if fi == nil {
 		handle = nil
+		log.Trace("Libfuse::libfuse_truncate : %s, size: %d", name, off)
 	} else {
 		fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 		handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+		log.Trace("Libfuse::libfuse_truncate : %s, handle: %d, size: %d", handle.Path, handle.ID, off)
 	}
 
 	err := fuseFS.NextComponent().TruncateFile(
