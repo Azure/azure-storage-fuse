@@ -34,6 +34,7 @@
 package stats
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -149,9 +150,25 @@ type MMStats struct {
 	} `json:"delete_file"`
 }
 
+// Duration wraps time.Duration to provide custom JSON marshaling/unmarshaling.
+type Duration time.Duration
+
+// MarshalJSON implements the json.Marshaler interface for Duration.
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String()) // Marshal as a string (e.g., "5s")
+}
+
 // Cluster manager stats.
 type CMStats struct {
-	// TBD.
+	// Total time spent in cleaning up stale MVs from all the local RVs.
+	RVCleanupDuration Duration `json:"rv_cleanup_duration,omitempty"`
+	// How many MVs were deleted when this node started.
+	MVsDeleted int64 `json:"mvs_deleted,omitempty"`
+	// MVs that could not be deleted as deletion failed.
+	MVsDeleteFailed                   int64         `json:"mvs_delete_failed,omitempty"`
+	CreatedInitialClustermap          bool          `json:"created_initial_clustermap,omitempty"`
+	UpdateClustermapWithMyRVsDuration Duration `json:"update_clustermap_with_my_rvs_duration,omitempty"`
+	EnsureInitialClustermapDuration   Duration `json:"ensure_initial_clustermap_duration,omitempty"`
 }
 
 // Replication manager stats.

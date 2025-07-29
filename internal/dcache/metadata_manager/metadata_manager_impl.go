@@ -1187,6 +1187,8 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 		return err
 	}
 
+	stats.Stats.CM.CreatedInitialClustermap = true
+
 	log.Info("CreateInitialClusterMap:: Created initial clustermap with path %s", clustermapPath)
 	return nil
 }
