@@ -1,4 +1,4 @@
-## 2.6.0 (Unreleased)
+## 2.5.1 (Unreleased)
 **Features**
 - Added support for `chmod` and `chown` file system capabilities for FNS accounts, and `chown` capability for HNS accounts.
 
