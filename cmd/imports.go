@@ -36,6 +36,7 @@ package cmd
 import (
 	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
+	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache_old"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
