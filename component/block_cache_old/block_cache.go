@@ -105,7 +105,7 @@ type BlockCacheOptions struct {
 }
 
 const (
-	compName                = "block_cache"
+	compName                = "block_cache_old"
 	defaultTimeout          = 120
 	defaultBlockSize        = 16
 	MAX_POOL_USAGE   uint32 = 80
@@ -1957,6 +1957,7 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 // Pipeline will call this method to create your object, initialize your variables here
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
+	initCLIflags()
 	comp := &BlockCache{
 		fileLocks: common.NewLockMap(),
 	}
@@ -1964,10 +1965,7 @@ func NewBlockCacheComponent() internal.Component {
 	return comp
 }
 
-// On init register this component to pipeline and supply your constructor
-func init() {
-	internal.AddComponent(compName, NewBlockCacheComponent)
-
+func initCLIflags() {
 	blockSizeMb := config.AddFloat64Flag("block-cache-block-size", 0.0, "Size (in MB) of a block to be downloaded for block-cache.")
 	config.BindPFlag(compName+".block-size-mb", blockSizeMb)
 
@@ -1994,4 +1992,9 @@ func init() {
 
 	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
 	config.BindPFlag(compName+".consistency", strongConsistency)
+}
+
+// On init register this component to pipeline and supply your constructor
+func init() {
+	internal.AddComponent(compName, NewBlockCacheComponent)
 }
