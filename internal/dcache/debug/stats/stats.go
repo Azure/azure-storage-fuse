@@ -42,6 +42,15 @@ import (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
+// Duration wraps time.Duration to provide custom JSON marshaling/unmarshaling.
+type Duration time.Duration
+
+// MarshalJSON implements the json.Marshaler interface for Duration.
+func (d Duration) MarshalJSON() ([]byte, error) {
+	// Marshal as a string (e.g., "29.07ms")
+	return json.Marshal(time.Duration(d).String())
+}
+
 // Metadata manager stats.
 type MMStats struct {
 	// Number of metadata folders created by this node.
@@ -54,57 +63,57 @@ type MMStats struct {
 		// How many times getBlobSafe() had to retry as the blob LMT changed due to simultaneous update.
 		Retries int64 `json:"retries,omitempty"`
 		// How many times getBlobSafe() failed after exhausting all retries.
-		Failures  int64  `json:"failures,omitempty"`
-		LastError string `json:"last_error,omitempty"`
-		MinUsec   *int64 `json:"min_usec,omitempty"`
-		MaxUsec   int64  `json:"max_usec,omitempty"`
-		TotalUsec int64  `json:"-"`
-		AvgUsec   int64  `json:"avg_usec,omitempty"`
+		Failures  int64     `json:"failures,omitempty"`
+		LastError string    `json:"last_error,omitempty"`
+		MinUsec   *Duration `json:"min_usec,omitempty"`
+		MaxUsec   Duration  `json:"max_usec,omitempty"`
+		TotalUsec Duration  `json:"-"`
+		AvgUsec   Duration  `json:"avg_usec,omitempty"`
 	} `json:"get_blob_safe"`
 
 	StorageGetBlob struct {
-		Calls     int64  `json:"calls"`
-		Failures  int64  `json:"failures,omitempty"`
-		MinUsec   *int64 `json:"min_usec,omitempty"`
-		MaxUsec   int64  `json:"max_usec,omitempty"`
-		TotalUsec int64  `json:"-"`
-		AvgUsec   int64  `json:"avg_usec,omitempty"`
+		Calls     int64     `json:"calls"`
+		Failures  int64     `json:"failures,omitempty"`
+		MinUsec   *Duration `json:"min_usec,omitempty"`
+		MaxUsec   Duration  `json:"max_usec,omitempty"`
+		TotalUsec Duration  `json:"-"`
+		AvgUsec   Duration  `json:"avg_usec,omitempty"`
 	} `json:"storage_get_blob"`
 
 	StorageGetProperties struct {
-		Calls     int64  `json:"calls"`
-		Failures  int64  `json:"failures,omitempty"`
-		MinUsec   *int64 `json:"min_usec,omitempty"`
-		MaxUsec   int64  `json:"max_usec,omitempty"`
-		TotalUsec int64  `json:"-"`
-		AvgUsec   int64  `json:"avg_usec,omitempty"`
+		Calls     int64     `json:"calls"`
+		Failures  int64     `json:"failures,omitempty"`
+		MinUsec   *Duration `json:"min_usec,omitempty"`
+		MaxUsec   Duration  `json:"max_usec,omitempty"`
+		TotalUsec Duration  `json:"-"`
+		AvgUsec   Duration  `json:"avg_usec,omitempty"`
 	} `json:"storage_get_properties"`
 
 	StoragePutBlob struct {
-		Calls     int64  `json:"calls"`
-		Failures  int64  `json:"failures,omitempty"`
-		MinUsec   *int64 `json:"min_usec,omitempty"`
-		MaxUsec   int64  `json:"max_usec,omitempty"`
-		TotalUsec int64  `json:"-"`
-		AvgUsec   int64  `json:"avg_usec,omitempty"`
+		Calls     int64     `json:"calls"`
+		Failures  int64     `json:"failures,omitempty"`
+		MinUsec   *Duration `json:"min_usec,omitempty"`
+		MaxUsec   Duration  `json:"max_usec,omitempty"`
+		TotalUsec Duration  `json:"-"`
+		AvgUsec   Duration  `json:"avg_usec,omitempty"`
 	} `json:"storage_put_blob"`
 
 	StorageListDir struct {
-		Calls     int64  `json:"calls"`
-		Failures  int64  `json:"failures,omitempty"`
-		MinUsec   *int64 `json:"min_usec,omitempty"`
-		MaxUsec   int64  `json:"max_usec,omitempty"`
-		TotalUsec int64  `json:"-"`
-		AvgUsec   int64  `json:"avg_usec,omitempty"`
+		Calls     int64     `json:"calls"`
+		Failures  int64     `json:"failures,omitempty"`
+		MinUsec   *Duration `json:"min_usec,omitempty"`
+		MaxUsec   Duration  `json:"max_usec,omitempty"`
+		TotalUsec Duration  `json:"-"`
+		AvgUsec   Duration  `json:"avg_usec,omitempty"`
 	} `json:"storage_list_dir"`
 
 	Heartbeat struct {
 		Published     int64     `json:"published"`
 		LastPublished time.Time `json:"last_published"`
 		SizeInBytes   int64     `json:"size_in_bytes"`
-		MinGapUsec    *int64    `json:"min_gap_usec,omitempty"`
-		MaxGapUsec    int64     `json:"max_gap_usec"`
-		Fetched       int64     `json:"fetched,omitempty"`
+		MinGapUsec    *Duration `json:"min_gap_usec,omitempty"`
+		MaxGapUsec    Duration  `json:"max_gap_usec"`
+		Fetched       int64  `json:"fetched,omitempty"`
 	} `json:"heartbeat"`
 
 	Clustermap struct {
@@ -112,10 +121,10 @@ type MMStats struct {
 		UpdateEndCalls   int64     `json:"update_end_calls"`
 		LastUpdateStart  time.Time `json:"-"`
 		LastUpdated      time.Time `json:"last_updated"`
-		MinUpdateUsec    *int64    `json:"min_update_usec,omitempty"`
-		MaxUpdateUsec    int64     `json:"max_update_usec,omitempty"`
-		TotalUpdateUsec  int64     `json:"-"`
-		AvgUpdateUsec    int64     `json:"avg_update_usec,omitempty"`
+		MinUpdateUsec    *Duration `json:"min_update_usec,omitempty"`
+		MaxUpdateUsec    Duration  `json:"max_update_usec,omitempty"`
+		TotalUpdateUsec  Duration  `json:"-"`
+		AvgUpdateUsec    Duration  `json:"avg_update_usec,omitempty"`
 		GetCalls         int64     `json:"get_calls,omitempty"`
 		LastError        string    `json:"last_error,omitempty"`
 	} `json:"clustermap"`
@@ -150,14 +159,6 @@ type MMStats struct {
 	} `json:"delete_file"`
 }
 
-// Duration wraps time.Duration to provide custom JSON marshaling/unmarshaling.
-type Duration time.Duration
-
-// MarshalJSON implements the json.Marshaler interface for Duration.
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Duration(d).String()) // Marshal as a string (e.g., "5s")
-}
-
 // Cluster manager stats.
 type CMStats struct {
 	// Total time spent in cleaning up stale MVs from all the local RVs.
@@ -165,10 +166,13 @@ type CMStats struct {
 	// How many MVs were deleted when this node started.
 	MVsDeleted int64 `json:"mvs_deleted,omitempty"`
 	// MVs that could not be deleted as deletion failed.
-	MVsDeleteFailed                   int64         `json:"mvs_delete_failed,omitempty"`
-	CreatedInitialClustermap          bool          `json:"created_initial_clustermap,omitempty"`
+	MVsDeleteFailed int64 `json:"mvs_delete_failed,omitempty"`
+	// Did this node create the initial clustermap?
+	CreatedInitialClustermap bool `json:"created_initial_clustermap,omitempty"`
+	// Time taken to update the clustermap with the local RVs.
 	UpdateClustermapWithMyRVsDuration Duration `json:"update_clustermap_with_my_rvs_duration,omitempty"`
-	EnsureInitialClustermapDuration   Duration `json:"ensure_initial_clustermap_duration,omitempty"`
+	// Time taken to ensure the initial clustermap is created, with the local RVs and node joins the cluster.
+	EnsureInitialClustermapDuration Duration `json:"ensure_initial_clustermap_duration,omitempty"`
 }
 
 // Replication manager stats.
@@ -205,23 +209,28 @@ type DCacheStats struct {
 func (s *DCacheStats) Preprocess() {
 	// Calculate averages.
 	if s.MM.GetBlobSafe.Calls > 0 {
-		s.MM.GetBlobSafe.AvgUsec = s.MM.GetBlobSafe.TotalUsec / s.MM.GetBlobSafe.Calls
+		s.MM.GetBlobSafe.AvgUsec =
+			Duration(float64(s.MM.GetBlobSafe.TotalUsec) / float64(s.MM.GetBlobSafe.Calls))
 	}
 
 	if s.MM.StorageGetBlob.Calls > 0 {
-		s.MM.StorageGetBlob.AvgUsec = s.MM.StorageGetBlob.TotalUsec / s.MM.StorageGetBlob.Calls
+		s.MM.StorageGetBlob.AvgUsec =
+			Duration(float64(s.MM.StorageGetBlob.TotalUsec) / float64(s.MM.StorageGetBlob.Calls))
 	}
 
 	if s.MM.StorageGetProperties.Calls > 0 {
-		s.MM.StorageGetProperties.AvgUsec = s.MM.StorageGetProperties.TotalUsec / s.MM.StorageGetProperties.Calls
+		s.MM.StorageGetProperties.AvgUsec =
+			Duration(float64(s.MM.StorageGetProperties.TotalUsec) / float64(s.MM.StorageGetProperties.Calls))
 	}
 
 	if s.MM.StoragePutBlob.Calls > 0 {
-		s.MM.StoragePutBlob.AvgUsec = s.MM.StoragePutBlob.TotalUsec / s.MM.StoragePutBlob.Calls
+		s.MM.StoragePutBlob.AvgUsec =
+			Duration(float64(s.MM.StoragePutBlob.TotalUsec) / float64(s.MM.StoragePutBlob.Calls))
 	}
 
 	if s.MM.StorageListDir.Calls > 0 {
-		s.MM.StorageListDir.AvgUsec = s.MM.StorageListDir.TotalUsec / s.MM.StorageListDir.Calls
+		s.MM.StorageListDir.AvgUsec =
+			Duration(float64(s.MM.StorageListDir.TotalUsec) / float64(s.MM.StorageListDir.Calls))
 	}
 
 	filesCreatedFromThisNode := s.MM.CreateFile.FinalizeCalls - s.MM.CreateFile.FinalizeFailures
@@ -230,7 +239,8 @@ func (s *DCacheStats) Preprocess() {
 	}
 
 	if s.MM.Clustermap.UpdateEndCalls > 0 {
-		s.MM.Clustermap.AvgUpdateUsec = s.MM.Clustermap.TotalUpdateUsec / s.MM.Clustermap.UpdateEndCalls
+		s.MM.Clustermap.AvgUpdateUsec =
+			Duration(float64(s.MM.Clustermap.TotalUpdateUsec) / float64(s.MM.Clustermap.UpdateEndCalls))
 	}
 }
 
