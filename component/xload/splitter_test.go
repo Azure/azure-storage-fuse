@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"crypto/md5"
 	"fmt"
 	"io"
@@ -134,10 +135,10 @@ func setupTestSplitter() (*testSplitter, error) {
 	}
 
 	ts.blockSize = 10
-	ts.blockPool = NewBlockPool(ts.blockSize, 10)
+	ts.blockPool = NewBlockPool(ts.blockSize, 10, context.TODO())
 	ts.locks = common.NewLockMap()
 
-	ts.stMgr, err = NewStatsManager(10, false)
+	ts.stMgr, err = NewStatsManager(10, false, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -165,12 +166,12 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.Nil(ds)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
 
-	statsMgr, err := NewStatsManager(1, false)
+	statsMgr, err := NewStatsManager(1, false, nil)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
 	ds, err = newDownloadSplitter(&downloadSplitterOptions{
-		blockPool:   NewBlockPool(1, 1),
+		blockPool:   NewBlockPool(1, 1, context.TODO()),
 		path:        "/home/user/random_path",
 		workerCount: 4,
 		remote:      remote,
@@ -247,9 +248,9 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	ds.SetNext(rdm)
 
 	// start components
-	rdm.Start()
-	ds.Start()
-	rl.Start()
+	rdm.Start(context.TODO())
+	ds.Start(context.TODO())
+	rl.Start(context.TODO())
 
 	time.Sleep(5 * time.Second)
 
@@ -299,9 +300,9 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 	ds.SetNext(rdm)
 
 	// start components
-	rdm.Start()
-	ds.Start()
-	rl.Start()
+	rdm.Start(context.TODO())
+	ds.Start(context.TODO())
+	rl.Start(context.TODO())
 
 	time.Sleep(5 * time.Second)
 

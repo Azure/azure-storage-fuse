@@ -48,7 +48,8 @@ var umntAllCmd = &cobra.Command{
 	Long:              "Unmount all instances of Blobfuse2",
 	SuggestFor:        []string{"al", "all"},
 	FlagErrorHandling: cobra.ExitOnError,
-	RunE: func(_ *cobra.Command, _ []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		lazy, _ := cmd.Flags().GetBool("lazy")
 		lstMnt, err := common.ListMountPoints()
 		if err != nil {
 			return fmt.Errorf("failed to list mount points [%s]", err.Error())
@@ -60,7 +61,7 @@ var umntAllCmd = &cobra.Command{
 
 		for _, mntPath := range lstMnt {
 			mountfound += 1
-			err := unmountBlobfuse2(mntPath)
+			err := unmountBlobfuse2(mntPath, lazy, false)
 			if err == nil {
 				unmounted += 1
 			} else {

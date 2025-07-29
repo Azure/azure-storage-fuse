@@ -1,90 +1,77 @@
+# This step is responsible for the following behaviour:
+# 1. Setup the VM all necessary packages.
+# 2. Build blobfuse, bfusemon, install AzCLI
+# 3. Create Temporary Containers in the storage account with choosing random string as name and also sets the global containerName parameter to this value.
+#    Caution: The Deletion of the container is left to the caller of this file, caller must call the cleanup.yml with the parameter delete_containers: true at the end of the job
+# 4. Run Unit Tests if specified by parameter skip_ut: false
+
 parameters:
-  - name: root_dir
-    type: string
-  - name: working_directory
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
-    type: string
-  - name: hostedAgent
-    type: boolean
-    default: true
-  - name: gopath
-    type: string
-  - name: container
-    type: string
   - name: skip_msi
     type: string
     default: "true"
   - name: skip_azcli
     type: string
     default: "true"
+  - name: skip_bfusemon
+    type: boolean
+    default: true
   - name: proxy_address
     type: string
-    default: ""
+    default: 'no_proxy'
   - name: skip_ut
     type: boolean
     default: false
-  - name: tags
-    type: string
-    default: "null"    
-  - name: fuselib
-    type: string
-    default: "libfuse3-dev"
 
 steps:
+
+  # Package manager installs for installing libfuse, azcli, related packages etc..
+  - template: 'package-install.yml'
+    parameters:
+      distro: $(distro)
+      distro_version: $(distro_version)
+
+  # Checkout's the blobfuse code of the recent commit for PR/ manual run.
+  - checkout: self
+
   - script: |
+      git branch
+      ls -lrt
+      echo "ROOT_DIR : " $(ROOT_DIR)
+      echo "WORK_DIR : " $(WORK_DIR)
+      ls -l $(WORK_DIR)/go_installer.sh
+      df -h
       sudo rm -rf $(ROOT_DIR)
       sudo mkdir -p $(ROOT_DIR)
       sudo chown -R `whoami` $(ROOT_DIR)
       chmod 777 $(ROOT_DIR)
-    displayName: 'Create Directory Structure'
+    displayName: 'Show Info'
 
-  # Package manager installs for libfuse, 
-  # Before installation, stop any process such as update manager from using package manager.
-  # otherwise installation may fail
-  - script: |
-      sleep 30
-      sudo systemctl stop apt-daily.timer
-      echo "Add Lock Timeout for apt package manager"
-      sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
-      sudo ps -aux | grep -iE "apt"
-      sudo killall apt apt-get
-      yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
-      echo "Released any lock if some other process has acquired"
-      sudo dpkg --configure -a
 
-      echo "Starting Updates and Installation of Packages"
-      sudo apt-get update --fix-missing
-      sudo apt-get install make cmake gcc g++ git parallel -y
-      if [ "${{ parameters.tags }}" == "fuse2" ]
-      then
-        sudo apt-get install libfuse2 libfuse-dev -y
-      else
-        sudo apt-get install fuse3 libfuse3-dev -y
-      fi
-    displayName: 'Libfuse Setup'
-    condition: eq('${{ parameters.hostedAgent }}', true)
-    retryCountOnTaskFailure: 3
+  # If proxy is given, Install and setup the proxy, these tests can only be done on ubuntu
+  - ${{ if ne(parameters.proxy_address, 'no_proxy') }}:
+    # Start Proxy
+    - script: |
+        sudo apt-get update --fix-missing
+        sudo apt remove mitmproxy -y
+        sudo apt-get install python3-setuptools -y
+        sudo apt install python3-pip -y
+        sudo pip3 install werkzeug==2.3.7
+        sudo pip3 install mitmproxy
+        mitmdump -q -w proxy_logs.txt &
+      displayName: 'Install & Start Proxy'
 
-  # Clone the repo
-  - script: |
-      git clone https://github.com/Azure/azure-storage-fuse
-    displayName: 'Checkout Code'
-    workingDirectory: $(ROOT_DIR)
-
-  # Checkout the branch
-  - script: |
-      git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-    displayName: 'Checkout Branch'
-    workingDirectory: $(WORK_DIR)
+    # Configure Proxy cert & env
+    - script: |
+        sudo mkdir /usr/local/share/ca-certificates/extra
+        sudo cp ~/.mitmproxy/mitmproxy-ca-cert.cer /usr/local/share/ca-certificates/extra/mitmproxy-ca-cert.crt
+        sudo update-ca-certificates
+        export https_proxy="127.0.0.1:8080"
+        export http_proxy="127.0.0.1:8080"
+      displayName: 'Configure Proxy'
 
   # Custom script to install Go-lang
-  - task: ShellScript@2
-    inputs:
-      scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
-      args: "${{ parameters.root_dir }}/"
+  - script:
+      ./go_installer.sh $(ROOT_DIR)
     displayName: "GoTool Custom Setup"
 
   # Downloading Go dependency packages
@@ -92,127 +79,149 @@ steps:
     inputs:
       command: 'get'
       arguments: '-d'
-      workingDirectory: ${{ parameters.working_directory }}
+      workingDirectory: $(WORK_DIR)
     displayName: "Go Get"
 
-  # Building our package
+  # Building blobfuse2 binary
   - task: Go@0
     inputs:
       command: 'build'
-      arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
-      workingDirectory: ${{ parameters.working_directory }}
+      arguments: "-tags $(tags) -o blobfuse2"
+      workingDirectory: $(WORK_DIR)
     displayName: "Go Build"
 
-  # Building our package
+  # Building bfusemon binary
   - task: Go@0
     inputs:
       command: 'build'
-      arguments: "-tags ${{ parameters.tags }} -o bfusemon ./tools/health-monitor/"
-      workingDirectory: ${{ parameters.working_directory }}
+      arguments: "-tags $(tags) -o bfusemon ./tools/health-monitor/"
+      workingDirectory: $(WORK_DIR)
+    condition: eq('${{ parameters.skip_bfusemon }}', false)
     displayName: "Go Build bfusemon"
-    
+
   #Verification of built binary
   - script: |
-      sudo chmod +x ${working_directory}/blobfuse2
-      ${working_directory}/blobfuse2 --version
+      sudo chmod +x $(WORK_DIR)/blobfuse2
+      $(WORK_DIR)/blobfuse2 --version
     displayName: 'Test binary'
     env:
-      working_directory: ${{ parameters.working_directory }}
+      working_directory: $(WORK_DIR)
 
   # Creating necessary directories
   - script: |
-      sudo fusermount -u ${mount_dir}
-      sudo fusermount3 -u ${mount_dir}
-      rm -rf ${mount_dir}
-      mkdir -p ${mount_dir}
-      echo "Creating mount dir " ${mount_dir}
+      sudo fusermount -u $(MOUNT_DIR)
+      sudo fusermount3 -u $(MOUNT_DIR)
+      rm -rf $(MOUNT_DIR)
+      mkdir -p $(MOUNT_DIR)
+      echo "Creating mount dir " $(MOUNT_DIR)
     displayName: 'Create Mount directory'
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
-      mkdir -p ${temp_dir}
-      echo "Creating temp dir " ${temp_dir}
+      mkdir -p $(TEMP_DIR)
+      echo "Creating temp dir " $(TEMP_DIR)
     displayName: "Create Cache directory"
     env:
-      temp_dir: ${{ parameters.temp_dir }}
-      
+      temp_dir: $(TEMP_DIR)
+
   - script: |
-      mkdir -p ${gopath}/src
-      echo "Creating gopath " ${gopath}
+      mkdir -p $(GOPATH)/src
+      echo "Creating gopath " $(GOPATH)
     displayName: "Create Gopath"
     env:
-      gopath: ${{ parameters.gopath }}
+      gopath: $(GOPATH)
+
+  # Create Container in storage Account.
+  # Include the template to generate the container name
+  # This will set the value generated to the global containerName parameter for the job.
+  - template: 'container.yml'
+    parameters:
+      generate_container: true
+
+  # Create a Container in the block storage account
+  - template: 'container.yml'
+    parameters:
+      create_container: true
+      account_type: "block"
+      account_name: $(BF2_BLK_ACC_NAME)
+      account_key: $(BF2_BLK_ACC_KEY)
+
+  # Create a Container in the adls storage account
+  - template: 'container.yml'
+    parameters:
+      create_container: true
+      account_type: "adls"
+      account_name: $(BF2_ADLS_ACC_NAME)
+      account_key: $(BF2_ADLS_ACC_KEY)
+
+  #-----------------------------------------------------------
+  # Generate SAS for created container in ADLS with all the permissions.
+  # Reason: the account SAS is not sufficient to change the ACL's
+  - template: 'container.yml'
+    parameters:
+      generate_adls_sas: true
+      account_type: "adls"
+      account_name: $(BF2_ADLS_ACC_NAME)
+      account_key: $(BF2_ADLS_ACC_KEY)
 
   - script: |
       cnfFile=$HOME/azuretest.json
       echo $cnfFile
       touch $cnfFile
       echo "{" > $cnfFile
-      echo "\"block-acct\"": "\"$(AZTEST_BLOCK_ACC_NAME)\"", >> $cnfFile
-      echo "\"adls-acct\"": "\"$(AZTEST_ADLS_ACC_NAME)\"", >> $cnfFile
-      echo "\"block-cont\"": "\"${{ parameters.container }}\"", >> $cnfFile
-      echo "\"adls-cont\"": "\"${{ parameters.container }}\"", >> $cnfFile
-      echo "\"block-key\"": "\"$(AZTEST_BLOCK_KEY)\"", >> $cnfFile
-      echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
-      echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
+      echo "\"block-acct\"": "\"$(BF2_BLK_ACC_NAME)\"", >> $cnfFile
+      echo "\"adls-acct\"": "\"$(BF2_ADLS_ACC_NAME)\"", >> $cnfFile
+      echo "\"block-cont\"": "\"$(containerName)\"", >> $cnfFile
+      echo "\"adls-cont\"": "\"$(containerName)\"", >> $cnfFile
+      echo "\"block-key\"": "\"$(BF2_BLK_ACC_KEY)\"", >> $cnfFile
+      echo "\"adls-key\"": "\"$(BF2_ADLS_ACC_KEY)\"", >> $cnfFile
+      echo "\"block-sas\"": "\"$(BF2_BLK_ACC_SAS)\"", >> $cnfFile
       echo "\"block-cont-sas-ubn-18\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_18)\"", >> $cnfFile
       echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
-      echo "\"adls-sas\"": "\"$(AZTEST_ADLS_SAS)\"", >> $cnfFile
+      echo "\"adls-sas\"": "\"$(BF2_ADLS_ACC_SAS)\"", >> $cnfFile
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
-      echo "\"skip-azcli\"": "${{ parameters.skip_azcli }}", >> $cnfFile
+      echo "\"skip-azcli\"": "true", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
-      
+
       echo "}" >> $cnfFile
       cat $cnfFile
     displayName: "Create AzureTest Config"
     continueOnError: false
-    workingDirectory: ${{ parameters.working_directory }}
+    workingDirectory: $(WORK_DIR)
 
-  # Install azcli
-  - script: |
-      sleep 5
-      sudo ps -aux | grep -iE "apt"
-      sudo killall apt apt-get
-      yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
-      echo "Released any lock if some other process has acquired"
-      sudo dpkg --configure -a
-      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-      az --version
-    displayName: 'Install Azure CLI'
-    condition: eq('${{ parameters.skip_azcli }}', 'false')
-    retryCountOnTaskFailure: 3
-
-  # azcli login
-  - script: |
-      az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
-    displayName: 'Azure CLI login'
-    condition: eq('${{ parameters.skip_azcli }}', 'false')
+  # azcli login, This is only for ubuntu distributions, where we create containers for the job
+  # - script: |
+  #     az --version
+  #     az login --identity --client-id $(BF2_MSI_CLIENT_ID)
+  #   displayName: 'Azure CLI login'
+  #   condition: eq('${{ parameters.skip_azcli }}', 'false')
 
   # Running unit tests
   - task: Go@0
-    condition: eq('${{ parameters.skip_ut }}', 'false') 
+    condition: eq('${{ parameters.skip_ut }}', 'false')
     inputs:
       command: 'test'
-      arguments: '-v -timeout=1h ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
-      workingDirectory: ${{ parameters.working_directory }}
+      arguments: '-v -timeout=45m ./... --tags=unittest,$(tags) -coverprofile utcover.cov'
+      workingDirectory: $(WORK_DIR)
     displayName: 'Unit tests'
-    continueOnError: true     
+    continueOnError: true
 
   - task: Go@0
-    condition: eq('${{ parameters.skip_ut }}', 'false') 
+    condition: eq('${{ parameters.skip_ut }}', 'false')
     inputs:
       command: 'tool'
       arguments: 'cover -func utcover.cov'
-      workingDirectory: ${{ parameters.working_directory }}
+      workingDirectory: $(WORK_DIR)
     displayName: 'Code Coverage Report'
     continueOnError: true
 
   - script: |
       cp ./utcover.cov  $(Build.ArtifactStagingDirectory)/
       rm -rf ./utcover.cov
-    workingDirectory: ${{ parameters.working_directory }}
+    condition: eq('${{ parameters.skip_ut }}', 'false')
+    workingDirectory: $(WORK_DIR)
     displayName: "Save coverage report"

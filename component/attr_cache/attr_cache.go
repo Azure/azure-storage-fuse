@@ -59,6 +59,9 @@ type AttrCache struct {
 	maxFiles     int
 	cacheMap     map[string]*attrCacheItem
 	cacheLock    sync.RWMutex
+	cleanupDone  chan bool
+	cleanupCtx   context.Context
+	cleanupStop  context.CancelFunc
 }
 
 // Structure defining your config parameters
@@ -108,12 +111,23 @@ func (ac *AttrCache) Start(ctx context.Context) error {
 	// AttrCache : start code goes here
 	ac.cacheMap = make(map[string]*attrCacheItem)
 
+	// Start background cleanup goroutine
+	ac.cleanupCtx, ac.cleanupStop = context.WithCancel(ctx)
+	ac.cleanupDone = make(chan bool)
+	go ac.backgroundCleanup()
+
 	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
 func (ac *AttrCache) Stop() error {
 	log.Trace("AttrCache::Stop : Stopping component %s", ac.Name())
+
+	// Stop the background cleanup goroutine
+	if ac.cleanupStop != nil {
+		ac.cleanupStop()
+		<-ac.cleanupDone // Wait for cleanup goroutine to finish
+	}
 
 	return nil
 }
@@ -172,11 +186,10 @@ func (ac *AttrCache) OnConfigChange() {
 }
 
 // Helper Methods
-// deleteDirectory: recursively marks a directory deleted
-// The deleteDir method marks deleted instead of invalidating so that if a request came in for a non-existent previously cached
-// file/dir we can directly serve that it is non-existent
+// deleteDirectory: recursively marks a directory and its children from cache
+// these entries are then marked as deleted to serve ENOENT responses.
 func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
-	// Recursively delete the children of the path, then delete the path
+	// Recursively mark the children of the path as deleted, then delete the path
 	// For example, filesystem: a/, a/b, a/c, aa/, ab.
 	// When we delete directory a, we only want to delete a/, a/b, and a/c.
 	// If we do not conditionally extend a, we would accidentally delete aa/ and ab
@@ -194,7 +207,7 @@ func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
 	ac.deletePath(path, time)
 }
 
-// deletePath: deletes a path
+// deletePath: removes a path from cache
 func (ac *AttrCache) deletePath(path string, time time.Time) {
 	// Keys in the cache map do not contain trailing /, truncate the path before referencing a key in the map.
 	value, found := ac.cacheMap[internal.TruncateDirName(path)]
@@ -244,6 +257,61 @@ func (ac *AttrCache) invalidatePath(path string) {
 	value, found := ac.cacheMap[internal.TruncateDirName(path)]
 	if found {
 		value.invalidate()
+	}
+}
+
+// backgroundCleanup: runs in a separate goroutine to periodically clean up expired entries
+func (ac *AttrCache) backgroundCleanup() {
+	defer close(ac.cleanupDone)
+
+	// Ensure minimum interval to prevent panic with NewTicker.
+	// Note: `cacheTimeout` is immutable post-start and should not be modified during runtime.
+	interval := time.Duration(ac.cacheTimeout) * time.Second
+	if interval <= 0 {
+		interval = time.Second // Use 1 second as minimum interval
+	}
+
+	// Create ticker based on cache timeout interval
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ac.cleanupCtx.Done():
+			log.Trace("AttrCache::backgroundCleanup : Stopping background cleanup")
+			return
+		case <-ticker.C:
+			ac.cleanupExpiredEntries()
+		}
+	}
+}
+
+// cleanupExpiredEntries: removes expired entries from the cache map
+// This runs in a background goroutine to prevent memory leaks
+func (ac *AttrCache) cleanupExpiredEntries() {
+	// First pass: collect keys to delete under read lock to minimize write lock duration
+	var keysToDelete []string
+	ac.cacheLock.RLock()
+	for path, item := range ac.cacheMap {
+		// Check if entry has exceeded the cache timeout
+		if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
+			keysToDelete = append(keysToDelete, path)
+		}
+	}
+	ac.cacheLock.RUnlock()
+
+	// Second pass: delete expired entries under write lock, re-checking expiration
+	if len(keysToDelete) > 0 {
+		ac.cacheLock.Lock()
+		for _, path := range keysToDelete {
+			// Re-check if entry still exists and is still expired
+			if item, exists := ac.cacheMap[path]; exists {
+				if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
+					delete(ac.cacheMap, path)
+				}
+			}
+		}
+		ac.cacheLock.Unlock()
 	}
 }
 

@@ -1,69 +1,61 @@
 parameters:
-  - name: conf_template
-    type: string
   - name: config_file
     type: string
-  - name: container
+  - name: cache_mode
     type: string
-  - name: temp_dir
-    type: string
-  - name: mount_dir
-    type: string    
-  - name: idstring
-    type: string
-  - name: adls
-    type: boolean
   - name: account_name
     type: string
   - name: account_key
     type: string
   - name: account_type
     type: string
-  - name: account_endpoint
-  - name: distro_name
-    type: string
-  - name: quick_test
-    type: boolean
-    default: true
   - name: verbose_log
     type: boolean
     default: false
-  - name: clone
-    type: boolean
-    default: false
-  - name: block_size_mb
-    type: string
-    default: "8"
 
-steps:   
+
+steps:
   - script: |
-      cd $(WORK_DIR)
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
-    displayName: 'Create Config File for New Block cache'
-    env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
-      VERBOSE_LOG: ${{ parameters.verbose_log }}
-    continueOnError: false
+      sudo apt-get install bc binutils bison dwarves flex gcc git gnupg2 gzip libelf-dev libncurses5-dev libssl-dev make openssl perl-base rsync tar xz-utils -y
+    displayName: 'Install tools required to build linux source'
+
+    # Generate config file for file cache
+  - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for File Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+      continueOnError: false
+
+  # Generate Config file for block cache
+  - ${{ if eq(parameters.cache_mode, 'block_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for Block Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
 
 
   - template: 'mount.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      ro_mount: false
-      mountStep: 
+      prefix: ${{ parameters.cache_mode }}
+      mountStep:
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
 
   - script: |
-      echo "----------------------------------------------"
-      ls -l ${{ parameters.mount_dir }}
-    displayName: 'Print contents of Block-Cache'
+      ls -lrt
+    displayName: 'Print contents of Mountpoint'
+    workingDirectory: $(MOUNT_DIR)    
 
   - script: |
       wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.tar.xz 
@@ -82,13 +74,15 @@ steps:
 
 
   - script: |
+      cd linux-*/
       make defconfig
     displayName: 'Make Config'
     workingDirectory: $(MOUNT_DIR)
 
   - script: |
+      cd linux-*/
       make -j$(nproc) 2>&1 | tee log
-    displayName: 'Compile Source'
+    displayName: 'Compile Linux Source using parallel make'
     workingDirectory: $(MOUNT_DIR)
 
   - script: |
@@ -109,16 +103,10 @@ steps:
 
   - script: |
       ./build.sh
-    displayName: 'Build Blobfuse'
+    displayName: 'Build Blobfuse on the Mountpoint'
     workingDirectory: $(MOUNT_DIR)/azure-storage-fuse
 
   - script: |
       ./blobfuse2 --version
-    displayName: 'Run Blobfuse'
+    displayName: 'Run Blobfuse on the Mountpoint'
     workingDirectory: $(MOUNT_DIR)/azure-storage-fuse
-
-  - template: 'cleanup.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}

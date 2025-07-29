@@ -1,10 +1,4 @@
 parameters:
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
-    type: string
   - name: mountStep
     type: step
   - name: prefix
@@ -19,16 +13,8 @@ steps:
   # Cleanup before mount
   - template: 'cleanup.yml'
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-
-   # Check if blobfuse_log.txt exists and empty it
-  # - script: |
-  #     if [ -f "blobfuse2-logs.txt" ]; then
-  #       > blobfuse2-logs.txt
-  #     fi
-  #   displayName: 'Empty blobfuse2-logs.txt if exists' 
+      unmount: true
+      delete_containers: false 
       
   # Mount the container
   - ${{ parameters.mountStep }}
@@ -38,20 +24,19 @@ steps:
       sleep 10s
     displayName: '${{ parameters.prefix }}: Waiting for mount'
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
-  # Check blobfuse2 is mounted or not
+  # Check blobfuse2 is mounted or not    
   - script: |
       sudo ps -aux | grep blobfuse2
     displayName: 'Print Process info'
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   # Delete all files test
-  - script: rm -rf ${mount_dir}/*
+  - script: |
+      rm -rf $(MOUNT_DIR)/*
     timeoutInMinutes: 30
     displayName: '${{ parameters.prefix }}: PreStart Cleanup'
     continueOnError: true
     condition: eq( ${{ parameters.ro_mount }}, false )
-    env:
-      mount_dir: ${{ parameters.mount_dir }}

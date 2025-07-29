@@ -79,6 +79,7 @@ type Libfuse struct {
 	maxFuseThreads        uint32
 	directIO              bool
 	umask                 uint32
+	disableKernelCache    bool
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -206,6 +207,12 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.ownerGID = opt.Gid
 	lf.ownerUID = opt.Uid
 	lf.umask = opt.Umask
+
+	if lf.disableKernelCache {
+		opt.DirectIO = true
+		lf.directIO = true
+		log.Crit("Libfuse::Validate : Kernel cache disabled, setting direct-io mode in fuse")
+	}
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -338,14 +345,24 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return err
 	}
 
+	_ = config.UnmarshalKey("disable-kernel-cache", &lf.disableKernelCache)
+
 	err = lf.Validate(&conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v",
-		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask)
+	// Disable libfuse logs if the mount is not running in foreground.
+	// Currently as of 01-05-2025, we emit the libfuse logs only to the stdout.
+	if !common.ForegroundMount {
+		if lf.traceEnable {
+			lf.traceEnable = false
+		}
+	}
+
+	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask, lf.disableKernelCache)
 
 	return nil
 }
