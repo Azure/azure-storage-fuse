@@ -2282,12 +2282,39 @@ func (s *blockBlobTestSuite) TestChangeOwnerFileNotFound() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
+	h, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	s.assert.Nil(err)
+	err = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.assert.Nil(err)
 
-	uid := 1001
-	gid := 1002
-	err := s.az.storage.ChangeOwner(name, uid, gid)
-	s.assert.NotNil(err)
+	uid := int(1001)
+	gid := int(1002)
+	err = s.az.storage.ChangeOwner(name, uid, gid)
+	s.assert.Nil(err)
 
+	attr, err := s.az.storage.GetAttr(name)
+	s.assert.NotNil(attr)
+	s.assert.Nil(err)
+	s.assert.Equal(attr.Owner, uid)
+	s.assert.Equal(attr.Group, gid)
+
+	gid = 1000
+	err = s.az.storage.ChangeOwner(name, int(0xffffffff), gid)
+	s.assert.Nil(err)
+	attr, err = s.az.storage.GetAttr(name)
+	s.assert.NotNil(attr)
+	s.assert.Nil(err)
+	s.assert.Equal(attr.Owner, uid)
+	s.assert.Equal(attr.Group, gid)
+
+	uid = 1002
+	err = s.az.storage.ChangeOwner(name, uid, int(0xffffffff))
+	s.assert.Nil(err)
+	attr, err = s.az.storage.GetAttr(name)
+	s.assert.NotNil(attr)
+	s.assert.Nil(err)
+	s.assert.Equal(attr.Owner, uid)
+	s.assert.Equal(attr.Group, gid)
 }
 
 func (s *blockBlobTestSuite) TestBlockSize() {

@@ -66,6 +66,7 @@ const (
 	PropFlagSymlink
 	PropFlagModeDefault
 	PropFlagOwnerInfoFound
+	PropFlagGroupInfoFound
 )
 
 // ObjAttr : Attributes of any file/directory
@@ -81,8 +82,8 @@ type ObjAttr struct {
 	Name     string             // base name of the path
 	MD5      []byte             // MD5 of the blob as per last GetAttr
 	ETag     string             // ETag of the blob as per last GetAttr
-	Owner    uint32             // Owner of the file
-	Group    uint32             // Group of the file
+	Owner    int                // Owner of the file
+	Group    int                // Group of the file
 	Metadata map[string]*string // extra information to preserve
 }
 
@@ -105,4 +106,9 @@ func (attr *ObjAttr) IsModeDefault() bool {
 // OwnerDetected :
 func (attr *ObjAttr) OwnerInfoFound() bool {
 	return attr.Flags.IsSet(PropFlagOwnerInfoFound)
+}
+
+// GroupDetected :
+func (attr *ObjAttr) GroupInfoFound() bool {
+	return attr.Flags.IsSet(PropFlagGroupInfoFound)
 }

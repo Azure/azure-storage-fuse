@@ -710,12 +710,13 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 	}
 
 	if blobInfo.Properties.Owner != nil {
-		attr.Owner = common.ParseUint32(*blobInfo.Properties.Owner)
+		attr.Owner = common.ParseInt(*blobInfo.Properties.Owner)
 		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
 	}
 
 	if blobInfo.Properties.Group != nil {
-		attr.Group = common.ParseUint32(*blobInfo.Properties.Group)
+		attr.Group = common.ParseInt(*blobInfo.Properties.Group)
+		attr.Flags.Set(internal.PropFlagGroupInfoFound)
 	}
 
 	return attr, nil
@@ -812,12 +813,13 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 	}
 
 	if blobInfo.Properties.Owner != nil {
-		attr.Owner = common.ParseUint32(*blobInfo.Properties.Owner)
+		attr.Owner = common.ParseInt(*blobInfo.Properties.Owner)
 		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
 	}
 
 	if blobInfo.Properties.Group != nil {
-		attr.Group = common.ParseUint32(*blobInfo.Properties.Group)
+		attr.Group = common.ParseInt(*blobInfo.Properties.Group)
+		attr.Flags.Set(internal.PropFlagGroupInfoFound)
 	}
 
 	return attr, nil
@@ -1594,8 +1596,16 @@ func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 			CPKInfo: bb.blobCPKOpt,
 		})
 		if err != nil {
-			log.Err("BlockBlob::ChangeMod : Failed to update Blob Metadata %s [%s]", name, err.Error())
-			return err
+			serr := storeBlobErrToErr(err)
+			if serr == ErrFileNotFound {
+				return syscall.ENOENT
+			} else if serr == InvalidPermission {
+				log.Err("BlockBlob::ChangeMod : Insufficient permissions for %s [%s]", name, err.Error())
+				return syscall.EACCES
+			} else {
+				log.Err("BlockBlob::ChangeMod : Failed to get blob properties for %s [%s]", name, err.Error())
+				return err
+			}
 		}
 	}
 
@@ -1630,8 +1640,15 @@ func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 		prop.Metadata = make(map[string]*string)
 	}
 
-	updatedOwner := AddMetadata(prop.Metadata, common.POSIXOwnerMeta, strconv.FormatUint(uint64(uid), 10))
-	updatedGroup := AddMetadata(prop.Metadata, common.POSIXGroupMeta, strconv.FormatUint(uint64(gid), 10))
+	var updatedOwner, updatedGroup bool
+	if uid != 0xffffffff {
+		// Update only if user has explicitly set the uid
+		updatedOwner = AddMetadata(prop.Metadata, common.POSIXOwnerMeta, strconv.FormatUint(uint64(uid), 10))
+	}
+	if gid != 0xffffffff {
+		// Update only if user has explicitly set the gid
+		updatedGroup = AddMetadata(prop.Metadata, common.POSIXGroupMeta, strconv.FormatUint(uint64(gid), 10))
+	}
 
 	// Apply metadata update
 	if updatedOwner || updatedGroup {
@@ -1639,15 +1656,17 @@ func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 			CPKInfo: bb.blobCPKOpt,
 		})
 
-		serr := storeBlobErrToErr(err)
-		if serr == ErrFileNotFound {
-			return syscall.ENOENT
-		} else if serr == InvalidPermission {
-			log.Err("BlockBlob::ChangeOwner : Insufficient permissions for %s [%s]", name, err.Error())
-			return syscall.EACCES
-		} else {
-			log.Err("BlockBlob::ChangeOwner : Failed to set blob properties for %s [%s]", name, err.Error())
-			return err
+		if err != nil {
+			serr := storeBlobErrToErr(err)
+			if serr == ErrFileNotFound {
+				return syscall.ENOENT
+			} else if serr == InvalidPermission {
+				log.Err("BlockBlob::ChangeOwner : Insufficient permissions for %s [%s]", name, err.Error())
+				return syscall.EACCES
+			} else {
+				log.Err("BlockBlob::ChangeOwner : Failed to set blob properties for %s [%s]", name, err.Error())
+				return err
+			}
 		}
 	}
 

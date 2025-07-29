@@ -295,9 +295,10 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 				attr.Mode = attr.Mode | os.ModeSymlink
 			} else if strings.ToLower(k) == common.POSIXOwnerMeta {
 				attr.Flags.Set(internal.PropFlagOwnerInfoFound)
-				attr.Owner = common.ParseUint32(*v)
+				attr.Owner = common.ParseInt(*v)
 			} else if strings.ToLower(k) == common.POSIXGroupMeta {
-				attr.Group = common.ParseUint32(*v)
+				attr.Flags.Set(internal.PropFlagGroupInfoFound)
+				attr.Group = common.ParseInt(*v)
 			} else if strings.ToLower(k) == common.POSIXModeMeta {
 				attr.Mode, _ = getFileMode(*v)
 			}

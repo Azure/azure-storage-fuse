@@ -522,8 +522,8 @@ func GetCRC64(data []byte, len int) []byte {
 	return checksumBytes
 }
 
-// parseUint32 converts a *string to uint32
-func ParseUint32(s string) uint32 {
+// ParseInt converts a *string to uint32
+func ParseInt(s string) int {
 	if s == "" {
 		return 0
 	}
@@ -531,7 +531,7 @@ func ParseUint32(s string) uint32 {
 	if err != nil {
 		return 0
 	}
-	return uint32(val)
+	return int(val)
 }
 
 func GetMD5(fi *os.File) ([]byte, error) {

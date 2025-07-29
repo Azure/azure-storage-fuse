@@ -453,12 +453,13 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 
 func parsePosixInfo(attr *internal.ObjAttr, prop file.GetPropertiesResponse) {
 	if prop.Owner != nil {
-		attr.Owner = common.ParseUint32(*prop.Owner)
+		attr.Owner = common.ParseInt(*prop.Owner)
 		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
 	}
 
 	if prop.Group != nil {
-		attr.Group = common.ParseUint32(*prop.Group)
+		attr.Group = common.ParseInt(*prop.Group)
+		attr.Flags.Set(internal.PropFlagGroupInfoFound)
 	}
 }
 
@@ -604,14 +605,20 @@ func (dl *Datalake) ChangeOwner(name string, uid int, gid int) error {
 		}
 	}
 
-	uidStr := fmt.Sprintf("%d", uid)
-	gidStr := fmt.Sprintf("%d", gid)
-
 	opts := &file.SetAccessControlOptions{
 		Permissions: resp.Permissions,
-		Owner:       &uidStr,
-		Group:       &gidStr,
 		ACL:         resp.ACL,
+	}
+
+	var uidStr, gidStr string
+	if uid != -1 {
+		uidStr = fmt.Sprintf("%d", uid)
+		opts.Owner = &uidStr
+	}
+
+	if gid != -1 {
+		gidStr = fmt.Sprintf("%d", gid)
+		opts.Group = &gidStr
 	}
 
 	_, err = fileClient.SetAccessControl(context.Background(), opts)

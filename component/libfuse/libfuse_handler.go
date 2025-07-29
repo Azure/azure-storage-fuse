@@ -352,6 +352,9 @@ func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
 	if !lf.overrideUser && attr.OwnerInfoFound() {
 		// If overrideUser is not set then we user the owner/group as per blob
 		(*stbuf).st_uid = C.uint(attr.Owner)
+	}
+	if !lf.overrideUser && attr.GroupInfoFound() {
+		// If overrideUser is not set then we user the owner/group as per blob
 		(*stbuf).st_gid = C.uint(attr.Group)
 	}
 
