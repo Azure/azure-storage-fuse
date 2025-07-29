@@ -105,7 +105,7 @@ type BlockCacheOptions struct {
 }
 
 const (
-	compName                = "block_cache"
+	compName                = "block_cache_old"
 	defaultTimeout          = 120
 	defaultBlockSize        = 16
 	MAX_POOL_USAGE   uint32 = 80
@@ -1983,30 +1983,34 @@ func NewBlockCacheComponent() internal.Component {
 func init() {
 	internal.AddComponent(compName, NewBlockCacheComponent)
 
-	blockSizeMb := config.AddFloat64Flag("block-cache-block-size", 0.0, "Size (in MB) of a block to be downloaded for block-cache.")
-	config.BindPFlag(compName+".block-size-mb", blockSizeMb)
+	// As flag parsing is done before initializing the pipeline, we need to register them ahead. But as block_cache is a
+	// replacement component to block_cache old, all the flags are same as block_cache old and initialized in the
+	// block_cache package itself. As we cannot have two packages initializing the same flags, we comment them here.
 
-	blockPoolMb := config.AddUint64Flag("block-cache-pool-size", 0, "Size (in MB) of total memory preallocated for block-cache.")
-	config.BindPFlag(compName+".mem-size-mb", blockPoolMb)
+	// blockSizeMb := config.AddFloat64Flag("block-cache-block-size", 0.0, "Size (in MB) of a block to be downloaded for block-cache.")
+	// config.BindPFlag(compName+".block-size-mb", blockSizeMb)
 
-	blockCachePath := config.AddStringFlag("block-cache-path", "", "Path to store downloaded blocks.")
-	config.BindPFlag(compName+".path", blockCachePath)
+	// blockPoolMb := config.AddUint64Flag("block-cache-pool-size", 0, "Size (in MB) of total memory preallocated for block-cache.")
+	// config.BindPFlag(compName+".mem-size-mb", blockPoolMb)
 
-	blockDiskMb := config.AddUint64Flag("block-cache-disk-size", 0, "Size (in MB) of total disk capacity that block-cache can use.")
-	config.BindPFlag(compName+".disk-size-mb", blockDiskMb)
+	// blockCachePath := config.AddStringFlag("block-cache-path", "", "Path to store downloaded blocks.")
+	// config.BindPFlag(compName+".path", blockCachePath)
 
-	blockDiskTimeout := config.AddUint32Flag("block-cache-disk-timeout", 0, "Timeout (in seconds) for which persisted data remains in disk cache.")
-	config.BindPFlag(compName+".disk-timeout-sec", blockDiskTimeout)
+	// blockDiskMb := config.AddUint64Flag("block-cache-disk-size", 0, "Size (in MB) of total disk capacity that block-cache can use.")
+	// config.BindPFlag(compName+".disk-size-mb", blockDiskMb)
 
-	blockCachePrefetch := config.AddUint32Flag("block-cache-prefetch", 0, "Max number of blocks to prefetch.")
-	config.BindPFlag(compName+".prefetch", blockCachePrefetch)
+	// blockDiskTimeout := config.AddUint32Flag("block-cache-disk-timeout", 0, "Timeout (in seconds) for which persisted data remains in disk cache.")
+	// config.BindPFlag(compName+".disk-timeout-sec", blockDiskTimeout)
 
-	blockParallelism := config.AddUint32Flag("block-cache-parallelism", 128, "Number of worker thread responsible for upload/download jobs.")
-	config.BindPFlag(compName+".parallelism", blockParallelism)
+	// blockCachePrefetch := config.AddUint32Flag("block-cache-prefetch", 0, "Max number of blocks to prefetch.")
+	// config.BindPFlag(compName+".prefetch", blockCachePrefetch)
 
-	blockCachePrefetchOnOpen := config.AddBoolFlag("block-cache-prefetch-on-open", false, "Start prefetching on open or wait for first read.")
-	config.BindPFlag(compName+".prefetch-on-open", blockCachePrefetchOnOpen)
+	// blockParallelism := config.AddUint32Flag("block-cache-parallelism", 128, "Number of worker thread responsible for upload/download jobs.")
+	// config.BindPFlag(compName+".parallelism", blockParallelism)
 
-	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
-	config.BindPFlag(compName+".consistency", strongConsistency)
+	// blockCachePrefetchOnOpen := config.AddBoolFlag("block-cache-prefetch-on-open", false, "Start prefetching on open or wait for first read.")
+	// config.BindPFlag(compName+".prefetch-on-open", blockCachePrefetchOnOpen)
+
+	// strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
+	// config.BindPFlag(compName+".consistency", strongConsistency)
 }
