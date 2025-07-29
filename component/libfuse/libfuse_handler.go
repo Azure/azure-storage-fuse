@@ -73,8 +73,6 @@ When read/write/flush/close call comes libfuse will supply this handle value bac
 In those calls we will convert integer value back to a pointer and get our valid handle object back for that file.
 */
 
-var logy *os.File
-
 const (
 	C_ENOENT = int(-C.ENOENT)
 	C_EIO    = int(-C.EIO)
