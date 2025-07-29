@@ -42,7 +42,8 @@ import (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
-// Duration wraps time.Duration to provide custom JSON marshaling/unmarshaling.
+// Define Duration as an alias to time.Duration to provide custom JSON marshaling that formats it as a pretty
+// string for the form "10.3412ms" instead of a number of nanoseconds.
 type Duration time.Duration
 
 // MarshalJSON implements the json.Marshaler interface for Duration.
@@ -52,6 +53,8 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 }
 
 // Metadata manager stats.
+// These should help us understand the performance of the metadata manager and its interactions with Azure
+// storage.
 type MMStats struct {
 	// Number of metadata folders created by this node.
 	MetadataFoldersCreatedByThisNode int64 `json:"metadata_folders_created_by_this_node,omitempty"`
@@ -63,14 +66,17 @@ type MMStats struct {
 		// How many times getBlobSafe() had to retry as the blob LMT changed due to simultaneous update.
 		Retries int64 `json:"retries,omitempty"`
 		// How many times getBlobSafe() failed after exhausting all retries.
-		Failures  int64     `json:"failures,omitempty"`
-		LastError string    `json:"last_error,omitempty"`
-		MinDur    *Duration `json:"min_time,omitempty"`
-		MaxDur    Duration  `json:"max_time,omitempty"`
-		TotalDur  Duration  `json:"-"`
-		AvgDur    Duration  `json:"avg_time,omitempty"`
+		Failures int64 `json:"failures,omitempty"`
+		// Last error message, if any encountered during getBlobSafe().
+		LastError string `json:"last_error,omitempty"`
+		// Minimum, maximum, total and average duration of all getBlobSafe() calls.
+		MinDur   *Duration `json:"min_time,omitempty"`
+		MaxDur   Duration  `json:"max_time,omitempty"`
+		TotalDur Duration  `json:"-"`
+		AvgDur   Duration  `json:"avg_time,omitempty"`
 	} `json:"get_blob_safe"`
 
+	// Storage GetBlob call stats.
 	StorageGetBlob struct {
 		Calls    int64     `json:"calls"`
 		Failures int64     `json:"failures,omitempty"`
@@ -80,6 +86,7 @@ type MMStats struct {
 		AvgDur   Duration  `json:"avg_time,omitempty"`
 	} `json:"storage_get_blob"`
 
+	// Storage GetProperties call stats.
 	StorageGetProperties struct {
 		Calls    int64     `json:"calls"`
 		Failures int64     `json:"failures,omitempty"`
@@ -89,6 +96,7 @@ type MMStats struct {
 		AvgDur   Duration  `json:"avg_time,omitempty"`
 	} `json:"storage_get_properties"`
 
+	// Storage PutBlob call stats.
 	StoragePutBlob struct {
 		Calls    int64     `json:"calls"`
 		Failures int64     `json:"failures,omitempty"`
@@ -98,6 +106,7 @@ type MMStats struct {
 		AvgDur   Duration  `json:"avg_time,omitempty"`
 	} `json:"storage_put_blob"`
 
+	// Storage ListDir call stats.
 	StorageListDir struct {
 		Calls    int64     `json:"calls"`
 		Failures int64     `json:"failures,omitempty"`
@@ -107,16 +116,21 @@ type MMStats struct {
 		AvgDur   Duration  `json:"avg_time,omitempty"`
 	} `json:"storage_list_dir"`
 
+	// Heartbeat stats.
 	Heartbeat struct {
 		Published     int64     `json:"published"`
 		LastPublished time.Time `json:"last_published"`
 		SizeInBytes   int64     `json:"size_in_bytes"`
-		MinGapDur     *Duration `json:"min_gap_time,omitempty"`
-		MaxGapDur     Duration  `json:"max_gap_time"`
-		Fetched       int64     `json:"fetched,omitempty"`
+		MinGapDur     *Duration `json:"min_gap,omitempty"`
+		MaxGapDur     Duration  `json:"max_gap"`
+		TotalGapDur   Duration  `json:"-"`
+		AvgGapDur     Duration  `json:"avg_gap,omitempty"`
+		// How many heartbeats were fetched (only cluster_manager leader fetches heartbeats).
+		Fetched int64 `json:"fetched,omitempty"`
 	} `json:"heartbeat"`
 
 	Clustermap struct {
+		// How many times clustermap was updated (only cluster_manager leader updates clustermap).
 		UpdateStartCalls int64     `json:"update_start_calls"`
 		UpdateEndCalls   int64     `json:"update_end_calls"`
 		LastUpdateStart  time.Time `json:"-"`
@@ -125,8 +139,9 @@ type MMStats struct {
 		MaxUpdateDur     Duration  `json:"max_update_time,omitempty"`
 		TotalUpdateDur   Duration  `json:"-"`
 		AvgUpdateDur     Duration  `json:"avg_update_time,omitempty"`
-		GetCalls         int64     `json:"get_calls,omitempty"`
-		LastError        string    `json:"last_error,omitempty"`
+		// How many time clustermap was fetched.
+		GetCalls  int64  `json:"get_calls,omitempty"`
+		LastError string `json:"last_error,omitempty"`
 	} `json:"clustermap"`
 
 	CreateFile struct {
@@ -236,6 +251,11 @@ func (s *DCacheStats) Preprocess() {
 	filesCreatedFromThisNode := s.MM.CreateFile.FinalizeCalls - s.MM.CreateFile.FinalizeFailures
 	if filesCreatedFromThisNode > 0 {
 		s.MM.CreateFile.AvgSizeBytes = s.MM.CreateFile.TotalSizeBytes / filesCreatedFromThisNode
+	}
+
+	if s.MM.Heartbeat.Published > 0 {
+		s.MM.Heartbeat.AvgGapDur =
+			Duration(float64(s.MM.Heartbeat.TotalGapDur) / float64(s.MM.Heartbeat.Published))
 	}
 
 	if s.MM.Clustermap.UpdateEndCalls > 0 {

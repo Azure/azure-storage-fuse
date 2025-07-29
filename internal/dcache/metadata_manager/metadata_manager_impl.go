@@ -1055,6 +1055,7 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 		}
 		stats.Stats.MM.Heartbeat.MaxGapDur =
 			max(stats.Stats.MM.Heartbeat.MaxGapDur, gap)
+		atomic.AddInt64((*int64)(&stats.Stats.MM.Heartbeat.TotalGapDur), int64(gap))
 	}
 	stats.Stats.MM.Heartbeat.LastPublished = time.Now()
 	stats.Stats.MM.Heartbeat.SizeInBytes = int64(len(data))
