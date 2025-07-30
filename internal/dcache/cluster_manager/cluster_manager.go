@@ -2843,7 +2843,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	if err != nil {
 		return false, err
 	}
-	log.Debug("ClusterManager::updateRVList: Collected %d heartbeats for %d nodes (initialHB=%v), failed to read HB for %d nodes: %+v",
+	log.Debug("ClusterManager::updateRVList: Collected %d RVs from %d nodes (initialHB=%v), failed to read HB for %d nodes: %+v",
 		len(rVsByRvIdFromHB), len(nodes), initialHB, len(failedToReadNodes), failedToReadNodes)
 
 	// Both the RV and the RV HB map must have the exact same RVs.
@@ -3140,7 +3140,6 @@ func getAllNodesFromRVMap(rvMap map[string]dcache.RawVolume) map[string]struct{}
 //   - All the RVs present in those nodes.
 //   - The last heartbeat epoch for each of those RVs.
 //   - List of nodeIds for which the heartbeat was found.
-//     This is only valid if initialHB is true, else it is empty.
 //   - List of nodeIds for which the heartbeat could not be fetched.
 //
 // The first two are returned as maps indexed by RVId.
@@ -3258,18 +3257,14 @@ func collectHBForGivenNodeIds(nodeIds []string, initialHB bool) (map[string]dcac
 			rvLastHB[rvId] = lastHB
 
 			// This node contributed at least one RV in rVsByRvIdFromHB.
-			if initialHB {
-				successfulNodeIdsMap[result.nodeId] = struct{}{}
-			}
+			successfulNodeIdsMap[result.nodeId] = struct{}{}
 		}
 	}
 
 	// Convert to list for returning.
 	successfulNodeIds := make([]string, 0)
-	if initialHB {
-		for nodeId := range successfulNodeIdsMap {
-			successfulNodeIds = append(successfulNodeIds, nodeId)
-		}
+	for nodeId := range successfulNodeIdsMap {
+		successfulNodeIds = append(successfulNodeIds, nodeId)
 	}
 
 	if len(errCh) > 0 {
