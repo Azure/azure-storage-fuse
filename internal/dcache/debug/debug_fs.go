@@ -72,11 +72,13 @@ func init() {
 	// Register the callbacks for the procFiles.
 	procFiles = map[string]*procFile{
 		"clustermap": &procFile{
-			buf:           make([]byte, 0, 4096),
-			openCnt:       0,
 			refreshBuffer: readClusterMapCallback,
 			getAttr:       getAttrClusterMapCallback,
 		}, // Show clusterInfo about dcache.
+
+		"stats": &procFile{
+			refreshBuffer: readStatsCallback,
+		}, // Show dcache stats.
 	}
 
 	procDirList = make([]*internal.ObjAttr, 0, len(procFiles))
@@ -162,17 +164,18 @@ func openProcFile(path string) (*procFile, error) {
 	if pFile, ok := procFiles[path]; ok {
 		pFile.mu.Lock()
 		defer pFile.mu.Unlock()
-		common.Assert(pFile.openCnt >= 0, fmt.Sprintf("Open Cnt for procFile: %s, openCnt: %d", path, pFile.openCnt))
+		common.Assert(pFile.openCnt >= 0, path, pFile.openCnt)
 		if pFile.openCnt == 0 {
 			// This is the first handle to the proc File refresh the contents of the procFile.
 			// Reset the buffer to length 0
-			pFile.buf = pFile.buf[:0]
 			err := pFile.refreshBuffer(pFile)
 			if err != nil {
 				return nil, err
 			}
 		}
 		pFile.openCnt++
+		// Buffer must be allocated and must contain valid data.
+		common.Assert(len(pFile.buf) > 0, len(pFile.buf))
 		return pFile, nil
 	}
 	return nil, syscall.ENOENT

@@ -26,8 +26,7 @@ steps:
   #
   # Generate Config file for File cache
 
-  - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
-      
+  - ${{ if eq(parameters.cache_mode, 'file_cache') }}:      
       # Generate config file for file cache
     - script: |
         $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}

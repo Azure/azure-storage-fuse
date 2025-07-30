@@ -1775,10 +1775,13 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 
 	//
 	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered read.
+	// Smaller buffers (less than 1MiB) have been seen to be not aligned to FS_BLOCK_SIZE, we exclude
+	// those from the assert since those are rare and do not affect performance.
 	//
 	dataAddr := unsafe.Pointer(&(*data)[0])
 	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
-	common.Assert(isDataBufferAligned, uintptr(dataAddr), common.FS_BLOCK_SIZE)
+	common.Assert((readLength < 1024*1024) || isDataBufferAligned,
+		uintptr(dataAddr), readLength, common.FS_BLOCK_SIZE)
 
 	//
 	// Hash file is small, perform buffered read.
@@ -2075,10 +2078,11 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 
 	//
 	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered write.
+	// For writes we always allocate chunk sized buffers so buffer must be aligned to FS_BLOCK_SIZE.
 	//
 	dataAddr := unsafe.Pointer(&(*data)[0])
 	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
-	common.Assert(isDataBufferAligned, uintptr(dataAddr), common.FS_BLOCK_SIZE)
+	common.Assert(isDataBufferAligned, uintptr(dataAddr), writeLength, common.FS_BLOCK_SIZE)
 
 	//
 	// Write to .tmp file first and rename it to the final file after successful write.
