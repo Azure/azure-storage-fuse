@@ -41,7 +41,7 @@ import (
 //go:generate $ASSERT_REMOVER $GOFILE
 
 // Define Duration as an alias for time.Duration to provide custom JSON marshaling that formats it as a pretty
-// string for the form "10.3412ms" instead of a number of nanoseconds.
+// string of the form "10.3412ms" instead of the number of nanoseconds.
 type Duration time.Duration
 
 // MarshalJSON implements the json.Marshaler interface for Duration.
@@ -188,7 +188,7 @@ type MMStats struct {
 // Cluster manager stats.
 type CMStats struct {
 	// Total time spent in cleaning up stale MVs from all the local RVs.
-	RVCleanupDuration Duration `json:"rv_cleanup_duration,omitempty"`
+	RVCleanupDuration Duration `json:"rv_cleanup_duration"`
 	// How many MVs were deleted when this node started.
 	MVsDeleted int64 `json:"mvs_deleted,omitempty"`
 	// MVs that could not be deleted as deletion failed.
@@ -196,9 +196,11 @@ type CMStats struct {
 	// Did this node create the initial clustermap?
 	CreatedInitialClustermap bool `json:"created_initial_clustermap,omitempty"`
 	// Time taken to update the clustermap with the local RVs.
-	UpdateClustermapWithMyRVsDuration Duration `json:"update_clustermap_with_my_rvs_duration,omitempty"`
+	UpdateClustermapWithMyRVsDuration Duration `json:"update_clustermap_with_my_rvs_duration"`
 	// Time taken to ensure the initial clustermap is created, with the local RVs and node joins the cluster.
-	EnsureInitialClustermapDuration Duration `json:"ensure_initial_clustermap_duration,omitempty"`
+	EnsureInitialClustermapDuration Duration `json:"ensure_initial_clustermap_duration"`
+
+	// TODO: Add more stats.
 }
 
 // Replication manager stats.

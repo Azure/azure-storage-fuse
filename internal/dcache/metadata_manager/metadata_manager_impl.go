@@ -78,7 +78,7 @@ func GetPropertiesFromStorageWithStats(scb *dcache.StorageCallbacks,
 
 	start := time.Now()
 	attr, err := (*scb).GetPropertiesFromStorage(options)
-	// Don't update stats for failed calls so as not to skew the stats.
+	// Don't update stats for failed calls to avoid skewing the stats.
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StorageGetProperties.Failures, 1)
 		err1 := fmt.Errorf("Failed for %+v: %v", options, err)
@@ -94,13 +94,13 @@ func GetPropertiesFromStorageWithStats(scb *dcache.StorageCallbacks,
 	//
 	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetProperties.TotalTime), int64(duration))
 	if stats.Stats.MM.StorageGetProperties.MinTime == nil ||
-		*stats.Stats.MM.StorageGetProperties.MinTime > duration {
+		duration < *stats.Stats.MM.StorageGetProperties.MinTime {
 		stats.Stats.MM.StorageGetProperties.MinTime = &duration
 	}
 	stats.Stats.MM.StorageGetProperties.MaxTime =
 		max(stats.Stats.MM.StorageGetProperties.MaxTime, duration)
 
-	return attr, err
+	return attr, nil
 }
 
 // Call GetBlob while measuring the time taken and updating various stats.
@@ -109,7 +109,7 @@ func GetBlobFromStorageWithStats(scb *dcache.StorageCallbacks,
 	atomic.AddInt64(&stats.Stats.MM.StorageGetBlob.Calls, 1)
 
 	start := time.Now()
-	// Don't update stats for failed calls so as not to skew the stats.
+	// Don't update stats for failed calls to avoid skewing the stats.
 	data, err := (*scb).GetBlobFromStorage(options)
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StorageGetBlob.Failures, 1)
@@ -126,13 +126,13 @@ func GetBlobFromStorageWithStats(scb *dcache.StorageCallbacks,
 	//
 	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetBlob.TotalTime), int64(duration))
 	if stats.Stats.MM.StorageGetBlob.MinTime == nil ||
-		*stats.Stats.MM.StorageGetBlob.MinTime > duration {
+		duration < *stats.Stats.MM.StorageGetBlob.MinTime {
 		stats.Stats.MM.StorageGetBlob.MinTime = &duration
 	}
 	stats.Stats.MM.StorageGetBlob.MaxTime =
 		max(stats.Stats.MM.StorageGetBlob.MaxTime, duration)
 
-	return data, err
+	return data, nil
 }
 
 // Call PutBlob while measuring the time taken and updating various stats.
@@ -141,7 +141,7 @@ func PutBlobInStorageWithStats(scb *dcache.StorageCallbacks,
 	atomic.AddInt64(&stats.Stats.MM.StoragePutBlob.Calls, 1)
 
 	start := time.Now()
-	// Don't update stats for failed calls so as not to skew the stats.
+	// Don't update stats for failed calls to avoid skewing the stats.
 	data, err := (*scb).PutBlobInStorage(options)
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StoragePutBlob.Failures, 1)
@@ -158,13 +158,13 @@ func PutBlobInStorageWithStats(scb *dcache.StorageCallbacks,
 	//
 	atomic.AddInt64((*int64)(&stats.Stats.MM.StoragePutBlob.TotalTime), int64(duration))
 	if stats.Stats.MM.StoragePutBlob.MinTime == nil ||
-		*stats.Stats.MM.StoragePutBlob.MinTime > duration {
+		duration < *stats.Stats.MM.StoragePutBlob.MinTime {
 		stats.Stats.MM.StoragePutBlob.MinTime = &duration
 	}
 	stats.Stats.MM.StoragePutBlob.MaxTime =
 		max(stats.Stats.MM.StoragePutBlob.MaxTime, duration)
 
-	return data, err
+	return data, nil
 }
 
 // Call ReadDirectory while measuring the time taken and updating various stats.
@@ -173,7 +173,7 @@ func ReadDirFromStorageWithStats(scb *dcache.StorageCallbacks,
 	atomic.AddInt64(&stats.Stats.MM.StorageListDir.Calls, 1)
 
 	start := time.Now()
-	// Don't update stats for failed calls so as not to skew the stats.
+	// Don't update stats for failed calls to avoid skewing the stats.
 	list, err := (*scb).ReadDirFromStorage(options)
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StorageListDir.Failures, 1)
@@ -190,13 +190,13 @@ func ReadDirFromStorageWithStats(scb *dcache.StorageCallbacks,
 	//
 	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageListDir.TotalTime), int64(duration))
 	if stats.Stats.MM.StorageListDir.MinTime == nil ||
-		*stats.Stats.MM.StorageListDir.MinTime > duration {
+		duration < *stats.Stats.MM.StorageListDir.MinTime {
 		stats.Stats.MM.StorageListDir.MinTime = &duration
 	}
 	stats.Stats.MM.StorageListDir.MaxTime =
 		max(stats.Stats.MM.StorageListDir.MaxTime, duration)
 
-	return list, err
+	return list, nil
 }
 
 // This must be called from DistributedCache component's Start() method.
@@ -454,13 +454,13 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 			blobPath, len(data), attr1.ETag, i)
 
 		duration := stats.Duration(time.Since(start))
+		atomic.AddInt64((*int64)(&stats.Stats.MM.GetBlobSafe.TotalTime), int64(duration))
 		if stats.Stats.MM.GetBlobSafe.MinTime == nil ||
-			*stats.Stats.MM.GetBlobSafe.MinTime > duration {
+			duration < *stats.Stats.MM.GetBlobSafe.MinTime {
 			stats.Stats.MM.GetBlobSafe.MinTime = &duration
 		}
 		stats.Stats.MM.GetBlobSafe.MaxTime =
 			max(stats.Stats.MM.GetBlobSafe.MaxTime, duration)
-		atomic.AddInt64((*int64)(&stats.Stats.MM.GetBlobSafe.TotalTime), int64(duration))
 
 		// Return the cluster map content and ETag
 		return data, attr1, nil
@@ -619,7 +619,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.TotalSizeBytes, fileSize)
 	if stats.Stats.MM.CreateFile.MinSizeBytes == nil ||
-		*stats.Stats.MM.CreateFile.MinSizeBytes > fileSize {
+		fileSize < *stats.Stats.MM.CreateFile.MinSizeBytes {
 		stats.Stats.MM.CreateFile.MinSizeBytes = &fileSize
 	}
 	stats.Stats.MM.CreateFile.MaxSizeBytes =
@@ -882,6 +882,7 @@ func (m *BlobMetadataManager) closeFile(filePath string, attr *internal.ObjAttr)
 	if err != nil {
 		err1 := fmt.Errorf("CloseFile:: Failed to update file open count for path %s: %v", path, err)
 		log.Err("%v", err1)
+		common.Assert(false, err1)
 		stats.Stats.MM.GetFile.LastError = err1.Error()
 		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return -1, err
@@ -1069,10 +1070,10 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 	if err != nil {
 		err1 := fmt.Errorf("UpdateHeartbeat:: Failed to put heartbeat blob path %s in storage: %v",
 			heartbeatFilePath, err)
-		atomic.AddInt64(&stats.Stats.MM.Heartbeat.PublishFailures, 1)
-		stats.Stats.MM.Heartbeat.LastError = err1.Error()
 		log.Err("%v", err1)
 		common.Assert(false, err1)
+		atomic.AddInt64(&stats.Stats.MM.Heartbeat.PublishFailures, 1)
+		stats.Stats.MM.Heartbeat.LastError = err1.Error()
 		return err
 	}
 
@@ -1081,7 +1082,7 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 		now := time.Now()
 		gap := stats.Duration(now.Sub(stats.Stats.MM.Heartbeat.LastPublished))
 		if stats.Stats.MM.Heartbeat.MinGap == nil ||
-			*stats.Stats.MM.Heartbeat.MinGap > gap {
+			gap < *stats.Stats.MM.Heartbeat.MinGap {
 			stats.Stats.MM.Heartbeat.MinGap = &gap
 		}
 		stats.Stats.MM.Heartbeat.MaxGap =
@@ -1134,9 +1135,9 @@ func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 		err1 := fmt.Errorf("GetHeartbeat:: Failed to get heartbeat file content for %s: %v",
 			heartbeatFilePath, err)
 		log.Err("%v", err1)
+		common.Assert(false, err1)
 		atomic.AddInt64(&stats.Stats.MM.Heartbeat.FetchFailures, 1)
 		stats.Stats.MM.Heartbeat.LastError = err1.Error()
-		common.Assert(false, err1)
 		return nil, err
 	}
 
@@ -1289,6 +1290,8 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 // UpdateClusterMapEnd finalizes the cluster map update.
 // TODO: For safe update updateClusterMapStart() should return a Etag which must be passed to updateClusterMapEnd()
 func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
+	// Must have been set by updateClusterMapStart().
+	common.Assert(!stats.Stats.MM.Clustermap.LastUpdateStart.IsZero())
 	updateDuration := stats.Duration(time.Since(stats.Stats.MM.Clustermap.LastUpdateStart))
 	atomic.AddInt64(&stats.Stats.MM.Clustermap.UpdateEndCalls, 1)
 
@@ -1322,9 +1325,9 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	}
 
 	stats.Stats.MM.Clustermap.LastUpdated = time.Now()
-	stats.Stats.MM.Clustermap.TotalUpdateTime += updateDuration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.Clustermap.TotalUpdateTime), int64(updateDuration))
 	if stats.Stats.MM.Clustermap.MinUpdateTime == nil ||
-		*stats.Stats.MM.Clustermap.MinUpdateTime > updateDuration {
+		updateDuration < *stats.Stats.MM.Clustermap.MinUpdateTime {
 		stats.Stats.MM.Clustermap.MinUpdateTime = &updateDuration
 	}
 	stats.Stats.MM.Clustermap.MaxUpdateTime =
