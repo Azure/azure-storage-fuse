@@ -52,6 +52,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
@@ -141,6 +142,10 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		return fmt.Errorf("ClusterManager::start Could not get hostname: %v", err)
 	}
 
+	stats.Stats.NodeId = cmi.myNodeId
+	stats.Stats.IPAddr = cmi.myIPAddress
+	stats.Stats.HostName = cmi.myHostName
+
 	cmi.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
 
 	// Note that all nodes in the cluster use consistent config. The node that uploads the initial
@@ -155,10 +160,12 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//
 	log.Info("ClusterManager::start: ==> Ensuring initial cluster map with my RVs %+v", rvs)
 
+	startTime := time.Now()
 	err = cmi.ensureInitialClusterMap(dCacheConfig, rvs)
 	if err != nil {
 		return err
 	}
+	stats.Stats.CM.EnsureInitialClustermapDuration = stats.Duration(time.Since(startTime))
 
 	//
 	// It's unlikely, but due to some misconfiguration all of my RVs may not have been added to clustermap,
@@ -688,6 +695,9 @@ func cleanupRV(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) error {
 			rv.LocalCachePath, deleteFailures.Load(), deleteSuccess.Load())
 	}
 
+	atomic.AddInt64(&stats.Stats.CM.MVsDeleted, deleteSuccess.Load())
+	atomic.AddInt64(&stats.Stats.CM.MVsDeleteFailed, deleteFailures.Load())
+
 	log.Info("ClusterManager::cleanupRV: Successfully cleaned up RV dir %s, deleted %d MV(s)",
 		rv.LocalCachePath, deleteSuccess.Load())
 
@@ -962,12 +972,14 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//       It must go through the proper re-induction workflow where it must wait for it to be removed
 	//       from all MVs, clean up the RV directory and then add back.
 	//
+	startTime := time.Now()
 	isClusterMapExists, err := cmi.safeCleanupMyRVs(rvs)
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: Failed to check clustermap: %v", err)
 		common.Assert(false)
 		return err
 	}
+	stats.Stats.CM.RVCleanupDuration = stats.Duration(time.Since(startTime))
 
 	if isClusterMapExists {
 		//
@@ -1037,6 +1049,7 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 	// else it updates the clustermap with our local RVs added to the RV list.
 	// This also punches the initial heartbeat.
 	//
+	startTime = time.Now()
 	err = cmi.updateStorageClusterMapWithMyRVs(rvs)
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: updateStorageClusterMapWithMyRVs failed: %v %+v",
@@ -1044,6 +1057,7 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 		common.Assert(false, err)
 		return err
 	}
+	stats.Stats.CM.UpdateClustermapWithMyRVsDuration = stats.Duration(time.Since(startTime))
 
 	//
 	// Save local copy of the clustermap.
