@@ -1,0 +1,112 @@
+parameters:
+  - name: config_file
+    type: string
+  - name: cache_mode
+    type: string
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: verbose_log
+    type: boolean
+    default: false
+
+
+steps:
+  - script: |
+      sudo apt-get install bc binutils bison dwarves flex gcc git gnupg2 gzip libelf-dev libncurses5-dev libssl-dev make openssl perl-base rsync tar xz-utils -y
+    displayName: 'Install tools required to build linux source'
+
+    # Generate config file for file cache
+  - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for File Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+      continueOnError: false
+
+  # Generate Config file for block cache
+  - ${{ if eq(parameters.cache_mode, 'block_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for Block Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+
+
+  - template: 'mount.yml'
+    parameters:
+      prefix: ${{ parameters.cache_mode }}
+      mountStep:
+        script: |
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
+
+  - script: |
+      ls -lrt
+    displayName: 'Print contents of Mountpoint'
+    workingDirectory: $(MOUNT_DIR)    
+
+  - script: |
+      wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.tar.xz 
+    displayName: 'Download latest linux Source'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      unxz --keep linux-*.tar.xz
+    displayName: 'Uncompress Tarballs'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      tar -xvf linux-*.tar
+    displayName: 'Untar Linux source'
+    workingDirectory: $(MOUNT_DIR)
+
+
+  - script: |
+      cd linux-*/
+      make defconfig
+    displayName: 'Make Config'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      cd linux-*/
+      make -j$(nproc) 2>&1 | tee log
+    displayName: 'Compile Linux Source using parallel make'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      git clone https://github.com/microsoft/vscode.git
+    displayName: 'Git Clone VS Code'
+    workingDirectory: $(MOUNT_DIR)
+
+
+  - script: |
+      git clone https://github.com/libfuse/libfuse.git
+    displayName: 'Git clone libfuse'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      git clone https://github.com/Azure/azure-storage-fuse.git
+    displayName: 'Git clone Blobfuse2'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      ./build.sh
+    displayName: 'Build Blobfuse on the Mountpoint'
+    workingDirectory: $(MOUNT_DIR)/azure-storage-fuse
+
+  - script: |
+      ./blobfuse2 --version
+    displayName: 'Run Blobfuse on the Mountpoint'
+    workingDirectory: $(MOUNT_DIR)/azure-storage-fuse

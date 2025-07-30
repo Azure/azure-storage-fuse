@@ -1,4 +1,8 @@
-## 2.5.0 (Unreleased)
+## 2.6.0 (Unreleased)
+**Bug Fixes**
+- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
+
+## 2.5.0 (2025-07-17)
 **Bug Fixes**
 - Mount on already mounted path resulting in unmount and remount, instead of failure.
 - Added support for listing directories and files on HNS accounts mounted as FNS account by customers.
