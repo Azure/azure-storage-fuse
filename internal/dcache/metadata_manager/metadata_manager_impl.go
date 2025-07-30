@@ -81,6 +81,8 @@ func GetPropertiesFromStorageWithStats(scb *dcache.StorageCallbacks,
 	// Don't update stats for failed calls so as not to skew the stats.
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StorageGetProperties.Failures, 1)
+		err1 := fmt.Errorf("Failed for %+v: %v", options, err)
+		stats.Stats.MM.StorageGetProperties.LastError = err1.Error()
 		return nil, err
 	}
 
@@ -90,13 +92,13 @@ func GetPropertiesFromStorageWithStats(scb *dcache.StorageCallbacks,
 	// Note: The min/max are not atomically updated, so they may lose some values due to simultaneous
 	//       updates overwriting each other. Little bit of inaccuracy is fine for stats.
 	//
-	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetProperties.TotalDur), int64(duration))
-	if stats.Stats.MM.StorageGetProperties.MinDur == nil ||
-		*stats.Stats.MM.StorageGetProperties.MinDur > duration {
-		stats.Stats.MM.StorageGetProperties.MinDur = &duration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetProperties.TotalTime), int64(duration))
+	if stats.Stats.MM.StorageGetProperties.MinTime == nil ||
+		*stats.Stats.MM.StorageGetProperties.MinTime > duration {
+		stats.Stats.MM.StorageGetProperties.MinTime = &duration
 	}
-	stats.Stats.MM.StorageGetProperties.MaxDur =
-		max(stats.Stats.MM.StorageGetProperties.MaxDur, duration)
+	stats.Stats.MM.StorageGetProperties.MaxTime =
+		max(stats.Stats.MM.StorageGetProperties.MaxTime, duration)
 
 	return attr, err
 }
@@ -111,6 +113,8 @@ func GetBlobFromStorageWithStats(scb *dcache.StorageCallbacks,
 	data, err := (*scb).GetBlobFromStorage(options)
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StorageGetBlob.Failures, 1)
+		err1 := fmt.Errorf("Failed for %+v: %v", options, err)
+		stats.Stats.MM.StorageGetBlob.LastError = err1.Error()
 		return nil, err
 	}
 
@@ -120,13 +124,13 @@ func GetBlobFromStorageWithStats(scb *dcache.StorageCallbacks,
 	// Note: The min/max are not atomically updated, so they may lose some values due to simultaneous
 	//       updates overwriting each other. Little bit of inaccuracy is fine for stats.
 	//
-	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetBlob.TotalDur), int64(duration))
-	if stats.Stats.MM.StorageGetBlob.MinDur == nil ||
-		*stats.Stats.MM.StorageGetBlob.MinDur > duration {
-		stats.Stats.MM.StorageGetBlob.MinDur = &duration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageGetBlob.TotalTime), int64(duration))
+	if stats.Stats.MM.StorageGetBlob.MinTime == nil ||
+		*stats.Stats.MM.StorageGetBlob.MinTime > duration {
+		stats.Stats.MM.StorageGetBlob.MinTime = &duration
 	}
-	stats.Stats.MM.StorageGetBlob.MaxDur =
-		max(stats.Stats.MM.StorageGetBlob.MaxDur, duration)
+	stats.Stats.MM.StorageGetBlob.MaxTime =
+		max(stats.Stats.MM.StorageGetBlob.MaxTime, duration)
 
 	return data, err
 }
@@ -141,6 +145,8 @@ func PutBlobInStorageWithStats(scb *dcache.StorageCallbacks,
 	data, err := (*scb).PutBlobInStorage(options)
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StoragePutBlob.Failures, 1)
+		err1 := fmt.Errorf("Failed for %+v: %v", options, err)
+		stats.Stats.MM.StoragePutBlob.LastError = err1.Error()
 		return "", err
 	}
 
@@ -150,13 +156,13 @@ func PutBlobInStorageWithStats(scb *dcache.StorageCallbacks,
 	// Note: The min/max are not atomically updated, so they may lose some values due to simultaneous
 	//       updates overwriting each other. Little bit of inaccuracy is fine for stats.
 	//
-	atomic.AddInt64((*int64)(&stats.Stats.MM.StoragePutBlob.TotalDur), int64(duration))
-	if stats.Stats.MM.StoragePutBlob.MinDur == nil ||
-		*stats.Stats.MM.StoragePutBlob.MinDur > duration {
-		stats.Stats.MM.StoragePutBlob.MinDur = &duration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.StoragePutBlob.TotalTime), int64(duration))
+	if stats.Stats.MM.StoragePutBlob.MinTime == nil ||
+		*stats.Stats.MM.StoragePutBlob.MinTime > duration {
+		stats.Stats.MM.StoragePutBlob.MinTime = &duration
 	}
-	stats.Stats.MM.StoragePutBlob.MaxDur =
-		max(stats.Stats.MM.StoragePutBlob.MaxDur, duration)
+	stats.Stats.MM.StoragePutBlob.MaxTime =
+		max(stats.Stats.MM.StoragePutBlob.MaxTime, duration)
 
 	return data, err
 }
@@ -171,6 +177,8 @@ func ReadDirFromStorageWithStats(scb *dcache.StorageCallbacks,
 	list, err := (*scb).ReadDirFromStorage(options)
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StorageListDir.Failures, 1)
+		err1 := fmt.Errorf("Failed for %+v: %v", options, err)
+		stats.Stats.MM.StorageListDir.LastError = err1.Error()
 		return nil, err
 	}
 
@@ -180,13 +188,13 @@ func ReadDirFromStorageWithStats(scb *dcache.StorageCallbacks,
 	// Note: The min/max are not atomically updated, so they may lose some values due to simultaneous
 	//       updates overwriting each other. Little bit of inaccuracy is fine for stats.
 	//
-	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageListDir.TotalDur), int64(duration))
-	if stats.Stats.MM.StorageListDir.MinDur == nil ||
-		*stats.Stats.MM.StorageListDir.MinDur > duration {
-		stats.Stats.MM.StorageListDir.MinDur = &duration
+	atomic.AddInt64((*int64)(&stats.Stats.MM.StorageListDir.TotalTime), int64(duration))
+	if stats.Stats.MM.StorageListDir.MinTime == nil ||
+		*stats.Stats.MM.StorageListDir.MinTime > duration {
+		stats.Stats.MM.StorageListDir.MinTime = &duration
 	}
-	stats.Stats.MM.StorageListDir.MaxDur =
-		max(stats.Stats.MM.StorageListDir.MaxDur, duration)
+	stats.Stats.MM.StorageListDir.MaxTime =
+		max(stats.Stats.MM.StorageListDir.MaxTime, duration)
 
 	return list, err
 }
@@ -446,13 +454,13 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 			blobPath, len(data), attr1.ETag, i)
 
 		duration := stats.Duration(time.Since(start))
-		if stats.Stats.MM.GetBlobSafe.MinDur == nil ||
-			*stats.Stats.MM.GetBlobSafe.MinDur > duration {
-			stats.Stats.MM.GetBlobSafe.MinDur = &duration
+		if stats.Stats.MM.GetBlobSafe.MinTime == nil ||
+			*stats.Stats.MM.GetBlobSafe.MinTime > duration {
+			stats.Stats.MM.GetBlobSafe.MinTime = &duration
 		}
-		stats.Stats.MM.GetBlobSafe.MaxDur =
-			max(stats.Stats.MM.GetBlobSafe.MaxDur, duration)
-		atomic.AddInt64((*int64)(&stats.Stats.MM.GetBlobSafe.TotalDur), int64(duration))
+		stats.Stats.MM.GetBlobSafe.MaxTime =
+			max(stats.Stats.MM.GetBlobSafe.MaxTime, duration)
+		atomic.AddInt64((*int64)(&stats.Stats.MM.GetBlobSafe.TotalTime), int64(duration))
 
 		// Return the cluster map content and ETag
 		return data, attr1, nil
@@ -512,16 +520,20 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 	//
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.CreateFile.InitFailures, 1)
-		stats.Stats.MM.CreateFile.LastErrorInit = err.Error()
 
 		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) ||
 			bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Err("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
+			err1 := fmt.Errorf("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
 				path, err)
+			log.Err("%v", err1)
+			stats.Stats.MM.CreateFile.LastErrorInit = err1.Error()
 			return "", err
 		}
-		log.Err("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)
-		common.Assert(false, err)
+
+		err1 := fmt.Errorf("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)
+		log.Err("%v", err1)
+		stats.Stats.MM.CreateFile.LastErrorInit = err1.Error()
+		common.Assert(false, err1)
 		return "", err
 	}
 
@@ -590,17 +602,16 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		})
 
 	if err != nil {
-		atomic.AddInt64(&stats.Stats.MM.CreateFile.FinalizeFailures, 1)
-		stats.Stats.MM.CreateFile.LastErrorFinalize = err.Error()
-
 		//
 		// Any error here is unexpected.
 		// Note that we don't even expect ConditionNotMet error as the metadata blob should not
 		// change after createFileInit().
 		//
-		log.Err("CreateFileFinalize:: Failed to put metadata blob %s in storage: %v", path, err)
-		common.Assert(false, err)
-
+		err1 := fmt.Errorf("CreateFileFinalize:: Failed to put metadata blob %s in storage: %v", path, err)
+		log.Err("%v", err1)
+		stats.Stats.MM.CreateFile.LastErrorFinalize = err1.Error()
+		atomic.AddInt64(&stats.Stats.MM.CreateFile.FinalizeFailures, 1)
+		common.Assert(false, err1)
 		return err
 	}
 
@@ -639,13 +650,15 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 	// Get the metadata content from storage.
 	data, prop, err := m.getBlobSafe(path)
 	if err != nil {
-		log.Debug("GetFile:: Failed to get metadata file content for file %s: %v", path, err)
+		err1 := fmt.Errorf("GetFile:: Failed to get metadata file content for file %s: %v", path, err)
+		log.Err("%v", err1)
 		//
 		// getBlobSafe() should only fail when blob is non-existent.
 		// Assert to catch any other error.
 		//
 		common.Assert(errors.Is(err, syscall.ENOENT), err)
-		stats.Stats.MM.GetFile.LastError = err.Error()
+		stats.Stats.MM.GetFile.LastError = err1.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 
@@ -656,6 +669,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 		log.Err("%v", err)
 		common.Assert(false, err)
 		stats.Stats.MM.GetFile.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 
@@ -665,6 +679,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 		log.Err("%v", err)
 		common.Assert(false, err)
 		stats.Stats.MM.GetFile.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 	//
@@ -675,6 +690,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 		log.Warn("GetFile:: %v", err)
 		common.Assert(false, err)
 		stats.Stats.MM.GetFile.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 
@@ -687,6 +703,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 		log.Err("%v", err)
 		common.Assert(false, err)
 		stats.Stats.MM.GetFile.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 
@@ -698,6 +715,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 		log.Err("%v", err)
 		common.Assert(false, err)
 		stats.Stats.MM.GetFile.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 
@@ -710,6 +728,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 		log.Err("%v", err)
 		common.Assert(false, err)
 		stats.Stats.MM.GetFile.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 
@@ -720,6 +739,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 		log.Err("%v", err)
 		common.Assert(false, err)
 		stats.Stats.MM.GetFile.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 
@@ -729,6 +749,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 		log.Err("%v", err)
 		common.Assert(false, err)
 		stats.Stats.MM.GetFile.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return nil, -1, "", -1, nil, err
 	}
 
@@ -764,6 +785,7 @@ func (m *BlobMetadataManager) renameFileToDeleting(filePath string, fileID strin
 			path, deletedFilePath, err)
 		log.Err("%v", err1)
 		stats.Stats.MM.DeleteFile.LastError = err1.Error()
+		atomic.AddInt64(&stats.Stats.MM.DeleteFile.Failures, 1)
 		common.Assert(err == syscall.EEXIST || err == syscall.ENOENT, path, deletedFilePath, err)
 		return err
 	}
@@ -793,6 +815,7 @@ func (m *BlobMetadataManager) deleteFile(fileID string) error {
 		err1 := fmt.Errorf("DeleteFile:: Failed to delete metadata file %s: %v", path, err)
 		log.Err("%v", err1)
 		stats.Stats.MM.DeleteFile.LastError = err1.Error()
+		atomic.AddInt64(&stats.Stats.MM.DeleteFile.Failures, 1)
 		common.Assert(false, err1)
 		return err
 	}
@@ -832,9 +855,11 @@ func (m *BlobMetadataManager) openFile(filePath string, attr *internal.ObjAttr) 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	count, err := m.updateHandleCount(path, attr, true /* increment */)
 	if err != nil {
-		log.Err("OpenFile:: Failed to update file open count for path %s: %v", path, err)
-		common.Assert(false, err)
-		stats.Stats.MM.GetFile.LastError = err.Error()
+		err1 := fmt.Errorf("OpenFile:: Failed to update file open count for path %s: %v", path, err)
+		log.Err("%v", err1)
+		common.Assert(false, err1)
+		stats.Stats.MM.GetFile.LastError = err1.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return -1, err
 	}
 
@@ -855,7 +880,10 @@ func (m *BlobMetadataManager) closeFile(filePath string, attr *internal.ObjAttr)
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	count, err := m.updateHandleCount(path, attr, false /* increment */)
 	if err != nil {
-		log.Err("CloseFile:: Failed to update file open count for path %s: %v", path, err)
+		err1 := fmt.Errorf("CloseFile:: Failed to update file open count for path %s: %v", path, err)
+		log.Err("%v", err1)
+		stats.Stats.MM.GetFile.LastError = err1.Error()
+		atomic.AddInt64(&stats.Stats.MM.GetFile.Failures, 1)
 		return -1, err
 	}
 
@@ -1039,9 +1067,12 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 			EtagMatchConditions:    "",
 		})
 	if err != nil {
-		log.Err("UpdateHeartbeat:: Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err)
-		common.Assert(false, fmt.Sprintf("Failed to put heartbeat blob path %s in storage: %v",
-			heartbeatFilePath, err))
+		err1 := fmt.Errorf("UpdateHeartbeat:: Failed to put heartbeat blob path %s in storage: %v",
+			heartbeatFilePath, err)
+		atomic.AddInt64(&stats.Stats.MM.Heartbeat.PublishFailures, 1)
+		stats.Stats.MM.Heartbeat.LastError = err1.Error()
+		log.Err("%v", err1)
+		common.Assert(false, err1)
 		return err
 	}
 
@@ -1049,13 +1080,13 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 	if !stats.Stats.MM.Heartbeat.LastPublished.IsZero() {
 		now := time.Now()
 		gap := stats.Duration(now.Sub(stats.Stats.MM.Heartbeat.LastPublished))
-		if stats.Stats.MM.Heartbeat.MinGapDur == nil ||
-			*stats.Stats.MM.Heartbeat.MinGapDur > gap {
-			stats.Stats.MM.Heartbeat.MinGapDur = &gap
+		if stats.Stats.MM.Heartbeat.MinGap == nil ||
+			*stats.Stats.MM.Heartbeat.MinGap > gap {
+			stats.Stats.MM.Heartbeat.MinGap = &gap
 		}
-		stats.Stats.MM.Heartbeat.MaxGapDur =
-			max(stats.Stats.MM.Heartbeat.MaxGapDur, gap)
-		atomic.AddInt64((*int64)(&stats.Stats.MM.Heartbeat.TotalGapDur), int64(gap))
+		stats.Stats.MM.Heartbeat.MaxGap =
+			max(stats.Stats.MM.Heartbeat.MaxGap, gap)
+		atomic.AddInt64((*int64)(&stats.Stats.MM.Heartbeat.TotalGap), int64(gap))
 	}
 	stats.Stats.MM.Heartbeat.LastPublished = time.Now()
 	stats.Stats.MM.Heartbeat.SizeInBytes = int64(len(data))
@@ -1100,9 +1131,12 @@ func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 	// Get the heartbeat content from storage
 	data, _, err := m.getBlobSafe(heartbeatFilePath)
 	if err != nil {
-		log.Err("GetHeartbeat:: Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err)
-		common.Assert(false, fmt.Sprintf("Failed to get heartbeat file content for %s: %v",
-			heartbeatFilePath, err))
+		err1 := fmt.Errorf("GetHeartbeat:: Failed to get heartbeat file content for %s: %v",
+			heartbeatFilePath, err)
+		log.Err("%v", err1)
+		atomic.AddInt64(&stats.Stats.MM.Heartbeat.FetchFailures, 1)
+		stats.Stats.MM.Heartbeat.LastError = err1.Error()
+		common.Assert(false, err1)
 		return nil, err
 	}
 
@@ -1239,8 +1273,9 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 				clustermapPath, err)
 			log.Err("%v", err1)
 			stats.Stats.MM.Clustermap.LastError = err1.Error()
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
+		atomic.AddInt64(&stats.Stats.MM.Clustermap.UpdateFailures, 1)
 	} else {
 		stats.Stats.MM.Clustermap.LastUpdateStart = time.Now()
 
@@ -1280,19 +1315,20 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 		err1 := fmt.Errorf("UpdateClusterMapEnd:: Failed to finalize clustermap update for %s: %v",
 			clustermapPath, err)
 		log.Err("%v", err1)
-		common.Assert(false, err)
+		common.Assert(false, err1)
 		stats.Stats.MM.Clustermap.LastError = err1.Error()
+		atomic.AddInt64(&stats.Stats.MM.Clustermap.UpdateFailures, 1)
 		return err
 	}
 
 	stats.Stats.MM.Clustermap.LastUpdated = time.Now()
-	stats.Stats.MM.Clustermap.TotalUpdateDur += updateDuration
-	if stats.Stats.MM.Clustermap.MinUpdateDur == nil ||
-		*stats.Stats.MM.Clustermap.MinUpdateDur > updateDuration {
-		stats.Stats.MM.Clustermap.MinUpdateDur = &updateDuration
+	stats.Stats.MM.Clustermap.TotalUpdateTime += updateDuration
+	if stats.Stats.MM.Clustermap.MinUpdateTime == nil ||
+		*stats.Stats.MM.Clustermap.MinUpdateTime > updateDuration {
+		stats.Stats.MM.Clustermap.MinUpdateTime = &updateDuration
 	}
-	stats.Stats.MM.Clustermap.MaxUpdateDur =
-		max(stats.Stats.MM.Clustermap.MaxUpdateDur, updateDuration)
+	stats.Stats.MM.Clustermap.MaxUpdateTime =
+		max(stats.Stats.MM.Clustermap.MaxUpdateTime, updateDuration)
 
 	log.Debug("UpdateClusterMapEnd:: Finalized clustermap %s (bytes: %d)", clustermapPath, len(clustermap))
 	return nil
@@ -1304,6 +1340,8 @@ func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 	atomic.AddInt64(&stats.Stats.MM.Clustermap.GetCalls, 1)
 	data, attr, err := m.getBlobSafe(filepath.Join(m.mdRoot, "clustermap.json"))
 	if err != nil {
+		stats.Stats.MM.Clustermap.LastError = err.Error()
+		atomic.AddInt64(&stats.Stats.MM.Clustermap.GetFailures, 1)
 		return nil, nil, err
 	}
 	return data, &attr.ETag, err

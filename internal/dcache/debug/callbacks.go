@@ -75,9 +75,13 @@ func getAttrClusterMapCallback(pFile *procFile) {
 // proc file: stats
 func readStatsCallback(pFile *procFile) error {
 	var err error
+
+	//
+	// Perform any preprocessing needed before marshalling.
+	// This typically computes averages, etc.
+	//
 	stats.Stats.Preprocess()
 	pFile.buf, err = json.MarshalIndent(stats.Stats, "", "    ")
-
 	if err != nil {
 		log.Err("DebugFS::readStatsCallback, err: %v", err)
 		common.Assert(false, err)
