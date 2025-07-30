@@ -48,13 +48,17 @@ import (
 
 // clientPool manages multiple rpc clients efficiently
 type clientPool struct {
-	mu sync.Mutex
+	//
+	// Mutex for the client pool to ensure that clients map is updated
+	// (new node connections are added/removed) in a thread-safe manner.
+	//
+	mutex sync.Mutex
 
 	//
 	// Companion boolean flag to mutex to check if the lock is held or not
 	// [DEBUG ONLY]
 	//
-	muDbgFlag atomic.Bool
+	mutexDbgFlag atomic.Bool
 
 	clients map[string]*nodeClientPool // map of node ID to rpc node client pool
 
@@ -92,24 +96,24 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 
 // Acquire client pool lock.
 func (cp *clientPool) acquireLock() {
-	cp.mu.Lock()
+	cp.mutex.Lock()
 
-	common.Assert(!cp.muDbgFlag.Load())
-	cp.muDbgFlag.Store(true)
+	common.Assert(!cp.mutexDbgFlag.Load())
+	cp.mutexDbgFlag.Store(true)
 }
 
 // Release client pool lock.
 func (cp *clientPool) releaseLock() {
-	common.Assert(cp.muDbgFlag.Load())
-	cp.muDbgFlag.Store(false)
+	common.Assert(cp.mutexDbgFlag.Load())
+	cp.mutexDbgFlag.Store(false)
 
-	cp.mu.Unlock()
+	cp.mutex.Unlock()
 }
 
 // Check if client pool lock is held.
 // [DEBUG ONLY]
 func (cp *clientPool) isLockHeld() bool {
-	return cp.muDbgFlag.Load()
+	return cp.mutexDbgFlag.Load()
 }
 
 // Give a nodeID return the corresponding nodeClientPool.
@@ -332,6 +336,46 @@ func (cp *clientPool) closeRPCClient(client *rpcClient) error {
 	return nil
 }
 
+// deleteRPCClient deletes an RPC client from the pool.
+// It first closes the client and then removes it from the pool.
+// This is used when the client is no longer needed or when the node is down and we want to
+// remove all clients to the node.
+func (cp *clientPool) deleteRPCClient(client *rpcClient) error {
+	log.Debug("clientPool::deleteRPCClient: Deleting RPC client to %s node %s",
+		client.nodeAddress, client.nodeID)
+
+	// Close the client first.
+	err := cp.closeRPCClient(client)
+	if err != nil {
+		return err
+	}
+
+	cp.acquireLock()
+	defer cp.releaseLock()
+
+	ncPool, exists := cp.clients[client.nodeID]
+	_ = exists
+	common.Assert(exists, client.nodeID)
+
+	//
+	// deleteRPCClient() MUST be called after removing client from the client pool, so
+	// the pool must have space for a new client.
+	//
+	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
+		len(ncPool.clientChan), cp.maxPerNode)
+
+	//
+	// Must only delete an active client.
+	// Also, clients which are deleted are not released, so we drop the numActive here, after
+	// closing the connection successfully above.
+	//
+	common.Assert(ncPool.numActive.Load() > 0)
+	ncPool.numActive.Add(-1)
+
+	cp.deleteNodeClientPoolIfInactive(client.nodeID)
+	return nil
+}
+
 // Close client and create a new one to the same target/node as client.
 //
 // Note: This is an internal function, use resetRPCClient() for resetting one connection and
@@ -360,6 +404,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 	ncPool, exists := cp.clients[client.nodeID]
 	_ = exists
 	common.Assert(exists)
+
 	//
 	// resetRPCClientInternal() MUST be called after removing client from the client pool, so
 	// the pool must have space for a new client.

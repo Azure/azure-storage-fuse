@@ -44,10 +44,10 @@ import (
 
 const (
 	// defaultConnectionTimeout is the default timeout for establishing a new connection to the node.
-	defaultConnectionTimeout = 2 * time.Second
+	defaultConnectionTimeout = 1 * time.Second
 
 	// defaultSocketTimeout is the default read/write timeout for the underlying socket.
-	defaultSocketTimeout = 4 * time.Second
+	defaultSocketTimeout = 2 * time.Second
 )
 
 // rpcClient struct holds the Thrift client to a node
