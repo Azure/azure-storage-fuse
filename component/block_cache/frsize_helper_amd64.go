@@ -1,5 +1,5 @@
 // frsize_helper_amd64.go
-// go:build amd64 && linux
+//go:build amd64 && linux
 package block_cache
 
 func assignFrSize(val uint64) int64 {
