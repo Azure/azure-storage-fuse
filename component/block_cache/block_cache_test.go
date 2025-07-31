@@ -538,7 +538,7 @@ func (suite *blockCacheTestSuite) TestFileReadTotalBytes() {
 
 	totaldata := uint64(0)
 	for {
-		n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
+		n, err := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
 		totaldata += uint64(n)
 		if err != nil {
 			suite.assert.Contains(err.Error(), "EOF")
@@ -597,7 +597,7 @@ func (suite *blockCacheTestSuite) TestFileReadBlockCacheTmpPath() {
 
 	totaldata := uint64(0)
 	for {
-		n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
+		n, err := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
 		totaldata += uint64(n)
 		if err != nil {
 			suite.assert.Contains(err.Error(), "EOF")
@@ -611,7 +611,7 @@ func (suite *blockCacheTestSuite) TestFileReadBlockCacheTmpPath() {
 
 	totaldata = uint64(0)
 	for {
-		n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
+		n, err := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
 		totaldata += uint64(n)
 		if err != nil {
 			suite.assert.Contains(err.Error(), "EOF")
@@ -672,7 +672,7 @@ func (suite *blockCacheTestSuite) TestFileReadSerial() {
 
 	totaldata := uint64(0)
 	for {
-		n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
+		n, err := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
 		totaldata += uint64(n)
 		if err != nil {
 			break
@@ -714,7 +714,7 @@ func (suite *blockCacheTestSuite) TestFileReadRandom() {
 	max := int64(100 * _1MB)
 	for i := 0; i < 50; i++ {
 		offset := rand.Int63n(max)
-		n, _ := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: offset, Data: data})
+		n, _ := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: offset, Data: data})
 		suite.assert.LessOrEqual(n, 100)
 	}
 
@@ -755,7 +755,7 @@ func (suite *blockCacheTestSuite) TestFileReadRandomNoPrefetch() {
 	max := int64(100 * _1MB)
 	for i := 0; i < 50; i++ {
 		offset := rand.Int63n(max)
-		n, _ := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: offset, Data: data})
+		n, _ := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: offset, Data: data})
 		suite.assert.Equal(h.Buffers.Cooked.Len(), 1)
 		suite.assert.Equal(h.Buffers.Cooking.Len(), 0)
 		suite.assert.LessOrEqual(n, 100)
@@ -2158,7 +2158,7 @@ func (suite *blockCacheTestSuite) TestBlockParallelReadAndWriteValidation() {
 
 	// read 1MB data at offset 0
 	data := make([]byte, _1MB)
-	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: nh, Offset: 0, Data: data})
+	n, err = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: nh, Offset: 0, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -2367,7 +2367,7 @@ func (suite *blockCacheTestSuite) TestBlockDownloadOffsetGreaterThanFileSize() {
 	h.Size = int64(4 * _1MB)
 
 	data := make([]byte, _1MB)
-	n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	n, err := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -2413,7 +2413,7 @@ func (suite *blockCacheTestSuite) TestReadStagedBlock() {
 	suite.assert.Equal(1, h.Buffers.Cooked.Len())
 
 	data := make([]byte, _1MB)
-	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	n, err = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -2484,7 +2484,7 @@ func (suite *blockCacheTestSuite) TestReadUncommittedBlockValidation() {
 
 	// read blocks 0, 1 and 2 which are uncommitted
 	data := make([]byte, 2*_1MB)
-	n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 512, Data: data})
+	n, err := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 512, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(2*_1MB))
 	suite.assert.Equal(data[:], dataBuff[512:2*_1MB+512])
@@ -2492,7 +2492,7 @@ func (suite *blockCacheTestSuite) TestReadUncommittedBlockValidation() {
 
 	// read block 4 which has been committed by the previous read
 	data = make([]byte, _1MB)
-	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(4 * _1MB), Data: data})
+	n, err = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: int64(4 * _1MB), Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 	suite.assert.Equal(data[:], dataBuff[4*_1MB:5*_1MB])
@@ -2568,7 +2568,7 @@ func (suite *blockCacheTestSuite) TestReadUncommittedPrefetchedBlock() {
 
 	// read blocks 0, 1 and 2 where prefetched blocks 1 and 2 are uncommitted
 	data := make([]byte, 2*_1MB)
-	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 512, Data: data})
+	n, err = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 512, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(2*_1MB))
 	suite.assert.Equal(data[:], dataBuff[512:2*_1MB+512])
@@ -2576,7 +2576,7 @@ func (suite *blockCacheTestSuite) TestReadUncommittedPrefetchedBlock() {
 
 	// read block 4 which has been committed by the previous read
 	data = make([]byte, _1MB)
-	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(4 * _1MB), Data: data})
+	n, err = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: int64(4 * _1MB), Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 	suite.assert.Equal(data[:], dataBuff[4*_1MB:5*_1MB])
@@ -2638,14 +2638,14 @@ func (suite *blockCacheTestSuite) TestReadWriteBlockInParallel() {
 
 	// read blocks 0, 1 and 2
 	data := make([]byte, 2*_1MB)
-	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 512, Data: data})
+	n, err = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 512, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(2*_1MB))
 	suite.assert.Equal(data[:], dataBuff[512:2*_1MB+512])
 	suite.assert.True(h.Dirty())
 
 	// read blocks 4 and 5
-	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(4 * _1MB), Data: data})
+	n, err = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: int64(4 * _1MB), Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(2*_1MB))
 	suite.assert.Equal(data[:_1MB], dataBuff[4*_1MB:])
@@ -2795,7 +2795,7 @@ func (suite *blockCacheTestSuite) TestStrongConsistency() {
 	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(h)
-	_, _ = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	_, _ = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
 	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
 	suite.assert.Nil(err)
 	suite.assert.Nil(h.Buffers.Cooked)
@@ -2816,7 +2816,7 @@ func (suite *blockCacheTestSuite) TestStrongConsistency() {
 	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(h)
-	_, _ = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	_, _ = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
 	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
 	suite.assert.Nil(err)
 	suite.assert.Nil(h.Buffers.Cooked)

@@ -224,7 +224,7 @@ func (suite *LoopbackFSTestSuite) TestReadInBuffer() {
 	}
 
 	for _, testCase := range testCases {
-		n, err := suite.lfs.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: testCase.offset, Data: testCase.data})
+		n, err := suite.lfs.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: testCase.offset, Data: testCase.data})
 		assert.Nil(err)
 		assert.Equal(n, len(testCase.truth), "ReadInBuffer: number of bytes returned not equal to input size")
 		assert.Equal(testCase.data, testCase.truth)

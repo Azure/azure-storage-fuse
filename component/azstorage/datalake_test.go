@@ -1421,7 +1421,7 @@ func (s *datalakeTestSuite) TestReadInBuffer() {
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
 	s.assert.Nil(err)
 	s.assert.EqualValues(5, len)
 	s.assert.EqualValues(testData[:5], output)
@@ -1442,7 +1442,7 @@ func (s *datalakeTestSuite) TestReadInBufferWithoutHandle() {
 	s.assert.Equal(n, len(data))
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Path: name, Size: (int64)(len(data))})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Offset: 0, Data: output, Path: name, Size: (int64)(len(data))})
 	s.assert.Nil(err)
 	s.assert.EqualValues(5, len)
 	s.assert.EqualValues(testData[:5], output)
@@ -1452,7 +1452,7 @@ func (s *datalakeTestSuite) TestReadInBufferEmptyPath() {
 	defer s.cleanupTest()
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Size: 5})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Offset: 0, Data: output, Size: 5})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(0, len)
 	s.assert.Equal(err.Error(), "path not given for download")
@@ -1470,7 +1470,7 @@ func (suite *datalakeTestSuite) TestReadInBufferWithETAG() {
 
 	output := make([]byte, 5)
 	var etag string
-	len, err := suite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: fileHandle, Offset: 0, Data: output, Etag: &etag})
+	len, err := suite.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: fileHandle, Offset: 0, Data: output, Etag: &etag})
 	suite.assert.Nil(err)
 	suite.assert.NotEqual(etag, "")
 	suite.assert.EqualValues(5, len)
@@ -1489,7 +1489,7 @@ func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
 	s.assert.Nil(err)
 	s.assert.EqualValues(h.Size, len)
 	s.assert.EqualValues(testData, output[:h.Size])
@@ -1502,7 +1502,7 @@ func (s *datalakeTestSuite) TestReadInBufferEmpty() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	output := make([]byte, 10)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
 	s.assert.Nil(err)
 	s.assert.EqualValues(0, len)
 }
@@ -1514,7 +1514,7 @@ func (s *datalakeTestSuite) TestReadInBufferBadRange() {
 	h := handlemap.NewHandle(name)
 	h.Size = 10
 
-	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 20, Data: make([]byte, 2)})
+	_, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 20, Data: make([]byte, 2)})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ERANGE, err)
 }
@@ -1526,7 +1526,7 @@ func (s *datalakeTestSuite) TestReadInBufferError() {
 	h := handlemap.NewHandle(name)
 	h.Size = 10
 
-	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 2)})
+	_, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 2)})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }

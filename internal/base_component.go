@@ -193,7 +193,7 @@ func (base *BaseComponent) ReadFile(options ReadFileOptions) (b []byte, err erro
 	return b, err
 }
 
-func (base *BaseComponent) ReadInBuffer(options ReadInBufferOptions) (int, error) {
+func (base *BaseComponent) ReadInBuffer(options *ReadInBufferOptions) (int, error) {
 	if base.next != nil {
 		return base.next.ReadInBuffer(options)
 	}

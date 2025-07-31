@@ -573,7 +573,7 @@ func (bc *BlockCache) getBlockSize(fileSize uint64, block *Block) uint64 {
 }
 
 // ReadInBuffer: Read the file into a buffer
-func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	if options.Offset >= options.Handle.Size {
 		// EOF reached so early exit
 		return 0, io.EOF
@@ -1051,7 +1051,7 @@ func (bc *BlockCache) download(item *workItem) {
 
 	var etag string
 	// If file does not exists then download the block from the container
-	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
+	n, err := bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 		Handle: item.handle,
 		Offset: int64(item.block.offset),
 		Data:   item.block.data,
