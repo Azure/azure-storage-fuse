@@ -83,7 +83,7 @@ const (
 )
 
 func platformWordSize() int {
-	return int(unsafe.Sizeof(int(0)) * 8) // 32 or 64
+	return int(unsafe.Sizeof(int(0))) * 8 // 32 or 64
 }
 
 func platformMask(val int) int {
