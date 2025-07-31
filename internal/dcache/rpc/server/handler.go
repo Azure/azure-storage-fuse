@@ -507,7 +507,8 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 // return the list of MVs for this RV
 func (rv *rvInfo) getMVs() []string {
 	mvs := make([]string, 0)
-	rv.mvMap.Range(func(mvName, val interface{}) bool {
+	rv.mvMap.Range(func(key, val interface{}) bool {
+		mvName := key.(string)
 		mvInfo, ok := val.(*mvInfo)
 		if ok {
 			common.Assert(mvInfo != nil, fmt.Sprintf("mvMap[%s] has nil value", mvName))

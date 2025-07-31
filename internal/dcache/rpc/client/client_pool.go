@@ -49,18 +49,18 @@ import (
 // clientPool manages multiple rpc clients efficiently
 type clientPool struct {
 	//
-	// Mutex for the client pool to ensure that clients map is updated
-	// (new node connections are added/removed) in a thread-safe manner.
+	// Lock at the node level to ensure that only one thread can create RPC clients for a node at a time.
+	// This also ensures that different threads can create RPC clients for different nodes at the same time.
 	//
-	mutex sync.Mutex
+	nodeLock *common.LockMap
 
 	//
-	// Companion boolean flag to mutex to check if the lock is held or not
-	// [DEBUG ONLY]
+	// Map of node ID to rpc node client pool.
 	//
-	mutexDbgFlag atomic.Bool
+	clients sync.Map
 
-	clients map[string]*nodeClientPool // map of node ID to rpc node client pool
+	// clientsCnt is the number of node client pools in the clients map.
+	clientsCnt atomic.Int64
 
 	//
 	// Map of node ID to which this node cannot create RPC clients. The value of the map is
@@ -68,7 +68,7 @@ type clientPool struct {
 	// This is used to prevent creating new RPC clients to the node by different threads till
 	// the negative RPC client creation timeout expires.
 	//
-	negativeClients map[string]time.Time
+	negativeClients sync.Map
 
 	maxPerNode uint32 // Maximum number of open RPC clients per node
 	maxNodes   uint32 // Maximum number of nodes for which RPC clients are open
@@ -84,52 +84,77 @@ type clientPool struct {
 func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPool {
 	log.Debug("clientPool::newClientPool: Creating new RPC client pool with maxPerNode: %d, maxNodes: %d, timeout: %d", maxPerNode, maxNodes, timeout)
 	return &clientPool{
-		clients:         make(map[string]*nodeClientPool),
-		negativeClients: make(map[string]time.Time),
-		maxPerNode:      maxPerNode,
-		maxNodes:        maxNodes,
-		timeout:         timeout,
+		nodeLock:   common.NewLockMap(),
+		maxPerNode: maxPerNode,
+		maxNodes:   maxNodes,
+		timeout:    timeout,
 	}
 
 	// TODO: start a goroutine to periodically close inactive RPC clients
 }
 
-// Acquire client pool lock.
-func (cp *clientPool) acquireLock() {
-	cp.mutex.Lock()
+// Get the nodeClientPool from the clients map the given nodeID.
+func (cp *clientPool) getNodeClientPoolFromMap(nodeID string) *nodeClientPool {
+	val, ok := cp.clients.Load(nodeID)
 
-	common.Assert(!cp.mutexDbgFlag.Load())
-	cp.mutexDbgFlag.Store(true)
+	// Not found.
+	if !ok {
+		return nil
+	}
+
+	// Found, value must be of type *ncPool.
+	ncPool, ok := val.(*nodeClientPool)
+	if ok {
+		common.Assert(ncPool != nil, nodeID)
+		common.Assert(ncPool.nodeID == nodeID, ncPool.nodeID, nodeID)
+		common.Assert(ncPool.clientChan != nil, nodeID)
+		common.Assert(cp.clientsCnt.Load() > 0, cp.clientsCnt.Load(), nodeID)
+		return ncPool
+	}
+
+	// Value not of type ncPool.
+	common.Assert(false, nodeID)
+
+	return nil
 }
 
-// Release client pool lock.
-func (cp *clientPool) releaseLock() {
-	common.Assert(cp.mutexDbgFlag.Load())
-	cp.mutexDbgFlag.Store(false)
+// Add nodeClientPool for the given nodeID.
+func (cp *clientPool) addNodeClientPoolToMap(nodeID string, ncPool *nodeClientPool) {
+	cp.clients.Store(nodeID, ncPool)
+	cp.clientsCnt.Add(1)
 
-	cp.mutex.Unlock()
+	common.Assert(cp.clientsCnt.Load() < int64(cp.maxNodes), cp.clientsCnt.Load(), cp.maxNodes)
 }
 
-// Check if client pool lock is held.
-// [DEBUG ONLY]
-func (cp *clientPool) isLockHeld() bool {
-	return cp.mutexDbgFlag.Load()
+// Delete nodeClientPool for the given nodeID.
+func (cp *clientPool) deleteNodeClientPoolFromMap(nodeID string) {
+	_, ok := cp.clients.Load(nodeID)
+	if !ok {
+		common.Assert(false, nodeID)
+		return
+	}
+
+	cp.clients.Delete(nodeID)
+	cp.clientsCnt.Add(-1)
+
+	common.Assert(cp.clientsCnt.Load() >= 0, cp.clientsCnt.Load(), nodeID)
 }
 
-// Give a nodeID return the corresponding nodeClientPool.
-// Caller MUST hold the clientPool lock.
+// Given a nodeID return the corresponding nodeClientPool.
+// If the nodeClientPool does not exist, it creates a new one and returns it.
+//
+// NOTE: Caller MUST hold the lock for the nodeID before calling this function.
 func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) {
-	common.Assert(cp.isLockHeld())
+	common.Assert(cp.nodeLock.Locked(nodeID), nodeID)
 
-	var ncPool *nodeClientPool
-	ncPool, exists := cp.clients[nodeID]
-	if !exists {
+	ncPool := cp.getNodeClientPoolFromMap(nodeID)
+	if ncPool == nil {
 		//
 		// Check in the negative clients map if we should attempt creating RPC clients for this node ID.
 		//
-		t, ok := cp.negativeClients[nodeID]
+		t, ok := cp.negativeClients.Load(nodeID)
 		if ok {
-			timeElapsed := int64(time.Since(t).Seconds())
+			timeElapsed := int64(time.Since(t.(time.Time)).Seconds())
 			if timeElapsed < defaultNegativeTimeout {
 				err := fmt.Errorf("not creating RPC clients for node %s, negative timeout not expired yet (%d seconds elapsed, %d seconds timeout)",
 					nodeID, timeElapsed, defaultNegativeTimeout)
@@ -138,7 +163,7 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 			} else {
 				log.Debug("clientPool::getNodeClientPool: Negative timeout expired for node %s, removing from negative clients map",
 					nodeID)
-				delete(cp.negativeClients, nodeID)
+				cp.negativeClients.Delete(nodeID)
 			}
 		}
 
@@ -146,14 +171,14 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 		// Assert that the node ID should not be present in the negativeClients map as we are
 		// creating a new nodeClientPool for it.
 		//
-		_, ok = cp.negativeClients[nodeID]
+		_, ok = cp.negativeClients.Load(nodeID)
 		common.Assert(!ok, nodeID)
 
-		if len(cp.clients) >= int(cp.maxNodes) {
+		if cp.clientsCnt.Load() >= int64(cp.maxNodes) {
 			// TODO: remove this and rely on the closeInactiveRPCClients to close inactive clients
 			// getNodeClientPool should be small and fast, refer https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047993390
 			log.Debug("clientPool::getNodeClientPool: Maximum number of nodes reached, evicting LRU node client pool")
-			err := cp.closeLRUCNodeClientPool()
+			err := cp.closeLRUNodeClientPool()
 			if err != nil {
 				log.Err("clientPool::getNodeClientPool: Failed to close LRU node client pool: %v",
 					err)
@@ -174,12 +199,12 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 			// Add to negativeClients map to prevent creating new RPC clients to the node ID by other
 			// threads till the negative timeout expires.
 			//
-			cp.negativeClients[nodeID] = time.Now()
+			cp.negativeClients.Store(nodeID, time.Now())
 
 			return nil, err
 		}
 
-		cp.clients[nodeID] = ncPool
+		cp.addNodeClientPoolToMap(nodeID, ncPool)
 	}
 
 	common.Assert(ncPool.clientChan != nil)
@@ -196,12 +221,19 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	log.Debug("clientPool::getRPCClient: Retrieving RPC client for node %s", nodeID)
 
 	//
-	// Get the nodeClientPool for this node.
-	// This needs to be performed with the clientPool lock.
+	// Get lock for the given node ID. This is done so that multiple threads can create RPC
+	// clients for the different node IDs concurrently. Whereas only one thread can create RPC
+	// clients for the same node ID at a time.
 	//
-	cp.acquireLock()
+	nodeLock := cp.nodeLock.Get(nodeID)
+	nodeLock.Lock()
+
+	//
+	// Get the nodeClientPool for this node.
+	//
 	ncPool, err := cp.getNodeClientPool(nodeID)
-	cp.releaseLock()
+
+	nodeLock.Unlock()
 
 	if err != nil {
 		return nil, fmt.Errorf("clientPool::getRPCClient: getNodeClientPool(%s) failed: %v",
@@ -262,11 +294,11 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 // Like getRPCClient() but in case there's no client currently available in the pool, it doesn't wait but
 // instead returns error rightaway.
 //
-// Note: Caller MUST hold the clientPool lock.
+// Note: Caller MUST hold the lock for the nodeID before calling this function.
 func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 	log.Debug("clientPool::getRPCClientNoWait: Retrieving RPC client for node %s", nodeID)
 
-	common.Assert(cp.isLockHeld())
+	common.Assert(cp.nodeLock.Locked(nodeID), nodeID)
 
 	ncPool, err := cp.getNodeClientPool(nodeID)
 	if err != nil {
@@ -290,11 +322,14 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	log.Debug("clientPool::releaseRPCClient: Releasing RPC client for node %s", client.nodeID)
 
-	cp.acquireLock()
-	defer cp.releaseLock()
+	// TODO: Check if we need lock here, as we are releasing the client back to the channel
+	// which is thread safe.
+	nodeLock := cp.nodeLock.Get(client.nodeID)
+	nodeLock.Lock()
+	defer nodeLock.Unlock()
 
-	ncPool, exists := cp.clients[client.nodeID]
-	if !exists {
+	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
+	if ncPool == nil {
 		log.Err("clientPool::releaseRPCClient: No client pool found for node %s", client.nodeID)
 		// We don't delete a nodeClientPool with active connections, so it cannot go away.
 		common.Assert(false)
@@ -350,12 +385,12 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) error {
 		return err
 	}
 
-	cp.acquireLock()
-	defer cp.releaseLock()
+	nodeLock := cp.nodeLock.Get(client.nodeID)
+	nodeLock.Lock()
+	defer nodeLock.Unlock()
 
-	ncPool, exists := cp.clients[client.nodeID]
-	_ = exists
-	common.Assert(exists, client.nodeID)
+	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
+	common.Assert(ncPool != nil, client.nodeID)
 
 	//
 	// deleteRPCClient() MUST be called after removing client from the client pool, so
@@ -397,13 +432,16 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		client.nodeAddress, client.nodeID)
 
 	if needLock {
-		cp.acquireLock()
-		defer cp.releaseLock()
+		nodeLock := cp.nodeLock.Get(client.nodeID)
+		nodeLock.Lock()
+		defer nodeLock.Unlock()
 	}
 
-	ncPool, exists := cp.clients[client.nodeID]
-	_ = exists
-	common.Assert(exists)
+	// Assert that the client is locked for the node.
+	common.Assert(cp.nodeLock.Locked(client.nodeID), client.nodeID)
+
+	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
+	common.Assert(ncPool != nil, client.nodeID)
 
 	//
 	// resetRPCClientInternal() MUST be called after removing client from the client pool, so
@@ -463,15 +501,15 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	// resetAllRPCClients() will be called only when we know for sure that an RPC request made using 'client'
 	// failed with a "connection reset by peer" error, we reset that client and all others in the pool.
 	//
-	cp.acquireLock()
-	defer cp.releaseLock()
+	nodeLock := cp.nodeLock.Get(client.nodeID)
+	nodeLock.Lock()
+	defer nodeLock.Unlock()
 
 	numConnReset := 0
-	ncPool, exists := cp.clients[client.nodeID]
-	_ = exists
+	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
 
 	// client is allocated from the pool, so pool must exist.
-	common.Assert(exists)
+	common.Assert(ncPool != nil, client.nodeID)
 	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
 
 	//
@@ -545,39 +583,58 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 
 // Close the least recently used node client pool from the client pool
 // caller of this method should hold the lock
-func (cp *clientPool) closeLRUCNodeClientPool() error {
-	common.Assert(cp.isLockHeld())
+func (cp *clientPool) closeLRUNodeClientPool() error {
+	common.Assert(cp.clientsCnt.Load() >= int64(cp.maxNodes),
+		cp.clientsCnt.Load(), cp.maxNodes)
 
-	// TODO: add assert to check that lock is held, mu.TryLock()
-	// TODO: add assert that the length of the client pool is greater than maxNodes
 	// Find the least recently used RPC client and close it
 	var lruNcPool *nodeClientPool
 	lruNodeID := ""
-	for nodeID, ncPool := range cp.clients {
+
+	//
+	// Iterate through the clients map to find the least recently used node client pool
+	// and close it if it has no active clients and has maxPerNode clients in the pool.
+	// This is done to ensure that we don't close a node client pool that has active clients
+	// or has less than maxPerNode clients in the pool.
+	// We use the lastUsed timestamp to determine the least recently used node client pool.
+	//
+	cp.clients.Range(func(key, val interface{}) bool {
+		nodeID, ok := key.(string)
+		common.Assert(ok, key)
+
+		ncPool, ok := val.(*nodeClientPool)
+		common.Assert(ok, nodeID)
+
+		common.Assert(ncPool != nil, nodeID)
+		common.Assert(ncPool.nodeID == nodeID, ncPool.nodeID, nodeID)
+
 		common.Assert(len(ncPool.clientChan) <= int(cp.maxPerNode),
 			len(ncPool.clientChan), cp.maxPerNode)
+
 		//
 		// Omit the nodeClientPool if it has any client currently in use.
 		//
 		if len(ncPool.clientChan) != int(cp.maxPerNode) {
-			log.Debug("clientPool::closeLRUCNodeClientPool: Skipping %s (%d < %d)",
+			log.Debug("clientPool::closeLRUNodeClientPool: Skipping %s (%d < %d)",
 				ncPool.nodeID, len(ncPool.clientChan), cp.maxPerNode)
-			continue
+			return true // continue iteration
 		}
 
 		if lruNcPool == nil || (ncPool.lastUsed.Load() < lruNcPool.lastUsed.Load()) {
 			lruNcPool = ncPool
 			lruNodeID = nodeID
 		}
-	}
+
+		return true // continue iteration
+	})
 
 	if lruNcPool == nil {
-		return fmt.Errorf("clientPool::closeLRUCNodeClientPool: No free nodeClientPool")
+		return fmt.Errorf("clientPool::closeLRUNodeClientPool: No free nodeClientPool")
 	}
 
 	err := lruNcPool.closeRPCClients()
 	if err != nil {
-		log.Err("clientPool::closeLRUCNodeClientPool: Failed to close LRU node client pool for node %s [%v]", lruNodeID, err.Error())
+		log.Err("clientPool::closeLRUNodeClientPool: Failed to close LRU node client pool for node %s [%v]", lruNodeID, err.Error())
 		return err
 	}
 
@@ -585,7 +642,7 @@ func (cp *clientPool) closeLRUCNodeClientPool() error {
 	common.Assert(lruNcPool.numActive.Load() == 0 && len(lruNcPool.clientChan) == 0,
 		lruNcPool.numActive.Load(), len(lruNcPool.clientChan))
 
-	delete(cp.clients, lruNodeID)
+	cp.deleteNodeClientPoolFromMap(lruNodeID)
 
 	return nil
 }
@@ -598,38 +655,45 @@ func (cp *clientPool) closeInactiveNodeClientPools() {
 
 // closeAllNodeClientPools closes all node client pools in the pool
 func (cp *clientPool) closeAllNodeClientPools() error {
-	// TODO: see if this is needed
-	cp.acquireLock()
-	defer cp.releaseLock()
+	// TODO: see if we need lock here, as we are closing all node client pools
+	log.Debug("clientPool::closeAllNodeClientPools: Closing all node client pools")
 
-	for key, ncPool := range cp.clients {
-		err := ncPool.closeRPCClients()
+	var err error
+	cp.clients.Range(func(key, val interface{}) bool {
+		nodeID, ok := key.(string)
+		common.Assert(ok, key)
+
+		ncPool, ok := val.(*nodeClientPool)
+		common.Assert(ok, nodeID)
+
+		err = ncPool.closeRPCClients()
 		if err != nil {
 			log.Err("clientPool::closeAllNodeClientPools: Failed to close node client pool for node %s [%v]", key, err.Error())
-			return err
+			return false // stop iteration
 		}
 
 		// Never delete a nodeClientPool with active connections or non-empty connection pool.
 		common.Assert(ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0,
 			ncPool.numActive.Load(), len(ncPool.clientChan))
 
-		delete(cp.clients, key)
-	}
+		cp.deleteNodeClientPoolFromMap(nodeID)
 
-	common.Assert(len(cp.clients) == 0, "client pool is not empty after closing all node client pools")
+		return true // continue iteration
+	})
+
+	common.Assert(cp.clientsCnt.Load() == 0, "client pool is not empty after closing all node client pools")
 	return nil
 }
 
 // Delete nodeClientPool for the given node, if no active connections and no connections in the pool.
 // Caller must hold the clientPool lock.
 func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
-	common.Assert(cp.isLockHeld())
+	common.Assert(cp.nodeLock.Locked(nodeID), nodeID)
 
-	ncPool, exists := cp.clients[nodeID]
-	_ = exists
+	ncPool := cp.getNodeClientPoolFromMap(nodeID)
 
 	// Caller must not call us for a non-existent pool.
-	common.Assert(exists)
+	common.Assert(ncPool != nil, nodeID)
 
 	//
 	// Can't delete if we have any active client (issued by getRPCClient()) or any client(s) in the
@@ -647,7 +711,7 @@ func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
 	common.Assert(ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0,
 		ncPool.numActive.Load(), len(ncPool.clientChan))
 
-	delete(cp.clients, nodeID)
+	cp.deleteNodeClientPoolFromMap(nodeID)
 
 	return true
 }
