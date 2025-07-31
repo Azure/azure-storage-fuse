@@ -145,6 +145,8 @@ func PutBlobInStorageWithStats(scb *dcache.StorageCallbacks,
 	data, err := (*scb).PutBlobInStorage(options)
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.MM.StoragePutBlob.Failures, 1)
+		// Don't log the data as it can be large.
+		options.Data = nil
 		err1 := fmt.Errorf("Failed for %+v: %v", options, err)
 		stats.Stats.MM.StoragePutBlob.LastError = err1.Error()
 		return "", err
@@ -1227,7 +1229,7 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 		return err
 	}
 
-	stats.Stats.CM.CreatedInitialClustermap = true
+	stats.Stats.CM.Startup.CreatedInitialClustermap = true
 
 	log.Info("CreateInitialClusterMap:: Created initial clustermap with path %s", clustermapPath)
 	return nil
