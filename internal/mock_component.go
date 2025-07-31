@@ -630,7 +630,7 @@ func (mr *MockComponentMockRecorder) UnlinkFile(arg0 interface{}) *gomock.Call {
 }
 
 // WriteFile mocks base method.
-func (m *MockComponent) WriteFile(arg0 WriteFileOptions) (int, error) {
+func (m *MockComponent) WriteFile(arg0 *WriteFileOptions) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WriteFile", arg0)
 	ret0, _ := ret[0].(int)

@@ -125,7 +125,7 @@ type AzConnection interface {
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
 	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
-	Write(options internal.WriteFileOptions) error
+	Write(options *internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)
 
 	ChangeMod(string, os.FileMode) error

@@ -1128,7 +1128,7 @@ func (s *blockBlobTestSuite) TestReadFile() {
 	s.assert.Nil(err)
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
@@ -1154,7 +1154,7 @@ func (s *blockBlobTestSuite) TestReadInBuffer() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
@@ -1174,7 +1174,7 @@ func (s *blockBlobTestSuite) TestReadInBufferWithoutHandle() {
 
 	testData := "test data"
 	data := []byte(testData)
-	n, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	n, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	s.assert.Nil(err)
 	s.assert.Equal(n, len(data))
 
@@ -1202,7 +1202,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAG() {
 	handle, _ := bbTestSuite.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	bbTestSuite.az.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
 	handle, _ = bbTestSuite.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
@@ -1222,7 +1222,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
 	handle, _ := bbTestSuite.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data 12345678910"
 	data := []byte(testData)
-	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	bbTestSuite.az.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
 	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
 
 	attr, err := bbTestSuite.az.GetAttr(internal.GetAttrOptions{Name: name})
@@ -1246,7 +1246,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
 	bbTestSuite.assert.Nil(err)
 	testData = "test data 12345678910 123123123123123123123"
 	data = []byte(testData)
-	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle1, Offset: 0, Data: data})
+	bbTestSuite.az.WriteFile(&internal.WriteFileOptions{Handle: handle1, Offset: 0, Data: data})
 	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle1})
 
 	// Read data back using older handle
@@ -1266,7 +1266,7 @@ func (s *blockBlobTestSuite) TestReadInBufferLargeBuffer() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
@@ -1320,7 +1320,7 @@ func (s *blockBlobTestSuite) TestWriteFile() {
 
 	testData := "test data"
 	data := []byte(testData)
-	count, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	count, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	s.assert.Nil(err)
 	s.assert.EqualValues(len(data), count)
 
@@ -1342,7 +1342,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileSmaller() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 5
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -1416,7 +1416,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileEqual() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 9
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -1470,7 +1470,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileBigger() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 15
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -1534,7 +1534,7 @@ func (s *blockBlobTestSuite) TestWriteSmallFile() {
 	testData := "test data"
 	data := []byte(testData)
 	dataLen := len(data)
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	s.assert.Nil(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
@@ -1559,12 +1559,12 @@ func (s *blockBlobTestSuite) TestOverwriteSmallFile() {
 	testData := "test-replace-data"
 	data := []byte(testData)
 	dataLen := len(data)
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	s.assert.Nil(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("test-newdata-data")
@@ -1589,12 +1589,12 @@ func (s *blockBlobTestSuite) TestOverwriteAndAppendToSmallFile() {
 	testData := "test-data"
 	data := []byte(testData)
 
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	s.assert.Nil(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("test-newdata")
@@ -1620,12 +1620,12 @@ func (s *blockBlobTestSuite) TestAppendToSmallFile() {
 	testData := "test-data"
 	data := []byte(testData)
 
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	s.assert.Nil(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("-newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("test-data-newdata")
@@ -1651,12 +1651,12 @@ func (s *blockBlobTestSuite) TestAppendOffsetLargerThanSmallFile() {
 	testData := "test-data"
 	data := []byte(testData)
 
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	s.assert.Nil(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 12, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 12, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("test-data\x00\x00\x00newdata")
@@ -1691,7 +1691,7 @@ func (s *blockBlobTestSuite) TestAppendBlocksToSmallFile() {
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("-newdata-newdata-newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("test-data-newdata-newdata-newdata")
@@ -1725,7 +1725,7 @@ func (s *blockBlobTestSuite) TestOverwriteBlocks() {
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("cake")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 16, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 16, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("testdatates1dat1cakedat2tes3dat3tes4dat4")
@@ -1759,7 +1759,7 @@ func (s *blockBlobTestSuite) TestOverwriteAndAppendBlocks() {
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("43211234cake")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 32, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 32, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("testdatates1dat1tes2dat2tes3dat343211234cake")
@@ -1792,7 +1792,7 @@ func (s *blockBlobTestSuite) TestAppendBlocks() {
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("43211234cake")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("43211234cakedat1tes2dat2tes3dat3tes4dat4")
@@ -1825,7 +1825,7 @@ func (s *blockBlobTestSuite) TestAppendOffsetLargerThanSize() {
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("43211234cake")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 45, Data: newTestData})
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 45, Data: newTestData})
 	s.assert.Nil(err)
 
 	currentData := []byte("testdatates1dat1tes2dat2tes3dat3tes4dat4\x00\x00\x00\x00\x0043211234cake")
@@ -2112,7 +2112,7 @@ func (s *blockBlobTestSuite) TestGetAttrFileSize() {
 			h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 			testData := "test data"
 			data := []byte(testData)
-			s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+			s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 			props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
@@ -2143,7 +2143,7 @@ func (s *blockBlobTestSuite) TestGetAttrFileTime() {
 			h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 			testData := "test data"
 			data := []byte(testData)
-			s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+			s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 			before, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
@@ -2151,7 +2151,7 @@ func (s *blockBlobTestSuite) TestGetAttrFileTime() {
 
 			time.Sleep(time.Second * 3) // Wait 3 seconds and then modify the file again
 
-			s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+			s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 			after, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 			s.assert.Nil(err)
@@ -2335,7 +2335,7 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsSmallFile() {
 	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
 	data := []byte(testData)
 
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	// GetFileBlockOffsets
 	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
@@ -3414,7 +3414,7 @@ func (s *blockBlobTestSuite) TestUploadBlobWithCPKEnabled() {
 // 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 // 	testData := "test data"
 // 	data := []byte(testData)
-// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+// 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 // 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 // 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
 
@@ -3550,7 +3550,7 @@ func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size i
 	suite.assert.Nil(err)
 
 	data := make([]byte, size)
-	suite.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	suite.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	suite.assert.Nil(err)
@@ -3582,7 +3582,7 @@ func (suite *blockBlobTestSuite) UtilityFunctionTruncateFileToLarger(size int, t
 	suite.assert.Nil(err)
 
 	data := make([]byte, size)
-	suite.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	suite.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	suite.assert.Nil(err)
