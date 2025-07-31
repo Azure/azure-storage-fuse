@@ -493,9 +493,9 @@ func newObjAttr(path string, info fs.FileInfo) *internal.ObjAttr {
 		Name:  info.Name(),
 		Size:  info.Size(),
 		Mode:  info.Mode(),
-		Mtime: time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec),
-		Atime: time.Unix(stat.Atim.Sec, stat.Atim.Nsec),
-		Ctime: time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec),
+		Mtime: time.Unix(int64(stat.Mtim.Sec), int64(stat.Mtim.Nsec)),
+		Atime: time.Unix(int64(stat.Atim.Sec), int64(stat.Atim.Nsec)),
+		Ctime: time.Unix(int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec)),
 	}
 
 	if info.Mode()&os.ModeSymlink != 0 {
@@ -845,7 +845,7 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 
 		lmt = finfo.ModTime()
 		if time.Since(finfo.ModTime()).Seconds() > fc.cacheTimeout &&
-			time.Since(time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec)).Seconds() > fc.cacheTimeout {
+			time.Since(time.Unix(int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec))).Seconds() > fc.cacheTimeout {
 			log.Debug("FileCache::isDownloadRequired : %s not valid as per time checks", localPath)
 			downloadRequired = true
 		}
