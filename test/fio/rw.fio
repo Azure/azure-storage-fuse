@@ -1,6 +1,5 @@
 [writers]
 bs=1M
-iodepth=5
 ioengine=sync
 verify=crc32c
 verify_fatal=1
