@@ -52,6 +52,10 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 
 // Metadata manager stats.
 // These should help us understand the performance of the metadata manager and its interactions with Azure // storage.
+//
+// Note: time.Time elements are maked omitzero which is supported starting from Go 1.24, so for older go versions
+//       empty time.Time values will not be omitted from the JSON output.
+
 type MMStats struct {
 	// Number of metadata folders created by this node.
 	MetadataFoldersCreatedByThisNode int64 `json:"metadata_folders_created_by_this_node,omitempty"`
@@ -119,7 +123,7 @@ type MMStats struct {
 	// Heartbeat stats.
 	Heartbeat struct {
 		Published       int64     `json:"published"`
-		LastPublished   time.Time `json:"last_published"`
+		LastPublished   time.Time `json:"last_published,omitzero"`
 		PublishFailures int64     `json:"publish_failures,omitempty"`
 		SizeInBytes     int64     `json:"size_in_bytes"`
 		MinGap          *Duration `json:"min_gap,omitempty"`
@@ -141,7 +145,7 @@ type MMStats struct {
 		LastUpdateStart time.Time `json:"-"`
 		// When was the global clustermap last updated?
 		// Only cluster_manager leader updates the global clustermap.
-		LastUpdated     time.Time `json:"last_updated"`
+		LastUpdated     time.Time `json:"last_updated,omitzero"`
 		MinUpdateTime   *Duration `json:"min_update_time,omitempty"`
 		MaxUpdateTime   Duration  `json:"max_update_time,omitempty"`
 		TotalUpdateTime Duration  `json:"-"`
@@ -222,7 +226,7 @@ type CMStats struct {
 		Epoch int64 `json:"epoch"`
 		// How many times local clustermap was refreshed (from the global clustermap) on this node?
 		TimesUpdated        int64     `json:"times_updated"`
-		LastUpdated         time.Time `json:"last_updated"`
+		LastUpdated         time.Time `json:"last_updated,omitzero"`
 		TimeSinceLastUpdate Duration  `json:"time_since_last_update,omitempty"`
 		// How many times local clustermap update failed (either failed to fetch or failed to update the
 		// local copy)? LastError will have details.
@@ -280,7 +284,7 @@ type CMStats struct {
 		// Available node is one that has at least one RV that can host at least one new MV (remember MVsPerRV?).
 		AvailableNodes int64 `json:"available_nodes,omitempty"`
 		// Time when the last MV was added.
-		LastMVAddedAt time.Time `json:"last_mv_added_at,omitempty"`
+		LastMVAddedAt time.Time `json:"last_mv_added_at,omitzero"`
 		// Total time taken to add new MVs.
 		TimeTaken Duration `json:"time_taken,omitempty"`
 
