@@ -51,6 +51,7 @@ type monitorOptions struct {
 	DisableList     []string `config:"monitor-disable-list"`
 	BfsPollInterval int      `config:"stats-poll-interval-sec"`
 	ProcMonInterval int      `config:"process-monitor-interval-sec"`
+	MountPath       string   `config:"mount-path"`
 	OutputPath      string   `config:"output-path"`
 }
 
@@ -97,6 +98,9 @@ var healthMonCmd = &cobra.Command{
 			log.Err("health-monitor : health_monitor config error (invalid config attributes) [%s]", err.Error())
 			return fmt.Errorf("invalid health_monitor config [%s]", err.Error())
 		}
+		if options.MonitorOpt.MountPath != "" {
+			hmcommon.MountPath = options.MonitorOpt.MountPath
+		}
 
 		cliParams := buildCliParamForMonitor()
 		log.Debug("health-monitor : Options = %v", cliParams)
@@ -113,8 +117,10 @@ var healthMonCmd = &cobra.Command{
 			log.Err("health-monitor : failed to start health monitor [%s]", err.Error())
 			return fmt.Errorf("failed to start health monitor [%s]", err.Error())
 		}
+		fmt.Println("Sleeping to keep process alive for debugging...")
 
 		return nil
+
 	},
 }
 
@@ -155,6 +161,7 @@ func buildCliParamForMonitor() []string {
 
 	cliParams = append(cliParams, "--cache-path="+common.ExpandPath(cacheMonitorOptions.TmpPath))
 	cliParams = append(cliParams, fmt.Sprintf("--max-size-mb=%v", cacheMonitorOptions.MaxSizeMB))
+	cliParams = append(cliParams, "--mount-path="+hmcommon.MountPath)
 
 	for _, v := range options.MonitorOpt.DisableList {
 		switch v {

@@ -36,9 +36,12 @@ package azstorage
 import (
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
 // blobfuseTelemetryPolicy is a custom pipeline policy to prepend the blobfuse user agent string to the one coming from SDK.
@@ -78,4 +81,73 @@ func newServiceVersionPolicy(version string) policy.Policy {
 func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
 	req.Raw().Header["x-ms-version"] = []string{r.serviceApiVersion}
 	return req.Next()
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Policy to track all http requests and responses
+// In your metricsPolicy struct constructor or initializer, create the StatsCollector:
+// var policystatscollector *stats_manager.StatsCollector
+type metricsPolicy struct {
+	mu sync.Mutex
+}
+
+func NewMetricsPolicy() policy.Policy {
+	return &metricsPolicy{}
+}
+
+func (p *metricsPolicy) Do(req *policy.Request) (*http.Response, error) {
+	resp, err := req.Next()
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if azStatsCollector != nil {
+		azStatsCollector.UpdateStats(stats_manager.Increment, TotalRequests, (int64)(1))
+
+		//track http method
+
+		switch req.Raw().Method {
+		case http.MethodGet:
+			azStatsCollector.UpdateStats(stats_manager.Increment, GetRequestCount, (int64)(1))
+		case http.MethodPost:
+			azStatsCollector.UpdateStats(stats_manager.Increment, PostRequestCount, (int64)(1))
+		case http.MethodPut:
+			azStatsCollector.UpdateStats(stats_manager.Increment, PutRequestCount, (int64)(1))
+		case http.MethodDelete:
+			azStatsCollector.UpdateStats(stats_manager.Increment, DeleteRequestCount, (int64)(1))
+		case http.MethodHead:
+			azStatsCollector.UpdateStats(stats_manager.Increment, HeadRequestCount, (int64)(1))
+		default:
+			azStatsCollector.UpdateStats(stats_manager.Increment, OtherRequestCount, (int64)(1))
+		}
+
+		//track response status code
+		var statusCode int
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+
+		switch {
+		case statusCode >= 100 && statusCode < 200:
+			azStatsCollector.UpdateStats(stats_manager.Increment, InformationalCount, (int64)(1))
+		case statusCode >= 200 && statusCode < 300:
+			azStatsCollector.UpdateStats(stats_manager.Increment, SuccessCount, (int64)(1))
+		case statusCode >= 300 && statusCode < 400:
+			azStatsCollector.UpdateStats(stats_manager.Increment, RedirectCount, (int64)(1))
+		case statusCode >= 400 && statusCode < 500:
+			azStatsCollector.UpdateStats(stats_manager.Increment, ClientErrorCount, (int64)(1))
+			azStatsCollector.UpdateStats(stats_manager.Increment, FailureCount, (int64)(1))
+		case statusCode >= 500 && statusCode < 600:
+			azStatsCollector.UpdateStats(stats_manager.Increment, ServerErrorCount, (int64)(1))
+			azStatsCollector.UpdateStats(stats_manager.Increment, FailureCount, (int64)(1))
+		default:
+			if err != nil {
+				azStatsCollector.UpdateStats(stats_manager.Increment, FailureCount, (int64)(1))
+			}
+		}
+	} else {
+		log.Warn("azStatsCollector is nil in metricsPolicy.Do - skipping stats update")
+	}
+
+	return resp, err
 }

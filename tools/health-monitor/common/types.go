@@ -51,6 +51,8 @@ const (
 	OutputFileExtension = "json"
 	OutputFileCount     = 10
 	OutputFileSizeinMB  = 10
+	PolicyStats         = "policy_stats"
+	PolicyPollInterval  = 30
 )
 
 var (
@@ -69,6 +71,7 @@ var (
 	OutputPath    string
 
 	CheckVersion bool
+	MountPath    string
 )
 
 const BfuseMonitorVersion = "1.0.0-preview.1"
