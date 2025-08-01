@@ -1376,6 +1376,7 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 // startClusterMapUpdate() implements step#2 in the above and
 // endClusterMapUpdate() implements step#4.
 func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, etag *string) error {
+	isLeaderChanged := clusterMap.LastUpdatedBy != cmi.myNodeId
 	clusterMap.LastUpdatedBy = cmi.myNodeId
 	//
 	// Set the LastUpdatedAt. This is useful as clusterMapBeingUpdatedByAnotherNode() uses that to log
@@ -1403,6 +1404,14 @@ func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, 
 		// Etag mismatch is the only expected error.
 		common.Assert(mm.IsErrConditionNotMet(err), err)
 		return err
+	}
+
+	//
+	// This node is the new leader.
+	//
+	if isLeaderChanged {
+		stats.Stats.CM.StorageClustermap.BecameLeaderAt = time.Now()
+		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitches), 1)
 	}
 
 	return nil
@@ -1635,7 +1644,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %d secs, ownership being claimed by new leader %s",
 			leaderNode, clusterMapAge, cmi.myNodeId)
 		log.Warn("%v", err1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitches), 1)
+		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitchesDueToTimeout), 1)
 		// This is not an error, but interesting event, so log it.
 		stats.Stats.CM.StorageClustermap.LastError = err1.Error()
 	}
@@ -2485,24 +2494,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 
 	numUsableMVs := 0
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.OnlineMVs, 0)
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.OfflineMVs, 0)
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.DegradedMVs, 0)
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.SyncingMVs, 0)
 	for mvName, mv := range existingMVMap {
-		switch mv.State {
-		case dcache.StateOnline:
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OnlineMVs), 1)
-		case dcache.StateOffline:
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OfflineMVs), 1)
-		case dcache.StateDegraded:
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.DegradedMVs), 1)
-		case dcache.StateSyncing:
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.SyncingMVs), 1)
-		default:
-			common.Assert(false, mvName, mv.State)
-		}
-
 		if mv.State != dcache.StateOffline {
 			numUsableMVs++
 		}
@@ -2697,6 +2689,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	duration := stats.Duration(time.Since(start))
 
 	atomic.AddInt64(&stats.Stats.CM.UpdateMVList.Calls, 1)
+	stats.Stats.CM.UpdateMVList.LastCallAt = time.Now()
 	atomic.AddInt64((*int64)(&stats.Stats.CM.UpdateMVList.TotalTime), int64(duration))
 	if stats.Stats.CM.UpdateMVList.MinTime == nil ||
 		duration < *stats.Stats.CM.UpdateMVList.MinTime {
@@ -2707,6 +2700,27 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 	atomic.StoreInt64(&stats.Stats.CM.NewMV.TotalRVs, int64(len(rvMap)))
 	atomic.StoreInt64(&stats.Stats.CM.NewMV.TotalMVs, int64(len(existingMVMap)))
+
+	// Count MV state for stats.
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.OnlineMVs, 0)
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.OfflineMVs, 0)
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.DegradedMVs, 0)
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.SyncingMVs, 0)
+	for mvName, mv := range existingMVMap {
+		switch mv.State {
+		case dcache.StateOnline:
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OnlineMVs), 1)
+		case dcache.StateOffline:
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OfflineMVs), 1)
+		case dcache.StateDegraded:
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.DegradedMVs), 1)
+		case dcache.StateSyncing:
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.SyncingMVs), 1)
+		default:
+			_ = mvName
+			common.Assert(false, mvName, mv.State)
+		}
+	}
 
 	log.Debug("ClusterManager::updateMVList: existing MV map after phase#3: %v", existingMVMap)
 }

@@ -1230,6 +1230,8 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	}
 
 	stats.Stats.CM.Startup.CreatedInitialClustermap = true
+	// Initial cluster leader.
+	stats.Stats.CM.StorageClustermap.BecameLeaderAt = time.Now()
 
 	log.Info("CreateInitialClusterMap:: Created initial clustermap with path %s", clustermapPath)
 	return nil
