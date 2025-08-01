@@ -46,6 +46,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -450,11 +451,8 @@ var mountCmd = &cobra.Command{
 		common.EnableMonitoring = options.MonitorOpt.EnableMon
 
 		// check if blobfuse stats monitor is added in the disable list
-		for _, mon := range options.MonitorOpt.DisableList {
-			if mon == common.BfuseStats {
-				common.BfsDisabled = true
-				break
-			}
+		if slices.Contains(options.MonitorOpt.DisableList, common.BfuseStats) {
+			common.BfsDisabled = true
 		}
 
 		config.Set("mount-path", options.MountPath)
