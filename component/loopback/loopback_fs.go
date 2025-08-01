@@ -575,7 +575,7 @@ func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBl
 	blocks := info.Size() / (int64)(blockSize)
 	list := make(internal.CommittedBlockList, 0)
 
-	for i := int64(0); i < blocks; i++ {
+	for i := range blocks {
 		list = append(list, internal.CommittedBlock{
 			Id:     fmt.Sprintf("%d", i),
 			Offset: i * (int64)(blockSize),
