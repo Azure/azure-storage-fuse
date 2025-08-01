@@ -275,7 +275,11 @@ type CMStats struct {
 		// Total RVs (from all nodes) at our disposal.
 		TotalRVs int64 `json:"total_rvs,omitempty"`
 		// Total MVs, created from all the RVs that we have.
-		TotalMVs int64 `json:"total_mvs,omitempty"`
+		TotalMVs    int64 `json:"total_mvs,omitempty"`
+		OnlineMVs   int64 `json:"online_mvs,omitempty"`
+		DegradedMVs int64 `json:"degraded_mvs,omitempty"`
+		OfflineMVs  int64 `json:"offline_mvs,omitempty"`
+		SyncingMVs  int64 `json:"syncing_mvs,omitempty"`
 		// With TotalRVs, NumReplicas and MVsPerRV, how many MVs can the cluster have?
 		MaxMVsPossible int64 `json:"max_mvs_possible,omitempty"`
 		// How many MVs were added by this node?

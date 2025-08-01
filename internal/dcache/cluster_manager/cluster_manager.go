@@ -2485,7 +2485,24 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 
 	numUsableMVs := 0
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.OnlineMVs, 0)
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.OfflineMVs, 0)
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.DegradedMVs, 0)
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.SyncingMVs, 0)
 	for mvName, mv := range existingMVMap {
+		switch mv.State {
+		case dcache.StateOnline:
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OnlineMVs), 1)
+		case dcache.StateOffline:
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OfflineMVs), 1)
+		case dcache.StateDegraded:
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.DegradedMVs), 1)
+		case dcache.StateSyncing:
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.SyncingMVs), 1)
+		default:
+			common.Assert(false, mvName, mv.State)
+		}
+
 		if mv.State != dcache.StateOffline {
 			numUsableMVs++
 		}
@@ -2659,6 +2676,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			numUsableMVs++
 			common.Assert(numUsableMVs <= len(existingMVMap), numUsableMVs, len(existingMVMap))
 			atomic.AddInt64(&stats.Stats.CM.NewMV.NewMVsAdded, 1)
+			// New MV always starts as online.
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OnlineMVs), 1)
 			stats.Stats.CM.NewMV.LastMVAddedAt = time.Now()
 			// Time taken by new-mv workflow.
 			newMVDuration := stats.Duration(time.Since(startNewMV))
