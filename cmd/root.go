@@ -40,6 +40,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -124,8 +125,8 @@ func getRemoteVersion(req string) (string, error) {
 }
 
 // beginDetectNewVersion : Get latest release version and compare if user needs an upgrade or not
-func beginDetectNewVersion() chan interface{} {
-	completed := make(chan interface{})
+func beginDetectNewVersion() chan any {
+	completed := make(chan any)
 	stderr := os.Stderr
 	go func() {
 		defer close(completed)
@@ -206,10 +207,8 @@ func VersionCheck() error {
 func ignoreCommand(cmdArgs []string) bool {
 	ignoreCmds := []string{"completion", "help"}
 	if len(cmdArgs) > 0 {
-		for _, c := range ignoreCmds {
-			if c == cmdArgs[0] {
-				return true
-			}
+		if slices.Contains(ignoreCmds, cmdArgs[0]) {
+			return true
 		}
 	}
 	return false
@@ -246,8 +245,8 @@ func parseArgs(cmdArgs []string) []string {
 				lfuseArgs := make([]string, 0)
 
 				// Check if ',' exists in arguments or not. If so we assume it might be coming from /etc/fstab
-				opts := strings.Split(cmdArgs[i], ",")
-				for _, o := range opts {
+				opts := strings.SplitSeq(cmdArgs[i], ",")
+				for o := range opts {
 					// If we got comma separated list then all blobfuse specific options needs to be extracted out
 					//  as those shall not be part of -o list which for us means libfuse options
 					if strings.HasPrefix(o, "--") {
