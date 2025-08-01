@@ -134,19 +134,22 @@ type MMStats struct {
 
 	Clustermap struct {
 		// How many times clustermap was updated (only cluster_manager leader updates clustermap).
-		UpdateStartCalls int64     `json:"update_start_calls"`
-		UpdateEndCalls   int64     `json:"update_end_calls"`
-		LastUpdateStart  time.Time `json:"-"`
-		LastUpdated      time.Time `json:"last_updated"`
-		MinUpdateTime    *Duration `json:"min_update_time,omitempty"`
-		MaxUpdateTime    Duration  `json:"max_update_time,omitempty"`
-		TotalUpdateTime  Duration  `json:"-"`
-		AvgUpdateTime    Duration  `json:"avg_update_time,omitempty"`
+		UpdateStartCalls int64 `json:"update_start_calls"`
+		UpdateEndCalls   int64 `json:"update_end_calls"`
+		// Either update start or end failures.
+		UpdateFailures  int64     `json:"update_failures,omitempty"`
+		LastUpdateStart time.Time `json:"-"`
+		// When was the global clustermap last updated?
+		// Only cluster_manager leader updates the global clustermap.
+		LastUpdated     time.Time `json:"last_updated"`
+		MinUpdateTime   *Duration `json:"min_update_time,omitempty"`
+		MaxUpdateTime   Duration  `json:"max_update_time,omitempty"`
+		TotalUpdateTime Duration  `json:"-"`
+		AvgUpdateTime   Duration  `json:"avg_update_time,omitempty"`
 		// How many time clustermap was fetched.
-		GetCalls       int64  `json:"get_calls,omitempty"`
-		UpdateFailures int64  `json:"update_failures,omitempty"`
-		GetFailures    int64  `json:"get_failures,omitempty"`
-		LastError      string `json:"last_error,omitempty"`
+		GetCalls    int64  `json:"get_calls,omitempty"`
+		GetFailures int64  `json:"get_failures,omitempty"`
+		LastError   string `json:"last_error,omitempty"`
 	} `json:"clustermap"`
 
 	// File creation involves two steps: init, finalize.
@@ -186,19 +189,155 @@ type MMStats struct {
 }
 
 // Cluster manager stats.
+// We maintain stats for various tasks that cluster_manager performs, such as
+// - Initial tasks when the node starts, such as cleaning up stale MVs, creating the initial clustermap, etc.
+// - Local clustermap refresh.
+// - Various workflows such as new-mv, fix-mv, etc.
 type CMStats struct {
-	// Total time spent in cleaning up stale MVs from all the local RVs.
-	RVCleanupDuration Duration `json:"rv_cleanup_duration"`
-	// How many MVs were deleted when this node started.
-	MVsDeleted int64 `json:"mvs_deleted,omitempty"`
-	// MVs that could not be deleted as deletion failed.
-	MVsDeleteFailed int64 `json:"mvs_delete_failed,omitempty"`
-	// Did this node create the initial clustermap?
-	CreatedInitialClustermap bool `json:"created_initial_clustermap,omitempty"`
-	// Time taken to update the clustermap with the local RVs.
-	UpdateClustermapWithMyRVsDuration Duration `json:"update_clustermap_with_my_rvs_duration"`
-	// Time taken to ensure the initial clustermap is created, with the local RVs and node joins the cluster.
-	EnsureInitialClustermapDuration Duration `json:"ensure_initial_clustermap_duration"`
+	// Various tasks performed by cluster_manager when the node starts.
+	Startup struct {
+		// Total time spent in cleaning up stale MVs from all the local RVs.
+		RVCleanupDuration Duration `json:"rv_cleanup_duration,omitempty"`
+		// How many MVs were deleted when this node started.
+		MVsDeleted int64 `json:"mvs_deleted,omitempty"`
+		// MVs that could not be deleted as deletion failed for one or more chunks or the MV directory.
+		MVsDeleteFailed int64 `json:"mvs_delete_failed,omitempty"`
+		// Did this node create the initial clustermap? The first node to come up that finds no clustermap
+		// creates the initial clustermap.
+		CreatedInitialClustermap bool `json:"created_initial_clustermap,omitempty"`
+		// Time taken to update the clustermap with the local RVs.
+		// Before a new node can join the cluster, it needs to add it's local RVs to the clustermap.
+		// It has to do it atomically, potentially along with other nodes that are joining the cluster.
+		UpdateClustermapWithMyRVsDuration Duration `json:"update_clustermap_with_my_rvs_duration"`
+		// Total time taken to ensure the initial clustermap is created, with the local RVs and node joins
+		// the cluster.
+		EnsureInitialClustermapDuration Duration `json:"ensure_initial_clustermap_duration"`
+	} `json:"startup"`
+
+	// Local clustermap stats.
+	LocalClustermap struct {
+		// Size of the local clustermap in bytes.
+		SizeInBytes int64 `json:"size_in_bytes"`
+		// Epoch of the local clustermap.
+		Epoch int64 `json:"epoch"`
+		// How many times local clustermap was refreshed (from the global clustermap) on this node?
+		TimesUpdated        int64     `json:"times_updated"`
+		LastUpdated         time.Time `json:"last_updated"`
+		TimeSinceLastUpdate Duration  `json:"time_since_last_update,omitempty"`
+		// How many times local clustermap update failed (either failed to fetch or failed to update the
+		// local copy)? LastError will have details.
+		UpdateFailures int64 `json:"update_failures,omitempty"`
+		// How many time clustermap was refreshed but it was found to be unchanged from our saved local copy?
+		Unchanged int64 `json:"unchanged,omitempty"`
+		// Minimum, maximum, total and average duration of all local clustermap updates.
+		MinTime   *Duration `json:"min_time,omitempty"`
+		MaxTime   Duration  `json:"max_time,omitempty"`
+		TotalTime Duration  `json:"-"`
+		AvgTime   Duration  `json:"avg_time,omitempty"`
+		LastError string    `json:"last_error,omitempty"`
+	} `json:"local_clustermap"`
+
+	// Global clustermap stats.
+	StorageClustermap struct {
+		// Node ID of the node that is the leader (as per the latest clustermap copy that we have).
+		Leader string `json:"leader,omitempty"`
+		// Is this node the cluster_manager leader?
+		IsLeader       bool   `json:"is_leader"`
+		LeaderSwitches int64  `json:"leader_switches,omitempty"`
+		LastError      string `json:"last_error,omitempty"`
+		Calls          int64  `json:"calls"`
+		Failures       int64  `json:"failures,omitempty"`
+	} `json:"storage_clustermap,omitempty"`
+
+	// updateMVList() stats.
+	UpdateMVList struct {
+		// How many times updateMVList() was called by the periodic cluster_manager thread to run various MV
+		// workflows, such as new-mv, fix-mv, etc. Only leader node run this.
+		// Non-leaders call it from batchUpdateComponentRVState(), but we don't count those calls here.
+		Calls     int64     `json:"calls"`
+		Failures  int64     `json:"failures,omitempty"`
+		MinTime   *Duration `json:"min_time,omitempty"`
+		MaxTime   Duration  `json:"max_time,omitempty"`
+		TotalTime Duration  `json:"-"`
+		AvgTime   Duration  `json:"avg_time,omitempty"`
+		LastError string    `json:"last_error,omitempty"`
+	} `json:"update_mv_list"`
+
+	// New MV workflow stats.
+	// These are only valid for the cluster_manager leader node.
+	NewMV struct {
+		MVsPerRV    int64 `json:"mvs_per_rv,omitempty"`
+		NumReplicas int64 `json:"num_replicas,omitempty"`
+		// Total RVs (from all nodes) at our disposal.
+		TotalRVs int64 `json:"total_rvs,omitempty"`
+		// Total MVs, created from all the RVs that we have.
+		TotalMVs int64 `json:"total_mvs,omitempty"`
+		// With TotalRVs, NumReplicas and MVsPerRV, how many MVs can the cluster have?
+		MaxMVsPossible int64 `json:"max_mvs_possible,omitempty"`
+		// How many MVs were added by this node?
+		// Only a cluster_manager leader can add MVs, so this value is meaningful only for the leader node.
+		NewMVsAdded int64 `json:"new_mvs_added,omitempty"`
+		// Available node is one that has at least one RV that can host at least one new MV (remember MVsPerRV?).
+		AvailableNodes int64 `json:"available_nodes,omitempty"`
+		// Time when the last MV was added.
+		LastMVAddedAt time.Time `json:"last_mv_added_at,omitempty"`
+		// Total time taken to add new MVs.
+		TimeTaken Duration `json:"time_taken,omitempty"`
+
+		// Details of JoinMV calls made for adding component RVs to the new MVs.
+		JoinMV struct {
+			Calls     int64     `json:"calls"`
+			Failures  int64     `json:"failures,omitempty"`
+			MinTime   *Duration `json:"min_time,omitempty"`
+			MaxTime   Duration  `json:"max_time,omitempty"`
+			TotalTime Duration  `json:"-"`
+			AvgTime   Duration  `json:"avg_time,omitempty"`
+			LastError string    `json:"last_error,omitempty"`
+		} `json:"join_mv"`
+	} `json:"new_mv"`
+
+	// Fix MV workflow stats.
+	FixMV struct {
+		// fixMV() replaced all offline component RVs of these MVs with new RVs.
+		MVsFixed int64 `json:"mvs_fixed,omitempty"`
+		// fixMV() replaced at least one offline component RV of these MVs with new RVs.
+		MVsPartiallyFixed int64 `json:"mvs_partially_fixed,omitempty"`
+		// fixMV() could not replace even one offline component RV of these MVs with new RVs.
+		MVsNotFixed int64 `json:"mvs_not_fixed,omitempty"`
+		// fixMV() could find replacement RVs but joinMV() failed for these MVs.
+		MVsFixFailedDueToJoinMV int64 `json:"mvs_fix_failed_due_to_join_mv,omitempty"`
+		// How many RVs were cumulatively replaced.
+		RVsReplaced int64 `json:"rvs_replaced,omitempty"`
+		// Count of RVs for which we could not find a replacement RV, when fixMV() is called.
+		// Such MVs will remain degraded till the next periodic updateMVList() call..
+		NoReplacementRVs int64 `json:"no_replacement_rvs,omitempty"`
+		// Total calls to fixMV().
+		Calls int64 `json:"calls"`
+		// Minimum, maximum, total and average duration of all fixMV() calls.
+		MinTime   *Duration `json:"min_time,omitempty"`
+		MaxTime   Duration  `json:"max_time,omitempty"`
+		TotalTime Duration  `json:"-"`
+		AvgTime   Duration  `json:"avg_time,omitempty"`
+		JoinMV    struct {
+			Calls     int64     `json:"calls"`
+			Failures  int64     `json:"failures,omitempty"`
+			MinTime   *Duration `json:"min_time,omitempty"`
+			MaxTime   Duration  `json:"max_time,omitempty"`
+			TotalTime Duration  `json:"-"`
+			AvgTime   Duration  `json:"avg_time,omitempty"`
+			LastError string    `json:"last_error,omitempty"`
+		} `json:"join_mv"`
+
+		UpdateMV struct {
+			Calls     int64     `json:"calls"`
+			Failures  int64     `json:"failures,omitempty"`
+			MinTime   *Duration `json:"min_time,omitempty"`
+			MaxTime   Duration  `json:"max_time,omitempty"`
+			TotalTime Duration  `json:"-"`
+			AvgTime   Duration  `json:"avg_time,omitempty"`
+			LastError string    `json:"last_error,omitempty"`
+		} `json:"update_mv"`
+	} `json:"fix_mv"`
 
 	// TODO: Add more stats.
 }
@@ -274,6 +413,47 @@ func (s *DCacheStats) Preprocess() {
 	if s.MM.Clustermap.UpdateEndCalls > 0 {
 		s.MM.Clustermap.AvgUpdateTime =
 			Duration(float64(s.MM.Clustermap.TotalUpdateTime) / float64(s.MM.Clustermap.UpdateEndCalls))
+	}
+
+	localClustermapUpdateCalls := s.CM.LocalClustermap.TimesUpdated - s.CM.LocalClustermap.UpdateFailures
+	if localClustermapUpdateCalls > 0 {
+		s.CM.LocalClustermap.AvgTime =
+			Duration(float64(s.CM.LocalClustermap.TotalTime) / float64(localClustermapUpdateCalls))
+	}
+
+	if !s.CM.LocalClustermap.LastUpdated.IsZero() {
+		s.CM.LocalClustermap.TimeSinceLastUpdate = Duration(time.Since(s.CM.LocalClustermap.LastUpdated))
+	}
+
+	if s.CM.NewMV.JoinMV.Calls > 0 {
+		s.CM.NewMV.JoinMV.AvgTime =
+			Duration(float64(s.CM.NewMV.JoinMV.TotalTime) / float64(s.CM.NewMV.JoinMV.Calls))
+	}
+
+	if s.NodeId == s.CM.StorageClustermap.Leader {
+		s.CM.StorageClustermap.IsLeader = true
+	} else {
+		s.CM.StorageClustermap.IsLeader = false
+	}
+
+	if s.CM.UpdateMVList.Calls > 0 {
+		s.CM.UpdateMVList.AvgTime =
+			Duration(float64(s.CM.UpdateMVList.TotalTime) / float64(s.CM.UpdateMVList.Calls))
+	}
+
+	if s.CM.FixMV.Calls > 0 {
+		s.CM.FixMV.AvgTime =
+			Duration(float64(s.CM.FixMV.TotalTime) / float64(s.CM.FixMV.Calls))
+	}
+
+	if s.CM.FixMV.JoinMV.Calls > 0 {
+		s.CM.FixMV.JoinMV.AvgTime =
+			Duration(float64(s.CM.FixMV.JoinMV.TotalTime) / float64(s.CM.FixMV.JoinMV.Calls))
+	}
+
+	if s.CM.FixMV.UpdateMV.Calls > 0 {
+		s.CM.FixMV.UpdateMV.AvgTime =
+			Duration(float64(s.CM.FixMV.UpdateMV.TotalTime) / float64(s.CM.FixMV.UpdateMV.Calls))
 	}
 }
 
