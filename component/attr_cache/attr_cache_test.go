@@ -744,9 +744,9 @@ func (suite *attrCacheTestSuite) TestWriteFileError() {
 
 	// Error
 	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path, RetrieveMetadata: true}).Return(nil, nil)
-	suite.mock.EXPECT().WriteFile(options).Return(0, errors.New("Failed to write a file"))
+	suite.mock.EXPECT().WriteFile(&options).Return(0, errors.New("Failed to write a file"))
 
-	_, err := suite.attrCache.WriteFile(options)
+	_, err := suite.attrCache.WriteFile(&options)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
 }
@@ -762,9 +762,9 @@ func (suite *attrCacheTestSuite) TestWriteFileDoesNotExist() {
 	// Success
 	// Entry Does Not Already Exist
 	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path, RetrieveMetadata: true}).Return(nil, nil)
-	suite.mock.EXPECT().WriteFile(options).Return(0, nil)
+	suite.mock.EXPECT().WriteFile(&options).Return(0, nil)
 
-	_, err := suite.attrCache.WriteFile(options)
+	_, err := suite.attrCache.WriteFile(&options)
 	suite.assert.Nil(err)
 	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
 }
@@ -779,9 +779,9 @@ func (suite *attrCacheTestSuite) TestWriteFileExists() {
 	options := internal.WriteFileOptions{Handle: &handle, Metadata: nil}
 	// Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, path, true)
-	suite.mock.EXPECT().WriteFile(options).Return(0, nil)
+	suite.mock.EXPECT().WriteFile(&options).Return(0, nil)
 
-	_, err := suite.attrCache.WriteFile(options)
+	_, err := suite.attrCache.WriteFile(&options)
 	suite.assert.Nil(err)
 	assertInvalid(suite, path)
 }

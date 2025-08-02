@@ -1149,7 +1149,7 @@ func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes
 }
 
 // WriteFile: Write to the local file
-func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	// log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
 
 	options.Handle.Lock()
