@@ -117,9 +117,18 @@ func (tree *Tree) GetSubTree(key string) *TreeNode {
 	return curNode
 }
 
-// parseValue is a utility function that accepts a val and returns the parsed value of that type.
-func parseValue(val string, toType reflect.Kind) any {
-	switch toType {
+// Apart from primitive types it also handles the slice type where value is a comma separated string
+func parseValue(val string, toType reflect.Type) any {
+	switch toType.Kind() {
+	case reflect.Slice:
+		if toType.Elem().Kind() != reflect.String {
+			return nil // only support []string for now
+		}
+		stringSlice := strings.Split(val, ",")
+		for i := range stringSlice {
+			stringSlice[i] = strings.TrimSpace(strings.Trim(stringSlice[i], "[]"))
+		}
+		return stringSlice
 	case reflect.Bool:
 		parsed, err := strconv.ParseBool(val)
 		if err != nil {
@@ -337,7 +346,7 @@ func isPrimitiveType(kind reflect.Kind) bool {
 func assignToField(field reflect.Value, val any) {
 	if field.CanSet() {
 		if reflect.TypeOf(val).Kind() == reflect.String {
-			parseVal := parseValue(val.(string), field.Kind())
+			parseVal := parseValue(val.(string), field.Type())
 			if parseVal != nil {
 				field.Set(reflect.ValueOf(parseVal))
 			}
