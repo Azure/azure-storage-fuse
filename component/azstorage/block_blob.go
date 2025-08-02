@@ -819,7 +819,7 @@ func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr
 		log.Debug("BlockBlob::trackDownload : Download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 
 		// send the download progress as an event
-		azStatsCollector.PushEvents(downloadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
+		azStatsCollector.PushEvents(downloadProgress, name, map[string]any{bytesTfrd: bytesTransferred, size: count})
 	}
 }
 
@@ -1036,7 +1036,7 @@ func trackUpload(name string, bytesTransferred int64, count int64, uploadPtr *in
 		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 
 		// send upload progress as event
-		azStatsCollector.PushEvents(uploadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
+		azStatsCollector.PushEvents(uploadProgress, name, map[string]any{bytesTfrd: bytesTransferred, size: count})
 	}
 }
 
