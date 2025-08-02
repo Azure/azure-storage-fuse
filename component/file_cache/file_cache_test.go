@@ -1018,7 +1018,7 @@ func (suite *fileCacheTestSuite) TestReadInBufferEmpty() {
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
 
 	data := make([]byte, 0)
-	length, err := suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: data})
+	length, err := suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(0, length)
 	suite.assert.Empty(data)
@@ -1036,7 +1036,7 @@ func (suite *fileCacheTestSuite) TestReadInBufferNoFlush() {
 	handle, _ = suite.fileCache.OpenFile(internal.OpenFileOptions{Name: file, Mode: 0777})
 
 	output := make([]byte, 9)
-	length, err := suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output})
+	length, err := suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output})
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(data, output)
 	suite.assert.EqualValues(len(data), length)
@@ -1055,7 +1055,7 @@ func (suite *fileCacheTestSuite) TestReadInBuffer() {
 	handle, _ = suite.fileCache.OpenFile(internal.OpenFileOptions{Name: file, Mode: 0777})
 
 	output := make([]byte, 9)
-	length, err := suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output})
+	length, err := suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output})
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(data, output)
 	suite.assert.EqualValues(len(data), length)
@@ -1066,7 +1066,7 @@ func (suite *fileCacheTestSuite) TestReadInBufferErrorBadFd() {
 	// Setup
 	file := "file18"
 	handle := handlemap.NewHandle(file)
-	length, err := suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle})
+	length, err := suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle})
 	suite.assert.NotNil(err)
 	suite.assert.EqualValues(syscall.EBADF, err)
 	suite.assert.EqualValues(0, length)
@@ -1815,7 +1815,7 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	f, err := suite.fileCache.OpenFile(options)
 	suite.assert.Nil(err)
 	suite.assert.False(f.Dirty())
-	n, err := suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
+	n, err := suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(9, n)
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
@@ -1827,7 +1827,7 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	f, err = suite.fileCache.OpenFile(options)
 	suite.assert.Nil(err)
 	suite.assert.False(f.Dirty())
-	n, err = suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
+	n, err = suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(9, n)
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
@@ -1840,7 +1840,7 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	f, err = suite.fileCache.OpenFile(options)
 	suite.assert.Nil(err)
 	suite.assert.False(f.Dirty())
-	n, err = suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
+	n, err = suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.Nil(err)
 	suite.assert.Equal(15, n)
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
