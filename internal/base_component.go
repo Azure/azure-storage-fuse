@@ -200,7 +200,7 @@ func (base *BaseComponent) ReadFileWithName(options ReadFileWithNameOptions) (b 
 	return b, err
 }
 
-func (base *BaseComponent) ReadInBuffer(options ReadInBufferOptions) (int, error) {
+func (base *BaseComponent) ReadInBuffer(options *ReadInBufferOptions) (int, error) {
 	if base.next != nil {
 		return base.next.ReadInBuffer(options)
 	}
