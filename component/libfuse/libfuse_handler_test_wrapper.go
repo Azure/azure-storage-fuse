@@ -401,14 +401,14 @@ func testFTruncate(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
 	fi := C.fuse_file_info_t{}
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	options := internal.TruncateFileOptions{Handle: handle, Name: name, Size: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
-	err := libfuse_truncate(path, C.long(size), &fi)
+	err := libfuse_truncate(path, C.off_t(size), &fi)
 	suite.assert.Equal(C.int(0), err)
 }
 
@@ -420,14 +420,14 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
 	fi := C.fuse_file_info_t{}
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	options := internal.TruncateFileOptions{Handle: handle, Name: name, Size: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
-	err := libfuse_truncate(path, C.long(size), &fi)
+	err := libfuse_truncate(path, C.off_t(size), &fi)
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
