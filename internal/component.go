@@ -108,7 +108,7 @@ type Component interface {
 
 	ReadFile(ReadFileOptions) ([]byte, error)
 	ReadFileWithName(ReadFileWithNameOptions) ([]byte, error)
-	ReadInBuffer(ReadInBufferOptions) (int, error)
+	ReadInBuffer(*ReadInBufferOptions) (int, error)
 
 	WriteFile(WriteFileOptions) (int, error)
 	TruncateFile(TruncateFileOptions) error

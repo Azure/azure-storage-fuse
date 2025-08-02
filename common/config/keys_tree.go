@@ -44,7 +44,7 @@ const STRUCT_TAG = "config"
 
 type TreeNode struct {
 	children map[string]*TreeNode
-	value    interface{}
+	value    any
 	name     string
 }
 
@@ -70,7 +70,7 @@ func NewTreeNode(name string) *TreeNode {
 // Insert function is used to insert a new object into the tree
 // The key is specified as a dot separated hierarchical value
 // For eg. root.child1.child2
-func (tree *Tree) Insert(key string, value interface{}) {
+func (tree *Tree) Insert(key string, value any) {
 	subKeys := strings.Split(key, ".")
 	curNode := tree.head
 	for _, idx := range subKeys {
@@ -118,18 +118,8 @@ func (tree *Tree) GetSubTree(key string) *TreeNode {
 }
 
 // parseValue is a utility function that accepts a val and returns the parsed value of that type.
-// Apart from primitive types it also handles the slice type where value is a comma separated string
-func parseValue(val string, toType reflect.Type) interface{} {
-	switch toType.Kind() {
-	case reflect.Slice:
-		if toType.Elem().Kind() != reflect.String {
-			return nil // only support []string for now
-		}
-		stringSlice := strings.Split(val, ",")
-		for i := range stringSlice {
-			stringSlice[i] = strings.TrimSpace(strings.Trim(stringSlice[i], "[]"))
-		}
-		return stringSlice
+func parseValue(val string, toType reflect.Kind) any {
+	switch toType {
 	case reflect.Bool:
 		parsed, err := strconv.ParseBool(val)
 		if err != nil {
@@ -230,7 +220,7 @@ func parseValue(val string, toType reflect.Type) interface{} {
 // MergeWithKey is used to merge the contained tree with the object (obj) that is passed in as parameter.
 // getValue parameter is a function that accepts the value stored in a TreeNode and performs any business logic and returns the value that has to be placed in the obj parameter
 // it must also return true|false based on which the value will be set in the obj parameter.
-func (tree *Tree) MergeWithKey(key string, obj interface{}, getValue func(val interface{}) (res interface{}, ok bool)) {
+func (tree *Tree) MergeWithKey(key string, obj any, getValue func(val any) (res any, ok bool)) {
 	subTree := tree.GetSubTree(key)
 	if subTree == nil {
 		return
@@ -267,7 +257,7 @@ func (tree *Tree) MergeWithKey(key string, obj interface{}, getValue func(val in
 }
 
 // Merge performs the same function as MergeWithKey but at the root level
-func (tree *Tree) Merge(obj interface{}, getValue func(val interface{}) (res interface{}, ok bool)) {
+func (tree *Tree) Merge(obj any, getValue func(val any) (res any, ok bool)) {
 	subTree := tree.head
 	if subTree == nil {
 		return
@@ -344,10 +334,10 @@ func isPrimitiveType(kind reflect.Kind) bool {
 }
 
 // assignToField is utility function to set the val to the passed field based on it's state
-func assignToField(field reflect.Value, val interface{}) {
+func assignToField(field reflect.Value, val any) {
 	if field.CanSet() {
 		if reflect.TypeOf(val).Kind() == reflect.String {
-			parseVal := parseValue(val.(string), field.Type())
+			parseVal := parseValue(val.(string), field.Kind())
 			if parseVal != nil {
 				field.Set(reflect.ValueOf(parseVal))
 			}

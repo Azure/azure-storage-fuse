@@ -56,8 +56,8 @@ func TestKeysTree(t *testing.T) {
 
 type parseVal struct {
 	val    string
-	toType reflect.Type
-	result interface{}
+	toType reflect.Kind
+	result any
 }
 
 func (suite *keysTreeTestSuite) TestParseValue() {
