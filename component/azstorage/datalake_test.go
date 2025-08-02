@@ -232,7 +232,7 @@ func (s *datalakeTestSuite) TestListContainers() {
 	// Setup
 	num := 10
 	prefix := generateContainerName()
-	for i := 0; i < num; i++ {
+	for i := range num {
 		f := s.serviceClient.NewFileSystemClient(prefix + fmt.Sprint(i))
 		f.Create(ctx, nil)
 		defer f.Delete(ctx, nil)

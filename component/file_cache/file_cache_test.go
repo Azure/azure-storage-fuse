@@ -2039,7 +2039,7 @@ func (suite *fileCacheTestSuite) TestHardLimit() {
 	file := "file96"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
 	data := make([]byte, 1024*1024)
-	for i := int64(0); i < 5; i++ {
+	for i := range int64(5) {
 		suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: i * 1024 * 1024, Data: data})
 	}
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
