@@ -36,6 +36,8 @@ package stats
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -245,12 +247,30 @@ type CMStats struct {
 	StorageClustermap struct {
 		// Node ID of the node that is the leader (as per the latest clustermap copy that we have).
 		Leader string `json:"leader,omitempty"`
-		// Is this node the cluster_manager leader?
-		IsLeader       bool   `json:"is_leader"`
-		LeaderSwitches int64  `json:"leader_switches,omitempty"`
-		LastError      string `json:"last_error,omitempty"`
-		Calls          int64  `json:"calls"`
-		Failures       int64  `json:"failures,omitempty"`
+		// Is this node the current cluster_manager leader?
+		// Note that more than one node can claim to be the leader, but only one will be the actual leader.
+		// This can happen if some node has a stale clustermap and the leader has changed since then.
+		// Wait for clustermap epoch to expire and the stale node will stop claiming leadership.
+		IsLeader bool `json:"is_leader"`
+		// If this node is/was the cluster_manager leader, when did it become the leader?
+		// This will be set even if the node is not the current leader but was leader sometime in the past.
+		// This helps to see how leadership has changed over time.
+		BecameLeaderAt time.Time `json:"became_leader_at,omitzero"`
+		// And how long has it been the leader?
+		// This will be set only if the node is the current leader.
+		LeaderFor Duration `json:"leader_for,omitempty"`
+		// How many times the leader has been switched?
+		// Note that a leader is the node that updates the storage clustermap. A node can update the clustermap
+		// if it sees the clustermap is not updated for a timeout period (this is LeaderSwitchesDueToTimeout),
+		// or it could update the clustermap as it wanted to convey some update to the clustermap, maybe some
+		// RV state change or adding a new RV.
+		// The leader switches are counted *only* by the new leader and not the outgoing leader.
+		LeaderSwitches int64 `json:"leader_switches,omitempty"`
+		// How many times a node has to claim leadership as the current leader didn't update the clustermap?
+		LeaderSwitchesDueToTimeout int64  `json:"leader_switches_due_to_timeout,omitempty"`
+		LastError                  string `json:"last_error,omitempty"`
+		Calls                      int64  `json:"calls"`
+		Failures                   int64  `json:"failures,omitempty"`
 	} `json:"storage_clustermap,omitempty"`
 
 	// updateMVList() stats.
@@ -264,11 +284,14 @@ type CMStats struct {
 		MaxTime   Duration  `json:"max_time,omitempty"`
 		TotalTime Duration  `json:"-"`
 		AvgTime   Duration  `json:"avg_time,omitempty"`
-		LastError string    `json:"last_error,omitempty"`
+		// When was the last call to updateMVList() made?
+		LastCallAt time.Time `json:"last_call_at,omitzero"`
+		LastError  string    `json:"last_error,omitempty"`
 	} `json:"update_mv_list"`
 
 	// New MV workflow stats.
-	// These are only valid for the cluster_manager leader node.
+	// These are only valid for the cluster_manager leader node, also the leader needs to run updateMVList()
+	// once to update these stats, till then these stats will be empty.
 	NewMV struct {
 		MVsPerRV    int64 `json:"mvs_per_rv,omitempty"`
 		NumReplicas int64 `json:"num_replicas,omitempty"`
@@ -306,9 +329,9 @@ type CMStats struct {
 
 	// Fix MV workflow stats.
 	FixMV struct {
-		// fixMV() replaced all offline component RVs of these MVs with new RVs.
+		// fixMV() replaced all offline component RVs of these MVs with new RVs and joinMV() succeeded for all
 		MVsFixed int64 `json:"mvs_fixed,omitempty"`
-		// fixMV() replaced at least one offline component RV of these MVs with new RVs.
+		// fixMV() replaced at least one offline component RV of these MVs with new RVs and joinMV() succeeded.
 		MVsPartiallyFixed int64 `json:"mvs_partially_fixed,omitempty"`
 		// fixMV() could not replace even one offline component RV of these MVs with new RVs.
 		MVsNotFixed int64 `json:"mvs_not_fixed,omitempty"`
@@ -439,9 +462,38 @@ func (s *DCacheStats) Preprocess() {
 	}
 
 	if s.NodeId == s.CM.StorageClustermap.Leader {
+		// BecameLeaderAt is set when updateClusterMapStart() marks the node as the leader.
+		common.Assert(!s.CM.StorageClustermap.BecameLeaderAt.IsZero(), s.NodeId, s.CM.StorageClustermap.Leader)
+
 		s.CM.StorageClustermap.IsLeader = true
+		s.CM.StorageClustermap.LeaderFor = Duration(time.Since(s.CM.StorageClustermap.BecameLeaderAt))
 	} else {
 		s.CM.StorageClustermap.IsLeader = false
+		s.CM.StorageClustermap.LeaderFor = Duration(0)
+
+		//
+		// A non-leader may have stale stats which might be misleading, hide them.
+		//
+		s.CM.NewMV.MVsPerRV = 0
+		s.CM.NewMV.NumReplicas = 0
+		s.CM.NewMV.TotalRVs = 0
+		s.CM.NewMV.TotalMVs = 0
+		s.CM.NewMV.OnlineMVs = 0
+		s.CM.NewMV.DegradedMVs = 0
+		s.CM.NewMV.OfflineMVs = 0
+		s.CM.NewMV.SyncingMVs = 0
+		s.CM.NewMV.MaxMVsPossible = 0
+		s.CM.NewMV.NewMVsAdded = 0
+		s.CM.NewMV.AvailableNodes = 0
+		s.CM.NewMV.LastMVAddedAt = time.Time{}
+		s.CM.NewMV.TimeTaken = Duration(0)
+		s.CM.NewMV.JoinMV.Calls = 0
+		s.CM.NewMV.JoinMV.Failures = 0
+		s.CM.NewMV.JoinMV.MinTime = nil
+		s.CM.NewMV.JoinMV.MaxTime = Duration(0)
+		s.CM.NewMV.JoinMV.TotalTime = Duration(0)
+		s.CM.NewMV.JoinMV.AvgTime = Duration(0)
+		s.CM.NewMV.JoinMV.LastError = ""
 	}
 
 	if s.CM.UpdateMVList.Calls > 0 {
@@ -468,6 +520,9 @@ func (s *DCacheStats) Preprocess() {
 var Stats *DCacheStats
 
 func init() {
+	// Silence unused import errors for release builds.
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+
 	Stats = &DCacheStats{
 		NodeStart: time.Now(),
 	}
