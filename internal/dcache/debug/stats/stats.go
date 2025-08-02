@@ -220,6 +220,20 @@ type CMStats struct {
 		EnsureInitialClustermapDuration Duration `json:"ensure_initial_clustermap_duration"`
 	} `json:"startup"`
 
+	// Stats gathered from heartbeats processing by the cluster_manager leader node.
+	Heartbeats struct {
+		// Total nodes for which a HB file was seen in the Nodes/ folder, last time we enumerated.
+		TotalNodes int64 `json:"total_nodes,omitempty"`
+		// How many HBs were seen as expired in the last heartbeats processing?
+		Expired int64 `json:"expired,omitempty"`
+		// Till now how many heartbeats were seen as expired? This number keeps growing and is indicative
+		// of how things have been in the past.
+		ExpiredCumulative int64 `json:"expired_cumulative,omitempty"`
+		DuplicateRVIds int64 `json:"duplicate_rv_ids,omitempty"`
+		// Error during heartbeats processing.
+		LastError string `json:"last_error,omitempty"`
+	} `json:"heartbeats"`
+
 	// Local clustermap stats.
 	LocalClustermap struct {
 		// Size of the local clustermap in bytes.
@@ -289,7 +303,7 @@ type CMStats struct {
 		LastError  string    `json:"last_error,omitempty"`
 	} `json:"update_mv_list"`
 
-	// New MV workflow stats.
+	// New MV workflow stats. Also contains stats for RVs and MVs.
 	// These are only valid for the cluster_manager leader node, also the leader needs to run updateMVList()
 	// once to update these stats, till then these stats will be empty.
 	NewMV struct {
@@ -297,6 +311,8 @@ type CMStats struct {
 		NumReplicas int64 `json:"num_replicas,omitempty"`
 		// Total RVs (from all nodes) at our disposal.
 		TotalRVs int64 `json:"total_rvs,omitempty"`
+		// How many are offline? Rest are online.
+		OfflineRVs int64 `json:"offline_rvs,omitempty"`
 		// Total MVs, created from all the RVs that we have.
 		TotalMVs    int64 `json:"total_mvs,omitempty"`
 		OnlineMVs   int64 `json:"online_mvs,omitempty"`
@@ -474,9 +490,12 @@ func (s *DCacheStats) Preprocess() {
 		//
 		// A non-leader may have stale stats which might be misleading, hide them.
 		//
+		s.CM.Heartbeats.TotalNodes = 0
+
 		s.CM.NewMV.MVsPerRV = 0
 		s.CM.NewMV.NumReplicas = 0
 		s.CM.NewMV.TotalRVs = 0
+		s.CM.NewMV.OfflineRVs = 0
 		s.CM.NewMV.TotalMVs = 0
 		s.CM.NewMV.OnlineMVs = 0
 		s.CM.NewMV.DegradedMVs = 0

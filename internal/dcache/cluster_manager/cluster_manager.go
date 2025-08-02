@@ -2327,10 +2327,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// Populate the node map (indexed by nodeid) with each node representing all its RVs.
 	// This is the nodeToRvs map.
 	//
+	atomic.StoreInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 0)
 	for rvName, rvInfo := range rvMap {
 		common.Assert(cm.IsValidRV(&rvInfo))
 
 		if rvInfo.State == dcache.StateOffline {
+			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 1)
 			// Skip RVs that are offline as they cannot contribute to any MV.
 			continue
 		}
@@ -3011,9 +3013,14 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	// Get all nodes by enumerating all the HBs from Nodes/ folder.
 	nodeIds, err := getAllNodes()
 	if err != nil {
-		common.Assert(false, err)
-		return false, fmt.Errorf("ClusterManager::updateRVList: getAllNodes() failed: %v", err)
+		err1 := fmt.Errorf("ClusterManager::updateRVList: getAllNodes() failed: %v", err)
+		common.Assert(false, err1)
+		stats.Stats.CM.Heartbeats.LastError = err1.Error()
+		return false, err1
 	}
+
+	atomic.StoreInt64(&stats.Stats.CM.Heartbeats.TotalNodes, int64(len(nodeIds)))
+
 	log.Debug("ClusterManager::updateRVList: Found %d nodes in cluster (initialHB=%v), now start collecting heartbeats: %+v",
 		len(nodeIds), initialHB, nodeIds)
 
@@ -3026,6 +3033,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	rVsByRvIdFromHB, rvLastHB, nodes, failedToReadNodes, err := collectHBForGivenNodeIds(nodeIds, initialHB)
 	_ = nodes
 	if err != nil {
+		stats.Stats.CM.Heartbeats.LastError = err.Error()
 		return false, err
 	}
 	log.Debug("ClusterManager::updateRVList: Collected %d heartbeats for %d nodes (initialHB=%v), failed to read HB for %d nodes: %+v",
@@ -3056,6 +3064,8 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		now := uint64(time.Now().Unix())
 		hbExpiry := now - uint64(hbTillNodeDown*hbSeconds)
 
+		atomic.StoreInt64(&stats.Stats.CM.Heartbeats.Expired, 0)
+
 		// Update RVs present in existingRVMap and which have changed State or AvailableSpace.
 		for rvName, rvInClusterMap := range existingRVMap {
 			if rvHb, found := rVsByRvIdFromHB[rvInClusterMap.RvId]; found {
@@ -3066,6 +3076,8 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				common.Assert(found)
 
 				if lastHB < hbExpiry {
+					atomic.AddInt64(&stats.Stats.CM.Heartbeats.Expired, 1)
+					atomic.AddInt64(&stats.Stats.CM.Heartbeats.ExpiredCumulative, 1)
 					if rvInClusterMap.State != dcache.StateOffline {
 						log.Warn("ClusterManager::updateRVList: Online RV %s %+v lastHeartbeat (%d) has expired, hbExpiry (%d), marking RV offline",
 							rvName, rvInClusterMap, lastHB, hbExpiry)
@@ -3096,8 +3108,10 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				// Play safe and skip this RV for now. If its hb is indeed missing, it will be removed in the next
 				// iteration of updateRVList() call.
 				//
-				log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats (could not read HB for node %s), ignoring for now",
+				err1 := fmt.Errorf("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats (could not read HB for node %s), ignoring for now",
 					rvName, rvInClusterMap, rvInClusterMap.NodeId)
+				log.Warn("%v", err1)
+				stats.Stats.CM.Heartbeats.LastError = err1.Error()
 			} else {
 				//
 				// This can happen when an HB file is deleted out-of-band.
@@ -3114,7 +3128,9 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				// This is not a common occurrence, emit a warning log.
 				//
 				if rvInClusterMap.State != dcache.StateOffline {
-					log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats, did you delete the hb file out-of-band?", rvName, rvInClusterMap)
+					err1 := fmt.Errorf("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats, did you delete the hb file out-of-band?", rvName, rvInClusterMap)
+					log.Warn("%v", err1)
+					stats.Stats.CM.Heartbeats.LastError = err1.Error()
 					rvInClusterMap.State = dcache.StateOffline
 					existingRVMap[rvName] = rvInClusterMap
 					changed = true
@@ -3275,8 +3291,11 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			//       Drop the new RV and keep the existing one.
 			//
 			if namedRV.rv.NodeId != rv.NodeId {
-				log.Warn("ClusterManager::updateRVList: RVId %s from node %s conflicts with existing RV %s from node %s, skipping",
+				err1 := fmt.Errorf("ClusterManager::updateRVList: RVId %s from node %s conflicts with existing RV %s from node %s, skipping",
 					rv.RvId, rv.NodeId, namedRV.rvName, namedRV.rv.NodeId)
+				log.Warn("%v", err1)
+				atomic.AddInt64(&stats.Stats.CM.Heartbeats.DuplicateRVIds, 1)
+				stats.Stats.CM.Heartbeats.LastError = err1.Error()
 				continue
 			}
 
