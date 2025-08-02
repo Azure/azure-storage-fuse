@@ -97,7 +97,7 @@ func (suite *statsMgrTestSuite) TestStatsManagerStartStop() {
 	sm.AddStats(&StatsItem{Component: "random component"})
 
 	// push data manager stats
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		fileName := fmt.Sprintf("file_%v", i)
 		download := false
 		if i%2 == 0 {
@@ -110,7 +110,7 @@ func (suite *statsMgrTestSuite) TestStatsManagerStartStop() {
 	time.Sleep(5 * time.Second)
 
 	// push splitter stats
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		fileName := fmt.Sprintf("file_%v", i)
 		success := false
 		if i%2 == 0 {
