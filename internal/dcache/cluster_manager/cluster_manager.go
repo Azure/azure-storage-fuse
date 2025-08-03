@@ -1512,6 +1512,8 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bo
 func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Calls), 1)
 
+	start := time.Now()
+
 	//
 	// Fetch and update local clustermap as some of the functions we call later down will query the local clustermap.
 	//
@@ -1759,6 +1761,44 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		stats.Stats.CM.StorageClustermap.LastError = err1.Error()
 		return err
 	}
+
+	// Total time taken by updateStorageClusterMapIfRequired().
+	duration := stats.Duration(time.Since(start))
+
+	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalTime), int64(duration))
+	if stats.Stats.CM.StorageClustermap.MinTime == nil ||
+		duration < *stats.Stats.CM.StorageClustermap.MinTime {
+		stats.Stats.CM.StorageClustermap.MinTime = &duration
+	}
+	stats.Stats.CM.StorageClustermap.MaxTime =
+		max(stats.Stats.CM.StorageClustermap.MaxTime, duration)
+
+	//
+	// If the last clusterMap update was done by the same node, calculate gap between updates.
+	//
+	if (stats.Stats.CM.StorageClustermap.LastUpdateEpoch == clusterMap.Epoch-1) &&
+		(stats.Stats.CM.StorageClustermap.LastUpdateEpoch != 0) {
+		common.Assert(!stats.Stats.CM.StorageClustermap.LastUpdatedAt.IsZero())
+		gap := stats.Duration(time.Since(stats.Stats.CM.StorageClustermap.LastUpdatedAt))
+
+		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalGap), int64(gap))
+		if stats.Stats.CM.StorageClustermap.MinGap == nil ||
+			gap < *stats.Stats.CM.StorageClustermap.MinGap {
+			stats.Stats.CM.StorageClustermap.MinGap = &gap
+		}
+		stats.Stats.CM.StorageClustermap.MaxGap =
+			max(stats.Stats.CM.StorageClustermap.MaxGap, gap)
+	} else {
+		// If this is the first update or the first update after a leader switch, reset the gap stats.
+		stats.Stats.CM.StorageClustermap.MinGap = nil
+		atomic.StoreInt64((*int64)(&stats.Stats.CM.StorageClustermap.MaxGap), 0)
+		atomic.StoreInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalGap), 0)
+		atomic.StoreInt64(&stats.Stats.CM.StorageClustermap.TotalUpdates, 0)
+	}
+
+	atomic.StoreInt64(&stats.Stats.CM.StorageClustermap.LastUpdateEpoch, clusterMap.Epoch)
+	stats.Stats.CM.StorageClustermap.LastUpdatedAt = time.Now()
+	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalUpdates), 1)
 
 	log.Info("ClusterManager::updateStorageClusterMapIfRequired: cluster map (%d nodes) updated by %s at %d: %+v",
 		nodeCount, cmi.myNodeId, now, clusterMap)
