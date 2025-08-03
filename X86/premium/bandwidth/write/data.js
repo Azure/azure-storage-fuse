@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1753592977560,
+  "lastUpdate": 1754197967376,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1243,6 +1243,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 2066.5029296875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "171080b657b4c7271b928597d9d8534c56da06a3",
+          "message": "Convert read options struct to pointer in the pipeline (#1901)",
+          "timestamp": "2025-08-02T11:39:27Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/171080b657b4c7271b928597d9d8534c56da06a3"
+        },
+        "date": 1754197967076,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "test",
+            "value": 6453.076497395833,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write",
+            "value": 2049.2340494791665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 2015.7936197916667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 2046.1858723958333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 1903.7692057291667,
             "unit": "MiB/s"
           }
         ]
