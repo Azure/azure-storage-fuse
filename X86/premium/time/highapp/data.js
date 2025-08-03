@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1753595307780,
+  "lastUpdate": 1754200317399,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -815,6 +815,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 51.91603469848633,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "171080b657b4c7271b928597d9d8534c56da06a3",
+          "message": "Convert read options struct to pointer in the pipeline (#1901)",
+          "timestamp": "2025-08-02T11:39:27Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/171080b657b4c7271b928597d9d8534c56da06a3"
+        },
+        "date": 1754200317079,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 32.59452199935913,
+            "unit": "seconds"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 51.99301075935364,
             "unit": "seconds"
           }
         ]
