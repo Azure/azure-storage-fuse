@@ -271,6 +271,24 @@ type CMStats struct {
 		LastError                  string `json:"last_error,omitempty"`
 		Calls                      int64  `json:"calls"`
 		Failures                   int64  `json:"failures,omitempty"`
+		// Minimum, maximum, total and average duration of all storage clustermap updates.
+		MinTime   *Duration `json:"min_time,omitempty"`
+		MaxTime   Duration  `json:"max_time,omitempty"`
+		TotalTime Duration  `json:"-"`
+		AvgTime   Duration  `json:"avg_time,omitempty"`
+		// When was the last time the storage clustermap was updated by this node?
+		LastUpdatedAt time.Time `json:"last_updated_at,omitzero"`
+		// Clustermap epoch at the time of last update.
+		LastUpdateEpoch int64 `json:"last_update_epoch,omitempty"`
+		//
+		// Following stats are reset on leader switch, so they only apply to the current leader stint.
+		//
+		// How many times the storage clustermap was updated after we became the leader this time?
+		TotalUpdates int64     `json:"total_updates,omitempty"`
+		MinGap       *Duration `json:"min_gap,omitempty"`
+		MaxGap       Duration  `json:"max_gap,omitempty"`
+		TotalGap     Duration  `json:"-"`
+		AvgGap       Duration  `json:"avg_gap,omitempty"`
 	} `json:"storage_clustermap,omitempty"`
 
 	// updateMVList() stats.
@@ -494,6 +512,13 @@ func (s *DCacheStats) Preprocess() {
 		s.CM.NewMV.JoinMV.TotalTime = Duration(0)
 		s.CM.NewMV.JoinMV.AvgTime = Duration(0)
 		s.CM.NewMV.JoinMV.LastError = ""
+	}
+
+	if s.CM.StorageClustermap.TotalUpdates > 0 {
+		s.CM.StorageClustermap.AvgGap =
+			Duration(float64(s.CM.StorageClustermap.TotalGap) / float64(s.CM.StorageClustermap.TotalUpdates))
+		s.CM.StorageClustermap.AvgTime =
+			Duration(float64(s.CM.StorageClustermap.TotalTime) / float64(s.CM.StorageClustermap.TotalUpdates))
 	}
 
 	if s.CM.UpdateMVList.Calls > 0 {
