@@ -699,7 +699,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
-			internal.ReadInBufferOptions{
+			&internal.ReadInBufferOptions{
 				Handle: handle,
 				Offset: int64(offset),
 				Data:   data[:size],
@@ -727,7 +727,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
-		internal.WriteFileOptions{
+		&internal.WriteFileOptions{
 			Handle:   handle,
 			Offset:   int64(offset),
 			Data:     data[:size],
@@ -776,6 +776,14 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 }
 
 // libfuse2_truncate changes the size of a file
+// There are two filesystem calls which can lead to this callback:
+//  1. Truncate() -> SetAttr() called on file path.
+//  2. ftruncate()-> SetAttr() called on file handle.
+//
+// man page:    https://man7.org/linux/man-pages/man2/truncate.2.html
+//
+// In fuse2, libfuse don't have the support for file handles in truncate callback, hence we don't get any handle here.
+// So both the truncate() and ftruncate() calls have the same behaviour.
 //
 //export libfuse2_truncate
 func libfuse2_truncate(path *C.char, off C.off_t) C.int {
