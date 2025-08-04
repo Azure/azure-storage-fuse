@@ -368,7 +368,7 @@ func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int,
 	return n, err
 }
 
-func (lfs *LoopbackFS) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	log.Trace("LoopbackFS::WriteFile : name=%s", options.Handle.Path)
 	f := options.Handle.GetFileObject()
 
