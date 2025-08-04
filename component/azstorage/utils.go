@@ -545,6 +545,33 @@ func getFileMode(permissions string) (os.FileMode, error) {
 	return mode, nil
 }
 
+func parsePosixInfo(attr *internal.ObjAttr, owner *string, group *string, mode *string) {
+	/*
+		// Commenting this code because in case of HNS the owner and group are guid and that can not be parsed as integers
+		// we have to rely on owner and group set in metadata instead as UNIX only supports int as owner and group
+		// But still keeping this code here because someday we might want to somehow map the guid to actual users
+		if owner != nil {
+			attr.Owner = common.ParseInt(*owner)
+			attr.Flags.Set(internal.PropFlagOwnerInfoFound)
+		}
+
+		if group != nil {
+			attr.Group = common.ParseInt(*group)
+			attr.Flags.Set(internal.PropFlagGroupInfoFound)
+		}
+	*/
+
+	if mode != nil {
+		perm, err := getFileMode(*mode)
+		if err != nil {
+			log.Err("parsePosixInfo : Failed to get file mode for %s [%s]", attr.Name, err.Error())
+			attr.Flags.Set(internal.PropFlagModeDefault)
+		} else {
+			attr.Mode = perm
+		}
+	}
+}
+
 // removePrefixPath removes the given prefixPath from the beginning of path,
 // if it exists, and returns the resulting string without leading slashes.
 func removePrefixPath(prefixPath, path string) string {

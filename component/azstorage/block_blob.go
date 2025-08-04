@@ -703,20 +703,30 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		ETag:   sanitizeEtag(blobInfo.Properties.ETag),
 	}
 
+	// If user/group/mode are available in metadata than parse them after posix info so that they have higher precedence
+	parsePosixInfo(attr, blobInfo.Properties.Owner, blobInfo.Properties.Group, blobInfo.Properties.Permissions)
 	parseMetadata(attr, blobInfo.Metadata)
+
+	if bb.Config.honourACL && bb.Config.authConfig.ObjectID != "" && blobInfo.Properties.ACL != nil && blobInfo.Properties.Owner != nil {
+
+		// Honour ACL is configured and this might be listing of HNS account so look out for ACLs as well to identify the mode
+		mode, err := getFileModeFromACL(bb.Config.authConfig.ObjectID, *blobInfo.Properties.ACL, *blobInfo.Properties.Owner)
+		if err != nil {
+			log.Err("BlockBlob::getBlobAttr : Failed to get file mode from ACL for %s [%s]", attr.Name, err.Error())
+		} else {
+			attr.Mode = mode
+		}
+	}
+
 	if attr.Mode == 0 {
-		// In case of HNS account do not set this flag
+		// We do not get permissions as part of this list call hence setting the flag to true
+		// In case of datalake this is not required as permissions will always be there
 		attr.Flags.Set(internal.PropFlagModeDefault)
 	}
 
-	if blobInfo.Properties.Owner != nil {
-		attr.Owner = common.ParseInt(*blobInfo.Properties.Owner)
-		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
-	}
-
-	if blobInfo.Properties.Group != nil {
-		attr.Group = common.ParseInt(*blobInfo.Properties.Group)
-		attr.Flags.Set(internal.PropFlagGroupInfoFound)
+	if blobInfo.Properties.ResourceType != nil && *blobInfo.Properties.ResourceType == "directory" {
+		attr.Flags = internal.NewDirBitMap()
+		attr.Mode = attr.Mode | os.ModeDir
 	}
 
 	return attr, nil
@@ -789,18 +799,11 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		return nil, fmt.Errorf("failed to get properties of blobprefix %s", *blobInfo.Name)
 	}
 
-	mode, err := getFileMode(*blobInfo.Properties.Permissions)
-	if err != nil {
-		mode = 0
-		log.Warn("BlockBlob::createDirAttrWithPermissions : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
-	}
-
 	name := strings.TrimSuffix(*blobInfo.Name, "/")
 	attr := &internal.ObjAttr{
 		Path:   removePrefixPath(bb.Config.prefixPath, name),
 		Name:   filepath.Base(name),
 		Size:   *blobInfo.Properties.ContentLength,
-		Mode:   mode,
 		Mtime:  *blobInfo.Properties.LastModified,
 		Atime:  bb.dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
 		Ctime:  *blobInfo.Properties.LastModified,
@@ -808,18 +811,24 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		Flags:  internal.NewDirBitMap(),
 	}
 
+	// If user/group/mode are available in metadata than parse them after posix info so that they have higher precedence
+	parsePosixInfo(attr, blobInfo.Properties.Owner, blobInfo.Properties.Group, blobInfo.Properties.Permissions)
+
+	if bb.Config.honourACL && bb.Config.authConfig.ObjectID != "" && blobInfo.Properties.ACL != nil && blobInfo.Properties.Owner != nil {
+
+		// Honour ACL is configured and this might be listing of HNS account so look out for ACLs as well to identify the mode
+		mode, err := getFileModeFromACL(bb.Config.authConfig.ObjectID, *blobInfo.Properties.ACL, *blobInfo.Properties.Owner)
+		if err != nil {
+			log.Err("BlockBlob::createDirAttrWithPermissions : Failed to get file mode from ACL for %s [%s]", attr.Name, err.Error())
+		} else {
+			attr.Mode = mode
+		}
+	}
+
 	if attr.Mode == 0 {
+		// We do not get permissions as part of this list call hence setting the flag to true
+		// In case of datalake this is not required as permissions will always be there
 		attr.Flags.Set(internal.PropFlagModeDefault)
-	}
-
-	if blobInfo.Properties.Owner != nil {
-		attr.Owner = common.ParseInt(*blobInfo.Properties.Owner)
-		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
-	}
-
-	if blobInfo.Properties.Group != nil {
-		attr.Group = common.ParseInt(*blobInfo.Properties.Group)
-		attr.Flags.Set(internal.PropFlagGroupInfoFound)
 	}
 
 	return attr, nil

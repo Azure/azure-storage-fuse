@@ -396,17 +396,10 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		}
 	}
 
-	mode, err := getFileMode(*prop.Permissions)
-	if err != nil {
-		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
-		return blobAttr, err
-	}
-
 	blobAttr = &internal.ObjAttr{
 		Path:   name,
 		Name:   filepath.Base(name),
 		Size:   *prop.ContentLength,
-		Mode:   mode,
 		Mtime:  *prop.LastModified,
 		Atime:  *prop.LastModified,
 		Ctime:  *prop.LastModified,
@@ -414,8 +407,10 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		Flags:  internal.NewFileBitMap(),
 		ETag:   sanitizeEtag(prop.ETag),
 	}
+
+	// If user/group/mode are available in metadata than parse them after posix info so that they have higher precedence
+	parsePosixInfo(blobAttr, prop.Owner, prop.Group, prop.Permissions)
 	parseMetadata(blobAttr, prop.Metadata)
-	parsePosixInfo(blobAttr, prop)
 
 	if *prop.ResourceType == "directory" {
 		blobAttr.Flags = internal.NewDirBitMap()
@@ -449,18 +444,6 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 	}
 
 	return blobAttr, nil
-}
-
-func parsePosixInfo(attr *internal.ObjAttr, prop file.GetPropertiesResponse) {
-	if prop.Owner != nil {
-		attr.Owner = common.ParseInt(*prop.Owner)
-		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
-	}
-
-	if prop.Group != nil {
-		attr.Group = common.ParseInt(*prop.Group)
-		attr.Flags.Set(internal.PropFlagGroupInfoFound)
-	}
 }
 
 // List : Get a list of path matching the given prefix
@@ -564,11 +547,13 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	}
 
 	newPerm := getACLPermissions(mode)
+	// Both ACL and permissions can not be sent in single call of SetAccessControl
+	// Doing so will result in 400 error with invalid header format.
 	opts := &file.SetAccessControlOptions{
 		Permissions: &newPerm,
 		Owner:       resp.Owner,
 		Group:       resp.Group,
-		ACL:         resp.ACL,
+		// ACL:         resp.ACL,
 	}
 
 	_, err = fileClient.SetAccessControl(context.Background(), opts)
@@ -607,7 +592,7 @@ func (dl *Datalake) ChangeOwner(name string, uid int, gid int) error {
 
 	opts := &file.SetAccessControlOptions{
 		Permissions: resp.Permissions,
-		ACL:         resp.ACL,
+		// ACL:         resp.ACL,
 	}
 
 	var uidStr, gidStr string
