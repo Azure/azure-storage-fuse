@@ -458,7 +458,7 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 }
 
 // WriteFile : Mark the file invalid
-func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (ac *AttrCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})

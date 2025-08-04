@@ -1149,7 +1149,7 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 }
 
 // ReadInBuffer: Read the local file into a buffer
-func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+func (fc *FileCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	// log.Debug("FileCache::ReadInBuffer : Reading %v bytes from %s", len(options.Data), options.Handle.Path)
@@ -1174,7 +1174,7 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 }
 
 // WriteFile: Write to the local file
-func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	//log.Debug("FileCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)

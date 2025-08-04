@@ -512,7 +512,7 @@ func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]*string, da
 }
 
 // Write : Write to a file at given offset
-func (dl *Datalake) Write(options internal.WriteFileOptions) error {
+func (dl *Datalake) Write(options *internal.WriteFileOptions) error {
 	return dl.BlockBlob.Write(options)
 }
 
