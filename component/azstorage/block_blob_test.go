@@ -121,10 +121,11 @@ func uploadReaderAtToBlockBlob(ctx context.Context, reader io.ReaderAt, readerSi
 		if readerSize <= singleUploadSize {
 			o.BlockSize = singleUploadSize // Default if unspecified
 		} else {
-			o.BlockSize = int64(math.Ceil(float64(readerSize) / blockblob.MaxBlocks)) // buffer / max blocks = block size to use all 50,000 blocks
-			if o.BlockSize < blob.DefaultDownloadBlockSize {                          // If the block size is smaller than 4MB, round up to 4MB
-				o.BlockSize = blob.DefaultDownloadBlockSize
-			}
+			o.BlockSize = max(
+				// buffer / max blocks = block size to use all 50,000 blocks
+				int64(math.Ceil(float64(readerSize)/blockblob.MaxBlocks)),
+				// If the block size is smaller than 4MB, round up to 4MB
+				blob.DefaultDownloadBlockSize)
 		}
 	}
 
@@ -135,7 +136,7 @@ func uploadReaderAtToBlockBlob(ctx context.Context, reader io.ReaderAt, readerSi
 
 	blockIDList := make([]string, numBlocks) // Base-64 encoded block IDs
 
-	for i := uint16(0); i < numBlocks; i++ {
+	for i := range numBlocks {
 		offset := int64(i) * o.BlockSize
 		chunkSize := o.BlockSize
 
@@ -368,7 +369,7 @@ func (s *blockBlobTestSuite) TestListContainers() {
 	// Setup
 	num := 10
 	prefix := generateContainerName()
-	for i := 0; i < num; i++ {
+	for i := range num {
 		c := s.serviceClient.NewContainerClient(prefix + fmt.Sprint(i))
 		c.Create(ctx, nil)
 		defer c.Delete(ctx, nil)
@@ -907,7 +908,7 @@ func (s *blockBlobTestSuite) TestRenameDirWithoutMarker() {
 	src := generateDirectoryName()
 	dst := generateDirectoryName()
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		blockBlobClient := s.containerClient.NewBlockBlobClient(fmt.Sprintf("%s/blob%v", src, i))
 		testData := "test data"
 		data := []byte(testData)
@@ -922,7 +923,7 @@ func (s *blockBlobTestSuite) TestRenameDirWithoutMarker() {
 	err := s.az.RenameDir(internal.RenameDirOptions{Src: src, Dst: dst})
 	s.assert.Nil(err)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		srcBlobClient := s.containerClient.NewBlockBlobClient(fmt.Sprintf("%s/blob%v", src, i))
 		dstBlobClient := s.containerClient.NewBlockBlobClient(fmt.Sprintf("%s/blob%v", dst, i))
 
@@ -1158,7 +1159,7 @@ func (s *blockBlobTestSuite) TestReadInBuffer() {
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
 	s.assert.Nil(err)
 	s.assert.EqualValues(5, len)
 	s.assert.EqualValues(testData[:5], output)
@@ -1179,7 +1180,7 @@ func (s *blockBlobTestSuite) TestReadInBufferWithoutHandle() {
 	s.assert.Equal(n, len(data))
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Path: name, Size: (int64)(len(data))})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Offset: 0, Data: output, Path: name, Size: (int64)(len(data))})
 	s.assert.Nil(err)
 	s.assert.EqualValues(5, len)
 	s.assert.EqualValues(testData[:5], output)
@@ -1189,7 +1190,7 @@ func (s *blockBlobTestSuite) TestReadInBufferEmptyPath() {
 	defer s.cleanupTest()
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Size: 5})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Offset: 0, Data: output, Size: 5})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(0, len)
 	s.assert.Equal(err.Error(), "path not given for download")
@@ -1207,7 +1208,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAG() {
 
 	output := make([]byte, 5)
 	var etag string
-	len, err := bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output, Etag: &etag})
+	len, err := bbTestSuite.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output, Etag: &etag})
 	bbTestSuite.assert.Nil(err)
 	bbTestSuite.assert.NotEqual(etag, "")
 	bbTestSuite.assert.EqualValues(5, len)
@@ -1235,7 +1236,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
 	var etag string
 
 	handle, _ = bbTestSuite.az.OpenFile(internal.OpenFileOptions{Name: name})
-	_, err = bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output, Etag: &etag})
+	_, err = bbTestSuite.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output, Etag: &etag})
 	bbTestSuite.assert.Nil(err)
 	bbTestSuite.assert.NotEqual(etag, "")
 	etag = strings.Trim(etag, `"`)
@@ -1250,7 +1251,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
 	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle1})
 
 	// Read data back using older handle
-	_, err = bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 5, Data: output, Etag: &etag})
+	_, err = bbTestSuite.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 5, Data: output, Etag: &etag})
 	bbTestSuite.assert.Nil(err)
 	bbTestSuite.assert.NotEqual(etag, "")
 	etag = strings.Trim(etag, `"`)
@@ -1270,7 +1271,7 @@ func (s *blockBlobTestSuite) TestReadInBufferLargeBuffer() {
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
 	s.assert.Nil(err)
 	s.assert.EqualValues(h.Size, len)
 	s.assert.EqualValues(testData, output[:h.Size])
@@ -1283,7 +1284,7 @@ func (s *blockBlobTestSuite) TestReadInBufferEmpty() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	output := make([]byte, 10)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
 	s.assert.Nil(err)
 	s.assert.EqualValues(0, len)
 }
@@ -1295,7 +1296,7 @@ func (s *blockBlobTestSuite) TestReadInBufferBadRange() {
 	h := handlemap.NewHandle(name)
 	h.Size = 10
 
-	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 20, Data: make([]byte, 2)})
+	_, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 20, Data: make([]byte, 2)})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ERANGE, err)
 }
@@ -1307,7 +1308,7 @@ func (s *blockBlobTestSuite) TestReadInBufferError() {
 	h := handlemap.NewHandle(name)
 	h.Size = 10
 
-	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 2)})
+	_, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 2)})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }

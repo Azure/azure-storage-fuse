@@ -76,7 +76,7 @@ func (bfs *BlobfuseStats) Monitor() error {
 	return bfs.statsReader()
 }
 
-func (bfs *BlobfuseStats) ExportStats(timestamp string, st interface{}) {
+func (bfs *BlobfuseStats) ExportStats(timestamp string, st any) {
 	se, err := hminternal.NewStatsExporter()
 	if err != nil || se == nil {
 		log.Err("StatsReader::ExportStats : Error in creating stats exporter instance [%v]", err)
