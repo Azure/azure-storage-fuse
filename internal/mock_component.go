@@ -459,7 +459,7 @@ func (mr *MockComponentMockRecorder) ReadFile(arg0 interface{}) *gomock.Call {
 }
 
 // ReadInBuffer mocks base method.
-func (m *MockComponent) ReadInBuffer(arg0 ReadInBufferOptions) (int, error) {
+func (m *MockComponent) ReadInBuffer(arg0 *ReadInBufferOptions) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadInBuffer", arg0)
 	ret0, _ := ret[0].(int)

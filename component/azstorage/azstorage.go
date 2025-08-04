@@ -105,7 +105,7 @@ reconfigure:
 	}
 
 	// If user has not specified the account type then detect it's HNS or FNS
-	if conf.AccountType == "" && az.storage.IsAccountADLS() {
+	if conf.AccountType == "" && !config.IsSet(compName+".use-adls") && az.storage.IsAccountADLS() {
 		log.Crit("AzStorage::Configure : Auto detected account type as adls, reconfiguring storage connection.")
 		az.storage = nil
 		conf.AccountType = "adls"
@@ -447,7 +447,7 @@ func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, er
 	return az.storage.ReadBuffer(options.Handle.Path, 0, 0)
 }
 
-func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length int, err error) {
+func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length int, err error) {
 	//log.Trace("AzStorage::ReadInBuffer : Read %s from %d offset", h.Path, offset)
 
 	var size int64
