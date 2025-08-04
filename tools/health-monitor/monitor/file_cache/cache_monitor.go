@@ -82,7 +82,7 @@ func (fc *FileCache) Monitor() error {
 	return fc.cacheWatcher()
 }
 
-func (fc *FileCache) ExportStats(timestamp string, st interface{}) {
+func (fc *FileCache) ExportStats(timestamp string, st any) {
 	se, err := hminternal.NewStatsExporter()
 	if err != nil || se == nil {
 		log.Err("cache_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)

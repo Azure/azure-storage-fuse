@@ -752,7 +752,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
-			internal.ReadInBufferOptions{
+			&internal.ReadInBufferOptions{
 				Handle: handle,
 				Offset: int64(offset),
 				Data:   data[:size],
@@ -781,7 +781,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
-		internal.WriteFileOptions{
+		&internal.WriteFileOptions{
 			Handle:   handle,
 			Offset:   int64(offset),
 			Data:     data[:size],
