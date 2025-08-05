@@ -632,9 +632,9 @@ func (suite *fileTestSuite) TestCreateReadOnlyFile() {
 		err = srcFile.Close()
 		suite.Equal(nil, err)
 
-		_, err = os.OpenFile(fileName, os.O_RDONLY, 0444)
+		file, err := os.OpenFile(fileName, os.O_RDONLY, 0444)
 		suite.Equal(nil, err)
-		err = srcFile.Close()
+		err = file.Close()
 		suite.Equal(nil, err)
 
 		suite.fileTestCleanup([]string{fileName})
