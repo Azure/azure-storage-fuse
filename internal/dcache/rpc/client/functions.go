@@ -95,8 +95,10 @@ const (
 	//
 	// defaultNegativeTimeout is the default duration in seconds after which the node ID is deleted
 	// from the negative clients map and its RPC client creation is attempted again.
+	// We want to keep it large enough so that clients trying to connect in close proximity make use of
+	// this information but small enough to not attempt connection to a node that might have now come up.
 	//
-	defaultNegativeTimeout = 60
+	defaultNegativeTimeout = 30
 )
 
 // TODO: add asserts for function arguments and return values
@@ -157,11 +159,12 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::Hello: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::Hello: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -255,11 +258,12 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::GetChunk: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::GetChunk: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -353,11 +357,12 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::PutChunk: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::PutChunk: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -464,11 +469,12 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::PutChunkDC: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::PutChunkDC: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -562,11 +568,12 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::RemoveChunk: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::RemoveChunk: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -670,11 +677,12 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::JoinMV: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::JoinMV: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -768,11 +776,12 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::UpdateMV: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::UpdateMV: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -866,11 +875,12 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::LeaveMV: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::LeaveMV: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -964,11 +974,12 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::StartSync: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::StartSync: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -1062,11 +1073,12 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::EndSync: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::EndSync: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -1166,11 +1178,12 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete the RPC client as recreating it will most likely fail with the same error.
+				// we delete this RPC client and all existing clients in the pool as reusing it will most
+				// likely fail with the same error.
 				//
-				err1 := cp.deleteRPCClient(client)
+				err1 := cp.deleteAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::GetMVSize: deleteRPCClient failed for node %s: %v",
+					log.Err("rpc_client::GetMVSize: deleteAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
