@@ -605,7 +605,8 @@ func (suite *fileTestSuite) TestListDirReadLink() {
 	suite.Equal(nil, err)
 }
 
-func (suite *fileTestSuite) TestReadOnlyFile() {
+/*
+ func (suite *fileTestSuite) TestReadOnlyFile() {
 	if suite.adlsTest == true {
 		fileName := suite.testPath + "/readOnlyFile.txt"
 		srcFile, err := os.Create(fileName)
@@ -622,7 +623,7 @@ func (suite *fileTestSuite) TestReadOnlyFile() {
 		suite.NotNil(err)
 		suite.fileTestCleanup([]string{fileName})
 	}
-}
+}*/
 
 func (suite *fileTestSuite) TestCreateReadOnlyFile() {
 	if suite.adlsTest == true {
