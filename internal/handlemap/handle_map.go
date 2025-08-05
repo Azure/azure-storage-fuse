@@ -95,12 +95,13 @@ type Handle struct {
 	ID       HandleID // Blobfuse assigned unique ID to this handle
 	Size     int64    // Size of the file being handled here
 	Mtime    time.Time
-	UnixFD   uint64                 // Unix FD created by create/open syscall
-	OptCnt   uint64                 // Number of operations done on this file
-	Flags    common.BitMap16        // Various states of the file
-	Path     string                 // Always holds path relative to mount dir
-	values   map[string]interface{} // Map to hold other info if application wants to store
-	IFObj    any                    // Generic file Object that can be used by other components.
+
+	UnixFD uint64          // Unix FD created by create/open syscall
+	OptCnt uint64          // Number of operations done on this file
+	Flags  common.BitMap16 // Various states of the file
+	Path   string          // Always holds path relative to mount dir
+	values map[string]any  // Map to hold other info if application wants to store
+	IFObj  any             // Generic file Object that can be used by other components.
 }
 
 func NewHandle(path string) *Handle {
@@ -110,7 +111,7 @@ func NewHandle(path string) *Handle {
 		Size:     0,
 		Flags:    0,
 		OptCnt:   0,
-		values:   make(map[string]interface{}),
+		values:   make(map[string]any),
 		CacheObj: nil,
 		FObj:     nil,
 		Buffers:  nil,
@@ -148,18 +149,18 @@ func (handle *Handle) FD() int {
 }
 
 // SetValue : Store user defined parameter inside handle
-func (handle *Handle) SetValue(key string, value interface{}) {
+func (handle *Handle) SetValue(key string, value any) {
 	handle.values[key] = value
 }
 
 // GetValue : Retrieve user defined parameter from handle
-func (handle *Handle) GetValue(key string) (interface{}, bool) {
+func (handle *Handle) GetValue(key string) (any, bool) {
 	val, ok := handle.values[key]
 	return val, ok
 }
 
 // GetValue : Retrieve user defined parameter from handle
-func (handle *Handle) RemoveValue(key string) (interface{}, bool) {
+func (handle *Handle) RemoveValue(key string) (any, bool) {
 	val, ok := handle.values[key]
 	delete(handle.values, key)
 	return val, ok

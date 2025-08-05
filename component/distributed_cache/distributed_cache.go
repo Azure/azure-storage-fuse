@@ -934,7 +934,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	return handle, nil
 }
 
-func (dc *DistributedCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	// todo: Can this method  can handle len(options.Data)== 0?
 	// Currently dcache read handles it, be sure about that.
 	log.Debug("DistributedCache::ReadInBuffer : ReadInBuffer, offset : %d, buf size : %d, file : %s",
