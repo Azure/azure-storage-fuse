@@ -1306,7 +1306,7 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 	//
 	// Update unconditionally, even if it may not have changed, doesn't matter.
 	// We force the update as this is the membership info that we got from clustermap.
-	// Note that with forceUpdate=true, updateComponentRVs() must never faail, hence the assert.
+	// Note that with forceUpdate=true, updateComponentRVs() must never fail, hence the assert.
 	//
 	err = mv.updateComponentRVs(newComponentRVs, true /* forceUpdate */, rpc.GetMyNodeUUID())
 	common.Assert(err == nil, err)
@@ -2380,7 +2380,8 @@ refreshFromClustermapAndRetry:
 		//    us and when we would have responded we would have added the syncJob.
 		//    Put another way, clustermap cannot dictate what sync jobs are active with us, so if
 		//    we don't have the sync job in our mvInfo, refreshing from clustermap won't change that.
-		//    The only to add/remove sync jobs is through StartSync/EndSync RPCs, so we must be in the loop.
+		//    The only way to add/remove sync jobs is through StartSync/EndSync RPCs, so we must be in
+		//    the loop.
 		//
 		syncJob := mvInfo.getSyncJob(req.SyncID)
 		if syncJob == nil {
@@ -2971,8 +2972,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		// picked a new RV in the next iteration), we should time out and undo the reservedSpace.
 		// This one is a TODO.
 		//
-		errStr := fmt.Sprintf("Double join for %s/%s, prev join at %s (%s ago), by: %s",
-			req.RVName, req.MV, mvInfo.lmt, mvInfo.lmb, time.Since(mvInfo.lmt))
+		errStr := fmt.Sprintf("Double join for %s/%s, prev join at %s (%s ago), by %s",
+			req.RVName, req.MV, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb)
 
 		log.Warn("ChunkServiceHandler::JoinMV: %s", errStr)
 

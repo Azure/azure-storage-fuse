@@ -1801,7 +1801,7 @@ retry:
 			// have been replaced, or most of them are down.
 			//
 			// Even after refreshing clustermap if we cannot get a valid MV replica to query MV size,
-			// alas we need to fail the read.
+			// alas we need to fail the GetMVSize().
 			//
 			if clusterMapRefreshed {
 				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d",
