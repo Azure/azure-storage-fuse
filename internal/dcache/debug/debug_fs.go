@@ -141,7 +141,7 @@ func OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 // Read the buffer inside the procFile.
 // No need to acquire the lock before reading from the buffer. As the buffer for proc file  would only refreshed only
 // once at the start of the openFile even there are multiple handles.
-func ReadFile(options internal.ReadInBufferOptions) (int, error) {
+func ReadFile(options *internal.ReadInBufferOptions) (int, error) {
 	common.Assert(options.Handle.IFObj != nil)
 	pFile := options.Handle.IFObj.(*procFile)
 	common.Assert(atomic.LoadInt32(&pFile.openCnt) > 0)

@@ -107,17 +107,17 @@ func (suite *listTestSuite) createFile(filePath string, size int64) {
 }
 
 func (suite *listTestSuite) createDirsAndFiles(path string) {
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		filePath := filepath.Join(path, fmt.Sprintf("file_%v", i))
 		suite.createFile(filePath, int64(9*i))
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		dirName := filepath.Join(path, fmt.Sprintf("dir_%v", i))
 		err := os.MkdirAll(dirName, 0777)
 		suite.assert.Nil(err)
 
-		for j := 0; j < 5; j++ {
+		for j := range 5 {
 			filePath := filepath.Join(dirName, fmt.Sprintf("file_%v%v", i, j))
 			suite.createFile(filePath, int64(i*j))
 		}
@@ -282,7 +282,7 @@ func (suite *listTestSuite) TestListerMkdir() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		dirPath := filepath.Join(tl.path, fmt.Sprintf("dir%v", i))
 		err = rl.mkdir(dirPath)
 		suite.assert.Nil(err)

@@ -50,6 +50,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,7 +80,7 @@ func IsDirectoryMounted(path string) bool {
 	// removing trailing / from the path
 	path = strings.TrimRight(path, "/")
 
-	for _, line := range strings.Split(string(mntList), "\n") {
+	for line := range strings.SplitSeq(string(mntList), "\n") {
 		if strings.TrimSpace(line) != "" {
 			mntPoint := strings.Split(line, " ")[1]
 			if path == mntPoint {
@@ -588,13 +589,7 @@ func GetMD5(fi *os.File) ([]byte, error) {
 }
 
 func ComponentInPipeline(pipeline []string, component string) bool {
-	for _, comp := range pipeline {
-		if comp == component {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(pipeline, component)
 }
 
 func ValidatePipeline(pipeline []string) error {

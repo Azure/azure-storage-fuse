@@ -88,7 +88,7 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	}
 
 	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
-	for i := (uint32)(0); i < blockCount; i++ {
+	for i := range blockCount {
 		block, err := AllocateBlock(blockSize)
 		if err != nil {
 			log.Err("BlockPool::NewBlockPool : Failed to allocate block [%v]", err.Error())

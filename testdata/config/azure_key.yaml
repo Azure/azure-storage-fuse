@@ -18,7 +18,7 @@ libfuse:
 file_cache:
   path: { 1 }
   timeout-sec: 30
-  max-size-mb: 2048
+  max-size-mb: 20480
   allow-non-empty-temp: true
   cleanup-on-start: true
 

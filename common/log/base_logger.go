@@ -93,37 +93,37 @@ func (l *BaseLogger) GetLogLevel() common.LogLevel {
 	return l.fileConfig.LogLevel
 }
 
-func (l *BaseLogger) Debug(format string, args ...interface{}) {
+func (l *BaseLogger) Debug(format string, args ...any) {
 	if l.fileConfig.LogLevel >= common.ELogLevel.LOG_DEBUG() {
 		l.logEvent(common.ELogLevel.LOG_DEBUG().String(), format, args...)
 	}
 }
 
-func (l *BaseLogger) Trace(format string, args ...interface{}) {
+func (l *BaseLogger) Trace(format string, args ...any) {
 	if l.fileConfig.LogLevel >= common.ELogLevel.LOG_TRACE() {
 		l.logEvent(common.ELogLevel.LOG_TRACE().String(), format, args...)
 	}
 }
 
-func (l *BaseLogger) Info(format string, args ...interface{}) {
+func (l *BaseLogger) Info(format string, args ...any) {
 	if l.fileConfig.LogLevel >= common.ELogLevel.LOG_INFO() {
 		l.logEvent(common.ELogLevel.LOG_INFO().String(), format, args...)
 	}
 }
 
-func (l *BaseLogger) Warn(format string, args ...interface{}) {
+func (l *BaseLogger) Warn(format string, args ...any) {
 	if l.fileConfig.LogLevel >= common.ELogLevel.LOG_WARNING() {
 		l.logEvent(common.ELogLevel.LOG_WARNING().String(), format, args...)
 	}
 }
 
-func (l *BaseLogger) Err(format string, args ...interface{}) {
+func (l *BaseLogger) Err(format string, args ...any) {
 	if l.fileConfig.LogLevel >= common.ELogLevel.LOG_ERR() {
 		l.logEvent(common.ELogLevel.LOG_ERR().String(), format, args...)
 	}
 }
 
-func (l *BaseLogger) Crit(format string, args ...interface{}) {
+func (l *BaseLogger) Crit(format string, args ...any) {
 	if l.fileConfig.LogLevel >= common.ELogLevel.LOG_CRIT() {
 		l.logEvent(common.ELogLevel.LOG_CRIT().String(), format, args...)
 	}
@@ -226,7 +226,7 @@ func (l *BaseLogger) Destroy() error {
 }
 
 // logEvent : Enqueue the log to the channel
-func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
+func (l *BaseLogger) logEvent(lvl string, format string, args ...any) {
 	// Only log if the log level matches the log request
 	pc, fn, ln, _ := runtime.Caller(3)
 
