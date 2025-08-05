@@ -621,6 +621,10 @@ func (suite *fileTestSuite) TestListDirReadLink() {
 		suite.Equal(nil, err)
 		f, err = os.OpenFile(fileName, os.O_RDWR, 0444)
 		suite.NotNil(err)
+		if f != nil {
+			closeErr := f.Close()
+			suite.Equal(nil, closeErr)
+		}
 		suite.fileTestCleanup([]string{fileName})
 	}
 }*/
