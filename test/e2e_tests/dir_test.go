@@ -447,6 +447,8 @@ func (suite *dirTestSuite) TestGitStash() {
 		suite.Equal(nil, err)
 		suite.EqualValues(10, n)
 		suite.EqualValues("TestString", string(data))
+		err = f.Close()
+		suite.Equal(nil, err)
 
 		cmd = exec.Command("git", "status")
 		cliOut, err = cmd.Output()
