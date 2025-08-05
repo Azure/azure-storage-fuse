@@ -1165,6 +1165,10 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	return errors.Join(dcacheErr, azureErr)
 }
 
+func (dc *DistributedCache) TruncateFile(options internal.TruncateFileOptions) error {
+	return syscall.ENOTSUP
+}
+
 func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Debug("DistributedCache::DeleteFile: Delete file: %s", options.Name)
 
@@ -1274,6 +1278,106 @@ func (dc *DistributedCache) RenameFile(options internal.RenameFileOptions) error
 		})
 	}
 
+	return syscall.ENOTSUP
+}
+
+// This call is made by libfuse component to check if emptiness of a directory be making the delete directory call.
+func (dc *DistributedCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
+	log.Debug("DistributedCache::IsDirEmpty: Check if dir is empty: %s", options.Name)
+
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+	if isDcachePath {
+		log.Debug("DistributedCache::IsDirEmpty: IsDirEmpty for Dcache dir: %s", rawPath)
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
+		return dc.NextComponent().IsDirEmpty(options)
+	} else if isAzurePath {
+		log.Debug("DistributedCache::IsDirEmpty: IsDirEmpty for Azure dir: %s", rawPath)
+		options.Name = rawPath
+		return dc.NextComponent().IsDirEmpty(options)
+	} else if isDebugPath {
+		log.Debug("DistributedCache::IsDirEmpty: IsDirEmpty for Debug dir: %s", rawPath)
+		// Debug directories are never empty, they always have some files.
+		return false
+	} else {
+		log.Debug("DistributedCache::IsDirEmpty: IsDirEmpty for Unqualified Path dir: %s", options.Name)
+
+		//
+		// Check if directory in empty in dcache.
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
+		isEmpty := dc.NextComponent().IsDirEmpty(options)
+		if !isEmpty {
+			return false
+		}
+
+		// If the dcache dir is empty, check if the Azure dir is empty.
+		options.Name = rawPath
+		return dc.NextComponent().IsDirEmpty(options)
+	}
+}
+
+// If call comes here, it means that the directory is empty.
+func (dc *DistributedCache) DeleteDir(options internal.DeleteDirOptions) error {
+	log.Debug("DistributedCache::DeleteDir: Delete dir: %s", options.Name)
+
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	if isDcachePath {
+		log.Debug("DistributedCache::DeleteDir: Delete Dcache dir: %s", rawPath)
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
+		err := dc.NextComponent().DeleteDir(options)
+		if err != nil {
+			log.Err("DistributedCache::DeleteDir: Delete failed for Dcache dir %s: %v", options.Name, err)
+			return err
+		}
+	} else if isAzurePath {
+		log.Debug("DistributedCache::DeleteDir: Delete Azure dir: %s", rawPath)
+		options.Name = rawPath
+		err := dc.NextComponent().DeleteDir(options)
+		if err != nil {
+			log.Err("DistributedCache::DeleteDir: Delete failed for Azure dir %s: %v", options.Name, err)
+			return err
+		}
+	} else if isDebugPath {
+		return syscall.EROFS
+	} else {
+		log.Debug("DistributedCache::DeleteDir: Delete Unqualified Path dir: %s", options.Name)
+
+		// Delete Directory from dcache.
+		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = dcachePath
+
+		err := dc.NextComponent().DeleteDir(options)
+		if err != nil {
+			log.Err("DistributedCache::DeleteDir: Delete failed for Unqualified Path Dcache dir %s: %v",
+				rawPath, err)
+
+			if err != syscall.ENOENT {
+				return err
+			}
+			err = nil // If the dir was not present in dcache, continue to delete from Azure.
+		}
+
+		// Delete Directory from Azure.
+		options.Name = rawPath
+		err = dc.NextComponent().DeleteDir(options)
+		if err != nil {
+			log.Err("DistributedCache::DeleteDir: Delete failed for Unqualified Path Azure dir %s: %v",
+				options.Name, err)
+
+			if err != syscall.ENOENT {
+				return err
+			}
+			err = nil // If the dir was not present in Azure, continue to return nil.
+		}
+	}
+
+	return nil
+}
+
+func (dc *DistributedCache) RenameDir(options internal.RenameDirOptions) error {
 	return syscall.ENOTSUP
 }
 
