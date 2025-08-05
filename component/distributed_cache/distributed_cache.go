@@ -878,6 +878,9 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		dcFile, err = fm.OpenDcacheFile(options.Name)
 		if err != nil {
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s", err.Error(), options.Name)
+			if err == fm.ErrFileNotReady {
+				return nil, syscall.ENOENT
+			}
 			return nil, err
 		}
 	} else if isAzurePath {
@@ -892,8 +895,10 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		options.Name = rawPath
 		return debug.OpenFile(options)
 	} else {
-		// If the path don't come with no explicit namespace
-		// It should first check the file in dcache, if present, read from dcache,
+		// The path don't come with an explicit namespace
+		//
+		// If file is present in dcache, in ready state, read from dcache,
+		// else if file is present in dcache, but not in ready state, fail with ENOENT,
 		// else check in azure if present, read from azure, else fail the open.
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
 		dcFile, err = fm.OpenDcacheFile(rawPath)
@@ -901,6 +906,14 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			log.Debug("DistributedCache::OpenFile : Opening the file from Dcache, path : %s", options.Name)
 			handle = handlemap.NewHandle(options.Name)
 			handle.SetFsDcache()
+		} else if err == fm.ErrFileNotReady {
+			//
+			// Maybe some other/ same node is trying to write this file, we cannot serve this file from azure until
+			// dcache file state changes to ready, even if that file is already present in azure. User must use explicit
+			// namespace of fs=azure to access such files.
+			//
+			log.Err("DistributedCache::OpenFile : Failed Opening the file from Dcache, path: %s: %v", options.Name, err)
+			return nil, syscall.ENOENT
 		} else {
 			// todo: make sure we come here when opening dcache file is returning ENOENT
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s, Trying to Open the file in Azure", err.Error(), options.Name)

@@ -35,6 +35,7 @@ package filemanager
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync/atomic"
@@ -48,6 +49,10 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/gc"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	gouuid "github.com/google/uuid"
+)
+
+var (
+	ErrFileNotReady error = errors.New("Dcache file not in ready state")
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -227,13 +232,12 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	common.Assert(prop != nil, fileName)
 
 	//
-	// Return ENOENT if the file is not in ready state.
 	// This is to prevent files which are being created, from being opened.
 	//
 	if fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
-		return nil, syscall.ENOENT
+		return nil, ErrFileNotReady
 	}
 
 	// Finalized files must have size >= 0.
