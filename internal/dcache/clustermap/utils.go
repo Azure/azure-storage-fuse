@@ -80,6 +80,15 @@ var (
 	MinMVsPerRV int64 = 1
 	MaxMVsPerRV int64 = 100
 
+	//
+	// DCacheConfig.MVsPerRV decides how many new MVs are created depending on the number of RVs we have,
+	// but when nodes go down we need to move MVs from offline nodes to available nodes. FixMV workflow
+	// does that. For this we need to allow FixMV workflow to place more MVs per RV than DCacheConfig.MVsPerRV.
+	// MVsPerRVScaleFactor decides how many times more MVs can we allow in the FixMV workflow, than the NewMV
+	// workflow.
+	//
+	MVsPerRVScaleFactor int64 = 4
+
 	MinRvFullThreshold int64 = 80
 	MaxRvFullThreshold int64 = 100
 

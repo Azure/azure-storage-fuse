@@ -38,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -419,12 +420,12 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		//
 
 		// This is the minimum number of MVs possible, what we get if we host one MV per RV.
-		minMVs := int64(distributedCache.cfg.MaxRVs / distributedCache.cfg.Replicas)
+		minMVs := int64((int64(distributedCache.cfg.MaxRVs) * cm.MinMVsPerRV) / int64(distributedCache.cfg.Replicas))
 		common.Assert(minMVs > 0, distributedCache.cfg)
 		minMVs = max(minMVs, 1)
 
 		// For the given cfg.MaxRVs value, this is the maximum number of MVs that we can have.
-		maxMVs := minMVs * cm.MaxMVsPerRV
+		maxMVs := int64((int64(distributedCache.cfg.MaxRVs) * cm.MaxMVsPerRV) / int64(distributedCache.cfg.Replicas))
 
 		// Start with the minimum number of MVs.
 		numMVs := minMVs
@@ -440,7 +441,9 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		}
 
 		// Set MVsPerRV needed to achieve these many MVs.
-		distributedCache.cfg.MVsPerRV = uint64(numMVs / minMVs)
+		distributedCache.cfg.MVsPerRV =
+			uint64(math.Ceil(float64(numMVs*int64(distributedCache.cfg.Replicas)) /
+				float64(distributedCache.cfg.MaxRVs)))
 
 		log.Info("DistributedCache::Configure : cfg.MVsPerRV set to %d, minMVs: %d, maxMVs: %d",
 			distributedCache.cfg.MVsPerRV, minMVs, maxMVs)

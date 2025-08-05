@@ -2971,8 +2971,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		// picked a new RV in the next iteration), we should time out and undo the reservedSpace.
 		// This one is a TODO.
 		//
-		errStr := fmt.Sprintf("Double join for %s/%s, prev join at: %s, by: %s",
-			req.RVName, req.MV, mvInfo.lmt, mvInfo.lmb)
+		errStr := fmt.Sprintf("Double join for %s/%s, prev join at %s (%s ago), by: %s",
+			req.RVName, req.MV, mvInfo.lmt, mvInfo.lmb, time.Since(mvInfo.lmt))
 
 		log.Warn("ChunkServiceHandler::JoinMV: %s", errStr)
 
