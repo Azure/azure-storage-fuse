@@ -1302,6 +1302,7 @@ func (dc *DistributedCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool 
 	} else {
 		log.Debug("DistributedCache::IsDirEmpty: IsDirEmpty for Unqualified Path dir: %s", options.Name)
 
+		// We return true if the directory is empty in both dcache and azure.
 		//
 		// Check if directory in empty in dcache.
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
@@ -1345,6 +1346,9 @@ func (dc *DistributedCache) DeleteDir(options internal.DeleteDirOptions) error {
 	} else {
 		log.Debug("DistributedCache::DeleteDir: Delete Unqualified Path dir: %s", options.Name)
 
+		// Semantics for Unqualified path:
+		// We get this call when both of the directories in (Azure/dcache) are empty.
+		//
 		// Delete Directory from dcache.
 		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		options.Name = dcachePath
