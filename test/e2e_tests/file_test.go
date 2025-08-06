@@ -149,6 +149,8 @@ func (suite *fileTestSuite) TestOpenFlag_O_TRUNC() {
 	suite.Nil(err)
 	read, _ = srcFile.Read(tempbuf)
 	suite.Equal(0, read)
+	err = srcFile.Close()
+	suite.Nil(err)
 }
 
 func (suite *fileTestSuite) TestFileCreateUtf8Char() {
@@ -356,7 +358,7 @@ func (suite *fileTestSuite) TestFileNameConflict() {
 	suite.Equal(nil, err)
 }
 
-// # Copy file from once directory to another
+// # Copy file from one directory to another
 func (suite *fileTestSuite) TestFileCopy() {
 	dirName := suite.testPath + "/test123"
 	fileName := suite.testPath + "/test"
@@ -367,15 +369,17 @@ func (suite *fileTestSuite) TestFileCopy() {
 
 	srcFile, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0777)
 	suite.Equal(nil, err)
-	defer srcFile.Close()
 
 	dstFile, err := os.Create(dstFileName)
 	suite.Equal(nil, err)
-	defer dstFile.Close()
 
 	_, err = io.Copy(srcFile, dstFile)
 	suite.Equal(nil, err)
-	dstFile.Close()
+
+	err = srcFile.Close()
+	suite.Nil(err)
+	err = dstFile.Close()
+	suite.Nil(err)
 
 	suite.fileTestCleanup([]string{dirName})
 }
@@ -602,7 +606,7 @@ func (suite *fileTestSuite) TestListDirReadLink() {
 }
 
 /*
-func (suite *fileTestSuite) TestReadOnlyFile() {
+ func (suite *fileTestSuite) TestReadOnlyFile() {
 	if suite.adlsTest == true {
 		fileName := suite.testPath + "/readOnlyFile.txt"
 		srcFile, err := os.Create(fileName)
@@ -611,22 +615,33 @@ func (suite *fileTestSuite) TestReadOnlyFile() {
 		// make it read only permissions
 		err = os.Chmod(fileName, 0444)
 		suite.Equal(nil, err)
-		_, err = os.OpenFile(fileName, os.O_RDONLY, 0444)
+		f, err := os.OpenFile(fileName, os.O_RDONLY, 0444)
 		suite.Equal(nil, err)
-		_, err = os.OpenFile(fileName, os.O_RDWR, 0444)
+		err = f.Close()
+		suite.Equal(nil, err)
+		f, err = os.OpenFile(fileName, os.O_RDWR, 0444)
 		suite.NotNil(err)
+		if f != nil {
+			closeErr := f.Close()
+			suite.Equal(nil, closeErr)
+		}
 		suite.fileTestCleanup([]string{fileName})
 	}
-} */
+}*/
 
 func (suite *fileTestSuite) TestCreateReadOnlyFile() {
 	if suite.adlsTest == true {
 		fileName := suite.testPath + "/createReadOnlyFile.txt"
 		srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0444)
-		srcFile.Close()
 		suite.Equal(nil, err)
-		_, err = os.OpenFile(fileName, os.O_RDONLY, 0444)
+		err = srcFile.Close()
 		suite.Equal(nil, err)
+
+		file, err := os.OpenFile(fileName, os.O_RDONLY, 0444)
+		suite.Equal(nil, err)
+		err = file.Close()
+		suite.Equal(nil, err)
+
 		suite.fileTestCleanup([]string{fileName})
 	}
 }
