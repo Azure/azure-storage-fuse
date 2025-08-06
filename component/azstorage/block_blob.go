@@ -1437,7 +1437,7 @@ func (bb *BlockBlob) HandleSmallFile(name string, size int64, originalSize int64
 }
 
 // Write : write data at given offset to a blob
-func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
+func (bb *BlockBlob) Write(options *internal.WriteFileOptions) error {
 	name := options.Handle.Path
 	offset := options.Offset
 	defer log.TimeTrack(time.Now(), "BlockBlob::Write", options.Handle.Path)

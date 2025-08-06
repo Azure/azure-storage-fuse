@@ -986,7 +986,7 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 	return 0, err
 }
 
-func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (dc *DistributedCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	log.Debug("DistributedCache::WriteFile : WriteFile, offset : %d, buf size : %d, file : %s",
 		options.Offset, len(options.Data), options.Handle.Path)
 	common.Assert(len(options.Data) != 0)

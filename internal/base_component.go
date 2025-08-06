@@ -207,7 +207,7 @@ func (base *BaseComponent) ReadInBuffer(options *ReadInBufferOptions) (int, erro
 	return 0, nil
 }
 
-func (base *BaseComponent) WriteFile(options WriteFileOptions) (int, error) {
+func (base *BaseComponent) WriteFile(options *WriteFileOptions) (int, error) {
 	if base.next != nil {
 		return base.next.WriteFile(options)
 	}
