@@ -1305,8 +1305,8 @@ func (dc *DistributedCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool 
 		// We return true if the directory is empty in both dcache and azure.
 		//
 		// Check if directory in empty in dcache.
-		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
-		options.Name = rawPath
+		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = dcachePath
 		isEmpty := dc.NextComponent().IsDirEmpty(options)
 		if !isEmpty {
 			return false
