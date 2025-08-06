@@ -96,7 +96,8 @@ const (
 	// defaultNegativeTimeout is the default duration in seconds after which the node ID is deleted
 	// from the negative clients map and its RPC client creation is attempted again.
 	// We want to keep it large enough so that clients trying to connect in close proximity make use of
-	// this information but small enough to not attempt connection to a node that might have now come up.
+	// this information and not attempt to connect to an unreachable node, potentially delaying the
+	// caller, but small enough to promptly attempt connection to a node that might have now come up.
 	//
 	defaultNegativeTimeout = 30
 )
