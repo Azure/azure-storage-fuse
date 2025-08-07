@@ -1978,9 +1978,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 			if excludeNodes != nil {
 				if _, ok := excludeNodes[rv.nodeId]; ok {
+					//
 					// Skip RVs from excluded nodes.
-					log.Debug("ClusterManager::getAvailableRVsList: Skipping %s from node %s in excludeNodes %+v",
-						rv.rvName, rv.nodeId, excludeNodes)
+					// When faking scale test we add 1000s of RVs to a node which makes this log very chatty.
+					// Skip it only for that as it may be useful for a real cluster.
+					//
+					if !common.IsFakingScaleTest() {
+						log.Debug("ClusterManager::getAvailableRVsList: Skipping %s from node %s in excludeNodes %+v",
+							rv.rvName, rv.nodeId, excludeNodes)
+					}
 					continue
 				}
 			}
