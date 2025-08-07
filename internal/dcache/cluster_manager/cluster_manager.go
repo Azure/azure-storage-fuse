@@ -2374,6 +2374,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				// Remove the bad RV from MV. Do this before assigning the replacement RV, in case both
 				// are same.
 				//
+				log.Debug("ClusterManager::fixMV: Replacing (%s/%s [%s] -> %s/%s [%s])",
+					rvName, mvName, mv.RVs[rvName], newRvName, mvName, dcache.StateOutOfSync)
+
 				delete(mv.RVs, rvName)
 				mv.RVs[newRvName] = dcache.StateOutOfSync
 
@@ -2382,9 +2385,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				// We don't yet update existingMVMap, we will do it once joinMV() returns
 				// successfully.
 				//
-
-				log.Debug("ClusterManager::fixMV: Replacing (%s/%s [%s] -> %s/%s)",
-					rvName, mvName, mv.RVs[rvName], newRvName, mvName)
 				foundReplacement = true
 				fixedRVs++
 				break
