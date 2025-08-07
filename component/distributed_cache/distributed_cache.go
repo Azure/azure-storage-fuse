@@ -353,6 +353,9 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			LocalCachePath: path,
 		}
 	}
+
+	log.Debug("DistributedCache::Start : created RV list with %d RVs: %+v", len(rvList), rvList)
+
 	return rvList, nil
 }
 

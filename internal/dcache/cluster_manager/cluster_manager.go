@@ -186,11 +186,11 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//
 	if len(hbRVs) == len(rvs) {
 		// Common case.
-		log.Info("ClusterManager::start: ==> Cluster map now ready with my RVs %+v, config: %+v",
-			hbRVs, *cm.GetCacheConfig())
+		log.Info("ClusterManager::start: ==> Cluster map now ready with my %d RVs %+v, config: %+v",
+			len(rvs), hbRVs, *cm.GetCacheConfig())
 	} else if len(hbRVs) > 0 {
-		log.Warn("ClusterManager::start: ==> Cluster map now ready, but only using %+v of %+v RVs, config: %+v",
-			hbRVs, rvs, *cm.GetCacheConfig())
+		log.Warn("ClusterManager::start: ==> Cluster map now ready, but only using %d [%+v] of %d [%+v] RVs, config: %+v",
+			len(hbRVs), hbRVs, len(rvs), rvs, *cm.GetCacheConfig())
 	} else {
 		//
 		// Even though this node is not contributing any RVs to the cluster, we still add it to allow
@@ -1504,7 +1504,8 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bo
 		return err
 	}
 
-	log.Debug("ClusterManager::punchHeartBeat: heartbeat (initialHB=%v) updated for node %+v", initialHB, hbData)
+	log.Debug("ClusterManager::punchHeartBeat: heartbeat (initialHB=%v) updated by node: %s (%s), RV count: %d, %+v",
+		initialHB, hbData.NodeID, hbData.IPAddr, len(hbData.RVList), hbData)
 	return nil
 }
 
@@ -2083,8 +2084,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		common.Assert(rv.slots > 0, rvName, mvName, nodeId, availableRVsMap)
 
 		rv.slots--
-		log.Debug("ClusterManager::consumeRVSlot: Consumed slot for %s/%s, remaining slots: %d",
-			rvName, mvName, rv.slots)
+		log.Debug("ClusterManager::consumeRVSlot: Consumed slot for %s/%s, (used: %d, remaining: %d)",
+			rvName, mvName, MVsPerRVForFixMV-rv.slots, rv.slots)
 	}
 
 	//
@@ -2254,7 +2255,18 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// RVs first, thus resulting in a balanced distribution of MVs across the RVs.
 		// We then iterate over the availableRVsList list and pick the 1st suitable RV.
 		//
+		start := time.Now()
 		availableRVsList := getAvailableRVsList(false /* newMV */, excludeNodes, excludeFaultDomains, excludeUpdateDomains)
+		duration := stats.Duration(time.Since(start))
+
+		atomic.AddInt64(&stats.Stats.CM.FixMV.GetAvailableRVsList.Calls, 1)
+		atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.GetAvailableRVsList.TotalTime), int64(duration))
+		if stats.Stats.CM.FixMV.GetAvailableRVsList.MinTime == nil ||
+			duration < *stats.Stats.CM.FixMV.GetAvailableRVsList.MinTime {
+			stats.Stats.CM.FixMV.GetAvailableRVsList.MinTime = &duration
+		}
+		stats.Stats.CM.FixMV.GetAvailableRVsList.MaxTime =
+			max(stats.Stats.CM.FixMV.GetAvailableRVsList.MaxTime, duration)
 
 		//
 		// Number of component RVs we are actually able to fix for this MV.
@@ -2614,8 +2626,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
 	//       UpdateMV will fail.
 	//
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: %v",
-		existingMVMap, runFixMvNewMv)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs) %+v",
+		runFixMvNewMv, len(rvMap), len(existingMVMap), existingMVMap)
 
 	//
 	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be generated, so we run
@@ -2636,6 +2648,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// Offline MVs will just be lying around like satellite debris in space.
 	//
 	// TODO: See if we need delete-mv workflow to clean those up.
+	//
+	// Note on performance of fix-mv:
+	// We call fixMV() serially for each degraded MV, so the performance of fix-mv workflow is O(Number of degraded MVs),
+	// and the number of degraded MVs is a factor of how many RVs can go offline at a time and how many MVs could be
+	// hosted by those RVs. Max we can have MaxMVsPerRV (100) MVs per RV and let's take max 6 RVs per node and since
+	// we canot handle more than 2 nodes going down at a time, let's take 2 nodes, so we can have at most
+	// 2 * 6 * 100 = 1200 degraded MVs at a time. Each fixMV() makes JoinMV/UpdateMV RPC calls (in parallel) and
+	// typically takes ~3ms, so 1200 will take ~3.6s to fix all degraded MVs. Infact for large clusters MVsPerRV will
+	// be much lower, so we will have much fewer degraded MVs at a time.
+	// This should be reasonable time, so we don't need to run fix-mv in parallel for each degraded MV.
 	//
 
 	// Reset per-fix-mv stats.
@@ -2677,7 +2699,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			max(stats.Stats.CM.FixMV.MaxTime, duration)
 	}
 
-	log.Debug("ClusterManager::updateMVList: existing MV map after phase#2: %v", existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#2 (%d RVs, %d MVs) %+v",
+		len(rvMap), len(existingMVMap), existingMVMap)
 
 	//
 	// Phase 3:
@@ -2920,7 +2943,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		}
 	}
 
-	log.Debug("ClusterManager::updateMVList: existing MV map after phase#3: %v", existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#3 (%d RVs, %d MVs) %+v",
+		len(rvMap), len(existingMVMap), existingMVMap)
 }
 
 // Given an MV, send JoinMV or UpdateMV RPC to all its component RVs. It fails if any of the RV fails the call.

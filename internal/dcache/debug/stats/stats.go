@@ -459,7 +459,17 @@ type CMStats struct {
 		MaxTime   Duration  `json:"max_time,omitempty"`
 		TotalTime Duration  `json:"-"`
 		AvgTime   Duration  `json:"avg_time,omitempty"`
-		JoinMV    struct {
+
+		GetAvailableRVsList struct {
+			Calls     int64     `json:"calls"`
+			MinTime   *Duration `json:"min_time,omitempty"`
+			MaxTime   Duration  `json:"max_time,omitempty"`
+			TotalTime Duration  `json:"-"`
+			AvgTime   Duration  `json:"avg_time,omitempty"`
+			LastError string    `json:"last_error,omitempty"`
+		} `json:"get_available_rvs_list,omitempty"`
+
+		JoinMV struct {
 			Calls              int64     `json:"calls"`
 			CallsCumulative    int64     `json:"calls_cumulative,omitempty"`
 			Failures           int64     `json:"failures,omitempty"`
@@ -651,6 +661,11 @@ func (s *DCacheStats) Preprocess() {
 	if s.CM.FixMV.CallsCumulative > 0 {
 		s.CM.FixMV.AvgTime =
 			Duration(float64(s.CM.FixMV.TotalTime) / float64(s.CM.FixMV.CallsCumulative))
+	}
+
+	if s.CM.FixMV.GetAvailableRVsList.Calls > 0 {
+		s.CM.FixMV.GetAvailableRVsList.AvgTime =
+			Duration(float64(s.CM.FixMV.GetAvailableRVsList.TotalTime) / float64(s.CM.FixMV.GetAvailableRVsList.Calls))
 	}
 
 	if s.CM.FixMV.JoinMV.CallsCumulative > 0 {
