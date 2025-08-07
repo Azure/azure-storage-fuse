@@ -132,25 +132,45 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 
 	log.Debug("ReplicationManager::ReadMV: Received ReadMV request: %v", req.toString())
 
-	if err := req.isValid(); err != nil {
-		err = fmt.Errorf("invalid ReadMV request %s [%v]", req.toString(), err)
-		log.Err("ReplicationManager::ReadMV: %v", err)
-		common.Assert(false, err)
-		return nil, err
+	//
+	// We don't expect the caller to pass invalid requests, so only verify in debug builds.
+	//
+	if common.IsDebugBuild() {
+		if err := req.isValid(); err != nil {
+			err = fmt.Errorf("invalid ReadMV request %s [%v]", req.toString(), err)
+			log.Err("ReplicationManager::ReadMV: %v", err)
+			common.Assert(false, err)
+			return nil, err
+		}
 	}
 
 	var rpcResp *models.GetChunkResponse
 	var isBufExternal bool = true
 	var err error
+	var lastClusterMapEpoch int64
 
 	clusterMapRefreshed := false
+	retryCnt := 0
 
 retry:
+	//
+	// Give up after sufficient clustermap refresh attempts.
+	// One refresh is all we need in most cases, but we retry a few times to add extra resilience in case
+	// of any unexpected errors. This is important as failing here will result in application request failure
+	// which should only be done when we really cannot proceed.
+	//
+	if retryCnt > 5 {
+		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
+			req.MvName, retryCnt, lastClusterMapEpoch)
+		log.Err("ReplicationManager::ReadMV: %v", err)
+		return nil, err
+	}
+
 	// Get component RVs for MV, from clustermap.
 	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	log.Debug("ReplicationManager::ReadMV: Component RVs for %s (%s) are: %v",
-		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::ReadMV: Component RVs for %s (%s) are %s (retryCnt: %d, clusterMapRefreshed: %v)",
+		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs), retryCnt, clusterMapRefreshed)
 
 	//
 	// Get the most suitable RV from the list of component RVs,
@@ -172,6 +192,12 @@ retry:
 			//
 			// An MV once marked offline can never become online, so save the trip to clustermap.
 			//
+			// TODO: We should support reading from offline MVs in case due to some disaster multiple
+			//       cluster nodes were brought down and later brought up, so they have valid data, but
+			//       currently we won't allow reading from them as they are offline.
+			//       This will also require changes in safeCleanupMyRVs() to not delete the MVs from
+			//       such RVs. But, note that we cannot allow writing to such MVs.
+			//
 			if mvState == dcache.StateOffline {
 				err = fmt.Errorf("%s is offline", req.MvName)
 				log.Err("ReplicationManager::ReadMV: %v", err)
@@ -179,30 +205,30 @@ retry:
 			}
 
 			//
+			// If the current clustermap does not have any suitable RV to read from, we try clustermap
+			// refresh just in case we have a stale clustermap. This is very unlikely and it would most
+			// likely indicate that we have a “very stale” clustermap where all/most of the component RVs
+			// have been replaced, or most of them are down.
+			//
 			// Even after refreshing clustermap if we cannot get a valid MV replica to read from,
 			// alas we need to fail the read.
 			//
 			if clusterMapRefreshed {
-				err = fmt.Errorf("no suitable RV found for MV %s", req.MvName)
+				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d",
+					req.MvName, lastClusterMapEpoch)
 				log.Err("ReplicationManager::ReadMV: %v", err)
 				return nil, err
 			}
 
-			//
-			// This is very unlikely and it would most likely indicate that we have a “very stale”
-			// clustermap where all/most of the component RVs have been replaced, or most of them
-			// are down. Try refreshing clustermap once before giving up.
-			//
-
 			err = cm.RefreshClusterMap(lastClusterMapEpoch)
 			if err != nil {
-				err = fmt.Errorf("RefreshClusterMap() failed, failing read %s",
-					req.toString())
-				log.Warn("ReplicationManager::ReadMV: %v", err)
-				return nil, err
+				log.Warn("ReplicationManager::ReadMV: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
+					req.toString(), retryCnt, err)
+			} else {
+				clusterMapRefreshed = true
 			}
 
-			clusterMapRefreshed = true
+			retryCnt++
 			goto retry
 		}
 
@@ -265,18 +291,33 @@ retry:
 			break
 		}
 
-		//
-		// TODO: We should handle errors that indicate retrying from a different RV would help.
-		// 	 RVs are the final source of truth wrt MV membership (and anything else),
-		// 	 so if the target RV feels that the sender seems to have out-of-date clustermap,
-		// 	 it can help him by failing the request with an appropriate error and then
-		// 	 caller should fetch the latest clustermap and then try again.
-		//       Note that the current code will also work as it'll refresh the clustermap after
-		//	 read attempts from all current component RVs fail, but we can be more efficient.
-		//
-
-		log.Err("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %v [%v]",
+		log.Warn("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %s: %v",
 			targetNodeID, rpc.GetChunkRequestToString(rpcReq), err)
+
+		rpcErr := rpc.GetRPCResponseError(err)
+		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+			//
+			// RPC server can return models.ErrorCode_NeedToRefreshClusterMap in two cases:
+			// 1. It genuinely wants the client to refresh the clustermap as it knows that
+			//    the client has an older clustermap.
+			// 2. It hit some transient error while fetching the clustermap itself, so it cannot
+			//    be sure whether clustermap refresh at the client will help or not. To be safe
+			//    we refresh the clustermap for a limited number of times before failing the read.
+			//
+			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
+			if errCM != nil {
+				// Log and retry, it'll help in case of transient errors at the server.
+				log.Warn("ReplicationManager::ReadMV: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
+					req.toString(), retryCnt, errCM)
+			} else {
+				clusterMapRefreshed = true
+			}
+
+			retryCnt++
+			goto retry
+		}
+
+		// Try another replica if available.
 	}
 
 	log.Debug("ReplicationManager::ReadMV: GetChunk RPC response: %v", rpc.GetChunkResponseToString(rpcResp))
@@ -295,11 +336,16 @@ retry:
 		IsBufExternal: isBufExternal,
 	}
 
-	if err := resp.isValid(req); err != nil {
-		err = fmt.Errorf("invalid ReadMV response [%v]", err)
-		log.Err("ReplicationManager::ReadMV: %v", err)
-		common.Assert(false, err)
-		return nil, err
+	//
+	// We don't expect the server to return invalid response, so only verify in debug builds.
+	//
+	if common.IsDebugBuild() {
+		if err := resp.isValid(req); err != nil {
+			err = fmt.Errorf("invalid ReadMV response [%v]", err)
+			log.Err("ReplicationManager::ReadMV: %v", err)
+			common.Assert(false, err)
+			return nil, err
+		}
 	}
 
 	return resp, nil
@@ -318,11 +364,16 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 
 	log.Debug("ReplicationManager::WriteMV: Received WriteMV request (%v): %v", PutChunkStyle, req.toString())
 
-	if err := req.isValid(); err != nil {
-		err = fmt.Errorf("invalid WriteMV request %s [%v]", req.toString(), err)
-		log.Err("ReplicationManager::WriteMV: %v", err)
-		common.Assert(false, err)
-		return nil, err
+	//
+	// We don't expect the caller to pass invalid requests, so only verify in debug builds.
+	//
+	if common.IsDebugBuild() {
+		if err := req.isValid(); err != nil {
+			err = fmt.Errorf("invalid WriteMV request %s [%v]", req.toString(), err)
+			log.Err("ReplicationManager::WriteMV: %v", err)
+			common.Assert(false, err)
+			return nil, err
+		}
 	}
 
 	var rvsWritten []string
@@ -765,12 +816,24 @@ processResponses:
 			//
 			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
 			if errCM != nil {
-				errWriteMV = fmt.Errorf("RefreshClusterMap() failed, failing write %s [%v]",
-					req.toString(), errCM)
-				log.Warn("ReplicationManager::WriteMV: %v", errWriteMV)
-				continue
+				//
+				// RPC server can return models.ErrorCode_NeedToRefreshClusterMap in two cases:
+				// 1. It genuinely wants the client to refresh the clustermap as it knows that
+				//    the client has an older clustermap.
+				// 2. It hit some transient error while fetching the clustermap itself, so it
+				//    cannot be sure whether clustermap refresh at the client will help or not.
+				//
+				// To be safe we refresh the clustermap for a limited number of times before
+				// failing the write.
+				//
+				log.Warn("ReplicationManager::WriteMV: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
+					req.toString(), retryCnt, errCM)
 			}
 
+			//
+			// Fake clusterMapRefreshed even when RefreshClusterMap() fails, as we later retry only when
+			// clusterMapRefreshed is true.
+			//
 			clusterMapRefreshed = true
 		} else {
 			// TODO: check if this is non-retriable error.
@@ -844,11 +907,16 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 
 	log.Debug("ReplicationManager::RemoveMV: Received RemoveMV request: %s", req.toString())
 
-	if err := req.isValid(); err != nil {
-		err = fmt.Errorf("invalid RemoveMV request FileID: %s, MV: %s [%v]", req.FileID, req.MvName, err)
-		log.Err("ReplicationManager::RemoveMV: %v", err)
-		common.Assert(false, err)
-		return nil, err
+	//
+	// We don't expect the caller to pass invalid requests, so only verify in debug builds.
+	//
+	if common.IsDebugBuild() {
+		if err := req.isValid(); err != nil {
+			err = fmt.Errorf("invalid RemoveMV request FileID: %s, MV: %s [%v]", req.FileID, req.MvName, err)
+			log.Err("ReplicationManager::RemoveMV: %v", err)
+			common.Assert(false, err)
+			return nil, err
+		}
 	}
 
 	//
@@ -1679,15 +1747,24 @@ func GetMVSize(mvName string) (int64, error) {
 
 	var mvSize int64
 	var err error
+	var lastClusterMapEpoch int64
 
 	clusterMapRefreshed := false
+	retryCnt := 0
 
 retry:
+	// Give up after sufficient clustermap refresh attempts.
+	if retryCnt > 5 {
+		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
+			mvName, retryCnt, lastClusterMapEpoch)
+		log.Err("ReplicationManager::GetMVSize: %v", err)
+		return 0, err
+	}
 
 	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(mvName)
 
-	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s (%s) are: %v",
-		mvName, mvState, rpc.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s (%s) are %s (retryCnt: %d, clusterMapRefreshed: %v)",
+		mvName, mvState, rpc.ComponentRVsToString(componentRVs), retryCnt, clusterMapRefreshed)
 
 	//
 	// Get the most suitable RV from the list of component RVs,
@@ -1718,29 +1795,30 @@ retry:
 			}
 
 			//
+			// If the current clustermap does not have any suitable RV to query MV size from, we try clustermap
+			// refresh just in case we have a stale clustermap. This is very unlikely and it would most
+			// likely indicate that we have a “very stale” clustermap where all/most of the component RVs
+			// have been replaced, or most of them are down.
+			//
 			// Even after refreshing clustermap if we cannot get a valid MV replica to query MV size,
 			// alas we need to fail the GetMVSize().
 			//
 			if clusterMapRefreshed {
-				err = fmt.Errorf("no suitable RV found for MV %s", mvName)
+				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d",
+					mvName, lastClusterMapEpoch)
 				log.Err("ReplicationManager::GetMVSize: %v", err)
 				return 0, err
 			}
 
-			//
-			// This is very unlikely and it would most likely indicate that we have a “very stale”
-			// clustermap where all/most of the component RVs have been replaced, or most of them
-			// are down. Try refreshing clustermap once before giving up.
-			//
 			err = cm.RefreshClusterMap(lastClusterMapEpoch)
 			if err != nil {
-				err = fmt.Errorf("RefreshClusterMap() failed, failing GetMVSize(%s)",
-					mvName)
-				log.Warn("ReplicationManager::GetMVSize: %v", err)
-				return 0, err
+				log.Warn("ReplicationManager::GetMVSize: RefreshClusterMap() failed for GetMVSize(%s) (retryCnt: %d): %v",
+					mvName, retryCnt, err)
+			} else {
+				clusterMapRefreshed = true
 			}
 
-			clusterMapRefreshed = true
+			retryCnt++
 			goto retry
 		}
 
@@ -1786,8 +1864,33 @@ retry:
 			break
 		}
 
-		log.Err("ReplicationManager::GetMVSize: Failed to get MV size from node %s for request %v [%v]",
+		log.Warn("ReplicationManager::GetMVSize: Failed to get MV size from node %s for request %v [%v]",
 			targetNodeID, rpc.GetMVSizeRequestToString(req), err)
+
+		rpcErr := rpc.GetRPCResponseError(err)
+		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+			//
+			// RPC server can return models.ErrorCode_NeedToRefreshClusterMap in two cases:
+			// 1. It genuinely wants the client to refresh the clustermap as it knows that
+			//    the client has an older clustermap.
+			// 2. It hit some transient error while fetching the clustermap itself, so it cannot
+			//    be sure whether clustermap refresh at the client will help or not. To be safe
+			//    we refresh the clustermap for a limited number of times before failing the read.
+			//
+			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
+			if errCM != nil {
+				// Log and retry, it'll help in case of transient errors at the server.
+				log.Warn("ReplicationManager::GetMVSize: RefreshClusterMap() failed for GetMVSize(%s) (retryCnt: %d): %v",
+					mvName, retryCnt, errCM)
+			} else {
+				clusterMapRefreshed = true
+			}
+
+			retryCnt++
+			goto retry
+		}
+
+		// Try another replica if available.
 	}
 
 	return mvSize, nil

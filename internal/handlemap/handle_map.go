@@ -95,13 +95,12 @@ type Handle struct {
 	ID       HandleID // Blobfuse assigned unique ID to this handle
 	Size     int64    // Size of the file being handled here
 	Mtime    time.Time
-
-	UnixFD uint64          // Unix FD created by create/open syscall
-	OptCnt uint64          // Number of operations done on this file
-	Flags  common.BitMap16 // Various states of the file
-	Path   string          // Always holds path relative to mount dir
-	values map[string]any  // Map to hold other info if application wants to store
-	IFObj  any             // Generic file Object that can be used by other components.
+	UnixFD   uint64          // Unix FD created by create/open syscall
+	OptCnt   uint64          // Number of operations done on this file
+	Flags    common.BitMap16 // Various states of the file
+	Path     string          // Always holds path relative to mount dir
+	values   map[string]any  // Map to hold other info if application wants to store
+	IFObj    any             // Generic file Object that can be used by other components.
 }
 
 func NewHandle(path string) *Handle {

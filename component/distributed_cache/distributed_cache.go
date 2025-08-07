@@ -38,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -419,12 +420,12 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		//
 
 		// This is the minimum number of MVs possible, what we get if we host one MV per RV.
-		minMVs := int64(distributedCache.cfg.MaxRVs / distributedCache.cfg.Replicas)
+		minMVs := int64((int64(distributedCache.cfg.MaxRVs) * cm.MinMVsPerRV) / int64(distributedCache.cfg.Replicas))
 		common.Assert(minMVs > 0, distributedCache.cfg)
 		minMVs = max(minMVs, 1)
 
 		// For the given cfg.MaxRVs value, this is the maximum number of MVs that we can have.
-		maxMVs := minMVs * cm.MaxMVsPerRV
+		maxMVs := int64((int64(distributedCache.cfg.MaxRVs) * cm.MaxMVsPerRV) / int64(distributedCache.cfg.Replicas))
 
 		// Start with the minimum number of MVs.
 		numMVs := minMVs
@@ -440,7 +441,9 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		}
 
 		// Set MVsPerRV needed to achieve these many MVs.
-		distributedCache.cfg.MVsPerRV = uint64(numMVs / minMVs)
+		distributedCache.cfg.MVsPerRV =
+			uint64(math.Ceil(float64(numMVs*int64(distributedCache.cfg.Replicas)) /
+				float64(distributedCache.cfg.MaxRVs)))
 
 		log.Info("DistributedCache::Configure : cfg.MVsPerRV set to %d, minMVs: %d, maxMVs: %d",
 			distributedCache.cfg.MVsPerRV, minMVs, maxMVs)
@@ -875,6 +878,9 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		dcFile, err = fm.OpenDcacheFile(options.Name)
 		if err != nil {
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s", err.Error(), options.Name)
+			if err == fm.ErrFileNotReady {
+				return nil, syscall.ENOENT
+			}
 			return nil, err
 		}
 	} else if isAzurePath {
@@ -889,8 +895,10 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		options.Name = rawPath
 		return debug.OpenFile(options)
 	} else {
-		// If the path don't come with no explicit namespace
-		// It should first check the file in dcache, if present, read from dcache,
+		// The path don't come with an explicit namespace
+		//
+		// If file is present in dcache, in ready state, read from dcache,
+		// else if file is present in dcache, but not in ready state, fail with ENOENT,
 		// else check in azure if present, read from azure, else fail the open.
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
 		dcFile, err = fm.OpenDcacheFile(rawPath)
@@ -898,6 +906,14 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			log.Debug("DistributedCache::OpenFile : Opening the file from Dcache, path : %s", options.Name)
 			handle = handlemap.NewHandle(options.Name)
 			handle.SetFsDcache()
+		} else if err == fm.ErrFileNotReady {
+			//
+			// Maybe some other/ same node is trying to write this file, we cannot serve this file from azure until
+			// dcache file state changes to ready, even if that file is already present in azure. User must use explicit
+			// namespace of fs=azure to access such files.
+			//
+			log.Err("DistributedCache::OpenFile : Failed Opening the file from Dcache, path: %s: %v", options.Name, err)
+			return nil, syscall.ENOENT
 		} else {
 			// todo: make sure we come here when opening dcache file is returning ENOENT
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s, Trying to Open the file in Azure", err.Error(), options.Name)
@@ -970,7 +986,7 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 	return 0, err
 }
 
-func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (dc *DistributedCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	log.Debug("DistributedCache::WriteFile : WriteFile, offset : %d, buf size : %d, file : %s",
 		options.Offset, len(options.Data), options.Handle.Path)
 	common.Assert(len(options.Data) != 0)

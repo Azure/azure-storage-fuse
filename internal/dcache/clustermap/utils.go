@@ -80,6 +80,21 @@ var (
 	MinMVsPerRV int64 = 1
 	MaxMVsPerRV int64 = 100
 
+	//
+	// DCacheConfig.MVsPerRV decides how many new MVs are created depending on the number of RVs we have,
+	// but when nodes go down we need to move MVs from offline nodes to available nodes. FixMV workflow
+	// does that. For this we need to allow FixMV workflow to place more MVs per RV than DCacheConfig.MVsPerRV.
+	// MVsPerRVScaleFactor decides how many times more MVs can we allow in the FixMV workflow, than the NewMV
+	// workflow.
+	//
+	// TODO: We need to add support for rebalancing MVs back to newly joined nodes, else we will end up not
+	//       using the full capacity of the cluster. This is the "optional rebalancing" needed to distribute
+	//       MVs evenly across all RVs. The other rebalancing is the "mandatory rebalancing" that we do when
+	//       nodes go down, and we need to move MVs from offline nodes to available nodes.
+	//       THIS IS VERY IMPORTANT!!
+	//
+	MVsPerRVScaleFactor int64 = 4
+
 	MinRvFullThreshold int64 = 80
 	MaxRvFullThreshold int64 = 100
 

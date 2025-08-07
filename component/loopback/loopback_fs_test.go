@@ -241,11 +241,11 @@ func (suite *LoopbackFSTestSuite) TestWriteFile() {
 	assert.Nil(err, "WriteFile: failed to open file")
 	assert.NotNil(handle)
 
-	n, err := suite.lfs.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte(quotesText)[:5]})
+	n, err := suite.lfs.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte(quotesText)[:5]})
 	assert.Nil(err)
 	assert.Equal(n, 5, "WriteFile: failed to write the specified number of bytes")
 
-	n, err = suite.lfs.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 5, Data: []byte(quotesText)[5:]})
+	n, err = suite.lfs.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 5, Data: []byte(quotesText)[5:]})
 	assert.Nil(err)
 	assert.Equal(n, len([]byte(quotesText)[5:]), "WriteFile: failed to write specified number of bytes")
 
