@@ -1397,7 +1397,7 @@ func (mv *mvInfo) incTotalChunkBytes(bytes int64) {
 func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(-bytes)
 	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
-	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load()))
+	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is %d, bytes: %d", mv.mvName, mv.totalChunkBytes.Load(), bytes))
 }
 
 // acquire read lock on the opMutex.
