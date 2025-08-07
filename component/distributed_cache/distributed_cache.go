@@ -114,6 +114,8 @@ type DistributedCacheOptions struct {
 	RebalancePercentage uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
+	IgnoreFD            bool   `config:"ignore-fd" yaml:"ignore-fd,omitempty"`
+	IgnoreUD            bool   `config:"ignore-ud" yaml:"ignore-ud,omitempty"`
 	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
 	ReadIOMode          string `config:"read-io-mode" yaml:"read-io-mode,omitempty"`
 	WriteIOMode         string `config:"write-io-mode" yaml:"write-io-mode,omitempty"`
@@ -136,6 +138,8 @@ const (
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
 	dcacheDirContToken               = "__DCDIRENT__"
+	defaultIgnoreFD                  = true // By default ignore VM Fault Domain for data placement decisions.
+	defaultIgnoreUD                  = true // By default ignore VM Update Domain for data placement decisions.
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -232,6 +236,8 @@ func (dc *DistributedCache) startClusterManager() string {
 		RebalancePercentage:    dc.cfg.RebalancePercentage,
 		SafeDeletes:            dc.cfg.SafeDeletes,
 		CacheAccess:            dc.cfg.CacheAccess,
+		IgnoreFD:               dc.cfg.IgnoreFD,
+		IgnoreUD:               dc.cfg.IgnoreUD,
 		RvFullThreshold:        dc.cfg.RVFullThreshold,
 		RvNearfullThreshold:    dc.cfg.RVNearfullThreshold,
 	}
@@ -259,6 +265,43 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	uuidVal, err := common.GetNodeUUID()
 	if err != nil {
 		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
+	}
+
+	//
+	// Query the VM's fault and update domains from IMDS endpoint.
+	// Those become the fault and update domains for all RVs hosted on this VM.
+	//
+	faultDomain, updateDomain, err := queryVMFaultAndUpdateDomain()
+	if err != nil {
+		if !dc.cfg.IgnoreFD || !dc.cfg.IgnoreUD {
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to query VM's fault and update domain: %v]", err))
+		} else {
+			//
+			// Ignore error querying VM's fault and update domain if IgnoreFD or IgnoreUD both are set to true.
+			// This avoids startup failure in case the query fails for whatever reason, as user doesn't care about
+			// fault and update domains for data placement decisions.
+			//
+			log.Warn("DistributedCache::Start : Failed to query VM's fault and update domain, but IgnoreFD and IgnoreUD are both set to true, proceeding with empty domains: %v", err)
+		}
+	} else {
+		log.Debug("DistributedCache::Start : FaultDomain: %s, UpdateDomain: %s", faultDomain, updateDomain)
+	}
+
+	// Empty fault/update domain conveys "ignore fault/update domain for data placement" to the data placer.
+	if dc.cfg.IgnoreFD {
+		log.Debug("DistributedCache::Start : IgnoreFD=true, forcing FaultDomain to empty string, placer will ignore FD for data placement decisions")
+		faultDomain = ""
+	} else if faultDomain == "" {
+		// If IgnoreFD is false we can't proceed with empty fault domain.
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [IgnoreFD=false and VM fault domain not known, cannot proceed]"))
+	}
+
+	if dc.cfg.IgnoreUD {
+		log.Debug("DistributedCache::Start : IgnoreUD=true, forcing UpdateDomain to empty string, placer will ignore UD for data placement decisions")
+		updateDomain = ""
+	} else if updateDomain == "" {
+		// If IgnoreUD is false we can't proceed with empty update domain.
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [IgnoreUD=false and VM update domain not known, cannot proceed]"))
 	}
 
 	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
@@ -298,18 +341,12 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
 		}
 
-		//
-		// TODO: Set fault domain by querying the IMDS endpoint.
-		//       Till then set it to empty string which means fault domain is not known for the RV.
-		//       If fault domain is not known for an RV those RVs are considered to be in a fault domain
-		//       not matching any other fault domain, hence they can host any MV regardless of the
-		//       fault domain of other components RVs of that MV.
-		//
 		rvList[index] = dcache.RawVolume{
 			NodeId:         uuidVal,
 			IPAddress:      ipaddr,
 			RvId:           rvId,
-			FDId:           "",
+			FDId:           faultDomain,
+			UDId:           updateDomain,
 			State:          dcache.StateOnline,
 			TotalSpace:     totalSpace,
 			AvailableSpace: availableSpace,
@@ -477,6 +514,12 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	}
 	if !config.IsSet(compName + ".cache-access") {
 		distributedCache.cfg.CacheAccess = defaultCacheAccess
+	}
+	if !config.IsSet(compName + ".ignore-fd") {
+		distributedCache.cfg.IgnoreFD = defaultIgnoreFD
+	}
+	if !config.IsSet(compName + ".ignore-ud") {
+		distributedCache.cfg.IgnoreUD = defaultIgnoreUD
 	}
 
 	// Both read/write default to direct IO.
@@ -1393,6 +1436,12 @@ func init() {
 
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
+
+	ignoreFD := config.AddBoolFlag("ignore-fd", defaultIgnoreFD, "Ignore VM fault domain for data placement decisions")
+	config.BindPFlag(compName+".ignore-fd", ignoreFD)
+
+	ignoreUD := config.AddBoolFlag("ignore-ud", defaultIgnoreUD, "Ignore VM update domain for data placement decisions")
+	config.BindPFlag(compName+".ignore-ud", ignoreUD)
 
 	readIOMode := config.AddStringFlag("read-io-mode", rpc.DirectIO, "IO mode for reading chunk files (direct/buffered)")
 	config.BindPFlag(compName+".read-io-mode", readIOMode)

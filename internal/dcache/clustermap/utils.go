@@ -319,7 +319,21 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 		return false, fmt.Errorf("RawVolume: Invalid RvId: %s: %+v", rv.RvId, *rv)
 	}
 
-	// TODO: Once we add support for querying fault domains, add the validation for FDId.
+	// If IgnoreFD config is set, FDId will be empty.
+	if rv.FDId != "" {
+		_, err := strconv.Atoi(rv.FDId)
+		if err != nil {
+			return false, fmt.Errorf("RawVolume: Invalid FDId (must be integer): %s: %+v", rv.FDId, *rv)
+		}
+	}
+
+	// If IgnoreUD config is set, UDId will be empty.
+	if rv.UDId != "" {
+		_, err := strconv.Atoi(rv.UDId)
+		if err != nil {
+			return false, fmt.Errorf("RawVolume: Invalid UDId (must be integer): %s: %+v", rv.UDId, *rv)
+		}
+	}
 
 	if rv.State != dcache.StateOnline && rv.State != dcache.StateOffline {
 		return false, fmt.Errorf("RawVolume: Invalid state: %s: %+v", rv.State, *rv)
