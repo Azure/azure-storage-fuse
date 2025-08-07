@@ -3969,6 +3969,8 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 		//
 		// TODO: See if we want to pass runFixMvNewMv as true for the inband rv offlining case.
 		//
+		// TODO: Update clustermap only when the successCount > 0
+		//
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, false /* runFixMvNewMv */)
 
 		err = cmi.endClusterMapUpdate(clusterMap)

@@ -210,12 +210,16 @@ func IsTimedOut(err error) bool {
 	// Timeout can happen at various points.
 	// connect()/write()/read() may time out.
 	// Try various errors for completeness.
+	// i/o timeout can happen when opening the connection to a node or reading/writing
+	// over the socket times out as per the timeouts set in the thrift.TConfiguration.
 	//
 	connectionTimedOut := "onnection timed out"
+	ioTimeout := "i/o timeout"
 	return transportEx.TypeId() == thrift.TIMED_OUT ||
 		errors.Is(err, syscall.ETIMEDOUT) ||
 		errors.Is(err, syscall.EAGAIN) ||
-		strings.Contains(err.Error(), connectionTimedOut)
+		strings.Contains(err.Error(), connectionTimedOut) ||
+		strings.Contains(err.Error(), ioTimeout)
 }
 
 // Silence unused import errors for release builds.

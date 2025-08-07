@@ -169,7 +169,7 @@ func updateInbandOfflineToOffline(componentRVs *[]*models.RVNameAndState) {
 
 // This method is wrapper for the GetChunk() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
-func GetChunkLocal(ctc context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
+func GetChunkLocal(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(req.Address != nil)
 
@@ -186,12 +186,12 @@ func GetChunkLocal(ctc context.Context, req *models.GetChunkRequest) (*models.Ge
 
 	common.Assert(handler != nil)
 
-	return handler.GetChunk(ctc, req)
+	return handler.GetChunk(ctx, req)
 }
 
 // This method is wrapper for the PutChunk() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
-func PutChunkLocal(ctc context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
+func PutChunkLocal(ctx context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
@@ -202,12 +202,12 @@ func PutChunkLocal(ctc context.Context, req *models.PutChunkRequest) (*models.Pu
 
 	common.Assert(handler != nil)
 
-	return handler.PutChunk(ctc, req)
+	return handler.PutChunk(ctx, req)
 }
 
 // This method is wrapper for the PutChunkDC() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
-func PutChunkDCLocal(ctc context.Context, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
+func PutChunkDCLocal(ctx context.Context, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
 	common.Assert(req != nil)
 	common.Assert(req.Request != nil)
 	common.Assert(req.Request.Chunk != nil)
@@ -220,12 +220,12 @@ func PutChunkDCLocal(ctc context.Context, req *models.PutChunkDCRequest) (*model
 
 	common.Assert(handler != nil)
 
-	return handler.PutChunkDC(ctc, req)
+	return handler.PutChunkDC(ctx, req)
 }
 
 // This method is wrapper for the GetMVSize() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
-func GetMVSizeLocal(ctc context.Context, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
+func GetMVSizeLocal(ctx context.Context, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
 	common.Assert(req != nil)
 
 	// Caller must not set SenderNodeID, catch misbehaving callers.
@@ -234,7 +234,7 @@ func GetMVSizeLocal(ctc context.Context, req *models.GetMVSizeRequest) (*models.
 
 	common.Assert(handler != nil)
 
-	return handler.GetMVSize(ctc, req)
+	return handler.GetMVSize(ctx, req)
 }
 
 // Silence unused import errors for release builds.

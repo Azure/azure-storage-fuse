@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package rpc_test
+package rpc_client
 
 import (
 	"testing"
@@ -40,42 +40,25 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type rpcTestSuite struct {
+type rpcClientTestSuite struct {
 	suite.Suite
 	assert *assert.Assertions
 }
 
-func (suite *rpcTestSuite) SetupTest() {
+func (suite *rpcClientTestSuite) SetupTest() {
 	suite.assert = assert.New(suite.T())
 }
 
-// func (suite *rpcTestSuite) TestHelloRPC() {
-// 	// start server
-// 	server, err := rpc_server.NewNodeServer()
-// 	suite.assert.NoError(err)
-// 	suite.assert.NotNil(server)
+func (suite *rpcClientTestSuite) TestNewRPCClientTimeout() {
+	nodeID := "test-node-id"
+	nodeAddress := "10.0.0.5:9090"
 
-// 	err = server.Start()
-// 	suite.assert.NoError(err)
-// 	time.Sleep(1 * time.Second)
+	client, err := newRPCClient(nodeID, nodeAddress)
+	suite.assert.Error(err)
+	suite.assert.Contains(err.Error(), "timeout")
+	suite.assert.Nil(client)
+}
 
-// 	rpc_client.Start()
-
-// 	startTime := time.Now()
-// 	resp, err := rpc_client.Hello(context.Background(), "nodeID", &models.HelloRequest{})
-// 	fmt.Println("RPC call took:", time.Since(startTime))
-// 	suite.assert.NoError(err)
-// 	suite.assert.NotNil(resp)
-
-// 	err = rpc_client.Cleanup()
-// 	fmt.Println("Cleanup:", time.Since(startTime))
-// 	suite.assert.NoError(err)
-
-// 	err = server.Stop()
-// 	fmt.Println("Server stop:", time.Since(startTime))
-// 	suite.assert.NoError(err)
-// }
-
-func TestRPCTestSuite(t *testing.T) {
-	suite.Run(t, new(rpcTestSuite))
+func TestRPCClientTestSuite(t *testing.T) {
+	suite.Run(t, new(rpcClientTestSuite))
 }
