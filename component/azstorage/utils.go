@@ -228,6 +228,7 @@ const (
 	InvalidRange
 	BlobIsUnderLease
 	InvalidPermission
+	UnsupportedOperation
 )
 
 // For detailed error list refer below link,
@@ -249,6 +250,8 @@ func storeBlobErrToErr(err error) uint16 {
 			return BlobIsUnderLease
 		case bloberror.InsufficientAccountPermissions, bloberror.AuthorizationPermissionMismatch:
 			return InvalidPermission
+		case bloberror.UnsupportedHeader:
+			return UnsupportedOperation
 		default:
 			return ErrUnknown
 		}
@@ -294,9 +297,32 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 			} else if strings.ToLower(k) == symlinkKey && *v == "true" {
 				attr.Flags = internal.NewSymlinkBitMap()
 				attr.Mode = attr.Mode | os.ModeSymlink
+			} else if strings.ToLower(k) == common.POSIXOwnerMeta {
+				attr.Flags.Set(internal.PropFlagOwnerInfoFound)
+				attr.Owner = common.ParseInt(*v)
+			} else if strings.ToLower(k) == common.POSIXGroupMeta {
+				attr.Flags.Set(internal.PropFlagGroupInfoFound)
+				attr.Group = common.ParseInt(*v)
+			} else if strings.ToLower(k) == common.POSIXModeMeta {
+				attr.Mode, _ = getFileMode(*v)
 			}
 		}
 	}
+}
+
+func AddMetadata(metadata map[string]*string, key, value string) bool {
+	lowerKey := strings.ToLower(key)
+	for k := range metadata {
+		if strings.ToLower(k) == lowerKey {
+			if *metadata[k] == value {
+				return false
+			}
+			metadata[k] = &value
+			return true
+		}
+	}
+	metadata[key] = &value
+	return true
 }
 
 //    ----------- Content-type handling  ---------------
@@ -519,6 +545,33 @@ func getFileMode(permissions string) (os.FileMode, error) {
 		}
 	}
 	return mode, nil
+}
+
+func parsePosixInfo(attr *internal.ObjAttr, owner *string, group *string, mode *string) {
+	/*
+		// Commenting this code because in case of HNS the owner and group are guid and that can not be parsed as integers
+		// we have to rely on owner and group set in metadata instead as UNIX only supports int as owner and group
+		// But still keeping this code here because someday we might want to somehow map the guid to actual users
+		if owner != nil {
+			attr.Owner = common.ParseInt(*owner)
+			attr.Flags.Set(internal.PropFlagOwnerInfoFound)
+		}
+
+		if group != nil {
+			attr.Group = common.ParseInt(*group)
+			attr.Flags.Set(internal.PropFlagGroupInfoFound)
+		}
+	*/
+
+	if mode != nil {
+		perm, err := getFileMode(*mode)
+		if err != nil {
+			log.Err("parsePosixInfo : Failed to get file mode for %s [%s]", attr.Name, err.Error())
+			attr.Flags.Set(internal.PropFlagModeDefault)
+		} else {
+			attr.Mode = perm
+		}
+	}
 }
 
 // removePrefixPath removes the given prefixPath from the beginning of path,
