@@ -85,6 +85,9 @@ type AzStorageConfig struct {
 
 	// Blob filters
 	filter *blobfilter.BlobFilter
+
+	// Posix compliance enabled
+	posixCompliance bool
 }
 
 type AzStorageConnection struct {

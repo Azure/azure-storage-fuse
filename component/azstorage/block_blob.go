@@ -1574,6 +1574,12 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 // ChangeMod : Change mode of a blob
 func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("BlockBlob::ChangeMod : name %s", name)
+
+	if !bb.Config.posixCompliance {
+		log.Trace("BlockBlob::ChangeMod : POSIX compliance is not enabled, skipping ChangeMod for %s", name)
+		return nil
+	}
+
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	// Fetch existing properties
@@ -1625,6 +1631,11 @@ func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 // ChangeOwner : Change owner of a blob
 func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 	log.Trace("BlockBlob::ChangeOwner : name %s", name)
+
+	if !bb.Config.posixCompliance {
+		log.Trace("BlockBlob::ChangeOwner : POSIX compliance is not enabled, skipping ChangeOwner for %s", name)
+		return nil
+	}
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 

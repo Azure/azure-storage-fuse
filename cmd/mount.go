@@ -91,6 +91,7 @@ type mountOptions struct {
 	WaitForMount       time.Duration  `config:"wait-for-mount"`
 	LazyWrite          bool           `config:"lazy-write"`
 	disableKernelCache bool           `config:"disable-kernel-cache"`
+	posixCompliance    bool           `config:"posix"`
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
@@ -876,6 +877,9 @@ func init() {
 
 	mountCmd.PersistentFlags().Bool("disable-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
 	config.BindPFlag("disable-kernel-cache", mountCmd.PersistentFlags().Lookup("disable-kernel-cache"))
+
+	mountCmd.PersistentFlags().Bool("posix", false, "Enable chmod and chown support. Default value false.")
+	config.BindPFlag("posix", mountCmd.PersistentFlags().Lookup("posix"))
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
