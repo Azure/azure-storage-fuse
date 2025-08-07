@@ -533,30 +533,12 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("Datalake::ChangeMod : Change mode of file %s to %s", name, mode)
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 
-	resp, err := fileClient.GetAccessControl(context.Background(), nil)
-	if err != nil {
-		log.Err("Datalake::ChangeMod : Failed to get ACLs for file %s [%s]", name, err.Error())
-		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound {
-			return syscall.ENOENT
-		} else if e == InvalidPermission {
-			return syscall.EACCES
-		} else {
-			return err
-		}
-	}
-
 	newPerm := getACLPermissions(mode)
-	// Both ACL and permissions can not be sent in single call of SetAccessControl
-	// Doing so will result in 400 error with invalid header format.
 	opts := &file.SetAccessControlOptions{
 		Permissions: &newPerm,
-		Owner:       resp.Owner,
-		Group:       resp.Group,
-		// ACL:         resp.ACL,
 	}
 
-	_, err = fileClient.SetAccessControl(context.Background(), opts)
+	_, err := fileClient.SetAccessControl(context.Background(), opts)
 	if err != nil {
 		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
 		e := storeDatalakeErrToErr(err)
@@ -574,52 +556,7 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 
 // ChangeOwner : Change owner of a path
 func (dl *Datalake) ChangeOwner(name string, uid int, gid int) error {
-	log.Trace("Datalake::ChangeOwner : Change owner of file %s to (%v:%v)", name, uid, gid)
-	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
-
-	resp, err := fileClient.GetAccessControl(context.Background(), nil)
-	if err != nil {
-		log.Err("Datalake::ChangeOwner : Failed to get ACLs for file %s [%s]", name, err.Error())
-		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound {
-			return syscall.ENOENT
-		} else if e == InvalidPermission {
-			return syscall.EACCES
-		} else {
-			return err
-		}
-	}
-
-	opts := &file.SetAccessControlOptions{
-		Permissions: resp.Permissions,
-		// ACL:         resp.ACL,
-	}
-
-	var uidStr, gidStr string
-	if uid != -1 {
-		uidStr = fmt.Sprintf("%d", uid)
-		opts.Owner = &uidStr
-	}
-
-	if gid != -1 {
-		gidStr = fmt.Sprintf("%d", gid)
-		opts.Group = &gidStr
-	}
-
-	_, err = fileClient.SetAccessControl(context.Background(), opts)
-	if err != nil {
-		log.Err("Datalake::ChangeOwner : Failed to change owner of file %s to (%v:%v) [%s]", name, uid, gid, err.Error())
-		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound {
-			return syscall.ENOENT
-		} else if e == InvalidPermission {
-			return syscall.EACCES
-		} else {
-			return err
-		}
-	}
-
-	return nil
+	return dl.BlockBlob.ChangeOwner(name, uid, gid)
 }
 
 // GetCommittedBlockList : Get the list of committed blocks

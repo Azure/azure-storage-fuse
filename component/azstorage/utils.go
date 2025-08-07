@@ -228,6 +228,7 @@ const (
 	InvalidRange
 	BlobIsUnderLease
 	InvalidPermission
+	UnsupportedOperation
 )
 
 // For detailed error list refer below link,
@@ -249,6 +250,8 @@ func storeBlobErrToErr(err error) uint16 {
 			return BlobIsUnderLease
 		case bloberror.InsufficientAccountPermissions, bloberror.AuthorizationPermissionMismatch:
 			return InvalidPermission
+		case bloberror.UnsupportedHeader:
+			return UnsupportedOperation
 		default:
 			return ErrUnknown
 		}

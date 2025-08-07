@@ -120,10 +120,12 @@ func (value *attrCacheItem) setOwnerGroup(owner int, group int) {
 
 	if owner != 0xffffffff {
 		value.attr.Metadata[common.POSIXOwnerMeta] = &ownerStr
+		value.attr.Owner = owner
 	}
 
 	if group != 0xffffffff {
 		value.attr.Metadata[common.POSIXGroupMeta] = &groupStr
+		value.attr.Group = group
 	}
 
 	value.attr.Ctime = time.Now()

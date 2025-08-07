@@ -1672,6 +1672,9 @@ func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 			} else if serr == InvalidPermission {
 				log.Err("BlockBlob::ChangeOwner : Insufficient permissions for %s [%s]", name, err.Error())
 				return syscall.EACCES
+			} else if serr == UnsupportedOperation {
+				log.Err("BlockBlob::ChangeOwner : Change owner not supported for %s [%s]", name, err.Error())
+				return syscall.EOPNOTSUPP
 			} else {
 				log.Err("BlockBlob::ChangeOwner : Failed to set blob properties for %s [%s]", name, err.Error())
 				return err

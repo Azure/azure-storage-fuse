@@ -1190,6 +1190,8 @@ func libfuse_chown(path *C.char, uid C.uid_t, gid C.gid_t, fi *C.fuse_file_info_
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if err == syscall.EOPNOTSUPP {
+			return -C.ENOTSUP
 		}
 		return -C.EIO
 	}
