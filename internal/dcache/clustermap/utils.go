@@ -319,9 +319,7 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 		return false, fmt.Errorf("RawVolume: Invalid RvId: %s: %+v", rv.RvId, *rv)
 	}
 
-	if len(rv.FDID) == 0 {
-		return false, fmt.Errorf("RawVolume: Invalid empty FDID: %+v", *rv)
-	}
+	// TODO: Once we add support for querying fault domains, add the validation for FDId.
 
 	if rv.State != dcache.StateOnline && rv.State != dcache.StateOffline {
 		return false, fmt.Errorf("RawVolume: Invalid state: %s: %+v", rv.State, *rv)

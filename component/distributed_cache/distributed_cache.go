@@ -298,11 +298,18 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
 		}
 
+		//
+		// TODO: Set fault domain by querying the IMDS endpoint.
+		//       Till then set it to empty string which means fault domain is not known for the RV.
+		//       If fault domain is not known for an RV those RVs are considered to be in a fault domain
+		//       not matching any other fault domain, hence they can host any MV regardless of the
+		//       fault domain of other components RVs of that MV.
+		//
 		rvList[index] = dcache.RawVolume{
 			NodeId:         uuidVal,
 			IPAddress:      ipaddr,
 			RvId:           rvId,
-			FDID:           "0",
+			FDId:           "",
 			State:          dcache.StateOnline,
 			TotalSpace:     totalSpace,
 			AvailableSpace: availableSpace,
