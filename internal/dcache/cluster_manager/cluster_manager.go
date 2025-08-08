@@ -2762,6 +2762,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		excludeNodes := make(map[string]struct{})
 		excludeFaultDomains := make(map[string]struct{})
 		excludeUpdateDomains := make(map[string]struct{})
+		firstFreeIdx := 0
+		firstFreeIdxLocked := false
 
 		// Iterate over the availableRVsList and pick the first suitable RV.
 		for _, rv := range availableRVsList {
@@ -2780,8 +2782,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				//
 				// TODO: See if removing "full" RVs from availableRVsList is good for performance with lot of RVs.
 				//
+				if !firstFreeIdxLocked {
+					firstFreeIdx++
+				}
 				continue
 			}
+
+			firstFreeIdxLocked = true
 
 			_, ok := excludeNodes[rv.nodeId]
 			if ok {
@@ -2853,6 +2860,14 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// Delete the incomplete MV from the existingMVMap.
 			delete(existingMVMap, mvName)
 			break
+		}
+
+		// Chop off unusable RVs from the beginning, to avoid wasted iterations for subsequent MVs.
+		availableRVsList = availableRVsList[firstFreeIdx:]
+
+		if firstFreeIdx > 0 {
+			log.Debug("ClusterManager::updateMVList: %d (of %d) new MVs created, initial %d RVs are full, removing from availableRVsList, %d RVs remaining",
+				numUsableMVs, maxMVsPossible, firstFreeIdx, len(availableRVsList))
 		}
 
 		common.Assert(len(existingMVMap[mvName].RVs) == NumReplicas,
