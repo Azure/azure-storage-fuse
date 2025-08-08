@@ -2134,6 +2134,34 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			common.Assert(exists)
 
 			//
+			// Note: We don't perform the fix-mv workflow till the component RVs are marked offline
+			//       in the clusterMap, o/w the target fails our UpdateMV RPC requests claiming invalid
+			//       state transition from inline to outofsync. Clustermap refresh also doesn't help.
+			//
+			if mv.RVs[rvName] == dcache.StateOffline || mv.RVs[rvName] == dcache.StateInbandOffline {
+				cmRVs := cm.GetRVs(mvName)
+				if cmRVs == nil {
+					errStr := fmt.Sprintf("ClusterManager::fixMV: GetRVs(%s) failed", mvName)
+					log.Err("%s", errStr)
+					common.Assert(false, errStr)
+				}
+
+				//
+				// mv would have been queried from the clustermap (but may have been updated), so it must have
+				// the same component RVs.
+				//
+				_, ok := cmRVs[rvName]
+				_ = ok
+				common.Assert(ok, rvName, mvName, cmRVs)
+
+				if cmRVs[rvName] != dcache.StateOffline && cmRVs[rvName] != dcache.StateInbandOffline {
+					log.Debug("ClusterManager::fixMV: %s is still not offline in clustermap, skipping",
+						rvName)
+					continue
+				}
+			}
+
+			//
 			// Fix-mv workflow is run after degrade-mv/offline-mv workflows, so component RV states
 			// must have been correctly updated to offline.
 			//
@@ -2289,6 +2317,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 
 			foundReplacement := false
+			firstFreeIdx := 0
+			firstFreeIdxLocked := false
+
 			log.Debug("ClusterManager::fixMV: Fixing component RV %s/%s (state: %s)",
 				rvName, mvName, mv.RVs[rvName])
 
@@ -2306,8 +2337,14 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				//
 				if rv.slots == 0 {
 					log.Debug("ClusterManager::fixMV: Skipping %s as it has no slots left", rv.rvName)
+
+					if !firstFreeIdxLocked {
+						firstFreeIdx++
+					}
 					continue
 				}
+
+				firstFreeIdxLocked = true
 
 				if _, ok := excludeNodes[rv.nodeId]; ok {
 					//
@@ -2398,6 +2435,14 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				foundReplacement = true
 				fixedRVs++
 				break
+			}
+
+			if firstFreeIdx > 0 {
+				// Chop off unusable RVs from the beginning, to avoid wasted iterations for subsequent MVs.
+				availableRVsList = availableRVsList[firstFreeIdx:]
+
+				log.Debug("ClusterManager::fixMV: Initial %d RVs are full, removing from availableRVsList, %d RVs remaining",
+					firstFreeIdx, len(availableRVsList))
 			}
 
 			//
@@ -2554,7 +2599,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			_ = exists
 			common.Assert(exists, rvName, mvName)
 
+			//
 			// First things first, an offline RV MUST be marked as an offline component RV.
+			// fixMV() finds offline component RVs and replaces them with good RVs.
+			//
 			if rv.State == dcache.StateOffline {
 				mv.RVs[rvName] = dcache.StateOffline
 			}
@@ -2862,10 +2910,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			break
 		}
 
-		// Chop off unusable RVs from the beginning, to avoid wasted iterations for subsequent MVs.
-		availableRVsList = availableRVsList[firstFreeIdx:]
-
 		if firstFreeIdx > 0 {
+			// Chop off unusable RVs from the beginning, to avoid wasted iterations for subsequent MVs.
+			availableRVsList = availableRVsList[firstFreeIdx:]
+
 			log.Debug("ClusterManager::updateMVList: %d (of %d) new MVs created, initial %d RVs are full, removing from availableRVsList, %d RVs remaining",
 				numUsableMVs, maxMVsPossible, firstFreeIdx, len(availableRVsList))
 		}
