@@ -1948,6 +1948,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	availableRVsMap := make(map[string]*rv)
 
 	//
+	// getAvailableRVsList() makes this list out of availableRVsMap.
+	// This can be used only after a call to getAvailableRVsList().
+	//
+	var availableRVsList []*rv
+
+	//
 	// getAvailableRVsList() sets
 	// - numAvailableNodes to the number of nodes that have at least one RV available for placing MVs.
 	// - numAvailableFDs to the number of fault domains that have at least one RV available for placing MVs.
@@ -1958,15 +1964,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	numAvailableUDs := 0
 
 	//
-	// From availableRVsMap, this will create a list of RVs that are available for placing MVs, excluding the RVs
-	// from the given excludeNodes, excludeFaultDomains and excludeUpdateDomains sets.
-	// The RVs are sorted by the number of slots available, so that the RVs with more slots are at the front
-	// so they are picked first for placing MVs, thus resulting in a more balanced distribution of MVs across the RVs.
+	// From availableRVsMap, this will create equivalent availableRVsList, list of RVs that are available for
+	// placing MVs. The RVs are sorted by the number of slots available, so that the RVs with more slots are at
+	// the front so they are picked first for placing MVs, thus resulting in a more balanced distribution of MVs
+	// across the RVs over time as nodes go down and come up.
 	//
 	// TODO: Sort also based on free space available on the RVs, so that MV placer favors RVs with more free space.
 	//
-	getAvailableRVsList := func(newMV bool, excludeNodes, excludeFaultDomains, excludeUpdateDomains map[string]struct{}) []*rv {
-		availableRVsList := make([]*rv, 0, len(availableRVsMap))
+	getAvailableRVsList := func(newMV bool) {
+		availableRVsList = make([]*rv, 0, len(availableRVsMap))
 
 		// Nodes and fault/update domains that have at least one RV available for placing MVs.
 		nodes := make(map[string]struct{})
@@ -1976,39 +1982,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		for _, rv := range availableRVsMap {
 			// availableRVsMap must only contain online RVs.
 			common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
-
-			if excludeNodes != nil {
-				if _, ok := excludeNodes[rv.nodeId]; ok {
-					//
-					// Skip RVs from excluded nodes.
-					// When faking scale test we add 1000s of RVs to a node which makes this log very chatty.
-					// Skip it only for that as it may be useful for a real cluster.
-					//
-					if !common.IsFakingScaleTest() {
-						log.Debug("ClusterManager::getAvailableRVsList: Skipping %s from node %s in excludeNodes %+v",
-							rv.rvName, rv.nodeId, excludeNodes)
-					}
-					continue
-				}
-			}
-
-			if excludeFaultDomains != nil && rv.fdId != "" {
-				if _, ok := excludeFaultDomains[rv.fdId]; ok {
-					// Skip RVs from excluded fault domains.
-					log.Debug("ClusterManager::getAvailableRVsList: Skipping %s from fault domain %s in excludeFaultDomains %+v",
-						rv.rvName, rv.fdId, excludeFaultDomains)
-					continue
-				}
-			}
-
-			if excludeUpdateDomains != nil && rv.udId != "" {
-				if _, ok := excludeUpdateDomains[rv.udId]; ok {
-					// Skip RVs from excluded update domains.
-					log.Debug("ClusterManager::getAvailableRVsList: Skipping %s from update domain %s in excludeUpdateDomains %+v",
-						rv.rvName, rv.udId, excludeUpdateDomains)
-					continue
-				}
-			}
 
 			// Max slots for an RV is MVsPerRVForFixMV.
 			common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
@@ -2043,6 +2016,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 		}
 
+		// Set these global variables, some callers may need them.
 		numAvailableNodes = len(nodes)
 		numAvailableFDs = len(faultDomains)
 		numAvailableUDs = len(updateDomains)
@@ -2054,7 +2028,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			return availableRVsList[i].slots > availableRVsList[j].slots
 		})
 
-		return availableRVsList
+		log.Debug("ClusterManager::getAvailableRVsList: Available RVs: %d, nodes: %d, FD: %d, UD: %d",
+			len(availableRVsList), numAvailableNodes, numAvailableFDs, numAvailableUDs)
 	}
 
 	//
@@ -2250,23 +2225,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//         - Does not come from any update domain in excludeUpdateDomains list.
 		//         - Has same or higher availableSpace.
 		//
-		// We make a list of available RVs that can be used to replace the offline component RVs.
-		// This is a sorted list with more suitable RVs at the front, so that we are more likely to pick more suitable
-		// RVs first, thus resulting in a balanced distribution of MVs across the RVs.
-		// We then iterate over the availableRVsList list and pick the 1st suitable RV.
+		// Caller creates availableRVsList which is a list of available RVs that can be used to replace the
+		// offline component RVs. This is a sorted list with more suitable RVs at the front, so that we are
+		// more likely to pick more suitable RVs first, thus resulting in a balanced distribution of MVs across
+		// the RVs. We then iterate over the availableRVsList list and pick the 1st suitable RV.
+		// As we pick RVs we update availableRVsMap which also updates availableRVsList as it is a slice of
+		// those pointers that availableRVsMap refers to.
 		//
-		start := time.Now()
-		availableRVsList := getAvailableRVsList(false /* newMV */, excludeNodes, excludeFaultDomains, excludeUpdateDomains)
-		duration := stats.Duration(time.Since(start))
-
-		atomic.AddInt64(&stats.Stats.CM.FixMV.GetAvailableRVsList.Calls, 1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.GetAvailableRVsList.TotalTime), int64(duration))
-		if stats.Stats.CM.FixMV.GetAvailableRVsList.MinTime == nil ||
-			duration < *stats.Stats.CM.FixMV.GetAvailableRVsList.MinTime {
-			stats.Stats.CM.FixMV.GetAvailableRVsList.MinTime = &duration
-		}
-		stats.Stats.CM.FixMV.GetAvailableRVsList.MaxTime =
-			max(stats.Stats.CM.FixMV.GetAvailableRVsList.MaxTime, duration)
 
 		//
 		// Number of component RVs we are actually able to fix for this MV.
@@ -2332,19 +2297,46 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				// availableRVsList must only contain online RVs.
 				common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
 
-				// availableRVsList must not have RVs in excludeNodes or excludeFaultDomains.
-				if common.IsDebugBuild() {
-					_, ok := excludeNodes[rv.nodeId]
-					common.Assert(!ok, rv.rvName, rv.nodeId, excludeNodes)
+				// Max slots for an RV is MVsPerRVForFixMV.
+				common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
 
-					if rv.fdId != "" {
-						_, ok = excludeFaultDomains[rv.fdId]
-						common.Assert(!ok, rv.rvName, rv.nodeId, excludeFaultDomains)
+				//
+				// Skip an RV if it has no free slots left.
+				// This check is the fastest, so we do it first.
+				//
+				if rv.slots == 0 {
+					log.Debug("ClusterManager::fixMV: Skipping %s as it has no slots left", rv.rvName)
+					continue
+				}
+
+				if _, ok := excludeNodes[rv.nodeId]; ok {
+					//
+					// Skip RVs from excluded nodes.
+					// When faking scale test we add 1000s of RVs to a node which makes this log very chatty.
+					// Skip it only for that as it may be useful for a real cluster.
+					//
+					if !common.IsFakingScaleTest() {
+						log.Debug("ClusterManager::fixMV: Skipping %s from node %s in excludeNodes %+v",
+							rv.rvName, rv.nodeId, excludeNodes)
 					}
+					continue
+				}
 
-					if rv.udId != "" {
-						_, ok = excludeUpdateDomains[rv.udId]
-						common.Assert(!ok, rv.rvName, rv.nodeId, excludeUpdateDomains)
+				if rv.fdId != "" {
+					if _, ok := excludeFaultDomains[rv.fdId]; ok {
+						// Skip RVs from excluded fault domains.
+						log.Debug("ClusterManager::fixMV: Skipping %s from fault domain %s in excludeFaultDomains %+v",
+							rv.rvName, rv.fdId, excludeFaultDomains)
+						continue
+					}
+				}
+
+				if rv.udId != "" {
+					if _, ok := excludeUpdateDomains[rv.udId]; ok {
+						// Skip RVs from excluded update domains.
+						log.Debug("ClusterManager::fixMV: Skipping %s from update domain %s in excludeUpdateDomains %+v",
+							rv.rvName, rv.udId, excludeUpdateDomains)
+						continue
 					}
 				}
 
@@ -2415,8 +2407,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// TODO: For huge clusters availableRVsList could be a lot of log.
 			//
 			if !foundReplacement {
-				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableRVsList: %+v, excludeNodes: %+v, excludeFaultDomains: %+v, excludeUpdateDomains: %+v",
-					rvName, mvName, availableRVsList, excludeNodes, excludeFaultDomains, excludeUpdateDomains)
+				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, available RVs: %d, excludeNodes: %+v, excludeFaultDomains: %+v, excludeUpdateDomains: %+v",
+					rvName, mvName, len(availableRVsList), excludeNodes, excludeFaultDomains, excludeUpdateDomains)
 				atomic.AddInt64(&stats.Stats.CM.FixMV.NoReplacementRVs, 1)
 				atomic.AddInt64(&stats.Stats.CM.FixMV.NoReplacementRVsCumulative, 1)
 			}
@@ -2673,7 +2665,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	atomic.StoreInt64(&stats.Stats.CM.FixMV.UpdateMV.Calls, 0)
 	atomic.StoreInt64(&stats.Stats.CM.FixMV.UpdateMV.Failures, 0)
 
+	//
+	// Set availableRVsList fom availableRVsMap.
+	// fixMV() will use this list to find replacement RVs for degraded MVs.
+	// For huge clusters with lots of RVs getAvailableRVsList() can take non-trivial time, so we run it only once.
+	//
+	getAvailableRVsList(false /* newMV */)
+
 	numUsableMVs := 0
+
 	for mvName, mv := range existingMVMap {
 		if mv.State != dcache.StateOffline {
 			numUsableMVs++
@@ -2721,8 +2721,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// will update the slots which will be reflected in availableRVsList as well.
 	// We do this to improve performance for setups with large number of RVs (and MVs).
 	//
-	availableRVsList := getAvailableRVsList(true /* newMV */, nil, /* excludeNodes */
-		nil /* excludeFaultDomains */, nil /* excludeUpdateDomains */)
+	getAvailableRVsList(true /* newMV */)
 
 	//
 	// Shuffle the nodes to encourage random selection of RVs (from random nodes).
@@ -2766,6 +2765,24 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		// Iterate over the availableRVsList and pick the first suitable RV.
 		for _, rv := range availableRVsList {
+			usedSlots := MVsPerRVForFixMV - rv.slots
+			if rv.slots > MVsPerRVForFixMV {
+				common.Assert(false, rv.slots, MVsPerRVForFixMV, MVsPerRVForNewMV)
+				usedSlots = MVsPerRVForFixMV
+			}
+
+			// This check is the fastest, so we do it first.
+			if usedSlots >= MVsPerRVForNewMV {
+				//
+				// new-mv workflow cannot use an RV more than MVsPerRVForNewMV times.
+				// Note that the slots may not be 0 as we initialize slots to MVsPerRVForFixMV, which is
+				// greater than MVsPerRVForNewMV.
+				//
+				// TODO: See if removing "full" RVs from availableRVsList is good for performance with lot of RVs.
+				//
+				continue
+			}
+
 			_, ok := excludeNodes[rv.nodeId]
 			if ok {
 				// More than one component RVs for an MV cannot come from the same node.
@@ -2786,23 +2803,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					// More than one component RVs for an MV cannot come from the same update domain.
 					continue
 				}
-			}
-
-			usedSlots := MVsPerRVForFixMV - rv.slots
-			if rv.slots > MVsPerRVForFixMV {
-				common.Assert(false, rv.slots, MVsPerRVForFixMV, MVsPerRVForNewMV)
-				usedSlots = MVsPerRVForFixMV
-			}
-
-			if usedSlots >= MVsPerRVForNewMV {
-				//
-				// new-mv workflow cannot use an RV more than MVsPerRVForNewMV times.
-				// Note that the slots may not be 0 as we initialize slots to MVsPerRVForFixMV, which is
-				// greater than MVsPerRVForNewMV.
-				//
-				// TODO: See if removing "full" RVs from availableRVsList is good for performance with lot of RVs.
-				//
-				continue
 			}
 
 			if _, exists := existingMVMap[mvName]; !exists {
@@ -2901,8 +2901,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	}
 
 	// Call getAvailableRVsList() to get numAvailableNodes for the stats.
-	_ = getAvailableRVsList(true /* newMV */, nil /* excludeNodes */, nil, /* excludeFaultDomains */
-		nil /* excludeUpdateDomains */)
+	getAvailableRVsList(true /* newMV */)
 
 	atomic.StoreInt64(&stats.Stats.CM.NewMV.AvailableNodes, int64(numAvailableNodes))
 
