@@ -2232,6 +2232,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			offlineRVs++
 		}
 
+		if offlineRVs == 0 {
+			// If not offline, must have at least one outofsync, else why the MV is degraded.
+			log.Debug("+ClusterManager::fixMV: %s has no offline/inband-offline component RV, nothing to fix %+v",
+				mvName, mv.RVs)
+			return
+		}
+
 		// Degraded MVs must have one or more but not all component RVs as offline, inband-offline or outofsync.
 		common.Assert((offlineRVs+outofsyncRVs) != 0 && (offlineRVs+outofsyncRVs) < NumReplicas,
 			mvName, offlineRVs, outofsyncRVs, NumReplicas)
