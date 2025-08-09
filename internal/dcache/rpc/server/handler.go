@@ -519,11 +519,16 @@ func (rv *rvInfo) getMVs() []string {
 				mvInfo.lmt)
 			common.Assert(!mvInfo.lmt.IsZero(), rv.rvName, mvInfo.mvName, mvInfo.lmb,
 				mvInfo.lmt)
+
+			mvs = append(mvs, mvInfo.mvName)
 		} else {
-			common.Assert(false, fmt.Sprintf("mvMap[%s] has value which is not of type *mvInfo", mvName))
+			err := fmt.Errorf("mvMap[%s] has value which is not of type *mvInfo: %T", mvName, val)
+			common.Assert(false, err)
+			log.Err("rvInfo::getMVs: %v", err)
+
+			/* Skip invalid entry */
 		}
 
-		mvs = append(mvs, mvInfo.mvName)
 		return true
 	})
 
@@ -1074,24 +1079,39 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 // This provides resilience as the retry would help client to get the updated clustermap (if there's one)
 // and if not client will retry the RPC so that we can retry again and if it fails for a limited number of
 // times and only then we fail the application IO.
+//
+// doNotFetchClustermap is used by the caller to convey if they want us to fetch fresh storage clustermap,
+// or should we use the existing local clustermap copy to refresh the mvInfo componentRVs. Caller will
+// typically make the first call with doNotFetchClustermap=true, to refresh the mvInfo componentRVs from the
+// cached local clustermap copy, and if that doesn't help, it will call this function again, this time with
+// doNotFetchClustermap=false, to fetch the latest clustermap from the storage and try again.
+// The first call with doNotFetchClustermap=true completes very fast as it just updates the mvInfo componentRVs
+// from the cached clustermap copy. This optimization is very useful for cases where some node has lot of RVs and
+// lot of MVs on those RVs and all/many of those MVs have one replica on our node. If that node goes down and comes
+// back up and those MVs are being fixed, lot of UpdateMV RPCs will be sent to our node, and we will be unnecessarily
+// refreshing the clustermap for each of those RPCs, while we only need to refresh it once and then all the
+// subsequent UpdateMV RPCs can refresh the mvInfo componentRVs from the updated local copy of the clustermap.
 
-func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
-	log.Debug("mvInfo::refreshFromClustermap: %s/%s", mv.rv.rvName, mv.mvName)
+func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.ResponseError {
+	log.Debug("mvInfo::refreshFromClustermap: %s/%s doNotFetchClustermap=%v",
+		mv.rv.rvName, mv.mvName, doNotFetchClustermap)
 
 	//
 	// Refresh the clustermap synchronously. Once this returns, clustermap package has the updated
 	// clustermap.
 	//
-	err := cm.RefreshClusterMap(0 /* higherThanEpoch */)
-	if err != nil {
-		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rv.rvName, mv.mvName, err)
-		log.Err("%s", errStr)
-		common.Assert(false, errStr)
-		//
-		// ErrorCode_NeedToRefreshClusterMap can also be used to convey to the client that we ran into a
-		// transient error and possibly refreshing the clustermap and retrying will help.
-		//
-		return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+	if !doNotFetchClustermap {
+		err := cm.RefreshClusterMap(0 /* higherThanEpoch */)
+		if err != nil {
+			errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rv.rvName, mv.mvName, err)
+			log.Err("%s", errStr)
+			common.Assert(false, errStr)
+			//
+			// ErrorCode_NeedToRefreshClusterMap can also be used to convey to the client that we ran into a
+			// transient error and possibly refreshing the clustermap and retrying will help.
+			//
+			return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+		}
 	}
 
 	// Get component RV details from the just refreshed clustermap.
@@ -1308,7 +1328,8 @@ func (mv *mvInfo) refreshFromClustermap() *models.ResponseError {
 	// We force the update as this is the membership info that we got from clustermap.
 	// Note that with forceUpdate=true, updateComponentRVs() must never fail, hence the assert.
 	//
-	err = mv.updateComponentRVs(newComponentRVs, true /* forceUpdate */, rpc.GetMyNodeUUID())
+	err := mv.updateComponentRVs(newComponentRVs, true /* forceUpdate */, rpc.GetMyNodeUUID())
+	_ = err
 	common.Assert(err == nil, err)
 
 	return nil
@@ -1475,7 +1496,7 @@ func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState
 	common.Assert(!containsInbandOfflineState(&componentRVsInReq), componentRVsInReq)
 
 	var componentRVsInMV []*models.RVNameAndState
-	clustermapRefreshed := false
+	clustermapRefreshed := 0
 
 	for {
 		componentRVsInMV = mv.getComponentRVs()
@@ -1487,8 +1508,12 @@ func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState
 		//
 		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq, checkState)
 		if err != nil {
-			if !clustermapRefreshed {
-				rpcErr := mv.refreshFromClustermap()
+			//
+			// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
+			// then try again with the latest clustermap from storage.
+			//
+			if clustermapRefreshed < 2 {
+				rpcErr := mv.refreshFromClustermap(clustermapRefreshed == 0)
 				if rpcErr != nil {
 					errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]",
 						mv.mvName, rpcErr.String())
@@ -1497,7 +1522,7 @@ func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState
 					common.Assert(rpcErr.Code == models.ErrorCode_NeedToRefreshClusterMap, errStr)
 					return rpc.NewResponseError(rpcErr.Code, errStr)
 				}
-				clustermapRefreshed = true
+				clustermapRefreshed++
 				continue
 			}
 
@@ -1587,7 +1612,7 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 		validState = string(dcache.StateSyncing)
 	}
 
-	clustermapRefreshed := false
+	clustermapRefreshed := 0
 
 	for {
 		targetRVNameAndState := mv.getComponentRVNameAndState(targetRVName)
@@ -1619,8 +1644,12 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s, clustermapRefreshed: %v",
 				errStr, clustermapRefreshed)
 
-			if !clustermapRefreshed {
-				rpcErr := mv.refreshFromClustermap()
+			//
+			// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
+			// then try again with the latest clustermap from storage.
+			//
+			if clustermapRefreshed < 2 {
+				rpcErr := mv.refreshFromClustermap(clustermapRefreshed == 0)
 				if rpcErr != nil {
 					err1 := fmt.Errorf("ChunkServiceHandler::validateComponentRVsInSync: Failed to refresh clustermap [%s]",
 						rpcErr.String())
@@ -1629,7 +1658,7 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 					common.Assert(rpcErr.Code == models.ErrorCode_NeedToRefreshClusterMap, err1)
 					return rpcErr
 				}
-				clustermapRefreshed = true
+				clustermapRefreshed++
 				continue
 			}
 
@@ -1943,7 +1972,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// checkValidChunkAddress() has already done the membership check, so we just need to do the state
 	// check.
 	//
-	clustermapRefreshed := false
+	clustermapRefreshed := 0
 
 	for {
 		rvNameAndState := mvInfo.getComponentRVNameAndState(rvInfo.rvName)
@@ -1980,8 +2009,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 				rvInfo.rvName, req.Address.MvName, rvNameAndState.State)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 
-			if !clustermapRefreshed {
-				rpcErr := mvInfo.refreshFromClustermap()
+			//
+			// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
+			// then try again with the latest clustermap from storage.
+			//
+			if clustermapRefreshed < 2 {
+				rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
 				if rpcErr != nil {
 					err1 := fmt.Errorf("ChunkServiceHandler::validateComponentRVsInSync: Failed to refresh clustermap [%s]",
 						rpcErr.String())
@@ -1990,7 +2023,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 					common.Assert(rpcErr.Code == models.ErrorCode_NeedToRefreshClusterMap, err1)
 					return nil, rpcErr
 				}
-				clustermapRefreshed = true
+				clustermapRefreshed++
 				continue
 			}
 
@@ -2270,7 +2303,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	mvInfo.acquireSyncOpReadLock()
 	defer mvInfo.releaseSyncOpReadLock()
 
-	clustermapRefreshed := false
+	clustermapRefreshed := 0
 
 refreshFromClustermapAndRetry:
 	componentRVsInMV := mvInfo.getComponentRVs()
@@ -2318,8 +2351,12 @@ refreshFromClustermapAndRetry:
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 				//common.Assert(false, errStr)
 
-				if !clustermapRefreshed {
-					rpcErr := mvInfo.refreshFromClustermap()
+				//
+				// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
+				// then try again with the latest clustermap from storage.
+				//
+				if clustermapRefreshed < 2 {
+					rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
 					if rpcErr != nil {
 						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
 							rpcErr.String())
@@ -2328,7 +2365,7 @@ refreshFromClustermapAndRetry:
 						common.Assert(rpcErr.Code == models.ErrorCode_NeedToRefreshClusterMap, err1)
 						return nil, rpcErr
 					}
-					clustermapRefreshed = true
+					clustermapRefreshed++
 					goto refreshFromClustermapAndRetry
 				}
 
@@ -2354,8 +2391,12 @@ refreshFromClustermapAndRetry:
 					rv.Name, req.Chunk.Address.MvName, rvNameAndState.State)
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 
-				if !clustermapRefreshed {
-					rpcErr := mvInfo.refreshFromClustermap()
+				//
+				// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
+				// then try again with the latest clustermap from storage.
+				//
+				if clustermapRefreshed < 2 {
+					rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
 					if rpcErr != nil {
 						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
 							rpcErr.String())
@@ -2364,7 +2405,7 @@ refreshFromClustermapAndRetry:
 						common.Assert(rpcErr.Code == models.ErrorCode_NeedToRefreshClusterMap, err1)
 						return nil, rpcErr
 					}
-					clustermapRefreshed = true
+					clustermapRefreshed++
 					goto refreshFromClustermapAndRetry
 				}
 
@@ -2984,7 +3025,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		// For newMV, we won't have the MV in clustermap yet, so no need to refresh.
 		//
 		if !newMV {
-			rpcErr := mvInfo.refreshFromClustermap()
+			rpcErr := mvInfo.refreshFromClustermap(false /* doNotUpdateClustermap */)
 			if rpcErr != nil {
 				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV: %s",
 					errStr, rpcErr.String())
@@ -3091,7 +3132,8 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
-	clustermapRefreshed := false
+	clustermapRefreshed := 0
+
 	for {
 		rvInfo := h.getRVInfoFromRVName(req.RVName)
 		if rvInfo == nil {
@@ -3141,14 +3183,18 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		//
 		err := mvInfo.updateComponentRVs(req.ComponentRV, false /* forceUpdate */, req.SenderNodeID)
 		if err != nil {
-			if !clustermapRefreshed {
-				rpcErr := mvInfo.refreshFromClustermap()
+			//
+			// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
+			// then try again with the latest clustermap from storage.
+			//
+			if clustermapRefreshed < 2 {
+				rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
 				if rpcErr != nil {
 					log.Err("ChunkServiceHandler::UpdateMV: Failed to refresh clustermap [%s]",
 						rpcErr.String())
 					return nil, rpcErr
 				}
-				clustermapRefreshed = true
+				clustermapRefreshed++
 				continue
 			}
 
