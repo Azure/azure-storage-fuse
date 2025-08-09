@@ -1514,254 +1514,306 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bo
 func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Calls), 1)
 
+	var clusterMap dcache.ClusterMap
+	skipUpdateRVList := false
+	nodeCount := -1
+
 	start := time.Now()
+	for {
+		//
+		// Fetch and update local clustermap as some of the functions we call later down will query the local clustermap.
+		//
+		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap()
+		if err != nil {
+			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: fetchAndUpdateLocalClusterMap() failed: %v",
+				err)
+			log.Err(err1.Error())
+			common.Assert(false, err1)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
+			return err
+		}
 
-	//
-	// Fetch and update local clustermap as some of the functions we call later down will query the local clustermap.
-	//
-	clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap()
-	if err != nil {
-		err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: fetchAndUpdateLocalClusterMap() failed: %v",
-			err)
-		log.Err(err1.Error())
-		common.Assert(false, err1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err1.Error()
-		return err
-	}
+		//
+		// The node that updated the clusterMap last is preferred over others, for updating the clusterMap.
+		// This helps to avoid multiple nodes unnecessarily trying to update the clusterMap (only one of them will
+		// succeed but we don't want to waste the effort put by all nodes). But, we have to be wary of the fact that
+		// the leader node may go offline, in which case we would want some other node to step up and take the role of
+		// the leader. We use the following simple strategy:
+		// - Every ClustermapEpoch when the ticker fires, the leader node is automatically eligible for updating the
+		//   clusterMap, it need not perform the staleness check.
+		// - Every non-leader node has to perform a staleness check which defines a stale clusterMap as one that was
+		//   updated more than ClustermapEpoch+thresholdClusterMapEpochTime seconds in the past.
+		//   thresholdClusterMapEpochTime is chosen to be 60 secs to prevent minor clock skews from causing a non-leader
+		//   to wrongly consider the clusterMap stale and race with the leader for updating the clusterMap. Only when
+		//   the leader is down, on the next tick, one of the nodes that runs this code first will correctly find the
+		//   clusterMap stale and it'd then take up the job of updating the clusterMap and becoming the new leader if
+		//   it's able to successfully update the clusterMap.
+		//
+		// With these rules, the leader is the one that updates the clusterMap in every tick (ClustermapEpoch), while in
+		// case of leader node going down, some other node will update the clusterMap in the next tick. In such case
+		// the clusterMap will be updated after two consecutive ClustermapEpoch.
+		//
 
-	//
-	// The node that updated the clusterMap last is preferred over others, for updating the clusterMap.
-	// This helps to avoid multiple nodes unnecessarily trying to update the clusterMap (only one of them will
-	// succeed but we don't want to waste the effort put by all nodes). But, we have to be wary of the fact that
-	// the leader node may go offline, in which case we would want some other node to step up and take the role of
-	// the leader. We use the following simple strategy:
-	// - Every ClustermapEpoch when the ticker fires, the leader node is automatically eligible for updating the
-	//   clusterMap, it need not perform the staleness check.
-	// - Every non-leader node has to perform a staleness check which defines a stale clusterMap as one that was
-	//   updated more than ClustermapEpoch+thresholdClusterMapEpochTime seconds in the past.
-	//   thresholdClusterMapEpochTime is chosen to be 60 secs to prevent minor clock skews from causing a non-leader
-	//   to wrongly consider the clusterMap stale and race with the leader for updating the clusterMap. Only when
-	//   the leader is down, on the next tick, one of the nodes that runs this code first will correctly find the
-	//   clusterMap stale and it'd then take up the job of updating the clusterMap and becoming the new leader if
-	//   it's able to successfully update the clusterMap.
-	//
-	// With these rules, the leader is the one that updates the clusterMap in every tick (ClustermapEpoch), while in
-	// case of leader node going down, some other node will update the clusterMap in the next tick. In such case
-	// the clusterMap will be updated after two consecutive ClustermapEpoch.
-	//
+		startTime := time.Now()
+		now := startTime.Unix()
 
-	startTime := time.Now()
-	now := startTime.Unix()
+		if clusterMap.LastUpdatedAt > now {
+			err = fmt.Errorf("LastUpdatedAt (%d) in future, now (%d), skipping update", clusterMap.LastUpdatedAt, now)
+			log.Warn("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 
-	if clusterMap.LastUpdatedAt > now {
-		err = fmt.Errorf("LastUpdatedAt (%d) in future, now (%d), skipping update", clusterMap.LastUpdatedAt, now)
-		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+			// Be soft if it could be due to clock skew.
+			if (clusterMap.LastUpdatedAt - now) < 300 {
+				return nil
+			}
 
-		// Be soft if it could be due to clock skew.
-		if (clusterMap.LastUpdatedAt - now) < 300 {
+			// Else, let the caller know.
+			common.Assert(false, "cluster.LastUpdatedAt is too much in future", clusterMap.LastUpdatedAt, now)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err.Error()
+			return err
+		}
+
+		clusterMapAge := now - clusterMap.LastUpdatedAt
+		//
+		// Assert if clusterMap is not updated for 3 consecutive epochs, it might indicate some bug.
+		// For very small ClustermapEpoch values, 3 times the value will not be sufficient as the
+		// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
+		// The max time till which the clusterMap may not be updated in the event of leader going down is
+		// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
+		// ClustermapEpoch is sufficient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+		// of 20 seconds.
+		//
+		common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
+			fmt.Sprintf("clusterMapAge (%d) >= %d",
+				clusterMapAge, int64(max(clusterMap.Config.ClustermapEpoch*3, 200))))
+
+		// Staleness check for non-leader.
+		stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
+		// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
+		leaderNode := clusterMap.LastUpdatedBy
+		leader := (leaderNode == cmi.myNodeId)
+
+		//
+		// If some other node/context is currently updating the clustermap, skip updating in this iteration, as
+		// long as the staleness threshold is not met.
+		// If some other thread in our node is updating then we play gentle and do not override the clustermap
+		// update (despite the staleness threshold), since we are alive and that other thread hopefully will complete.
+		// If it doesn't complete in time, some other node will grab ownership.
+		// If some other node is updating, and it's possibly dead, then clusterMapBeingUpdatedByAnotherNode() will also
+		// grab the ownership.
+		//
+		isClusterMapUpdateBlocked, err := cmi.clusterMapBeingUpdatedByAnotherNode(clusterMap, etag)
+		if err != nil {
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err.Error()
+			return err
+		}
+
+		if isClusterMapUpdateBlocked {
+			log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
+				leaderNode, cmi.myNodeId)
+			//
+			// Leader node should not find the clusterMap in "checking" state as no other node should try
+			// to preempt the leader while it's still alive, but...
+			// Note that updateStorageClusterMapIfRequired() when run by the leader can find the clusterMap
+			// in "checking" state if some other thread, mostly batchUpdateComponentRVState(), is running and
+			// updating the clusterMap, just before the periodic updateStorageClusterMapIfRequired() ticker
+			// fires. This is a legitimate case and we should just skip the current iteration of
+			// updateStorageClusterMapIfRequired().
+			//
+			// We relax the assert to allow such legitimate updates from batchUpdateComponentRVState() to catch
+			// if a leader finds the state as "checking" it should be transient and not remain in that state
+			// for a long time.
+			//
+			common.Assert(!leader || !stale,
+				"We don't expect leader to see the clustermap in checking state",
+				leader, stale, leaderNode, clusterMapAge)
 			return nil
 		}
 
-		// Else, let the caller know.
-		common.Assert(false, "cluster.LastUpdatedAt is too much in future", clusterMap.LastUpdatedAt, now)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
-
-	clusterMapAge := now - clusterMap.LastUpdatedAt
-	//
-	// Assert if clusterMap is not updated for 3 consecutive epochs, it might indicate some bug.
-	// For very small ClustermapEpoch values, 3 times the value will not be sufficient as the
-	// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
-	// The max time till which the clusterMap may not be updated in the event of leader going down is
-	// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
-	// ClustermapEpoch is sufficient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
-	// of 20 seconds.
-	//
-	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
-		fmt.Sprintf("clusterMapAge (%d) >= %d",
-			clusterMapAge, int64(max(clusterMap.Config.ClustermapEpoch*3, 200))))
-
-	// Staleness check for non-leader.
-	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
-	// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
-	leaderNode := clusterMap.LastUpdatedBy
-	leader := (leaderNode == cmi.myNodeId)
-
-	//
-	// If some other node/context is currently updating the clustermap, skip updating in this iteration, as
-	// long as the staleness threshold is not met.
-	// If some other thread in our node is updating then we play gentle and do not override the clustermap
-	// update (despite the staleness threshold), since we are alive and that other thread hopefully will complete.
-	// If it doesn't complete in time, some other node will grab ownership.
-	// If some other node is updating, and it's possibly dead, then clusterMapBeingUpdatedByAnotherNode() will also
-	// grab the ownership.
-	//
-	isClusterMapUpdateBlocked, err := cmi.clusterMapBeingUpdatedByAnotherNode(clusterMap, etag)
-	if err != nil {
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
-
-	if isClusterMapUpdateBlocked {
-		log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
-			leaderNode, cmi.myNodeId)
 		//
-		// Leader node should not find the clusterMap in "checking" state as no other node should try
-		// to preempt the leader while it's still alive, but...
-		// Note that updateStorageClusterMapIfRequired() when run by the leader can find the clusterMap
-		// in "checking" state if some other thread, mostly batchUpdateComponentRVState(), is running and
-		// updating the clusterMap, just before the periodic updateStorageClusterMapIfRequired() ticker
-		// fires. This is a legitimate case and we should just skip the current iteration of
-		// updateStorageClusterMapIfRequired().
+		// Ok, clustermap can be possibly updated (can't be sure until startClusterMapUpdate() returns success).
+		// If we are the leader, proceed and update the clustermap, else we need to exercise more restrain and
+		// only update if it has exceeded the staleness threshold, indicating the current leader has died.
 		//
-		// We relax the assert to allow such legitimate updates from batchUpdateComponentRVState() to catch
-		// if a leader finds the state as "checking" it should be transient and not remain in that state
-		// for a long time.
+		// Skip if we're neither leader nor the clustermap is stale
 		//
-		common.Assert(!leader || !stale,
-			"We don't expect leader to see the clustermap in checking state",
-			leader, stale, leaderNode, clusterMapAge)
-		return nil
-	}
+		if !leader && !stale {
+			log.Info("ClusterManager::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d, age %d secs)",
+				cmi.myNodeId, leaderNode, clusterMap.LastUpdatedAt, now, clusterMapAge)
+			return nil
+		}
 
-	//
-	// Ok, clustermap can be possibly updated (can't be sure until startClusterMapUpdate() returns success).
-	// If we are the leader, proceed and update the clustermap, else we need to exercise more restrain and
-	// only update if it has exceeded the staleness threshold, indicating the current leader has died.
-	//
-	// Skip if we're neither leader nor the clustermap is stale
-	//
-	if !leader && !stale {
-		log.Info("ClusterManager::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d, age %d secs)",
-			cmi.myNodeId, leaderNode, clusterMap.LastUpdatedAt, now, clusterMapAge)
-		return nil
-	}
-
-	//
-	// This is an uncommon event, so log.
-	//
-	if !leader {
-		err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %d secs, ownership being claimed by new leader %s",
-			leaderNode, clusterMapAge, cmi.myNodeId)
-		log.Warn("%v", err1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitchesDueToTimeout), 1)
-		// This is not an error, but interesting event, so log it.
-		stats.Stats.CM.StorageClustermap.LastError = err1.Error()
-	}
-
-	//
-	// Start the clustermap update process by first claiming ownership of the clustermap update.
-	// Only one node will succeed in UpdateClusterMapStart(), and that node proceeds with the clustermap
-	// update.
-	//
-	// Note: updateRVList() and updateMVList() are the only functions that can change clustermap.
-	//       Enclosing them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
-	//       node would be updating cluster membership details at any point. This is IMPORTANT.
-	//
-	// Note: The following startClusterMapUpdate() is unlikely to fail because of some other node
-	//       updating the clustermap from updateStorageClusterMapIfRequired(), as only leader will
-	//       proceed, but it can fail when some other asynchronous event like batchUpdateComponentRVState()
-	//       updates the clustermap, from the same node or another node.
-	//
-	err = cmi.startClusterMapUpdate(clusterMap, etag)
-	if err != nil {
-		err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
-
-	//
-	// UpdateClusterMapStart() must not take long. Assert to check that.
-	//
-	maxTime := 5 * time.Second
-	elapsed := time.Since(startTime)
-	common.Assert(elapsed < maxTime, elapsed, maxTime)
-
-	log.Info("ClusterManager::updateStorageClusterMapIfRequired: UpdateClusterMapStart succeeded for nodeId %s",
-		cmi.myNodeId)
-
-	log.Debug("ClusterManager::updateStorageClusterMapIfRequired: updating RV list")
-
-	_, err = cmi.updateRVList(clusterMap.RVMap, false /* initialHB */)
-	if err != nil {
-		err = fmt.Errorf("failed to reconcile RV mapping: %v", err)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
 		//
-		// TODO: We must reset the clusterMap state to ready.
+		// This is an uncommon event, so log.
 		//
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
+		if !leader {
+			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %d secs, ownership being claimed by new leader %s",
+				leaderNode, clusterMapAge, cmi.myNodeId)
+			log.Warn("%v", err1)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitchesDueToTimeout), 1)
+			// This is not an error, but interesting event, so log it.
+			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
+		}
 
-	//
-	// If one or more RVs changed state or new RV(s) were added, MV list will need to be recomputed.
-	//
-	// TODO: If no RV changes state, RV list and MV list won't be updated. In such case we need not update
-	//       the clustermap, but note that not updating clustermap may be regarded by non-leader nodes as
-	//       "leader down" and they will step up to update the clustermap. To avoid this, we should add
-	//       another field LastProcessedAt apart from LastUpdatedAt. LastUpdatedAt will only be updated
-	//       when the clustermap is actually updated and LastProcessedAt can be used for leader down
-	//       handling.
-	//
-	//TODO: Fix this call to trigger only if the RV list has changed.
-	// if changed {
-	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, true /* runFixMvNewMv */)
-	// } else {
-	// log.Debug("ClusterManager::updateStorageClusterMapIfRequired: No changes in RV mapping")
-	// }
-
-	//
-	// If we have discovered enough nodes (more than the MinNodes config value), clear the clustermap
-	// Readonly status. Once clusterMap Readonly is cleared, it remains cleared.
-	// Keeping cluster readonly till enough number of nodes have joined the cluster, may help to prevent
-	// concentration of data on few early nodes.
-	//
-	nodeCount := len(getAllNodesFromRVMap(clusterMap.RVMap))
-	if clusterMap.Readonly && nodeCount >= int(cmi.config.MinNodes) {
-		log.Info("ClusterManager::updateStorageClusterMapIfRequired: Discovered node count %d greater than MinNodes (%d), clearing clusterMap Readonly status. New files can be created now!",
-			nodeCount, cmi.config.MinNodes)
-
-		clusterMap.Readonly = false
-	}
-
-	//
-	// Check if the time elapsed since we read the global clusterMap and till we could run all the updates,
-	// has exceeded ClustermapEpoch. If so, we can be at risk of having our clusterMap updates race with some
-	// other node (that might have claimed ownership due to timeout). In that case we drop all the updates we
-	// made to the clusterMap and do not commit them.
-	// This can happen if one or more nodes are not reachable, and updateMVList() had to send some JoinMV/UpdateMV
-	// RPCs, which had to timeout.
-	//
-	elapsed = time.Since(startTime)
-	maxTime = time.Duration(clusterMap.Config.ClustermapEpoch) * time.Second
-	if elapsed > maxTime {
 		//
-		// TODO: We must reset the clusterMap state to ready.
+		// Start the clustermap update process by first claiming ownership of the clustermap update.
+		// Only one node will succeed in UpdateClusterMapStart(), and that node proceeds with the clustermap
+		// update.
 		//
-		err = fmt.Errorf("clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
-			elapsed, maxTime)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
-	err = cmi.endClusterMapUpdate(clusterMap)
-	if err != nil {
-		err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		log.Err("%v", err1)
-		common.Assert(false, err1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err1.Error()
-		return err
+		// Note: updateRVList() and updateMVList() are the only functions that can change clustermap.
+		//       Enclosing them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
+		//       node would be updating cluster membership details at any point. This is IMPORTANT.
+		//
+		// Note: The following startClusterMapUpdate() is unlikely to fail because of some other node
+		//       updating the clustermap from updateStorageClusterMapIfRequired(), as only leader will
+		//       proceed, but it can fail when some other asynchronous event like batchUpdateComponentRVState()
+		//       updates the clustermap, from the same node or another node.
+		//
+		err = cmi.startClusterMapUpdate(clusterMap, etag)
+		if err != nil {
+			err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
+			log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err.Error()
+			return err
+		}
+
+		//
+		// UpdateClusterMapStart() must not take long. Assert to check that.
+		//
+		maxTime := 5 * time.Second
+		elapsed := time.Since(startTime)
+		common.Assert(elapsed < maxTime, elapsed, maxTime)
+
+		log.Info("ClusterManager::updateStorageClusterMapIfRequired: UpdateClusterMapStart succeeded for nodeId %s",
+			cmi.myNodeId)
+
+		if !skipUpdateRVList {
+			log.Debug("ClusterManager::updateStorageClusterMapIfRequired: updating RV list")
+
+			changed, err := cmi.updateRVList(clusterMap.RVMap, false /* initialHB */)
+			if err != nil {
+				err = fmt.Errorf("failed to reconcile RV mapping: %v", err)
+				log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+				common.Assert(false, err)
+				//
+				// TODO: We must reset the clusterMap state to ready.
+				//
+				atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+				stats.Stats.CM.StorageClustermap.LastError = err.Error()
+				return err
+			}
+
+			//
+			// If RV list has changed we need to pre-commit the clusterMap before we run updateMVList().
+			// This is required as updateMVList() will run the fix-mv workflow which would send UpdateMV RPCs
+			// to other nodes, and if the clusterMap is not pre-committed, those RPC handlers will fail those requests
+			// as they will treat them as "invalid change" to RV list. e.g., let's say rv0 has gone offline as per the
+			// latest updateRVList(). If we run the fix-mv workflow it'll send UpdateMV RPCs to other RVs of MVs that
+			// have rv0 as one of the RVs, and those RVs will reject the UpdateMV RPCs as they will find rv0 in online
+			// state. Note that online->outofsync is in invalid state transition, what UpdateMV expects is
+			// offline->outofsync. refreshFromClustermap() also will not help as it'll still show rv0 state as online.
+			// This will result in all fix-mv attempts failing and causing a lot of failed RPC traffic.
+			// We must commit the changes to RV list in the clustermap before we run the fix-mv workflow.
+			// We call this a pre-commit as it commits the RV list changes but not the corresponding MV list changes,
+			// thus we have the clustermap in a "half baked" state where MV list is not reflective of the latest RV list.
+			// Any node that takes ownership of clustermap update MUST run updateMVList() even if they do not find
+			// any changes to RV list by updateRVList().
+			//
+			if changed {
+				log.Debug("ClusterManager::updateStorageClusterMapIfRequired: RV list changed, pre-committing clustermap")
+
+				err = cmi.endClusterMapUpdate(clusterMap)
+				if err != nil {
+					err1 := fmt.Errorf("Failed to pre-commit clusterMap: %v", err)
+					log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err1)
+					common.Assert(false, err1)
+					atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+					stats.Stats.CM.StorageClustermap.LastError = err1.Error()
+					return err
+				}
+
+				//
+				// Ok, clusterMap is now updated with the RV list changes.
+				// Rerun the loop once more this time to update the MV list.
+				//
+				skipUpdateRVList = true
+				continue
+			}
+		} else {
+			log.Debug("ClusterManager::updateStorageClusterMapIfRequired: Skipping updateRVList()")
+		}
+
+		//
+		// If one or more RVs changed state or new RV(s) were added, MV list will need to be recomputed.
+		//
+		// TODO: If no RV changes state, RV list and MV list won't be updated. In such case we need not update
+		//       the clustermap, but note that not updating clustermap may be regarded by non-leader nodes as
+		//       "leader down" and they will step up to update the clustermap. To avoid this, we should add
+		//       another field LastProcessedAt apart from LastUpdatedAt. LastUpdatedAt will only be updated
+		//       when the clustermap is actually updated and LastProcessedAt can be used for leader down
+		//       handling.
+		// Update: We must call updateMVList() even if no RVs changed state. This is required for few reasons:
+		//       - Previous call to updateMVList() may not have completed all the tasks, e.g., it may not have
+		//         fixed all the degraded MVs as it may not find replacement RVs for all. In that case we want
+		//         the next updateStorageClusterMapIfRequired() call to continue fixing the remaining MVs.
+		//       - updateRVList() may update the RV list but updateMVList() may not be able to run or may not
+		//         complete all the tasks before some other node takes over the clustermap update and it finds
+		//         the changed RV list. That node won't observe any changes in the RV list, but it still must
+		//         run updateMVList() to ensure that all the MVs are fixed and their state is correct.
+		//
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, true /* runFixMvNewMv */)
+
+		//
+		// If we have discovered enough nodes (more than the MinNodes config value), clear the clustermap
+		// Readonly status. Once clusterMap Readonly is cleared, it remains cleared.
+		// Keeping cluster readonly till enough number of nodes have joined the cluster, may help to prevent
+		// concentration of data on few early nodes.
+		//
+		nodeCount := len(getAllNodesFromRVMap(clusterMap.RVMap))
+		if clusterMap.Readonly && nodeCount >= int(cmi.config.MinNodes) {
+			log.Info("ClusterManager::updateStorageClusterMapIfRequired: Discovered node count %d greater than MinNodes (%d), clearing clusterMap Readonly status. New files can be created now!",
+				nodeCount, cmi.config.MinNodes)
+
+			clusterMap.Readonly = false
+		}
+
+		//
+		// Check if the time elapsed since we read the global clusterMap and till we could run all the updates,
+		// has exceeded ClustermapEpoch. If so, we can be at risk of having our clusterMap updates race with some
+		// other node (that might have claimed ownership due to timeout). In that case we drop all the updates we
+		// made to the clusterMap and do not commit them.
+		// This can happen if one or more nodes are not reachable, and updateMVList() had to send some JoinMV/UpdateMV
+		// RPCs, which had to timeout.
+		//
+		elapsed = time.Since(startTime)
+		maxTime = time.Duration(clusterMap.Config.ClustermapEpoch) * time.Second
+		if elapsed > maxTime {
+			//
+			// TODO: We must reset the clusterMap state to ready.
+			//
+			err = fmt.Errorf("clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
+				elapsed, maxTime)
+			log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+			common.Assert(false, err)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err.Error()
+			return err
+		}
+
+		err = cmi.endClusterMapUpdate(clusterMap)
+		if err != nil {
+			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+			log.Err("%v", err1)
+			common.Assert(false, err1)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
+			return err
+		}
+
+		break
 	}
 
 	// Total time taken by updateStorageClusterMapIfRequired().
@@ -1803,7 +1855,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalUpdates), 1)
 
 	log.Info("ClusterManager::updateStorageClusterMapIfRequired: cluster map (%d nodes) updated by %s at %d: %+v",
-		nodeCount, cmi.myNodeId, now, clusterMap)
+		nodeCount, cmi.myNodeId, time.Now(), clusterMap)
 	return nil
 }
 
@@ -2134,34 +2186,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			common.Assert(exists)
 
 			//
-			// Note: We don't perform the fix-mv workflow till the component RVs are marked offline
-			//       in the clusterMap, o/w the target fails our UpdateMV RPC requests claiming invalid
-			//       state transition from inline to outofsync. Clustermap refresh also doesn't help.
-			//
-			if mv.RVs[rvName] == dcache.StateOffline || mv.RVs[rvName] == dcache.StateInbandOffline {
-				cmRVs := cm.GetRVs(mvName)
-				if cmRVs == nil {
-					errStr := fmt.Sprintf("ClusterManager::fixMV: GetRVs(%s) failed", mvName)
-					log.Err("%s", errStr)
-					common.Assert(false, errStr)
-				}
-
-				//
-				// mv would have been queried from the clustermap (but may have been updated), so it must have
-				// the same component RVs.
-				//
-				_, ok := cmRVs[rvName]
-				_ = ok
-				common.Assert(ok, rvName, mvName, cmRVs)
-
-				if cmRVs[rvName] != dcache.StateOffline && cmRVs[rvName] != dcache.StateInbandOffline {
-					log.Debug("ClusterManager::fixMV: %s is still not offline in clustermap, skipping",
-						rvName)
-					continue
-				}
-			}
-
-			//
 			// Fix-mv workflow is run after degrade-mv/offline-mv workflows, so component RV states
 			// must have been correctly updated to offline.
 			//
@@ -2230,13 +2254,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 
 			offlineRVs++
-		}
-
-		if offlineRVs == 0 {
-			// If not offline, must have at least one outofsync, else why the MV is degraded.
-			log.Debug("+ClusterManager::fixMV: %s has no offline/inband-offline component RV, nothing to fix %+v",
-				mvName, mv.RVs)
-			return
 		}
 
 		// Degraded MVs must have one or more but not all component RVs as offline, inband-offline or outofsync.
@@ -2321,6 +2338,44 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// Only offline/inband-offline component RVs need to be "fixed" (aka replaced).
 			if mv.RVs[rvName] != dcache.StateOffline && mv.RVs[rvName] != dcache.StateInbandOffline {
 				continue
+			}
+
+			//
+			// We will now be sending UpdateMV RPC asking this component RV to be moved to outofsync state.
+			// Note that rvInfo on the target nodes will have the RV state as online, so it'll refresh the
+			// RV state from the clusterMap. If clusterMap state is not offline it'll fail the RPC.
+			// When we reach here, updateStorageClusterMapIfRequired() would have ensured that any offline
+			// RV state is pre-committed before calling updateMVList(), assert for that.
+			//
+			if common.IsDebugBuild() {
+				cmRVs := cm.GetRVs(mvName)
+				common.Assert(len(cmRVs) == NumReplicas, mvName, cmRVs, NumReplicas)
+
+				_, ok := cmRVs[rvName]
+				common.Assert(ok, rvName, mvName, cmRVs)
+
+				//
+				// inband-offline state is always committed to clusterMap and not calculated by updateMVList()
+				// so if mv.RVs[rvName] is inband-offline, it must have been read from clusterMap.
+				//
+				if mv.RVs[rvName] == dcache.StateInbandOffline {
+					common.Assert(cmRVs[rvName] == dcache.StateInbandOffline, rvName, mvName, cmRVs[rvName])
+				}
+
+				//
+				// mv.RVs[rvName] can be offline in two cases:
+				// - It was already offline in clusterMap component RVs, when updateMVList() was called.
+				// - It was not offline in clusterMap component RVs when this updateMVList() was called, but
+				//   updateRVList() (called just before updateMVList()) found the heartbeat as expired and marked it
+				//   as offline in rvMap passed to updateMVList() which then marked the component RV state as offline
+				//   in degrade-mv workflow. In this case updateStorageClusterMapIfRequired() MUST have pre-committed
+				//   the RV state change to clusterMap and hence cm.GetRVState(rvName) MUST return offline.
+				//
+				if mv.RVs[rvName] == dcache.StateOffline {
+					common.Assert((cmRVs[rvName] == dcache.StateOffline ||
+						cm.GetRVState(rvName) == dcache.StateOffline),
+						rvName, mvName, cmRVs, cm.GetRVState(rvName))
+				}
 			}
 
 			foundReplacement := false
