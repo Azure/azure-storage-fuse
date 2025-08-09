@@ -19,7 +19,9 @@
 		"clustermap-epoch": 300,
 		"rebalance-percentage": 80,
 		"safe-deletes": true,
-		"cache-access": "automatic"
+		"cache-access": "automatic",
+		"ignore-fd": true,
+		"ignore-ud": true
 	},
 	"rv-map": {
 		"rv0": {

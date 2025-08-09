@@ -42,7 +42,8 @@ type RawVolume struct {
 	NodeId         string    `json:"node_id"`
 	IPAddress      string    `json:"ipaddr"`
 	RvId           string    `json:"rvid"`
-	FDID           string    `json:"fdid"`
+	FDId           string    `json:"fdid"`
+	UDId           string    `json:"udid"`
 	State          StateEnum `json:"state"`
 	TotalSpace     uint64    `json:"total_space"`
 	AvailableSpace uint64    `json:"available_space"`
@@ -123,6 +124,8 @@ type DCacheConfig struct {
 	RebalancePercentage    uint8  `json:"rebalance-percentage"`
 	SafeDeletes            bool   `json:"safe-deletes"`
 	CacheAccess            string `json:"cache-access"`
+	IgnoreFD               bool   `json:"ignore-fd"`
+	IgnoreUD               bool   `json:"ignore-ud"`
 }
 
 type FileState string

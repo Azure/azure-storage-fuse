@@ -41,6 +41,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -185,11 +186,11 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//
 	if len(hbRVs) == len(rvs) {
 		// Common case.
-		log.Info("ClusterManager::start: ==> Cluster map now ready with my RVs %+v, config: %+v",
-			hbRVs, *cm.GetCacheConfig())
+		log.Info("ClusterManager::start: ==> Cluster map now ready with my %d RVs %+v, config: %+v",
+			len(rvs), hbRVs, *cm.GetCacheConfig())
 	} else if len(hbRVs) > 0 {
-		log.Warn("ClusterManager::start: ==> Cluster map now ready, but only using %+v of %+v RVs, config: %+v",
-			hbRVs, rvs, *cm.GetCacheConfig())
+		log.Warn("ClusterManager::start: ==> Cluster map now ready, but only using %d [%+v] of %d [%+v] RVs, config: %+v",
+			len(hbRVs), hbRVs, len(rvs), rvs, *cm.GetCacheConfig())
 	} else {
 		//
 		// Even though this node is not contributing any RVs to the cluster, we still add it to allow
@@ -1503,7 +1504,8 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bo
 		return err
 	}
 
-	log.Debug("ClusterManager::punchHeartBeat: heartbeat (initialHB=%v) updated for node %+v", initialHB, hbData)
+	log.Debug("ClusterManager::punchHeartBeat: heartbeat (initialHB=%v) updated by node: %s (%s), RV count: %d, %+v",
+		initialHB, hbData.NodeID, hbData.IPAddr, len(hbData.RVList), hbData)
 	return nil
 }
 
@@ -1512,254 +1514,306 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bo
 func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Calls), 1)
 
+	var clusterMap dcache.ClusterMap
+	skipUpdateRVList := false
+	nodeCount := -1
+
 	start := time.Now()
+	for {
+		//
+		// Fetch and update local clustermap as some of the functions we call later down will query the local clustermap.
+		//
+		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap()
+		if err != nil {
+			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: fetchAndUpdateLocalClusterMap() failed: %v",
+				err)
+			log.Err(err1.Error())
+			common.Assert(false, err1)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
+			return err
+		}
 
-	//
-	// Fetch and update local clustermap as some of the functions we call later down will query the local clustermap.
-	//
-	clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap()
-	if err != nil {
-		err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: fetchAndUpdateLocalClusterMap() failed: %v",
-			err)
-		log.Err(err1.Error())
-		common.Assert(false, err1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err1.Error()
-		return err
-	}
+		//
+		// The node that updated the clusterMap last is preferred over others, for updating the clusterMap.
+		// This helps to avoid multiple nodes unnecessarily trying to update the clusterMap (only one of them will
+		// succeed but we don't want to waste the effort put by all nodes). But, we have to be wary of the fact that
+		// the leader node may go offline, in which case we would want some other node to step up and take the role of
+		// the leader. We use the following simple strategy:
+		// - Every ClustermapEpoch when the ticker fires, the leader node is automatically eligible for updating the
+		//   clusterMap, it need not perform the staleness check.
+		// - Every non-leader node has to perform a staleness check which defines a stale clusterMap as one that was
+		//   updated more than ClustermapEpoch+thresholdClusterMapEpochTime seconds in the past.
+		//   thresholdClusterMapEpochTime is chosen to be 60 secs to prevent minor clock skews from causing a non-leader
+		//   to wrongly consider the clusterMap stale and race with the leader for updating the clusterMap. Only when
+		//   the leader is down, on the next tick, one of the nodes that runs this code first will correctly find the
+		//   clusterMap stale and it'd then take up the job of updating the clusterMap and becoming the new leader if
+		//   it's able to successfully update the clusterMap.
+		//
+		// With these rules, the leader is the one that updates the clusterMap in every tick (ClustermapEpoch), while in
+		// case of leader node going down, some other node will update the clusterMap in the next tick. In such case
+		// the clusterMap will be updated after two consecutive ClustermapEpoch.
+		//
 
-	//
-	// The node that updated the clusterMap last is preferred over others, for updating the clusterMap.
-	// This helps to avoid multiple nodes unnecessarily trying to update the clusterMap (only one of them will
-	// succeed but we don't want to waste the effort put by all nodes). But, we have to be wary of the fact that
-	// the leader node may go offline, in which case we would want some other node to step up and take the role of
-	// the leader. We use the following simple strategy:
-	// - Every ClustermapEpoch when the ticker fires, the leader node is automatically eligible for updating the
-	//   clusterMap, it need not perform the staleness check.
-	// - Every non-leader node has to perform a staleness check which defines a stale clusterMap as one that was
-	//   updated more than ClustermapEpoch+thresholdClusterMapEpochTime seconds in the past.
-	//   thresholdClusterMapEpochTime is chosen to be 60 secs to prevent minor clock skews from causing a non-leader
-	//   to wrongly consider the clusterMap stale and race with the leader for updating the clusterMap. Only when
-	//   the leader is down, on the next tick, one of the nodes that runs this code first will correctly find the
-	//   clusterMap stale and it'd then take up the job of updating the clusterMap and becoming the new leader if
-	//   it's able to successfully update the clusterMap.
-	//
-	// With these rules, the leader is the one that updates the clusterMap in every tick (ClustermapEpoch), while in
-	// case of leader node going down, some other node will update the clusterMap in the next tick. In such case
-	// the clusterMap will be updated after two consecutive ClustermapEpoch.
-	//
+		startTime := time.Now()
+		now := startTime.Unix()
 
-	startTime := time.Now()
-	now := startTime.Unix()
+		if clusterMap.LastUpdatedAt > now {
+			err = fmt.Errorf("LastUpdatedAt (%d) in future, now (%d), skipping update", clusterMap.LastUpdatedAt, now)
+			log.Warn("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 
-	if clusterMap.LastUpdatedAt > now {
-		err = fmt.Errorf("LastUpdatedAt (%d) in future, now (%d), skipping update", clusterMap.LastUpdatedAt, now)
-		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+			// Be soft if it could be due to clock skew.
+			if (clusterMap.LastUpdatedAt - now) < 300 {
+				return nil
+			}
 
-		// Be soft if it could be due to clock skew.
-		if (clusterMap.LastUpdatedAt - now) < 300 {
+			// Else, let the caller know.
+			common.Assert(false, "cluster.LastUpdatedAt is too much in future", clusterMap.LastUpdatedAt, now)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err.Error()
+			return err
+		}
+
+		clusterMapAge := now - clusterMap.LastUpdatedAt
+		//
+		// Assert if clusterMap is not updated for 3 consecutive epochs, it might indicate some bug.
+		// For very small ClustermapEpoch values, 3 times the value will not be sufficient as the
+		// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
+		// The max time till which the clusterMap may not be updated in the event of leader going down is
+		// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
+		// ClustermapEpoch is sufficient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+		// of 20 seconds.
+		//
+		common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
+			fmt.Sprintf("clusterMapAge (%d) >= %d",
+				clusterMapAge, int64(max(clusterMap.Config.ClustermapEpoch*3, 200))))
+
+		// Staleness check for non-leader.
+		stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
+		// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
+		leaderNode := clusterMap.LastUpdatedBy
+		leader := (leaderNode == cmi.myNodeId)
+
+		//
+		// If some other node/context is currently updating the clustermap, skip updating in this iteration, as
+		// long as the staleness threshold is not met.
+		// If some other thread in our node is updating then we play gentle and do not override the clustermap
+		// update (despite the staleness threshold), since we are alive and that other thread hopefully will complete.
+		// If it doesn't complete in time, some other node will grab ownership.
+		// If some other node is updating, and it's possibly dead, then clusterMapBeingUpdatedByAnotherNode() will also
+		// grab the ownership.
+		//
+		isClusterMapUpdateBlocked, err := cmi.clusterMapBeingUpdatedByAnotherNode(clusterMap, etag)
+		if err != nil {
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err.Error()
+			return err
+		}
+
+		if isClusterMapUpdateBlocked {
+			log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
+				leaderNode, cmi.myNodeId)
+			//
+			// Leader node should not find the clusterMap in "checking" state as no other node should try
+			// to preempt the leader while it's still alive, but...
+			// Note that updateStorageClusterMapIfRequired() when run by the leader can find the clusterMap
+			// in "checking" state if some other thread, mostly batchUpdateComponentRVState(), is running and
+			// updating the clusterMap, just before the periodic updateStorageClusterMapIfRequired() ticker
+			// fires. This is a legitimate case and we should just skip the current iteration of
+			// updateStorageClusterMapIfRequired().
+			//
+			// We relax the assert to allow such legitimate updates from batchUpdateComponentRVState() to catch
+			// if a leader finds the state as "checking" it should be transient and not remain in that state
+			// for a long time.
+			//
+			common.Assert(!leader || !stale,
+				"We don't expect leader to see the clustermap in checking state",
+				leader, stale, leaderNode, clusterMapAge)
 			return nil
 		}
 
-		// Else, let the caller know.
-		common.Assert(false, "cluster.LastUpdatedAt is too much in future", clusterMap.LastUpdatedAt, now)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
-
-	clusterMapAge := now - clusterMap.LastUpdatedAt
-	//
-	// Assert if clusterMap is not updated for 3 consecutive epochs, it might indicate some bug.
-	// For very small ClustermapEpoch values, 3 times the value will not be sufficient as the
-	// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
-	// The max time till which the clusterMap may not be updated in the event of leader going down is
-	// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
-	// ClustermapEpoch is sufficient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
-	// of 20 seconds.
-	//
-	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
-		fmt.Sprintf("clusterMapAge (%d) >= %d",
-			clusterMapAge, int64(max(clusterMap.Config.ClustermapEpoch*3, 200))))
-
-	// Staleness check for non-leader.
-	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
-	// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
-	leaderNode := clusterMap.LastUpdatedBy
-	leader := (leaderNode == cmi.myNodeId)
-
-	//
-	// If some other node/context is currently updating the clustermap, skip updating in this iteration, as
-	// long as the staleness threshold is not met.
-	// If some other thread in our node is updating then we play gentle and do not override the clustermap
-	// update (despite the staleness threshold), since we are alive and that other thread hopefully will complete.
-	// If it doesn't complete in time, some other node will grab ownership.
-	// If some other node is updating, and it's possibly dead, then clusterMapBeingUpdatedByAnotherNode() will also
-	// grab the ownership.
-	//
-	isClusterMapUpdateBlocked, err := cmi.clusterMapBeingUpdatedByAnotherNode(clusterMap, etag)
-	if err != nil {
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
-
-	if isClusterMapUpdateBlocked {
-		log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
-			leaderNode, cmi.myNodeId)
 		//
-		// Leader node should not find the clusterMap in "checking" state as no other node should try
-		// to preempt the leader while it's still alive, but...
-		// Note that updateStorageClusterMapIfRequired() when run by the leader can find the clusterMap
-		// in "checking" state if some other thread, mostly batchUpdateComponentRVState(), is running and
-		// updating the clusterMap, just before the periodic updateStorageClusterMapIfRequired() ticker
-		// fires. This is a legitimate case and we should just skip the current iteration of
-		// updateStorageClusterMapIfRequired().
+		// Ok, clustermap can be possibly updated (can't be sure until startClusterMapUpdate() returns success).
+		// If we are the leader, proceed and update the clustermap, else we need to exercise more restrain and
+		// only update if it has exceeded the staleness threshold, indicating the current leader has died.
 		//
-		// We relax the assert to allow such legitimate updates from batchUpdateComponentRVState() to catch
-		// if a leader finds the state as "checking" it should be transient and not remain in that state
-		// for a long time.
+		// Skip if we're neither leader nor the clustermap is stale
 		//
-		common.Assert(!leader || !stale,
-			"We don't expect leader to see the clustermap in checking state",
-			leader, stale, leaderNode, clusterMapAge)
-		return nil
-	}
+		if !leader && !stale {
+			log.Info("ClusterManager::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d, age %d secs)",
+				cmi.myNodeId, leaderNode, clusterMap.LastUpdatedAt, now, clusterMapAge)
+			return nil
+		}
 
-	//
-	// Ok, clustermap can be possibly updated (can't be sure until startClusterMapUpdate() returns success).
-	// If we are the leader, proceed and update the clustermap, else we need to exercise more restrain and
-	// only update if it has exceeded the staleness threshold, indicating the current leader has died.
-	//
-	// Skip if we're neither leader nor the clustermap is stale
-	//
-	if !leader && !stale {
-		log.Info("ClusterManager::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d, age %d secs)",
-			cmi.myNodeId, leaderNode, clusterMap.LastUpdatedAt, now, clusterMapAge)
-		return nil
-	}
-
-	//
-	// This is an uncommon event, so log.
-	//
-	if !leader {
-		err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %d secs, ownership being claimed by new leader %s",
-			leaderNode, clusterMapAge, cmi.myNodeId)
-		log.Warn("%v", err1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitchesDueToTimeout), 1)
-		// This is not an error, but interesting event, so log it.
-		stats.Stats.CM.StorageClustermap.LastError = err1.Error()
-	}
-
-	//
-	// Start the clustermap update process by first claiming ownership of the clustermap update.
-	// Only one node will succeed in UpdateClusterMapStart(), and that node proceeds with the clustermap
-	// update.
-	//
-	// Note: updateRVList() and updateMVList() are the only functions that can change clustermap.
-	//       Enclosing them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
-	//       node would be updating cluster membership details at any point. This is IMPORTANT.
-	//
-	// Note: The following startClusterMapUpdate() is unlikely to fail because of some other node
-	//       updating the clustermap from updateStorageClusterMapIfRequired(), as only leader will
-	//       proceed, but it can fail when some other asynchronous event like batchUpdateComponentRVState()
-	//       updates the clustermap, from the same node or another node.
-	//
-	err = cmi.startClusterMapUpdate(clusterMap, etag)
-	if err != nil {
-		err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
-
-	//
-	// UpdateClusterMapStart() must not take long. Assert to check that.
-	//
-	maxTime := 5 * time.Second
-	elapsed := time.Since(startTime)
-	common.Assert(elapsed < maxTime, elapsed, maxTime)
-
-	log.Info("ClusterManager::updateStorageClusterMapIfRequired: UpdateClusterMapStart succeeded for nodeId %s",
-		cmi.myNodeId)
-
-	log.Debug("ClusterManager::updateStorageClusterMapIfRequired: updating RV list")
-
-	_, err = cmi.updateRVList(clusterMap.RVMap, false /* initialHB */)
-	if err != nil {
-		err = fmt.Errorf("failed to reconcile RV mapping: %v", err)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
 		//
-		// TODO: We must reset the clusterMap state to ready.
+		// This is an uncommon event, so log.
 		//
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
+		if !leader {
+			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %d secs, ownership being claimed by new leader %s",
+				leaderNode, clusterMapAge, cmi.myNodeId)
+			log.Warn("%v", err1)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitchesDueToTimeout), 1)
+			// This is not an error, but interesting event, so log it.
+			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
+		}
 
-	//
-	// If one or more RVs changed state or new RV(s) were added, MV list will need to be recomputed.
-	//
-	// TODO: If no RV changes state, RV list and MV list won't be updated. In such case we need not update
-	//       the clustermap, but note that not updating clustermap may be regarded by non-leader nodes as
-	//       "leader down" and they will step up to update the clustermap. To avoid this, we should add
-	//       another field LastProcessedAt apart from LastUpdatedAt. LastUpdatedAt will only be updated
-	//       when the clustermap is actually updated and LastProcessedAt can be used for leader down
-	//       handling.
-	//
-	//TODO: Fix this call to trigger only if the RV list has changed.
-	// if changed {
-	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, true /* runFixMvNewMv */)
-	// } else {
-	// log.Debug("ClusterManager::updateStorageClusterMapIfRequired: No changes in RV mapping")
-	// }
-
-	//
-	// If we have discovered enough nodes (more than the MinNodes config value), clear the clustermap
-	// Readonly status. Once clusterMap Readonly is cleared, it remains cleared.
-	// Keeping cluster readonly till enough number of nodes have joined the cluster, may help to prevent
-	// concentration of data on few early nodes.
-	//
-	nodeCount := len(getAllNodesFromRVMap(clusterMap.RVMap))
-	if clusterMap.Readonly && nodeCount >= int(cmi.config.MinNodes) {
-		log.Info("ClusterManager::updateStorageClusterMapIfRequired: Discovered node count %d greater than MinNodes (%d), clearing clusterMap Readonly status. New files can be created now!",
-			nodeCount, cmi.config.MinNodes)
-
-		clusterMap.Readonly = false
-	}
-
-	//
-	// Check if the time elapsed since we read the global clusterMap and till we could run all the updates,
-	// has exceeded ClustermapEpoch. If so, we can be at risk of having our clusterMap updates race with some
-	// other node (that might have claimed ownership due to timeout). In that case we drop all the updates we
-	// made to the clusterMap and do not commit them.
-	// This can happen if one or more nodes are not reachable, and updateMVList() had to send some JoinMV/UpdateMV
-	// RPCs, which had to timeout.
-	//
-	elapsed = time.Since(startTime)
-	maxTime = time.Duration(clusterMap.Config.ClustermapEpoch) * time.Second
-	if elapsed > maxTime {
 		//
-		// TODO: We must reset the clusterMap state to ready.
+		// Start the clustermap update process by first claiming ownership of the clustermap update.
+		// Only one node will succeed in UpdateClusterMapStart(), and that node proceeds with the clustermap
+		// update.
 		//
-		err = fmt.Errorf("clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
-			elapsed, maxTime)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err.Error()
-		return err
-	}
-	err = cmi.endClusterMapUpdate(clusterMap)
-	if err != nil {
-		err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		log.Err("%v", err1)
-		common.Assert(false, err1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
-		stats.Stats.CM.StorageClustermap.LastError = err1.Error()
-		return err
+		// Note: updateRVList() and updateMVList() are the only functions that can change clustermap.
+		//       Enclosing them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
+		//       node would be updating cluster membership details at any point. This is IMPORTANT.
+		//
+		// Note: The following startClusterMapUpdate() is unlikely to fail because of some other node
+		//       updating the clustermap from updateStorageClusterMapIfRequired(), as only leader will
+		//       proceed, but it can fail when some other asynchronous event like batchUpdateComponentRVState()
+		//       updates the clustermap, from the same node or another node.
+		//
+		err = cmi.startClusterMapUpdate(clusterMap, etag)
+		if err != nil {
+			err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
+			log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err.Error()
+			return err
+		}
+
+		//
+		// UpdateClusterMapStart() must not take long. Assert to check that.
+		//
+		maxTime := 5 * time.Second
+		elapsed := time.Since(startTime)
+		common.Assert(elapsed < maxTime, elapsed, maxTime)
+
+		log.Info("ClusterManager::updateStorageClusterMapIfRequired: UpdateClusterMapStart succeeded for nodeId %s",
+			cmi.myNodeId)
+
+		if !skipUpdateRVList {
+			log.Debug("ClusterManager::updateStorageClusterMapIfRequired: updating RV list")
+
+			changed, err := cmi.updateRVList(clusterMap.RVMap, false /* initialHB */)
+			if err != nil {
+				err = fmt.Errorf("failed to reconcile RV mapping: %v", err)
+				log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+				common.Assert(false, err)
+				//
+				// TODO: We must reset the clusterMap state to ready.
+				//
+				atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+				stats.Stats.CM.StorageClustermap.LastError = err.Error()
+				return err
+			}
+
+			//
+			// If RV list has changed we need to pre-commit the clusterMap before we run updateMVList().
+			// This is required as updateMVList() will run the fix-mv workflow which would send UpdateMV RPCs
+			// to other nodes, and if the clusterMap is not pre-committed, those RPC handlers will fail those requests
+			// as they will treat them as "invalid change" to RV list. e.g., let's say rv0 has gone offline as per the
+			// latest updateRVList(). If we run the fix-mv workflow it'll send UpdateMV RPCs to other RVs of MVs that
+			// have rv0 as one of the RVs, and those RVs will reject the UpdateMV RPCs as they will find rv0 in online
+			// state. Note that online->outofsync is in invalid state transition, what UpdateMV expects is
+			// offline->outofsync. refreshFromClustermap() also will not help as it'll still show rv0 state as online.
+			// This will result in all fix-mv attempts failing and causing a lot of failed RPC traffic.
+			// We must commit the changes to RV list in the clustermap before we run the fix-mv workflow.
+			// We call this a pre-commit as it commits the RV list changes but not the corresponding MV list changes,
+			// thus we have the clustermap in a "half baked" state where MV list is not reflective of the latest RV list.
+			// Any node that takes ownership of clustermap update MUST run updateMVList() even if they do not find
+			// any changes to RV list by updateRVList().
+			//
+			if changed {
+				log.Debug("ClusterManager::updateStorageClusterMapIfRequired: RV list changed, pre-committing clustermap")
+
+				err = cmi.endClusterMapUpdate(clusterMap)
+				if err != nil {
+					err1 := fmt.Errorf("Failed to pre-commit clusterMap: %v", err)
+					log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err1)
+					common.Assert(false, err1)
+					atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+					stats.Stats.CM.StorageClustermap.LastError = err1.Error()
+					return err
+				}
+
+				//
+				// Ok, clusterMap is now updated with the RV list changes.
+				// Rerun the loop once more this time to update the MV list.
+				//
+				skipUpdateRVList = true
+				continue
+			}
+		} else {
+			log.Debug("ClusterManager::updateStorageClusterMapIfRequired: Skipping updateRVList()")
+		}
+
+		//
+		// If one or more RVs changed state or new RV(s) were added, MV list will need to be recomputed.
+		//
+		// TODO: If no RV changes state, RV list and MV list won't be updated. In such case we need not update
+		//       the clustermap, but note that not updating clustermap may be regarded by non-leader nodes as
+		//       "leader down" and they will step up to update the clustermap. To avoid this, we should add
+		//       another field LastProcessedAt apart from LastUpdatedAt. LastUpdatedAt will only be updated
+		//       when the clustermap is actually updated and LastProcessedAt can be used for leader down
+		//       handling.
+		// Update: We must call updateMVList() even if no RVs changed state. This is required for few reasons:
+		//       - Previous call to updateMVList() may not have completed all the tasks, e.g., it may not have
+		//         fixed all the degraded MVs as it may not find replacement RVs for all. In that case we want
+		//         the next updateStorageClusterMapIfRequired() call to continue fixing the remaining MVs.
+		//       - updateRVList() may update the RV list but updateMVList() may not be able to run or may not
+		//         complete all the tasks before some other node takes over the clustermap update and it finds
+		//         the changed RV list. That node won't observe any changes in the RV list, but it still must
+		//         run updateMVList() to ensure that all the MVs are fixed and their state is correct.
+		//
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, true /* runFixMvNewMv */)
+
+		//
+		// If we have discovered enough nodes (more than the MinNodes config value), clear the clustermap
+		// Readonly status. Once clusterMap Readonly is cleared, it remains cleared.
+		// Keeping cluster readonly till enough number of nodes have joined the cluster, may help to prevent
+		// concentration of data on few early nodes.
+		//
+		nodeCount := len(getAllNodesFromRVMap(clusterMap.RVMap))
+		if clusterMap.Readonly && nodeCount >= int(cmi.config.MinNodes) {
+			log.Info("ClusterManager::updateStorageClusterMapIfRequired: Discovered node count %d greater than MinNodes (%d), clearing clusterMap Readonly status. New files can be created now!",
+				nodeCount, cmi.config.MinNodes)
+
+			clusterMap.Readonly = false
+		}
+
+		//
+		// Check if the time elapsed since we read the global clusterMap and till we could run all the updates,
+		// has exceeded ClustermapEpoch. If so, we can be at risk of having our clusterMap updates race with some
+		// other node (that might have claimed ownership due to timeout). In that case we drop all the updates we
+		// made to the clusterMap and do not commit them.
+		// This can happen if one or more nodes are not reachable, and updateMVList() had to send some JoinMV/UpdateMV
+		// RPCs, which had to timeout.
+		//
+		elapsed = time.Since(startTime)
+		maxTime = time.Duration(clusterMap.Config.ClustermapEpoch) * time.Second
+		if elapsed > maxTime {
+			//
+			// TODO: We must reset the clusterMap state to ready.
+			//
+			err = fmt.Errorf("clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
+				elapsed, maxTime)
+			log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+			common.Assert(false, err)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err.Error()
+			return err
+		}
+
+		err = cmi.endClusterMapUpdate(clusterMap)
+		if err != nil {
+			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+			log.Err("%v", err1)
+			common.Assert(false, err1)
+			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
+			return err
+		}
+
+		break
 	}
 
 	// Total time taken by updateStorageClusterMapIfRequired().
@@ -1801,7 +1855,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalUpdates), 1)
 
 	log.Info("ClusterManager::updateStorageClusterMapIfRequired: cluster map (%d nodes) updated by %s at %d: %+v",
-		nodeCount, cmi.myNodeId, now, clusterMap)
+		nodeCount, cmi.myNodeId, time.Now(), clusterMap)
 	return nil
 }
 
@@ -1835,6 +1889,15 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //                 that more than one component RVs for an MV do not come from the same node and the same fault domain.
 //                 Only run if runFixMvNewMv parameter is true.
 //
+// Last two workflows (fix-mv and new-mv) are called "placement workflows" as they perform placement of MVs on RVs.
+// They have to make sure the placement honors the following constraints:
+// - A copy of MV has to be placed exactly on NumReplicas component RVs.
+// - An MV cannot have more than one component RV from the same node.
+// - An MV cannot have more than one component RV from the same fault domain.
+// - An MV cannot have more than one component RV from the same update domain.
+// - An RV cannot host more than MVsPerRVForNewMV component RVs for new MVs and more than MVsPerRVForFixMV component
+//   RVs for fix-mv.
+//
 // Note that when setting MV state based on component RV state, a component RV in "outofsync" or "syncing" state is
 // treated as an offline component RV, basically any component RV which does not have valid data.
 //
@@ -1865,13 +1928,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 	//
 	//
-	// Approach:
+	// Approach used by the placement workflows (fix-mv and new-mv):
 	//
-	// We make a list of nodes each having a list of RVs hosted by that node. This is
-	// typically one RV per node, but it can be higher.
-	// Each RV starts with a fixed slot count value that controls how many MVs the RV
-	// can hold. The MV distribution logic (new-mv and fix-mv) consume one slot for every
-	// MV placed on an RV and never place more MVs than the slot count allows.
+	// We create a map of RVs that are available for placing MVs, indexed by RV name.
+	// Each RV starts with a fixed slot count value that decides how many MVs the RV
+	// can hold. The MV placement logic (new-mv and fix-mv) consumes one slot for every
+	// MV placed on an RV and never places more MVs than the slot count allows.
 	// Since we allow more MVs on an RV during fix-mv than we allow during new-mv, to
 	// support cluster availability as some nodes go down, we set the slot count to
 	// MVsPerRVForFixMV which is higher than MVsPerRVForNewMV. The new-mv workflow
@@ -1888,155 +1950,204 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// available MV name, each MV is assigned one RV from a different node, upto
 	// NumReplicas for each MV.
 	// This continues till we do not have enough RVs (from distinct nodes) for creating
-	// a new MV.
-	//
-	// TODO: Pick component RVs across fault domains and not just across nodes.
+	// a new MV. This is the new-mv workflow.
 	//
 
 	log.Debug("ClusterManager::updateMVList: Updating current MV list according to the latest RV list (%d RVs, %d MVs)",
 		len(rvMap), len(existingMVMap))
 
 	//
-	// Represents an RV.
-	// An RV has a name and slots to indicate how many times the RV has been used up in various MVs.
-	// One MV can use an RV at most once. slots is initialized with MVsPerRVForFixMV and then decremented by
-	// one every time an RV is found/selected as component RV to an MV.
+	// Represents an RV with all info needed by the MV placement logic.
+	// Each RV stores a slots counter that decides how many more MVs can be placed on it. It also contains the
+	// nodeId and fault and update domain id for the RV to help the placement logic to not place more than one component
+	// RV for an MV on the same node or the same fault or update domain. One MV can use an RV at most once. slots is
+	// initialized with MVsPerRVForFixMV and then decremented by one every time an RV is used as component RV to an MV.
+	// Once all slots are consumed, the RV is no longer used for placing any more MVs.
 	//
 	type rv struct {
+		//
+		// Name of the RV, like "rv0", "rv1", etc.
+		//
 		rvName string
-		slots  int
-	}
-
-	//
-	// Represents a node.
-	// A node has a nodeid and list of RVs.
-	//
-	type node struct {
+		//
+		// Node hosting this RV.
+		// We will never pick more than one component RV for an MV from the same node.
+		//
 		nodeId string
-		rvs    []rv
+		//
+		// Fault/Update domain ID for the RV. A nil value signifies that the fault/update domain id is not known.
+		// Such RVs can be used to host any MV o/w it means that the RV is hosted on a node that belongs to
+		// the given fault/update domain. If fault/update domain id known, placer will ensure that an MV doesn't
+		// have more than one component RVs from the same fault/update domain.
+		//
+		// Config IgnoreFD and IgnoreUD control whether the placer honors fault and update domains.
+		//
+		fdId string
+		udId string
+		//
+		// The number of MVs that can be placed on this RV.
+		// This is initialized to MVsPerRVForFixMV and decremented by one every time an RV is used to place
+		// an MV. This can be done at the beginning when we update the slots based on the current MVs placed
+		// on the RV or later when we use this RV for placing a new MV or fixing an existing MV.
+		//
+		slots int
 	}
 
 	//
-	// All nodes with their RVs, indexed by nodeid.
+	// All RVs that are available for placing MVs, indexed by RV name. These are only online RVs as offline RVs
+	// are not used for placing MVs.
 	//
-	nodeToRvs := make(map[string]node)
+	availableRVsMap := make(map[string]*rv)
+
+	//
+	// getAvailableRVsList() makes this list out of availableRVsMap.
+	// This can be used only after a call to getAvailableRVsList().
+	//
+	var availableRVsList []*rv
+
+	//
+	// getAvailableRVsList() sets
+	// - numAvailableNodes to the number of nodes that have at least one RV available for placing MVs.
+	// - numAvailableFDs to the number of fault domains that have at least one RV available for placing MVs.
+	// - numAvailableUDs to the number of update domains that have at least one RV available for placing MVs.
+	//
+	numAvailableNodes := 0
+	numAvailableFDs := 0
+	numAvailableUDs := 0
+
+	//
+	// From availableRVsMap, this will create equivalent availableRVsList, list of RVs that are available for
+	// placing MVs. The RVs are sorted by the number of slots available, so that the RVs with more slots are at
+	// the front so they are picked first for placing MVs, thus resulting in a more balanced distribution of MVs
+	// across the RVs over time as nodes go down and come up.
+	//
+	// TODO: Sort also based on free space available on the RVs, so that MV placer favors RVs with more free space.
+	//
+	getAvailableRVsList := func(newMV bool) {
+		availableRVsList = make([]*rv, 0, len(availableRVsMap))
+
+		// Nodes and fault/update domains that have at least one RV available for placing MVs.
+		nodes := make(map[string]struct{})
+		faultDomains := make(map[string]struct{})
+		updateDomains := make(map[string]struct{})
+
+		for _, rv := range availableRVsMap {
+			// availableRVsMap must only contain online RVs.
+			common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
+
+			// Max slots for an RV is MVsPerRVForFixMV.
+			common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
+
+			//
+			// Skip an RV if it has no free slots left or for newMV case, the used slot count has
+			// reached MVsPerRVForNewMV.
+			//
+			usedSlots := MVsPerRVForFixMV - rv.slots
+			if rv.slots > MVsPerRVForFixMV {
+				usedSlots = MVsPerRVForFixMV
+			}
+
+			if rv.slots == 0 || (newMV && usedSlots >= MVsPerRVForNewMV) {
+				continue
+			}
+
+			//
+			// Ok, this RV can host at least one more MV.
+			// Note that rv is a pointer to an rv struct, so availableRVsList also points to the same rv struct
+			// which are hosted in availableRVsMap. Thus functions like consumeRVSlot() and deleteRVsFromAvailableMap()
+			// which change availableRVsMap will also cause changes in availableRVsList.
+			//
+			availableRVsList = append(availableRVsList, rv)
+
+			nodes[rv.nodeId] = struct{}{}
+			if rv.fdId != "" {
+				faultDomains[rv.fdId] = struct{}{}
+			}
+			if rv.udId != "" {
+				updateDomains[rv.udId] = struct{}{}
+			}
+		}
+
+		// Set these global variables, some callers may need them.
+		numAvailableNodes = len(nodes)
+		numAvailableFDs = len(faultDomains)
+		numAvailableUDs = len(updateDomains)
+		_ = numAvailableFDs
+		_ = numAvailableUDs
+
+		// Sort the RVs by the number of slots available, in descending order.
+		sort.Slice(availableRVsList, func(i, j int) bool {
+			return availableRVsList[i].slots > availableRVsList[j].slots
+		})
+
+		log.Debug("ClusterManager::getAvailableRVsList: Available RVs: %d, nodes: %d, FD: %d, UD: %d",
+			len(availableRVsList), numAvailableNodes, numAvailableFDs, numAvailableUDs)
+	}
 
 	//
 	// Helper function to consume an rv slot when rvName is allotted to mvName.
 	//
-	// This updates nodeToRvs.
+	// This updates availableRVsMap and availableRVsList.
 	//
 	consumeRVSlot := func(mvName, rvName string) {
 		nodeId := rvMap[rvName].NodeId
+		_ = nodeId
 		// Simple assert to make sure rvName is present in rvMap.
 		common.Assert(len(nodeId) > 0)
-		// We don't add offline RVs to nodeToRvs, so we must not update their slot count.
-		common.Assert(rvMap[rvName].State == dcache.StateOnline, mvName, rvName, rvMap[rvName].State)
-		found := false
-		_ = found
+		// We don't add offline RVs to availableRVsMap, so we must not be updating their slot count.
+		common.Assert(rvMap[rvName].State == dcache.StateOnline, rvName, mvName, rvMap[rvName].State)
 
-		// Decrease the slot count for the RV in nodeToRvs.
-		for i := range nodeToRvs[nodeId].rvs {
-			if nodeToRvs[nodeId].rvs[i].rvName == rvName {
-				// We initialize slot count to MVsPerRVForFixMV and then reduce it from there.
-				common.Assert(nodeToRvs[nodeId].rvs[i].slots <= MVsPerRVForFixMV,
-					nodeId, rvName, mvName, nodeToRvs[nodeId].rvs[i].slots, MVsPerRVForFixMV)
-				common.Assert(nodeToRvs[nodeId].rvs[i].slots > 0, nodeId, rvName, mvName)
-				nodeToRvs[nodeId].rvs[i].slots--
-				found = true
-				break
-			}
-		}
+		// RV to consume MUST be present in availableRVsMap.
+		rv, ok := availableRVsMap[rvName]
+		_ = ok
+		common.Assert(ok, rvName, mvName, nodeId, availableRVsMap)
+		common.Assert(rv.nodeId == nodeId, rvName, mvName, nodeId, availableRVsMap)
+		common.Assert(rv.fdId == rvMap[rvName].FDId, rvName, mvName, nodeId, rv.fdId, rvMap[rvName].FDId)
+		common.Assert(rv.udId == rvMap[rvName].UDId, rvName, mvName, nodeId, rv.udId, rvMap[rvName].UDId)
 
-		// Component RV for MV must be present in nodeToRvs.
-		common.Assert(found, mvName, rvName, nodeId)
+		// We initialize slot count to MVsPerRVForFixMV and then reduce it from there.
+		common.Assert(rv.slots <= MVsPerRVForFixMV, rvName, mvName, nodeId, rv.slots, MVsPerRVForFixMV)
+		// Caller must call consumeRVSlot() only for RVs with at least one slot available.
+		common.Assert(rv.slots > 0, rvName, mvName, nodeId, availableRVsMap)
+
+		rv.slots--
+		log.Debug("ClusterManager::consumeRVSlot: Consumed slot for %s/%s, (used: %d, remaining: %d)",
+			rvName, mvName, MVsPerRVForFixMV-rv.slots, rv.slots)
 	}
 
 	//
-	// Helper function to remove given RV(s) from their corresponding node in nodeToRvs.
-	// This is called when an RV is found to be "bad" and we don't want to use it for subsequent RV
-	// allocations.
+	// Helper function to remove given RV(s) from availableRVsMap.
+	// This is called when some RVs are found to be "bad" and we don't want to use them for subsequent MV
+	// placement.
 	//
-	// This updates nodeToRvs.
+	// This updates availableRVsMap and availableRVsList.
 	//
-	deleteRVsFromNode := func(deleteRvNames []string) {
+	deleteRVsFromAvailableMap := func(deleteRvNames []string) {
 		for _, deleteRvName := range deleteRvNames {
 			nodeId := rvMap[deleteRvName].NodeId
+			_ = nodeId
 			// Simple assert to make sure deleteRvName is present in rvMap.
 			common.Assert(len(nodeId) > 0, deleteRvName)
-			// We don't add offline RVs to nodeToRvs, so we must not be deleting them from nodeToRvs.
-			common.Assert(rvMap[deleteRvName].State == dcache.StateOnline,
-				deleteRvName, rvMap[deleteRvName].State)
-			found := false
-			_ = found
+			// We don't add offline RVs to availableRVsMap, so we must not be deleting them.
+			common.Assert(rvMap[deleteRvName].State == dcache.StateOnline, deleteRvName, rvMap[deleteRvName].State)
 
-			for i, rv := range nodeToRvs[nodeId].rvs {
-				if rv.rvName != deleteRvName {
-					continue
-				}
+			// It MUST be present in availableRVsMap.
+			rv, ok := availableRVsMap[deleteRvName]
+			_ = rv
+			_ = ok
+			common.Assert(ok, deleteRvName, nodeId, availableRVsMap)
 
-				// Delete rv from the list of RVs for the node.
-				node := nodeToRvs[nodeId]
-				node.rvs = append(node.rvs[:i], node.rvs[i+1:]...)
-				nodeToRvs[nodeId] = node
+			log.Debug("ClusterManager::deleteRVFromNode: Deleted RV %s (with %d slots), node: %s, FD: %s, UD: %s",
+				deleteRvName, rv.slots, nodeId, rv.fdId, rv.udId)
 
-				found = true
-				log.Debug("ClusterManager::deleteRVFromNode: Deleted RV %s from node %s", deleteRvName, nodeId)
-				break
-			}
+			//
+			// Set slots to 0 so that availableRVsList which is referring to this RV does not consider it for
+			// placing any more MVs.
+			//
+			rv.slots = 0
 
-			// Component RV for MV must be present in nodeToRvs.
-			common.Assert(found, deleteRvName, nodeId, deleteRvNames)
+			delete(availableRVsMap, deleteRvName)
 		}
-	}
-
-	//
-	// Helper function to perform nodeToRvs trimming. It does the following:
-	// - Remove RVs whose slot count have reached 0 or if newMV is true, remove RVs whose slot usage
-	//   have reached/exceeded MVsPerRVForNewMV.
-	// - Remove nodes with no RVs left.
-	//
-	// This must be called after one or more RVs are assigned to an MV (fix-mv or new-mv).
-	//
-	// This updates nodeToRvs.
-	//
-	trimNodeToRvs := func(newMV bool) {
-		//
-		// Check if any node has exhausted all its RV's, remove such nodes from the nodeToRvs map.
-		//
-		for nodeId, node := range nodeToRvs {
-			for j := 0; j < len(node.rvs); {
-				//
-				// Remove an RV if it has no free slots left or for newMV case, the used slot count has
-				// reached MVsPerRVForNewMV.
-				//
-				common.Assert(node.rvs[j].slots <= MVsPerRVForFixMV, node.rvs[j].slots, MVsPerRVForFixMV)
-				usedSlots := MVsPerRVForFixMV - node.rvs[j].slots
-				if node.rvs[j].slots > MVsPerRVForFixMV {
-					usedSlots = MVsPerRVForFixMV
-				}
-				if node.rvs[j].slots == 0 || (newMV && usedSlots >= MVsPerRVForNewMV) {
-					node.rvs = append(node.rvs[:j], node.rvs[j+1:]...)
-				} else {
-					j++
-				}
-			}
-
-			// If the node has no RVs left, remove it from the map.
-			if len(node.rvs) == 0 {
-				delete(nodeToRvs, nodeId)
-				log.Debug("ClusterManager::trimNodeToRvs: Removed node %s from nodeToRvs as it has no RVs left, newMV: %v", nodeId, newMV)
-			} else {
-				nodeToRvs[nodeId] = node
-			}
-		}
-
-		//
-		// TODO: This should be log.Verbose() since for large clusters it can be quite verbose.
-		//       Since it could be useful for debugging new-mv/fix-mv workflows we keep it here.
-		//       Uncomment for using.
-		//
-		//log.Debug("ClusterManager::trimNodeToRvs: After trimming nodeToRvs %+v", nodeToRvs)
 	}
 
 	//
@@ -2060,12 +2171,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		offlineRVs := 0
 		outofsyncRVs := 0
 		excludeNodes := make(map[string]struct{})
-		excludeRVNames := make(map[string]struct{})
+		excludeFaultDomains := make(map[string]struct{})
+		excludeUpdateDomains := make(map[string]struct{})
 
 		//
-		// Pass 1: Make a list of nodes and RVs to be excluded when picking "good" RVs in the later part.
-		//         Those nodes are excluded which contribute at least one good component RV.
-		//         Those component RVs are excluded which are offline.
+		// Pass 1: Make a list of nodes and fault domains to be excluded when picking "good" RVs in the
+		//         later part. Those nodes and fault/update domains are excluded which contribute at least
+		//         one good component RV.
 		//
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
@@ -2075,8 +2187,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 			//
 			// Fix-mv workflow is run after degrade-mv/offline-mv workflows, so component RV states
-			// must have been correctly updated. Also component RV state must be online, offline or
-			// syncing.
+			// must have been correctly updated to offline.
 			//
 
 			//
@@ -2112,29 +2223,34 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 
 			//
-			// If this component RV is not offline, its containing node must be excluded for replacement RV(s).
-			// We don't exclude the node if the component RV is offline to support the case where the same node
-			// comes back up online and we may want to use the same RV or another RV from the same node, as
-			// replacement RV.
+			// If this component RV is not offline, its containing node and fault/update domain must be excluded
+			// for replacement RV(s). We don't exclude the node and fault/update domain if the component RV is
+			// offline to support the case where the same node comes back up online and we may want to use the same
+			// RV or another RV from the same node, as replacement RV.
 			// If the component RV is inband-offline, we exclude its node because we don't want other RVs in
 			// that node to be used as replacement RV (since it's likely that the entire node is down),
-			// but we still count it as offline, as it needs to be replaced with a good RV.
+			// but we still count it as offline, as it needs to be replaced with a good RV. We do not exclude
+			// the fault/update domain for inband-offline RVs, as we should be able to use other RVs from different
+			// nodes in the same fault/update domain as replacement RVs.
 			//
 			if mv.RVs[rvName] != dcache.StateOffline {
+				// More than one component RVs for an MV cannot come from the same node.
 				excludeNodes[rvMap[rvName].NodeId] = struct{}{}
+
 				if mv.RVs[rvName] == dcache.StateInbandOffline {
+					// inband-offline component RVs should be treated as offline but we don't exclude
+					// its fault domain, as it's ok to use other RVs from the same fault domain.
 					offlineRVs++
+				} else {
+					// More than one component RVs for an MV cannot come from the same fault/update domain.
+					if rvMap[rvName].FDId != "" {
+						excludeFaultDomains[rvMap[rvName].FDId] = struct{}{}
+					}
+					if rvMap[rvName].UDId != "" {
+						excludeUpdateDomains[rvMap[rvName].UDId] = struct{}{}
+					}
 				}
 				continue
-			}
-
-			//
-			// Offline RVs themselves must be excluded. Those are the ones we need to replace with good ones.
-			// Note that it's possible that the same RV has now come back online, in which case it can be
-			// reused and hence must not be excluded.
-			//
-			if rvMap[rvName].State == dcache.StateOffline {
-				excludeRVNames[rvName] = struct{}{}
 			}
 
 			offlineRVs++
@@ -2154,23 +2270,20 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		}
 
 		//
-		// Pass 2: For all component RVs that are offline, find a suitable RV.
+		// Pass 2: For all component RVs that are offline/inband-offline, find a suitable replacement RV.
 		//         A suitable RV is one, that:
 		//         - Does not come from any node in excludeNodes list.
-		//         - Is not one of excludeRVNames.
+		//         - Does not come from any fault domain in excludeFaultDomains list.
+		//         - Does not come from any update domain in excludeUpdateDomains list.
 		//         - Has same or higher availableSpace.
 		//
-		// Shuffle the nodes to encourage random selection of replacement RV(s).
-		// We then iterate over the availableNodes list and pick the 1st suitable RV.
+		// Caller creates availableRVsList which is a list of available RVs that can be used to replace the
+		// offline component RVs. This is a sorted list with more suitable RVs at the front, so that we are
+		// more likely to pick more suitable RVs first, thus resulting in a balanced distribution of MVs across
+		// the RVs. We then iterate over the availableRVsList list and pick the 1st suitable RV.
+		// As we pick RVs we update availableRVsMap which also updates availableRVsList as it is a slice of
+		// those pointers that availableRVsMap refers to.
 		//
-		var availableNodes []node
-		for _, n := range nodeToRvs {
-			availableNodes = append(availableNodes, n)
-		}
-
-		rand.Shuffle(len(availableNodes), func(i, j int) {
-			availableNodes[i], availableNodes[j] = availableNodes[j], availableNodes[i]
-		})
 
 		//
 		// Number of component RVs we are actually able to fix for this MV.
@@ -2181,7 +2294,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		//
 		// We make a deep copy of mv.RVs before we start fixing.
-		// We fix directly in mv.RVs as it's convenient, but if we need to undo later we set mv.RVs to
+		// We fix directly in mv.RVs as it's convenient, but if we need to undo later we reset mv.RVs to
 		// savedRVs.
 		//
 		savedRVs := make(map[string]dcache.StateEnum)
@@ -2189,6 +2302,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			savedRVs[rvName] = rvState
 		}
 
+		// Fix all the offline component RVs for this MV.
 		for rvName := range mv.RVs {
 			//
 			// Usually we won't have outofsync component RVs when fixMV() is called, as they would have been
@@ -2211,7 +2325,14 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//
 			if mv.RVs[rvName] == dcache.StateOutOfSync {
 				log.Debug("ClusterManager::fixMV: %s/%s already outofsync", rvName, mvName)
+
+				// Must not already be there.
+				if common.IsDebugBuild() {
+					_, ok := alreadyOutOfSync[rvName]
+					common.Assert(!ok, rvName, mvName, alreadyOutOfSync)
+				}
 				alreadyOutOfSync[rvName] = struct{}{}
+				continue
 			}
 
 			// Only offline/inband-offline component RVs need to be "fixed" (aka replaced).
@@ -2219,98 +2340,182 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				continue
 			}
 
-			foundReplacement := false
-			log.Debug("ClusterManager::fixMV: Fixing component RV %s/%s", rvName, mvName)
+			//
+			// We will now be sending UpdateMV RPC asking this component RV to be moved to outofsync state.
+			// Note that rvInfo on the target nodes will have the RV state as online, so it'll refresh the
+			// RV state from the clusterMap. If clusterMap state is not offline it'll fail the RPC.
+			// When we reach here, updateStorageClusterMapIfRequired() would have ensured that any offline
+			// RV state is pre-committed before calling updateMVList(), assert for that.
+			//
+			if common.IsDebugBuild() {
+				cmRVs := cm.GetRVs(mvName)
+				common.Assert(len(cmRVs) == NumReplicas, mvName, cmRVs, NumReplicas)
 
-			// Iterate over the shuffled nodes list and pick the first suitable RV.
-			for _, node := range availableNodes {
-				_, ok := excludeNodes[node.nodeId]
-				if ok {
-					// Skip excluded nodes.
+				_, ok := cmRVs[rvName]
+				common.Assert(ok, rvName, mvName, cmRVs)
+
+				//
+				// inband-offline state is always committed to clusterMap and not calculated by updateMVList()
+				// so if mv.RVs[rvName] is inband-offline, it must have been read from clusterMap.
+				//
+				if mv.RVs[rvName] == dcache.StateInbandOffline {
+					common.Assert(cmRVs[rvName] == dcache.StateInbandOffline, rvName, mvName, cmRVs[rvName])
+				}
+
+				//
+				// mv.RVs[rvName] can be offline in two cases:
+				// - It was already offline in clusterMap component RVs, when updateMVList() was called.
+				// - It was not offline in clusterMap component RVs when this updateMVList() was called, but
+				//   updateRVList() (called just before updateMVList()) found the heartbeat as expired and marked it
+				//   as offline in rvMap passed to updateMVList() which then marked the component RV state as offline
+				//   in degrade-mv workflow. In this case updateStorageClusterMapIfRequired() MUST have pre-committed
+				//   the RV state change to clusterMap and hence cm.GetRVState(rvName) MUST return offline.
+				//
+				if mv.RVs[rvName] == dcache.StateOffline {
+					common.Assert((cmRVs[rvName] == dcache.StateOffline ||
+						cm.GetRVState(rvName) == dcache.StateOffline),
+						rvName, mvName, cmRVs, cm.GetRVState(rvName))
+				}
+			}
+
+			foundReplacement := false
+			firstFreeIdx := 0
+			firstFreeIdxLocked := false
+
+			log.Debug("ClusterManager::fixMV: Fixing component RV %s/%s (state: %s)",
+				rvName, mvName, mv.RVs[rvName])
+
+			// Iterate over the availableRVsList and pick the first suitable RV.
+			for _, rv := range availableRVsList {
+				// availableRVsList must only contain online RVs.
+				common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
+
+				// Max slots for an RV is MVsPerRVForFixMV.
+				common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
+
+				//
+				// Skip an RV if it has no free slots left.
+				// This check is the fastest, so we do it first.
+				//
+				if rv.slots == 0 {
+					log.Debug("ClusterManager::fixMV: Skipping %s as it has no slots left", rv.rvName)
+
+					if !firstFreeIdxLocked {
+						firstFreeIdx++
+					}
 					continue
 				}
 
-				// Potential node, pick first suitable RV.
-				for idx := range node.rvs {
-					newRvName := node.rvs[idx].rvName
-					_, ok := excludeRVNames[newRvName]
-					if ok {
-						// Skip excluded RVs.
+				firstFreeIdxLocked = true
+
+				if _, ok := excludeNodes[rv.nodeId]; ok {
+					//
+					// Skip RVs from excluded nodes.
+					// When faking scale test we add 1000s of RVs to a node which makes this log very chatty.
+					// Skip it only for that as it may be useful for a real cluster.
+					//
+					if !common.IsFakingScaleTest() {
+						log.Debug("ClusterManager::fixMV: Skipping %s from node %s in excludeNodes %+v",
+							rv.rvName, rv.nodeId, excludeNodes)
+					}
+					continue
+				}
+
+				if rv.fdId != "" {
+					if _, ok := excludeFaultDomains[rv.fdId]; ok {
+						// Skip RVs from excluded fault domains.
+						log.Debug("ClusterManager::fixMV: Skipping %s from fault domain %s in excludeFaultDomains %+v",
+							rv.rvName, rv.fdId, excludeFaultDomains)
 						continue
 					}
+				}
 
-					//
-					// Do not pick another offline component RV as replacement, else mv.RVs[] will have fewer
-					// than NumReplicas RVs.
-					// e.g., let's say we enter fixMV() with the following mv0 composition,
-					// mv0: {rv0: offline, rv1: online, rv2: offline}
-					//
-					// if we don't disallow the following, we can pick rv2 as a replacement for rv0, resulting in
-					// mv0: {rv2: outofsync, rv1: online}
-					//
-					// But, it's ok to reuse the same RV if it's now online, so following is a valid replacement.
-					// mv0: {rv0: outofsync, rv1: online, rv2: outofsync}
-					//
-					if newRvName != rvName {
-						_, ok := mv.RVs[newRvName]
-						if ok {
-							log.Debug("ClusterManager::fixMV: Not replacing %s/%s with sibling %s/%s",
-								rvName, mvName, newRvName, mvName)
-							continue
-						}
-					} else {
-						//
-						// The rv selected for replacement is the same as the one we are trying to replace.
-						// If the state of the RV in the MV is inband-offline, we add its node to the
-						// excludeNodes map. So, we should only get the state of the RV as offline, if the
-						// replacement RV is same.
-						//
-						common.Assert(mv.RVs[rvName] == dcache.StateOffline, mvName, rvName, mv.RVs)
+				if rv.udId != "" {
+					if _, ok := excludeUpdateDomains[rv.udId]; ok {
+						// Skip RVs from excluded update domains.
+						log.Debug("ClusterManager::fixMV: Skipping %s from update domain %s in excludeUpdateDomains %+v",
+							rv.rvName, rv.udId, excludeUpdateDomains)
+						continue
 					}
-
-					//
-					// TODO: Need to find out space requirement for the MV and exclude RVs
-					//       which do not have enough availableSpace.
-
-					//
-					// Use this RV to replace older RV, a newly replaced RV starts as "outofsync" to indicate
-					// that the RV is good but needs to be sync'ed (from a good component RV).
-					//
-					// Remove the bad RV from MV. Do this before assigning the replacement RV, in case both
-					// are same.
-					//
-					delete(mv.RVs, rvName)
-					mv.RVs[newRvName] = dcache.StateOutOfSync
-
-					//
-					// Now mv is updated to correctly reflect new selected RV, with bad RV removed.
-					// We don't yet update existingMVMap, we will do it once joinMV() returns
-					// successfully.
-					//
-
-					log.Debug("ClusterManager::fixMV: Replacing (%s/%s -> %s/%s)",
-						rvName, mvName, newRvName, mvName)
-					foundReplacement = true
-					fixedRVs++
-					break
 				}
 
-				if foundReplacement {
-					// Once we pick an RV from a node, it cannot be used again for another RV for the MV.
-					excludeNodes[node.nodeId] = struct{}{}
-					break
+				//
+				// Ok, potential replacement RV, few more checks before we can use it.
+				// Note that the available space check is done by joinMV() as the target node has
+				// the most up-to-date information about available space, and it'll fail JoinMV
+				// RPC if the available space is not enough.
+				//
+				newRvName := rv.rvName
+
+				//
+				// Do not pick another offline component RV as replacement, else mv.RVs[] will have fewer
+				// than NumReplicas RVs.
+				// e.g., let's say we enter fixMV() with the following mv0 composition,
+				// mv0: {rv0: offline, rv1: online, rv2: offline}
+				//
+				// if we don't disallow the following, we can pick rv2 as a replacement for rv0, resulting in
+				// mv0: {rv2: outofsync, rv1: online}
+				//
+				// But, it's ok to reuse the same RV if it's now online, so following is a valid replacement.
+				// mv0: {rv0: outofsync, rv1: online, rv2: outofsync}
+				//
+				if newRvName != rvName {
+					_, ok := mv.RVs[newRvName]
+					if ok {
+						log.Debug("ClusterManager::fixMV: Not replacing %s/%s with sibling %s/%s",
+							rvName, mvName, newRvName, mvName)
+						continue
+					}
+				} else {
+					//
+					// The rv selected for replacement is the same as the one we are trying to replace.
+					// If the state of the RV in the MV is inband-offline, we add its node to the
+					// excludeNodes map. So, we should only get the state of the RV as offline, if the
+					// replacement RV is same.
+					//
+					common.Assert(mv.RVs[rvName] == dcache.StateOffline, mvName, rvName, mv.RVs)
 				}
+
+				//
+				// Use this RV to replace older RV, a newly replaced RV starts as "outofsync" to indicate
+				// that the RV is good but needs to be sync'ed (from a good component RV).
+				//
+				// Remove the bad RV from MV. Do this before assigning the replacement RV, in case both
+				// are same.
+				//
+				log.Debug("ClusterManager::fixMV: Replacing (%s/%s [%s] -> %s/%s [%s] [with slots: %d])",
+					rvName, mvName, mv.RVs[rvName], newRvName, mvName, dcache.StateOutOfSync, rv.slots)
+
+				delete(mv.RVs, rvName)
+				mv.RVs[newRvName] = dcache.StateOutOfSync
+
+				//
+				// Now mv is updated to correctly reflect new selected RV, with bad RV removed.
+				// We don't yet update existingMVMap, we will do it once joinMV() returns
+				// successfully.
+				//
+				foundReplacement = true
+				fixedRVs++
+				break
+			}
+
+			if firstFreeIdx > 0 {
+				// Chop off unusable RVs from the beginning, to avoid wasted iterations for subsequent MVs.
+				availableRVsList = availableRVsList[firstFreeIdx:]
+
+				log.Debug("ClusterManager::fixMV: Initial %d RVs are full, removing from availableRVsList, %d RVs remaining",
+					firstFreeIdx, len(availableRVsList))
 			}
 
 			//
 			// If we could not find a replacement RV for an offline RV, it's a matter of concern as the MV
 			// will be forced to run degraded for a longer period risking data loss.
 			//
-			// TODO: For huge clusters availableNodes could be a lot of log.
+			// TODO: For huge clusters availableRVsList could be a lot of log.
 			//
 			if !foundReplacement {
-				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: %+v, excludeRVNames: %+v",
-					rvName, mvName, availableNodes, excludeNodes, excludeRVNames)
+				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, available RVs: %d, excludeNodes: %+v, excludeFaultDomains: %+v, excludeUpdateDomains: %+v",
+					rvName, mvName, len(availableRVsList), excludeNodes, excludeFaultDomains, excludeUpdateDomains)
 				atomic.AddInt64(&stats.Stats.CM.FixMV.NoReplacementRVs, 1)
 				atomic.AddInt64(&stats.Stats.CM.FixMV.NoReplacementRVsCumulative, 1)
 			}
@@ -2329,7 +2534,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		//
 		// Ok, we have selected a replacement RV for each offline component RV, but before we can finalize
-		// the selection, we need to check with the RV.
+		// the selection, we need to check with the selected RV(s).
 		// Call joinMV() and check if all component RVs are able to join successfully.
 		// Note that though it's called joinMV(), it sends both JoinMV and UpdateMV RPC depending on the
 		// RV state. An RV which is being added to an MV for the first time (either new MV or replacing a
@@ -2359,12 +2564,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 			existingMVMap[mvName] = mv
 
-			//
-			// After the consumeRVSlot() above we need to trim the nodeToRvs map as it may have fully consumed
-			// some RV(s). We don't want to use those RVs in the next fixMV() iteration(s).
-			//
-			trimNodeToRvs(false /* newMV */)
-
 			// An MV is fixed only if all offline component RVs are "fixed", i.e., replaced with good RVs.
 			if fixedRVs == offlineRVs {
 				atomic.AddInt64(&stats.Stats.CM.FixMV.MVsFixed, 1)
@@ -2377,7 +2576,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//
 			// If we fail to fix the MV we simply return leaving the broken MV in existingMVMap.
 			// TODO: We should add retries here.
-			// TODO: Should we remove failedRVs from nodeToRvs? We can do it only for RPC errors that indicate
+			// TODO: Should we remove failedRVs from availableRVsMap? We can do it only for RPC errors that indicate
 			//       a general error indicating RV's inability to be used for any MV (like RV going offline) and
 			//       not an error specific to this MV.
 			//
@@ -2392,8 +2591,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	}
 
 	//
-	// Populate the node map (indexed by nodeid) with each node representing all its RVs.
-	// This is the nodeToRvs map.
+	// Phase 0:
+	// Populate the availableRVsMap map from the current rvMap.
 	//
 	atomic.StoreInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 0)
 	for rvName, rvInfo := range rvMap {
@@ -2405,35 +2604,23 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			continue
 		}
 
-		if nodeInfo, exists := nodeToRvs[rvInfo.NodeId]; exists {
-			// If the node already exists, append the RV to its list.
-			// This will be the case when node has more than one RV and we are encountering the second
-			// or subsequent RVs.
-			common.Assert(rvInfo.NodeId == nodeInfo.nodeId, rvInfo.NodeId, nodeInfo.nodeId)
-			common.Assert(len(nodeInfo.rvs) > 0)
-			common.Assert(nodeInfo.rvs[0].slots == MVsPerRVForFixMV, nodeInfo.rvs[0].slots, MVsPerRVForFixMV)
-			common.Assert(nodeInfo.rvs[0].rvName != rvName, rvName)
+		if common.IsDebugBuild() {
+			_, ok := availableRVsMap[rvName]
+			// Must not already be present in availableRVsMap.
+			common.Assert(!ok, rvName, availableRVsMap)
+		}
 
-			nodeInfo.rvs = append(nodeInfo.rvs, rv{
-				rvName: rvName,
-				//
-				// We initialize the slot count for each RV to MVsPerRVForFixMV, though the new-mv
-				// workflow will not use more than MVsPerRVForNewMV slots for each RV.
-				//
-				slots: MVsPerRVForFixMV,
-			})
-			nodeToRvs[rvInfo.NodeId] = nodeInfo
-		} else {
-			// Encountered first RV of this node. Create a new node and add the RV to it.
-			nodeToRvs[rvInfo.NodeId] = node{
-				nodeId: rvInfo.NodeId,
-				rvs:    []rv{{rvName: rvName, slots: MVsPerRVForFixMV}},
-			}
+		availableRVsMap[rvName] = &rv{
+			rvName: rvName,
+			nodeId: rvInfo.NodeId,
+			fdId:   rvInfo.FDId,
+			udId:   rvInfo.UDId,
+			slots:  MVsPerRVForFixMV,
 		}
 	}
 
-	// Cannot have more nodes than RVs.
-	common.Assert(len(nodeToRvs) <= len(rvMap), nodeToRvs, rvMap)
+	// Cannot have more available RVs than total RVs.
+	common.Assert(len(availableRVsMap) <= len(rvMap), availableRVsMap, rvMap)
 
 	//
 	// Phase 1:
@@ -2474,7 +2661,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			_ = exists
 			common.Assert(exists, rvName, mvName)
 
+			//
 			// First things first, an offline RV MUST be marked as an offline component RV.
+			// fixMV() finds offline component RVs and replaces them with good RVs.
+			//
 			if rv.State == dcache.StateOffline {
 				mv.RVs[rvName] = dcache.StateOffline
 			}
@@ -2495,16 +2685,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// This RV is not offline and is used as a component RV by this MV.
 			// Reduce its slot count, so that we don't use a component RV more than MVsPerRVForFixMV times
 			// across all MVs.
-			// Note that offline RVs are not included in nodeToRvs so we should not be updating their slot count.
+			// Note that offline RVs are not included in availableRVsMap so we should not be updating their slot count.
 			//
-			// We don't reduce slot count if the component RV itself is marked offline. This is because an offline
-			// component RV for all purposes can be treated as non-existent. Soon after this we will run the fix-mv
-			// workflow which will replace these offline RVs with some online RV (it could be the same RV if it has
-			// come back up online) and at that time we will not increase the slot count of the outgoing component
-			// RV, so we don't reduce it now.
+			// We don't reduce slot count if the component RV itself is marked offline/inband-offline. This is because
+			// an offline/inband-offline component RV for all purposes can be treated as not-used. Soon after this we
+			// will run the fix-mv workflow which will replace these offline/inband-offline RVs with some online RV
+			// (it could be the same RV if it has come back up online, only for StateOffline) and at that time we will
+			// not increase the slot count of the outgoing component RV, so we don't reduce it now.
 			//
 			if rv.State != dcache.StateOffline {
-				if mv.RVs[rvName] != dcache.StateOffline {
+				if mv.RVs[rvName] != dcache.StateOffline && mv.RVs[rvName] != dcache.StateInbandOffline {
 					consumeRVSlot(mvName, rvName)
 				}
 			}
@@ -2538,8 +2728,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
 	//       UpdateMV will fail.
 	//
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: %v",
-		existingMVMap, runFixMvNewMv)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs) %+v",
+		runFixMvNewMv, len(rvMap), len(existingMVMap), existingMVMap)
 
 	//
 	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be generated, so we run
@@ -2548,12 +2738,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	if !runFixMvNewMv {
 		return
 	}
-
-	//
-	// Check if any node has exhausted all its RV's, remove such nodes from the nodeToRvs map.
-	// Also remove RVs which are fully consumed (no free slots left).
-	//
-	trimNodeToRvs(false /* newMV */)
 
 	//
 	// Phase 2:
@@ -2566,6 +2750,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// Offline MVs will just be lying around like satellite debris in space.
 	//
 	// TODO: See if we need delete-mv workflow to clean those up.
+	//
+	// Note on performance of fix-mv:
+	// We call fixMV() serially for each degraded MV, so the performance of fix-mv workflow is O(Number of degraded MVs),
+	// and the number of degraded MVs is a factor of how many RVs can go offline at a time and how many MVs could be
+	// hosted by those RVs. Max we can have MaxMVsPerRV (100) MVs per RV and let's take max 6 RVs per node and since
+	// we canot handle more than 2 nodes going down at a time, let's take 2 nodes, so we can have at most
+	// 2 * 6 * 100 = 1200 degraded MVs at a time. Each fixMV() makes JoinMV/UpdateMV RPC calls (in parallel) and
+	// typically takes ~3ms, so 1200 will take ~3.6s to fix all degraded MVs. Infact for large clusters MVsPerRV will
+	// be much lower, so we will have much fewer degraded MVs at a time.
+	// This should be reasonable time, so we don't need to run fix-mv in parallel for each degraded MV.
 	//
 
 	// Reset per-fix-mv stats.
@@ -2581,7 +2775,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	atomic.StoreInt64(&stats.Stats.CM.FixMV.UpdateMV.Calls, 0)
 	atomic.StoreInt64(&stats.Stats.CM.FixMV.UpdateMV.Failures, 0)
 
+	//
+	// Set availableRVsList fom availableRVsMap.
+	// fixMV() will use this list to find replacement RVs for degraded MVs.
+	// For huge clusters with lots of RVs getAvailableRVsList() can take non-trivial time, so we run it only once.
+	//
+	getAvailableRVsList(false /* newMV */)
+
 	numUsableMVs := 0
+
 	for mvName, mv := range existingMVMap {
 		if mv.State != dcache.StateOffline {
 			numUsableMVs++
@@ -2607,7 +2809,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			max(stats.Stats.CM.FixMV.MaxTime, duration)
 	}
 
-	log.Debug("ClusterManager::updateMVList: existing MV map after phase#2: %v", existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#2 (%d RVs, %d MVs) %+v",
+		len(rvMap), len(existingMVMap), existingMVMap)
 
 	//
 	// Phase 3:
@@ -2619,114 +2822,162 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// - More than one RV from the same fault domain will not be used as component RVs for the same MV.
 	//
 	startNewMV := time.Now()
+
+	//
+	// Get the availableRVsList from availableRVsMap.
+	// These RVs will be used to create new MVs.
+	// Note that we don't need to recalculate availableRVsList after every new MV is created, as availableRVsList
+	// is a slice of rv pointers which are pointing to the entries in availableRVsMap, and hence consumeRVSlot()
+	// will update the slots which will be reflected in availableRVsList as well.
+	// We do this to improve performance for setups with large number of RVs (and MVs).
+	//
+	getAvailableRVsList(true /* newMV */)
+
+	//
+	// Shuffle the nodes to encourage random selection of RVs (from random nodes).
+	// Note that for new MV placement most/all RVs will be empty so sorting by free slots is not really usseful.
+	//
+	rand.Shuffle(len(availableRVsList), func(i, j int) {
+		availableRVsList[i], availableRVsList[j] = availableRVsList[j], availableRVsList[i]
+	})
+
+	maxMVsPossible := (len(rvMap) * MVsPerRVForNewMV) / NumReplicas
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.MVsPerRV, int64(MVsPerRVForNewMV))
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.NumReplicas, int64(NumReplicas))
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.MaxMVsPossible, int64(maxMVsPossible))
+
 	for {
-		//
-		// Check if any node has exhausted all its RV's, remove such nodes from the nodeToRvs map.
-		// Also remove RVs which are fully consumed (no free slots left).
-		//
-		trimNodeToRvs(true /* newMV */)
-
-		atomic.StoreInt64(&stats.Stats.CM.NewMV.AvailableNodes, int64(len(nodeToRvs)))
-
-		//
-		// The nodeToRvs map is now updated with remaining nodes and their RVs.
-		// For this iteration of new-mv workflow, we have only those nodes left which can contribute
-		// at least one RV and only those RVs left which have at least one slot to contribute.
-		//
-
-		// New MV will need at least NumReplicas distinct nodes.
-		if len(nodeToRvs) < NumReplicas {
-			log.Debug("ClusterManager::updateMVList: len(nodeToRvs) [%d] < NumReplicas [%d]",
-				len(nodeToRvs), NumReplicas)
-			break
-		}
-
 		//
 		// With rvMap and MVsPerRVForNewMV and NumReplicas, we cannot have more than maxMVsPossible usable MVs.
 		// Note that we are talking of online or degraded/syncing MVs. Offline MVs have all component RVs
 		// offline and they don't consume any RV slot, so they should be omitted from usable MVs.
 		//
 		// Q: Why do we need to limit numUsableMVs to maxMVsPossible?
-		//    IOW, why is the the above check "len(nodeToRvs) < NumReplicas" not sufficient.
-		// A: "len(nodeToRvs) < NumReplicas" check will try to create as many MVs as we can with the available
-		//    RVs, but it might create more than maxMVsPossible if some of the MVs have offline RVs (fixMV() would
-		//    have attempted to replace offline RVs for all degraded MVs but if joinMV() fails or any other error
-		//    we can have some component RVs as offline). We don't want to create more MVs leaving some MVs with
-		//    no replacement RVs available.
+		//    IOW, why is it not ok to create as many new MVs as we can till we have available RV slots.
+		// A: If we create as many new MVs as we can with the available RVs, we might end up creating more than
+		//    maxMVsPossible if some of the MVs have offline RVs (fixMV() would have attempted to replace offline
+		//    RVs for all degraded MVs but if joinMV() fails or any other error we can have some component RVs as
+		//    offline). We don't want to create more MVs leaving some MVs with no replacement RVs available.
 		//
-		maxMVsPossible := (len(rvMap) * MVsPerRVForNewMV) / NumReplicas
 		common.Assert(numUsableMVs <= maxMVsPossible, numUsableMVs, maxMVsPossible)
-
-		atomic.StoreInt64(&stats.Stats.CM.NewMV.MVsPerRV, int64(MVsPerRVForNewMV))
-		atomic.StoreInt64(&stats.Stats.CM.NewMV.NumReplicas, int64(NumReplicas))
-		atomic.StoreInt64(&stats.Stats.CM.NewMV.MaxMVsPossible, int64(maxMVsPossible))
-
 		if numUsableMVs == maxMVsPossible {
 			log.Debug("ClusterManager::updateMVList: numUsableMVs [%d] == maxMVsPossible [%d]",
 				numUsableMVs, maxMVsPossible)
 			break
 		}
 
-		// Shuffle the nodes to encourage random selection of component RVs.
-		var availableNodes []node
-		for _, n := range nodeToRvs {
-			availableNodes = append(availableNodes, n)
-
-		}
-
-		rand.Shuffle(len(availableNodes), func(i, j int) {
-			availableNodes[i], availableNodes[j] = availableNodes[j], availableNodes[i]
-		})
-
 		// New MV's name, starting from index 0.
 		mvName := fmt.Sprintf("mv%d", len(existingMVMap))
 
-		//
-		// Take the first NumReplicas nodes.
-		// Since only those nodes are present in nodeToRvs/availableNodes which have at least one RV
-		// slot available, we are guaranteed to get NumReplicas component RVs from selectedNodes.
-		// Simply go over the selectedNodes and pick the first available RV from each selected node.
-		//
-		selectedNodes := availableNodes[:NumReplicas]
-		common.Assert(len(selectedNodes) == NumReplicas)
+		excludeNodes := make(map[string]struct{})
+		excludeFaultDomains := make(map[string]struct{})
+		excludeUpdateDomains := make(map[string]struct{})
+		firstFreeIdx := 0
+		firstFreeIdxLocked := false
 
-		for _, n := range selectedNodes {
-			// Only nodes with at least one RV will be present in selectedNodes.
-			common.Assert(len(n.rvs) > 0)
+		// Iterate over the availableRVsList and pick the first suitable RV.
+		for _, rv := range availableRVsList {
+			usedSlots := MVsPerRVForFixMV - rv.slots
+			if rv.slots > MVsPerRVForFixMV {
+				common.Assert(false, rv.slots, MVsPerRVForFixMV, MVsPerRVForNewMV)
+				usedSlots = MVsPerRVForFixMV
+			}
 
-			for _, r := range n.rvs {
-				common.Assert(n.nodeId == rvMap[r.rvName].NodeId, n.nodeId, rvMap[r.rvName].NodeId)
-
+			// This check is the fastest, so we do it first.
+			if usedSlots >= MVsPerRVForNewMV {
 				//
-				// At the beginning of this iteration we sanitized nodeToRvs map to contain
-				// only those nodes (and only those RVs) which can contribute at least one RV,
-				// so there shouldn't be an RV with slot count 0.
+				// new-mv workflow cannot use an RV more than MVsPerRVForNewMV times.
+				// Note that the slots may not be 0 as we initialize slots to MVsPerRVForFixMV, which is
+				// greater than MVsPerRVForNewMV.
 				//
-				common.Assert(r.slots > 0, fmt.Sprintf("RV %s has no slots left", r.rvName))
-
-				if _, exists := existingMVMap[mvName]; !exists {
-					// First component RV being added to mvName.
-					rvwithstate := make(map[string]dcache.StateEnum)
-					rvwithstate[r.rvName] = dcache.StateOnline
-					// Create a new MV.
-					existingMVMap[mvName] = dcache.MirroredVolume{
-						RVs:   rvwithstate,
-						State: dcache.StateOnline,
-					}
-				} else {
-					// Subsequent component RVs being added to mvName.
-					existingMVMap[mvName].RVs[r.rvName] = dcache.StateOnline
-					common.Assert(len(existingMVMap[mvName].RVs) <= NumReplicas)
+				// TODO: See if removing "full" RVs from availableRVsList is good for performance with lot of RVs.
+				//
+				if !firstFreeIdxLocked {
+					firstFreeIdx++
 				}
+				continue
+			}
 
-				//
-				// We decrease the slot count for the RV in nodeToRvs, only after a successful
-				// joinMV() call. Note that it's ok to defer slot count adjustment as one RV will
-				// be used not more than once as component RV for an MV.
-				//
+			firstFreeIdxLocked = true
 
+			_, ok := excludeNodes[rv.nodeId]
+			if ok {
+				// More than one component RVs for an MV cannot come from the same node.
+				continue
+			}
+
+			if rv.fdId != "" {
+				_, ok = excludeFaultDomains[rv.fdId]
+				if ok {
+					// More than one component RVs for an MV cannot come from the same fault domain.
+					continue
+				}
+			}
+
+			if rv.udId != "" {
+				_, ok = excludeUpdateDomains[rv.udId]
+				if ok {
+					// More than one component RVs for an MV cannot come from the same update domain.
+					continue
+				}
+			}
+
+			if _, exists := existingMVMap[mvName]; !exists {
+				// First component RV being added to mvName.
+				rvwithstate := make(map[string]dcache.StateEnum)
+				rvwithstate[rv.rvName] = dcache.StateOnline
+				// Create a new MV.
+				existingMVMap[mvName] = dcache.MirroredVolume{
+					RVs:   rvwithstate,
+					State: dcache.StateOnline,
+				}
+			} else {
+				// Subsequent component RVs being added to mvName.
+				existingMVMap[mvName].RVs[rv.rvName] = dcache.StateOnline
+				common.Assert(len(existingMVMap[mvName].RVs) <= NumReplicas)
+			}
+
+			//
+			// We decrease the slot count for the RV in availableRVsMap, only after a successful
+			// joinMV() call. Note that it's ok to defer slot count adjustment as one RV will
+			// be used not more than once as component RV for an MV.
+			//
+
+			// New MV ready.
+			if len(existingMVMap[mvName].RVs) == NumReplicas {
 				break
 			}
+
+			//
+			// Subsequent component RVs for this MV cannot be from the same node or fault domain.
+			//
+			excludeNodes[rvMap[rv.rvName].NodeId] = struct{}{}
+			if rvMap[rv.rvName].FDId != "" {
+				excludeFaultDomains[rvMap[rv.rvName].FDId] = struct{}{}
+			}
+			if rvMap[rv.rvName].UDId != "" {
+				excludeUpdateDomains[rvMap[rv.rvName].UDId] = struct{}{}
+			}
+		}
+
+		//
+		// If we could not find enough component RVs for this MV, we won't find for any other MV, so stop
+		// attempting to create more new MVs.
+		//
+		if len(existingMVMap[mvName].RVs) != NumReplicas {
+			log.Debug("ClusterManager::updateMVList: Could not place %s, numUsableMVs: %d, maxMVsPossible: %d",
+				mvName, numUsableMVs, maxMVsPossible)
+			// Delete the incomplete MV from the existingMVMap.
+			delete(existingMVMap, mvName)
+			break
+		}
+
+		if firstFreeIdx > 0 {
+			// Chop off unusable RVs from the beginning, to avoid wasted iterations for subsequent MVs.
+			availableRVsList = availableRVsList[firstFreeIdx:]
+
+			log.Debug("ClusterManager::updateMVList: %d (of %d) new MVs created, initial %d RVs are full, removing from availableRVsList, %d RVs remaining",
+				numUsableMVs, maxMVsPossible, firstFreeIdx, len(availableRVsList))
 		}
 
 		common.Assert(len(existingMVMap[mvName].RVs) == NumReplicas,
@@ -2737,7 +2988,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// reserveBytes is 0 for a new-mv workflow.
 		//
 		// Iff joinMV() is successful, consume one slot for each component RV, else if joinMV() fails
-		// delete the failed RV from nodeToRvs to prevent this RV from being picked again and failing.
+		// delete the failed RV from availableRVsMap to prevent this RV from being picked again and failing.
 		// Also we need to remove mv from existingMVMap.
 		//
 		failedRVs, err := cmi.joinMV(mvName, existingMVMap[mvName])
@@ -2768,11 +3019,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			log.Err("ClusterManager::updateMVList: Error joining RV(s) %v with MV %s: %v",
 				failedRVs, mvName, err)
 
-			deleteRVsFromNode(failedRVs)
+			deleteRVsFromAvailableMap(failedRVs)
 			// Delete the MV from the existingMVMap.
 			delete(existingMVMap, mvName)
 		}
 	}
+
+	// Call getAvailableRVsList() to get numAvailableNodes for the stats.
+	getAvailableRVsList(true /* newMV */)
+
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.AvailableNodes, int64(numAvailableNodes))
 
 	// Total time taken by updateMVList().
 	duration := stats.Duration(time.Since(start))
@@ -2811,7 +3067,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		}
 	}
 
-	log.Debug("ClusterManager::updateMVList: existing MV map after phase#3: %v", existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#3 (%d RVs, %d MVs) %+v",
+		len(rvMap), len(existingMVMap), existingMVMap)
 }
 
 // Given an MV, send JoinMV or UpdateMV RPC to all its component RVs. It fails if any of the RV fails the call.
