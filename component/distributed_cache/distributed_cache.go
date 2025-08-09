@@ -308,9 +308,18 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	rvIDToPath := make(map[string]string, len(dc.cfg.CacheDirs))
 
 	for index, path := range dc.cfg.CacheDirs {
-		rvId, err := getBlockDeviceUUId(path)
-		if err != nil {
-			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+		var rvId string
+		var err error
+
+		//
+		// When faking scale test we have huge number of CacheDirs, and this takes time, and we don't need
+		// this, so avoid.
+		//
+		if !common.IsFakingScaleTest() {
+			rvId, err = getBlockDeviceUUId(path)
+			if err != nil {
+				return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+			}
 		}
 
 		if common.IsDebugBuild() {
@@ -322,6 +331,8 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 				rvId = gouuid.NewSHA1(gouuid.NameSpaceDNS, []byte(uuidVal+path)).String()
 			}
 		}
+
+		common.Assert(common.IsValidUUID(rvId), rvId)
 
 		//
 		// No two RVs exported by us must have the same RVid.
