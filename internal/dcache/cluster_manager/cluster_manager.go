@@ -818,132 +818,123 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 	}
 
 	//
-	// We run this loop twice as the first iteration may take non-trivial time as it may delete lot of
-	// MVs, and in that time some other MV may have been written to and the component RV marked inband-offline.
-	// We don't want to leak that.
+	// Fetch clustermap and update the local copy.
+	// Once this succeeds, clustermap APIs can be used for querying clustermap.
 	//
-	// TODO: There is still a small window where we may not delete an MV directory for some MV.
+	_, _, err := cmi.fetchAndUpdateLocalClusterMap()
+	if err != nil {
+		//
+		// fetchAndUpdateLocalClusterMap() returns the raw error syscall.ENOENT when it cannot find
+		// the clustermap in the metadata store.
+		//
+		isClusterMapExists := (err != syscall.ENOENT)
+
+		//
+		// This implies some other error in fetchAndUpdateLocalClusterMap(), maybe clustermap
+		// unmarshal failed, or some other error. In any case we cannot query clustermap and hence not
+		// safe to proceed.
+		//
+		if isClusterMapExists {
+			common.Assert(false, err)
+			return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to query clustermap: %v", err)
+		}
+
+		//
+		// clustermap is not present, we can safely cleanup all our RVs
+		//
+		common.Assert(failedRV.Load() == 0, failedRV.Load())
+		return false, cleanupAllMyOfflineRVs()
+	}
+
 	//
-	for i := 0; i < 2; i++ {
-		//
-		// Fetch clustermap and update the local copy.
-		// Once this succeeds, clustermap APIs can be used for querying clustermap.
-		//
-		_, _, err := cmi.fetchAndUpdateLocalClusterMap()
-		if err != nil {
-			//
-			// fetchAndUpdateLocalClusterMap() returns the raw error syscall.ENOENT when it cannot find
-			// the clustermap in the metadata store.
-			//
-			isClusterMapExists := (err != syscall.ENOENT)
+	// For all of our RVs that we will be adding to the cluster, ensure:
+	// - No other node has an RV with the same RVid.
+	// - There isn't a new RV being added which has RVid matching one of our existing RVs but a different
+	//   cache path. If cache path and RVid are same for an existing and new RV, it's the same RV being
+	//   added, this is the common case of a node rejoining the cluster w/o any change in RVs. updateRVList()
+	//   will let this RV continue to be used as the existing RV name.
+	// The bottomline is that we don't want two RVs with same RVid.
+	//
+	// Note that this only checks for duplicates against the RVs already present in the clustermap,
+	// it cannot check for duplicates against RVs which are being added by multiple nodes that are
+	// starting up at the same time. Those are checked in collectHBForGivenNodeIds().
+	// Also some other node may add a duplicate RV into the clustermap after the following check,
+	// hence we need to later check for duplicates after locking the clustermap.
+	//
+	allRVsFromClustermap := cm.GetAllRVs()
+	for _, myRV := range myRVs {
+		common.Assert(myRV.NodeId == cmi.myNodeId, cmi.myNodeId, myRV)
 
-			//
-			// This implies some other error in fetchAndUpdateLocalClusterMap(), maybe clustermap
-			// unmarshal failed, or some other error. In any case we cannot query clustermap and hence not
-			// safe to proceed.
-			//
-			if isClusterMapExists {
-				common.Assert(false, err)
-				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to query clustermap: %v", err)
+		for _, cmRV := range allRVsFromClustermap {
+			if myRV.RvId != cmRV.RvId {
+				continue
 			}
 
 			//
-			// clustermap is not present, we can safely cleanup all our RVs
+			// The 2nd check prevents re-adding an existing RV with a different cache-dir.
+			// If the user needs to do this, they will need to re-format the drive or change the
+			// filesystem GUID.
 			//
-			common.Assert(failedRV.Load() == 0, failedRV.Load())
-			return false, cleanupAllMyOfflineRVs()
-		}
-
-		//
-		// For all of our RVs that we will be adding to the cluster, ensure:
-		// - No other node has an RV with the same RVid.
-		// - There isn't a new RV being added which has RVid matching one of our existing RVs but a different
-		//   cache path. If cache path and RVid are same for an existing and new RV, it's the same RV being
-		//   added, this is the common case of a node rejoining the cluster w/o any change in RVs. updateRVList()
-		//   will let this RV continue to be used as the existing RV name.
-		// The bottomline is that we don't want two RVs with same RVid.
-		//
-		// Note that this only checks for duplicates against the RVs already present in the clustermap,
-		// it cannot check for duplicates against RVs which are being added by multiple nodes that are
-		// starting up at the same time. Those are checked in collectHBForGivenNodeIds().
-		// Also some other node may add a duplicate RV into the clustermap after the following check,
-		// hence we need to later check for duplicates after locking the clustermap.
-		//
-		allRVsFromClustermap := cm.GetAllRVs()
-		for _, myRV := range myRVs {
-			common.Assert(myRV.NodeId == cmi.myNodeId, cmi.myNodeId, myRV)
-
-			for _, cmRV := range allRVsFromClustermap {
-				if myRV.RvId != cmRV.RvId {
-					continue
-				}
-
-				//
-				// The 2nd check prevents re-adding an existing RV with a different cache-dir.
-				// If the user needs to do this, they will need to re-format the drive or change the
-				// filesystem GUID.
-				//
-				if myRV.NodeId != cmRV.NodeId || myRV.LocalCachePath != cmRV.LocalCachePath {
-					return false, fmt.Errorf(
-						"ClusterManager::safeCleanupMyRVs: Duplicate RVid %s detected, cache-dir %s being added by this node %s has the same RVid as existing cache-dir %s from node %s",
-						myRV.RvId, myRV.LocalCachePath, myRV.NodeId, cmRV.LocalCachePath, cmRV.NodeId)
-				}
+			if myRV.NodeId != cmRV.NodeId || myRV.LocalCachePath != cmRV.LocalCachePath {
+				return false, fmt.Errorf(
+					"ClusterManager::safeCleanupMyRVs: Duplicate RVid %s detected, cache-dir %s being added by this node %s has the same RVid as existing cache-dir %s from node %s",
+					myRV.RvId, myRV.LocalCachePath, myRV.NodeId, cmRV.LocalCachePath, cmRV.NodeId)
 			}
 		}
+	}
 
-		//
-		// Check status of all our RVs in the clustermap.
-		//
-		myRVsFromClustermap := cm.GetMyRVs()
+	//
+	// Check status of all our RVs in the clustermap.
+	//
+	myRVsFromClustermap := cm.GetMyRVs()
 
-		if len(myRVsFromClustermap) > 0 {
-			log.Info("ClusterManager::safeCleanupMyRVs: Got %d of my RV(s) from clustermap %+v",
-				len(myRVsFromClustermap), myRVsFromClustermap)
-		} else {
-			log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap")
-		}
+	if len(myRVsFromClustermap) > 0 {
+		log.Info("ClusterManager::safeCleanupMyRVs: Got %d of my RV(s) from clustermap %+v",
+			len(myRVsFromClustermap), myRVsFromClustermap)
+	} else {
+		log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap")
+	}
 
-		//
-		// Cleanup non-active MV directories for all myRVs.
-		//
-		for _, rv := range myRVs {
-			log.Info("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
+	//
+	// Cleanup non-active MV directories for all myRVs.
+	//
+	for _, rv := range myRVs {
+		log.Info("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
 
-			// Active MVs that we should not delete.
-			var doNotDeleteMVs map[string]struct{}
+		// Active MVs that we should not delete.
+		var doNotDeleteMVs map[string]struct{}
 
-			// Check online status for this RV.
-			for rvName, rvInfo := range myRVsFromClustermap {
-				log.Info("ClusterManager::safeCleanupMyRVs: My RV %s has id %s in clustermap",
-					rvName, rvInfo.RvId)
+		// Check online status for this RV.
+		for rvName, rvInfo := range myRVsFromClustermap {
+			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s has id %s in clustermap",
+				rvName, rvInfo.RvId)
 
-				if rv.RvId != rvInfo.RvId {
-					continue
-				}
-
-				doNotDeleteMVs = cm.GetActiveMVsForRV(rvName)
-
-				if len(doNotDeleteMVs) > 0 {
-					log.Debug("ClusterManager::safeCleanupMyRVs: %s has %d active MVs %+v, will not delete them",
-						rvName, len(doNotDeleteMVs), doNotDeleteMVs)
-				}
-
-				break
+			if rv.RvId != rvInfo.RvId {
+				continue
 			}
 
-			// Cleanup stale MVs from this RV.
-			wg.Add(1)
-			go func(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) {
-				defer wg.Done()
+			doNotDeleteMVs = cm.GetActiveMVsForRV(rvName)
 
-				err := cleanupRV(rv, doNotDeleteMVs)
-				if err != nil {
-					log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
-						rv.LocalCachePath, err)
-					failedRV.Add(1)
-				}
-			}(rv, doNotDeleteMVs)
+			if len(doNotDeleteMVs) > 0 {
+				log.Debug("ClusterManager::safeCleanupMyRVs: %s has %d active MVs %+v, will not delete them",
+					rvName, len(doNotDeleteMVs), doNotDeleteMVs)
+			}
+
+			break
 		}
+
+		// Cleanup stale MVs from this RV.
+		wg.Add(1)
+		go func(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) {
+			defer wg.Done()
+
+			err := cleanupRV(rv, doNotDeleteMVs)
+			if err != nil {
+				log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
+					rv.LocalCachePath, err)
+				failedRV.Add(1)
+			}
+		}(rv, doNotDeleteMVs)
 	}
 
 	// Wait for all RVs to complete cleanup.
