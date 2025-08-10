@@ -748,6 +748,12 @@ func IsFuseHiddenFile(filePath string) bool {
 
 // Returns true if we are faking scale test.
 // This is used to test scale scenarios by allowing multiple RVs from the same local filesystem.
+var isFakeScaleTest bool
+
 func IsFakingScaleTest() bool {
-	return (os.Getenv("BLOBFUSE_FAKE_SCALE_TEST") == "1")
+	return isFakeScaleTest
+}
+
+func init() {
+	isFakeScaleTest = (os.Getenv("BLOBFUSE_FAKE_SCALE_TEST") == "1")
 }
