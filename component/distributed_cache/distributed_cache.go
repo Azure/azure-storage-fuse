@@ -138,8 +138,8 @@ const (
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
 	dcacheDirContToken               = "__DCDIRENT__"
-	defaultIgnoreFD                  = true // By default ignore VM Fault Domain for data placement decisions.
-	defaultIgnoreUD                  = true // By default ignore VM Update Domain for data placement decisions.
+	defaultIgnoreFD                  = true // By default ignore VM Fault Domain for MV placement decisions.
+	defaultIgnoreUD                  = true // By default ignore VM Update Domain for MV placement decisions.
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -274,12 +274,12 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	faultDomain, updateDomain, err := queryVMFaultAndUpdateDomain()
 	if err != nil {
 		if !dc.cfg.IgnoreFD || !dc.cfg.IgnoreUD {
-			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to query VM's fault and update domain: %v]", err))
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to query VM's fault and update domain and user wants MV placement to consider fault and/or update domain: %v]", err))
 		} else {
 			//
 			// Ignore error querying VM's fault and update domain if IgnoreFD or IgnoreUD both are set to true.
 			// This avoids startup failure in case the query fails for whatever reason, as user doesn't care about
-			// fault and update domains for data placement decisions.
+			// fault and update domains for MV placement decisions.
 			//
 			log.Warn("DistributedCache::Start : Failed to query VM's fault and update domain, but IgnoreFD and IgnoreUD are both set to true, proceeding with unknown domains: %v", err)
 		}
@@ -287,9 +287,9 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		log.Debug("DistributedCache::Start : FaultDomain: %d, UpdateDomain: %d", faultDomain, updateDomain)
 	}
 
-	// Empty fault/update domain conveys "ignore fault/update domain for data placement" to the data placer.
+	// Empty fault/update domain conveys "ignore fault/update domain for MV placement" to the data placer.
 	if dc.cfg.IgnoreFD {
-		log.Debug("DistributedCache::Start : IgnoreFD=true, forcing FaultDomain to -1 (unknown), placer will ignore FD for data placement decisions")
+		log.Debug("DistributedCache::Start : IgnoreFD=true, forcing FaultDomain to -1 (unknown), placer will ignore FD for MV placement decisions")
 		faultDomain = -1
 	} else if faultDomain == -1 {
 		// If IgnoreFD is false we can't proceed with empty fault domain.
@@ -297,7 +297,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	}
 
 	if dc.cfg.IgnoreUD {
-		log.Debug("DistributedCache::Start : IgnoreUD=true, forcing UpdateDomain to -1 (unknown), placer will ignore UD for data placement decisions")
+		log.Debug("DistributedCache::Start : IgnoreUD=true, forcing UpdateDomain to -1 (unknown), placer will ignore UD for MV placement decisions")
 		updateDomain = -1
 	} else if updateDomain == -1 {
 		// If IgnoreUD is false we can't proceed with empty update domain.
@@ -1451,10 +1451,10 @@ func init() {
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
 
-	ignoreFD := config.AddBoolFlag("ignore-fd", defaultIgnoreFD, "Ignore VM fault domain for data placement decisions")
+	ignoreFD := config.AddBoolFlag("ignore-fd", defaultIgnoreFD, "Ignore VM fault domain for MV placement decisions")
 	config.BindPFlag(compName+".ignore-fd", ignoreFD)
 
-	ignoreUD := config.AddBoolFlag("ignore-ud", defaultIgnoreUD, "Ignore VM update domain for data placement decisions")
+	ignoreUD := config.AddBoolFlag("ignore-ud", defaultIgnoreUD, "Ignore VM update domain for MV placement decisions")
 	config.BindPFlag(compName+".ignore-ud", ignoreUD)
 
 	readIOMode := config.AddStringFlag("read-io-mode", rpc.DirectIO, "IO mode for reading chunk files (direct/buffered)")
