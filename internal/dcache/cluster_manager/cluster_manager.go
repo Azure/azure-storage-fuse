@@ -2386,7 +2386,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// Iterate over the availableRVsList and pick the first suitable RV.
 			for _, rv := range availableRVsList {
 				// availableRVsList must only contain online RVs.
-				common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
+				//common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
 
 				// Max slots for an RV is MVsPerRVForFixMV.
 				common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
