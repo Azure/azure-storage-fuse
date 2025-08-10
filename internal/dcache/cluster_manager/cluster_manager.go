@@ -377,25 +377,32 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 				//
 				// Get the next batch of component RV state updates.
 				// Two updates to the same mv/rv will not be in the same batch.
+				// Keep processing the batches until there are no more updates to process, we do not want to
+				// unnecessarily delay the updates.
 				//
-				msgBatch := cmi.getNextComponentRVUpdateBatch()
-				if len(msgBatch) > 0 {
-					err := cmi.batchUpdateComponentRVState(msgBatch)
-					if err != nil {
-						log.Err("ClusterManager::start: batchUpdateComponentRVState failed: %v", err)
-					}
-
-					//
-					// Status of the combined update is the status of each individual update.
-					// Note that it's only for the updates which were actually included in the global update.
-					// Some of the individual updates which were not included in the global update, would
-					// be already completed individually, skip those.
-					//
-					for _, msg := range msgBatch {
-						if msg.Err != nil {
-							msg.Err <- err
-							close(msg.Err)
+				for {
+					msgBatch := cmi.getNextComponentRVUpdateBatch()
+					if len(msgBatch) > 0 {
+						err := cmi.batchUpdateComponentRVState(msgBatch)
+						if err != nil {
+							log.Err("ClusterManager::start: batchUpdateComponentRVState failed: %v", err)
 						}
+
+						//
+						// Status of the combined update is the status of each individual update.
+						// Note that it's only for the updates which were actually included in the global update.
+						// Some of the individual updates which were not included in the global update, would
+						// be already completed individually, skip those.
+						//
+						for _, msg := range msgBatch {
+							if msg.Err != nil {
+								msg.Err <- err
+								close(msg.Err)
+							}
+						}
+					} else {
+						log.Debug("ClusterManager::start: batchUpdateComponentRVState: No updates to process")
+						break
 					}
 				}
 			}
@@ -4190,7 +4197,26 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			// and the RV passed must be a valid component RV for that MV.
 			currentState, found := clusterMapMV.RVs[rvName]
 			if !found {
-				common.Assert(false, *msg)
+				//
+				// There's one legitimate case where this can happen:
+				// A prior message in the batch updated the RV state to inband-offline, which caused the
+				// fix-mv workflow to remove the RV from the MV, and this latter message got a chance to be
+				// processed only after the clusterMap update.
+				// The fact that the RV is not present in the MV means that the prior message was able to
+				// successfully change the RV state to inband-offline, and hence this dup message must be
+				// considered as successfully completed.
+				//
+				if rvNewState == dcache.StateInbandOffline {
+					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s (%s -> %s) RV no longer present in MV: %+v",
+						rvName, mvName, currentState, rvNewState, clusterMapMV.RVs)
+					msg.Err <- nil
+					close(msg.Err)
+					msg.Err = nil
+					ignoredCount++
+					continue
+				}
+
+				common.Assert(false, *msg, clusterMapMV)
 				msg.Err <- fmt.Errorf("RV %s/%s not present in clustermap MV %+v", rvName, mvName, clusterMapMV)
 				close(msg.Err)
 				msg.Err = nil

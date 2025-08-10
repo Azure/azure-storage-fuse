@@ -33,6 +33,10 @@
 
 package dcache
 
+import (
+	"time"
+)
+
 type MirroredVolume struct {
 	State StateEnum            `json:"state"`
 	RVs   map[string]StateEnum `json:"rvs"`
@@ -160,5 +164,6 @@ type ComponentRVUpdateMessage struct {
 	MvName     string
 	RvName     string
 	RvNewState StateEnum
+	QueuedAt   time.Time
 	Err        chan error
 }

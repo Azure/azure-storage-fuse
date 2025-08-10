@@ -292,15 +292,35 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		startTime := time.Now()
 		defer func() {
 			timeTaken := time.Since(startTime).Microseconds()
-			log.Debug("ClusterMap::UpdateComponentRVState: request took %d microseconds: %s/%s -> %v",
+			log.Debug("ClusterMap::UpdateComponentRVState: request took %d microseconds: %s/%s -> %s",
 				timeTaken, rvName, mvName, rvNewState)
 		}()
 	}
+
+	//
+	// Check if RV is a valid component RV for the given MV.
+	// It's not that we don't trust the caller, but we need this to safely handle dup updates which get processed
+	// some time apart and the MV component RVs change between updates, e.g., if the update marks an RV as inband-offline
+	// and the fix-mv workflow runs before the second update, it will remove the RV from the MV.
+	// We should not fail the second update.
+	//
+	rvs := GetRVs(mvName)
+	rvCurState, ok := rvs[rvName]
+	if !ok {
+		err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v",
+			rvName, mvName, rvNewState, rvs)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	log.Debug("ClusterMap::UpdateComponentRVState: %s/%s (%s -> %s)", rvName, mvName, rvCurState, rvNewState)
 
 	updateRVMessage := dcache.ComponentRVUpdateMessage{
 		MvName:     mvName,
 		RvName:     rvName,
 		RvNewState: rvNewState,
+		QueuedAt:   time.Now(),
 		Err:        make(chan error),
 	}
 	common.Assert(updateComponentRVStateChannel != nil)
@@ -315,7 +335,25 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 
 	common.Assert(updateRVMessage.Err != nil)
 
-	return <-updateRVMessage.Err
+	err := <-updateRVMessage.Err
+
+	if err != nil {
+		log.Err("ClusterMap::UpdateComponentRVState: %s/%s (%s -> %s) failed after %s: %v",
+			rvName, mvName, rvCurState, rvNewState, time.Since(updateRVMessage.QueuedAt), err)
+	} else {
+		log.Debug("ClusterMap::UpdateComponentRVState: %s/%s (%s -> %s) succeeded after %s",
+			rvName, mvName, rvCurState, rvNewState, time.Since(updateRVMessage.QueuedAt))
+	}
+
+	//
+	// Let's catch updates that take more than 30 seconds to complete.
+	// We would like to know why updates are taking so long, as updates blocked for long can cause other
+	// issues.
+	//
+	common.Assert(time.Since(updateRVMessage.QueuedAt) < 30*time.Second,
+		updateRVMessage, time.Since(updateRVMessage.QueuedAt))
+
+	return err
 }
 
 func GetComponentRVStateChannel() chan dcache.ComponentRVUpdateMessage {
