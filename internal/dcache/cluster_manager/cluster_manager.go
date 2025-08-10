@@ -1510,6 +1510,38 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	nodeCount := -1
 
 	start := time.Now()
+
+	//
+	// With lot of RVs and MVs updateStorageClusterMapIfRequired() may take a long time to complete.
+	// We need to put a time bound and ensure it completes before that, else it may cause stability
+	// issues with other nodes trying to take ownership of the clusterMap and that can keep ping ponging
+	// w/o any progress being made.
+	// Note that it's ok if we cannot finish all the pending work (primarily fixing degraded MVs) in one
+	// updateStorageClusterMapIfRequired() call, as long as we make forward progress, cluster will eventually
+	// heal itself, after multiple iterations of updateStorageClusterMapIfRequired().
+	// We don't want to do very less work as that would mean more MVs will remain degraded for longer time
+	// risking data loss.
+	//
+	common.Assert(cmi.config.ClustermapEpoch >= 30, cmi.config.ClustermapEpoch)
+	// Must complete 10 secs before the next epoch starts.
+	maxTimeMargin := time.Duration(cmi.config.ClustermapEpoch-10) * time.Second
+	// Not less than 35 seconds (we want to leave at least 20 secs for updateMVList()).
+	minTimeMargin := 35 * time.Second
+	//
+	// 1 min is a good default value.
+	// TODO: Make sure this is enough for the largest cluster supported.
+	//
+	timeMargin := 60 * time.Second
+	if timeMargin > maxTimeMargin {
+		timeMargin = maxTimeMargin
+	}
+	if timeMargin < minTimeMargin {
+		timeMargin = minTimeMargin
+	}
+
+	// updateStorageClusterMapIfRequired() MUST complete before this time.
+	completeBy := start.Add(timeMargin)
+
 	for {
 		//
 		// Fetch and update local clustermap as some of the functions we call later down will query the local clustermap.
@@ -1684,6 +1716,10 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		if !skipUpdateRVList {
 			log.Debug("ClusterManager::updateStorageClusterMapIfRequired: updating RV list")
 
+			//
+			// TODO: Shall we pass completeBy to updateRVList() also.
+			//       Since it doesn't take much time, it should be ok, but do keep an key eye on it.
+			//
 			changed, err := cmi.updateRVList(clusterMap.RVMap, false /* initialHB */)
 			if err != nil {
 				err = fmt.Errorf("failed to reconcile RV mapping: %v", err)
@@ -1755,7 +1791,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		//         the changed RV list. That node won't observe any changes in the RV list, but it still must
 		//         run updateMVList() to ensure that all the MVs are fixed and their state is correct.
 		//
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, true /* runFixMvNewMv */)
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, completeBy, true /* runFixMvNewMv */)
 
 		//
 		// If we have discovered enough nodes (more than the MinNodes config value), clear the clustermap
@@ -1899,7 +1935,13 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //       at any point.
 
 func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
-	existingMVMap map[string]dcache.MirroredVolume, runFixMvNewMv bool) {
+	existingMVMap map[string]dcache.MirroredVolume, completeBy time.Time, runFixMvNewMv bool) {
+
+	//
+	// updateMVList() must have at least 20 secs to run.
+	// See updateStorageClusterMapIfRequired() for details.
+	//
+	common.Assert(completeBy.Sub(time.Now()) > 20*time.Second, completeBy, time.Now())
 
 	start := time.Now()
 
@@ -1944,8 +1986,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// a new MV. This is the new-mv workflow.
 	//
 
-	log.Debug("ClusterManager::updateMVList: Updating current MV list according to the latest RV list (%d RVs, %d MVs)",
-		len(rvMap), len(existingMVMap))
+	log.Debug("ClusterManager::updateMVList: Updating current MV list according to the latest RV list (%d RVs, %d MVs) [%s to run]",
+		len(rvMap), len(existingMVMap), completeBy.Sub(time.Now()))
 
 	//
 	// Represents an RV with all info needed by the MV placement logic.
@@ -2017,6 +2059,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// the front so they are picked first for placing MVs, thus resulting in a more balanced distribution of MVs
 	// across the RVs over time as nodes go down and come up.
 	//
+	// Note: This is costly, call it less often, judiciously.
 	// TODO: Sort also based on free space available on the RVs, so that MV placer favors RVs with more free space.
 	//
 	getAvailableRVsList := func(newMV bool) {
@@ -2383,11 +2426,14 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			log.Debug("ClusterManager::fixMV: Fixing component RV %s/%s (state: %s)",
 				rvName, mvName, mv.RVs[rvName])
 
+			//
 			// Iterate over the availableRVsList and pick the first suitable RV.
+			//
+			// Note: Since the number of RVs can be very large (100K+) we need to be careful that this loop
+			//       should run very very fast, as we need to fix all the degraded MVs in a short time.
+			//       Avoid any string key'ed map lookups, as they are slow, and any thing else that's slow.
+			//
 			for _, rv := range availableRVsList {
-				// availableRVsList must only contain online RVs.
-				//common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
-
 				// Max slots for an RV is MVsPerRVForFixMV.
 				common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
 
@@ -2444,6 +2490,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				// RPC if the available space is not enough.
 				//
 				newRvName := rv.rvName
+
+				// Only online RVs are present in availableRVsList.
+				common.Assert(rvMap[newRvName].State == dcache.StateOnline, newRvName, rvMap[newRvName].State)
 
 				//
 				// Do not pick another offline component RV as replacement, else mv.RVs[] will have fewer
@@ -2727,8 +2776,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
 	//       UpdateMV will fail.
 	//
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs) %+v",
-		runFixMvNewMv, len(rvMap), len(existingMVMap), existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs), [%s to run] %+v",
+		runFixMvNewMv, len(rvMap), len(existingMVMap), completeBy.Sub(time.Now()), existingMVMap)
 
 	//
 	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be generated, so we run
@@ -2782,6 +2831,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	getAvailableRVsList(false /* newMV */)
 
 	numUsableMVs := 0
+	mvsProcessed := 0
 
 	for mvName, mv := range existingMVMap {
 		if mv.State != dcache.StateOffline {
@@ -2792,11 +2842,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			continue
 		}
 
-		start := time.Now()
+		fixMVStart := time.Now()
 
 		fixMV(mvName, mv)
 
-		duration := stats.Duration(time.Since(start))
+		mvsProcessed++
+
+		duration := stats.Duration(time.Since(fixMVStart))
 		atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.Calls), 1)
 		atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.CallsCumulative), 1)
 		atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.TotalTime), int64(duration))
@@ -2806,10 +2858,22 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		}
 		stats.Stats.CM.FixMV.MaxTime =
 			max(stats.Stats.CM.FixMV.MaxTime, duration)
+
+		//
+		// If we have processed more than 100 MVs, check if we are running out of time.
+		// Min 100 degraded MVs we must fix for making any decent progress.
+		//
+		if mvsProcessed > 100 {
+			if time.Now().After(completeBy) {
+				log.Warn("ClusterManager::updateMVList: Prematurely exiting fix-mv after processing %d degraded MVs [%s]",
+					mvsProcessed, completeBy)
+				break
+			}
+		}
 	}
 
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#2 (%d RVs, %d MVs) %+v",
-		len(rvMap), len(existingMVMap), existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#2 (%d RVs, %d MVs) [%s to run] %+v",
+		len(rvMap), len(existingMVMap), completeBy.Sub(time.Now()), existingMVMap)
 
 	//
 	// Phase 3:
@@ -2874,7 +2938,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		firstFreeIdx := 0
 		firstFreeIdxLocked := false
 
+		//
 		// Iterate over the availableRVsList and pick the first suitable RV.
+		//
+		// Note: Since number of RVs can be very large (100K+) we need to be careful that this loop is very
+		//       efficient, avoid any string key'ed map lookups, as they are slow, and any thing else that's slow.
+		// Note: This is O(number of MVs created) as it creates each new MV sequentially. Each MV creation involves
+		//       sending JoinMV RPC to all component RVs (in parallel), which will be hard to get below 1ms, so for
+		//       20K MVs, it'll take ~20s to create all MVs, which should be fine.
+		//
 		for _, rv := range availableRVsList {
 			usedSlots := MVsPerRVForFixMV - rv.slots
 			if rv.slots > MVsPerRVForFixMV {
@@ -2950,12 +3022,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//
 			// Subsequent component RVs for this MV cannot be from the same node or fault domain.
 			//
-			excludeNodes[cm.UUIDToUniqueInt(rvMap[rv.rvName].NodeId)] = struct{}{}
-			if rvMap[rv.rvName].FDId != -1 {
-				excludeFaultDomains[rvMap[rv.rvName].FDId] = struct{}{}
+			excludeNodes[cm.UUIDToUniqueInt(rv.nodeId)] = struct{}{}
+			if rv.fdId != -1 {
+				excludeFaultDomains[rv.fdId] = struct{}{}
 			}
-			if rvMap[rv.rvName].UDId != -1 {
-				excludeUpdateDomains[rvMap[rv.rvName].UDId] = struct{}{}
+			if rv.udId != -1 {
+				excludeUpdateDomains[rv.udId] = struct{}{}
 			}
 		}
 
@@ -3022,6 +3094,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// Delete the MV from the existingMVMap.
 			delete(existingMVMap, mvName)
 		}
+
+		if time.Now().After(completeBy) {
+			log.Warn("ClusterManager::updateMVList: Prematurely exiting new-mv numUsableMVs: %d, maxMVsPossible: %d [%s]",
+				numUsableMVs, maxMVsPossible, completeBy)
+			break
+		}
 	}
 
 	// Call getAvailableRVsList() to get numAvailableNodes for the stats.
@@ -3066,8 +3144,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		}
 	}
 
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#3 (%d RVs, %d MVs) %+v",
-		len(rvMap), len(existingMVMap), existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#3 (%d RVs, %d MVs) [took %s] %+v",
+		len(rvMap), len(existingMVMap), time.Since(start), existingMVMap)
 }
 
 // Given an MV, send JoinMV or UpdateMV RPC to all its component RVs. It fails if any of the RV fails the call.
@@ -4222,12 +4300,12 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 		// it's batched and hence the calls are controlled, but it's ok to wait for the next clusterMap epoch.
 		// We can pass runFixMvNewMv as true for the inband rv offlining case as those will be fewer, but it's
 		// ok to wait for fix-mv till the next clusterMap epoch.
+		// With runFixMvNewMv=false updateMVList() should not take much time, but we give it a margin of 30 seconds
+		// to be safe (and also it demands min 20 secs).
 		//
 		// TODO: See if we want to pass runFixMvNewMv as true for the inband rv offlining case.
 		//
-		// TODO: Update clustermap only when the successCount > 0
-		//
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, false /* runFixMvNewMv */)
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, time.Now().Add(30*time.Second), false /* runFixMvNewMv */)
 
 		err = cmi.endClusterMapUpdate(clusterMap)
 		if err != nil {
