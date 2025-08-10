@@ -281,25 +281,25 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			// This avoids startup failure in case the query fails for whatever reason, as user doesn't care about
 			// fault and update domains for data placement decisions.
 			//
-			log.Warn("DistributedCache::Start : Failed to query VM's fault and update domain, but IgnoreFD and IgnoreUD are both set to true, proceeding with empty domains: %v", err)
+			log.Warn("DistributedCache::Start : Failed to query VM's fault and update domain, but IgnoreFD and IgnoreUD are both set to true, proceeding with unknown domains: %v", err)
 		}
 	} else {
-		log.Debug("DistributedCache::Start : FaultDomain: %s, UpdateDomain: %s", faultDomain, updateDomain)
+		log.Debug("DistributedCache::Start : FaultDomain: %d, UpdateDomain: %d", faultDomain, updateDomain)
 	}
 
 	// Empty fault/update domain conveys "ignore fault/update domain for data placement" to the data placer.
 	if dc.cfg.IgnoreFD {
-		log.Debug("DistributedCache::Start : IgnoreFD=true, forcing FaultDomain to empty string, placer will ignore FD for data placement decisions")
-		faultDomain = ""
-	} else if faultDomain == "" {
+		log.Debug("DistributedCache::Start : IgnoreFD=true, forcing FaultDomain to -1 (unknown), placer will ignore FD for data placement decisions")
+		faultDomain = -1
+	} else if faultDomain == -1 {
 		// If IgnoreFD is false we can't proceed with empty fault domain.
 		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [IgnoreFD=false and VM fault domain not known, cannot proceed]"))
 	}
 
 	if dc.cfg.IgnoreUD {
-		log.Debug("DistributedCache::Start : IgnoreUD=true, forcing UpdateDomain to empty string, placer will ignore UD for data placement decisions")
-		updateDomain = ""
-	} else if updateDomain == "" {
+		log.Debug("DistributedCache::Start : IgnoreUD=true, forcing UpdateDomain to -1 (unknown), placer will ignore UD for data placement decisions")
+		updateDomain = -1
+	} else if updateDomain == -1 {
 		// If IgnoreUD is false we can't proceed with empty update domain.
 		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [IgnoreUD=false and VM update domain not known, cannot proceed]"))
 	}

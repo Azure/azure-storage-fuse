@@ -42,8 +42,8 @@ type RawVolume struct {
 	NodeId         string    `json:"node_id"`
 	IPAddress      string    `json:"ipaddr"`
 	RvId           string    `json:"rvid"`
-	FDId           string    `json:"fdid"`
-	UDId           string    `json:"udid"`
+	FDId           int       `json:"fdid"`
+	UDId           int       `json:"udid"`
 	State          StateEnum `json:"state"`
 	TotalSpace     uint64    `json:"total_space"`
 	AvailableSpace uint64    `json:"available_space"`

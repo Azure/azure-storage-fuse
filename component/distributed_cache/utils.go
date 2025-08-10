@@ -326,7 +326,8 @@ func isDeletedDcacheFile(rawPath string) bool {
 }
 
 // Queries the Azure Instance Metadata Service to get the Fault Domain and Update Domain for this VM.
-func queryVMFaultAndUpdateDomain() (string /* faultDomain */, string /* updateDomain */, error) {
+// Returns -1 for Fault Domain or Update Domain if not available.
+func queryVMFaultAndUpdateDomain() (int /* faultDomain */, int /* updateDomain */, error) {
 	const imdsURL = "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01"
 
 	//
@@ -342,7 +343,7 @@ func queryVMFaultAndUpdateDomain() (string /* faultDomain */, string /* updateDo
 	if err != nil {
 		err = fmt.Errorf("error creating request to Azure Instance Metadata Service %s: %v",
 			imdsURL, err)
-		return "", "", err
+		return -1, -1, err
 	}
 
 	// Required header for Azure Instance Metadata Service.
@@ -352,7 +353,7 @@ func queryVMFaultAndUpdateDomain() (string /* faultDomain */, string /* updateDo
 	if err != nil {
 		err = fmt.Errorf("error making request to Azure Instance Metadata Service %s: %v",
 			imdsURL, err)
-		return "", "", err
+		return -1, -1, err
 	}
 	defer resp.Body.Close()
 
@@ -360,35 +361,36 @@ func queryVMFaultAndUpdateDomain() (string /* faultDomain */, string /* updateDo
 	if err != nil {
 		err = fmt.Errorf("error reading response from Azure Instance Metadata Service %s: %v",
 			imdsURL, err)
-		return "", "", err
+		return -1, -1, err
 	}
 
 	var metadata ComputeMetadata
 	if err := json.Unmarshal(body, &metadata); err != nil {
 		err = fmt.Errorf("error unmarshalling JSON response from Azure Instance Metadata Service %s: %v [%v]",
 			imdsURL, err, body)
-		return "", "", err
+		return -1, -1, err
 	}
 
 	//
 	// Not sure if FaultDomain and UpdateDomain are always returned by IMDS.
 	// Don't fail if they are empty, just return them as empty strings and let caller handle as per config setting.
 	//
+	fdId, udId := -1, -1
 	if metadata.FaultDomain != "" {
-		_, err = strconv.Atoi(metadata.FaultDomain)
+		fdId, err = strconv.Atoi(metadata.FaultDomain)
 		if err != nil {
 			err = fmt.Errorf("error converting Fault Domain (%s) to integer: %v", metadata.FaultDomain, err)
-			return "", "", err
+			return -1, -1, err
 		}
 	}
 
 	if metadata.UpdateDomain != "" {
-		_, err = strconv.Atoi(metadata.UpdateDomain)
+		udId, err = strconv.Atoi(metadata.UpdateDomain)
 		if err != nil {
 			err = fmt.Errorf("error converting Update Domain (%s) to integer: %v", metadata.UpdateDomain, err)
-			return "", "", err
+			return -1, -1, err
 		}
 	}
 
-	return metadata.FaultDomain, metadata.UpdateDomain, nil
+	return fdId, udId, nil
 }

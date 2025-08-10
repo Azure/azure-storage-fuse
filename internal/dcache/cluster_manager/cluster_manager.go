@@ -1960,21 +1960,24 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// Name of the RV, like "rv0", "rv1", etc.
 		//
 		rvName string
+
 		//
 		// Node hosting this RV.
 		// We will never pick more than one component RV for an MV from the same node.
 		//
 		nodeId string
+
 		//
-		// Fault/Update domain ID for the RV. A nil value signifies that the fault/update domain id is not known.
+		// Fault/Update domain ID for the RV. -1 signifies that the fault/update domain id is not known.
 		// Such RVs can be used to host any MV o/w it means that the RV is hosted on a node that belongs to
 		// the given fault/update domain. If fault/update domain id known, placer will ensure that an MV doesn't
 		// have more than one component RVs from the same fault/update domain.
 		//
 		// Config IgnoreFD and IgnoreUD control whether the placer honors fault and update domains.
 		//
-		fdId string
-		udId string
+		fdId int
+		udId int
+
 		//
 		// The number of MVs that can be placed on this RV.
 		// This is initialized to MVsPerRVForFixMV and decremented by one every time an RV is used to place
@@ -2019,8 +2022,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		// Nodes and fault/update domains that have at least one RV available for placing MVs.
 		nodes := make(map[string]struct{})
-		faultDomains := make(map[string]struct{})
-		updateDomains := make(map[string]struct{})
+		faultDomains := make(map[int]struct{})
+		updateDomains := make(map[int]struct{})
 
 		for _, rv := range availableRVsMap {
 			// availableRVsMap must only contain online RVs.
@@ -2051,10 +2054,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			availableRVsList = append(availableRVsList, rv)
 
 			nodes[rv.nodeId] = struct{}{}
-			if rv.fdId != "" {
+			if rv.fdId != -1 {
 				faultDomains[rv.fdId] = struct{}{}
 			}
-			if rv.udId != "" {
+			if rv.udId != -1 {
 				updateDomains[rv.udId] = struct{}{}
 			}
 		}
@@ -2128,7 +2131,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			_ = ok
 			common.Assert(ok, deleteRvName, nodeId, availableRVsMap)
 
-			log.Debug("ClusterManager::deleteRVFromNode: Deleted RV %s (with %d slots), node: %s, FD: %s, UD: %s",
+			log.Debug("ClusterManager::deleteRVFromNode: Deleted RV %s (with %d slots), node: %s, FD: %d, UD: %d",
 				deleteRvName, rv.slots, nodeId, rv.fdId, rv.udId)
 
 			//
@@ -2162,8 +2165,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		offlineRVs := 0
 		outofsyncRVs := 0
 		excludeNodes := make(map[string]struct{})
-		excludeFaultDomains := make(map[string]struct{})
-		excludeUpdateDomains := make(map[string]struct{})
+		excludeFaultDomains := make(map[int]struct{})
+		excludeUpdateDomains := make(map[int]struct{})
 
 		//
 		// Pass 1: Make a list of nodes and fault domains to be excluded when picking "good" RVs in the
@@ -2234,10 +2237,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					offlineRVs++
 				} else {
 					// More than one component RVs for an MV cannot come from the same fault/update domain.
-					if rvMap[rvName].FDId != "" {
+					if rvMap[rvName].FDId != -1 {
 						excludeFaultDomains[rvMap[rvName].FDId] = struct{}{}
 					}
-					if rvMap[rvName].UDId != "" {
+					if rvMap[rvName].UDId != -1 {
 						excludeUpdateDomains[rvMap[rvName].UDId] = struct{}{}
 					}
 				}
@@ -2412,19 +2415,19 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					continue
 				}
 
-				if rv.fdId != "" {
+				if rv.fdId != -1 {
 					if _, ok := excludeFaultDomains[rv.fdId]; ok {
 						// Skip RVs from excluded fault domains.
-						log.Debug("ClusterManager::fixMV: Skipping %s from fault domain %s in excludeFaultDomains %+v",
+						log.Debug("ClusterManager::fixMV: Skipping %s from fault domain %d in excludeFaultDomains %+v",
 							rv.rvName, rv.fdId, excludeFaultDomains)
 						continue
 					}
 				}
 
-				if rv.udId != "" {
+				if rv.udId != -1 {
 					if _, ok := excludeUpdateDomains[rv.udId]; ok {
 						// Skip RVs from excluded update domains.
-						log.Debug("ClusterManager::fixMV: Skipping %s from update domain %s in excludeUpdateDomains %+v",
+						log.Debug("ClusterManager::fixMV: Skipping %s from update domain %d in excludeUpdateDomains %+v",
 							rv.rvName, rv.udId, excludeUpdateDomains)
 						continue
 					}
@@ -2861,8 +2864,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		mvName := fmt.Sprintf("mv%d", len(existingMVMap))
 
 		excludeNodes := make(map[string]struct{})
-		excludeFaultDomains := make(map[string]struct{})
-		excludeUpdateDomains := make(map[string]struct{})
+		excludeFaultDomains := make(map[int]struct{})
+		excludeUpdateDomains := make(map[int]struct{})
 		firstFreeIdx := 0
 		firstFreeIdxLocked := false
 
@@ -2897,7 +2900,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				continue
 			}
 
-			if rv.fdId != "" {
+			if rv.fdId != -1 {
 				_, ok = excludeFaultDomains[rv.fdId]
 				if ok {
 					// More than one component RVs for an MV cannot come from the same fault domain.
@@ -2905,7 +2908,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				}
 			}
 
-			if rv.udId != "" {
+			if rv.udId != -1 {
 				_, ok = excludeUpdateDomains[rv.udId]
 				if ok {
 					// More than one component RVs for an MV cannot come from the same update domain.
@@ -2943,10 +2946,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// Subsequent component RVs for this MV cannot be from the same node or fault domain.
 			//
 			excludeNodes[rvMap[rv.rvName].NodeId] = struct{}{}
-			if rvMap[rv.rvName].FDId != "" {
+			if rvMap[rv.rvName].FDId != -1 {
 				excludeFaultDomains[rvMap[rv.rvName].FDId] = struct{}{}
 			}
-			if rvMap[rv.rvName].UDId != "" {
+			if rvMap[rv.rvName].UDId != -1 {
 				excludeUpdateDomains[rvMap[rv.rvName].UDId] = struct{}{}
 			}
 		}
