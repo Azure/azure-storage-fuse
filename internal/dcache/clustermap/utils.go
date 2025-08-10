@@ -39,6 +39,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -505,4 +506,30 @@ func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVN
 		mvName, len(componentRVs), GetCacheConfig().NumReplicas)
 
 	return componentRVs
+}
+
+var uuidToUniqueInt = map[string]int{}
+var uuidToUniqueIntMapMutex sync.RWMutex
+var uniqueInt int
+
+// Return a unique integer for the given UUID.
+// The uniqueness is in the scope of this blobfuse2 instance, so don't use it outside that.
+// Useful to convert UUIDs to integers once and then use for faster comparison in the fastpath.
+func UUIDToUniqueInt(uuid string) int {
+	common.Assert(common.IsValidUUID(uuid), uuid)
+
+	uuidToUniqueIntMapMutex.RLock()
+	uuidInt, exists := uuidToUniqueInt[uuid]
+	uuidToUniqueIntMapMutex.RUnlock()
+
+	if exists {
+		return uuidInt
+	}
+
+	uuidToUniqueIntMapMutex.Lock()
+	defer uuidToUniqueIntMapMutex.Unlock()
+
+	uniqueInt++
+	uuidToUniqueInt[uuid] = uniqueInt
+	return uniqueInt
 }

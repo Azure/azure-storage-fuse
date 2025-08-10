@@ -1964,8 +1964,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		// Node hosting this RV.
 		// We will never pick more than one component RV for an MV from the same node.
+		// We also store nodeId as a unique integer for faster comparisions, especially in node exclusion set.
 		//
-		nodeId string
+		nodeId    string
+		nodeIdInt int
 
 		//
 		// Fault/Update domain ID for the RV. -1 signifies that the fault/update domain id is not known.
@@ -2021,7 +2023,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		availableRVsList = make([]*rv, 0, len(availableRVsMap))
 
 		// Nodes and fault/update domains that have at least one RV available for placing MVs.
-		nodes := make(map[string]struct{})
+		nodes := make(map[int]struct{})
 		faultDomains := make(map[int]struct{})
 		updateDomains := make(map[int]struct{})
 
@@ -2031,6 +2033,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 			// Max slots for an RV is MVsPerRVForFixMV.
 			common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
+
+			common.Assert(rv.nodeIdInt > 0, *rv)
 
 			//
 			// Skip an RV if it has no free slots left or for newMV case, the used slot count has
@@ -2053,7 +2057,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//
 			availableRVsList = append(availableRVsList, rv)
 
-			nodes[rv.nodeId] = struct{}{}
+			nodes[rv.nodeIdInt] = struct{}{}
 			if rv.fdId != -1 {
 				faultDomains[rv.fdId] = struct{}{}
 			}
@@ -2164,7 +2168,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		offlineRVs := 0
 		outofsyncRVs := 0
-		excludeNodes := make(map[string]struct{})
+		excludeNodes := make(map[int]struct{})
 		excludeFaultDomains := make(map[int]struct{})
 		excludeUpdateDomains := make(map[int]struct{})
 
@@ -2229,7 +2233,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//
 			if mv.RVs[rvName] != dcache.StateOffline {
 				// More than one component RVs for an MV cannot come from the same node.
-				excludeNodes[rvMap[rvName].NodeId] = struct{}{}
+				excludeNodes[cm.UUIDToUniqueInt(rvMap[rvName].NodeId)] = struct{}{}
 
 				if mv.RVs[rvName] == dcache.StateInbandOffline {
 					// inband-offline component RVs should be treated as offline but we don't exclude
@@ -2402,7 +2406,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 				firstFreeIdxLocked = true
 
-				if _, ok := excludeNodes[rv.nodeId]; ok {
+				if _, ok := excludeNodes[rv.nodeIdInt]; ok {
 					//
 					// Skip RVs from excluded nodes.
 					// When faking scale test we add 1000s of RVs to a node which makes this log very chatty.
@@ -2605,11 +2609,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		}
 
 		availableRVsMap[rvName] = &rv{
-			rvName: rvName,
-			nodeId: rvInfo.NodeId,
-			fdId:   rvInfo.FDId,
-			udId:   rvInfo.UDId,
-			slots:  MVsPerRVForFixMV,
+			rvName:    rvName,
+			nodeId:    rvInfo.NodeId,
+			nodeIdInt: cm.UUIDToUniqueInt(rvInfo.NodeId),
+			fdId:      rvInfo.FDId,
+			udId:      rvInfo.UDId,
+			slots:     MVsPerRVForFixMV,
 		}
 	}
 
@@ -2863,7 +2868,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// New MV's name, starting from index 0.
 		mvName := fmt.Sprintf("mv%d", len(existingMVMap))
 
-		excludeNodes := make(map[string]struct{})
+		excludeNodes := make(map[int]struct{})
 		excludeFaultDomains := make(map[int]struct{})
 		excludeUpdateDomains := make(map[int]struct{})
 		firstFreeIdx := 0
@@ -2894,7 +2899,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 			firstFreeIdxLocked = true
 
-			_, ok := excludeNodes[rv.nodeId]
+			_, ok := excludeNodes[rv.nodeIdInt]
 			if ok {
 				// More than one component RVs for an MV cannot come from the same node.
 				continue
@@ -2945,7 +2950,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//
 			// Subsequent component RVs for this MV cannot be from the same node or fault domain.
 			//
-			excludeNodes[rvMap[rv.rvName].NodeId] = struct{}{}
+			excludeNodes[cm.UUIDToUniqueInt(rvMap[rv.rvName].NodeId)] = struct{}{}
 			if rvMap[rv.rvName].FDId != -1 {
 				excludeFaultDomains[rvMap[rv.rvName].FDId] = struct{}{}
 			}
