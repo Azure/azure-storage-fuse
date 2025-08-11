@@ -870,66 +870,64 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 	// Also some other node may add a duplicate RV into the clustermap after the following check,
 	// hence we need to later check for duplicates after locking the clustermap.
 	//
-	allRVsFromClustermap := cm.GetAllRVs()
+	allRVsFromClustermap := cm.GetAllRVsById()
 	for _, myRV := range myRVs {
 		common.Assert(myRV.NodeId == cmi.myNodeId, cmi.myNodeId, myRV)
 
-		for _, cmRV := range allRVsFromClustermap {
-			if myRV.RvId != cmRV.RvId {
-				continue
-			}
+		cmRV, ok := allRVsFromClustermap[myRV.RvId]
+		if !ok {
+			// This RVId is not present in the clustermap, so no duplicates.
+			continue
+		}
 
-			//
-			// The 2nd check prevents re-adding an existing RV with a different cache-dir.
-			// If the user needs to do this, they will need to re-format the drive or change the
-			// filesystem GUID.
-			//
-			if myRV.NodeId != cmRV.NodeId || myRV.LocalCachePath != cmRV.LocalCachePath {
-				return false, fmt.Errorf(
-					"ClusterManager::safeCleanupMyRVs: Duplicate RVid %s detected, cache-dir %s being added by this node %s has the same RVid as existing cache-dir %s from node %s",
-					myRV.RvId, myRV.LocalCachePath, myRV.NodeId, cmRV.LocalCachePath, cmRV.NodeId)
-			}
+		//
+		// 1st check: Some other node has an RV with the same RVid, clear duplicate.
+		// 2nd check: We had an RV with the same RVid but a different cache-dir.
+		//            This is not alowed, since it can cause confusion in the cluster.
+		//            If the user wants to reuse an existing drive with a different cache-dir,
+		//            they need to get a brand new RVId for that drive.
+		//
+		if myRV.NodeId != cmRV.NodeId || myRV.LocalCachePath != cmRV.LocalCachePath {
+			return false, fmt.Errorf(
+				"ClusterManager::safeCleanupMyRVs: Duplicate RVid %s detected, cache-dir %s being added by this node %s has the same RVid as existing cache-dir %s from node %s",
+				myRV.RvId, myRV.LocalCachePath, myRV.NodeId, cmRV.LocalCachePath, cmRV.NodeId)
 		}
 	}
 
 	//
-	// Check status of all our RVs in the clustermap.
+	// Find which all of my RVs are present in the clustermap.
+	// For those RV Ids which are not present in the clustermap delete all the MV directories, else only cleanup
+	// non-active MV directories for those myRVs which are present in the clustermap.
 	//
-	myRVsFromClustermap := cm.GetMyRVs()
+	myRvIdToName := cm.MyRvIdToNameMap()
 
-	if len(myRVsFromClustermap) > 0 {
+	if len(myRvIdToName) > 0 {
 		log.Info("ClusterManager::safeCleanupMyRVs: Got %d of my RV(s) from clustermap %+v",
-			len(myRVsFromClustermap), myRVsFromClustermap)
+			len(myRvIdToName), myRvIdToName)
 	} else {
 		log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap")
 	}
 
-	//
-	// Cleanup non-active MV directories for all myRVs.
-	//
+	var doNotDeleteMVs map[string]struct{}
 	for _, rv := range myRVs {
-		log.Info("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
+		log.Debug("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
 
-		// Active MVs that we should not delete.
-		var doNotDeleteMVs map[string]struct{}
+		//
+		// Check if this my RVId is present in the clustermap.
+		// If yes, we need to avoid deleting any active MVs for this RV.
+		//
+		rvName, ok := myRvIdToName[rv.RvId]
+		if !ok {
+			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s doesn't exist in clustermap", rv.RvId)
+		} else {
+			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s is present as %s in clustermap", rv.RvId, rvName)
 
-		// Check online status for this RV.
-		for rvName, rvInfo := range myRVsFromClustermap {
-			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s has id %s in clustermap",
-				rvName, rvInfo.RvId)
-
-			if rv.RvId != rvInfo.RvId {
-				continue
-			}
-
-			doNotDeleteMVs = cm.GetActiveMVsForRV(rvName)
-
+			// Active MVs that we should not delete.
+			doNotDeleteMVs := cm.GetActiveMVsForRV(rvName)
 			if len(doNotDeleteMVs) > 0 {
 				log.Debug("ClusterManager::safeCleanupMyRVs: %s has %d active MVs %+v, will not delete them",
 					rvName, len(doNotDeleteMVs), doNotDeleteMVs)
 			}
-
-			break
 		}
 
 		// Cleanup stale MVs from this RV.

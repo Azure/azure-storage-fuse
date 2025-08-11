@@ -116,6 +116,11 @@ func GetMyRVs() map[string]dcache.RawVolume {
 	return clusterMap.getMyRVs()
 }
 
+// It will return all the RVs Map <rvId, RV> for this particular node as per local cache copy of cluster map.
+func GetMyRVsById() map[string]dcache.RawVolume {
+	return clusterMap.getMyRVsById()
+}
+
 // It will return the RVs Map <rvName, RV> as per local cache copy of cluster map.
 func GetAllRVs() map[string]dcache.RawVolume {
 	return clusterMap.getAllRVs()
@@ -173,6 +178,16 @@ func NodeIdToIP(nodeId string) string {
 // It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map.
 func RvIdToName(rvId string) string {
 	return clusterMap.rvIdToName(rvId)
+}
+
+// Return a map of all RVIds to their names in the local cache copy of cluster map.
+func RvIdToNameMap() map[string]string {
+	return clusterMap.rvIdToNameMap()
+}
+
+// Return a map of all RVIds belonging to this node, to their names in the local cache copy of cluster map.
+func MyRvIdToNameMap() map[string]string {
+	return clusterMap.myRvIdToNameMap()
 }
 
 // It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map.
@@ -580,6 +595,20 @@ func (c *ClusterMap) getMyRVs() map[string]dcache.RawVolume {
 	return myRvs
 }
 
+func (c *ClusterMap) getMyRVsById() map[string]dcache.RawVolume {
+	nodeId, err := common.GetNodeUUID()
+	_ = err
+	common.Assert(err == nil, fmt.Sprintf("Error getting nodeId: %v", err))
+
+	myRvsById := make(map[string]dcache.RawVolume)
+	for _, rv := range c.getLocalMap().RVMap {
+		if rv.NodeId == nodeId {
+			myRvsById[rv.RvId] = rv
+		}
+	}
+	return myRvsById
+}
+
 func (c *ClusterMap) getAllRVs() map[string]dcache.RawVolume {
 	return c.getLocalMap().RVMap
 }
@@ -729,6 +758,31 @@ func (c *ClusterMap) rvIdToName(rvId string) string {
 	// Callers should not call for non-existent RV.
 	common.Assert(false, rvId)
 	return ""
+}
+
+func (c *ClusterMap) rvIdToNameMap() map[string]string {
+	rvMap := make(map[string]string)
+
+	for rvName, rv := range c.getLocalMap().RVMap {
+		rvMap[rv.RvId] = rvName
+	}
+
+	return rvMap
+}
+
+func (c *ClusterMap) myRvIdToNameMap() map[string]string {
+	nodeId, err := common.GetNodeUUID()
+	_ = err
+	common.Assert(err == nil, err)
+	rvMap := make(map[string]string)
+
+	for rvName, rv := range c.getLocalMap().RVMap {
+		if rv.NodeId == nodeId {
+			rvMap[rv.RvId] = rvName
+		}
+	}
+
+	return rvMap
 }
 
 func (c *ClusterMap) rvNameToId(rvName string) string {

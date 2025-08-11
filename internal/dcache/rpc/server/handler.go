@@ -2554,6 +2554,9 @@ refreshFromClustermapAndRetry:
 		mvInfo.incTotalChunkBytes(req.Length)
 	} else {
 		// JoinMV would have reserved this space before starting sync.
+		// TODO: [Tomar] I've seen this assert fail and also some other places where we assert for reservedSpace
+		//       panic: Assertion failed: [13091 4194304]
+		//       The reservedSpace update possibly has some race.
 		common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
