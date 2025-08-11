@@ -350,6 +350,8 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	// We would like to know why updates are taking so long, as updates blocked for long can cause other
 	// issues.
 	//
+	// TODO: We may want to relax this later but for now we want to catch any long updates.
+	//
 	common.Assert(time.Since(updateRVMessage.QueuedAt) < 30*time.Second,
 		updateRVMessage, time.Since(updateRVMessage.QueuedAt))
 

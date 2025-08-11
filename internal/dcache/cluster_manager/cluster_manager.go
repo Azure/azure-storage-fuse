@@ -2647,35 +2647,38 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 	// Phase 0:
 	// Populate the availableRVsMap map from the current rvMap.
+	// When not running fix-mv/new-mv we don't need the availableRVsMap, so we skip this phase.
 	//
-	atomic.StoreInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 0)
-	for rvName, rvInfo := range rvMap {
-		common.Assert(cm.IsValidRV(&rvInfo))
+	if runFixMvNewMv {
+		atomic.StoreInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 0)
+		for rvName, rvInfo := range rvMap {
+			common.Assert(cm.IsValidRV(&rvInfo))
 
-		if rvInfo.State == dcache.StateOffline {
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 1)
-			// Skip RVs that are offline as they cannot contribute to any MV.
-			continue
+			if rvInfo.State == dcache.StateOffline {
+				atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 1)
+				// Skip RVs that are offline as they cannot contribute to any MV.
+				continue
+			}
+
+			if common.IsDebugBuild() {
+				_, ok := availableRVsMap[rvName]
+				// Must not already be present in availableRVsMap.
+				common.Assert(!ok, rvName, availableRVsMap)
+			}
+
+			availableRVsMap[rvName] = &rv{
+				rvName:    rvName,
+				nodeId:    rvInfo.NodeId,
+				nodeIdInt: cm.UUIDToUniqueInt(rvInfo.NodeId),
+				fdId:      rvInfo.FDId,
+				udId:      rvInfo.UDId,
+				slots:     MVsPerRVForFixMV,
+			}
 		}
 
-		if common.IsDebugBuild() {
-			_, ok := availableRVsMap[rvName]
-			// Must not already be present in availableRVsMap.
-			common.Assert(!ok, rvName, availableRVsMap)
-		}
-
-		availableRVsMap[rvName] = &rv{
-			rvName:    rvName,
-			nodeId:    rvInfo.NodeId,
-			nodeIdInt: cm.UUIDToUniqueInt(rvInfo.NodeId),
-			fdId:      rvInfo.FDId,
-			udId:      rvInfo.UDId,
-			slots:     MVsPerRVForFixMV,
-		}
+		// Cannot have more available RVs than total RVs.
+		common.Assert(len(availableRVsMap) <= len(rvMap), availableRVsMap, rvMap)
 	}
-
-	// Cannot have more available RVs than total RVs.
-	common.Assert(len(availableRVsMap) <= len(rvMap), availableRVsMap, rvMap)
 
 	//
 	// Phase 1:
@@ -2724,15 +2727,17 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				mv.RVs[rvName] = dcache.StateOffline
 			}
 
-			if mv.RVs[rvName] == dcache.StateOnline {
+			rvState := mv.RVs[rvName]
+
+			if rvState == dcache.StateOnline {
 				onlineRVs++
-			} else if mv.RVs[rvName] == dcache.StateOffline {
+			} else if rvState == dcache.StateOffline {
 				offlineRVs++
-			} else if mv.RVs[rvName] == dcache.StateInbandOffline {
+			} else if rvState == dcache.StateInbandOffline {
 				inbandOfflineRVs++
-			} else if mv.RVs[rvName] == dcache.StateOutOfSync {
+			} else if rvState == dcache.StateOutOfSync {
 				outofsyncRVs++
-			} else if mv.RVs[rvName] == dcache.StateSyncing {
+			} else if rvState == dcache.StateSyncing {
 				syncingRVs++
 			}
 
@@ -2748,9 +2753,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// (it could be the same RV if it has come back up online, only for StateOffline) and at that time we will
 			// not increase the slot count of the outgoing component RV, so we don't reduce it now.
 			//
-			if rv.State != dcache.StateOffline {
-				if mv.RVs[rvName] != dcache.StateOffline && mv.RVs[rvName] != dcache.StateInbandOffline {
-					consumeRVSlot(mvName, rvName)
+			// Note: When not running fix-mv/new-mv workflows, we do not care about the RV slots.
+			//
+			if runFixMvNewMv {
+				if rv.State != dcache.StateOffline {
+					if rvState != dcache.StateOffline && rvState != dcache.StateInbandOffline {
+						consumeRVSlot(mvName, rvName)
+					}
 				}
 			}
 		}
