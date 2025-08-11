@@ -50,6 +50,11 @@ import (
 type clientPool struct {
 	//
 	// RWMutex at the client pool level.
+	// All operations except closeAllNodeClientPools() acquire read lock on this mutex.
+	// This ensures that operations like getRPCClient(), releaseRPCClient(), deleteAllRPCClients(),
+	// resetAllRPCClients(), etc. by different threads can process concurrently.
+	// Whereas closeAllNodeClientPools() which takes write lock will be blocked till
+	// all the read locks are released.
 	//
 	rwMutex sync.RWMutex
 
@@ -58,8 +63,9 @@ type clientPool struct {
 	rwMutexDbgCntr atomic.Int64
 
 	//
-	// Lock at the node level to ensure that only one thread can create RPC clients for a node at a time.
-	// This also ensures that other threads can create RPC clients for other nodes at the same time.
+	// Lock at the node level to ensure that only one thread can create/get/release/delete
+	// RPC clients for a node at a time. This also ensures that other threads can
+	// create/get/release/delete RPC clients for other nodes at the same time.
 	//
 	nodeLock *common.LockMap
 
@@ -74,7 +80,7 @@ type clientPool struct {
 	//
 	// Map of node ID to which this node cannot create RPC clients. The value of the map is
 	// time when the new RPC client creation to the node was last attempted.
-	// This is used to prevent creating new RPC clients to the node by other threads till
+	// This is used to prevent creating new RPC clients to the node by different threads till
 	// the negative RPC client creation timeout expires.
 	//
 	negativeNodes sync.Map
@@ -103,7 +109,7 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 }
 
 // Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
-// releaseRPCClient(), deleteRPCClient(), resetAllRPCClients(), etc. by other threads can process
+// releaseRPCClient(), deleteAllRPCClients(), resetAllRPCClients(), etc. by different threads can process
 // concurrently. Whereas closeAllNodeClientPools() which takes write lock will be blocked till
 // all the read locks are released.
 //
@@ -473,7 +479,7 @@ func (cp *clientPool) closeRPCClient(client *rpcClient) error {
 
 // deleteRPCClient deletes an RPC client from the pool.
 // It first closes the client and then removes it from the pool.
-// This is used when the client is no longer needed or when the node is down and we want to
+// This is used when the client is no longer needed, e.g. when the node is down and we want to
 // remove all clients to the node.
 //
 // NOTE: Caller MUST hold the lock for the nodeID and read lock on the rwMutex
@@ -537,13 +543,11 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	nodeLock.Lock()
 	defer nodeLock.Unlock()
 
-	// TODO: update both delete and reset all
-
 	numConnDeleted := 0
 	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
-	common.Assert(ncPool != nil, client.nodeID)
 
 	// client is allocated from the pool, so pool must exist.
+	common.Assert(ncPool != nil, client.nodeID)
 	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
 
 	//
@@ -823,11 +827,11 @@ func (cp *clientPool) closeLRUNodeClientPool() error {
 	// We use the lastUsed timestamp to determine the least recently used node client pool.
 	//
 	cp.clients.Range(func(key, val any) bool {
-		nid := key.(string)
+		nodeID := key.(string)
 		ncPool := val.(*nodeClientPool)
 
-		common.Assert(ncPool != nil, nid)
-		common.Assert(ncPool.nodeID == nid, ncPool.nodeID, nid)
+		common.Assert(ncPool != nil, nodeID)
+		common.Assert(ncPool.nodeID == nodeID, ncPool.nodeID, nodeID)
 
 		common.Assert(len(ncPool.clientChan) <= int(cp.maxPerNode),
 			len(ncPool.clientChan), cp.maxPerNode)
@@ -843,7 +847,7 @@ func (cp *clientPool) closeLRUNodeClientPool() error {
 
 		if lruNcPool == nil || (ncPool.lastUsed.Load() < lruNcPool.lastUsed.Load()) {
 			lruNcPool = ncPool
-			lruNodeID = nid
+			lruNodeID = nodeID
 		}
 
 		return true // continue iteration
