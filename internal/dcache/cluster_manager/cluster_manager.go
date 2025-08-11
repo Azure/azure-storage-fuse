@@ -655,7 +655,7 @@ func cleanupRV(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) error {
 	var deleteFailures atomic.Int64
 
 	// More than a few parallel deletes may be counter productive.
-	const maxParallelDeletes = 32
+	const maxParallelDeletes = 8
 	var tokens = make(chan struct{}, maxParallelDeletes)
 
 	entries, err := os.ReadDir(rv.LocalCachePath)
@@ -790,6 +790,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 	var wg sync.WaitGroup
 	var failedRV atomic.Int64
 
+	start := time.Now()
 	//
 	// Helper function for cleaning up all my RV, once we know they are not being used by the cluster.
 	//
@@ -819,7 +820,8 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		}
 
 		// Successfully cleaned up all RVs.
-		log.Info("ClusterManager::safeCleanupMyRVs: ==> Successfully cleaned up %d RV(s) %v", len(myRVs), myRVs)
+		log.Info("ClusterManager::safeCleanupMyRVs: ==> Successfully cleaned up %d RV(s) %v in %s",
+			len(myRVs), myRVs, time.Since(start))
 
 		return nil
 	}
@@ -952,7 +954,8 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			failedRV.Load())
 	}
 
-	log.Info("ClusterManager::safeCleanupMyRVs: ==> Successfully cleaned up %d RV(s) %v", len(myRVs), myRVs)
+	log.Info("ClusterManager::safeCleanupMyRVs: ==> Successfully cleaned up %d RV(s) %v in %s",
+		len(myRVs), myRVs, time.Since(start))
 	return true, nil
 }
 
