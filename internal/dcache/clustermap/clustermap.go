@@ -94,7 +94,7 @@ func GetOfflineMVs() map[string]dcache.MirroredVolume {
 // It will return a set of active MVs hosted by the given RV.
 // An MV is termed active for an RV if, as per the clusterMap:
 // 1. The RV is a component of the MV, and
-// 2. The component RV is in active use, i.e., its state is not offline or inband-offline.
+// 2. The component RV has state online.
 //
 // Any other MV is stale and can be safely deleted from the RV's directory.
 func GetActiveMVsForRV(rvName string) map[string]struct{} {

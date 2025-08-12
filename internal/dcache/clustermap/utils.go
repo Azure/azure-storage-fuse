@@ -198,14 +198,14 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 	// MinNodes must be at least 1.
 	// We add an upper limit of 1000 as a sanity check.
 	if cfg.MinNodes < 1 || cfg.MinNodes > 1000 {
-		return false, fmt.Errorf("DCacheConfig: Invalid MinNodes: %d +%v", cfg.MinNodes, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid MinNodes: %d %+v", cfg.MinNodes, *cfg)
 	}
 
 	// Every node must contribute at least one RV.
 	// We must have RVs no less than NumReplicas.
 	// 100K is an arbitrary upper limit for the number of RVs in the cluster.
 	if cfg.MaxRVs < cfg.MinNodes || cfg.MaxRVs < cfg.NumReplicas || cfg.MaxRVs > 100000 {
-		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d +%v", cfg.MaxRVs, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d %+v", cfg.MaxRVs, *cfg)
 	}
 
 	if int64(cfg.HeartbeatSeconds) < MinHeartbeatFrequency ||
@@ -268,7 +268,7 @@ func IsValidMvMap(mvMap map[string]dcache.MirroredVolume, expectedReplicasCount 
 	for mvName, mv := range mvMap {
 		isValid, err := IsValidMV(&mv, expectedReplicasCount)
 		if !isValid {
-			return false, fmt.Errorf("MVList: Invalid MV: %v +%v", mvName, err)
+			return false, fmt.Errorf("MVList: Invalid MV: %v %+v", mvName, err)
 		}
 
 	}
@@ -352,12 +352,12 @@ func IsValidRVList(rvs []dcache.RawVolume, myRVs bool) (bool, error) {
 	for _, rv := range rvs {
 		if myRVs {
 			if rv.NodeId != myNodeID {
-				return false, fmt.Errorf("RVList: NodeId (%s) doesn't match my NodeId (%s) +%v",
+				return false, fmt.Errorf("RVList: NodeId (%s) doesn't match my NodeId (%s) %+v",
 					rv.NodeId, myNodeID, rv)
 			}
 
 			if rv.IPAddress != myIP {
-				return false, fmt.Errorf("RVList: IPAddress (%s) doesn't match my IPAddress (%s) +%v",
+				return false, fmt.Errorf("RVList: IPAddress (%s) doesn't match my IPAddress (%s) %+v",
 					rv.IPAddress, myIP, rv)
 			}
 		}
@@ -365,7 +365,7 @@ func IsValidRVList(rvs []dcache.RawVolume, myRVs bool) (bool, error) {
 		valid, err := IsValidRV(&rv)
 
 		if !valid {
-			return false, fmt.Errorf("RVList: Invalid RV: %v +%v", err, rv)
+			return false, fmt.Errorf("RVList: Invalid RV: %v %+v", err, rv)
 		}
 	}
 

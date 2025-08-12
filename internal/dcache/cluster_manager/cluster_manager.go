@@ -870,11 +870,11 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 	// Also some other node may add a duplicate RV into the clustermap after the following check,
 	// hence we need to later check for duplicates after locking the clustermap.
 	//
-	allRVsFromClustermap := cm.GetAllRVsById()
+	allRVIdsFromClustermap := cm.GetAllRVsById()
 	for _, myRV := range myRVs {
 		common.Assert(myRV.NodeId == cmi.myNodeId, cmi.myNodeId, myRV)
 
-		cmRV, ok := allRVsFromClustermap[myRV.RvId]
+		cmRV, ok := allRVIdsFromClustermap[myRV.RvId]
 		if !ok {
 			// This RVId is not present in the clustermap, so no duplicates.
 			continue
