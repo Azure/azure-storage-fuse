@@ -318,7 +318,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		if !common.IsFakingScaleTest() {
 			rvId, err = getBlockDeviceUUId(path)
 			if err != nil {
-				return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+				return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID for %s: %v]", path, err))
 			}
 		}
 

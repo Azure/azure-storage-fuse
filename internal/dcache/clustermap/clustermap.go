@@ -584,7 +584,7 @@ func (c *ClusterMap) getClusterMap() dcache.ClusterMap {
 func (c *ClusterMap) getMyRVs() map[string]dcache.RawVolume {
 	nodeId, err := common.GetNodeUUID()
 	_ = err
-	common.Assert(err == nil, fmt.Sprintf("Error getting nodeId: %v", err))
+	common.Assert(err == nil, err)
 
 	myRvs := make(map[string]dcache.RawVolume)
 	for name, rv := range c.getLocalMap().RVMap {
@@ -598,7 +598,7 @@ func (c *ClusterMap) getMyRVs() map[string]dcache.RawVolume {
 func (c *ClusterMap) getMyRVsById() map[string]dcache.RawVolume {
 	nodeId, err := common.GetNodeUUID()
 	_ = err
-	common.Assert(err == nil, fmt.Sprintf("Error getting nodeId: %v", err))
+	common.Assert(err == nil, err)
 
 	myRvsById := make(map[string]dcache.RawVolume)
 	for _, rv := range c.getLocalMap().RVMap {

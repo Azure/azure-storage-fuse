@@ -366,19 +366,20 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 			//
 			updateInbandOfflineToOffline(&componentRVs)
 
-			//
-			// Acquire lock on rvInfo.rwMutex.
-			// This is running from the single startup thread, so we don't really need the lock, but
-			// addToMVMap() asserts for that.
-			//
 			mvDirSize, err := getMVDirSize(filepath.Join(rv.LocalCachePath, mvName))
 			if err != nil {
 				log.Err("NewChunkServiceHandler: %v", err)
+				common.Assert(false, rv.LocalCachePath, mvName, err)
 			}
 
 			mvInfo := newMVInfo(rvInfo, mvName, componentRVs, rpc.GetMyNodeUUID())
 			mvInfo.incTotalChunkBytes(mvDirSize)
 
+			//
+			// Acquire lock on rvInfo.rwMutex.
+			// This is running from the single startup thread, so we don't really need the lock, but
+			// addToMVMap() asserts for that.
+			//
 			rvInfo.acquireRvInfoLock()
 			rvInfo.addToMVMap(mvName, mvInfo, 0 /* reservedSpace */)
 			rvInfo.releaseRvInfoLock()
