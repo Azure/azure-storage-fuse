@@ -34,9 +34,12 @@
 package distributed_cache
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -320,4 +323,74 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 // Check if the file name refers to a deleted dcache file (waiting to be GC'ed).
 func isDeletedDcacheFile(rawPath string) bool {
 	return strings.HasSuffix(rawPath, dcache.DcacheDeletingFileNameSuffix)
+}
+
+// Queries the Azure Instance Metadata Service to get the Fault Domain and Update Domain for this VM.
+// Returns -1 for Fault Domain or Update Domain if not available.
+func queryVMFaultAndUpdateDomain() (int /* faultDomain */, int /* updateDomain */, error) {
+	const imdsURL = "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01"
+
+	//
+	// TODO: There's a "platformSubFaultDomain" also but from the documentation it seems to be not used.
+	//
+	type ComputeMetadata struct {
+		FaultDomain  string `json:"platformFaultDomain"`
+		UpdateDomain string `json:"platformUpdateDomain"`
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", imdsURL, nil)
+	if err != nil {
+		err = fmt.Errorf("error creating request to Azure Instance Metadata Service %s: %v",
+			imdsURL, err)
+		return -1, -1, err
+	}
+
+	// Required header for Azure Instance Metadata Service.
+	req.Header.Add("Metadata", "true")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		err = fmt.Errorf("error making request to Azure Instance Metadata Service %s: %v",
+			imdsURL, err)
+		return -1, -1, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		err = fmt.Errorf("error reading response from Azure Instance Metadata Service %s: %v",
+			imdsURL, err)
+		return -1, -1, err
+	}
+
+	var metadata ComputeMetadata
+	if err := json.Unmarshal(body, &metadata); err != nil {
+		err = fmt.Errorf("error unmarshalling JSON response from Azure Instance Metadata Service %s: %v [%v]",
+			imdsURL, err, body)
+		return -1, -1, err
+	}
+
+	//
+	// Not sure if FaultDomain and UpdateDomain are always returned by IMDS.
+	// Don't fail if they are empty, just return them as empty strings and let caller handle as per config setting.
+	//
+	fdId, udId := -1, -1
+	if metadata.FaultDomain != "" {
+		fdId, err = strconv.Atoi(metadata.FaultDomain)
+		if err != nil {
+			err = fmt.Errorf("error converting Fault Domain (%s) to integer: %v", metadata.FaultDomain, err)
+			return -1, -1, err
+		}
+	}
+
+	if metadata.UpdateDomain != "" {
+		udId, err = strconv.Atoi(metadata.UpdateDomain)
+		if err != nil {
+			err = fmt.Errorf("error converting Update Domain (%s) to integer: %v", metadata.UpdateDomain, err)
+			return -1, -1, err
+		}
+	}
+
+	return fdId, udId, nil
 }

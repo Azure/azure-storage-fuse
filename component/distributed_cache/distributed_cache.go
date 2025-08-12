@@ -114,6 +114,8 @@ type DistributedCacheOptions struct {
 	RebalancePercentage uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
+	IgnoreFD            bool   `config:"ignore-fd" yaml:"ignore-fd,omitempty"`
+	IgnoreUD            bool   `config:"ignore-ud" yaml:"ignore-ud,omitempty"`
 	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
 	ReadIOMode          string `config:"read-io-mode" yaml:"read-io-mode,omitempty"`
 	WriteIOMode         string `config:"write-io-mode" yaml:"write-io-mode,omitempty"`
@@ -136,6 +138,8 @@ const (
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
 	dcacheDirContToken               = "__DCDIRENT__"
+	defaultIgnoreFD                  = true // By default ignore VM Fault Domain for MV placement decisions.
+	defaultIgnoreUD                  = true // By default ignore VM Update Domain for MV placement decisions.
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -232,6 +236,8 @@ func (dc *DistributedCache) startClusterManager() string {
 		RebalancePercentage:    dc.cfg.RebalancePercentage,
 		SafeDeletes:            dc.cfg.SafeDeletes,
 		CacheAccess:            dc.cfg.CacheAccess,
+		IgnoreFD:               dc.cfg.IgnoreFD,
+		IgnoreUD:               dc.cfg.IgnoreUD,
 		RvFullThreshold:        dc.cfg.RVFullThreshold,
 		RvNearfullThreshold:    dc.cfg.RVNearfullThreshold,
 	}
@@ -261,13 +267,59 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
 	}
 
+	//
+	// Query the VM's fault and update domains from IMDS endpoint.
+	// Those become the fault and update domains for all RVs hosted on this VM.
+	//
+	faultDomain, updateDomain, err := queryVMFaultAndUpdateDomain()
+	if err != nil {
+		if !dc.cfg.IgnoreFD || !dc.cfg.IgnoreUD {
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to query VM's fault and update domain and user wants MV placement to consider fault and/or update domain: %v]", err))
+		} else {
+			//
+			// Ignore error querying VM's fault and update domain if IgnoreFD or IgnoreUD both are set to true.
+			// This avoids startup failure in case the query fails for whatever reason, as user doesn't care about
+			// fault and update domains for MV placement decisions.
+			//
+			log.Warn("DistributedCache::Start : Failed to query VM's fault and update domain, but IgnoreFD and IgnoreUD are both set to true, proceeding with unknown domains: %v", err)
+		}
+	} else {
+		log.Debug("DistributedCache::Start : FaultDomain: %d, UpdateDomain: %d", faultDomain, updateDomain)
+	}
+
+	// Empty fault/update domain conveys "ignore fault/update domain for MV placement" to the data placer.
+	if dc.cfg.IgnoreFD {
+		log.Debug("DistributedCache::Start : IgnoreFD=true, forcing FaultDomain to -1 (unknown), placer will ignore FD for MV placement decisions")
+		faultDomain = -1
+	} else if faultDomain == -1 {
+		// If IgnoreFD is false we can't proceed with empty fault domain.
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [IgnoreFD=false and VM fault domain not known, cannot proceed]"))
+	}
+
+	if dc.cfg.IgnoreUD {
+		log.Debug("DistributedCache::Start : IgnoreUD=true, forcing UpdateDomain to -1 (unknown), placer will ignore UD for MV placement decisions")
+		updateDomain = -1
+	} else if updateDomain == -1 {
+		// If IgnoreUD is false we can't proceed with empty update domain.
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [IgnoreUD=false and VM update domain not known, cannot proceed]"))
+	}
+
 	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
 	rvIDToPath := make(map[string]string, len(dc.cfg.CacheDirs))
 
 	for index, path := range dc.cfg.CacheDirs {
-		rvId, err := getBlockDeviceUUId(path)
-		if err != nil {
-			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+		var rvId string
+		var err error
+
+		//
+		// When faking scale test we have huge number of CacheDirs, and this takes time, and we don't need
+		// this, so avoid.
+		//
+		if !common.IsFakingScaleTest() {
+			rvId, err = getBlockDeviceUUId(path)
+			if err != nil {
+				return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID for %s: %v]", path, err))
+			}
 		}
 
 		if common.IsDebugBuild() {
@@ -279,6 +331,8 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 				rvId = gouuid.NewSHA1(gouuid.NameSpaceDNS, []byte(uuidVal+path)).String()
 			}
 		}
+
+		common.Assert(common.IsValidUUID(rvId), rvId)
 
 		//
 		// No two RVs exported by us must have the same RVid.
@@ -302,13 +356,17 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			NodeId:         uuidVal,
 			IPAddress:      ipaddr,
 			RvId:           rvId,
-			FDID:           "0",
+			FDId:           faultDomain,
+			UDId:           updateDomain,
 			State:          dcache.StateOnline,
 			TotalSpace:     totalSpace,
 			AvailableSpace: availableSpace,
 			LocalCachePath: path,
 		}
 	}
+
+	log.Debug("DistributedCache::Start : created RV list with %d RVs: %+v", len(rvList), rvList)
+
 	return rvList, nil
 }
 
@@ -470,6 +528,12 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	}
 	if !config.IsSet(compName + ".cache-access") {
 		distributedCache.cfg.CacheAccess = defaultCacheAccess
+	}
+	if !config.IsSet(compName + ".ignore-fd") {
+		distributedCache.cfg.IgnoreFD = defaultIgnoreFD
+	}
+	if !config.IsSet(compName + ".ignore-ud") {
+		distributedCache.cfg.IgnoreUD = defaultIgnoreUD
 	}
 
 	// Both read/write default to direct IO.
@@ -1386,6 +1450,12 @@ func init() {
 
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
+
+	ignoreFD := config.AddBoolFlag("ignore-fd", defaultIgnoreFD, "Ignore VM fault domain for MV placement decisions")
+	config.BindPFlag(compName+".ignore-fd", ignoreFD)
+
+	ignoreUD := config.AddBoolFlag("ignore-ud", defaultIgnoreUD, "Ignore VM update domain for MV placement decisions")
+	config.BindPFlag(compName+".ignore-ud", ignoreUD)
 
 	readIOMode := config.AddStringFlag("read-io-mode", rpc.DirectIO, "IO mode for reading chunk files (direct/buffered)")
 	config.BindPFlag(compName+".read-io-mode", readIOMode)
