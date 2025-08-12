@@ -923,7 +923,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s is present as %s in clustermap", rv.RvId, rvName)
 
 			// Active MVs that we should not delete.
-			doNotDeleteMVs := cm.GetActiveMVsForRV(rvName)
+			doNotDeleteMVs = cm.GetActiveMVsForRV(rvName)
 			if len(doNotDeleteMVs) > 0 {
 				log.Debug("ClusterManager::safeCleanupMyRVs: %s has %d active MVs %+v, will not delete them",
 					rvName, len(doNotDeleteMVs), doNotDeleteMVs)
