@@ -1345,6 +1345,13 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 // to the returned clustermap blob, returns error on failure.
 func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 	atomic.AddInt64(&stats.Stats.MM.Clustermap.GetCalls, 1)
+	//
+	// TODO: Currently getBlobSafe() makes minimum 3 REST calls (could be much higher in case of parallel updates)
+	//       to safely get the clustermap blob. We can optimize this to use a single REST call by embedding a checksum
+	//       property in the clustermap json itself. If that matches the checksum of the clustermap json then reader
+	//       can be sure about the integrity of the clustermap json. With this most readers will need just one call
+	//       and it'll reduce/avoid many of the unnecessary retries that happen today.
+	//
 	data, attr, err := m.getBlobSafe(filepath.Join(m.mdRoot, "clustermap.json"))
 	if err != nil {
 		stats.Stats.MM.Clustermap.LastError = err.Error()

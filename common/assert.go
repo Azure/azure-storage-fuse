@@ -65,6 +65,12 @@ func Assert(cond bool, msg ...interface{}) {
 // Note: Use this sparingly only to do stuff that we know for sure doesn't change the behavior of the program.
 //
 //	We need to be very careful in making sure debug build behaves same as prod builds for reliable testing.
+var isDebugBuild bool
+
 func IsDebugBuild() bool {
-	return (os.Getenv("BLOBFUSE_DEBUG") == "1")
+	return isDebugBuild
+}
+
+func init() {
+	isDebugBuild = (os.Getenv("BLOBFUSE_DEBUG") == "1")
 }
