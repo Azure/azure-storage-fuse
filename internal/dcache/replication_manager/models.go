@@ -86,8 +86,8 @@ func (req *ReadMvRequest) isValid() error {
 	common.Assert(common.IsValidUUID(req.FileID))
 	common.Assert(cm.IsValidMVName(req.MvName))
 
-	if (req.ChunkSizeInMiB*common.MbToBytes) < cm.MinChunkSize ||
-		(req.ChunkSizeInMiB*common.MbToBytes) > cm.MaxChunkSize {
+	if req.ChunkSizeInMiB < cm.MinChunkSizeMB ||
+		req.ChunkSizeInMiB > cm.MaxChunkSizeMB {
 		reqStr := req.toString()
 		err := fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
 		log.Err("ReadMvRequest::isValid: %v", err)
@@ -183,8 +183,7 @@ func (req *WriteMvRequest) isValid() error {
 	common.Assert(common.IsValidUUID(req.FileID))
 	common.Assert(cm.IsValidMVName(req.MvName))
 
-	if (req.ChunkSizeInMiB*common.MbToBytes) < cm.MinChunkSize ||
-		(req.ChunkSizeInMiB*common.MbToBytes) > cm.MaxChunkSize {
+	if req.ChunkSizeInMiB < cm.MinChunkSizeMB || req.ChunkSizeInMiB > cm.MaxChunkSizeMB {
 		reqStr := req.toString()
 		err := fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
 		log.Err("WriteMvRequest::isValid: %v", err)

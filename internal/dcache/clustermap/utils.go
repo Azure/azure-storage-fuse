@@ -58,13 +58,16 @@ var (
 	MinHeartbeatFrequency int64 = 5
 	MaxHeartbeatFrequency int64 = 60
 
-	// TODO: chunk and stripe sizes must be expressed in units of MiB, in the config.
-	MinChunkSize int64 = 4 * common.MbToBytes
-	MaxChunkSize int64 = 64 * common.MbToBytes
+	//
+	// The range of chunk size and stripe width is deliberately kept large so that we can experiment with
+	// various values and find the optimal ones.
+	//
+	MinChunkSizeMB int64 = 1
+	MaxChunkSizeMB int64 = 1024
 
-	// StripeSize = ChunkSize * StripeWidth
-	MinStripeWidth int64 = 4
-	MaxStripeWidth int64 = 256
+	// StripeWidthMB = ChunkSizeMB * StripeWidth
+	MinStripeWidth int64 = 1
+	MaxStripeWidth int64 = 64
 
 	MinNumReplicas int64 = 1
 	MaxNumReplicas int64 = 256
@@ -228,13 +231,12 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 		return false, fmt.Errorf("DCacheConfig: HeartbeatSeconds (%d) > ClustermapEpoch (%d) %+v", cfg.HeartbeatSeconds, cfg.ClustermapEpoch, *cfg)
 	}
 
-	if int64(cfg.ChunkSize) < MinChunkSize || int64(cfg.ChunkSize) > MaxChunkSize {
-		return false, fmt.Errorf("DCacheConfig: Invalid ChunkSize: %d %+v", cfg.ChunkSize, *cfg)
+	if int64(cfg.ChunkSizeMB) < MinChunkSizeMB || int64(cfg.ChunkSizeMB) > MaxChunkSizeMB {
+		return false, fmt.Errorf("DCacheConfig: Invalid ChunkSizeMB: %d %+v", cfg.ChunkSizeMB, *cfg)
 	}
 
-	if int64(cfg.StripeSize) < (int64(cfg.ChunkSize)*MinStripeWidth) ||
-		int64(cfg.StripeSize) > (int64(cfg.ChunkSize)*MaxStripeWidth) {
-		return false, fmt.Errorf("DCacheConfig: Invalid StripeSize: %d %+v", cfg.StripeSize, *cfg)
+	if int64(cfg.StripeWidth) < MinStripeWidth || int64(cfg.StripeWidth) > MaxStripeWidth {
+		return false, fmt.Errorf("DCacheConfig: Invalid StripeWidth: %d %+v", cfg.StripeWidth, *cfg)
 	}
 
 	if int64(cfg.NumReplicas) < MinNumReplicas || int64(cfg.NumReplicas) > MaxNumReplicas {

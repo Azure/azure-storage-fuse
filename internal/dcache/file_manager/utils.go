@@ -87,8 +87,8 @@ func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string
 	numMvs := int64(len(fileMetadata.FileLayout.MVList))
 
 	// Must have full strip worth of MVs.
-	common.Assert(numMvs == (fileMetadata.FileLayout.StripeSize/fileMetadata.FileLayout.ChunkSize),
-		numMvs, fileMetadata.FileLayout.StripeSize, fileMetadata.FileLayout.ChunkSize)
+	common.Assert(numMvs == fileMetadata.FileLayout.StripeWidth,
+		numMvs, fileMetadata.FileLayout.StripeWidth, fileMetadata.FileLayout.ChunkSize)
 	common.Assert(numMvs > 0, numMvs)
 	// For writes file size won't be set yet, for reads we must be reading within the file.
 	common.Assert((fileMetadata.Size == -1) ||
@@ -116,16 +116,13 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
 
-	chunkSize := cm.GetCacheConfig().ChunkSize
-	stripeSize := cm.GetCacheConfig().StripeSize
-
-	common.Assert(stripeSize%chunkSize == 0, stripeSize, chunkSize)
-	numMVs := stripeSize / chunkSize
+	chunkSize := cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes
+	stripeWidth := cm.GetCacheConfig().StripeWidth
 
 	fileMetadata.FileLayout = dcache.FileLayout{
-		ChunkSize:  int64(chunkSize),
-		StripeSize: int64(stripeSize),
-		MVList:     make([]string, numMVs),
+		ChunkSize:   int64(chunkSize),
+		StripeWidth: int64(stripeWidth),
+		MVList:      make([]string, stripeWidth),
 	}
 
 	// Get active MV's from the clustermap
@@ -134,9 +131,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	//
 	// Cannot create file if we don't have enough active MVs.
 	//
-	if len(activeMVs) < int(numMVs) {
-		err := fmt.Errorf("Cannot create file %s, active MVs (%d) < numMVs (%d)",
-			fileName, len(activeMVs), numMVs)
+	if len(activeMVs) < int(stripeWidth) {
+		err := fmt.Errorf("Cannot create file %s, active MVs (%d) < stripeWidth (%d)",
+			fileName, len(activeMVs), stripeWidth)
 		log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
 		return nil, err
 	}
@@ -151,7 +148,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	})
 
 	// Pick starting numMVs from the active MVs.
-	for i := range numMVs {
+	for i := range stripeWidth {
 		fileMetadata.FileLayout.MVList[i] = activeMVs[i]
 	}
 
