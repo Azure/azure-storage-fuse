@@ -61,6 +61,7 @@ var (
 	//
 	// The range of chunk size and stripe width is deliberately kept large so that we can experiment with
 	// various values and find the optimal ones.
+	// TODO: Later we can reduce the range to a more reasonable one.
 	//
 	MinChunkSizeMB int64 = 1
 	MaxChunkSizeMB int64 = 1024

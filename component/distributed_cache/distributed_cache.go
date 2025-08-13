@@ -1414,7 +1414,7 @@ func init() {
 	clustermapEpoch := config.AddUint64Flag("clustermap-epoch", defaultClustermapEpoch, "Epoch duration for the clustermap update")
 	config.BindPFlag(compName+".clustermap-epoch", clustermapEpoch)
 
-	stripeWidth := config.AddUint64Flag("stripe-width", defaultStripeWidth, "Stripe width for the cache (number of MVs per stripe)")
+	stripeWidth := config.AddUint64Flag("stripe-width", defaultStripeWidth, "Stripe width for the cache (number of MVs in stripe)")
 	config.BindPFlag(compName+".stripe-width", stripeWidth)
 
 	mvsPerRv := config.AddUint64Flag("mvs-per-rv", defaultMVsPerRV, "Number of MVs per raw volume")

@@ -217,7 +217,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 
 		copied := copy(buf[bufOffset:], chunk.Buf[chunkOffset:chunk.Len])
 		// Must copy at least one byte.
-		common.Assert(copied > 0)
+		common.Assert(copied > 0, chunkOffset, bufOffset, chunk.Len, len(buf))
 
 		offset += int64(copied)
 		bufOffset += copied
