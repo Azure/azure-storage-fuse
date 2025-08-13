@@ -115,8 +115,8 @@ type HeartbeatData struct {
 type DCacheConfig struct {
 	CacheId                string `json:"cache-id"`
 	MinNodes               uint32 `json:"min-nodes"`
-	ChunkSize              uint64 `json:"chunk-size"`
-	StripeSize             uint64 `json:"stripe-size"`
+	ChunkSizeMB            uint64 `json:"chunk-size-mb"`
+	StripeWidth            uint64 `json:"stripe-width"`
 	NumReplicas            uint32 `json:"num-replicas"`
 	MaxRVs                 uint32 `json:"max-rvs"`
 	MVsPerRV               uint64 `json:"mvs-per-rv"`
@@ -155,9 +155,9 @@ type FileMetadata struct {
 }
 
 type FileLayout struct {
-	ChunkSize  int64    `json:"chunk_size"`
-	StripeSize int64    `json:"stripe_size"`
-	MVList     []string `json:"mv_list"`
+	ChunkSize   int64    `json:"chunk_size"`
+	StripeWidth int64    `json:"stripe_width"`
+	MVList      []string `json:"mv_list"`
 }
 
 type ComponentRVUpdateMessage struct {

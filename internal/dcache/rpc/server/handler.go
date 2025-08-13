@@ -1156,8 +1156,8 @@ func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.Respo
 		//
 		if (cm.GetRVState(rvName) == dcache.StateOffline && rvState != dcache.StateOffline) ||
 			rvState == dcache.StateInbandOffline {
-			log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is offline, marking component RV state as offline",
-				rvName, mv.mvName, rvState)
+			log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is %s, marking component RV state as offline",
+				rvName, mv.mvName, rvState, cm.GetRVState(rvName))
 			rvState = dcache.StateOffline
 			newRVs[rvName] = rvState
 		}
@@ -2192,6 +2192,13 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 	//
 	// Direct IO write.
 	//
+	// TODO: [Tomar] This wierdly failed once with permission denied error suddenly when everything till that
+	//       point was working fine. Mos likely reason for this can be that multiple calls to write the same
+	//       chunk landed in parallel and the first one created the .tmp file with 0400/readonly permission,
+	//       hence the second call failed with permission denied error as it wanted a write handle on the file.
+	//       Note that we have a stat() check above to not let a call come in if the chunk file already exists,
+	//       so both the calls have to really race with each other.
+	//
 	fd, err = syscall.Open(tmpChunkPath,
 		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
 	if err != nil {
@@ -2388,8 +2395,8 @@ refreshFromClustermapAndRetry:
 				// not updated and it doesn't know about the RV going offline.
 				// We must refresh our rvInfo from the clustermap and retry the check.
 				//
-				errStr := fmt.Sprintf("PutChunk(client) sender skipped RV %s/%s in invalid state %s [NeedToRefreshClusterMap]",
-					rv.Name, req.Chunk.Address.MvName, rvNameAndState.State)
+				errStr := fmt.Sprintf("PutChunk(client) sender wrongly skipped RV %s/%s which is %s as per them, while as per our rvInfo it's %s [NeedToRefreshClusterMap]",
+					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State)
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 
 				//
