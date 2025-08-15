@@ -2149,11 +2149,92 @@ dummy_read:
 	return resp, nil
 }
 
+// Write chunk, safe from existing chunk file, partial writes, interrupted writes.
+// If flag is set to syscall.O_DIRECT, it will perform direct write, else buffered write.
+// If direct write fails with EINVAL, it will retry with buffered write.
+func safeWrite(chunkPath *string, data *[]byte, flag int) error {
+	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
+	common.Assert(data != nil && len(*data) > 0)
+
+	odirect := (flag & syscall.O_DIRECT) != 0
+
+	fd, err := syscall.Open(*chunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
+	if err != nil {
+		//
+		// This is most likely open failure due to the file already existing.
+		// We need to fail the call, caller will fail the client request appropriately.
+		//
+		return fmt.Errorf("failed to open chunk file %s: %w", *chunkPath, err)
+	}
+
+	defer func() {
+			if fd != -1 {
+					syscall.Close(fd)
+			}
+	}()
+
+	for {
+		n, err := syscall.Write(fd, *data)
+		if err == nil {
+			if n == len(*data) {
+				// Common case.
+				return nil
+			} else if odirect {
+				//
+				// Direct write must not perform partial write, but for resilience we fallback to buffered
+				// write.
+				//
+				log.Warn("partial (direct) write to chunk file %s (%d of %d), retrying buffered write",
+					*chunkPath, n, len(*data))
+				break
+			}
+
+			//
+			// Partial write for buffered write.
+			// Even this is not expected for local files, but retry the remaining write.
+			// Emit a warning log to know if this happens frequently.
+			//
+			log.Warn("partial write to chunk file %s (%d of %d), retrying",
+				*chunkPath, n, len(*data))
+			*data = (*data)[n:]
+			continue
+		} else if !errors.Is(err, syscall.EINTR) {
+			log.Warn("write to chunk file %s (len: %d, odirect: %v) interrupted, retrying",
+				*chunkPath, n, len(*data), odirect)
+			continue
+		} else if !odirect {
+			//
+			// If Write() failed for buffered write, we have no choice but to fail the call, else
+			// if it fails for direct write we can retry once with buffered write.
+			//
+			return err
+		} else if !errors.Is(err, syscall.EINVAL) {
+			return fmt.Errorf("failed to write chunk file %s [%v]", *chunkPath, err)
+		}
+
+		// For EINVAL, fall through to buffered write.
+		log.Warn("(direct) write to chunk file %s (len: %d) failed, retrying with buffered write",
+			*chunkPath, n, len(*data), odirect)
+		break
+	}
+
+	//
+	// Before retrying buffered write, we need to remove the chunk file as it was created readonly.
+	//
+	err1 := os.Remove(*chunkPath)
+	if err1 != nil {
+		return fmt.Errorf("failed to remove chunk file %s [%v]", *chunkPath, err1)
+	}
+
+	syscall.Close(fd)
+	fd = -1
+	return safeWrite(chunkPath, data, 0)
+}
+
 // Helper function to write given chunk and (optionally) the hash file.
 // It performs direct or buffered write as per the configured setting or may fallback to buffered write for
 // cases where direct write cannot be performed due to alignment restrictions.
 func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) error {
-	var n, fd int
 	var err error
 
 	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
@@ -2172,66 +2253,37 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 	common.Assert(isDataBufferAligned, uintptr(dataAddr), writeLength, common.FS_BLOCK_SIZE)
 
 	//
-	// Write to .tmp file first and rename it to the final file after successful write.
-	// TODO: Get rid of an extra rename() call for every chunk write.
-	//
-	tmpChunkPath := fmt.Sprintf("%s.tmp", *chunkPath)
-
-	//
 	// Write the chunk using buffered IO mode if,
 	//   - Write IO type is configured as BufferedIO, or
 	//   - The write length (or chunk size) is not aligned to file system block size.
 	//   - The buffer is not aligned to file system block size.
 	//
+	bufferedWrite := false
+
 	if rpc.WriteIOMode == rpc.BufferedIO ||
 		writeLength%common.FS_BLOCK_SIZE != 0 ||
 		!isDataBufferAligned {
-		goto bufferedWrite
+		bufferedWrite = true
 	}
 
 	//
 	// Direct IO write.
 	//
 	// TODO: [Tomar] This wierdly failed once with permission denied error suddenly when everything till that
-	//       point was working fine. Mos likely reason for this can be that multiple calls to write the same
+	//       point was working fine. Most likely reason for this can be that multiple calls to write the same
 	//       chunk landed in parallel and the first one created the .tmp file with 0400/readonly permission,
 	//       hence the second call failed with permission denied error as it wanted a write handle on the file.
 	//       Note that we have a stat() check above to not let a call come in if the chunk file already exists,
 	//       so both the calls have to really race with each other.
 	//
-	fd, err = syscall.Open(tmpChunkPath,
-		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_DIRECT, 0400)
+	if !bufferedWrite {
+		err = safeWrite(chunkPath, data, syscall.O_DIRECT)
+	} else {
+		err = safeWrite(chunkPath, data, 0)
+	}
+
 	if err != nil {
-		return fmt.Errorf("failed to open chunk file %s [%v]", tmpChunkPath, err)
-	}
-	defer syscall.Close(fd)
-
-	n, err = syscall.Write(fd, *data)
-	if err == nil {
-		if n != len(*data) {
-			return fmt.Errorf("partial write to chunk file %s (%d of %d) [%v]",
-				tmpChunkPath, n, len(*data), err)
-		}
-		goto renameChunkFile
-	}
-
-	// For EINVAL, fall through to buffered write.
-	if !errors.Is(err, syscall.EINVAL) {
-		return fmt.Errorf("failed to write chunk file %s [%v]", tmpChunkPath, err)
-	}
-
-bufferedWrite:
-	err = os.WriteFile(tmpChunkPath, *data, 0400)
-	if err != nil {
-		return fmt.Errorf("failed to write chunk file %s [%v]", tmpChunkPath, err)
-	}
-
-renameChunkFile:
-	// Rename the .tmp file to the final file.
-	err = os.Rename(tmpChunkPath, *chunkPath)
-	if err != nil {
-		return fmt.Errorf("failed to rename chunk file %s -> %s [%v]",
-			tmpChunkPath, *chunkPath, err)
+		goto cleanup_chunk_file_and_fail
 	}
 
 	//
@@ -2241,11 +2293,29 @@ renameChunkFile:
 	if hashPath != nil {
 		err = os.WriteFile(*hashPath, []byte(*hash), 0400)
 		if err != nil {
-			return fmt.Errorf("failed to write hash file %s [%v]", *hashPath, err)
+			err = fmt.Errorf("failed to write hash file %s [%v]", *hashPath, err)
+			goto cleanup_chunk_file_and_fail
 		}
 	}
 
 	return nil
+
+cleanup_chunk_file_and_fail:
+	// Remove chunk file, to avoid confusion later.
+	err1 := os.Remove(*chunkPath)
+	if err1 != nil {
+		log.Err("ChunkServiceHandler::writeChunkAndHash: Failed to remove chunk file %s [%v]",
+			*chunkPath, err1)
+	}
+
+	if hashPath != nil {
+		err1 := os.Remove(*hashPath)
+		if err1 != nil {
+			log.Err("ChunkServiceHandler::writeChunkAndHash: Failed to remove hash file %s [%v]",
+				*hashPath, err1)
+		}
+	}
+	return err
 }
 
 func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
@@ -2487,50 +2557,6 @@ refreshFromClustermapAndRetry:
 
 	var availableSpace int64
 
-	// Chunk file must not be present.
-	_, err = os.Stat(chunkPath)
-	if err == nil {
-		if req.SyncID != "" || req.MaybeOverwrite {
-			if req.SyncID != "" {
-				//
-				// In case of sync PutChunk calls, we can get sync write for chunks already present in
-				// the target RV because of the NTPClockSkewMargin added to the sync write time. These
-				// chunks were written by the client write PutChunk calls to the target RV.
-				// So, ignore this and return success.
-				//
-				log.Debug("ChunkServiceHandler::PutChunk: syncID = %s, chunk file %s already exists, ignoring sync write",
-					req.SyncID, chunkPath)
-				common.Assert(!req.MaybeOverwrite,
-					"Only PutChunk(client) can have MaybeOverwrite set", rpc.PutChunkRequestToString(req))
-			} else {
-				//
-				// Client can set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server
-				// know that this could potentially be an overwrite of a chunk that we previously wrote,
-				// due to client retrying the WriteMV workflow after refreshing the clustermap.
-				//
-				log.Debug("ChunkServiceHandler::PutChunk: MaybeOverwrite = true, chunk file %s already exists, ignoring write",
-					chunkPath)
-			}
-
-			availableSpace, err = rvInfo.getAvailableSpace()
-			if err != nil {
-				log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space [%v]",
-					req.SyncID, err)
-			}
-
-			return &models.PutChunkResponse{
-				TimeTaken:      time.Since(startTime).Microseconds(),
-				AvailableSpace: availableSpace,
-				ComponentRV:    mvInfo.getComponentRVs(),
-			}, nil
-
-		} else {
-			errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
-			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-			return nil, rpc.NewResponseError(models.ErrorCode_ChunkAlreadyExists, errStr)
-		}
-	}
-
 	if performDummyReadWrite() {
 		goto dummy_write
 	}
@@ -2538,6 +2564,50 @@ refreshFromClustermapAndRetry:
 	// TODO: hash validation will be done later
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
 	if err != nil {
+		//
+		// Chunk file must not be present, unless it is either a sync write or client has retried the write
+		// after some failure in an earlier attempt.
+		//
+		if errors.Is(err, syscall.EEXIST) {
+			if req.SyncID != "" || req.MaybeOverwrite {
+				if req.SyncID != "" {
+					//
+					// In case of sync PutChunk calls, we can get sync write for chunks already present in
+					// the target RV because of the NTPClockSkewMargin added to the sync write time. These
+					// chunks were written by the client write PutChunk calls to the target RV.
+					// So, ignore this and return success.
+					//
+					log.Debug("ChunkServiceHandler::PutChunk: syncID = %s, chunk file %s already exists, ignoring sync write",
+						req.SyncID, chunkPath)
+					common.Assert(!req.MaybeOverwrite,
+						"Only PutChunk(client) can have MaybeOverwrite set", rpc.PutChunkRequestToString(req))
+				} else {
+					//
+					// Client can set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server
+					// know that this could potentially be an overwrite of a chunk that we previously wrote,
+					// due to client retrying the WriteMV workflow after refreshing the clustermap.
+					//
+					log.Debug("ChunkServiceHandler::PutChunk: MaybeOverwrite = true, chunk file %s already exists, ignoring write",
+						chunkPath)
+				}
+
+				availableSpace, err = rvInfo.getAvailableSpace()
+				if err != nil {
+					log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space [%v]",
+						req.SyncID, err)
+				}
+
+				return &models.PutChunkResponse{
+					TimeTaken:      time.Since(startTime).Microseconds(),
+					AvailableSpace: availableSpace,
+					ComponentRV:    mvInfo.getComponentRVs(),
+				}, nil
+			} else {
+				errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_ChunkAlreadyExists, errStr)
+			}
+		}
 		errStr := fmt.Sprintf("failed to write chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
