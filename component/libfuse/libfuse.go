@@ -119,6 +119,9 @@ const compName = "libfuse"
 const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
+
+// This is the default value for max_background which controls how many async I/O requests that fuse kernel
+// module will keep outstanding to fuse userspace.
 const defaultMaxFuseThreads = 128
 
 var fuseFS *Libfuse

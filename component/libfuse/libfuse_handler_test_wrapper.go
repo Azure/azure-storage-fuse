@@ -36,7 +36,7 @@
 
 package libfuse
 
-// #cgo CFLAGS: -DFUSE_USE_VERSION=39 -D_FILE_OFFSET_BITS=64
+// #cgo CFLAGS: -DFUSE_USE_VERSION=312 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 import "C"

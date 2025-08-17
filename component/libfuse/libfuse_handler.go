@@ -39,7 +39,7 @@ package libfuse
 // CFLAGS: compile time flags -D object file creation. D= Define
 // LFLAGS: loader flags link library -l binary file. l=link -ldl is for the extension to dynamically link
 
-// #cgo CFLAGS: -DFUSE_USE_VERSION=39 -D_FILE_OFFSET_BITS=64
+// #cgo CFLAGS: -DFUSE_USE_VERSION=312 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 // #include "extension_handler.h"
@@ -222,6 +222,10 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	if !fuseFS.directIO {
 		options += ",kernel_cache"
 	}
+
+	options += ",max_threads=8"
+	options += ",max_idle_threads=100000"
+	options += ",clone_fd"
 
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
