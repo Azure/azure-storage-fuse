@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1753607937212,
+  "lastUpdate": 1755421533087,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1373,6 +1373,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 13.121641635894775,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1a7d91ce786c8012c8afe26308e2c4d05fefd6aa",
+          "message": "fix e2e tests failure  (#1913)\n\nCo-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>",
+          "timestamp": "2025-08-05T09:59:31Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/1a7d91ce786c8012c8afe26308e2c4d05fefd6aa"
+        },
+        "date": 1755421532822,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.2438406944274902,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 6.045509576797485,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 40.94469237327576,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 15.588246583938599,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.8444979190826416,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 3.521284818649292,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 32.97474479675293,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 13.31753420829773,
             "unit": "seconds"
           }
         ]
