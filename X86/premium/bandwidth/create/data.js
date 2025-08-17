@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1754803889145,
+  "lastUpdate": 1755408489574,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1053,6 +1053,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_1l_files_in_20_threads",
             "value": 0.0908203125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1a7d91ce786c8012c8afe26308e2c4d05fefd6aa",
+          "message": "fix e2e tests failure  (#1913)\n\nCo-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>",
+          "timestamp": "2025-08-05T09:59:31Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/1a7d91ce786c8012c8afe26308e2c4d05fefd6aa"
+        },
+        "date": 1755408489277,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 105.8310546875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 100.2802734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0.0830078125,
             "unit": "MiB/s"
           }
         ]
