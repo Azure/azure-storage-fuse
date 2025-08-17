@@ -2156,65 +2156,76 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
 	common.Assert(data != nil && len(*data) > 0)
 
+	// Caller wants to perform direct write, with failback to buffered write if direct write fails with EINVAL.
 	odirect := (flag & syscall.O_DIRECT) != 0
 
+	// Use O_EXCL flag to catch the case where the chunk file already exists, it's unintentional.
 	fd, err := syscall.Open(*chunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
 	if err != nil {
 		//
 		// This is most likely open failure due to the file already existing.
 		// We need to fail the call, caller will fail the client request appropriately.
 		//
-		return fmt.Errorf("failed to open chunk file %s: %w", *chunkPath, err)
+		return fmt.Errorf("safeWrite: failed to open chunk file %s, flag: 0x%x: %w", *chunkPath, flag, err)
 	}
 
 	defer func() {
-			if fd != -1 {
-					syscall.Close(fd)
+		if fd != -1 {
+			closeErr := syscall.Close(fd)
+			if closeErr != nil {
+				log.Err("safeWrite: failed to close chunk file %s, flag: 0x%x: %v",
+					*chunkPath, flag, closeErr)
 			}
+		}
 	}()
 
 	for {
 		n, err := syscall.Write(fd, *data)
 		if err == nil {
+			// write should never succeed with 0 bytes written.
+			common.Assert(n > 0, n, len(*data), *chunkPath)
+
 			if n == len(*data) {
-				// Common case.
+				// Common case, written everything requested.
 				return nil
 			} else if odirect {
 				//
-				// Direct write must not perform partial write, but for resilience we fallback to buffered
-				// write.
+				// Direct write must not perform partial write, but for resilience we fallback to
+				// buffered write, with a warning log to know if this happens frequently.
 				//
-				log.Warn("partial (direct) write to chunk file %s (%d of %d), retrying buffered write",
+				log.Warn("safeWrite: partial (direct) write to chunk file %s (%d of %d), retrying as buffered write",
 					*chunkPath, n, len(*data))
 				break
 			}
 
 			//
-			// Partial write for buffered write.
+			// Partial buffered write.
 			// Even this is not expected for local files, but retry the remaining write.
 			// Emit a warning log to know if this happens frequently.
 			//
-			log.Warn("partial write to chunk file %s (%d of %d), retrying",
+			log.Warn("safeWrite: partial write to chunk file %s (%d of %d), retrying remaining write",
 				*chunkPath, n, len(*data))
 			*data = (*data)[n:]
 			continue
-		} else if !errors.Is(err, syscall.EINTR) {
-			log.Warn("write to chunk file %s (len: %d, odirect: %v) interrupted, retrying",
-				*chunkPath, n, len(*data), odirect)
+		} else if errors.Is(err, syscall.EINTR) {
+			log.Warn("safeWrite: write to chunk file %s (len: %d, odirect: %v) interrupted, retrying",
+				*chunkPath, len(*data), odirect)
 			continue
 		} else if !odirect {
 			//
 			// If Write() failed for buffered write, we have no choice but to fail the call, else
 			// if it fails for direct write we can retry once with buffered write.
 			//
-			return err
+			return fmt.Errorf("safeWrite: buffered write of %d bytes to chunk file %s failed: %w",
+				len(*data), *chunkPath, err)
 		} else if !errors.Is(err, syscall.EINVAL) {
-			return fmt.Errorf("failed to write chunk file %s [%v]", *chunkPath, err)
+			return fmt.Errorf("safeWrite: direct write of %d bytes to chunk file %s failed: %w",
+				len(*data), *chunkPath, err)
 		}
 
-		// For EINVAL, fall through to buffered write.
-		log.Warn("(direct) write to chunk file %s (len: %d) failed, retrying with buffered write",
-			*chunkPath, n, len(*data), odirect)
+		// For direct write failing with EINVAL, fall through to buffered write.
+		log.Warn("safeWrite: direct write to chunk file %s (len: %d) failed with EINVAL, retrying with buffered write",
+			*chunkPath, len(*data))
 		break
 	}
 
@@ -2223,11 +2234,18 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	//
 	err1 := os.Remove(*chunkPath)
 	if err1 != nil {
-		return fmt.Errorf("failed to remove chunk file %s [%v]", *chunkPath, err1)
+		return fmt.Errorf("safeWrite: failed to remove chunk file %s: %v", *chunkPath, err1)
 	}
 
-	syscall.Close(fd)
+	closeErr := syscall.Close(fd)
+	if closeErr != nil {
+		log.Err("safeWrite: failed to close chunk file %s, flag: 0x%x: %v",
+			*chunkPath, flag, closeErr)
+	}
+	// defer should skip closing.
 	fd = -1
+
+	// Buffered write.
 	return safeWrite(chunkPath, data, 0)
 }
 
@@ -2266,19 +2284,11 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 		bufferedWrite = true
 	}
 
-	//
-	// Direct IO write.
-	//
-	// TODO: [Tomar] This wierdly failed once with permission denied error suddenly when everything till that
-	//       point was working fine. Most likely reason for this can be that multiple calls to write the same
-	//       chunk landed in parallel and the first one created the .tmp file with 0400/readonly permission,
-	//       hence the second call failed with permission denied error as it wanted a write handle on the file.
-	//       Note that we have a stat() check above to not let a call come in if the chunk file already exists,
-	//       so both the calls have to really race with each other.
-	//
 	if !bufferedWrite {
+		// Direct IO write.
 		err = safeWrite(chunkPath, data, syscall.O_DIRECT)
 	} else {
+		// Buffered wriyte.
 		err = safeWrite(chunkPath, data, 0)
 	}
 
@@ -2593,8 +2603,9 @@ refreshFromClustermapAndRetry:
 
 				availableSpace, err = rvInfo.getAvailableSpace()
 				if err != nil {
-					log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space [%v]",
+					log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space, using availableSpace as 0: [%v]",
 						req.SyncID, err)
+					availableSpace = 0
 				}
 
 				return &models.PutChunkResponse{
@@ -2608,6 +2619,7 @@ refreshFromClustermapAndRetry:
 				return nil, rpc.NewResponseError(models.ErrorCode_ChunkAlreadyExists, errStr)
 			}
 		}
+
 		errStr := fmt.Sprintf("failed to write chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
