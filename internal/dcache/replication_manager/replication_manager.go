@@ -670,7 +670,7 @@ processResponses:
 	// If we have a BrokenChain error for an RV, it means that the PutChunkDC request was not
 	// forwarded to it as the nexthop RV was down/offline. We will get ThriftError for the nexthop RV
 	// and BrokenChain error for the subsequent RVs.
-	// In case of BrokenChain error, we return error to WriteMV() which retires the operation with
+	// In case of BrokenChain error, we return error to WriteMV() which retries the operation with
 	// OriginatorSendsToAll mode.
 	//
 	brokenChain := false
@@ -851,11 +851,12 @@ processResponses:
 
 	if brokenChain {
 		//
-		// If we got BrokenChain error, it means that we need to retry the entire write MV operation again with
-		// OriginatorSendsToAll mode. There can be a case of bad connection between 2 nodes which can cause the
-		// PutChunkDC operation to fail. In DaisyChain approach we may not tell with surety which node had
-		// connection issue. So, retrying with DaisyChain mode may not help in this case. So, we retry the
-		// WriteMV with OriginatorSendsToAll mode.
+		// If we got BrokenChain error, it means that we need to retry the entire write MV operation
+		// again with OriginatorSendsToAll mode.
+		// There can be a case of bad connection between 2 nodes which can cause the PutChunkDC operation
+		// to fail. In DaisyChain approach we may not tell with surety which node has connection issue.
+		// So, retrying with DaisyChain mode may not help in this case. So, we retry the
+		// WriteMV operation with OriginatorSendsToAll mode.
 		// This might mean re-writing some of the replicas which were successfully written in this iteration.
 		// We return BrokenChain error here and WriteMV then retries with OriginatorSendsToAll mode.
 		//
