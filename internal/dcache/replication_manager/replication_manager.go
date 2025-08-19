@@ -351,52 +351,28 @@ retry:
 	return resp, nil
 }
 
-func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
-	common.Assert(req != nil)
-
-	if common.IsDebugBuild() {
-		startTime := time.Now()
-		defer func() {
-			timeTaken := time.Since(startTime).Microseconds()
-			log.Debug("ReplicationManager::WriteMV: WriteMV request took %d microseconds: %v", timeTaken, req.toString())
-		}()
-	}
-
-	log.Debug("ReplicationManager::WriteMV: Received WriteMV request (%v): %v", PutChunkStyle, req.toString())
-
-	//
-	// We don't expect the caller to pass invalid requests, so only verify in debug builds.
-	//
-	if common.IsDebugBuild() {
-		if err := req.isValid(); err != nil {
-			err = fmt.Errorf("invalid WriteMV request %s [%v]", req.toString(), err)
-			log.Err("ReplicationManager::WriteMV: %v", err)
-			common.Assert(false, err)
-			return nil, err
-		}
-	}
+func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*WriteMvResponse, error) {
+	log.Debug("ReplicationManager::WriteMV: Received WriteMV request (%v): %v", putChunkStyle, req.toString())
 
 	var rvsWritten []string
 	retryCnt := 0
 
 	//
-	// Flag to check if we have a BrokenChain error in the PutChunkDC response.
-	// If we have a BrokenChain error for an RV, it means that the PutChunkDC request was not
-	// forwarded to it as the nexthop RV was down/offline. We will get ThriftError for the nexthop RV
-	// and BrokenChain error for the subsequent RVs.
-	// In case of BrokenChain error, we retry the WriteMV() operation skipping the nexthop RV and refreshing
-	// the clustermap (if needed).
+	// If the putChunkStyle is OriginatorSendsToAll, it means that we are retrying after BrokenChain
+	// error in the previous attempt using DaisyChain mode.
 	//
-	brokenChain := false
+	if putChunkStyle == OriginatorSendsToAll {
+		retryCnt = 1
+	}
 
 	// TODO: TODO: hash validation will be done later
 	// get hash of the data in the request
 	// hash := getMD5Sum(req.Data)
 
 retry:
-	if retryCnt > 0 || brokenChain {
-		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh or broken chain (%v), RVs written in prev attempt: %v",
-			retryCnt, req.toString(), brokenChain, rvsWritten)
+	if retryCnt > 0 {
+		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh or due to OriginatorSendsToAll mode (%v), RVs written in prev attempt: %v",
+			retryCnt, req.toString(), putChunkStyle == OriginatorSendsToAll, rvsWritten)
 	}
 
 	//
@@ -451,7 +427,7 @@ retry:
 			Length:         int64(len(req.Data)),
 			SyncID:         "", // this is regular client write
 			ComponentRV:    componentRVs,
-			MaybeOverwrite: retryCnt > 0 || brokenChain,
+			MaybeOverwrite: retryCnt > 0,
 		},
 		NextRVs: make([]string, 0), // will be added later down, if needed
 	}
@@ -549,7 +525,7 @@ retry:
 	// Use PutChunk to write if PutChunkStyle is OriginatorSendsToAll or we have only the nexthop
 	// RV to send the request to.
 	//
-	if PutChunkStyle == OriginatorSendsToAll || len(putChunkDCReq.NextRVs) == 0 {
+	if putChunkStyle == OriginatorSendsToAll || len(putChunkDCReq.NextRVs) == 0 {
 		// TODO: Add rvName to Address to avoid potentially expensive search for RV name.
 		rvName := getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID)
 
@@ -600,7 +576,7 @@ retry:
 				Length:         int64(len(req.Data)),
 				SyncID:         "", // this is regular client write
 				ComponentRV:    componentRVs,
-				MaybeOverwrite: retryCnt > 0 || brokenChain,
+				MaybeOverwrite: true, // in OriginatorSendsToAll we may be retrying to some nodes
 			}
 
 			log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
@@ -615,7 +591,7 @@ retry:
 				respChannel:  responseChannel,
 			}, isLastComponentRV /* runInline */)
 		}
-	} else if PutChunkStyle == DaisyChain {
+	} else if putChunkStyle == DaisyChain {
 		rvName := getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID)
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
@@ -665,7 +641,7 @@ retry:
 		//
 		addPutChunkDCResponseToChannel(putChunkDCResp, responseChannel)
 	} else {
-		common.Assert(false, "Unexpected PutChunkStyle", PutChunkStyle)
+		common.Assert(false, "Unexpected PutChunkStyle", putChunkStyle)
 	}
 
 processResponses:
@@ -690,9 +666,14 @@ processResponses:
 	clusterMapRefreshed := false
 
 	//
-	// Reset brokenChain flag to false before processing the responses.
+	// Flag to check if we have a BrokenChain error in the PutChunkDC response.
+	// If we have a BrokenChain error for an RV, it means that the PutChunkDC request was not
+	// forwarded to it as the nexthop RV was down/offline. We will get ThriftError for the nexthop RV
+	// and BrokenChain error for the subsequent RVs.
+	// In case of BrokenChain error, we return error to WriteMV() which retires the operation with
+	// OriginatorSendsToAll mode.
 	//
-	brokenChain = false
+	brokenChain := false
 
 	for i := 0; i < len(componentRVs); i++ {
 		respItem := <-responseChannel
@@ -743,28 +724,38 @@ processResponses:
 			log.Err("ReplicationManager::WriteMV: PutChunk %s/%s, failed to reach node [%v]",
 				respItem.rvName, req.MvName, respItem.err)
 
-			errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
-			if errRV != nil {
+			//
+			// In DaisyChain approach, we cannot tell for surety which node has bad connection. So, do not
+			// mark the RV as inband-offline.
+			//
+			if putChunkStyle != DaisyChain {
+				errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
+				if errRV != nil {
+					//
+					// If we fail to update the component RV as offline, we cannot safely complete
+					// the chunk write or else the failed replica may not be resynced causing data
+					// consistency issues.
+					//
+					errStr := fmt.Sprintf("failed to update %s/%s state to inband-offline [%v]",
+						respItem.rvName, req.MvName, errRV)
+					log.Err("ReplicationManager::WriteMV: %s", errStr)
+					errWriteMV = errRV
+					continue
+				}
+
 				//
-				// If we fail to update the component RV as offline, we cannot safely complete
-				// the chunk write or else the failed replica may not be resynced causing data
-				// consistency issues.
+				// If UpdateComponentRVState() succeeds, marking this component RV as offline,
+				// we can safely carry on with the write since we are guaranteed that these
+				// chunks which we could not write to this component RV will be later sync'ed
+				// from one of the good component RVs.
 				//
-				errStr := fmt.Sprintf("failed to update %s/%s state to inband-offline [%v]",
-					respItem.rvName, req.MvName, errRV)
-				log.Err("ReplicationManager::WriteMV: %s", errStr)
-				errWriteMV = errRV
-				continue
+				log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed, marked RV inband-offline",
+					respItem.rvName, req.MvName)
+			} else {
+				log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed, not marking RV as inband-offline since it is DaisyChain mode",
+					respItem.rvName, req.MvName)
 			}
 
-			//
-			// If UpdateComponentRVState() succeeds, marking this component RV as offline,
-			// we can safely carry on with the write since we are guaranteed that these
-			// chunks which we could not write to this component RV will be later sync'ed
-			// from one of the good component RVs.
-			//
-			log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed, marked RV inband-offline",
-				respItem.rvName, req.MvName)
 			continue
 		}
 
@@ -773,8 +764,8 @@ processResponses:
 		//
 		if rpcErr.GetCode() == models.ErrorCode_BrokenChain {
 			// BrokenChain error can only be returned for PutChunkStyle DaisyChain.
-			common.Assert(PutChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
-				PutChunkStyle, len(putChunkDCReq.NextRVs))
+			common.Assert(putChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
+				putChunkStyle, len(putChunkDCReq.NextRVs))
 
 			// BrokenChain error should not be returned for the nexthop RV to which we send the
 			// PutChunkDC request. It should only be returned for the next RVs.
@@ -860,13 +851,18 @@ processResponses:
 
 	if brokenChain {
 		//
-		// If we got BrokenChain error, it means that we need to retry the entire write MV operation again.
+		// If we got BrokenChain error, it means that we need to retry the entire write MV operation again with
+		// OriginatorSendsToAll mode. There can be a case of bad connection between 2 nodes which can cause the
+		// PutChunkDC operation to fail. In DaisyChain approach we may not tell with surety which node had
+		// connection issue. So, retrying with DaisyChain mode may not help in this case. So, we retry the
+		// WriteMV with OriginatorSendsToAll mode.
 		// This might mean re-writing some of the replicas which were successfully written in this iteration.
-		// Note the retryCnt is not incremented here.
+		// We return BrokenChain error here and WriteMV then retries with OriginatorSendsToAll mode.
 		//
-		// TODO: Can this result in infinite retries?
-		//
-		goto retry
+		err := fmt.Errorf("BrokenChain error occurred for %s, %s", req.MvName, req.toString())
+		log.Err("ReplicationManager::WriteMV: %v", err)
+		rpcErr := rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
+		return nil, rpcErr
 	}
 
 	if clusterMapRefreshed {
@@ -897,6 +893,58 @@ processResponses:
 	}
 
 	return &WriteMvResponse{}, nil
+}
+
+func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
+	common.Assert(req != nil)
+
+	if common.IsDebugBuild() {
+		startTime := time.Now()
+		defer func() {
+			timeTaken := time.Since(startTime).Microseconds()
+			log.Debug("ReplicationManager::WriteMV: WriteMV request took %d microseconds: %v", timeTaken, req.toString())
+		}()
+	}
+
+	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: %v", req.toString())
+
+	//
+	// We don't expect the caller to pass invalid requests, so only verify in debug builds.
+	//
+	if common.IsDebugBuild() {
+		if err := req.isValid(); err != nil {
+			err = fmt.Errorf("invalid WriteMV request %s [%v]", req.toString(), err)
+			log.Err("ReplicationManager::WriteMV: %v", err)
+			common.Assert(false, err)
+			return nil, err
+		}
+	}
+
+	//
+	// We first try to write the MV using the DaisyChain mode.
+	// If it fails with BrokenChain error, we retry using OriginatorSendsToAll mode.
+	//
+	resp, err := writeMVInternal(req, DaisyChain)
+	if err != nil {
+		log.Err("ReplicationManager::WriteMV: Failed to write MV %s using DaisyChain, %s [%v]",
+			req.MvName, req.toString(), err)
+
+		rpcErr := rpc.GetRPCResponseError(err)
+		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_BrokenChain {
+			log.Debug("ReplicationManager::WriteMV: Retrying WriteMV with OriginatorSendsToAll mode: %s",
+				req.toString())
+
+			// Retry with OriginatorSendsToAll mode.
+			resp, err = writeMVInternal(req, OriginatorSendsToAll)
+			if err != nil {
+				log.Err("ReplicationManager::WriteMV: Failed to write MV %s using OriginatorSendsToAll, %s [%v]",
+					req.MvName, req.toString(), err)
+				return nil, err
+			}
+		}
+	}
+
+	return resp, nil
 }
 
 // File IO manager can use this to delete all chunks belonging to a file from a given MV.
