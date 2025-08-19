@@ -655,8 +655,11 @@ func (file *DcacheFile) readChunk(offset int64, sync bool) (*StagedChunk, error)
 		// Note that sequential read is the common case that we support.
 		//
 		if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
-			// Clean the previous chunk.
-			file.removeChunk(chunkIdx - 1)
+			// To support the async IO from the kernel, we use last 3 chunks to be outstanding. If the user does aync IO
+			// for more than 3 chunks, we will fallback to the slow path (i.e., download the evicted chunk again)
+			// TODO: Support the slow path.
+			// Note: With this, we maintain (3 + fileIOMgr.numReadAheadChunks) # of outstanding chunks per file.
+			file.removeChunk(chunkIdx - 3)
 		}
 	}
 
