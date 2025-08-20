@@ -1034,7 +1034,7 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 
 		err = ncPool.closeRPCClients()
 		if err != nil {
-			err = fmt.Errorf("Failed to close RPC clients for node %s [%v]", key, err.Error())
+			err = fmt.Errorf("Failed to close RPC clients for node %s [%v]", nodeID, err)
 			log.Err("clientPool::closeAllNodeClientPools: %v", err)
 			return false // stop iteration
 		}
