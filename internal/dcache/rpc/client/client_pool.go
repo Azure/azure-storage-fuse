@@ -984,7 +984,7 @@ func (cp *clientPool) closeInactiveNodeClientPools() {
 // closeAllNodeClientPools closes all node client pools in the pool
 func (cp *clientPool) closeAllNodeClientPools() error {
 	// TODO: see if we need lock here, as we are closing all node client pools
-	log.Debug("clientPool::closeAllNodeClientPools: Closing all node client pools")
+	log.Debug("clientPool::closeAllNodeClientPools: Closing all %d node client pools", cp.clientsCnt.Load())
 
 	//
 	// Acquire write lock on the client pool to ensure that no other thread is accessing
@@ -1034,7 +1034,8 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 
 		err = ncPool.closeRPCClients()
 		if err != nil {
-			log.Err("clientPool::closeAllNodeClientPools: Failed to close node client pool for node %s [%v]", key, err.Error())
+			err = fmt.Errorf("Failed to close RPC clients for node %s [%v]", key, err.Error())
+			log.Err("clientPool::closeAllNodeClientPools: %v", err)
 			return false // stop iteration
 		}
 
