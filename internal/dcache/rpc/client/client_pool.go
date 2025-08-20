@@ -149,12 +149,6 @@ func (cp *clientPool) acquireRWMutexWriteLock() {
 	cp.rwMutex.Lock()
 
 	if common.IsDebugBuild() {
-		//
-		// We get the write lock only when there are no readers which also means no thread can be
-		// holding the node lock for any node, since the rwMutex read lock must be held when node
-		// lock is acquired.
-		//
-		common.Assert(cp.clientsCnt.Load() == 0, cp.clientsCnt.Load())
 		common.Assert(cp.rwMutexDbgCntr.Load() == 0, cp.rwMutexDbgCntr.Load())
 		cp.rwMutexDbgCntr.Store(-12345) // Special value to signify write lock.
 	}
@@ -163,6 +157,9 @@ func (cp *clientPool) acquireRWMutexWriteLock() {
 // Release the write lock on the rwMutex.
 func (cp *clientPool) releaseRWMutexWriteLock() {
 	if common.IsDebugBuild() {
+		// Once closeAllNodeClientPools() is done, we should have no clients left in the pool.
+		common.Assert(cp.clientsCnt.Load() == 0, cp.clientsCnt.Load())
+
 		common.Assert(cp.rwMutexDbgCntr.Load() == -12345, cp.rwMutexDbgCntr.Load())
 		cp.rwMutexDbgCntr.Store(0)
 	}
@@ -256,7 +253,7 @@ func (cp *clientPool) addNodeClientPoolToMap(nodeID string, ncPool *nodeClientPo
 	cp.clients.Store(nodeID, ncPool)
 	cp.clientsCnt.Add(1)
 
-	common.Assert(cp.clientsCnt.Load() < int64(cp.maxNodes), cp.clientsCnt.Load(), cp.maxNodes)
+	common.Assert(cp.clientsCnt.Load() <= int64(cp.maxNodes), cp.clientsCnt.Load(), cp.maxNodes)
 }
 
 // Delete nodeClientPool for the given nodeID.
@@ -360,10 +357,14 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 
 		// Successfully created all required RPC clients for the node, add it to the clients map.
 		cp.addNodeClientPoolToMap(nodeID, ncPool)
+
+		// Must always create cp.maxPerNode clients to any node.
+		common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode), len(ncPool.clientChan), cp.maxPerNode)
 	}
 
 	// Must never return a nodeClientPool with no clients allocated.
 	common.Assert(ncPool.clientChan != nil)
+
 	return ncPool, nil
 }
 
@@ -396,8 +397,13 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 
 	//
 	// Get the nodeClientPool for this node.
-	// We can release the node lock after this, as we are guaranteed that deleteNodeClientPoolFromMap()
-	// won't delete an active nodeClientPool.
+	// Q: Why is it safe to release the node lock and still use ncPool?
+	// A: If ncPool has one or more active/free clients, it is guaranteed that deleteNodeClientPoolFromMap()
+	//    won't delete the nodeClientPool, as it only deletes a nodeClientPool when there are no active
+	//    clients and no clients in the channel.
+	//    If ncPool has no active clients and no clients in the channel, then it can be deleted by
+	//    deleteNodeClientPoolFromMap() after we release the node lock, but we can still safely access ncPool
+	//    and it'll have no active and free clients and hence the getRPCClient() call will fail.
 	//
 	ncPool, err := cp.getNodeClientPool(nodeID)
 	cp.releaseNodeLock(nodeLock, nodeID)
@@ -559,7 +565,8 @@ func (cp *clientPool) closeRPCClient(client *rpcClient) error {
 // remove all clients to the node.
 //
 // NOTE: Caller MUST hold the lock for the nodeID and read lock on the rwMutex
-// before calling this function.
+//       before calling this function.
+
 func (cp *clientPool) deleteRPCClient(client *rpcClient) error {
 	log.Debug("clientPool::deleteRPCClient: Deleting RPC client to %s node %s",
 		client.nodeAddress, client.nodeID)
@@ -883,7 +890,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 //
 // NOTE: Caller MUST hold the read lock on the rwMutex before calling this function.
 func (cp *clientPool) closeLRUNodeClientPool() error {
-	common.Assert(cp.clientsCnt.Load() >= int64(cp.maxNodes),
+	common.Assert(cp.clientsCnt.Load() == int64(cp.maxNodes),
 		cp.clientsCnt.Load(), cp.maxNodes)
 
 	common.Assert(cp.isRWMutexReadLocked())
@@ -913,9 +920,9 @@ searchLRUClientPool:
 		//
 		// Omit the nodeClientPool if it has any client currently in use.
 		//
-		if len(ncPool.clientChan) != int(cp.maxPerNode) {
-			log.Debug("clientPool::closeLRUNodeClientPool: Skipping %s (%d < %d)",
-				ncPool.nodeID, len(ncPool.clientChan), cp.maxPerNode)
+		if ncPool.numActive.Load() > 0 {
+			log.Debug("clientPool::closeLRUNodeClientPool: Skipping %s with active clients, numActive: %d (%d, %d)",
+				ncPool.nodeID, ncPool.numActive.Load(), len(ncPool.clientChan), cp.maxPerNode)
 			return true // continue iteration
 		}
 
@@ -935,14 +942,14 @@ searchLRUClientPool:
 	// Take lock on the LRU node ID to ensure that other threads cannot create/get RPC clients
 	// for this node while we are closing and deleting its node client pool.
 	// The above search was done w/o the node client pool lock, so before we get the node client pool lock,
-	// it's possible that some other thread has called getRPCClient() for this node and created a new client,
+	// it's possible that some other thread has called getRPCClient() for this node and got a new client,
 	// we should not close that node client pool, so we go back and search again.
 	//
 	lruNodeLock := cp.acquireNodeLock(lruNodeID)
 
-	if len(lruNcPool.clientChan) != int(cp.maxPerNode) {
-		log.Debug("clientPool::closeLRUNodeClientPool: Some thread raced with us and got an RPC client for %s (%d < %d)",
-			lruNcPool.nodeID, len(lruNcPool.clientChan), cp.maxPerNode)
+	if lruNcPool.numActive.Load() > 0 {
+		log.Debug("clientPool::closeLRUNodeClientPool: Some thread raced with us and got an RPC client for %s, numActive: %d (%d, %d)",
+			lruNcPool.nodeID, lruNcPool.numActive.Load(), len(lruNcPool.clientChan), cp.maxPerNode)
 		lruNcPool = nil
 		lruNodeID = ""
 
