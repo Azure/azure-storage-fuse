@@ -1222,7 +1222,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 			if dcacheErr != syscall.ENOENT {
 				log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
 					rawPath, dcacheErr)
-				// Continue to delete from Azure, in the end we will fail the delete. This is the most useful behaviour.
+				// Continue to delete from Azure, in the end we will fail the delete. This is the most usable behaviour.
 			} else {
 				// TODO: Let it be warning log for sometime, later we can change it to debug.
 				log.Warn("DistributedCache::DeleteFile: Delete failed for Unqualified Path, Dcache file %s does not exist",
@@ -1374,7 +1374,7 @@ func (dc *DistributedCache) DeleteDir(options internal.DeleteDirOptions) error {
 			if dcacheErr != syscall.ENOENT {
 				log.Err("DistributedCache::DeleteDir: Delete failed for Unqualified Path (%s), Dcache dir: %s: %v",
 					options.Name, dcachePath, dcacheErr)
-				// Continue to delete from Azure, in the end we will fail the delete. This is the most useful behaviour.
+				// Continue to delete from Azure, in the end we will fail the delete. This is the most usable behaviour.
 			} else {
 				// TODO: Let it be warning log for sometime, later we can change it to debug.
 				log.Warn("DistributedCache::DeleteDir: Delete request for Unqualified Path (%s), Dcache dir %s does not exist",

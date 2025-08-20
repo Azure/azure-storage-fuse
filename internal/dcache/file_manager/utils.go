@@ -288,7 +288,7 @@ func DeleteDcacheFile(fileName string) error {
 	if fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::DeleteDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
-		return syscall.ENOENT
+		return syscall.EBUSY
 	}
 
 	//
