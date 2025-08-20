@@ -74,7 +74,7 @@ func getRVUuid(nodeUUID string, path string) (string, error) {
 		if common.IsValidUUID(rvId) {
 			return rvId, nil
 		}
-		return "", fmt.Errorf("RVId %s in RV UUID file is not valid", rvId, uuidFilePath)
+		return "", fmt.Errorf("RVId %s in RV UUID file %s is not valid", rvId, uuidFilePath)
 	} else if !os.IsNotExist(err) {
 		// Any read error other than 'file not found' is propagated.
 		return "", fmt.Errorf("failed to read RV UUID from file at %s: %v", uuidFilePath, err)

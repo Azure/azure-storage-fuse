@@ -343,7 +343,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 
 		info, err := os.Stat(localCachePath)
 		if err != nil && os.IsNotExist(err) {
-			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [localCachePath %s does not exists]", localCachePath))
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [localCachePath %s does not exist]", localCachePath))
 		} else if err != nil {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [cannot access localCachePath %s: %v]", localCachePath, err))
 		}

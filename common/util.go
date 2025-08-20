@@ -454,9 +454,20 @@ func GetDiskSpaceMetricsFromStatfs(path string) (uint64, uint64, error) {
 		return 0, 0, err
 	}
 
-	availableSpace := stat.Bavail * uint64(stat.Frsize)
-	totalSpace := stat.Blocks * uint64(stat.Frsize)
+	if currentUID == -1 {
+		currentUID = os.Getuid()
+	}
 
+	var availableSpace uint64
+	if currentUID == 0 {
+		// Sudo  has mounted
+		availableSpace = stat.Bfree * uint64(stat.Frsize)
+	} else {
+		// non Sudo has mounted
+		availableSpace = stat.Bavail * uint64(stat.Frsize)
+	}
+
+	totalSpace := stat.Blocks * uint64(stat.Frsize)
 	return totalSpace, availableSpace, nil
 }
 
