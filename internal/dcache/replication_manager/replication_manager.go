@@ -352,7 +352,7 @@ retry:
 }
 
 func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*WriteMvResponse, error) {
-	log.Debug("ReplicationManager::WriteMV: Received WriteMV request (%v): %v", putChunkStyle, req.toString())
+	log.Debug("ReplicationManager::writeMVInternal: Received WriteMV request (%v): %v", putChunkStyle, req.toString())
 
 	var rvsWritten []string
 	retryCnt := 0
@@ -371,7 +371,7 @@ func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*Wri
 
 retry:
 	if retryCnt > 0 {
-		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh or due to OriginatorSendsToAll mode (%v), RVs written in prev attempt: %v",
+		log.Info("ReplicationManager::writeMVInternal: [%d] Retrying WriteMV %v after clustermap refresh or due to OriginatorSendsToAll mode (%v), RVs written in prev attempt: %v",
 			retryCnt, req.toString(), putChunkStyle == OriginatorSendsToAll, rvsWritten)
 	}
 
@@ -382,7 +382,7 @@ retry:
 	//
 	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	log.Debug("ReplicationManager::WriteMV: Component RVs for %s (%s) are: %v",
+	log.Debug("ReplicationManager::writeMVInternal: Component RVs for %s (%s) are: %v",
 		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
 
 	//
@@ -452,7 +452,7 @@ retry:
 		if rv.State == string(dcache.StateOffline) ||
 			rv.State == string(dcache.StateInbandOffline) ||
 			rv.State == string(dcache.StateOutOfSync) {
-			log.Debug("ReplicationManager::WriteMV: Skipping %s/%s (RV state: %s, MV state: %s)",
+			log.Debug("ReplicationManager::writeMVInternal: Skipping %s/%s (RV state: %s, MV state: %s)",
 				rv.Name, req.MvName, rv.State, mvState)
 
 			// Online MV must have all replicas online.
@@ -476,7 +476,7 @@ retry:
 			targetNodeID := getNodeIDFromRVName(rv.Name)
 			common.Assert(common.IsValidUUID(targetNodeID))
 
-			log.Debug("ReplicationManager::WriteMV: Writing to %s/%s (rvID: %s, state: %s) on node %s",
+			log.Debug("ReplicationManager::writeMVInternal: Writing to %s/%s (rvID: %s, state: %s) on node %s",
 				rv.Name, req.MvName, rvID, rv.State, targetNodeID)
 
 			// Add local component RV to putChunkDCReq.Request.
@@ -498,7 +498,7 @@ retry:
 	// If none of the RVs was writeable, no PutChunk/PutChunkDC calls to make.
 	//
 	if len(responseChannel) == len(componentRVs) {
-		log.Err("ReplicationManager::WriteMV: Could not write to any component RV, req: %s, component RVs: %s",
+		log.Err("ReplicationManager::writeMVInternal: Could not write to any component RV, req: %s, component RVs: %s",
 			req.toString(), rpc.ComponentRVsToString(componentRVs))
 		common.Assert(len(rvsWritten) == 0, len(rvsWritten))
 		goto processResponses
@@ -532,7 +532,7 @@ retry:
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
+		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk request for %s/%s to node %s: %s",
 			rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
 
 		//
@@ -579,7 +579,7 @@ retry:
 				MaybeOverwrite: true, // in OriginatorSendsToAll we may be retrying to some nodes
 			}
 
-			log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
+			log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk request for %s/%s to node %s: %s",
 				rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkReq))
 
 			isLastComponentRV := componentRVIdx == (len(putChunkDCReq.NextRVs) - 1)
@@ -596,7 +596,7 @@ retry:
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::WriteMV: Sending PutChunkDC request for nexthop %s/%s to node %s: %s",
+		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunkDC request for nexthop %s/%s to node %s: %s",
 			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
@@ -617,7 +617,7 @@ retry:
 		}
 
 		if err != nil {
-			log.Err("ReplicationManager::WriteMV: Failed to send PutChunkDC request for nexthop %s/%s to node %s: %v",
+			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s: %v",
 				rvName, req.MvName, targetNodeID, err)
 			common.Assert(putChunkDCResp == nil)
 
@@ -628,7 +628,7 @@ retry:
 			//
 			putChunkDCResp = rpc.HandlePutChunkDCError(rvName, putChunkDCReq.NextRVs, req.MvName, err)
 		} else {
-			log.Debug("ReplicationManager::WriteMV: Received PutChunkDC response from nexthop %s/%s node %s: %s",
+			log.Debug("ReplicationManager::writeMVInternal: Received PutChunkDC response from nexthop %s/%s node %s: %s",
 				rvName, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp))
 			common.Assert(len(putChunkDCResp.Responses) == len(putChunkDCReq.NextRVs)+1,
 				len(putChunkDCResp.Responses), len(putChunkDCReq.NextRVs))
@@ -692,7 +692,7 @@ processResponses:
 		if respItem.err == nil {
 			common.Assert(putChunkResp != nil)
 
-			log.Debug("ReplicationManager::WriteMV: PutChunk successful for %s/%s, RPC response: %s",
+			log.Debug("ReplicationManager::writeMVInternal: PutChunk successful for %s/%s, RPC response: %s",
 				respItem.rvName, req.MvName, rpc.PutChunkResponseToString(putChunkResp))
 
 			//
@@ -704,7 +704,7 @@ processResponses:
 
 			continue
 		}
-		log.Err("ReplicationManager::WriteMV: PutChunk to %s/%s failed [%v]",
+		log.Err("ReplicationManager::writeMVInternal: PutChunk to %s/%s failed [%v]",
 			respItem.rvName, req.MvName, respItem.err)
 
 		common.Assert(putChunkResp == nil)
@@ -721,7 +721,7 @@ processResponses:
 			// component RV as inband-offline and force the fix-mv workflow which will eventually
 			// trigger the resync-mv workflow.
 			//
-			log.Err("ReplicationManager::WriteMV: PutChunk %s/%s, failed to reach node [%v]",
+			log.Err("ReplicationManager::writeMVInternal: PutChunk %s/%s, failed to reach node [%v]",
 				respItem.rvName, req.MvName, respItem.err)
 
 			//
@@ -738,7 +738,7 @@ processResponses:
 					//
 					errStr := fmt.Sprintf("failed to update %s/%s state to inband-offline [%v]",
 						respItem.rvName, req.MvName, errRV)
-					log.Err("ReplicationManager::WriteMV: %s", errStr)
+					log.Err("ReplicationManager::writeMVInternal: %s", errStr)
 					errWriteMV = errRV
 					continue
 				}
@@ -749,10 +749,10 @@ processResponses:
 				// chunks which we could not write to this component RV will be later sync'ed
 				// from one of the good component RVs.
 				//
-				log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed, marked RV inband-offline",
+				log.Warn("ReplicationManager::writeMVInternal: Writing to %s/%s failed, marked RV inband-offline",
 					respItem.rvName, req.MvName)
 			} else {
-				log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed, not marking RV as inband-offline since it is DaisyChain mode",
+				log.Warn("ReplicationManager::writeMVInternal: Writing to %s/%s failed, not marking RV as inband-offline since it is DaisyChain mode",
 					respItem.rvName, req.MvName)
 			}
 
@@ -774,7 +774,7 @@ processResponses:
 
 			brokenChain = true
 
-			log.Debug("ReplicationManager::WriteMV: PutChunkDC call not forwarded to %s/%s [%v]",
+			log.Debug("ReplicationManager::writeMVInternal: PutChunkDC call not forwarded to %s/%s [%v]",
 				respItem.rvName, req.MvName, respItem.err)
 		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
 			//
@@ -785,7 +785,7 @@ processResponses:
 			if retryCnt > 5 {
 				errWriteMV = fmt.Errorf("failed to write to %s/%s after refreshing clustermap [%v]",
 					respItem.rvName, req.MvName, respItem.err)
-				log.Err("ReplicationManager::WriteMV: %v", errWriteMV)
+				log.Err("ReplicationManager::writeMVInternal: %v", errWriteMV)
 				continue
 			}
 
@@ -817,7 +817,7 @@ processResponses:
 				// To be safe we refresh the clustermap for a limited number of times before
 				// failing the write.
 				//
-				log.Warn("ReplicationManager::WriteMV: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
+				log.Warn("ReplicationManager::writeMVInternal: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
 					req.toString(), retryCnt, errCM)
 			}
 
@@ -830,7 +830,7 @@ processResponses:
 			// TODO: check if this is non-retriable error.
 			errWriteMV = fmt.Errorf("PutChunk to %s/%s failed with non-retriable error [%v]",
 				respItem.rvName, req.MvName, respItem.err)
-			log.Err("ReplicationManager::WriteMV: %v", errWriteMV)
+			log.Err("ReplicationManager::writeMVInternal: %v", errWriteMV)
 			continue
 		}
 	}
@@ -844,7 +844,7 @@ processResponses:
 	//   - If PutChunk failed with non-retriable error.
 	//
 	if errWriteMV != nil {
-		log.Err("ReplicationManager::WriteMV: Failed to write to MV %s, %s [%v]",
+		log.Err("ReplicationManager::writeMVInternal: Failed to write to MV %s, %s [%v]",
 			req.MvName, req.toString(), errWriteMV)
 		return nil, errWriteMV
 	}
@@ -861,7 +861,7 @@ processResponses:
 		// We return BrokenChain error here and WriteMV then retries with OriginatorSendsToAll mode.
 		//
 		err := fmt.Errorf("BrokenChain error occurred for %s, %s", req.MvName, req.toString())
-		log.Err("ReplicationManager::WriteMV: %v", err)
+		log.Err("ReplicationManager::writeMVInternal: %v", err)
 		rpcErr := rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 		return nil, rpcErr
 	}
@@ -881,14 +881,14 @@ processResponses:
 	// Fail write with a meaningful error.
 	if mvState == dcache.StateOffline {
 		err := fmt.Errorf("%s is offline", req.MvName)
-		log.Err("ReplicationManager::WriteMV: %v", err)
+		log.Err("ReplicationManager::writeMVInternal: %v", err)
 		return nil, err
 	}
 
 	// For a non-offline MV, at least one replica write should succeed.
 	if len(rvsWritten) == 0 {
 		err := fmt.Errorf("WriteMV could not write to any replica: %v", req.toString())
-		log.Err("ReplicationManager::WriteMV: %v", err)
+		log.Err("ReplicationManager::writeMVInternal: %v", err)
 		common.Assert(false, err)
 		return nil, err
 	}
