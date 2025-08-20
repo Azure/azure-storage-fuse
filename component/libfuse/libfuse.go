@@ -250,12 +250,26 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		}
 	*/
 
-	if lf.directIO {
-		lf.negativeTimeout = 0
-		lf.attributeExpiration = 0
-		lf.entryExpiration = 0
-		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
-	}
+	//
+	// For now I'm turning off kernel attribute caching altogether, as it causes issues with
+	// new files getting created. Kernel caches the file size as -1 (when the file is created)
+	// and later when the file is completely written and its size updated, the kernel cache is
+	// not invalidated, so the file size is still -1.
+	//
+	// TODO: Later if we want to support kernel attribute caching, we have to duly invalidte the
+	//       kernel cache when the file is written and its size is updated.
+	//
+	/*
+		if lf.directIO {
+			lf.negativeTimeout = 0
+			lf.attributeExpiration = 0
+			lf.entryExpiration = 0
+			log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
+		}
+	*/
+	lf.negativeTimeout = 0
+	lf.attributeExpiration = 0
+	lf.entryExpiration = 0
 
 	if !(config.IsSet(compName+".uid") || config.IsSet(compName+".gid") ||
 		config.IsSet("lfuse.uid") || config.IsSet("lfuse.gid")) {
