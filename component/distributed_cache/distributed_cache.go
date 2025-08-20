@@ -98,9 +98,9 @@ type DistributedCacheOptions struct {
 	CacheID   string   `config:"cache-id" yaml:"cache-id,omitempty"`
 	CacheDirs []string `config:"cache-dirs" yaml:"cache-dirs,omitempty"`
 
-	ChunkSize  uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
-	StripeSize uint64 `config:"stripe-size" yaml:"stripe-size,omitempty"`
-	Replicas   uint32 `config:"replicas" yaml:"replicas,omitempty"`
+	ChunkSizeMB uint64 `config:"chunk-size-mb" yaml:"chunk-size-mb,omitempty"`
+	StripeWidth uint64 `config:"stripe-width" yaml:"stripe-width,omitempty"`
+	Replicas    uint32 `config:"replicas" yaml:"replicas,omitempty"`
 
 	HeartbeatDuration   uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
 	MaxMissedHeartbeats uint8  `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
@@ -126,10 +126,10 @@ const (
 	defaultHeartBeatDurationInSecond = 30
 	defaultReplicas                  = 3
 	defaultMaxMissedHBs              = 3
-	defaultChunkSize                 = 4 * 1024 * 1024 // 4 MB
+	defaultChunkSizeMB               = 4 // 4 MB
 	defaultMinNodes                  = 1
 	defaultMaxRVs                    = 100
-	defaultStripeSize                = 16 * 1024 * 1024 // 16 MB
+	defaultStripeWidth               = 4 // defaultStripeSize = 4 * 4 = 16 MB
 	defaultMVsPerRV                  = 10
 	defaultRvFullThreshold           = 95
 	defaultRvNearfullThreshold       = 80
@@ -196,7 +196,7 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError(errString)
 	}
 
-	err = dcache.InitBufferPool(dc.cfg.ChunkSize)
+	err = dcache.InitBufferPool(dc.cfg.ChunkSizeMB * common.MbToBytes)
 	if err != nil {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to create BufferPool : %v]", err))
 	}
@@ -226,8 +226,8 @@ func (dc *DistributedCache) startClusterManager() string {
 		CacheId:                dc.cfg.CacheID,
 		MinNodes:               dc.cfg.MinNodes,
 		MaxRVs:                 dc.cfg.MaxRVs,
-		ChunkSize:              dc.cfg.ChunkSize,
-		StripeSize:             dc.cfg.StripeSize,
+		ChunkSizeMB:            dc.cfg.ChunkSizeMB,
+		StripeWidth:            dc.cfg.StripeWidth,
 		NumReplicas:            dc.cfg.Replicas,
 		MVsPerRV:               dc.cfg.MVsPerRV,
 		HeartbeatSeconds:       dc.cfg.HeartbeatDuration,
@@ -457,8 +457,8 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".max-missed-heartbeats") {
 		distributedCache.cfg.MaxMissedHeartbeats = defaultMaxMissedHBs
 	}
-	if !config.IsSet(compName + ".chunk-size") {
-		distributedCache.cfg.ChunkSize = defaultChunkSize
+	if !config.IsSet(compName + ".chunk-size-mb") {
+		distributedCache.cfg.ChunkSizeMB = defaultChunkSizeMB
 	}
 	if !config.IsSet(compName + ".min-nodes") {
 		distributedCache.cfg.MinNodes = defaultMinNodes
@@ -466,8 +466,8 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".max-rvs") {
 		distributedCache.cfg.MaxRVs = defaultMaxRVs
 	}
-	if !config.IsSet(compName + ".stripe-size") {
-		distributedCache.cfg.StripeSize = defaultStripeSize
+	if !config.IsSet(compName + ".stripe-width") {
+		distributedCache.cfg.StripeWidth = defaultStripeWidth
 	}
 	if !config.IsSet(compName + ".mvs-per-rv") {
 		//
@@ -554,16 +554,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if err != nil {
 		return fmt.Errorf("config error in %s: [cannot set write-io-mode (%s)]: %v",
 			distributedCache.Name(), distributedCache.cfg.WriteIOMode, err)
-	}
-
-	//
-	// In direct IO read or write operations, the chunk size must be a multiple
-	// of filesystem block size.
-	//
-	if (rpc.ReadIOMode == rpc.DirectIO || rpc.WriteIOMode == rpc.DirectIO) &&
-		distributedCache.cfg.ChunkSize%common.FS_BLOCK_SIZE != 0 {
-		return fmt.Errorf("config error in %s: [chunk-size (%d) must be a multiple of %d bytes]",
-			distributedCache.Name(), distributedCache.cfg.ChunkSize, common.FS_BLOCK_SIZE)
 	}
 
 	return nil
@@ -1406,8 +1396,8 @@ func init() {
 	cacheDirFlag := config.AddStringSliceFlag("cache-dirs", []string{}, "One or more local cache directories for distributed cache (comma-separated), e.g. --cache-dirs=/mnt/tmp,/mnt/abc")
 	config.BindPFlag(compName+".cache-dirs", cacheDirFlag)
 
-	chunkSize := config.AddUint64Flag("chunk-size", defaultChunkSize, "Chunk size for the cache")
-	config.BindPFlag(compName+".chunk-size", chunkSize)
+	chunkSize := config.AddUint64Flag("chunk-size-mb", defaultChunkSizeMB, "Chunk size for the cache (in MB)")
+	config.BindPFlag(compName+".chunk-size-mb", chunkSize)
 
 	maxCacheSize := config.AddUint64Flag("max-cache-size", 0, "Cache size for the cache")
 	config.BindPFlag(compName+".max-cache-size", maxCacheSize)
@@ -1424,8 +1414,8 @@ func init() {
 	clustermapEpoch := config.AddUint64Flag("clustermap-epoch", defaultClustermapEpoch, "Epoch duration for the clustermap update")
 	config.BindPFlag(compName+".clustermap-epoch", clustermapEpoch)
 
-	stripeSize := config.AddUint64Flag("stripe-size", defaultStripeSize, "Stripe size for the cache")
-	config.BindPFlag(compName+".stripe-size", stripeSize)
+	stripeWidth := config.AddUint64Flag("stripe-width", defaultStripeWidth, "Stripe width for the cache (number of MVs in stripe)")
+	config.BindPFlag(compName+".stripe-width", stripeWidth)
 
 	mvsPerRv := config.AddUint64Flag("mvs-per-rv", defaultMVsPerRV, "Number of MVs per raw volume")
 	config.BindPFlag(compName+".mvs-per-rv", mvsPerRv)

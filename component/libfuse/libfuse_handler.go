@@ -39,7 +39,7 @@ package libfuse
 // CFLAGS: compile time flags -D object file creation. D= Define
 // LFLAGS: loader flags link library -l binary file. l=link -ldl is for the extension to dynamically link
 
-// #cgo CFLAGS: -DFUSE_USE_VERSION=39 -D_FILE_OFFSET_BITS=64
+// #cgo CFLAGS: -DFUSE_USE_VERSION=315 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 // #include "extension_handler.h"
@@ -217,11 +217,24 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 		options += fmt.Sprintf(",umask=%04d", opts.umask)
 	}
 
+	// This should match the max_read value in libfuse_init().
 	options += ",max_read=1048576"
 
 	if !fuseFS.directIO {
 		options += ",kernel_cache"
 	}
+
+	//
+	// Large number of fuse threads play very inefficiently with cpu caches.
+	// We want to keep as few fuse threads as possible, just large enough to handle parallel requests
+	// fairly well. Fuse has a default of 10 which should be ok but we set it to 8 to be explicit about
+	// our intent to use a small number of threads.
+	//
+	options += ",max_threads=8"
+	options += ",max_idle_threads=100000"
+
+	// clone_fd should generally we good, let's keep a watch on this.
+	options += ",clone_fd"
 
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
@@ -256,7 +269,8 @@ func (lf *Libfuse) destroyFuse() error {
 
 //export libfuse_init
 func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Pointer) {
-	log.Trace("Libfuse::libfuse_init : init (read : %v, write %v, read-ahead %v)", conn.max_read, conn.max_write, conn.max_readahead)
+	log.Trace("Libfuse::libfuse_init : init (max_read: %v, max_write: %d, max_readahead: %d)",
+		conn.max_read, conn.max_write, conn.max_readahead)
 
 	log.Info("Libfuse::NotifyMountToParent : Notifying parent for successful mount")
 	if err := common.NotifyMountToParent(); err != nil {
@@ -265,7 +279,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	C.populate_uid_gid()
 
-	log.Info("Libfuse::libfuse_init : Kernel Caps : %d", conn.capable)
+	log.Info("Libfuse::libfuse_init : Kernel Caps : 0x%x", conn.capable)
 
 	// Populate connection information
 	// conn.want |= C.FUSE_CAP_NO_OPENDIR_SUPPORT
@@ -289,13 +303,26 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		conn.want |= C.FUSE_CAP_READDIRPLUS
 	}
 
-	// Allow fuse to read a file in parallel on different offsets
-	// TODO: turning of this capability to make the readahead simpler in dcache.
-	// Make the kernel readahead synchronous, that would make the readahead implementation inside the blobfuse easier.
-	// Default behaviour for FUSE is to do asynchronous readahead if its capable.
+	// General async dio support (affects both read and write).
+	//
+	// TODO: There is work needed in dcache layer to handle parallel reads/writes correctly.
+	if (conn.capable & C.FUSE_CAP_ASYNC_DIO) != 0 {
+		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_DIO")
+		conn.want |= C.FUSE_CAP_ASYNC_DIO
+	}
+
+	// Async read allows fuse kernel modules to send multiple read requests in parallel to blobfuse.
+	// This is good for performance as user can issue large reads (greater than 1MB) and fuse will issue
+	// multiple 1MB reads in parallel to blobfuse, which can process all of them in parallel through its
+	// multiple threads. This helps performance by preventing kernel->user request latency for every read
+	// request but instead those can be issued in parallel to blobfuse and processed in parallel.
+	//
+	// Note: This does not work when direct_io is enabled on the filesystem. See comment below.
+	//
+	// TODO: There is work needed in dcache layer to handle this correctly.
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
-		log.Info("Libfuse::libfuse_init : Disable Capability : FUSE_CAP_ASYNC_READ")
-		conn.want &= ^C.uint(C.FUSE_CAP_ASYNC_READ)
+		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_READ")
+		conn.want |= C.FUSE_CAP_ASYNC_READ
 	}
 
 	if (conn.capable & C.FUSE_CAP_SPLICE_WRITE) != 0 {
@@ -319,9 +346,11 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
-	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (4 * 1024 * 1024)
+	// We love large IOs.
 	conn.max_read = (1 * 1024 * 1024)
+
+	// While reading a file let kernel do readahed for better perf.
+	conn.max_readahead = (16 * 1024 * 1024)
 
 	// RHEL still has 3.3 fuse version and it does not allow max_write beyond 128K
 	// Setting this value to 1 MB will fail the mount.
@@ -336,9 +365,19 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
 	// page cache (file content cache) in the kernel for the filesystem.
+	// Unfortunately, this also forces the kernel to issue only one read request at a time
+	// even though we have enabled FUSE_CAP_ASYNC_READ. This hurts performance as we have to
+	// incur the kernel->user request latency for every read request.
+	// What works best is to not set the direct_io option and let the application use O_DIRECT
+	// flag on open(). This gets us the benefit of bypassing the kernel cache and also allows
+	// kernel to issue multiple read (and write) requests in parallel to blobfuse.
 	if fuseFS.directIO {
+		log.Warn("Libfuse::libfuse_init : Forcing direct_io, kernel page cache will be bypassed for all files on the filesystem, regardless of the O_DIRECT open flag. An unwanted side effect of this is that kernel will issue only one read/write request at a time to blobfuse2. This hurts performance as we have to incur the kernel->user request latency for every max_read/max_write sized read/write request. Consider using O_DIRECT open flag instead of direct_io mount option.")
 		cfg.direct_io = C.int(1)
 	}
+
+	log.Info("Libfuse::libfuse_init : want: 0x%x, max_read: %d, max_write: %d, max_readahead: %d",
+		conn.want, conn.max_read, conn.max_write, conn.max_readahead)
 
 	return nil
 }
