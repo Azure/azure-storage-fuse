@@ -56,15 +56,17 @@ import (
 //go:generate $ASSERT_REMOVER $GOFILE
 
 func getRVUuid(nodeUUID string, path string) (string, error) {
-	// Create or read a deterministic UUID stamped in ".rvId" file inside the given directory path.
+	// Create or read a deterministic UUID stamped in ".rvId" file inside the top level RV dir.
 	// Deterministic UUID is generated from the canonical absolute directory path, not randomly.
 
 	// Canonicalize the path to avoid duplicates due to different path representations.
-	if abs, err := filepath.Abs(path); err == nil && abs != "" {
-		path = abs
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("filepath.Abs(%s) failed: %v", path, err)
 	}
 
-	uuidFilePath := filepath.Join(path, ".rvId")
+	path = abs
+	uuidFilePath := filepath.Join(path, ".rvid")
 
 	// Try reading existing UUID from the file.
 	if data, err := os.ReadFile(uuidFilePath); err == nil {
@@ -72,10 +74,10 @@ func getRVUuid(nodeUUID string, path string) (string, error) {
 		if common.IsValidUUID(rvId) {
 			return rvId, nil
 		}
-		return "", fmt.Errorf("not a valid UUID in RV UUID file at :%s UUID - %s", uuidFilePath, rvId)
+		return "", fmt.Errorf("RVId %s in RV UUID file is not valid", rvId, uuidFilePath)
 	} else if !os.IsNotExist(err) {
 		// Any read error other than 'file not found' is propagated.
-		return "", fmt.Errorf("failed to read RV UUID from file at %s with error %v", uuidFilePath, err)
+		return "", fmt.Errorf("failed to read RV UUID from file at %s: %v", uuidFilePath, err)
 	}
 
 	// File doesn't exist, generate a deterministic UUID using SHA1 of (nodeUUID + '|' + canonical path).
@@ -86,6 +88,8 @@ func getRVUuid(nodeUUID string, path string) (string, error) {
 	if err := os.WriteFile(uuidFilePath, []byte(rvUUID), 0400); err != nil {
 		return "", fmt.Errorf("failed to write RV UUID file at %s: %v", uuidFilePath, err)
 	}
+
+	log.Info("DistributedCache::getRVUuid: Saved RV UUID %s in %s", rvUUID, uuidFilePath)
 
 	return rvUUID, nil
 }

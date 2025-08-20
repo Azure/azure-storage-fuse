@@ -264,7 +264,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 
 	nodeUuidVal, err := common.GetNodeUUID()
 	if err != nil {
-		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve node UUID, error: %v]", err))
 	}
 
 	//
@@ -308,10 +308,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	rvIDToPath := make(map[string]string, len(dc.cfg.CacheDirs))
 
 	for index, path := range dc.cfg.CacheDirs {
-		var rvId string
-		var err error
-
-		rvId, err = getRVUuid(nodeUuidVal, path)
+		rvId, err := getRVUuid(nodeUuidVal, path)
 		if err != nil {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID for %s: %v]", path, err))
 		}
@@ -321,7 +318,9 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		//
 		// No two RVs exported by us must have the same RVid.
 		// This will catch the following two cases:
-		// - Two distinct cache-dir elements have the same filesystem GUID.
+		// - Two distinct cache-dir elements have the same RVid.
+		//   Now that we generate a unique RVid per cache-dir, this is unlikely unless there's some
+		//   tampering.
 		// - User accidentally provided a duplicate cache-dir element.
 		//
 		if existingPath, exists := rvIDToPath[rvId]; exists {
@@ -335,7 +334,23 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		if err != nil {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
 		}
-		path = filepath.Join(path, "dcache")
+
+		//
+		// Configure() must have ensured that the cache directory exists and is a directory, but we need
+		// to ensure that before we add the RV to the list.
+		//
+		localCachePath := filepath.Join(path, "dcache")
+
+		info, err := os.Stat(localCachePath)
+		if err != nil && os.IsNotExist(err) {
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [localCachePath %s does not exists]", localCachePath))
+		} else if err != nil {
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [cannot access localCachePath %s: %v]", localCachePath, err))
+		}
+
+		if !info.IsDir() {
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [localCachePath %s is not a directory]", localCachePath))
+		}
 
 		rvList[index] = dcache.RawVolume{
 			NodeId:         nodeUuidVal,
@@ -346,7 +361,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			State:          dcache.StateOnline,
 			TotalSpace:     totalSpace,
 			AvailableSpace: availableSpace,
-			LocalCachePath: path,
+			LocalCachePath: localCachePath,
 		}
 	}
 
@@ -391,61 +406,78 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	// Ensure the cache directories exist (create if missing) and are usable.
 	for _, dir := range distributedCache.cfg.CacheDirs {
 		absDir, absErr := filepath.Abs(dir)
-		if absErr == nil && absDir != "" {
-			dir = absDir
+		if absErr != nil {
+			return fmt.Errorf("config error in %s: [cannot get absolute path for %s: %v]",
+				distributedCache.Name(), dir, absErr)
 		}
 
 		// Normalize to a dedicated dcache subfolder to keep only dcache content.
-		dcacheDir := filepath.Join(dir, "dcache")
+		dcacheDir := filepath.Join(absDir, "dcache")
 
-		log.Info("DistributedCache::Configure : Ensuring cache dir exists: %s", dcacheDir)
+		log.Info("DistributedCache::Configure : Ensuring cache directory exists: %s", dcacheDir)
+
 		info, err := os.Stat(dcacheDir)
 		if os.IsNotExist(err) {
-			log.Info("DistributedCache::Configure : cache-dirs %s does not exist, creating", dcacheDir)
+			log.Info("DistributedCache::Configure : cache directory %s does not exist, creating", dcacheDir)
 			if mkErr := os.MkdirAll(dcacheDir, 0755); mkErr != nil {
-				log.Err("DistributedCache::Configure : failed to create cache-dirs %s: %v", dcacheDir, mkErr)
-				return fmt.Errorf("config error in %s: [failed to create cache-dirs %s: %v]", distributedCache.Name(), dcacheDir, mkErr)
+				log.Err("DistributedCache::Configure : failed to create cache directory %s: %v",
+					dcacheDir, mkErr)
+				return fmt.Errorf("config error in %s: [failed to create cache directory %s: %v]",
+					distributedCache.Name(), dcacheDir, mkErr)
 			}
-			// Refresh info after creation
+
+			// Refresh info after creation.
 			info, err = os.Stat(dcacheDir)
 			if err != nil {
-				log.Err("DistributedCache::Configure : error accessing cache-dirs %s after create: %v", dcacheDir, err)
-				return fmt.Errorf("config error in %s: [error accessing cache-dirs %s after create: %v]", distributedCache.Name(), dcacheDir, err)
+				log.Err("DistributedCache::Configure : error accessing cache directory %s after create: %v",
+					dcacheDir, err)
+				return fmt.Errorf("config error in %s: [error accessing cache directory %s after create: %v]",
+					distributedCache.Name(), dcacheDir, err)
 			}
 		} else if err != nil {
-			log.Err("DistributedCache::Configure : error accessing cache-dirs %s: %v", dcacheDir, err)
-			return fmt.Errorf("config error in %s: [error accessing cache-dirs %s: %v]", distributedCache.Name(), dcacheDir, err)
+			log.Err("DistributedCache::Configure : error accessing cache directory %s: %v",
+				dcacheDir, err)
+			return fmt.Errorf("config error in %s: [error accessing cache directory %s: %v]",
+				distributedCache.Name(), dcacheDir, err)
 		}
 
 		// Check if it is a directory.
 		if !info.IsDir() {
-			log.Err("DistributedCache::Configure : cache-dirs %s exists but is not a directory", dcacheDir)
-			return fmt.Errorf("config error in %s: [cache-dirs %s exists but is not a directory]", distributedCache.Name(), dcacheDir)
+			log.Err("DistributedCache::Configure : cache directory %s exists but is not a directory",
+				dcacheDir)
+			return fmt.Errorf("config error in %s: [cache directory %s exists but is not a directory]",
+				distributedCache.Name(), dcacheDir)
 		}
 
 		// Test write permission by creating a temporary file.
 		testFile := filepath.Join(dcacheDir, fmt.Sprintf(".perm_test_%d_%d", time.Now().UnixNano(), rand.Uint64()))
-		log.Info("DistributedCache::Configure : Testing write permission in %s", dir)
+		log.Info("DistributedCache::Configure : Testing write permission in %s", dcacheDir)
 		f, err := os.Create(testFile)
 		if err != nil {
-			log.Err("DistributedCache::Configure : cache directory %s is not writable: %v", dcacheDir, err)
-			return fmt.Errorf("config error in %s: cache directory %s is not writable: %v", distributedCache.Name(), dcacheDir, err)
+			log.Err("DistributedCache::Configure : cache directory %s is not writable: %v",
+				dcacheDir, err)
+			return fmt.Errorf("config error in %s: cache directory %s is not writable: %v",
+				distributedCache.Name(), dcacheDir, err)
 		}
 		defer f.Close()
 
 		// Clean up test file.
-		log.Info("DistributedCache::Configure : Cleaning up temp file %s created", testFile)
+		log.Info("DistributedCache::Configure : Cleaning up temp file %s", testFile)
 		if err := os.Remove(testFile); err != nil {
-			log.Err("DistributedCache::Configure : cleanup of temp file %s failed: %v", testFile, err)
-			return fmt.Errorf("config error in %s: cache directory %s cleanup of temp file %s failed: %v", distributedCache.Name(), dcacheDir, testFile, err)
+			log.Err("DistributedCache::Configure : cleanup of temp file %s failed: %v",
+				testFile, err)
+			return fmt.Errorf("config error in %s: cache directory %s cleanup of temp file %s failed: %v",
+				distributedCache.Name(), dcacheDir, testFile, err)
 		}
 
 		// Test read permission by opening the directory.
 		log.Info("DistributedCache::Configure : Testing read permission in %s", dcacheDir)
 		dirFile, err := os.Open(dcacheDir)
 		if err != nil {
-			log.Err("DistributedCache::Configure : cache directory %s is not readable: %v", dcacheDir, err)
-			return fmt.Errorf("config error in %s: cache directory %s is not readable: %v", distributedCache.Name(), dcacheDir, err)
+			log.Err("DistributedCache::Configure : cache directory %s is not readable: %v",
+				dcacheDir, err)
+			return fmt.Errorf("config error in %s: cache directory %s is not readable: %v",
+				distributedCache.Name(), dcacheDir, err)
 		}
 		defer dirFile.Close()
 	}
