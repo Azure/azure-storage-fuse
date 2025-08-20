@@ -1212,23 +1212,21 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		return syscall.EROFS
 	} else {
 		//
-		// Semantics for Unqualified Path, Delete from both Azure and Dcache. If file is present in only one qualified
-		// path, then delete only from that path. If the call has come here it already means that the file is present
-		// in at least one qualified path as stat would be checked before doing deletion of a file.
+		// We should get this call only when the file is present in at least one of Azure or Dcache.
 		//
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 
+		// Delete file from dcache.
 		dcacheErr = fm.DeleteDcacheFile(rawPath)
 		if dcacheErr != nil {
-			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
-				rawPath, dcacheErr)
-
-			//
-			// If the file is not present in dcache, we need to delete from Azure, else on any other error, bail
-			// out.
-			//
 			if dcacheErr != syscall.ENOENT {
-				return dcacheErr
+				log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
+					rawPath, dcacheErr)
+				// Continue to delete from Azure, in the end we will fail the delete. This is the most useful behaviour.
+			} else {
+				// TODO: Let it be warning log for sometime, later we can change it to debug.
+				log.Warn("DistributedCache::DeleteFile: Delete failed for Unqualified Path, Dcache file %s does not exist",
+					rawPath)
 			}
 		}
 
@@ -1237,23 +1235,39 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 
 		azureErr = dc.NextComponent().DeleteFile(options)
 		if azureErr != nil {
-			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Azure file %s: %v",
-				options.Name, azureErr)
-
 			if azureErr != syscall.ENOENT {
-				return azureErr
+				log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Azure file %s: %v",
+					options.Name, azureErr)
+			} else {
+				// TODO: Let it be warning log for sometime, later we can change it to debug.
+				log.Warn("DistributedCache::DeleteFile: Delete failed for Unqualified Path, Azure file %s does not exist",
+					options.Name)
 			}
 		}
 
 		//
-		// If only one of the errors is ENOENT, nil the other one.
+		// Semantics for Unqualified path:
+		// Delete the file from both Azure and Dcache,
+		// - Succeed the delete if both succeed.
+		// - If both of them fail with ENOENT, we fail the delete with ENOENT.
+		// - If one of them fails with ENOENT and the other succeeds, we succeed the delete.
+		// - If one of them fails with ENOENT and the other fails with an error other than ENOENT,
+		//   we fail the delete with the error from the other one.
+		// - If both of them fail with an error other than ENOENT, we fail the delete with a combined
+		//   error wrapping both errors.
 		//
-		if !(dcacheErr == syscall.ENOENT && azureErr == syscall.ENOENT) {
-			azureErr = nil
-			dcacheErr = nil
-		} else {
+		// Note that this behaviour tries to minimize surprises, and at the same time correctly conveys
+		// any errors.
+		//
+		if dcacheErr == syscall.ENOENT && azureErr == syscall.ENOENT {
 			// Both cannot be ENOENT, why did fuse call us in the first place?
 			common.Assert(false, options.Name)
+			// Set one of them to nil so that we fail the delete with ENOENT.
+			dcacheErr = nil
+		} else if dcacheErr == syscall.ENOENT {
+			dcacheErr = nil
+		} else if azureErr == syscall.ENOENT {
+			azureErr = nil
 		}
 	}
 
@@ -1281,7 +1295,8 @@ func (dc *DistributedCache) RenameFile(options internal.RenameFileOptions) error
 	return syscall.ENOTSUP
 }
 
-// This call is made by libfuse component to check if emptiness of a directory be making the delete directory call.
+// This call is made by libfuse component to check if a directory is empty, before deleting it.
+// We only allow deleting a directory if it is empty.
 func (dc *DistributedCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Debug("DistributedCache::IsDirEmpty: Check if dir is empty: %s", options.Name)
 
@@ -1304,7 +1319,7 @@ func (dc *DistributedCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool 
 
 		// We return true if the directory is empty in both dcache and azure.
 		//
-		// Check if directory in empty in dcache.
+		// Check if directory is empty in dcache.
 		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		options.Name = dcachePath
 		isEmpty := dc.NextComponent().IsDirEmpty(options)
@@ -1322,6 +1337,7 @@ func (dc *DistributedCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool 
 func (dc *DistributedCache) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Debug("DistributedCache::DeleteDir: Delete dir: %s", options.Name)
 
+	var dcacheErr, azureErr error
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
 
 	if isDcachePath {
@@ -1344,41 +1360,69 @@ func (dc *DistributedCache) DeleteDir(options internal.DeleteDirOptions) error {
 	} else if isDebugPath {
 		return syscall.EROFS
 	} else {
+		//
+		// We should get this call only when both of the directories in Azure and Dcache are empty.
+		//
 		log.Debug("DistributedCache::DeleteDir: Delete Unqualified Path dir: %s", options.Name)
 
-		// Semantics for Unqualified path:
-		// We get this call when both of the directories in (Azure/dcache) are empty.
-		//
 		// Delete Directory from dcache.
 		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		options.Name = dcachePath
 
-		err := dc.NextComponent().DeleteDir(options)
-		if err != nil {
-			log.Err("DistributedCache::DeleteDir: Delete failed for Unqualified Path Dcache dir %s: %v",
-				rawPath, err)
-
-			if err != syscall.ENOENT {
-				return err
+		dcacheErr = dc.NextComponent().DeleteDir(options)
+		if dcacheErr != nil {
+			if dcacheErr != syscall.ENOENT {
+				log.Err("DistributedCache::DeleteDir: Delete failed for Unqualified Path (%s), Dcache dir: %s: %v",
+					options.Name, dcachePath, dcacheErr)
+				// Continue to delete from Azure, in the end we will fail the delete. This is the most useful behaviour.
+			} else {
+				// TODO: Let it be warning log for sometime, later we can change it to debug.
+				log.Warn("DistributedCache::DeleteDir: Delete request for Unqualified Path (%s), Dcache dir %s does not exist",
+					options.Name, dcachePath)
 			}
-			err = nil // If the dir was not present in dcache, continue to delete from Azure.
 		}
 
 		// Delete Directory from Azure.
 		options.Name = rawPath
-		err = dc.NextComponent().DeleteDir(options)
-		if err != nil {
-			log.Err("DistributedCache::DeleteDir: Delete failed for Unqualified Path Azure dir %s: %v",
-				options.Name, err)
-
-			if err != syscall.ENOENT {
-				return err
+		azureErr = dc.NextComponent().DeleteDir(options)
+		if azureErr != nil {
+			if azureErr != syscall.ENOENT {
+				log.Err("DistributedCache::DeleteDir: Delete failed for Unqualified Path, Azure dir %s: %v",
+					options.Name, azureErr)
+			} else {
+				// TODO: Let it be warning log for sometime, later we can change it to debug.
+				log.Warn("DistributedCache::DeleteDir: Delete request for Unqualified Path, Azure dir %s does not exist",
+					options.Name)
 			}
-			err = nil // If the dir was not present in Azure, continue to return nil.
+		}
+
+		//
+		// Semantics for Unqualified path:
+		// Delete the directory from both Azure and Dcache,
+		// - Succeed the delete if both succeed.
+		// - If both of them fail with ENOENT, we fail the delete with ENOENT.
+		// - If one of them fails with ENOENT and the other succeeds, we succeed the delete.
+		// - If one of them fails with ENOENT and the other fails with an error other than ENOENT,
+		//   we fail the delete with the error from the other one.
+		// - If both of them fail with an error other than ENOENT, we fail the delete with a combined
+		//   error wrapping both errors.
+		//
+		// Note that this behaviour tries to minimize surprises, and at the same time correctly conveys
+		// any errors.
+		//
+		if dcacheErr == syscall.ENOENT && azureErr == syscall.ENOENT {
+			// Both cannot be ENOENT, why did fuse call us in the first place?
+			common.Assert(false, options.Name)
+			// Set one of them to nil so that we fail the delete with ENOENT.
+			dcacheErr = nil
+		} else if dcacheErr == syscall.ENOENT {
+			dcacheErr = nil
+		} else if azureErr == syscall.ENOENT {
+			azureErr = nil
 		}
 	}
 
-	return nil
+	return errors.Join(dcacheErr, azureErr)
 }
 
 func (dc *DistributedCache) RenameDir(options internal.RenameDirOptions) error {
