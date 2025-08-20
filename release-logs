@@ -1,0 +1,90 @@
+#!/bin/bash
+#
+# Azure Storage Fuse Release Logs Viewer
+#
+# This is a convenient wrapper script for showing release logs.
+# It provides common use cases with simple commands.
+#
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_SCRIPT="$SCRIPT_DIR/show_release_logs.py"
+
+function show_usage() {
+    cat << EOF
+Azure Storage Fuse Release Logs Viewer
+
+Usage: $0 [COMMAND] [OPTIONS]
+
+Commands:
+    latest [N]          Show latest N releases (default: 5)
+    all                 Show all releases  
+    version VERSION     Show specific version (e.g., 2.5.0)
+    table [N]           Show releases in table format (default: 10)
+    markdown [N]        Show releases in markdown format (default: 10)
+    json [N]            Show releases in JSON format (default: 10)
+    
+Examples:
+    $0 latest           # Show latest 5 releases
+    $0 latest 10        # Show latest 10 releases
+    $0 version 2.5.0    # Show all 2.5.0 releases
+    $0 table            # Show table format
+    $0 all              # Show all releases
+    
+Options (for advanced usage):
+    --help              Show detailed help for the Python script
+
+EOF
+}
+
+function run_python_script() {
+    python3 "$PYTHON_SCRIPT" "$@"
+}
+
+# Check if Python script exists
+if [[ ! -f "$PYTHON_SCRIPT" ]]; then
+    echo "Error: Python script not found at $PYTHON_SCRIPT"
+    exit 1
+fi
+
+# Parse command
+case "${1:-latest}" in
+    "help"|"--help"|"-h")
+        show_usage
+        echo ""
+        echo "Advanced options:"
+        run_python_script --help
+        ;;
+    "latest")
+        LIMIT=${2:-5}
+        run_python_script --limit "$LIMIT" --source changelog
+        ;;
+    "all")
+        run_python_script --source changelog
+        ;;
+    "version")
+        if [[ -z "$2" ]]; then
+            echo "Error: Please specify a version"
+            echo "Usage: $0 version VERSION"
+            exit 1
+        fi
+        run_python_script --version "$2" --source changelog
+        ;;
+    "table")
+        LIMIT=${2:-10}
+        run_python_script --limit "$LIMIT" --format table --source changelog
+        ;;
+    "markdown")
+        LIMIT=${2:-10}
+        run_python_script --limit "$LIMIT" --format markdown --source changelog
+        ;;
+    "json")
+        LIMIT=${2:-10}
+        run_python_script --limit "$LIMIT" --format json --source changelog
+        ;;
+    *)
+        echo "Error: Unknown command '$1'"
+        echo ""
+        show_usage
+        exit 1
+        ;;
+esac
