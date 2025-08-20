@@ -995,10 +995,42 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 	cp.acquireRWMutexWriteLock()
 	defer cp.releaseRWMutexWriteLock()
 
+	startTime := time.Now()
+
+	// Wait for max 60 seconds for all active clients to be released back to the channel.
+	maxWaitTime := 60 * time.Second
+
 	var err error
 	cp.clients.Range(func(key, val any) bool {
 		nodeID := key.(string)
 		ncPool := val.(*nodeClientPool)
+
+		//
+		// Check if there are any active clients for this node. If yes, release the write lock and wait for a second
+		// for the active clients to be released back to the channel. After that acquire the write lock and recheck.
+		//
+		for ncPool.numActive.Load() > 0 && time.Since(startTime) < maxWaitTime {
+			log.Debug("clientPool::closeAllNodeClientPools: sleeping till %d active clients for %s are released, (%d, %d)",
+				ncPool.numActive.Load(), nodeID, len(ncPool.clientChan), cp.maxPerNode)
+
+			// release write lock so that the releaseRPCClient() can proceed while we wait
+			cp.releaseRWMutexWriteLock()
+
+			time.Sleep(time.Second)
+
+			// acquire write lock again and recheck if the active clients are released for this node
+			cp.acquireRWMutexWriteLock()
+		}
+
+		//
+		// Even after waiting for 60 seconds, if the active clients are not released back, return error to the caller.
+		//
+		if ncPool.numActive.Load() > 0 {
+			err = fmt.Errorf("Node %s has %d active clients (%d, %d), cannot close even after waiting for %v",
+				nodeID, ncPool.numActive.Load(), len(ncPool.clientChan), cp.maxPerNode, maxWaitTime)
+			log.Err("clientPool::closeAllNodeClientPools: %v", err)
+			return false // stop iteration
+		}
 
 		err = ncPool.closeRPCClients()
 		if err != nil {
@@ -1014,6 +1046,10 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 
 		return true // continue iteration
 	})
+
+	if err != nil {
+		return err
+	}
 
 	common.Assert(cp.clientsCnt.Load() == 0, "client pool is not empty after closing all node client pools")
 	return nil
