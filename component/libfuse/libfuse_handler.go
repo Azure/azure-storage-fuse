@@ -984,6 +984,8 @@ func libfuse_unlink(path *C.char) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		}
 		return -C.EIO
 	}
@@ -1074,6 +1076,14 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		})
 		if err != nil {
 			log.Err("Libfuse::libfuse_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
+			if os.IsNotExist(err) {
+				return -C.ENOENT
+			} else if os.IsPermission(err) {
+				return -C.EACCES
+			} else if errors.Is(err, syscall.EBUSY) {
+				return -C.EBUSY
+			}
+
 			return -C.EIO
 		}
 
