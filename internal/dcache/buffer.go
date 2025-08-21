@@ -40,6 +40,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -107,6 +108,9 @@ func InitBufferPool(bufSize uint64) error {
 		maxBuffers: int64(maxBuffers),
 	}
 
+	stats.Stats.BufPool.BufferSize = int64(bufPool.bufSize) / common.MbToBytes
+	stats.Stats.BufPool.TotalBuffers = bufPool.maxBuffers
+
 	return nil
 }
 
@@ -115,6 +119,8 @@ func GetBuffer() ([]byte, error) {
 		// TODO: Add a timeout to wait for the buffers to get free, and only fail after timeout.
 		return nil, errors.New("Buffers Exhausted")
 	}
+
+	atomic.AddInt64(&stats.Stats.BufPool.TotalAllocs, 1)
 
 	buf := bufPool.pool.Get().([]byte)
 
@@ -139,6 +145,7 @@ func PutBuffer(buf []byte) {
 
 	bufPool.pool.Put(buf)
 	bufPool.curBuffers.Add(-1)
+	atomic.AddInt64(&stats.Stats.BufPool.TotalDeallocs, 1)
 }
 
 // Silence unused import errors for release builds.

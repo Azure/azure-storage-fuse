@@ -221,6 +221,11 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 
 		offset += int64(copied)
 		bufOffset += copied
+
+		totalBytesRead := chunk.bytesReadFromChunk.Add(int64(copied))
+		if totalBytesRead == chunk.Len {
+			file.removeChunk(chunk.Idx)
+		}
 	}
 
 	// Must exactly read what's determined above (what user asks, capped by file size).
@@ -527,7 +532,11 @@ func (file *DcacheFile) getChunk(chunkIdx int64, allocateBuf bool) (*StagedChunk
 	common.Assert(chunk.IsBufExternal == (chunk.Buf == nil), chunk.IsBufExternal, len(chunk.Buf))
 
 	// Add it to the StagedChunks, and return.
-	file.StagedChunks.Store(chunkIdx, chunk)
+	Ichunk, loaded := file.StagedChunks.LoadOrStore(chunkIdx, chunk)
+	if loaded {
+		chunk = Ichunk.(*StagedChunk)
+		return chunk, true, nil
+	}
 
 	return chunk, false, nil
 }
@@ -539,17 +548,15 @@ func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
 	//
 	// For read chunk, we use the buffer returned by the GetChunk() RPC, that saves an extra copy.
 	//
-	chunk, loaded, err := file.getChunk(chunkIdx, false /* allocateBuf */)
+	chunk, _, err := file.getChunk(chunkIdx, false /* allocateBuf */)
 	if err == nil {
-		if !loaded {
-			// Brand new staged chunk, could not have been scheduled for read already.
-			common.Assert(!chunk.XferScheduled.Load())
-			// For read chunks chunk.Len is the amount of data that must be read into this chunk.
-			chunk.Len = getChunkSize(chunkIdx*file.FileMetadata.FileLayout.ChunkSize, file)
-		}
-		// There's no point in having a chunk and not reading anything on to it.
-		common.Assert(chunk.Len > 0, chunk.Len)
+		// For read chunks chunk.Len is the amount of data that must be read into this chunk.
+		chunk.Len = getChunkSize(chunkIdx*file.FileMetadata.FileLayout.ChunkSize, file)
 	}
+
+	// There's no point in having a chunk and not reading anything on to it.
+	common.Assert(chunk.Len > 0, chunk.Len)
+
 	// TODO: Assert that number of staged chunks is less than fileIOManager.numReadAheadChunks.
 
 	return chunk, err
@@ -614,6 +621,11 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
 	} else {
 		dcache.PutBuffer(chunk.Buf)
 	}
+
+	// Reset the flags, incase some thread got this chunk holding for reader lock after this, that can download the
+	// content again.
+	chunk.UpToDate.Store(false)
+	chunk.XferScheduled.Store(false)
 }
 
 // Read Chunk data from the file.
@@ -647,19 +659,6 @@ func (file *DcacheFile) readChunk(offset int64, sync bool) (*StagedChunk, error)
 
 			// Requeue the error for whoever reads thus chunk next.
 			chunk.Err <- err
-		}
-
-		//
-		// Sync read implies application read (not readahead).
-		// If application has read a chunk we can release the previous chunk if any.
-		// Note that sequential read is the common case that we support.
-		//
-		if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
-			// To support the async IO from the kernel, we use last 3 chunks to be outstanding. If the user does aync IO
-			// for more than 3 chunks, we will fallback to the slow path (i.e., download the evicted chunk again)
-			// TODO: Support the slow path.
-			// Note: With this, we maintain (3 + fileIOMgr.numReadAheadChunks) # of outstanding chunks per file.
-			file.removeChunk(chunkIdx - 3)
 		}
 	}
 
