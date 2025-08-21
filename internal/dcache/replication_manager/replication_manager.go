@@ -978,11 +978,9 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 				return nil, err
 			}
 		}
-
-		return nil, err
 	}
 
-	return resp, nil
+	return resp, err
 }
 
 // File IO manager can use this to delete all chunks belonging to a file from a given MV.
