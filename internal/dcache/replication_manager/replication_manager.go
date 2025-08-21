@@ -541,8 +541,14 @@ retry:
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk request for %s/%s to node %s: %s",
-			rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
+		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk [%s] request for %s/%s to node %s: %s",
+			putChunkStyle, rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
+
+		//
+		// Set it to OriginatorSendsToAll as we are sending PutChunk to all component RVs.
+		// This will ensure RPC errors are handled correctly.
+		//
+		putChunkStyle = OriginatorSendsToAll
 
 		//
 		// Schedule PutChunk RPC call to the nexthop RV.
@@ -713,8 +719,9 @@ processResponses:
 
 			continue
 		}
-		log.Err("ReplicationManager::writeMVInternal: PutChunk to %s/%s failed [%v]",
-			respItem.rvName, req.MvName, respItem.err)
+
+		log.Err("ReplicationManager::writeMVInternal: [%v] PutChunk to %s/%s failed [%v]",
+			putChunkStyle, respItem.rvName, req.MvName, respItem.err)
 
 		common.Assert(putChunkResp == nil)
 
@@ -763,6 +770,11 @@ processResponses:
 			} else {
 				log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed in DaisyChain mode, not marking RV as inband-offline",
 					respItem.rvName, req.MvName)
+				//
+				// This is actually not a broken chain error, but in order to retry with OriginatorSendsToAll
+				// to mark the RV as inband-offline, we set brokenChain to true.
+				//
+				brokenChain = true
 			}
 
 			continue
@@ -837,16 +849,25 @@ processResponses:
 			clusterMapRefreshed = true
 		} else {
 			// TODO: check if this is non-retriable error.
-			errWriteMV = fmt.Errorf("PutChunk to %s/%s failed with non-retriable error [%v]",
-				respItem.rvName, req.MvName, respItem.err)
-			log.Err("ReplicationManager::writeMVInternal: %v", errWriteMV)
+			if putChunkStyle == DaisyChain {
+				//
+				// For an unknown error, retry once with OriginatorSendsToAll for better resiliency.
+				//
+				log.Warn("ReplicationManager::writeMVInternal: PutChunk to %s/%s failed with non-retriable error [%v], will retry with OriginatorSendsToAll",
+					respItem.rvName, req.MvName, respItem.err)
+				brokenChain = true
+			} else {
+				errWriteMV = fmt.Errorf("PutChunk to %s/%s failed with non-retriable error [%v]",
+					respItem.rvName, req.MvName, respItem.err)
+				log.Err("ReplicationManager::writeMVInternal: %v", errWriteMV)
+			}
 			continue
 		}
 	}
 
 	//
 	// If any of the PutChunk call fails with these errors, we fail the WriteMV operation.
-	//   - If the node is unreachable and updating clustermap state to "offline"
+	//   - If the node is unreachable and updating clustermap state to "inband-offline"
 	//     for the component RV failed.
 	//   - If the clustermap was refreshed 5 times and it still failed with NeedToRefreshClusterMap error.
 	//   - If clustermap refresh via RefreshClusterMap() failed.
@@ -957,6 +978,8 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 				return nil, err
 			}
 		}
+
+		return nil, err
 	}
 
 	return resp, nil
