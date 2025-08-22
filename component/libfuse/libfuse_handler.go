@@ -1062,13 +1062,22 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		return -C.EIO
 	}
 
-	//
-	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
-	//       qualified or unqualified path.
-	//
-	if common.IsDistributedCacheEnabled {
-		InvalidateAttrCacheOnFileUpdate(handle.Path)
-	}
+	/*
+		// DO NOT CALL INVALIDATE FROM WRITE HANDLER AS IT CAN CAUSE DEADLOCK.
+		// INODE INVALIDATE MAY CAUSE KERNEL TO WRITE PAGES TO THE FILESYSTEM,
+		// IF THAT CALLS INVALIDATE, INVALIDATE IS WAITING FOR THE WRITE TO COMPLETE
+		// WHILE WRITE IS WAITING FOR THE INVALIDATE TO COMPLETE.
+		// Anyways, we don't need to invalidate on every write as we don't support
+		// overwriting files, we can call invalidate from libfuse_release() which is
+		// more important as that is when the file is finalized and its size updated.
+		//
+		// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+		//       qualified or unqualified path.
+		//
+		if common.IsDistributedCacheEnabled {
+			InvalidateAttrCacheOnFileUpdate(handle.Path)
+		}
+	*/
 
 	return C.int(bytesWritten)
 }
@@ -1102,13 +1111,19 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
-	//
-	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
-	//       qualified or unqualified path.
-	//
-	if common.IsDistributedCacheEnabled {
-		InvalidateAttrCacheOnFileUpdate(handle.Path)
-	}
+	/*
+		// See libfuse_write comment for why invalidate is not called here or from any fuse handler
+		// which can be called in the context of a kernel write operation.
+		// Flush is unlikely to be called by kernel write page but we want to play safe and moreover
+		// we really don't need to invalidate from flush.
+		//
+		// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+		//       qualified or unqualified path.
+		//
+		if common.IsDistributedCacheEnabled {
+			InvalidateAttrCacheOnFileUpdate(handle.Path)
+		}
+	*/
 
 	return 0
 }
