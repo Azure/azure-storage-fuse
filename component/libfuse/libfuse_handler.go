@@ -51,6 +51,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -268,6 +270,164 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 func (lf *Libfuse) destroyFuse() error {
 	log.Trace("Libfuse::destroyFuse : Destroying FUSE")
 	return nil
+}
+
+// Helper functions to invalidate all the necessary attribute caches when a file/dir is created, modified
+// or deleted. Usually we shouldn't need to invalidate the attribute cache for a file/dir as kernel can do
+// it based on the operation, but there are few special/non-standard things that dcache does/supports because
+// of which we need to explicitly ask kernel to invalidate the attribute cache in some cases.
+//
+// 1. When a O_WRONLY file is close()d we finalize the file which changes the size of the file (from -1 to the
+//    actual size). This not a standard operation and kernel does not know that close() may change file size
+//    hence we need to explicitly invalidate the attribute cache for the file.
+// 2. The other case arises due to the fact that different paths (qualified and unqualified)  can refer to the
+//    same file which kernel doesn't know about and hence we need to explicitly invalidate the caches, e.g.,
+//    The unqualified path /mnt/blobfuse/dir1/file1.txt may refer to either /mnt/blobfuse/fs=dcache/dir1/file1.txt
+//    or /mnt/blobfuse/fs=azure/dir1/file1.txt (depending on which of them is present), so we need to perform the
+//    following cache invalidations:
+//    1. When /mnt/blobfuse/dir1/file1.txt is UPDATED, invalidate attribute cache for
+//       /mnt/blobfuse/fs=dcache/dir1/file1.txt,
+//       /mnt/blobfuse/fs=azure/dir1/file1.txt.
+//    2. When /mnt/blobfuse/fs=dcache/dir1/file1.txt is UPDATED, invalidate attribute cache for
+//       /mnt/blobfuse/dir1/file1.txt
+//    3. When /mnt/blobfuse/fs=azure/dir1/file1.txt is UPDATED, invalidate attribute cache for
+//       /mnt/blobfuse/dir1/file1.txt
+//
+//    4. When /mnt/blobfuse/dir1/file1.txt is CREATED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/fs=dcache/dir1,
+//       /mnt/blobfuse/fs=azure/dir1,
+//       and invalidate (negative) entry cache for,
+//       /mnt/blobfuse/fs=dcache/dir1/file1.txt,
+//       /mnt/blobfuse/fs=azure/dir1/file1.txt
+//    5. When /mnt/blobfuse/fs=dcache/dir1/file1.txt is CREATED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/dir1.
+//       and invalidate (negative) entry cache for,
+//       /mnt/blobfuse/dir1/file1.txt
+//    6. When /mnt/blobfuse/fs=azure/dir1/file1.txt is CREATED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/dir1.
+//       and invalidate (negative) entry cache for,
+//       /mnt/blobfuse/dir1/file1.txt
+//
+//    7. When /mnt/blobfuse/dir1/file1.txt is DELETED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/fs=dcache/dir1,
+//       /mnt/blobfuse/fs=azure/dir1,
+//       and invalidate attribute and entry cache for,
+//       /mnt/blobfuse/fs=dcache/dir1/file1.txt,
+//       /mnt/blobfuse/fs=azure/dir1/file1.txt
+//    8. When /mnt/blobfuse/fs=dcache/dir1/file1.txt is DELETED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/dir1,
+//       and invalidate attribute and entry cache for,
+//       /mnt/blobfuse/dir1/file1.txt
+//    9. When /mnt/blobfuse/fs=azure/dir1/file1.txt is DELETED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/dir1,
+//       and invalidate attribute and entry cache for,
+//       /mnt/blobfuse/dir1/file1.txt
+
+func InvalidateAttrCacheOnFileUpdate(path string) {
+	// We should always be passed a path relative to the mount point.
+	common.Assert(len(path) > 0)
+	common.Assert(path[0] != '/', path)
+
+	//
+	// On file update we only invalidate attribute cache (and not entry cache), hence if attr_timeout
+	// is 0 then there is no need to invalidate anything as kernel won't cache anything.
+	//
+	if fuseFS.attributeExpiration == 0 {
+		return
+	}
+
+	if !strings.HasPrefix(path, "fs=") {
+		// 2.1 - File is updated using unqualified path.
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
+	} else if strings.HasPrefix(path, "fs=dcache/") {
+		// 2.2 - File is updated using dcache qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
+		common.Assert(unqualifiedPath != path, path)
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+	} else if strings.HasPrefix(path, "fs=azure/") {
+		// 2.3 - File is updated using azure qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
+		common.Assert(unqualifiedPath != path, path)
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+	} else {
+		common.Assert(false, path)
+	}
+}
+
+func InvalidateAttrCacheOnFileCreate(path string) {
+	// We should always be passed a path relative to the mount point.
+	common.Assert(len(path) > 0)
+	common.Assert(path[0] != '/', path)
+
+	//
+	// On file/dir creation we invalidate attribute cache and negative entry cache.
+	//
+	if fuseFS.attributeExpiration == 0 && fuseFS.negativeTimeout == 0 {
+		return
+	}
+
+	if !strings.HasPrefix(path, "fs=") {
+		// 2.4 - File is created using unqualified path.
+		// For files created at the top level directory parentDir will be "."
+		parentDir := filepath.Dir(path)
+		common.Assert(len(parentDir) > 0)
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
+	} else if strings.HasPrefix(path, "fs=dcache/") {
+		// 2.5 - File is created using dcache qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
+		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+	} else if strings.HasPrefix(path, "fs=azure/") {
+		// 2.5 - File is created using azure qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
+		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+	} else {
+		common.Assert(false, path)
+	}
+}
+
+func InvalidateAttrCacheOnFileDelete(path string) {
+	// We should always be passed a path relative to the mount point.
+	common.Assert(len(path) > 0)
+	common.Assert(path[0] != '/', path)
+
+	//
+	// On file/dir deletion we invalidate attribute cache and positive entry cache.
+	//
+	if fuseFS.attributeExpiration == 0 && fuseFS.entryExpiration == 0 {
+		return
+	}
+
+	if !strings.HasPrefix(path, "fs=") {
+		// 2.7 - File is deleted using unqualified path.
+		parentDir := filepath.Dir(path)
+		common.Assert(len(parentDir) > 0)
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
+	} else if strings.HasPrefix(path, "fs=dcache/") {
+		// 2.8 - File is deleted using dcache qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
+		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+	} else if strings.HasPrefix(path, "fs=azure") {
+		// 2.9 - File is deleted using azure qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
+		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+	} else {
+		common.Assert(false, path)
+	}
 }
 
 //export libfuse_init
@@ -493,6 +653,10 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		}
 	}
 
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileCreate(name)
+	}
+
 	libfuseStatsCollector.PushEvents(createDir, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
 
@@ -643,6 +807,10 @@ func libfuse_rmdir(path *C.char) C.int {
 		}
 	}
 
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileDelete(name)
+	}
+
 	libfuseStatsCollector.PushEvents(deleteDir, name, nil)
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, deleteDir, (int64)(1))
 
@@ -701,6 +869,10 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 		} else {
 			return -C.EIO
 		}
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileCreate(name)
 	}
 
 	handlemap.Add(handle)
@@ -855,6 +1027,14 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		return -C.EIO
 	}
 
+	//
+	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+	//       qualified or unqualified path.
+	//
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileUpdate(handle.Path)
+	}
+
 	return C.int(bytesWritten)
 }
 
@@ -885,6 +1065,14 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 		} else {
 			return -C.EIO
 		}
+	}
+
+	//
+	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+	//       qualified or unqualified path.
+	//
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileUpdate(handle.Path)
 	}
 
 	return 0
@@ -928,6 +1116,10 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 		return -C.EIO
 	}
 
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileUpdate(name)
+	}
+
 	libfuseStatsCollector.PushEvents(truncateFile, name, map[string]interface{}{size: int64(off)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
 
@@ -949,6 +1141,18 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
+
+	//
+	// If it's a write handle to a dcache file, close will finalize the file which updates the size,
+	// hence we need to invalidate the kernel attr/dentry cache.
+	//
+	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+	//       qualified or unqualified path.
+	//
+	if handle.IsDcacheAllowWrites() {
+		InvalidateAttrCacheOnFileUpdate(handle.Path)
+	}
+
 	if err != nil {
 		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		if err == syscall.ENOENT {
@@ -988,6 +1192,10 @@ func libfuse_unlink(path *C.char) C.int {
 			return -C.EBUSY
 		}
 		return -C.EIO
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileDelete(name)
 	}
 
 	libfuseStatsCollector.PushEvents(deleteFile, name, nil)
@@ -1092,6 +1300,11 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 
 	}
 
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileDelete(srcPath)
+		InvalidateAttrCacheOnFileCreate(dstPath)
+	}
+
 	return 0
 }
 
@@ -1111,6 +1324,10 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 	if err != nil {
 		log.Err("Libfuse::libfuse_symlink : error linking file %s -> %s [%s]", name, targetPath, err.Error())
 		return -C.EIO
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileCreate(name)
 	}
 
 	libfuseStatsCollector.PushEvents(createLink, name, map[string]interface{}{trgt: targetPath})
@@ -1224,6 +1441,10 @@ func libfuse_chmod(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 			return -C.EACCES
 		}
 		return -C.EIO
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileUpdate(name)
 	}
 
 	libfuseStatsCollector.PushEvents(chmod, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})

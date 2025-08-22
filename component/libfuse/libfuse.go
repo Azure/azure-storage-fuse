@@ -116,9 +116,14 @@ type LibfuseOptions struct {
 }
 
 const compName = "libfuse"
-const defaultEntryExpiration = 120
-const defaultAttrExpiration = 120
-const defaultNegativeEntryExpiration = 120
+
+// Default values for various timeouts in seconds.
+// These are passed to libfuse as entry_timeout, attr_timeout and negative_timeout options.
+//
+// Note: These are reduced to 3 seconds when distributed cache is enabled, see Validate().
+var defaultEntryExpiration = 120
+var defaultAttrExpiration = 120
+var defaultNegativeEntryExpiration = 120
 
 // This is the default value for max_background which controls how many async I/O requests that fuse kernel
 // module will keep outstanding to fuse userspace.
@@ -191,6 +196,17 @@ func (lf *Libfuse) Stop() error {
 
 // Validate : Validate available config and convert them if required
 func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
+	//
+	// With distributed cache, we need much lower timeouts o/w it results in a sub-optimal user experience, as
+	// changes made by one node (files created and deleted) may not be visible to another node for a long time.
+	// We don't disable caching altogether as it helps unnecessary metadata calls to Azure.
+	//
+	if common.IsDistributedCacheEnabled {
+		defaultEntryExpiration = 3
+		defaultAttrExpiration = 3
+		defaultNegativeEntryExpiration = 0
+	}
+
 	lf.mountPath = opt.mountPath
 	lf.readOnly = opt.readOnly
 	lf.traceEnable = opt.EnableFuseTrace
@@ -227,19 +243,19 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	if config.IsSet(compName+".entry-expiration-sec") || config.IsSet("lfuse.entry-expiration-sec") {
 		lf.entryExpiration = opt.EntryExpiration
 	} else {
-		lf.entryExpiration = defaultEntryExpiration
+		lf.entryExpiration = uint32(defaultEntryExpiration)
 	}
 
 	if config.IsSet(compName+".attribute-expiration-sec") || config.IsSet("lfuse.attribute-expiration-sec") {
 		lf.attributeExpiration = opt.AttributeExpiration
 	} else {
-		lf.attributeExpiration = defaultAttrExpiration
+		lf.attributeExpiration = uint32(defaultAttrExpiration)
 	}
 
 	if config.IsSet(compName+".negative-entry-expiration-sec") || config.IsSet("lfuse.negative-entry-expiration-sec") {
 		lf.negativeTimeout = opt.NegativeEntryExpiration
 	} else {
-		lf.negativeTimeout = defaultNegativeEntryExpiration
+		lf.negativeTimeout = uint32(defaultNegativeEntryExpiration)
 	}
 
 	// See comment in libfuse_init() why we should not force this.
@@ -293,6 +309,11 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 }
 
 func (lf *Libfuse) GenConfig() string {
+	// Reduce attribute cache timeout for distributed cache, see Validate() for details.
+	if common.IsDistributedCacheEnabled {
+		defaultEntryExpiration = 3
+	}
+
 	log.Info("Libfuse::Configure : config generation started")
 
 	// If DirectIO is enabled, override expiration values
