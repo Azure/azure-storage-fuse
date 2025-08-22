@@ -222,6 +222,9 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 		offset += int64(copied)
 		bufOffset += copied
 
+		// Unlock the Rlock that is acquired in the readChunk().
+		chunk.mu.RUnlock()
+
 		totalBytesRead := chunk.bytesReadFromChunk.Add(int64(copied))
 		if totalBytesRead == chunk.Len {
 			file.removeChunk(chunk.Idx)
@@ -609,6 +612,10 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 
 // Release buffer for the staged chunk.
 func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
+	// Taking th writer lock on the chunk, prevents readers from the accesing the chunk.
+	chunk.mu.Lock()
+	defer chunk.mu.Unlock()
+
 	log.Debug("DistributedCache::releaseChunk: releasing buffer for staged chunk, file: %s, chunk idx: %d, external: %v",
 		file.FileMetadata.Filename, chunk.Idx, chunk.IsBufExternal)
 
@@ -622,7 +629,7 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
 		dcache.PutBuffer(chunk.Buf)
 	}
 
-	// Reset the flags, incase some thread got this chunk holding for reader lock after this, that can download the
+	// Reset the flags, incase some thread got this chunk holding after release, that can download the
 	// content again.
 	chunk.UpToDate.Store(false)
 	chunk.XferScheduled.Store(false)
@@ -647,6 +654,13 @@ func (file *DcacheFile) readChunk(offset int64, sync bool) (*StagedChunk, error)
 		return chunk, err
 	}
 
+	// Take a read lock in case of sync read and this lock must be released after reading the data from the chunk buffer
+	// (i.e., ReadFile() will unlock it as it is the caller). chunk must be unlocked in any error case in between this
+	// path.
+	if sync {
+		chunk.mu.RLock()
+	}
+
 	// This will be a no-op if this chunk is already read from dcache.
 	scheduleDownload(chunk, file)
 
@@ -659,6 +673,9 @@ func (file *DcacheFile) readChunk(offset int64, sync bool) (*StagedChunk, error)
 
 			// Requeue the error for whoever reads thus chunk next.
 			chunk.Err <- err
+
+			// unlock the mutex for RLock
+			chunk.mu.RUnlock()
 		}
 	}
 

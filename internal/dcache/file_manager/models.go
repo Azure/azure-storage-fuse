@@ -34,10 +34,12 @@
 package filemanager
 
 import (
+	"sync"
 	"sync/atomic"
 )
 
 type StagedChunk struct {
+	mu                 sync.RWMutex // prevent readers accesing the chunk buffer, when releasing the buffer.
 	Idx                int64        // chunk index
 	Buf                []byte       // buf size == chunkSize
 	Len                int64        // valid bytes in Buf
