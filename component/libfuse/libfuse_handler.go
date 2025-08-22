@@ -340,6 +340,9 @@ func InvalidateAttrCacheOnFileUpdate(path string) {
 		return
 	}
 
+	// This is needed only for the case when file size changes on close() for O_WRONLY file.
+	C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(path))
+
 	if !strings.HasPrefix(path, "fs=") {
 		// 2.1 - File is updated using unqualified path.
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
