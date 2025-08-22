@@ -322,6 +322,10 @@ func (lf *Libfuse) destroyFuse() error {
 //       /mnt/blobfuse/dir1,
 //       and invalidate attribute and entry cache for,
 //       /mnt/blobfuse/dir1/file1.txt
+//
+// Note: Currently we have commented all the invalidations for parent directories as we don't really maintain
+//       stats for directories. We leave them there to show the complete picture and in case we decide to update
+//       in future.
 
 func InvalidateAttrCacheOnFileUpdate(path string) {
 	// We should always be passed a path relative to the mount point.
@@ -344,11 +348,13 @@ func InvalidateAttrCacheOnFileUpdate(path string) {
 		// 2.2 - File is updated using dcache qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
 		common.Assert(unqualifiedPath != path, path)
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
 	} else if strings.HasPrefix(path, "fs=azure/") {
 		// 2.3 - File is updated using azure qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
 		common.Assert(unqualifiedPath != path, path)
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
 	} else {
 		common.Assert(false, path)
@@ -372,21 +378,34 @@ func InvalidateAttrCacheOnFileCreate(path string) {
 		// For files created at the top level directory parentDir will be "."
 		parentDir := filepath.Dir(path)
 		common.Assert(len(parentDir) > 0)
-		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
-		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
+		if parentDir == "." {
+			parentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
 	} else if strings.HasPrefix(path, "fs=dcache/") {
 		// 2.5 - File is created using dcache qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
 		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
-		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		// fuse_invalidate_path() treats empty string as mount root.
+		if unqualifiedParentDir == "." {
+			unqualifiedParentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
 	} else if strings.HasPrefix(path, "fs=azure/") {
 		// 2.5 - File is created using azure qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
 		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
-		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		// fuse_invalidate_path() treats empty string as mount root.
+		if unqualifiedParentDir == "." {
+			unqualifiedParentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
 	} else {
 		common.Assert(false, path)
@@ -409,21 +428,34 @@ func InvalidateAttrCacheOnFileDelete(path string) {
 		// 2.7 - File is deleted using unqualified path.
 		parentDir := filepath.Dir(path)
 		common.Assert(len(parentDir) > 0)
-		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
-		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
+		if parentDir == "." {
+			parentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
 	} else if strings.HasPrefix(path, "fs=dcache/") {
 		// 2.8 - File is deleted using dcache qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
 		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
-		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		// fuse_invalidate_path() treats empty string as mount root.
+		if unqualifiedParentDir == "." {
+			unqualifiedParentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
 	} else if strings.HasPrefix(path, "fs=azure") {
 		// 2.9 - File is deleted using azure qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
 		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
-		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		// fuse_invalidate_path() treats empty string as mount root.
+		if unqualifiedParentDir == "." {
+			unqualifiedParentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
 		C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
 	} else {
 		common.Assert(false, path)
