@@ -229,8 +229,11 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	// We want to keep as few fuse threads as possible, just large enough to handle parallel requests
 	// fairly well. Fuse has a default of 10 which should be ok but we set it to 8 to be explicit about
 	// our intent to use a small number of threads.
+	// Commenting out max_threads for now as some systems still has older libfuse which does not support
+	// this option.
+	// TODO: Make it conditional based on libfuse version.
 	//
-	options += ",max_threads=8"
+	//options += ",max_threads=8"
 	options += ",max_idle_threads=100000"
 
 	// clone_fd should generally we good, let's keep a watch on this.
@@ -981,6 +984,8 @@ func libfuse_unlink(path *C.char) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		}
 		return -C.EIO
 	}
@@ -1071,6 +1076,14 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		})
 		if err != nil {
 			log.Err("Libfuse::libfuse_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
+			if os.IsNotExist(err) {
+				return -C.ENOENT
+			} else if os.IsPermission(err) {
+				return -C.EACCES
+			} else if errors.Is(err, syscall.EBUSY) {
+				return -C.EBUSY
+			}
+
 			return -C.EIO
 		}
 
