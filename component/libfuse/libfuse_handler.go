@@ -1088,7 +1088,11 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
+	// FlushFile() will clear the "DcacheAllowWrites" flag so check before calling it.
+	closingDCacheWriteHandle := handle.IsDcacheAllowWrites()
+
+	log.Trace("Libfuse::libfuse_flush : %s, handle: %d, dcache write: %v",
+		handle.Path, handle.ID, closingDCacheWriteHandle)
 
 	// If the file handle is not dirty, there is no need to flush
 	if fileHandle.dirty != 0 {
@@ -1111,19 +1115,15 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
-	/*
-		// See libfuse_write comment for why invalidate is not called here or from any fuse handler
-		// which can be called in the context of a kernel write operation.
-		// Flush is unlikely to be called by kernel write page but we want to play safe and moreover
-		// we really don't need to invalidate from flush.
-		//
-		// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
-		//       qualified or unqualified path.
-		//
-		if common.IsDistributedCacheEnabled {
-			InvalidateAttrCacheOnFileUpdate(handle.Path)
-		}
-	*/
+	//
+	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+	//       qualified or unqualified path.
+	//
+	// Also see libfuse_release().
+	//
+	if closingDCacheWriteHandle {
+		InvalidateAttrCacheOnFileUpdate(handle.Path)
+	}
 
 	return 0
 }
@@ -1182,8 +1182,11 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	// CloseFile()->FlushFile() will clear the "DcacheAllowWrites" flag so check before calling it.
+	closingDCacheWriteHandle := handle.IsDcacheAllowWrites()
 
-	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
+	log.Trace("Libfuse::libfuse_release : %s, handle: %d, dcache write: %v",
+		handle.Path, handle.ID, closingDCacheWriteHandle)
 
 	// If the file handle is dirty then file-cache needs to flush this file
 	if fileHandle.dirty != 0 {
@@ -1195,11 +1198,12 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	//
 	// If it's a write handle to a dcache file, close will finalize the file which updates the size,
 	// hence we need to invalidate the kernel attr/dentry cache.
+	// Also see libfuse_flush().
 	//
 	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
 	//       qualified or unqualified path.
 	//
-	if handle.IsDcacheAllowWrites() {
+	if closingDCacheWriteHandle {
 		InvalidateAttrCacheOnFileUpdate(handle.Path)
 	}
 
