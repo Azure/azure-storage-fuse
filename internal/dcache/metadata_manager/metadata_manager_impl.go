@@ -420,7 +420,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 			})
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
-			common.Assert(false, err)
+			//common.Assert(false, err)
 			//
 			// Since GetPropertiesFromStorage() succeeded this must be a transient error, so retry.
 			// In the rare case that the Blob is deleted, it'll cause just one additional retry.

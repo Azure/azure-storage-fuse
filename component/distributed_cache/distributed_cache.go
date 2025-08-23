@@ -1330,14 +1330,12 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		// any errors.
 		//
 		if dcacheErr == syscall.ENOENT && azureErr == syscall.ENOENT {
-			// Both cannot be ENOENT, why did fuse call us in the first place?
-			common.Assert(false, options.Name)
-			// Set one of them to nil so that we fail the delete with ENOENT.
-			dcacheErr = nil
+			// This can happen if multiple threads race to delete the same file.
+			return syscall.ENOENT
 		} else if dcacheErr == syscall.ENOENT {
-			dcacheErr = nil
+			return azureErr
 		} else if azureErr == syscall.ENOENT {
-			azureErr = nil
+			return dcacheErr
 		}
 	}
 
@@ -1483,12 +1481,11 @@ func (dc *DistributedCache) DeleteDir(options internal.DeleteDirOptions) error {
 		if dcacheErr == syscall.ENOENT && azureErr == syscall.ENOENT {
 			// Both cannot be ENOENT, why did fuse call us in the first place?
 			common.Assert(false, options.Name)
-			// Set one of them to nil so that we fail the delete with ENOENT.
-			dcacheErr = nil
+			return syscall.ENOENT
 		} else if dcacheErr == syscall.ENOENT {
-			dcacheErr = nil
+			return azureErr
 		} else if azureErr == syscall.ENOENT {
-			azureErr = nil
+			return dcacheErr
 		}
 	}
 
