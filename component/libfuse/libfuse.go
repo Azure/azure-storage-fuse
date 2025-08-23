@@ -232,7 +232,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	//
 	// With distributed cache, we need much lower timeouts o/w it results in a sub-optimal user experience, as
 	// changes made by one node (files created and deleted) may not be visible to another node for a long time.
-	// We don't disable caching altogether as it helps unnecessary metadata calls to Azure.
+	// We don't disable caching altogether as it helps unnecessary metadata calls to Azure from fastpath.
 	//
 	if config.IsSet(compName+".entry-expiration-sec") || config.IsSet("lfuse.entry-expiration-sec") {
 		lf.entryExpiration = opt.EntryExpiration
@@ -240,7 +240,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		if common.IsDistributedCacheEnabled {
 			lf.entryExpiration = 3
 		} else {
-			lf.entryExpiration = uint32(defaultEntryExpiration)
+			lf.entryExpiration = defaultEntryExpiration
 		}
 	}
 
@@ -250,14 +250,14 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		if common.IsDistributedCacheEnabled {
 			lf.attributeExpiration = 3
 		} else {
-			lf.attributeExpiration = uint32(defaultAttrExpiration)
+			lf.attributeExpiration = defaultAttrExpiration
 		}
 	}
 
 	if config.IsSet(compName+".negative-entry-expiration-sec") || config.IsSet("lfuse.negative-entry-expiration-sec") {
 		lf.negativeTimeout = opt.NegativeEntryExpiration
 	} else {
-		lf.negativeTimeout = uint32(defaultNegativeEntryExpiration)
+		lf.negativeTimeout = defaultNegativeEntryExpiration
 	}
 
 	//
