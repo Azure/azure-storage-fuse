@@ -45,6 +45,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 /* NOTES:
    - Component shall have a structure which inherits "internal.BaseComponent" to participate in pipeline
    - Component shall register a name and its constructor to participate in pipeline  (add by default by generator)
@@ -322,7 +324,7 @@ func (lf *Libfuse) GenConfig() string {
 	//
 	// Reduce attribute cache timeout for distributed cache.
 	// Also, negative_timeout MUST be set to 0 when distributed cache is enabled.
-	// see Validate() for details.
+	// See Validate() for details.
 	//
 	if common.IsDistributedCacheEnabled {
 		timeout = 3

@@ -63,6 +63,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 /* --- IMPORTANT NOTE ---
 In below code lot of places we are doing this sort of conversions:
 		- fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
@@ -326,6 +328,13 @@ func (lf *Libfuse) destroyFuse() error {
 // Note: Currently we have commented all the invalidations for parent directories as we don't really maintain
 //       stats for directories. We leave them there to show the complete picture and in case we decide to update
 //       in future.
+// Note: Also note that we cannot invalidate negative entries using fuse_invalidate_path() as it internally
+//       calls fuse_lowlevel_notify_inval_inode() which needs an inode number and for negative entries we
+//       don't have inode numbers. We leave them commented to show what we wish to do.
+//       Additionally, fuse_invalidate_path() can only invalidate a path that has been previously looked up
+//       and thus is present in libfuse path->inode cache, hence fuse_invalidate_path() may fail even if you
+//       expect the file to be present. This is safe since if libfuse doesn't have the path cached it means
+//       kernel can't have it cached either.
 
 func InvalidateAttrCacheOnFileUpdate(path string) {
 	// We should always be passed a path relative to the mount point.
@@ -340,30 +349,42 @@ func InvalidateAttrCacheOnFileUpdate(path string) {
 		return
 	}
 
-	// This is needed only for the case when file size changes on close() for O_WRONLY file.
+	//
+	// This is needed only for the case when file size changes on close() for O_WRONLY file, for other
+	// cases kernel knows about it and can duly invalidate the cache on its own.
+	//
+	// Note: This can fail with -ENOENT when it's called from libfuse_flush() and other places where
+	//       the file path is always unqualified, even when file was accessed using a qualified path.
+	//
 	ret := C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(path))
-	common.Assert(ret == 0, ret, path)
+	_ = ret
+	common.Assert(ret == 0 || ret == -C.ENOENT, ret, path)
 
 	if !strings.HasPrefix(path, "fs=") {
 		// 2.1 - File is updated using unqualified path.
+
+		//
+		// Note that this fuse_invalidate_path() may fail with -ENOENT if we haven't accessed this file
+		// using qualified path and hence libfuse doesn't have it cached. This is safe to ignore.
+		//
 		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
-		common.Assert(ret == 0, ret, filepath.Join("fs=dcache", path))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, filepath.Join("fs=dcache", path))
 		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
-		common.Assert(ret == 0, ret, filepath.Join("fs=azure", path))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, filepath.Join("fs=azure", path))
 	} else if strings.HasPrefix(path, "fs=dcache/") {
 		// 2.2 - File is updated using dcache qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
 		common.Assert(unqualifiedPath != path, path)
 		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
 		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
-		common.Assert(ret == 0, ret, unqualifiedPath)
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
 	} else if strings.HasPrefix(path, "fs=azure/") {
 		// 2.3 - File is updated using azure qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
 		common.Assert(unqualifiedPath != path, path)
 		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
 		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
-		common.Assert(ret == 0, ret, unqualifiedPath)
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
 	} else {
 		common.Assert(false, path)
 	}
@@ -375,6 +396,11 @@ func InvalidateAttrCacheOnFileCreate(path string) {
 	common.Assert(path[0] != '/', path)
 
 	//
+	// See code below to see why we don't need to invalidate anything for file/directory creation.
+	//
+	return
+
+	//
 	// On file/dir creation we invalidate attribute cache and negative entry cache.
 	//
 	if fuseFS.attributeExpiration == 0 && fuseFS.negativeTimeout == 0 {
@@ -382,6 +408,7 @@ func InvalidateAttrCacheOnFileCreate(path string) {
 	}
 
 	var ret C.int
+	_ = ret
 
 	if !strings.HasPrefix(path, "fs=") {
 		// 2.4 - File is created using unqualified path.
@@ -393,10 +420,14 @@ func InvalidateAttrCacheOnFileCreate(path string) {
 		}
 		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
 		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
-		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
-		common.Assert(ret == 0, ret, filepath.Join("fs=dcache", path))
-		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
-		common.Assert(ret == 0, ret, filepath.Join("fs=azure", path))
+
+		// Negative entry cache invalidation.
+		/*
+			ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
+			common.Assert(ret == 0, ret, filepath.Join("fs=dcache", path))
+			ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
+			common.Assert(ret == 0, ret, filepath.Join("fs=azure", path))
+		*/
 	} else if strings.HasPrefix(path, "fs=dcache/") {
 		// 2.5 - File is created using dcache qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
@@ -407,8 +438,12 @@ func InvalidateAttrCacheOnFileCreate(path string) {
 			unqualifiedParentDir = ""
 		}
 		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
-		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
-		common.Assert(ret == 0, ret, unqualifiedPath)
+
+		// Negative entry cache invalidation.
+		/*
+			ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+			common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
+		*/
 	} else if strings.HasPrefix(path, "fs=azure/") {
 		// 2.5 - File is created using azure qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
@@ -419,8 +454,12 @@ func InvalidateAttrCacheOnFileCreate(path string) {
 			unqualifiedParentDir = ""
 		}
 		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
-		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
-		common.Assert(ret == 0, ret, unqualifiedPath)
+
+		// Negative entry cache invalidation.
+		/*
+			ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+			common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
+		*/
 	} else {
 		common.Assert(false, path)
 	}
@@ -439,6 +478,7 @@ func InvalidateAttrCacheOnFileDelete(path string) {
 	}
 
 	var ret C.int
+	_ = ret
 
 	if !strings.HasPrefix(path, "fs=") {
 		// 2.7 - File is deleted using unqualified path.
@@ -450,9 +490,9 @@ func InvalidateAttrCacheOnFileDelete(path string) {
 		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
 		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
 		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
-		common.Assert(ret == 0, ret, filepath.Join("fs=dcache", path))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, filepath.Join("fs=dcache", path))
 		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
-		common.Assert(ret == 0, ret, filepath.Join("fs=azure", path))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, filepath.Join("fs=azure", path))
 	} else if strings.HasPrefix(path, "fs=dcache/") {
 		// 2.8 - File is deleted using dcache qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
@@ -464,7 +504,7 @@ func InvalidateAttrCacheOnFileDelete(path string) {
 		}
 		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
 		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
-		common.Assert(ret == 0, ret, unqualifiedPath)
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
 	} else if strings.HasPrefix(path, "fs=azure") {
 		// 2.9 - File is deleted using azure qualified path.
 		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
@@ -476,7 +516,7 @@ func InvalidateAttrCacheOnFileDelete(path string) {
 		}
 		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
 		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
-		common.Assert(ret == 0, ret, unqualifiedPath)
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
 	} else {
 		common.Assert(false, path)
 	}
