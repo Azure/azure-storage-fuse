@@ -175,9 +175,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 	// This Etag is used while finalizing the file.
 	return &DcacheFile{
-		FileMetadata:     fileMetadata,
-		finalizeEtag:     eTag,
-		endReleaseChunks: make(chan struct{}),
+		FileMetadata:        fileMetadata,
+		finalizeEtag:        eTag,
+		endCleaningUpChunks: make(chan struct{}),
 	}, nil
 }
 
@@ -266,14 +266,16 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	dcacheFile := &DcacheFile{
-		FileMetadata:     fileMetadata,
-		chunksQueue:      make(chan *StagedChunk, 70),
-		endReleaseChunks: make(chan struct{}),
-		fullQueueSignal:  make(chan struct{}, 1),
-		attr:             prop,
+		FileMetadata:        fileMetadata,
+		chunksQueue:         make(chan *StagedChunk, fileIOMgr.totalChunks),
+		endCleaningUpChunks: make(chan struct{}),
+		fullQueueSignal:     make(chan struct{}, 1),
+		attr:                prop,
 	}
 	dcacheFile.lastReadaheadChunkIdx.Store(-1)
 	dcacheFile.wg.Add(1)
+
+	// go-routine for eviction of chunks.
 	go dcacheFile.cleanupChunks()
 
 	return dcacheFile, nil

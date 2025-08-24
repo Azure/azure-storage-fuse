@@ -62,6 +62,9 @@ type fileIOManager struct {
 	// increase the file open/close latency, and must be used only if POSIX semantics is desired.
 	safeDeletes bool
 
+	// total inmemory chunks that we maintain for a file-handle.
+	// Note: this value must be greater than numReadAheadChunks to prevent frequent evictions of current reading chunks
+	//       due to the readahead done in the background.
 	totalChunks int
 
 	// Number of chunks to readahead after the current chunk.
@@ -95,6 +98,13 @@ func NewFileIOManager() error {
 	//
 	workers := 1000
 
+	//
+	// This controls total number of inmemory chunks we maintain per file handle. This will include
+	// reaahead chunks as well.
+	// Currently this is set to 70 and numReadAheadChunks as 64, so this gives us the 6 chunks to be
+	// read in async without any eviction of the chunk. although we only detect async IO for 3 chunks
+	// for scheduling readahead. [TODO: TBD]
+	//
 	totalChunks := 70
 
 	//
@@ -154,16 +164,25 @@ type DcacheFile struct {
 	// Chunk index (inclusive) till which we have done readahead.
 	lastReadaheadChunkIdx atomic.Int64
 
+	// read offset of last read call made by the user application.
 	lastReadOffset atomic.Int64
 
+	// number of sequential bytes read by the user application from this handle, this will decide
+	// how much readahead we must do.
 	numSeqBytesRead atomic.Int64
 
+	// Queue of chunks for this file. the capacity of this channel is fileIOMgr.totalChunks
 	chunksQueue chan *StagedChunk
 
-	fullQueueSignal  chan struct{}
-	endReleaseChunks chan struct{}
+	// channel used as a signal for eviction when chunksQueue is full.
+	fullQueueSignal chan struct{}
 
+	// channel used to stop the eviction of the chunks.
+	endCleaningUpChunks chan struct{}
+
+	// wg used to stop the eviction go-routine.
 	wg sync.WaitGroup
+
 	//
 	// Chunk Idx -> *chunk
 	// The above chunks are the outstanding chunks for the file.
@@ -241,8 +260,6 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 
 		// Unlock the Rlock that is acquired in the readChunk().
 		chunk.mu.RUnlock()
-
-		//
 	}
 
 	// update # of seq. bytes read by the user application.
@@ -447,7 +464,7 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	log.Debug("DistributedCache[FM]::ReleaseFile: Releasing all staged chunk for file %s",
 		file.FileMetadata.Filename)
 
-	close(file.endReleaseChunks)
+	close(file.endCleaningUpChunks)
 	file.wg.Wait()
 
 	file.StagedChunks.Range(func(chunkIdx any, Ichunk any) bool {
@@ -562,7 +579,6 @@ func (file *DcacheFile) getChunk(chunkIdx int64, allocateBuf bool) (*StagedChunk
 		chunk = Ichunk.(*StagedChunk)
 		return chunk, true, nil
 	}
-	//	fmt.Printf("chunk idx : %d\n", chunkIdx)
 
 	return chunk, false, nil
 }
@@ -633,11 +649,14 @@ func (file *DcacheFile) loadChunk(chunkIdx int64) (*StagedChunk, error) {
 		chunkIdx, file.FileMetadata.Filename)
 }
 
+// This is how we detect sequential pattern in a file.
+//
+// We only support async IO of upto 3 chunks, that means we schedule readahead properly if the IO
+// come with in this range, else we mark it as random-read. that don't necessarily mean it will
+// be very slow to do async IO more than 3 chunks.
 func (file *DcacheFile) updateSeqBytesRead(offset int64, bytesRead int64) {
-	// if current offset is 3chunks left/right to the prev. ReadOffset we consider it as seq. read.
-	// else we move to the slow path.
 	prevReadOffset := file.lastReadOffset.Load()
-	//	fmt.Println(prevReadOffset, offset, file.FileMetadata.FileLayout.ChunkSize)
+
 	if (prevReadOffset+3*file.FileMetadata.FileLayout.ChunkSize >= offset) &&
 		(prevReadOffset-3*file.FileMetadata.FileLayout.ChunkSize <= offset) {
 		file.numSeqBytesRead.Add(bytesRead)
@@ -647,6 +666,7 @@ func (file *DcacheFile) updateSeqBytesRead(offset int64, bytesRead int64) {
 	}
 }
 
+// Eviction logic for in-memory chunks which are being read.
 func (file *DcacheFile) cleanupChunks() {
 	defer file.wg.Done()
 
@@ -660,7 +680,7 @@ func (file *DcacheFile) cleanupChunks() {
 			default:
 				// Just in case the queue was emptied before we got here
 			}
-		case <-file.endReleaseChunks:
+		case <-file.endCleaningUpChunks:
 			return
 		}
 	}
@@ -761,10 +781,8 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 
 	numSeqChunksReadByUserApp := getNumChunksFromBytes(file.numSeqBytesRead.Load(), &file.FileMetadata.FileLayout)
 
-	// ReadAhead logic, lets do exponential readahead until numReadAheadChunks reached.
+	// ReadAhead logic, do exponential readahead until numReadAheadChunks reached.
 	numReadAheadChunks := min(2*numSeqChunksReadByUserApp, int64(fileIOMgr.numReadAheadChunks))
-	// fmt.Printf("offset: %d, prevOffeset: %d, numSeqBytesRead: %d, chunk Idx: %d, ReadAheadchunks: %d\n",
-	// 	offset, file.lastReadOffset.Load(), file.numSeqBytesRead.Load(), chunkIdx, numReadAheadChunks)
 
 	readAheadEndChunkIdx := min(chunkIdx+numReadAheadChunks,
 		getChunkIdxFromFileOffset(file.FileMetadata.Size-1, &file.FileMetadata.FileLayout))
