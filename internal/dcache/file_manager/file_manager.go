@@ -562,6 +562,7 @@ func (file *DcacheFile) getChunk(chunkIdx int64, allocateBuf bool) (*StagedChunk
 		chunk = Ichunk.(*StagedChunk)
 		return chunk, true, nil
 	}
+	//	fmt.Printf("chunk idx : %d\n", chunkIdx)
 
 	return chunk, false, nil
 }

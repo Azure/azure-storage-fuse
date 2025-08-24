@@ -267,7 +267,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 
 	dcacheFile := &DcacheFile{
 		FileMetadata:     fileMetadata,
-		chunksQueue:      make(chan *StagedChunk, 64),
+		chunksQueue:      make(chan *StagedChunk, 70),
 		endReleaseChunks: make(chan struct{}),
 		fullQueueSignal:  make(chan struct{}, 1),
 		attr:             prop,
