@@ -169,10 +169,14 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		return nil, err
 	}
 
-	// This Etag is used while finalizing the file.
+	//
+	// This DcacheFile will be used for writing, hence it doesn't need a read pattern tracker.
+	//
 	return &DcacheFile{
 		FileMetadata: fileMetadata,
+		// This Etag is used while finalizing the file.
 		finalizeEtag: eTag,
+		StagedChunks: make(map[int64]*StagedChunk),
 	}, nil
 }
 
@@ -260,9 +264,14 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		common.Assert(newOpenCount > 0, newOpenCount, fileName)
 	}
 
+	//
+	// This DcacheFile will be used for reading, hence it needs a read pattern tracker.
+	//
 	dcacheFile := &DcacheFile{
 		FileMetadata: fileMetadata,
 		attr:         prop,
+		RPT:          NewRPTracker(fileName),
+		StagedChunks: make(map[int64]*StagedChunk),
 	}
 	dcacheFile.lastReadaheadChunkIdx.Store(-1)
 
@@ -324,7 +333,7 @@ func DeleteDcacheFile(fileName string) error {
 }
 
 // Creates the chunk and allocates the chunk buf
-func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk, error) {
+func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf bool) (*StagedChunk, error) {
 	var buf []byte
 	var err error
 
@@ -335,15 +344,22 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 		}
 	}
 
+	if length != 0 {
+		chunkSize := int64(cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes)
+		length = min(length, chunkSize-offset)
+	}
+
 	return &StagedChunk{
 		Idx:           idx,
-		Len:           0,
+		Len:           length,
+		Offset:        offset,
 		Buf:           buf,
 		Err:           make(chan error, 1),
 		IsBufExternal: !allocateBuf,
 		Dirty:         atomic.Bool{},
 		UpToDate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
+		SavedInMap:    atomic.Bool{},
 	}, nil
 }
 

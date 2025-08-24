@@ -1006,20 +1006,21 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
 	offset := uint64(off)
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
+	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
+	common.Assert(len(data) == int(size), len(data), size, handle.Path, handle.ID)
 
 	var err error
 	var bytesRead int
 
 	if handle.Cached() {
-		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
+		bytesRead, err = syscall.Pread(handle.FD(), data, int64(offset))
 		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			&internal.ReadInBufferOptions{
 				Handle: handle,
 				Offset: int64(offset),
-				Data:   data[:size],
+				Data:   data,
 			})
 	}
 
@@ -1031,6 +1032,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		return -C.EIO
 	}
 
+	common.Assert(bytesRead >= 0 && bytesRead <= int(size), bytesRead, size, handle.Path, handle.ID)
 	return C.int(bytesRead)
 }
 
@@ -1042,13 +1044,15 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
 	offset := uint64(off)
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
+	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
+	common.Assert(len(data) == int(size), len(data), size, handle.Path, handle.ID)
+
 	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		&internal.WriteFileOptions{
 			Handle:   handle,
 			Offset:   int64(offset),
-			Data:     data[:size],
+			Data:     data,
 			Metadata: nil,
 		})
 
@@ -1056,6 +1060,8 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
+
+	common.Assert(bytesWritten >= 0 && bytesWritten <= int(size), bytesWritten, size, handle.Path, handle.ID)
 
 	/*
 		// DO NOT CALL INVALIDATE FROM WRITE HANDLER AS IT CAN CAUSE DEADLOCK.

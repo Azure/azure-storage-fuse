@@ -1050,7 +1050,7 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		common.Assert(options.Handle.IFObj != nil)
 		common.Assert(options.Handle.IsDcacheAllowReads())
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
-		bytesRead, err = dcFile.ReadFile(options.Offset, options.Data)
+		bytesRead, err = dcFile.ReadFile(options.Offset, &options.Data)
 		if err == nil || err == io.EOF {
 			return bytesRead, err
 		}
