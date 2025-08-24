@@ -186,6 +186,11 @@ func (wp *workerPool) writeChunk(task *task) {
 		common.Assert(task.chunk.Dirty.Load())
 		task.chunk.Dirty.Store(false)
 		close(task.chunk.Err)
+
+		//
+		// The chunk is uploaded to DCache, we can release it now.
+		//
+		task.file.removeChunk(task.chunk.Idx)
 		return
 	}
 
