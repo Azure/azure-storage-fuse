@@ -39,12 +39,11 @@ import (
 )
 
 type StagedChunk struct {
-	mu                 sync.RWMutex // prevent readers accesing the chunk buffer, when releasing the buffer.
-	Idx                int64        // chunk index
-	Buf                []byte       // buf size == chunkSize
-	Len                int64        // valid bytes in Buf
-	Err                chan error   // Download/upload status, available after download/upload completes, nil means success.
-	bytesReadFromChunk atomic.Int64 // # of bytes read by the user application from this chunk
+	mu  sync.RWMutex // prevent readers accesing the chunk buffer, when releasing the buffer.
+	Idx int64        // chunk index
+	Buf []byte       // buf size == chunkSize
+	Len int64        // valid bytes in Buf
+	Err chan error   // Download/upload status, available after download/upload completes, nil means success.
 	//
 	// For ReadMV(), buffer is returned by GetChunk() RPC, so we don't allocate it in
 	// NewStagedChunk() while for WriteMV() we need to provide data to be sent using PutChunk().

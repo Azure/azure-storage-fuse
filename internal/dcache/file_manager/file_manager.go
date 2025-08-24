@@ -42,6 +42,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -61,6 +62,8 @@ type fileIOManager struct {
 	// Multiple readers opening the same file will contend to atomically update the open count, so this will
 	// increase the file open/close latency, and must be used only if POSIX semantics is desired.
 	safeDeletes bool
+
+	totalChunks int
 
 	// Number of chunks to readahead after the current chunk.
 	// This controls our readahead size.
@@ -93,6 +96,8 @@ func NewFileIOManager() error {
 	//
 	workers := 1000
 
+	totalChunks := 70
+
 	//
 	// How many chunks will we readahead per file.
 	// To achieve high sequential read throughput, this number should be kept reasonably high.
@@ -119,6 +124,7 @@ func NewFileIOManager() error {
 
 	fileIOMgr = fileIOManager{
 		safeDeletes:        cm.GetCacheConfig().SafeDeletes,
+		totalChunks:        totalChunks,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
 	}
@@ -149,6 +155,15 @@ type DcacheFile struct {
 	// Chunk index (inclusive) till which we have done readahead.
 	lastReadaheadChunkIdx atomic.Int64
 
+	lastReadOffset atomic.Int64
+
+	numSeqBytesRead atomic.Int64
+
+	chunksQueue chan *StagedChunk
+
+	endReleaseChunks chan struct{}
+
+	wg sync.WaitGroup
 	//
 	// Chunk Idx -> *chunk
 	// The above chunks are the outstanding chunks for the file.
@@ -177,6 +192,8 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 
 	// Read must only be allowed on a properly finalized file, for which size must not be -1.
 	common.Assert(int64(file.FileMetadata.Size) >= 0)
+
+	dupOffset := offset
 
 	if offset >= file.FileMetadata.Size {
 		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, file size: %d, length: %d",
@@ -225,11 +242,13 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 		// Unlock the Rlock that is acquired in the readChunk().
 		chunk.mu.RUnlock()
 
-		totalBytesRead := chunk.bytesReadFromChunk.Add(int64(copied))
-		if totalBytesRead == chunk.Len {
-			file.removeChunk(chunk.Idx)
-		}
+		//
 	}
+
+	// update # of seq. bytes read by the user application.
+	file.updateSeqBytesRead(dupOffset, int64(len(buf)))
+
+	file.lastReadOffset.Store(dupOffset)
 
 	// Must exactly read what's determined above (what user asks, capped by file size).
 	common.Assert(offset == endOffset, offset, endOffset)
@@ -428,6 +447,9 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	log.Debug("DistributedCache[FM]::ReleaseFile: Releasing all staged chunk for file %s",
 		file.FileMetadata.Filename)
 
+	close(file.endReleaseChunks)
+	file.wg.Wait()
+
 	file.StagedChunks.Range(func(chunkIdx any, Ichunk any) bool {
 		chunk := Ichunk.(*StagedChunk)
 		// TODO: assert for each chunk that err is closed. currently not doing it as readahead chunks
@@ -551,10 +573,14 @@ func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
 	//
 	// For read chunk, we use the buffer returned by the GetChunk() RPC, that saves an extra copy.
 	//
-	chunk, _, err := file.getChunk(chunkIdx, false /* allocateBuf */)
+	chunk, loaded, err := file.getChunk(chunkIdx, false /* allocateBuf */)
+
 	if err == nil {
 		// For read chunks chunk.Len is the amount of data that must be read into this chunk.
 		chunk.Len = getChunkSize(chunkIdx*file.FileMetadata.FileLayout.ChunkSize, file)
+		if !loaded {
+			file.chunksQueue <- chunk
+		}
 	}
 
 	// There's no point in having a chunk and not reading anything on to it.
@@ -596,6 +622,35 @@ func (file *DcacheFile) loadChunk(chunkIdx int64) (*StagedChunk, error) {
 
 	return nil, fmt.Errorf("Chunkidx %s not found in staged chunks for file %s",
 		chunkIdx, file.FileMetadata.Filename)
+}
+
+func (file *DcacheFile) updateSeqBytesRead(offset int64, bytesRead int64) {
+	// if current offset is 3chunks left/right to the prev. ReadOffset we consider it as seq. read.
+	// else we move to the slow path.
+	prevReadOffset := file.lastReadOffset.Load()
+	//	fmt.Println(prevReadOffset, offset, file.FileMetadata.FileLayout.ChunkSize)
+	if (prevReadOffset+3*file.FileMetadata.FileLayout.ChunkSize >= offset) &&
+		(prevReadOffset-3*file.FileMetadata.FileLayout.ChunkSize <= offset) {
+		file.numSeqBytesRead.Add(bytesRead)
+	} else {
+		// This is a random read. reset the readahead.
+		file.numSeqBytesRead.Store(0)
+	}
+}
+
+func (file *DcacheFile) cleanupChunks() {
+	defer file.wg.Done()
+	for {
+		if len(file.chunksQueue) == cap(file.chunksQueue) {
+			select {
+			case chunk := <-file.chunksQueue:
+				file.removeChunk(chunk.Idx)
+			case <-file.endReleaseChunks:
+				return
+			}
+		}
+		time.Sleep(500 * time.Microsecond)
+	}
 }
 
 // Remove chunk from staged chunks.
@@ -691,8 +746,16 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 	log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, offset: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, offset, chunkIdx)
 
-	readAheadEndChunkIdx := min(chunkIdx+int64(fileIOMgr.numReadAheadChunks),
+	numSeqChunksReadByUserApp := getNumChunksFromBytes(file.numSeqBytesRead.Load(), &file.FileMetadata.FileLayout)
+
+	// ReadAhead logic, lets do exponential readahead until numReadAheadChunks reached.
+	numReadAheadChunks := min(2*numSeqChunksReadByUserApp, int64(fileIOMgr.numReadAheadChunks))
+	// fmt.Printf("offset: %d, prevOffeset: %d, numSeqBytesRead: %d, chunk Idx: %d, ReadAheadchunks: %d\n",
+	// 	offset, file.lastReadOffset.Load(), file.numSeqBytesRead.Load(), chunkIdx, numReadAheadChunks)
+
+	readAheadEndChunkIdx := min(chunkIdx+numReadAheadChunks,
 		getChunkIdxFromFileOffset(file.FileMetadata.Size-1, &file.FileMetadata.FileLayout))
+
 	common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
 
 	//

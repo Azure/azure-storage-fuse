@@ -83,6 +83,10 @@ func isOffsetChunkStarting(offset int64, fileLayout *dcache.FileLayout) bool {
 	return (offset%fileLayout.ChunkSize == 0)
 }
 
+func getNumChunksFromBytes(bytes int64, fileLayout *dcache.FileLayout) int64 {
+	return (bytes + fileLayout.ChunkSize - 1) / fileLayout.ChunkSize
+}
+
 func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string {
 	numMvs := int64(len(fileMetadata.FileLayout.MVList))
 
@@ -171,8 +175,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 	// This Etag is used while finalizing the file.
 	return &DcacheFile{
-		FileMetadata: fileMetadata,
-		finalizeEtag: eTag,
+		FileMetadata:     fileMetadata,
+		finalizeEtag:     eTag,
+		endReleaseChunks: make(chan struct{}),
 	}, nil
 }
 
@@ -261,10 +266,14 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	dcacheFile := &DcacheFile{
-		FileMetadata: fileMetadata,
-		attr:         prop,
+		FileMetadata:     fileMetadata,
+		chunksQueue:      make(chan *StagedChunk, 64),
+		endReleaseChunks: make(chan struct{}),
+		attr:             prop,
 	}
 	dcacheFile.lastReadaheadChunkIdx.Store(-1)
+	dcacheFile.wg.Add(1)
+	go dcacheFile.cleanupChunks()
 
 	return dcacheFile, nil
 }
