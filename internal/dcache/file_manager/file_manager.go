@@ -150,7 +150,8 @@ type DcacheFile struct {
 	// Next write offset we expect in case of sequential writes.
 	// Every new write offset should be >= nextWriteOffset, else it's the case of overwriting existing
 	// data and we don't support that.
-	nextWriteOffset int64
+	nextWriteOffset     int64
+	committedTillOffset int64
 
 	// Chunk index (inclusive) till which we have done readahead.
 	lastReadaheadChunkIdx atomic.Int64
@@ -282,26 +283,27 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	common.Assert(len(buf) > 0)
 
 	//
+	// We allow writes only within the staging area.
+	// Anything before that amounts to overwrite, and anything beyond that is not allowed by our writeback
+	// cache limits.
+	//
+	allowableWriteOffsetStart := file.committedTillOffset + 1
+	allowableWriteOffsetEnd := (allowableWriteOffsetStart +
+		int64(fileIOMgr.numStagingChunks)*file.FileMetadata.FileLayout.ChunkSize)
+
+	//
 	// We only support append writes.
 	// 'cp' utility uses sparse writes to avoid writing zeroes from the source file to target file, we support
 	// that too, hence offset can be greater than nextWriteOffset.
 	//
-	if offset < file.nextWriteOffset {
-		log.Err("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, next offset: %d",
-			file.FileMetadata.Filename, offset, file.nextWriteOffset)
+	if offset < allowableWriteOffsetStart {
+		log.Err("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, committedTillOffset: %d",
+			file.FileMetadata.Filename, offset, file.committedTillOffset)
 		return syscall.ENOTSUP
-	} else if offset > file.nextWriteOffset {
-		//
-		// TODO: Support holes spanning chunks.
-		//
-		thisIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
-		nextIdx := getChunkIdxFromFileOffset(file.nextWriteOffset, &file.FileMetadata.FileLayout)
-
-		if thisIdx != nextIdx {
-			log.Err("DistributedCache[FM]::WriteFile: Hole spanning chunks, file: %s, offset: %d, next offset: %d, thisIdx: %d, nextIdx: %d",
-				file.FileMetadata.Filename, offset, file.nextWriteOffset, thisIdx, nextIdx)
-			return syscall.ENOTSUP
-		}
+	} else if offset > allowableWriteOffsetEnd {
+		log.Err("DistributedCache[FM]::WriteFile: Random write unsupported, file: %s, offset: %d, committedTillOffset: %d, numStagingChunks: %d",
+			file.FileMetadata.Filename, offset, file.committedTillOffset, fileIOMgr.numStagingChunks)
+		return syscall.ENOTSUP
 	}
 
 	// endOffset is 1 + offset of the last byte to be write.
@@ -359,7 +361,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		common.Assert(chunk.Len <= file.FileMetadata.FileLayout.ChunkSize,
 			chunk.Len, file.FileMetadata.FileLayout.ChunkSize)
 
-		// Cannot be more that the buffer.
+		// Cannot be more than the buffer.
 		common.Assert(chunk.Len <= int64(len(chunk.Buf)), chunk.Len, int64(len(chunk.Buf)))
 
 		// At least one byte of user data copied to chunk, it's dirty now and must be written to dcache.
@@ -374,7 +376,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		// There's no point in waiting any more. Sooner we write completed chunks, faster we will complete
 		// writes.
 		//
-		if chunk.Len == int64(len(chunk.Buf)) {
+		if chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied)) {
 			// TODO: This not always true. if some writes to this chunk were skipped then there should be a
 			// way to stage this block.
 			scheduleUpload(chunk, file)
@@ -864,29 +866,6 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 		return chunk, err
 	}
 
-	//
-	// Release the chunks that are out of staging area, by waiting for their uploads to complete.
-	// Only done at chunk boundary to reduce the overhead. This is when getChunkForWrite() would
-	// have returned a new chunk and hence we need to cleanup the staging area.
-	//
-	if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
-		// Release the buffer if it falls out of staging area.
-		releaseChunkIdx := chunkIdx - int64(fileIOMgr.numStagingChunks)
-		if releaseChunkIdx >= 0 {
-			releaseChunk, err := file.loadChunk(releaseChunkIdx)
-			if err == nil {
-				err := <-releaseChunk.Err
-				if err != nil {
-					// If there is an error while uploading the block.
-					// As we are using writeback policy to upload the data.
-					// Better to fail early.
-					releaseChunk.Err <- err
-					return nil, fmt.Errorf("DistributedCache::WriteChunk: failed to upload the previous chunk [%v]", err)
-				}
-				file.removeChunk(releaseChunkIdx)
-			}
-		}
-	}
 	return chunk, nil
 }
 
@@ -913,6 +892,9 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) {
 		common.Assert(chunk.Dirty.Load())
 		// Up-to-date chunk should not be written.
 		common.Assert(!chunk.UpToDate.Load())
+
+		// Offset of the last committed byte.
+		file.committedTillOffset = chunk.Offset + chunk.Len - 1
 
 		fileIOMgr.wp.queueWork(file, chunk, false /* get_chunk */)
 	}
