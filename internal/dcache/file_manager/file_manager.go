@@ -42,7 +42,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -161,6 +160,7 @@ type DcacheFile struct {
 
 	chunksQueue chan *StagedChunk
 
+	fullQueueSignal  chan struct{}
 	endReleaseChunks chan struct{}
 
 	wg sync.WaitGroup
@@ -580,6 +580,14 @@ func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
 		chunk.Len = getChunkSize(chunkIdx*file.FileMetadata.FileLayout.ChunkSize, file)
 		if !loaded {
 			file.chunksQueue <- chunk
+			if len(file.chunksQueue) == cap(file.chunksQueue) {
+				select {
+				case file.fullQueueSignal <- struct{}{}:
+					// successfully signaled
+				default:
+					// avoid blocking if already signaled
+				}
+			}
 		}
 	}
 
@@ -640,16 +648,20 @@ func (file *DcacheFile) updateSeqBytesRead(offset int64, bytesRead int64) {
 
 func (file *DcacheFile) cleanupChunks() {
 	defer file.wg.Done()
+
 	for {
-		if len(file.chunksQueue) == cap(file.chunksQueue) {
+		select {
+		case <-file.fullQueueSignal:
+			// Queue is full, so we remove one
 			select {
 			case chunk := <-file.chunksQueue:
 				file.removeChunk(chunk.Idx)
-			case <-file.endReleaseChunks:
-				return
+			default:
+				// Just in case the queue was emptied before we got here
 			}
+		case <-file.endReleaseChunks:
+			return
 		}
-		time.Sleep(500 * time.Microsecond)
 	}
 }
 

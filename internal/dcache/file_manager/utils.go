@@ -269,6 +269,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		FileMetadata:     fileMetadata,
 		chunksQueue:      make(chan *StagedChunk, 64),
 		endReleaseChunks: make(chan struct{}),
+		fullQueueSignal:  make(chan struct{}, 1),
 		attr:             prop,
 	}
 	dcacheFile.lastReadaheadChunkIdx.Store(-1)
