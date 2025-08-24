@@ -54,6 +54,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	gouuid "github.com/google/uuid"
@@ -315,6 +316,27 @@ func (bm *BitMap16) Clear(bit uint16) { *bm &= ^(1 << bit) }
 
 // Reset : Reset the whole bitmap by setting it to 0
 func (bm *BitMap16) Reset() { *bm = 0 }
+
+// In a given uint64, atomically check whether the given bit is set or not and if not set then set it.
+// Returns true if the bit was not set and was set by this call, false if the bit was already set.
+func AtomicTestAndSetUint64(addr *uint64, bit uint) bool {
+	Assert(bit < 64, bit)
+
+	var old, new uint64
+	for {
+		old = atomic.LoadUint64(addr)
+		if old&(1<<bit) != 0 {
+			// Bit already set.
+			return false
+		}
+		new = old | (1 << bit)
+		if atomic.CompareAndSwapUint64(addr, old, new) {
+			// Bit was set successfully.
+			return true
+		}
+		// Retry if CAS failed.
+	}
+}
 
 type KeyedMutex struct {
 	mutexes sync.Map // Zero value is empty and ready for use

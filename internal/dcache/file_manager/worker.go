@@ -107,24 +107,28 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 }
 
 func (wp *workerPool) readChunk(task *task) {
-	log.Debug("DistributedCache::readChunk: Reading chunk idx: %d, chunk Len: %d, file: %s",
-		task.chunk.Idx, task.chunk.Len, task.file.FileMetadata.Filename)
+	log.Debug("DistributedCache::readChunk: Reading chunk idx: %d, chunk Offset: %d, chunk Len: %d, file: %s",
+		task.chunk.Idx, task.chunk.Len, task.chunk.Offset, task.file.FileMetadata.Filename)
 
 	// For read chunk, buffer must not be pre-allocated, ReadMV() returns the buffer.
 	// buffer is pre-allocated only when reading the chunk from the Local RV which would be decided after the ReadMV
 	// call from the replication manager.
 	common.Assert(task.chunk.IsBufExternal)
 	common.Assert(task.chunk.Buf == nil, len(task.chunk.Buf))
+	common.Assert(task.file.FileMetadata.FileLayout.ChunkSize%common.MbToBytes == 0,
+		task.file.FileMetadata.FileLayout.ChunkSize)
 
 	// Read From the Dcache.
 	readMVReq := &rm.ReadMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
 		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
 		ChunkIndex:     task.chunk.Idx,
-		OffsetInChunk:  0,
+		OffsetInChunk:  task.chunk.Offset,
 		Length:         task.chunk.Len,
 		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
 	}
+
+	common.Assert(readMVReq.ChunkSizeInMiB > 0)
 
 	readMVresp, err := rm.ReadMV(readMVReq)
 
@@ -153,8 +157,8 @@ func (wp *workerPool) readChunk(task *task) {
 		return
 	}
 
-	log.Err("DistrubuteCache[FM]::readChunk: Reading chunk from Dcache failed, chnk idx: %d, file: %s: %v",
-		task.chunk.Idx, task.file.FileMetadata.Filename, err)
+	log.Err("DistrubuteCache[FM]::readChunk: Reading chunk from Dcache failed, chnk idx: %d, offset: %d, length: %d, file: %s: %v",
+		readMVReq.ChunkIndex, readMVReq.OffsetInChunk, readMVReq.Length, task.file.FileMetadata.Filename, err)
 
 	task.chunk.Err <- err
 }
