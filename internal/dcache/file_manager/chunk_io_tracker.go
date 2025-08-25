@@ -145,6 +145,8 @@ func InitChunkIOTracker() {
 
 	// Chunk size is a multiple of 1MiB and MinTrackableIOSize should be chosen to divide it evenly.
 	common.Assert(chunkSize%MinTrackableIOSize == 0, chunkSize, MinTrackableIOSize)
+	// Just some sanity check.
+	common.Assert(chunkSize/MinTrackableIOSize >= 4, chunkSize, MinTrackableIOSize)
 	common.Assert(numBlocks > 0, numBlocks)
 	common.Assert(numUint64 > 0, numUint64)
 }

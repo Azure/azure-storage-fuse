@@ -127,6 +127,7 @@ func NewFileIOManager() error {
 
 	common.Assert(fileIOMgr.wp != nil)
 
+	// Initialize chunk IO tracker parameters.
 	InitChunkIOTracker()
 
 	return nil
@@ -150,8 +151,12 @@ type DcacheFile struct {
 	RPT *RPTracker
 
 	// Next write offset we expect in case of sequential writes.
-	// Every new write offset should be >= nextWriteOffset, else it's the case of overwriting existing
-	// data and we don't support that.
+	// We don't support overwrites but we support slightly out-of-order writes to enable parallel
+	// processing of writes issued by fuse in response to large application writes.
+	// We allow writes only within a window of nextWriteOffset +/- 10MiB, where 10MiB comes from
+	// two factors:
+	// - Fuse uses max 1MiB IO size.
+	// - Libfuse has default 10 worker threads.
 	nextWriteOffset int64
 
 	// Chunk index (inclusive) till which we have done readahead.
@@ -246,16 +251,21 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 
 		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
 
-		// This chunk has chunk.Len valid bytes, we cannot be reading past those.
-		common.Assert(chunkOffset < chunk.Len, chunkOffset, chunk.Len)
+		// This chunk has chunk.Len valid bytes starting @ chunk.Offset, we cannot be reading past those.
+		common.Assert(chunkOffset < (chunk.Offset+chunk.Len), chunkOffset, chunk.Offset, chunk.Len)
+
+		// For sequential reads chunk must contain the entire chunk, i.e., chunk.Offset must be 0.
+		// For random reads chunk will contain only data starting at chunk.Offset.
+		common.Assert(chunk.Offset == 0 || !doSequentialRead,
+			chunk.Offset, chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 
 		//
 		// Note/TODO: If we use the fuse low level API we can avoid this copy and return the chunk.Buf
 		//            directly in the fuse response.
 		//
-		copied := copy((*buf)[bufOffset:], chunk.Buf[chunkOffset:chunk.Len])
+		copied := copy((*buf)[bufOffset:], chunk.Buf[chunkOffset:(chunk.Offset+chunk.Len)])
 		// Must copy at least one byte.
-		common.Assert(copied > 0, chunkOffset, bufOffset, chunk.Len, len(*buf))
+		common.Assert(copied > 0, chunkOffset, bufOffset, chunk.Offset, chunk.Len, len(*buf))
 
 		offset += int64(copied)
 		bufOffset += copied
@@ -886,10 +896,10 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 		common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
 
 		/*
-		log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, [%d, %d), len(StagedChunks): %d, lastReadaheadChunkIdx: %d, readAheadCount: %d",
-			file.FileMetadata.Filename, readAheadStartChunkIdx, readAheadEndChunkIdx,
-			len(file.StagedChunks), file.lastReadaheadChunkIdx.Load(), readAheadCount)
-			*/
+			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, [%d, %d), len(StagedChunks): %d, lastReadaheadChunkIdx: %d, readAheadCount: %d",
+				file.FileMetadata.Filename, readAheadStartChunkIdx, readAheadEndChunkIdx,
+				len(file.StagedChunks), file.lastReadaheadChunkIdx.Load(), readAheadCount)
+		*/
 
 		if readAheadEndChunkIdx > readAheadStartChunkIdx {
 			file.lastReadaheadChunkIdx.Store(readAheadEndChunkIdx - 1)
