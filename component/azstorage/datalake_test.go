@@ -2770,6 +2770,38 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	s.assert.Contains(acl, "other::rwx")
 }
 
+func (s *datalakeTestSuite) TestDisableSetAccessControl() {
+	defer s.cleanupTest()
+	// Setup with disable-setaccesscontrol flag enabled
+	conf := fmt.Sprintf("azstorage:\n  disable-setaccesscontrol: true\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(conf, s.container, false)
+
+	name := generateFileName()
+	h, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	s.assert.Nil(err)
+
+	data := []byte("test data")
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+
+	err = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	// Try to change permissions - should succeed without making SetAccessControl call
+	mode := fs.FileMode(0764)
+	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: mode})
+	s.assert.Nil(err)
+
+	// File should exist but permissions may not be changed in storage due to disabled SetAccessControl
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	
+	// The mode returned might not match what we set since SetAccessControl was disabled
+	// But the operation should succeed without errors
+}
+
 func (s *datalakeTestSuite) TestBlobFilters() {
 	defer s.cleanupTest()
 	// Setup
