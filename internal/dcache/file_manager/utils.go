@@ -347,6 +347,7 @@ func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf boo
 	if length != 0 {
 		chunkSize := int64(cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes)
 		length = min(length, chunkSize-offset)
+		common.Assert(length > 0, length, chunkSize, offset)
 	}
 
 	return &StagedChunk{
