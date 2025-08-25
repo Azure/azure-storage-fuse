@@ -166,6 +166,8 @@ func (wp *workerPool) readChunk(task *task) {
 func (wp *workerPool) writeChunk(task *task) {
 	log.Debug("DistributedCache::writeChunk: Writing chunk idx: %d, file: %s",
 		task.chunk.Idx, task.file.FileMetadata.Filename)
+	log.Debug("TOMAR: DistributedCache::writeChunk: Writing CHUNKIDX: %d, file: %s",
+		task.chunk.Idx, task.file.FileMetadata.Filename)
 
 	// Only dirty StagedChunk must be written.
 	common.Assert(task.chunk.Dirty.Load())
@@ -190,6 +192,9 @@ func (wp *workerPool) writeChunk(task *task) {
 		//
 		// The chunk is uploaded to DCache, we can release it now.
 		//
+		log.Debug("TOMAR: DistributedCache::writeChunk: Writing completed CHUNKIDX: %d, file: %s, refcount: %d",
+			task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.RefCount.Load())
+
 		task.file.removeChunk(task.chunk.Idx)
 		return
 	}
