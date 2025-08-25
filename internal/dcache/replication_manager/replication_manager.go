@@ -364,8 +364,8 @@ func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*Wri
 	brokenChain := (putChunkStyle == OriginatorSendsToAll)
 
 	if brokenChain {
-		log.Warn("ReplicationManager::WriteMV: Retrying WriteMV %s with OriginatorSendsToAll after BrokenChain error in previous DaisyChain attempt",
-			req.toString)
+		log.Warn("ReplicationManager::writeMVInternal: Retrying WriteMV %s with OriginatorSendsToAll after BrokenChain error in previous DaisyChain attempt",
+			req.toString())
 	}
 
 	// TODO: TODO: hash validation will be done later

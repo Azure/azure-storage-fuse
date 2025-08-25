@@ -469,15 +469,14 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				continue
 			} else if rpc.IsTimedOut(err) {
 				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
+				// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
+				// and not between the client node and target node. In this case, we retry WriteMV using
+				// the OriginatorSendsToAll strategy. So, to be safe we don't delete the connections if we get
+				// timeout error in PutChunkDC. In the PutChunk using OriginatorSendsToAll strategy fails using
+				// timeout, we then delete the connections.
 				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::PutChunkDC: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
+				log.Debug("rpc_client::PutChunkDC: Received timeout error, not deleting connections [%v]",
+					err)
 
 				// We don't retry in case of timeout error.
 				return nil, err
