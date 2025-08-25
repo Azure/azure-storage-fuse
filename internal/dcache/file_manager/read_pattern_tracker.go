@@ -42,26 +42,27 @@ import (
 )
 
 // Primary goal of our read pattern tracker is to correctly identify parallel FUSE read requests as a result
-// of a large application read as sequential. e.g., our target applications will issue large reads, say 10MiB,
+// of a large application read as sequential. e.g., our target applications may issue large reads, say 10MiB,
 // which FUSE will break down into multiple parallel reads, say 1MiB each. These 10x1MiB reads will be processed
 // by multiple libfuse threads in non-deterministic order. The application will issue the next 10MiB read
 // immediately adjacent to the previous 10MiB read, which is purely sequential reads. We should not consider
 // the reordered 1MiB reads as random reads.
 //
-// We maintain a windowSize that determines how many such parallel reads can be present at any time. If Nth read
+// We maintain a windowSize that determines how many such parallel reads can be active at any time. If Nth read
 // is withing 2*windowSize of previous read, we consider it sequential. This is because the 1st read of prev batch
 // and the last read of current batch can be processed one after another and will be 2*windowSize apart.
 type RPTracker struct {
 	windowSize     int64
 	prevReadOffset atomic.Int64
 	randomStreak   atomic.Int64
-	fileName       string
+	fileName       string // For logging purposes only.
 }
 
 func NewRPTracker(file string) *RPTracker {
 	//
-	// This should be close to the max fuse threads as that decides how many parallel reads can be running,
-	// and all reads within this window must be considered sequential.
+	// This should not be less than max fuse threads (max_threads) as that decides how many parallel reads can be
+	// running, and all reads within this window must be considered sequential. Note that we assume that FUSE
+	// kernel module will not send reads more than 1MiB to us. If that ever changes this needs to change accordingly.
 	//
 	windowSizeInMiB := int64(10)
 	return &RPTracker{
@@ -91,6 +92,7 @@ func (t *RPTracker) Update(offset, length int64) {
 		}
 		t.randomStreak.Store(0)
 	}
+
 	t.prevReadOffset.Store(offset + length)
 }
 

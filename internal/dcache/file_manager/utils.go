@@ -360,6 +360,8 @@ func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf boo
 		UpToDate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
 		SavedInMap:    atomic.Bool{},
+		RefCount:      atomic.Int32{},
+		IOTracker:     NewChunkIOTracker(),
 	}, nil
 }
 
