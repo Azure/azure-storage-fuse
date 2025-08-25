@@ -2959,3 +2959,31 @@ func (s *datalakeTestSuite) TestList() {
 func TestDatalake(t *testing.T) {
 	suite.Run(t, new(datalakeTestSuite))
 }
+
+// TestChangeMod_DisableSetAccessControl tests that ChangeMod respects the disableSetAccessControl flag
+func TestChangeMod_DisableSetAccessControl(t *testing.T) {
+	// Create a simple test with a minimum viable config
+	dl := &Datalake{}
+	dl.Config.disableSetAccessControl = true
+
+	// This should not fail even though we don't have a valid connection
+	// because the flag should make it return early
+	err := dl.ChangeMod("test-file", os.FileMode(0755))
+	assert.Nil(t, err, "ChangeMod should succeed when disableSetAccessControl is true")
+
+	// Test with flag disabled - this will panic due to nil Filesystem
+	// which is expected behavior when the flag is false
+	dl.Config.disableSetAccessControl = false
+	
+	// Use a defer/recover to catch the expected panic
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Expected panic due to nil Filesystem when flag is false
+				t.Logf("Expected panic caught when disableSetAccessControl is false: %v", r)
+			}
+		}()
+		dl.ChangeMod("test-file", os.FileMode(0755))
+		t.Error("Expected panic when disableSetAccessControl is false but got none")
+	}()
+}
