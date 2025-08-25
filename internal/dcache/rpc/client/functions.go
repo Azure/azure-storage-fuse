@@ -477,24 +477,21 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				//
 				log.Debug("rpc_client::PutChunkDC: Received timeout error, not deleting connections [%v]",
 					err)
+			} else {
+				//
+				// Only other possible errors:
+				// - Actual RPC error returned by the server.
+				// - Connection closed by the server (maybe it restarted before it could respond).
+				// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+				//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+				//
+				common.Assert(rpc.IsRPCError(err) ||
+					rpc.IsConnectionClosed(err) ||
+					rpc.IsConnectionReset(err), err)
 
-				// We don't retry in case of timeout error.
-				return nil, err
+				// Fall through to release the RPC client.
+				resp = nil
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
-
-			// Fall through to release the RPC client.
-			resp = nil
 		}
 
 		// Release RPC client back to the pool.
