@@ -452,7 +452,13 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
+			// and not between the client node and target node. In this case, we retry WriteMV using
+			// the OriginatorSendsToAll strategy. So, to be safe we don't delete the connections if we get
+			// timeout error in PutChunkDC. In the PutChunk using OriginatorSendsToAll strategy fails using
+			// timeout, we then delete the connections.
+			//
+			if rpc.IsBrokenPipe(err) || rpc.IsTimedOut(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
@@ -466,17 +472,9 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				}
 
 				// Retry PutChunkDC once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
-				// and not between the client node and target node. In this case, we retry WriteMV using
-				// the OriginatorSendsToAll strategy. So, to be safe we don't delete the connections if we get
-				// timeout error in PutChunkDC. In the PutChunk using OriginatorSendsToAll strategy fails using
-				// timeout, we then delete the connections.
-				//
-				log.Debug("rpc_client::PutChunkDC: Received timeout error, not deleting connections [%v]",
-					err)
+				if rpc.IsBrokenPipe(err) {
+					continue
+				}
 			} else {
 				//
 				// Only other possible errors:
