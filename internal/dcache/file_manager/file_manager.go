@@ -153,11 +153,17 @@ type DcacheFile struct {
 	// Next write offset we expect in case of sequential writes.
 	// We don't support overwrites but we support slightly out-of-order writes to enable parallel
 	// processing of writes issued by fuse in response to large application writes.
-	// We allow writes only within a window of nextWriteOffset +/- 10MiB, where 10MiB comes from
+	// We allow writes only within a window of maxWriteOffset +/- 10MiB, where 10MiB comes from
 	// two factors:
 	// - Fuse uses max 1MiB IO size.
 	// - Libfuse has default 10 worker threads.
-	nextWriteOffset int64
+	maxWriteOffset int64
+
+	//
+	// Are we allowing strict sequential writes on this file?
+	// This starts as false but if we see small or non block size aligned write, we set this to true.
+	//
+	strictSeqWrites bool
 
 	// Chunk index (inclusive) till which we have done readahead.
 	lastReadaheadChunkIdx atomic.Int64
@@ -306,6 +312,13 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	log.Debug("DistributedCache[FM]::WriteFile: file: %s, offset: %d, length: %d",
 		file.FileMetadata.Filename, offset, len(buf))
+	log.Debug("TOMAR: DistributedCache[FM]::WriteFile: file: %s, offset: %d, length: %d, CHUNKIDX: %d",
+		file.FileMetadata.Filename, offset/1048576, len(buf), offset/file.FileMetadata.FileLayout.ChunkSize)
+
+	/*
+		common.Assert(offset%1048576 == 0, offset)
+		common.Assert(len(buf)%1048576 == 0, len(buf))
+	*/
 
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
 	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
@@ -313,6 +326,10 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	common.Assert(file.RPT == nil, file.FileMetadata.Filename)
 	// We should not be called for 0 byte writes.
 	common.Assert(len(buf) > 0)
+
+	if len(buf) < int(GetMinTrackableIOSize()) || len(buf)%int(GetMinTrackableIOSize()) != 0 {
+		file.strictSeqWrites = true
+	}
 
 	//
 	// We allow writes only within the staging area.
@@ -322,13 +339,18 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// TODO: Allowable write range should be a factor of fileIOMgr.numStagingChunks and how much is already
 	//       in the cache.
 	//
-	allowableWriteOffsetStart := file.nextWriteOffset - int64(10)*common.MbToBytes
-	allowableWriteOffsetEnd := file.nextWriteOffset + int64(10)*common.MbToBytes
+	allowableWriteOffsetStart := file.maxWriteOffset - int64(100)*common.MbToBytes
+	allowableWriteOffsetEnd := file.maxWriteOffset + int64(100)*common.MbToBytes
+
+	if file.strictSeqWrites {
+		allowableWriteOffsetStart = file.maxWriteOffset
+		allowableWriteOffsetEnd = file.maxWriteOffset
+	}
 
 	//
 	// We only support append writes.
 	// 'cp' utility uses sparse writes to avoid writing zeroes from the source file to target file, we support
-	// that too, hence offset can be greater than nextWriteOffset.
+	// that too, hence offset can be greater than maxWriteOffset.
 	//
 	if offset < allowableWriteOffsetStart {
 		log.Err("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, allowableWriteOffsetStart: %d",
@@ -338,21 +360,24 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		log.Err("DistributedCache[FM]::WriteFile: Random write unsupported, file: %s, offset: %d, allowableWriteOffsetEnd: %d",
 			file.FileMetadata.Filename, offset, allowableWriteOffsetEnd)
 		return syscall.ENOTSUP
-	} else if len(buf) < int(GetMinTrackableIOSize()) {
-		//
-		// Writes less than MinTrackableIOSize cannot be tracked and hence not supported.
-		// TODO: If they are strictly sequential writes we can possibly support them.
-		//
-		log.Err("DistributedCache[FM]::WriteFile: Small write (%d < %d), file: %s, offset: %d, unsupported",
-			len(buf), GetMinTrackableIOSize(), file.FileMetadata.Filename, offset)
-		return syscall.ENOTSUP
 	}
-
+	/*
+		else if len(buf) < int(GetMinTrackableIOSize()) {
+			//
+			// Writes less than MinTrackableIOSize cannot be tracked and hence not supported.
+			// TODO: If they are strictly sequential writes we can possibly support them.
+			//
+			log.Err("DistributedCache[FM]::WriteFile: Small write (%d < %d), file: %s, offset: %d, unsupported",
+				len(buf), GetMinTrackableIOSize(), file.FileMetadata.Filename, offset)
+			return syscall.ENOTSUP
+		}
+	*/
 	// endOffset is 1 + offset of the last byte to be write.
 	endOffset := (offset + int64(len(buf)))
 	// Catch wraparound.
 	common.Assert(endOffset > offset, endOffset, offset)
 	bufOffset := 0
+	chunkFullyWritten := false
 
 	//
 	// Write all the requested data bytes to the distributed cache.
@@ -370,27 +395,35 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 			return err
 		}
 
+		if !file.strictSeqWrites && chunk.IOTracker.FullyAccessed() {
+			log.Err("DistributedCache[FM]::WriteFile: Overwriting a fully written chunk, unsupported, file: %s, offset: %d, CHUNKIDX: %d, chunk.Len: %d, chunk.Offset: %d",
+				file.FileMetadata.Filename, offset, allowableWriteOffsetStart, chunk.Idx, chunk.Len, chunk.Offset)
+			return syscall.ENOTSUP
+		}
+
 		// Offset within the chunk to write.
 		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
 		// chunkOffset cannot overshoot ChunkSize.
 		common.Assert(chunkOffset < file.FileMetadata.FileLayout.ChunkSize,
 			chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
 		// We don't support overwriting chunk data.
-		common.Assert(chunkOffset >= chunk.Len, chunkOffset, chunk.Len)
+		//common.Assert(chunkOffset >= chunk.Len, chunkOffset, chunk.Len)
 
 		//
 		// This case is mostly for handling 'cp' where it jumps the offset to avoid copying zeroes from
 		// source to target file. We fill in the gap with zeroes.
 		//
-		if chunkOffset > chunk.Len {
-			// TODO: Use a static zero buffer instead of allocating one every time.
-			resetBytes := copy(chunk.Buf[chunk.Len:chunkOffset], make([]byte, chunkOffset-chunk.Len))
-			common.Assert(resetBytes > 0)
-			chunk.Len += int64(resetBytes)
-		}
+		/*
+			if chunkOffset > chunk.Len {
+				// TODO: Use a static zero buffer instead of allocating one every time.
+				resetBytes := copy(chunk.Buf[chunk.Len:chunkOffset], make([]byte, chunkOffset-chunk.Len))
+				common.Assert(resetBytes > 0)
+				chunk.Len += int64(resetBytes)
+			}
+		*/
 
 		// We must copy right after where the prev copy ended.
-		common.Assert(chunk.Len == chunkOffset, chunk.Len, chunkOffset)
+		//common.Assert(chunk.Len == chunkOffset, chunk.Len, chunkOffset)
 
 		copied := copy(chunk.Buf[chunkOffset:], buf[bufOffset:])
 		// Must copy at least one byte from the chunk.
@@ -400,6 +433,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		chunk.Len += int64(copied)
 
 		// Valid chunk data cannot be more than ChunkSize.
+		// This will catch ovewrites too.
 		common.Assert(chunk.Len <= file.FileMetadata.FileLayout.ChunkSize,
 			chunk.Len, file.FileMetadata.FileLayout.ChunkSize)
 
@@ -409,16 +443,25 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		// At least one byte of user data copied to chunk, it's dirty now and must be written to dcache.
 		chunk.Dirty.Store(true)
 
-		common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset-1, &file.FileMetadata.FileLayout)+1,
-			fmt.Sprintf("Actual Chunk Len: %d is modified incorrectly, expected chunkLen: %d",
-				chunk.Len, getChunkOffsetFromFileOffset(offset-1, &file.FileMetadata.FileLayout)+1))
-
+		/*
+			common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset-1, &file.FileMetadata.FileLayout)+1,
+				fmt.Sprintf("Actual Chunk Len: %d is modified incorrectly, expected chunkLen: %d",
+					chunk.Len, getChunkOffsetFromFileOffset(offset-1, &file.FileMetadata.FileLayout)+1))
+		*/
 		//
 		// Schedule the upload when a staged chunk is fully written.
 		// There's no point in waiting any more. Sooner we write completed chunks, faster we will complete
 		// writes.
 		//
-		if chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied)) {
+		if file.strictSeqWrites {
+			chunkFullyWritten = chunk.Len == file.FileMetadata.FileLayout.ChunkSize
+		} else {
+			chunkFullyWritten = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied))
+		}
+
+		if chunkFullyWritten {
+			log.Debug("TOMAR: DistributedCache[FM]::WriteFile: Fully written chunk, file: %s, offset: %d, length: %d, CHUNKIDX: %d, refcount: %d",
+				file.FileMetadata.Filename, offset, len(buf), chunk.Idx, chunk.RefCount.Load())
 			// TODO: This not always true. if some writes to this chunk were skipped then there should be a
 			// way to stage this block.
 			scheduleUpload(chunk, file)
@@ -430,8 +473,11 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// and only that much.
 	common.Assert(bufOffset == len(buf), bufOffset, len(buf))
 
-	// Next write expected at offset nextWriteOffset.
-	file.nextWriteOffset = offset
+	// Next write expected at offset maxWriteOffset.
+	common.AtomicMaxInt64(&file.maxWriteOffset, offset)
+
+	log.Debug("TOMAR: DistributedCache[FM]::WriteFile: maxWriteOffset=%d, file: %s, offset: %d, CHUNKIDX",
+		file.maxWriteOffset/1048576, file.FileMetadata.Filename, offset)
 
 	return nil
 }
@@ -511,7 +557,9 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 		_ = chunkIdx
 		common.Assert(chunkIdx == chunk.Idx, chunkIdx, chunk.Idx)
 		// Cannot be fully accessed, else it would have been removed from StagedChunks map.
-		common.Assert(!chunk.IOTracker.FullyAccessed(), chunk.Idx, file.FileMetadata.Filename)
+		if !file.strictSeqWrites {
+			common.Assert(!chunk.IOTracker.FullyAccessed(), chunk.Idx, file.FileMetadata.Filename)
+		}
 		// TODO: assert for each chunk that err is closed. currently not doing it as readahead chunks
 		// error channel might be opened.
 		file.releaseChunk(chunk)
@@ -558,7 +606,7 @@ func (file *DcacheFile) finalizeFile() error {
 
 	// Till we finalize a file we don't know the size.
 	common.Assert(file.FileMetadata.Size == -1, file.FileMetadata.Filename, file.FileMetadata.Size)
-	file.FileMetadata.Size = file.nextWriteOffset
+	file.FileMetadata.Size = file.maxWriteOffset
 	common.Assert(file.FileMetadata.Size >= 0)
 
 	fileMetadataBytes, err := json.Marshal(file.FileMetadata)
@@ -722,9 +770,16 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 	//
 	if err == nil && !loaded {
 		// Brand new chunk must start with chunk.Len == 0.
-		common.Assert(chunk.Len == 0, chunk.Len)
+		//common.Assert(chunk.Len == 0, chunk.Len)
 		// Brand new staged chunk, could not have been scheduled for write already.
-		common.Assert(!chunk.XferScheduled.Load())
+		//common.Assert(!chunk.XferScheduled.Load())
+	}
+
+	if err == nil && loaded {
+		common.Assert(chunk.RefCount.Load() > 1, chunk.Idx, chunk.RefCount.Load())
+		chunk.RefCount.Add(-1)
+		log.Debug("TOMAR: DistributedCache::getChunkForWrite: reducing refcount, file: %s, CHUNKIDX: %d, refcount: %d",
+			file.FileMetadata.Filename, chunkIdx, chunk.RefCount.Load())
 	}
 
 	return chunk, err
@@ -732,7 +787,7 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 
 // Remove chunk from staged chunks.
 func (file *DcacheFile) removeChunk(chunkIdx int64) {
-	log.Debug("DistributedCache::removeChunk: removing staged chunk, file: %s, chunk idx: %d",
+	log.Debug("TOMAR: DistributedCache::removeChunk: removing staged chunk, file: %s, CHUNKIDX: %d",
 		file.FileMetadata.Filename, chunkIdx)
 
 	file.chunkLock.Lock()
@@ -986,6 +1041,9 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) {
 	common.Assert(chunk.Len > 0)
 
 	if !chunk.XferScheduled.Swap(true) {
+		log.Debug("TOMAR: DistributedCache::scheduleUpload: file: %s, CHUNKIDX: %d, refcount: %d",
+			file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load())
+
 		// Only dirty staged chunk should be written to dcache.
 		common.Assert(chunk.Dirty.Load())
 		// Up-to-date chunk should not be written.
