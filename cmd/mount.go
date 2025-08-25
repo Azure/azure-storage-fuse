@@ -426,7 +426,6 @@ var mountCmd = &cobra.Command{
 			Level:       logLevel,
 			TimeTracker: options.Logging.TimeTracker,
 		})
-
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 		}
@@ -487,7 +486,7 @@ var mountCmd = &cobra.Command{
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)
-			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
+			return fmt.Errorf("failed to initialize new pipeline [%s]", err.Error())
 		}
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
@@ -496,13 +495,13 @@ var mountCmd = &cobra.Command{
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
 			pid := os.Getpid()
-			fname := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
+			childStdErrFileName := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
 
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       022,
-				LogFileName: fname, // this will redirect stderr of child to given file
+				LogFileName: childStdErrFileName, // this will redirect stderr of child to given file
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
@@ -529,22 +528,40 @@ var mountCmd = &cobra.Command{
 				rmErr := os.Remove(pidFileName)
 				if rmErr != nil {
 					log.Err("mount : auto cleanup failed [%v]", rmErr.Error())
-					return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
+					return fmt.Errorf("failed to daemonize application [%s]", err.Error())
 				}
 				goto retry
 			}
 
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil { // execute in child only
+
+				// defer the removal of this temp file. This file should only be removed when the mountpoint is
+				// gracefully unmounted. Incase of any panic caused by go runtime/ by our application. This file
+				// would have the essential stack trace to debug the issue.
+				ppid := os.Getppid()
+				childStdErrFileName = fmt.Sprintf("/tmp/blobfuse2.%v", ppid)
+
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
 
 				// In case of failure stderr will have the error emitted by child and parent will read
 				// those logs from the file set in daemon context
-				return runPipeline(pipeline, ctx)
+				err = runPipeline(pipeline, ctx)
+
+				defer func() {
+					// if there is any error while intializing the components, we shouldn't delete this temp file.
+					// as this file is used by the parent to get the errors from it's child.
+					if err == nil {
+						rmErr := os.Remove(childStdErrFileName)
+						if rmErr != nil {
+							log.Err("mount : Failed to delete temp file: %s[%v]", childStdErrFileName, err)
+						}
+					}
+				}()
+
 			} else { // execute in parent only
-				defer os.Remove(fname)
 
 				childDone := make(chan struct{})
 
@@ -561,16 +578,23 @@ var mountCmd = &cobra.Command{
 					buff, err := os.ReadFile(dmnCtx.LogFileName)
 					if err != nil {
 						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
-						return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
+						err = fmt.Errorf("failed to mount, please check logs [%s]", err.Error())
 					} else {
-						return Destroy(string(buff))
+						err = fmt.Errorf(string(buff))
 					}
+
+					// Safe to delete the temp file.
+					rmErr := os.Remove(childStdErrFileName)
+					if rmErr != nil {
+						log.Err("mount : Failed to delete temp file: %s[%v]", childStdErrFileName, err)
+					}
+
+					return errors.Join(err, rmErr)
 
 				case <-time.After(options.WaitForMount):
 					log.Info("mount: Child [%v : %s] status check timeout", child.Pid, options.MountPath)
 				}
 
-				_ = log.Destroy()
 			}
 		} else {
 			if options.CPUProfile != "" {
@@ -659,16 +683,15 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 	err := pipeline.Start(ctx)
 	if err != nil {
 		log.Err("mount: error unable to start pipeline [%s]", err.Error())
-		return Destroy(fmt.Sprintf("unable to start pipeline [%s]", err.Error()))
+		return fmt.Errorf("unable to start pipeline [%s]", err.Error())
 	}
 
 	err = pipeline.Stop()
 	if err != nil {
 		log.Err("mount: error unable to stop pipeline [%s]", err.Error())
-		return Destroy(fmt.Sprintf("unable to stop pipeline [%s]", err.Error()))
+		return fmt.Errorf("unable to stop pipeline [%s]", err.Error())
 	}
 
-	_ = log.Destroy()
 	return nil
 }
 
@@ -880,13 +903,4 @@ func init() {
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
 	config.AddConfigChangeEventListener(config.ConfigChangeEventHandlerFunc(OnConfigChange))
-}
-
-func Destroy(message string) error {
-	_ = log.Destroy()
-	if message != "" {
-		return fmt.Errorf("%s", message)
-	}
-
-	return nil
 }

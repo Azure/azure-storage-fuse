@@ -53,6 +53,10 @@ type lruNode struct {
 
 type lruPolicy struct {
 	sync.Mutex
+
+	// wait group for stoping the go-routines gracefully.
+	wg sync.WaitGroup
+
 	cachePolicyConfig
 
 	nodeMap sync.Map
@@ -142,6 +146,7 @@ func (p *lruPolicy) StartPolicy() error {
 		p.cacheTimeoutMonitor = time.Tick(time.Duration(time.Duration(p.cacheTimeout) * time.Second))
 	}
 
+	p.wg.Add(2)
 	go p.clearCache()
 	go p.asyncCacheValid()
 
@@ -153,6 +158,8 @@ func (p *lruPolicy) ShutdownPolicy() error {
 	log.Trace("lruPolicy::ShutdownPolicy")
 	p.closeSignal <- 1
 	p.closeSignalValidate <- 1
+	// wait for all go-routines to stop.
+	p.wg.Wait()
 	return nil
 }
 
@@ -218,6 +225,7 @@ func (p *lruPolicy) Name() string {
 
 // On validate name of the file was pushed on this channel so now update the LRU list
 func (p *lruPolicy) asyncCacheValid() {
+	defer p.wg.Done()
 	for {
 		select {
 		case name := <-p.validateChan:
@@ -275,6 +283,7 @@ func (p *lruPolicy) cacheValidate(name string) {
 // For all other timer based activities we check the stuff here
 func (p *lruPolicy) clearCache() {
 	log.Trace("lruPolicy::ClearCache")
+	defer p.wg.Done()
 
 	for {
 		select {
