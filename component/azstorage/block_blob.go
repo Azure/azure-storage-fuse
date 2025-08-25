@@ -191,9 +191,15 @@ func (bb *BlockBlob) TestPipeline() error {
 		return nil
 	}
 
+	includeFields := bb.listDetails
+	if bb.listDetails.Permissions {
+		includeFields.Permissions = true // for FNS account this property will return back error
+	}
+
 	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
 		MaxResults: to.Ptr((int32)(2)),
 		Prefix:     &bb.Config.prefixPath,
+		Include:    includeFields,
 	})
 
 	// we are just validating the auth mode used. So, no need to iterate over the pages
@@ -203,6 +209,9 @@ func (bb *BlockBlob) TestPipeline() error {
 		var respErr *azcore.ResponseError
 		errors.As(err, &respErr)
 		if respErr != nil {
+			if respErr.ErrorCode == "InvalidQueryParameterValue" {
+				return fmt.Errorf("BlockBlob::TestPipeline : Detected FNS account being mounted as HNS")
+			}
 			return fmt.Errorf("BlockBlob::TestPipeline : [%s]", respErr.ErrorCode)
 		}
 		return err
