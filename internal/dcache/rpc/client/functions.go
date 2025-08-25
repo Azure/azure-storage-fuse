@@ -474,22 +474,24 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				// Retry PutChunkDC once more with fresh connection.
 				if rpc.IsBrokenPipe(err) {
 					continue
+				} else {
+					return nil, err
 				}
-			} else {
-				//
-				// Only other possible errors:
-				// - Actual RPC error returned by the server.
-				// - Connection closed by the server (maybe it restarted before it could respond).
-				// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-				//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-				//
-				common.Assert(rpc.IsRPCError(err) ||
-					rpc.IsConnectionClosed(err) ||
-					rpc.IsConnectionReset(err), err)
-
-				// Fall through to release the RPC client.
-				resp = nil
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err), err)
+
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
