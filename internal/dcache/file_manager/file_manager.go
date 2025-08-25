@@ -186,6 +186,9 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	log.Debug("DistributedCache::ReadFile: file: %s, offset: %d, length: %d",
 		file.FileMetadata.Filename, offset, len(*buf))
 
+	log.Debug("TOMAR: DistributedCache::ReadFile: file: %s, offset: %d, length: %d, CHUNKIDX: %d",
+		file.FileMetadata.Filename, offset, len(*buf), offset/file.FileMetadata.FileLayout.ChunkSize)
+
 	// Read must only be allowed on a properly finalized file, for which size must not be -1.
 	common.Assert(int64(file.FileMetadata.Size) >= 0)
 	// Read patterm tracker must be valid for files opened for reading.
@@ -259,7 +262,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 
 		if doSequentialRead {
 			if chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied)) {
-				log.Debug("DistributedCache::ReadFile: Fully accessed chunk, file: %s, chunkIdx: %d, chunkOffset: %d, copied: %d",
+				log.Debug("TOMAR: DistributedCache::ReadFile: Fully accessed chunk, file: %s, CHUNKIDX: %d, chunkOffset: %d, copied: %d",
 					file.FileMetadata.Filename, chunk.Idx, chunkOffset, copied)
 				file.removeChunk(chunk.Idx)
 			} else {
@@ -270,6 +273,8 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 				//
 				common.Assert(chunk.RefCount.Load() > 1, chunk.Idx, chunk.RefCount.Load())
 				chunk.RefCount.Add(-1)
+				log.Debug("TOMAR: DistributedCache::ReadFile: after dropping refcnt, file: %s, offset: %d, CHUNKIDX: %d, chunkOffset: %d, copied: %d: refcount: %d",
+					file.FileMetadata.Filename, offset, chunk.Idx, chunkOffset, copied, chunk.RefCount.Load())
 			}
 		} else {
 			file.releaseChunk(chunk)
@@ -604,7 +609,7 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 			//
 			chunk.RefCount.Add(1)
 			file.chunkLock.RUnlock()
-			log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, refcount: %d",
+			log.Debug("TOMAR: DistributedCache::getChunk: file: %s, CHUNKIDX: %d, chunkOffset: %d, length: %d, refcount: %d",
 				file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
 			return chunk, true, nil
 		}
@@ -624,6 +629,8 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 			chunk.RefCount.Add(1)
 			log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, refcount: %d",
 				file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
+			log.Debug("TOMAR: DistributedCache::getChunk: file: %s, CHUNKIDX: %d, chunkOffset: %d, length: %d, refcount: %d",
+				file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
 			return chunk, true, nil
 		}
 	}
@@ -642,14 +649,14 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 
 	// Add it to the StagedChunks, and return.
 	if !noCache {
-		log.Debug("DistributedCache::getChunk: Saving chunk in StagedChunks. file: %s, chunkIdx: %d",
+		log.Debug("TOMAR: DistributedCache::getChunk: Saving chunk in StagedChunks. file: %s, CHUNKIDX: %d",
 			file.FileMetadata.Filename, chunkIdx)
 		file.StagedChunks[chunkIdx] = chunk
 		chunk.SavedInMap.Store(true)
 	}
 
 	chunk.RefCount.Add(2)
-	log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, refcount: %d",
+	log.Debug("TOMAR: DistributedCache::getChunk: file: %s, CHUNKIDX: %d, chunkOffset: %d, length: %d, refcount: %d",
 		file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
 	return chunk, false, nil
 }
@@ -680,7 +687,7 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 	if err == nil {
 		if !loaded {
 			// Brand new staged chunk, could not have been scheduled for read already.
-			common.Assert(!chunk.XferScheduled.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
+			//common.Assert(!chunk.XferScheduled.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 			// For read chunks chunk.Len is the amount of data that must be read into this chunk.
 			//chunk.Len = getChunkSize(chunkIdx*file.FileMetadata.FileLayout.ChunkSize, file)
 		}
@@ -731,11 +738,15 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 
 	common.Assert(chunk.RefCount.Load() > 1, chunk.Idx, chunk.RefCount.Load())
 	chunk.RefCount.Add(-1)
+	log.Debug("TOMAR: DistributedCache::removeChunk: removing staged chunk, file: %s, CHUNKIDX: %d, refcount: %d",
+		file.FileMetadata.Filename, chunkIdx, chunk.RefCount.Load())
 
 	//
 	// Drop the chunk refcount and if it becomes 0, free the chunk buffer and remove from StagedChunks map.
 	//
 	if file.releaseChunk(chunk) {
+		log.Debug("TOMAR: DistributedCache::removeChunk: deleting staged chunk, file: %s, CHUNKIDX: %d, refcount: %d",
+			file.FileMetadata.Filename, chunkIdx, chunk.RefCount.Load())
 		delete(file.StagedChunks, chunkIdx)
 	}
 }
@@ -747,10 +758,17 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 
 	// Only the last user will attempt to free the chunk.
 	common.Assert(chunk.RefCount.Load() > 0, chunk.Idx, chunk.RefCount.Load())
+	log.Debug("TOMAR: DistributedCache::releaseChunk: before ref dec, file: %s, CHUNKIDX: %d, refcount: %d",
+		file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load())
 	if chunk.RefCount.Add(-1) != 0 {
+
+		log.Debug("TOMAR: DistributedCache::releaseChunk: after ref dec, file: %s, CHUNKIDX: %d, refcount: %d",
+			file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load())
 		return false
 	}
 
+	log.Debug("TOMAR: DistributedCache::releaseChunk: after ref dec, file: %s, CHUNKIDX: %d, refcount: %d",
+		file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load())
 	//
 	// If buffer is allocated by NewStagedChunk(), free it to the pool, else it's an external buffer
 	// returned by ReadMV(), just drop our reference and let GC free it.
@@ -781,8 +799,8 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 		chunkOffset = getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
 	}
 
-	log.Debug("DistributedCache::readChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, sync: %t",
-		file.FileMetadata.Filename, chunkIdx, chunkOffset, length, sync)
+	log.Debug("DistributedCache::readChunk: file: %s, offset: %d, chunkIdx: %d, chunkOffset: %d, length: %d, sync: %t",
+		file.FileMetadata.Filename, offset, chunkIdx, chunkOffset, length, sync)
 
 	//
 	// If this chunk is already staged, return the staged chunk else create a new chunk, add to the staged
@@ -793,11 +811,20 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 		return chunk, err
 	}
 
+	if !sync {
+		chunk.RefCount.Add(-1)
+		log.Debug("TOMAR: DistributedCache::readChunk: dropping extra refcnt for readahead file: %s, offset: %d, chunkIdx: %d, chunkOffset: %d, length: %d, sync: %t, refcount: %d",
+			file.FileMetadata.Filename, offset, chunkIdx, chunkOffset, length, sync, chunk.RefCount.Load())
+	}
+
 	// This will be a no-op if this chunk is already read from dcache.
 	scheduleDownload(chunk, file)
 
 	if sync {
 		err = <-chunk.Err
+
+		log.Debug("TOMAR: DistributedCache::readChunk: download completed file: %s, offset: %d, CHUNKIDX: %d, chunkOffset: %d, length: %d, sync: %t",
+			file.FileMetadata.Filename, offset, chunkIdx, chunkOffset, length, sync)
 
 		if err != nil {
 			log.Err("DistributedCache::readChunk: Failed, file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, sync: %t",
@@ -858,9 +885,11 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 			getChunkIdxFromFileOffset(file.FileMetadata.Size-1, &file.FileMetadata.FileLayout))
 		common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
 
+		/*
 		log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, [%d, %d), len(StagedChunks): %d, lastReadaheadChunkIdx: %d, readAheadCount: %d",
 			file.FileMetadata.Filename, readAheadStartChunkIdx, readAheadEndChunkIdx,
 			len(file.StagedChunks), file.lastReadaheadChunkIdx.Load(), readAheadCount)
+			*/
 
 		if readAheadEndChunkIdx > readAheadStartChunkIdx {
 			file.lastReadaheadChunkIdx.Store(readAheadEndChunkIdx - 1)
@@ -930,7 +959,7 @@ func scheduleDownload(chunk *StagedChunk, file *DcacheFile) {
 	common.Assert(chunk.Len > 0)
 
 	if !chunk.XferScheduled.Swap(true) {
-		log.Debug("DistributedCache::scheduleDownload: file: %s, chunkIdx: %d",
+		log.Debug("TOMAR: DistributedCache::scheduleDownload: file: %s, CHUNKIDX: %d",
 			file.FileMetadata.Filename, chunk.Idx)
 
 		// Cannot be overwriting a dirty staged chunk.
