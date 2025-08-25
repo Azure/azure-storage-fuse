@@ -108,7 +108,7 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 
 func (wp *workerPool) readChunk(task *task) {
 	log.Debug("DistributedCache::readChunk: Reading chunk idx: %d, chunk Offset: %d, chunk Len: %d, file: %s",
-		task.chunk.Idx, task.chunk.Len, task.chunk.Offset, task.file.FileMetadata.Filename)
+		task.chunk.Idx, task.chunk.Offset, task.chunk.Len, task.file.FileMetadata.Filename)
 
 	// For read chunk, buffer must not be pre-allocated, ReadMV() returns the buffer.
 	// buffer is pre-allocated only when reading the chunk from the Local RV which would be decided after the ReadMV

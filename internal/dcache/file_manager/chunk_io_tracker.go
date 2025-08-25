@@ -41,6 +41,13 @@ import (
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
+//
+// ChunkIOTracker tracks which parts of a chunk have been read or written.
+// Caller can use this to determine if the entire chunk has been read or written. If entire chunk is read by
+// the application then we would want to release the chunk from cache. Similarly, if entire chunk is written
+// then we would want to flush the chunk to the backing store.
+//
+
 const (
 	//
 	// IOs smaller than this cannot be tracked by the chunk IO tracker.
@@ -51,7 +58,7 @@ const (
 	// 2. Reads smaller than this cannot be served from cache, as we cannot track them and hence cannot
 	//    be sure if/when the chunk is fully read and hence safe to evict.
 	//
-	// TODO: Make this configurable.
+	// TODO: Make this configurable. Also default to a smaller value like 4KB or 8KB.
 	//
 	MinTrackableIOSize = 64 * 1024 // 64KB
 )
@@ -67,16 +74,21 @@ var (
 
 type ChunkIOTracker struct {
 	bitmap []uint64
-	count  int
+	// How many bits are set aka how many unique blocks have been accessed (read or written).
+	count int
 }
 
 func NewChunkIOTracker() *ChunkIOTracker {
+	//
+	// TODO: See how we can avoid this dynamic memory allocation.
+	//       For most common chunk size and MinTrackableIOSize we can use a fixed size array.
+	//
 	return &ChunkIOTracker{
 		bitmap: make([]uint64, numUint64),
 	}
 }
 
-func (bt *ChunkIOTracker) GetMinTrackableIOSize() int64 {
+func GetMinTrackableIOSize() int64 {
 	return MinTrackableIOSize
 }
 
@@ -88,6 +100,9 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
 	common.Assert(offsetInChunk >= 0 && offsetInChunk < chunkSize, offsetInChunk, chunkSize)
 	common.Assert(offsetInChunk+length <= chunkSize, offsetInChunk, length, chunkSize)
 
+	//
+	// Set all the bits corresponding to the given range.
+	//
 	for {
 		block := int(offsetInChunk / MinTrackableIOSize)
 		common.Assert(block >= 0 && block < numBlocks, offsetInChunk, block, chunkSize, MinTrackableIOSize)
@@ -97,7 +112,7 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
 
 		common.Assert(word >= 0 && word < len(bt.bitmap), word, len(bt.bitmap))
 
-		if common.AtomicTestAndSetUint64(&bt.bitmap[word], bit) {
+		if common.AtomicTestAndSetBitUint64(&bt.bitmap[word], bit) {
 			bt.count++
 			common.Assert(bt.count <= numBlocks, bt.count, numBlocks)
 		}
@@ -117,10 +132,7 @@ func (bt *ChunkIOTracker) FullyAccessed() bool {
 	return bt.count == numBlocks
 }
 
-func init() {
-	// Chunk size is a multiple of 1MiB and MinTrackableIOSize should be chosen to divide it evenly.
-	common.Assert(chunkSize%MinTrackableIOSize == 0, chunkSize, MinTrackableIOSize)
-
+func InitChunkIOTracker() {
 	chunkSize = int64(cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes)
 	numBlocks = int(math.Ceil(float64(chunkSize) / MinTrackableIOSize))
 	numUint64 = int(math.Ceil(float64(numBlocks) / 64))
@@ -128,6 +140,8 @@ func init() {
 	log.Info("ChunkIOTracker::init: chunkSize=%d, MinTrackableIOSize=%d, numBlocks=%d, bitmapSize=%d bytes",
 		chunkSize, MinTrackableIOSize, numBlocks, numUint64*8)
 
+	// Chunk size is a multiple of 1MiB and MinTrackableIOSize should be chosen to divide it evenly.
+	common.Assert(chunkSize%MinTrackableIOSize == 0, chunkSize, MinTrackableIOSize)
 	common.Assert(numBlocks > 0, numBlocks)
 	common.Assert(numUint64 > 0, numUint64)
 }

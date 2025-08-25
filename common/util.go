@@ -319,7 +319,7 @@ func (bm *BitMap16) Reset() { *bm = 0 }
 
 // In a given uint64, atomically check whether the given bit is set or not and if not set then set it.
 // Returns true if the bit was not set and was set by this call, false if the bit was already set.
-func AtomicTestAndSetUint64(addr *uint64, bit uint) bool {
+func AtomicTestAndSetBitUint64(addr *uint64, bit uint) bool {
 	Assert(bit < 64, bit)
 
 	var old, new uint64
@@ -329,6 +329,7 @@ func AtomicTestAndSetUint64(addr *uint64, bit uint) bool {
 			// Bit already set.
 			return false
 		}
+
 		new = old | (1 << bit)
 		if atomic.CompareAndSwapUint64(addr, old, new) {
 			// Bit was set successfully.

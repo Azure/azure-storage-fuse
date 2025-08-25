@@ -127,6 +127,8 @@ func NewFileIOManager() error {
 
 	common.Assert(fileIOMgr.wp != nil)
 
+	InitChunkIOTracker()
+
 	return nil
 }
 
@@ -212,16 +214,22 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	for offset < endOffset {
 		//
 		// Read chunk containing data at 'offset', also schedule readahead if the read pattern qualifies
-		// sequential.
+		// as sequential.
 		//
 		var chunk *StagedChunk
 		var err error
-		doSequentialRead := file.RPT.IsSequential()
+		// Reads less than MinTrackableIOSize are always treated as random reads.
+		doSequentialRead := file.RPT.IsSequential() && (endOffset-offset >= GetMinTrackableIOSize())
 
 		if doSequentialRead {
 			chunk, err = file.readChunkWithReadAhead(offset)
 			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 		} else {
+			if endOffset-offset < GetMinTrackableIOSize() {
+				log.Warn("DistributedCache::ReadFile: Small read (%d < %d) file: %s, offset: %d, forcing random read",
+					endOffset-offset, GetMinTrackableIOSize(), file.FileMetadata.Filename, offset)
+			}
+
 			// For random read pattern we don't do readahead, and also don't save the chunk in StagedChunks map.
 			chunk, err = file.readChunkNoReadAhead(offset, endOffset-offset)
 			common.Assert(chunk.SavedInMap.Load() == false, chunk.Idx, file.FileMetadata.Filename)
@@ -303,6 +311,14 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	} else if offset > allowableWriteOffsetEnd {
 		log.Err("DistributedCache[FM]::WriteFile: Random write unsupported, file: %s, offset: %d, committedTillOffset: %d, numStagingChunks: %d",
 			file.FileMetadata.Filename, offset, file.committedTillOffset, fileIOMgr.numStagingChunks)
+		return syscall.ENOTSUP
+	} else if len(buf) < int(GetMinTrackableIOSize()) {
+		//
+		// Writes less than MinTrackableIOSize cannot be tracked and hence not supported.
+		// TODO: If they are strictly sequential writes we can possibly support them.
+		//
+		log.Err("DistributedCache[FM]::WriteFile: Small write (%d < %d), file: %s, offset: %d, unsupported",
+			len(buf), GetMinTrackableIOSize(), file.FileMetadata.Filename, offset)
 		return syscall.ENOTSUP
 	}
 
@@ -406,6 +422,7 @@ func (file *DcacheFile) SyncFile() error {
 	// we upload them to cache, so only the last incomplete chunk would be actually written by the following loop.
 	//
 	for chunkIdx, chunk := range file.StagedChunks {
+		_ = chunkIdx
 		common.Assert(chunkIdx == chunk.Idx, chunkIdx, chunk.Idx)
 		// TODO: parallelize the uploads for the chunks.
 		log.Debug("DistributedCache[FM]::SyncFile: file: %s, chunkIdx: %d, chunkLen: %d",
@@ -459,6 +476,7 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 		file.FileMetadata.Filename)
 
 	for chunkIdx, chunk := range file.StagedChunks {
+		_ = chunkIdx
 		common.Assert(chunkIdx == chunk.Idx, chunkIdx, chunk.Idx)
 		// TODO: assert for each chunk that err is closed. currently not doing it as readahead chunks
 		// error channel might be opened.
@@ -839,7 +857,9 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
 	chunkIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
+	_ = chunkIdx
 	chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
+	_ = chunkOffset
 
 	log.Debug("DistributedCache::readChunkNoReadAhead: file: %s, offset: %d, length: %d, chunkIdx: %d, chunkOffset: %d",
 		file.FileMetadata.Filename, offset, length, chunkIdx, chunkOffset)
