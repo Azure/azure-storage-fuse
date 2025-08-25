@@ -100,6 +100,8 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
 	common.Assert(offsetInChunk >= 0 && offsetInChunk < chunkSize, offsetInChunk, chunkSize)
 	common.Assert(offsetInChunk+length <= chunkSize, offsetInChunk, length, chunkSize)
 
+	fullyAccessed := false
+
 	//
 	// Set all the bits corresponding to the given range.
 	//
@@ -114,6 +116,7 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
 
 		if common.AtomicTestAndSetBitUint64(&bt.bitmap[word], bit) {
 			bt.count++
+			fullyAccessed = bt.count == numBlocks
 			common.Assert(bt.count <= numBlocks, bt.count, numBlocks)
 		}
 
@@ -125,7 +128,7 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
 		}
 	}
 
-	return bt.count == numBlocks
+	return fullyAccessed
 }
 
 func (bt *ChunkIOTracker) FullyAccessed() bool {
