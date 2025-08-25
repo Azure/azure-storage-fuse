@@ -10,23 +10,20 @@ Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues
 
 [This](#config-guide) section will help you choose the correct config for Blobfuse2.
 
+## Download Blobfuse2
+You can install Blobfuse2 by cloning this repository. In the workspace root execute below commands to build the binary.
+
+- sudo apt install fuse3 libfuse3-dev gcc
+- go build -o blobfuse2
+<!-- ## Find Help
+For complete guidance, visit any of these articles
+* Blobfuse2 Wiki -->
+
 ##  NOTICE
 - Due to known data consistency issues when using Blobfuse2 in `block-cache` mode,  it is strongly recommended that all Blobfuse2 installations be upgraded to version 2.3.2. For more information, see [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues).
 - Login via Managed Identify is supported with Object-ID for all versions of Blobfuse except 2.3.0 and 2.3.2.To use Object-ID for these two versions, use Azure CLI or utilize Application/Client-ID or Resource ID based authentication.
 - `streaming` mode is being deprecated. This is the older option and is replaced by streaming with `block-cache` mode which is the more performant streaming option.
 - Block cache will no longer dynamically consume more memory if required by application but will strictly adhere to the memory limit which is 80% of free memory by default or whatever is configured by the user.
-
-## Limitations in Block Cache
-- Concurrent write operations on the same file using multiple handles is not checked for data consistency and may lead to incorrect data being written.
-- A read operation on a file that is being written to simultaneously by another process or handle will not return the most up-to-date data.
-- When copying files with trailing null bytes using `cp` utility to a Blobfuse2 mounted path, use `--sparse=never` parameter to avoid data being trimmed. For example, `cp --sparse=never src dest`.
-- In write operations, data written is persisted (or committed) to the Azure Storage container only when close, sync or flush operations are called by user application.
-- Files cannot be modified if they were originally created with block-size different than the one configured.
-
-## Recommendations in Block Cache
-- User applications must check the returned code (success/failure) for filesystem calls like read, write, close, flush, etc. If error is returned, the application must abort their respective operation.
-- User applications must ensure that there is only one writer at a time for a given file.
-- When dealing with very large files (in TiB), the block-size must be configured accordingly. Azure Storage supports only [50,000 blocks](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list?tabs=microsoft-entra-id#remarks) per blob.
   
 ## Blobfuse2 Benchmarks
 [This](https://azure.github.io/azure-storage-fuse/) page lists various benchmarking results for HNS and FNS Storage account.
@@ -74,18 +71,6 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 - ResNet50 image classification job is 7-8% faster (tested with 1.3 million images)
 - Regular file uploads are 10% faster
 - Verified listing of 1-Billion files in a directory (which v1.x does not support)
-
-
-## Download Blobfuse2
-You can install Blobfuse2 by cloning this repository. In the workspace root execute below commands to build the binary.
-
-- sudo apt install fuse3 libfuse3-dev gcc
-- go build -o blobfuse2
-
-
-<!-- ## Find Help
-For complete guidance, visit any of these articles
-* Blobfuse2 Wiki -->
 
 ## Supported Operations
 The general format of the Blobfuse2 commands is `blobfuse2 [command] [arguments] --[flag-name]=[flag-value]`
@@ -228,6 +213,28 @@ To learn about a specific command, just include the name of the command (For exa
 - Custom component options:
     * `BLOBFUSE_PLUGIN_PATH`: Specifies plugin file path as a colon-separated list of `.so` files. Example BLOBFUSE_PLUGIN_PATH="/path/to/plugin1.so:/path/to/plugin2.so".
 
+
+## Limitations in Block Cache
+- Concurrent write operations on the same file using multiple handles is not checked for data consistency and may lead to incorrect data being written.
+- A read operation on a file that is being written to simultaneously by another process or handle will not return the most up-to-date data.
+- When copying files with trailing null bytes using `cp` utility to a Blobfuse2 mounted path, use `--sparse=never` parameter to avoid data being trimmed. For example, `cp --sparse=never src dest`.
+- In write operations, data written is persisted (or committed) to the Azure Storage container only when close, sync or flush operations are called by user application.
+- Files cannot be modified if they were originally created with block-size different than the one configured.
+
+## Recommendations in Block Cache
+- User applications must check the returned code (success/failure) for filesystem calls like read, write, close, flush, etc. If error is returned, the application must abort their respective operation.
+- User applications must ensure that there is only one writer at a time for a given file.
+- When dealing with very large files (in TiB), the block-size must be configured accordingly. Azure Storage supports only [50,000 blocks](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list?tabs=microsoft-entra-id#remarks) per blob.
+
+## Config File Best Practices
+- If `type` is **not provided** in the `azstorage` section of the config file:  
+  - **Blobfuse** will auto-detect the account type and set the respective endpoint.  
+  - For **private endpoints**, exposing the DFS endpoint is required, otherwise the mount will fail.  
+- If `type` **is provided** in the `azstorage` section of the config file:  
+  - **HNS account** should **not** be mounted with `type: block` (used to specify FNS) in the `azstorage` section.  
+    - This will result in failure of certain directory operations.  
+  - **FNS account** should **not** be mounted with `type: adls` (used to specify HNS) in the `azstorage` section.  
+    - This will cause mount failures.
 
 ## Config Guide
 Below diagrams guide you to choose right configuration for your workloads.
@@ -382,4 +389,5 @@ bot. You will only need to do this once across all repos using our CLA.
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
 
