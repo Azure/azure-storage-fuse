@@ -193,7 +193,10 @@ func (bb *BlockBlob) TestPipeline() error {
 
 	includeFields := bb.listDetails
 	if bb.listDetails.Permissions {
-		includeFields.Permissions = true // for FNS account this property will return back error
+		// This flag is set to true if user has explicitly asked to mount a HNS account
+		// Validate account is indeed HNS checking permissions field
+		// If the account is FNS, the call will fail with InvalidQueryParameterValue and such mount shall fail
+		includeFields.Permissions = true
 	}
 
 	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
@@ -210,6 +213,7 @@ func (bb *BlockBlob) TestPipeline() error {
 		errors.As(err, &respErr)
 		if respErr != nil {
 			if respErr.ErrorCode == "InvalidQueryParameterValue" {
+				// User explicitly mounting FNS account as HNS which is not supported
 				return fmt.Errorf("BlockBlob::TestPipeline : Detected FNS account being mounted as HNS")
 			}
 			return fmt.Errorf("BlockBlob::TestPipeline : [%s]", respErr.ErrorCode)

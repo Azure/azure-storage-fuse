@@ -209,7 +209,8 @@ func (dl *Datalake) TestPipeline() error {
 		return err
 	} else {
 		// If the account is not HNS, then the permissions will be nil
-		// However this will work only with non-empty containers or path
+		// For empty containers there will be another check done by block_blob TestPipeline
+		// so no need to error out if there are no paths
 		if len(resp.Paths) > 0 {
 			if resp.Paths[0].Permissions == nil {
 				// This is to block FNS account being mounted as HNS account
