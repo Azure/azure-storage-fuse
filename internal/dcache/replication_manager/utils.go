@@ -43,6 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -265,9 +266,18 @@ func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, respons
 		len(responseChannel), getNumReplicas())
 }
 
-func init() {
-	common.Assert(MAX_SIMUL_SYNC_JOBS < cm.MAX_SIMUL_RV_STATE_UPDATES,
-		MAX_SIMUL_SYNC_JOBS, cm.MAX_SIMUL_RV_STATE_UPDATES)
+// Given the component RVs list, return the RVs which are marked iffy
+func getIffyRVs(nextHopRV string, nextRVs []string) []string {
+	iffyRVs := make([]string, 0)
+
+	for _, rv := range append([]string{nextHopRV}, nextRVs...) {
+		common.Assert(cm.IsValidRVName(rv), rv)
+		if rpc_client.IsIffyRV(rv) {
+			iffyRVs = append(iffyRVs, rv)
+		}
+	}
+
+	return iffyRVs
 }
 
 // Silence unused import errors for release builds.
@@ -275,4 +285,6 @@ func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 	log.Info("")
 	fmt.Printf("")
+	common.Assert(MAX_SIMUL_SYNC_JOBS < cm.MAX_SIMUL_RV_STATE_UPDATES,
+		MAX_SIMUL_SYNC_JOBS, cm.MAX_SIMUL_RV_STATE_UPDATES)
 }

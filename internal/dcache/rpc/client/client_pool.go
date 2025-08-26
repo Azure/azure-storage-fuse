@@ -41,6 +41,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 )
 
@@ -1203,7 +1204,50 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 	return nil
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------
+
+var IffyRVMap sync.Map
+var iffyRVTimeout time.Duration = 30 * time.Second
+
+func AddIffyRV(rvName string) {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	IffyRVMap.Store(rvName, time.Now())
+	log.Debug("client_pool::AddIffyRV: added %s to IffyRVMap at %v", rvName, time.Now())
+}
+
+func RemoveIffyRV(rvName string) {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	IffyRVMap.Delete(rvName)
+	log.Debug("client_pool::RemoveIffyRV: removed %s from IffyRVMap", rvName)
+}
+
+func IsIffyRV(rvName string) bool {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	_, ok := IffyRVMap.Load(rvName)
+	return ok
+}
+
+func periodicRemoveIffyRVs() {
+	IffyRVMap.Range(func(key, value any) bool {
+		rvName, ok := key.(string)
+		_ = ok
+		common.Assert(ok, key)
+		common.Assert(cm.IsValidRVName(rvName), rvName)
+
+		addedTime, ok := value.(time.Time)
+		_ = ok
+		common.Assert(ok, addedTime)
+
+		if time.Since(addedTime) > iffyRVTimeout {
+			RemoveIffyRV(rvName)
+		}
+
+		return true
+	})
+}
+
 // Silence unused import errors for release builds.
 func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	go periodicRemoveIffyRVs()
 }

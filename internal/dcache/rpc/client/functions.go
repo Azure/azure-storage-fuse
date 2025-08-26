@@ -41,6 +41,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -430,6 +431,8 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to nexthop node %s and %d daisy chain RV(s): %v",
 		targetNodeID, len(req.NextRVs), reqStr)
 
+	rvName := cm.RvIdToName(req.Request.Chunk.Address.RvID)
+
 	//
 	// We retry once after resetting bad connections.
 	//
@@ -442,6 +445,25 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			return nil, err
 		}
 
+		if IsIffyRV(rvName) {
+			//
+			// This RV has been marked iffy recently, so we fail the PutChunkDC right away.
+			// The caller will retry using OriginatorSendsToAll strategy.
+			//
+			err1 := cp.releaseRPCClient(client)
+			if err1 != nil {
+				log.Err("rpc_client::PutChunkDC: Failed to release RPC client for node %s %s: %v",
+					targetNodeID, reqStr, err1)
+				// Assert, but not fail the PutChunkDC call.
+				common.Assert(false, err1)
+			}
+
+			err := fmt.Errorf("Failing PutChunkDC to node %s as RV %s is marked iffy: %s",
+				targetNodeID, rvName, reqStr)
+			log.Err("rpc_client::PutChunkDC: %v", err)
+			return nil, err
+		}
+
 		// Call the rpc method.
 		resp, err := client.svcClient.PutChunkDC(ctx, req)
 		if err != nil {
@@ -451,12 +473,6 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			//
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
-			//
-			// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
-			// and not between the client node and target node. In this case, we retry WriteMV using
-			// the OriginatorSendsToAll strategy. So, to be safe we don't delete the connections if we get
-			// timeout error in PutChunkDC. In the PutChunk using OriginatorSendsToAll strategy fails using
-			// timeout, we then delete the connections.
 			//
 			if rpc.IsBrokenPipe(err) || rpc.IsTimedOut(err) {
 				err1 := cp.resetAllRPCClients(client)
@@ -472,11 +488,25 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				}
 
 				// Retry PutChunkDC once more with fresh connection.
-				if rpc.IsBrokenPipe(err) {
-					continue
-				} else {
-					return nil, err
+				continue
+			} else if rpc.IsTimedOut(err) {
+				AddIffyRV(rvName)
+
+				//
+				// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
+				// and not between the client node and target node. In this case, we retry WriteMV using
+				// the OriginatorSendsToAll strategy. So, to be safe we don't delete the connections if we get
+				// timeout error in PutChunkDC. In the PutChunk using OriginatorSendsToAll strategy fails using
+				// timeout, we then delete the connections.
+				//
+				err1 := cp.resetRPCClientInternal(client, true)
+				if err1 != nil {
+					log.Err("rpc_client::PutChunk: deleteAllRPCClients failed for node %s: %v",
+						targetNodeID, err1)
 				}
+
+				// We don't retry in case of timeout error.
+				return nil, err
 			}
 
 			//

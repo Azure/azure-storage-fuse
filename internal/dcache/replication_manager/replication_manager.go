@@ -159,6 +159,8 @@ retry:
 	// of any unexpected errors. This is important as failing here will result in application request failure
 	// which should only be done when we really cannot proceed.
 	//
+	// TODO: make it more resilient
+	//
 	if retryCnt > 5 {
 		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
 			req.MvName, retryCnt, lastClusterMapEpoch)
@@ -614,6 +616,14 @@ retry:
 		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunkDC request for nexthop %s/%s to node %s: %s",
 			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
+		iffyRVs := getIffyRVs(rvName, putChunkDCReq.NextRVs)
+		if len(iffyRVs) > 0 {
+			err := fmt.Errorf("Iffy RVs %v found in the component RVs, retrying with OriginatorSendsToAll",
+				iffyRVs)
+			log.Err("ReplicationManager::writeMVInternal: %v", err)
+			return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
@@ -635,6 +645,12 @@ retry:
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s: %v",
 				rvName, req.MvName, targetNodeID, err)
 			common.Assert(putChunkDCResp == nil)
+
+			if strings.Contains(err.Error(), "iffy") {
+				log.Debug("ReplicationManager::writeMVInternal: RV %s is marked iffy, retrying with OriginatorSendsToAll",
+					rvName)
+				return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
+			}
 
 			//
 			// PutChunkDC() call to the RV failed. This indicates that the request was not forwarded to the
@@ -895,8 +911,7 @@ processResponses:
 		//
 		err := fmt.Errorf("BrokenChain error occurred for %s, %s", req.MvName, req.toString())
 		log.Err("ReplicationManager::writeMVInternal: %v", err)
-		rpcErr := rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
-		return nil, rpcErr
+		return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 	}
 
 	if clusterMapRefreshed {
