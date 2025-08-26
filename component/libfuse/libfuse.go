@@ -45,6 +45,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 /* NOTES:
    - Component shall have a structure which inherits "internal.BaseComponent" to participate in pipeline
    - Component shall register a name and its constructor to participate in pipeline  (add by default by generator)
@@ -116,6 +118,11 @@ type LibfuseOptions struct {
 }
 
 const compName = "libfuse"
+
+// Default values for various timeouts in seconds.
+// These are passed to libfuse as entry_timeout, attr_timeout and negative_timeout options.
+//
+// Note: When distributed cache is enabled we use much lower values, see Validate().
 const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
@@ -224,22 +231,45 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		}
 	}
 
+	//
+	// With distributed cache, we need much lower timeouts o/w it results in a sub-optimal user experience, as
+	// changes made by one node (files created and deleted) may not be visible to another node for a long time.
+	// We don't disable caching altogether as it helps unnecessary metadata calls to Azure from fastpath.
+	//
 	if config.IsSet(compName+".entry-expiration-sec") || config.IsSet("lfuse.entry-expiration-sec") {
 		lf.entryExpiration = opt.EntryExpiration
 	} else {
-		lf.entryExpiration = defaultEntryExpiration
+		if common.IsDistributedCacheEnabled {
+			lf.entryExpiration = 3
+		} else {
+			lf.entryExpiration = defaultEntryExpiration
+		}
 	}
 
 	if config.IsSet(compName+".attribute-expiration-sec") || config.IsSet("lfuse.attribute-expiration-sec") {
 		lf.attributeExpiration = opt.AttributeExpiration
 	} else {
-		lf.attributeExpiration = defaultAttrExpiration
+		if common.IsDistributedCacheEnabled {
+			lf.attributeExpiration = 3
+		} else {
+			lf.attributeExpiration = defaultAttrExpiration
+		}
 	}
 
 	if config.IsSet(compName+".negative-entry-expiration-sec") || config.IsSet("lfuse.negative-entry-expiration-sec") {
 		lf.negativeTimeout = opt.NegativeEntryExpiration
 	} else {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
+	}
+
+	//
+	// fuse_invalidate_path() cannot invalidate negative entries, as libfuse needs an inode number to
+	// invalidate and for non-existent paths we cannot have an inode number. Ask kernel not to cache
+	// negative entries.
+	//
+	if common.IsDistributedCacheEnabled {
+		lf.negativeTimeout = 0
+		log.Crit("Libfuse::Validate : DistributedCache enabled, forcing negative_timeout to 0")
 	}
 
 	// See comment in libfuse_init() why we should not force this.
@@ -250,26 +280,12 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		}
 	*/
 
-	//
-	// For now I'm turning off kernel attribute caching altogether, as it causes issues with
-	// new files getting created. Kernel caches the file size as -1 (when the file is created)
-	// and later when the file is completely written and its size updated, the kernel cache is
-	// not invalidated, so the file size is still -1.
-	//
-	// TODO: Later if we want to support kernel attribute caching, we have to duly invalidte the
-	//       kernel cache when the file is written and its size is updated.
-	//
-	/*
-		if lf.directIO {
-			lf.negativeTimeout = 0
-			lf.attributeExpiration = 0
-			lf.entryExpiration = 0
-			log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
-		}
-	*/
-	lf.negativeTimeout = 0
-	lf.attributeExpiration = 0
-	lf.entryExpiration = 0
+	if lf.directIO {
+		lf.negativeTimeout = 0
+		lf.attributeExpiration = 0
+		lf.entryExpiration = 0
+		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
+	}
 
 	if !(config.IsSet(compName+".uid") || config.IsSet(compName+".gid") ||
 		config.IsSet("lfuse.uid") || config.IsSet("lfuse.gid")) {
@@ -303,14 +319,27 @@ func (lf *Libfuse) GenConfig() string {
 	sb.WriteString(fmt.Sprintf("\n%s:", lf.Name()))
 
 	timeout := defaultEntryExpiration
+	negativeTimeout := defaultNegativeEntryExpiration
+
+	//
+	// Reduce attribute cache timeout for distributed cache.
+	// Also, negative_timeout MUST be set to 0 when distributed cache is enabled.
+	// See Validate() for details.
+	//
+	if common.IsDistributedCacheEnabled {
+		timeout = 3
+		negativeTimeout = 0
+	}
+
 	if directIO {
 		timeout = 0
+		negativeTimeout = 0
 		sb.WriteString("\n  direct-io: true")
 	}
 
 	sb.WriteString(fmt.Sprintf("\n  attribute-expiration-sec: %v", timeout))
 	sb.WriteString(fmt.Sprintf("\n  entry-expiration-sec: %v", timeout))
-	sb.WriteString(fmt.Sprintf("\n  negative-entry-expiration-sec: %v", timeout))
+	sb.WriteString(fmt.Sprintf("\n  negative-entry-expiration-sec: %v", negativeTimeout))
 
 	return sb.String()
 }

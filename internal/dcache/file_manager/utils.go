@@ -289,7 +289,7 @@ func DeleteDcacheFile(fileName string) error {
 	if fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::DeleteDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
-		return syscall.ENOENT
+		return syscall.EBUSY
 	}
 
 	//
@@ -301,6 +301,15 @@ func DeleteDcacheFile(fileName string) error {
 	if err != nil {
 		log.Err("DistributedCache[FM]::DeleteDcacheFile: Failed to rename file %s -> %s: %v",
 			fileName, fileMetadata.FileID, err)
+		//
+		// RenameFileToDeleting() will fail with EEXIST if some other node/thread has already
+		// deleted the file. This mostly happens when multiple deleting threads race and they
+		// all get the file metadata before any of them renames it to deleting.
+		// For all purposes this is equivalent to ENOENT for all but the first deleter.
+		//
+		if err == syscall.EEXIST {
+			return syscall.ENOENT
+		}
 		return err
 	}
 
