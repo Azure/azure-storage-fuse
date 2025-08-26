@@ -507,6 +507,11 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			} else if rpc.IsTimedOut(err) {
 				AddIffyRV(rvName)
 
+				// Add the next RVs to the iffyRVMap
+				for _, nextRV := range req.NextRVs {
+					AddIffyRV(nextRV)
+				}
+
 				//
 				// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
 				// and not between the client node and target node. In this case, we retry WriteMV using
