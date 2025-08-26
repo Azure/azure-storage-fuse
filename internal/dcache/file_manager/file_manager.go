@@ -235,16 +235,18 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		//
 		var chunk *StagedChunk
 		var err error
+		// Offset within the chunk we want to read from.
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 		// Remaining bytes to be read.
 		readSize := min(int64(len(*buf)-bufOffset), endOffset-offset)
+		// We cannot read spanning across chunks.
+		readSize = min(readSize, file.FileMetadata.FileLayout.ChunkSize-chunkOffset)
 		// Reads not multiple of MinTrackableIOSize cannot be tracked by ChunkIOTracker.
 		isSequential := (file.RPT.IsSequential() &&
 			(offset%GetMinTrackableIOSize() == 0) &&
 			(readSize%GetMinTrackableIOSize() == 0))
 		// Second best, cannot allow parallel slightly out-of-order reads, but can allow strictly sequential reads.
 		isStrictlySequential := !isSequential && (offset == file.maxReadOffset)
-		// Offset within the chunk we want to read from.
-		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 
 		if isSequential || isStrictlySequential {
 			chunk, err = file.readChunkWithReadAhead(offset)
@@ -258,6 +260,10 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 			// And the chunk must be saved in StagedChunks map.
 			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 		} else {
+			//
+			// TODO: Flush all cached chunks.
+			//
+
 			// For random read pattern we don't do readahead, and also don't save the chunk in StagedChunks map.
 			chunk, err = file.readChunkNoReadAhead(offset, readSize)
 			if err != nil {
@@ -337,22 +343,26 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	log.Debug("DistributedCache[FM]::WriteFile: file: %s, offset: %d, length: %d",
 		file.FileMetadata.Filename, offset, len(buf))
-	log.Debug("TOMAR: DistributedCache[FM]::WriteFile: file: %s, offset: %d, length: %d, CHUNKIDX: %d",
-		file.FileMetadata.Filename, offset/1048576, len(buf), offset/file.FileMetadata.FileLayout.ChunkSize)
-
-	/*
-		common.Assert(offset%1048576 == 0, offset)
-		common.Assert(len(buf)%1048576 == 0, len(buf))
-	*/
 
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
 	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
+	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
+	common.Assert(len(buf) <= common.MbToBytes, len(buf))
 	// Read patterm tracker must not be present for files opened for writing.
 	common.Assert(file.RPT == nil, file.FileMetadata.Filename)
 	// We should not be called for 0 byte writes.
 	common.Assert(len(buf) > 0)
 
-	if len(buf) < int(GetMinTrackableIOSize()) || len(buf)%int(GetMinTrackableIOSize()) != 0 {
+	//
+	// We can only track parallel writes which are aligned on MinTrackableIOSize and are multiple of that size.
+	// Those give the best write performance as we can wriye multiple of them in parallel.
+	// If not that, we can only allow strictly sequential writes which can be tracked using maxWriteOffset.
+	// Once strict sequential writes are enforced, we cannot go back to parallel writes.
+	//
+	if !file.strictSeqWrites &&
+		(offset%int64(GetMinTrackableIOSize()) != 0 || len(buf)%int(GetMinTrackableIOSize()) != 0) {
+		log.Debug("DistributedCache[FM]::WriteFile: Enforcing strict sequential writes as offset (%d) or length (%d) is not a multiple of MinTrackableIOSize (%d)",
+			offset, len(buf), GetMinTrackableIOSize())
 		file.strictSeqWrites = true
 	}
 
@@ -362,11 +372,12 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// cache limits.
 	//
 	// TODO: Allowable write range should be a factor of fileIOMgr.numStagingChunks and how much is already
-	//       in the cache.
+	//       in the cache. Currently we are hardcoding +/- 100MiB range.
 	//
 	allowableWriteOffsetStart := file.maxWriteOffset - int64(100)*common.MbToBytes
 	allowableWriteOffsetEnd := file.maxWriteOffset + int64(100)*common.MbToBytes
 
+	// With strict sequential writes we don't allow any out-of-order writes.
 	if file.strictSeqWrites {
 		allowableWriteOffsetStart = file.maxWriteOffset
 		allowableWriteOffsetEnd = file.maxWriteOffset
@@ -386,17 +397,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 			file.FileMetadata.Filename, offset, allowableWriteOffsetEnd)
 		return syscall.ENOTSUP
 	}
-	/*
-		else if len(buf) < int(GetMinTrackableIOSize()) {
-			//
-			// Writes less than MinTrackableIOSize cannot be tracked and hence not supported.
-			// TODO: If they are strictly sequential writes we can possibly support them.
-			//
-			log.Err("DistributedCache[FM]::WriteFile: Small write (%d < %d), file: %s, offset: %d, unsupported",
-				len(buf), GetMinTrackableIOSize(), file.FileMetadata.Filename, offset)
-			return syscall.ENOTSUP
-		}
-	*/
+
 	// endOffset is 1 + offset of the last byte to be write.
 	endOffset := (offset + int64(len(buf)))
 	// Catch wraparound.
@@ -423,6 +424,8 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		if !file.strictSeqWrites && chunk.IOTracker.FullyAccessed() {
 			log.Err("DistributedCache[FM]::WriteFile: Overwriting a fully written chunk, unsupported, file: %s, offset: %d, CHUNKIDX: %d, chunk.Len: %d, chunk.Offset: %d",
 				file.FileMetadata.Filename, offset, allowableWriteOffsetStart, chunk.Idx, chunk.Len, chunk.Offset)
+
+			file.releaseChunk(chunk)
 			return syscall.ENOTSUP
 		}
 
@@ -455,7 +458,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		common.Assert(copied > 0, chunkOffset, bufOffset, chunk.Len, len(buf))
 		offset += int64(copied)
 		bufOffset += copied
-		chunk.Len += int64(copied)
+		atomic.AddInt64(&chunk.Len, int64(copied))
 
 		// Valid chunk data cannot be more than ChunkSize.
 		// This will catch ovewrites too.
@@ -481,16 +484,29 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		if file.strictSeqWrites {
 			chunkFullyWritten = chunk.Len == file.FileMetadata.FileLayout.ChunkSize
 		} else {
+				log.Debug("TOMAR: DistributedCache[FM]::WriteFile: Marking chunk access, file: %s, offset: %d, length: %d, chunk.Len: %d, chunkIdx: %d, refcount: %d",
+				file.FileMetadata.Filename, offset, copied, chunk.Len, chunk.Idx, chunk.RefCount.Load())
 			chunkFullyWritten = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied))
 		}
 
 		if chunkFullyWritten {
 			log.Debug("TOMAR: DistributedCache[FM]::WriteFile: Fully written chunk, file: %s, offset: %d, length: %d, CHUNKIDX: %d, refcount: %d",
 				file.FileMetadata.Filename, offset, len(buf), chunk.Idx, chunk.RefCount.Load())
+
+			common.Assert(chunk.Len == file.FileMetadata.FileLayout.ChunkSize,
+				chunk.Len, file.FileMetadata.FileLayout.ChunkSize, chunk.Idx, file.FileMetadata.Filename)
+
 			// TODO: This not always true. if some writes to this chunk were skipped then there should be a
 			// way to stage this block.
 			scheduleUpload(chunk, file)
 		}
+
+		//
+		// We are done using the chunk, drop our ref.
+		// This should not free the chunk as it's still used by the StagedChunks map which holds a refcount
+		// on it. That refcount will be dropped when the upload completed.
+		//
+		file.releaseChunk(chunk)
 	}
 
 	// Must write complete data.
@@ -812,13 +828,6 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 		//common.Assert(!chunk.XferScheduled.Load())
 	}
 
-	if err == nil && loaded {
-		common.Assert(chunk.RefCount.Load() > 1, chunk.Idx, chunk.RefCount.Load())
-		chunk.RefCount.Add(-1)
-		log.Debug("TOMAR: DistributedCache::getChunkForWrite: reducing refcount, file: %s, CHUNKIDX: %d, refcount: %d",
-			file.FileMetadata.Filename, chunkIdx, chunk.RefCount.Load())
-	}
-
 	return chunk, err
 }
 
@@ -841,12 +850,18 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 	//
 	// The thread doing the remove must be still holding a refcount on the chunk.
 	// Also one refcount is held for the map.
+	// For write it's just 1
 	//
-	common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load())
+	//common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load())
+	common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load())
 	common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 
 	chunk.SavedInMap.Store(false)
-	chunk.RefCount.Add(-1)
+
+	//
+	// For reads, this will just drop the map refcount, for writes this will also free the chunk memory.
+	//
+	file.releaseChunk(chunk)
 
 	delete(file.StagedChunks, chunkIdx)
 }
