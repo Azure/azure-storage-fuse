@@ -35,6 +35,7 @@ package filemanager
 
 import (
 	"math"
+	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -75,7 +76,7 @@ var (
 type ChunkIOTracker struct {
 	bitmap []uint64
 	// How many bits are set aka how many unique blocks have been accessed (read or written).
-	count int
+	count atomic.Int32
 }
 
 func NewChunkIOTracker() *ChunkIOTracker {
@@ -93,14 +94,14 @@ func GetMinTrackableIOSize() int64 {
 }
 
 // MarkAccessed marks the given range [offsetInChunk, offsetInChunk+length) as accessed (read or written).
-// If the length spans the chunk boundary, it returns the number of bytes that are in the remaining chunks.
-func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
-	// We should not be called for IO sizes smaller than MinTrackableIOSize.
-	common.Assert(length >= MinTrackableIOSize && length <= chunkSize, length, chunkSize)
+// Returns true if this access caused the entire chunk to be accessed, false otherwise.
+func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length, chunkIdx int64) bool {
+	// We should not be called for IO sizes and offsets which are not exact multiples of MinTrackableIOSize.
 	common.Assert(length%MinTrackableIOSize == 0, length, MinTrackableIOSize)
+	common.Assert(offsetInChunk%MinTrackableIOSize == 0, offsetInChunk, MinTrackableIOSize)
+	// The entire requested range should be within a chunk.
 	common.Assert(offsetInChunk >= 0 && offsetInChunk < chunkSize, offsetInChunk, chunkSize)
 	common.Assert(offsetInChunk+length <= chunkSize, offsetInChunk, length, chunkSize)
-	common.Assert(offsetInChunk%MinTrackableIOSize == 0, offsetInChunk, MinTrackableIOSize)
 
 	fullyAccessed := false
 
@@ -117,9 +118,10 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
 		common.Assert(word >= 0 && word < len(bt.bitmap), word, len(bt.bitmap))
 
 		if common.AtomicTestAndSetBitUint64(&bt.bitmap[word], bit) {
-			bt.count++
-			fullyAccessed = bt.count == numBlocks
-			common.Assert(bt.count <= numBlocks, bt.count, numBlocks)
+			if bt.count.Add(1) == int32(numBlocks) {
+				fullyAccessed = true
+			}
+			common.Assert(bt.count.Load() <= int32(numBlocks), bt.count.Load(), numBlocks)
 		}
 
 		offsetInChunk += MinTrackableIOSize
@@ -133,8 +135,45 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
 	return fullyAccessed
 }
 
+// Check if any block in the given range [offsetInChunk, offsetInChunk+length) is already accessed (read or written).
+// Returns true if any block in the range is already accessed, false if no block in the range is accessed.
+func (bt *ChunkIOTracker) IsAccessed(offsetInChunk, length int64) bool {
+	// We should not be called for IO sizes and offsets which are not exact multiples of MinTrackableIOSize.
+	common.Assert(length%MinTrackableIOSize == 0, length, MinTrackableIOSize)
+	common.Assert(offsetInChunk%MinTrackableIOSize == 0, offsetInChunk, MinTrackableIOSize)
+	// The entire requested range should be within a chunk.
+	common.Assert(offsetInChunk >= 0 && offsetInChunk < chunkSize, offsetInChunk, chunkSize)
+	common.Assert(offsetInChunk+length <= chunkSize, offsetInChunk, length, chunkSize)
+
+	//
+	// Check all the blocks in the given range.
+	//
+	for {
+		block := int(offsetInChunk / MinTrackableIOSize)
+		common.Assert(block >= 0 && block < numBlocks, offsetInChunk, block, chunkSize, MinTrackableIOSize)
+
+		word := block / 64
+		bit := uint(block % 64)
+
+		common.Assert(word >= 0 && word < len(bt.bitmap), word, len(bt.bitmap))
+
+		if atomic.LoadUint64(&bt.bitmap[word])&(1<<bit) != 0 {
+			return true
+		}
+
+		offsetInChunk += MinTrackableIOSize
+		length -= MinTrackableIOSize
+
+		if length <= 0 {
+			break
+		}
+	}
+
+	return false
+}
+
 func (bt *ChunkIOTracker) FullyAccessed() bool {
-	return bt.count == numBlocks
+	return bt.count.Load() == int32(numBlocks)
 }
 
 func InitChunkIOTracker() {

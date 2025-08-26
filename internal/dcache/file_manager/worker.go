@@ -98,6 +98,9 @@ func (wp *workerPool) worker() {
 }
 
 func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk bool) {
+	// We must be called only after scheduling the chunk for transfer (upload/download)
+	common.Assert(chunk.XferScheduled.Load() == true, chunk.Idx, file.FileMetadata.Filename)
+
 	t := &task{
 		file:      file,
 		chunk:     chunk,
@@ -136,6 +139,8 @@ func (wp *workerPool) readChunk(task *task) {
 		// ReadMV() must read all that we asked for.
 		common.Assert(readMVresp.Data != nil)
 		common.Assert(len(readMVresp.Data) == int(task.chunk.Len))
+		// We must come here only for chunks scheduled for transfer (download).
+		common.Assert(task.chunk.XferScheduled.Load() == true, task.chunk.Idx, task.file.FileMetadata.Filename)
 
 		//
 		// ReadMV completed successfully, staged chunk is now up-to-date.
@@ -164,13 +169,15 @@ func (wp *workerPool) readChunk(task *task) {
 }
 
 func (wp *workerPool) writeChunk(task *task) {
-	log.Debug("DistributedCache::writeChunk: Writing chunk idx: %d, file: %s",
-		task.chunk.Idx, task.file.FileMetadata.Filename)
-	log.Debug("TOMAR: DistributedCache::writeChunk: Writing CHUNKIDX: %d, file: %s",
+	log.Debug("DistributedCache::writeChunk: Writing chunk chunkIdx: %d, file: %s",
 		task.chunk.Idx, task.file.FileMetadata.Filename)
 
 	// Only dirty StagedChunk must be written.
 	common.Assert(task.chunk.Dirty.Load())
+	// We always write full chunks (execept for the last chunk, but that also starts at offset 0).
+	common.Assert(task.chunk.Offset == 0, task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Offset)
+	common.Assert(task.chunk.Len > 0 && task.chunk.Len <= int64(len(task.chunk.Buf)),
+		task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Len, len(task.chunk.Buf))
 
 	writeMVReq := &rm.WriteMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
@@ -184,16 +191,25 @@ func (wp *workerPool) writeChunk(task *task) {
 	// Call WriteMV method for writing the chunk.
 	_, err := rm.WriteMV(writeMVReq)
 	if err == nil {
+		// We must come here only for chunks scheduled for transfer (upload).
+		common.Assert(task.chunk.XferScheduled.Load() == true, task.chunk.Idx, task.file.FileMetadata.Filename)
+
 		// WriteMV completed successfully, staged chunk is now no more dirty.
 		common.Assert(task.chunk.Dirty.Load())
 		task.chunk.Dirty.Store(false)
+
+		//
+		// Convey success to anyone waiting for the upload to complete.
+		// Note: This MUST be done before calling removeChunk() as that may cause deadlock as SyncFile()
+		//       is waiting for the chunk to be removed, and it holds the read chunk lock.
+		//
 		close(task.chunk.Err)
 
 		//
 		// The chunk is uploaded to DCache, we can release it now.
 		//
-		log.Debug("TOMAR: DistributedCache::writeChunk: Writing completed CHUNKIDX: %d, file: %s, refcount: %d",
-			task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.RefCount.Load())
+		log.Debug("DistributedCache::writeChunk: Writing completed file: %s, chunkIdx: %d, chunk.Len: %s, refcount: %d",
+			task.file.FileMetadata.Filename, task.chunk.Idx, task.chunk.Len, task.chunk.RefCount.Load())
 
 		task.file.removeChunk(task.chunk.Idx)
 		return
