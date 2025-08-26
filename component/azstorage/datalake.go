@@ -118,6 +118,7 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 	dl.Config.maxConcurrency = cfg.maxConcurrency
 	dl.Config.defaultTier = cfg.defaultTier
 	dl.Config.ignoreAccessModifiers = cfg.ignoreAccessModifiers
+	dl.Config.disableSetAccessControl = cfg.disableSetAccessControl
 	return dl.BlockBlob.UpdateConfig(cfg)
 }
 
@@ -535,6 +536,13 @@ func (dl *Datalake) TruncateFile(name string, size int64) error {
 // ChangeMod : Change mode of a path
 func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("Datalake::ChangeMod : Change mode of file %s to %s", name, mode)
+	
+	// If SetAccessControl is disabled, skip the operation and return success
+	if dl.Config.disableSetAccessControl {
+		log.Debug("Datalake::ChangeMod : SetAccessControl disabled, skipping chmod for %s", name)
+		return nil
+	}
+	
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 
 	/*
