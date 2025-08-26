@@ -610,6 +610,9 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) error {
 // It closes the passed in connection and all existing connections in the pool, and if there are no
 // active connections and no connections in the channel, it deletes the node client pool.
 func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
+	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s",
+		client.nodeAddress, client.nodeID)
+
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
 	// releaseRPCClient(), deleteAllRPCClients(), resetAllRPCClients(), etc. by other threads can process
@@ -794,6 +797,9 @@ func (cp *clientPool) resetRPCClient(client *rpcClient) error {
 // node restarting. It closes the passed in connection and all existing connections in the pool and replaces
 // them with newly created ones.
 func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
+	log.Debug("clientPool::resetAllRPCClients: Resetting all RPC clients for %s node %s",
+		client.nodeAddress, client.nodeID)
+
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
 	// releaseRPCClient(), deleteAllRPCClients(), resetAllRPCClients(), etc. by other threads can process
