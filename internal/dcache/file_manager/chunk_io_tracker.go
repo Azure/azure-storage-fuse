@@ -97,8 +97,10 @@ func GetMinTrackableIOSize() int64 {
 func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length int64) bool {
 	// We should not be called for IO sizes smaller than MinTrackableIOSize.
 	common.Assert(length >= MinTrackableIOSize && length <= chunkSize, length, chunkSize)
+	common.Assert(length%MinTrackableIOSize == 0, length, MinTrackableIOSize)
 	common.Assert(offsetInChunk >= 0 && offsetInChunk < chunkSize, offsetInChunk, chunkSize)
 	common.Assert(offsetInChunk+length <= chunkSize, offsetInChunk, length, chunkSize)
+	common.Assert(offsetInChunk%MinTrackableIOSize == 0, offsetInChunk, MinTrackableIOSize)
 
 	fullyAccessed := false
 

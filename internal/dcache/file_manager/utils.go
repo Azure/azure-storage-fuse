@@ -57,30 +57,41 @@ var (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
-func getChunkStartOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
-	return getChunkIdxFromFileOffset(offset, fileLayout) * fileLayout.ChunkSize
+// Index of the chunk that contains the given file offset.
+func getChunkIdxFromFileOffset(offset, chunkSize int64) int64 {
+	return offset / chunkSize
 }
 
-func getChunkIdxFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
-	return offset / fileLayout.ChunkSize
+// Offset within the chunk corresponding to the given file offset.
+func getChunkOffsetFromFileOffset(offset, chunkSize int64) int64 {
+	return offset % chunkSize
 }
 
-func getChunkOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
-	return offset - getChunkStartOffsetFromFileOffset(offset, fileLayout)
+// File offset of the start of the chunk.
+func getChunkStartOffset(chunkIdx, chunkSize int64) int64 {
+	return chunkIdx * chunkSize
 }
 
+// File offset of the last byte of the chunk + 1.
+// Note: This is one byte past the end of the chunk.
+func getChunkEndOffset(chunkIdx, chunkSize int64) int64 {
+	return (chunkIdx + 1) * chunkSize
+}
+
+// Returns the size of the chunk containing the given file offset.
 func getChunkSize(offset int64, file *DcacheFile) int64 {
 	// getChunkSize() must be called for a finalized file which will have size >= 0.
 	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	size := min(file.FileMetadata.Size-
-		getChunkStartOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout),
+		getChunkStartOffset(chunkIdx, file.FileMetadata.FileLayout.ChunkSize),
 		file.FileMetadata.FileLayout.ChunkSize)
 	common.Assert(size >= 0, size)
 	return size
 }
 
-func isOffsetChunkStarting(offset int64, fileLayout *dcache.FileLayout) bool {
-	return (offset%fileLayout.ChunkSize == 0)
+func isOffsetChunkStarting(offset, chunkSize int64) bool {
+	return (offset%chunkSize == 0)
 }
 
 func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string {
