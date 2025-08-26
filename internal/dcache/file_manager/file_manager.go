@@ -302,7 +302,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		bufOffset += copied
 
 		if isSequential {
-			chunkFullyRead = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied))
+			chunkFullyRead = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied), chunk.Idx)
 		} else if isStrictlySequential {
 			chunkFullyRead = (offset == getChunkEndOffset(chunk.Idx, file.FileMetadata.FileLayout.ChunkSize))
 		}
@@ -317,7 +317,9 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 				// the map so that new readers won't find it, but it doesn't free the chunk memory. It may still
 				// be in use by other readers and the last reader to release the chunk will free the chunk memory.
 				//
-				file.removeChunk(chunk.Idx)
+				removed := file.removeChunk(chunk.Idx)
+				_ = removed
+				common.Assert(removed == true, chunk.Idx, file.FileMetadata.Filename)
 			}
 		}
 
@@ -410,6 +412,12 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// Note that distributed cache stores data in units of chunks.
 	//
 	for offset < endOffset {
+		// Offset within the chunk to write.
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
+
+		// How many bytes we can write to the current chunk.
+		writeSize := min(file.FileMetadata.FileLayout.ChunkSize-chunkOffset, (endOffset - offset))
+
 		// Get the StagedChunk that will hold the file data at offset.
 		chunk, err := file.CreateOrGetStagedChunk(offset)
 		if err != nil {
@@ -420,22 +428,19 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 			common.Assert(false, err)
 			return err
 		}
+		log.Debug("TOMAR: got chunkIdx: %d for offset: %d: chunkOffset: %d", chunk.Idx, offset, chunkOffset)
 
-		if !file.strictSeqWrites && chunk.IOTracker.FullyAccessed() {
-			log.Err("DistributedCache[FM]::WriteFile: Overwriting a fully written chunk, unsupported, file: %s, offset: %d, CHUNKIDX: %d, chunk.Len: %d, chunk.Offset: %d",
-				file.FileMetadata.Filename, offset, allowableWriteOffsetStart, chunk.Idx, chunk.Len, chunk.Offset)
+		//
+		// Detect and disallow overwrites.
+		// Strict sequential writes cannot overwrite as we always write at maxWriteOffset.
+		//
+		if !file.strictSeqWrites && chunk.IOTracker.IsAccessed(chunkOffset, int64(writeSize)) {
+			log.Err("DistributedCache[FM]::WriteFile: Overwriting unsupported, file: %s, offset: %d, length: %d, chunkOffset: %d, chunkIdx: %d",
+				file.FileMetadata.Filename, offset, writeSize, chunkOffset, chunk.Idx)
 
 			file.releaseChunk(chunk)
 			return syscall.ENOTSUP
 		}
-
-		// Offset within the chunk to write.
-		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-		// chunkOffset cannot overshoot ChunkSize.
-		common.Assert(chunkOffset < file.FileMetadata.FileLayout.ChunkSize,
-			chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
-		// We don't support overwriting chunk data.
-		//common.Assert(chunkOffset >= chunk.Len, chunkOffset, chunk.Len)
 
 		//
 		// This case is mostly for handling 'cp' where it jumps the offset to avoid copying zeroes from
@@ -450,18 +455,18 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 			}
 		*/
 
-		// We must copy right after where the prev copy ended.
-		//common.Assert(chunk.Len == chunkOffset, chunk.Len, chunkOffset)
-
 		copied := copy(chunk.Buf[chunkOffset:], buf[bufOffset:])
 		// Must copy at least one byte from the chunk.
 		common.Assert(copied > 0, chunkOffset, bufOffset, chunk.Len, len(buf))
+		// But not cross chunk boundary.
+		common.Assert(int64(copied) <= writeSize,
+			copied, writeSize, chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
+
 		offset += int64(copied)
 		bufOffset += copied
 		atomic.AddInt64(&chunk.Len, int64(copied))
 
-		// Valid chunk data cannot be more than ChunkSize.
-		// This will catch ovewrites too.
+		// Valid chunk data cannot be more than ChunkSize. We don't allow overwrites.
 		common.Assert(chunk.Len <= file.FileMetadata.FileLayout.ChunkSize,
 			chunk.Len, file.FileMetadata.FileLayout.ChunkSize)
 
@@ -471,26 +476,40 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		// At least one byte of user data copied to chunk, it's dirty now and must be written to dcache.
 		chunk.Dirty.Store(true)
 
-		/*
-			common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset-1, &file.FileMetadata.FileLayout)+1,
-				fmt.Sprintf("Actual Chunk Len: %d is modified incorrectly, expected chunkLen: %d",
-					chunk.Len, getChunkOffsetFromFileOffset(offset-1, &file.FileMetadata.FileLayout)+1))
-		*/
+		//
+		// With strict sequential writes only one thread must be calling WriteFile() at any time and hence
+		// the chunk.Len must be updated by the amount we just copied.
+		//
+		if common.IsDebugBuild() {
+			if file.strictSeqWrites {
+				common.Assert(chunk.Len ==
+					getChunkOffsetFromFileOffset(offset-1, file.FileMetadata.FileLayout.ChunkSize)+1,
+					fmt.Sprintf("Actual Chunk Len: %d is modified incorrectly, expected chunkLen: %d",
+						chunk.Len, getChunkOffsetFromFileOffset(offset-1, file.FileMetadata.FileLayout.ChunkSize)+1))
+			}
+		}
+
 		//
 		// Schedule the upload when a staged chunk is fully written.
 		// There's no point in waiting any more. Sooner we write completed chunks, faster we will complete
 		// writes.
 		//
 		if file.strictSeqWrites {
-			chunkFullyWritten = chunk.Len == file.FileMetadata.FileLayout.ChunkSize
+			chunkFullyWritten = (chunk.Len == file.FileMetadata.FileLayout.ChunkSize)
 		} else {
-				log.Debug("TOMAR: DistributedCache[FM]::WriteFile: Marking chunk access, file: %s, offset: %d, length: %d, chunk.Len: %d, chunkIdx: %d, refcount: %d",
-				file.FileMetadata.Filename, offset, copied, chunk.Len, chunk.Idx, chunk.RefCount.Load())
-			chunkFullyWritten = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied))
+			log.Debug("DistributedCache[FM]::WriteFile: Marking blocks accessed, file: %s, offset: %d, length: %d, chunkOffset: %d, chunk.Len: %d, chunkIdx: %d, refcount: %d",
+				file.FileMetadata.Filename, offset-int64(copied), copied, chunkOffset,
+				chunk.Len, chunk.Idx, chunk.RefCount.Load())
+			chunkFullyWritten = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied), chunk.Idx)
+
+			// If chunkFullyWritten is true, chunk must have been fully written.
+			common.Assert(!chunkFullyWritten || (chunk.Len == file.FileMetadata.FileLayout.ChunkSize),
+				chunkFullyWritten, chunk.Len, file.FileMetadata.FileLayout.ChunkSize,
+				chunk.Idx, file.FileMetadata.Filename)
 		}
 
 		if chunkFullyWritten {
-			log.Debug("TOMAR: DistributedCache[FM]::WriteFile: Fully written chunk, file: %s, offset: %d, length: %d, CHUNKIDX: %d, refcount: %d",
+			log.Debug("DistributedCache[FM]::WriteFile: Fully written chunk, file: %s, offset: %d, length: %d, chunkIdx: %d, refcount: %d",
 				file.FileMetadata.Filename, offset, len(buf), chunk.Idx, chunk.RefCount.Load())
 
 			common.Assert(chunk.Len == file.FileMetadata.FileLayout.ChunkSize,
@@ -517,7 +536,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// Next write expected at offset maxWriteOffset.
 	common.AtomicMaxInt64(&file.maxWriteOffset, offset)
 
-	log.Debug("TOMAR: DistributedCache[FM]::WriteFile: maxWriteOffset=%d, file: %s, offset: %d, CHUNKIDX",
+	log.Debug("TOMAR: DistributedCache[FM]::WriteFile: maxWriteOffset=%d, file: %s, offset: %d, chunkIdx",
 		file.maxWriteOffset/1048576, file.FileMetadata.Filename, offset)
 
 	return nil
@@ -526,8 +545,6 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 // Sync Buffers for the file with dcache/azure.
 // This call can come when user application calls fsync()/close().
 func (file *DcacheFile) SyncFile() error {
-	log.Debug("DistributedCache[FM]::SyncFile: %s", file.FileMetadata.Filename)
-
 	var err error
 	//
 	// Go over all the staged chunks and write to cache if not already done.
@@ -537,6 +554,9 @@ func (file *DcacheFile) SyncFile() error {
 	file.chunkLock.RLock()
 	defer file.chunkLock.RUnlock()
 
+	log.Debug("DistributedCache[FM]::SyncFile: %s, syncing %d chunks",
+		file.FileMetadata.Filename, len(file.StagedChunks))
+
 	for chunkIdx, chunk := range file.StagedChunks {
 		_ = chunkIdx
 		common.Assert(chunkIdx == chunk.Idx, chunkIdx, chunk.Idx)
@@ -545,7 +565,14 @@ func (file *DcacheFile) SyncFile() error {
 			file.FileMetadata.Filename, chunk.Idx, chunk.Len)
 
 		// Synchronously write the chunk to dcache.
-		scheduleUpload(chunk, file)
+		if scheduleUpload(chunk, file) {
+			//
+			// Completed chunks must have been uploaded by WriteFile().
+			//
+			common.Assert(chunk.Len < file.FileMetadata.FileLayout.ChunkSize,
+				chunk.Len, file.FileMetadata.FileLayout.ChunkSize, chunk.Idx, file.FileMetadata.Filename)
+		}
+
 		err = <-chunk.Err
 		if err != nil {
 			log.Err("DistributedCache[FM]::SyncFile: file: %s, chunkIdx: %d, chunkLen: %d, failed: %v",
@@ -588,30 +615,33 @@ func (file *DcacheFile) CloseFile() error {
 
 // Release all allocated buffers for the file.
 func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
-	log.Debug("DistributedCache[FM]::ReleaseFile: Releasing all staged chunk for file %s",
-		file.FileMetadata.Filename)
-
 	file.chunkLock.Lock()
 	defer file.chunkLock.Unlock()
+
+	log.Debug("DistributedCache[FM]::ReleaseFile: Releasing all %d staged chunk for file %s",
+		len(file.StagedChunks), file.FileMetadata.Filename)
 
 	for chunkIdx, chunk := range file.StagedChunks {
 		_ = chunkIdx
 		common.Assert(chunkIdx == chunk.Idx, chunkIdx, chunk.Idx)
 		common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
-
-		// Cannot be fully accessed, else it would have been removed from StagedChunks map.
-		if !file.strictSeqWrites {
-			common.Assert(!chunk.IOTracker.FullyAccessed(), chunk.Idx, file.FileMetadata.Filename)
-		}
+		//
+		// Dirty chunks must have been uploaded and removed from StagedChunks.
+		// Full chunks would be uploaded by WriteFile() and the last incomplete chunk (if any) by SyncFile().
+		// Also SyncFile() must have waited for all dirty chunks to be uploaded and removed from StagedChunks.
+		//
+		common.Assert(chunk.Dirty.Load() == false, chunk.Idx, file.FileMetadata.Filename)
 
 		//
 		// TODO: assert for each chunk that err is closed. currently not doing it as readahead chunks
 		//       error channel might be opened.
 		//
 
-		// The only refcount held must be the one corresponding the StagedChunks map.
+		// The only refcount held must be the one corresponding to the StagedChunks map.
 		common.Assert(chunk.RefCount.Load() == 1, chunk.Idx, chunk.RefCount.Load())
 		file.releaseChunk(chunk)
+
+		delete(file.StagedChunks, chunkIdx)
 	}
 
 	//
@@ -716,7 +746,7 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 			//
 			chunk.RefCount.Add(1)
 			file.chunkLock.RUnlock()
-			log.Debug("TOMAR: DistributedCache::getChunk: file: %s, CHUNKIDX: %d, chunkOffset: %d, length: %d, refcount: %d",
+			log.Debug("TOMAR: DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, refcount: %d",
 				file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
 			return chunk, true, nil
 		}
@@ -736,7 +766,7 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 			chunk.RefCount.Add(1)
 			log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, refcount: %d",
 				file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
-			log.Debug("TOMAR: DistributedCache::getChunk: file: %s, CHUNKIDX: %d, chunkOffset: %d, length: %d, refcount: %d",
+			log.Debug("TOMAR: DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, refcount: %d",
 				file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
 			return chunk, true, nil
 		}
@@ -756,7 +786,7 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 
 	// Add it to the StagedChunks, and return.
 	if !noCache {
-		log.Debug("TOMAR: DistributedCache::getChunk: Saving chunk in StagedChunks. file: %s, CHUNKIDX: %d",
+		log.Debug("TOMAR: DistributedCache::getChunk: Saving chunk in StagedChunks. file: %s, chunkIdx: %d",
 			file.FileMetadata.Filename, chunkIdx)
 		file.StagedChunks[chunkIdx] = chunk
 		chunk.SavedInMap.Store(true)
@@ -767,8 +797,8 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 	// For the caller.
 	chunk.RefCount.Add(1)
 
-	log.Debug("TOMAR: DistributedCache::getChunk: file: %s, CHUNKIDX: %d, chunkOffset: %d, length: %d, refcount: %d",
-		file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
+	log.Debug("TOMAR: DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, chunk.Len: %d, refcount: %d",
+		file.FileMetadata.Filename, chunkIdx, chunkOffset, chunk.Len, chunk.RefCount.Load())
 	return chunk, false, nil
 }
 
@@ -822,6 +852,9 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 	// data is copied to the chunk.
 	//
 	if err == nil && !loaded {
+		// We always write full chunks except possibly the last chunk, but even that starts at offset 0.
+		common.Assert(chunk.Offset == 0, chunk.Offset, chunk.Idx, file.FileMetadata.Filename)
+
 		// Brand new chunk must start with chunk.Len == 0.
 		//common.Assert(chunk.Len == 0, chunk.Len)
 		// Brand new staged chunk, could not have been scheduled for write already.
@@ -832,7 +865,7 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 }
 
 // Remove chunk from staged chunks.
-func (file *DcacheFile) removeChunk(chunkIdx int64) {
+func (file *DcacheFile) removeChunk(chunkIdx int64) bool {
 	log.Debug("DistributedCache::removeChunk: removing staged chunk, file: %s, chunkIdx: %d",
 		file.FileMetadata.Filename, chunkIdx)
 
@@ -843,8 +876,13 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 	if !ok {
 		log.Err("DistributedCache::removeChunk: chunk not found, file: %s, chunk idx: %d",
 			file.FileMetadata.Filename, chunkIdx)
-		common.Assert(false, file.FileMetadata.Filename, chunkIdx)
-		return
+		//
+		// One valid case where this can happen:
+		// workerPool::writeChunk() calls removeChunk() after the chunk upload is done, but by that time
+		// DcacheFile::ReleaseFile() released and removed this chunk from StagedChunks map. Since the chunk
+		// is already removed from the map, we don't need to do anything here.
+		//
+		return false
 	}
 
 	//
@@ -855,6 +893,8 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 	//common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load())
 	common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load())
 	common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
+	// Dirty chunks must be uploaded.
+	common.Assert(chunk.Dirty.Load() == false, chunk.Idx, file.FileMetadata.Filename)
 
 	chunk.SavedInMap.Store(false)
 
@@ -864,6 +904,8 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 	file.releaseChunk(chunk)
 
 	delete(file.StagedChunks, chunkIdx)
+
+	return true
 }
 
 // Release buffer for the staged chunk.
@@ -935,7 +977,7 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	if sync {
 		err = <-chunk.Err
 
-		log.Debug("TOMAR: DistributedCache::readChunk: download completed file: %s, offset: %d, CHUNKIDX: %d, chunkOffset: %d, length: %d, sync: %t",
+		log.Debug("TOMAR: DistributedCache::readChunk: download completed file: %s, offset: %d, chunkIdx: %d, chunkOffset: %d, length: %d, sync: %t",
 			file.FileMetadata.Filename, offset, chunkIdx, chunkOffset, length, sync)
 
 		if err != nil {
@@ -1056,16 +1098,17 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 		return chunk, err
 	}
 
+	common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, offset, file.FileMetadata.Filename)
 	return chunk, nil
 }
 
-func scheduleDownload(chunk *StagedChunk, file *DcacheFile) {
+func scheduleDownload(chunk *StagedChunk, file *DcacheFile) bool {
 	// chunk.Len is the amount of bytes to download, cannot be 0.
 	common.Assert(chunk.Len > 0)
 
 	if !chunk.XferScheduled.Swap(true) {
-		log.Debug("TOMAR: DistributedCache::scheduleDownload: file: %s, CHUNKIDX: %d",
-			file.FileMetadata.Filename, chunk.Idx)
+		log.Debug("DistributedCache::scheduleDownload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
+			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
 
 		// Cannot be overwriting a dirty staged chunk.
 		common.Assert(!chunk.Dirty.Load())
@@ -1073,16 +1116,19 @@ func scheduleDownload(chunk *StagedChunk, file *DcacheFile) {
 		common.Assert(!chunk.UpToDate.Load())
 
 		fileIOMgr.wp.queueWork(file, chunk, true /* get_chunk */)
+		return true
 	}
+
+	return false
 }
 
-func scheduleUpload(chunk *StagedChunk, file *DcacheFile) {
+func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 	// chunk.Len is the amount of bytes to upload, cannot be 0.
 	common.Assert(chunk.Len > 0)
 
 	if !chunk.XferScheduled.Swap(true) {
-		log.Debug("TOMAR: DistributedCache::scheduleUpload: file: %s, CHUNKIDX: %d, refcount: %d",
-			file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load())
+		log.Debug("DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
+			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
 
 		// Only dirty staged chunk should be written to dcache.
 		common.Assert(chunk.Dirty.Load())
@@ -1090,7 +1136,10 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) {
 		common.Assert(!chunk.UpToDate.Load())
 
 		fileIOMgr.wp.queueWork(file, chunk, false /* get_chunk */)
+		return true
 	}
+
+	return false
 }
 
 // Silence unused import errors for release builds.
