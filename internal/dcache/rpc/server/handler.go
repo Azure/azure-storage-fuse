@@ -2117,7 +2117,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
 
 	common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
-		"Read beyond eof", req.OffsetInChunk, req.Length, chunkSize)
+		"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
 
 	//
 	// TODO: hash validation will be done later
