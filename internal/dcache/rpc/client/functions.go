@@ -474,7 +474,7 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsBrokenPipe(err) || rpc.IsTimedOut(err) {
+			if rpc.IsBrokenPipe(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
@@ -501,7 +501,7 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				//
 				err1 := cp.resetRPCClientInternal(client, true)
 				if err1 != nil {
-					log.Err("rpc_client::PutChunk: deleteAllRPCClients failed for node %s: %v",
+					log.Err("rpc_client::PutChunkDC: resetRPCClientInternal failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
