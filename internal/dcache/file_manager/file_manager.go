@@ -144,31 +144,35 @@ func EndFileIOManager() {
 type DcacheFile struct {
 	FileMetadata *dcache.FileMetadata
 
-	//
 	// Read pattern tracker for detecting read pattern (sequential/random).
 	// Only valid for files opened for reading, nil for files opened for writing.
-	//
 	RPT *RPTracker
 
-	// Next write offset we expect in case of sequential writes.
+	// Last byte written + 1, also the next write offset we expect in case of sequential writes.
 	// We don't support overwrites but we support slightly out-of-order writes to enable parallel
-	// processing of writes issued by fuse in response to large application writes.
+	// processing of writes issued by FUSE in response to large application writes.
 	// We allow writes only within a window of maxWriteOffset +/- 10MiB, where 10MiB comes from
 	// two factors:
 	// - Fuse uses max 1MiB IO size.
 	// - Libfuse has default 10 worker threads.
+	// Such writes are tracked using ChunkIOTracker in each StagedChunk.
 	maxWriteOffset int64
 
-	//
-	// Are we allowing strict sequential writes on this file?
-	// This starts as false but if we see small or non block size aligned write, we set this to true.
-	//
+	// Are we enforcing strict sequential writes on this file?
+	// This starts as false but if we see small or non block size aligned writes, we set this to true.
+	// When this is true we don't allow any out-of-order writes. This is needed as we cannot track
+	// writes which are not multiple of MinTrackableIOSize, or which do not start at MinTrackableIOSize
+	// aligned offsets. This is our last ditch effort to allow writes to a file from some non-standard
+	// applications.
 	strictSeqWrites bool
+
+	// Last byte read + 1, also the next read offset we expect in case of sequential reads.
+	// See maxWriteOffset comments above.
+	maxReadOffset int64
 
 	// Chunk index (inclusive) till which we have done readahead.
 	lastReadaheadChunkIdx atomic.Int64
 
-	//
 	// Chunk Idx -> *StagedChunk
 	// These are the chunks that are currently cached in memory for this file.
 	// These chunks can be either readahead chunks or write back chunks.
@@ -176,7 +180,6 @@ type DcacheFile struct {
 	// This is protected by chunkLock.
 	//
 	// TODO: Should we share chunks among multiple open handles of the same file?
-	//
 	StagedChunks map[int64]*StagedChunk
 	chunkLock    sync.RWMutex
 
@@ -194,14 +197,14 @@ type DcacheFile struct {
 // It translates the requested offsets into chunks, reads those chunks from distributed cache and copies data from
 // chunk into user buffer.
 func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err error) {
-	log.Debug("DistributedCache::ReadFile: file: %s, offset: %d, length: %d",
-		file.FileMetadata.Filename, offset, len(*buf))
-
-	log.Debug("TOMAR: DistributedCache::ReadFile: file: %s, offset: %d, length: %d, CHUNKIDX: %d",
-		file.FileMetadata.Filename, offset, len(*buf), offset/file.FileMetadata.FileLayout.ChunkSize)
+	log.Debug("DistributedCache::ReadFile: file: %s, offset: %d, length: %d, chunkIdx: %d",
+		file.FileMetadata.Filename, offset, len(*buf),
+		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// Read must only be allowed on a properly finalized file, for which size must not be -1.
 	common.Assert(int64(file.FileMetadata.Size) >= 0)
+	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
+	common.Assert(len(*buf) <= common.MbToBytes, len(*buf))
 	// Read patterm tracker must be valid for files opened for reading.
 	common.Assert(file.RPT != nil, file.FileMetadata.Filename)
 
@@ -216,6 +219,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	// Catch wraparound.
 	common.Assert(endOffset >= offset, endOffset, offset)
 	bufOffset := 0
+	chunkFullyRead := false
 
 	// Update sequential/random pattern tracker with this new IO.
 	file.RPT.Update(offset, endOffset-offset)
@@ -231,39 +235,53 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		//
 		var chunk *StagedChunk
 		var err error
-		// Reads less than MinTrackableIOSize are always treated as random reads.
-		doSequentialRead := file.RPT.IsSequential() && (endOffset-offset >= GetMinTrackableIOSize())
+		// Remaining bytes to be read.
+		readSize := min(int64(len(*buf)-bufOffset), endOffset-offset)
+		// Reads not multiple of MinTrackableIOSize cannot be tracked by ChunkIOTracker.
+		isSequential := (file.RPT.IsSequential() &&
+			(offset%GetMinTrackableIOSize() == 0) &&
+			(readSize%GetMinTrackableIOSize() == 0))
+		// Second best, cannot allow parallel slightly out-of-order reads, but can allow strictly sequential reads.
+		isStrictlySequential := !isSequential && (offset == file.maxReadOffset)
+		// Offset within the chunk we want to read from.
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 
-		if doSequentialRead {
+		if isSequential || isStrictlySequential {
 			chunk, err = file.readChunkWithReadAhead(offset)
-			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
-		} else {
-			if endOffset-offset < GetMinTrackableIOSize() {
-				log.Warn("DistributedCache::ReadFile: Small read (%d < %d) file: %s, offset: %d, forcing random read",
-					endOffset-offset, GetMinTrackableIOSize(), file.FileMetadata.Filename, offset)
+			if err != nil {
+				return 0, err
 			}
 
+			// For sequential reads we must be reading the entire chunk.
+			common.Assert(chunk.Offset == 0 && chunk.Len == file.FileMetadata.FileLayout.ChunkSize,
+				chunk.Idx, chunk.Offset, chunk.Len, file.FileMetadata.Filename)
+			// And the chunk must be saved in StagedChunks map.
+			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
+		} else {
 			// For random read pattern we don't do readahead, and also don't save the chunk in StagedChunks map.
-			chunk, err = file.readChunkNoReadAhead(offset, endOffset-offset)
-			common.Assert(chunk.SavedInMap.Load() == false, chunk.Idx, file.FileMetadata.Filename)
-		}
+			chunk, err = file.readChunkNoReadAhead(offset, readSize)
+			if err != nil {
+				return 0, err
+			}
 
-		if err != nil {
-			return 0, err
+			common.Assert(chunk.SavedInMap.Load() == false, chunk.Idx, file.FileMetadata.Filename)
+			// We only read what we need.
+			common.Assert(chunk.Offset == chunkOffset && chunk.Len == readSize,
+				chunk.Offset, chunkOffset, chunk.Len, readSize, chunk.Idx, file.FileMetadata.Filename)
 		}
 
 		// We should only be reading from an up-to-date chunk (that has been successfully read from dcache).
 		common.Assert(chunk.UpToDate.Load())
-
-		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
+		// Offset+Len cannot be pointing beyond ChunkSize.
+		common.Assert((chunk.Offset+chunk.Len) <= file.FileMetadata.FileLayout.ChunkSize,
+			chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.FileLayout.ChunkSize)
 
 		// This chunk has chunk.Len valid bytes starting @ chunk.Offset, we cannot be reading past those.
-		common.Assert(chunkOffset < (chunk.Offset+chunk.Len), chunkOffset, chunk.Offset, chunk.Len)
+		common.Assert(chunkOffset < (chunk.Offset+chunk.Len),
+			chunkOffset, chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
 
-		// For sequential reads chunk must contain the entire chunk, i.e., chunk.Offset must be 0.
-		// For random reads chunk will contain only data starting at chunk.Offset.
-		common.Assert(chunk.Offset == 0 || !doSequentialRead,
-			chunk.Offset, chunk.Idx, chunk.Len, file.FileMetadata.Filename)
+		// We must be holding a refcount on the chunk.
+		common.Assert(chunk.RefCount.Load() > 0, chunk.Idx, chunk.RefCount.Load())
 
 		//
 		// Note/TODO: If we use the fuse low level API we can avoid this copy and return the chunk.Buf
@@ -271,30 +289,34 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		//
 		copied := copy((*buf)[bufOffset:], chunk.Buf[chunkOffset:(chunk.Offset+chunk.Len)])
 		// Must copy at least one byte.
-		common.Assert(copied > 0, chunkOffset, bufOffset, chunk.Offset, chunk.Len, len(*buf))
+		common.Assert(copied > 0, chunkOffset,
+			bufOffset, chunk.Offset, chunk.Len, len(*buf), chunk.Idx, file.FileMetadata.Filename)
 
 		offset += int64(copied)
 		bufOffset += copied
 
-		if doSequentialRead {
-			if chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied)) {
-				log.Debug("TOMAR: DistributedCache::ReadFile: Fully accessed chunk, file: %s, CHUNKIDX: %d, chunkOffset: %d, copied: %d",
-					file.FileMetadata.Filename, chunk.Idx, chunkOffset, copied)
-				file.removeChunk(chunk.Idx)
-			} else {
-				// TODO: Take care of race with MarkAccessed().
-				//
-				// The refcount must be > 1 since we don't remove the chunk from StagedChunks map.
-				// Later ReleaseFile() will remove this chunk from StagedChunks map and drop a ref.
-				//
-				common.Assert(chunk.RefCount.Load() > 1, chunk.Idx, chunk.RefCount.Load())
-				chunk.RefCount.Add(-1)
-				log.Debug("TOMAR: DistributedCache::ReadFile: after dropping refcnt, file: %s, offset: %d, CHUNKIDX: %d, chunkOffset: %d, copied: %d: refcount: %d",
-					file.FileMetadata.Filename, offset, chunk.Idx, chunkOffset, copied, chunk.RefCount.Load())
-			}
-		} else {
-			file.releaseChunk(chunk)
+		if isSequential {
+			chunkFullyRead = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied))
+		} else if isStrictlySequential {
+			chunkFullyRead = (offset == getChunkEndOffset(chunk.Idx, file.FileMetadata.FileLayout.ChunkSize))
 		}
+
+		if isSequential || isStrictlySequential {
+			if chunkFullyRead {
+				log.Debug("DistributedCache::ReadFile: Chunk fully read (sequential: %v), file: %s, chunkIdx: %d, chunkOffset: %d, copied: %d",
+					isSequential, file.FileMetadata.Filename, chunk.Idx, chunkOffset, copied)
+				//
+				// We are done with this chunk, remove from StagedChunks map.
+				// The first reader to observe this will remove it. Note that this just removes the chunk from
+				// the map so that new readers won't find it, but it doesn't free the chunk memory. It may still
+				// be in use by other readers and the last reader to release the chunk will free the chunk memory.
+				//
+				file.removeChunk(chunk.Idx)
+			}
+		}
+
+		// Release our refcount on the chunk. If this is the last reference, it will free the chunk memory.
+		file.releaseChunk(chunk)
 	}
 
 	// Must exactly read what's determined above (what user asks, capped by file size).
@@ -303,6 +325,9 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	common.Assert(offset <= file.FileMetadata.Size, offset, file.FileMetadata.Size)
 	// Must never read more than the length asked.
 	common.Assert(bufOffset <= len(*buf), bufOffset, len(*buf))
+
+	// Next write expected at offset maxWriteOffset.
+	common.AtomicMaxInt64(&file.maxReadOffset, offset)
 
 	return bufOffset, nil
 }
@@ -389,7 +414,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		if err != nil {
 			err = fmt.Errorf("Failed to get chunk for write, file: %s, chnk idx: %d: %v",
 				file.FileMetadata.Filename,
-				getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout), err)
+				getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize), err)
 			log.Err("DistributedCache[FM]::WriteFile: %v", err)
 			common.Assert(false, err)
 			return err
@@ -402,7 +427,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		}
 
 		// Offset within the chunk to write.
-		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 		// chunkOffset cannot overshoot ChunkSize.
 		common.Assert(chunkOffset < file.FileMetadata.FileLayout.ChunkSize,
 			chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
@@ -556,12 +581,20 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	for chunkIdx, chunk := range file.StagedChunks {
 		_ = chunkIdx
 		common.Assert(chunkIdx == chunk.Idx, chunkIdx, chunk.Idx)
+		common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
+
 		// Cannot be fully accessed, else it would have been removed from StagedChunks map.
 		if !file.strictSeqWrites {
 			common.Assert(!chunk.IOTracker.FullyAccessed(), chunk.Idx, file.FileMetadata.Filename)
 		}
+
+		//
 		// TODO: assert for each chunk that err is closed. currently not doing it as readahead chunks
-		// error channel might be opened.
+		//       error channel might be opened.
+		//
+
+		// The only refcount held must be the one corresponding the StagedChunks map.
+		common.Assert(chunk.RefCount.Load() == 1, chunk.Idx, chunk.RefCount.Load())
 		file.releaseChunk(chunk)
 	}
 
@@ -711,9 +744,13 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 			file.FileMetadata.Filename, chunkIdx)
 		file.StagedChunks[chunkIdx] = chunk
 		chunk.SavedInMap.Store(true)
+		// For the map.
+		chunk.RefCount.Add(1)
 	}
 
-	chunk.RefCount.Add(2)
+	// For the caller.
+	chunk.RefCount.Add(1)
+
 	log.Debug("TOMAR: DistributedCache::getChunk: file: %s, CHUNKIDX: %d, chunkOffset: %d, length: %d, refcount: %d",
 		file.FileMetadata.Filename, chunkIdx, chunkOffset, length, chunk.RefCount.Load())
 	return chunk, false, nil
@@ -787,7 +824,7 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 
 // Remove chunk from staged chunks.
 func (file *DcacheFile) removeChunk(chunkIdx int64) {
-	log.Debug("TOMAR: DistributedCache::removeChunk: removing staged chunk, file: %s, CHUNKIDX: %d",
+	log.Debug("DistributedCache::removeChunk: removing staged chunk, file: %s, chunkIdx: %d",
 		file.FileMetadata.Filename, chunkIdx)
 
 	file.chunkLock.Lock()
@@ -801,39 +838,34 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 		return
 	}
 
-	common.Assert(chunk.RefCount.Load() > 1, chunk.Idx, chunk.RefCount.Load())
-	chunk.RefCount.Add(-1)
-	log.Debug("TOMAR: DistributedCache::removeChunk: removing staged chunk, file: %s, CHUNKIDX: %d, refcount: %d",
-		file.FileMetadata.Filename, chunkIdx, chunk.RefCount.Load())
+	//
+	// The thread doing the remove must be still holding a refcount on the chunk.
+	// Also one refcount is held for the map.
+	//
+	common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load())
+	common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 
-	//
-	// Drop the chunk refcount and if it becomes 0, free the chunk buffer and remove from StagedChunks map.
-	//
-	if file.releaseChunk(chunk) {
-		log.Debug("TOMAR: DistributedCache::removeChunk: deleting staged chunk, file: %s, CHUNKIDX: %d, refcount: %d",
-			file.FileMetadata.Filename, chunkIdx, chunk.RefCount.Load())
-		delete(file.StagedChunks, chunkIdx)
-	}
+	chunk.SavedInMap.Store(false)
+	chunk.RefCount.Add(-1)
+
+	delete(file.StagedChunks, chunkIdx)
 }
 
 // Release buffer for the staged chunk.
 func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
-	log.Debug("DistributedCache::releaseChunk: releasing buffer for staged chunk, file: %s, chunk idx: %d, refcount: %d, external: %v",
+	log.Debug("DistributedCache::releaseChunk: file: %s, chunkIdx: %d, refcount: %d, external: %v",
 		file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load(), chunk.IsBufExternal)
 
-	// Only the last user will attempt to free the chunk.
+	// Only a user holding a valid chunk refcount should release the chunk.
 	common.Assert(chunk.RefCount.Load() > 0, chunk.Idx, chunk.RefCount.Load())
-	log.Debug("TOMAR: DistributedCache::releaseChunk: before ref dec, file: %s, CHUNKIDX: %d, refcount: %d",
-		file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load())
-	if chunk.RefCount.Add(-1) != 0 {
 
-		log.Debug("TOMAR: DistributedCache::releaseChunk: after ref dec, file: %s, CHUNKIDX: %d, refcount: %d",
-			file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load())
+	if chunk.RefCount.Add(-1) != 0 {
 		return false
 	}
 
-	log.Debug("TOMAR: DistributedCache::releaseChunk: after ref dec, file: %s, CHUNKIDX: %d, refcount: %d",
-		file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load())
+	log.Debug("DistributedCache::releaseChunk: Freeing chunk, file: %s, chunkIdx: %d, refcount: %d, external: %v",
+		file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load(), chunk.IsBufExternal)
+
 	//
 	// If buffer is allocated by NewStagedChunk(), free it to the pool, else it's an external buffer
 	// returned by ReadMV(), just drop our reference and let GC free it.
@@ -858,10 +890,10 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 
 func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
-	chunkIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	chunkOffset := int64(0)
 	if length != 0 {
-		chunkOffset = getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
+		chunkOffset = getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	}
 
 	log.Debug("DistributedCache::readChunk: file: %s, offset: %d, chunkIdx: %d, chunkOffset: %d, length: %d, sync: %t",
@@ -914,7 +946,7 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 
 func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
-	chunkIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 
 	log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, offset: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, offset, chunkIdx)
@@ -924,38 +956,31 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 	// for the remaining we do async/readahead read.
 	// We do it only when reading the start of a chunk.
 	//
-	if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
+	if isOffsetChunkStarting(offset, file.FileMetadata.FileLayout.ChunkSize) {
 		//
 		// Start readahead after the last chunk readahead by prev read calls.
 		// How many more chunks can we readahead?
 		// We are allowed to cache upto fileIOMgr.numReadAheadChunks chunks per file and file.StagedChunks
 		// are already cached.
-		// We update lastReadaheadChunkIdx inside exclusive chunk lock to avoid duplicate readahead
-		// by multiple threads reading sequentially.
-		// If the readahead fails we won't read ahead those chunks again, but that's ok.
 		//
 		file.chunkLock.Lock()
 		ongoingReadahead := max(file.lastReadaheadChunkIdx.Load()-chunkIdx, 0)
 		cachedChunks := int64(len(file.StagedChunks))
 		busyChunks := max(ongoingReadahead, cachedChunks)
 
-		readAheadCount := int64(fileIOMgr.numReadAheadChunks - int(busyChunks))
-		if readAheadCount < 0 {
-			readAheadCount = 0
-		}
-		common.Assert(readAheadCount >= 0, readAheadCount, len(file.StagedChunks), ongoingReadahead)
+		readAheadCount := max(int64(fileIOMgr.numReadAheadChunks-int(busyChunks)), 0)
 
+		// Start readahead after the last chunk readahead by prev read calls or after this chunk.
 		readAheadStartChunkIdx := max(file.lastReadaheadChunkIdx.Load()+1, chunkIdx+1)
 		readAheadEndChunkIdx := min(readAheadStartChunkIdx+readAheadCount,
-			getChunkIdxFromFileOffset(file.FileMetadata.Size-1, &file.FileMetadata.FileLayout))
+			getChunkIdxFromFileOffset(file.FileMetadata.Size-1, file.FileMetadata.FileLayout.ChunkSize))
 		common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
 
-		/*
-			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, [%d, %d), len(StagedChunks): %d, lastReadaheadChunkIdx: %d, readAheadCount: %d",
-				file.FileMetadata.Filename, readAheadStartChunkIdx, readAheadEndChunkIdx,
-				len(file.StagedChunks), file.lastReadaheadChunkIdx.Load(), readAheadCount)
-		*/
-
+		//
+		// Update lastReadaheadChunkIdx inside the lock to avoid duplicate readahead by multiple threads.
+		// The actual readahead is done outside the lock. In the unlikely event of readahead reads failing,
+		// we won't reattempt readahead of those chunks, but that's ok.
+		//
 		if readAheadEndChunkIdx > readAheadStartChunkIdx {
 			file.lastReadaheadChunkIdx.Store(readAheadEndChunkIdx - 1)
 		}
@@ -986,9 +1011,9 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 
 func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
-	chunkIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	_ = chunkIdx
-	chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
+	chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	_ = chunkOffset
 
 	log.Debug("DistributedCache::readChunkNoReadAhead: file: %s, offset: %d, length: %d, chunkIdx: %d, chunkOffset: %d",
@@ -1006,7 +1031,7 @@ func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk
 // Also responsible for releasing the chunks, if the chunks are greater than staging area chunks.
 func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
-	chunkIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 
 	log.Debug("DistributedCache::CreateOrGetStagedChunk: file: %s, offset: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, offset, chunkIdx)
