@@ -446,7 +446,7 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to nexthop node %s and %d daisy chain RV(s): %v",
 		targetNodeID, len(req.NextRVs), reqStr)
 
-	rvName := cm.NodeIdToIP(targetNodeID)
+	rvName := cm.NodeIdToRvName(targetNodeID)
 
 	//
 	// We retry once after resetting bad connections.
