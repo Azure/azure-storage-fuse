@@ -187,6 +187,11 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -286,6 +291,11 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -385,6 +395,11 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -431,7 +446,7 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to nexthop node %s and %d daisy chain RV(s): %v",
 		targetNodeID, len(req.NextRVs), reqStr)
 
-	rvName := cm.RvIdToName(req.Request.Chunk.Address.RvID)
+	rvName := cm.NodeIdToIP(targetNodeID)
 
 	//
 	// We retry once after resetting bad connections.
@@ -522,6 +537,11 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(rvName)
 		}
 
 		// Release RPC client back to the pool.
@@ -621,6 +641,11 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -730,6 +755,11 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -829,6 +859,11 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -928,6 +963,11 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -1027,6 +1067,11 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -1126,6 +1171,11 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -1231,6 +1281,11 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
+			//
+			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.

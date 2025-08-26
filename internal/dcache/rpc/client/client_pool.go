@@ -1217,6 +1217,11 @@ func AddIffyRV(rvName string) {
 
 func RemoveIffyRV(rvName string) {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
+
+	if !IsIffyRV(rvName) {
+		return
+	}
+
 	IffyRVMap.Delete(rvName)
 	log.Debug("client_pool::RemoveIffyRV: removed %s from IffyRVMap", rvName)
 }
