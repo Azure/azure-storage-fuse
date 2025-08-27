@@ -345,14 +345,6 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 		err := ncPool.createRPCClients(cp.maxPerNode)
 		if err != nil {
 			log.Err("clientPool::getNodeClientPool: createRPCClients(%s) failed: %v", nodeID, err)
-
-			//
-			// Add to negativeNodes map to prevent creating new RPC clients to the node ID by other
-			// threads till the negative timeout expires.
-			// Note that createRPCClients() failure indicates some transport problem or the node/blobfuse is down.
-			//
-			cp.negativeNodes.Store(nodeID, time.Now())
-
 			return nil, err
 		}
 
