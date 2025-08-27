@@ -54,8 +54,13 @@ import (
 type RPTracker struct {
 	windowSize     int64
 	prevReadOffset atomic.Int64
-	randomStreak   atomic.Int64
-	fileName       string // For logging purposes only.
+	//
+	// randomStreak is incremented when we see a random read, and decremented when we see a sequential read.
+	// High positive value means "definitely random", high negative value means "definitely sequential", while
+	// values close to zero means "maybe sequential".
+	//
+	randomStreak atomic.Int64
+	fileName     string // For logging purposes only.
 }
 
 func NewRPTracker(file string) *RPTracker {
@@ -65,41 +70,66 @@ func NewRPTracker(file string) *RPTracker {
 	// kernel module will not send reads more than 1MiB to us. If that ever changes this needs to change accordingly.
 	//
 	windowSizeInMiB := int64(10)
-	return &RPTracker{
+	rpt := &RPTracker{
 		windowSize: windowSizeInMiB * common.MbToBytes,
 		fileName:   file,
 	}
+
+	//
+	// Set it to -3 so that if the first read is done at the start of the file, we immediately confirm
+	// sequential access pattern, while if it doesn't start at the beginning, we go to "unsure" state.
+	//
+	rpt.randomStreak.Store(-3)
+	return rpt
 }
 
-func (t *RPTracker) Update(offset, length int64) {
+// It updates the read pattern tracker with a new read at offset of length bytes, and returns the
+// current access pattern: 1 for sequential, -1 for random, 0 for not sure.
+// If you want to know the current access pattern without updating, use Check() instead.
+func (t *RPTracker) Update(offset, length int64) int {
 	common.Assert(offset >= 0 && length > 0, offset, length)
 
-	absDiff := int64(math.Abs(float64(offset - t.prevReadOffset.Load())))
+	prevReadOffset := t.prevReadOffset.Swap(offset + length)
+	accessPattern := 0
+
+	absDiff := int64(math.Abs(float64(offset - prevReadOffset)))
 	if absDiff > 2*t.windowSize {
-		t.randomStreak.Add(1)
-		if t.randomStreak.Load() == 3 {
-			log.Debug("RPTracker::Update: File %s [SEQUENTIAL -> RANDOM], offset: %d, length: %d, prevOffset: %d, absDiff: %d",
-				t.fileName, offset, length, t.prevReadOffset.Load(), absDiff)
+		// Read outside the windows, hints at random access.
+		if t.randomStreak.Add(1) < -3 {
+			log.Warn("RPTracker::Update: File %s (%d) [SEQUENTIAL -> RANDOM], %d -> %d, Streak: %d",
+				t.fileName, length, prevReadOffset, offset, t.randomStreak.Load())
+			// Reset the streak, it still has to prove randomness with 3 more reads.
+			t.randomStreak.Store(0)
+		} else {
+			// Confirmed random access.
+			accessPattern = -1
 		}
 	} else {
-		//
-		// TODO: This means that if two random reads happen to be within 2*windowSize, we will consider
-		//       it sequential. See if we can improve this.
-		//
-		if t.randomStreak.Load() >= 3 {
-			log.Debug("RPTracker::Update: File %s [RANDOM -> SEQUENTIAL], offset: %d, length: %d, prevOffset: %d, absDiff: %d",
-				t.fileName, offset, length, t.prevReadOffset.Load(), absDiff)
+		// Read within the window, hints at sequential access.
+		if t.randomStreak.Add(-1) > 3 {
+			log.Warn("RPTracker::Update: File %s (%d) [RANDOM -> SEQUENTIAL], %d -> %d, Streak: %d",
+				t.fileName, length, prevReadOffset, offset, t.randomStreak.Load())
+			// Reset the streak, it still has to prove sequentialness with 3 more reads.
+			t.randomStreak.Store(0)
+		} else {
+			// Confirmed sequential access.
+			accessPattern = 1
 		}
-		t.randomStreak.Store(0)
 	}
 
-	t.prevReadOffset.Store(offset + length)
+	return accessPattern
 }
 
-func (t *RPTracker) IsSequential() bool {
-	//
-	// If we have seen 3 or more random reads in a row, we consider the pattern random.
-	// So, we start considering read access as sequential and only mark it random when proven otherwise.
-	//
-	return t.randomStreak.Load() < 3
+// Return 1 for definitely sequential, -1 for definitely random, 0 for not sure.
+func (t *RPTracker) Check() int {
+	if t.randomStreak.Load() < -3 {
+		// Definitely sequential.
+		return 1
+	} else if t.randomStreak.Load() > 3 {
+		// Definitely random.
+		return -1
+	} else {
+		// Not sure.
+		return 0
+	}
 }

@@ -79,6 +79,7 @@ func getChunkEndOffset(chunkIdx, chunkSize int64) int64 {
 }
 
 // Returns the size of the chunk containing the given file offset.
+// For all chunks except the last chunk, this will be equal to chunkSize.
 func getChunkSize(offset int64, file *DcacheFile) int64 {
 	// getChunkSize() must be called for a finalized file which will have size >= 0.
 	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
