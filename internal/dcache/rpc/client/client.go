@@ -139,6 +139,7 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 		// threads till the negative timeout expires.
 		//
 		if rpc.IsTimedOut(err) {
+			log.Debug("rpcClient::newRPCClient: Adding node %s at %s to negative nodes map", nodeID, nodeAddress)
 			cp.negativeNodes.Store(nodeID, time.Now())
 		}
 
