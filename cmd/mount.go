@@ -537,7 +537,7 @@ var mountCmd = &cobra.Command{
 			if child == nil { // execute in child only
 
 				// defer the removal of this temp file. This file should only be removed when the mountpoint is
-				// gracefully unmounted. Incase of any panic caused by go runtime/ by our application. This file
+				// gracefully unmounted. In case of any panic caused by go runtime/ by our application. This file
 				// would have the essential stack trace to debug the issue.
 				ppid := os.Getppid()
 				childStdErrFileName = fmt.Sprintf("/tmp/blobfuse2.%v", ppid)
@@ -551,7 +551,7 @@ var mountCmd = &cobra.Command{
 				err = runPipeline(pipeline, ctx)
 
 				defer func() {
-					// if there is any error while intializing the components, we shouldn't delete this temp file.
+					// if there is any error while initializing the components, we shouldn't delete this temp file.
 					// as this file is used by the parent to get the errors from it's child.
 					if err == nil {
 						rmErr := os.Remove(childStdErrFileName)

@@ -54,7 +54,7 @@ type lruNode struct {
 type lruPolicy struct {
 	sync.Mutex
 
-	// wait group for stoping the go-routines gracefully.
+	// wait group for stopping the go-routines gracefully.
 	wg sync.WaitGroup
 
 	cachePolicyConfig
