@@ -546,13 +546,15 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 // This call can come when user application calls fsync()/close().
 func (file *DcacheFile) SyncFile() error {
 	var err error
+	var ret error
+	chunks := make([]*StagedChunk, 0)
+
 	//
 	// Go over all the staged chunks and write to cache if not already done.
 	// Note that we keep fileIOMgr.numStagingChunks number of chunks per file. As chunks are fully written
 	// we upload them to cache, so only the last incomplete chunk would be actually written by the following loop.
 	//
 	file.chunkLock.RLock()
-	defer file.chunkLock.RUnlock()
 
 	log.Debug("DistributedCache[FM]::SyncFile: %s, syncing %d chunks",
 		file.FileMetadata.Filename, len(file.StagedChunks))
@@ -573,17 +575,22 @@ func (file *DcacheFile) SyncFile() error {
 				chunk.Len, file.FileMetadata.FileLayout.ChunkSize, chunk.Idx, file.FileMetadata.Filename)
 		}
 
+		chunks = append(chunks, chunk)
+
+	}
+	file.chunkLock.RUnlock()
+
+	for _, chunk := range chunks {
 		err = <-chunk.Err
 		if err != nil {
-			log.Err("DistributedCache[FM]::SyncFile: file: %s, chunkIdx: %d, chunkLen: %d, failed: %v",
+			ret = fmt.Errorf("DistributedCache[FM]::SyncFile: file: %s, chunkIdx: %d, chunkLen: %d, failed: %v",
 				file.FileMetadata.Filename, chunk.Idx, chunk.Len, err)
-			break
 		}
 	}
 
-	common.Assert(err == nil, file.FileMetadata.Filename, err)
+	common.Assert(ret == nil, file.FileMetadata.Filename, ret)
 
-	return err
+	return ret
 }
 
 // Close and Finalize the file. writes are failed after successful file close.
