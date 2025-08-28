@@ -93,6 +93,22 @@ type clientPool struct {
 	//
 	negativeNodes sync.Map
 
+	//
+	// When we make PutChunkDC() call and one/more connections between the downstream nodes are bad,
+	// it will result in timeout error. So, to prevent multiple threads from timing out after calling
+	// PutChunkDC() to the same RVs, we store the RVs (next-hop as well as next RVs in chain) in the iffyRVMap.
+	// This way the RPC client can know if the RV is marked iffy. If yes, it will return error back
+	// to the caller (WriteMV) indicating it to retry the operation using OriginatorSendsToAll mode.
+	// IffyRVMap stores the RV name as key and time when it was last added as value.
+	//
+	iffyRVMap sync.Map
+
+	// Ticker for periodicRemoveIffyRVs() goroutine.
+	iffyTicker *time.Ticker
+
+	// Channel to stop the periodicRemoveIffyRVs() goroutine.
+	iffyDone chan bool
+
 	maxPerNode uint32 // Maximum number of open RPC clients per node
 	maxNodes   uint32 // Maximum number of nodes for which RPC clients are open
 	timeout    uint32 // Duration in seconds after which a RPC client is closed
@@ -106,14 +122,20 @@ type clientPool struct {
 // TODO: Implement timeout support.
 func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPool {
 	log.Debug("clientPool::newClientPool: Creating new RPC client pool with maxPerNode: %d, maxNodes: %d, timeout: %d", maxPerNode, maxNodes, timeout)
-	return &clientPool{
+	cp := &clientPool{
 		nodeLock:   common.NewLockMap(),
 		maxPerNode: maxPerNode,
 		maxNodes:   maxNodes,
 		timeout:    timeout,
+		iffyTicker: time.NewTicker(defaultIffyRVTimeout),
+		iffyDone:   make(chan bool),
 	}
 
+	go cp.periodicRemoveIffyRVs()
+
 	// TODO: start a goroutine to periodically close inactive RPC clients
+
+	return cp
 }
 
 // Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -1090,6 +1112,67 @@ func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
 	return true
 }
 
+// AddIffyRV adds an RV to the iffyRVMap.
+// When PutChunkDC() fails with timeout error, we add the next-hop RV and the next RVs in chain
+// to the iffyRVMap.
+func (cp *clientPool) addIffyRV(rvName string) {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	cp.iffyRVMap.Store(rvName, time.Now())
+	log.Debug("clientPool::addIffyRV: added %s to IffyRVMap at %v", rvName, time.Now())
+}
+
+// RemoveIffyRV removes an RV from the iffyRVMap.
+// An RV is removed from the map by,
+//   - periodicRemoveIffyRVs() goroutine which checks if the iffyRVTimeout has expired for the RV.
+//   - successful RPC call to the RV indicating that the connection between the client and the
+//     RV is healthy.
+func (cp *clientPool) removeIffyRV(rvName string) {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+
+	if !cp.isIffyRV(rvName) {
+		return
+	}
+
+	cp.iffyRVMap.Delete(rvName)
+	log.Debug("clientPool::removeIffyRV: removed %s from IffyRVMap", rvName)
+}
+
+// Check if an RV is marked iffy.
+func (cp *clientPool) isIffyRV(rvName string) bool {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+
+	_, ok := cp.iffyRVMap.Load(rvName)
+	return ok
+}
+
+// Goroutine which runs every iffyRVTimeout and removes expired RVs from the iffyRVMap.
+func (cp *clientPool) periodicRemoveIffyRVs() {
+	for {
+		select {
+		case <-cp.iffyDone:
+			log.Info("clientPool::periodicRemoveIffyRVs: stopping periodic removal of iffy RVs")
+			return
+		case <-cp.iffyTicker.C:
+			cp.iffyRVMap.Range(func(key, value any) bool {
+				rvName, ok := key.(string)
+				_ = ok
+				common.Assert(ok, key)
+				common.Assert(cm.IsValidRVName(rvName), rvName)
+
+				addedTime, ok := value.(time.Time)
+				_ = ok
+				common.Assert(ok, addedTime)
+
+				if time.Since(addedTime) > defaultIffyRVTimeout {
+					cp.removeIffyRV(rvName)
+				}
+
+				return true
+			})
+		}
+	}
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // nodeClientPool holds a channel of RPC clients for a node
@@ -1204,54 +1287,13 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-var IffyRVMap sync.Map
-var iffyRVTimeout time.Duration = 30 * time.Second
-
-func AddIffyRV(rvName string) {
-	common.Assert(cm.IsValidRVName(rvName), rvName)
-	IffyRVMap.Store(rvName, time.Now())
-	log.Debug("client_pool::AddIffyRV: added %s to IffyRVMap at %v", rvName, time.Now())
-}
-
-func RemoveIffyRV(rvName string) {
-	common.Assert(cm.IsValidRVName(rvName), rvName)
-
-	if !IsIffyRV(rvName) {
-		return
-	}
-
-	IffyRVMap.Delete(rvName)
-	log.Debug("client_pool::RemoveIffyRV: removed %s from IffyRVMap", rvName)
-}
-
+// Check if an RV is marked iffy.
 func IsIffyRV(rvName string) bool {
-	common.Assert(cm.IsValidRVName(rvName), rvName)
-	_, ok := IffyRVMap.Load(rvName)
-	return ok
-}
-
-func periodicRemoveIffyRVs() {
-	IffyRVMap.Range(func(key, value any) bool {
-		rvName, ok := key.(string)
-		_ = ok
-		common.Assert(ok, key)
-		common.Assert(cm.IsValidRVName(rvName), rvName)
-
-		addedTime, ok := value.(time.Time)
-		_ = ok
-		common.Assert(ok, addedTime)
-
-		if time.Since(addedTime) > iffyRVTimeout {
-			RemoveIffyRV(rvName)
-		}
-
-		return true
-	})
+	return cp.isIffyRV(rvName)
 }
 
 // Silence unused import errors for release builds.
 func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 	cm.IsValidRVName("rv0")
-	go periodicRemoveIffyRVs()
 }

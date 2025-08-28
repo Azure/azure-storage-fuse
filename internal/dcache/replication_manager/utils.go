@@ -266,7 +266,7 @@ func addPutChunkDCResponseToChannel(response *models.PutChunkDCResponse, respons
 		len(responseChannel), getNumReplicas())
 }
 
-// Given the component RVs list, return the RVs which are marked iffy
+// Given the component RVs list, return the RVs which are marked iffy.
 func getIffyRVs(nextHopRV string, nextRVs []string) []string {
 	iffyRVs := make([]string, 0)
 

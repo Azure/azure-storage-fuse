@@ -616,6 +616,10 @@ retry:
 		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunkDC request for nexthop %s/%s to node %s: %s",
 			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
+		//
+		// Check if the next-hop RV and the next RVs in chain are present in the iffy RV map.
+		// If yes, we retry the operation using OriginatorSendsToAll.
+		//
 		iffyRVs := getIffyRVs(rvName, putChunkDCReq.NextRVs)
 		if len(iffyRVs) > 0 {
 			err := fmt.Errorf("Iffy RVs %v found in the component RVs, retrying with OriginatorSendsToAll",
@@ -646,6 +650,13 @@ retry:
 				rvName, req.MvName, targetNodeID, err)
 			common.Assert(putChunkDCResp == nil)
 
+			//
+			// If an RV is marked iffy, it means that either it is down or some other downstream
+			// connection issue is preventing the PutChunkDC call to succeed.
+			// So, if an RV is marked iffy, the RPC client will fail the PutChunkDC() call to prevent
+			// the timeout error from happening again. In this case, we will retry the WriteMV() operation
+			// with OriginatorSendsToAll mode.
+			//
 			if strings.Contains(err.Error(), "iffy") {
 				log.Debug("ReplicationManager::writeMVInternal: RV %s is marked iffy, retrying with OriginatorSendsToAll",
 					rvName)

@@ -101,6 +101,11 @@ const (
 	// caller, but small enough to promptly attempt connection to a node that might have now come up.
 	//
 	defaultNegativeTimeout = 30
+
+	//
+	// Timeout after which an RV is removed from the iffyRVMap.
+	//
+	defaultIffyRVTimeout = 30 * time.Second
 )
 
 // TODO: add asserts for function arguments and return values
@@ -191,7 +196,7 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -295,7 +300,7 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -399,7 +404,7 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -460,10 +465,15 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			return nil, err
 		}
 
-		if IsIffyRV(rvName) {
+		//
+		// If the RV is marked iffy, it means that the last PutChunkDC all to it failed with timeout
+		// error. So, prevent from timeout error from happening again, we return an error indicating
+		// the RV is iffy. The caller (WriteMV) will then retry the operation using OriginatorSendsToAll
+		// mode.
+		//
+		if cp.isIffyRV(rvName) {
 			//
-			// This RV has been marked iffy recently, so we fail the PutChunkDC right away.
-			// The caller will retry using OriginatorSendsToAll strategy.
+			// Release RPC client back to the pool.
 			//
 			err1 := cp.releaseRPCClient(client)
 			if err1 != nil {
@@ -505,11 +515,17 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				// Retry PutChunkDC once more with fresh connection.
 				continue
 			} else if rpc.IsTimedOut(err) {
-				AddIffyRV(rvName)
+				//
+				// If we get timeout error in PutChunkDC(), it means that one/more of the downstream
+				// nodes/connections are down/bad. We cannot say for sure which node is down or which connection is bad.
+				// So, we mark all the RVs (next-hop as well as next RVs in chain) as iffy.
+				// This prevents other threads from also timing out if they are calling PutChunkDC for same RVs.
+				//
+				cp.addIffyRV(rvName)
 
-				// Add the next RVs to the iffyRVMap
+				// Add the next RVs to the iffyRVMap.
 				for _, nextRV := range req.NextRVs {
-					AddIffyRV(nextRV)
+					cp.addIffyRV(nextRV)
 				}
 
 				//
@@ -546,7 +562,7 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(rvName)
+			cp.removeIffyRV(rvName)
 		}
 
 		// Release RPC client back to the pool.
@@ -650,7 +666,7 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -764,7 +780,7 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -868,7 +884,7 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -972,7 +988,7 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -1076,7 +1092,7 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -1180,7 +1196,7 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -1290,7 +1306,7 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 			//
 			// The RPC call to the target node succeeded. So, we can remove it from the IffyRVMap.
 			//
-			RemoveIffyRV(cm.NodeIdToRvName(targetNodeID))
+			cp.removeIffyRV(cm.NodeIdToRvName(targetNodeID))
 		}
 
 		// Release RPC client back to the pool.
@@ -1317,6 +1333,10 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 // cleanup closes all the RPC node client pools
 func Cleanup() error {
 	log.Info("rpc_client::Cleanup: Closing all node client pools")
+
+	cp.iffyTicker.Stop()
+	cp.iffyDone <- true
+
 	err := cp.closeAllNodeClientPools()
 	if err != nil {
 		log.Err("rpc_client::Cleanup: Failed to close all node client pools [%v]", err.Error())
