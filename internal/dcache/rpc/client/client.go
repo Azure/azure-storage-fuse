@@ -35,7 +35,6 @@ package rpc_client
 
 import (
 	"crypto/tls"
-	"fmt"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -79,19 +78,10 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	//
 	// Check in the negative nodes map if we should attempt creating RPC client for this node ID.
 	//
-	t, ok := cp.negativeNodes.Load(nodeID)
-	if ok {
-		timeElapsed := int64(time.Since(t.(time.Time)).Seconds())
-		if timeElapsed < defaultNegativeTimeout {
-			err := fmt.Errorf("not creating RPC clients for node %s, negative timeout not expired yet (%d seconds elapsed, %d seconds timeout)",
-				nodeID, timeElapsed, defaultNegativeTimeout)
-			log.Err("rpcClient::newRPCClient: %v", err)
-			return nil, err
-		} else {
-			log.Debug("rpcClient::newRPCClient: Negative timeout expired for node %s, removing from negative nodes map (%d seconds elapsed, %d seconds timeout)",
-				nodeID, timeElapsed, defaultNegativeTimeout)
-			cp.negativeNodes.Delete(nodeID)
-		}
+	err := cp.checkIfNegativeTimeoutExpired(nodeID)
+	if err != nil {
+		log.Err("rpcClient::newRPCClient: not creating RPC clients for node %s: %v", nodeID, err)
+		return nil, err
 	}
 
 	//
@@ -99,8 +89,7 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	// creating a new RPC client for it.
 	//
 	if common.IsDebugBuild() {
-		_, ok = cp.negativeNodes.Load(nodeID)
-		common.Assert(!ok, nodeID)
+		common.Assert(!cp.isNegativeNode(nodeID), nodeID)
 	}
 
 	var transport thrift.TTransport
@@ -110,7 +99,7 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	// }
 
 	transport = thrift.NewTSocketConf(nodeAddress, thriftCfg)
-	transport, err := transportFactory.GetTransport(transport)
+	transport, err = transportFactory.GetTransport(transport)
 	if err != nil {
 		log.Err("rpcClient::newRPCClient: Failed to create transport for node %s at %s [%v]", nodeID, nodeAddress, err.Error())
 		return nil, err
@@ -139,8 +128,8 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 		// threads till the negative timeout expires.
 		//
 		if rpc.IsTimedOut(err) {
-			log.Debug("rpcClient::newRPCClient: Adding node %s at %s to negative nodes map", nodeID, nodeAddress)
-			cp.negativeNodes.Store(nodeID, time.Now())
+			log.Warn("rpcClient::newRPCClient: Adding node %s at %s to negative nodes map", nodeID, nodeAddress)
+			cp.addNegativeNode(nodeID)
 		}
 
 		return nil, err

@@ -215,13 +215,11 @@ func IsTimedOut(err error) bool {
 	//
 	connectionTimedOut := "onnection timed out"
 	ioTimeout := "i/o timeout"
-	timeout := "timeout"
 	return transportEx.TypeId() == thrift.TIMED_OUT ||
 		errors.Is(err, syscall.ETIMEDOUT) ||
 		errors.Is(err, syscall.EAGAIN) ||
 		strings.Contains(err.Error(), connectionTimedOut) ||
-		strings.Contains(err.Error(), ioTimeout) ||
-		strings.Contains(err.Error(), timeout)
+		strings.Contains(err.Error(), ioTimeout)
 }
 
 // Silence unused import errors for release builds.

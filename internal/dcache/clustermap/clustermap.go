@@ -175,11 +175,6 @@ func NodeIdToIP(nodeId string) string {
 	return clusterMap.nodeIdToIP(nodeId)
 }
 
-// It will return the RV name of the given nodeId as per local cache copy of cluster map.
-func NodeIdToRvName(nodeId string) string {
-	return clusterMap.nodeIdToRvName(nodeId)
-}
-
 // It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map.
 func RvIdToName(rvId string) string {
 	return clusterMap.rvIdToName(rvId)
@@ -730,20 +725,6 @@ func (c *ClusterMap) nodeIdToIP(nodeId string) string {
 	}
 
 	log.Debug("ClusterMap::nodeIdToIP: node %s not found", nodeId)
-
-	// Callers should not call for non-existent nodes.
-	common.Assert(false, nodeId)
-	return ""
-}
-
-func (c *ClusterMap) nodeIdToRvName(nodeId string) string {
-	for rvName, rv := range c.getLocalMap().RVMap {
-		if rv.NodeId == nodeId {
-			return rvName
-		}
-	}
-
-	log.Debug("ClusterMap::nodeIdToRvName: node %s not found", nodeId)
 
 	// Callers should not call for non-existent nodes.
 	common.Assert(false, nodeId)

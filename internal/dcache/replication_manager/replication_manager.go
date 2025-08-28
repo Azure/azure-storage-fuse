@@ -35,6 +35,7 @@ package replication_manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -159,7 +160,7 @@ retry:
 	// of any unexpected errors. This is important as failing here will result in application request failure
 	// which should only be done when we really cannot proceed.
 	//
-	// TODO: make it more resilient
+	// TODO: make it more resilient. We should never fail client IO.
 	//
 	if retryCnt > 5 {
 		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
@@ -617,13 +618,21 @@ retry:
 			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
 		//
-		// Check if the next-hop RV and the next RVs in chain are present in the iffy RV map.
-		// If yes, we retry the operation using OriginatorSendsToAll.
+		// Check if the nodes containing the next-hop RV and the next RVs in chain are present
+		// in the negative nodes map. If yes, we retry the operation using OriginatorSendsToAll.
+		// This check for skipping the DaisyChain write is done in the rpc_client.PutChunkDC() call
+		// also, where we just check if the next-hop node is present in the negative nodes map.
+		// Whereas here, we are also checking the nodes containing the next RVs in the chain if they
+		// are present in the negative nodes map.
+		// If one of the next nodes in chain is present in the negative nodes map, whereas the next-hop
+		// node is not, then the check in the PutChunkDC() will allow the RPC call to go through which will
+		// eventually timeout. So, adding the check for all the RVs here prevents an additional timeout
+		// error from occurring.
 		//
-		iffyRVs := getIffyRVs(rvName, putChunkDCReq.NextRVs)
-		if len(iffyRVs) > 0 {
-			err := fmt.Errorf("Iffy RVs %v found in the component RVs, retrying with OriginatorSendsToAll",
-				iffyRVs)
+		negativeRVs := rpc_client.GetNegativeRVs(&rvName, &putChunkDCReq.NextRVs)
+		if len(*negativeRVs) > 0 {
+			err := fmt.Errorf("Negative RVs %v found in the component RVs, retrying with OriginatorSendsToAll",
+				*negativeRVs)
 			log.Err("ReplicationManager::writeMVInternal: %v", err)
 			return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 		}
@@ -651,14 +660,14 @@ retry:
 			common.Assert(putChunkDCResp == nil)
 
 			//
-			// If an RV is marked iffy, it means that either it is down or some other downstream
+			// If the node containing the RV is marked negative, it means that either it is down or some other downstream
 			// connection issue is preventing the PutChunkDC call to succeed.
-			// So, if an RV is marked iffy, the RPC client will fail the PutChunkDC() call to prevent
+			// So, if the node is marked negative, the RPC client will fail the PutChunkDC() call to prevent
 			// the timeout error from happening again. In this case, we will retry the WriteMV() operation
 			// with OriginatorSendsToAll mode.
 			//
-			if strings.Contains(err.Error(), "iffy") {
-				log.Debug("ReplicationManager::writeMVInternal: RV %s is marked iffy, retrying with OriginatorSendsToAll",
+			if errors.Is(err, rpc_client.NegativeNodeError) {
+				log.Debug("ReplicationManager::writeMVInternal: RV %s is marked negative, retrying with OriginatorSendsToAll",
 					rvName)
 				return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 			}
