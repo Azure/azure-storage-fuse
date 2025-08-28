@@ -419,10 +419,16 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 				Size: attr.Size,
 			})
 		if err != nil {
-			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
-			common.Assert(false, err)
+			if !os.IsNotExist(err) && err != syscall.ENOENT {
+				log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
+				common.Assert(false, err)
+			} else {
+				log.Debug("getBlobSafe:: Blob deleted between GetProperties and GetBlob %s: %v",
+					blobPath, err)
+			}
 			//
-			// Since GetPropertiesFromStorage() succeeded this must be a transient error, so retry.
+			// Since GetPropertiesFromStorage() succeeded this must be a transient error, or most
+			// likely the blob was deleted after the GetProperties call, in any case retry will tell.
 			// In the rare case that the Blob is deleted, it'll cause just one additional retry.
 			//
 			continue
@@ -433,8 +439,17 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 				Name: blobPath,
 			})
 		if err != nil {
-			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
-			// Must be transient error, so retry.
+			if !os.IsNotExist(err) && err != syscall.ENOENT {
+				log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
+				common.Assert(false, err)
+			} else {
+				log.Debug("getBlobSafe:: Blob deleted between GetBlob and GetProperties %s: %v",
+					blobPath, err)
+			}
+			//
+			// Must be transient error, or blob could be deleted after GetBlob above, in any case retry.
+			// will help resolve.
+			//
 			continue
 		}
 
