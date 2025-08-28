@@ -3510,8 +3510,13 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	stats.Stats.CM.Heartbeats.CollectHB.MaxTime =
 		max(stats.Stats.CM.Heartbeats.CollectHB.MaxTime, duration)
 
-	log.Debug("ClusterManager::updateRVList: Collected %d heartbeats for %d nodes (initialHB=%v), failed to read HB for %d nodes: %+v",
-		len(rVsByRvIdFromHB), len(nodes), initialHB, len(failedToReadNodes), failedToReadNodes)
+	if initialHB {
+		log.Debug("ClusterManager::updateRVList: Collected %d RVs from %d nodes (initialHB), failed to read HB for %d nodes: %+v",
+			len(rVsByRvIdFromHB), len(nodes), len(failedToReadNodes), failedToReadNodes)
+	} else {
+		log.Debug("ClusterManager::updateRVList: Collected %d RVs from %d nodes, failed to read HB for %d nodes: %+v",
+			len(rVsByRvIdFromHB), len(nodeIds), len(failedToReadNodes), failedToReadNodes)
+	}
 
 	// Both the RV and the RV HB map must have the exact same RVs.
 	common.Assert(len(rVsByRvIdFromHB) == len(rvLastHB), len(rVsByRvIdFromHB), len(rvLastHB))
