@@ -40,6 +40,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -71,7 +72,9 @@ func InitBufferPool(bufSize uint64) error {
 	// We should allow sufficiently many buffers to support at least few files being read/written
 	// simultaneously.
 	// Note that only writeChunk uses buffers from this pool while readChunk uses buffers allocated by
-	// thrift and those are not accounted in this.
+	// thrift and those are not accounted in this, with local RVs being an exception to that. When
+	// reading from local RVs, ReadMV() calls GetChunkLocal() which results in buffers being allocated
+	// from this pool.
 	//
 	// TODO: Find out how/if thrift controls those buffers, or does it result in OOM killing of the
 	//       process.
@@ -106,6 +109,9 @@ func InitBufferPool(bufSize uint64) error {
 		bufSize:    int(bufSize),
 		maxBuffers: int64(maxBuffers),
 	}
+
+	log.Info("Buffer Pool: Initialized with buffer size: %d bytes, max buffers: %d, total size: %.2f MB",
+		bufPool.bufSize, bufPool.maxBuffers, float64(bufPool.maxBuffers*int64(bufPool.bufSize))/(1024.0*1024.0))
 
 	return nil
 }

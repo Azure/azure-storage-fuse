@@ -1942,7 +1942,8 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v", rpc.ReadIOMode, rpc.GetChunkRequestToString(req))
+	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request (%v): %v",
+		rpc.ReadIOMode, rpc.GetChunkRequestToString(req))
 
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
