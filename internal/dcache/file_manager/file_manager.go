@@ -348,7 +348,11 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 				//
 				removed := file.removeChunk(chunk.Idx)
 				_ = removed
-				common.Assert(removed == true, chunk.Idx, file.FileMetadata.Filename)
+				//
+				// We cannot assert for the following as the chunk may be removed from the map by the time we
+				// reach here. e.g., one case I saw is some other thread called removeAllChunks() above.
+				//
+				//common.Assert(removed == true, chunk.Idx, file.FileMetadata.Filename)
 			}
 		}
 
@@ -762,7 +766,7 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 		file.FileMetadata.Filename, chunkIdx, chunkOffset, length)
 
 	common.Assert(chunkIdx >= 0, chunkIdx, chunkOffset, length, noCache, file.FileMetadata.Filename)
-	common.Assert(chunkOffset + length <= file.FileMetadata.FileLayout.ChunkSize,
+	common.Assert(chunkOffset+length <= file.FileMetadata.FileLayout.ChunkSize,
 		chunkIdx, chunkOffset, length, file.FileMetadata.FileLayout.ChunkSize, noCache, file.FileMetadata.Filename)
 
 	//
@@ -846,7 +850,7 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 
 	common.Assert(chunkIdx >= 0, chunkIdx, chunkOffset, length)
 	common.Assert(chunkOffset >= 0, chunkIdx, chunkOffset, length)
-	common.Assert(length >= 0 && (chunkOffset + length) <= file.FileMetadata.FileLayout.ChunkSize,
+	common.Assert(length >= 0 && (chunkOffset+length) <= file.FileMetadata.FileLayout.ChunkSize,
 		chunkIdx, chunkOffset, length)
 
 	noCache := (length != 0)
@@ -1170,7 +1174,7 @@ func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk
 		file.FileMetadata.Filename, offset, length, chunkIdx, chunkOffset)
 
 	// length must not be 0 to signify random read.
-	common.Assert(length > 0 && (chunkOffset + length) <= file.FileMetadata.FileLayout.ChunkSize,
+	common.Assert(length > 0 && (chunkOffset+length) <= file.FileMetadata.FileLayout.ChunkSize,
 		length, chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
 
 	// Read the chunk, wait for it to download.

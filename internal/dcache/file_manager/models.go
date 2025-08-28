@@ -54,15 +54,15 @@ type StagedChunk struct {
 	// track that.
 	//
 	IsBufExternal bool
-	Dirty         atomic.Bool     // Chunk has application data that must be written to the dcache.
-	UpToDate      atomic.Bool     // Chunk has been read from the cache and data matches dcache data.
-	XferScheduled atomic.Bool     // Is read/write from/to dcache already scheduled for this staged chunk?
-	SavedInMap    atomic.Bool     // This staged chunk is saved in DcacheFile.StagedChunks map.
+	Dirty         atomic.Bool // Chunk has application data that must be written to the dcache.
+	UpToDate      atomic.Bool // Chunk has been read from the cache and data matches dcache data.
+	XferScheduled atomic.Bool // Is read/write from/to dcache already scheduled for this staged chunk?
+	SavedInMap    atomic.Bool // This staged chunk is saved in DcacheFile.StagedChunks map.
 	//
 	// Reference count, number of active users of this staged chunk.
 	// getChunk() increments the count, and caller must call releaseChunk().
 	// Last user to drop their reference will free the chunk memory.
 	//
-	RefCount      atomic.Int32
-	IOTracker     *ChunkIOTracker // IOTracker for this staged chunk.
+	RefCount  atomic.Int32
+	IOTracker *ChunkIOTracker // IOTracker for this staged chunk.
 }
