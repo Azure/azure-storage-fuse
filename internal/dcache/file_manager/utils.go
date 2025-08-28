@@ -356,6 +356,11 @@ func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf boo
 		}
 	}
 
+	//
+	// length==0 means entire chunk.
+	// If non-zero it means only a part of the chunk is being staged, precisely [offset, offset+length).
+	// In that case we need to ensure that the length doesn't exceed the chunk boundary.
+	//
 	if length != 0 {
 		chunkSize := int64(cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes)
 		length = min(length, chunkSize-offset)

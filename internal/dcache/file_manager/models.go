@@ -38,10 +38,14 @@ import (
 )
 
 type StagedChunk struct {
-	Idx    int64      // chunk index
-	Buf    []byte     // buf size == chunkSize
-	Offset int64      // offset in chunk
-	Len    int64      // valid bytes in Buf
+	Idx int64  // chunk index
+	Buf []byte // buf size == chunkSize
+	//
+	// offset in chunk that we are caching. Usually we cache entire chunk, so this will be 0, but for random
+	// reads we only cache whatever is requested, so offset may be non-zero.
+	//
+	Offset int64
+	Len    int64      // valid bytes in Buf (starting from Offset)
 	Err    chan error // Download/upload status, available after download/upload completes, nil means success.
 	//
 	// For ReadMV(), buffer is returned by GetChunk() RPC, so we don't allocate it in
@@ -54,6 +58,11 @@ type StagedChunk struct {
 	UpToDate      atomic.Bool     // Chunk has been read from the cache and data matches dcache data.
 	XferScheduled atomic.Bool     // Is read/write from/to dcache already scheduled for this staged chunk?
 	SavedInMap    atomic.Bool     // This staged chunk is saved in DcacheFile.StagedChunks map.
-	RefCount      atomic.Int32    // Reference count, number of active users of this staged chunk.
+	//
+	// Reference count, number of active users of this staged chunk.
+	// getChunk() increments the count, and caller must call releaseChunk().
+	// Last user to drop their reference will free the chunk memory.
+	//
+	RefCount      atomic.Int32
 	IOTracker     *ChunkIOTracker // IOTracker for this staged chunk.
 }

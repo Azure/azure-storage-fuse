@@ -47,6 +47,7 @@ import (
 // Caller can use this to determine if the entire chunk has been read or written. If entire chunk is read by
 // the application then we would want to release the chunk from cache. Similarly, if entire chunk is written
 // then we would want to flush the chunk to the backing store.
+// This is used to support slightly reordered sequential reads/writes for better performance due to parallelism.
 //
 
 const (
@@ -55,9 +56,10 @@ const (
 	// We use 1 bit to track MinTrackableIOSize bytes of chunk memory.
 	// This has the following implications:
 	// 1. We cannot allow writes smaller than this, as we cannot track them and hence cannot be sure
-	//    if/when the chunk is fully written.
+	//    if/when the chunk is fully written. Note that we can support any sized write as long as it
+	//    is strictly sequential.
 	// 2. Reads smaller than this cannot be served from cache, as we cannot track them and hence cannot
-	//    be sure if/when the chunk is fully read and hence safe to evict.
+	//    be sure if/when the chunk is fully read and thus safe to evict.
 	//
 	// TODO: Make this configurable. Also default to a smaller value like 4KB or 8KB.
 	//
@@ -95,13 +97,14 @@ func GetMinTrackableIOSize() int64 {
 
 // MarkAccessed marks the given range [offsetInChunk, offsetInChunk+length) as accessed (read or written).
 // Returns true if this access caused the entire chunk to be accessed, false otherwise.
+// Note: chunkIdx is only used to help assertions/logging.
 func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length, chunkIdx int64) bool {
 	// We should not be called for IO sizes and offsets which are not exact multiples of MinTrackableIOSize.
-	common.Assert(length%MinTrackableIOSize == 0, length, MinTrackableIOSize)
-	common.Assert(offsetInChunk%MinTrackableIOSize == 0, offsetInChunk, MinTrackableIOSize)
+	common.Assert(length%MinTrackableIOSize == 0, length, MinTrackableIOSize, chunkIdx)
+	common.Assert(offsetInChunk%MinTrackableIOSize == 0, offsetInChunk, MinTrackableIOSize, chunkIdx)
 	// The entire requested range should be within a chunk.
-	common.Assert(offsetInChunk >= 0 && offsetInChunk < chunkSize, offsetInChunk, chunkSize)
-	common.Assert(offsetInChunk+length <= chunkSize, offsetInChunk, length, chunkSize)
+	common.Assert(offsetInChunk >= 0 && offsetInChunk < chunkSize, offsetInChunk, chunkSize, chunkIdx)
+	common.Assert(offsetInChunk+length <= chunkSize, offsetInChunk, length, chunkSize, chunkIdx)
 
 	fullyAccessed := false
 
@@ -110,7 +113,7 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length, chunkIdx int64) bo
 	//
 	for {
 		block := int(offsetInChunk / MinTrackableIOSize)
-		common.Assert(block >= 0 && block < numBlocks, offsetInChunk, block, chunkSize, MinTrackableIOSize)
+		common.Assert(block >= 0 && block < numBlocks, offsetInChunk, block, chunkSize, MinTrackableIOSize, chunkIdx)
 
 		word := block / 64
 		bit := uint(block % 64)
@@ -118,10 +121,15 @@ func (bt *ChunkIOTracker) MarkAccessed(offsetInChunk, length, chunkIdx int64) bo
 		common.Assert(word >= 0 && word < len(bt.bitmap), word, len(bt.bitmap))
 
 		if common.AtomicTestAndSetBitUint64(&bt.bitmap[word], bit) {
+			//
+			// Only one thread can set one bit, but multiple threads can set different bits concurrently,
+			// so we need to use atomic increment for bt.count.
+			// The first one to reach numBlocks will set fullyAccessed to true.
+			//
 			if bt.count.Add(1) == int32(numBlocks) {
 				fullyAccessed = true
 			}
-			common.Assert(bt.count.Load() <= int32(numBlocks), bt.count.Load(), numBlocks)
+			common.Assert(bt.count.Load() <= int32(numBlocks), bt.count.Load(), numBlocks, chunkIdx)
 		}
 
 		offsetInChunk += MinTrackableIOSize

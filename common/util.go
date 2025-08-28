@@ -339,21 +339,22 @@ func AtomicTestAndSetBitUint64(addr *uint64, bit uint) bool {
 	}
 }
 
-// updateMaxAtomically updates the target value to 'newValue' only if 'newValue' is greater.
+// Atomically update the target value to 'newValue' only if 'newValue' is greater.
+// This is the atomic max() operation.
 func AtomicMaxInt64(target *int64, newValue int64) {
 	for {
 		currentValue := atomic.LoadInt64(target)
 		if newValue <= currentValue {
-			// New value is not greater, no update needed
+			// New value is not greater, no update needed.
 			return
 		}
 
-		// Attempt to swap if current value matches what we loaded
+		// Attempt to swap if current value matches what we loaded.
 		if atomic.CompareAndSwapInt64(target, currentValue, newValue) {
-			// Successful swap
+			// Successful swap.
 			return
 		}
-		// If CAS failed, another goroutine changed the value, so loop and retry
+		// If CAS failed, another thread changed the value, loop and retry.
 	}
 }
 
