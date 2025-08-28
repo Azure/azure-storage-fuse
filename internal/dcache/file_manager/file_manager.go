@@ -283,8 +283,12 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 			// For sequential reads we must be reading the entire chunk.
 			common.Assert(chunk.Offset == 0 && chunk.Len == file.FileMetadata.FileLayout.ChunkSize,
 				chunk.Idx, chunk.Offset, chunk.Len, file.FileMetadata.Filename)
+			//
 			// And the chunk must be saved in StagedChunks map.
-			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
+			// We cannot assert for the following as the chunk may be removed from the map by the time we
+			// reach here. e.g., one case I saw is some other thread called removeAllChunks() above.
+			//
+			// common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 		} else {
 			// For random read pattern we don't do readahead, and also don't save the chunk in StagedChunks map.
 			chunk, err = file.readChunkNoReadAhead(offset, readSize)
@@ -774,7 +778,9 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 			// Once caller is done with the chunk it must call file.releaseChunk().
 			//
 			chunk.RefCount.Add(1)
+			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 			file.chunkLock.RUnlock()
+			common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
 			return chunk, true, nil
 		}
 		file.chunkLock.RUnlock()
@@ -789,6 +795,8 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 		defer file.chunkLock.Unlock()
 
 		if chunk, ok := file.StagedChunks[chunkIdx]; ok {
+			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
+			common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
 			chunk.RefCount.Add(1)
 			return chunk, true, nil
 		}
@@ -821,6 +829,7 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 	common.Assert(!chunk.XferScheduled.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 	common.Assert(!chunk.Dirty.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 	common.Assert(!chunk.UpToDate.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
+	common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
 
 	return chunk, false, nil
 }
