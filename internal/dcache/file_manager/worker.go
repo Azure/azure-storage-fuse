@@ -99,7 +99,7 @@ func (wp *workerPool) worker() {
 
 func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk bool) {
 	// We must be called only after scheduling the chunk for transfer (upload/download)
-	common.Assert(chunk.XferScheduled.Load() == true, chunk.Idx, file.FileMetadata.Filename)
+	common.Assert(chunk.XferScheduled.Load() == true, chunk.Idx, get_chunk, file.FileMetadata.Filename)
 
 	t := &task{
 		file:      file,
@@ -110,7 +110,7 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 }
 
 func (wp *workerPool) readChunk(task *task) {
-	log.Debug("DistributedCache::readChunk: Reading chunk idx: %d, chunk Offset: %d, chunk Len: %d, file: %s",
+	log.Debug("DistributedCache::readChunk: Reading chunkIdx: %d, chunk Offset: %d, chunk Len: %d, file: %s",
 		task.chunk.Idx, task.chunk.Offset, task.chunk.Len, task.file.FileMetadata.Filename)
 
 	// For read chunk, buffer must not be pre-allocated, ReadMV() returns the buffer.
@@ -198,16 +198,10 @@ func (wp *workerPool) writeChunk(task *task) {
 		common.Assert(task.chunk.Dirty.Load())
 		task.chunk.Dirty.Store(false)
 
-		//
 		// Convey success to anyone waiting for the upload to complete.
-		// Note: This MUST be done before calling removeChunk() as that may cause deadlock as SyncFile()
-		//       is waiting for the chunk to be removed, and it holds the read chunk lock.
-		//
 		close(task.chunk.Err)
 
-		//
 		// The chunk is uploaded to DCache, we can release it now.
-		//
 		log.Debug("DistributedCache::writeChunk: Writing completed file: %s, chunkIdx: %d, chunk.Len: %s, refcount: %d",
 			task.file.FileMetadata.Filename, task.chunk.Idx, task.chunk.Len, task.chunk.RefCount.Load())
 
@@ -215,7 +209,7 @@ func (wp *workerPool) writeChunk(task *task) {
 		return
 	}
 
-	log.Err("DistrubuteCache[FM]::WriteChunk: Writing chunk to DCache failed, chnk idx: %d, file: %s: %v",
+	log.Err("DistrubuteCache[FM]::WriteChunk: Writing chunk to DCache failed, chunkIdx: %d, file: %s: %v",
 		task.chunk.Idx, task.file.FileMetadata.Filename, err)
 
 	task.chunk.Err <- err

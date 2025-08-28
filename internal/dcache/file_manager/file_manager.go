@@ -758,6 +758,8 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 		file.FileMetadata.Filename, chunkIdx, chunkOffset, length)
 
 	common.Assert(chunkIdx >= 0, chunkIdx, chunkOffset, length, noCache, file.FileMetadata.Filename)
+	common.Assert(chunkOffset + length <= file.FileMetadata.FileLayout.ChunkSize,
+		chunkIdx, chunkOffset, length, file.FileMetadata.FileLayout.ChunkSize, noCache, file.FileMetadata.Filename)
 
 	//
 	// If already present in StagedChunks, return that.
@@ -835,8 +837,8 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 
 	common.Assert(chunkIdx >= 0, chunkIdx, chunkOffset, length)
 	common.Assert(chunkOffset >= 0, chunkIdx, chunkOffset, length)
-	common.Assert(length >= 0 && length <= file.FileMetadata.FileLayout.ChunkSize, chunkIdx, chunkOffset, length)
-	common.Assert(chunkOffset+length <= file.FileMetadata.FileLayout.ChunkSize, chunkIdx, chunkOffset, length)
+	common.Assert(length >= 0 && (chunkOffset + length) <= file.FileMetadata.FileLayout.ChunkSize,
+		chunkIdx, chunkOffset, length)
 
 	noCache := (length != 0)
 	if length == 0 {
@@ -863,7 +865,9 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 
 	common.Assert(chunkIdx >= 0)
 
-	chunk, _, err := file.getChunk(chunkIdx, 0, 0, false /* noCache */, true /* allocateBuf */)
+	chunk, loaded, err := file.getChunk(chunkIdx, 0 /* chunkOffset */, 0 /* length */, false /* noCache */, true /* allocateBuf */)
+	_ = loaded
+
 	// TODO: Assert that number of staged chunks is less than fileIOManager.numStagingChunks.
 	//
 	// For write chunks chunk.Len is the amount of valid data in the chunk. It starts at 0 and updated as user
@@ -872,7 +876,7 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 	//
 	if err == nil {
 		// We always write full chunks except possibly the last chunk, but even that starts at offset 0.
-		common.Assert(chunk.Offset == 0, chunk.Offset, chunk.Idx, file.FileMetadata.Filename)
+		common.Assert(chunk.Offset == 0, chunk.Offset, chunk.Idx, file.FileMetadata.Filename, loaded)
 	}
 
 	return chunk, err
@@ -905,10 +909,10 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) bool {
 	// be at least 2, but we can only assert for >=1 here
 	//
 	common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load())
-	common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
-	// Dirty chunks must be uploaded.
+	// Dirty chunks must be uploaded first.
 	common.Assert(chunk.Dirty.Load() == false, chunk.Idx, file.FileMetadata.Filename)
 
+	common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 	chunk.SavedInMap.Store(false)
 
 	//
@@ -928,9 +932,9 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) bool {
 // DO NOT call it if there are dirty chunks, they must be uploaded before calling this.
 func (file *DcacheFile) removeAllChunks() error {
 	file.chunkLock.Lock()
-	defer file.chunkLock.RUnlock()
+	defer file.chunkLock.Unlock()
 
-	// Avoid the logs if there are no chunks.
+	// Avoid the log if there are no chunks.
 	if len(file.StagedChunks) == 0 {
 		return nil
 	}
@@ -959,7 +963,7 @@ func (file *DcacheFile) removeAllChunks() error {
 		// We will remove the chunk from the map in any case, but if the chunk is being used, we won't
 		// free it, it'll be freed when the last user releases it.
 		//
-		common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load())
+		common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load(), file.FileMetadata.Filename)
 		common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 
 		chunk.SavedInMap.Store(false)
@@ -986,6 +990,7 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 	common.Assert(chunk.RefCount.Load() > 0, chunk.Idx, chunk.RefCount.Load())
 
 	if chunk.RefCount.Add(-1) != 0 {
+		// Not the last user of the chunk, so cannot free it.
 		return false
 	}
 
@@ -1012,7 +1017,7 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 // from the file into that chunk.
 //
 // Sync true: Schedules and waits for the download to complete.
-// Sync false: Schedules the read. This is the readahead path.
+// Sync false: Schedules the read but doesn't wait for download to complete. This is the readahead case.
 
 func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
@@ -1027,7 +1032,7 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 
 	//
 	// If this chunk is already staged, return the staged chunk else create a new chunk, add to the staged
-	// chunks list and return. The chunk download is not yet scheduled.
+	// chunks list and return. For a new chunk, the chunk download is not yet scheduled.
 	//
 	chunk, err := file.getChunkForRead(chunkIdx, chunkOffset, length)
 	if err != nil {
@@ -1043,7 +1048,7 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 		chunk.RefCount.Add(-1)
 	}
 
-	// This will be a no-op if this chunk is already read from dcache.
+	// This will be a no-op if this chunk download is already scheduled.
 	scheduleDownload(chunk, file)
 
 	if sync {
@@ -1061,10 +1066,10 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	return chunk, err
 }
 
-// Reads the chunk and also schedules the downloads for the readahead chunks.
+// Reads the chunk and also schedules downloads for the necessary readahead chunks.
 // Returns the StagedChunk containing data at 'offset' in the file.
 // Readahead is done only when reading the start of a chunk and when caller is sure of the sequential
-// access pattern (unsure==false). Id not sure, we store the chunk in cache but don't do readahead.
+// access pattern (unsure==false). If not sure, we store the chunk in cache but don't do readahead.
 //
 // Note: This reads the entire chunk into an allocated StagedChunk and adds it to the StagedChunks map.
 //       This is suitable for sequential read patterns where readahead is beneficial and it's useful
@@ -1092,7 +1097,7 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		// are already cached.
 		//
 		file.chunkLock.Lock()
-		// Conservative estimate of chunks in use (already staged + readahead scheduled but not yet done).
+		// Conservative estimate of chunks in use (already staged + readahead scheduled but not yet issued).
 		chunksInUse := file.readaheadToBeIssued.Load() + int64(len(file.StagedChunks))
 		// How many more chunks are we allowed to readahead?
 		readAheadCount := max(int64(fileIOMgr.numReadAheadChunks-int(chunksInUse)), 0)
@@ -1116,8 +1121,10 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 
 		for i := readAheadStartChunkIdx; i < readAheadEndChunkIdx; i++ {
 			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0, false /* sync */)
+
 			common.Assert(file.readaheadToBeIssued.Load() > 0,
 				file.readaheadToBeIssued.Load(), file.FileMetadata.Filename)
+
 			file.readaheadToBeIssued.Add(-1)
 			if err != nil {
 				// Don't fail the read because readahead failed.
@@ -1128,24 +1135,25 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 	}
 
 	// Now the actual chunk, unlike readahead chunks we wait for this one to download.
-	chunk, err := file.readChunk(offset, 0, true /* sync */)
+	chunk, err := file.readChunk(offset, 0 /* length */, true /* sync */)
 	return chunk, err
 }
 
 // Reads 'length' bytes from file at 'offset' and returns the StagedChunk containing the requested data.
 //
 // Note: This has following differences from readChunkWithReadAhead():
-//       1. It does not read the entire chunk, only [offset, offset+length) bytes are read.
+//       1. It does not necessarily read the entire chunk, only [offset, offset+length) bytes are read.
 //       2. It does not save the chunk in StagedChunks map, so it is not available for subsequent reads.
 //       3. It does not do readahead of subsequent chunks.
 //
-// This is suitable for random read patterns where readahead is not beneficial and we don't want to
-// save the chunk in StagedChunks map for subsequent reads.
+// This is suitable for random read patterns where readahead is not beneficial and we don't want to save
+// the chunk in StagedChunks map for subsequent reads.
 
 func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	_ = chunkIdx
+	// Offset within that chunk.
 	chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	_ = chunkOffset
 
@@ -1153,15 +1161,15 @@ func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk
 		file.FileMetadata.Filename, offset, length, chunkIdx, chunkOffset)
 
 	// length must not be 0 to signify random read.
-	common.Assert(length > 0 && length <= file.FileMetadata.FileLayout.ChunkSize, length)
+	common.Assert(length > 0 && (chunkOffset + length) <= file.FileMetadata.FileLayout.ChunkSize,
+		length, chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
 
-	// Now the actual chunk, unlike readahead chunks we wait for this one to download.
+	// Read the chunk, wait for it to download.
 	chunk, err := file.readChunk(offset, length, true /* sync */)
 	return chunk, err
 }
 
-// Creates/return the chunk that is ready to be written.
-// Also responsible for releasing the chunks, if the chunks are greater than staging area chunks.
+// Create/return the chunk that is ready to be written.
 func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
@@ -1175,12 +1183,17 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 	}
 
 	common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, offset, file.FileMetadata.Filename)
+	// We never write partial chunks, except possibly the last chunk in the file, but even those start at offset 0.
+	common.Assert(chunk.Offset == 0, chunk.Offset, chunk.Idx, file.FileMetadata.Filename)
+
 	return chunk, nil
 }
 
 func scheduleDownload(chunk *StagedChunk, file *DcacheFile) bool {
 	// chunk.Len is the amount of bytes to download, cannot be 0.
 	common.Assert(chunk.Len > 0)
+	// Must have a valid refcount.
+	common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load())
 
 	if !chunk.XferScheduled.Swap(true) {
 		log.Debug("DistributedCache::scheduleDownload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
@@ -1201,6 +1214,10 @@ func scheduleDownload(chunk *StagedChunk, file *DcacheFile) bool {
 func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 	// chunk.Len is the amount of bytes to upload, cannot be 0.
 	common.Assert(chunk.Len > 0)
+	// We never upload partial chunks, except possibly the last chunk in the file, but even those start at offset 0.
+	common.Assert(chunk.Offset == 0)
+	// Must have a valid refcount.
+	common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load())
 
 	if !chunk.XferScheduled.Swap(true) {
 		log.Debug("DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",

@@ -41,15 +41,15 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-// Primary goal of our read pattern tracker is to correctly identify parallel FUSE read requests as a result
-// of a large application read as sequential. e.g., our target applications may issue large reads, say 10MiB,
-// which FUSE will break down into multiple parallel reads, say 1MiB each. These 10x1MiB reads will be processed
-// by multiple libfuse threads in non-deterministic order. The application will issue the next 10MiB read
-// immediately adjacent to the previous 10MiB read, which is purely sequential reads. We should not consider
-// the reordered 1MiB reads as random reads.
+// Primary goal of our read pattern tracker is to correctly identify parallel FUSE read requests originated
+// from a single large application read, as sequential. e.g., our target applications may issue large reads,
+// say 10MiB, which FUSE kernel driver will break down into multiple parallel reads, upto 1MiB each. These
+// 10x1MiB reads will be processed by multiple libfuse threads in non-deterministic order. The application will
+// issue the next 10MiB read immediately adjacent to the previous 10MiB read, which is purely sequential reads.
+// We should not consider the reordered 1MiB reads as random reads.
 //
 // We maintain a windowSize that determines how many such parallel reads can be active at any time. If Nth read
-// is withing 2*windowSize of previous read, we consider it sequential. This is because the 1st read of prev batch
+// is within 2*windowSize of previous read, we consider it sequential. This is because the 1st read of prev batch
 // and the last read of current batch can be processed one after another and will be 2*windowSize apart.
 type RPTracker struct {
 	windowSize     int64
@@ -57,7 +57,7 @@ type RPTracker struct {
 	//
 	// randomStreak is incremented when we see a random read, and decremented when we see a sequential read.
 	// High positive value means "definitely random", high negative value means "definitely sequential", while
-	// values close to zero means "maybe sequential".
+	// values close to zero means "not sure".
 	//
 	randomStreak atomic.Int64
 	fileName     string // For logging purposes only.
@@ -67,9 +67,11 @@ func NewRPTracker(file string) *RPTracker {
 	//
 	// This should not be less than max fuse threads (max_threads) as that decides how many parallel reads can be
 	// running, and all reads within this window must be considered sequential. Note that we assume that FUSE
-	// kernel module will not send reads more than 1MiB to us. If that ever changes this needs to change accordingly.
+	// kernel module will not send reads more than 1MiB to us. If that ever changes or max_threads is increased
+	// beyond this, this needs to change accordingly.
+	// For now we set it to 32MiB, which should be good enough for most scenarios.
 	//
-	windowSizeInMiB := int64(10)
+	windowSizeInMiB := int64(32)
 	rpt := &RPTracker{
 		windowSize: windowSizeInMiB * common.MbToBytes,
 		fileName:   file,
@@ -98,7 +100,7 @@ func (t *RPTracker) Update(offset, length int64) int {
 		if t.randomStreak.Add(1) < -3 {
 			log.Warn("RPTracker::Update: File %s (%d) [SEQUENTIAL -> RANDOM], %d -> %d, Streak: %d",
 				t.fileName, length, prevReadOffset, offset, t.randomStreak.Load())
-			// Reset the streak, it still has to prove randomness with 3 more reads.
+			// Reset the streak, it still has to prove randomness with 3 more random reads.
 			t.randomStreak.Store(0)
 		} else {
 			// Confirmed random access.
@@ -109,7 +111,7 @@ func (t *RPTracker) Update(offset, length int64) int {
 		if t.randomStreak.Add(-1) > 3 {
 			log.Warn("RPTracker::Update: File %s (%d) [RANDOM -> SEQUENTIAL], %d -> %d, Streak: %d",
 				t.fileName, length, prevReadOffset, offset, t.randomStreak.Load())
-			// Reset the streak, it still has to prove sequentialness with 3 more reads.
+			// Reset the streak, it still has to prove sequentialness with 3 more sequential reads.
 			t.randomStreak.Store(0)
 		} else {
 			// Confirmed sequential access.
