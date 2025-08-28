@@ -41,7 +41,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -50,48 +50,48 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	gouuid "github.com/google/uuid"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
-func getBlockDeviceUUId(path string) (string, error) {
-	// TODO{Akku}: support non‐disk filesystems (e.g. NFS).
-	// For example, create/lookup a “.rvid” file inside the RV folder and use that UUID.
-	device, err := findMountDevice(path)
-	if err != nil {
-		return "", err
-	}
-	// Call: blkid -o value -s UUID  <path>
-	out, err := exec.Command("blkid", "-o", "value", "-s", "UUID", device).Output()
-	if err != nil {
-		return "", fmt.Errorf("error running blkid: %v", err)
-	}
-	blkId := strings.TrimSpace(string(out))
+func getRVUuid(nodeUUID string, path string) (string, error) {
+	// Create or read a deterministic UUID stamped in ".rvId" file inside the top level RV dir.
+	// Deterministic UUID is generated from the canonical absolute directory path, not randomly.
 
-	isValidUUID := common.IsValidUUID(blkId)
-	common.Assert((isValidUUID), fmt.Sprintf("Error in blkId evaluation   %s: %v", blkId, err))
-	if !isValidUUID {
-		return "", fmt.Errorf("not a valid blkid %s", blkId)
+	// Canonicalize the path to avoid duplicates due to different path representations.
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("filepath.Abs(%s) failed: %v", path, err)
 	}
-	return blkId, nil
-}
 
-func findMountDevice(path string) (string, error) {
-	// Call: findmnt -n -o SOURCE --target <path>
-	out, err := exec.Command("findmnt", "-n", "-o", "SOURCE", "--target", path).Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to run findmnt on %s: %v", path, err)
+	path = abs
+	uuidFilePath := filepath.Join(path, ".rvid")
+
+	// Try reading existing UUID from the file.
+	if data, err := os.ReadFile(uuidFilePath); err == nil {
+		rvId := strings.TrimSpace(string(data))
+		if common.IsValidUUID(rvId) {
+			return rvId, nil
+		}
+		return "", fmt.Errorf("RVId %s in RV UUID file %s is not valid", rvId, uuidFilePath)
+	} else if !os.IsNotExist(err) {
+		// Any read error other than 'file not found' is propagated.
+		return "", fmt.Errorf("failed to read RV UUID from file at %s: %v", uuidFilePath, err)
 	}
-	device := strings.TrimSpace(string(out))
-	if device == "" {
-		return "", fmt.Errorf("no device found in findmnt output for %s", path)
+
+	// File doesn't exist, generate a deterministic UUID using SHA1 of (nodeUUID + '|' + canonical path).
+	deterministicKey := nodeUUID + "|" + path
+	rvUUID := gouuid.NewSHA1(gouuid.NameSpaceDNS, []byte(deterministicKey)).String()
+	common.Assert(common.IsValidUUID(rvUUID), fmt.Sprintf("Generated deterministic UUID %s is not valid", rvUUID))
+
+	if err := os.WriteFile(uuidFilePath, []byte(rvUUID), 0400); err != nil {
+		return "", fmt.Errorf("failed to write RV UUID file at %s: %v", uuidFilePath, err)
 	}
-	err = common.IsValidBlkDevice(device)
-	common.Assert(err == nil, fmt.Sprintf("Device is not a valid Block device. Device Name %s path %s: %v", device, path, err))
-	if err != nil {
-		return "", err
-	}
-	return device, nil
+
+	log.Info("DistributedCache::getRVUuid: Saved RV UUID %s in %s", rvUUID, uuidFilePath)
+
+	return rvUUID, nil
 }
 
 // TODO{Akku}: Client can provide, which ethernet address we have to use. i.e. eth0, eth1

@@ -35,6 +35,7 @@ package clustermap
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -340,6 +341,26 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 
 	// TODO: Check for some minimum amount of total/free space.
 
+	//
+	// LocalCachePath must exist and must be a directory.
+	// Avoid these for release builds to avoid unnecessary system calls.
+	//
+	if common.IsDebugBuild() {
+		info, err := os.Stat(rv.LocalCachePath)
+		if err != nil && os.IsNotExist(err) {
+			return false, fmt.Errorf("RawVolume: LocalCachePath %s does not exist: %+v",
+				rv.LocalCachePath, *rv)
+		} else if err != nil {
+			return false, fmt.Errorf("RawVolume: Cannot access LocalCachePath %s: %v: %+v",
+				rv.LocalCachePath, err, *rv)
+		}
+
+		if !info.IsDir() {
+			return false, fmt.Errorf("RawVolume: LocalCachePath %s is not a directory: %+v",
+				rv.LocalCachePath, *rv)
+		}
+	}
+
 	return true, nil
 }
 
@@ -535,4 +556,9 @@ func UUIDToUniqueInt(uuid string) int {
 	uniqueInt++
 	uuidToUniqueInt[uuid] = uniqueInt
 	return uniqueInt
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	os.Stat("/tmp")
 }
