@@ -1237,7 +1237,7 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		// Note: numStagedChunksCritical should be large enough to accomodate 2*windowSize chunks, see
 		//       NewRPTracker.
 		//
-		numStagedChunksCritical := fileIOMgr.numReadAheadChunks * 8
+		numStagedChunksCritical := fileIOMgr.numReadAheadChunks * 6
 
 		if len(file.StagedChunks) > numStagedChunksCritical {
 			// TODO: See if we should remove only the last few chunks instead of all.
