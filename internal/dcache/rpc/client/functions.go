@@ -523,19 +523,6 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				continue
 			} else if rpc.IsTimedOut(err) {
 				//
-				// If we get timeout error in PutChunkDC(), it means that one/more of the downstream
-				// nodes/connections are down/bad. We cannot say for sure which node is down or which connection is bad.
-				// So, we mark all the nodes (next-hop as well as next nodes in chain) as negative nodes.
-				// This prevents other threads from also timing out if they are calling PutChunkDC to same nodes.
-				//
-				cp.addNegativeNode(targetNodeID)
-
-				// Add the next RVs to the negative nodes map.
-				for _, nextRV := range req.NextRVs {
-					cp.addNegativeRV(nextRV)
-				}
-
-				//
 				// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
 				// and not between the client node and target node. In this case, we retry WriteMV using
 				// the OriginatorSendsToAll strategy. So, to be safe we don't delete the connections if we get
@@ -546,6 +533,22 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				if err1 != nil {
 					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
+				}
+
+				//
+				// If we get timeout error in PutChunkDC(), it means that one/more of the downstream
+				// nodes/connections are down/bad. We cannot say for sure which node is down or which connection is bad.
+				// So, we mark all the nodes (next-hop as well as next nodes in chain) as negative nodes.
+				// This prevents other threads from also timing out if they are calling PutChunkDC to same nodes.
+				//
+				// We add the negative nodes after we reset the RPC connections because in PutChunkDC we don't know for
+				// sure which connection is bad. So, we first try to reset the existing clients for the next-hop node.
+				//
+				cp.addNegativeNode(targetNodeID)
+
+				// Add the next RVs to the negative nodes map.
+				for _, nextRV := range req.NextRVs {
+					cp.addNegativeRV(nextRV)
 				}
 
 				// We don't retry in case of timeout error.

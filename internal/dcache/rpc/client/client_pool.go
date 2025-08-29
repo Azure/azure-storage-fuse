@@ -852,7 +852,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	//
 	err := cp.resetRPCClientInternal(client, false /* needLock */)
 	if err != nil {
-		err = fmt.Errorf("failed to reset RPC client to %s node %s: %v",
+		err = fmt.Errorf("failed to reset RPC client to %s node %s: %w",
 			client.nodeAddress, client.nodeID, err)
 		log.Err("clientPool::resetAllRPCClients: %v", err)
 		//
