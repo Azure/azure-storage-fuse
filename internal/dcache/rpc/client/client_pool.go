@@ -682,8 +682,8 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	for i := 0; i < numClients; i++ {
 		client, err = cp.getRPCClientNoWait(client.nodeID)
 		if err != nil {
-			log.Err("clientPool::deleteAllRPCClients: getRPCClientNoWait(%s) failed: %v",
-				client.nodeID, err)
+			log.Err("clientPool::deleteAllRPCClients: getRPCClientNoWait failed: %v",
+				err)
 			break
 		}
 
@@ -879,8 +879,8 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	for i := 0; i < numClients; i++ {
 		client, err = cp.getRPCClientNoWait(client.nodeID)
 		if err != nil {
-			log.Err("clientPool::resetAllRPCClients: getRPCClientNoWait(%s) failed: %v",
-				client.nodeID, err)
+			log.Err("clientPool::resetAllRPCClients: getRPCClientNoWait failed: %v",
+				err)
 			break
 		}
 
