@@ -157,8 +157,9 @@ type DcacheFile struct {
 	// Such writes are tracked using ChunkIOTracker in each StagedChunk.
 	maxWriteOffset int64
 
-	// Error encountered during write, if any.
-	writeErr error
+	// Error encountered during write, if any. It needs to be atomic since multiple threads can be
+	// accessing it.
+	writeErr atomic.Value
 
 	// Are we enforcing strict sequential writes on this file?
 	// This starts as false but if we see small or non block size aligned writes, we set this to true.
@@ -202,6 +203,18 @@ type DcacheFile struct {
 	// It is saved when the file is opened, if there are no more file opens done on that file, the same etag
 	// can be used to update the file open count on close.
 	attr *internal.ObjAttr
+}
+
+// Get the write error encountered during file writes, if any.
+func (file *DcacheFile) getWriteError() error {
+	val := file.writeErr.Load()
+	if val == nil {
+		return nil
+	}
+	err, ok := val.(error)
+	_ = ok
+	common.Assert(ok, val)
+	return err
 }
 
 // Reads the file data from the given offset and length to buf[].
@@ -399,6 +412,17 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	common.Assert(len(buf) > 0)
 	common.Assert(file.maxWriteOffset >= 0, file.maxWriteOffset, file.FileMetadata.Filename)
 
+	err := file.getWriteError()
+
+	//
+	// Once file has a write error, all subsequent writes (if any) must fail.
+	//
+	if err != nil {
+		log.Err("DistributedCache[FM]::WriteFile: %s, previous write failed: %v",
+			file.FileMetadata.Filename, err)
+		return err
+	}
+
 	//
 	// We can only track parallel writes which are aligned on MinTrackableIOSize and are multiple of that size.
 	// Those give the best write performance as we can write multiple of them in parallel.
@@ -444,13 +468,13 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		err := fmt.Errorf("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, allowed: [%d, %d)",
 			file.FileMetadata.Filename, offset, allowableWriteOffsetStart, allowableWriteOffsetEnd)
 		log.Err("%v", err)
-		file.writeErr = err
+		file.writeErr.Store(err)
 		return syscall.ENOTSUP
 	} else if offset > allowableWriteOffsetEnd {
 		err := fmt.Errorf("DistributedCache[FM]::WriteFile: Random write unsupported, file: %s, offset: %d, allowed: [%d, %d)",
 			file.FileMetadata.Filename, offset, allowableWriteOffsetStart, allowableWriteOffsetEnd)
 		log.Err("%v", err)
-		file.writeErr = err
+		file.writeErr.Store(err)
 		return syscall.ENOTSUP
 	}
 
@@ -480,7 +504,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 				getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize), err)
 			log.Err("DistributedCache[FM]::WriteFile: %v", err)
 			common.Assert(false, err)
-			file.writeErr = err
+			file.writeErr.Store(err)
 			return err
 		}
 
@@ -493,7 +517,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 				file.FileMetadata.Filename, offset, writeSize, chunkOffset, chunk.Idx)
 
 			log.Err("%v", err)
-			file.writeErr = err
+			file.writeErr.Store(err)
 			file.releaseChunk(chunk)
 			return syscall.ENOTSUP
 		}
@@ -603,7 +627,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 // Sync Buffers for the file with dcache/azure.
 // This call can come when user application calls fsync()/close().
 func (file *DcacheFile) SyncFile() error {
-	var err error
+	err := file.getWriteError()
 	var ret error
 	chunks := make([]*StagedChunk, 0)
 
@@ -614,8 +638,19 @@ func (file *DcacheFile) SyncFile() error {
 	//
 	file.chunkLock.RLock()
 
-	log.Debug("DistributedCache[FM]::SyncFile: %s, syncing %d chunks, file.writeErr: %v",
-		file.FileMetadata.Filename, len(file.StagedChunks), file.writeErr)
+	//
+	// No need to upload any chunk if file write has already failed.
+	//
+	if err != nil {
+		err = fmt.Errorf("DistributedCache[FM]::SyncFile: %s, failed write, %d chunks, file.writeErr: %v",
+			file.FileMetadata.Filename, len(file.StagedChunks), err)
+		log.Err("%v", err)
+		file.chunkLock.RUnlock()
+		return err
+	}
+
+	log.Debug("DistributedCache[FM]::SyncFile: %s, syncing %d chunks",
+		file.FileMetadata.Filename, len(file.StagedChunks))
 
 	for chunkIdx, chunk := range file.StagedChunks {
 		_ = chunkIdx
@@ -631,9 +666,8 @@ func (file *DcacheFile) SyncFile() error {
 
 		//
 		// Uploading partial chunks in the middle of the file is recipe for data corruption.
-		// If the write failed, writeErr would be set and in that case it's ok to have partial chunks.
 		//
-		if !isLastChunk && chunk.Len < file.FileMetadata.FileLayout.ChunkSize && file.writeErr == nil {
+		if !isLastChunk && chunk.Len < file.FileMetadata.FileLayout.ChunkSize {
 			err := fmt.Errorf("DistributedCache[FM]::SyncFile: Partial non-last chunk. file: %s, chunkIdx: %d, chunkLen: %d, file size: %d",
 				file.FileMetadata.Filename, chunk.Idx, chunk.Len, file.maxWriteOffset)
 			log.Err("%v", err)
@@ -674,9 +708,9 @@ func (file *DcacheFile) CloseFile() error {
 	//
 	// We stage application writes into StagedChunk and upload only when we have a full chunk.
 	// In case of last chunk being partial, we need to upload it now.
+	// SyncFile() will fail if the write had failed and some of the chunks could not be uploaded.
 	//
 	err := file.SyncFile()
-	common.Assert(err == nil, file.FileMetadata.Filename, err)
 
 	//
 	// On successful close we finalize the file.
