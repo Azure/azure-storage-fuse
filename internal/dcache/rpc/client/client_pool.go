@@ -656,6 +656,9 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	numClients := len(ncPool.clientChan)
 	common.Assert(numClients < int(cp.maxPerNode), numClients, cp.maxPerNode)
 
+	log.Debug("clientPool::deleteAllRPCClients: node %s (%s), numActive: %d (%d, %d)",
+		client.nodeID, client.nodeAddress, ncPool.numActive.Load(), numClients, cp.maxPerNode)
+
 	//
 	// Delete this client. This closes this client and removes it from the pool.
 	// It can only fail if Thrift fails to close the connection.
@@ -678,12 +681,11 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	//
 	for i := 0; i < numClients; i++ {
 		client, err = cp.getRPCClientNoWait(client.nodeID)
-		//
-		// getRPCClientNoWait should not fail, because we have the clientPool for this client,
-		// also numClients was the clientChan length before we deleted the above client, and we
-		// have the clientPool lock.
-		//
-		common.Assert(err == nil, err)
+		if err != nil {
+			log.Err("clientPool::deleteAllRPCClients: getRPCClientNoWait(%s) failed: %v",
+				client.nodeID, err)
+			break
+		}
 
 		err = cp.deleteRPCClient(client)
 		if err != nil {
@@ -845,6 +847,9 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	numClients := len(ncPool.clientChan)
 	common.Assert(numClients < int(cp.maxPerNode), numClients, cp.maxPerNode)
 
+	log.Debug("clientPool::resetAllRPCClients: node %s (%s), numActive: %d (%d, %d)",
+		client.nodeID, client.nodeAddress, ncPool.numActive.Load(), numClients, cp.maxPerNode)
+
 	//
 	// Reset this client. This closes this client, creates a new one and adds it to the pool.
 	// It can only fail if thrift fails to create a new connection. This can happen when a node
@@ -873,12 +878,11 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	//
 	for i := 0; i < numClients; i++ {
 		client, err = cp.getRPCClientNoWait(client.nodeID)
-		//
-		// getRPCClientNoWait should not fail, because we have the clientPool for this client,
-		// also numClients was the clientChan length before we reset the above client, and we
-		// have the clientPool lock.
-		//
-		common.Assert(err == nil, err)
+		if err != nil {
+			log.Err("clientPool::resetAllRPCClients: getRPCClientNoWait(%s) failed: %v",
+				client.nodeID, err)
+			break
+		}
 
 		err = cp.resetRPCClientInternal(client, false /* needLock */)
 		if err != nil {
