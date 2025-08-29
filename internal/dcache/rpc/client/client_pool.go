@@ -682,6 +682,13 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	for i := 0; i < numClients; i++ {
 		client, err = cp.getRPCClientNoWait(client.nodeID)
 		if err != nil {
+			//
+			// There can be a race condition between when we get numClients (count of number of free clients
+			// in the channel) and in the getRPCClient() method where a thread can acquire a free client from
+			// the channel. In getRPCClient(), a thread acquires a free client outside the node level lock, so
+			// we can expect that the number of free clients in the channel can be less than numClients count.
+			// So, we cannot assert here that we will always get a free client.
+			//
 			log.Err("clientPool::deleteAllRPCClients: getRPCClientNoWait failed: %v",
 				err)
 			break
@@ -879,6 +886,13 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	for i := 0; i < numClients; i++ {
 		client, err = cp.getRPCClientNoWait(client.nodeID)
 		if err != nil {
+			//
+			// There can be a race condition between when we get numClients (count of number of free clients
+			// in the channel) and in the getRPCClient() method where a thread can acquire a free client from
+			// the channel. In getRPCClient(), a thread acquires a free client outside the node level lock, so
+			// we can expect that the number of free clients in the channel can be less than numClients count.
+			// So, we cannot assert here that we will always get a free client.
+			//
 			log.Err("clientPool::resetAllRPCClients: getRPCClientNoWait failed: %v",
 				err)
 			break
