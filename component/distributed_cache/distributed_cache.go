@@ -1193,7 +1193,6 @@ func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
 
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 		dcacheErr = dcFile.CloseFile()
-		common.Assert(dcacheErr == nil)
 		if dcacheErr == nil {
 			// Clear this flag to signal no more writes on this handle.
 			// Fail any writes that come after this.
@@ -1241,18 +1240,22 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 			dcacheErr = dc.FlushFile(internal.FlushFileOptions{
 				Handle: options.Handle,
 			})
-			common.Assert(dcacheErr == nil, dcacheErr)
+			if dcacheErr != nil {
+				log.Err("DistributedCache::CloseFile : Failed to FlushFile for Dcache file : %s", options.Handle.Path)
+			}
 		}
 
 		//
 		// When readonly dcache file handles are closed with safeDeletes config enabled, the file's
 		// open count must be reduced, let ReleaseFile() know that.
 		//
-		isReadOnlyHandle := options.Handle.IsDcacheAllowReads()
+		if dcacheErr == nil {
+			isReadOnlyHandle := options.Handle.IsDcacheAllowReads()
 
-		dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
-		if dcacheErr != nil {
-			log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)
+			dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
+			if dcacheErr != nil {
+				log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)
+			}
 		}
 	}
 
