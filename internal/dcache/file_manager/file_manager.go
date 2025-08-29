@@ -231,6 +231,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 
 	// Update sequential/random pattern tracker with this new IO and get the current access pattern.
 	accessPattern := file.RPT.Update(offset, endOffset-offset)
+
 	//
 	// This read starts where the prev one ended.
 	// These are strictly sequential reads, which we try to optimize for, in the absence of sequential
@@ -317,8 +318,8 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 			chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.FileLayout.ChunkSize)
 
 		// This chunk has chunk.Len valid bytes starting @ chunk.Offset, we cannot be reading past those.
-		common.Assert(chunkOffset < (chunk.Offset+chunk.Len),
-			chunkOffset, chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
+		common.Assert((chunkOffset+readSize) <= (chunk.Offset+chunk.Len),
+			chunkOffset, readSize, chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
 
 		// We must be holding a refcount on the chunk.
 		common.Assert(chunk.RefCount.Load() > 0, chunk.Idx, chunk.RefCount.Load())
@@ -408,6 +409,12 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	}
 
 	//
+	// TODO:
+	// What if application skips one or more full chunks while writing?
+	// We should not allow the write to succeed as that would create a sparse file which we don't support.
+	//
+
+	//
 	// We allow writes only within the staging area.
 	// Anything before that amounts to overwrite, and anything beyond that is not allowed by our writeback
 	// cache limits.
@@ -415,7 +422,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// TODO: Allowable write range should be a factor of fileIOMgr.numStagingChunks and how much is already
 	//       in the cache. Currently we are hardcoding +/- 100MiB range.
 	//
-	allowableWriteOffsetStart := file.maxWriteOffset - int64(100)*common.MbToBytes
+	allowableWriteOffsetStart := max(0, file.maxWriteOffset-int64(100)*common.MbToBytes)
 	allowableWriteOffsetEnd := file.maxWriteOffset + int64(100)*common.MbToBytes
 
 	// With strict sequential writes we don't allow any out-of-order writes.
@@ -445,7 +452,6 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	common.Assert(endOffset > offset, endOffset, offset)
 
 	bufOffset := 0
-	chunkFullyWritten := false
 
 	//
 	// Write all the requested data bytes to the distributed cache.
@@ -533,6 +539,8 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		// There's no point in waiting any more. Sooner we write completed chunks, faster we will complete
 		// writes.
 		//
+		chunkFullyWritten := false
+
 		if file.strictSeqWrites {
 			chunkFullyWritten = (chunk.Len == file.FileMetadata.FileLayout.ChunkSize)
 		} else {
@@ -604,6 +612,21 @@ func (file *DcacheFile) SyncFile() error {
 
 		log.Debug("DistributedCache[FM]::SyncFile: file: %s, chunkIdx: %d, chunkLen: %d",
 			file.FileMetadata.Filename, chunk.Idx, chunk.Len)
+
+		chunkStartOffset := getChunkStartOffset(chunk.Idx, file.FileMetadata.FileLayout.ChunkSize)
+		chunkEndOffset := chunkStartOffset + chunk.Len
+		// if maxWriteOffset is at chunk end, this must be the last chunk.
+		isLastChunk := file.maxWriteOffset == chunkEndOffset
+
+		//
+		// Uploading partial chunks in the middle of the file is recipe for data corruption.
+		//
+		if !isLastChunk && chunk.Len < file.FileMetadata.FileLayout.ChunkSize {
+			err := fmt.Errorf("DistributedCache[FM]::SyncFile: Partial non-last chunk. file: %s, chunkIdx: %d, chunkLen: %d, file size: %d",
+				file.FileMetadata.Filename, chunk.Idx, chunk.Len, file.maxWriteOffset)
+			log.Err("%v", err)
+			return err
+		}
 
 		// Schedule chunk upload if not already done.
 		if scheduleUpload(chunk, file) {
@@ -891,9 +914,25 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 }
 
 func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
-	log.Debug("DistributedCache::getChunkForWrite: file: %s, chunkIdx: %d", file.FileMetadata.Filename, chunkIdx)
+	file.chunkLock.RLock()
+	numWriteChunks := len(file.StagedChunks)
+	file.chunkLock.RUnlock()
 
+	log.Debug("DistributedCache::getChunkForWrite: file: %s, chunkIdx: %d, current chunks: %d",
+		file.FileMetadata.Filename, chunkIdx, numWriteChunks)
 	common.Assert(chunkIdx >= 0)
+
+	//
+	// If too many unwritten chunks get accumulated, it likely means some write pattern which
+	// qualified as sequential because it honored the window size check, but application didn't write full
+	// chunks. We catch that and fail the write.
+	//
+	if numWriteChunks >= fileIOMgr.numStagingChunks {
+		err := fmt.Errorf("DistributedCache::getChunkForWrite: file: %s, too many chunks for writeback (%d > %d)",
+			file.FileMetadata.Filename, numWriteChunks, fileIOMgr.numStagingChunks)
+		log.Err("%v", err)
+		return nil, err
+	}
 
 	chunk, loaded, err := file.getChunk(chunkIdx, 0 /* chunkOffset */, 0 /* length */, false /* noCache */, true /* allocateBuf */)
 	_ = loaded
@@ -1085,7 +1124,7 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	// refcount at that time.
 	//
 	if !sync {
-		chunk.RefCount.Add(-1)
+		file.releaseChunk(chunk)
 	}
 
 	// This will be a no-op if this chunk download is already scheduled.
@@ -1146,11 +1185,13 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		// in ReadFile() but then application doesn't read the entire chunk or reads it in a way that we cannot
 		// track. We need to keep the cache usage under check.
 		//
-		// TODO: See if we should remove only the last few chunks instead of all.
+		// Note: numStagedChunksCritical should be large enough to accomodate 2*windowSize chunks, see
+		//       NewRPTracker.
 		//
-		numStagedChunksCritical := fileIOMgr.numReadAheadChunks * 4
+		numStagedChunksCritical := fileIOMgr.numReadAheadChunks * 8
 
 		if len(file.StagedChunks) > numStagedChunksCritical {
+			// TODO: See if we should remove only the last few chunks instead of all.
 			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, too many staged chunks (%d > %d), removing all",
 				file.FileMetadata.Filename, len(file.StagedChunks), numStagedChunksCritical)
 			file.removeAllChunks(false /* needLock */)

@@ -68,10 +68,14 @@ func NewRPTracker(file string) *RPTracker {
 	// This should not be less than max fuse threads (max_threads) as that decides how many parallel reads can be
 	// running, and all reads within this window must be considered sequential. Note that we assume that FUSE
 	// kernel module will not send reads more than 1MiB to us. If that ever changes or max_threads is increased
-	// beyond this, this needs to change accordingly.
-	// For now we set it to 32MiB, which should be good enough for most scenarios.
+	// beyond this, this needs to change accordingly. Also if clone_threads is used, then this number will not
+	// depend on max_threads, but on the number of IOs that can be in-flight in the kernel.
+	// For now we set it to 100MiB, which should be good enough for most scenarios.
 	//
-	windowSizeInMiB := int64(32)
+	// NOTE: This affects numStagedChunksCritical calculation in readChunkWithReadAhead().
+	//       The bottomline is that numStagedChunksCritical MUST BE larger than 2 * windowSize.
+	//
+	windowSizeInMiB := int64(100)
 	rpt := &RPTracker{
 		windowSize: windowSizeInMiB * common.MbToBytes,
 		fileName:   file,
@@ -96,7 +100,7 @@ func (t *RPTracker) Update(offset, length int64) int {
 
 	absDiff := int64(math.Abs(float64(offset - prevReadOffset)))
 	if absDiff > 2*t.windowSize {
-		// Read outside the windows, hints at random access.
+		// Read outside the window, hints at random access.
 		if t.randomStreak.Add(1) < -3 {
 			log.Warn("RPTracker::Update: File %s (%d) [SEQUENTIAL -> RANDOM], %d -> %d, Streak: %d",
 				t.fileName, length, prevReadOffset, offset, t.randomStreak.Load())
