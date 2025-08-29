@@ -157,6 +157,9 @@ type DcacheFile struct {
 	// Such writes are tracked using ChunkIOTracker in each StagedChunk.
 	maxWriteOffset int64
 
+	// Error encountered during write, if any.
+	writeErr error
+
 	// Are we enforcing strict sequential writes on this file?
 	// This starts as false but if we see small or non block size aligned writes, we set this to true.
 	// When this is true we don't allow any out-of-order writes but only strictly sequential writes, i.e.,
@@ -285,7 +288,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 			}
 
 			// For sequential reads we must be reading the entire chunk.
-			common.Assert(chunk.Offset == 0 && chunk.Len == file.FileMetadata.FileLayout.ChunkSize,
+			common.Assert(chunk.Offset == 0 && chunk.Len == getChunkSize(offset, file),
 				chunk.Idx, chunk.Offset, chunk.Len, file.FileMetadata.Filename)
 			//
 			// And the chunk must be saved in StagedChunks map.
@@ -382,8 +385,9 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 // Writes user data into file at given offset and length.
 // It translates the requested offsets into chunks, and writes to those chunks in the distributed cache.
 func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
-	log.Debug("DistributedCache[FM]::WriteFile: file: %s, offset: %d, length: %d",
-		file.FileMetadata.Filename, offset, len(buf))
+	log.Debug("DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
+		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
+		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
 	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
@@ -437,12 +441,16 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// that too, hence offset can be greater than maxWriteOffset.
 	//
 	if offset < allowableWriteOffsetStart {
-		log.Err("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d (< %d)",
-			file.FileMetadata.Filename, offset, allowableWriteOffsetStart)
+		err := fmt.Errorf("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, allowed: [%d, %d)",
+			file.FileMetadata.Filename, offset, allowableWriteOffsetStart, allowableWriteOffsetEnd)
+		log.Err("%v", err)
+		file.writeErr = err
 		return syscall.ENOTSUP
 	} else if offset > allowableWriteOffsetEnd {
-		log.Err("DistributedCache[FM]::WriteFile: Random write unsupported, file: %s, offset: %d (> %d)",
-			file.FileMetadata.Filename, offset, allowableWriteOffsetEnd)
+		err := fmt.Errorf("DistributedCache[FM]::WriteFile: Random write unsupported, file: %s, offset: %d, allowed: [%d, %d)",
+			file.FileMetadata.Filename, offset, allowableWriteOffsetStart, allowableWriteOffsetEnd)
+		log.Err("%v", err)
+		file.writeErr = err
 		return syscall.ENOTSUP
 	}
 
@@ -472,6 +480,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 				getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize), err)
 			log.Err("DistributedCache[FM]::WriteFile: %v", err)
 			common.Assert(false, err)
+			file.writeErr = err
 			return err
 		}
 
@@ -480,9 +489,11 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		// Strict sequential writes cannot overwrite as we always write at maxWriteOffset.
 		//
 		if !file.strictSeqWrites && chunk.IOTracker.IsAccessed(chunkOffset, int64(writeSize)) {
-			log.Err("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, length: %d, chunkOffset: %d, chunkIdx: %d",
+			err := fmt.Errorf("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, length: %d, chunkOffset: %d, chunkIdx: %d",
 				file.FileMetadata.Filename, offset, writeSize, chunkOffset, chunk.Idx)
 
+			log.Err("%v", err)
+			file.writeErr = err
 			file.releaseChunk(chunk)
 			return syscall.ENOTSUP
 		}
@@ -603,8 +614,8 @@ func (file *DcacheFile) SyncFile() error {
 	//
 	file.chunkLock.RLock()
 
-	log.Debug("DistributedCache[FM]::SyncFile: %s, syncing %d chunks",
-		file.FileMetadata.Filename, len(file.StagedChunks))
+	log.Debug("DistributedCache[FM]::SyncFile: %s, syncing %d chunks, file.writeErr: %v",
+		file.FileMetadata.Filename, len(file.StagedChunks), file.writeErr)
 
 	for chunkIdx, chunk := range file.StagedChunks {
 		_ = chunkIdx
@@ -620,8 +631,9 @@ func (file *DcacheFile) SyncFile() error {
 
 		//
 		// Uploading partial chunks in the middle of the file is recipe for data corruption.
+		// If the write failed, writeErr would be set and in that case it's ok to have partial chunks.
 		//
-		if !isLastChunk && chunk.Len < file.FileMetadata.FileLayout.ChunkSize {
+		if !isLastChunk && chunk.Len < file.FileMetadata.FileLayout.ChunkSize && file.writeErr == nil {
 			err := fmt.Errorf("DistributedCache[FM]::SyncFile: Partial non-last chunk. file: %s, chunkIdx: %d, chunkLen: %d, file size: %d",
 				file.FileMetadata.Filename, chunk.Idx, chunk.Len, file.maxWriteOffset)
 			log.Err("%v", err)
@@ -895,7 +907,10 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 
 	noCache := (length != 0)
 	if length == 0 {
+		//
 		// length==0 means caller wants to read the entire chunk.
+		// For last chunk 'length' returned can be less than ChunkSize.
+		//
 		length = getChunkSize(chunkIdx*file.FileMetadata.FileLayout.ChunkSize, file)
 	}
 
