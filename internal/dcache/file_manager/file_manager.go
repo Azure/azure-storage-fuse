@@ -166,9 +166,9 @@ type DcacheFile struct {
 	// we cannot control the IO sizes.
 	strictSeqWrites bool
 
-	// Last byte read + 1, also the next read offset we expect in case of sequential reads.
-	// See maxWriteOffset comments above.
-	maxReadOffset int64
+	// Last offset read by prev read + 1, also the next read offset we expect in case of sequential reads.
+	// Note the difference from maxWriteOffset above.
+	nextReadOffset atomic.Int64
 
 	//
 	// Chunk index (inclusive) till which we have done readahead.
@@ -205,8 +205,8 @@ type DcacheFile struct {
 // It translates the requested offsets into chunks, reads those chunks from distributed cache and copies data from
 // those chunks into user buffer.
 func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err error) {
-	log.Debug("DistributedCache::ReadFile: file: %s, offset: %d, length: %d, chunkIdx: %d",
-		file.FileMetadata.Filename, offset, len(*buf),
+	log.Debug("DistributedCache::ReadFile: file: %s, nextReadOffset: %d, offset: %d, length: %d, chunkIdx: %d",
+		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// Read must only be allowed on a properly finalized file, for which size must not be -1.
@@ -228,10 +228,15 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	common.Assert(endOffset >= offset, endOffset, offset)
 
 	bufOffset := 0
-	chunkFullyRead := false
 
 	// Update sequential/random pattern tracker with this new IO and get the current access pattern.
 	accessPattern := file.RPT.Update(offset, endOffset-offset)
+	//
+	// This read starts where the prev one ended.
+	// These are strictly sequential reads, which we try to optimize for, in the absence of sequential
+	// (but parallel) reads.
+	//
+	isStrictlySequential := (endOffset == file.nextReadOffset.Add(endOffset-offset))
 
 	//
 	// Read all the requested data bytes from the distributed cache.
@@ -255,26 +260,24 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		readSize := min(endOffset-offset, file.FileMetadata.FileLayout.ChunkSize-chunkOffset)
 
 		// Reads not multiple of or not aligned with MinTrackableIOSize cannot be tracked by ChunkIOTracker.
-		isSequential := (accessPattern >= 0 &&
+		isSequential := (accessPattern == 1 &&
 			(offset%GetMinTrackableIOSize() == 0) &&
 			(readSize%GetMinTrackableIOSize() == 0))
-		// Second best, cannot allow parallel slightly out-of-order reads, but can allow strictly sequential reads.
-		isStrictlySequential := !isSequential && (offset == file.maxReadOffset)
 
 		//
 		// accessPattern will be +1 for confirmed sequential, -1 for confirmed random, and 0 for unsure.
-		// 0 is not very common as we will soon confirm sequential/random pattern.
+		// 0 is not very common as we will soon confirm either sequential/random pattern.
 		// 0 means that we might be transitioning from sequential to random, or maybe sequential pattern
 		// is shifting to another region of the file. In any case it's a good time to flush all cached
 		// chunks.
 		//
 		if accessPattern == 0 {
-			file.removeAllChunks()
+			file.removeAllChunks(true /* needLock */)
 		}
 
-		if isSequential || isStrictlySequential {
+		if isSequential || isStrictlySequential || (accessPattern == 0) {
 			// Perform readahead only if the read pattern has proven to be sequential.
-			unsure := isSequential && (accessPattern == 0)
+			unsure := (accessPattern == 0)
 			chunk, err = file.readChunkWithReadAhead(offset, unsure)
 			if err != nil {
 				return 0, err
@@ -290,16 +293,21 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 			//
 			// common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 		} else {
-			// For random read pattern we don't do readahead, and also don't save the chunk in StagedChunks map.
+			//
+			// For random read pattern we don't do readahead, and also don't save the chunk in StagedChunks map,
+			// but we do lookup StagedChunks, so it's possible that we find the chunk in StagedChunks map.
+			// TODO: Remove the following commented assert after some time.
+			//
 			chunk, err = file.readChunkNoReadAhead(offset, readSize)
 			if err != nil {
 				return 0, err
 			}
-
-			common.Assert(chunk.SavedInMap.Load() == false, chunk.Idx, file.FileMetadata.Filename)
-			// We only read what we need.
-			common.Assert(chunk.Offset == chunkOffset && chunk.Len == readSize,
-				chunk.Offset, chunkOffset, chunk.Len, readSize, chunk.Idx, file.FileMetadata.Filename)
+			/*
+				common.Assert(chunk.SavedInMap.Load() == false, chunk.Idx, file.FileMetadata.Filename)
+				// We only read what we need.
+				common.Assert(chunk.Offset == chunkOffset && chunk.Len == readSize,
+					chunk.Offset, chunkOffset, chunk.Len, readSize, chunk.Idx, file.FileMetadata.Filename)
+			*/
 		}
 
 		// We should only be reading from an up-to-date chunk (that has been successfully read from dcache).
@@ -327,33 +335,33 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 
 		offset += int64(copied)
 		bufOffset += copied
-		// Next strictly-sequential read expected at offset maxWriteOffset.
-		common.AtomicMaxInt64(&file.maxReadOffset, offset)
+
+		chunkFullyRead := false
 
 		if isSequential {
 			chunkFullyRead = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied), chunk.Idx)
-		} else if isStrictlySequential {
+		}
+
+		if !chunkFullyRead && isStrictlySequential {
 			chunkFullyRead = (offset == getChunkEndOffset(chunk.Idx, file.FileMetadata.FileLayout.ChunkSize))
 		}
 
-		if isSequential || isStrictlySequential {
-			if chunkFullyRead {
-				log.Debug("DistributedCache::ReadFile: Chunk fully read (sequential: %v), file: %s, chunkIdx: %d, chunkOffset: %d, copied: %d",
-					isSequential, file.FileMetadata.Filename, chunk.Idx, chunkOffset, copied)
-				//
-				// We are done with this chunk, remove from StagedChunks map.
-				// The first reader to observe this will remove it. Note that this just removes the chunk from
-				// the map so that new readers won't find it, but it doesn't free the chunk memory. It may still
-				// be in use by other readers and the last reader to release the chunk will free the chunk memory.
-				//
-				removed := file.removeChunk(chunk.Idx)
-				_ = removed
-				//
-				// We cannot assert for the following as the chunk may be removed from the map by the time we
-				// reach here. e.g., one case I saw is some other thread called removeAllChunks() above.
-				//
-				//common.Assert(removed == true, chunk.Idx, file.FileMetadata.Filename)
-			}
+		if chunkFullyRead {
+			log.Debug("DistributedCache::ReadFile: Chunk fully read (sequential: %v), file: %s, chunkIdx: %d, chunkOffset: %d, copied: %d",
+				isSequential, file.FileMetadata.Filename, chunk.Idx, chunkOffset, copied)
+			//
+			// We are done with this chunk, remove from StagedChunks map.
+			// The first reader to observe this will remove it. Note that this just removes the chunk from
+			// the map so that new readers won't find it, but it doesn't free the chunk memory. It may still
+			// be in use by other readers and the last reader to release the chunk will free the chunk memory.
+			//
+			removed := file.removeChunk(chunk.Idx)
+			_ = removed
+			//
+			// We cannot assert for the following as the chunk may be removed from the map by the time we
+			// reach here. e.g., one case I saw is some other thread called removeAllChunks() above.
+			//
+			//common.Assert(removed == true, chunk.Idx, file.FileMetadata.Filename)
 		}
 
 		// Release our refcount on the chunk. If this is the last reference, it will free the chunk memory.
@@ -675,11 +683,13 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 		//       error channel might be opened.
 		//
 
+		delete(file.StagedChunks, chunkIdx)
+
+		chunk.SavedInMap.Store(false)
+
 		// The only refcount held must be the one corresponding to the StagedChunks map.
 		common.Assert(chunk.RefCount.Load() == 1, chunk.Idx, chunk.RefCount.Load())
 		file.releaseChunk(chunk)
-
-		delete(file.StagedChunks, chunkIdx)
 	}
 
 	//
@@ -751,15 +761,16 @@ func (file *DcacheFile) finalizeFile() error {
 	return nil
 }
 
-// noCache => Do not look in file.StagedChunks for the chunk and do not add newly allocated chunk to
-//            file.StagedChunks. This is for random reads where we read only part of the chunk and don't
-//            want to cache it.
+// noCache => Do not add newly allocated chunk to file.StagedChunks. This is for random reads where we read
+//            only part of the chunk and don't want to cache it. But, we do lookup in file.StagedChunks to
+//            see if the chunk is already present.
 //
 // Else, it returns the requested chunk from the staged chunks, if present, else create a new one and add to the
 // staged chunks.
 // 'allocateBuf' controls if the StagedChunk returned has its buffer allocated by us. Note that ReadMV()
 // returns the buffer where the data is read by the GetChunk() RPC, so we don't want a pre-allocated buffer
 // in that case.
+// Since we don't support random writes, writes always pass noCache=false.
 
 func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, allocateBuf bool) (*StagedChunk, bool, error) {
 	log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d",
@@ -771,24 +782,30 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 
 	//
 	// If already present in StagedChunks, return that.
-	// We lookup cache only if noCache==false, which signifies sequential read.
-	// Since we don't support random writes, writes always pass noCache=false.
+	// Note that we lookup in StagedChunks even if noCache==true, this is to avoid multiple chunks being
+	// allocated for the same chunkIdx. In case of true random reads the chunk will mostly not be present
+	// in StagedChunks, but the lookup overhead is not so important for random reads. For some access
+	// patterns we may have it in the cache, so we lookup anyway.
 	//
-	if !noCache {
-		file.chunkLock.RLock()
-		if chunk, ok := file.StagedChunks[chunkIdx]; ok {
-			//
-			// Increment chunk refcount before returning to the caller.
-			// Once caller is done with the chunk it must call file.releaseChunk().
-			//
-			chunk.RefCount.Add(1)
-			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
-			file.chunkLock.RUnlock()
-			common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
-			return chunk, true, nil
-		}
+	// Note: After the check below some other thread may add the chunk to StagedChunks, in which case we
+	//       will have dup chunks, one of which will be cached. This doesn't cause any correctness issues,
+	//       but wastes some memory. This cannot be avoided as we can always have a thread allocate a
+	//       uncached chunk and then have another thread add a cached chunk for the same idx to StagedChunks.
+	//       The check below is a best effort check.
+	//
+	file.chunkLock.RLock()
+	if chunk, ok := file.StagedChunks[chunkIdx]; ok {
+		//
+		// Increment chunk refcount before returning to the caller.
+		// Once caller is done with the chunk it must call file.releaseChunk().
+		//
+		chunk.RefCount.Add(1)
+		common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 		file.chunkLock.RUnlock()
+		common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
+		return chunk, true, nil
 	}
+	file.chunkLock.RUnlock()
 
 	//
 	// Before adding a new chunk to StagedChunks we must ensure that no other thread has added it meanwhile.
@@ -943,9 +960,11 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) bool {
 // This drops the map refcount on each chunk and also calls chunk.releaseChunk() which will free the chunk memory
 // if no other user is using it.
 // DO NOT call it if there are dirty chunks, they must be uploaded before calling this.
-func (file *DcacheFile) removeAllChunks() error {
-	file.chunkLock.Lock()
-	defer file.chunkLock.Unlock()
+func (file *DcacheFile) removeAllChunks(needLock bool) error {
+	if needLock {
+		file.chunkLock.Lock()
+		defer file.chunkLock.Unlock()
+	}
 
 	// Avoid the log if there are no chunks.
 	if len(file.StagedChunks) == 0 {
@@ -1009,6 +1028,14 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 
 	log.Debug("DistributedCache::releaseChunk: Freeing chunk, file: %s, chunkIdx: %d, refcount: %d, external: %v",
 		file.FileMetadata.Filename, chunk.Idx, chunk.RefCount.Load(), chunk.IsBufExternal)
+
+	//
+	// We must not be freeing a chunk which is still in the StagedChunks map, as the map holds a refcount
+	// of its own which is dropped only when the chunk is removed from the map.
+	// Also dirty chunks must be first uploaded before freeing.
+	//
+	common.Assert(chunk.SavedInMap.Load() == false, chunk.Idx, file.FileMetadata.Filename)
+	common.Assert(chunk.Dirty.Load() == false, chunk.Idx, file.FileMetadata.Filename)
 
 	//
 	// If buffer is allocated by NewStagedChunk(), free it to the pool, else it's an external buffer
@@ -1110,6 +1137,25 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		// are already cached.
 		//
 		file.chunkLock.Lock()
+
+		//
+		// Most of the staged chunks would be readahead chunks, but there could be others which correspond
+		// to application reads. In a healthy sequential read scenario, the chunks would soon qualify as
+		// "fully read" and would be removed from StagedChunks. If the chunks build up to more than the critical
+		// limit it means the pattern is not sequential and not even random. It's able to qualify as "cacheable"
+		// in ReadFile() but then application doesn't read the entire chunk or reads it in a way that we cannot
+		// track. We need to keep the cache usage under check.
+		//
+		// TODO: See if we should remove only the last few chunks instead of all.
+		//
+		numStagedChunksCritical := fileIOMgr.numReadAheadChunks * 4
+
+		if len(file.StagedChunks) > numStagedChunksCritical {
+			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, too many staged chunks (%d > %d), removing all",
+				file.FileMetadata.Filename, len(file.StagedChunks), numStagedChunksCritical)
+			file.removeAllChunks(false /* needLock */)
+		}
+
 		// Conservative estimate of chunks in use (already staged + readahead scheduled but not yet issued).
 		chunksInUse := file.readaheadToBeIssued.Load() + int64(len(file.StagedChunks))
 		// How many more chunks are we allowed to readahead?
@@ -1130,6 +1176,13 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 			file.lastReadaheadChunkIdx.Store(readAheadEndChunkIdx - 1)
 			file.readaheadToBeIssued.Add(readAheadEndChunkIdx - readAheadStartChunkIdx)
 		}
+
+		if common.IsDebugBuild() {
+			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, Readahead %d chunks [%d, %d), %d in cache",
+				file.FileMetadata.Filename, (readAheadEndChunkIdx - readAheadStartChunkIdx),
+				readAheadStartChunkIdx, readAheadEndChunkIdx, len(file.StagedChunks))
+		}
+
 		file.chunkLock.Unlock()
 
 		for i := readAheadStartChunkIdx; i < readAheadEndChunkIdx; i++ {

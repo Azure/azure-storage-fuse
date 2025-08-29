@@ -34,7 +34,6 @@
 package dcache
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -56,6 +55,7 @@ type BufferPool struct {
 	bufSize    int          // size of buffers in this pool
 	maxBuffers int64        // max allocated buffers allowed
 	curBuffers atomic.Int64 // buffers currently allocated
+	maxUsed    atomic.Int64 // max buffers used at any point of time
 }
 
 func InitBufferPool(bufSize uint64) error {
@@ -119,7 +119,7 @@ func InitBufferPool(bufSize uint64) error {
 func GetBuffer() ([]byte, error) {
 	if bufPool.curBuffers.Load() > bufPool.maxBuffers {
 		// TODO: Add a timeout to wait for the buffers to get free, and only fail after timeout.
-		return nil, errors.New("Buffers Exhausted")
+		return nil, fmt.Errorf("Buffers Exhausted (%d)", bufPool.curBuffers.Load())
 	}
 
 	buf := bufPool.pool.Get().([]byte)
@@ -128,6 +128,16 @@ func GetBuffer() ([]byte, error) {
 	common.Assert(len(buf) == bufPool.bufSize, len(buf), bufPool.bufSize)
 
 	bufPool.curBuffers.Add(1)
+
+	//
+	// Track max buffers used at any point of time.
+	// Due to race between multiple threads, this may not be exact value, but that's okay, we just need
+	// rough estimate of whether buffers are being held for long.
+	//
+	if bufPool.curBuffers.Load() > bufPool.maxUsed.Load() {
+		bufPool.maxUsed.Store(bufPool.curBuffers.Load())
+		log.Warn("Buffer Pool: Max buffers used: %d out of %d", bufPool.maxUsed.Load(), bufPool.maxBuffers)
+	}
 	return buf, nil
 }
 
