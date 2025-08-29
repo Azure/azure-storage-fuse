@@ -35,6 +35,7 @@ package rpc_client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -102,6 +103,9 @@ const (
 	defaultNegativeTimeout = 30
 )
 
+var NegativeNodeError = fmt.Errorf("node is marked negative")
+var negativeTimeoutNotExpiredError = fmt.Errorf("negative timeout not expired for node")
+
 // TODO: add asserts for function arguments and return values
 // refer this for details, https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047924726
 
@@ -151,7 +155,9 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -186,6 +192,12 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -250,7 +262,9 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -285,6 +299,12 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -349,7 +369,9 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -384,6 +406,12 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -442,6 +470,30 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			return nil, err
 		}
 
+		//
+		// If the target node is marked negative, it means that the last PutChunkDC call to it failed
+		// with timeout error. So, prevent from timeout error from happening again, we return an error
+		// indicating the node is negative. The caller (WriteMV) will then retry the operation using
+		// OriginatorSendsToAll mode.
+		//
+		if cp.isNegativeNode(targetNodeID) {
+			//
+			// Release RPC client back to the pool.
+			//
+			err1 := cp.releaseRPCClient(client)
+			if err1 != nil {
+				log.Err("rpc_client::PutChunkDC: Failed to release RPC client for node %s %s: %v",
+					targetNodeID, reqStr, err1)
+				// Assert, but not fail the PutChunkDC call.
+				common.Assert(false, err1)
+			}
+
+			err := fmt.Errorf("Failing PutChunkDC to node %s [%w]: %s",
+				targetNodeID, NegativeNodeError, reqStr)
+			log.Err("rpc_client::PutChunkDC: %v", err)
+			return nil, err
+		}
+
 		// Call the rpc method.
 		resp, err := client.svcClient.PutChunkDC(ctx, req)
 		if err != nil {
@@ -461,7 +513,9 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -469,14 +523,32 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				continue
 			} else if rpc.IsTimedOut(err) {
 				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
+				// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
+				// and not between the client node and target node. In this case, we retry WriteMV using
+				// the OriginatorSendsToAll strategy. So, to be safe we don't delete the connections if we get
+				// timeout error in PutChunkDC. In the PutChunk using OriginatorSendsToAll strategy fails using
+				// timeout, we then delete the connections.
 				//
-				err1 := cp.deleteAllRPCClients(client)
+				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
-					log.Err("rpc_client::PutChunkDC: deleteAllRPCClients failed for node %s: %v",
+					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
+				}
+
+				//
+				// If we get timeout error in PutChunkDC(), it means that one/more of the downstream
+				// nodes/connections are down/bad. We cannot say for sure which node is down or which connection is bad.
+				// So, we mark all the nodes (next-hop as well as next nodes in chain) as negative nodes.
+				// This prevents other threads from also timing out if they are calling PutChunkDC to same nodes.
+				//
+				// We add the negative nodes after we reset the RPC connections because in PutChunkDC we don't know for
+				// sure which connection is bad. So, we first try to reset the existing clients for the next-hop node.
+				//
+				cp.addNegativeNode(targetNodeID)
+
+				// Add the next RVs to the negative nodes map.
+				for _, nextRV := range req.NextRVs {
+					cp.addNegativeRV(nextRV)
 				}
 
 				// We don't retry in case of timeout error.
@@ -496,6 +568,12 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -560,7 +638,9 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -595,6 +675,12 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -669,7 +755,9 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -704,6 +792,12 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -768,7 +862,9 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -803,6 +899,12 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -867,7 +969,9 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -902,6 +1006,12 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -966,7 +1076,9 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -1001,6 +1113,12 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -1065,7 +1183,9 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -1100,6 +1220,12 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -1170,7 +1296,9 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
+					common.Assert(rpc.IsConnectionRefused(err1) ||
+						rpc.IsTimedOut(err1) ||
+						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
 					return nil, err
 				}
 
@@ -1205,6 +1333,12 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 
 			// Fall through to release the RPC client.
 			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded.
+			// So, we can remove it from the negative nodes map.
+			//
+			cp.removeNegativeNode(targetNodeID)
 		}
 
 		// Release RPC client back to the pool.
@@ -1231,6 +1365,10 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 // cleanup closes all the RPC node client pools
 func Cleanup() error {
 	log.Info("rpc_client::Cleanup: Closing all node client pools")
+
+	cp.negativeNodesTicker.Stop()
+	cp.negativeNodesDone <- true
+
 	err := cp.closeAllNodeClientPools()
 	if err != nil {
 		log.Err("rpc_client::Cleanup: Failed to close all node client pools [%v]", err.Error())
@@ -1263,4 +1401,9 @@ func Start() {
 
 	log.Info("rpc_client::init: myNodeId: %s, maxNodes: %d, maxPerNode: %d, timeout: %d",
 		myNodeId, defaultMaxNodes, defaultMaxPerNode, defaultTimeout)
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	_ = errors.New("test error")
 }

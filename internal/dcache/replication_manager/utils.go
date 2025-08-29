@@ -104,10 +104,6 @@ func (s PutChunkStyleEnum) String() string {
 	}
 }
 
-// We will experiment with various PutChunk styles on various cluster sizes (with varying storage and n/w throughput
-// and different NumReplicas configuration).
-var PutChunkStyle PutChunkStyleEnum = DaisyChain
-
 // Return the most suitable online RV from the list of component RVs to which we should send the RPC call.
 // The RV is selected based on the following criteria:
 //  1. Local online RV is preferred, if available.

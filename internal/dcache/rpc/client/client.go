@@ -37,7 +37,9 @@ import (
 	"crypto/tls"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -73,6 +75,23 @@ var thriftCfg *thrift.TConfiguration
 func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s at %s", nodeID, nodeAddress)
 
+	//
+	// Check in the negative nodes map if we should attempt creating RPC client for this node ID.
+	//
+	err := cp.checkIfNegativeTimeoutExpired(nodeID)
+	if err != nil {
+		log.Err("rpcClient::newRPCClient: not creating RPC clients for node %s: %v", nodeID, err)
+		return nil, err
+	}
+
+	//
+	// Assert that the node ID should not be present in the negativeNodes map as we are
+	// creating a new RPC client for it.
+	//
+	if common.IsDebugBuild() {
+		common.Assert(!cp.isNegativeNode(nodeID), nodeID)
+	}
+
 	var transport thrift.TTransport
 
 	// if secure {
@@ -80,7 +99,7 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	// }
 
 	transport = thrift.NewTSocketConf(nodeAddress, thriftCfg)
-	transport, err := transportFactory.GetTransport(transport)
+	transport, err = transportFactory.GetTransport(transport)
 	if err != nil {
 		log.Err("rpcClient::newRPCClient: Failed to create transport for node %s at %s [%v]", nodeID, nodeAddress, err.Error())
 		return nil, err
@@ -100,6 +119,19 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	err = client.transport.Open()
 	if err != nil {
 		log.Err("rpcClient::newRPCClient: Failed to open transport node %s at %s [%v]", nodeID, nodeAddress, err.Error())
+
+		//
+		// If the RPC client creation fails due to timeout error, it means some connection problem or
+		// the node is down. In this case we should prevent creating RPC clients to the same node by
+		// other threads, as each operation will fail with the timeout error.
+		// So, add this node ID to negativeNodes map to prevent creating new RPC clients to it by other
+		// threads till the negative timeout expires.
+		//
+		if rpc.IsTimedOut(err) {
+			log.Warn("rpcClient::newRPCClient: Adding node %s at %s to negative nodes map", nodeID, nodeAddress)
+			cp.addNegativeNode(nodeID)
+		}
+
 		return nil, err
 	}
 
