@@ -98,6 +98,9 @@ func (wp *workerPool) worker() {
 }
 
 func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk bool) {
+	// We must be called only after scheduling the chunk for transfer (upload/download)
+	common.Assert(chunk.XferScheduled.Load() == true, chunk.Idx, get_chunk, file.FileMetadata.Filename)
+
 	t := &task{
 		file:      file,
 		chunk:     chunk,
@@ -107,24 +110,28 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 }
 
 func (wp *workerPool) readChunk(task *task) {
-	log.Debug("DistributedCache::readChunk: Reading chunk idx: %d, chunk Len: %d, file: %s",
-		task.chunk.Idx, task.chunk.Len, task.file.FileMetadata.Filename)
+	log.Debug("DistributedCache::readChunk: Reading chunkIdx: %d, chunk Offset: %d, chunk Len: %d, file: %s",
+		task.chunk.Idx, task.chunk.Offset, task.chunk.Len, task.file.FileMetadata.Filename)
 
 	// For read chunk, buffer must not be pre-allocated, ReadMV() returns the buffer.
 	// buffer is pre-allocated only when reading the chunk from the Local RV which would be decided after the ReadMV
 	// call from the replication manager.
 	common.Assert(task.chunk.IsBufExternal)
 	common.Assert(task.chunk.Buf == nil, len(task.chunk.Buf))
+	common.Assert(task.file.FileMetadata.FileLayout.ChunkSize%common.MbToBytes == 0,
+		task.file.FileMetadata.FileLayout.ChunkSize)
 
 	// Read From the Dcache.
 	readMVReq := &rm.ReadMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
 		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
 		ChunkIndex:     task.chunk.Idx,
-		OffsetInChunk:  0,
+		OffsetInChunk:  task.chunk.Offset,
 		Length:         task.chunk.Len,
 		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
 	}
+
+	common.Assert(readMVReq.ChunkSizeInMiB > 0)
 
 	readMVresp, err := rm.ReadMV(readMVReq)
 
@@ -132,6 +139,8 @@ func (wp *workerPool) readChunk(task *task) {
 		// ReadMV() must read all that we asked for.
 		common.Assert(readMVresp.Data != nil)
 		common.Assert(len(readMVresp.Data) == int(task.chunk.Len))
+		// We must come here only for chunks scheduled for transfer (download).
+		common.Assert(task.chunk.XferScheduled.Load() == true, task.chunk.Idx, task.file.FileMetadata.Filename)
 
 		//
 		// ReadMV completed successfully, staged chunk is now up-to-date.
@@ -153,18 +162,22 @@ func (wp *workerPool) readChunk(task *task) {
 		return
 	}
 
-	log.Err("DistrubuteCache[FM]::readChunk: Reading chunk from Dcache failed, chnk idx: %d, file: %s: %v",
-		task.chunk.Idx, task.file.FileMetadata.Filename, err)
+	log.Err("DistrubuteCache[FM]::readChunk: Reading chunk from Dcache failed, chnk idx: %d, offset: %d, length: %d, file: %s: %v",
+		readMVReq.ChunkIndex, readMVReq.OffsetInChunk, readMVReq.Length, task.file.FileMetadata.Filename, err)
 
 	task.chunk.Err <- err
 }
 
 func (wp *workerPool) writeChunk(task *task) {
-	log.Debug("DistributedCache::writeChunk: Writing chunk idx: %d, file: %s",
+	log.Debug("DistributedCache::writeChunk: Writing chunk chunkIdx: %d, file: %s",
 		task.chunk.Idx, task.file.FileMetadata.Filename)
 
 	// Only dirty StagedChunk must be written.
 	common.Assert(task.chunk.Dirty.Load())
+	// We always write full chunks (execept for the last chunk, but that also starts at offset 0).
+	common.Assert(task.chunk.Offset == 0, task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Offset)
+	common.Assert(task.chunk.Len > 0 && task.chunk.Len <= int64(len(task.chunk.Buf)),
+		task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Len, len(task.chunk.Buf))
 
 	writeMVReq := &rm.WriteMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
@@ -178,14 +191,25 @@ func (wp *workerPool) writeChunk(task *task) {
 	// Call WriteMV method for writing the chunk.
 	_, err := rm.WriteMV(writeMVReq)
 	if err == nil {
+		// We must come here only for chunks scheduled for transfer (upload).
+		common.Assert(task.chunk.XferScheduled.Load() == true, task.chunk.Idx, task.file.FileMetadata.Filename)
+
 		// WriteMV completed successfully, staged chunk is now no more dirty.
 		common.Assert(task.chunk.Dirty.Load())
 		task.chunk.Dirty.Store(false)
+
+		// Convey success to anyone waiting for the upload to complete.
 		close(task.chunk.Err)
+
+		// The chunk is uploaded to DCache, we can release it now.
+		log.Debug("DistributedCache::writeChunk: Writing completed file: %s, chunkIdx: %d, chunk.Len: %s, refcount: %d",
+			task.file.FileMetadata.Filename, task.chunk.Idx, task.chunk.Len, task.chunk.RefCount.Load())
+
+		task.file.removeChunk(task.chunk.Idx)
 		return
 	}
 
-	log.Err("DistrubuteCache[FM]::WriteChunk: Writing chunk to DCache failed, chnk idx: %d, file: %s: %v",
+	log.Err("DistrubuteCache[FM]::WriteChunk: Writing chunk to DCache failed, chunkIdx: %d, file: %s: %v",
 		task.chunk.Idx, task.file.FileMetadata.Filename, err)
 
 	task.chunk.Err <- err

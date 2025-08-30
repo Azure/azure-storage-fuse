@@ -1041,30 +1041,31 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	// todo: Can this method  can handle len(options.Data)== 0?
 	// Currently dcache read handles it, be sure about that.
-	log.Debug("DistributedCache::ReadInBuffer : ReadInBuffer, offset : %d, buf size : %d, file : %s",
-		options.Offset, len(options.Data), options.Handle.Path)
+	log.Debug("DistributedCache::ReadInBuffer : ReadInBuffer, file: %s, offset: %d, length: %d",
+		options.Handle.Path, options.Offset, len(options.Data))
 
 	var err error
 	var bytesRead int
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
 		common.Assert(options.Handle.IsDcacheAllowReads())
+
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
-		bytesRead, err = dcFile.ReadFile(options.Offset, options.Data)
+		bytesRead, err = dcFile.ReadFile(options.Offset, &options.Data)
 		if err == nil || err == io.EOF {
 			return bytesRead, err
 		}
 		common.Assert(bytesRead == 0)
-		log.Err("DistributedCache::ReadInBuffer : Failed to read the file from the Dcache, offset : %d, file : %s",
-			options.Offset, options.Handle.Path)
+		log.Err("DistributedCache::ReadInBuffer : Failed to read file from Dcache, file: %s, offset: %d, length: %d",
+			options.Handle.Path, options.Offset, len(options.Data))
 	} else if options.Handle.IsFsAzure() {
 		bytesRead, err = dc.NextComponent().ReadInBuffer(options)
 		if err == nil || err == io.EOF {
 			return bytesRead, err
 		}
 		common.Assert(bytesRead == 0)
-		log.Err("DistributedCache::ReadInBuffer : Failed to read the file from the Azure, offset : %d, file : %s",
-			options.Offset, options.Handle.Path)
+		log.Err("DistributedCache::ReadInBuffer : Failed to read file from Azure, file: %s, offset: %d, length: %d",
+			options.Handle.Path, options.Offset, len(options.Data))
 	} else if options.Handle.IsFsDebug() {
 		return debug.ReadFile(options)
 	} else {
@@ -1192,7 +1193,6 @@ func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
 
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 		dcacheErr = dcFile.CloseFile()
-		common.Assert(dcacheErr == nil)
 		if dcacheErr == nil {
 			// Clear this flag to signal no more writes on this handle.
 			// Fail any writes that come after this.
@@ -1240,18 +1240,22 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 			dcacheErr = dc.FlushFile(internal.FlushFileOptions{
 				Handle: options.Handle,
 			})
-			common.Assert(dcacheErr == nil, dcacheErr)
+			if dcacheErr != nil {
+				log.Err("DistributedCache::CloseFile : Failed to FlushFile for Dcache file : %s", options.Handle.Path)
+			}
 		}
 
 		//
 		// When readonly dcache file handles are closed with safeDeletes config enabled, the file's
 		// open count must be reduced, let ReleaseFile() know that.
 		//
-		isReadOnlyHandle := options.Handle.IsDcacheAllowReads()
+		if dcacheErr == nil {
+			isReadOnlyHandle := options.Handle.IsDcacheAllowReads()
 
-		dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
-		if dcacheErr != nil {
-			log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)
+			dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
+			if dcacheErr != nil {
+				log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)
+			}
 		}
 	}
 
