@@ -1,4 +1,7 @@
-## 2.6.0 (Unreleased)
+## 2.5.1 (Unreleased)
+**Features**
+- Added support for `chmod` and `chown` file system capabilities for FNS accounts, and `chown` capability for HNS accounts.
+
 **Bug Fixes**
 - Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
 
