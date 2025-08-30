@@ -347,7 +347,10 @@ func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf boo
 	// sequential enough) and hence not much point in keeping it in the cache.
 	// See below for what "reclaimable" means.
 	//
-	const reclaimTime = 2 * time.Second
+	// Note: reclaimTime will typically be much less (~1-2 sec) but we keep it at 5 sec to be conservative,
+	//       just in case some sequential reader is slow.
+	//
+	const reclaimTime = 5 * time.Second
 	const maxWaitTime = 60 * time.Second
 
 	startTime := time.Now()

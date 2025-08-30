@@ -783,8 +783,12 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 
 		chunk.SavedInMap.Store(false)
 
-		// The only refcount held must be the one corresponding to the StagedChunks map.
-		common.Assert(chunk.RefCount.Load() == 1, chunk.Idx, chunk.RefCount.Load())
+		//
+		// Refcount corresponding to StagedChunks must be present.
+		// For the case when file is closed after this chunk download was scheduled but before the chunk is
+		// downloaded, we will have the download refcount too.
+		//
+		common.Assert(chunk.RefCount.Load() == 1 || chunk.RefCount.Load() == 2, chunk.Idx, chunk.RefCount.Load())
 		file.releaseChunk(chunk)
 	}
 
