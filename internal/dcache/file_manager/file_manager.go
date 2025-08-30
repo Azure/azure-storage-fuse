@@ -282,7 +282,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	// These are strictly sequential reads, which we try to optimize for, in the absence of sequential
 	// (but parallel) reads.
 	//
-	isStrictlySequential := (endOffset == file.nextReadOffset.Add(endOffset-offset))
+	isStrictlySequential := (offset == file.nextReadOffset.Swap(endOffset))
 
 	//
 	// Read all the requested data bytes from the distributed cache.
@@ -867,10 +867,17 @@ func (file *DcacheFile) finalizeFile() error {
 // returns the buffer where the data is read by the GetChunk() RPC, so we don't want a pre-allocated buffer
 // in that case.
 // Since we don't support random writes, writes always pass noCache=false.
+//
+// The middle return value is true if the chunk is an existing chunk, else false if a freshly created chunk
+// is created.
+//
+// The returned chunk has its refcount incremented, the caller must call file.releaseChunk() when done with it.
+// Additionally, if the chunk is newly created, it has one extra refcount to protect against freeing before
+// the chunk is uploaded/downloaded. The caller must drop that ref when they are done uploading/downloading.
 
 func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, allocateBuf bool) (*StagedChunk, bool, error) {
-	log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d",
-		file.FileMetadata.Filename, chunkIdx, chunkOffset, length)
+	log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d, allocateBuf: %v, noCache: %v",
+		file.FileMetadata.Filename, chunkIdx, chunkOffset, length, allocateBuf, noCache)
 
 	common.Assert(chunkIdx >= 0, chunkIdx, chunkOffset, length, noCache, file.FileMetadata.Filename)
 	common.Assert(chunkOffset+length <= file.FileMetadata.FileLayout.ChunkSize,
@@ -899,6 +906,8 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 		common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
 		file.chunkLock.RUnlock()
 		common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
+		// One for the map and one for the caller.
+		common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load(), file.FileMetadata.Filename)
 		return chunk, true, nil
 	}
 	file.chunkLock.RUnlock()
@@ -925,8 +934,15 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 			common.Assert(chunk1.SavedInMap.Load() == true, chunk1.Idx, file.FileMetadata.Filename)
 			common.Assert(chunk1.Idx == chunkIdx, chunk1.Idx, chunkIdx, file.FileMetadata.Filename)
 			chunk1.RefCount.Add(1)
+
 			// Release the newly allocated chunk.
+			log.Debug("DistributedCache::getChunk: Releasing newly allocated chunk as another thread added it meanwhile, file: %s, chunkIdx: %d",
+				file.FileMetadata.Filename, chunkIdx)
+			common.Assert(chunk.RefCount.Load() == 1, chunk1.Idx, chunk1.RefCount.Load(), file.FileMetadata.Filename)
 			file.releaseChunk(chunk)
+
+			// One for the map and one for the caller.
+			common.Assert(chunk1.RefCount.Load() >= 2, chunk1.Idx, chunk1.RefCount.Load(), file.FileMetadata.Filename)
 			return chunk1, true, nil
 		}
 	}
@@ -945,13 +961,25 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 		chunk.RefCount.Add(1)
 	}
 
+	//
+	// This newly created chunk will need to be downloaded/uploaded, one refcount to protect against freeing
+	// before the chunk is uploaded/downloaded.
+	// This ref must be dropped by the caller when they are done downloading/uploading the chunk.
+	// Only the caller that gets the fresh chunk, will perform the download (upload is handled differently), and
+	// must drop this ref once download is complete.
+	//
+	// Note that NewStagedChunk() already adds the caller's refcount which they must drop once they are done
+	// using the chunk.
+	//
+	chunk.RefCount.Add(1)
+
 	// Some sanity assertions for the newly created chunk.
 	common.Assert(!chunk.XferScheduled.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 	common.Assert(!chunk.Dirty.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 	common.Assert(!chunk.UpToDate.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 	common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
-	// Caller has the right to one refcount, they must call file.releaseChunk() when done.
-	common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load(), file.FileMetadata.Filename)
+	// Caller has the right to one refcount (+ one download/upload ref), they must call file.releaseChunk() when done.
+	common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load(), file.FileMetadata.Filename)
 
 	return chunk, false, nil
 }
@@ -961,8 +989,11 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 //              chunk, it adds it to file.StagedChunks.
 // length>0 =>  Caller wants to read only 'length' bytes from the chunk (at 'chunkOffset'). This signifies
 //				random read and such chunks are not returned from or added to file.StagedChunks.
+//
+// The middle return value is true if the chunk is an existing chunk, else false if a freshly created chunk
+// is created.
 
-func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*StagedChunk, error) {
+func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*StagedChunk, bool, error) {
 	log.Debug("DistributedCache::getChunkForRead: file: %s, chunkIdx: %d, chunkOffset: %d, length: %d",
 		file.FileMetadata.Filename, chunkIdx, chunkOffset, length)
 
@@ -983,18 +1014,20 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 	//
 	// For read chunk, we use the buffer returned by the GetChunk() RPC, that saves an extra copy.
 	//
-	chunk, loaded, err := file.getChunk(chunkIdx, chunkOffset, length, noCache, false /* allocateBuf */)
-	_ = loaded
+	chunk, isExisting, err := file.getChunk(chunkIdx, chunkOffset, length, noCache, false /* allocateBuf */)
+	_ = isExisting
 	if err == nil {
 		// There's no point in having a chunk and not reading anything on to it.
-		common.Assert(chunk.Len > 0, chunk.Len, chunk.Idx, chunkOffset, file.FileMetadata.Filename, loaded)
-	}
-	// TODO: Assert that number of staged chunks is less than fileIOManager.numReadAheadChunks.
+		common.Assert(chunk.Len > 0, chunk.Len, chunk.Idx, chunkOffset, file.FileMetadata.Filename, isExisting)
 
-	return chunk, err
+		log.Debug("DistributedCache::getChunkForRead: Got chunk, file: %s, chunkIdx: %d, isExisting: %v, refcount: %d",
+			file.FileMetadata.Filename, chunk.Idx, isExisting, chunk.RefCount.Load())
+	}
+
+	return chunk, isExisting, err
 }
 
-func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
+func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, bool, error) {
 	file.chunkLock.RLock()
 	numWriteChunks := len(file.StagedChunks)
 	_ = numWriteChunks
@@ -1004,10 +1037,10 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 		file.FileMetadata.Filename, chunkIdx, numWriteChunks)
 	common.Assert(chunkIdx >= 0)
 
-	chunk, loaded, err := file.getChunk(chunkIdx, 0 /* chunkOffset */, 0 /* length */, false /* noCache */, true /* allocateBuf */)
-	_ = loaded
+	chunk, isExisting, err := file.getChunk(chunkIdx, 0 /* chunkOffset */, 0, /* length */
+		false /* noCache */, true /* allocateBuf */)
+	_ = isExisting
 
-	// TODO: Assert that number of staged chunks is less than fileIOManager.numStagingChunks.
 	//
 	// For write chunks chunk.Len is the amount of valid data in the chunk. It starts at 0 and updated as user
 	// data is copied to the chunk. We cannot assert chunk.Len==0 here as once file.getChunk() released the lock
@@ -1015,10 +1048,13 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 	//
 	if err == nil {
 		// We always write full chunks except possibly the last chunk, but even that starts at offset 0.
-		common.Assert(chunk.Offset == 0, chunk.Offset, chunk.Idx, file.FileMetadata.Filename, loaded)
+		common.Assert(chunk.Offset == 0, chunk.Offset, chunk.Idx, file.FileMetadata.Filename, isExisting)
+
+		log.Debug("DistributedCache::getChunkForWrite: Got chunk, file: %s, chunkIdx: %d, isExisting: %v, refcount: %d",
+			file.FileMetadata.Filename, chunk.Idx, isExisting, chunk.RefCount.Load())
 	}
 
-	return chunk, err
+	return chunk, isExisting, err
 }
 
 // Remove chunk from staged chunks.
@@ -1186,7 +1222,7 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	// If this chunk is already staged, return the staged chunk else create a new chunk, add to the staged
 	// chunks list and return. For a new chunk, the chunk download is not yet scheduled.
 	//
-	chunk, err := file.getChunkForRead(chunkIdx, chunkOffset, length)
+	chunk, isExisting, err := file.getChunkForRead(chunkIdx, chunkOffset, length)
 	if err != nil {
 		return chunk, err
 	}
@@ -1200,8 +1236,12 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 		file.releaseChunk(chunk)
 	}
 
-	// This will be a no-op if this chunk download is already scheduled.
-	scheduleDownload(chunk, file)
+	//
+	// Only the caller that creates a new chunk schedules the download.
+	//
+	if !isExisting {
+		scheduleDownload(chunk, file)
+	}
 
 	if sync {
 		err = <-chunk.Err
@@ -1337,9 +1377,14 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 	log.Debug("DistributedCache::CreateOrGetStagedChunk: file: %s, offset: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, offset, chunkIdx)
 
-	chunk, err := file.getChunkForWrite(chunkIdx)
+	chunk, isExisting, err := file.getChunkForWrite(chunkIdx)
 	if err != nil {
 		return chunk, err
+	}
+
+	// Currently we don't use the upload ref, so drop it here.
+	if !isExisting {
+		file.releaseChunk(chunk)
 	}
 
 	common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, offset, file.FileMetadata.Filename)
@@ -1352,23 +1397,22 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 func scheduleDownload(chunk *StagedChunk, file *DcacheFile) bool {
 	// chunk.Len is the amount of bytes to download, cannot be 0.
 	common.Assert(chunk.Len > 0)
-	// Must have a valid refcount.
+	// Must have a valid download refcount.
 	common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load())
+	// Only the original thread that allocated the chunk starts the download.
+	common.Assert(!chunk.XferScheduled.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
+	// Cannot be overwriting a dirty staged chunk.
+	common.Assert(!chunk.Dirty.Load())
+	// Cannot be reading an already up-to-date chunk.
+	common.Assert(!chunk.UpToDate.Load())
 
-	if !chunk.XferScheduled.Swap(true) {
-		log.Debug("DistributedCache::scheduleDownload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
-			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
+	chunk.XferScheduled.Store(true)
 
-		// Cannot be overwriting a dirty staged chunk.
-		common.Assert(!chunk.Dirty.Load())
-		// Cannot be reading an already up-to-date chunk.
-		common.Assert(!chunk.UpToDate.Load())
+	log.Debug("DistributedCache::scheduleDownload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
+		file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
 
-		fileIOMgr.wp.queueWork(file, chunk, true /* get_chunk */)
-		return true
-	}
-
-	return false
+	fileIOMgr.wp.queueWork(file, chunk, true /* get_chunk */)
+	return true
 }
 
 func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {

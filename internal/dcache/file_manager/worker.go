@@ -136,6 +136,9 @@ func (wp *workerPool) readChunk(task *task) {
 	readMVresp, err := rm.ReadMV(readMVReq)
 
 	if err == nil {
+		log.Debug("DistrubuteCache[FM]::readChunk: ReadMV completed, chunkIdx: %d, offset: %d, length: %d, file: %s, err: %v",
+			task.chunk.Idx, task.chunk.Offset, task.chunk.Len, task.file.FileMetadata.Filename, err)
+
 		// ReadMV() must read all that we asked for.
 		common.Assert(readMVresp.Data != nil)
 		common.Assert(len(readMVresp.Data) == int(task.chunk.Len))
@@ -159,8 +162,18 @@ func (wp *workerPool) readChunk(task *task) {
 		// Close the Err channel to indicate "no error".
 		close(task.chunk.Err)
 
+		//
+		// Drop the download reference after IsBufExternal is correctly set.
+		// This is important as this may be the last reference causing releaseChunk() to free the chunk,
+		// and we must duly free the chunk buffer if IsBufExternal is false, else it would leak.
+		//
+		task.file.releaseChunk(task.chunk)
+
 		return
 	}
+
+	// Drop the download reference.
+	task.file.releaseChunk(task.chunk)
 
 	log.Err("DistrubuteCache[FM]::readChunk: Reading chunk from Dcache failed, chnk idx: %d, offset: %d, length: %d, file: %s: %v",
 		readMVReq.ChunkIndex, readMVReq.OffsetInChunk, readMVReq.Length, task.file.FileMetadata.Filename, err)
