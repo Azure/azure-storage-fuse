@@ -195,6 +195,20 @@ type DcacheFile struct {
 	StagedChunks map[int64]*StagedChunk
 	chunkLock    sync.RWMutex
 
+	// How many max chunks can be allocated for use by this file.
+	// Depending on whether the file is opened for read or write, the maxChunks will be set differently.
+	// For writers it'll be set to numStagingChunks, for readers it'll be set to numReadAheadChunks plus
+	// the window size supported by the read patter tracker. See NewRPTracker().
+	maxChunks int64
+
+	// Semaphore to limit number of in-use chunks.
+	// Note that in order to support parallel readers/writers, we need multiple partial chunks to be present
+	// at any time. As soon as chunk is "fully used" (fully read/written by application), it can be released.
+	// We limit the number of chunks in use to avoid using too much memory.
+	// NewStagedChunk() reads from this channel before allocating a new chunk.
+	// releaseChunk() signals on this channel when a chunk is freed.
+	freeChunkSemaphore chan struct{}
+
 	// Etag returned by createFileInit(), later used by createFileFinalize() to catch unexpected
 	// out-of-band changes to the metadata file between init and finalize.
 	finalizeEtag string
@@ -215,6 +229,21 @@ func (file *DcacheFile) getWriteError() error {
 	_ = ok
 	common.Assert(ok, val)
 	return err
+}
+
+func (file *DcacheFile) initFreeChunkSemaphore(maxChunks int) {
+	// Must be called only once.
+	common.Assert(file.freeChunkSemaphore == nil)
+	common.Assert(maxChunks >= max(fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks),
+		maxChunks, fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks)
+
+	file.freeChunkSemaphore = make(chan struct{}, maxChunks)
+	file.maxChunks = int64(maxChunks)
+
+	// Fill the semaphore with initial tokens.
+	for i := 0; i < maxChunks; i++ {
+		file.freeChunkSemaphore <- struct{}{}
+	}
 }
 
 // Reads the file data from the given offset and length to buf[].
@@ -286,7 +315,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		// 0 is not very common as we will soon confirm either sequential/random pattern.
 		// 0 means that we might be transitioning from sequential to random, or maybe sequential pattern
 		// is shifting to another region of the file. In any case it's a good time to flush all cached
-		// chunks.
+		// chunks as they may not be relevant for the new access pattern.
 		//
 		if accessPattern == 0 {
 			file.removeAllChunks(true /* needLock */)
@@ -357,9 +386,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 
 		if isSequential {
 			chunkFullyRead = chunk.IOTracker.MarkAccessed(chunkOffset, int64(copied), chunk.Idx)
-		}
-
-		if !chunkFullyRead && isStrictlySequential {
+		} else if isStrictlySequential {
 			chunkFullyRead = (offset == getChunkEndOffset(chunk.Idx, file.FileMetadata.FileLayout.ChunkSize))
 		}
 
@@ -877,6 +904,16 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 	file.chunkLock.RUnlock()
 
 	//
+	// NewStagedChunk() can wait if no free chunk is available, so do it before taking the lock.
+	// In the rare case that another thread adds the chunk to StagedChunks meanwhile, we will
+	// release the newly allocated chunk. That should be rare enough to avoid too many wasted calls.
+	//
+	chunk, err := NewStagedChunk(chunkIdx, chunkOffset, length, file, allocateBuf)
+	if err != nil {
+		return nil, false, err
+	}
+
+	//
 	// Before adding a new chunk to StagedChunks we must ensure that no other thread has added it meanwhile.
 	// We don't need the lock for uncached chunks.
 	//
@@ -884,18 +921,14 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 		file.chunkLock.Lock()
 		defer file.chunkLock.Unlock()
 
-		if chunk, ok := file.StagedChunks[chunkIdx]; ok {
-			common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
-			common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
-			chunk.RefCount.Add(1)
-			return chunk, true, nil
+		if chunk1, ok := file.StagedChunks[chunkIdx]; ok {
+			common.Assert(chunk1.SavedInMap.Load() == true, chunk1.Idx, file.FileMetadata.Filename)
+			common.Assert(chunk1.Idx == chunkIdx, chunk1.Idx, chunkIdx, file.FileMetadata.Filename)
+			chunk1.RefCount.Add(1)
+			// Release the newly allocated chunk.
+			file.releaseChunk(chunk)
+			return chunk1, true, nil
 		}
-	}
-
-	// Else, allocate a new staged chunk.
-	chunk, err := NewStagedChunk(chunkIdx, chunkOffset, length, file, allocateBuf)
-	if err != nil {
-		return nil, false, err
 	}
 
 	// IsBufExternal is always true in here as the allocation of this buffer is decided by Replication manager
@@ -912,14 +945,13 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 		chunk.RefCount.Add(1)
 	}
 
-	// Hold one refcount for the caller. Caller must call file.releaseChunk() when done using this chunk.
-	chunk.RefCount.Add(1)
-
 	// Some sanity assertions for the newly created chunk.
 	common.Assert(!chunk.XferScheduled.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 	common.Assert(!chunk.Dirty.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 	common.Assert(!chunk.UpToDate.Load(), chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 	common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
+	// Caller has the right to one refcount, they must call file.releaseChunk() when done.
+	common.Assert(chunk.RefCount.Load() >= 1, chunk.Idx, chunk.RefCount.Load(), file.FileMetadata.Filename)
 
 	return chunk, false, nil
 }
@@ -965,23 +997,12 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 	file.chunkLock.RLock()
 	numWriteChunks := len(file.StagedChunks)
+	_ = numWriteChunks
 	file.chunkLock.RUnlock()
 
 	log.Debug("DistributedCache::getChunkForWrite: file: %s, chunkIdx: %d, current chunks: %d",
 		file.FileMetadata.Filename, chunkIdx, numWriteChunks)
 	common.Assert(chunkIdx >= 0)
-
-	//
-	// If too many unwritten chunks get accumulated, it likely means some write pattern which
-	// qualified as sequential because it honored the window size check, but application didn't write full
-	// chunks. We catch that and fail the write.
-	//
-	if numWriteChunks >= fileIOMgr.numStagingChunks {
-		err := fmt.Errorf("DistributedCache::getChunkForWrite: file: %s, too many chunks for writeback (%d > %d)",
-			file.FileMetadata.Filename, numWriteChunks, fileIOMgr.numStagingChunks)
-		log.Err("%v", err)
-		return nil, err
-	}
 
 	chunk, loaded, err := file.getChunk(chunkIdx, 0 /* chunkOffset */, 0 /* length */, false /* noCache */, true /* allocateBuf */)
 	_ = loaded
@@ -1135,6 +1156,9 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 		dcache.PutBuffer(chunk.Buf)
 	}
 
+	// Let waiters know that a chunk is freed.
+	file.freeChunkSemaphore <- struct{}{}
+
 	return true
 }
 
@@ -1225,26 +1249,6 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		// are already cached.
 		//
 		file.chunkLock.Lock()
-
-		//
-		// Most of the staged chunks would be readahead chunks, but there could be others which correspond
-		// to application reads. In a healthy sequential read scenario, the chunks would soon qualify as
-		// "fully read" and would be removed from StagedChunks. If the chunks build up to more than the critical
-		// limit it means the pattern is not sequential and not even random. It's able to qualify as "cacheable"
-		// in ReadFile() but then application doesn't read the entire chunk or reads it in a way that we cannot
-		// track. We need to keep the cache usage under check.
-		//
-		// Note: numStagedChunksCritical should be large enough to accomodate 2*windowSize chunks, see
-		//       NewRPTracker.
-		//
-		numStagedChunksCritical := fileIOMgr.numReadAheadChunks * 6
-
-		if len(file.StagedChunks) > numStagedChunksCritical {
-			// TODO: See if we should remove only the last few chunks instead of all.
-			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, too many staged chunks (%d > %d), removing all",
-				file.FileMetadata.Filename, len(file.StagedChunks), numStagedChunksCritical)
-			file.removeAllChunks(false /* needLock */)
-		}
 
 		// Conservative estimate of chunks in use (already staged + readahead scheduled but not yet issued).
 		chunksInUse := file.readaheadToBeIssued.Load() + int64(len(file.StagedChunks))

@@ -35,6 +35,7 @@ package filemanager
 
 import (
 	"sync/atomic"
+	"time"
 )
 
 type StagedChunk struct {
@@ -65,4 +66,10 @@ type StagedChunk struct {
 	//
 	RefCount  atomic.Int32
 	IOTracker *ChunkIOTracker // IOTracker for this staged chunk.
+
+	//
+	// When was this chunk allocated for read/write?
+	// Currently only used by writers to see if unwritten chunks are not completing for long time.
+	//
+	AllocatedAt time.Time
 }
