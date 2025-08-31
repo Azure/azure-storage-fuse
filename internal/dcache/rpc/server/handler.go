@@ -2880,7 +2880,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkDC request to nexthop %s/%s on node %s: %s",
 			nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
-		dcResp, err := rpc_client.PutChunkDC(ctx, nexthopNodeId, putChunkDCReq)
+		dcResp, err := rpc_client.PutChunkDC(ctx, nexthopNodeId, putChunkDCReq, true /*fromFwder */)
 
 		//
 		// If the PutChunkDC RPC call fails, the error returned can be,

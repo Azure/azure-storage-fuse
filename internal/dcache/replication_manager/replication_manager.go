@@ -644,7 +644,7 @@ retry:
 		if targetNodeID == rpc.GetMyNodeUUID() {
 			putChunkDCResp, err = rpc_server.PutChunkDCLocal(ctx, putChunkDCReq)
 		} else {
-			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}
 
 		if err != nil {
