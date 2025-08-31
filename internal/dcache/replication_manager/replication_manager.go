@@ -357,8 +357,8 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	if common.IsDebugBuild() {
 		startTime := time.Now()
 		defer func() {
-			timeTaken := time.Since(startTime).Microseconds()
-			log.Debug("ReplicationManager::WriteMV: WriteMV request took %d microseconds: %v", timeTaken, req.toString())
+			log.Debug("[TIMING] ReplicationManager::WriteMV: WriteMV request took %s: %v",
+				time.Since(startTime), req.toString())
 		}()
 	}
 
