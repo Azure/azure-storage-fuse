@@ -350,8 +350,13 @@ func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf boo
 	// Note: reclaimTime will typically be much less (~1-2 sec) but we keep it at 5 sec to be conservative,
 	//       just in case some sequential reader is slow.
 	//
+	// Note: For maxWaitTime, we choose a large value (15 minutes) to avoid failing IOs due to temporary
+	//       congestion in the cluster or some transient issue. We are in no hurry to fail application IOs.
+	//       This is particularly important for writes, as write chunks can only be reclaimed after they
+	//       have been flushed and that can take time if the cluster is slow/busy.
+	//
 	const reclaimTime = 5 * time.Second
-	const maxWaitTime = 60 * time.Second
+	const maxWaitTime = 900 * time.Second
 
 	startTime := time.Now()
 	count := 0
