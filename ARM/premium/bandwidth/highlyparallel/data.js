@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1756023648841,
+  "lastUpdate": 1756628366750,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -897,6 +897,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 983.388671875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Copilot",
+            "username": "Copilot",
+            "email": "198982749+Copilot@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "ba815585e3ce3b2d08f0009de26c212e655af50c",
+          "message": "Add comprehensive GitHub Copilot instructions for Azure Storage Fuse development (#1938)\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: vibhansa-msft <64532198+vibhansa-msft@users.noreply.github.com>",
+          "timestamp": "2025-08-26T08:13:31Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/ba815585e3ce3b2d08f0009de26c212e655af50c"
+        },
+        "date": 1756628366453,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 46676.123046875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 51172.134440104164,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 1097.1442057291667,
             "unit": "MiB/s"
           }
         ]
