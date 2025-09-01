@@ -946,7 +946,7 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			// also remove the RV from the iffyRVMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(cm.RvIdToName(req.RVName))
+			cp.removeIffyRV(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
@@ -1079,7 +1079,7 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 			// also remove the RV from the iffyRVMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(cm.RvIdToName(req.RVName))
+			cp.removeIffyRV(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
@@ -1212,7 +1212,7 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 			// also remove the RV from the iffyRVMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(cm.RvIdToName(req.RVName))
+			cp.removeIffyRV(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
