@@ -354,11 +354,18 @@ retry:
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
+	var err error
+
 	if common.IsDebugBuild() {
 		startTime := time.Now()
 		defer func() {
-			timeTaken := time.Since(startTime).Microseconds()
-			log.Debug("ReplicationManager::WriteMV: WriteMV request took %d microseconds: %v", timeTaken, req.toString())
+			if err != nil {
+				log.Err("[TIMING] ReplicationManager::WriteMV: WriteMV failed after %s: %v: %v",
+					time.Since(startTime), req.toString(), err)
+			} else {
+				log.Debug("[TIMING] ReplicationManager::WriteMV: WriteMV request took %s: %v",
+					time.Since(startTime), req.toString())
+			}
 		}()
 	}
 
@@ -368,7 +375,7 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	// We don't expect the caller to pass invalid requests, so only verify in debug builds.
 	//
 	if common.IsDebugBuild() {
-		if err := req.isValid(); err != nil {
+		if err = req.isValid(); err != nil {
 			err = fmt.Errorf("invalid WriteMV request %s [%v]", req.toString(), err)
 			log.Err("ReplicationManager::WriteMV: %v", err)
 			common.Assert(false, err)
@@ -394,6 +401,7 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	// hash := getMD5Sum(req.Data)
 
 retry:
+	err = nil
 	if retryCnt > 0 || brokenChain {
 		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh or broken chain (%v), RVs written in prev attempt: %v",
 			retryCnt, req.toString(), brokenChain, rvsWritten)
@@ -403,6 +411,10 @@ retry:
 	// Get component RVs for MV, from clustermap and also the corresponding clustermap epoch.
 	// If server returns NeedToRefreshClusterMap, we will ask cm.RefreshClusterMap() to update
 	// the clustermap to a value higher than this epoch.
+	//
+	// Note: getComponentRVsForMV() returns a randomized list of component RVs. This helps to distribute
+	//       load in case of daisy chain writes as daisy chain writes utilize ingress and egress n/w b/w
+	//       for all but the last RV in the chain and for the last RV only ingress n/w b/w is used.
 	//
 	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
@@ -627,7 +639,6 @@ retry:
 		defer cancel()
 
 		var putChunkDCResp *models.PutChunkDCResponse
-		var err error
 
 		//
 		// If the node to which the PutChunkDC() RPC call must be made is local,
@@ -637,7 +648,7 @@ retry:
 		if targetNodeID == rpc.GetMyNodeUUID() {
 			putChunkDCResp, err = rpc_server.PutChunkDCLocal(ctx, putChunkDCReq)
 		} else {
-			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq)
+			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}
 
 		if err != nil {
@@ -853,9 +864,10 @@ processResponses:
 	//   - If PutChunk failed with non-retriable error.
 	//
 	if errWriteMV != nil {
-		log.Err("ReplicationManager::WriteMV: Failed to write to MV %s, %s [%v]",
+		err = fmt.Errorf("ReplicationManager::WriteMV: Failed to write to MV %s, %s [%v]",
 			req.MvName, req.toString(), errWriteMV)
-		return nil, errWriteMV
+		log.Err("%v", err)
+		return nil, err
 	}
 
 	if brokenChain {
@@ -883,19 +895,20 @@ processResponses:
 
 	// Fail write with a meaningful error.
 	if mvState == dcache.StateOffline {
-		err := fmt.Errorf("%s is offline", req.MvName)
+		err = fmt.Errorf("%s is offline", req.MvName)
 		log.Err("ReplicationManager::WriteMV: %v", err)
 		return nil, err
 	}
 
 	// For a non-offline MV, at least one replica write should succeed.
 	if len(rvsWritten) == 0 {
-		err := fmt.Errorf("WriteMV could not write to any replica: %v", req.toString())
+		err = fmt.Errorf("WriteMV could not write to any replica: %v", req.toString())
 		log.Err("ReplicationManager::WriteMV: %v", err)
 		common.Assert(false, err)
 		return nil, err
 	}
 
+	common.Assert(err == nil, err)
 	return &WriteMvResponse{}, nil
 }
 

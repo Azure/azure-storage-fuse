@@ -1162,7 +1162,7 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 			// The clustermap has all our RVs in the RV list added by some other node, thank it and
 			// proceed.
 			//
-			log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: All (%d) myRVs added by node %s (took %s): %+v",
+			log.Info("[TIMING] ClusterManager::updateStorageClusterMapWithMyRVs: All (%d) myRVs added by node %s (took %s): %+v",
 				len(myRVs), clusterMap.LastUpdatedBy, time.Since(startTime), clusterMap)
 			return nil
 		}
@@ -1239,7 +1239,7 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		// The clustermap must now have our RVs added to RV list.
 		// Only RVs which clash with existing RVs in the clustermap would not be added.
 		//
-		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: cluster map updated by %s at %d (took %s)",
+		log.Info("[TIMING] ClusterManager::updateStorageClusterMapWithMyRVs: cluster map updated by %s at %d (took %s)",
 			cmi.myNodeId, clusterMap.LastUpdatedAt, time.Since(startTime))
 
 		break
@@ -1889,7 +1889,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	stats.Stats.CM.StorageClustermap.LastUpdatedAt = time.Now()
 	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalUpdates), 1)
 
-	log.Info("ClusterManager::updateStorageClusterMapIfRequired: cluster map (%d nodes) updated by %s at %s: %+v (took %s)",
+	log.Info("[TIMING] ClusterManager::updateStorageClusterMapIfRequired: cluster map (%d nodes) updated by %s at %s: %+v (took %s)",
 		nodeCount, cmi.myNodeId, time.Now(), clusterMap, time.Since(start))
 	return nil
 }
@@ -3160,7 +3160,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		}
 	}
 
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#3 (%d RVs, %d MVs) %+v [took %s]",
+	log.Debug("[TIMING] ClusterManager::updateMVList: existingMVMap after phase#3 (%d RVs, %d MVs) %+v [took %s]",
 		len(rvMap), len(existingMVMap), existingMVMap, time.Since(start))
 }
 
@@ -3473,6 +3473,13 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		duration < *stats.Stats.CM.Heartbeats.GetNodeList.MinTime {
 		stats.Stats.CM.Heartbeats.GetNodeList.MinTime = &duration
 	}
+
+	// TODO: Later we can make this debug only.
+	if duration > stats.Stats.CM.Heartbeats.GetNodeList.MaxTime {
+		log.Warn("[TIMING] ClusterManager::updateRVList: Got %d nodes in cluster, took %s",
+			len(nodeIds), time.Since(start))
+	}
+
 	stats.Stats.CM.Heartbeats.GetNodeList.MaxTime =
 		max(stats.Stats.CM.Heartbeats.GetNodeList.MaxTime, duration)
 

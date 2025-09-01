@@ -71,7 +71,14 @@ const (
 	// at init time, we assume a fair value of say 4 and for each of those RVs, keeping anything
 	// more than 8 chunk sized IOs won't be useful. So we set the default to 32.
 	//
-	defaultMaxPerNode = 32
+	// TODO: For now I have increased this to 512 to avoid the PutChunkDC deadlock where nodeA
+	//       uses up all its clients to send PutChunkDC request to nodeB, while nodeB also uses up
+	//       all its clients to send PutChunkDC request to nodeA. Now nodeA RPC requests will never
+	//       complete as nodeB cannot forward them and hence cannot send any response back, and vice
+	//       versa. We need to keep this to a low value, say 32, in order to avoid too many incoming TCP
+	//       connections to a node.
+	//
+	defaultMaxPerNode = 512
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
@@ -413,7 +420,7 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 // The node receiving the PutChunkDCRequest (which hosts the nexthop RV) writes the chunk to its local RV, and
 // relays the request to the new nexthop along with the remaining RV list. This goes on in a daisy chain fashion
 // till all the component RVs are covered.
-func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
+func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDCRequest, fromFwder bool) (*models.PutChunkDCResponse, error) {
 	common.Assert(req != nil &&
 		req.Request != nil &&
 		req.Request.Chunk != nil &&

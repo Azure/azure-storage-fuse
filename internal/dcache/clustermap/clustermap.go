@@ -306,9 +306,8 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	if common.IsDebugBuild() {
 		startTime := time.Now()
 		defer func() {
-			timeTaken := time.Since(startTime).Microseconds()
-			log.Debug("ClusterMap::UpdateComponentRVState: request took %d microseconds: %s/%s -> %s",
-				timeTaken, rvName, mvName, rvNewState)
+			log.Debug("[TIMING] ClusterMap::UpdateComponentRVState: request took %s: %s/%s -> %s",
+				time.Since(startTime), rvName, mvName, rvNewState)
 		}()
 	}
 
