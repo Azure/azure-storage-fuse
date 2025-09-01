@@ -40,6 +40,7 @@ import (
 	"math/rand"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -51,36 +52,50 @@ import (
 	gouuid "github.com/google/uuid"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 var (
 	ErrFileNotReady error = errors.New("Dcache file not in ready state")
 )
 
-//go:generate $ASSERT_REMOVER $GOFILE
-
-func getChunkStartOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
-	return getChunkIdxFromFileOffset(offset, fileLayout) * fileLayout.ChunkSize
+// Index of the chunk that contains the given file offset.
+func getChunkIdxFromFileOffset(offset, chunkSize int64) int64 {
+	return offset / chunkSize
 }
 
-func getChunkIdxFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
-	return offset / fileLayout.ChunkSize
+// Offset within the chunk corresponding to the given file offset.
+func getChunkOffsetFromFileOffset(offset, chunkSize int64) int64 {
+	return offset % chunkSize
 }
 
-func getChunkOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
-	return offset - getChunkStartOffsetFromFileOffset(offset, fileLayout)
+// File offset of the start of the chunk.
+func getChunkStartOffset(chunkIdx, chunkSize int64) int64 {
+	return chunkIdx * chunkSize
 }
 
+// File offset of the last byte of the chunk + 1.
+// Note: This is one byte past the end of the chunk.
+func getChunkEndOffset(chunkIdx, chunkSize int64) int64 {
+	return (chunkIdx + 1) * chunkSize
+}
+
+// Returns the size of the chunk containing the given file offset.
+// For all chunks except the last chunk, this will be equal to chunkSize.
 func getChunkSize(offset int64, file *DcacheFile) int64 {
 	// getChunkSize() must be called for a finalized file which will have size >= 0.
 	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
+
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	size := min(file.FileMetadata.Size-
-		getChunkStartOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout),
+		getChunkStartOffset(chunkIdx, file.FileMetadata.FileLayout.ChunkSize),
 		file.FileMetadata.FileLayout.ChunkSize)
+
 	common.Assert(size >= 0, size)
 	return size
 }
 
-func isOffsetChunkStarting(offset int64, fileLayout *dcache.FileLayout) bool {
-	return (offset%fileLayout.ChunkSize == 0)
+func isOffsetChunkStarting(offset, chunkSize int64) bool {
+	return (offset%chunkSize == 0)
 }
 
 func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string {
@@ -90,6 +105,7 @@ func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string
 	common.Assert(numMvs == fileMetadata.FileLayout.StripeWidth,
 		numMvs, fileMetadata.FileLayout.StripeWidth, fileMetadata.FileLayout.ChunkSize)
 	common.Assert(numMvs > 0, numMvs)
+
 	// For writes file size won't be set yet, for reads we must be reading within the file.
 	common.Assert((fileMetadata.Size == -1) ||
 		((chunk.Idx * fileMetadata.FileLayout.ChunkSize) < fileMetadata.Size))
@@ -169,11 +185,20 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		return nil, err
 	}
 
-	// This Etag is used while finalizing the file.
-	return &DcacheFile{
+	//
+	// This DcacheFile will be used for writing, hence it doesn't need a read pattern tracker.
+	//
+	dcacheFile := &DcacheFile{
 		FileMetadata: fileMetadata,
+		// This Etag is used while finalizing the file.
 		finalizeEtag: eTag,
-	}, nil
+		StagedChunks: make(map[int64]*StagedChunk),
+	}
+
+	// freeChunks semaphore is used to limit StagedChunks map to numStagingChunks.
+	dcacheFile.initFreeChunks(fileIOMgr.numStagingChunks)
+
+	return dcacheFile, nil
 }
 
 // Gets the metadata of the file from the metadata store.
@@ -256,14 +281,25 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 			common.Assert(false, fileName, err)
 			return nil, err
 		}
-
 		common.Assert(newOpenCount > 0, newOpenCount, fileName)
 	}
 
+	//
+	// This DcacheFile will be used for reading, hence it needs a read pattern tracker.
+	//
 	dcacheFile := &DcacheFile{
 		FileMetadata: fileMetadata,
 		attr:         prop,
+		RPT:          NewRPTracker(fileName),
+		StagedChunks: make(map[int64]*StagedChunk),
 	}
+
+	//
+	// freeChunks semaphore is used to limit StagedChunks map to numReadAheadChunks plus
+	// the window size supported by read pattern tracker. See NewRPTracker().
+	// DO NOT make it very low else most IOs will have to wait for chunk reclaim.
+	//
+	dcacheFile.initFreeChunks(fileIOMgr.numReadAheadChunks + 300)
 	dcacheFile.lastReadaheadChunkIdx.Store(-1)
 
 	return dcacheFile, nil
@@ -324,9 +360,93 @@ func DeleteDcacheFile(fileName string) error {
 }
 
 // Creates the chunk and allocates the chunk buf
-func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk, error) {
+func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf bool) (*StagedChunk, error) {
 	var buf []byte
 	var err error
+	//
+	// Maximum time a "reclaimable" chunk is allowed in StagedChunks map. This is to allow it to
+	// capture all sequential reads/writes that fall on the chunk.
+	// Beyond this it may indicate chunk not receiving application IO (as the pattern may not be
+	// sequential enough) and hence not much point in keeping it in the cache.
+	// See below for what "reclaimable" means.
+	//
+	// Note: reclaimTime will typically be much less (~1-2 sec) but we keep it at 5 sec to be conservative,
+	//       just in case some sequential reader is slow.
+	//
+	// Note: For maxWaitTime, we choose a large value (15 minutes) to avoid failing IOs due to temporary
+	//       congestion in the cluster or some transient issue. We are in no hurry to fail application IOs.
+	//       This is particularly important for writes, as write chunks can only be reclaimed after they
+	//       have been flushed and that can take time if the cluster is slow/busy.
+	//
+	const reclaimTime = 5 * time.Second
+	const maxWaitTime = 900 * time.Second
+
+	startTime := time.Now()
+	count := 0
+loop:
+	for {
+		select {
+		case <-file.freeChunks:
+			break loop
+		case <-time.After(10 * time.Millisecond):
+			//
+			// No free chunks in StagedChunks map, see if we can free some up by removing
+			// "reclaimable" chunks. We have the following rules for reclaiming chunks:
+			// - Dirty chunks cannot be reclaimed.
+			// - Partial chunks (Len != chunkSize) cannot be reclaimed.
+			// - Chunks allocated for reads can be reclaimed safely, whether they have been
+			//   read fully or partially. Note that read chunks will always have Len==chunkSize.
+			//
+			count++
+			if count < 100 {
+				continue
+			}
+
+			count = 0
+
+			//
+			// Every 2 seconds check if all chunks in StagedChunks map are "aged".
+			//
+			file.chunkLock.RLock()
+
+			chunks := make([]*StagedChunk, 0)
+			for chunkIdx, chunk := range file.StagedChunks {
+				_ = chunkIdx
+
+				// Dirty chunks cannot be reclaimed.
+				if chunk.Dirty.Load() {
+					continue
+				}
+
+				// Partial chunks cannot be reclaimed.
+				if chunk.Len != file.FileMetadata.FileLayout.ChunkSize {
+					continue
+				}
+
+				allocatedFor := time.Since(chunk.AllocatedAt)
+				if allocatedFor < reclaimTime {
+					continue
+				}
+
+				chunks = append(chunks, chunk)
+			}
+			log.Debug("DistributedCache[FM]::NewStagedChunk: Reclaiming %d of %d chunks in StagedChunks map",
+				len(chunks), len(file.StagedChunks))
+
+			file.chunkLock.RUnlock()
+
+			for _, chunk := range chunks {
+				file.removeChunk(chunk.Idx)
+			}
+
+			if time.Since(startTime) > maxWaitTime {
+				err := fmt.Errorf("DistributedCache[FM]::NewStagedChunk: Could not reclaim any chunk after %v",
+					time.Since(startTime))
+				log.Err("%v", err)
+				return nil, err
+			}
+		}
+	}
 
 	if allocateBuf {
 		buf, err = dcache.GetBuffer()
@@ -335,16 +455,37 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 		}
 	}
 
-	return &StagedChunk{
+	//
+	// length==0 means entire chunk.
+	// If non-zero it means only a part of the chunk is being staged, precisely [offset, offset+length).
+	// In that case we need to ensure that the length doesn't exceed the chunk boundary.
+	//
+	if length != 0 {
+		chunkSize := int64(cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes)
+		length = min(length, chunkSize-offset)
+
+	}
+
+	chunk := &StagedChunk{
 		Idx:           idx,
-		Len:           0,
+		Len:           length,
+		Offset:        offset,
 		Buf:           buf,
 		Err:           make(chan error, 1),
 		IsBufExternal: !allocateBuf,
 		Dirty:         atomic.Bool{},
 		UpToDate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
-	}, nil
+		SavedInMap:    atomic.Bool{},
+		RefCount:      atomic.Int32{},
+		IOTracker:     NewChunkIOTracker(),
+		AllocatedAt:   time.Now(),
+	}
+
+	// Take the refcount for the original creator of the chunk.
+	chunk.RefCount.Store(1)
+
+	return chunk, nil
 }
 
 // Silence unused import errors for release builds.

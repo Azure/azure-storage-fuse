@@ -476,6 +476,16 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 			duration < *stats.Stats.MM.GetBlobSafe.MinTime {
 			stats.Stats.MM.GetBlobSafe.MinTime = &duration
 		}
+
+		//
+		// TODO: Later we can remove this or make this debug only, but for now it's useful to know how
+		//       much max time we are taking to read the cluster map.
+		//
+		if duration > stats.Stats.MM.GetBlobSafe.MaxTime {
+			log.Warn("[TIMING] getBlobSafe:: Blob %s (bytes: %d, Etag: %s), took %s, with %d retry(s)!",
+				blobPath, len(data), attr1.ETag, time.Since(start), i)
+		}
+
 		stats.Stats.MM.GetBlobSafe.MaxTime =
 			max(stats.Stats.MM.GetBlobSafe.MaxTime, duration)
 

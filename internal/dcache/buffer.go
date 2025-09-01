@@ -34,12 +34,12 @@
 package dcache
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -55,6 +55,7 @@ type BufferPool struct {
 	bufSize    int          // size of buffers in this pool
 	maxBuffers int64        // max allocated buffers allowed
 	curBuffers atomic.Int64 // buffers currently allocated
+	maxUsed    atomic.Int64 // max buffers used at any point of time
 }
 
 func InitBufferPool(bufSize uint64) error {
@@ -71,7 +72,9 @@ func InitBufferPool(bufSize uint64) error {
 	// We should allow sufficiently many buffers to support at least few files being read/written
 	// simultaneously.
 	// Note that only writeChunk uses buffers from this pool while readChunk uses buffers allocated by
-	// thrift and those are not accounted in this.
+	// thrift and those are not accounted in this, with local RVs being an exception to that. When
+	// reading from local RVs, ReadMV() calls GetChunkLocal() which results in buffers being allocated
+	// from this pool.
 	//
 	// TODO: Find out how/if thrift controls those buffers, or does it result in OOM killing of the
 	//       process.
@@ -107,13 +110,16 @@ func InitBufferPool(bufSize uint64) error {
 		maxBuffers: int64(maxBuffers),
 	}
 
+	log.Info("Buffer Pool: Initialized with buffer size: %d bytes, max buffers: %d, total size: %.2f MB",
+		bufPool.bufSize, bufPool.maxBuffers, float64(bufPool.maxBuffers*int64(bufPool.bufSize))/(1024.0*1024.0))
+
 	return nil
 }
 
 func GetBuffer() ([]byte, error) {
 	if bufPool.curBuffers.Load() > bufPool.maxBuffers {
 		// TODO: Add a timeout to wait for the buffers to get free, and only fail after timeout.
-		return nil, errors.New("Buffers Exhausted")
+		return nil, fmt.Errorf("Buffers Exhausted (%d)", bufPool.curBuffers.Load())
 	}
 
 	buf := bufPool.pool.Get().([]byte)
@@ -122,6 +128,16 @@ func GetBuffer() ([]byte, error) {
 	common.Assert(len(buf) == bufPool.bufSize, len(buf), bufPool.bufSize)
 
 	bufPool.curBuffers.Add(1)
+
+	//
+	// Track max buffers used at any point of time.
+	// Due to race between multiple threads, this may not be exact value, but that's okay, we just need
+	// rough estimate of whether buffers are being held for long.
+	//
+	if bufPool.curBuffers.Load() > bufPool.maxUsed.Load() {
+		bufPool.maxUsed.Store(bufPool.curBuffers.Load())
+		log.Warn("Buffer Pool: Max buffers used: %d out of %d", bufPool.maxUsed.Load(), bufPool.maxBuffers)
+	}
 	return buf, nil
 }
 
