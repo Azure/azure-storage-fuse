@@ -1,6 +1,8 @@
 ## 2.6.0 (Unreleased)
 **Bug Fixes**
 - Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
+- *direct_io* mode was disabling both kernel and blobfuse level caching post 2.4.0. With this release it will disable kernel data and metadata caching. Blobfuse level data and metadata caching will be valid for 1 second by default but user can tune these using file_cache and attr_cache timeouts.
+
 
 ## 2.5.0 (2025-07-17)
 **Bug Fixes**
