@@ -1272,6 +1272,8 @@ func (cp *clientPool) periodicRemoveNegativeNodesAndRVs() {
 				addedTime := value.(time.Time)
 
 				if time.Since(addedTime) > defaultNegativeTimeout*time.Second {
+					log.Debug("clientPool::periodicRemoveNegativeNodesAndRVs: removing iffy RV %s because of timeout",
+						rvName)
 					cp.removeIffyRV(rvName)
 				}
 
