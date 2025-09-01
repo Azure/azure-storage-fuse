@@ -915,10 +915,10 @@ func (file *DcacheFile) getChunk(chunkIdx, chunkOffset, length int64, noCache, a
 		//
 		chunk.RefCount.Add(1)
 		common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
-		file.chunkLock.RUnlock()
 		common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
 		// One for the map and one for the caller.
 		common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load(), file.FileMetadata.Filename)
+		file.chunkLock.RUnlock()
 		return chunk, true, nil
 	}
 	file.chunkLock.RUnlock()
