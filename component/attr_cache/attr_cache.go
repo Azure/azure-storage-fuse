@@ -138,7 +138,13 @@ func (ac *AttrCache) GenConfig() string {
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("\n%s:", ac.Name()))
-	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", defaultAttrCacheTimeout))
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+	if directIO {
+		sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", 1))
+	} else {
+		sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", defaultAttrCacheTimeout))
+	}
 
 	return sb.String()
 }
@@ -161,6 +167,14 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheTimeout = conf.Timeout
 	} else {
 		ac.cacheTimeout = defaultAttrCacheTimeout
+	}
+
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+
+	if directIO && !config.IsSet(compName+".timeout-sec") {
+		ac.cacheTimeout = 1
+		log.Crit("AttrCache::Configure : Direct IO mode enabled, cache timeout is set to 1")
 	}
 
 	if config.IsSet(compName + ".max-files") {

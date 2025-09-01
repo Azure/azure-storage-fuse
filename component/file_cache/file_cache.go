@@ -235,9 +235,9 @@ func (c *FileCache) Configure(_ bool) error {
 	directIO := false
 	_ = config.UnmarshalKey("direct-io", &directIO)
 
-	if directIO {
-		c.cacheTimeout = 0
-		log.Crit("FileCache::Configure : Direct IO mode enabled, cache timeout is set to 0")
+	if directIO && !config.IsSet(compName+".file-cache-timeout-in-seconds") && !config.IsSet(compName+".timeout-sec") {
+		c.cacheTimeout = 1
+		log.Crit("FileCache::Configure : Direct IO mode enabled, cache timeout is set to 1")
 	}
 
 	if config.IsSet(compName + ".empty-dir-check") {

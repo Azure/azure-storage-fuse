@@ -395,11 +395,6 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
-		if config.IsSet("disable-kernel-cache") && directIO {
-			// Both flag shall not be enable together
-			return fmt.Errorf("direct-io and disable-kernel-cache cannot be enabled together")
-		}
-
 		if !config.IsSet("logging.file-path") {
 			options.Logging.LogFilePath = common.DefaultLogFilePath
 		}
@@ -463,17 +458,6 @@ var mountCmd = &cobra.Command{
 		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
-
-		if directIO {
-			// Direct IO is enabled, so remove the attr-cache from the pipeline
-			for i, name := range options.Components {
-				if name == "attr_cache" {
-					options.Components = append(options.Components[:i], options.Components[i+1:]...)
-					log.Crit("Mount::runPipeline : Direct IO enabled, removing attr_cache from pipeline")
-					break
-				}
-			}
-		}
 
 		// Clean up any cache directory if cleanup-on-start is set from the cli parameter or specified in parameter in
 		// config file for a specific component for file-cache, block-cache, xload.
