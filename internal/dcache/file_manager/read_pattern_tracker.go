@@ -41,6 +41,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 // Primary goal of our read pattern tracker is to correctly identify parallel FUSE read requests originated
 // from a single large application read, as sequential. e.g., our target applications may issue large reads,
 // say 10MiB, which FUSE kernel driver will break down into multiple parallel reads, upto 1MiB each. These

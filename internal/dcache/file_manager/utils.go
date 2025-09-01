@@ -52,11 +52,11 @@ import (
 	gouuid "github.com/google/uuid"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 var (
 	ErrFileNotReady error = errors.New("Dcache file not in ready state")
 )
-
-//go:generate $ASSERT_REMOVER $GOFILE
 
 // Index of the chunk that contains the given file offset.
 func getChunkIdxFromFileOffset(offset, chunkSize int64) int64 {
@@ -83,12 +83,14 @@ func getChunkEndOffset(chunkIdx, chunkSize int64) int64 {
 // For all chunks except the last chunk, this will be equal to chunkSize.
 func getChunkSize(offset int64, file *DcacheFile) int64 {
 	// getChunkSize() must be called for a finalized file which will have size >= 0.
+	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
 
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	size := min(file.FileMetadata.Size-
 		getChunkStartOffset(chunkIdx, file.FileMetadata.FileLayout.ChunkSize),
 		file.FileMetadata.FileLayout.ChunkSize)
 
+	common.Assert(size >= 0, size)
 	return size
 }
 
@@ -100,8 +102,13 @@ func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string
 	numMvs := int64(len(fileMetadata.FileLayout.MVList))
 
 	// Must have full strip worth of MVs.
+	common.Assert(numMvs == fileMetadata.FileLayout.StripeWidth,
+		numMvs, fileMetadata.FileLayout.StripeWidth, fileMetadata.FileLayout.ChunkSize)
+	common.Assert(numMvs > 0, numMvs)
 
 	// For writes file size won't be set yet, for reads we must be reading within the file.
+	common.Assert((fileMetadata.Size == -1) ||
+		((chunk.Idx * fileMetadata.FileLayout.ChunkSize) < fileMetadata.Size))
 
 	return fileMetadata.FileLayout.MVList[chunk.Idx%numMvs]
 }
@@ -123,6 +130,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		Size:     -1,
 		FileID:   gouuid.New().String(),
 	}
+	common.Assert(common.IsValidUUID(fileMetadata.FileID))
 
 	chunkSize := cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes
 	stripeWidth := cm.GetCacheConfig().StripeWidth
@@ -160,6 +168,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		fileMetadata.FileLayout.MVList[i] = activeMVs[i]
 	}
 
+	log.Debug("DistributedCache[FM]::NewDcacheFile: Initial metadata for file %s %+v",
+		fileName, fileMetadata)
+
 	fileMetadataBytes, err := json.Marshal(fileMetadata)
 	if err != nil {
 		log.Err("DistributedCache[FM]::NewDcacheFile: FileMetadata marshalling failed for file %s %+v: %v",
@@ -184,8 +195,8 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		StagedChunks: make(map[int64]*StagedChunk),
 	}
 
-	// freeChunkSemaphore semaphore is used to limit StagedChunks map to numStagingChunks.
-	dcacheFile.initFreeChunkSemaphore(fileIOMgr.numStagingChunks)
+	// freeChunks semaphore is used to limit StagedChunks map to numStagingChunks.
+	dcacheFile.initFreeChunks(fileIOMgr.numStagingChunks)
 
 	return dcacheFile, nil
 }
@@ -204,11 +215,14 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	if err != nil {
 		err = fmt.Errorf("DistributedCache[FM]::GetDcacheFile: File metadata unmarshal failed for file %s: %v",
 			fileName, err)
-
+		common.Assert(false, err)
 		return nil, nil, err
 	}
 
 	// Following fields must be ignored by unmarshal.
+	common.Assert(len(fileMetadata.State) == 0, fileMetadata.State, fileMetadata)
+	common.Assert(fileMetadata.Size == 0, fileMetadata.Size, fileMetadata)
+	common.Assert(fileMetadata.OpenCount == 0, fileMetadata.OpenCount, fileMetadata)
 
 	fileMetadata.State = fileState
 
@@ -217,10 +231,15 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	// - When file is being written, it must be -1.
 	// - When file is ready, it must be >= 0.
 	//
+	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
+		(fileMetadata.State == dcache.Ready && fileSize >= 0),
+		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
 
 	fileMetadata.Size = fileSize
+	common.Assert(fileMetadata.Size >= -1, fileName, fileMetadata.Size, fileMetadata)
 
 	fileMetadata.OpenCount = openCount
+	common.Assert(fileMetadata.OpenCount >= 0, fileName, fileMetadata.OpenCount, fileMetadata)
 
 	return &fileMetadata, prop, nil
 }
@@ -232,6 +251,8 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		return nil, err
 	}
 
+	common.Assert(prop != nil, fileName)
+
 	//
 	// This is to prevent files which are being created, from being opened.
 	//
@@ -242,6 +263,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	// Finalized files must have size >= 0.
+	common.Assert(fileMetadata.Size >= 0, fileMetadata.Size)
 
 	//
 	// Increment the open count, if safe deletes is enabled.
@@ -256,10 +278,10 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		if err != nil {
 			err = fmt.Errorf("failed to increment open count for file %s: %v", fileName, err)
 			log.Err("DistributedCache[FM]::OpenDcacheFile: %v", err)
-
+			common.Assert(false, fileName, err)
 			return nil, err
 		}
-
+		common.Assert(newOpenCount > 0, newOpenCount, fileName)
 	}
 
 	//
@@ -273,23 +295,24 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	//
-	// freeChunkSemaphore semaphore is used to limit StagedChunks map to numReadAheadChunks plus
+	// freeChunks semaphore is used to limit StagedChunks map to numReadAheadChunks plus
 	// the window size supported by read pattern tracker. See NewRPTracker().
 	// DO NOT make it very low else most IOs will have to wait for chunk reclaim.
 	//
-	dcacheFile.initFreeChunkSemaphore(fileIOMgr.numReadAheadChunks + 300)
+	dcacheFile.initFreeChunks(fileIOMgr.numReadAheadChunks + 300)
 	dcacheFile.lastReadaheadChunkIdx.Store(-1)
 
 	return dcacheFile, nil
 }
 
 func DeleteDcacheFile(fileName string) error {
+	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
 
 	fileMetadata, _, err := GetDcacheFile(fileName)
 	if err != nil {
 		log.Err("DistributedCache[FM]::DeleteDcacheFile : failed to delete file %s: %v", fileName, err)
 		// If err is ENOENT, then possibly file was deleted by some other node before us.
-
+		common.Assert(err == syscall.ENOENT, fileName)
 		return err
 	}
 
@@ -363,7 +386,7 @@ func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf boo
 loop:
 	for {
 		select {
-		case <-file.freeChunkSemaphore:
+		case <-file.freeChunks:
 			break loop
 		case <-time.After(10 * time.Millisecond):
 			//
@@ -407,10 +430,10 @@ loop:
 
 				chunks = append(chunks, chunk)
 			}
-			file.chunkLock.RUnlock()
-
 			log.Debug("DistributedCache[FM]::NewStagedChunk: Reclaiming %d of %d chunks in StagedChunks map",
 				len(chunks), len(file.StagedChunks))
+
+			file.chunkLock.RUnlock()
 
 			for _, chunk := range chunks {
 				file.removeChunk(chunk.Idx)
@@ -459,6 +482,7 @@ loop:
 		AllocatedAt:   time.Now(),
 	}
 
+	// Take the refcount for the original creator of the chunk.
 	chunk.RefCount.Store(1)
 
 	return chunk, nil

@@ -207,7 +207,7 @@ type DcacheFile struct {
 	// We limit the number of chunks in use to avoid using too much memory.
 	// NewStagedChunk() reads from this channel before allocating a new chunk.
 	// releaseChunk() signals on this channel when a chunk is freed.
-	freeChunkSemaphore chan struct{}
+	freeChunks chan struct{}
 
 	// Etag returned by createFileInit(), later used by createFileFinalize() to catch unexpected
 	// out-of-band changes to the metadata file between init and finalize.
@@ -231,18 +231,18 @@ func (file *DcacheFile) getWriteError() error {
 	return err
 }
 
-func (file *DcacheFile) initFreeChunkSemaphore(maxChunks int) {
+func (file *DcacheFile) initFreeChunks(maxChunks int) {
 	// Must be called only once.
-	common.Assert(file.freeChunkSemaphore == nil)
+	common.Assert(file.freeChunks == nil)
 	common.Assert(maxChunks >= max(fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks),
 		maxChunks, fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks)
 
-	file.freeChunkSemaphore = make(chan struct{}, maxChunks)
+	file.freeChunks = make(chan struct{}, maxChunks)
 	file.maxChunks = int64(maxChunks)
 
 	// Fill the semaphore with initial tokens.
 	for i := 0; i < maxChunks; i++ {
-		file.freeChunkSemaphore <- struct{}{}
+		file.freeChunks <- struct{}{}
 	}
 }
 
@@ -1039,18 +1039,18 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 }
 
 func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, bool, error) {
-	file.chunkLock.RLock()
-	numWriteChunks := len(file.StagedChunks)
-	_ = numWriteChunks
-	file.chunkLock.RUnlock()
+	if common.IsDebugBuild() {
+		file.chunkLock.RLock()
+		numWriteChunks := len(file.StagedChunks)
+		file.chunkLock.RUnlock()
 
-	log.Debug("DistributedCache::getChunkForWrite: file: %s, chunkIdx: %d, current chunks: %d",
-		file.FileMetadata.Filename, chunkIdx, numWriteChunks)
-	common.Assert(chunkIdx >= 0)
+		log.Debug("DistributedCache::getChunkForWrite: file: %s, chunkIdx: %d, current chunks: %d",
+			file.FileMetadata.Filename, chunkIdx, numWriteChunks)
+		common.Assert(chunkIdx >= 0)
+	}
 
 	chunk, isExisting, err := file.getChunk(chunkIdx, 0 /* chunkOffset */, 0, /* length */
 		false /* noCache */, true /* allocateBuf */)
-	_ = isExisting
 
 	//
 	// For write chunks chunk.Len is the amount of valid data in the chunk. It starts at 0 and updated as user
@@ -1204,7 +1204,7 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 	}
 
 	// Let waiters know that a chunk is freed.
-	file.freeChunkSemaphore <- struct{}{}
+	file.freeChunks <- struct{}{}
 
 	return true
 }

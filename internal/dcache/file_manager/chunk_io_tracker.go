@@ -42,6 +42,8 @@ import (
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 //
 // ChunkIOTracker tracks which parts of a chunk have been read or written.
 // Caller can use this to determine if the entire chunk has been read or written. If entire chunk is read by

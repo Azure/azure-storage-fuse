@@ -71,6 +71,13 @@ const (
 	// at init time, we assume a fair value of say 4 and for each of those RVs, keeping anything
 	// more than 8 chunk sized IOs won't be useful. So we set the default to 32.
 	//
+	// TODO: For now I have increased this to 512 to avoid the PutChunkDC deadlock where nodeA
+	//       uses up all its clients to send PutChunkDC request to nodeB, while nodeB also uses up
+	//       all its clients to send PutChunkDC request to nodeA. Now nodeA RPC requests will never
+	//       complete as nodeB cannot forward them and hence cannot send any response back, and vice
+	//       versa. We need to keep this to a low value, say 32, in order to avoid too many incoming TCP
+	//       connections to a node.
+	//
 	defaultMaxPerNode = 512
 
 	//

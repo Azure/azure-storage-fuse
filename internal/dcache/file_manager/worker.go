@@ -175,7 +175,7 @@ func (wp *workerPool) readChunk(task *task) {
 	// Drop the download reference.
 	task.file.releaseChunk(task.chunk)
 
-	log.Err("DistrubuteCache[FM]::readChunk: Reading chunk from Dcache failed, chnk idx: %d, offset: %d, length: %d, file: %s: %v",
+	log.Err("DistrubuteCache[FM]::readChunk: Reading chunk from Dcache failed, chunkIdx: %d, offset: %d, length: %d, file: %s: %v",
 		readMVReq.ChunkIndex, readMVReq.OffsetInChunk, readMVReq.Length, task.file.FileMetadata.Filename, err)
 
 	task.chunk.Err <- err
@@ -187,7 +187,7 @@ func (wp *workerPool) writeChunk(task *task) {
 
 	// Only dirty StagedChunk must be written.
 	common.Assert(task.chunk.Dirty.Load())
-	// We always write full chunks (execept for the last chunk, but that also starts at offset 0).
+	// We always write full chunks (except for the last chunk, but that also starts at offset 0).
 	common.Assert(task.chunk.Offset == 0, task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Offset)
 	common.Assert(task.chunk.Len > 0 && task.chunk.Len <= int64(len(task.chunk.Buf)),
 		task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Len, len(task.chunk.Buf))
