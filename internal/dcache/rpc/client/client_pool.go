@@ -91,12 +91,7 @@ type clientPool struct {
 	// the negative RPC client creation timeout expires.
 	// The value of the map is time.Time which is added when,
 	//   - The RPC client creation to the node failed due to timeout.
-	//   - PutChunkDC() call failed due to timeout because of one/more connections between the
-	//     downstream nodes being bad. So, to prevent multiple threads from timing out after calling
-	//     PutChunkDC() to the same nodes, we store the nodes (next-hop as well as next nodes in chain)
-	//     in the negative nodes map. This way the RPC client can know if the node is marked negative.
-	//     If yes, it will return error back to the caller (WriteMV) indicating it to retry the operation
-	//     using OriginatorSendsToAll mode.
+	//   - RPC call to the node failed due to timeout.
 	//
 	// On the other hand, we remove the node from the negative nodes map if,
 	//   - The negative timeout has expired for the node.
@@ -105,10 +100,25 @@ type clientPool struct {
 	//
 	negativeNodes sync.Map
 
-	// Ticker for periodicRemoveNegativeNodes() goroutine.
+	//
+	// When we make PutChunkDC() call and one/more connections between the downstream nodes are bad,
+	// it will result in timeout error. So, to prevent multiple threads from timing out after calling
+	// PutChunkDC() to the same RVs, we store the RVs (next-hop as well as next RVs in chain) in the iffyRVMap.
+	// This way the RPC client can know if the RV is marked iffy. If yes, it will return error back
+	// to the caller (WriteMV) indicating it to retry the operation using OriginatorSendsToAll mode.
+	// IffyRVMap stores the RV name as key and time when it was last added as value.
+	//
+	// On the other hand, an RV is removed from the iffyRVMap if,
+	//   - The negative timeout has expired for the RV.
+	//   - The RPC call to the RV was successful indicating that the connection between the client and
+	//     the RV is healthy.
+	//
+	iffyRVMap sync.Map
+
+	// Ticker for periodicRemoveNegativeNodesAndRVs() goroutine.
 	negativeNodesTicker *time.Ticker
 
-	// Channel to stop the periodicRemoveNegativeNodes() goroutine.
+	// Channel to stop the periodicRemoveNegativeNodesAndRVs() goroutine.
 	negativeNodesDone chan bool
 
 	maxPerNode uint32 // Maximum number of open RPC clients per node
@@ -133,7 +143,7 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 		negativeNodesDone:   make(chan bool),
 	}
 
-	go cp.periodicRemoveNegativeNodes()
+	go cp.periodicRemoveNegativeNodesAndRVs()
 
 	// TODO: start a goroutine to periodically close inactive RPC clients
 
@@ -1133,12 +1143,20 @@ func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
 	return true
 }
 
+// AddNegativeNode adds a node to the negative nodes map when,
+//   - The RPC client creation to the node failed due to timeout.
+//   - RPC call to the node failed due to timeout.
 func (cp *clientPool) addNegativeNode(nodeID string) {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
 	cp.negativeNodes.Store(nodeID, time.Now())
 	log.Debug("clientPool::addNegativeNode: added %s to negativeNodes map at %v", nodeID, time.Now())
 }
 
+// RemoveNegativeNode removes a node from the negative nodes map when,
+//   - periodicRemoveNegativeNodesAndRVs() goroutine which checks if the defaultNegativeTimeout
+//     has expired for the node.
+//   - successful RPC call to the node indicating that the connection between the client and the
+//     node is healthy.
 func (cp *clientPool) removeNegativeNode(nodeID string) {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
 
@@ -1153,6 +1171,7 @@ func (cp *clientPool) removeNegativeNode(nodeID string) {
 		nodeID, t.(time.Time))
 }
 
+// Check if the node is marked negative.
 func (cp *clientPool) isNegativeNode(nodeID string) bool {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
 
@@ -1184,38 +1203,52 @@ func (cp *clientPool) checkIfNegativeTimeoutExpired(nodeID string) error {
 	return nil
 }
 
-// AddNegativeRV adds the node to which the RV belongs to the negativeNodes map.
-// When PutChunkDC() fails with timeout error, we add the next nodes in chain
-// to the negativeNodes map.
-func (cp *clientPool) addNegativeRV(rvName string) {
+// AddIffyRV adds an RV to the iffyRVMap.
+// When PutChunkDC() fails with timeout error, we add the next-hop RV and the next RVs in chain
+// to the iffyRVMap.
+func (cp *clientPool) addIffyRV(rvName string) {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
-
-	nodeID := cm.RVNameToNodeId(rvName)
-	common.Assert(common.IsValidUUID(nodeID), rvName, nodeID)
-
-	cp.addNegativeNode(nodeID)
-	log.Debug("clientPool::addNegativeRV: added %s, node %s to negativeNodes map",
-		rvName, nodeID)
+	cp.iffyRVMap.Store(rvName, time.Now())
+	log.Debug("clientPool::addIffyRV: added %s to IffyRVMap at %v", rvName, time.Now())
 }
 
-// Check if the node to which the RV belongs is marked negative.
-func (cp *clientPool) isNegativeRV(rvName string) bool {
+// RemoveIffyRV removes an RV from the iffyRVMap.
+// An RV is removed from the map by,
+//   - periodicRemoveNegativeNodesAndRVs() goroutine which checks if the defaultNegativeTimeout
+//     has expired for the RV.
+//   - successful RPC call to the RV indicating that the connection between the client and the
+//     RV is healthy.
+func (cp *clientPool) removeIffyRV(rvName string) {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
 
-	nodeID := cm.RVNameToNodeId(rvName)
-	common.Assert(common.IsValidUUID(nodeID), rvName, nodeID)
+	t, ok := cp.iffyRVMap.Load(rvName)
+	_ = t
+	if !ok {
+		return
+	}
 
-	return cp.isNegativeNode(nodeID)
+	cp.iffyRVMap.Delete(rvName)
+	log.Debug("clientPool::removeIffyRV: removed %s from IffyRVMap which was added at %v",
+		rvName, t.(time.Time))
 }
 
-// Goroutine which runs every negativeNodesTimeout and removes expired nodes from the negativeNodes map.
-func (cp *clientPool) periodicRemoveNegativeNodes() {
+// Check if an RV is marked iffy.
+func (cp *clientPool) isIffyRV(rvName string) bool {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	_, ok := cp.iffyRVMap.Load(rvName)
+	return ok
+}
+
+// Goroutine which runs every negativeNodesTimeout and removes expired nodes and RVs from the
+// negativeNodes and iffyRV map.
+func (cp *clientPool) periodicRemoveNegativeNodesAndRVs() {
 	for {
 		select {
 		case <-cp.negativeNodesDone:
-			log.Info("clientPool::periodicRemoveNegativeNodes: stopping periodic removal of negative nodes")
+			log.Info("clientPool::periodicRemoveNegativeNodesAndRVs: stopping periodic removal of negative nodes and RVs")
 			return
 		case <-cp.negativeNodesTicker.C:
+			// remove entries from negativeNodes map based on timeout
 			cp.negativeNodes.Range(func(key, value any) bool {
 				nodeID := key.(string)
 				common.Assert(common.IsValidUUID(nodeID), nodeID)
@@ -1223,9 +1256,23 @@ func (cp *clientPool) periodicRemoveNegativeNodes() {
 				addedTime := value.(time.Time)
 
 				if time.Since(addedTime) > defaultNegativeTimeout*time.Second {
-					log.Debug("clientPool::periodicRemoveNegativeNodes: removing negative node %s because of timeout",
+					log.Debug("clientPool::periodicRemoveNegativeNodesAndRVs: removing negative node %s because of timeout",
 						nodeID)
 					cp.removeNegativeNode(nodeID)
+				}
+
+				return true
+			})
+
+			// remove entries from iffyRVMap based on timeout
+			cp.iffyRVMap.Range(func(key, value any) bool {
+				rvName := key.(string)
+				common.Assert(cm.IsValidRVName(rvName), rvName)
+
+				addedTime := value.(time.Time)
+
+				if time.Since(addedTime) > defaultNegativeTimeout*time.Second {
+					cp.removeIffyRV(rvName)
 				}
 
 				return true
@@ -1350,25 +1397,25 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// Given the component RVs list, return the RVs which are marked negative.
-func GetNegativeRVs(nextHopRV *string, nextRVs *[]string) *[]string {
+// Given the component RVs list, return the RVs which are marked iffy.
+func GetIffyRVs(nextHopRV *string, nextRVs *[]string) *[]string {
 	common.Assert(nextHopRV != nil)
 	common.Assert(nextRVs != nil)
 
-	negativeRVs := make([]string, 0, len(*nextRVs)+1)
+	iffyRVs := make([]string, 0, len(*nextRVs)+1)
 
 	// Check the next-hop RV
-	if cp.isNegativeRV(*nextHopRV) {
-		negativeRVs = append(negativeRVs, *nextHopRV)
+	if cp.isIffyRV(*nextHopRV) {
+		iffyRVs = append(iffyRVs, *nextHopRV)
 	}
 
 	for _, rv := range *nextRVs {
-		if cp.isNegativeRV(rv) {
-			negativeRVs = append(negativeRVs, rv)
+		if cp.isIffyRV(rv) {
+			iffyRVs = append(iffyRVs, rv)
 		}
 	}
 
-	return &negativeRVs
+	return &iffyRVs
 }
 
 // Silence unused import errors for release builds.
