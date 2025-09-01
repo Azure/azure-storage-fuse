@@ -412,6 +412,10 @@ retry:
 	// If server returns NeedToRefreshClusterMap, we will ask cm.RefreshClusterMap() to update
 	// the clustermap to a value higher than this epoch.
 	//
+	// Note: getComponentRVsForMV() returns a randomized list of component RVs. This helps to distribute
+	//       load in case of daisy chain writes as daisy chain writes utilize ingress and egress n/w b/w
+	//       for all but the last RV in the chain and for the last RV only ingress n/w b/w is used.
+	//
 	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
 	log.Debug("ReplicationManager::WriteMV: Component RVs for %s (%s) are: %v",

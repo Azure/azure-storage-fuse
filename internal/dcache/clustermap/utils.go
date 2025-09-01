@@ -35,6 +35,7 @@ package clustermap
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"regexp"
 	"sort"
@@ -528,6 +529,14 @@ func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVN
 
 	common.Assert(len(componentRVs) == int(GetCacheConfig().NumReplicas),
 		mvName, len(componentRVs), GetCacheConfig().NumReplicas)
+
+	//
+	// Take this opportunity to randomize the order of RVs in the list, this is usually desirable
+	// to distribute load evenly across RVs.
+	//
+	rand.Shuffle(len(componentRVs), func(i, j int) {
+		componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
+	})
 
 	return componentRVs
 }
