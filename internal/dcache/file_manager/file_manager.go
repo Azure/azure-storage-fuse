@@ -354,6 +354,13 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 				common.Assert(chunk.Offset == chunkOffset && chunk.Len == readSize,
 					chunk.Offset, chunkOffset, chunk.Len, readSize, chunk.Idx, file.FileMetadata.Filename)
 			*/
+			//
+			// If it's a cached chunk, it must have been fully read by some previous sequential read, else
+			// it'll have just the requested data.
+			//
+			common.Assert((chunk.Offset == 0 && chunk.Len == getChunkSize(offset, file)) ||
+				(chunk.Offset == chunkOffset && chunk.Len == readSize),
+				chunk.Offset, chunkOffset, offset, chunk.Len, readSize, chunk.Idx, file.FileMetadata.Filename)
 		}
 
 		// We should only be reading from an up-to-date chunk (that has been successfully read from dcache).
@@ -373,7 +380,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		// Note/TODO: If we use the fuse low level API we can avoid this copy and return the chunk.Buf
 		//            directly in the fuse response.
 		//
-		copied := copy((*buf)[bufOffset:], chunk.Buf[chunkOffset:(chunk.Offset+chunk.Len)])
+		copied := copy((*buf)[bufOffset:], chunk.Buf[(chunkOffset-chunk.Offset):chunk.Len])
 
 		// Must copy at least one byte.
 		common.Assert(copied > 0, chunkOffset,
@@ -391,8 +398,8 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		}
 
 		if chunkFullyRead {
-			log.Debug("DistributedCache::ReadFile: Chunk fully read (sequential: %v), file: %s, chunkIdx: %d, chunkOffset: %d, copied: %d",
-				isSequential, file.FileMetadata.Filename, chunk.Idx, chunkOffset, copied)
+			log.Debug("DistributedCache::ReadFile: Chunk fully read (sequential: %v), file: %s, chunkIdx: %d, chunkOffset: %d, chunk.Len: %d, chunk.Offset: %d, copied: %d",
+				isSequential, file.FileMetadata.Filename, chunk.Idx, chunkOffset, chunk.Len, chunk.Offset, copied)
 			//
 			// We are done with this chunk, remove from StagedChunks map.
 			// The first reader to observe this will remove it. Note that this just removes the chunk from
