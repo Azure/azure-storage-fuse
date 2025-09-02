@@ -690,7 +690,7 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	// on error, as we have deleted at least one client.
 	//
 	for i := 0; i < numClients; i++ {
-		client, err = cp.getRPCClientNoWait(client.nodeID)
+		client1, err := cp.getRPCClientNoWait(client.nodeID)
 		if err != nil {
 			//
 			// There can be a race condition between when we get numClients (count of number of free clients
@@ -704,7 +704,7 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 			break
 		}
 
-		err = cp.deleteRPCClient(client)
+		err = cp.deleteRPCClient(client1)
 		if err != nil {
 			//
 			// We have deleted at least one connection, so we don't fail the deleteAllRPCClients()
