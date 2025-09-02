@@ -805,7 +805,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		//
 		common.Assert(rpc.IsConnectionRefused(err) ||
 			rpc.IsTimedOut(err) ||
-			errors.Is(err, negativeTimeoutNotExpiredError))
+			errors.Is(err, negativeTimeoutNotExpiredError), err)
 		cp.deleteNodeClientPoolIfInactive(client.nodeID)
 		return err
 	}

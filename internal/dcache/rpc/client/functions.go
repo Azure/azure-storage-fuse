@@ -80,7 +80,7 @@ const (
 	//       versa. We need to keep this to a low value, say 32, in order to avoid too many incoming TCP
 	//       connections to a node.
 	//
-	defaultMaxPerNode = 512
+	defaultMaxPerNode = 32
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
