@@ -883,7 +883,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		// 1st check: Some other node has an RV with the same RVid, clear duplicate.
 		// 2nd check: We had an RV with the same RVid but a different cache-dir.
-		//            This is not alowed, since it can cause confusion in the cluster.
+		//            This is not allowed, since it can cause confusion in the cluster.
 		//            If the user wants to reuse an existing drive with a different cache-dir,
 		//            they need to get a brand new RVId for that drive.
 		//
@@ -2014,7 +2014,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		// Node hosting this RV.
 		// We will never pick more than one component RV for an MV from the same node.
-		// We also store nodeId as a unique integer for faster comparisions, especially in node exclusion set.
+		// We also store nodeId as a unique integer for faster comparisons, especially in node exclusion set.
 		//
 		nodeId    string
 		nodeIdInt int
@@ -2819,9 +2819,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// We call fixMV() serially for each degraded MV, so the performance of fix-mv workflow is O(Number of degraded MVs),
 	// and the number of degraded MVs is a factor of how many RVs can go offline at a time and how many MVs could be
 	// hosted by those RVs. Max we can have MaxMVsPerRV (100) MVs per RV and let's take max 6 RVs per node and since
-	// we canot handle more than 2 nodes going down at a time, let's take 2 nodes, so we can have at most
+	// we cannot handle more than 2 nodes going down at a time, let's take 2 nodes, so we can have at most
 	// 2 * 6 * 100 = 1200 degraded MVs at a time. Each fixMV() makes JoinMV/UpdateMV RPC calls (in parallel) and
-	// typically takes ~3ms, so 1200 will take ~3.6s to fix all degraded MVs. Infact for large clusters MVsPerRV will
+	// typically takes ~3ms, so 1200 will take ~3.6s to fix all degraded MVs. In fact for large clusters MVsPerRV will
 	// be much lower, so we will have much fewer degraded MVs at a time.
 	// This should be reasonable time, so we don't need to run fix-mv in parallel for each degraded MV.
 	//
@@ -2840,7 +2840,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	atomic.StoreInt64(&stats.Stats.CM.FixMV.UpdateMV.Failures, 0)
 
 	//
-	// Set availableRVsList fom availableRVsMap.
+	// Set availableRVsList from availableRVsMap.
 	// fixMV() will use this list to find replacement RVs for degraded MVs.
 	// For huge clusters with lots of RVs getAvailableRVsList() can take non-trivial time, so we run it only once.
 	//
@@ -2914,7 +2914,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 	//
 	// Shuffle the nodes to encourage random selection of RVs (from random nodes).
-	// Note that for new MV placement most/all RVs will be empty so sorting by free slots is not really usseful.
+	// Note that for new MV placement most/all RVs will be empty so sorting by free slots is not really useful.
 	//
 	rand.Shuffle(len(availableRVsList), func(i, j int) {
 		availableRVsList[i], availableRVsList[j] = availableRVsList[j], availableRVsList[i]

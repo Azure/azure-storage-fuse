@@ -198,7 +198,7 @@ type DcacheFile struct {
 	// How many max chunks can be allocated for use by this file.
 	// Depending on whether the file is opened for read or write, the maxChunks will be set differently.
 	// For writers it'll be set to numStagingChunks, for readers it'll be set to numReadAheadChunks plus
-	// the window size supported by the read patter tracker. See NewRPTracker().
+	// the window size supported by the read pattern tracker. See NewRPTracker().
 	maxChunks int64
 
 	// Semaphore to limit number of in-use chunks.

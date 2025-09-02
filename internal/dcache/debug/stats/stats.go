@@ -55,7 +55,7 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 // Metadata manager stats.
 // These should help us understand the performance of the metadata manager and its interactions with Azure // storage.
 //
-// Note: time.Time elements are maked omitzero which is supported starting from Go 1.24, so for older go versions
+// Note: time.Time elements are marked omitzero which is supported starting from Go 1.24, so for older go versions
 //       empty time.Time values will not be omitted from the JSON output.
 
 type MMStats struct {
@@ -226,7 +226,7 @@ type CMStats struct {
 	Heartbeats struct {
 		// Stats for getNodeList() call.
 		// This includes the initial heartbeat and all subsequent heartbeats.
-		// Onl valid for the cluster_manager leader node.
+		// Only valid for the cluster_manager leader node.
 		GetNodeList struct {
 			Calls     int64     `json:"calls,omitempty"`
 			Failures  int64     `json:"failures,omitempty"`
@@ -243,7 +243,7 @@ type CMStats struct {
 
 		// Stats for collectHBForGivenNodeIds() call.
 		// This includes the initial heartbeat and all subsequent heartbeats.
-		// Onl valid for the cluster_manager leader node.
+		// Only valid for the cluster_manager leader node.
 		CollectHB struct {
 			// How many HBs were seen as expired in the last heartbeats processing?
 			Expired int64 `json:"expired,omitempty"`
@@ -271,7 +271,7 @@ type CMStats struct {
 			// Number of nodes for which we got the initial heartbeats.
 			// All nodes that start simultaneously will have their initial heartbeats processed
 			// together, thus batching/saving time to add their RVs to the clustermap.
-			// Higher the beter.
+			// Higher the better.
 			NumNodes int64 `json:"num_nodes"`
 			// How many RVs (from NumNodes)?
 			NumRVs int64 `json:"num_rvs"`
