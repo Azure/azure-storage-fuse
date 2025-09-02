@@ -638,8 +638,8 @@ retry:
 		//
 		iffyRVs := rpc_client.GetIffyRVs(&rvName, &putChunkDCReq.NextRVs)
 		if len(*iffyRVs) > 0 {
-			err := fmt.Errorf("Iffy RVs %v found in the component RVs, retrying with OriginatorSendsToAll",
-				*iffyRVs)
+			err := fmt.Errorf("%v Iffy RVs found in the component RVs for MV %s (next-hop RV %s), retrying with OriginatorSendsToAll",
+				*iffyRVs, req.MvName, rvName)
 			log.Err("ReplicationManager::writeMVInternal: %v", err)
 			return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 		}
@@ -673,9 +673,16 @@ retry:
 			// to prevent the timeout error from happening again. In this case, we will retry the WriteMV()
 			// operation with OriginatorSendsToAll mode.
 			//
+			// We check for NegativeNodeError or IffyRVError here, though we have checked it before making
+			// the PutChunkDC call. This is because while a thread is waiting for getting an RPC client,
+			// some other thread may have marked the node as negative or the next-hop RV as iffy. So, we
+			// directly return error after getting the client and before making the PutChunkDC() call.
+			// This prevents making additional PutChunkDC() calls which will eventually timeout and also
+			// indicate the caller(WriteMV) to retry the operation using OriginatorSendsToAll.
+			//
 			if errors.Is(err, rpc_client.NegativeNodeError) || errors.Is(err, rpc_client.IffyRVError) {
-				log.Debug("ReplicationManager::writeMVInternal: RV %s is marked negative/iffy [%v], retrying with OriginatorSendsToAll",
-					rvName, err)
+				log.Warn("ReplicationManager::writeMVInternal: %s/%s is marked negative/iffy [%v], retrying with OriginatorSendsToAll",
+					rvName, req.MvName, err)
 				return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 			}
 

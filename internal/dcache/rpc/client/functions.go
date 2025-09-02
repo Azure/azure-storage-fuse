@@ -42,7 +42,6 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -143,30 +142,6 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			return nil, err
 		}
 
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::Hello: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the Hello call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing Hello to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::Hello: %v", err1)
-			return nil, err1
-		}
-
 		// Call the rpc method.
 		resp, err := client.svcClient.Hello(ctx, req)
 		if err != nil {
@@ -231,6 +206,7 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			//
 			// The RPC call to the target node succeeded.
 			// So, we can remove it from the negative nodes map.
+			// TODO: remove RV from iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
 		}
@@ -276,30 +252,6 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 			log.Err("rpc_client::GetChunk: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::GetChunk: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the GetChunk call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing GetChunk to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::GetChunk: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -361,9 +313,11 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+			cp.removeIffyRvId(req.Address.RvID)
 		}
 
 		// Release RPC client back to the pool.
@@ -407,30 +361,6 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 			log.Err("rpc_client::PutChunk: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::PutChunk: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the PutChunk call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing PutChunk to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::PutChunk: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -492,9 +422,11 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+			cp.removeIffyRvId(req.Chunk.Address.RvID)
 		}
 
 		// Release RPC client back to the pool.
@@ -541,14 +473,15 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to nexthop node %s and %d daisy chain RV(s): %v",
 		targetNodeID, len(req.NextRVs), reqStr)
 
-	rvName := cm.RvIdToName(req.Request.Chunk.Address.RvID)
-	common.Assert(cm.IsValidRVName(rvName), rvName)
-
 	//
 	// We retry once after resetting bad connections.
 	//
 	for i := 0; i < 2; i++ {
+		//
 		// Get RPC client from the client pool.
+		// This method can return NegativeNodeError error if the target node is marked negative.
+		// This indicates the caller (WriteMV) to retry the operation using OriginatorSendsToAll.
+		//
 		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			log.Err("rpc_client::PutChunkDC: Failed to get RPC client for node %s %v: %v",
@@ -557,12 +490,12 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 		}
 
 		//
-		// If the target node/RV is marked negative/iffy, it means that the last PutChunkDC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative or RV is iffy. The caller (WriteMV) will then retry the operation using
+		// If the next-hop RV is marked iffy, it means that the last PutChunkDC call to it failed
+		// with timeout error. So, prevent timeout error from happening again, we return an error
+		// indicating the RV is iffy. The caller (WriteMV) will then retry the operation using
 		// OriginatorSendsToAll mode.
 		//
-		if cp.isNegativeNode(targetNodeID) || cp.isIffyRV(rvName) {
+		if cp.isIffyRvId(req.Request.Chunk.Address.RvID) {
 			//
 			// Release RPC client back to the pool.
 			//
@@ -574,13 +507,9 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				common.Assert(false, err1)
 			}
 
-			if cp.isNegativeNode(targetNodeID) {
-				err1 = fmt.Errorf("Failing PutChunkDC to node %s [%w]: %s",
-					targetNodeID, NegativeNodeError, reqStr)
-			} else {
-				err1 = fmt.Errorf("Failing PutChunkDC to RV %s on node %s [%w]: %s",
-					rvName, targetNodeID, IffyRVError, reqStr)
-			}
+			err1 = fmt.Errorf("Failing PutChunkDC to RV id %s, MV %s on node %s [%w]: %s",
+				req.Request.Chunk.Address.RvID, req.Request.Chunk.Address.MvName,
+				targetNodeID, IffyRVError, reqStr)
 
 			log.Err("rpc_client::PutChunkDC: %v", err1)
 			return nil, err1
@@ -621,19 +550,24 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				// So, we mark all the RVs (next-hop as well as next RVs in chain) as iffy RVs.
 				// This prevents other threads from also timing out if they are calling PutChunkDC to same RVs.
 				//
-				cp.addIffyRV(rvName)
+				cp.addIffyRvId(req.Request.Chunk.Address.RvID)
 
 				// Add the next RVs to the iffy RVs map.
 				for _, nextRV := range req.NextRVs {
-					cp.addIffyRV(nextRV)
+					cp.addIffyRvName(nextRV)
 				}
 
 				//
 				// In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
-				// and not between the client node and target node. In this case, we retry WriteMV using
+				// and not necessarily between the client node and target node. In this case, we retry WriteMV using
 				// the OriginatorSendsToAll strategy. So, to be safe we don't delete the connections if we get
 				// timeout error in PutChunkDC. In the PutChunk using OriginatorSendsToAll strategy fails using
 				// timeout, we then delete the connections.
+				//
+				// We do resetAllRPCClients() here because if the connection between client and target node is good,
+				// the response from target node will eventually return after the timeout error. In this case, we
+				// cannot reuse the same which was timed out as it will result in ambiguous behavior.
+				// So, we reset the clients for the target node.
 				//
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
@@ -662,10 +596,15 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			//
 			// The RPC call to the target node succeeded.
 			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// also remove the next-hop and next RVs from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(rvName)
+			cp.removeIffyRvId(req.Request.Chunk.Address.RvID)
+
+			// Remove the next RVs from the iffy RVs map.
+			for _, nextRV := range req.NextRVs {
+				cp.removeIffyRvName(nextRV)
+			}
 		}
 
 		// Release RPC client back to the pool.
@@ -709,30 +648,6 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 			log.Err("rpc_client::RemoveChunk: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::RemoveChunk: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the RemoveChunk call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing RemoveChunk to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::RemoveChunk: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -794,9 +709,11 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+			cp.removeIffyRvId(req.Address.RvID)
 		}
 
 		// Release RPC client back to the pool.
@@ -850,30 +767,6 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			log.Info("rpc_client::JoinMV: Retrying after 5 secs in case the RPC server is just starting on the target")
 			time.Sleep(5 * time.Second)
 			continue
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::JoinMV: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the JoinMV call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing JoinMV to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::JoinMV: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -935,9 +828,11 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+			cp.removeIffyRvName(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
@@ -981,30 +876,6 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 			log.Err("rpc_client::UpdateMV: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::UpdateMV: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the UpdateMV call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing UpdateMV to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::UpdateMV: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -1066,9 +937,11 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+			cp.removeIffyRvName(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
@@ -1112,30 +985,6 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 			log.Err("rpc_client::LeaveMV: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::LeaveMV: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the LeaveMV call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing LeaveMV to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::LeaveMV: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -1197,9 +1046,11 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+			cp.removeIffyRvName(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
@@ -1243,30 +1094,6 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 			log.Err("rpc_client::StartSync: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::StartSync: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the StartSync call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing StartSync to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::StartSync: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -1328,9 +1155,20 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+
+			//
+			// We send StartSync() to source and target of the sync. So, on successful StartSync()
+			// RPC call remove the corresponding RV from the iffyRvIdMap.
+			//
+			if req.SenderNodeID == targetNodeID {
+				cp.removeIffyRvName(req.SourceRVName)
+			} else {
+				cp.removeIffyRvName(req.TargetRVName)
+			}
 		}
 
 		// Release RPC client back to the pool.
@@ -1374,30 +1212,6 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 			log.Err("rpc_client::EndSync: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::EndSync: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the EndSync call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing EndSync to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::EndSync: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -1459,9 +1273,20 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+
+			//
+			// We send EndSync() to source and target of the sync. So, on successful EndSync()
+			// RPC call remove the corresponding RV from the iffyRvIdMap.
+			//
+			if req.SenderNodeID == targetNodeID {
+				cp.removeIffyRvName(req.SourceRVName)
+			} else {
+				cp.removeIffyRvName(req.TargetRVName)
+			}
 		}
 
 		// Release RPC client back to the pool.
@@ -1507,30 +1332,6 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 			log.Err("rpc_client::GetMVSize: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
 			return nil, err
-		}
-
-		//
-		// If the target node is marked negative, it means that the last RPC call to it failed
-		// with timeout error. So, prevent from timeout error from happening again, we return an error
-		// indicating the node is negative.
-		//
-		if cp.isNegativeNode(targetNodeID) {
-			//
-			// Release RPC client back to the pool.
-			//
-			err1 := cp.releaseRPCClient(client)
-			if err1 != nil {
-				log.Err("rpc_client::GetMVSize: Failed to release RPC client for node %s %s: %v",
-					targetNodeID, reqStr, err1)
-				// Assert, but not fail the GetMVSize call.
-				common.Assert(false, err1)
-			}
-
-			err1 = fmt.Errorf("Failing GetMVSize to node %s [%w]: %s",
-				targetNodeID, NegativeNodeError, reqStr)
-
-			log.Err("rpc_client::GetMVSize: %v", err1)
-			return nil, err1
 		}
 
 		// Call the rpc method.
@@ -1596,9 +1397,11 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
+			// So, we can remove it from the negative nodes map, and
+			// also remove the RV from the iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
+			cp.removeIffyRvName(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
