@@ -231,7 +231,6 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			//
 			// The RPC call to the target node succeeded.
 			// So, we can remove it from the negative nodes map.
-			// TODO: remove RV from iffyRVMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
 		}
@@ -362,11 +361,9 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(cm.RvIdToName(req.Address.RvID))
 		}
 
 		// Release RPC client back to the pool.
@@ -495,11 +492,9 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(cm.RvIdToName(req.Chunk.Address.RvID))
 		}
 
 		// Release RPC client back to the pool.
@@ -799,11 +794,9 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(cm.RvIdToName(req.Address.RvID))
 		}
 
 		// Release RPC client back to the pool.
@@ -942,11 +935,9 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
@@ -1075,11 +1066,9 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
@@ -1208,11 +1197,9 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
@@ -1341,20 +1328,9 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-
-			//
-			// We send StartSync() to source and target of the sync. So, on successful StartSync()
-			// RPC call remove the corresponding RV from the iffyRVMap.
-			//
-			if req.SenderNodeID == targetNodeID {
-				cp.removeIffyRV(req.SourceRVName)
-			} else {
-				cp.removeIffyRV(req.TargetRVName)
-			}
 		}
 
 		// Release RPC client back to the pool.
@@ -1483,20 +1459,9 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-
-			//
-			// We send EndSync() to source and target of the sync. So, on successful EndSync()
-			// RPC call remove the corresponding RV from the iffyRVMap.
-			//
-			if req.SenderNodeID == targetNodeID {
-				cp.removeIffyRV(req.SourceRVName)
-			} else {
-				cp.removeIffyRV(req.TargetRVName)
-			}
 		}
 
 		// Release RPC client back to the pool.
@@ -1631,11 +1596,9 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 		} else {
 			//
 			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRVMap.
+			// So, we can remove it from the negative nodes map.
 			//
 			cp.removeNegativeNode(targetNodeID)
-			cp.removeIffyRV(req.RVName)
 		}
 
 		// Release RPC client back to the pool.
