@@ -656,7 +656,8 @@ retry:
 		// Else we call the PutChunkDC() RPC via the Thrift RPC client.
 		//
 		if targetNodeID == rpc.GetMyNodeUUID() {
-			putChunkDCResp, err = rpc_server.PutChunkDCLocal(ctx, putChunkDCReq)
+			//putChunkDCResp, err = rpc_server.PutChunkDCLocal(ctx, putChunkDCReq)
+			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		} else {
 			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}
@@ -1795,7 +1796,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq)
+		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq, false /* fromFwder */)
 		_ = putChunkResp
 		if err != nil {
 			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to put chunk to %s/%s [%v]: %v",

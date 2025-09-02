@@ -2097,28 +2097,30 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	var lmt string
 	var n int
 	_ = n
-	var chunkSize int64
-	_ = chunkSize
-	var stat syscall.Stat_t
 	var hashPathPtr *string
 
 	if performDummyReadWrite() {
 		goto dummy_read
 	}
 
-	err = syscall.Stat(chunkPath, &stat)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
-		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+	// Avoid the stats() call for release builds.
+	if common.IsDebugBuild() {
+		var stat syscall.Stat_t
+
+		err = syscall.Stat(chunkPath, &stat)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+		}
+
+		chunkSize := stat.Size
+		lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
+
+		common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
+			"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
 	}
-
-	chunkSize = stat.Size
-	lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
-
-	common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
-		"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
 
 	//
 	// TODO: hash validation will be done later
@@ -2861,7 +2863,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 
 		var rpcErr *models.ResponseError
 
-		putChunkResp, err := rpc_client.PutChunk(ctx, nexthopNodeId, putChunkReq)
+		putChunkResp, err := rpc_client.PutChunk(ctx, nexthopNodeId, putChunkReq, true /* fromFwder */)
 		if err != nil {
 			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunk request to last RV %s/%s on node %s: %v",
 				nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, err)

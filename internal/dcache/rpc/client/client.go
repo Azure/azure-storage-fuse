@@ -64,6 +64,7 @@ type rpcClient struct {
 	nodeAddress string                      // Address of the node this client is for
 	transport   thrift.TTransport           // Transport is the Thrift transport layer
 	svcClient   *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
+	highPrio    bool                        // highPrio indicates if this client is for high priority operations
 }
 
 var protocolFactory thrift.TProtocolFactory

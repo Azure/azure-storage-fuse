@@ -397,8 +397,8 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 // indicates some bug and it panics the program.
 //
 // NOTE: Caller MUST NOT hold the clientPool or node level lock.
-func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
-	log.Debug("clientPool::getRPCClient: Retrieving RPC client for node %s", nodeID)
+func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, error) {
+	log.Debug("clientPool::getRPCClient: getRPCClient(%s, %v)", nodeID, highPrio)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -432,6 +432,20 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("clientPool::getRPCClient: getNodeClientPool(%s) failed: %v",
 			nodeID, err)
+	}
+
+	if common.IsDebugBuild() {
+		ncPool.numWaiting.Add(1)
+		defer ncPool.numWaiting.Add(-1)
+
+		if highPrio {
+			ncPool.numWaitingHighPrio.Add(1)
+			defer ncPool.numWaitingHighPrio.Add(-1)
+		}
+
+		log.Debug("clientPool::getRPCClient: Retrieving (highPrio: %v) RPC client for node %s [active: %d, hactive: %d, waiting: %d, hwaiting: %d]",
+			highPrio, nodeID, ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(), ncPool.numWaiting.Load(),
+			ncPool.numWaitingHighPrio.Load())
 	}
 
 	//
@@ -468,9 +482,39 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 
 			ncPool.lastUsed.Store(time.Now().Unix())
 			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
-			ncPool.numActive.Add(1)
-			log.Debug("clientPool::getRPCClient: Successfully retrieved RPC client for node %s (now active: %d)",
-				nodeID, ncPool.numActive.Load())
+			// Nothing queued in the pool should be high priority.
+			common.Assert(!client.highPrio, nodeID)
+
+			//
+			// If this is not a high priority request, make sure we don't dig into the reserved high priority
+			// connections.
+			//
+			if !highPrio {
+				if ncPool.numActiveHighPrio.Load()+int64(len(ncPool.clientChan)) <= ncPool.numReservedHighPrio {
+					// Return back to the pool and wait for a non-high-priority connection.
+					ncPool.clientChan <- client
+					time.Sleep(1 * time.Millisecond)
+					continue
+				}
+				ncPool.numActive.Add(1)
+			} else {
+				client.highPrio = true
+				ncPool.numActive.Add(1)
+				ncPool.numActiveHighPrio.Add(1)
+			}
+
+			log.Debug("clientPool::getRPCClient: Successfully retrieved (highPrio: %v) RPC client for node %s [active: %d, hactive: %d, waiting: %d, hwaiting: %d]",
+				highPrio, nodeID, ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
+				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load())
+
+			// numActive includes both high priority and regular active connections.
+			common.Assert((ncPool.numActiveHighPrio.Load() <= ncPool.numActive.Load()),
+				ncPool.numActiveHighPrio.Load(), ncPool.numActive.Load(), client.nodeID, highPrio)
+			common.Assert(ncPool.numActive.Load() <= int64(cp.maxPerNode),
+				ncPool.numActive.Load(), cp.maxPerNode, client.nodeID, highPrio)
+			common.Assert((ncPool.numWaitingHighPrio.Load() <= ncPool.numWaiting.Load()),
+				ncPool.numWaitingHighPrio.Load(), ncPool.numWaiting.Load(), client.nodeID, highPrio)
+
 			return client, nil
 		case <-time.After(2 * time.Second): // Timeout after 2 second
 			waitTime += 2
@@ -507,6 +551,10 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 				log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
 				return nil, err
 			}
+
+			log.Debug("clientPool::getRPCClient: No free (highPrio: %v) RPC client for node %s (active: %d, hactive:%d, waiting: %d, hwaiting: %d), for %d seconds",
+				highPrio, nodeID, ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
+				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load(), waitTime)
 		}
 	}
 }
@@ -532,6 +580,8 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 	case client := <-ncPool.clientChan:
 		ncPool.lastUsed.Store(time.Now().Unix())
 		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
+		// Nothing queued in the pool should be high priority.
+		common.Assert(!client.highPrio, nodeID)
 		ncPool.numActive.Add(1)
 		return client, nil
 	default:
@@ -545,7 +595,7 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 //
 // NOTE: Caller MUST NOT hold the clientPool or node level lock.
 func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
-	log.Debug("clientPool::releaseRPCClient: Releasing RPC client for node %s", client.nodeID)
+	log.Debug("clientPool::releaseRPCClient: releaseRPCClient(%s, %v)", client.nodeID, client.highPrio)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -572,17 +622,33 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
-	log.Debug("clientPool::releaseRPCClient: node = %s, current node client pool size = %d, active clients = %d, max connections per node = %d",
-		client.nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), cp.maxPerNode)
+	log.Debug("clientPool::releaseRPCClient: node: %s, free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d, maxPerNode: %d",
+		client.nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
+		ncPool.numWaiting.Load(), ncPool.numActiveHighPrio.Load(), cp.maxPerNode)
 
+	// We must release only to a non-full pool.
 	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
-		fmt.Sprintf("node client pool is full, cannot release client: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode))
+		client.nodeID, len(ncPool.clientChan), cp.maxPerNode)
 
-	ncPool.clientChan <- client
+	// numActive includes both high priority and regular active connections.
+	common.Assert((ncPool.numActiveHighPrio.Load() <= ncPool.numActive.Load()),
+		ncPool.numActiveHighPrio.Load(), ncPool.numActive.Load(), client.nodeID, client.highPrio)
+
+	common.Assert(ncPool.numActive.Load() <= int64(cp.maxPerNode),
+		ncPool.numActive.Load(), cp.maxPerNode, client.nodeID, client.highPrio)
+
+	if client.highPrio {
+		common.Assert(ncPool.numActiveHighPrio.Load() > 0, ncPool.numActive.Load(), client.nodeID)
+		ncPool.numActiveHighPrio.Add(-1)
+	}
 
 	// Must be releasing an active client.
-	common.Assert(ncPool.numActive.Load() > 0)
+	common.Assert(ncPool.numActive.Load() > 0, ncPool.numActiveHighPrio.Load(), client.nodeID, client.highPrio)
 	ncPool.numActive.Add(-1)
+
+	client.highPrio = false
+	ncPool.clientChan <- client
+
 	return nil
 }
 
@@ -640,12 +706,24 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) error {
 	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
 		len(ncPool.clientChan), cp.maxPerNode)
 
+	// numActive includes both high priority and regular active connections.
+	common.Assert((ncPool.numActiveHighPrio.Load() <= ncPool.numActive.Load()),
+		ncPool.numActiveHighPrio.Load(), ncPool.numActive.Load(), client.nodeID, client.highPrio)
+
+	common.Assert(ncPool.numActive.Load() <= int64(cp.maxPerNode),
+		ncPool.numActive.Load(), cp.maxPerNode, client.nodeID, client.highPrio)
+
+	if client.highPrio {
+		common.Assert(ncPool.numActiveHighPrio.Load() > 0, ncPool.numActive.Load(), client.nodeID)
+		ncPool.numActiveHighPrio.Add(-1)
+	}
+
 	//
 	// Must only delete an active client.
 	// Also, clients which are deleted are not released, so we drop the numActive here, after
 	// closing the connection successfully above.
 	//
-	common.Assert(ncPool.numActive.Load() > 0)
+	common.Assert(ncPool.numActive.Load() > 0, ncPool.numActiveHighPrio.Load(), client.nodeID, client.highPrio)
 	ncPool.numActive.Add(-1)
 	return nil
 }
@@ -812,12 +890,24 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
 		len(ncPool.clientChan), cp.maxPerNode)
 
+	// numActive includes both high priority and regular active connections.
+	common.Assert((ncPool.numActiveHighPrio.Load() <= ncPool.numActive.Load()),
+		ncPool.numActiveHighPrio.Load(), ncPool.numActive.Load(), client.nodeID, client.highPrio)
+
+	common.Assert(ncPool.numActive.Load() <= int64(cp.maxPerNode),
+		ncPool.numActive.Load(), cp.maxPerNode, client.nodeID, client.highPrio)
+
+	if client.highPrio {
+		common.Assert(ncPool.numActiveHighPrio.Load() > 0, ncPool.numActive.Load(), client.nodeID)
+		ncPool.numActiveHighPrio.Add(-1)
+	}
+
 	//
 	// Must only reset an active client.
 	// Also, clients which are reset are not released, so we drop the numActive here, after
 	// closing the connection successfully above.
 	//
-	common.Assert(ncPool.numActive.Load() > 0)
+	common.Assert(ncPool.numActive.Load() > 0, ncPool.numActiveHighPrio.Load(), client.nodeID, client.highPrio)
 	ncPool.numActive.Add(-1)
 
 	newClient, err := newRPCClient(client.nodeID, rpc.GetNodeAddressFromID(client.nodeID))
@@ -1415,16 +1505,22 @@ func (cp *clientPool) periodicRemoveNegativeNodesAndIffyRVs() {
 // nodeClientPool holds a channel of RPC clients for a node
 // and the last used timestamp for LRU eviction
 type nodeClientPool struct {
-	nodeID     string          // Node ID of the node this client pool is for
-	clientChan chan *rpcClient // channel to hold the RPC clients to a node
-	lastUsed   atomic.Int64    // used for evicting inactive RPC clients based on LRU (seconds since epoch)
-	numActive  atomic.Int64    // number of clients currently created using getRPCClient() call.
+	nodeID              string          // Node ID of the node this client pool is for
+	clientChan          chan *rpcClient // channel to hold the RPC clients to a node
+	lastUsed            atomic.Int64    // used for evicting inactive RPC clients based on LRU (seconds since epoch)
+	numActive           atomic.Int64    // number of clients currently created using getRPCClient() call.
+	numWaiting          atomic.Int64    // number of users waiting for a free client in getRPCClient().
+	numWaitingHighPrio  atomic.Int64    // number of high priority callers waiting for a free client in getRPCClient().
+	numReservedHighPrio int64           // number of high priority clients reserved for this node.
+	numActiveHighPrio   atomic.Int64    // number of high priority clients currently active.
 }
 
 // createRPCClients creates a channel of RPC clients of size numClients for the specified node ID
 func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
-	log.Debug("nodeClientPool::createRPCClients: Creating %d RPC clients for node %s",
-		numClients, ncPool.nodeID)
+	numReservedHighPrio := int64(numClients - (numClients / 4))
+
+	log.Debug("nodeClientPool::createRPCClients: Creating %d RPC clients (%d high prio) for node %s",
+		numClients, numReservedHighPrio, ncPool.nodeID)
 
 	common.Assert(ncPool.clientChan == nil)
 	common.Assert(ncPool.numActive.Load() == 0, ncPool.numActive.Load())
@@ -1432,6 +1528,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 
 	ncPool.clientChan = make(chan *rpcClient, numClients)
 	ncPool.lastUsed.Store(time.Now().Unix())
+	ncPool.numReservedHighPrio = numReservedHighPrio
 
 	var err error
 
@@ -1484,6 +1581,12 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 
 	// We just got started, cannot have active clients.
 	common.Assert(ncPool.numActive.Load() == 0, ncPool.numActive.Load())
+	common.Assert(ncPool.numActiveHighPrio.Load() == 0, ncPool.numActiveHighPrio.Load())
+	// We must have reserved some high priority clients.
+	common.Assert(ncPool.numReservedHighPrio > 0, ncPool.numReservedHighPrio)
+	// At least some regular clients must be there.
+	common.Assert(ncPool.numReservedHighPrio < int64(len(ncPool.clientChan)),
+		ncPool.numReservedHighPrio, len(ncPool.clientChan))
 
 	// We should have created exactly numClients clients.
 	common.Assert(len(ncPool.clientChan) == int(numClients), len(ncPool.clientChan), numClients)
