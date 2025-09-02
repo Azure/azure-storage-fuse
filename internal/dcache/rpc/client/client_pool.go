@@ -894,7 +894,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	// on error, as we have reset at least one client.
 	//
 	for i := 0; i < numClients; i++ {
-		client, err = cp.getRPCClientNoWait(client.nodeID)
+		client1, err := cp.getRPCClientNoWait(client.nodeID)
 		if err != nil {
 			//
 			// There can be a race condition between when we get numClients (count of number of free clients
@@ -908,7 +908,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 			break
 		}
 
-		err = cp.resetRPCClientInternal(client, false /* needLock */)
+		err = cp.resetRPCClientInternal(client1, false /* needLock */)
 		if err != nil {
 			//
 			// We have reset at least one connection, so we don't fail the resetAllRPCClients()
