@@ -2169,7 +2169,9 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 		// This is most likely open failure due to the file already existing.
 		// We need to fail the call, caller will fail the client request appropriately.
 		//
-		return fmt.Errorf("safeWrite: failed to open chunk file %s, flag: 0x%x: %w", *chunkPath, flag, err)
+		err1 := fmt.Errorf("safeWrite: failed to open chunk file %s, flag: 0x%x: %w", *chunkPath, flag, err)
+		log.Warn("ChunkServiceHandler::%v", err1)
+		return err1
 	}
 
 	defer func() {
@@ -2296,6 +2298,17 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 	}
 
 	if err != nil {
+		//
+		// If chunk file already exists, we don't delete the file.
+		// The caller checks that if it is a sync write or "MaybeOverwrite" flag is set in request,
+		// then it ignores the write. Else it returns error back to the client.
+		//
+		if errors.Is(err, syscall.EEXIST) {
+			log.Debug("ChunkServiceHandler::writeChunkAndHash: Chunk file %s already exists [%v]",
+				*chunkPath, err)
+			return err
+		}
+
 		goto cleanup_chunk_file_and_fail
 	}
 
@@ -2315,6 +2328,9 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 
 cleanup_chunk_file_and_fail:
 	// Remove chunk file, to avoid confusion later.
+	log.Debug("ChunkServiceHandler::writeChunkAndHash: Removing chunk file %s",
+		*chunkPath)
+
 	err1 := os.Remove(*chunkPath)
 	if err1 != nil {
 		log.Err("ChunkServiceHandler::writeChunkAndHash: Failed to remove chunk file %s [%v]",
@@ -2328,6 +2344,7 @@ cleanup_chunk_file_and_fail:
 				*hashPath, err1)
 		}
 	}
+
 	return err
 }
 

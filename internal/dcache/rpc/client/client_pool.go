@@ -1273,7 +1273,7 @@ func (cp *clientPool) removeIffyRvId(rvID string) {
 func (cp *clientPool) removeIffyRvName(rvName string) {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
 	cp.removeIffyRvId(cm.RvNameToId(rvName))
-	log.Debug("clientPool::removeIffyRvByName: removed %s from iffyRvIdMap", rvName, time.Now())
+	log.Debug("clientPool::removeIffyRvByName: removed %s from iffyRvIdMap", rvName)
 }
 
 // Check if an RV id is marked iffy.
