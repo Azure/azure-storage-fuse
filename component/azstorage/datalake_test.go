@@ -1206,7 +1206,7 @@ func (s *datalakeTestSuite) TestOpenFileSize() {
 	name := generateFileName()
 	size := 10
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(size)})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(size)})
 
 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
 	s.assert.Nil(err)
@@ -1563,7 +1563,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileSmaller() {
 	truncatedLength := 5
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1593,7 +1593,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileSmaller() {
 		})
 	s.assert.Nil(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1617,7 +1617,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileEqual() {
 	truncatedLength := 9
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1646,7 +1646,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileEqual() {
 		})
 	s.assert.Nil(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1670,7 +1670,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileBigger() {
 	truncatedLength := 15
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1699,7 +1699,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileBigger() {
 		})
 	s.assert.Nil(err)
 
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1718,7 +1718,7 @@ func (s *datalakeTestSuite) TestTruncateFileError() {
 	// Setup
 	name := generateFileName()
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
@@ -1994,7 +1994,6 @@ func (s *datalakeTestSuite) TestGetFileBlockOffsetsSmallFile() {
 	s.assert.Nil(err)
 	s.assert.Len(offsetList.BlockList, 0)
 	s.assert.True(offsetList.HasNoBlocks())
-	s.assert.EqualValues(0, offsetList.BlockIdLength)
 }
 
 func (s *datalakeTestSuite) TestGetFileBlockOffsetsChunkedFile() {

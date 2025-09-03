@@ -792,7 +792,12 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 
 	log.Trace("Libfuse::libfuse2_truncate : %s size %d", name, off)
 
-	err := fuseFS.NextComponent().TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(off)})
+	err := fuseFS.NextComponent().TruncateFile(
+		internal.TruncateFileOptions{
+			Name:    name,
+			OldSize: -1,
+			NewSize: int64(off),
+		})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_truncate : error truncating file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {

@@ -1522,7 +1522,7 @@ func (s *blockBlobTestSuite) TestTruncateFileError() {
 	// Setup
 	name := generateFileName()
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
@@ -2343,7 +2343,6 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsSmallFile() {
 	s.assert.Nil(err)
 	s.assert.Len(offsetList.BlockList, 0)
 	s.assert.True(offsetList.HasNoBlocks())
-	s.assert.EqualValues(0, offsetList.BlockIdLength)
 }
 
 func (s *blockBlobTestSuite) TestGetFileBlockOffsetsChunkedFile() {

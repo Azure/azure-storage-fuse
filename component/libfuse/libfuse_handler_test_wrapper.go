@@ -373,7 +373,7 @@ func testTruncate(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
-	options := internal.TruncateFileOptions{Name: name, NewSize: size}
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
 	err := libfuse_truncate(path, C.long(size), nil)
@@ -386,7 +386,7 @@ func testTruncateError(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
-	options := internal.TruncateFileOptions{Name: name, NewSize: size}
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
 	err := libfuse_truncate(path, C.long(size), nil)
@@ -405,7 +405,7 @@ func testFTruncate(suite *libfuseTestSuite) {
 	fi := C.fuse_file_info_t{}
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
-	options := internal.TruncateFileOptions{Handle: handle, Name: name, NewSize: size}
+	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
 	err := libfuse_truncate(path, C.long(size), &fi)
@@ -424,7 +424,7 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	fi := C.fuse_file_info_t{}
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
-	options := internal.TruncateFileOptions{Handle: handle, Name: name, NewSize: size}
+	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
 	err := libfuse_truncate(path, C.long(size), &fi)

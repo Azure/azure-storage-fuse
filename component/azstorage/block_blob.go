@@ -1418,7 +1418,7 @@ func (bb *BlockBlob) TruncateFileUsingBlocks(options *internal.TruncateFileOptio
 		return err
 	}
 
-	// BREAKING CHANGE
+	// BREAKING CHANGE:
 	// // If prev components has specified block size, we should respect that.
 	// // Say if a 10MB file is created using block_cache with blockSize 8MB, it's block list would be 1(8M), 2(2M). Now say
 	// // user is trying to truncate it to say 20MB. Then we should first download the second block and modify it (i.e., New
