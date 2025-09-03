@@ -12,19 +12,19 @@ Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues
 
 ## [Steps to Install Blobfuse2](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Installation)
 
-## [Choose config for Blobfuse2](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Config-Guide)
+## [Choose config](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Config-Guide)
+
+## [Config File Best Practices](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-File-Best-Practices)
 
 ## [Blockcache Limitations And Recommendations](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Blockcache-Limitations-And-Recommendations)
 
-## [Commands to use BlobFuse2](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Usage)
+## [Supported Operations And Usage](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Operation-and-Usage)
 
-## [Blobfuse2 Benchmarks](https://azure.github.io/azure-storage-fuse/)
+## [Benchmarks](https://azure.github.io/azure-storage-fuse/)
 
-## [Features of BlobFuse2](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Features)
+## [Features](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Features)
 
-## [_New BlobFuse2 Health Monitor_](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md)
-
-## [Supported Operations](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Cli%E2%80%90Parameters)
+## [_New Health Monitor_](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md)
 
 ## [CLI parameters](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Cli%E2%80%90Parameters)
 
@@ -32,7 +32,7 @@ Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues
 
 ## [Blob Filter](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Blob-Filter)
 
-## [Preload Data in Blobfuse2](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Preload)
+## [Preload Data](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Preload)
 
 ## [Using Private Endpoints with HNS-Enabled Storage Accounts](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Private-Endpoint-With-HNS)
 
@@ -54,19 +54,6 @@ Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues
 To see a list of commands, type `blobfuse2 -h` and then press the ENTER key.
 To learn about a specific command, just include the name of the command (For example: `blobfuse2 mount -h`).
 
-
-
-## Config File Best Practices
-- If `type` is **not provided** in the `azstorage` section of the config file:  
-  - **Blobfuse** will auto-detect the account type and set the respective endpoint.  
-  - For **private endpoints**, exposing the DFS endpoint is required, otherwise the mount will fail.  
-- If `type` **is provided** in the `azstorage` section of the config file:  
-  - **HNS account** should **not** be mounted with `type: block` (used to specify FNS) in the `azstorage` section.  
-    - This will result in failure of certain directory operations.  
-  - **FNS account** should **not** be mounted with `type: adls` (used to specify HNS) in the `azstorage` section.  
-    - This will cause mount failures.
-
-
 ## License
 This project is licensed under MIT.
  
@@ -84,6 +71,3 @@ bot. You will only need to do this once across all repos using our CLA.
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
-
-
