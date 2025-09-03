@@ -1165,6 +1165,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 
 	// if block list empty its a small file
 	if len(storageBlockList.CommittedBlocks) == 0 {
+		blockList.BlockIdLength = common.BlockIDLength
 		return &blockList, nil
 	}
 
