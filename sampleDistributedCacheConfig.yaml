@@ -1,0 +1,22 @@
+# Refer ./setup/baseConfig.yaml for full set of config parameters
+
+logging:
+  type: syslog
+  level: log_debug
+
+components:
+  - libfuse
+  - distributed_cache
+  - azstorage
+
+distributed_cache:
+  cache-id: my-dcache-cluster
+  cache-dirs:
+    - /mnt/cache1
+
+azstorage:
+  type: block
+  account-name: <ACCOUNT_NAME>
+  account-key: <ACCOUNT_KEY>
+  mode: key
+  container: <CONTAINER_NAME>
