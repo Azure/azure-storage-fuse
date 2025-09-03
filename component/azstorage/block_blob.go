@@ -932,6 +932,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
+// Specifying "0" len will download the entire blob.
 func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	if etag != nil {
@@ -1164,7 +1165,6 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 
 	// if block list empty its a small file
 	if len(storageBlockList.CommittedBlocks) == 0 {
-		blockList.Flags.Set(common.SmallFile)
 		return &blockList, nil
 	}
 
@@ -1191,6 +1191,28 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 	}
 	// mark truncated since it is a new empty block
 	newBlock.Flags.Set(common.TruncatedBlock)
+	newBlock.Flags.Set(common.DirtyBlock)
+	return newBlock
+}
+
+func (bb *BlockBlob) createDuplicateBlock(blockId string, startIndex, size int64) *common.Block {
+	newBlock := &common.Block{
+		Id:         blockId,
+		StartIndex: startIndex,
+		EndIndex:   startIndex + size,
+	}
+	return newBlock
+}
+
+func (bb *BlockBlob) createBlockFromBuffer(blockIdLength, startIndex int64, data []byte) *common.Block {
+	newBlockId := common.GetBlockID(blockIdLength)
+	newBlock := &common.Block{
+		Id:         newBlockId,
+		StartIndex: startIndex,
+		EndIndex:   startIndex + int64(len(data)),
+		Data:       data,
+	}
+	// mark dirty since it is a new block with data
 	newBlock.Flags.Set(common.DirtyBlock)
 	return newBlock
 }
@@ -1224,6 +1246,79 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	return bufferSize, nil
 }
 
+// create new blocks based on the offset and total length we're adding to the file
+func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, options *internal.TruncateFileOptions) error {
+
+	numOfBlocks := int64(len(blockList.BlockList))
+	length := options.NewSize - options.OldSize
+
+	blockSize := options.BlockSize
+	if blockSize == 0 {
+		blockSize = bb.Config.blockSize
+		if blockSize == 0 {
+			// TODD: This should be set in init of blobfuse
+			blockSize = 16 * 1024 * 1024
+		}
+
+		blocksNeeded := common.CeilDivInt64(length, blockSize)
+
+		if numOfBlocks+blocksNeeded > blockblob.MaxBlocks {
+			// if we cannot accommodate the data with current block size then recalculate the block size
+			blockSize = common.CeilDivInt64(length, blockblob.MaxBlocks-numOfBlocks)
+			if blockSize > blockblob.MaxStageBlockBytes {
+				return errors.New("cannot accommodate data within the block limit")
+			}
+		}
+	} else {
+		// Case when user has specified the block size from previouse component
+		// Calculate how many blocks we need with this block size
+		blocksNeeded := common.CeilDivInt64(length, blockSize)
+		// For user specified block size, validate if we can accommodate the data within the block limit
+		if numOfBlocks+blocksNeeded > blockblob.MaxBlocks {
+			return errors.New("cannot accommodate data within the block limit with configured block-size")
+		}
+
+		// if last block is not aligned to block size then adjust it
+		if len(blockList.BlockList) > 0 {
+			lastBlock := blockList.BlockList[len(blockList.BlockList)-1]
+
+			if lastBlock.EndIndex-lastBlock.StartIndex < blockSize {
+				// last block is smaller then block size, so adjust it
+				lastBlock.EndIndex = min(lastBlock.StartIndex+blockSize,
+					lastBlock.StartIndex+(options.NewSize-lastBlock.StartIndex))
+
+				lastBlock.Data = make([]byte, lastBlock.EndIndex-lastBlock.StartIndex)
+				lastBlock.Flags.Set(common.DirtyBlock)
+
+				err := bb.ReadInBuffer(options.Name, lastBlock.StartIndex, lastBlock.EndIndex-lastBlock.StartIndex, lastBlock.Data, nil)
+				if err != nil {
+					log.Err("BlockBlob::createNewBlocks : Failed to adjust last block %s [%v]", options.Name, err)
+					return err
+				}
+			}
+
+		}
+	}
+
+	var isEmptyBlockCreated bool
+	for i := options.OldSize; i < options.NewSize; i += blockSize {
+		curBlkSize := min(blockSize, options.NewSize-i)
+
+		if isEmptyBlockCreated && curBlkSize == blockSize {
+			// if we have already created an empty block and the next block is also of full size then
+			// we can reuse the same block id to avoid creating too many empty blocks
+			newBlock := bb.createDuplicateBlock(blockList.BlockList[len(blockList.BlockList)-1].Id, i, curBlkSize)
+			blockList.BlockList = append(blockList.BlockList, newBlock)
+			continue
+		}
+
+		newBlock := bb.createBlock(blockList.BlockIdLength, i, curBlkSize)
+		blockList.BlockList = append(blockList.BlockList, newBlock)
+		isEmptyBlockCreated = true
+	}
+	return nil
+}
+
 func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64, name string) *common.BlockOffsetList {
 	_, index := blockList.BinarySearch(size)
 	// if the start index is equal to new size - block should be removed - move one index back
@@ -1243,135 +1338,162 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 		}
 
 	}
-	blk := blockList.BlockList[index]
-	blk.Flags.Set(common.RemovedBlocks)
 	blockList.BlockList = blockList.BlockList[:index+1]
+	blockList.Flags.Set(common.BlobFlagBlockListModified)
 
 	return blockList
 }
 
-func (bb *BlockBlob) TruncateFile(name string, size int64) error {
-	// log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
-	attr, err := bb.GetAttr(name)
-	if err != nil {
-		log.Err("BlockBlob::TruncateFile : Failed to get attributes of file %s [%s]", name, err.Error())
-		if err == syscall.ENOENT {
+func (bb *BlockBlob) TruncateFile(options internal.TruncateFileOptions) error {
+	log.Trace("BlockBlob::TruncateSmallFile : name: %s, new size: %d",
+		options.Name, options.OldSize, options.NewSize)
+
+	// If old size is not specified, get it from the service
+	if options.OldSize == -1 {
+		attr, err := bb.GetAttr(options.Name)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to get attributes of file %s [%v]", options.Name, err)
 			return err
 		}
+		options.OldSize = attr.Size
 	}
-	if size == 0 || attr.Size == 0 {
-		// If we are resizing to a value > 1GB then we need to upload multiple blocks to resize
-		if size > 1*common.GbToBytes {
-			blkSize := int64(16 * common.MbToBytes)
-			blobName := filepath.Join(bb.Config.prefixPath, name)
-			blobClient := bb.Container.NewBlockBlobClient(blobName)
 
-			blkList := make([]string, 0)
-			id := common.GetBlockID(common.BlockIDLength)
+	if options.OldSize == options.NewSize {
+		return nil
+	}
 
-			for i := 0; size > 0; i++ {
-				if i == 0 || size < blkSize {
-					// Only first and last block we upload and rest all we replicate with the first block itself
-					if size < blkSize {
-						blkSize = size
-						id = common.GetBlockID(common.BlockIDLength)
-					}
-					data := make([]byte, blkSize)
-
-					_, err = blobClient.StageBlock(context.Background(),
-						id,
-						streaming.NopCloser(bytes.NewReader(data)),
-						&blockblob.StageBlockOptions{
-							CPKInfo: bb.blobCPKOpt,
-						})
-					if err != nil {
-						log.Err("BlockBlob::TruncateFile : Failed to stage block for %s [%s]", name, err.Error())
-						return err
-					}
-				}
-				blkList = append(blkList, id)
-				size -= blkSize
-			}
-
-			err = bb.CommitBlocks(blobName, blkList, nil)
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to commit blocks for %s [%s]", name, err.Error())
+	// Handle files whose new size <= 256MiB && when block size is not specified.
+	if options.NewSize <= blockblob.MaxUploadBlobBytes && options.BlockSize == 0 {
+		// allocate memory for the slice and upload blob.
+		buf, err := common.SafeAllocate(int(options.NewSize))
+		if err != nil {
+			log.Warn("BlockBlob::TruncateFile : Failed to allocate %d bytes buffer for file: %s[%v]",
+				options.Name, err)
+			// If we cannot allocate memory, then fallback to truncate using blocks.
+		} else {
+			if err = bb.TruncateFileWithoutBlocks(&options, buf); err != nil {
+				log.Err("BlockBlob::TruncateFile : Failed to truncate file %s[%v]", options.Name, err)
 				return err
 			}
-		} else {
-			err := bb.WriteFromBuffer(name, nil, make([]byte, size))
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes [%s]", name, err.Error())
-			}
 		}
+	}
+
+	// Truncate file by managing blocks
+	if err := bb.TruncateFileUsingBlocks(&options); err != nil {
+		log.Err("BlockBlob::TruncateFile : Failed to truncate file %s[%v]", options.Name, err)
 		return err
-	}
-
-	//If new size is less than 256MB
-	if size < blockblob.MaxUploadBlobBytes {
-		data, err := bb.HandleSmallFile(name, size, attr.Size)
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
-			return err
-		}
-		err = bb.WriteFromBuffer(name, nil, data)
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
-			return err
-		}
-	} else {
-		bol, err := bb.GetFileBlockOffsets(name)
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s [%s]", name, err.Error())
-			return err
-		}
-		if bol.SmallFile() {
-			data, err := bb.HandleSmallFile(name, size, attr.Size)
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
-				return err
-			}
-			err = bb.WriteFromBuffer(name, nil, data)
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
-				return err
-			}
-		} else {
-			if size < attr.Size {
-				bol = bb.removeBlocks(bol, size, name)
-			} else if size > attr.Size {
-				_, err = bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
-				if err != nil {
-					log.Err("BlockBlob::TruncateFile : Failed to create new blocks for file %s", name, err.Error())
-					return err
-				}
-			}
-			err = bb.StageAndCommit(name, bol)
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to stage and commit file %s", name, err.Error())
-				return err
-			}
-		}
 	}
 
 	return nil
 }
 
-func (bb *BlockBlob) HandleSmallFile(name string, size int64, originalSize int64) ([]byte, error) {
-	var data = make([]byte, size)
+func (bb *BlockBlob) TruncateFileWithoutBlocks(options *internal.TruncateFileOptions, buf []byte) error {
+	log.Trace("BlockBlob::TruncateSmallFile : name: %s, old size: %d, new size: %d", options.Name, options.NewSize)
 	var err error
-	if size > originalSize {
-		err = bb.ReadInBuffer(name, 0, 0, data, nil)
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
+
+	// Read the file
+	err = bb.ReadInBuffer(options.Name, 0, min(options.NewSize, options.OldSize), buf, nil)
+	if err != nil {
+		log.Err("BlockBlob::TruncateSmallFile : Failed to read small file %s[%v]", options.Name, err)
+		return err
+	}
+
+	// Write the file
+	err = bb.WriteFromBuffer(options.Name, nil, buf)
+	if err != nil {
+		log.Err("BlockBlob::TruncateSmallFile : Failed to write from buffer file %s[%v]", options.Name, err)
+		return err
+	}
+
+	return nil
+}
+
+func (bb *BlockBlob) TruncateFileUsingBlocks(options *internal.TruncateFileOptions) error {
+	var err error
+
+	blob, err := bb.GetFileBlockOffsets(options.Name)
+	if err != nil {
+		log.Err("BlockBlob::TruncateFile : Failed to get block offsets for file %s[%v]", options.Name, err)
+		return err
+	}
+
+	// BREAKING CHANGE
+	// // If prev components has specified block size, we should respect that.
+	// // Say if a 10MB file is created using block_cache with blockSize 8MB, it's block list would be 1(8M), 2(2M). Now say
+	// // user is trying to truncate it to say 20MB. Then we should first download the second block and modify it (i.e., New
+	// // block list would be 1(8M), 2(8M), 3(4M)).
+	// if options.BlockSize > 0 {
+	// 	if blkSize, ok := blob.HasAllBlocksWithSameBlockSize(); !ok {
+	// 		err = fmt.Errorf("Blob %v has blocks with different block sizes, cannot respect the specified block size %d",
+	// 			options.Name, options.BlockSize)
+	// 		log.Err("BlockBlob::TruncateFileUsingBlocks : %v", err)
+	// 		return err
+	// 	} else if blkSize > 0 && blkSize != options.BlockSize {
+	// 		err = fmt.Errorf("Blob %v has block size %d, cannot respect the specified block size %d",
+	// 			options.Name, blkSize, options.BlockSize)
+	// 		log.Err("BlockBlob::TruncateFileUsingBlocks : %v", err)
+	// 		return err
+	// 	}
+	// }
+
+	// If blob has no blocks, we should convert the blob into blocks to make the truncate operation.
+	if blob.HasNoBlocks() {
+		if options.OldSize > blockblob.MaxUploadBlobBytes {
+			err = fmt.Errorf("Blob %v has size %d bytes greater than 256MB but has no blocks, inconsistent state",
+				options.Name, options.OldSize)
+			log.Err("BlockBlob::TruncateFileUsingBlocks : %v", err)
+			return err
 		}
-	} else {
-		err = bb.ReadInBuffer(name, 0, size, data, nil)
+		// allocate memory for the slice and read the file.
+		buf, err := common.SafeAllocate(int(options.OldSize))
 		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
+			log.Err("BlockBlob::TruncateFile : Failed to allocate %d bytes buffer for reading file: %s[%v]",
+				options.Name, err)
+			return err
+		}
+		// Read the file
+		err = bb.ReadInBuffer(options.Name, 0, options.OldSize, buf, nil)
+		if err != nil {
+			log.Err("BlockBlob::TruncateSmallFile : Failed to read small file %s[%v]", options.Name, err)
+			return err
+		}
+		// Create blocks for the blob.
+		blockSize := options.BlockSize
+		if options.BlockSize == 0 {
+			blockSize = bb.Config.blockSize
+			if blockSize == 0 {
+				// TODD: This should be set in init of blobfuse
+				blockSize = 16 * 1024 * 1024
+			}
+			for i := int64(0); i < options.OldSize; i += blockSize {
+				blkSize := min(blockSize, options.OldSize-i)
+				newBlock := bb.createBlockFromBuffer(blob.BlockIdLength, i, buf[i:i+blkSize])
+				blob.BlockList = append(blob.BlockList, newBlock)
+			}
+		}
+
+	}
+
+	// If new size < old size, we should remove the extra blocks.
+	if options.NewSize < options.OldSize {
+		blob = bb.removeBlocks(blob, options.NewSize, options.Name)
+	} else {
+		// If new size > old size, we should create new blocks.
+		err = bb.createNewBlocksTruncate(blob, options)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to create new blocks for file %s[%v]", options.Name, err)
+			return err
 		}
 	}
-	return data, err
+
+	// Stage and commit the blocks.
+	err = bb.StageAndCommit(options.Name, blob)
+	if err != nil {
+		log.Err("BlockBlob::TruncateFile : Failed to Stage and Commit blocks for file %s[%v]", options.Name, err)
+		return err
+	}
+
+	return nil
 }
 
 // Write : write data at given offset to a blob
@@ -1390,7 +1512,7 @@ func (bb *BlockBlob) Write(options *internal.WriteFileOptions) error {
 	length := int64(len(options.Data))
 	data := options.Data
 	// case 1: file consists of no blocks (small file)
-	if fileOffsets.SmallFile() {
+	if fileOffsets.HasNoBlocks() {
 		// get all the data
 		oldData, _ := bb.ReadBuffer(name, 0, 0)
 		// update the data with the new data
@@ -1499,10 +1621,11 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 	blobMtx := bb.blockLocks.GetLock(name)
 	blobMtx.Lock()
 	defer blobMtx.Unlock()
+
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	var blockIDList []string
 	var data []byte
-	staged := false
+	staged := bol.IsBlockListModified()
 	for _, blk := range bol.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
 		if blk.Truncated() {
@@ -1524,8 +1647,6 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			}
 			staged = true
 			blk.Flags.Clear(common.DirtyBlock)
-		} else if blk.Removed() {
-			staged = true
 		}
 	}
 	if staged {

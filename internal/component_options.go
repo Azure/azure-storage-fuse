@@ -127,9 +127,12 @@ type GetFileBlockOffsetsOptions struct {
 }
 
 type TruncateFileOptions struct {
-	Handle *handlemap.Handle
-	Name   string
-	Size   int64
+	Handle  *handlemap.Handle
+	Name    string
+	OldSize int64
+	NewSize int64
+	// This is equivalent to the storage block Size.
+	BlockSize int64
 }
 
 type CopyToFileOptions struct {

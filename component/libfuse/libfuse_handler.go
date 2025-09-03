@@ -853,9 +853,10 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().TruncateFile(
 		internal.TruncateFileOptions{
-			Handle: handle,
-			Name:   name,
-			Size:   int64(off),
+			Handle:  handle,
+			Name:    name,
+			OldSize: -1, // upstream components will get the actual size of the file.
+			NewSize: int64(off),
 		})
 
 	if err != nil {

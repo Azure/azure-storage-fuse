@@ -494,7 +494,7 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 		// no need to truncate the name of the file
 		value, found := ac.cacheMap[options.Name]
 		if found && value.valid() && value.exists() {
-			value.setSize(options.Size)
+			value.setSize(options.NewSize)
 		}
 		// todo: invalidating path here rather than updating with etag
 		// due to some changes that are required in az storage comp which

@@ -583,3 +583,22 @@ func UpdatePipeline(pipeline []string, component string) []string {
 
 	return pipeline
 }
+
+// SafeAllocate tries to allocate the memory of given size and recovers from panic if any.
+func SafeAllocate(size int) (data []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("Recovered from panic: %v", r)
+		}
+	}()
+	data = make([]byte, size)
+	return data, nil
+}
+
+// Calculates Ceil division of two integers.
+func CeilDivInt64(a, b int64) int64 {
+	if b == 0 {
+		panic("division by zero")
+	}
+	return (a + b - 1) / b
+}

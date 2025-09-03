@@ -1488,14 +1488,14 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 
 // TruncateFile: Update the file with its new size.
 func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
-	log.Trace("FileCache::TruncateFile : name=%s, size=%d", options.Name, options.Size)
+	log.Trace("FileCache::TruncateFile : name=%s, size=%d", options.Name, options.NewSize)
 
 	if fc.diskHighWaterMark != 0 {
 		currSize, err := common.GetUsage(fc.tmpPath)
 		if err != nil {
 			log.Err("FileCache::TruncateFile : error getting current usage of cache [%s]", err.Error())
 		} else {
-			if (currSize + float64(options.Size)) > fc.diskHighWaterMark {
+			if (currSize + float64(options.NewSize)) > fc.diskHighWaterMark {
 				log.Err("FileCache::TruncateFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Name)
 				return syscall.ENOSPC
 			}
@@ -1519,8 +1519,8 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	if err == nil || os.IsExist(err) {
 		fc.policy.CacheValid(localPath)
 
-		if info.Size() != options.Size {
-			err = os.Truncate(localPath, options.Size)
+		if info.Size() != options.NewSize {
+			err = os.Truncate(localPath, options.NewSize)
 			if err != nil {
 				log.Err("FileCache::TruncateFile : error truncating cached file %s [%s]", localPath, err.Error())
 				return err

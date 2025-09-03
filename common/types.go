@@ -154,12 +154,11 @@ type LogConfig struct {
 	Tag         string // logging tag which can be either blobfuse2 or bfusemon
 }
 
-// Flags for blocks
+// Flags for block
 const (
 	BlockFlagUnknown uint16 = iota
 	DirtyBlock
 	TruncatedBlock
-	RemovedBlocks
 )
 
 type Block struct {
@@ -181,14 +180,11 @@ func (block *Block) Truncated() bool {
 	return block.Flags.IsSet(TruncatedBlock)
 }
 
-func (block *Block) Removed() bool {
-	return block.Flags.IsSet(RemovedBlocks)
-}
-
 // Flags for block offset list
 const (
-	BolFlagUnknown uint16 = iota
-	SmallFile
+	BlobFlagUnknown     uint16 = iota
+	BlobFlagHasNoBlocks        // set if the blob does not have any blocks
+	BlobFlagBlockListModified
 )
 
 // list that holds blocks containing ids and corresponding offsets
@@ -200,9 +196,25 @@ type BlockOffsetList struct {
 	Mtime         time.Time
 }
 
-// Dirty : Handle is dirty or not
-func (bol *BlockOffsetList) SmallFile() bool {
-	return bol.Flags.IsSet(SmallFile)
+func (bol *BlockOffsetList) HasNoBlocks() bool {
+	return len(bol.BlockList) == 0
+}
+
+func (bol *BlockOffsetList) IsBlockListModified() bool {
+	return bol.Flags.IsSet(BlobFlagBlockListModified)
+}
+
+func (bol *BlockOffsetList) HasAllBlocksWithSameBlockSize() (blockSize int64, ok bool) {
+	if bol.HasNoBlocks() || len(bol.BlockList) == 0 {
+		return 0, true
+	}
+	blockSize = bol.BlockList[0].EndIndex - bol.BlockList[0].StartIndex
+	for _, blk := range bol.BlockList {
+		if blk.EndIndex-blk.StartIndex != blockSize {
+			return 0, false
+		}
+	}
+	return blockSize, true
 }
 
 // return true if item found and index of the item
