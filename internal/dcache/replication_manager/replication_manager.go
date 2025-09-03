@@ -617,6 +617,7 @@ retry:
 			}, isLastComponentRV /* runInline */)
 		}
 	} else if putChunkStyle == DaisyChain {
+		// TODO: This is O(number of RVs), make this O(1).
 		rvName := getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID)
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
@@ -625,8 +626,8 @@ retry:
 			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
 
 		//
-		// Check if next-hop RV and the next RVs in chain are present in the iffy RV map.
-		// If yes, we retry the operation using OriginatorSendsToAll.
+		// Check if next-hop RV and any RV in chain are present in the iffy RV map.
+		// If yes, we retry the operation using OriginatorSendsToAll and save a potential PutChunkDC timeout.
 		//
 		// This check for skipping the DaisyChain write is done in the rpc_client.PutChunkDC() call
 		// also, where we just check if the next-hop RV is present in the iffy RV map.
@@ -637,9 +638,9 @@ retry:
 		// error from occurring.
 		//
 		iffyRVs := rpc_client.GetIffyRVs(&rvName, &putChunkDCReq.NextRVs)
-		if len(*iffyRVs) > 0 {
-			err := fmt.Errorf("%v Iffy RVs found in the component RVs for MV %s (next-hop RV %s), retrying with OriginatorSendsToAll",
-				*iffyRVs, req.MvName, rvName)
+		if iffyRVs != nil && len(*iffyRVs) > 0 {
+			err := fmt.Errorf("%d iffy RVs %v found for MV %s (next-hop RV: %s), retrying with OriginatorSendsToAll",
+				len(*iffyRVs), *iffyRVs, req.MvName, rvName)
 			log.Err("ReplicationManager::writeMVInternal: %v", err)
 			return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 		}
@@ -678,7 +679,7 @@ retry:
 			// some other thread may have marked the node as negative or the next-hop RV as iffy. So, we
 			// directly return error after getting the client and before making the PutChunkDC() call.
 			// This prevents making additional PutChunkDC() calls which will eventually timeout and also
-			// indicate the caller(WriteMV) to retry the operation using OriginatorSendsToAll.
+			// indicate the caller (WriteMV) to retry the operation using OriginatorSendsToAll.
 			//
 			if errors.Is(err, rpc_client.NegativeNodeError) || errors.Is(err, rpc_client.IffyRVError) {
 				log.Warn("ReplicationManager::writeMVInternal: %s/%s is marked negative/iffy [%v], retrying with OriginatorSendsToAll",
@@ -792,7 +793,8 @@ processResponses:
 
 			//
 			// In DaisyChain mode, we cannot tell for sure which node has bad connection, so do not
-			// mark the RV as inband-offline.
+			// mark the RV as inband-offline. Instead we retry the WriteMV with OriginatorSendsToAll mode
+			// which will mark the RV as inband-offline if the PutChunk to that RV fails again.
 			//
 			if putChunkStyle != DaisyChain {
 				errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
@@ -903,7 +905,7 @@ processResponses:
 				//
 				// For an unknown error, retry once with OriginatorSendsToAll for better resiliency.
 				//
-				log.Warn("ReplicationManager::writeMVInternal: PutChunk to %s/%s failed with non-retriable error [%v], will retry with OriginatorSendsToAll",
+				log.Warn("ReplicationManager::writeMVInternal: PutChunkDC to %s/%s failed with non-retriable error [%v], will retry with OriginatorSendsToAll",
 					respItem.rvName, req.MvName, respItem.err)
 				brokenChain = true
 			} else {
@@ -933,7 +935,6 @@ processResponses:
 	if brokenChain {
 		common.Assert(putChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
 			putChunkStyle, len(putChunkDCReq.NextRVs))
-
 		//
 		// If we got BrokenChain error, it means that we need to retry the entire write MV operation
 		// again with OriginatorSendsToAll mode.

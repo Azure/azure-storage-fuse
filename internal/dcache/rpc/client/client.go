@@ -37,7 +37,6 @@ import (
 	"crypto/tls"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
@@ -76,20 +75,13 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s at %s", nodeID, nodeAddress)
 
 	//
-	// Check in the negative nodes map if we should attempt creating RPC client for this node ID.
+	// If the node is present in the negativeNodes map, it means we have recently experienced timeout
+	// when communicating with this node, learn from our recent experience and save a potential timeout.
 	//
-	err := cp.checkIfNegativeTimeoutExpired(nodeID)
+	err := cp.checkNegativeNode(nodeID)
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: not creating RPC clients for node %s: %v", nodeID, err)
+		log.Err("rpcClient::newRPCClient: not creating RPC client to negative node %s: %v", nodeID, err)
 		return nil, err
-	}
-
-	//
-	// Assert that the node ID should not be present in the negativeNodes map as we are
-	// creating a new RPC client for it.
-	//
-	if common.IsDebugBuild() {
-		common.Assert(!cp.isNegativeNode(nodeID), nodeID)
 	}
 
 	var transport thrift.TTransport

@@ -86,35 +86,46 @@ type clientPool struct {
 	clientsCnt atomic.Int64
 
 	//
-	// Map of node ID to which this node cannot create RPC clients due to timeout error.
-	// This is used to prevent creating new RPC clients to the node by different threads till
-	// the negative RPC client creation timeout expires.
-	// The value of the map is time.Time which is added when,
-	//   - The RPC client creation to the node failed due to timeout.
-	//   - RPC call to the node failed due to timeout.
+	// We maintain information on nodes to which we have problems communicating with recently.
+	// The idea is to save this information by the first thread which encounters connection
+	// error and then use that to fail fast for other threads trying to communicate with the
+	// same node, and save them from waiting for timeout and thus unnecessarily slowing error
+	// handling.
+	// The key is the node ID and the value is the time.Time when the timeout error was observed,
+	// either while creating the RPC client (connection timeout) or while making an RPC call
+	// (receive timeout).
 	//
-	// On the other hand, we remove the node from the negative nodes map if,
+	// A node is removed from the negative nodes map if,
 	//   - The negative timeout has expired for the node.
-	//   - Any RPC call to the node was successful indicating that the connection between the client and
+	//     This is done by a periodic goroutine which scans the map every few seconds.
+	//   - Any RPC call to the node succeeds indicating that the connection between the client and
 	//     the node is healthy.
+	//     Since we don't make any RPC calls to the negative nodes, this is only for rare cases
+	//     when the node was marked negative by one thread but another thread was able to get a
+	//     successful RPC call.
 	//
-	negativeNodes sync.Map
+	negativeNodes    sync.Map
+	negativeNodesCnt atomic.Int64
 
 	//
-	// iffyRvIdMap stores the RV id as key and time when it was last added as value.
-	//
+	// Similar to negativeNodes map, iffyRvIdMap is another data structure that is (only) used by
+	// WriteMV() to avoid making a PutChunkDC call to any RV (nexthop or in the chain) which was
+	// present in the daisy	chain of RVs for a recent PutChunkDC call which failed with timeout
+	// error. iffyRvIdMap stores the RV id as key and value is the time when the error was observed.
 	// When we make PutChunkDC() call and one/more connections between the downstream nodes are bad,
-	// it will result in timeout error. So, to prevent multiple threads from timing out after calling
-	// PutChunkDC() to the same RVs, we store the RVs (next-hop as well as next RVs in chain) in the iffyRvIdMap.
+	// it will result in timeout error. We cannot know for sure which of the RVs in the chain had
+	// problem, so we mark all of them as iffy and make the PutChunk call instead of PutChunkDC.
+	// That helps us exactly know which RVs are bad and must be marked inband-offline.
 	// This way the RPC client can know if the RV is marked iffy. If yes, it will return error back
 	// to the caller (WriteMV) indicating it to retry the operation using OriginatorSendsToAll mode.
+	// Future calls can use this information to avoid making calls to the iffy RVs and save the timeouts.
 	//
-	// On the other hand, an RV is removed from the iffyRvIdMap if,
+	// An RV is removed from the iffyRvIdMap if,
 	//   - The negative timeout has expired for the RV.
-	//   - Any RPC call to the RV was successful indicating that the connection between the client and
-	//     the RV is healthy.
+	//   - Any RPC call to the RV succeeds indicating that the RV is reachable.
 	//
-	iffyRvIdMap sync.Map
+	iffyRvIdMap    sync.Map
+	iffyRvIdMapCnt atomic.Int64
 
 	// Ticker for periodicRemoveNegativeNodesAndIffyRVs() goroutine.
 	negativeNodesTicker *time.Ticker
@@ -335,18 +346,10 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 		//
 		// Check in the negative nodes map if we should attempt creating RPC clients for this node ID.
 		//
-		err := cp.checkIfNegativeTimeoutExpired(nodeID)
+		err := cp.checkNegativeNode(nodeID)
 		if err != nil {
-			log.Err("clientPool::getNodeClientPool: not creating RPC clients for node %s: %v", nodeID, err)
+			log.Err("clientPool::getNodeClientPool: not creating RPC clients for negative node %s: %v", nodeID, err)
 			return nil, err
-		}
-
-		//
-		// Assert that the node ID should not be present in the negativeNodes map as we are
-		// creating a new nodeClientPool for it.
-		//
-		if common.IsDebugBuild() {
-			common.Assert(!cp.isNegativeNode(nodeID), nodeID)
 		}
 
 		if cp.clientsCnt.Load() >= int64(cp.maxNodes) {
@@ -449,13 +452,16 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			// If the node is marked negative, it means that the last RPC call to it failed with
 			// timeout error. So, to prevent timeout error from happening again, we return an error
 			// indicating the node is negative.
+			// We do it after we get the client from the channel, as this caller may have been
+			// waiting for a free client and one of the existing threads would have returned the
+			// client to the pool but only after marking the node negative. Others who get a client
+			// after that must benefit from the negative node information and avoid unnecessary timeouts.
 			//
-			if cp.isNegativeNode(nodeID) {
+			if err := cp.checkNegativeNode(nodeID); err != nil {
 				// Release the client back to the channel.
 				ncPool.clientChan <- client
 
-				err := fmt.Errorf("failing getRPCClient for node %s [%w]",
-					nodeID, NegativeNodeError)
+				err = fmt.Errorf("failing getRPCClient for node %s, after getting the client [%w]", nodeID, err)
 				log.Err("clientPool::getRPCClient: %v", err)
 				return nil, err
 			}
@@ -468,15 +474,12 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			return client, nil
 		case <-time.After(2 * time.Second): // Timeout after 2 second
 			waitTime += 2
-
 			//
-			// If the node is marked negative, it means that the last RPC call to it failed with
-			// timeout error. So, to prevent timeout error from happening again, we return an error
-			// indicating the node is negative.
+			// If node is marked negative, no point in waiting for a client to become available.
+			// See above for explanation on negative nodes.
 			//
-			if cp.isNegativeNode(nodeID) {
-				err := fmt.Errorf("failing getRPCClient for node %s [%w]",
-					nodeID, NegativeNodeError)
+			if err := cp.checkNegativeNode(nodeID); err != nil {
+				err = fmt.Errorf("failing getRPCClient for node %s, after mini timeout [%w]", nodeID, err)
 				log.Err("clientPool::getRPCClient: %v", err)
 				return nil, err
 			}
@@ -498,8 +501,8 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			}
 
 			if waitTime >= maxWaitTime {
-				err := fmt.Errorf("no free RPC client for node %s, even after waiting for %d seconds",
-					nodeID, waitTime)
+				err := fmt.Errorf("no free RPC client for node %s, even after waiting for %d seconds: %w",
+					nodeID, waitTime, NoFreeRPCClient)
 				log.Err("clientPool::getRPCClient: %v", err)
 				log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
 				return nil, err
@@ -532,7 +535,7 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 		ncPool.numActive.Add(1)
 		return client, nil
 	default:
-		err := fmt.Errorf("no free RPC client for node %s", nodeID)
+		err := fmt.Errorf("no free RPC client for node %s: %w", nodeID, NoFreeRPCClient)
 		log.Err("clientPool::getRPCClientNoWait: %v", err)
 		return nil, err
 	}
@@ -674,7 +677,8 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	defer cp.releaseNodeLock(nodeLock, client.nodeID)
 
 	//
-	// The RPC call to the node failed because of timeout. So, we add the node in the negative nodes map.
+	// deleteAllRPCClients() is called only when an RPC call to the node fails with timeout error.
+	// Add it to the negative nodes map to help other threads fail fast instead of waiting for timeout.
 	//
 	cp.addNegativeNode(client.nodeID)
 
@@ -727,8 +731,8 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 			// we can expect that the number of free clients in the channel can be less than numClients count.
 			// So, we cannot assert here that we will always get a free client.
 			//
-			log.Err("clientPool::deleteAllRPCClients: getRPCClientNoWait failed: %v",
-				err)
+			log.Err("clientPool::deleteAllRPCClients: getRPCClientNoWait failed: %v", err)
+			common.Assert(errors.Is(err, NoFreeRPCClient), err)
 			break
 		}
 
@@ -833,7 +837,8 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		//
 		common.Assert(rpc.IsConnectionRefused(err) ||
 			rpc.IsTimedOut(err) ||
-			errors.Is(err, negativeTimeoutNotExpiredError), err)
+			errors.Is(err, NegativeNodeError), err)
+
 		cp.deleteNodeClientPoolIfInactive(client.nodeID)
 		return err
 	}
@@ -911,7 +916,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 		//
 		common.Assert(rpc.IsConnectionRefused(err) ||
 			rpc.IsTimedOut(err) ||
-			errors.Is(err, negativeTimeoutNotExpiredError), err)
+			errors.Is(err, NegativeNodeError), err)
 		return err
 	}
 
@@ -931,8 +936,8 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 			// we can expect that the number of free clients in the channel can be less than numClients count.
 			// So, we cannot assert here that we will always get a free client.
 			//
-			log.Err("clientPool::resetAllRPCClients: getRPCClientNoWait failed: %v",
-				err)
+			log.Err("clientPool::resetAllRPCClients: getRPCClientNoWait failed: %v", err)
+			common.Assert(errors.Is(err, NoFreeRPCClient), err)
 			break
 		}
 
@@ -951,7 +956,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 			//
 			common.Assert(rpc.IsConnectionRefused(err) ||
 				rpc.IsTimedOut(err) ||
-				errors.Is(err, negativeTimeoutNotExpiredError), err)
+				errors.Is(err, NegativeNodeError), err)
 		} else {
 			numConnReset++
 		}
@@ -1174,10 +1179,29 @@ func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
 // AddNegativeNode adds a node to the negative nodes map when,
 //   - The RPC client creation to the node failed due to timeout.
 //   - RPC call to the node failed due to timeout.
-func (cp *clientPool) addNegativeNode(nodeID string) {
+func (cp *clientPool) addNegativeNode(nodeID string) bool {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
-	cp.negativeNodes.Store(nodeID, time.Now())
-	log.Debug("clientPool::addNegativeNode: added %s to negativeNodes map at %v", nodeID, time.Now())
+
+	now := time.Now()
+	val, alreadyPresent := cp.negativeNodes.LoadOrStore(nodeID, now)
+	_ = val
+
+	if !alreadyPresent {
+		// New entry added.
+		cp.negativeNodesCnt.Add(1)
+
+		log.Debug("clientPool::addNegativeNode: added (%s -> %s) to negativeNodes (total count: %d)",
+			nodeID, now, cp.negativeNodesCnt.Load())
+		return true
+	}
+
+	// Existing entry, update the timestamp without increasing negativeNodesCnt.
+	cp.negativeNodes.Store(nodeID, now)
+
+	log.Debug("clientPool::addNegativeNode: updated (%s -> [%s -> %s]) in negativeNodes (total count: %d)",
+		nodeID, val.(time.Time), now, cp.negativeNodesCnt.Load())
+
+	return false
 }
 
 // RemoveNegativeNode removes a node from the negative nodes map when,
@@ -1185,67 +1209,95 @@ func (cp *clientPool) addNegativeNode(nodeID string) {
 //     has expired for the node.
 //   - successful RPC call to the node indicating that the connection between the client and the
 //     node is healthy.
-func (cp *clientPool) removeNegativeNode(nodeID string) {
+func (cp *clientPool) removeNegativeNode(nodeID string) bool {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
 
-	t, ok := cp.negativeNodes.Load(nodeID)
-	_ = t
-	if !ok {
-		return
+	// Fast path, keep it quick.
+	if cp.negativeNodesCnt.Load() == 0 {
+		return false
 	}
 
-	cp.negativeNodes.Delete(nodeID)
-	log.Debug("clientPool::removeNegativeNode: removed %s from negativeNodes map which was added at %v",
-		nodeID, t.(time.Time))
+	if val, ok := cp.negativeNodes.LoadAndDelete(nodeID); ok {
+		_ = val
+		common.Assert(cp.negativeNodesCnt.Load() > 0, cp.negativeNodesCnt.Load(), nodeID, val.(time.Time))
+		cp.negativeNodesCnt.Add(-1)
+
+		log.Debug("clientPool::removeNegativeNode: removed (%s -> %s) from negativeNodes (total count: %d)",
+			nodeID, val.(time.Time), cp.negativeNodesCnt.Load())
+		return true
+	}
+
+	return false
 }
 
 // Check if the node is marked negative.
 func (cp *clientPool) isNegativeNode(nodeID string) bool {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
 
+	// Fast path, avoid lock.
+	if cp.negativeNodesCnt.Load() == 0 {
+		return false
+	}
+
 	_, ok := cp.negativeNodes.Load(nodeID)
 	return ok
 }
 
-// For the given node id check if the negative timeout has expired.
-// If yes, remove it from the negative nodes map, else return error.
-func (cp *clientPool) checkIfNegativeTimeoutExpired(nodeID string) error {
-	//
-	// Check in the negative nodes map if we should attempt creating RPC client for this node ID.
-	//
-	t, ok := cp.negativeNodes.Load(nodeID)
-	if ok {
-		timeElapsed := int64(time.Since(t.(time.Time)).Seconds())
-		if timeElapsed < defaultNegativeTimeout {
-			err := fmt.Errorf("%w %s (%d seconds elapsed, %d seconds timeout)",
-				negativeTimeoutNotExpiredError, nodeID, timeElapsed, defaultNegativeTimeout)
-			log.Err("clientPool::checkIfNegativeTimeoutExpired: %v", err)
+// Check if the given node is marked negative.
+// It is same as isNegativeNode(), but this method returns an appropriately wrapped error which can be used by the
+// callers to check for negative node error.
+func (cp *clientPool) checkNegativeNode(nodeID string) error {
+	// Fast path, keep it quick.
+	if cp.negativeNodesCnt.Load() > 0 {
+		if val, ok := cp.negativeNodes.Load(nodeID); ok {
+			err := fmt.Errorf("%w: %s (%s ago)", NegativeNodeError, nodeID, time.Since(val.(time.Time)))
+			log.Err("clientPool::checkNegativeNode: %v", err)
 			return err
-		} else {
-			log.Debug("clientPool::checkIfNegativeTimeoutExpired: Negative timeout expired for node %s, removing from negative nodes map (%d seconds elapsed, %d seconds timeout)",
-				nodeID, timeElapsed, defaultNegativeTimeout)
-			cp.removeNegativeNode(nodeID)
 		}
 	}
-
 	return nil
 }
 
 // Add RV id to the iffyRvIdMap.
-// When PutChunkDC() fails with timeout error, we add the next-hop RV and the next RVs in chain
+// When PutChunkDC() fails with timeout error, we add the next-hop RV and all the RVs in the chain
 // to the iffyRvIdMap.
-func (cp *clientPool) addIffyRvId(rvID string) {
+func (cp *clientPool) addIffyRvId(rvID string) bool {
 	common.Assert(common.IsValidUUID(rvID), rvID)
-	cp.iffyRvIdMap.Store(rvID, time.Now())
-	log.Debug("clientPool::addIffyRvById: added %s to iffyRvIdMap at %v", rvID, time.Now())
+
+	now := time.Now()
+	val, alreadyPresent := cp.iffyRvIdMap.LoadOrStore(rvID, now)
+	_ = val
+
+	if !alreadyPresent {
+		// New entry added.
+		cp.iffyRvIdMapCnt.Add(1)
+
+		log.Debug("clientPool::addIffyRvById: added (%s -> %s) to iffyRvIdMap (total count: %d)",
+			rvID, now, cp.iffyRvIdMapCnt.Load())
+		return true
+	}
+
+	// Existing entry, update the timestamp without increasing iffyRvIdMapCnt.
+	cp.iffyRvIdMap.Store(rvID, now)
+
+	log.Debug("clientPool::addIffyRvById: updated (%s -> [%s -> %s]) in iffyRvIdMap (total count: %d)",
+		rvID, val.(time.Time), now, cp.iffyRvIdMapCnt.Load())
+
+	return false
 }
 
 // Add the RV name to the iffyRvIdMap.
 // This method internally calls the addIffyRvById method.
-func (cp *clientPool) addIffyRvName(rvName string) {
+func (cp *clientPool) addIffyRvName(rvName string) bool {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
-	cp.addIffyRvId(cm.RvNameToId(rvName))
-	log.Debug("clientPool::addIffyRvByName: added %s to iffyRvIdMap at %v", rvName, time.Now())
+
+	if cp.addIffyRvId(cm.RvNameToId(rvName)) {
+		log.Debug("clientPool::addIffyRvByName: added %s to iffyRvIdMap", rvName)
+		return true
+	} else {
+		log.Debug("clientPool::addIffyRvByName: updated %s in iffyRvIdMap", rvName)
+		return false
+	}
 }
 
 // RemoveIffyRV removes an RV from the iffyRvIdMap.
@@ -1254,31 +1306,54 @@ func (cp *clientPool) addIffyRvName(rvName string) {
 //     has expired for the RV.
 //   - successful RPC call to the RV indicating that the connection between the client and the
 //     RV is healthy.
-func (cp *clientPool) removeIffyRvId(rvID string) {
+func (cp *clientPool) removeIffyRvId(rvID string) bool {
 	common.Assert(common.IsValidUUID(rvID), rvID)
 
-	t, ok := cp.iffyRvIdMap.Load(rvID)
-	_ = t
-	if !ok {
-		return
+	// Fast path, keep it quick.
+	if cp.iffyRvIdMapCnt.Load() == 0 {
+		return false
 	}
 
-	cp.iffyRvIdMap.Delete(rvID)
-	log.Debug("clientPool::removeIffyRvById: removed %s from iffyRvIdMap which was added at %v",
-		rvID, t.(time.Time))
+	if val, ok := cp.iffyRvIdMap.LoadAndDelete(rvID); ok {
+		_ = val
+		common.Assert(cp.iffyRvIdMapCnt.Load() > 0, cp.iffyRvIdMapCnt.Load(), rvID, val.(time.Time))
+		cp.iffyRvIdMapCnt.Add(-1)
+
+		log.Debug("clientPool::removeIffyRvById: removed (%s -> %s) from iffyRvIdMap (total count: %d)",
+			rvID, val.(time.Time), cp.iffyRvIdMapCnt.Load())
+		return true
+	}
+
+	return false
 }
 
 // Remove the RV name from the iffyRvIdMap.
 // This method internally calls the removeIffyRvById method.
-func (cp *clientPool) removeIffyRvName(rvName string) {
+func (cp *clientPool) removeIffyRvName(rvName string) bool {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
-	cp.removeIffyRvId(cm.RvNameToId(rvName))
-	log.Debug("clientPool::removeIffyRvByName: removed %s from iffyRvIdMap", rvName)
+
+	// Fast path, keep it quick.
+	if cp.iffyRvIdMapCnt.Load() == 0 {
+		return false
+	}
+
+	if cp.removeIffyRvId(cm.RvNameToId(rvName)) {
+		log.Debug("clientPool::removeIffyRvByName: removed %s from iffyRvIdMap", rvName)
+		return true
+	}
+
+	return false
 }
 
 // Check if an RV id is marked iffy.
 func (cp *clientPool) isIffyRvId(rvID string) bool {
 	common.Assert(common.IsValidUUID(rvID), rvID)
+
+	// Fast path, avoid lock
+	if cp.iffyRvIdMapCnt.Load() == 0 {
+		return false
+	}
+
 	_, ok := cp.iffyRvIdMap.Load(rvID)
 	return ok
 }
@@ -1290,12 +1365,14 @@ func (cp *clientPool) isIffyRvName(rvName string) bool {
 }
 
 // Goroutine which runs every 5 seconds and removes expired nodes and RVs from the
-// negativeNodes and iffyRV map.
+// negativeNodes and iffyRvIdMap.
 func (cp *clientPool) periodicRemoveNegativeNodesAndIffyRVs() {
+	log.Info("clientPool::periodicRemoveNegativeNodesAndIffyRVs: Starting")
+
 	for {
 		select {
 		case <-cp.negativeNodesDone:
-			log.Info("clientPool::periodicRemoveNegativeNodesAndIffyRVs: stopping periodic removal of negative nodes and RVs")
+			log.Info("clientPool::periodicRemoveNegativeNodesAndIffyRVs: Stopping")
 			return
 		case <-cp.negativeNodesTicker.C:
 			// remove entries from negativeNodes map based on timeout
@@ -1306,8 +1383,8 @@ func (cp *clientPool) periodicRemoveNegativeNodesAndIffyRVs() {
 				addedTime := value.(time.Time)
 
 				if time.Since(addedTime) > defaultNegativeTimeout*time.Second {
-					log.Debug("clientPool::periodicRemoveNegativeNodesAndIffyRVs: removing negative node %s because of timeout",
-						nodeID)
+					log.Debug("clientPool::periodicRemoveNegativeNodesAndIffyRVs: removing negative node %s (%s)",
+						nodeID, time.Since(addedTime))
 					cp.removeNegativeNode(nodeID)
 				}
 
@@ -1322,8 +1399,8 @@ func (cp *clientPool) periodicRemoveNegativeNodesAndIffyRVs() {
 				addedTime := value.(time.Time)
 
 				if time.Since(addedTime) > defaultNegativeTimeout*time.Second {
-					log.Debug("clientPool::periodicRemoveNegativeNodesAndIffyRVs: removing iffy RV %s because of timeout",
-						rvID)
+					log.Debug("clientPool::periodicRemoveNegativeNodesAndIffyRVs: removing iffy RV %s (%s)",
+						rvID, time.Since(addedTime))
 					cp.removeIffyRvId(rvID)
 				}
 
@@ -1367,12 +1444,13 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 				ncPool.nodeID, err)
 			//
 			// Only valid reason could be connection refused as the blobfuse process is not running
-			// on the remote node or a timeout if the node is down.
+			// on the remote node or a timeout if the node is down, or NegativeNodeError if the node
+			// is marked negative and newRPCClient() proactively failed the request.
 			// There is no point in retrying in that case.
 			//
 			common.Assert(rpc.IsConnectionRefused(err) ||
 				rpc.IsTimedOut(err) ||
-				errors.Is(err, negativeTimeoutNotExpiredError), err)
+				errors.Is(err, NegativeNodeError), err)
 			break
 		}
 		ncPool.clientChan <- client
@@ -1454,13 +1532,19 @@ func GetIffyRVs(nextHopRV *string, nextRVs *[]string) *[]string {
 	common.Assert(nextHopRV != nil)
 	common.Assert(nextRVs != nil)
 
+	// Common case, keep it quick.
+	if cp.iffyRvIdMapCnt.Load() == 0 {
+		return nil
+	}
+
 	iffyRVs := make([]string, 0, len(*nextRVs)+1)
 
-	// Check the next-hop RV
+	// Check the next-hop RV.
 	if cp.isIffyRvName(*nextHopRV) {
 		iffyRVs = append(iffyRVs, *nextHopRV)
 	}
 
+	// And all other RVs in the chain.
 	for _, rv := range *nextRVs {
 		common.Assert(rv != *nextHopRV, rv, *nextHopRV)
 		if cp.isIffyRvName(rv) {

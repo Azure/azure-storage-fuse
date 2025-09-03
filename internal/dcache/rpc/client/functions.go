@@ -111,9 +111,9 @@ const (
 )
 
 var (
-	NegativeNodeError              = fmt.Errorf("node is marked negative")
-	IffyRVError                    = fmt.Errorf("RV is marked iffy")
-	negativeTimeoutNotExpiredError = fmt.Errorf("negative timeout not expired for node")
+	NegativeNodeError = errors.New("node is marked negative")
+	IffyRVError       = errors.New("RV is marked iffy")
+	NoFreeRPCClient   = errors.New("no free RPC client")
 )
 
 // TODO: add asserts for function arguments and return values
@@ -162,12 +162,13 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 					log.Err("rpc_client::Hello: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -204,9 +205,9 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map.
-			// TODO: remove RV from iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node is marked negative, clear it now.
+			//
+			// TODO: Remove RVs hosted by the target node from iffyRvIdMap.
 			//
 			cp.removeNegativeNode(targetNodeID)
 		}
@@ -270,12 +271,13 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 					log.Err("rpc_client::GetChunk: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -312,9 +314,8 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 			cp.removeIffyRvId(req.Address.RvID)
@@ -379,12 +380,13 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 					log.Err("rpc_client::PutChunk: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -421,9 +423,8 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 			cp.removeIffyRvId(req.Chunk.Address.RvID)
@@ -479,8 +480,12 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 	for i := 0; i < 2; i++ {
 		//
 		// Get RPC client from the client pool.
-		// This method can return NegativeNodeError error if the target node is marked negative.
-		// This indicates the caller (WriteMV) to retry the operation using OriginatorSendsToAll.
+		// If the target node is marked negative, getRPCClient() will return NegativeNodeError.
+		// This indicates the caller (WriteMV) to retry the operation using OriginatorSendsToAll,
+		// which will do PutChunk to each RV instead of PutChunkDC to just he nexthop RV.
+		// PutChunk to this negative node will most likely still fail to get an RPC client, but other
+		// nodes may succeed. The negative node will be marked inband-offline and will be replaced
+		// by fix-mv.
 		//
 		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
@@ -503,7 +508,6 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			if err1 != nil {
 				log.Err("rpc_client::PutChunkDC: Failed to release RPC client for node %s %s: %v",
 					targetNodeID, reqStr, err1)
-				// Assert, but not fail the PutChunkDC call.
 				common.Assert(false, err1)
 			}
 
@@ -531,12 +535,13 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -548,7 +553,8 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				// nodes/connections are down/bad. We cannot say for sure which node is down or which
 				// connection is bad.
 				// So, we mark all the RVs (next-hop as well as next RVs in chain) as iffy RVs.
-				// This prevents other threads from also timing out if they are calling PutChunkDC to same RVs.
+				// This helps other threads wanting to call PutChunkDC to one of these RVs, avoid the
+				// timeout and quickly fallback to OriginatorSendsToAll mode.
 				//
 				cp.addIffyRvId(req.Request.Chunk.Address.RvID)
 
@@ -566,12 +572,13 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				//
 				// We do resetAllRPCClients() here because if the connection between client and target node is good,
 				// the response from target node will eventually return after the timeout error. In this case, we
-				// cannot reuse the same which was timed out as it will result in ambiguous behavior.
+				// cannot reuse the same which was timed out as it will result in ambiguous behavior as the next
+				// caller will fetch that error from the previous call.
 				// So, we reset the clients for the target node.
 				//
-				err1 := cp.resetAllRPCClients(client)
+				err1 := cp.resetRPCClient(client)
 				if err1 != nil {
-					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
+					log.Err("rpc_client::PutChunkDC: resetRPCClient failed for node %s: %v",
 						targetNodeID, err1)
 				}
 
@@ -594,9 +601,8 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the next-hop and next RVs from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 			cp.removeIffyRvId(req.Request.Chunk.Address.RvID)
@@ -666,12 +672,13 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 					log.Err("rpc_client::RemoveChunk: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -708,9 +715,8 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 			cp.removeIffyRvId(req.Address.RvID)
@@ -785,12 +791,13 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 					log.Err("rpc_client::JoinMV: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -827,9 +834,8 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 			cp.removeIffyRvName(req.RVName)
@@ -894,12 +900,13 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 					log.Err("rpc_client::UpdateMV: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -936,9 +943,8 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 			cp.removeIffyRvName(req.RVName)
@@ -1003,12 +1009,13 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 					log.Err("rpc_client::LeaveMV: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -1045,9 +1052,8 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 			cp.removeIffyRvName(req.RVName)
@@ -1112,12 +1118,13 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 					log.Err("rpc_client::StartSync: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -1154,9 +1161,8 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 
@@ -1230,12 +1236,13 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 					log.Err("rpc_client::EndSync: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -1272,9 +1279,8 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 
@@ -1354,12 +1360,13 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 					log.Err("rpc_client::GetMVSize: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
 					//
-					// Connection refused and timeout are the only viable errors.
+					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
+					// may refuse to create new connections if the node is marked negative.
 					// Assert to know if anything else happens.
 					//
 					common.Assert(rpc.IsConnectionRefused(err1) ||
 						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, negativeTimeoutNotExpiredError), err1)
+						errors.Is(err1, NegativeNodeError), err1)
 					return nil, err
 				}
 
@@ -1396,9 +1403,8 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 			resp = nil
 		} else {
 			//
-			// The RPC call to the target node succeeded.
-			// So, we can remove it from the negative nodes map, and
-			// also remove the RV from the iffyRvIdMap.
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
 			//
 			cp.removeNegativeNode(targetNodeID)
 			cp.removeIffyRvName(req.RVName)

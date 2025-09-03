@@ -2170,7 +2170,7 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 		// We need to fail the call, caller will fail the client request appropriately.
 		//
 		err1 := fmt.Errorf("safeWrite: failed to open chunk file %s, flag: 0x%x: %w", *chunkPath, flag, err)
-		log.Warn("ChunkServiceHandler::%v", err1)
+		log.Warn("%v", err1)
 		return err1
 	}
 
@@ -2303,6 +2303,8 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 		// The caller checks that if it is a sync write or "MaybeOverwrite" flag is set in request,
 		// then it ignores the write. Else it returns error back to the client.
 		//
+		// TODO: Make sure the hash file is also present and valid.
+		//
 		if errors.Is(err, syscall.EEXIST) {
 			log.Debug("ChunkServiceHandler::writeChunkAndHash: Chunk file %s already exists [%v]",
 				*chunkPath, err)
@@ -2328,19 +2330,20 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 
 cleanup_chunk_file_and_fail:
 	// Remove chunk file, to avoid confusion later.
-	log.Debug("ChunkServiceHandler::writeChunkAndHash: Removing chunk file %s",
-		*chunkPath)
+	log.Debug("ChunkServiceHandler::writeChunkAndHash: Removing chunk file %s", *chunkPath)
 
 	err1 := os.Remove(*chunkPath)
 	if err1 != nil {
-		log.Err("ChunkServiceHandler::writeChunkAndHash: Failed to remove chunk file %s [%v]",
+		log.Warn("ChunkServiceHandler::writeChunkAndHash: Failed to remove chunk file %s [%v]",
 			*chunkPath, err1)
 	}
 
 	if hashPath != nil {
+		log.Debug("ChunkServiceHandler::writeChunkAndHash: Removing hash file %s", *hashPath)
+
 		err1 := os.Remove(*hashPath)
 		if err1 != nil {
-			log.Err("ChunkServiceHandler::writeChunkAndHash: Failed to remove hash file %s [%v]",
+			log.Warn("ChunkServiceHandler::writeChunkAndHash: Failed to remove hash file %s [%v]",
 				*hashPath, err1)
 		}
 	}
