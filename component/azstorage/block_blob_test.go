@@ -995,7 +995,7 @@ func (s *blockBlobTestSuite) TestOpenFileSize() {
 	name := generateFileName()
 	size := 10
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(size)})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(size)})
 
 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
 	s.assert.Nil(err)
@@ -1345,7 +1345,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileSmaller() {
 	truncatedLength := 5
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1368,7 +1368,7 @@ func (s *blockBlobTestSuite) TestTruncateEmptyFileToLargeSize() {
 	s.assert.NotNil(h)
 
 	blobSize := int64((1 * common.GbToBytes) + 13)
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: blobSize})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: blobSize})
 	s.assert.Nil(err)
 
 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
@@ -1394,7 +1394,7 @@ func (s *blockBlobTestSuite) TestTruncateChunkedFileSmaller() {
 	})
 	s.assert.Nil(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1419,7 +1419,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileEqual() {
 	truncatedLength := 9
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1448,7 +1448,7 @@ func (s *blockBlobTestSuite) TestTruncateChunkedFileEqual() {
 	})
 	s.assert.Nil(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1473,7 +1473,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileBigger() {
 	truncatedLength := 15
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1502,7 +1502,7 @@ func (s *blockBlobTestSuite) TestTruncateChunkedFileBigger() {
 	})
 	s.assert.Nil(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -3553,7 +3553,7 @@ func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size i
 	data := make([]byte, size)
 	suite.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	suite.assert.Nil(err)
 
 	// Blob should have updated data
@@ -3585,7 +3585,7 @@ func (suite *blockBlobTestSuite) UtilityFunctionTruncateFileToLarger(size int, t
 	data := make([]byte, size)
 	suite.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: int64(truncatedLength)})
+	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	suite.assert.Nil(err)
 
 	// Blob should have updated data
