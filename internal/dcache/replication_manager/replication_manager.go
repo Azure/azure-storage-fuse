@@ -656,8 +656,7 @@ retry:
 		// Else we call the PutChunkDC() RPC via the Thrift RPC client.
 		//
 		if targetNodeID == rpc.GetMyNodeUUID() {
-			//putChunkDCResp, err = rpc_server.PutChunkDCLocal(ctx, putChunkDCReq)
-			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
+			putChunkDCResp, err = rpc_server.PutChunkDCLocal(ctx, putChunkDCReq)
 		} else {
 			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}

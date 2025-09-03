@@ -443,9 +443,9 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			defer ncPool.numWaitingHighPrio.Add(-1)
 		}
 
-		log.Debug("clientPool::getRPCClient: Retrieving (highPrio: %v) RPC client for node %s [active: %d, hactive: %d, waiting: %d, hwaiting: %d]",
-			highPrio, nodeID, ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(), ncPool.numWaiting.Load(),
-			ncPool.numWaitingHighPrio.Load())
+		log.Debug("clientPool::getRPCClient: Retrieving (highPrio: %v) RPC client for node %s [free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d]",
+			highPrio, nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
+			ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load())
 	}
 
 	//
@@ -503,8 +503,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 				ncPool.numActiveHighPrio.Add(1)
 			}
 
-			log.Debug("clientPool::getRPCClient: Successfully retrieved (highPrio: %v) RPC client for node %s [active: %d, hactive: %d, waiting: %d, hwaiting: %d]",
-				highPrio, nodeID, ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
+			log.Debug("clientPool::getRPCClient: Successfully retrieved (highPrio: %v) RPC client for node %s [free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d]",
+				highPrio, nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
 				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load())
 
 			// numActive includes both high priority and regular active connections.
@@ -919,6 +919,8 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		// This will happen when the target node is not running the blob service (but the node
 		// itself is up). When the node is no up we should get a connection timeout error here.
 		//
+		// Also seen connection reset error here.
+		//
 		// TODO: Connection timeout has to be tested.
 		//
 		// In any case when we come here that means we are not able to replenish connections to
@@ -926,6 +928,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		// in the pool, we can delete the nodeClientPool itself.
 		//
 		common.Assert(rpc.IsConnectionRefused(err) ||
+		    rpc.IsConnectionReset(err) 
 			rpc.IsTimedOut(err) ||
 			errors.Is(err, NegativeNodeError), err)
 
@@ -1517,7 +1520,13 @@ type nodeClientPool struct {
 
 // createRPCClients creates a channel of RPC clients of size numClients for the specified node ID
 func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
-	numReservedHighPrio := int64(numClients - (numClients / 4))
+	//
+	// With maxPerNode==32, we get 8 regular and 24 high priority clients.
+	// All other requests, other than PutChunkDC use the high priority clients.
+	// 8 connections should be enough for PutChunkDC requests to saturate the network.
+	//
+	//numReservedHighPrio := int64(numClients - (numClients / 4))
+	numReservedHighPrio := int64(28)
 
 	log.Debug("nodeClientPool::createRPCClients: Creating %d RPC clients (%d high prio) for node %s",
 		numClients, numReservedHighPrio, ncPool.nodeID)
