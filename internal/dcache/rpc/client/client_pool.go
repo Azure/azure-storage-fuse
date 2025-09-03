@@ -427,9 +427,9 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	//    and it'll have no active and free clients and hence the getRPCClient() call will fail.
 	//
 	ncPool, err := cp.getNodeClientPool(nodeID)
-	cp.releaseNodeLock(nodeLock, nodeID)
 
 	if err != nil {
+		cp.releaseNodeLock(nodeLock, nodeID)
 		return nil, fmt.Errorf("clientPool::getRPCClient: getNodeClientPool(%s) failed: %v",
 			nodeID, err)
 	}
@@ -448,6 +448,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load())
 	}
 
+	cp.releaseNodeLock(nodeLock, nodeID)
 	//
 	// Get a free client from the pool if available, else wait for a client to be released.
 	// In order to catch misbehaving/stuck clients, we cap this wait. This indicates some bug
@@ -479,6 +480,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 				log.Err("clientPool::getRPCClient: %v", err)
 				return nil, err
 			}
+			nodeLock = cp.acquireNodeLock(nodeID)
 
 			ncPool.lastUsed.Store(time.Now().Unix())
 			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
@@ -493,6 +495,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 				if ncPool.numActiveHighPrio.Load()+int64(len(ncPool.clientChan)) <= ncPool.numReservedHighPrio {
 					// Return back to the pool and wait for a non-high-priority connection.
 					ncPool.clientChan <- client
+					cp.releaseNodeLock(nodeLock, nodeID)
 					time.Sleep(1 * time.Millisecond)
 					continue
 				}
@@ -515,6 +518,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			common.Assert((ncPool.numWaitingHighPrio.Load() <= ncPool.numWaiting.Load()),
 				ncPool.numWaitingHighPrio.Load(), ncPool.numWaiting.Load(), client.nodeID, highPrio)
 
+			cp.releaseNodeLock(nodeLock, nodeID)
 			return client, nil
 		case <-time.After(2 * time.Second): // Timeout after 2 second
 			waitTime += 2
@@ -1525,8 +1529,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	// All other requests, other than PutChunkDC use the high priority clients.
 	// 8 connections should be enough for PutChunkDC requests to saturate the network.
 	//
-	//numReservedHighPrio := int64(numClients - (numClients / 4))
-	numReservedHighPrio := int64(28)
+	numReservedHighPrio := int64(numClients - (numClients / 4))
 
 	log.Debug("nodeClientPool::createRPCClients: Creating %d RPC clients (%d high prio) for node %s",
 		numClients, numReservedHighPrio, ncPool.nodeID)
