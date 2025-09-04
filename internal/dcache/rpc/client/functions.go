@@ -570,11 +570,11 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				// timeout error in PutChunkDC. In the PutChunk using OriginatorSendsToAll strategy fails using
 				// timeout, we then delete the connections.
 				//
-				// We do resetAllRPCClients() here because if the connection between client and target node is good,
+				// We reset the RPC client here because if the connection between client and target node is good,
 				// the response from target node will eventually return after the timeout error. In this case, we
-				// cannot reuse the same which was timed out as it will result in ambiguous behavior as the next
+				// cannot reuse the same client which was timed out as it will result in ambiguous behavior as the next
 				// caller will fetch that error from the previous call.
-				// So, we reset the clients for the target node.
+				// So, we reset this client for the target node.
 				//
 				err1 := cp.resetRPCClient(client)
 				if err1 != nil {
