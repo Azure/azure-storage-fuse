@@ -64,7 +64,34 @@ type rpcClient struct {
 	nodeAddress string                      // Address of the node this client is for
 	transport   thrift.TTransport           // Transport is the Thrift transport layer
 	svcClient   *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
-	highPrio    bool                        // highPrio indicates if this client is for high priority operations
+	allocatedAt time.Time                   // Time when this client was allocated from the pool, used for debug logs
+	//
+	// PutChunkDC puts an interesting demand on the RPC client pool manager.
+	// PutChunkDC requires RPC clients for two distinct use cases:
+	// 1. RPC clients needed to make the PutChunkDC call to the first nexthop node.
+	//    This is called from WriteMV() invoked by file_manager when writing one or more chunks
+	//    from the writeback cache.
+	// 2. RPC clients needed to make the PutChunkDC/PutChunk call to subsequent nodes in the daisy chain
+	//    in response to a PutChunkDC call received from a previous node.
+	//
+	// The important distinction to note here is that the RPC clients used by case (1) cannot be freed
+	// till (2) gets the required RPC clients and complete their respective requests. There could be writes
+	// going on any node which means (1) and (2) will contest for the same pool of RPC clients. If we issue
+	// all RPC clients to (1), then there won't be any left for (2) and hence daisy chain requests from other
+	// nodes will get stuck. The clients used by (1) may also be stuck due to the unavailability of clients
+	// for (2) on other nodes. This can lead to a deadlock situation, where all clients are used up by (1) and
+	// they cannot be freed as they need (2) to complete, but (2) doesn't have any clients to proceed.
+	// Also note that demand for RPC clients by (2) is proportial to the RPC clients used by (1), as each of
+	// those would result in a daisy chain of PutChunkDC/PutChunk calls to subsequent nodes.
+	//
+	// This brings us to two key observations:
+	// 1. We need to prioritize (and reserve) RPC clients needed for (2) over (1). This is because RPC clients
+	//    used by (1) will only be released when (2) completes.
+	//    See nodeClientPool.numReservedHighPrio.
+	// 2. We need to rate-limit the number of RPC clients used by (1) to a fraction of the total pool size.
+	//    See GetRPCClientDummy().
+	//
+	highPrio bool
 }
 
 var protocolFactory thrift.TProtocolFactory

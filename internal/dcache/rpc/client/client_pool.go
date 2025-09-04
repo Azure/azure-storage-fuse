@@ -398,7 +398,7 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 //
 // NOTE: Caller MUST NOT hold the clientPool or node level lock.
 func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, error) {
-	log.Debug("clientPool::getRPCClient: getRPCClient(%s, %v)", nodeID, highPrio)
+	log.Debug("clientPool::getRPCClient: getRPCClient(nodeID: %s, highPrio: %v)", nodeID, highPrio)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -418,6 +418,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 
 	//
 	// Get the nodeClientPool for this node.
+	// We need to release the node lock before waiting on the clientChan.
 	// Q: Why is it safe to release the node lock and still use ncPool?
 	// A: If ncPool has one or more active/free clients, it is guaranteed that deleteNodeClientPoolFromMap()
 	//    won't delete the nodeClientPool, as it only deletes a nodeClientPool when there are no active
@@ -426,14 +427,21 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	//    deleteNodeClientPoolFromMap() after we release the node lock, but we can still safely access ncPool
 	//    and it'll have no active and free clients and hence the getRPCClient() call will fail.
 	//
+	// Though we must use the node lock for accessing the various num* atomics to ensure proper visibility
+	// order for various assertions.
+	//
 	ncPool, err := cp.getNodeClientPool(nodeID)
 
 	if err != nil {
 		cp.releaseNodeLock(nodeLock, nodeID)
-		return nil, fmt.Errorf("clientPool::getRPCClient: getNodeClientPool(%s) failed: %v",
-			nodeID, err)
+		return nil, fmt.Errorf("clientPool::getRPCClient: getNodeClientPool(%s, %v) failed: %v",
+			nodeID, highPrio, err)
 	}
 
+	//
+	// Track number of threads waiting for a client from the pool.
+	// This is only for debugging purposes, to understand the contention on the pool (both regular and high priority).
+	//
 	if common.IsDebugBuild() {
 		ncPool.numWaiting.Add(1)
 		defer ncPool.numWaiting.Add(-1)
@@ -446,57 +454,114 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		log.Debug("clientPool::getRPCClient: Retrieving (highPrio: %v) RPC client for node %s [free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d]",
 			highPrio, nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
 			ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load())
+
 	}
 
 	cp.releaseNodeLock(nodeLock, nodeID)
+
 	//
 	// Get a free client from the pool if available, else wait for a client to be released.
 	// In order to catch misbehaving/stuck clients, we cap this wait. This indicates some bug
 	// so we crash the program with a trace.
 	// Note that accessing clientChan is thread safe, so we don't need the clientPool lock.
 	//
-	maxWaitTime := 60 // in seconds
+	maxWaitTime := 60 * time.Second // in seconds
 
-	// Time in seconds we have waited for a client to become available.
-	waitTime := 0
+	startTime := time.Now()
 
 	for {
+		//
+		// If node is marked negative, no point in waiting for a client to become available.
+		// See above for explanation on negative nodes.
+		//
+		if err := cp.checkNegativeNode(nodeID); err != nil {
+			err = fmt.Errorf("failing getRPCClient for node %s, after mini timeout [%w]", nodeID, err)
+			log.Err("clientPool::getRPCClient: %v", err)
+			return nil, err
+		}
+
+		//
+		// There can be a case when client pool for the node is deleted.
+		// For example, the node goes down and RPC fails with BrokenPipe error. In this case,
+		// we reset the connections available for the node, which first closes the stale connections
+		// and then creates new connections. Since, the node is down, creating new RPC connection
+		// to the node fails with connection refused error. So, eventually all the connections in the
+		// pool are closed and client pool for the node is deleted. In this case, we do not wait
+		// for a client to become available and return error to the caller.
+		//
+		if ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0 {
+			nodeLock = cp.acquireNodeLock(nodeID)
+			if ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0 {
+				cp.releaseNodeLock(nodeLock, nodeID)
+				err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %s",
+					nodeID, time.Since(startTime))
+				log.Err("clientPool::getRPCClient: %v", err)
+				return nil, err
+			}
+			cp.releaseNodeLock(nodeLock, nodeID)
+		}
+
+		// Never wait more than maxWaitTime.
+		if time.Since(startTime) >= maxWaitTime {
+			err := fmt.Errorf("no free RPC client for node %s, even after waiting for %s: %w",
+				nodeID, time.Since(startTime), NoFreeRPCClient)
+			log.Err("clientPool::getRPCClient: %v", err)
+			log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
+			return nil, err
+		}
+
 		select {
 		case client := <-ncPool.clientChan:
+			ncPool.lastUsed.Store(time.Now().Unix())
+			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
+			// Nothing queued in the pool should be high priority, we set highPrio flag after client is dequeued.
+			common.Assert(!client.highPrio, nodeID)
+
 			//
 			// If the node is marked negative, it means that the last RPC call to it failed with
 			// timeout error. So, to prevent timeout error from happening again, we return an error
 			// indicating the node is negative.
-			// We do it after we get the client from the channel, as this caller may have been
-			// waiting for a free client and one of the existing threads would have returned the
-			// client to the pool but only after marking the node negative. Others who get a client
-			// after that must benefit from the negative node information and avoid unnecessary timeouts.
+			// Though we did this check at the start of the for loop, we need to do it after we get the
+			// client from the channel, as this caller may have been waiting for a free client and one of
+			// the existing threads would have returned the client to the pool but only after marking the
+			// node negative. Others who get a client after that must benefit from the negative node
+			// information and avoid unnecessary timeouts.
 			//
 			if err := cp.checkNegativeNode(nodeID); err != nil {
+				//
 				// Release the client back to the channel.
-				ncPool.clientChan <- client
+				// Even though this node is negative, we need to signal *all* waiters on the channel as
+				// we want them to wake up and take note of the fact that the node is negative and fail
+				// the getRPCClient() call rightaway instead of waiting more.
+				//
+				ncPool.returnClientToPoolAndSignalWaiters(client, true /* signalAll */)
 
 				err = fmt.Errorf("failing getRPCClient for node %s, after getting the client [%w]", nodeID, err)
 				log.Err("clientPool::getRPCClient: %v", err)
 				return nil, err
 			}
-			nodeLock = cp.acquireNodeLock(nodeID)
 
-			ncPool.lastUsed.Store(time.Now().Unix())
-			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
-			// Nothing queued in the pool should be high priority.
-			common.Assert(!client.highPrio, nodeID)
+			// Take the node lock as we access the various nodeClientPool atomic counters.
+			nodeLock = cp.acquireNodeLock(nodeID)
 
 			//
 			// If this is not a high priority request, make sure we don't dig into the reserved high priority
 			// connections.
 			//
 			if !highPrio {
-				if ncPool.numActiveHighPrio.Load()+int64(len(ncPool.clientChan)) <= ncPool.numReservedHighPrio {
+				if ncPool.numActiveHighPrio.Load()+int64(len(ncPool.clientChan)) < ncPool.numReservedHighPrio {
+					//
 					// Return back to the pool and wait for a non-high-priority connection.
-					ncPool.clientChan <- client
+					// Release the node lock before waiting on the condition variable.
+					// Hold the mu lock before releasing the node lock to make sure no other go routine can
+					// release a client to the pool before we wait on the condition variable.
+					//
+					ncPool.mu.Lock()
 					cp.releaseNodeLock(nodeLock, nodeID)
-					time.Sleep(1 * time.Millisecond)
+
+					ncPool.clientChan <- client
+					ncPool.cond.Wait()
+					ncPool.mu.Unlock()
 					continue
 				}
 				ncPool.numActive.Add(1)
@@ -506,9 +571,10 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 				ncPool.numActiveHighPrio.Add(1)
 			}
 
-			log.Debug("clientPool::getRPCClient: Successfully retrieved (highPrio: %v) RPC client for node %s [free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d]",
-				highPrio, nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
-				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load())
+			log.Debug("clientPool::getRPCClient: Successfully retrieved (highPrio: %v) RPC client (%p) for node %s [free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d], waited for %s",
+				highPrio, client, nodeID, len(ncPool.clientChan), ncPool.numActive.Load(),
+				ncPool.numActiveHighPrio.Load(), ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load(),
+				time.Since(startTime))
 
 			// numActive includes both high priority and regular active connections.
 			common.Assert((ncPool.numActiveHighPrio.Load() <= ncPool.numActive.Load()),
@@ -519,46 +585,12 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 				ncPool.numWaitingHighPrio.Load(), ncPool.numWaiting.Load(), client.nodeID, highPrio)
 
 			cp.releaseNodeLock(nodeLock, nodeID)
+			client.allocatedAt = time.Now()
 			return client, nil
 		case <-time.After(2 * time.Second): // Timeout after 2 second
-			waitTime += 2
-			//
-			// If node is marked negative, no point in waiting for a client to become available.
-			// See above for explanation on negative nodes.
-			//
-			if err := cp.checkNegativeNode(nodeID); err != nil {
-				err = fmt.Errorf("failing getRPCClient for node %s, after mini timeout [%w]", nodeID, err)
-				log.Err("clientPool::getRPCClient: %v", err)
-				return nil, err
-			}
-
-			//
-			// There can be a case when client pool for the node is deleted.
-			// For example, the node goes down and RPC fails with BrokenPipe error. In this case,
-			// we reset the connections available for the node, which first closes the stale connections
-			// and then creates new connections. Since, the node is down, creating new RPC connection
-			// to the node fails with connection refused error. So, eventually all the connections in the
-			// pool are closed and client pool for the node is deleted. In this case, we do not wait
-			// for a client to become available and return error to the caller.
-			//
-			if ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0 {
-				err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %d seconds",
-					nodeID, waitTime)
-				log.Err("clientPool::getRPCClient: %v", err)
-				return nil, err
-			}
-
-			if waitTime >= maxWaitTime {
-				err := fmt.Errorf("no free RPC client for node %s, even after waiting for %d seconds: %w",
-					nodeID, waitTime, NoFreeRPCClient)
-				log.Err("clientPool::getRPCClient: %v", err)
-				log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
-				return nil, err
-			}
-
-			log.Debug("clientPool::getRPCClient: No free (highPrio: %v) RPC client for node %s (active: %d, hactive:%d, waiting: %d, hwaiting: %d), for %d seconds",
+			log.Debug("clientPool::getRPCClient: No free (highPrio: %v) RPC client for node %s (active: %d, hactive:%d, waiting: %d, hwaiting: %d), for %s",
 				highPrio, nodeID, ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
-				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load(), waitTime)
+				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load(), time.Since(startTime))
 		}
 	}
 }
@@ -599,7 +631,8 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 //
 // NOTE: Caller MUST NOT hold the clientPool or node level lock.
 func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
-	log.Debug("clientPool::releaseRPCClient: releaseRPCClient(%s, %v)", client.nodeID, client.highPrio)
+	log.Debug("clientPool::releaseRPCClient: releaseRPCClient(client: %p, nodeID: %s, highPrio: %v)",
+		client, client.nodeID, client.highPrio)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -626,9 +659,9 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
-	log.Debug("clientPool::releaseRPCClient: node: %s, free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d, maxPerNode: %d",
-		client.nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
-		ncPool.numWaiting.Load(), ncPool.numActiveHighPrio.Load(), cp.maxPerNode)
+	log.Debug("clientPool::releaseRPCClient: %p after %s, node: %s, free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d, maxPerNode: %d",
+		client, time.Since(client.allocatedAt), client.nodeID, len(ncPool.clientChan), ncPool.numActive.Load(),
+		ncPool.numActiveHighPrio.Load(), ncPool.numWaiting.Load(), ncPool.numActiveHighPrio.Load(), cp.maxPerNode)
 
 	// We must release only to a non-full pool.
 	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
@@ -651,7 +684,7 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	ncPool.numActive.Add(-1)
 
 	client.highPrio = false
-	ncPool.clientChan <- client
+	ncPool.returnClientToPoolAndSignalWaiters(client, false /* signalAll */)
 
 	return nil
 }
@@ -932,7 +965,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		// in the pool, we can delete the nodeClientPool itself.
 		//
 		common.Assert(rpc.IsConnectionRefused(err) ||
-		    rpc.IsConnectionReset(err) 
+			rpc.IsConnectionReset(err) ||
 			rpc.IsTimedOut(err) ||
 			errors.Is(err, NegativeNodeError), err)
 
@@ -941,7 +974,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 	}
 
 	// Add the new client to the client pool for this node.
-	ncPool.clientChan <- newClient
+	ncPool.returnClientToPoolAndSignalWaiters(newClient, false /* signalAll */)
 
 	return nil
 }
@@ -1512,14 +1545,48 @@ func (cp *clientPool) periodicRemoveNegativeNodesAndIffyRVs() {
 // nodeClientPool holds a channel of RPC clients for a node
 // and the last used timestamp for LRU eviction
 type nodeClientPool struct {
-	nodeID              string          // Node ID of the node this client pool is for
-	clientChan          chan *rpcClient // channel to hold the RPC clients to a node
-	lastUsed            atomic.Int64    // used for evicting inactive RPC clients based on LRU (seconds since epoch)
-	numActive           atomic.Int64    // number of clients currently created using getRPCClient() call.
-	numWaiting          atomic.Int64    // number of users waiting for a free client in getRPCClient().
-	numWaitingHighPrio  atomic.Int64    // number of high priority callers waiting for a free client in getRPCClient().
-	numReservedHighPrio int64           // number of high priority clients reserved for this node.
-	numActiveHighPrio   atomic.Int64    // number of high priority clients currently active.
+	nodeID string // Node ID of the node this client pool is for
+	//
+	// Clients must be added to clientChan with mu locked, and cond must be signal'ed to wake up any go routine
+	// that might be waiting for a non-highPrio free client. Clients can be dequeued from clientChan without holding
+	// mu as channel operations are thread safe and moreover no go routine is interested in client dequeue event.
+	// We have a single channel for both high priority and regular clients, but not all clients can be allocated
+	// as regular clients, as some are reserved for high priority clients, so callers needing a regular client might
+	// need to wait after dequeuing a client from the channel if all non-reserved clients are in use. They wait
+	// on cond variable which MUST be signal'ed when a client is returned to the channel.
+	// See comments above nodeClientPool.highPrio.
+	//
+	// Note: mu lock can be safely held inside nodeLock, but not the other way round.
+	// Note: Both cond.Wait() and cond.Signal()/cond.Broadcast() must be called with mu locked.
+	//
+	clientChan chan *rpcClient // channel to hold the RPC clients to a node
+	cond       *sync.Cond
+	mu         sync.Mutex
+	lastUsed   atomic.Int64 // used for evicting inactive RPC clients based on LRU (seconds since epoch)
+	//
+	// These atomic counters are used for debugging and assertions, so the order of updates is important,
+	// hence they MUST be accessed with the nodeLock held.
+	//
+	numActive           atomic.Int64 // number of clients currently created using getRPCClient() call.
+	numWaiting          atomic.Int64 // number of users waiting for a free client in getRPCClient().
+	numWaitingHighPrio  atomic.Int64 // number of high priority callers waiting for a free client in getRPCClient().
+	numActiveHighPrio   atomic.Int64 // number of high priority clients currently active.
+	numReservedHighPrio int64        // number of high priority clients reserved for this node.
+}
+
+// Return the client to clientChan and signal one/all of the waiters (if any).
+func (ncPool *nodeClientPool) returnClientToPoolAndSignalWaiters(client *rpcClient, signalAll bool) {
+	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), len(ncPool.clientChan), cp.maxPerNode)
+
+	ncPool.mu.Lock()
+	// First add to the channel and then signal waiter(s).
+	ncPool.clientChan <- client
+	if signalAll {
+		ncPool.cond.Broadcast()
+	} else {
+		ncPool.cond.Signal()
+	}
+	ncPool.mu.Unlock()
 }
 
 // createRPCClients creates a channel of RPC clients of size numClients for the specified node ID
@@ -1530,6 +1597,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	// 8 connections should be enough for PutChunkDC requests to saturate the network.
 	//
 	numReservedHighPrio := int64(numClients - (numClients / 4))
+	numReservedHighPrio = 1
 
 	log.Debug("nodeClientPool::createRPCClients: Creating %d RPC clients (%d high prio) for node %s",
 		numClients, numReservedHighPrio, ncPool.nodeID)
@@ -1541,6 +1609,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	ncPool.clientChan = make(chan *rpcClient, numClients)
 	ncPool.lastUsed.Store(time.Now().Unix())
 	ncPool.numReservedHighPrio = numReservedHighPrio
+	ncPool.cond = sync.NewCond(&ncPool.mu)
 
 	var err error
 

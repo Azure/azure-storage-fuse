@@ -74,7 +74,7 @@ const (
 	// Another way to look at it is, how many parallel TCP connections do we need to saturate the
 	// n/w bandwidth between two nodes. Again, 8 should be sufficient for that.
 	//
-	defaultMaxPerNode = 32
+	defaultMaxPerNode = 2
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
@@ -257,7 +257,7 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::GetChunk: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
@@ -664,7 +664,7 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::RemoveChunk: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
@@ -773,7 +773,7 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::JoinMV: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
@@ -892,7 +892,7 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::UpdateMV: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
@@ -1001,7 +1001,7 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::LeaveMV: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
@@ -1110,7 +1110,7 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::StartSync: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
@@ -1228,7 +1228,7 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::EndSync: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
@@ -1348,7 +1348,7 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::GetMVSize: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)
