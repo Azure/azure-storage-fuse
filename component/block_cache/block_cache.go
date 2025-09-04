@@ -1159,18 +1159,19 @@ func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error)
 
 	// Keep getting next blocks until you read the request amount of data
 	dataWritten := int(0)
+	offset := options.Offset
 	for dataWritten < len(options.Data) {
-		block, err := bc.getOrCreateBlock(options.Handle, uint64(options.Offset))
+		block, err := bc.getOrCreateBlock(options.Handle, uint64(offset))
 		if err != nil {
 			// Failed to get block for writing
 			log.Err("BlockCache::WriteFile : Unable to allocate block for %s [%s]", options.Handle.Path, err.Error())
 			return dataWritten, err
 		}
 
-		// log.Debug("BlockCache::WriteFile : Writing to block %v, offset %v for handle %v=>%v", block.id, options.Offset, options.Handle.ID, options.Handle.Path)
+		// log.Debug("BlockCache::WriteFile : Writing to block %v, offset %v for handle %v=>%v", block.id, offset, options.Handle.ID, options.Handle.Path)
 
 		// Copy the incoming data to block
-		writeOffset := uint64(options.Offset) - block.offset
+		writeOffset := uint64(offset) - block.offset
 		bytesWritten := copy(block.data[writeOffset:], options.Data[dataWritten:])
 
 		// Mark this block has been updated
@@ -1178,11 +1179,11 @@ func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error)
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 
 		// Move offset forward in case we need to copy more data
-		options.Offset += int64(bytesWritten)
+		offset += int64(bytesWritten)
 		dataWritten += bytesWritten
 
-		if options.Handle.Size < options.Offset {
-			options.Handle.Size = options.Offset
+		if options.Handle.Size < offset {
+			options.Handle.Size = offset
 		}
 	}
 
