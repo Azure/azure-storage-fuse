@@ -564,12 +564,11 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 					ncPool.mu.Unlock()
 					continue
 				}
-				ncPool.numActive.Add(1)
 			} else {
 				client.highPrio = true
-				ncPool.numActive.Add(1)
 				ncPool.numActiveHighPrio.Add(1)
 			}
+			ncPool.numActive.Add(1)
 
 			log.Debug("clientPool::getRPCClient: Successfully retrieved (highPrio: %v) RPC client (%p) for node %s [free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d], waited for %s",
 				highPrio, client, nodeID, len(ncPool.clientChan), ncPool.numActive.Load(),

@@ -178,18 +178,10 @@ type mvInfo struct {
 	lmt time.Time
 	lmb string
 
-	// Total amount of space used up inside the MV directory,
-	// by all the chunks stored in it. Any RV that has to replace one of the existing component
-	// RVs needs to have at least this much space.
+	// Total amount of space used up inside the MV directory, by all the chunks stored in it.
+	// Any RV that has to replace one of the existing component RVs needs to have at least this much space.
 	// JoinMV() requests this much space to be reserved in the new-to-be-inducted RV.
-	// This is updated only by PutChunk(client) requests. For PutChunk(sync) requests it's not
-	// updated for each request but once the sync completes, in the EndSync handler, we add
-	// mvInfo.reservedSpace to totalChunkBytes thus accounting all the chunks that were copied
-	// to this MV as a result of the sync operations. This means that totalChunkBytes will be
-	// 0 for outofsync MV replicas while it can be non-zero for online and even syncing replicas.
-	// syncing MV replicas will have non-zero totalChunkBytes only if there are client writes
-	// during the sync. This will happen if an MV replica went offline during a file write and
-	// a new one had to be picked.
+	// This is incremented whenever a new chunk is written to this MV replica by PutChunk(client or sync) requests.
 	totalChunkBytes atomic.Int64
 
 	// Amount of space reserved for this MV replica, on the hosting RV.
@@ -198,9 +190,8 @@ type mvInfo struct {
 	// This is non-zero only for MV replicas which are added by the fix-mv workflow and not for MV replicas
 	// added by new-mv workflow. Put another way, this will be non-zero only for MV replicas which are in
 	// outofsync or syncing state. On an EndSync request, that converts syncing state to online state
-	// mvInfo.reservedSpace is cleared and its value is added to mvInfo.totalChunkBytes, also this is
-	// reduced from rvInfo.reservedSpace as this space is no longer reserved but rather actual space is now
-	// used by chunks stored in the RV.
+	// mvInfo.reservedSpace is cleared, also this is reduced from rvInfo.reservedSpace as this space is no
+	// longer reserved but rather actual space is now used by chunks stored in the RV.
 	// If an MV replica cannot complete resync, this must be reduced from rvInfo.reservedSpace.
 	// This means while an MV replica is being sync'ed the space used on the RV may be overcompensated, this
 	// is corrected once sync completes.
@@ -606,7 +597,15 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	_, diskSpaceAvailable, err := common.GetDiskSpaceMetricsFromStatfs(cacheDir)
 	common.Assert(err == nil, cacheDir, err)
 
+	//
 	// Subtract the reserved space for this RV.
+	// Note that the following will result in a more conservative available space estimate for the RV if one
+	// or MV replicas hosted by this RV are syncing. This is because we increment rv.reservedSpace inside the
+	// JoinMV handler when this RV was picked as the replacement RV by the fixMV workflow, and we decrement it
+	// inside the EndSync handler, only after the sync completes. During the sync process there will be chunks
+	// written to the MV replica being synced, but we don't decrement rv.reservedSpace for each chunk written.
+	// This conservative estimate is deliberate, as we don't want to overcommit space on the RV.
+	//
 	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
 	common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
@@ -622,7 +621,7 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 func GetAvailableSpaceForRV(rvId, rvName string) (int64, error) {
 	//
 	// Initial call(s) before RPC server is started must simply return the available space as reported
-	// by the file system, else we must subtract the reserved space for the RV
+	// by the file system, else we must subtract the reserved space for the RV.
 	//
 	if handler == nil {
 		_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(rvName)
@@ -1035,10 +1034,14 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 		common.Assert(cm.IsValidComponentRVState(dcache.StateEnum(rv.State)), rv.Name, mv.mvName, rv.State)
 
 		//
-		// Only online and syncing local MV replicas can have non-zero totalChunkBytes.
+		// OutOfSync MV replicas cannot have non-zero totalChunkBytes, as totalChunkBytes must reflect how
+		// many chunks are written to the MV replica, and an outofsync MV replica cannot have any chunks
+		// written to it. Only after it moves to syncing state can chunks be written to it.
+		// Online and syncing MV replicas can have non-zero totalChunkBytes as they receive PutChunk calls.
+		// Offline/inband-offline MV replicas can have non-zero totalChunkBytes from when they were online.
 		//
 		common.Assert((mv.rv.rvName != rv.Name) || (mv.totalChunkBytes.Load() == 0) ||
-			(rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing)),
+			(rv.State != string(dcache.StateOutOfSync)),
 			rv.Name, mv.mvName, rv.State, mv.totalChunkBytes.Load())
 
 		if rv.Name == rvName {
@@ -1249,8 +1252,7 @@ func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.Respo
 		// It marks reservedSpace in the mvInfo and rvInfo to reserve the space needed for sync'ing the MV
 		// replica. Normally this reserved space would be deducted from rvInfo.reservedSpace as part of
 		// the EndSync processing, after the sync has copied data to the new MV replica. At this point
-		// mvInfo.totalChunkBytes will be increased by mvInfo.reservedSpace, and rvInfo.reservedSpace will
-		// be reduced by mvInfo.reservedSpace and mvInfo.reservedSpace will be set to 0.
+		// rvInfo.reservedSpace will be reduced by mvInfo.reservedSpace and mvInfo.reservedSpace will be set to 0.
 		//
 		// Hence if our in-core mvInfo has the state of a component RV as StateOutOfSync while clustermap either
 		// - has the same RV with state StateOffline, or,
@@ -1421,7 +1423,7 @@ func (mv *mvInfo) incTotalChunkBytes(bytes int64) {
 func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(-bytes)
 	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
-	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is %d, bytes: %d", mv.mvName, mv.totalChunkBytes.Load(), bytes))
+	common.Assert(mv.totalChunkBytes.Load() >= 0, mv.mvName, mv.totalChunkBytes.Load(), bytes)
 }
 
 // acquire read lock on the opMutex.
@@ -2661,9 +2663,10 @@ refreshFromClustermapAndRetry:
 	//       Also we need to be sure that hash is calculated uniformly (either always or never)
 
 	//
-	// Increment the total chunk bytes for this MV for PutChunk(client) calls.
-	// For PutChunk(sync) calls, the MV's totalChunkBytes will be updated in the EndSync call,
-	// once the sync completes.
+	// As a new chunk is written, update the MV replica's total chunk bytes.
+	// We do it for both PutChunk(client) as well as PutChunk(sync) writes so that this reflects the true MV size
+	// at all times. Note that we don't decrement mvInfo.reservedSpace up until EndSync(), so mvInfo.reservedSpace
+	// + mvInfo.totalChunkBytes will account for more space than what will be taken up after the sync completes.
 	//
 	if len(req.SyncID) == 0 {
 		mvInfo.incTotalChunkBytes(req.Length)
@@ -2675,6 +2678,8 @@ refreshFromClustermapAndRetry:
 		common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
+
+		mvInfo.incTotalChunkBytes(req.Length)
 	}
 
 dummy_write:
@@ -3615,11 +3620,18 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// Update the state of target RV in this MV replica from syncing to online.
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline, req.SenderNodeID)
 
-	// As sync has completed, clear reservedSpace and commit it in totalChunkBytes.
-	mvInfo.totalChunkBytes.Add(mvInfo.reservedSpace.Load())
+	//
+	// As sync has completed successfully, the sync process must have written all chunks to the MV replica.
+	// These will be not less than mvInfo.reservedSpace.
+	//
+	common.Assert(mvInfo.totalChunkBytes.Load() >= mvInfo.reservedSpace.Load(),
+		rvInfo.rvName, req.MV, mvInfo.totalChunkBytes.Load(), mvInfo.reservedSpace.Load())
+
+	// We must have reserved mvInfo.reservedSpace in RV as well.
 	common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 		rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load(), rvInfo.rvName,
 		req.MV, rpc.EndSyncRequestToString(req))
+
 	rvInfo.decReservedSpace(mvInfo.reservedSpace.Load())
 	mvInfo.reservedSpace.Store(0)
 
