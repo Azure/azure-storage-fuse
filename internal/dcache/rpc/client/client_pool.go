@@ -386,6 +386,8 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 	// Must never return a nodeClientPool with no clients allocated.
 	common.Assert(ncPool.clientChan != nil)
 
+	common.Assert(!ncPool.deleting.Load(), nodeID)
+
 	return ncPool, nil
 }
 
@@ -489,16 +491,11 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		// pool are closed and client pool for the node is deleted. In this case, we do not wait
 		// for a client to become available and return error to the caller.
 		//
-		if ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0 {
-			nodeLock = cp.acquireNodeLock(nodeID)
-			if ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0 {
-				cp.releaseNodeLock(nodeLock, nodeID)
-				err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %s",
-					nodeID, time.Since(startTime))
-				log.Err("clientPool::getRPCClient: %v", err)
-				return nil, err
-			}
-			cp.releaseNodeLock(nodeLock, nodeID)
+		if ncPool.deleting.Load() {
+			err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %s",
+				nodeID, time.Since(startTime))
+			log.Err("clientPool::getRPCClient: %v", err)
+			return nil, err
 		}
 
 		// Never wait more than maxWaitTime.
@@ -876,6 +873,12 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	common.Assert(len(ncPool.clientChan) == 0, len(ncPool.clientChan), client.nodeAddress, client.nodeID)
 
 	//
+	// Mark it deleting so that getRPCClient() does not allocate any more clients for this node, till all
+	// the existing clients are closed and the nodeClientPool is deleted and recreated afresh.
+	//
+	ncPool.deleting.Store(true)
+
+	//
 	// After deleting all clients, if there are no active connections and no connections in the channel,
 	// we delete the node client pool itself.
 	//
@@ -1044,6 +1047,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 		// Assert to know if anything else happens.
 		//
 		common.Assert(rpc.IsConnectionRefused(err) ||
+			rpc.IsConnectionReset(err) ||
 			rpc.IsTimedOut(err) ||
 			errors.Is(err, NegativeNodeError), err)
 		return err
@@ -1571,6 +1575,7 @@ type nodeClientPool struct {
 	numWaitingHighPrio  atomic.Int64 // number of high priority callers waiting for a free client in getRPCClient().
 	numActiveHighPrio   atomic.Int64 // number of high priority clients currently active.
 	numReservedHighPrio int64        // number of high priority clients reserved for this node.
+	deleting            atomic.Bool  // true when the nodeClientPool is being deleted
 }
 
 // Return the client to clientChan and signal one/all of the waiters (if any).
