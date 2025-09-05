@@ -159,6 +159,7 @@ const (
 	BlockFlagUnknown uint16 = iota
 	DirtyBlock
 	TruncatedBlock
+	DuplicateBlock
 )
 
 type Block struct {
@@ -178,6 +179,11 @@ func (block *Block) Dirty() bool {
 // Truncated : block created on a truncate operation
 func (block *Block) Truncated() bool {
 	return block.Flags.IsSet(TruncatedBlock)
+}
+
+// Duplicate : block is a duplicate of another block
+func (block *Block) Duplicate() bool {
+	return block.Flags.IsSet(DuplicateBlock)
 }
 
 // Flags for block offset list
@@ -204,6 +210,16 @@ func (bol *BlockOffsetList) IsBlockListModified() bool {
 	return bol.Flags.IsSet(BlobFlagBlockListModified)
 }
 
+func (bol *BlockOffsetList) ValidateBlockListAgainstFileSize(fileSize int64) bool {
+	if bol.HasNoBlocks() {
+		return fileSize == 0
+	}
+	if bol.BlockList[len(bol.BlockList)-1].EndIndex != fileSize {
+		return false
+	}
+	return true
+}
+
 func (bol *BlockOffsetList) HasAllBlocksWithSameBlockSize() (blockSize int64, ok bool) {
 	if bol.HasNoBlocks() || len(bol.BlockList) == 0 {
 		return 0, true
@@ -218,7 +234,7 @@ func (bol *BlockOffsetList) HasAllBlocksWithSameBlockSize() (blockSize int64, ok
 }
 
 // return true if item found and index of the item
-func (bol BlockOffsetList) BinarySearch(offset int64) (bool, int) {
+func (bol *BlockOffsetList) BinarySearch(offset int64) (bool, int) {
 	lowerBound := 0
 	size := len(bol.BlockList)
 	higherBound := size - 1
