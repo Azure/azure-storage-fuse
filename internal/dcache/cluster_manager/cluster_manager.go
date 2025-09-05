@@ -2956,6 +2956,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		//
 		// Iterate over the availableRVsList and pick the first suitable RV.
+		// For each MV we start from a random index in availableRVsList (and choose next NumReplicas suitable RVs).
+		// This ensures that we use RVs uniformly instead of exhausting RVs from the beginning and leaving upto
+		// NumReplicas-1 unused RVs at the end which cannot be used to create a new MV.
 		//
 		// Note: Since number of RVs can be very large (100K+) we need to be careful that this loop is very
 		//       efficient, avoid any string key'ed map lookups, as they are slow, and any thing else that's slow.
@@ -2963,7 +2966,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//       sending JoinMV RPC to all component RVs (in parallel), which will be hard to get below 1ms, so for
 		//       20K MVs, it'll take ~20s to create all MVs, which should be fine.
 		//
-		for _, rv := range availableRVsList {
+		startIdx := rand.Intn(len(availableRVsList)) // returns [0, N)
+		for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
+			rv := availableRVsList[idx%len(availableRVsList)]
 			usedSlots := MVsPerRVForFixMV - rv.slots
 			if rv.slots > MVsPerRVForFixMV {
 				common.Assert(false, rv.slots, MVsPerRVForFixMV, MVsPerRVForNewMV)
@@ -3059,13 +3064,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			break
 		}
 
-		if firstFreeIdx > 0 {
-			// Chop off unusable RVs from the beginning, to avoid wasted iterations for subsequent MVs.
-			availableRVsList = availableRVsList[firstFreeIdx:]
+		/*
+			if firstFreeIdx > 0 {
+				// Chop off unusable RVs from the beginning, to avoid wasted iterations for subsequent MVs.
+				availableRVsList = availableRVsList[firstFreeIdx:]
 
-			log.Debug("ClusterManager::updateMVList: %d (of %d) new MVs created, initial %d RVs are full, removing from availableRVsList, %d RVs remaining",
-				numUsableMVs, maxMVsPossible, firstFreeIdx, len(availableRVsList))
-		}
+				log.Debug("ClusterManager::updateMVList: %d (of %d) new MVs created, initial %d RVs are full, removing from availableRVsList, %d RVs remaining",
+					numUsableMVs, maxMVsPossible, firstFreeIdx, len(availableRVsList))
+			}
+		*/
 
 		common.Assert(len(existingMVMap[mvName].RVs) == NumReplicas,
 			mvName, len(existingMVMap[mvName].RVs), NumReplicas)
