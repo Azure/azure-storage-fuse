@@ -416,15 +416,15 @@ loop:
 			for chunkIdx, chunk := range file.StagedChunks {
 				_ = chunkIdx
 
-				// Dirty chunks cannot be reclaimed.
-				if chunk.Dirty.Load() {
-					dirty++
-					continue
-				}
-
 				// Partial chunks cannot be reclaimed.
 				if chunk.Len != file.FileMetadata.FileLayout.ChunkSize {
 					partial++
+					continue
+				}
+
+				// Dirty chunks cannot be reclaimed.
+				if chunk.Dirty.Load() {
+					dirty++
 					continue
 				}
 

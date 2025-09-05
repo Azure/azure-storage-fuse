@@ -245,7 +245,7 @@ func PutChunkDCLocal(ctx context.Context, req *models.PutChunkDCRequest) (*model
 	if err1 != nil {
 		log.Err("rpc_server::PutChunkDCLocal: Failed to release dummy RPC client for node %s %v: %v",
 			req.Request.SenderNodeID, rpc.PutChunkDCRequestToString(req), err1)
-		// Assert, but not fail the PutChunkDC call.
+		// Assert, but do not fail the PutChunkDC call.
 		common.Assert(false, err1)
 	}
 

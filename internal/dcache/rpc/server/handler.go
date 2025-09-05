@@ -181,12 +181,16 @@ type mvInfo struct {
 	// Total amount of space used up inside the MV directory, by all the chunks stored in it.
 	// Any RV that has to replace one of the existing component RVs needs to have at least this much space.
 	// JoinMV() requests this much space to be reserved in the new-to-be-inducted RV.
-	// This is incremented whenever a new chunk is written to this MV replica by PutChunk(client or sync) requests.
+	// This is incremented whenever a new chunk is written to this MV replica by PutChunk (client or sync)
+	// requests, and decremented whenever a chunk is deleted by RemoveChunk requests.
+	// This must be zero for MV replicas in OutOfSync state, as chunks are written only after the MV replica
+	// moves to Syncing state. Other than OutOfSync state, this can be non-zero for all other MV replica states.
 	totalChunkBytes atomic.Int64
 
 	// Amount of space reserved for this MV replica, on the hosting RV.
 	// When a new mvInfo is created by JoinMV() this is set to the ReserveSpace parameter to JoinMV.
-	// This is also added to rvInfo.reservedSpace to reserve space in the RV.
+	// This is also added to rvInfo.reservedSpace to reserve space in the RV, to prevent oversubscription
+	// by accepting JoinMV requests for more MVs than we can host.
 	// This is non-zero only for MV replicas which are added by the fix-mv workflow and not for MV replicas
 	// added by new-mv workflow. Put another way, this will be non-zero only for MV replicas which are in
 	// outofsync or syncing state. On an EndSync request, that converts syncing state to online state
@@ -268,7 +272,7 @@ func GetMvInfoTimeout() time.Duration {
 // This syncJob structure holds information on each sync job that a particular "MV Replica" is participating in.
 // Note that an MV Replica can be taking part in multiple simultaneous sync jobs, with the following rules:
 //   - An MV Replica can either be the source or target of a sync job.
-//   - Online MV Replicas will act as sources while OutOfSyc MV Replicas will act as targets.
+//   - Online MV Replicas will act as sources while OutOfSync MV Replicas will act as targets.
 //   - An MV Replica can be source to multiple sync jobs while it can be target to one and only one sync job.
 //   - Every sync job has an id, called the SyncId. This is returned by a successful StartSync call and must be provided
 //     in the EndSync call to end that sync job.
@@ -600,16 +604,16 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	//
 	// Subtract the reserved space for this RV.
 	// Note that the following will result in a more conservative available space estimate for the RV if one
-	// or MV replicas hosted by this RV are syncing. This is because we increment rv.reservedSpace inside the
-	// JoinMV handler when this RV was picked as the replacement RV by the fixMV workflow, and we decrement it
-	// inside the EndSync handler, only after the sync completes. During the sync process there will be chunks
+	// or more MV replicas hosted by this RV are syncing. This is because we increment rv.reservedSpace inside
+	// the JoinMV handler when this RV was picked as the replacement RV by the fixMV workflow, and we decrement
+	// it inside the EndSync handler, only after the sync completes. During the sync process there will be chunks
 	// written to the MV replica being synced, but we don't decrement rv.reservedSpace for each chunk written.
 	// This conservative estimate is deliberate, as we don't want to overcommit space on the RV.
 	//
 	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
 	common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
-	log.Debug("rvInfo::getAvailableSpace: available space for RV %s is %d, total disk space available is %d and reserved space is %d",
+	log.Debug("rvInfo::getAvailableSpace: RV: %s, availableSpace: %d, diskSpaceAvailable: %d, reservedSpace: %d",
 		rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
 	return availableSpace, err
@@ -2476,8 +2480,7 @@ refreshFromClustermapAndRetry:
 				// then try again with the latest clustermap from storage.
 				//
 				if clustermapRefreshed < 2 {
-					//rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
-					rpcErr := mvInfo.refreshFromClustermap(false /* doNotFetchClustermap */)
+					rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
 					if rpcErr != nil {
 						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
 							rpcErr.String())
@@ -2517,8 +2520,7 @@ refreshFromClustermapAndRetry:
 				// then try again with the latest clustermap from storage.
 				//
 				if clustermapRefreshed < 2 {
-					//rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
-					rpcErr := mvInfo.refreshFromClustermap(false /* doNotFetchClustermap */)
+					rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
 					if rpcErr != nil {
 						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
 							rpcErr.String())
@@ -2538,7 +2540,8 @@ refreshFromClustermapAndRetry:
 				// while sender is not yet aware of it. This will happen when we call refreshFromClustermap()
 				// and it gets a more recent clustermap than the sender. If an RV is offline in that we will
 				// mark component RV as offline in our rvInfo (see refreshFromClustermap()).
-				// In such case it's best to let the sender know about it.
+				// In such case it's best to let the sender know about it instead of silently completing the
+				// PutChunk.
 				//
 				errStr := fmt.Sprintf("PutChunk(client) sender did not skip RV %s/%s which is %s as per them, while as per our rvInfo it's %s [NeedToRefreshClusterMap]",
 					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State)
@@ -2549,8 +2552,7 @@ refreshFromClustermapAndRetry:
 				// then try again with the latest clustermap from storage.
 				//
 				if clustermapRefreshed < 2 {
-					//rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
-					rpcErr := mvInfo.refreshFromClustermap(false /* doNotFetchClustermap */)
+					rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
 					if rpcErr != nil {
 						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
 							rpcErr.String())
@@ -2606,7 +2608,7 @@ refreshFromClustermapAndRetry:
 	if len(req.SyncID) > 0 {
 		//
 		// Sync PutChunk call (as opposed to a client write PutChunk call).
-		// This is called after the StartSync RPC to synchronize an OutOfSyc MV replica from a healthy MV
+		// This is called after the StartSync RPC to synchronize an OutOfSync MV replica from a healthy MV
 		// replica.
 		//
 		// Sync PutChunk call will be made in the ResyncMV() workflow, and should only be sent to RVs which
@@ -2714,6 +2716,9 @@ refreshFromClustermapAndRetry:
 		// TODO: [Tomar] I've seen this assert fail and also some other places where we assert for reservedSpace
 		//       panic: Assertion failed: [13091 4194304]
 		//       The reservedSpace update possibly has some race.
+		//       One likely possibility is that when we called GetMVSize() from JoinMV, there were more chunks
+		//       written to the source MV replica after we read the mvInfo.totalChunkBytes, so we reserved less
+		//       but actually sync'ed more. It's not a big deal as we will differ only slightly.
 		common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
@@ -3548,7 +3553,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Later when some client sends some RPC to this RV which expects it to not be in syncing state,
 	// refreshFromClustermap() would run and if it finds that the global clustermap has the RV in outofsync
 	// state that would be used as an indicator to undo the StartSync, most importantly reset the rvInfo
-	// state to OutOfSyc and purging the sync job.
+	// state to OutOfSync and purging the sync job.
 	//
 	syncID := mvInfo.addSyncJob(sourceRVName, targetRVName)
 

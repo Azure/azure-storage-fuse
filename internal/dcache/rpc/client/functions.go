@@ -71,10 +71,11 @@ const (
 	// this value actually depends on number of RVs exported by a node. Since we don't know it
 	// at init time, we assume a fair value of say 4 and for each of those RVs, keeping anything
 	// more than 8 chunk sized IOs won't be useful. So we set the default to 32.
-	// Another way to look at it is, how many parallel TCP connections do we need to saturate the
-	// n/w bandwidth between two nodes. Again, 8 should be sufficient for that.
+	// A better way to look at it is, how many parallel TCP connections do we need to saturate the
+	// n/w bandwidth between two nodes (regardless of the RVs hosted by a node). Again, 8 should be
+	// sufficient for that.
 	//
-	defaultMaxPerNode = 2
+	defaultMaxPerNode = 32
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
@@ -141,10 +142,11 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 	for i := 0; i < 2; i++ {
 		//
 		// Get RPC client from the client pool.
-		// For all other RPCs other than PutChunkDC we use the highPrio quota as these RPCs cannot
-		// cause deadlock and hence can use the higher quota.
+		// For all other RPCs other than PutChunkDC called from forwardPutChunk(), we use the regular
+		// priority client quota as we want to keep clients available for forwardPutChunk() calls if
+		// needed to prevent delays in PutChunkDC completions that can potentially cause timeouts.
 		//
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
 			log.Err("rpc_client::Hello: Failed to get RPC client for node %s %v: %v",
 				targetNodeID, reqStr, err)

@@ -421,6 +421,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	//
 	// Get the nodeClientPool for this node.
 	// We need to release the node lock before waiting on the clientChan.
+	//
 	// Q: Why is it safe to release the node lock and still use ncPool?
 	// A: If ncPool has one or more active/free clients, it is guaranteed that deleteNodeClientPoolFromMap()
 	//    won't delete the nodeClientPool, as it only deletes a nodeClientPool when there are no active
@@ -430,7 +431,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	//    and it'll have no active and free clients and hence the getRPCClient() call will fail.
 	//
 	// Though we must use the node lock for accessing the various num* atomics to ensure proper visibility
-	// order for various assertions.
+	// order needed by various assertions.
 	//
 	ncPool, err := cp.getNodeClientPool(nodeID)
 
@@ -477,7 +478,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		// See above for explanation on negative nodes.
 		//
 		if err := cp.checkNegativeNode(nodeID); err != nil {
-			err = fmt.Errorf("failing getRPCClient for node %s, after mini timeout [%w]", nodeID, err)
+			err = fmt.Errorf("failing getRPCClient for node %s: %w", nodeID, err)
 			log.Err("clientPool::getRPCClient: %v", err)
 			return nil, err
 		}
@@ -551,7 +552,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 					// Return back to the pool and wait for a non-high-priority connection.
 					// Release the node lock before waiting on the condition variable.
 					// Hold the mu lock before releasing the node lock to make sure no other go routine can
-					// release a client to the pool before we wait on the condition variable.
+					// release a client to the pool (and signal the condition variable) before we wait on the
+					// condition variable.
 					//
 					ncPool.mu.Lock()
 					cp.releaseNodeLock(nodeLock, nodeID)
@@ -1575,7 +1577,7 @@ type nodeClientPool struct {
 	numWaitingHighPrio  atomic.Int64 // number of high priority callers waiting for a free client in getRPCClient().
 	numActiveHighPrio   atomic.Int64 // number of high priority clients currently active.
 	numReservedHighPrio int64        // number of high priority clients reserved for this node.
-	deleting            atomic.Bool  // true when the nodeClientPool is being deleted
+	deleting            atomic.Bool  // true when the nodeClientPool is being deleted.
 }
 
 // Return the client to clientChan and signal one/all of the waiters (if any).
@@ -1600,8 +1602,12 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	// All other requests, other than PutChunkDC use the high priority clients.
 	// 8 connections should be enough for PutChunkDC requests to saturate the network.
 	//
+	// TODO: Make sure 8 clients per node are enough for extra large clusters for various workflows
+	//       like fixMV, resync, and other heavy data movement operations like GetChunk.
+	//
 	numReservedHighPrio := int64(numClients - (numClients / 4))
-	numReservedHighPrio = 1
+	common.Assert(numReservedHighPrio > 0 && numReservedHighPrio < int64(numClients),
+		numReservedHighPrio, numClients)
 
 	log.Debug("nodeClientPool::createRPCClients: Creating %d RPC clients (%d high prio) for node %s",
 		numClients, numReservedHighPrio, ncPool.nodeID)
