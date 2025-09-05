@@ -43,6 +43,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -1300,6 +1301,9 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 				lastBlock.Data = make([]byte, lastBlock.EndIndex-lastBlock.StartIndex)
 				lastBlock.Flags.Set(common.DirtyBlock)
 
+				// create the new block id for this block otherwise it would corrupt the state of the blob.
+				lastBlock.Id = common.GetBlockID(blockList.BlockIdLength)
+
 				err := bb.ReadInBuffer(options.Name, lastBlock.StartIndex, lastBlock.EndIndex-lastBlock.StartIndex, lastBlock.Data, nil)
 				if err != nil {
 					log.Err("BlockBlob::createNewBlocksTruncate : Failed to adjust last block %s [%v]", options.Name, err)
@@ -1334,24 +1338,34 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 	return nil
 }
 
-func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, options *internal.TruncateFileOptions) {
+func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, options *internal.TruncateFileOptions) error {
 	log.Trace("BlockBlob::removeBlocks : name: %s, old size: %d, new size: %d", options.Name, options.OldSize,
 		options.NewSize)
 
-	size := options.NewSize
-
-	_, index := blockList.BinarySearch(size)
-	// if the start index is equal to new size - block should be removed - move one index back
-	if blockList.BlockList[index].StartIndex == size {
-		index = index - 1
+	if len(blockList.BlockList) == 0 {
+		return errors.New("removeBlocks: block list is empty, cannot remove blocks")
 	}
 
+	size := options.NewSize
+
+	idx := sort.Search(len(blockList.BlockList), func(i int) bool {
+		return blockList.BlockList[i].StartIndex >= size
+	})
+
+	idx-- // move one index back to get the last block which is less than or equal to new size
+
+	log.Debug("BlockBlob::removeBlocks : idx: %d, blockList length: %d, idx.start: %d, idx.end: %d, new size: %d",
+		idx, len(blockList.BlockList), blockList.BlockList[idx].StartIndex, blockList.BlockList[idx].EndIndex, size)
+
 	// if the file we're shrinking is in the middle of a block then shrink that block
-	if blockList.BlockList[index].EndIndex > size {
-		blk := blockList.BlockList[index]
+	if blockList.BlockList[idx].EndIndex > size {
+		blk := blockList.BlockList[idx]
 		blk.EndIndex = size
 		blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
 		blk.Flags.Set(common.DirtyBlock)
+
+		// create the new block id for this block otherwise it would corrupt the state of the blob.
+		blk.Id = common.GetBlockID(blockList.BlockIdLength)
 
 		err := bb.ReadInBuffer(options.Name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data, nil)
 		if err != nil {
@@ -1359,10 +1373,10 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, options *in
 		}
 	}
 
-	blockList.BlockList = blockList.BlockList[:index+1]
+	blockList.BlockList = blockList.BlockList[:idx+1]
 	blockList.Flags.Set(common.BlobFlagBlockListModified)
 
-	return
+	return nil
 }
 
 func (bb *BlockBlob) TruncateFile(options internal.TruncateFileOptions) error {
@@ -1414,7 +1428,8 @@ func (bb *BlockBlob) TruncateFile(options internal.TruncateFileOptions) error {
 }
 
 func (bb *BlockBlob) TruncateFileWithoutBlocks(options *internal.TruncateFileOptions) error {
-	log.Trace("BlockBlob::TruncateFileWithoutBlocks : name: %s, old size: %d, new size: %d", options.Name, options.NewSize)
+	log.Trace("BlockBlob::TruncateFileWithoutBlocks : name: %s, old size: %d, new size: %d", options.Name,
+		options.OldSize, options.NewSize)
 	var err error
 
 	buf := make([]byte, options.NewSize)
@@ -1505,7 +1520,7 @@ func (bb *BlockBlob) TruncateFileUsingBlocks(options *internal.TruncateFileOptio
 
 	// If new size < old size, we should remove the extra blocks.
 	if options.NewSize < options.OldSize {
-		bb.removeBlocks(blob, options)
+		err = bb.removeBlocks(blob, options)
 	} else {
 		// If new size > old size, we should create new blocks.
 		err = bb.createNewBlocksTruncate(blob, options)

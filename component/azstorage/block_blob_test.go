@@ -74,6 +74,7 @@ import (
 var ctx = context.Background()
 
 const MB = 1024 * 1024
+const GB = 1024 * MB
 
 // A UUID representation compliant with specification in RFC 4122 document.
 type uuid [16]byte
@@ -3436,6 +3437,7 @@ func (s *blockBlobTestSuite) TestUploadBlobWithCPKEnabled() {
 
 func (suite *blockBlobTestSuite) TestTruncateSmallFileToSmaller() {
 	suite.UtilityFunctionTestTruncateFileToSmaller(20*MB, 10*MB)
+	suite.UtilityFunctionTestTruncateFileToSmaller(20*MB, 0)
 }
 
 func (suite *blockBlobTestSuite) TestTruncateSmallFileToLarger() {
@@ -3444,14 +3446,17 @@ func (suite *blockBlobTestSuite) TestTruncateSmallFileToLarger() {
 
 func (suite *blockBlobTestSuite) TestTruncateBlockFileToSmaller() {
 	suite.UtilityFunctionTestTruncateFileToSmaller(300*MB, 290*MB)
+	suite.UtilityFunctionTestTruncateFileToSmaller(300*MB, 0)
 }
 
 func (suite *blockBlobTestSuite) TestTruncateBlockFileToLarger() {
 	suite.UtilityFunctionTruncateFileToLarger(290*MB, 300*MB)
+	suite.UtilityFunctionTruncateFileToLarger(290*MB, 20*GB)
 }
 
 func (suite *blockBlobTestSuite) TestTruncateNoBlockFileToLarger() {
 	suite.UtilityFunctionTruncateFileToLarger(200*MB, 300*MB)
+	suite.UtilityFunctionTruncateFileToLarger(1*MB, 20*GB)
 }
 
 func (s *blockBlobTestSuite) TestBlobFilters() {
