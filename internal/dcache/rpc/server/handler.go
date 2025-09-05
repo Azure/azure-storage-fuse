@@ -1164,6 +1164,11 @@ func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.Respo
 			log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is %s, marking component RV state as offline",
 				rvName, mv.mvName, rvState, cm.GetRVState(rvName))
 			rvState = dcache.StateOffline
+			//
+			// [BUG] This changes the state of the component RV in the local clustermap copy, obviously
+			//       it doesn't change the MV state, so this results in assert failure that claims mv
+			//       state must be offline if any component RV is offline.
+			//
 			newRVs[rvName] = rvState
 		}
 
@@ -2471,7 +2476,8 @@ refreshFromClustermapAndRetry:
 				// then try again with the latest clustermap from storage.
 				//
 				if clustermapRefreshed < 2 {
-					rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
+					//rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
+					rpcErr := mvInfo.refreshFromClustermap(false /* doNotFetchClustermap */)
 					if rpcErr != nil {
 						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
 							rpcErr.String())
@@ -2511,7 +2517,40 @@ refreshFromClustermapAndRetry:
 				// then try again with the latest clustermap from storage.
 				//
 				if clustermapRefreshed < 2 {
-					rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
+					//rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
+					rpcErr := mvInfo.refreshFromClustermap(false /* doNotFetchClustermap */)
+					if rpcErr != nil {
+						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
+							rpcErr.String())
+						log.Err("%v", err1)
+						// refreshFromClustermap() only returns ErrorCode_NeedToRefreshClusterMap.
+						common.Assert(rpcErr.Code == models.ErrorCode_NeedToRefreshClusterMap, err1)
+						return nil, rpcErr
+					}
+					clustermapRefreshed++
+					goto refreshFromClustermapAndRetry
+				}
+
+				return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+			} else if !senderSkippedRV && isRVSafeToSkip {
+				//
+				// This can happen when we come to know about an RV being offline, through clustermap,
+				// while sender is not yet aware of it. This will happen when we call refreshFromClustermap()
+				// and it gets a more recent clustermap than the sender. If an RV is offline in that we will
+				// mark component RV as offline in our rvInfo (see refreshFromClustermap()).
+				// In such case it's best to let the sender know about it.
+				//
+				errStr := fmt.Sprintf("PutChunk(client) sender did not skip RV %s/%s which is %s as per them, while as per our rvInfo it's %s [NeedToRefreshClusterMap]",
+					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+
+				//
+				// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
+				// then try again with the latest clustermap from storage.
+				//
+				if clustermapRefreshed < 2 {
+					//rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
+					rpcErr := mvInfo.refreshFromClustermap(false /* doNotFetchClustermap */)
 					if rpcErr != nil {
 						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
 							rpcErr.String())

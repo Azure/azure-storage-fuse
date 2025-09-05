@@ -475,7 +475,7 @@ retry:
 				rv.Name, req.MvName, rv.State, mvState)
 
 			// Online MV must have all replicas online.
-			common.Assert(mvState != dcache.StateOnline, req.MvName)
+			common.Assert(mvState != dcache.StateOnline, req.MvName, rv.Name, rv.State)
 
 			//
 			// Skip writing to this RV, as it is in offline or outofsync state.
