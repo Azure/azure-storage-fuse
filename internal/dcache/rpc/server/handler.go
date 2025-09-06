@@ -123,6 +123,10 @@ type rvInfo struct {
 	// On the other hand, PutChunk() sync RPC call will decrement this space indicating
 	// that the chunk has been written to the RV.
 	reservedSpace atomic.Int64
+
+	// Cumulative bytes read from this RV by GetChunk() requests.
+	// Mostly used for debugging distribution of reads across RVs.
+	totalBytesRead atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -2149,6 +2153,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	common.Assert(n == len(data),
 		fmt.Sprintf("bytes read %d is less than expected buffer size %d", n, len(data)))
+
+	rvInfo.totalBytesRead.Add(int64(n))
+	log.Info("ChunkServiceHandler::GetChunk: [STATS] chunk path %s, %s, totalBytesRead: %d ",
+		chunkPath, rvInfo.rvName, rvInfo.totalBytesRead.Load())
 
 dummy_read:
 	resp := &models.GetChunkResponse{

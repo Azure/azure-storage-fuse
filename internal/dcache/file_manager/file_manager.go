@@ -97,7 +97,9 @@ func NewFileIOManager() error {
 	// To achieve high sequential read throughput, this number should be kept reasonably high.
 	// With 4MiB chunk size, 64 readahead chunks will use up 256MiB of memory per file.
 	//
-	numReadAheadChunks := 64
+	// TODO: 256 readahead chunks perform better, let's see if we want to reduce it.
+	//
+	numReadAheadChunks := 256
 
 	//
 	// How many writeback chunks per file.

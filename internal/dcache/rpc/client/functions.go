@@ -75,7 +75,7 @@ const (
 	// n/w bandwidth between two nodes (regardless of the RVs hosted by a node). Again, 8 should be
 	// sufficient for that.
 	//
-	defaultMaxPerNode = 32
+	defaultMaxPerNode = 64
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
