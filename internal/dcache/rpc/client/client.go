@@ -37,6 +37,7 @@ import (
 	"crypto/tls"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
@@ -100,6 +101,9 @@ var thriftCfg *thrift.TConfiguration
 
 // newRPCClient creates a new Thrift RPC client for the node
 func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
+	// Caller must call with node lock held.
+	common.Assert(cp.isNodeLocked(nodeID), nodeID, nodeAddress)
+
 	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s at %s", nodeID, nodeAddress)
 
 	//
@@ -181,4 +185,9 @@ func init() {
 			InsecureSkipVerify: true,
 		},
 	}
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }
