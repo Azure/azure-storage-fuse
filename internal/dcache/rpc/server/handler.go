@@ -1733,6 +1733,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	//    through a JoinMV call. Only after a successful JoinMV response would the caller update the MV's
 	//    component RV list. If we do not have this MV added to our RV, that means we would not have
 	//    responded to the JoinMV RPC, which would mean the clustermap cannot have it.
+	//    For quick-restart case, NewChunkServiceHandler() will duly add all hosted MVs to the rvInfo.mvMap.
 	//    For rebalancing, a component RV would be removed from an MV only after the rebalancing has
 	//    completed and there's no undoing it.
 	//    Other way to look at it is, if we don't have the MV directory then we do not host the MV and there's

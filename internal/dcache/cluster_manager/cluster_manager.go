@@ -2712,6 +2712,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		syncingRVs := 0
 		onlineRVs := 0
 		outofsyncRVs := 0
+		mvUpdated := false
 
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
@@ -2725,6 +2726,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//
 			if rv.State == dcache.StateOffline {
 				mv.RVs[rvName] = dcache.StateOffline
+				mvUpdated = true
 			}
 
 			rvState := mv.RVs[rvName]
@@ -2769,21 +2771,37 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		if (offlineRVs + inbandOfflineRVs + outofsyncRVs + syncingRVs) == len(mv.RVs) {
 			// No component RV is online, offline-mv.
+			if !mvUpdated && mv.State != dcache.StateOffline {
+				mvUpdated = true
+			}
 			mv.State = dcache.StateOffline
 		} else if onlineRVs == len(mv.RVs) {
+			if !mvUpdated && mv.State != dcache.StateOnline {
+				mvUpdated = true
+			}
 			mv.State = dcache.StateOnline
 		} else if offlineRVs > 0 || inbandOfflineRVs > 0 || outofsyncRVs > 0 {
 			common.Assert(onlineRVs > 0 && onlineRVs < len(mv.RVs), onlineRVs, len(mv.RVs))
 			// At least one component RV is not online but at least one is online, degrade-mv.
+			if !mvUpdated && mv.State != dcache.StateDegraded {
+				mvUpdated = true
+			}
 			mv.State = dcache.StateDegraded
 		} else if syncingRVs > 0 {
 			common.Assert((syncingRVs+onlineRVs) == len(mv.RVs), syncingRVs, onlineRVs, len(mv.RVs))
+			if !mvUpdated && mv.State != dcache.StateSyncing {
+				mvUpdated = true
+			}
 			mv.State = dcache.StateSyncing
 		} else {
 			common.Assert(false)
 		}
 
-		existingMVMap[mvName] = mv
+		if mvUpdated {
+			existingMVMap[mvName] = mv
+		} else {
+			common.Assert(existingMVMap[mvName].Equals(&mv), mvName, existingMVMap[mvName], mv)
+		}
 	}
 
 	//
@@ -2910,15 +2928,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// will update the slots which will be reflected in availableRVsList as well.
 	// We do this to improve performance for setups with large number of RVs (and MVs).
 	//
+	// Note: getAvailableRVsList() returns a sorted list of RVs with most free slots at the beginning.
+	//       When placing new MVs for the first time, all RVs will have same number of free slots.
+	//
 	getAvailableRVsList(true /* newMV */)
-
-	//
-	// Shuffle the nodes to encourage random selection of RVs (from random nodes).
-	// Note that for new MV placement most/all RVs will be empty so sorting by free slots is not really useful.
-	//
-	rand.Shuffle(len(availableRVsList), func(i, j int) {
-		availableRVsList[i], availableRVsList[j] = availableRVsList[j], availableRVsList[i]
-	})
 
 	maxMVsPossible := (len(rvMap) * MVsPerRVForNewMV) / NumReplicas
 	atomic.StoreInt64(&stats.Stats.CM.NewMV.MVsPerRV, int64(MVsPerRVForNewMV))
@@ -2945,6 +2958,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			break
 		}
 
+		//
+		// We need at least NumReplicas RVs with free slots to create a new MV.
+		//
+		if len(availableRVsList) < NumReplicas {
+			log.Debug("ClusterManager::updateMVList: len(availableRVsList) [%d] < NumReplicas [%d]",
+				len(availableRVsList), NumReplicas)
+			break
+		}
+
 		// New MV's name, starting from index 0.
 		mvName := fmt.Sprintf("mv%d", len(existingMVMap))
 
@@ -2966,7 +2988,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//       sending JoinMV RPC to all component RVs (in parallel), which will be hard to get below 1ms, so for
 		//       20K MVs, it'll take ~20s to create all MVs, which should be fine.
 		//
-		startIdx := rand.Intn(len(availableRVsList)) // returns [0, N)
+		startIdx := rand.Intn(len(availableRVsList))
 		for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
 			rv := availableRVsList[idx%len(availableRVsList)]
 			usedSlots := MVsPerRVForFixMV - rv.slots
