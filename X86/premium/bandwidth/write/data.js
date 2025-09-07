@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1756616062900,
+  "lastUpdate": 1757220897783,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1478,6 +1478,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 1873.0888671875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4e93340509c9129fc1e9d7a3118f52b4bcdef1c7",
+          "message": "Fail FNS account mounted as HNS account (#1925)",
+          "timestamp": "2025-09-04T14:22:50Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4e93340509c9129fc1e9d7a3118f52b4bcdef1c7"
+        },
+        "date": 1757220897481,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "test",
+            "value": 8180.855794270833,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write",
+            "value": 1868.9996744791667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 1851.5849609375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 2020.3098958333333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 1883.8414713541667,
             "unit": "MiB/s"
           }
         ]
