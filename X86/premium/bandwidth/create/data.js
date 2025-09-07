@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1756617713499,
+  "lastUpdate": 1757222413076,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1164,6 +1164,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_1l_files_in_20_threads",
             "value": 0.0751953125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4e93340509c9129fc1e9d7a3118f52b4bcdef1c7",
+          "message": "Fail FNS account mounted as HNS account (#1925)",
+          "timestamp": "2025-09-04T14:22:50Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4e93340509c9129fc1e9d7a3118f52b4bcdef1c7"
+        },
+        "date": 1757222412789,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 107.595703125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 104.00390625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0.0830078125,
             "unit": "MiB/s"
           }
         ]
