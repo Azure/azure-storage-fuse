@@ -3340,7 +3340,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 				// All RVs of a new MV are sent JoinMV RPC.
 				// else for fix-mv case outofsync component RVs are sent JoinMV RPC.
 				//
-				_, err = rpc_client.JoinMV(ctx, cm.RVNameToNodeId(rvName), joinMvReq)
+				_, err = rpc_client.JoinMV(ctx, cm.RVNameToNodeId(rvName), joinMvReq, newMV)
 				action = "joining"
 				duration = stats.Duration(time.Since(start))
 

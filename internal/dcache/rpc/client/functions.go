@@ -760,7 +760,7 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 		targetNodeID, reqStr)
 }
 
-func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest) (*models.JoinMVResponse, error) {
+func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest, newMV bool) (*models.JoinMVResponse, error) {
 	common.Assert(req != nil)
 
 	// Caller must not set SenderNodeID, catch misbehaving callers.
@@ -768,7 +768,7 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 	req.SenderNodeID = myNodeId
 
 	reqStr := rpc.JoinMVRequestToString(req)
-	log.Debug("rpc_client::JoinMV: Sending JoinMV request to node %s: %v", targetNodeID, reqStr)
+	log.Debug("rpc_client::JoinMV: Sending JoinMV request (newMV: %v) to node %s: %v", newMV, targetNodeID, reqStr)
 
 	//
 	// We retry once after resetting bad connections.
@@ -787,16 +787,18 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			// client connections will fail with connection refused.
 			// Retry after a small wait.
 			//
-			log.Info("rpc_client::JoinMV: Retrying after 5 secs in case the RPC server is just starting on the target")
-			time.Sleep(5 * time.Second)
-			continue
+			if newMV {
+				log.Info("rpc_client::JoinMV: Retrying after 5 secs in case the RPC server is just starting on the target")
+				time.Sleep(5 * time.Second)
+				continue
+			}
 		}
 
 		// Call the rpc method.
 		resp, err := client.svcClient.JoinMV(ctx, req)
 		if err != nil {
-			log.Err("rpc_client::JoinMV: JoinMV failed to node %s %v: %v",
-				targetNodeID, reqStr, err)
+			log.Err("rpc_client::JoinMV: JoinMV (newMV: %v) failed to node %s %v: %v",
+				newMV, targetNodeID, reqStr, err)
 
 			//
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
