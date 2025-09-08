@@ -75,6 +75,9 @@ const (
 	// n/w bandwidth between two nodes (regardless of the RVs hosted by a node). Again, 8 should be
 	// sufficient for that.
 	//
+	// Note: 64 is seen to perform better, since we only have 16 regular clients which are used for
+	//       all operations other than PutChunkDC from forwardPutChunk().
+	//
 	defaultMaxPerNode = 64
 
 	//

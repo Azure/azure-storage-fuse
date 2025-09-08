@@ -122,8 +122,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 
 	myNodeID := rpc.GetMyNodeUUID()
 	for _, rv := range componentRVs {
-		if rv.State != string(dcache.StateOnline) ||
-			(len(excludeRVs) > 0 && slices.Contains(excludeRVs, rv.Name)) {
+		if rv.State != string(dcache.StateOnline) || slices.Contains(excludeRVs, rv.Name) {
 			// Not an online RV or present in the exclude list, skip.
 			log.Debug("utils::getReaderRV: skipping RV %s with state %s", rv.Name, rv.State)
 			continue

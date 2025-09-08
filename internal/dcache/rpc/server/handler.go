@@ -298,6 +298,7 @@ var handler *ChunkServiceHandler
 // NewChunkServiceHandler creates a new ChunkServiceHandler instance.
 // This MUST be called only once by the RPC server, on startup.
 func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
+	log.Debug("NewChunkServiceHandler: called with rvMap: %+v", rvMap)
 	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
 	handler = &ChunkServiceHandler{
@@ -3675,7 +3676,10 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	//
 	// As sync has completed successfully, the sync process must have written all chunks to the MV replica.
-	// These will be not less than mvInfo.reservedSpace.
+	// These will be not less than mvInfo.reservedSpace. This is because spaced is reserved in JoinMV call
+	// which looks at the MV size at that time, from JoinMV till StartSync and finally when the sync process
+	// starts, the source MV replica can have more chunks added to it, hence we might end up writing more than
+	// the reservedSpace.
 	//
 	common.Assert(mvInfo.totalChunkBytes.Load() >= mvInfo.reservedSpace.Load(),
 		rvInfo.rvName, req.MV, mvInfo.totalChunkBytes.Load(), mvInfo.reservedSpace.Load())

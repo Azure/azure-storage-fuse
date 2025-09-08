@@ -484,19 +484,22 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		// See above for explanation on negative nodes.
 		//
 		if err := cp.checkNegativeNode(nodeID); err != nil {
-			err = fmt.Errorf("failing getRPCClient for node %s: %w", nodeID, err)
+			err = fmt.Errorf("failing getRPCClient for negative node %s: %w", nodeID, err)
 			log.Err("clientPool::getRPCClient: %v", err)
 			return nil, err
 		}
 
 		//
-		// There can be a case when client pool for the node is deleted.
+		// There can be a case when client pool for the node is deleted (or being deleted).
 		// For example, the node goes down and RPC fails with BrokenPipe error. In this case,
 		// we reset the connections available for the node, which first closes the stale connections
 		// and then creates new connections. Since, the node is down, creating new RPC connection
 		// to the node fails with connection refused error. So, eventually all the connections in the
 		// pool are closed and client pool for the node is deleted. In this case, we do not wait
 		// for a client to become available and return error to the caller.
+		//
+		// Note: Any code path that doesn't want getRPCClient() to return a new client and fail fast, MUST
+		//       set deleting to true.
 		//
 		if ncPool.deleting.Load() {
 			err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %s",
@@ -505,7 +508,11 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			return nil, err
 		}
 
+		//
 		// Never wait more than maxWaitTime.
+		// This indicates some bug and moreover we cannot legitimately proceed if we cannot get a client
+		// so we panic.
+		//
 		if time.Since(startTime) >= maxWaitTime {
 			err := fmt.Errorf("no free RPC client for node %s, even after waiting for %s: %w",
 				nodeID, time.Since(startTime), NoFreeRPCClient)
@@ -562,6 +569,10 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 					// release a client to the pool (and signal the condition variable) before we wait on the
 					// condition variable.
 					//
+					// Note: Since we wait on the condition variable, any path that can change the state of
+					//       RPC clients for this node client pool MUST signal the condition variable after
+					//       making the change, else this may end up waiting forever.
+					//
 					ncPool.mu.Lock()
 					cp.releaseNodeLock(nodeLock, nodeID)
 
@@ -596,6 +607,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			log.Debug("clientPool::getRPCClient: No free (highPrio: %v) RPC client for node %s (active: %d, hactive:%d, waiting: %d, hwaiting: %d), for %s",
 				highPrio, nodeID, ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
 				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load(), time.Since(startTime))
+			// Continue the for loop, various exit checks will be done there.
 		}
 	}
 }
@@ -809,7 +821,10 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient) error {
 	common.Assert(ncPool != nil, client.nodeID)
 	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
 
-	// Deleting a client would cause client status to be changed, so let waiters know.
+	//
+	// Waiters in getRPCClient() need to know and re-evaluate.
+	// This is regardless of whether we are able to delete all clients or not.
+	//
 	defer ncPool.returnClientToPoolAndSignalWaiters(nil /* client */, true /* signalAll */)
 
 	//
@@ -990,11 +1005,12 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 	}
 
 	//
+	// Reset was successful, so we have at least one good connection to the target node.
 	// Clear deleting if we had set it earlier.
 	//
 	ncPool.deleting.Store(false)
 
-	// Add the new client to the client pool for this node.
+	// Add the new client to the client pool for this node and wakeup one waiter in getRPCClient().
 	ncPool.returnClientToPoolAndSignalWaiters(newClient, false /* signalAll */)
 
 	return nil
@@ -1039,7 +1055,12 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	common.Assert(ncPool != nil, client.nodeID)
 	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
 
-	// Resetting a client would cause client status to be changed, so let waiters know.
+	//
+	// Resetting clients would cause client status to be changed, and maybe make some new client(s)
+	// available.
+	// Waiters in getRPCClient() need to know and re-evaluate.
+	// This is regardless of whether we are able to reset all clients or not.
+	//
 	defer ncPool.returnClientToPoolAndSignalWaiters(nil /* client */, true /* signalAll */)
 
 	//
@@ -1624,6 +1645,7 @@ type nodeClientPool struct {
 }
 
 // Return the client to clientChan and signal one/all of the waiters (if any).
+// If client is nil, just signal the waiters.
 func (ncPool *nodeClientPool) returnClientToPoolAndSignalWaiters(client *rpcClient, signalAll bool) {
 
 	ncPool.mu.Lock()
@@ -1645,11 +1667,11 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	common.Assert(cp.isNodeLocked(ncPool.nodeID), ncPool.nodeID)
 
 	//
-	// With maxPerNode==32, we get 8 regular and 24 high priority clients.
+	// With maxPerNode==64, we get 16 regular and 48 high priority clients.
 	// All other requests, other than PutChunkDC use the high priority clients.
-	// 8 connections should be enough for PutChunkDC requests to saturate the network.
+	// 16 connections should be enough for PutChunk/PutChunkDC/GetChunk requests to saturate the network.
 	//
-	// TODO: Make sure 8 clients per node are enough for extra large clusters for various workflows
+	// TODO: Make sure 16 clients per node are enough for extra large clusters for various workflows
 	//       like fixMV, resync, and other heavy data movement operations like GetChunk.
 	//
 	numReservedHighPrio := int64(numClients - (numClients / 4))

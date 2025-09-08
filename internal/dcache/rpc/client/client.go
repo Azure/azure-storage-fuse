@@ -70,10 +70,9 @@ type rpcClient struct {
 	// PutChunkDC puts an interesting demand on the RPC client pool manager.
 	// PutChunkDC requires RPC clients for two distinct use cases:
 	// 1. RPC clients needed to make the PutChunkDC call to the first nexthop node.
-	//    This is called from WriteMV() invoked by file_manager when writing one or more chunks
-	//    from the writeback cache.
+	//    This is called from WriteMV() invoked by file_manager when writing chunks from the writeback cache.
 	// 2. RPC clients needed to make the PutChunkDC/PutChunk call to subsequent nodes in the daisy chain
-	//    in response to a PutChunkDC call received from a previous node.
+	//    in response to a PutChunkDC call received from a previous node (or the local node).
 	//
 	// The important distinction to note here is that the RPC clients used by case (1) cannot be freed
 	// till (2) gets the required RPC clients and complete their respective requests. There could be writes
@@ -91,6 +90,8 @@ type rpcClient struct {
 	//    See nodeClientPool.numReservedHighPrio.
 	// 2. We need to rate-limit the number of RPC clients used by (1) to a fraction of the total pool size.
 	//    See GetRPCClientDummy().
+	//
+	// highPrio indicates if this client is used for high priority requests (case 2 above).
 	//
 	highPrio bool
 }
