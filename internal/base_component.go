@@ -35,7 +35,6 @@ package internal
 
 import (
 	"context"
-	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
@@ -321,7 +320,7 @@ func (base *BaseComponent) FileUsed(name string) error {
 	return nil
 }
 
-func (base *BaseComponent) StatFs() (*syscall.Statfs_t, bool, error) {
+func (base *BaseComponent) StatFs() (*common.FilesystemStat, bool, error) {
 	if base.next != nil {
 		return base.next.StatFs()
 	}

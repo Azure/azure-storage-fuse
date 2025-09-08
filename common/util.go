@@ -52,7 +52,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 
 	"gopkg.in/ini.v1"
 )
@@ -349,20 +348,7 @@ func ExpandPath(path string) string {
 }
 
 // NotifyMountToParent : Send a signal to parent process about successful mount
-func NotifyMountToParent() error {
-	if !ForegroundMount {
-		ppid := syscall.Getppid()
-		if ppid > 1 {
-			if err := syscall.Kill(ppid, syscall.SIGUSR2); err != nil {
-				return err
-			}
-		} else {
-			return fmt.Errorf("failed to get parent pid, received : %v", ppid)
-		}
-	}
-
-	return nil
-}
+// Platform-specific implementation in util_unix.go and util_windows.go
 
 var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
 var selectedDuPath string = ""
@@ -430,26 +416,25 @@ var currentUID int = -1
 // GetDiskUsageFromStatfs: Current disk usage of temp path
 func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	// We need to compute the disk usage percentage for the temp path
-	var stat syscall.Statfs_t
-	err := syscall.Statfs(path, &stat)
+	stat, err := GetFilesystemStat(path)
 	if err != nil {
 		return 0, 0, err
 	}
 
 	if currentUID == -1 {
-		currentUID = os.Getuid()
+		currentUID = GetCurrentUID()
 	}
 
 	var availableSpace uint64
 	if currentUID == 0 {
 		// Sudo  has mounted
-		availableSpace = stat.Bfree * uint64(stat.Frsize)
+		availableSpace = stat.Bfree * stat.Frsize
 	} else {
 		// non Sudo has mounted
-		availableSpace = stat.Bavail * uint64(stat.Frsize)
+		availableSpace = stat.Bavail * stat.Frsize
 	}
 
-	totalSpace := stat.Blocks * uint64(stat.Frsize)
+	totalSpace := stat.Blocks * stat.Frsize
 	usedSpace := float64(totalSpace - availableSpace)
 	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
 }
