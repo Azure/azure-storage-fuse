@@ -2182,27 +2182,41 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
 	common.Assert(data != nil && len(*data) > 0)
 
-	// Caller wants to perform direct write, with failback to buffered write if direct write fails with EINVAL.
+	tmpChunkPath := *chunkPath + ".tmp"
+
+	// Caller wants to perform direct write, with fallback to buffered write if direct write fails with EINVAL.
 	odirect := (flag & syscall.O_DIRECT) != 0
 
-	// Use O_EXCL flag to catch the case where the chunk file already exists, it's unintentional.
-	fd, err := syscall.Open(*chunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
+	//
+	// Use O_EXCL flag just in case two writers are trying to write the same chunk simultaneously.
+	// Note that for actually protecting overwriting an existing chunk we rely on the atomic rename below.
+	//
+	fd, err := syscall.Open(tmpChunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
 	if err != nil {
 		//
 		// This is most likely open failure due to the file already existing.
 		// We need to fail the call, caller will fail the client request appropriately.
 		//
-		err1 := fmt.Errorf("safeWrite: failed to open chunk file %s, flag: 0x%x: %w", *chunkPath, flag, err)
+		err1 := fmt.Errorf("safeWrite: failed to open chunk file %s, flag: 0x%x: %w", tmpChunkPath, flag, err)
 		log.Warn("%v", err1)
 		return err1
 	}
 
+	deleteTmpFile := true
+
 	defer func() {
+		if deleteTmpFile {
+			err := os.Remove(tmpChunkPath)
+			if err != nil {
+				log.Err("safeWrite: failed to remove chunk file %s: %v", tmpChunkPath, err)
+			}
+		}
+
 		if fd != -1 {
 			closeErr := syscall.Close(fd)
 			if closeErr != nil {
 				log.Err("safeWrite: failed to close chunk file %s, flag: 0x%x: %v",
-					*chunkPath, flag, closeErr)
+					tmpChunkPath, flag, closeErr)
 			}
 		}
 	}()
@@ -2211,10 +2225,21 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 		n, err := syscall.Write(fd, *data)
 		if err == nil {
 			// write should never succeed with 0 bytes written.
-			common.Assert(n > 0, n, len(*data), *chunkPath)
+			common.Assert(n > 0, n, len(*data), tmpChunkPath)
 
 			if n == len(*data) {
+				//
 				// Common case, written everything requested.
+				// Rename the tmp chunk file to the final chunk file name.
+				//
+				renameErr := common.RenameNoReplace(tmpChunkPath, *chunkPath)
+				if renameErr != nil {
+					err := fmt.Errorf("safeWrite: failed to rename chunk file %s to %s: %w",
+						tmpChunkPath, *chunkPath, renameErr)
+					log.Err("%v", err)
+					return err
+				}
+				deleteTmpFile = false
 				return nil
 			} else if odirect {
 				//
@@ -2222,7 +2247,7 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 				// buffered write, with a warning log to know if this happens frequently.
 				//
 				log.Warn("safeWrite: partial (direct) write to chunk file %s (%d of %d), retrying as buffered write",
-					*chunkPath, n, len(*data))
+					tmpChunkPath, n, len(*data))
 				break
 			}
 
@@ -2232,12 +2257,12 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 			// Emit a warning log to know if this happens frequently.
 			//
 			log.Warn("safeWrite: partial write to chunk file %s (%d of %d), retrying remaining write",
-				*chunkPath, n, len(*data))
+				tmpChunkPath, n, len(*data))
 			*data = (*data)[n:]
 			continue
 		} else if errors.Is(err, syscall.EINTR) {
 			log.Warn("safeWrite: write to chunk file %s (len: %d, odirect: %v) interrupted, retrying",
-				*chunkPath, len(*data), odirect)
+				tmpChunkPath, len(*data), odirect)
 			continue
 		} else if !odirect {
 			//
@@ -2245,30 +2270,31 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 			// if it fails for direct write we can retry once with buffered write.
 			//
 			return fmt.Errorf("safeWrite: buffered write of %d bytes to chunk file %s failed: %w",
-				len(*data), *chunkPath, err)
+				len(*data), tmpChunkPath, err)
 		} else if !errors.Is(err, syscall.EINVAL) {
 			return fmt.Errorf("safeWrite: direct write of %d bytes to chunk file %s failed: %w",
-				len(*data), *chunkPath, err)
+				len(*data), tmpChunkPath, err)
 		}
 
 		// For direct write failing with EINVAL, fall through to buffered write.
 		log.Warn("safeWrite: direct write to chunk file %s (len: %d) failed with EINVAL, retrying with buffered write",
-			*chunkPath, len(*data))
+			tmpChunkPath, len(*data))
 		break
 	}
 
 	//
-	// Before retrying buffered write, we need to remove the chunk file as it was created readonly.
+	// Before retrying buffered write, we need to remove the tmp chunk file as it was created readonly.
 	//
-	err1 := os.Remove(*chunkPath)
+	deleteTmpFile = false
+	err1 := os.Remove(tmpChunkPath)
 	if err1 != nil {
-		return fmt.Errorf("safeWrite: failed to remove chunk file %s: %v", *chunkPath, err1)
+		return fmt.Errorf("safeWrite: failed to remove chunk file %s: %v", tmpChunkPath, err1)
 	}
 
 	closeErr := syscall.Close(fd)
 	if closeErr != nil {
 		log.Err("safeWrite: failed to close chunk file %s, flag: 0x%x: %v",
-			*chunkPath, flag, closeErr)
+			tmpChunkPath, flag, closeErr)
 	}
 	// defer should skip closing.
 	fd = -1

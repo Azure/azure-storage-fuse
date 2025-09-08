@@ -1707,8 +1707,46 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			continue
 		}
 
+		//
+		// chunks are stored in MV as,
+		// <MvName>/<FileID>.<OffsetInMiB>.data and
+		// <MvName>/<FileID>.<OffsetInMiB>.hash
+		// <MvName>/<FileID>.<OffsetInMiB>.data.tmp (temporary file created during safeWrite())
+		//
+		chunkParts := strings.Split(entry.Name(), ".")
+		if len(chunkParts) != 3 {
+			// This is most likely the temp chunk file created by safeWrite().
+			if len(chunkParts) == 4 && chunkParts[3] == "tmp" {
+				log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping temp chunk file %s",
+					entry.Name())
+			} else {
+				// TODO: should we return error in this case?
+				errStr := fmt.Sprintf("Invalid chunk name %s", entry.Name())
+				log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
+				common.Assert(false, errStr)
+			}
+			continue
+		}
+
+		// TODO: hash validation will be done later
+		// if file type is hash, skip it
+		// the hash data will be transferred with the regular chunk file
+		if chunkParts[2] == "hash" {
+			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping hash file %s", entry.Name())
+			continue
+		}
+
+		//
+		// Info() does a stat() syscall to fetch the file info, so we do it after we have performed
+		// name based exclusion.
+		//
 		info, err := entry.Info()
-		common.Assert(err == nil, err)
+		if err != nil {
+			log.Err("ReplicationManager::copyOutOfSyncChunks: entry.Info() failed for %s: %v",
+				entry.Name(), err)
+			common.Assert(false, err)
+			continue
+		}
 
 		if info.ModTime().UnixMicro() > job.syncStartTime {
 			// This chunk is created after the sync start time, so it will be written to both source and target
@@ -1726,28 +1764,6 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			"Mtime (%d) <= syncStartTime (%d) [%d usecs before sync start]",
 			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
 			job.syncStartTime-info.ModTime().UnixMicro())
-
-		//
-		// chunks are stored in MV as,
-		// <MvName>/<FileID>.<OffsetInMiB>.data and
-		// <MvName>/<FileID>.<OffsetInMiB>.hash
-		//
-		chunkParts := strings.Split(entry.Name(), ".")
-		if len(chunkParts) != 3 {
-			// TODO: should we return error in this case?
-			errStr := fmt.Sprintf("Invalid chunk name %s", entry.Name())
-			log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-			common.Assert(false, errStr)
-			continue
-		}
-
-		// TODO: hash validation will be done later
-		// if file type is hash, skip it
-		// the hash data will be transferred with the regular chunk file
-		if chunkParts[2] == "hash" {
-			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping hash file %s", entry.Name())
-			continue
-		}
 
 		fileID := chunkParts[0]
 		common.Assert(common.IsValidUUID(fileID))
