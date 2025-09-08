@@ -1111,6 +1111,7 @@ func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.Respo
 	log.Debug("mvInfo::refreshFromClustermap: %s/%s doNotFetchClustermap=%v",
 		mv.rv.rvName, mv.mvName, doNotFetchClustermap)
 
+	doNotFetchClustermap = false
 	//
 	// Refresh the clustermap synchronously. Once this returns, clustermap package has the updated
 	// clustermap.
