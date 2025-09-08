@@ -14,6 +14,19 @@ Blobfuse2 supports a distributed cache mode, enabling multiple nodes to share a 
 
 ---
 
+## Install Blobfuse2 on All Cluster Nodes
+
+On each node (Ubuntu 22.04), run the following to install Blobfuse2 and dependencies:
+
+```bash
+wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
+dpkg -i packages-microsoft-prod.deb
+apt-get update
+apt-get install -y fuse3 blobfuse2-preview
+```
+
+---
+
 ## Distributed Cache Configuration
 
 A sample configuration for distributed cache (YAML):
