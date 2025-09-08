@@ -795,6 +795,7 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 				time.Sleep(5 * time.Second)
 				continue
 			}
+			return nil, err
 		}
 
 		// Call the rpc method.
