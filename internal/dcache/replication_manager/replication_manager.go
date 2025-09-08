@@ -1717,11 +1717,11 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		if len(chunkParts) != 3 {
 			// This is most likely the temp chunk file created by safeWrite().
 			if len(chunkParts) == 4 && chunkParts[3] == "tmp" {
-				log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping temp chunk file %s",
-					entry.Name())
+				log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping temp chunk file %s/%s",
+					sourceMVPath, entry.Name())
 			} else {
 				// TODO: should we return error in this case?
-				errStr := fmt.Sprintf("Invalid chunk name %s", entry.Name())
+				errStr := fmt.Sprintf("Invalid chunk name %s/%s", sourceMVPath, entry.Name())
 				log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
 				common.Assert(false, errStr)
 			}
@@ -1740,11 +1740,15 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		// Info() does a stat() syscall to fetch the file info, so we do it after we have performed
 		// name based exclusion.
 		//
+		// Note: This can fail for chunks which are being removed (corresponding to a deleted file),
+		//       so if ReadDir() above finds a chunk and it's removed by the time we come here, the
+		//       assert below will fail. Let's leave it for some time and later we can remove it.
+		//
 		info, err := entry.Info()
 		if err != nil {
-			log.Err("ReplicationManager::copyOutOfSyncChunks: entry.Info() failed for %s: %v",
-				entry.Name(), err)
-			common.Assert(false, err)
+			log.Err("ReplicationManager::copyOutOfSyncChunks: entry.Info() failed for %s/%s: %v",
+				sourceMVPath, entry.Name(), err)
+			common.Assert(false, err, sourceMVPath, entry.Name())
 			continue
 		}
 

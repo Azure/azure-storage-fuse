@@ -514,8 +514,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		// so we panic.
 		//
 		if time.Since(startTime) >= maxWaitTime {
-			err := fmt.Errorf("no free RPC client for node %s, even after waiting for %s: %w",
-				nodeID, time.Since(startTime), NoFreeRPCClient)
+			err := fmt.Errorf("no free (highPrio: %v) RPC client for node %s, even after waiting for %s: %w",
+				highPrio, nodeID, time.Since(startTime), NoFreeRPCClient)
 			log.Err("clientPool::getRPCClient: %v", err)
 			log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
 			return nil, err
@@ -1140,6 +1140,13 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 			common.Assert(rpc.IsConnectionRefused(err) ||
 				rpc.IsTimedOut(err) ||
 				errors.Is(err, NegativeNodeError), err)
+
+			//
+			// Mark it deleting so that getRPCClient() does not allocate any more clients for this node, since
+			// the Blobfuse is currently down. Once the node comes back up and we are able to create a connection
+			// we will clear the deleting flag.
+			//
+			ncPool.deleting.Store(true)
 		} else {
 			numConnReset++
 		}
@@ -1326,7 +1333,8 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 		return err
 	}
 
-	common.Assert(cp.clientsCnt.Load() == 0, "client pool is not empty after closing all node client pools")
+	// client pool is not empty after closing all node client pools?
+	common.Assert(cp.clientsCnt.Load() == 0, cp.clientsCnt.Load())
 	return nil
 }
 
@@ -1668,7 +1676,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 
 	//
 	// With maxPerNode==64, we get 16 regular and 48 high priority clients.
-	// All other requests, other than PutChunkDC use the high priority clients.
+	// All other requests, other than PutChunkDC use the regular priority clients.
 	// 16 connections should be enough for PutChunk/PutChunkDC/GetChunk requests to saturate the network.
 	//
 	// TODO: Make sure 16 clients per node are enough for extra large clusters for various workflows
