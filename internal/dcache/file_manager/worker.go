@@ -215,7 +215,7 @@ func (wp *workerPool) writeChunk(task *task) {
 		close(task.chunk.Err)
 
 		// The chunk is uploaded to DCache, we can release it now.
-		log.Debug("DistributedCache::writeChunk: Writing completed file: %s, chunkIdx: %d, chunk.Len: %s, refcount: %d",
+		log.Debug("DistributedCache::writeChunk: Writing completed file: %s, chunkIdx: %d, chunk.Len: %d, refcount: %d",
 			task.file.FileMetadata.Filename, task.chunk.Idx, task.chunk.Len, task.chunk.RefCount.Load())
 
 		task.file.removeChunk(task.chunk.Idx)

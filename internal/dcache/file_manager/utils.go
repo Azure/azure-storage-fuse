@@ -408,30 +408,41 @@ loop:
 			// Every 2 seconds check if all chunks in StagedChunks map are "aged".
 			//
 			file.chunkLock.RLock()
+			dirty := 0
+			partial := 0
+			young := 0
 
 			chunks := make([]*StagedChunk, 0)
 			for chunkIdx, chunk := range file.StagedChunks {
 				_ = chunkIdx
 
-				// Dirty chunks cannot be reclaimed.
-				if chunk.Dirty.Load() {
+				// Partial chunks cannot be reclaimed.
+				if chunk.Len != file.FileMetadata.FileLayout.ChunkSize {
+					partial++
 					continue
 				}
 
-				// Partial chunks cannot be reclaimed.
-				if chunk.Len != file.FileMetadata.FileLayout.ChunkSize {
+				// Dirty chunks cannot be reclaimed.
+				if chunk.Dirty.Load() {
+					dirty++
 					continue
 				}
 
 				allocatedFor := time.Since(chunk.AllocatedAt)
 				if allocatedFor < reclaimTime {
+					young++
 					continue
 				}
 
 				chunks = append(chunks, chunk)
 			}
-			log.Debug("DistributedCache[FM]::NewStagedChunk: Reclaiming %d of %d chunks in StagedChunks map",
-				len(chunks), len(file.StagedChunks))
+
+			_ = dirty
+			_ = partial
+			_ = young
+
+			log.Debug("DistributedCache[FM]::NewStagedChunk: Reclaiming %d of %d chunks in StagedChunks map (%d, %d, %d)",
+				len(chunks), len(file.StagedChunks), dirty, partial, young)
 
 			file.chunkLock.RUnlock()
 
