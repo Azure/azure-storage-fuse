@@ -328,6 +328,11 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 			unsure := (accessPattern == 0)
 			chunk, err = file.readChunkWithReadAhead(offset, unsure)
 			if err != nil {
+				// Chunk != nil means we had allocated a new chunk, but failed to read into it.
+				if chunk != nil {
+					// Release our refcount on the chunk.
+					file.releaseChunk(chunk)
+				}
 				return 0, err
 			}
 
@@ -348,6 +353,11 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 			//
 			chunk, err = file.readChunkNoReadAhead(offset, readSize)
 			if err != nil {
+				// Chunk != nil means we had allocated a new chunk, but failed to read into it.
+				if chunk != nil {
+					// Release our refcount on the chunk.
+					file.releaseChunk(chunk)
+				}
 				return 0, err
 			}
 			/*
@@ -1035,9 +1045,11 @@ func (file *DcacheFile) getChunkForRead(chunkIdx, chunkOffset, length int64) (*S
 
 		log.Debug("DistributedCache::getChunkForRead: Got chunk, file: %s, chunkIdx: %d, isExisting: %v, refcount: %d",
 			file.FileMetadata.Filename, chunk.Idx, isExisting, chunk.RefCount.Load())
+		return chunk, isExisting, err
 	}
 
-	return chunk, isExisting, err
+	common.Assert(chunk == nil)
+	return nil, false, err
 }
 
 func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, bool, error) {
@@ -1237,7 +1249,8 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	//
 	chunk, isExisting, err := file.getChunkForRead(chunkIdx, chunkOffset, length)
 	if err != nil {
-		return chunk, err
+		common.Assert(chunk == nil)
+		return nil, err
 	}
 
 	//
@@ -1257,6 +1270,7 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	}
 
 	if sync {
+		// Block here till the chunk download is done.
 		err = <-chunk.Err
 
 		if err != nil {
@@ -1268,6 +1282,10 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 		}
 	}
 
+	//
+	// The only case where we fail with an error but still return a valid chunk is when chunk download
+	// fails. Caller must release the chunk refcount.
+	//
 	return chunk, err
 }
 
