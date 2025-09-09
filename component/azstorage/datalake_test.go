@@ -254,6 +254,33 @@ func (s *datalakeTestSuite) TestListContainers() {
 
 // TODO : ListContainersHuge: Maybe this is overkill?
 
+func (s *datalakeTestSuite) TestFNSOverHNS() {
+	defer s.cleanupTest()
+	// Testing dir and dir/
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n ",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, "fnsoverhns")
+	s.setupTestHelper(config, "fnsoverhns", true)
+
+	var paths = []string{generateDirectoryName(), generateDirectoryName() + "/"}
+	for _, path := range paths {
+		log.Debug(path)
+		s.Run(path, func() {
+			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
+
+			s.assert.Nil(err)
+			// Directory should be in the account
+			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
+			_, err = dir.GetProperties(ctx, nil)
+			s.assert.Nil(err)
+		})
+	}
+
+	err := s.az.storage.TestPipeline()
+	s.assert.NotNil(err)
+	s.assert.Contains(err.Error(), "Account is not HNS")
+}
+
 func (s *datalakeTestSuite) TestCreateDir() {
 	defer s.cleanupTest()
 	// Testing dir and dir/
