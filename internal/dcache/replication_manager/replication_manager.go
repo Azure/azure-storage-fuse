@@ -1958,32 +1958,9 @@ retry:
 				return 0, err
 			}
 
-			//
-			// If the current clustermap does not have any suitable RV to query MV size from, we try clustermap
-			// refresh just in case we have a stale clustermap. This is very unlikely and it would most
-			// likely indicate that we have a “very stale” clustermap where all/most of the component RVs
-			// have been replaced, or most of them are down.
-			//
-			// Even after refreshing clustermap if we cannot get a valid MV replica to query MV size,
-			// alas we need to fail the GetMVSize().
-			//
-			if clusterMapRefreshed {
-				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d",
-					mvName, lastClusterMapEpoch)
-				log.Err("ReplicationManager::GetMVSize: %v", err)
-				return 0, err
-			}
-
-			err = cm.RefreshClusterMap(lastClusterMapEpoch)
-			if err != nil {
-				log.Warn("ReplicationManager::GetMVSize: RefreshClusterMap() failed for GetMVSize(%s) (retryCnt: %d): %v",
-					mvName, retryCnt, err)
-			} else {
-				clusterMapRefreshed = true
-			}
-
-			retryCnt++
-			goto retry
+			err = fmt.Errorf("no suitable RV found for MV %s", mvName)
+			log.Err("ReplicationManager::GetMVSize: %v", err)
+			return 0, err
 		}
 
 		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), readerRV.Name, excludeRVs)

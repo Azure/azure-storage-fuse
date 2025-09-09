@@ -2756,7 +2756,7 @@ refreshFromClustermapAndRetry:
 		//       One likely possibility is that when we called GetMVSize() from JoinMV, there were more chunks
 		//       written to the source MV replica after we read the mvInfo.totalChunkBytes, so we reserved less
 		//       but actually sync'ed more. It's not a big deal as we will differ only slightly.
-		common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
+		//common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
 

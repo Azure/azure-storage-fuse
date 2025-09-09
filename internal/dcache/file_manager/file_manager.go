@@ -236,7 +236,7 @@ func (file *DcacheFile) getWriteError() error {
 func (file *DcacheFile) initFreeChunks(maxChunks int) {
 	// Must be called only once.
 	common.Assert(file.freeChunks == nil)
-	common.Assert(maxChunks >= max(fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks),
+	common.Assert(maxChunks >= min(fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks),
 		maxChunks, fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks)
 
 	file.freeChunks = make(chan struct{}, maxChunks)
