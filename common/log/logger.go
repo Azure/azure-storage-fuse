@@ -35,6 +35,7 @@ package log
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -184,8 +185,12 @@ func SetLogLevel(lvl common.LogLevel) {
 }
 
 // Destroy : DeInitialize the logging library
+// This should only be called from the main function.
 func Destroy() error {
-	return logObj.Destroy()
+	if logObj != nil {
+		return logObj.Destroy()
+	}
+	return fmt.Errorf("Logger is not initialized")
 }
 
 // ------------------ Public methods for logging events ------------------
