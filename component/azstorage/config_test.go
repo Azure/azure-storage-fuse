@@ -437,6 +437,30 @@ func (s *configTestSuite) TestSASRefresh() {
 	assert.Nil(err)
 }
 
+func (s *configTestSuite) TestDisableSetAccessControlConfig() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName:             "testaccount",
+		AccountType:             "adls",
+		Container:               "test",
+		AuthMode:                "key",
+		AccountKey:              "testkey",
+		DisableSetAccessControl: true,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.True(az.stConfig.disableSetAccessControl)
+
+	// Test with false value
+	opt.DisableSetAccessControl = false
+	err = ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.False(az.stConfig.disableSetAccessControl)
+}
+
 func TestConfigTestSuite(t *testing.T) {
 	suite.Run(t, new(configTestSuite))
 }
