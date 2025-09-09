@@ -354,6 +354,8 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 		err := cp.checkNegativeNode(nodeID)
 		if err != nil {
 			log.Err("clientPool::getNodeClientPool: not creating RPC clients for negative node %s: %v", nodeID, err)
+			// Caller should be able to identify this as a negative node error.
+			common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 			return nil, err
 		}
 
@@ -403,6 +405,10 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 // If the pool doesn't have any free client, it waits for 60secs for a client to become available and returns as
 // soon as an RPC client is released and added to the pool. If no client becomes available for 60secs, it
 // indicates some bug and it panics the program.
+//
+// Note: This waits enough to get a free client, so if this fails it indicates a serious issue and retrying
+//
+//	usually won't help. Callers should treat it as such.
 //
 // NOTE: Caller MUST NOT hold the clientPool or node level lock.
 func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, error) {
@@ -486,6 +492,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		if err := cp.checkNegativeNode(nodeID); err != nil {
 			err = fmt.Errorf("failing getRPCClient for negative node %s: %w", nodeID, err)
 			log.Err("clientPool::getRPCClient: %v", err)
+			// Caller should be able to identify this as a negative node error.
+			common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 			return nil, err
 		}
 
@@ -502,8 +510,9 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		//       set deleting to true.
 		//
 		if ncPool.deleting.Load() {
-			err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %s",
-				nodeID, time.Since(startTime))
+			// Publish as NegativeNodeError as we cannot create a client because the node is probably down.
+			err := fmt.Errorf("client pool deleted for node %s, no clients available after waiting for %s: %w",
+				nodeID, time.Since(startTime), NegativeNodeError)
 			log.Err("clientPool::getRPCClient: %v", err)
 			return nil, err
 		}
@@ -553,6 +562,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 
 				err = fmt.Errorf("failing getRPCClient for node %s, after getting the client [%w]", nodeID, err)
 				log.Err("clientPool::getRPCClient: %v", err)
+				// Caller should be able to identify this as a negative node error.
+				common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 				return nil, err
 			}
 
@@ -1459,6 +1470,8 @@ func (cp *clientPool) checkNegativeNode(nodeID string) error {
 		if val, ok := cp.negativeNodes.Load(nodeID); ok {
 			err := fmt.Errorf("%w: %s (%s ago)", NegativeNodeError, nodeID, time.Since(val.(time.Time)))
 			log.Err("clientPool::checkNegativeNode: %v", err)
+			// Caller should be able to identify this as a negative node error.
+			common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 			return err
 		}
 	}
