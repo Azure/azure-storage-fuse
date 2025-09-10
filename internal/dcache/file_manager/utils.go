@@ -305,7 +305,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	return dcacheFile, nil
 }
 
-func DeleteDcacheFile(fileName string) error {
+func DeleteDcacheFile(fileName string, forceDelete bool) error {
 	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
 
 	fileMetadata, _, err := GetDcacheFile(fileName)
@@ -322,7 +322,7 @@ func DeleteDcacheFile(fileName string) error {
 	// TODO: We should allow deleting stale files which are left in creating state indefinitely due to
 	//       blobfuse crashing between createFileInit() and createFileFinalize().
 	//
-	if fileMetadata.State != dcache.Ready {
+	if !forceDelete && fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::DeleteDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
 		return syscall.EBUSY
