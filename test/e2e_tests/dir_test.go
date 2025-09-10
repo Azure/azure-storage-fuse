@@ -225,7 +225,9 @@ func (suite *dirTestSuite) TestDirDeleteNonEmpty() {
 
 	err = os.Remove(dir3Name)
 	suite.NotNil(err)
-	suite.Contains(err.Error(), "directory not empty")
+	if err != nil {
+		suite.Contains(err.Error(), "directory not empty")
+	}
 
 	// cleanup
 	suite.dirTestCleanup([]string{dir3Name})

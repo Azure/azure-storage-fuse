@@ -266,6 +266,9 @@ func (s *datalakeTestSuite) TestFNSOverHNS() {
 		log.Debug(path)
 		s.Run(path, func() {
 			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
+			if err != nil && strings.Contains(err.Error(), "EndpointUnsupportedAccountFeatures") {
+				return
+			}
 
 			s.assert.Nil(err)
 			// Directory should be in the account
@@ -277,6 +280,10 @@ func (s *datalakeTestSuite) TestFNSOverHNS() {
 
 	err := s.az.storage.TestPipeline()
 	s.assert.NotNil(err)
+	if strings.Contains(err.Error(), "EndpointUnsupportedAccountFeatures") {
+		return
+	}
+
 	s.assert.Contains(err.Error(), "Account is not HNS")
 }
 
