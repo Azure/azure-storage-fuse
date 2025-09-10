@@ -106,7 +106,11 @@ const (
 	// this information and not attempt to connect to an unreachable node, potentially delaying the
 	// caller, but small enough to promptly attempt connection to a node that might have now come up.
 	//
-	defaultNegativeTimeout = 30
+	// Ideally if a node is down and we figured out by RPC failing, our higher level workflows should not
+	// attempt to access the node/RV till it comes back up.
+	// Keep it more than the heartbeat timeout to avoid premature retries.
+	//
+	defaultNegativeTimeout = 15
 )
 
 var (
@@ -163,29 +167,35 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -248,29 +258,35 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -333,29 +349,35 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -470,12 +492,29 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
@@ -503,29 +542,23 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				//
 				// We reset the RPC client here because if the connection between client and target node is good,
 				// the response from target node will eventually return after the timeout error. In this case, we
-				// cannot reuse the same client which was timed out as it will result in ambiguous behavior as the next
-				// caller will fetch that error from the previous call.
+				// cannot reuse the same client which was timed out as it will result in ambiguous behavior as the
+				// next caller will fetch that error from the previous call.
 				// So, we reset this client for the target node.
+				//
+				// If the reset fails to establish a new connection, we press the panic button and delete all
+				// connections to the target node. This will force creation of a new connection when needed.
 				//
 				err1 := cp.resetRPCClient(client)
 				if err1 != nil {
 					log.Err("rpc_client::PutChunkDC: resetRPCClient failed for node %s: %v",
 						targetNodeID, err1)
+					// TODO: This will cause the closeRPCClient() assert to fail. Let it happen for now.
+					cp.deleteAllRPCClients(client, true /* onTimeout */)
 				}
 
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -593,29 +626,35 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -691,29 +730,35 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 				newMV, targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -776,29 +821,35 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -861,29 +912,35 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -946,29 +1003,35 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -1040,29 +1103,35 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -1136,29 +1205,35 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 				targetNodeID, reqStr, err)
 
 			//
-			// Broken pipe most likely means the blobfuse2 process has stopped (may or may not have restarted),
-			// or the node restarted (less likely), while TimedOut means the node is down or cannot be reached
-			// over the n/w. In both cases we close all existing connections to the node. They will be later
-			// created when we want to send an RPC to the node (and the quarantine timeout has expired).
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
 				cp.deleteAllRPCClients(client, false /* onTimeout */)
 				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				cp.deleteAllRPCClients(client, true /* onTimeout */)
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil

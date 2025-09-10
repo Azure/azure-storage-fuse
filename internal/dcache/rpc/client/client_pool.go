@@ -756,7 +756,7 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) {
 			client, client.nodeAddress, client.nodeID, err)
 		// We don't expect connection close to fail, let's know if it happens.
 		common.Assert(false, err)
-		// This will cause a socket fd leak.
+		// TODO: This will cause a socket fd leak.
 	}
 
 	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
@@ -844,8 +844,8 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, onTimeout bool) {
 	numClients := len(ncPool.clientChan)
 	common.Assert(numClients < int(cp.maxPerNode), numClients, cp.maxPerNode)
 
-	log.Debug("clientPool::deleteAllRPCClients: node %s (%s), numActive: %d (%d, %d)",
-		client.nodeID, client.nodeAddress, ncPool.numActive.Load(), numClients, cp.maxPerNode)
+	log.Debug("clientPool::deleteAllRPCClients: node %s (%s), client: %p, numActive: %d (%d, %d)",
+		client.nodeID, client.nodeAddress, client, ncPool.numActive.Load(), numClients, cp.maxPerNode)
 
 	//
 	// Delete this client. This closes this client and removes it from the pool.
@@ -1138,7 +1138,11 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 		// Mark it deleting so that getRPCClient() does not allocate any more clients for this node.
 		// Also wakeup any waiters in getRPCClient() so that they can fail fast.
 		//
-		ncPool.deleting.Store(true)
+		if !ncPool.deleting.Swap(true) {
+			ncPool.deletingAt = time.Now()
+		} else {
+			common.Assert(!ncPool.deletingAt.IsZero(), ncPool.nodeID)
+		}
 		ncPool.returnClientToPoolAndSignalWaiters(nil /* client */, true /* signalAll */)
 
 		//
