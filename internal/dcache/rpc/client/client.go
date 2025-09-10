@@ -143,19 +143,18 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 
 	err = client.transport.Open()
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: Failed to open transport node %s at %s [%v]", nodeID, nodeAddress, err.Error())
+		log.Err("rpcClient::newRPCClient: Failed to create connection to node %s at %s, adding to negative nodes map: %v",
+			nodeID, nodeAddress, err)
+
+		common.Assert(rpc.IsTimedOut(err) ||
+			rpc.IsConnectionRefused(err) ||
+			rpc.IsConnectionReset(err), err)
 
 		//
-		// If the RPC client creation fails due to timeout error, it means some connection problem or
-		// the node is down. In this case we should prevent creating RPC clients to the same node by
-		// other threads, as each operation will fail with the timeout error.
-		// So, add this node ID to negativeNodes map to prevent creating new RPC clients to it by other
-		// threads till the negative timeout expires.
+		// Any error indicates a problem connecting to the node, so add to negative nodes map to quarantine
+		// the node for a short period, so that we don't keep trying to connect to it repeatedly.
 		//
-		if rpc.IsTimedOut(err) {
-			log.Warn("rpcClient::newRPCClient: Adding node %s at %s to negative nodes map", nodeID, nodeAddress)
-			cp.addNegativeNode(nodeID)
-		}
+		cp.addNegativeNode(nodeID)
 
 		return nil, err
 	}
