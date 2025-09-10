@@ -2220,7 +2220,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		offlineRVs := 0
 		outofsyncRVs := 0
-		excludeNodes := make(map[int]struct{})
+		//
+		// Exclude negative nodes for picking replacement RVs, as the joinMV() call will anyway fail for
+		// these nodes, so save all the work. Note that negative nodes are not "definitively bad" that we
+		// go marking RVs on them offline but we have enough reason to not pick those for replacement RVs.
+		// If they are proven innocent, later updateMVList() calls will pick RVs on them for replacement.
+		//
+		excludeNodes := rpc_client.GetNegativeNodes()
 		excludeFaultDomains := make(map[int]struct{})
 		excludeUpdateDomains := make(map[int]struct{})
 
