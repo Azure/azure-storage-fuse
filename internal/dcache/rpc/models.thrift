@@ -6,6 +6,7 @@ struct HelloRequest {
     3: i64 time, // current time in usec in sender
     4: list<string> RVName,
     5: list<string> MV
+    6: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct HelloResponse {
@@ -13,6 +14,7 @@ struct HelloResponse {
     2: i64 time, // current time in usec in receiver
     3: list<string> RVName,
     4: list<string> MV
+    5: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct Address {
@@ -40,6 +42,7 @@ struct GetChunkRequest {
     4: i64 length,
     5: bool isLocalRV, // true, if both server and client are on the same node
     6: list<RVNameAndState> componentRV // used to validate the component RV for the MV
+    7: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct GetChunkResponse {
@@ -47,6 +50,7 @@ struct GetChunkResponse {
     2: string chunkWriteTime,
     3: i64 timeTaken,
     4: list<RVNameAndState> componentRV
+    5: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct PutChunkRequest {
@@ -56,6 +60,7 @@ struct PutChunkRequest {
     4: string syncID,
     5: list<RVNameAndState> componentRV, // used to validate the component RV for the MV
     6: bool maybeOverwrite
+    7: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct PutChunkResponse {
@@ -63,6 +68,7 @@ struct PutChunkResponse {
     1: i64 timeTaken,
     2: i64 availableSpace,
     3: list<RVNameAndState> componentRV
+    4: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct PutChunkDCRequest {
@@ -78,6 +84,7 @@ struct PutChunkResponseOrError {
 
 struct PutChunkDCResponse {
     1: map<string, PutChunkResponseOrError> responses // map of RV name to the PutChunk response or error to that RV
+    2: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 // Remove chunks belonging to a file.
@@ -85,6 +92,7 @@ struct RemoveChunkRequest {
     1: string senderNodeID,
     2: Address address,
     3: list<RVNameAndState> componentRV // used to validate the component RV for the MV
+    4: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct RemoveChunkResponse {
@@ -98,6 +106,7 @@ struct RemoveChunkResponse {
     // to the caller that all chunks of the file are deleted from the specified rv/mv directory.
     //
     4: i64 numChunksDeleted,
+    5: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct JoinMVRequest {
@@ -106,10 +115,12 @@ struct JoinMVRequest {
     3: string RVName,
     4: i64 reserveSpace,
     5: list<RVNameAndState> componentRV
+    6: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct JoinMVResponse {
     // status will be returned in the error
+    1: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct UpdateMVRequest {
@@ -117,10 +128,12 @@ struct UpdateMVRequest {
     2: string MV,
     3: string RVName,
     4: list<RVNameAndState> componentRV
+    5: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct UpdateMVResponse {
     // status will be returned in the error
+    1: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct LeaveMVRequest {
@@ -128,10 +141,12 @@ struct LeaveMVRequest {
     2: string MV,
     3: string RVName,
     4: list<RVNameAndState> componentRV
+    5: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct LeaveMVResponse {
     // status will be returned in the error
+    1: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct StartSyncRequest {
@@ -141,11 +156,13 @@ struct StartSyncRequest {
     4: string targetRVName, // target RV is the target of the start sync request
     5: list<RVNameAndState> componentRV,
     6: i64 syncSize
+    7: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct StartSyncResponse {
     // status will be returned in the error
     1: string syncID
+    2: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct EndSyncRequest {
@@ -156,20 +173,24 @@ struct EndSyncRequest {
     5: string targetRVName, // target RV is the RV which has to stop the sync marking it as completed
     6: list<RVNameAndState> componentRV,
     7: i64 syncSize
+    8: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct EndSyncResponse {
     // status will be returned in the error
+    1: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct GetMVSizeRequest {
     1: string senderNodeID,
     2: string MV,
     3: string RVName
+    4: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct GetMVSizeResponse {
     1: i64 mvSize
+    2: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 // Custom error codes returned by the ChunkServiceHandler
