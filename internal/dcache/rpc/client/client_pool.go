@@ -354,6 +354,8 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 		err := cp.checkNegativeNode(nodeID)
 		if err != nil {
 			log.Err("clientPool::getNodeClientPool: not creating RPC clients for negative node %s: %v", nodeID, err)
+			// Caller should be able to identify this as a negative node error.
+			common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 			return nil, err
 		}
 
@@ -404,7 +406,13 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 // soon as an RPC client is released and added to the pool. If no client becomes available for 60secs, it
 // indicates some bug and it panics the program.
 //
+// Note: This waits enough to get a free client, so if this fails it indicates a serious issue and retrying
+//	     usually won't help. Callers should treat it as such.
+//       Caller can check for NegativeNodeError to see if the client couldn't be created because the node is
+//       probably down.
+//
 // NOTE: Caller MUST NOT hold the clientPool or node level lock.
+
 func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, error) {
 	log.Debug("clientPool::getRPCClient: getRPCClient(nodeID: %s, highPrio: %v)", nodeID, highPrio)
 
@@ -492,8 +500,11 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		//       set deleting to true.
 		//
 		if ncPool.deleting.Load() {
-			err := fmt.Errorf("client pool deleted for node %s (%s ago), no clients available after waiting for %s",
-				nodeID, time.Since(ncPool.deletingAt), time.Since(startTime))
+			// If deleting is set deletingAt must also be set.
+			common.Assert(!ncPool.deletingAt.IsZero(), nodeID)
+			// Publish as NegativeNodeError as we cannot create a client because the node is probably down.
+			err := fmt.Errorf("client pool deleted for node %s (%s ago), no clients available after waiting for %s: %w",
+				nodeID, time.Since(ncPool.deletingAt), time.Since(startTime), NegativeNodeError)
 			log.Err("clientPool::getRPCClient: %v", err)
 			//
 			// Once we mark a nodeClientPool as deleting, we don't allocate any new clients from it and we have
@@ -512,6 +523,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		if err := cp.checkNegativeNode(nodeID); err != nil {
 			err = fmt.Errorf("failing getRPCClient for negative node %s: %w", nodeID, err)
 			log.Err("clientPool::getRPCClient: %v", err)
+			// Caller should be able to identify this as a negative node error.
+			common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 			return nil, err
 		}
 
@@ -560,6 +573,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 
 				err = fmt.Errorf("failing getRPCClient for node %s, after getting the client [%w]", nodeID, err)
 				log.Err("clientPool::getRPCClient: %v", err)
+				// Caller should be able to identify this as a negative node error.
+				common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 				return nil, err
 			}
 
@@ -797,7 +812,7 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) {
 // It closes the passed in connection and all existing connections in the pool, and if there are no
 // active connections and no connections in the channel, it deletes the node client pool.
 func (cp *clientPool) deleteAllRPCClients(client *rpcClient, onTimeout bool) {
-	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, onTimeout: %v",
+	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, onTimeout: %v, adding to negative nodes map",
 		client.nodeAddress, client.nodeID, client, onTimeout)
 
 	//
@@ -1319,6 +1334,8 @@ func (cp *clientPool) checkNegativeNode(nodeID string) error {
 		if val, ok := cp.negativeNodes.Load(nodeID); ok {
 			err := fmt.Errorf("%w: %s (%s ago)", NegativeNodeError, nodeID, time.Since(val.(time.Time)))
 			log.Err("clientPool::checkNegativeNode: %v", err)
+			// Caller should be able to identify this as a negative node error.
+			common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 			return err
 		}
 	}
