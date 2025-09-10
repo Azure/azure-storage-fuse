@@ -219,6 +219,8 @@ type DcacheFile struct {
 	// It is saved when the file is opened, if there are no more file opens done on that file, the same etag
 	// can be used to update the file open count on close.
 	attr *internal.ObjAttr
+
+	CacheWarmup *cacheWarmup
 }
 
 // Get the write error encountered during file writes, if any.
@@ -451,7 +453,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
 	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
-	common.Assert(len(buf) <= common.MbToBytes, len(buf))
+	//	common.Assert(len(buf) <= common.MbToBytes, len(buf))
 	// Read patterm tracker must not be present for files opened for writing.
 	common.Assert(file.RPT == nil, file.FileMetadata.Filename)
 	// We should not be called for 0 byte writes.

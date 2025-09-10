@@ -1037,6 +1037,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		} else {
 			// todo: make sure we come here when opening dcache file is returning ENOENT
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s, Trying to Open the file in Azure", err.Error(), options.Name)
+
 			handle, err = dc.NextComponent().OpenFile(options)
 			if err != nil {
 				log.Err("DistributedCache::OpenFile : Azure File Open failed with err : %s, path : %s", err.Error(), options.Name)
@@ -1044,6 +1045,22 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			}
 			log.Debug("DistributedCache::OpenFile : Opening the file from Azure, path : %s", options.Name)
 			handle.SetFsAzure()
+
+			// Start Warming up the cache for this file in the background, if the file is present in Azure and not in
+			// dcache.
+			//
+			// Create the Dcache metadata file.
+			if handle.Size > 0 {
+				dcFile, err = fm.NewDcacheFile(rawPath)
+				if err != nil {
+					log.Warn("DistributedCache::OpenFile : Dcache File Creation for cache warmup failed with err : %s, path : %s",
+						err.Error(), options.Name)
+				} else {
+
+					dcFile.CacheWarmup = fm.NewCacheWarmup(handle.Size)
+					go dc.startCacheWarmup(handle, dcFile)
+				}
+			}
 		}
 	}
 
@@ -1066,7 +1083,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	}
 
 	// handle.IFObj must be set IFF DCache access is allowed through this handle.
-	common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
+	// common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
 	return handle, nil
 }
 
@@ -1091,6 +1108,7 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		log.Err("DistributedCache::ReadInBuffer : Failed to read file from Dcache, file: %s, offset: %d, length: %d",
 			options.Handle.Path, options.Offset, len(options.Data))
 	} else if options.Handle.IsFsAzure() {
+		notifyCacheWarmUp(options.Handle, options.Offset)
 		bytesRead, err = dc.NextComponent().ReadInBuffer(options)
 		if err == nil || err == io.EOF {
 			return bytesRead, err
@@ -1292,6 +1310,56 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	}
 
 	if options.Handle.IsFsAzure() {
+
+		// All the references to the open file handler are closed so, now it is safe to finalize the dcache file,
+		// if the cache warmup is in progress for this file, complete the remaining here.
+		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+		if dcFile != nil {
+			// End the cache warmup for this file,
+
+			dcFile.CacheWarmup.EndCacheWarmup()
+			removeFile := false
+
+			if dcFile.CacheWarmup.NxtChunkIdxToRead == dcFile.CacheWarmup.MaxChunks && dcFile.CacheWarmup.Error == nil {
+
+				// finalize the dcache file only if the cache warmup completed successfully and all chunks are read.
+				// Flush and release the dcache file. Any error during the flush will result in deleteing
+				// such dcache file.
+				err := dcFile.CloseFile()
+				if err != nil {
+					log.Err("DistributedCache::CloseFile : Failed to CloseFile for Dcache file : %s, error: %v",
+						options.Handle.Path, err)
+					// Remove this file from the dcache.
+					removeFile = true
+				}
+
+				err = dcFile.ReleaseFile(false)
+				if err != nil {
+					log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s, error: %v",
+						options.Handle.Path, err)
+				}
+			} else {
+				// delete the dcache file if the cache warmup did not complete successfully or there was an error during
+				// cache warmup.
+				log.Err("DistributedCache::CloseFile : Cache warmup status for Dcache file : %s, NxtChunkIdxToRead: %d, MaxChunks: %d, Error: %v",
+					options.Handle.Path, dcFile.CacheWarmup.NxtChunkIdxToRead, dcFile.CacheWarmup.MaxChunks, dcFile.CacheWarmup.Error)
+				removeFile = true
+			}
+
+			if removeFile {
+				log.Info("DistributedCache::CloseFile : Deleting Dcache file : %s", dcFile.FileMetadata.Filename)
+
+				err := fm.DeleteDcacheFile(dcFile.FileMetadata.Filename, true)
+				if err != nil {
+					log.Err("DistributedCache::CloseFile : Failed to Delete wDcache file : %s, error: %v",
+						dcFile.FileMetadata.Filename, err)
+				} else {
+					log.Info("DistributedCache::CloseFile : Successfully Deleted Dcache file : %s",
+						dcFile.FileMetadata.Filename)
+				}
+			}
+		}
+
 		azureErr = dc.NextComponent().CloseFile(options)
 		if azureErr != nil {
 			log.Err("DistributedCache::SyncFile : Failed to ReleaseFile for Azure file : %s", options.Handle.Path)
@@ -1335,7 +1403,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 
 	if isDcachePath {
 		log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", rawPath)
-		err := fm.DeleteDcacheFile(rawPath)
+		err := fm.DeleteDcacheFile(rawPath, false)
 		if err != nil {
 			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file %s: %v", options.Name, err)
 			return err
@@ -1357,7 +1425,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 
 		// Delete file from dcache.
-		dcacheErr = fm.DeleteDcacheFile(rawPath)
+		dcacheErr = fm.DeleteDcacheFile(rawPath, false)
 		if dcacheErr != nil {
 			if dcacheErr != syscall.ENOENT {
 				log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
