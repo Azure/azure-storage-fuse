@@ -1,5 +1,4 @@
 //go:build !unittest
-// +build !unittest
 
 /*
     _____           _____   _____   ____          ______  _____  ------

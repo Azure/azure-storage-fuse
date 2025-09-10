@@ -1,5 +1,4 @@
 //go:build !authtest
-// +build !authtest
 
 /*
     _____           _____   _____   ____          ______  _____  ------
