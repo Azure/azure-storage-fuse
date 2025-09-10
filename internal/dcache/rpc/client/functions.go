@@ -48,6 +48,17 @@ import (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
+//
+// This file has functions that clients can call to send RPCs to target nodes.
+// The functions here get an RPC client from the client pool, call the necessary RPC client method from the
+// thrift generated code, handle errors, and release the client back to the pool.
+//
+// Caller can check if the error returned is NoFreeRPCClient error, which means the call failed as we couldn't
+// get a valid client to make the call. This indicates a serious issue like target node down or unreachable due
+// to network issue, where retrying the operation (soon) is not likely to succeed. The correct action is to ensure
+// that the node/RV is marked offline in the clustermap and we don't attempt to access it till it comes back online.
+//
+
 var (
 	cp       *clientPool
 	myNodeId string
@@ -71,15 +82,14 @@ const (
 	// this value actually depends on number of RVs exported by a node. Since we don't know it
 	// at init time, we assume a fair value of say 4 and for each of those RVs, keeping anything
 	// more than 8 chunk sized IOs won't be useful. So we set the default to 32.
+	// A better way to look at it is, how many parallel TCP connections do we need to saturate the
+	// n/w bandwidth between two nodes (regardless of the RVs hosted by a node). Again, 8 should be
+	// sufficient for that.
 	//
-	// TODO: For now I have increased this to 512 to avoid the PutChunkDC deadlock where nodeA
-	//       uses up all its clients to send PutChunkDC request to nodeB, while nodeB also uses up
-	//       all its clients to send PutChunkDC request to nodeA. Now nodeA RPC requests will never
-	//       complete as nodeB cannot forward them and hence cannot send any response back, and vice
-	//       versa. We need to keep this to a low value, say 32, in order to avoid too many incoming TCP
-	//       connections to a node.
+	// Note: 64 is seen to perform better, since we only have 16 regular clients which are used for
+	//       all operations other than PutChunkDC from forwardPutChunk().
 	//
-	defaultMaxPerNode = 32
+	defaultMaxPerNode = 64
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
@@ -107,7 +117,11 @@ const (
 	// this information and not attempt to connect to an unreachable node, potentially delaying the
 	// caller, but small enough to promptly attempt connection to a node that might have now come up.
 	//
-	defaultNegativeTimeout = 30
+	// Ideally if a node is down and we figured out by RPC failing, our higher level workflows should not
+	// attempt to access the node/RV till it comes back up.
+	// Keep it more than the heartbeat timeout to avoid premature retries.
+	//
+	defaultNegativeTimeout = 15
 )
 
 var (
@@ -115,6 +129,22 @@ var (
 	IffyRVError       = errors.New("RV is marked iffy")
 	NoFreeRPCClient   = errors.New("no free RPC client")
 )
+
+// This is for use by PutChunkDCLocal() to ensure it doesn't overwhelm the target node with too many
+// daisy chain PutChunkDC requests.
+func GetRPCClientDummy(nodeID string) (*rpcClient, error) {
+	client, err := cp.getRPCClient(nodeID, false /* highPrio */)
+	if err != nil {
+		err = fmt.Errorf("rpc_client::GetRPCClientDummy: Failed to get dummy RPC client: %v [%w]",
+			err, NoFreeRPCClient)
+		log.Err("%v", err)
+	}
+	return client, err
+}
+
+func ReleaseRPCClientDummy(client *rpcClient) error {
+	return cp.releaseRPCClient(client)
+}
 
 // TODO: add asserts for function arguments and return values
 // refer this for details, https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047924726
@@ -134,11 +164,17 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 	// We retry once after resetting bad connections.
 	//
 	for i := 0; i < 2; i++ {
+		//
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		// For all other RPCs other than PutChunkDC called from forwardPutChunk(), we use the regular
+		// priority client quota as we want to keep clients available for forwardPutChunk() calls if
+		// needed to prevent delays in PutChunkDC completions that can potentially cause timeouts.
+		//
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::Hello: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::Hello: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -149,57 +185,35 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				//
-				// Note: In case of multiple contexts contesting, we may have those contexts
-				//	 reset "good" connections too. See if we need to worry about that.
-				//
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::Hello: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry Hello once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::Hello: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -248,10 +262,11 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::GetChunk: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::GetChunk: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -262,53 +277,35 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::GetChunk: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry GetChunk once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::GetChunk: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -342,7 +339,7 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 		targetNodeID, reqStr)
 }
 
-func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
+func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequest, fromFwder bool) (*models.PutChunkResponse, error) {
 	common.Assert(req != nil && req.Chunk != nil && req.Chunk.Address != nil)
 
 	// Caller must not set SenderNodeID, catch misbehaving callers.
@@ -357,10 +354,11 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, fromFwder /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::PutChunk: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::PutChunk: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -371,53 +369,35 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::PutChunk: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry PutChunk once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::PutChunk: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -471,8 +451,8 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 	req.Request.SenderNodeID = myNodeId
 
 	reqStr := rpc.PutChunkDCRequestToString(req)
-	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC request to nexthop node %s and %d daisy chain RV(s): %v",
-		targetNodeID, len(req.NextRVs), reqStr)
+	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC (fromFwder: %v) request to nexthop node %s and %d daisy chain RV(s): %v",
+		fromFwder, targetNodeID, len(req.NextRVs), reqStr)
 
 	//
 	// We retry once after resetting bad connections.
@@ -487,10 +467,17 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 		// nodes may succeed. The negative node will be marked inband-offline and will be replaced
 		// by fix-mv.
 		//
-		client, err := cp.getRPCClient(targetNodeID)
+		// If this call is made from forwardPutChunk() we need to dig into the higher priority quota,
+		// as blocking a forwardPutChunk() will block the entire daisy chain operation, which will keep
+		// many RPC clients busy, across various node. This can lead to a deadlock if
+		// forwardPutChunk()->PutChunkDC()->getRPCClient() blocks waiting for a free RPC client and all
+		// the clients are busy waiting for forwardPutChunk() calls to complete.
+		//
+		client, err := cp.getRPCClient(targetNodeID, fromFwder /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::PutChunkDC: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::PutChunkDC: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -526,27 +513,31 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
 			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::PutChunkDC: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
 
-				// Retry PutChunkDC once more with fresh connection.
-				continue
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If we get timeout error in PutChunkDC(), it means that one/more of the downstream
@@ -572,30 +563,23 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				//
 				// We reset the RPC client here because if the connection between client and target node is good,
 				// the response from target node will eventually return after the timeout error. In this case, we
-				// cannot reuse the same client which was timed out as it will result in ambiguous behavior as the next
-				// caller will fetch that error from the previous call.
+				// cannot reuse the same client which was timed out as it will result in ambiguous behavior as the
+				// next caller will fetch that error from the previous call.
 				// So, we reset this client for the target node.
+				//
+				// If the reset fails to establish a new connection, we press the panic button and delete all
+				// connections to the target node. This will force creation of a new connection when needed.
 				//
 				err1 := cp.resetRPCClient(client)
 				if err1 != nil {
 					log.Err("rpc_client::PutChunkDC: resetRPCClient failed for node %s: %v",
 						targetNodeID, err1)
+					// TODO: This will cause the closeRPCClient() assert to fail. Let it happen for now.
+					cp.deleteAllRPCClients(client, true /* onTimeout */)
 				}
 
-				// We don't retry in case of timeout error.
 				return nil, err
 			}
-
-			//
-			// Only other possible errors:
-			// - Actual RPC error returned by the server.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -649,10 +633,11 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::RemoveChunk: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::RemoveChunk: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -663,53 +648,35 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::RemoveChunk: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry RemoveChunk once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::RemoveChunk: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -743,7 +710,7 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 		targetNodeID, reqStr)
 }
 
-func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest) (*models.JoinMVResponse, error) {
+func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest, newMV bool) (*models.JoinMVResponse, error) {
 	common.Assert(req != nil)
 
 	// Caller must not set SenderNodeID, catch misbehaving callers.
@@ -751,17 +718,19 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 	req.SenderNodeID = myNodeId
 
 	reqStr := rpc.JoinMVRequestToString(req)
-	log.Debug("rpc_client::JoinMV: Sending JoinMV request to node %s: %v", targetNodeID, reqStr)
+	log.Debug("rpc_client::JoinMV: Sending JoinMV request (newMV: %v) to node %s: %v", newMV, targetNodeID, reqStr)
 
 	//
 	// We retry once after resetting bad connections.
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::JoinMV: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::JoinMV: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
+
 			//
 			// This code is special only for JoinMV and specifically for the new-mv case.
 			// Note that ClusterManager.start() has a tiny window where it publishes its RVs into the
@@ -770,65 +739,50 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			// client connections will fail with connection refused.
 			// Retry after a small wait.
 			//
-			log.Info("rpc_client::JoinMV: Retrying after 5 secs in case the RPC server is just starting on the target")
-			time.Sleep(5 * time.Second)
-			continue
+			if newMV {
+				log.Info("rpc_client::JoinMV: Retrying after 5 secs in case the RPC server is just starting on the target")
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			return nil, err
 		}
 
 		// Call the rpc method.
 		resp, err := client.svcClient.JoinMV(ctx, req)
 		if err != nil {
-			log.Err("rpc_client::JoinMV: JoinMV failed to node %s %v: %v",
-				targetNodeID, reqStr, err)
+			log.Err("rpc_client::JoinMV: JoinMV (newMV: %v) failed to node %s %v: %v",
+				newMV, targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::JoinMV: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry JoinMV once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::JoinMV: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -877,10 +831,11 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::UpdateMV: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::UpdateMV: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -891,53 +846,35 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::UpdateMV: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry UpdateMV once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::UpdateMV: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -986,10 +923,11 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::LeaveMV: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::LeaveMV: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -1000,53 +938,35 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::LeaveMV: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry LeaveMV once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::LeaveMV: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -1095,10 +1015,11 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::StartSync: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::StartSync: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -1109,53 +1030,35 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::StartSync: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry StartSync once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::StartSync: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -1213,10 +1116,11 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::EndSync: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::EndSync: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -1227,53 +1131,35 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::EndSync: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry EndSync once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::EndSync: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -1333,10 +1219,11 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID)
+		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
 		if err != nil {
-			log.Err("rpc_client::GetMVSize: Failed to get RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+			err = fmt.Errorf("rpc_client::GetMVSize: Failed to get RPC client for node %s %v: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
 			return nil, err
 		}
 
@@ -1347,57 +1234,35 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 				targetNodeID, reqStr, err)
 
 			//
-			// If the failure is due to a stale connection to a node that has restarted, reset the connections
-			// and retry once more.
-			//
-			if rpc.IsBrokenPipe(err) {
-				//
-				// Note: In case of multiple contexts contesting, we may have those contexts
-				//	 reset "good" connections too. See if we need to worry about that.
-				//
-				err1 := cp.resetAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::GetMVSize: resetAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-					//
-					// Connection refused and timeout are the only viable errors, or resetAllRPCClients()
-					// may refuse to create new connections if the node is marked negative.
-					// Assert to know if anything else happens.
-					//
-					common.Assert(rpc.IsConnectionRefused(err1) ||
-						rpc.IsTimedOut(err1) ||
-						errors.Is(err1, NegativeNodeError), err1)
-					return nil, err
-				}
-
-				// Retry GetMVSize once more with fresh connection.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				//
-				// If the error is due to a timeout (either node is down or cannot be reached over the n/w),
-				// we delete this RPC client and all existing clients in the pool as reusing it will most
-				// likely fail with the same error.
-				//
-				err1 := cp.deleteAllRPCClients(client)
-				if err1 != nil {
-					log.Err("rpc_client::GetMVSize: deleteAllRPCClients failed for node %s: %v",
-						targetNodeID, err1)
-				}
-
-				// We don't retry in case of timeout error.
-				return nil, err
-			}
-
-			//
-			// Only other possible errors:
+			// Only possible errors:
 			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
 			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
 			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
 			//
 			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
 				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err), err)
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				cp.deleteAllRPCClients(client, false /* onTimeout */)
+				return nil, err
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				return nil, err
+			}
 
 			// Fall through to release the RPC client.
 			resp = nil

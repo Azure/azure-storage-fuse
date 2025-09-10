@@ -123,6 +123,10 @@ type rvInfo struct {
 	// On the other hand, PutChunk() sync RPC call will decrement this space indicating
 	// that the chunk has been written to the RV.
 	reservedSpace atomic.Int64
+
+	// Cumulative bytes read from this RV by GetChunk() requests.
+	// Mostly used for debugging distribution of reads across RVs.
+	totalBytesRead atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -178,29 +182,24 @@ type mvInfo struct {
 	lmt time.Time
 	lmb string
 
-	// Total amount of space used up inside the MV directory,
-	// by all the chunks stored in it. Any RV that has to replace one of the existing component
-	// RVs needs to have at least this much space.
+	// Total amount of space used up inside the MV directory, by all the chunks stored in it.
+	// Any RV that has to replace one of the existing component RVs needs to have at least this much space.
 	// JoinMV() requests this much space to be reserved in the new-to-be-inducted RV.
-	// This is updated only by PutChunk(client) requests. For PutChunk(sync) requests it's not
-	// updated for each request but once the sync completes, in the EndSync handler, we add
-	// mvInfo.reservedSpace to totalChunkBytes thus accounting all the chunks that were copied
-	// to this MV as a result of the sync operations. This means that totalChunkBytes will be
-	// 0 for outofsync MV replicas while it can be non-zero for online and even syncing replicas.
-	// syncing MV replicas will have non-zero totalChunkBytes only if there are client writes
-	// during the sync. This will happen if an MV replica went offline during a file write and
-	// a new one had to be picked.
+	// This is incremented whenever a new chunk is written to this MV replica by PutChunk (client or sync)
+	// requests, and decremented whenever a chunk is deleted by RemoveChunk requests.
+	// This must be zero for MV replicas in OutOfSync state, as chunks are written only after the MV replica
+	// moves to Syncing state. Other than OutOfSync state, this can be non-zero for all other MV replica states.
 	totalChunkBytes atomic.Int64
 
 	// Amount of space reserved for this MV replica, on the hosting RV.
 	// When a new mvInfo is created by JoinMV() this is set to the ReserveSpace parameter to JoinMV.
-	// This is also added to rvInfo.reservedSpace to reserve space in the RV.
+	// This is also added to rvInfo.reservedSpace to reserve space in the RV, to prevent oversubscription
+	// by accepting JoinMV requests for more MVs than we can host.
 	// This is non-zero only for MV replicas which are added by the fix-mv workflow and not for MV replicas
 	// added by new-mv workflow. Put another way, this will be non-zero only for MV replicas which are in
 	// outofsync or syncing state. On an EndSync request, that converts syncing state to online state
-	// mvInfo.reservedSpace is cleared and its value is added to mvInfo.totalChunkBytes, also this is
-	// reduced from rvInfo.reservedSpace as this space is no longer reserved but rather actual space is now
-	// used by chunks stored in the RV.
+	// mvInfo.reservedSpace is cleared, also this is reduced from rvInfo.reservedSpace as this space is no
+	// longer reserved but rather actual space is now used by chunks stored in the RV.
 	// If an MV replica cannot complete resync, this must be reduced from rvInfo.reservedSpace.
 	// This means while an MV replica is being sync'ed the space used on the RV may be overcompensated, this
 	// is corrected once sync completes.
@@ -277,7 +276,7 @@ func GetMvInfoTimeout() time.Duration {
 // This syncJob structure holds information on each sync job that a particular "MV Replica" is participating in.
 // Note that an MV Replica can be taking part in multiple simultaneous sync jobs, with the following rules:
 //   - An MV Replica can either be the source or target of a sync job.
-//   - Online MV Replicas will act as sources while OutOfSyc MV Replicas will act as targets.
+//   - Online MV Replicas will act as sources while OutOfSync MV Replicas will act as targets.
 //   - An MV Replica can be source to multiple sync jobs while it can be target to one and only one sync job.
 //   - Every sync job has an id, called the SyncId. This is returned by a successful StartSync call and must be provided
 //     in the EndSync call to end that sync job.
@@ -299,6 +298,7 @@ var handler *ChunkServiceHandler
 // NewChunkServiceHandler creates a new ChunkServiceHandler instance.
 // This MUST be called only once by the RPC server, on startup.
 func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
+	log.Debug("NewChunkServiceHandler: called with rvMap: %+v", rvMap)
 	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
 	handler = &ChunkServiceHandler{
@@ -606,11 +606,19 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	_, diskSpaceAvailable, err := common.GetDiskSpaceMetricsFromStatfs(cacheDir)
 	common.Assert(err == nil, cacheDir, err)
 
+	//
 	// Subtract the reserved space for this RV.
+	// Note that the following will result in a more conservative available space estimate for the RV if one
+	// or more MV replicas hosted by this RV are syncing. This is because we increment rv.reservedSpace inside
+	// the JoinMV handler when this RV was picked as the replacement RV by the fixMV workflow, and we decrement
+	// it inside the EndSync handler, only after the sync completes. During the sync process there will be chunks
+	// written to the MV replica being synced, but we don't decrement rv.reservedSpace for each chunk written.
+	// This conservative estimate is deliberate, as we don't want to overcommit space on the RV.
+	//
 	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
 	common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
-	log.Debug("rvInfo::getAvailableSpace: available space for RV %s is %d, total disk space available is %d and reserved space is %d",
+	log.Debug("rvInfo::getAvailableSpace: RV: %s, availableSpace: %d, diskSpaceAvailable: %d, reservedSpace: %d",
 		rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
 	return availableSpace, err
@@ -622,7 +630,7 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 func GetAvailableSpaceForRV(rvId, rvName string) (int64, error) {
 	//
 	// Initial call(s) before RPC server is started must simply return the available space as reported
-	// by the file system, else we must subtract the reserved space for the RV
+	// by the file system, else we must subtract the reserved space for the RV.
 	//
 	if handler == nil {
 		_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(rvName)
@@ -1035,10 +1043,14 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 		common.Assert(cm.IsValidComponentRVState(dcache.StateEnum(rv.State)), rv.Name, mv.mvName, rv.State)
 
 		//
-		// Only online and syncing local MV replicas can have non-zero totalChunkBytes.
+		// OutOfSync MV replicas cannot have non-zero totalChunkBytes, as totalChunkBytes must reflect how
+		// many chunks are written to the MV replica, and an outofsync MV replica cannot have any chunks
+		// written to it. Only after it moves to syncing state can chunks be written to it.
+		// Online and syncing MV replicas can have non-zero totalChunkBytes as they receive PutChunk calls.
+		// Offline/inband-offline MV replicas can have non-zero totalChunkBytes from when they were online.
 		//
 		common.Assert((mv.rv.rvName != rv.Name) || (mv.totalChunkBytes.Load() == 0) ||
-			(rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing)),
+			(rv.State != string(dcache.StateOutOfSync)),
 			rv.Name, mv.mvName, rv.State, mv.totalChunkBytes.Load())
 
 		if rv.Name == rvName {
@@ -1161,6 +1173,11 @@ func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.Respo
 			log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is %s, marking component RV state as offline",
 				rvName, mv.mvName, rvState, cm.GetRVState(rvName))
 			rvState = dcache.StateOffline
+			//
+			// [BUG] This changes the state of the component RV in the local clustermap copy, obviously
+			//       it doesn't change the MV state, so this results in assert failure that claims mv
+			//       state must be offline if any component RV is offline.
+			//
 			newRVs[rvName] = rvState
 		}
 
@@ -1249,8 +1266,7 @@ func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.Respo
 		// It marks reservedSpace in the mvInfo and rvInfo to reserve the space needed for sync'ing the MV
 		// replica. Normally this reserved space would be deducted from rvInfo.reservedSpace as part of
 		// the EndSync processing, after the sync has copied data to the new MV replica. At this point
-		// mvInfo.totalChunkBytes will be increased by mvInfo.reservedSpace, and rvInfo.reservedSpace will
-		// be reduced by mvInfo.reservedSpace and mvInfo.reservedSpace will be set to 0.
+		// rvInfo.reservedSpace will be reduced by mvInfo.reservedSpace and mvInfo.reservedSpace will be set to 0.
 		//
 		// Hence if our in-core mvInfo has the state of a component RV as StateOutOfSync while clustermap either
 		// - has the same RV with state StateOffline, or,
@@ -1421,7 +1437,7 @@ func (mv *mvInfo) incTotalChunkBytes(bytes int64) {
 func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(-bytes)
 	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
-	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is %d, bytes: %d", mv.mvName, mv.totalChunkBytes.Load(), bytes))
+	common.Assert(mv.totalChunkBytes.Load() >= 0, mv.mvName, mv.totalChunkBytes.Load(), bytes)
 }
 
 // acquire read lock on the opMutex.
@@ -1718,6 +1734,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	//    through a JoinMV call. Only after a successful JoinMV response would the caller update the MV's
 	//    component RV list. If we do not have this MV added to our RV, that means we would not have
 	//    responded to the JoinMV RPC, which would mean the clustermap cannot have it.
+	//    For quick-restart case, NewChunkServiceHandler() will duly add all hosted MVs to the rvInfo.mvMap.
 	//    For rebalancing, a component RV would be removed from an MV only after the rebalancing has
 	//    completed and there's no undoing it.
 	//    Other way to look at it is, if we don't have the MV directory then we do not host the MV and there's
@@ -2097,28 +2114,30 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	var lmt string
 	var n int
 	_ = n
-	var chunkSize int64
-	_ = chunkSize
-	var stat syscall.Stat_t
 	var hashPathPtr *string
 
 	if performDummyReadWrite() {
 		goto dummy_read
 	}
 
-	err = syscall.Stat(chunkPath, &stat)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
-		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+	// Avoid the stats() call for release builds.
+	if common.IsDebugBuild() {
+		var stat syscall.Stat_t
+
+		err = syscall.Stat(chunkPath, &stat)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
+			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+		}
+
+		chunkSize := stat.Size
+		lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
+
+		common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
+			"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
 	}
-
-	chunkSize = stat.Size
-	lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
-
-	common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
-		"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
 
 	//
 	// TODO: hash validation will be done later
@@ -2136,6 +2155,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	common.Assert(n == len(data),
 		fmt.Sprintf("bytes read %d is less than expected buffer size %d", n, len(data)))
+
+	rvInfo.totalBytesRead.Add(int64(n))
+	log.Info("ChunkServiceHandler::GetChunk: [STATS] chunk path %s, %s, totalBytesRead: %d ",
+		chunkPath, rvInfo.rvName, rvInfo.totalBytesRead.Load())
 
 dummy_read:
 	resp := &models.GetChunkResponse{
@@ -2159,27 +2182,41 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
 	common.Assert(data != nil && len(*data) > 0)
 
-	// Caller wants to perform direct write, with failback to buffered write if direct write fails with EINVAL.
+	tmpChunkPath := *chunkPath + ".tmp"
+
+	// Caller wants to perform direct write, with fallback to buffered write if direct write fails with EINVAL.
 	odirect := (flag & syscall.O_DIRECT) != 0
 
-	// Use O_EXCL flag to catch the case where the chunk file already exists, it's unintentional.
-	fd, err := syscall.Open(*chunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
+	//
+	// Use O_EXCL flag just in case two writers are trying to write the same chunk simultaneously.
+	// Note that for actually protecting overwriting an existing chunk we rely on the atomic rename below.
+	//
+	fd, err := syscall.Open(tmpChunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
 	if err != nil {
 		//
 		// This is most likely open failure due to the file already existing.
 		// We need to fail the call, caller will fail the client request appropriately.
 		//
-		err1 := fmt.Errorf("safeWrite: failed to open chunk file %s, flag: 0x%x: %w", *chunkPath, flag, err)
+		err1 := fmt.Errorf("safeWrite: failed to open chunk file %s, flag: 0x%x: %w", tmpChunkPath, flag, err)
 		log.Warn("%v", err1)
 		return err1
 	}
 
+	deleteTmpFile := true
+
 	defer func() {
+		if deleteTmpFile {
+			err := os.Remove(tmpChunkPath)
+			if err != nil {
+				log.Err("safeWrite: failed to remove chunk file %s: %v", tmpChunkPath, err)
+			}
+		}
+
 		if fd != -1 {
 			closeErr := syscall.Close(fd)
 			if closeErr != nil {
 				log.Err("safeWrite: failed to close chunk file %s, flag: 0x%x: %v",
-					*chunkPath, flag, closeErr)
+					tmpChunkPath, flag, closeErr)
 			}
 		}
 	}()
@@ -2188,10 +2225,21 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 		n, err := syscall.Write(fd, *data)
 		if err == nil {
 			// write should never succeed with 0 bytes written.
-			common.Assert(n > 0, n, len(*data), *chunkPath)
+			common.Assert(n > 0, n, len(*data), tmpChunkPath)
 
 			if n == len(*data) {
+				//
 				// Common case, written everything requested.
+				// Rename the tmp chunk file to the final chunk file name.
+				//
+				renameErr := common.RenameNoReplace(tmpChunkPath, *chunkPath)
+				if renameErr != nil {
+					err := fmt.Errorf("safeWrite: failed to rename chunk file %s to %s: %w",
+						tmpChunkPath, *chunkPath, renameErr)
+					log.Err("%v", err)
+					return err
+				}
+				deleteTmpFile = false
 				return nil
 			} else if odirect {
 				//
@@ -2199,7 +2247,7 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 				// buffered write, with a warning log to know if this happens frequently.
 				//
 				log.Warn("safeWrite: partial (direct) write to chunk file %s (%d of %d), retrying as buffered write",
-					*chunkPath, n, len(*data))
+					tmpChunkPath, n, len(*data))
 				break
 			}
 
@@ -2209,12 +2257,12 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 			// Emit a warning log to know if this happens frequently.
 			//
 			log.Warn("safeWrite: partial write to chunk file %s (%d of %d), retrying remaining write",
-				*chunkPath, n, len(*data))
+				tmpChunkPath, n, len(*data))
 			*data = (*data)[n:]
 			continue
 		} else if errors.Is(err, syscall.EINTR) {
 			log.Warn("safeWrite: write to chunk file %s (len: %d, odirect: %v) interrupted, retrying",
-				*chunkPath, len(*data), odirect)
+				tmpChunkPath, len(*data), odirect)
 			continue
 		} else if !odirect {
 			//
@@ -2222,30 +2270,31 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 			// if it fails for direct write we can retry once with buffered write.
 			//
 			return fmt.Errorf("safeWrite: buffered write of %d bytes to chunk file %s failed: %w",
-				len(*data), *chunkPath, err)
+				len(*data), tmpChunkPath, err)
 		} else if !errors.Is(err, syscall.EINVAL) {
 			return fmt.Errorf("safeWrite: direct write of %d bytes to chunk file %s failed: %w",
-				len(*data), *chunkPath, err)
+				len(*data), tmpChunkPath, err)
 		}
 
 		// For direct write failing with EINVAL, fall through to buffered write.
 		log.Warn("safeWrite: direct write to chunk file %s (len: %d) failed with EINVAL, retrying with buffered write",
-			*chunkPath, len(*data))
+			tmpChunkPath, len(*data))
 		break
 	}
 
 	//
-	// Before retrying buffered write, we need to remove the chunk file as it was created readonly.
+	// Before retrying buffered write, we need to remove the tmp chunk file as it was created readonly.
 	//
-	err1 := os.Remove(*chunkPath)
+	deleteTmpFile = false
+	err1 := os.Remove(tmpChunkPath)
 	if err1 != nil {
-		return fmt.Errorf("safeWrite: failed to remove chunk file %s: %v", *chunkPath, err1)
+		return fmt.Errorf("safeWrite: failed to remove chunk file %s: %v", tmpChunkPath, err1)
 	}
 
 	closeErr := syscall.Close(fd)
 	if closeErr != nil {
 		log.Err("safeWrite: failed to close chunk file %s, flag: 0x%x: %v",
-			*chunkPath, flag, closeErr)
+			tmpChunkPath, flag, closeErr)
 	}
 	// defer should skip closing.
 	fd = -1
@@ -2521,6 +2570,38 @@ refreshFromClustermapAndRetry:
 				}
 
 				return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+			} else if !senderSkippedRV && isRVSafeToSkip {
+				//
+				// This can happen when we come to know about an RV being offline, through clustermap,
+				// while sender is not yet aware of it. This will happen when we call refreshFromClustermap()
+				// and it gets a more recent clustermap than the sender. If an RV is offline in that we will
+				// mark component RV as offline in our rvInfo (see refreshFromClustermap()).
+				// In such case it's best to let the sender know about it instead of silently completing the
+				// PutChunk.
+				//
+				errStr := fmt.Sprintf("PutChunk(client) sender did not skip RV %s/%s which is %s as per them, while as per our rvInfo it's %s [NeedToRefreshClusterMap]",
+					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+
+				//
+				// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
+				// then try again with the latest clustermap from storage.
+				//
+				if clustermapRefreshed < 2 {
+					rpcErr := mvInfo.refreshFromClustermap(clustermapRefreshed == 0)
+					if rpcErr != nil {
+						err1 := fmt.Errorf("ChunkServiceHandler::PutChunk: Failed to refresh clustermap [%s]",
+							rpcErr.String())
+						log.Err("%v", err1)
+						// refreshFromClustermap() only returns ErrorCode_NeedToRefreshClusterMap.
+						common.Assert(rpcErr.Code == models.ErrorCode_NeedToRefreshClusterMap, err1)
+						return nil, rpcErr
+					}
+					clustermapRefreshed++
+					goto refreshFromClustermapAndRetry
+				}
+
+				return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 			}
 		}
 	} else {
@@ -2563,7 +2644,7 @@ refreshFromClustermapAndRetry:
 	if len(req.SyncID) > 0 {
 		//
 		// Sync PutChunk call (as opposed to a client write PutChunk call).
-		// This is called after the StartSync RPC to synchronize an OutOfSyc MV replica from a healthy MV
+		// This is called after the StartSync RPC to synchronize an OutOfSync MV replica from a healthy MV
 		// replica.
 		//
 		// Sync PutChunk call will be made in the ResyncMV() workflow, and should only be sent to RVs which
@@ -2659,9 +2740,10 @@ refreshFromClustermapAndRetry:
 	//       Also we need to be sure that hash is calculated uniformly (either always or never)
 
 	//
-	// Increment the total chunk bytes for this MV for PutChunk(client) calls.
-	// For PutChunk(sync) calls, the MV's totalChunkBytes will be updated in the EndSync call,
-	// once the sync completes.
+	// As a new chunk is written, update the MV replica's total chunk bytes.
+	// We do it for both PutChunk(client) as well as PutChunk(sync) writes so that this reflects the true MV size
+	// at all times. Note that we don't decrement mvInfo.reservedSpace up until EndSync(), so mvInfo.reservedSpace
+	// + mvInfo.totalChunkBytes will account for more space than what will be taken up after the sync completes.
 	//
 	if len(req.SyncID) == 0 {
 		mvInfo.incTotalChunkBytes(req.Length)
@@ -2670,9 +2752,14 @@ refreshFromClustermapAndRetry:
 		// TODO: [Tomar] I've seen this assert fail and also some other places where we assert for reservedSpace
 		//       panic: Assertion failed: [13091 4194304]
 		//       The reservedSpace update possibly has some race.
+		//       One likely possibility is that when we called GetMVSize() from JoinMV, there were more chunks
+		//       written to the source MV replica after we read the mvInfo.totalChunkBytes, so we reserved less
+		//       but actually sync'ed more. It's not a big deal as we will differ only slightly.
 		common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
+
+		mvInfo.incTotalChunkBytes(req.Length)
 	}
 
 dummy_write:
@@ -2861,7 +2948,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 
 		var rpcErr *models.ResponseError
 
-		putChunkResp, err := rpc_client.PutChunk(ctx, nexthopNodeId, putChunkReq)
+		putChunkResp, err := rpc_client.PutChunk(ctx, nexthopNodeId, putChunkReq, true /* fromFwder */)
 		if err != nil {
 			log.Err("ChunkServiceHandler::forwardPutChunk: Failed to forward PutChunk request to last RV %s/%s on node %s: %v",
 				nexthopRV, req.Chunk.Address.MvName, nexthopNodeId, err)
@@ -3502,7 +3589,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Later when some client sends some RPC to this RV which expects it to not be in syncing state,
 	// refreshFromClustermap() would run and if it finds that the global clustermap has the RV in outofsync
 	// state that would be used as an indicator to undo the StartSync, most importantly reset the rvInfo
-	// state to OutOfSyc and purging the sync job.
+	// state to OutOfSync and purging the sync job.
 	//
 	syncID := mvInfo.addSyncJob(sourceRVName, targetRVName)
 
@@ -3613,11 +3700,21 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// Update the state of target RV in this MV replica from syncing to online.
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline, req.SenderNodeID)
 
-	// As sync has completed, clear reservedSpace and commit it in totalChunkBytes.
-	mvInfo.totalChunkBytes.Add(mvInfo.reservedSpace.Load())
+	//
+	// As sync has completed successfully, the sync process must have written all chunks to the MV replica.
+	// These will be not less than mvInfo.reservedSpace. This is because spaced is reserved in JoinMV call
+	// which looks at the MV size at that time, from JoinMV till StartSync and finally when the sync process
+	// starts, the source MV replica can have more chunks added to it, hence we might end up writing more than
+	// the reservedSpace.
+	//
+	common.Assert(mvInfo.totalChunkBytes.Load() >= mvInfo.reservedSpace.Load(),
+		rvInfo.rvName, req.MV, mvInfo.totalChunkBytes.Load(), mvInfo.reservedSpace.Load())
+
+	// We must have reserved mvInfo.reservedSpace in RV as well.
 	common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 		rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load(), rvInfo.rvName,
 		req.MV, rpc.EndSyncRequestToString(req))
+
 	rvInfo.decReservedSpace(mvInfo.reservedSpace.Load())
 	mvInfo.reservedSpace.Store(0)
 

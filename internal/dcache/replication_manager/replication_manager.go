@@ -475,7 +475,7 @@ retry:
 				rv.Name, req.MvName, rv.State, mvState)
 
 			// Online MV must have all replicas online.
-			common.Assert(mvState != dcache.StateOnline, req.MvName)
+			common.Assert(mvState != dcache.StateOnline, req.MvName, rv.Name, rv.State)
 
 			//
 			// Skip writing to this RV, as it is in offline or outofsync state.
@@ -1707,8 +1707,50 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			continue
 		}
 
+		//
+		// chunks are stored in MV as,
+		// <MvName>/<FileID>.<OffsetInMiB>.data and
+		// <MvName>/<FileID>.<OffsetInMiB>.hash
+		// <MvName>/<FileID>.<OffsetInMiB>.data.tmp (temporary file created during safeWrite())
+		//
+		chunkParts := strings.Split(entry.Name(), ".")
+		if len(chunkParts) != 3 {
+			// This is most likely the temp chunk file created by safeWrite().
+			if len(chunkParts) == 4 && chunkParts[3] == "tmp" {
+				log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping temp chunk file %s/%s",
+					sourceMVPath, entry.Name())
+			} else {
+				// TODO: should we return error in this case?
+				errStr := fmt.Sprintf("Invalid chunk name %s/%s", sourceMVPath, entry.Name())
+				log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
+				common.Assert(false, errStr)
+			}
+			continue
+		}
+
+		// TODO: hash validation will be done later
+		// if file type is hash, skip it
+		// the hash data will be transferred with the regular chunk file
+		if chunkParts[2] == "hash" {
+			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping hash file %s", entry.Name())
+			continue
+		}
+
+		//
+		// Info() does a stat() syscall to fetch the file info, so we do it after we have performed
+		// name based exclusion.
+		//
+		// Note: This can fail for chunks which are being removed (corresponding to a deleted file),
+		//       so if ReadDir() above finds a chunk and it's removed by the time we come here, the
+		//       assert below will fail. Let's leave it for some time and later we can remove it.
+		//
 		info, err := entry.Info()
-		common.Assert(err == nil, err)
+		if err != nil {
+			log.Err("ReplicationManager::copyOutOfSyncChunks: entry.Info() failed for %s/%s: %v",
+				sourceMVPath, entry.Name(), err)
+			common.Assert(false, err, sourceMVPath, entry.Name())
+			continue
+		}
 
 		if info.ModTime().UnixMicro() > job.syncStartTime {
 			// This chunk is created after the sync start time, so it will be written to both source and target
@@ -1726,28 +1768,6 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			"Mtime (%d) <= syncStartTime (%d) [%d usecs before sync start]",
 			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
 			job.syncStartTime-info.ModTime().UnixMicro())
-
-		//
-		// chunks are stored in MV as,
-		// <MvName>/<FileID>.<OffsetInMiB>.data and
-		// <MvName>/<FileID>.<OffsetInMiB>.hash
-		//
-		chunkParts := strings.Split(entry.Name(), ".")
-		if len(chunkParts) != 3 {
-			// TODO: should we return error in this case?
-			errStr := fmt.Sprintf("Invalid chunk name %s", entry.Name())
-			log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-			common.Assert(false, errStr)
-			continue
-		}
-
-		// TODO: hash validation will be done later
-		// if file type is hash, skip it
-		// the hash data will be transferred with the regular chunk file
-		if chunkParts[2] == "hash" {
-			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping hash file %s", entry.Name())
-			continue
-		}
 
 		fileID := chunkParts[0]
 		common.Assert(common.IsValidUUID(fileID))
@@ -1795,7 +1815,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq)
+		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq, false /* fromFwder */)
 		_ = putChunkResp
 		if err != nil {
 			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to put chunk to %s/%s [%v]: %v",
@@ -1894,6 +1914,7 @@ func GetMVSize(mvName string) (int64, error) {
 	var lastClusterMapEpoch int64
 
 	clusterMapRefreshed := false
+	_ = clusterMapRefreshed
 	retryCnt := 0
 
 retry:
@@ -1938,32 +1959,9 @@ retry:
 				return 0, err
 			}
 
-			//
-			// If the current clustermap does not have any suitable RV to query MV size from, we try clustermap
-			// refresh just in case we have a stale clustermap. This is very unlikely and it would most
-			// likely indicate that we have a “very stale” clustermap where all/most of the component RVs
-			// have been replaced, or most of them are down.
-			//
-			// Even after refreshing clustermap if we cannot get a valid MV replica to query MV size,
-			// alas we need to fail the GetMVSize().
-			//
-			if clusterMapRefreshed {
-				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d",
-					mvName, lastClusterMapEpoch)
-				log.Err("ReplicationManager::GetMVSize: %v", err)
-				return 0, err
-			}
-
-			err = cm.RefreshClusterMap(lastClusterMapEpoch)
-			if err != nil {
-				log.Warn("ReplicationManager::GetMVSize: RefreshClusterMap() failed for GetMVSize(%s) (retryCnt: %d): %v",
-					mvName, retryCnt, err)
-			} else {
-				clusterMapRefreshed = true
-			}
-
-			retryCnt++
-			goto retry
+			err = fmt.Errorf("no suitable RV found for MV %s", mvName)
+			log.Err("ReplicationManager::GetMVSize: %v", err)
+			return 0, err
 		}
 
 		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), readerRV.Name, excludeRVs)

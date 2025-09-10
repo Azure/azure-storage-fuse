@@ -110,8 +110,8 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 }
 
 func (wp *workerPool) readChunk(task *task) {
-	log.Debug("DistributedCache::readChunk: Reading chunkIdx: %d, chunk Offset: %d, chunk Len: %d, file: %s",
-		task.chunk.Idx, task.chunk.Offset, task.chunk.Len, task.file.FileMetadata.Filename)
+	log.Debug("DistributedCache::readChunk: Reading chunkIdx: %d, chunk Offset: %d, chunk Len: %d, refcount: %d, file: %s",
+		task.chunk.Idx, task.chunk.Offset, task.chunk.Len, task.chunk.RefCount.Load(), task.file.FileMetadata.Filename)
 
 	// For read chunk, buffer must not be pre-allocated, ReadMV() returns the buffer.
 	// buffer is pre-allocated only when reading the chunk from the Local RV which would be decided after the ReadMV
@@ -215,7 +215,7 @@ func (wp *workerPool) writeChunk(task *task) {
 		close(task.chunk.Err)
 
 		// The chunk is uploaded to DCache, we can release it now.
-		log.Debug("DistributedCache::writeChunk: Writing completed file: %s, chunkIdx: %d, chunk.Len: %s, refcount: %d",
+		log.Debug("DistributedCache::writeChunk: Writing completed file: %s, chunkIdx: %d, chunk.Len: %d, refcount: %d",
 			task.file.FileMetadata.Filename, task.chunk.Idx, task.chunk.Len, task.chunk.RefCount.Load())
 
 		task.file.removeChunk(task.chunk.Idx)

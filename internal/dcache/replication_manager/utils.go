@@ -35,7 +35,6 @@ package replication_manager
 
 import (
 	"fmt"
-	"math/rand"
 	"slices"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -119,8 +118,9 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 	// excludeRVs can have at max all the RVs in componentRVs.
 	common.Assert(len(excludeRVs) <= len(componentRVs), len(excludeRVs), len(componentRVs))
 
+	var readerRV *models.RVNameAndState
+
 	myNodeID := rpc.GetMyNodeUUID()
-	onlineRVs := make([]*models.RVNameAndState, 0)
 	for _, rv := range componentRVs {
 		if rv.State != string(dcache.StateOnline) || slices.Contains(excludeRVs, rv.Name) {
 			// Not an online RV or present in the exclude list, skip.
@@ -131,24 +131,27 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 		nodeIDForRV := getNodeIDFromRVName(rv.Name)
 		common.Assert(common.IsValidUUID(nodeIDForRV))
 		if nodeIDForRV == myNodeID {
+			//
 			// Prefer local RV.
+			// TODO: We can further optimize this by checking the local RV's load and avoid skewed load.
+			//
 			return rv
 		}
 
-		onlineRVs = append(onlineRVs, rv)
+		//
+		// getComponentRVsForMV() already returns a shuffled list of RVs, so we can pick the last one
+		// and we will get a random RV.
+		//
+		readerRV = rv
 	}
 
-	if len(onlineRVs) == 0 {
+	if readerRV == nil {
 		log.Debug("utils::getReaderRV: no suitable RVs found for component RVs %v",
 			rpc.ComponentRVsToString(componentRVs))
 		return nil
 	}
 
-	// select random online RV
-	// TODO: add logic for sending Hello RPC call to check if the node hosting this RV is online
-	// If not, select another RV from the list
-	index := rand.Intn(len(onlineRVs))
-	return onlineRVs[index]
+	return readerRV
 }
 
 // TODO: hash validation will be done later
