@@ -1368,7 +1368,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 
 	if isDcachePath {
 		log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", rawPath)
-		err := fm.DeleteDcacheFile(rawPath, false)
+		err := fm.DeleteDcacheFile(rawPath, false /* force delete */)
 		if err != nil {
 			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file %s: %v", options.Name, err)
 			return err
@@ -1390,7 +1390,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 
 		// Delete file from dcache.
-		dcacheErr = fm.DeleteDcacheFile(rawPath, false)
+		dcacheErr = fm.DeleteDcacheFile(rawPath, false /* force delete */)
 		if dcacheErr != nil {
 			if dcacheErr != syscall.ENOENT {
 				log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
@@ -1693,7 +1693,7 @@ func init() {
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
 
-	cacheWarmup := config.AddBoolFlag("cache-warmup", defaultCacheWarmup, "File will be cache on first read from Azure if not present in dcache (true/false) [Default: true]")
+	cacheWarmup := config.AddBoolFlag("cache-warmup", defaultCacheWarmup, "File will be cached on first read from Azure if not present in dcache (true/false) [Default: true]")
 	config.BindPFlag(compName+".cache-warmup", cacheWarmup)
 
 	ignoreFD := config.AddBoolFlag("ignore-fd", defaultIgnoreFD, "Ignore VM fault domain for MV placement decisions")

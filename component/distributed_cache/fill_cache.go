@@ -13,15 +13,17 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
-// Cache warmup is started for the given dcache file and handle.
-// Reads the file in chunks and populates the cache with the data read from the Azure.
-// Read the chunk in whole from the Azure and write it to the cache, before handle starts reading from that
-// chunk.
+// Reads the file in chunks and populates dcache with the data read from the Azure.
+// Always reads and writes the chunks in whole, except for the last chunk which may be partial.
+// If there is any error during reading from Azure or writing to dcache, the error is recorded and stops the further
+// cache warmup. Such stale dcache file will be deleted when the file is closed. Currenlty the file is only cached to
+// the dcache, when it is fully read sequentially. Any random read or read beyond 16 chunks from the last warmed up chunk
+// will stop the cache warmup and such stale dcache file will be deleted when the file is closed.
 func (dc *DistributedCache) fillCache(handle *handlemap.Handle, offset int64) {
 	dcFile := handle.IFObj.(*fm.DcacheFile)
 
 	if dcFile == nil {
-		// not cache warmup setup for this file.
+		// no cache warmup setup for this file.
 		return
 	}
 	chunkSize := clustermap.GetCacheConfig().ChunkSizeMB * common.MbToBytes
@@ -39,7 +41,7 @@ func (dc *DistributedCache) fillCache(handle *handlemap.Handle, offset int64) {
 	nxtChunkIdxToRead := dcFile.CacheWarmup.NxtChunkIdxToRead.Load()
 
 	warmedUpBytes = nxtChunkIdxToRead * int64(chunkSize)
-	if offset <= warmedUpBytes || nxtChunkIdxToRead == -1 {
+	if offset <= warmedUpBytes || dcFile.CacheWarmup.Error.Load() != nil {
 		return
 	}
 
@@ -47,7 +49,6 @@ func (dc *DistributedCache) fillCache(handle *handlemap.Handle, offset int64) {
 	log.Info("DistributedCache::fillCache: Starting cache warmup for file: %s, handle: %d, offset: %d",
 		handle.Path, handle.ID, offset)
 
-	// Download nthe chunk this offset falls into from Azure
 	chunkIdx := offset / int64(chunkSize)
 	chunkIdx = min(chunkIdx, dcFile.CacheWarmup.MaxChunks-1)
 
@@ -70,23 +71,23 @@ func (dc *DistributedCache) fillCache(handle *handlemap.Handle, offset int64) {
 	}
 
 	for i := nxtChunkIdxToRead; i <= chunkIdx; i++ {
-		offset := i * int64(chunkSize)
+		chunkStartoffset := i * int64(chunkSize)
 		log.Info("DistributedCache::fillCache: downloading chunk idx: %d, offset: %d for file: %s, handle: %d",
-			i, offset, handle.Path, handle.ID)
+			i, chunkStartoffset, handle.Path, handle.ID)
 
-		currentChunkSize := min(int64(chunkSize), dcFile.CacheWarmup.Size-offset)
+		currentChunkSize := min(int64(chunkSize), dcFile.CacheWarmup.Size-chunkStartoffset)
 
 		// Read the chunk from Azure into the buffer.
 		bytesRead, err := dc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 			Handle: handle,
-			Offset: offset,
+			Offset: chunkStartoffset,
 			Path:   handle.Path,
 			Size:   int64(currentChunkSize),
 			Data:   chunkData,
 		})
 		if err != io.EOF && err != nil {
 			log.Err("DistributedCache::fillCache: failed to read chunk idx: %d, offset: %d for file: %s, handle: %d, error: %v",
-				i, offset, handle.Path, handle.ID, err)
+				i, chunkStartoffset, handle.Path, handle.ID, err)
 			dcFile.CacheWarmup.Error.Store(err)
 			return
 		}
@@ -95,10 +96,10 @@ func (dc *DistributedCache) fillCache(handle *handlemap.Handle, offset int64) {
 
 		// Write the chunk data to the cache.
 		// This can be done in parallel for some chunks, but for now doing it serially.
-		err = dcFile.WriteFile(offset, chunkData)
+		err = dcFile.WriteFile(chunkStartoffset, chunkData)
 		if err != nil {
 			log.Err("DistributedCache::fillCache: failed to write chunk idx: %d, offset: %d to cache for file: %s, handle: %d, error: %v",
-				i, offset, handle.Path, handle.ID, err)
+				i, chunkStartoffset, handle.Path, handle.ID, err)
 			dcFile.CacheWarmup.Error.Store(err)
 			return
 		}
