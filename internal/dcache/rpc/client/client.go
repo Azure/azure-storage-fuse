@@ -39,7 +39,6 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -146,9 +145,15 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 		log.Err("rpcClient::newRPCClient: Failed to create connection to node %s at %s, adding to negative nodes map: %v",
 			nodeID, nodeAddress, err)
 
-		common.Assert(rpc.IsTimedOut(err) ||
-			rpc.IsConnectionRefused(err) ||
-			rpc.IsConnectionReset(err), err)
+		//
+		// TODO: We can also get other errors here like,
+		//   - "no route to host" - the node is on different subnet/vnet or the node is deallocated.
+		//   - "cannot assign requested address" - can be caused due to port exhaustion if we are
+		//     creating too many connections in a short period of time.
+		//
+		// common.Assert(rpc.IsTimedOut(err) ||
+		// 	rpc.IsConnectionRefused(err) ||
+		// 	rpc.IsConnectionReset(err), err)
 
 		//
 		// Any error indicates a problem connecting to the node, so add to negative nodes map to quarantine

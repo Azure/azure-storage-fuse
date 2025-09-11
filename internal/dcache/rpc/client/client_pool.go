@@ -1066,18 +1066,18 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		// This will happen when the target node is not running the blob service (but the node
 		// itself is up). When the node is no up we should get a connection timeout error here.
 		//
-		// Also seen connection reset error here.
-		//
-		// TODO: Connection timeout has to be tested.
+		// Also seen connection reset and connection timeout errors here.
 		//
 		// In any case when we come here that means we are not able to replenish connections to
 		// the target, in the connection pool. When we have no active connections and no more left
 		// in the pool, we can delete the nodeClientPool itself.
 		//
-		common.Assert(rpc.IsConnectionRefused(err) ||
-			rpc.IsConnectionReset(err) ||
-			rpc.IsTimedOut(err) ||
-			errors.Is(err, NegativeNodeError), err)
+		// TODO: see newRPCClient() for other possible errors and handle them here.
+		//
+		// common.Assert(rpc.IsConnectionRefused(err) ||
+		// 	rpc.IsConnectionReset(err) ||
+		// 	rpc.IsTimedOut(err) ||
+		// 	errors.Is(err, NegativeNodeError), err)
 
 		cp.deleteNodeClientPoolIfInactive(client.nodeID)
 		return err
@@ -1682,9 +1682,12 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 			// is marked negative and newRPCClient() proactively failed the request.
 			// There is no point in retrying in that case.
 			//
-			common.Assert(rpc.IsConnectionRefused(err) ||
-				rpc.IsTimedOut(err) ||
-				errors.Is(err, NegativeNodeError), err)
+			// TODO: see newRPCClient() for other possible errors and handle them here.
+			//
+			// common.Assert(rpc.IsConnectionRefused(err) ||
+			// 	rpc.IsTimedOut(err) ||
+			// 	errors.Is(err, NegativeNodeError), err)
+
 			break
 		}
 		ncPool.clientChan <- client

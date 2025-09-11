@@ -1130,7 +1130,15 @@ func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.Respo
 	}
 
 	// Get component RV details from the just refreshed clustermap.
-	newRVs := cm.GetRVs(mv.mvName)
+	cmRVs := cm.GetRVs(mv.mvName)
+
+	//
+	// TODO: Deep copy is a temporary workaround for the bug mentioned below.
+	// [BUG] If the rvs map is updated, it also changes the state of the component RV in the
+	//       local clustermap copy, obviously it doesn't change the MV state, so this results
+	//       in assert failure that claims mv state must be offline if any component RV is offline.
+	//
+	newRVs := DeepCopyRVMap(cmRVs)
 	if newRVs == nil {
 		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: GetRVs(%s) failed", mv.mvName)
 		log.Err("%s", errStr)

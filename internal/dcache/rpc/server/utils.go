@@ -39,6 +39,8 @@ import (
 	"path/filepath"
 	"sort"
 
+	"maps"
+
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -264,6 +266,22 @@ func GetMVSizeLocal(ctx context.Context, req *models.GetMVSizeRequest) (*models.
 	common.Assert(handler != nil)
 
 	return handler.GetMVSize(ctx, req)
+}
+
+// Maps are passed as reference in Go. So, if we get the local clustermap reference and update it,
+// it can lead to inconsistency. So, as temporary workaround, we are deep copying the map here.
+//
+// TODO: check at all places where we pass the clustermap as reference and are updating it.
+// Check the best way to avoid deep copying the map.
+func DeepCopyRVMap(rvs map[string]dcache.StateEnum) map[string]dcache.StateEnum {
+	if rvs == nil {
+		return nil
+	}
+
+	newRVs := make(map[string]dcache.StateEnum)
+	maps.Copy(newRVs, rvs)
+
+	return newRVs
 }
 
 // Silence unused import errors for release builds.
