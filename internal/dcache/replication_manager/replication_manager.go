@@ -1961,8 +1961,8 @@ func GetMVSize(mvName string, componentRVs []*models.RVNameAndState) (int64, err
 			readerRV.Name, mvName, targetNodeID)
 
 		req := &models.GetMVSizeRequest{
-			MV:     mvName,
-			RVName: readerRV.Name,
+			MV:              mvName,
+			RVName:          readerRV.Name,
 			ClustermapEpoch: lastClusterMapEpoch,
 		}
 

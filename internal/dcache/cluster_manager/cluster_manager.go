@@ -3215,8 +3215,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 
 	// For all component RVs, we need to send JoinMV/UpdateMV RPC.
 	for rvName, rvState := range mv.RVs {
-		log.Debug("ClusterManager::joinMV: Populating componentRVs list MV %s with RV %s (%s)",
-			mvName, rvName, rvState)
+		log.Debug("ClusterManager::joinMV: Populating componentRVs list with %s/%s (%s)",
+			rvName, mvName, rvState)
 
 		//
 		// For new-mv all component RVs must be online, for fix-mv we can have the following component RV states:
@@ -3244,7 +3244,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 	//
 	// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV()
 	// is called from the new-mv workflow, but can be non-zero when called from the fix-mv workflow
-	// for replacing an offline RV with a new good RV. The new RV must need enough space to store
+	// for replacing an offline RV with a new good RV. The new RV must have enough space to store
 	// the chunks for this MV.
 	//
 	var reserveBytes int64
