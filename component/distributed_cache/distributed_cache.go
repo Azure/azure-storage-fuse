@@ -114,6 +114,7 @@ type DistributedCacheOptions struct {
 	RebalancePercentage uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
+	CacheWarmup         bool   `config:"cache-warmup" yaml:"cache-warmup,omitempty"`
 	IgnoreFD            bool   `config:"ignore-fd" yaml:"ignore-fd,omitempty"`
 	IgnoreUD            bool   `config:"ignore-ud" yaml:"ignore-ud,omitempty"`
 	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
@@ -137,6 +138,7 @@ const (
 	defaultRebalancePercentage       = 80
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
+	defaultCacheWarmup               = true
 	dcacheDirContToken               = "__DCDIRENT__"
 	defaultIgnoreFD                  = true // By default ignore VM Fault Domain for MV placement decisions.
 	defaultIgnoreUD                  = true // By default ignore VM Update Domain for MV placement decisions.
@@ -595,6 +597,9 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".cache-access") {
 		distributedCache.cfg.CacheAccess = defaultCacheAccess
 	}
+	if !config.IsSet(compName + ".cache-warmup") {
+		distributedCache.cfg.CacheWarmup = defaultCacheWarmup
+	}
 	if !config.IsSet(compName + ".ignore-fd") {
 		distributedCache.cfg.IgnoreFD = defaultIgnoreFD
 	}
@@ -1050,15 +1055,14 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			// dcache.
 			//
 			// Create the Dcache metadata file.
-			if handle.Size > 0 {
+			if dc.cfg.CacheWarmup == true && handle.Size > 0 {
+				log.Info("DistributedCache::OpenFile : Starting Cache Warmup for file : %s", options.Name)
 				dcFile, err = fm.NewDcacheFile(rawPath)
 				if err != nil {
-					log.Warn("DistributedCache::OpenFile : Dcache File Creation for cache warmup failed with err : %s, path : %s",
-						err.Error(), options.Name)
+					log.Warn("DistributedCache::OpenFile : Dcache File Creation for cache warmup failed with err : %s, path : %v",
+						err, options.Name)
 				} else {
-
 					dcFile.CacheWarmup = fm.NewCacheWarmup(handle.Size)
-					go dc.startCacheWarmup(handle, dcFile)
 				}
 			}
 		}
@@ -1108,7 +1112,11 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		log.Err("DistributedCache::ReadInBuffer : Failed to read file from Dcache, file: %s, offset: %d, length: %d",
 			options.Handle.Path, options.Offset, len(options.Data))
 	} else if options.Handle.IsFsAzure() {
-		notifyCacheWarmUp(options.Handle, options.Offset)
+
+		if dc.cfg.CacheWarmup {
+			dc.fillCache(options.Handle, options.Offset)
+		}
+
 		bytesRead, err = dc.NextComponent().ReadInBuffer(options)
 		if err == nil || err == io.EOF {
 			return bytesRead, err
@@ -1313,51 +1321,8 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 
 		// All the references to the open file handler are closed so, now it is safe to finalize the dcache file,
 		// if the cache warmup is in progress for this file, complete the remaining here.
-		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
-		if dcFile != nil {
-			// End the cache warmup for this file,
-
-			dcFile.CacheWarmup.EndCacheWarmup()
-			removeFile := false
-
-			if dcFile.CacheWarmup.NxtChunkIdxToRead == dcFile.CacheWarmup.MaxChunks && dcFile.CacheWarmup.Error == nil {
-
-				// finalize the dcache file only if the cache warmup completed successfully and all chunks are read.
-				// Flush and release the dcache file. Any error during the flush will result in deleteing
-				// such dcache file.
-				err := dcFile.CloseFile()
-				if err != nil {
-					log.Err("DistributedCache::CloseFile : Failed to CloseFile for Dcache file : %s, error: %v",
-						options.Handle.Path, err)
-					// Remove this file from the dcache.
-					removeFile = true
-				}
-
-				err = dcFile.ReleaseFile(false)
-				if err != nil {
-					log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s, error: %v",
-						options.Handle.Path, err)
-				}
-			} else {
-				// delete the dcache file if the cache warmup did not complete successfully or there was an error during
-				// cache warmup.
-				log.Err("DistributedCache::CloseFile : Cache warmup status for Dcache file : %s, NxtChunkIdxToRead: %d, MaxChunks: %d, Error: %v",
-					options.Handle.Path, dcFile.CacheWarmup.NxtChunkIdxToRead, dcFile.CacheWarmup.MaxChunks, dcFile.CacheWarmup.Error)
-				removeFile = true
-			}
-
-			if removeFile {
-				log.Info("DistributedCache::CloseFile : Deleting Dcache file : %s", dcFile.FileMetadata.Filename)
-
-				err := fm.DeleteDcacheFile(dcFile.FileMetadata.Filename, true)
-				if err != nil {
-					log.Err("DistributedCache::CloseFile : Failed to Delete wDcache file : %s, error: %v",
-						dcFile.FileMetadata.Filename, err)
-				} else {
-					log.Info("DistributedCache::CloseFile : Successfully Deleted Dcache file : %s",
-						dcFile.FileMetadata.Filename)
-				}
-			}
+		if dc.cfg.CacheWarmup {
+			checkStatusForCacheWarmup(options.Handle)
 		}
 
 		azureErr = dc.NextComponent().CloseFile(options)
@@ -1727,6 +1692,9 @@ func init() {
 
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
+
+	cacheWarmup := config.AddBoolFlag("cache-warmup", defaultCacheWarmup, "File will be cache on first read from Azure if not present in dcache (true/false) [Default: true]")
+	config.BindPFlag(compName+".cache-warmup", cacheWarmup)
 
 	ignoreFD := config.AddBoolFlag("ignore-fd", defaultIgnoreFD, "Ignore VM fault domain for MV placement decisions")
 	config.BindPFlag(compName+".ignore-fd", ignoreFD)
