@@ -9,10 +9,15 @@ components:
   - distributed_cache
   - azstorage
 
+# Libfuse configuration
+libfuse:
+  direct-io: true
+
+
 distributed_cache:
-  cache-id: my-dcache-cluster
+  cache-id: my-dcache-cluster <Unique CacheId shared by all the nodes in the cluster>
   cache-dirs:
-    - /mnt/cache1
+    - /mnt/cache1 <Local Cache directory Path for distributed caching. Ensure this directory exists on the node>
 
 azstorage:
   type: block
