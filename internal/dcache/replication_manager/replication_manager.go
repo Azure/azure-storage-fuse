@@ -216,6 +216,8 @@ retry:
 			// Even after refreshing clustermap if we cannot get a valid MV replica to read from,
 			// alas we need to fail the read.
 			//
+			// TODO: See if refreshing clustermap really gets us some benefit.
+			//
 			if clusterMapRefreshed {
 				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d",
 					req.MvName, lastClusterMapEpoch)
@@ -223,7 +225,7 @@ retry:
 				return nil, err
 			}
 
-			err = cm.RefreshClusterMap(lastClusterMapEpoch)
+			err = cm.RefreshClusterMap(-lastClusterMapEpoch)
 			if err != nil {
 				log.Warn("ReplicationManager::ReadMV: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
 					req.toString(), retryCnt, err)
@@ -253,9 +255,10 @@ retry:
 				MvName:      req.MvName,
 				OffsetInMiB: req.ChunkIndex * req.ChunkSizeInMiB,
 			},
-			OffsetInChunk: req.OffsetInChunk,
-			Length:        req.Length,
-			ComponentRV:   componentRVs,
+			OffsetInChunk:   req.OffsetInChunk,
+			Length:          req.Length,
+			ComponentRV:     componentRVs,
+			ClustermapEpoch: lastClusterMapEpoch,
 		}
 
 		// TODO: how to handle timeouts in case when node is unreachable
@@ -307,7 +310,9 @@ retry:
 			//    be sure whether clustermap refresh at the client will help or not. To be safe
 			//    we refresh the clustermap for a limited number of times before failing the read.
 			//
-			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
+			// TODO: Pass resp.ClustermapEpoch from server to client for targeted refresh.
+			//
+			errCM := cm.RefreshClusterMap(-lastClusterMapEpoch)
 			if errCM != nil {
 				// Log and retry, it'll help in case of transient errors at the server.
 				log.Warn("ReplicationManager::ReadMV: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
@@ -880,7 +885,9 @@ processResponses:
 			//       (or lio) RV may not have completed yet, so the target RV may not be in "syncing"
 			//       state.
 			//
-			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
+			// TODO: Pass resp.ClustermapEpoch from server to client for targeted refresh.
+			//
+			errCM := cm.RefreshClusterMap(-lastClusterMapEpoch)
 			if errCM != nil {
 				//
 				// RPC server can return models.ErrorCode_NeedToRefreshClusterMap in two cases:
@@ -1069,7 +1076,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	// Deleting file chunks from an MV amounts to deleting chunks for that file from all component RVs.
 	// Get the list of component RVs and send a RemoveChunk RPC to each.
 	//
-	mvState, rvs, _ := getComponentRVsForMV(req.MvName)
+	mvState, rvs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 	_ = mvState
 	retryNeeded := false
 
@@ -1128,7 +1135,8 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 				MvName:      req.MvName,
 				OffsetInMiB: -1,
 			},
-			ComponentRV: rvs,
+			ComponentRV:     rvs,
+			ClustermapEpoch: lastClusterMapEpoch,
 		}
 
 		isLastComponentRV := (i == (len(rvs) - 1))
@@ -1214,6 +1222,7 @@ func resyncSyncableMVs() {
 	clusterMapRefreshed := false
 
 	for {
+		// syncable MVs are degraded MVs which have at least one component RV in outofsync state.
 		syncableMVs, lastClusterMapEpoch = cm.GetSyncableMVs()
 		if len(syncableMVs) == 0 {
 			log.Debug("ReplicationManager::ResyncSyncableMVs: No syncable MVs found (%d degraded MVs)",
@@ -1265,6 +1274,7 @@ func resyncSyncableMVs() {
 			break
 		}
 
+		// mvInfo corresponds to lastClusterMapEpoch.
 		syncMV(mvName, mvInfo, lastClusterMapEpoch)
 	}
 }
@@ -1283,6 +1293,8 @@ func resyncSyncableMVs() {
 //   - Send EndSync to the source and target RVs.
 //   - Update MV in the global clustermap, marking the RV state as "online" (from "syncing") and MV state as
 //     "online" if this was the last/only sync, else leaves the MV state unchanged.
+// Note: mvInfo corresponds to lastClusterMapEpoch.
+
 func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int64) {
 	log.Debug("ReplicationManager::syncMV: Resyncing MV %s %+v, lastClusterMapEpoch: %d",
 		mvName, mvInfo, lastClusterMapEpoch)
@@ -1290,7 +1302,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int
 	common.Assert(mvInfo.State == dcache.StateDegraded, mvName, mvInfo.State)
 
 	lioRV := cm.LowestIndexOnlineRV(mvInfo)
-	// For a degraded MV, we must have a lowest index online RV.
+	// For a degraded MV, we must have at least one online component RV.
 	common.Assert(cm.IsValidRVName(lioRV))
 
 	log.Debug("ReplicationManager::syncMV: Lowest index online RV for MV %s is %s", mvName, lioRV)
@@ -1306,6 +1318,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int
 		return
 	}
 
+	// componentRVs is derived from mvInfo.RVs which corresponds to lastClusterMapEpoch.
 	componentRVs := cm.RVMapToList(mvName, mvInfo.RVs)
 
 	log.Debug("ReplicationManager::syncMV: Component RVs for MV %s are %v",
@@ -1316,7 +1329,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int
 	// %age progress. Note that JoinMV carries the reservedSpace parameter which is the more critical one
 	// to decide if an RV can host a new MV replica or not.
 	//
-	syncSize, err := GetMVSize(mvName, componentRVs)
+	syncSize, err := GetMVSize(mvName, componentRVs, lastClusterMapEpoch)
 	if err != nil {
 		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
 		log.Err("ReplicationManager::syncMV: %v", err)
@@ -1388,8 +1401,8 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	//
 	startTime := time.Now()
 
-	log.Debug("ReplicationManager::syncComponentRV: %s/%s -> %s/%s, sync size %d bytes, component RVs %v",
-		lioRV, mvName, targetRVName, mvName, syncSize, rpc.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::syncComponentRV: %s/%s -> %s/%s, sync size %d bytes, component RVs %v, cepoch: %d",
+		lioRV, mvName, targetRVName, mvName, syncSize, rpc.ComponentRVsToString(componentRVs), lastClusterMapEpoch)
 
 	common.Assert(lioRV != targetRVName, lioRV, targetRVName)
 	common.Assert(syncSize >= 0, syncSize)
@@ -1461,6 +1474,9 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		return
 	}
 
+	// UpdateComponentRVState() must result in a clustermap update.
+	common.Assert(cm.GetEpoch() > lastClusterMapEpoch, cm.GetEpoch(), lastClusterMapEpoch)
+
 	common.Assert(time.Since(startTime) < rpc_server.GetMvInfoTimeout(),
 		time.Since(startTime), rpc_server.GetMvInfoTimeout(),
 		lioRV, targetRVName, mvName, srcSyncId, dstSyncId)
@@ -1491,7 +1507,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		componentRVs:    componentRVs,
 		syncStartTime:   syncStartTime,
 		startedAt:       startTime,
-		clustermapEpoch: lastClusterMapEpoch,
+		clustermapEpoch: cm.GetEpoch(), // componentRVs corresponds to this epoch.
 	}
 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
@@ -1560,8 +1576,9 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 // It copies all chunks from the source replica to the target replica.
 // Then it sends the EndSync() RPC call to both source and target nodes.
 func runSyncJob(job *syncJob) error {
-	log.Debug("ReplicationManager::runSyncJob: Sync job: %s", job.toString())
+	log.Debug("ReplicationManager::runSyncJob: Sync job: %s, cepoch: %d", job.toString(), job.clustermapEpoch)
 
+	common.Assert(job.clustermapEpoch > 0, job.clustermapEpoch)
 	common.Assert((job.srcRVName != job.destRVName) &&
 		cm.IsValidRVName(job.srcRVName) &&
 		cm.IsValidRVName(job.destRVName), job.srcRVName, job.destRVName)
@@ -1585,12 +1602,13 @@ func runSyncJob(job *syncJob) error {
 	common.Assert(common.IsValidUUID(srcNodeID))
 
 	endSyncReq := &models.EndSyncRequest{
-		SyncID:       job.srcSyncID,
-		MV:           job.mvName,
-		SourceRVName: job.srcRVName,
-		TargetRVName: job.destRVName,
-		ComponentRV:  job.componentRVs,
-		SyncSize:     job.syncSize,
+		SyncID:          job.srcSyncID,
+		MV:              job.mvName,
+		SourceRVName:    job.srcRVName,
+		TargetRVName:    job.destRVName,
+		ComponentRV:     job.componentRVs,
+		SyncSize:        job.syncSize,
+		ClustermapEpoch: job.clustermapEpoch, // ComponentRVs corresponds to this epoch.
 	}
 
 	//
@@ -1915,20 +1933,17 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 // composition (which is different from the one in the clustermap as it would have replaced offline RVs with
 // new outofsync RVs and it may have also made some component RVs offline). So we take the new MV composition
 // from the caller and save wasted calls to offline RVs.
-func GetMVSize(mvName string, componentRVs []*models.RVNameAndState) (int64, error) {
-	common.Assert(cm.IsValidMVName(mvName), mvName)
+// clustermapEpoch is the epoch at which the componentRVs were fetched by the caller.
+func GetMVSize(mvName string, componentRVs []*models.RVNameAndState, clustermapEpoch int64) (int64, error) {
+	common.Assert(cm.IsValidMVName(mvName), mvName, clustermapEpoch)
+	common.Assert(len(componentRVs) == int(getNumReplicas()), mvName, componentRVs, getNumReplicas(), clustermapEpoch)
+	common.Assert(clustermapEpoch > 0, clustermapEpoch, mvName)
 
 	var mvSize int64
 	var err error
 
-	//
-	// It's ok to query clustermap epoch here as we are called from updateMVList() which must have held lock
-	// on the clustermap, so the epoch won't change from the time componentRVs were fetched till here.
-	//
-	lastClusterMapEpoch := cm.GetEpoch()
-
 	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s are %+v, at epoch %d",
-		mvName, componentRVs, lastClusterMapEpoch)
+		mvName, componentRVs, clustermapEpoch)
 
 	//
 	// Get the most suitable RV from the provided list of component RVs, from which we should query the size of
@@ -1963,7 +1978,7 @@ func GetMVSize(mvName string, componentRVs []*models.RVNameAndState) (int64, err
 		req := &models.GetMVSizeRequest{
 			MV:              mvName,
 			RVName:          readerRV.Name,
-			ClustermapEpoch: lastClusterMapEpoch,
+			ClustermapEpoch: clustermapEpoch,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
