@@ -1,7 +1,7 @@
 # Refer ./setup/baseConfig.yaml for full set of config parameters
 
 logging:
-  type: syslog
+  type: base
   level: log_debug
 
 components:
