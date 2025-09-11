@@ -42,6 +42,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -157,6 +158,9 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+
 	reqStr := rpc.HelloRequestToString(req)
 	log.Debug("rpc_client::Hello: Sending Hello request to node %s: %v", targetNodeID, reqStr)
 
@@ -269,6 +273,9 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+
 	reqStr := rpc.GetChunkRequestToString(req)
 	log.Debug("rpc_client::GetChunk: Sending GetChunk request to node %s: %v", targetNodeID, reqStr)
 
@@ -375,6 +382,9 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.PutChunkRequestToString(req)
 	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s: %v", targetNodeID, reqStr)
@@ -685,6 +695,9 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+
 	reqStr := rpc.RemoveChunkRequestToString(req)
 	log.Debug("rpc_client::RemoveChunk: Sending RemoveChunk request to node %s: %v", targetNodeID, reqStr)
 
@@ -791,6 +804,9 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.JoinMVRequestToString(req)
 	log.Debug("rpc_client::JoinMV: Sending JoinMV request (newMV: %v) to node %s: %v", newMV, targetNodeID, reqStr)
@@ -913,6 +929,9 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+
 	reqStr := rpc.UpdateMVRequestToString(req)
 	log.Debug("rpc_client::UpdateMV: Sending UpdateMV request to node %s: %v", targetNodeID, reqStr)
 
@@ -1020,6 +1039,9 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+
 	reqStr := rpc.LeaveMVRequestToString(req)
 	log.Debug("rpc_client::LeaveMV: Sending LeaveMV request to node %s: %v", targetNodeID, reqStr)
 
@@ -1126,6 +1148,9 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.StartSyncRequestToString(req)
 	log.Debug("rpc_client::StartSync: Sending StartSync request to node %s: %v", targetNodeID, reqStr)
@@ -1242,6 +1267,9 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.EndSyncRequestToString(req)
 	log.Debug("rpc_client::EndSync: Sending EndSync request to node %s: %v", targetNodeID, reqStr)
@@ -1360,6 +1388,9 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.GetMVSizeRequestToString(req)
 	log.Debug("rpc_client::GetMVSize: Sending GetMVSize request to node %s: %v", targetNodeID, reqStr)

@@ -443,10 +443,11 @@ retry:
 				Data: req.Data,
 				Hash: "", // TODO: hash validation will be done later
 			},
-			Length:         int64(len(req.Data)),
-			SyncID:         "", // this is regular client write
-			ComponentRV:    componentRVs,
-			MaybeOverwrite: retryCnt > 0 || brokenChain,
+			Length:          int64(len(req.Data)),
+			SyncID:          "", // this is regular client write
+			ComponentRV:     componentRVs,
+			MaybeOverwrite:  retryCnt > 0 || brokenChain,
+			ClustermapEpoch: lastClusterMapEpoch,
 		},
 		NextRVs: make([]string, 0), // will be added later down, if needed
 	}
@@ -598,10 +599,11 @@ retry:
 					Data: req.Data,
 					Hash: "", // TODO: hash validation will be done later
 				},
-				Length:         int64(len(req.Data)),
-				SyncID:         "", // this is regular client write
-				ComponentRV:    componentRVs,
-				MaybeOverwrite: retryCnt > 0 || brokenChain,
+				Length:          int64(len(req.Data)),
+				SyncID:          "", // this is regular client write
+				ComponentRV:     componentRVs,
+				MaybeOverwrite:  retryCnt > 0 || brokenChain,
+				ClustermapEpoch: lastClusterMapEpoch,
 			}
 
 			log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk request for %s/%s to node %s: %s",
@@ -1208,10 +1210,11 @@ func periodicResyncMVs() {
 // syncing), in the global clustermap and start a synchronization go routine for each outofsync RV.
 func resyncSyncableMVs() {
 	var syncableMVs map[string]dcache.MirroredVolume
+	var lastClusterMapEpoch int64
 	clusterMapRefreshed := false
 
 	for {
-		syncableMVs = cm.GetSyncableMVs()
+		syncableMVs, lastClusterMapEpoch = cm.GetSyncableMVs()
 		if len(syncableMVs) == 0 {
 			log.Debug("ReplicationManager::ResyncSyncableMVs: No syncable MVs found (%d degraded MVs)",
 				len(cm.GetDegradedMVs()))
@@ -1262,7 +1265,7 @@ func resyncSyncableMVs() {
 			break
 		}
 
-		syncMV(mvName, mvInfo)
+		syncMV(mvName, mvInfo, lastClusterMapEpoch)
 	}
 }
 
@@ -1280,8 +1283,9 @@ func resyncSyncableMVs() {
 //   - Send EndSync to the source and target RVs.
 //   - Update MV in the global clustermap, marking the RV state as "online" (from "syncing") and MV state as
 //     "online" if this was the last/only sync, else leaves the MV state unchanged.
-func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
-	log.Debug("ReplicationManager::syncMV: Resyncing MV %s %+v", mvName, mvInfo)
+func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int64) {
+	log.Debug("ReplicationManager::syncMV: Resyncing MV %s %+v, lastClusterMapEpoch: %d",
+		mvName, mvInfo, lastClusterMapEpoch)
 
 	common.Assert(mvInfo.State == dcache.StateDegraded, mvName, mvInfo.State)
 
@@ -1363,7 +1367,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 			// Remove from the map, once the syncjob completes (success or failure).
 			defer rm.runningJobs.Delete(tgtReplica)
 
-			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs, lastClusterMapEpoch)
 			common.Assert(rm.numSyncJobs.Load() > 0, rm.numSyncJobs.Load())
 		}()
 	}
@@ -1376,7 +1380,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 // After this, a sync job is created which is responsible for copying the out of sync chunks from the source RV
 // to the target RV, and also sending the EndSync() RPC call to both source and target nodes.
 func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize int64,
-	componentRVs []*models.RVNameAndState) {
+	componentRVs []*models.RVNameAndState, lastClusterMapEpoch int64) {
 	//
 	// Wallclock time when this sync job is started.
 	// This will be later set in syncJob once we create it, and used for finding the running duration
@@ -1398,11 +1402,12 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 
 	// Create StartSyncRequest. Same request will be sent to both source and target nodes.
 	startSyncReq := &models.StartSyncRequest{
-		MV:           mvName,
-		SourceRVName: lioRV,
-		TargetRVName: targetRVName,
-		ComponentRV:  componentRVs,
-		SyncSize:     syncSize,
+		MV:              mvName,
+		SourceRVName:    lioRV,
+		TargetRVName:    targetRVName,
+		ComponentRV:     componentRVs,
+		SyncSize:        syncSize,
+		ClustermapEpoch: lastClusterMapEpoch,
 	}
 
 	//
@@ -1477,15 +1482,16 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
 
 	syncJob := &syncJob{
-		mvName:        mvName,
-		srcRVName:     lioRV,
-		srcSyncID:     srcSyncId,
-		destRVName:    targetRVName,
-		destSyncID:    dstSyncId,
-		syncSize:      syncSize,
-		componentRVs:  componentRVs,
-		syncStartTime: syncStartTime,
-		startedAt:     startTime,
+		mvName:          mvName,
+		srcRVName:       lioRV,
+		srcSyncID:       srcSyncId,
+		destRVName:      targetRVName,
+		destSyncID:      dstSyncId,
+		syncSize:        syncSize,
+		componentRVs:    componentRVs,
+		syncStartTime:   syncStartTime,
+		startedAt:       startTime,
+		clustermapEpoch: lastClusterMapEpoch,
 	}
 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
@@ -1805,8 +1811,9 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			},
 			Length: int64(len(srcData)),
 			// this is sync write RPC call, so the sync ID should be that of the target RV.
-			SyncID:      job.destSyncID,
-			ComponentRV: job.componentRVs,
+			SyncID:          job.destSyncID,
+			ComponentRV:     job.componentRVs,
+			ClustermapEpoch: job.clustermapEpoch,
 		}
 
 		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s to %s/%s: %v",
