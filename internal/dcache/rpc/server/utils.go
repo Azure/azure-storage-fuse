@@ -273,7 +273,7 @@ func GetMVSizeLocal(ctx context.Context, req *models.GetMVSizeRequest) (*models.
 //
 // TODO: check at all places where we pass the clustermap as reference and are updating it.
 // Check the best way to avoid deep copying the map.
-func DeepCopyRVMap(rvs map[string]dcache.StateEnum) map[string]dcache.StateEnum {
+func deepCopyRVMap(rvs map[string]dcache.StateEnum) map[string]dcache.StateEnum {
 	if rvs == nil {
 		return nil
 	}

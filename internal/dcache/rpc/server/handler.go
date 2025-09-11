@@ -1149,7 +1149,7 @@ func (mv *mvInfo) refreshFromClustermap(doNotFetchClustermap bool) *models.Respo
 	//       local clustermap copy, obviously it doesn't change the MV state, so this results
 	//       in assert failure that claims mv state must be offline if any component RV is offline.
 	//
-	newRVs := DeepCopyRVMap(cmRVs)
+	newRVs := deepCopyRVMap(cmRVs)
 	if newRVs == nil {
 		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: GetRVs(%s) failed", mv.mvName)
 		log.Err("%s", errStr)
