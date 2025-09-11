@@ -2755,9 +2755,10 @@ refreshFromClustermapAndRetry:
 		//       One likely possibility is that when we called GetMVSize() from JoinMV, there were more chunks
 		//       written to the source MV replica after we read the mvInfo.totalChunkBytes, so we reserved less
 		//       but actually sync'ed more. It's not a big deal as we will differ only slightly.
-		common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
+		common.Assert(rvInfo.reservedSpace.Load() >= req.Length,
+			rvInfo.reservedSpace.Load(), req.Length, rvInfo.rvName, mvInfo.mvName, req.SyncID)
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
-			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
+			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load(), rvInfo.rvName, mvInfo.mvName, req.SyncID)
 
 		mvInfo.incTotalChunkBytes(req.Length)
 	}
@@ -3790,9 +3791,14 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 	//
 	common.Assert(mvInfo.reservedSpace.Load() == 0, rvInfo.rvName, req.MV, mvInfo.reservedSpace.Load())
 
-	return &models.GetMVSizeResponse{
+	resp := &models.GetMVSizeResponse{
 		MvSize: mvInfo.totalChunkBytes.Load(),
-	}, nil
+	}
+
+	log.Debug("ChunkServiceHandler::GetMVSize: Returning size %d for %s/%s",
+		resp.MvSize, rvInfo.rvName, req.MV)
+
+	return resp, nil
 }
 
 // Silence unused import errors for release builds.

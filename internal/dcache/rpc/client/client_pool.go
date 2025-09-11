@@ -698,6 +698,25 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
+	//
+	// It's possible that we got a connection error on some earlier client/connection to this node and hence
+	// marked the nodeClientPool as deleting. This RPC response may have come before the target process restarted
+	// and hence this got a success response, but this got processed after a connection with error. We should
+	// continue with deleting the nodeClientPool.
+	//
+	if ncPool.deleting.Load() {
+		log.Debug("clientPool::releaseRPCClient: Successful RPC response being processed after nodeClientPool is marked deleting, continuing with deleteAllRPCClients, client: %p, nodeID: %s", client, client.nodeID)
+
+		cp.releaseNodeLock(nodeLock, client.nodeID)
+		cp.releaseRWMutexReadLock()
+
+		cp.deleteAllRPCClients(client, false /* confirmedBadNode */)
+
+		cp.acquireRWMutexReadLock()
+		nodeLock = cp.acquireNodeLock(client.nodeID)
+		return nil
+	}
+
 	log.Debug("clientPool::releaseRPCClient: %p after %s, node: %s, free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d, maxPerNode: %d",
 		client, time.Since(client.allocatedAt), client.nodeID, len(ncPool.clientChan), ncPool.numActive.Load(),
 		ncPool.numActiveHighPrio.Load(), ncPool.numWaiting.Load(), ncPool.numActiveHighPrio.Load(), cp.maxPerNode)
