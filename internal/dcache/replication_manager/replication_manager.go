@@ -1316,7 +1316,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int
 	// %age progress. Note that JoinMV carries the reservedSpace parameter which is the more critical one
 	// to decide if an RV can host a new MV replica or not.
 	//
-	syncSize, err := GetMVSize(mvName)
+	syncSize, err := GetMVSize(mvName, componentRVs)
 	if err != nil {
 		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
 		log.Err("ReplicationManager::syncMV: %v", err)
@@ -1911,40 +1911,30 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 	return nil
 }
 
-func GetMVSize(mvName string) (int64, error) {
+// GetMVSize() is called from fixMV workflow, by the cluster manager. The cluster manager has the final MV
+// composition (which is different from the one in the clustermap as it would have replaced offline RVs with
+// new outofsync RVs and it may have also made some component RVs offline). So we take the new MV composition
+// from the caller and save wasted calls to offline RVs.
+func GetMVSize(mvName string, componentRVs []*models.RVNameAndState) (int64, error) {
 	common.Assert(cm.IsValidMVName(mvName), mvName)
-
-	log.Debug("ReplicationManager::GetMVSize: MV = %s", mvName)
 
 	var mvSize int64
 	var err error
-	var lastClusterMapEpoch int64
-
-	clusterMapRefreshed := false
-	_ = clusterMapRefreshed
-	retryCnt := 0
-
-retry:
-	// Give up after sufficient clustermap refresh attempts.
-	if retryCnt > 5 {
-		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
-			mvName, retryCnt, lastClusterMapEpoch)
-		log.Err("ReplicationManager::GetMVSize: %v", err)
-		return 0, err
-	}
-
-	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(mvName)
-
-	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s (%s) are %s (retryCnt: %d, clusterMapRefreshed: %v)",
-		mvName, mvState, rpc.ComponentRVsToString(componentRVs), retryCnt, clusterMapRefreshed)
 
 	//
-	// Get the most suitable RV from the list of component RVs,
-	// from which we should get the size of the MV. Selecting most
-	// suitable RV is mostly a heuristical process which might
-	// pick the most suitable RV based on one or more of the
-	// following criteria:
-	// - Local RV must be preferred.
+	// It's ok to query clustermap epoch here as we are called from updateMVList() which must have held lock
+	// on the clustermap, so the epoch won't change from the time componentRVs were fetched till here.
+	//
+	lastClusterMapEpoch := cm.GetEpoch()
+
+	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s are %+v, at epoch %d",
+		mvName, componentRVs, lastClusterMapEpoch)
+
+	//
+	// Get the most suitable RV from the provided list of component RVs, from which we should query the size of
+	// the MV. Selecting most suitable RV is mostly a heuristical process which might pick the most suitable RV
+	// based on one or more of the following criteria:
+	// - Local RV would be preferred.
 	// - Prefer a node that has recently responded successfully to any of our RPCs.
 	// - Pick a random one.
 	//
@@ -1957,15 +1947,6 @@ retry:
 		readerRV := getReaderRV(componentRVs, excludeRVs)
 
 		if readerRV == nil {
-			//
-			// An MV once marked offline can never become online, so save the trip to clustermap.
-			//
-			if mvState == dcache.StateOffline {
-				err = fmt.Errorf("%s is offline", mvName)
-				log.Err("ReplicationManager::GetMVSize: %v", err)
-				return 0, err
-			}
-
 			err = fmt.Errorf("no suitable RV found for MV %s", mvName)
 			log.Err("ReplicationManager::GetMVSize: %v", err)
 			return 0, err
@@ -1982,6 +1963,7 @@ retry:
 		req := &models.GetMVSizeRequest{
 			MV:     mvName,
 			RVName: readerRV.Name,
+			ClustermapEpoch: lastClusterMapEpoch,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
@@ -2001,45 +1983,23 @@ retry:
 			resp, err = rpc_client.GetMVSize(ctx, targetNodeID, req)
 		}
 
-		// Exclude this RV from further iterations (if any).
-		excludeRVs = append(excludeRVs, readerRV.Name)
-
 		if err == nil {
 			// Success.
 			common.Assert(resp != nil, rpc.GetMVSizeRequestToString(req))
 			mvSize = resp.MvSize
-			log.Debug("ReplicationManager::GetMVSize: GetMVSize successful for %s, RPC response: MV size = %d",
-				rpc.GetMVSizeRequestToString(req), resp.MvSize)
+			log.Debug("ReplicationManager::GetMVSize: GetMVSize successful for %s/%s, MV size: %d",
+				req.RVName, req.MV, mvSize)
 			break
 		}
 
-		log.Warn("ReplicationManager::GetMVSize: Failed to get MV size from node %s for request %v [%v]",
-			targetNodeID, rpc.GetMVSizeRequestToString(req), err)
+		log.Warn("ReplicationManager::GetMVSize: Failed to get MV size from node %s for %s/%s [%v]",
+			targetNodeID, req.RVName, req.MV, err)
 
-		rpcErr := rpc.GetRPCResponseError(err)
-		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-			//
-			// RPC server can return models.ErrorCode_NeedToRefreshClusterMap in two cases:
-			// 1. It genuinely wants the client to refresh the clustermap as it knows that
-			//    the client has an older clustermap.
-			// 2. It hit some transient error while fetching the clustermap itself, so it cannot
-			//    be sure whether clustermap refresh at the client will help or not. To be safe
-			//    we refresh the clustermap for a limited number of times before failing the read.
-			//
-			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
-			if errCM != nil {
-				// Log and retry, it'll help in case of transient errors at the server.
-				log.Warn("ReplicationManager::GetMVSize: RefreshClusterMap() failed for GetMVSize(%s) (retryCnt: %d): %v",
-					mvName, retryCnt, errCM)
-			} else {
-				clusterMapRefreshed = true
-			}
-
-			retryCnt++
-			goto retry
-		}
-
+		//
 		// Try another replica if available.
+		// Exclude already tried RVs from further iterations (if any).
+		//
+		excludeRVs = append(excludeRVs, readerRV.Name)
 	}
 
 	return mvSize, nil

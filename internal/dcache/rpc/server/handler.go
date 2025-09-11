@@ -3791,9 +3791,14 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 	//
 	common.Assert(mvInfo.reservedSpace.Load() == 0, rvInfo.rvName, req.MV, mvInfo.reservedSpace.Load())
 
-	return &models.GetMVSizeResponse{
+	resp := &models.GetMVSizeResponse{
 		MvSize: mvInfo.totalChunkBytes.Load(),
-	}, nil
+	}
+
+	log.Debug("ChunkServiceHandler::GetMVSize: Returning size %d for %s/%s",
+		resp.MvSize, rvInfo.rvName, req.MV)
+
+	return resp, nil
 }
 
 // Silence unused import errors for release builds.
