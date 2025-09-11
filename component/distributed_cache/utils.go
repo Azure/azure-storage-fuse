@@ -36,7 +36,6 @@ package distributed_cache
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math"
 	"net"
@@ -51,9 +50,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
-	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
-	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	gouuid "github.com/google/uuid"
 )
 
@@ -397,120 +393,4 @@ func queryVMFaultAndUpdateDomain() (int /* faultDomain */, int /* updateDomain *
 	}
 
 	return fdId, udId, nil
-}
-
-// Cache warmup is started for the given dcache file and handle.
-// Reads the file in chunks and populates the cache with the data read from the Azure.
-// Read the chunk in whole from the Azure and write it to the cache, before handle starts reading from that
-// chunk.
-func (dc *DistributedCache) startCacheWarmup(handle *handlemap.Handle, dcFile *fm.DcacheFile) {
-	log.Info("DistributedCache::startCacheWarmup: Starting cache warmup for file: %s, handle: %d",
-		handle.Path, handle.ID)
-	chunkSize := clustermap.GetCacheConfig().ChunkSizeMB * common.MbToBytes
-
-	defer dcFile.CacheWarmup.Wg.Done()
-
-	for {
-		select {
-		case curReadOffset := <-dcFile.CacheWarmup.CurReadOffsetHandle:
-			log.Info("DistributedCache::startCacheWarmup: received notification to warmup file: %s, handle: %d, current read offset: %d",
-				handle.Path, handle.ID, curReadOffset)
-			if curReadOffset > dcFile.CacheWarmup.Size {
-				// TODO: Size of the file changed during warmup, so we stop the warmup process.
-				err := fmt.Errorf("file size changed during warmup, current read offset: %d is >= file size: %d for file: %s, handle: %d",
-					curReadOffset, dcFile.CacheWarmup.Size, handle.Path, handle.ID)
-				log.Err("DistributedCache::startCacheWarmup: %v", err)
-				dcFile.CacheWarmup.Error = err
-
-				return
-			}
-
-			warmedUpBytes := dcFile.CacheWarmup.NxtChunkIdxToRead * int64(chunkSize)
-
-			if curReadOffset <= warmedUpBytes {
-				continue
-			}
-
-			// Download the chunk this offset falls into from Azure
-			chunkIdx := curReadOffset / int64(chunkSize)
-			chunkIdx = min(chunkIdx, dcFile.CacheWarmup.MaxChunks-1)
-
-			chunkData, err := dcache.GetBuffer()
-			if err != nil {
-				log.Err("DistributedCache::startCacheWarmup: failed to get buffer for file: %s, handle: %d, error: %v",
-					handle.Path, handle.ID, err)
-				dcFile.CacheWarmup.Error = err
-				return
-			}
-
-			for i := dcFile.CacheWarmup.NxtChunkIdxToRead; i <= chunkIdx; i++ {
-				offset := i * int64(chunkSize)
-				log.Info("DistributedCache::startCacheWarmup: downloading chunk idx: %d, offset: %d for file: %s, handle: %d",
-					i, offset, handle.Path, handle.ID)
-
-				currentChunkSize := min(int64(chunkSize), dcFile.CacheWarmup.Size-offset)
-
-				// Read the chunk from Azure into the buffer.
-				bytesRead, err := dc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
-					Handle: handle,
-					Offset: offset,
-					Path:   handle.Path,
-					Size:   int64(currentChunkSize),
-					Data:   chunkData,
-				})
-				if err != io.EOF && err != nil {
-					log.Err("DistributedCache::startCacheWarmup: failed to read chunk idx: %d, offset: %d for file: %s, handle: %d, error: %v",
-						i, offset, handle.Path, handle.ID, err)
-					dcFile.CacheWarmup.Error = err
-					return
-				}
-
-				common.Assert(currentChunkSize == int64(bytesRead), currentChunkSize, bytesRead, err)
-
-				// Write the chunk data to the cache.
-				err = dcFile.WriteFile(offset, chunkData)
-				if err != nil {
-					log.Err("DistributedCache::startCacheWarmup: failed to write chunk idx: %d, offset: %d to cache for file: %s, handle: %d, error: %v",
-						i, offset, handle.Path, handle.ID, err)
-					dcFile.CacheWarmup.Error = err
-					return
-				}
-
-				dcFile.CacheWarmup.NxtChunkIdxToRead++
-			}
-
-			dcache.PutBuffer(chunkData)
-
-		case <-dcFile.CacheWarmup.Done:
-			return
-		}
-	}
-}
-
-func notifyCacheWarmUp(handle *handlemap.Handle, offset int64) {
-	dcFile := handle.IFObj.(*fm.DcacheFile)
-	if dcFile == nil {
-		// no cache warmup is in progress for this handle.
-		return
-	}
-
-	log.Info("DistributedCache::notifyCacheWarmUp: notifying handle: %d for offset: %d", handle.ID, offset)
-	// check for the error before notifying the handle, if there was an error during cache warmup, then don't notify the
-	// handle.
-
-	if dcFile.CacheWarmup.Error != nil {
-		log.Warn("DistributedCache::notifyCacheWarmUp: not notifying handle: %d for offset: %d, because cache warmup has error: %v",
-			handle.ID, offset, dcFile.CacheWarmup.Error)
-		return
-	}
-
-	// Notify only for the offsets that are lying in the first 1MB of the chunk. If the file is being read sequentially,
-	// even if the kernel reorders the io, we get atleast one IO lying in this, assuming the IO size issued by the kernel
-	// is less than or equal to 1MB.
-
-	offsetInChunk := offset % int64(clustermap.GetCacheConfig().ChunkSizeMB*common.MbToBytes)
-
-	if offsetInChunk < int64(common.MbToBytes) {
-		dcFile.CacheWarmup.CurReadOffsetHandle <- offset
-	}
 }

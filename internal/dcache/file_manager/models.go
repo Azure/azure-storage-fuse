@@ -34,8 +34,12 @@
 package filemanager
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
 type StagedChunk struct {
@@ -72,4 +76,21 @@ type StagedChunk struct {
 	// Currently only used by writers to see if unwritten chunks are not completing for long time.
 	//
 	AllocatedAt time.Time
+}
+
+type cacheWarmup struct {
+	sync.Mutex
+	Size              int64 // file size in bytes to warm up
+	MaxChunks         int64
+	NxtChunkIdxToRead atomic.Int64
+	Error             atomic.Value
+}
+
+func NewCacheWarmup(size int64) *cacheWarmup {
+	numChunks := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
+	maxChunks := (size + numChunks - 1) / numChunks
+	return &cacheWarmup{
+		Size:      size,
+		MaxChunks: maxChunks,
+	}
 }
