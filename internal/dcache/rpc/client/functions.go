@@ -1536,4 +1536,5 @@ func Start() {
 // Silence unused import errors for release builds.
 func init() {
 	_ = errors.New("test error")
+	cm.IsValidRVName("rv0")
 }
