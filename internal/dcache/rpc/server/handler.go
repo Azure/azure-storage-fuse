@@ -615,6 +615,17 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	// written to the MV replica being synced, but we don't decrement rv.reservedSpace for each chunk written.
 	// This conservative estimate is deliberate, as we don't want to overcommit space on the RV.
 	//
+	// TODO: there can be a case when the available space is negative. We decrement the reserved space only in EndSync,
+	//       and not in PutChunk(sync) calls. So, after writing the chunks via sync and regular client PutChunk
+	//       calls to the cache directory, the disk available space can become less than the reserved space. Thus,
+	//       availableSpace can be negative. This can be fixed by decrementing the reserved space after each
+	//       successful PutChunk(sync) call.
+	//       However this is also not straight forward. When we send JoinMV call as part of fix-mv workflow,
+	//       we send the reserved space required for the MV replica to be added to this RV. When we called
+	//       GetMVSize() from JoinMV, there could have been more chunks being written to the source MV replica after
+	//       we read the mvInfo.totalChunkBytes. So we reserved less but actually sync'ed more. So, directly
+	//       decrementing the reserved space in PutChunk(sync) can lead to negative reserved space for both MV and RV.
+	//
 	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
 	common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
