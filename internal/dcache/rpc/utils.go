@@ -145,40 +145,40 @@ func ComponentRVsMapToList(m map[string]string) []*models.RVNameAndState {
 // convert *models.HelloRequest to string
 // used for logging
 func HelloRequestToString(req *models.HelloRequest) string {
-	return fmt.Sprintf("{SenderNodeID %s, ReceiverNodeID %s, Time %d, RVName %v, MV %v}",
-		req.SenderNodeID, req.ReceiverNodeID, req.Time, req.RVName, req.MV)
+	return fmt.Sprintf("{SenderNodeID %s, ReceiverNodeID %s, Time %d, RVName %v, MV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, req.ReceiverNodeID, req.Time, req.RVName, req.MV, req.ClustermapEpoch)
 }
 
 func HelloResponseToString(resp *models.HelloResponse) string {
-	return fmt.Sprintf("{ReceiverNodeID %s, Time %d, RVName %v, MV %v}",
-		resp.ReceiverNodeID, resp.Time, resp.RVName, resp.MV)
+	return fmt.Sprintf("{ReceiverNodeID %s, Time %d, RVName %v, MV %v, ClustermapEpoch %d}",
+		resp.ReceiverNodeID, resp.Time, resp.RVName, resp.MV, resp.ClustermapEpoch)
 }
 
 // convert *models.GetChunkRequest to string
 // used for logging
 func GetChunkRequestToString(req *models.GetChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, OffsetInChunk %v, Length %v, ComponentRV %v}",
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, OffsetInChunk %v, Length %v, IsLocalRV %v, ComponentRV %v, ClustermapEpoch %d}",
 		req.SenderNodeID, *req.Address, req.OffsetInChunk, req.Length,
-		ComponentRVsToString(req.ComponentRV))
+		req.IsLocalRV, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 func GetChunkResponseToString(resp *models.GetChunkResponse) string {
-	return fmt.Sprintf("{Address %+v, DataLength: %v, ChunkWriteTime %v, TimeTaken %v, ComponentRV %v}",
+	return fmt.Sprintf("{Address %+v, DataLength: %v, ChunkWriteTime %v, TimeTaken %v, ComponentRV %v, ClustermapEpoch %d}",
 		*resp.Chunk.Address, len(resp.Chunk.Data), resp.ChunkWriteTime, resp.TimeTaken,
-		ComponentRVsToString(resp.ComponentRV))
+		ComponentRVsToString(resp.ComponentRV), resp.ClustermapEpoch)
 }
 
 // convert *models.PutChunkRequest to string
 // exclude data and hash from the string to prevent it from being logged
 func PutChunkRequestToString(req *models.PutChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, Length %v, SyncID %v, ComponentRV %v, MaybeOverwrite %v}",
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, Length %v, SyncID %v, ComponentRV %v, MaybeOverwrite %v, ClustermapEpoch %d}",
 		req.SenderNodeID, *req.Chunk.Address, req.Length, req.SyncID,
-		ComponentRVsToString(req.ComponentRV), req.MaybeOverwrite)
+		ComponentRVsToString(req.ComponentRV), req.MaybeOverwrite, req.ClustermapEpoch)
 }
 
 func PutChunkResponseToString(resp *models.PutChunkResponse) string {
-	return fmt.Sprintf("{TimeTaken %v, AvailableSpace %v, ComponentRV %v}",
-		resp.TimeTaken, resp.AvailableSpace, ComponentRVsToString(resp.ComponentRV))
+	return fmt.Sprintf("{TimeTaken %v, AvailableSpace %v, ComponentRV %v, ClustermapEpoch %d}",
+		resp.TimeTaken, resp.AvailableSpace, ComponentRVsToString(resp.ComponentRV), resp.ClustermapEpoch)
 }
 
 // convert *models.PutChunkDCRequest to string
@@ -218,53 +218,54 @@ func PutChunkDCResponseToString(response *models.PutChunkDCResponse) string {
 // convert *models.RemoveChunkRequest to string
 // used for logging
 func RemoveChunkRequestToString(req *models.RemoveChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, ComponentRV %v}",
-		req.SenderNodeID, *req.Address, ComponentRVsToString(req.ComponentRV))
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, ComponentRV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, *req.Address, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 // convert *models.JoinMVRequest to string
 // used for logging
 func JoinMVRequestToString(req *models.JoinMVRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v, ReserveSpace %v, ComponentRV %v}",
-		req.SenderNodeID, req.MV, req.RVName, req.ReserveSpace, ComponentRVsToString(req.ComponentRV))
+	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v, ReserveSpace %v, ComponentRV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, req.MV, req.RVName, req.ReserveSpace, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 // convert *models.UpdateMVRequest to string
 // used for logging
 func UpdateMVRequestToString(req *models.UpdateMVRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v ComponentRV %v}",
-		req.SenderNodeID, req.MV, req.RVName, ComponentRVsToString(req.ComponentRV))
+	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v ComponentRV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, req.MV, req.RVName, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 // convert *models.LeaveMVRequest to string
 // used for logging
 func LeaveMVRequestToString(req *models.LeaveMVRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v, ComponentRV %v}",
-		req.SenderNodeID, req.MV, req.RVName, ComponentRVsToString(req.ComponentRV))
+	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v, ComponentRV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, req.MV, req.RVName, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 // convert *models.StartSyncRequest to string
 // used for logging
 func StartSyncRequestToString(req *models.StartSyncRequest) string {
 	return fmt.Sprintf("{SenderNodeID %v, MV %v, SourceRVName %v, TargetRVName %v, "+
-		"ComponentRV %v, SyncSize %v}",
+		"ComponentRV %v, SyncSize %v, ClustermapEpoch %d}",
 		req.SenderNodeID, req.MV, req.SourceRVName, req.TargetRVName,
-		ComponentRVsToString(req.ComponentRV), req.SyncSize)
+		ComponentRVsToString(req.ComponentRV), req.SyncSize, req.ClustermapEpoch)
 }
 
 // convert *models.EndSyncRequest to string
 // used for logging
 func EndSyncRequestToString(req *models.EndSyncRequest) string {
 	return fmt.Sprintf("{SenderNodeID %v, SyncID %v, MV %v, SourceRVName %v, "+
-		"TargetRVName %v, ComponentRV %v, SyncSize %v}",
+		"TargetRVName %v, ComponentRV %v, SyncSize %v, ClustermapEpoch %d}",
 		req.SenderNodeID, req.SyncID, req.MV, req.SourceRVName,
-		req.TargetRVName, ComponentRVsToString(req.ComponentRV), req.SyncSize)
+		req.TargetRVName, ComponentRVsToString(req.ComponentRV), req.SyncSize, req.ClustermapEpoch)
 }
 
 // convert *models.GetMVSizeRequest to string
 // used for logging
 func GetMVSizeRequestToString(req *models.GetMVSizeRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v}", req.SenderNodeID, req.MV, req.RVName)
+	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v, ClustermapEpoch %d}",
+		req.SenderNodeID, req.MV, req.RVName, req.ClustermapEpoch)
 }
 
 // The caller of PutChunkDC() RPC can make this call to handle the error returned by PutChunkDC().
