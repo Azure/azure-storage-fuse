@@ -1062,7 +1062,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 					log.Warn("DistributedCache::OpenFile : Dcache File Creation for cache warmup failed with err : %s, path : %v",
 						err, options.Name)
 				} else {
-					dcFile.CacheWarmup = fm.NewCacheWarmup(handle.Size)
+					dcFile.CacheWarmup = fm.NewCacheWarmup(handle.Size, maxBackgroundCacheWarmupChunks)
 					go startCacheWarmup(dc, handle)
 				}
 			}

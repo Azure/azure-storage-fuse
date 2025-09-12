@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	maxBackgroundCacheWarmupChunks = 16
+	maxBackgroundCacheWarmupChunks = 64
 )
 
 func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
