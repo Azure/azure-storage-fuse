@@ -87,14 +87,31 @@ type cacheWarmup struct {
 
 	// number of chunks successfully uploaded to dcache.
 	SuccessfulChunks atomic.Int64
+
+	// track upload status of each chunk.
+	Bitmap []uint64
+
+	// channel for capturing upload status of multiple chunks.
+	// currently used to limit number of parallel uploads to 16.
+	SuccessCh chan ChunkWarmupStatus
 }
 
 func NewCacheWarmup(size int64) *cacheWarmup {
 	numChunks := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
 	maxChunks := (size + numChunks - 1) / numChunks
+
+	numInts := int((maxChunks + 63) / 64)
+
 	return &cacheWarmup{
 		Size:             size,
 		MaxChunks:        maxChunks,
 		SuccessfulChunks: atomic.Int64{},
+		Bitmap:           make([]uint64, numInts),
+		SuccessCh:        make(chan ChunkWarmupStatus, 16),
 	}
+}
+
+type ChunkWarmupStatus struct {
+	ChunkIdx int64
+	Err      error
 }

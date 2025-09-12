@@ -26,16 +26,11 @@ func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 	}
 
 	var err error
-	chunksStatus := make([]<-chan error, 0, maxBackgroundCacheWarmupChunks)
 
 	// wait for status of last write to complete.
 	waitForLastWrite := func() error {
-		if len(chunksStatus) == 0 {
-			return nil
-		}
-		err = <-chunksStatus[0]
-		chunksStatus = chunksStatus[1:]
-		if err != nil {
+		chunkStatus := <-dcFile.CacheWarmup.SuccessCh
+		if chunkStatus.Err != nil {
 			log.Err("DistributedCache::startCacheWarmup: Error during cache warmup for file: %s, handle: %d, error: %v",
 				handle.Path, handle.ID, err)
 			// stop further cache warmup.
@@ -43,20 +38,23 @@ func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 			return err
 		} else {
 			dcFile.CacheWarmup.SuccessfulChunks.Add(1)
+			ok := common.AtomicTestAndSetBitUint64(&dcFile.CacheWarmup.Bitmap[chunkStatus.ChunkIdx/64], uint(chunkStatus.ChunkIdx%64))
+			common.Assert(ok, chunkStatus.ChunkIdx)
+			_ = ok
 		}
 		return nil
 	}
 
 	// work on 16 chunks at a time.
 	for i := int64(0); i < dcFile.CacheWarmup.MaxChunks; i++ {
-		if i >= maxBackgroundCacheWarmupChunks {
+		if i > maxBackgroundCacheWarmupChunks {
 			// wait for the first write to complete before proceeding.
 			if err = waitForLastWrite(); err != nil {
 				break
 			}
 		}
 
-		uploadStatus, err := fillCache(dc, handle, dcFile, i)
+		err := fillCache(dc, handle, dcFile, i)
 		if err != nil {
 			// stop further cache warmup.
 			log.Err("DistributedCache::startCacheWarmup: Error during cache warmup for file: %s, handle: %d, error: %v",
@@ -65,11 +63,10 @@ func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 			break
 		}
 
-		chunksStatus = append(chunksStatus, uploadStatus)
 	}
 
 	// wait for all pending writes to complete.
-	for len(chunksStatus) > 0 {
+	for dcFile.CacheWarmup.SuccessfulChunks.Load() < dcFile.CacheWarmup.MaxChunks && dcFile.CacheWarmup.Error.Load() == nil {
 		waitForLastWrite()
 	}
 
@@ -77,7 +74,7 @@ func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 	checkStatusForCacheWarmup(handle, dcFile)
 }
 
-func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.DcacheFile, chunkIdx int64) (<-chan error, error) {
+func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.DcacheFile, chunkIdx int64) error {
 
 	chunkSize := clustermap.GetCacheConfig().ChunkSizeMB * common.MbToBytes
 
@@ -90,7 +87,7 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 		log.Err("DistributedCache::fillCache: failed to get buffer for file: %s, handle: %d, error: %v",
 			handle.Path, handle.ID, err)
 		dcFile.CacheWarmup.Error.Store(err)
-		return nil, err
+		return err
 	}
 
 	chunkStartoffset := chunkIdx * int64(chunkSize)
@@ -110,7 +107,7 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 	if err != io.EOF && err != nil {
 		log.Err("DistributedCache::fillCache: failed to read chunk idx: %d, offset: %d for file: %s, handle: %d, error: %v",
 			chunkIdx, chunkStartoffset, handle.Path, handle.ID, err)
-		return nil, err
+		return err
 	}
 
 	common.Assert(currentChunkSize == int64(bytesRead), currentChunkSize, bytesRead, err)
@@ -124,14 +121,16 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 			log.Err("DistributedCache::fillCache: failed to write chunk idx: %d, offset: %d to cache for file: %s, handle: %d, error: %v",
 				chunkIdx, chunkStartoffset, handle.Path, handle.ID, err)
 			dcFile.CacheWarmup.Error.Store(err)
+			dcFile.CacheWarmup.SuccessCh <- fm.ChunkWarmupStatus{ChunkIdx: chunkIdx, Err: err}
 			return err
 		}
+		dcFile.CacheWarmup.SuccessCh <- fm.ChunkWarmupStatus{ChunkIdx: chunkIdx, Err: nil}
 		return nil
 	}
 
-	uploadStatus := dc.pw.EnqueuAzureWrite(dcacheWrite)
+	dc.pw.EnqueuAzureWrite(dcacheWrite)
 
-	return uploadStatus, nil
+	return nil
 }
 
 // It blocks the caller until the chunk enclosing this offset is uploaded to the cache.
@@ -149,8 +148,8 @@ func waitForChunkWarmupCompletion(handle *handlemap.Handle, dcFile *fm.DcacheFil
 			break
 		}
 
-		if chunkIdx < dcFile.CacheWarmup.SuccessfulChunks.Load() {
-			// cache warmup completed successfully.
+		// check if corresponding bit is set in the bitmap.
+		if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); ok {
 			break
 		}
 
