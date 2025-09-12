@@ -236,7 +236,7 @@ func IsNoRouteToHost(err error) bool {
 
 	log.Debug("IsNoRouteToHost: err: %v, type: %T", err, err)
 
-	noRouteToHost := "no route to host"
+	noRouteToHost := "o route to host"
 	return strings.Contains(err.Error(), noRouteToHost)
 }
 

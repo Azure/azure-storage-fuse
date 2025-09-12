@@ -271,12 +271,11 @@ func GetMVSizeLocal(ctx context.Context, req *models.GetMVSizeRequest) (*models.
 // Maps are passed as reference in Go. So, if we get the local clustermap reference and update it,
 // it can lead to inconsistency. So, as temporary workaround, we are deep copying the map here.
 //
-// TODO: check at all places where we pass the clustermap as reference and are updating it.
-// Check the best way to avoid deep copying the map.
+// TODO: Check at all places where we pass the clustermap as reference and are updating it.
+//       Check the best way to avoid deep copying the map.
+
 func deepCopyRVMap(rvs map[string]dcache.StateEnum) map[string]dcache.StateEnum {
-	if rvs == nil {
-		return nil
-	}
+	common.Assert(rvs != nil)
 
 	newRVs := make(map[string]dcache.StateEnum)
 	maps.Copy(newRVs, rvs)
