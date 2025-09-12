@@ -222,6 +222,24 @@ func IsTimedOut(err error) bool {
 		strings.Contains(err.Error(), ioTimeout)
 }
 
+// Check if the error returned by thrift indicates that there is no route to the host.
+// This can happen when we create RPC client to a node which is on a different subnet/vnet
+// or the node is deallocated.
+func IsNoRouteToHost(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a no route to host error.
+	if GetRPCResponseError(err) != nil {
+		log.Debug("IsNoRouteToHost: is RPC error: %v", err)
+		return false
+	}
+
+	log.Debug("IsNoRouteToHost: err: %v, type: %T", err, err)
+
+	noRouteToHost := "no route to host"
+	return strings.Contains(err.Error(), noRouteToHost)
+}
+
 // Silence unused import errors for release builds.
 func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
