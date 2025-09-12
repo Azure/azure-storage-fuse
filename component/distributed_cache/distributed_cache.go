@@ -1063,6 +1063,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 						err, options.Name)
 				} else {
 					dcFile.CacheWarmup = fm.NewCacheWarmup(handle.Size)
+					go startCacheWarmup(dc, handle)
 				}
 			}
 		}
@@ -1114,7 +1115,24 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 	} else if options.Handle.IsFsAzure() {
 
 		if dc.cfg.CacheWarmup {
-			dc.fillCache(options.Handle, options.Offset)
+			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+			if dcFile != nil {
+				err = waitForChunkWarmupCompletion(options.Handle, dcFile, options.Offset+int64(len(options.Data))-1)
+				if err != nil {
+					log.Warn("DistributedCache::ReadInBuffer : Cache warmup failed for file: %s, offset: %d, err: %v, continueing to read from Azure",
+						options.Handle.Path, options.Offset, err)
+				} else {
+					// Read from the dcache file if the chunk corresponding to the offset is already warmed up.
+					bytesRead, err = dcFile.ReadPartialFile(options.Offset, &options.Data)
+					if err == nil || err == io.EOF {
+						return bytesRead, err
+					} else {
+						// otherwise continue to read from Azure.
+						log.Warn("DistributedCache::ReadInBuffer : Cache warmup read failed for file: %s, offset: %d, err: %v, continueing to read from Azure",
+							options.Handle.Path, options.Offset, err)
+					}
+				}
+			}
 		}
 
 		bytesRead, err = dc.NextComponent().ReadInBuffer(options)
@@ -1319,10 +1337,12 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 
 	if options.Handle.IsFsAzure() {
 
-		// All the references to the open file handler are closed so, now it is safe to finalize the dcache file,
-		// if the cache warmup is in progress for this file, complete the remaining here.
+		// emit a log on the status of cache warmup if enabled.
 		if dc.cfg.CacheWarmup {
-			checkStatusForCacheWarmup(options.Handle)
+			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+			if dcFile != nil {
+				logStatusForCacheWarmup(options.Handle, dcFile)
+			}
 		}
 
 		azureErr = dc.NextComponent().CloseFile(options)

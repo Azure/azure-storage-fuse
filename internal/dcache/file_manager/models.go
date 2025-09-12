@@ -34,7 +34,6 @@
 package filemanager
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -79,18 +78,23 @@ type StagedChunk struct {
 }
 
 type cacheWarmup struct {
-	sync.Mutex
-	Size              int64 // file size in bytes to warm up
-	MaxChunks         int64
-	NxtChunkIdxToRead atomic.Int64
-	Error             atomic.Value
+	// file size in bytes to warm up
+	Size      int64
+	MaxChunks int64
+
+	// any error during cache warmup.
+	Error atomic.Value
+
+	// number of chunks successfully uploaded to dcache.
+	SuccessfulChunks atomic.Int64
 }
 
 func NewCacheWarmup(size int64) *cacheWarmup {
 	numChunks := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
 	maxChunks := (size + numChunks - 1) / numChunks
 	return &cacheWarmup{
-		Size:      size,
-		MaxChunks: maxChunks,
+		Size:             size,
+		MaxChunks:        maxChunks,
+		SuccessfulChunks: atomic.Int64{},
 	}
 }
