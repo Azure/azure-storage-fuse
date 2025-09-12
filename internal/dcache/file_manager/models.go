@@ -96,7 +96,7 @@ type cacheWarmup struct {
 	SuccessCh chan ChunkWarmupStatus
 }
 
-func NewCacheWarmup(size int64) *cacheWarmup {
+func NewCacheWarmup(size int64, maxBackgroundCacheWarmupChunks int) *cacheWarmup {
 	numChunks := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
 	maxChunks := (size + numChunks - 1) / numChunks
 
@@ -107,7 +107,7 @@ func NewCacheWarmup(size int64) *cacheWarmup {
 		MaxChunks:        maxChunks,
 		SuccessfulChunks: atomic.Int64{},
 		Bitmap:           make([]uint64, numInts),
-		SuccessCh:        make(chan ChunkWarmupStatus, 16),
+		SuccessCh:        make(chan ChunkWarmupStatus, maxBackgroundCacheWarmupChunks),
 	}
 }
 
