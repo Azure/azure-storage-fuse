@@ -349,6 +349,13 @@ func AtomicTestAndSetBitUint64(addr *uint64, bit uint) bool {
 	}
 }
 
+func AtomicTestBitUint64(addr *uint64, bit uint) bool {
+	Assert(bit < 64, bit)
+
+	old := atomic.LoadUint64(addr)
+	return old&(1<<bit) != 0
+}
+
 // Atomically update the target value to 'newValue' only if 'newValue' is greater.
 // This is the atomic max() operation.
 func AtomicMaxInt64(target *int64, newValue int64) {
