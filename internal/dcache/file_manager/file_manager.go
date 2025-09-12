@@ -250,6 +250,55 @@ func (file *DcacheFile) initFreeChunks(maxChunks int) {
 	}
 }
 
+func (file *DcacheFile) ReadPartialFile(offset int64, buf *[]byte) (bytesRead int, err error) {
+	log.Debug("DistributedCache::ReadPartialFile: file: %s, offset: %d, length: %d",
+		file.FileMetadata.Filename, offset, len(*buf))
+
+	maxReadChunkIdx := getChunkIdxFromFileOffset(offset+int64(len(*buf))-1, file.FileMetadata.FileLayout.ChunkSize)
+	common.Assert(file.CacheWarmup != nil)
+	common.Assert(file.CacheWarmup.Size >= 0, file.CacheWarmup.Size)
+	common.Assert(maxReadChunkIdx < file.CacheWarmup.SuccessfulChunks.Load(), maxReadChunkIdx,
+		file.CacheWarmup.SuccessfulChunks.Load(), file.FileMetadata.Filename)
+
+	endOffset := min(offset+int64(len(*buf)), file.CacheWarmup.Size)
+
+	for offset < endOffset {
+		chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
+		readSize := min(endOffset-offset, file.FileMetadata.FileLayout.ChunkSize-chunkOffset)
+
+		common.Assert(chunkIdx <= maxReadChunkIdx, chunkIdx, maxReadChunkIdx,
+			file.FileMetadata.Filename)
+
+		chunk, err := file.readChunk(offset, int64(len(*buf)), true /* sync */)
+		if err != nil {
+			return bytesRead, err
+		}
+
+		common.Assert(chunk.UpToDate.Load(), chunk.Idx, file.FileMetadata.Filename)
+		common.Assert((chunk.Offset+chunk.Len) <= file.FileMetadata.FileLayout.ChunkSize,
+			chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
+		common.Assert((chunkOffset+readSize) <= (chunk.Offset+chunk.Len),
+			chunkOffset, readSize, chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
+		common.Assert(chunk.RefCount.Load() > 0, chunk.Idx, chunk.RefCount.Load())
+
+		copied := copy((*buf)[bytesRead:], chunk.Buf[(chunkOffset-chunk.Offset):chunk.Len])
+
+		common.Assert(copied > 0, chunkOffset,
+			bytesRead, chunk.Offset, chunk.Len, len(*buf), chunk.Idx, file.FileMetadata.Filename)
+
+		offset += int64(copied)
+		bytesRead += copied
+
+		// Release our refcount on the chunk. If this is the last reference, it will free the chunk memory.
+		file.releaseChunk(chunk)
+	}
+	common.Assert(offset == endOffset, offset, endOffset)
+	common.Assert(offset <= file.CacheWarmup.Size, offset, file.CacheWarmup.Size)
+
+	return bytesRead, nil
+}
+
 // Reads the file data from the given offset and length to buf[].
 // It translates the requested offsets into chunks, reads those chunks from distributed cache and copies data from
 // those chunks into user buffer.
