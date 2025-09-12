@@ -59,6 +59,7 @@ import (
 
 	gouuid "github.com/google/uuid"
 	"github.com/prometheus/procfs"
+	"golang.org/x/sys/unix"
 	"gopkg.in/ini.v1"
 )
 
@@ -69,6 +70,15 @@ var ForegroundMount bool
 var IsDistributedCacheEnabled bool
 var IsStream bool
 var MyNodeUUID string
+
+// Rename oldPath to newPath but do not overwrite newPath if it exists, instead fail with EEXIST error.
+// This uses the RENAME_NOREPLACE flag of the renameat2 syscall which is available since Linux kernel 4.0 for
+// xfs and 3.15 for ext4.
+//
+// TODO: This is Linux specific.
+func RenameNoReplace(oldPath, newPath string) error {
+	return unix.Renameat2(unix.AT_FDCWD, oldPath, unix.AT_FDCWD, newPath, unix.RENAME_NOREPLACE)
+}
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {

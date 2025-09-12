@@ -35,6 +35,7 @@ package clustermap
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,6 +49,10 @@ import (
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
+
+var (
+	InvalidComponentRV = errors.New("invalid component RV")
+)
 
 func Start() {
 	// This MUST match localClusterMapPath in clustermanager.
@@ -82,7 +87,8 @@ func GetDegradedMVs() map[string]dcache.MirroredVolume {
 // syncable MVs are those degraded MVs which have at least one component RV in outofsync state.
 // Degraded MVs with no outofsync (only offline) RVs need to be first fixed by fix-mv before they
 // can be sync'ed.
-func GetSyncableMVs() map[string]dcache.MirroredVolume {
+// Also returns the epoch of the clustermap that was used to determine the syncable MVs.
+func GetSyncableMVs() (map[string]dcache.MirroredVolume, int64) {
 	return clusterMap.getSyncableMVs()
 }
 
@@ -321,8 +327,26 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	rvs := GetRVs(mvName)
 	rvCurState, ok := rvs[rvName]
 	if !ok {
-		err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v",
-			rvName, mvName, rvNewState, rvs)
+		// Add all known exceptions here.
+
+		//
+		// Exception 1: If the new state is inband-offline and RV is not found in the clustermap, it mostly
+		//              means that the RV was part of the MV earlier but has been removed by a fix-mv workflow
+		//              that ran after the first update of the RV to inband-offline.
+		//              We should not fail the update in this case as what is intended by the user is already
+		//              achieved.
+		//
+		if rvNewState == dcache.StateInbandOffline {
+			log.Debug("ClusterMap::UpdateComponentRVState: %s/%s -> %s, old duplicate udpate, ignoring, rvs: %+v",
+				rvName, mvName, rvNewState, rvs)
+			return nil
+		}
+
+		//
+		// Unexpected RV updates, log and assert to find out if we must add more legitimate exceptions.
+		//
+		err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v: %w",
+			rvName, mvName, rvNewState, rvs, InvalidComponentRV)
 		log.Err("%v", err)
 		common.Assert(false, err)
 		return err
@@ -484,9 +508,10 @@ func (c *ClusterMap) getDegradedMVs() map[string]dcache.MirroredVolume {
 	return degradedMVs
 }
 
-func (c *ClusterMap) getSyncableMVs() map[string]dcache.MirroredVolume {
+func (c *ClusterMap) getSyncableMVs() (map[string]dcache.MirroredVolume, int64) {
 	syncableMVs := make(map[string]dcache.MirroredVolume)
-	for mvName, mv := range c.getLocalMap().MVMap {
+	localMap := c.getLocalMap()
+	for mvName, mv := range localMap.MVMap {
 		if mv.State == dcache.StateDegraded {
 			rvs := c.getRVs(mvName)
 			// We got mvName from MVMap, so getRVs() should succeed.
@@ -500,7 +525,8 @@ func (c *ClusterMap) getSyncableMVs() map[string]dcache.MirroredVolume {
 			}
 		}
 	}
-	return syncableMVs
+
+	return syncableMVs, localMap.Epoch
 }
 
 func (c *ClusterMap) getOfflineMVs() map[string]dcache.MirroredVolume {

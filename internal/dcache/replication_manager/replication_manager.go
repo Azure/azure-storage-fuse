@@ -35,6 +35,7 @@ package replication_manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -158,6 +159,8 @@ retry:
 	// One refresh is all we need in most cases, but we retry a few times to add extra resilience in case
 	// of any unexpected errors. This is important as failing here will result in application request failure
 	// which should only be done when we really cannot proceed.
+	//
+	// TODO: make it more resilient. We should never fail client IO.
 	//
 	if retryCnt > 5 {
 		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
@@ -351,50 +354,24 @@ retry:
 	return resp, nil
 }
 
-func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
-	common.Assert(req != nil)
-
-	var err error
-
-	if common.IsDebugBuild() {
-		startTime := time.Now()
-		defer func() {
-			if err != nil {
-				log.Err("[TIMING] ReplicationManager::WriteMV: WriteMV failed after %s: %v: %v",
-					time.Since(startTime), req.toString(), err)
-			} else {
-				log.Debug("[TIMING] ReplicationManager::WriteMV: WriteMV request took %s: %v",
-					time.Since(startTime), req.toString())
-			}
-		}()
-	}
-
-	log.Debug("ReplicationManager::WriteMV: Received WriteMV request (%v): %v", PutChunkStyle, req.toString())
-
-	//
-	// We don't expect the caller to pass invalid requests, so only verify in debug builds.
-	//
-	if common.IsDebugBuild() {
-		if err = req.isValid(); err != nil {
-			err = fmt.Errorf("invalid WriteMV request %s [%v]", req.toString(), err)
-			log.Err("ReplicationManager::WriteMV: %v", err)
-			common.Assert(false, err)
-			return nil, err
-		}
-	}
+func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*WriteMvResponse, error) {
+	log.Debug("ReplicationManager::writeMVInternal: Received WriteMV request (%v): %v", putChunkStyle, req.toString())
 
 	var rvsWritten []string
 	retryCnt := 0
 
+	var err error
+
 	//
-	// Flag to check if we have a BrokenChain error in the PutChunkDC response.
-	// If we have a BrokenChain error for an RV, it means that the PutChunkDC request was not
-	// forwarded to it as the nexthop RV was down/offline. We will get ThriftError for the nexthop RV
-	// and BrokenChain error for the subsequent RVs.
-	// In case of BrokenChain error, we retry the WriteMV() operation skipping the nexthop RV and refreshing
-	// the clustermap (if needed).
+	// If the putChunkStyle is OriginatorSendsToAll, it means that we are retrying after BrokenChain
+	// error in the previous attempt using DaisyChain mode.
 	//
-	brokenChain := false
+	brokenChain := (putChunkStyle == OriginatorSendsToAll)
+
+	if brokenChain {
+		log.Warn("ReplicationManager::writeMVInternal: Retrying WriteMV %s with OriginatorSendsToAll after BrokenChain error in previous DaisyChain attempt",
+			req.toString())
+	}
 
 	// TODO: TODO: hash validation will be done later
 	// get hash of the data in the request
@@ -402,9 +379,15 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 
 retry:
 	err = nil
-	if retryCnt > 0 || brokenChain {
-		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh or broken chain (%v), RVs written in prev attempt: %v",
-			retryCnt, req.toString(), brokenChain, rvsWritten)
+	if retryCnt > 0 {
+		//
+		// We shouldn't be retrying for a BrokenChain error, instead we should return and caller will
+		// reissue writeMVInternal() with OriginatorSendsToAll style.
+		//
+		common.Assert(!brokenChain)
+
+		log.Info("ReplicationManager::WriteMV: [%d] Retrying WriteMV %v after clustermap refresh, RVs written in prev attempt: %v",
+			retryCnt, req.toString(), rvsWritten)
 	}
 
 	//
@@ -418,7 +401,7 @@ retry:
 	//
 	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	log.Debug("ReplicationManager::WriteMV: Component RVs for %s (%s) are: %v",
+	log.Debug("ReplicationManager::writeMVInternal: Component RVs for %s (%s) are: %v",
 		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
 
 	//
@@ -460,10 +443,11 @@ retry:
 				Data: req.Data,
 				Hash: "", // TODO: hash validation will be done later
 			},
-			Length:         int64(len(req.Data)),
-			SyncID:         "", // this is regular client write
-			ComponentRV:    componentRVs,
-			MaybeOverwrite: retryCnt > 0 || brokenChain,
+			Length:          int64(len(req.Data)),
+			SyncID:          "", // this is regular client write
+			ComponentRV:     componentRVs,
+			MaybeOverwrite:  retryCnt > 0 || brokenChain,
+			ClustermapEpoch: lastClusterMapEpoch,
 		},
 		NextRVs: make([]string, 0), // will be added later down, if needed
 	}
@@ -488,11 +472,11 @@ retry:
 		if rv.State == string(dcache.StateOffline) ||
 			rv.State == string(dcache.StateInbandOffline) ||
 			rv.State == string(dcache.StateOutOfSync) {
-			log.Debug("ReplicationManager::WriteMV: Skipping %s/%s (RV state: %s, MV state: %s)",
+			log.Debug("ReplicationManager::writeMVInternal: Skipping %s/%s (RV state: %s, MV state: %s)",
 				rv.Name, req.MvName, rv.State, mvState)
 
 			// Online MV must have all replicas online.
-			common.Assert(mvState != dcache.StateOnline, req.MvName)
+			common.Assert(mvState != dcache.StateOnline, req.MvName, rv.Name, rv.State)
 
 			//
 			// Skip writing to this RV, as it is in offline or outofsync state.
@@ -512,7 +496,7 @@ retry:
 			targetNodeID := getNodeIDFromRVName(rv.Name)
 			common.Assert(common.IsValidUUID(targetNodeID))
 
-			log.Debug("ReplicationManager::WriteMV: Writing to %s/%s (rvID: %s, state: %s) on node %s",
+			log.Debug("ReplicationManager::writeMVInternal: Writing to %s/%s (rvID: %s, state: %s) on node %s",
 				rv.Name, req.MvName, rvID, rv.State, targetNodeID)
 
 			// Add local component RV to putChunkDCReq.Request.
@@ -534,7 +518,7 @@ retry:
 	// If none of the RVs was writeable, no PutChunk/PutChunkDC calls to make.
 	//
 	if len(responseChannel) == len(componentRVs) {
-		log.Err("ReplicationManager::WriteMV: Could not write to any component RV, req: %s, component RVs: %s",
+		log.Err("ReplicationManager::writeMVInternal: Could not write to any component RV, req: %s, component RVs: %s",
 			req.toString(), rpc.ComponentRVsToString(componentRVs))
 		common.Assert(len(rvsWritten) == 0, len(rvsWritten))
 		goto processResponses
@@ -561,15 +545,21 @@ retry:
 	// Use PutChunk to write if PutChunkStyle is OriginatorSendsToAll or we have only the nexthop
 	// RV to send the request to.
 	//
-	if PutChunkStyle == OriginatorSendsToAll || len(putChunkDCReq.NextRVs) == 0 {
+	if putChunkStyle == OriginatorSendsToAll || len(putChunkDCReq.NextRVs) == 0 {
 		// TODO: Add rvName to Address to avoid potentially expensive search for RV name.
 		rvName := getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID)
 
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
-			rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
+		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk [%s] request for %s/%s to node %s: %s",
+			putChunkStyle, rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
+
+		//
+		// Set it to OriginatorSendsToAll as we are sending PutChunk to all component RVs.
+		// This will ensure RPC errors are handled correctly.
+		//
+		putChunkStyle = OriginatorSendsToAll
 
 		//
 		// Schedule PutChunk RPC call to the nexthop RV.
@@ -609,13 +599,14 @@ retry:
 					Data: req.Data,
 					Hash: "", // TODO: hash validation will be done later
 				},
-				Length:         int64(len(req.Data)),
-				SyncID:         "", // this is regular client write
-				ComponentRV:    componentRVs,
-				MaybeOverwrite: retryCnt > 0 || brokenChain,
+				Length:          int64(len(req.Data)),
+				SyncID:          "", // this is regular client write
+				ComponentRV:     componentRVs,
+				MaybeOverwrite:  retryCnt > 0 || brokenChain,
+				ClustermapEpoch: lastClusterMapEpoch,
 			}
 
-			log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
+			log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk request for %s/%s to node %s: %s",
 				rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkReq))
 
 			isLastComponentRV := componentRVIdx == (len(putChunkDCReq.NextRVs) - 1)
@@ -627,13 +618,34 @@ retry:
 				respChannel:  responseChannel,
 			}, isLastComponentRV /* runInline */)
 		}
-	} else if PutChunkStyle == DaisyChain {
+	} else if putChunkStyle == DaisyChain {
+		// TODO: This is O(number of RVs), make this O(1).
 		rvName := getRvNameFromRvID(putChunkDCReq.Request.Chunk.Address.RvID)
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::WriteMV: Sending PutChunkDC request for nexthop %s/%s to node %s: %s",
+		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunkDC request for nexthop %s/%s to node %s: %s",
 			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
+
+		//
+		// Check if next-hop RV and any RV in chain are present in the iffy RV map.
+		// If yes, we retry the operation using OriginatorSendsToAll and save a potential PutChunkDC timeout.
+		//
+		// This check for skipping the DaisyChain write is done in the rpc_client.PutChunkDC() call
+		// also, where we just check if the next-hop RV is present in the iffy RV map.
+		// Whereas here, we are also checking the next RVs in the chain if they are present in the iffy RV map.
+		// If one of the next RVs in chain is present in the iffy RV map, whereas the next-hop
+		// RV is not, then the check present in the PutChunkDC() will allow the RPC call to go through which will
+		// eventually timeout. So, adding the check for all the RVs here prevents an additional timeout
+		// error from occurring.
+		//
+		iffyRVs := rpc_client.GetIffyRVs(&rvName, &putChunkDCReq.NextRVs)
+		if iffyRVs != nil && len(*iffyRVs) > 0 {
+			err := fmt.Errorf("%d iffy RVs %v found for MV %s (next-hop RV: %s), retrying with OriginatorSendsToAll",
+				len(*iffyRVs), *iffyRVs, req.MvName, rvName)
+			log.Err("ReplicationManager::writeMVInternal: %v", err)
+			return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
@@ -652,9 +664,30 @@ retry:
 		}
 
 		if err != nil {
-			log.Err("ReplicationManager::WriteMV: Failed to send PutChunkDC request for nexthop %s/%s to node %s: %v",
+			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s: %v",
 				rvName, req.MvName, targetNodeID, err)
 			common.Assert(putChunkDCResp == nil)
+
+			//
+			// If the node containing the RV is marked negative or if the RV is marked iffy,
+			// it means that either it is down or some other downstream connection issue is preventing
+			// the PutChunkDC call to succeed.
+			// So, if the node/RV is marked negative/iffy, the RPC client will fail the PutChunkDC() call
+			// to prevent the timeout error from happening again. In this case, we will retry the WriteMV()
+			// operation with OriginatorSendsToAll mode.
+			//
+			// We check for NegativeNodeError or IffyRVError here, though we have checked it before making
+			// the PutChunkDC call. This is because while a thread is waiting for getting an RPC client,
+			// some other thread may have marked the node as negative or the next-hop RV as iffy. So, we
+			// directly return error after getting the client and before making the PutChunkDC() call.
+			// This prevents making additional PutChunkDC() calls which will eventually timeout and also
+			// indicate the caller (WriteMV) to retry the operation using OriginatorSendsToAll.
+			//
+			if errors.Is(err, rpc_client.NegativeNodeError) || errors.Is(err, rpc_client.IffyRVError) {
+				log.Warn("ReplicationManager::writeMVInternal: %s/%s is marked negative/iffy [%v], retrying with OriginatorSendsToAll",
+					rvName, req.MvName, err)
+				return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
+			}
 
 			//
 			// PutChunkDC() call to the RV failed. This indicates that the request was not forwarded to the
@@ -663,7 +696,7 @@ retry:
 			//
 			putChunkDCResp = rpc.HandlePutChunkDCError(rvName, putChunkDCReq.NextRVs, req.MvName, err)
 		} else {
-			log.Debug("ReplicationManager::WriteMV: Received PutChunkDC response from nexthop %s/%s node %s: %s",
+			log.Debug("ReplicationManager::writeMVInternal: Received PutChunkDC response from nexthop %s/%s node %s: %s",
 				rvName, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp))
 			common.Assert(len(putChunkDCResp.Responses) == len(putChunkDCReq.NextRVs)+1,
 				len(putChunkDCResp.Responses), len(putChunkDCReq.NextRVs))
@@ -676,7 +709,7 @@ retry:
 		//
 		addPutChunkDCResponseToChannel(putChunkDCResp, responseChannel)
 	} else {
-		common.Assert(false, "Unexpected PutChunkStyle", PutChunkStyle)
+		common.Assert(false, "Unexpected PutChunkStyle", putChunkStyle)
 	}
 
 processResponses:
@@ -701,7 +734,12 @@ processResponses:
 	clusterMapRefreshed := false
 
 	//
-	// Reset brokenChain flag to false before processing the responses.
+	// Flag to check if we have a BrokenChain error in the PutChunkDC response.
+	// If we have a BrokenChain error for an RV, it means that the PutChunkDC request was not
+	// forwarded as the nexthop RV was down/offline. We will get ThriftError for the nexthop RV
+	// and BrokenChain error for the subsequent RVs.
+	// In case of BrokenChain error, we return error to WriteMV() which retries the operation with
+	// OriginatorSendsToAll mode.
 	//
 	brokenChain = false
 
@@ -722,7 +760,7 @@ processResponses:
 		if respItem.err == nil {
 			common.Assert(putChunkResp != nil)
 
-			log.Debug("ReplicationManager::WriteMV: PutChunk successful for %s/%s, RPC response: %s",
+			log.Debug("ReplicationManager::writeMVInternal: PutChunk successful for %s/%s, RPC response: %s",
 				respItem.rvName, req.MvName, rpc.PutChunkResponseToString(putChunkResp))
 
 			//
@@ -734,8 +772,9 @@ processResponses:
 
 			continue
 		}
-		log.Err("ReplicationManager::WriteMV: PutChunk to %s/%s failed [%v]",
-			respItem.rvName, req.MvName, respItem.err)
+
+		log.Err("ReplicationManager::writeMVInternal: [%v] PutChunk to %s/%s failed [%v]",
+			putChunkStyle, respItem.rvName, req.MvName, respItem.err)
 
 		common.Assert(putChunkResp == nil)
 
@@ -751,31 +790,47 @@ processResponses:
 			// component RV as inband-offline and force the fix-mv workflow which will eventually
 			// trigger the resync-mv workflow.
 			//
-			log.Err("ReplicationManager::WriteMV: PutChunk %s/%s, failed to reach node [%v]",
+			log.Err("ReplicationManager::writeMVInternal: PutChunk %s/%s, failed to reach node [%v]",
 				respItem.rvName, req.MvName, respItem.err)
 
-			errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
-			if errRV != nil {
+			//
+			// In DaisyChain mode, we cannot tell for sure which node has bad connection, so do not
+			// mark the RV as inband-offline. Instead we retry the WriteMV with OriginatorSendsToAll mode
+			// which will mark the RV as inband-offline if the PutChunk to that RV fails again.
+			//
+			if putChunkStyle != DaisyChain {
+				errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
+				if errRV != nil {
+					//
+					// If we fail to update the component RV as offline, we cannot safely complete
+					// the chunk write or else the failed replica may not be resynced causing data
+					// consistency issues.
+					//
+					errStr := fmt.Sprintf("failed to update %s/%s state to inband-offline [%v]",
+						respItem.rvName, req.MvName, errRV)
+					log.Err("ReplicationManager::writeMVInternal: %s", errStr)
+					errWriteMV = errRV
+					continue
+				}
+
 				//
-				// If we fail to update the component RV as offline, we cannot safely complete
-				// the chunk write or else the failed replica may not be resynced causing data
-				// consistency issues.
+				// If UpdateComponentRVState() succeeds, marking this component RV as offline,
+				// we can safely carry on with the write since we are guaranteed that these
+				// chunks which we could not write to this component RV will be later sync'ed
+				// from one of the good component RVs.
 				//
-				errStr := fmt.Sprintf("failed to update %s/%s state to inband-offline [%v]",
-					respItem.rvName, req.MvName, errRV)
-				log.Err("ReplicationManager::WriteMV: %s", errStr)
-				errWriteMV = errRV
-				continue
+				log.Warn("ReplicationManager::writeMVInternal: Writing to %s/%s failed, marked RV inband-offline",
+					respItem.rvName, req.MvName)
+			} else {
+				log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed in DaisyChain mode, not marking RV as inband-offline",
+					respItem.rvName, req.MvName)
+				//
+				// This is actually not a broken chain error, but in order to retry with OriginatorSendsToAll
+				// to mark the RV as inband-offline, we set brokenChain to true.
+				//
+				brokenChain = true
 			}
 
-			//
-			// If UpdateComponentRVState() succeeds, marking this component RV as offline,
-			// we can safely carry on with the write since we are guaranteed that these
-			// chunks which we could not write to this component RV will be later sync'ed
-			// from one of the good component RVs.
-			//
-			log.Warn("ReplicationManager::WriteMV: Writing to %s/%s failed, marked RV inband-offline",
-				respItem.rvName, req.MvName)
 			continue
 		}
 
@@ -784,8 +839,8 @@ processResponses:
 		//
 		if rpcErr.GetCode() == models.ErrorCode_BrokenChain {
 			// BrokenChain error can only be returned for PutChunkStyle DaisyChain.
-			common.Assert(PutChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
-				PutChunkStyle, len(putChunkDCReq.NextRVs))
+			common.Assert(putChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
+				putChunkStyle, len(putChunkDCReq.NextRVs))
 
 			// BrokenChain error should not be returned for the nexthop RV to which we send the
 			// PutChunkDC request. It should only be returned for the next RVs.
@@ -794,7 +849,7 @@ processResponses:
 
 			brokenChain = true
 
-			log.Debug("ReplicationManager::WriteMV: PutChunkDC call not forwarded to %s/%s [%v]",
+			log.Debug("ReplicationManager::writeMVInternal: PutChunkDC call not forwarded to %s/%s [%v]",
 				respItem.rvName, req.MvName, respItem.err)
 		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
 			//
@@ -805,7 +860,7 @@ processResponses:
 			if retryCnt > 5 {
 				errWriteMV = fmt.Errorf("failed to write to %s/%s after refreshing clustermap [%v]",
 					respItem.rvName, req.MvName, respItem.err)
-				log.Err("ReplicationManager::WriteMV: %v", errWriteMV)
+				log.Err("ReplicationManager::writeMVInternal: %v", errWriteMV)
 				continue
 			}
 
@@ -837,7 +892,7 @@ processResponses:
 				// To be safe we refresh the clustermap for a limited number of times before
 				// failing the write.
 				//
-				log.Warn("ReplicationManager::WriteMV: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
+				log.Warn("ReplicationManager::writeMVInternal: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
 					req.toString(), retryCnt, errCM)
 			}
 
@@ -848,37 +903,53 @@ processResponses:
 			clusterMapRefreshed = true
 		} else {
 			// TODO: check if this is non-retriable error.
-			errWriteMV = fmt.Errorf("PutChunk to %s/%s failed with non-retriable error [%v]",
-				respItem.rvName, req.MvName, respItem.err)
-			log.Err("ReplicationManager::WriteMV: %v", errWriteMV)
+			if putChunkStyle == DaisyChain {
+				//
+				// For an unknown error, retry once with OriginatorSendsToAll for better resiliency.
+				//
+				log.Warn("ReplicationManager::writeMVInternal: PutChunkDC to %s/%s failed with non-retriable error [%v], will retry with OriginatorSendsToAll",
+					respItem.rvName, req.MvName, respItem.err)
+				brokenChain = true
+			} else {
+				errWriteMV = fmt.Errorf("PutChunk to %s/%s failed with non-retriable error [%v]",
+					respItem.rvName, req.MvName, respItem.err)
+				log.Err("ReplicationManager::writeMVInternal: %v", errWriteMV)
+			}
 			continue
 		}
 	}
 
 	//
 	// If any of the PutChunk call fails with these errors, we fail the WriteMV operation.
-	//   - If the node is unreachable and updating clustermap state to "offline"
+	//   - If the node is unreachable and updating clustermap state to "inband-offline"
 	//     for the component RV failed.
 	//   - If the clustermap was refreshed 5 times and it still failed with NeedToRefreshClusterMap error.
 	//   - If clustermap refresh via RefreshClusterMap() failed.
 	//   - If PutChunk failed with non-retriable error.
 	//
 	if errWriteMV != nil {
-		err = fmt.Errorf("ReplicationManager::WriteMV: Failed to write to MV %s, %s [%v]",
+		err = fmt.Errorf("ReplicationManager::writeMVInternal: Failed to write to MV %s, %s [%v]",
 			req.MvName, req.toString(), errWriteMV)
 		log.Err("%v", err)
 		return nil, err
 	}
 
 	if brokenChain {
+		common.Assert(putChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
+			putChunkStyle, len(putChunkDCReq.NextRVs))
 		//
-		// If we got BrokenChain error, it means that we need to retry the entire write MV operation again.
+		// If we got BrokenChain error, it means that we need to retry the entire write MV operation
+		// again with OriginatorSendsToAll mode.
+		// This can be a case of bad connection between 2 nodes which can cause the PutChunkDC operation
+		// to fail. In DaisyChain approach we may not tell with surety which node has connection issue.
+		// So, retrying with DaisyChain mode may not help in this case. So, we retry the WriteMV operation
+		// with OriginatorSendsToAll mode.
 		// This might mean re-writing some of the replicas which were successfully written in this iteration.
-		// Note the retryCnt is not incremented here.
+		// We return BrokenChain error here and WriteMV then retries with OriginatorSendsToAll mode.
 		//
-		// TODO: Can this result in infinite retries?
-		//
-		goto retry
+		err := fmt.Errorf("BrokenChain error occurred for %s, %s", req.MvName, req.toString())
+		log.Err("ReplicationManager::writeMVInternal: %v", err)
+		return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 	}
 
 	if clusterMapRefreshed {
@@ -896,20 +967,82 @@ processResponses:
 	// Fail write with a meaningful error.
 	if mvState == dcache.StateOffline {
 		err = fmt.Errorf("%s is offline", req.MvName)
-		log.Err("ReplicationManager::WriteMV: %v", err)
+		log.Err("ReplicationManager::writeMVInternal: %v", err)
 		return nil, err
 	}
 
 	// For a non-offline MV, at least one replica write should succeed.
 	if len(rvsWritten) == 0 {
 		err = fmt.Errorf("WriteMV could not write to any replica: %v", req.toString())
-		log.Err("ReplicationManager::WriteMV: %v", err)
+		log.Err("ReplicationManager::writeMVInternal: %v", err)
 		common.Assert(false, err)
 		return nil, err
 	}
 
 	common.Assert(err == nil, err)
 	return &WriteMvResponse{}, nil
+}
+
+func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
+	common.Assert(req != nil)
+
+	var err error
+	var resp *WriteMvResponse
+
+	if common.IsDebugBuild() {
+		startTime := time.Now()
+		defer func() {
+			if err != nil {
+				log.Err("[TIMING] ReplicationManager::WriteMV: WriteMV failed after %s: %v: %v",
+					time.Since(startTime), req.toString(), err)
+			} else {
+				log.Debug("[TIMING] ReplicationManager::WriteMV: WriteMV request took %s: %v",
+					time.Since(startTime), req.toString())
+			}
+		}()
+	}
+
+	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: %v", req.toString())
+
+	//
+	// We don't expect the caller to pass invalid requests, so only verify in debug builds.
+	//
+	if common.IsDebugBuild() {
+		if err = req.isValid(); err != nil {
+			err = fmt.Errorf("invalid WriteMV request %s [%v]", req.toString(), err)
+			log.Err("ReplicationManager::WriteMV: %v", err)
+			common.Assert(false, err)
+			return nil, err
+		}
+	}
+
+	//
+	// We first try to write the MV using the DaisyChain mode.
+	// If it fails with BrokenChain error we retry using OriginatorSendsToAll mode.
+	// This is because in DaisyChain mode we cannot tell which node in the chain had a bad connection,
+	// so we cannot correctly mark the offending RV as inband-offline.
+	//
+	resp, err = writeMVInternal(req, DaisyChain)
+	if err != nil {
+		log.Err("ReplicationManager::WriteMV: Failed to write MV %s using DaisyChain, %s [%v]",
+			req.MvName, req.toString(), err)
+
+		rpcErr := rpc.GetRPCResponseError(err)
+		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_BrokenChain {
+			log.Warn("ReplicationManager::WriteMV: One or more nodes in the path are down, retrying WriteMV with OriginatorSendsToAll mode: %s",
+				req.toString())
+
+			// Retry with OriginatorSendsToAll mode.
+			resp, err = writeMVInternal(req, OriginatorSendsToAll)
+			if err != nil {
+				log.Err("ReplicationManager::WriteMV: Failed to write MV %s using OriginatorSendsToAll, %s [%v]",
+					req.MvName, req.toString(), err)
+				return nil, err
+			}
+		}
+	}
+
+	return resp, err
 }
 
 // File IO manager can use this to delete all chunks belonging to a file from a given MV.
@@ -1077,10 +1210,11 @@ func periodicResyncMVs() {
 // syncing), in the global clustermap and start a synchronization go routine for each outofsync RV.
 func resyncSyncableMVs() {
 	var syncableMVs map[string]dcache.MirroredVolume
+	var lastClusterMapEpoch int64
 	clusterMapRefreshed := false
 
 	for {
-		syncableMVs = cm.GetSyncableMVs()
+		syncableMVs, lastClusterMapEpoch = cm.GetSyncableMVs()
 		if len(syncableMVs) == 0 {
 			log.Debug("ReplicationManager::ResyncSyncableMVs: No syncable MVs found (%d degraded MVs)",
 				len(cm.GetDegradedMVs()))
@@ -1131,7 +1265,7 @@ func resyncSyncableMVs() {
 			break
 		}
 
-		syncMV(mvName, mvInfo)
+		syncMV(mvName, mvInfo, lastClusterMapEpoch)
 	}
 }
 
@@ -1149,8 +1283,9 @@ func resyncSyncableMVs() {
 //   - Send EndSync to the source and target RVs.
 //   - Update MV in the global clustermap, marking the RV state as "online" (from "syncing") and MV state as
 //     "online" if this was the last/only sync, else leaves the MV state unchanged.
-func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
-	log.Debug("ReplicationManager::syncMV: Resyncing MV %s %+v", mvName, mvInfo)
+func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int64) {
+	log.Debug("ReplicationManager::syncMV: Resyncing MV %s %+v, lastClusterMapEpoch: %d",
+		mvName, mvInfo, lastClusterMapEpoch)
 
 	common.Assert(mvInfo.State == dcache.StateDegraded, mvName, mvInfo.State)
 
@@ -1181,7 +1316,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	// %age progress. Note that JoinMV carries the reservedSpace parameter which is the more critical one
 	// to decide if an RV can host a new MV replica or not.
 	//
-	syncSize, err := GetMVSize(mvName)
+	syncSize, err := GetMVSize(mvName, componentRVs)
 	if err != nil {
 		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
 		log.Err("ReplicationManager::syncMV: %v", err)
@@ -1232,7 +1367,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 			// Remove from the map, once the syncjob completes (success or failure).
 			defer rm.runningJobs.Delete(tgtReplica)
 
-			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs, lastClusterMapEpoch)
 			common.Assert(rm.numSyncJobs.Load() > 0, rm.numSyncJobs.Load())
 		}()
 	}
@@ -1245,7 +1380,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 // After this, a sync job is created which is responsible for copying the out of sync chunks from the source RV
 // to the target RV, and also sending the EndSync() RPC call to both source and target nodes.
 func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize int64,
-	componentRVs []*models.RVNameAndState) {
+	componentRVs []*models.RVNameAndState, lastClusterMapEpoch int64) {
 	//
 	// Wallclock time when this sync job is started.
 	// This will be later set in syncJob once we create it, and used for finding the running duration
@@ -1267,11 +1402,12 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 
 	// Create StartSyncRequest. Same request will be sent to both source and target nodes.
 	startSyncReq := &models.StartSyncRequest{
-		MV:           mvName,
-		SourceRVName: lioRV,
-		TargetRVName: targetRVName,
-		ComponentRV:  componentRVs,
-		SyncSize:     syncSize,
+		MV:              mvName,
+		SourceRVName:    lioRV,
+		TargetRVName:    targetRVName,
+		ComponentRV:     componentRVs,
+		SyncSize:        syncSize,
+		ClustermapEpoch: lastClusterMapEpoch,
 	}
 
 	//
@@ -1346,15 +1482,16 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
 
 	syncJob := &syncJob{
-		mvName:        mvName,
-		srcRVName:     lioRV,
-		srcSyncID:     srcSyncId,
-		destRVName:    targetRVName,
-		destSyncID:    dstSyncId,
-		syncSize:      syncSize,
-		componentRVs:  componentRVs,
-		syncStartTime: syncStartTime,
-		startedAt:     startTime,
+		mvName:          mvName,
+		srcRVName:       lioRV,
+		srcSyncID:       srcSyncId,
+		destRVName:      targetRVName,
+		destSyncID:      dstSyncId,
+		syncSize:        syncSize,
+		componentRVs:    componentRVs,
+		syncStartTime:   syncStartTime,
+		startedAt:       startTime,
+		clustermapEpoch: lastClusterMapEpoch,
 	}
 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
@@ -1576,8 +1713,50 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			continue
 		}
 
+		//
+		// chunks are stored in MV as,
+		// <MvName>/<FileID>.<OffsetInMiB>.data and
+		// <MvName>/<FileID>.<OffsetInMiB>.hash
+		// <MvName>/<FileID>.<OffsetInMiB>.data.tmp (temporary file created during safeWrite())
+		//
+		chunkParts := strings.Split(entry.Name(), ".")
+		if len(chunkParts) != 3 {
+			// This is most likely the temp chunk file created by safeWrite().
+			if len(chunkParts) == 4 && chunkParts[3] == "tmp" {
+				log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping temp chunk file %s/%s",
+					sourceMVPath, entry.Name())
+			} else {
+				// TODO: should we return error in this case?
+				errStr := fmt.Sprintf("Invalid chunk name %s/%s", sourceMVPath, entry.Name())
+				log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
+				common.Assert(false, errStr)
+			}
+			continue
+		}
+
+		// TODO: hash validation will be done later
+		// if file type is hash, skip it
+		// the hash data will be transferred with the regular chunk file
+		if chunkParts[2] == "hash" {
+			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping hash file %s", entry.Name())
+			continue
+		}
+
+		//
+		// Info() does a stat() syscall to fetch the file info, so we do it after we have performed
+		// name based exclusion.
+		//
+		// Note: This can fail for chunks which are being removed (corresponding to a deleted file),
+		//       so if ReadDir() above finds a chunk and it's removed by the time we come here, the
+		//       assert below will fail. Let's leave it for some time and later we can remove it.
+		//
 		info, err := entry.Info()
-		common.Assert(err == nil, err)
+		if err != nil {
+			log.Err("ReplicationManager::copyOutOfSyncChunks: entry.Info() failed for %s/%s: %v",
+				sourceMVPath, entry.Name(), err)
+			common.Assert(false, err, sourceMVPath, entry.Name())
+			continue
+		}
 
 		if info.ModTime().UnixMicro() > job.syncStartTime {
 			// This chunk is created after the sync start time, so it will be written to both source and target
@@ -1595,28 +1774,6 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			"Mtime (%d) <= syncStartTime (%d) [%d usecs before sync start]",
 			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
 			job.syncStartTime-info.ModTime().UnixMicro())
-
-		//
-		// chunks are stored in MV as,
-		// <MvName>/<FileID>.<OffsetInMiB>.data and
-		// <MvName>/<FileID>.<OffsetInMiB>.hash
-		//
-		chunkParts := strings.Split(entry.Name(), ".")
-		if len(chunkParts) != 3 {
-			// TODO: should we return error in this case?
-			errStr := fmt.Sprintf("Invalid chunk name %s", entry.Name())
-			log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-			common.Assert(false, errStr)
-			continue
-		}
-
-		// TODO: hash validation will be done later
-		// if file type is hash, skip it
-		// the hash data will be transferred with the regular chunk file
-		if chunkParts[2] == "hash" {
-			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping hash file %s", entry.Name())
-			continue
-		}
 
 		fileID := chunkParts[0]
 		common.Assert(common.IsValidUUID(fileID))
@@ -1654,8 +1811,9 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			},
 			Length: int64(len(srcData)),
 			// this is sync write RPC call, so the sync ID should be that of the target RV.
-			SyncID:      job.destSyncID,
-			ComponentRV: job.componentRVs,
+			SyncID:          job.destSyncID,
+			ComponentRV:     job.componentRVs,
+			ClustermapEpoch: job.clustermapEpoch,
 		}
 
 		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s to %s/%s: %v",
@@ -1664,7 +1822,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
-		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq)
+		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq, false /* fromFwder */)
 		_ = putChunkResp
 		if err != nil {
 			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to put chunk to %s/%s [%v]: %v",
@@ -1753,39 +1911,30 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 	return nil
 }
 
-func GetMVSize(mvName string) (int64, error) {
+// GetMVSize() is called from fixMV workflow, by the cluster manager. The cluster manager has the final MV
+// composition (which is different from the one in the clustermap as it would have replaced offline RVs with
+// new outofsync RVs and it may have also made some component RVs offline). So we take the new MV composition
+// from the caller and save wasted calls to offline RVs.
+func GetMVSize(mvName string, componentRVs []*models.RVNameAndState) (int64, error) {
 	common.Assert(cm.IsValidMVName(mvName), mvName)
-
-	log.Debug("ReplicationManager::GetMVSize: MV = %s", mvName)
 
 	var mvSize int64
 	var err error
-	var lastClusterMapEpoch int64
-
-	clusterMapRefreshed := false
-	retryCnt := 0
-
-retry:
-	// Give up after sufficient clustermap refresh attempts.
-	if retryCnt > 5 {
-		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
-			mvName, retryCnt, lastClusterMapEpoch)
-		log.Err("ReplicationManager::GetMVSize: %v", err)
-		return 0, err
-	}
-
-	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(mvName)
-
-	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s (%s) are %s (retryCnt: %d, clusterMapRefreshed: %v)",
-		mvName, mvState, rpc.ComponentRVsToString(componentRVs), retryCnt, clusterMapRefreshed)
 
 	//
-	// Get the most suitable RV from the list of component RVs,
-	// from which we should get the size of the MV. Selecting most
-	// suitable RV is mostly a heuristical process which might
-	// pick the most suitable RV based on one or more of the
-	// following criteria:
-	// - Local RV must be preferred.
+	// It's ok to query clustermap epoch here as we are called from updateMVList() which must have held lock
+	// on the clustermap, so the epoch won't change from the time componentRVs were fetched till here.
+	//
+	lastClusterMapEpoch := cm.GetEpoch()
+
+	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s are %+v, at epoch %d",
+		mvName, componentRVs, lastClusterMapEpoch)
+
+	//
+	// Get the most suitable RV from the provided list of component RVs, from which we should query the size of
+	// the MV. Selecting most suitable RV is mostly a heuristical process which might pick the most suitable RV
+	// based on one or more of the following criteria:
+	// - Local RV would be preferred.
 	// - Prefer a node that has recently responded successfully to any of our RPCs.
 	// - Pick a random one.
 	//
@@ -1798,41 +1947,9 @@ retry:
 		readerRV := getReaderRV(componentRVs, excludeRVs)
 
 		if readerRV == nil {
-			//
-			// An MV once marked offline can never become online, so save the trip to clustermap.
-			//
-			if mvState == dcache.StateOffline {
-				err = fmt.Errorf("%s is offline", mvName)
-				log.Err("ReplicationManager::GetMVSize: %v", err)
-				return 0, err
-			}
-
-			//
-			// If the current clustermap does not have any suitable RV to query MV size from, we try clustermap
-			// refresh just in case we have a stale clustermap. This is very unlikely and it would most
-			// likely indicate that we have a “very stale” clustermap where all/most of the component RVs
-			// have been replaced, or most of them are down.
-			//
-			// Even after refreshing clustermap if we cannot get a valid MV replica to query MV size,
-			// alas we need to fail the GetMVSize().
-			//
-			if clusterMapRefreshed {
-				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d",
-					mvName, lastClusterMapEpoch)
-				log.Err("ReplicationManager::GetMVSize: %v", err)
-				return 0, err
-			}
-
-			err = cm.RefreshClusterMap(lastClusterMapEpoch)
-			if err != nil {
-				log.Warn("ReplicationManager::GetMVSize: RefreshClusterMap() failed for GetMVSize(%s) (retryCnt: %d): %v",
-					mvName, retryCnt, err)
-			} else {
-				clusterMapRefreshed = true
-			}
-
-			retryCnt++
-			goto retry
+			err = fmt.Errorf("no suitable RV found for MV %s", mvName)
+			log.Err("ReplicationManager::GetMVSize: %v", err)
+			return 0, err
 		}
 
 		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), readerRV.Name, excludeRVs)
@@ -1844,8 +1961,9 @@ retry:
 			readerRV.Name, mvName, targetNodeID)
 
 		req := &models.GetMVSizeRequest{
-			MV:     mvName,
-			RVName: readerRV.Name,
+			MV:              mvName,
+			RVName:          readerRV.Name,
+			ClustermapEpoch: lastClusterMapEpoch,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
@@ -1865,45 +1983,23 @@ retry:
 			resp, err = rpc_client.GetMVSize(ctx, targetNodeID, req)
 		}
 
-		// Exclude this RV from further iterations (if any).
-		excludeRVs = append(excludeRVs, readerRV.Name)
-
 		if err == nil {
 			// Success.
 			common.Assert(resp != nil, rpc.GetMVSizeRequestToString(req))
 			mvSize = resp.MvSize
-			log.Debug("ReplicationManager::GetMVSize: GetMVSize successful for %s, RPC response: MV size = %d",
-				rpc.GetMVSizeRequestToString(req), resp.MvSize)
+			log.Debug("ReplicationManager::GetMVSize: GetMVSize successful for %s/%s, MV size: %d",
+				req.RVName, req.MV, mvSize)
 			break
 		}
 
-		log.Warn("ReplicationManager::GetMVSize: Failed to get MV size from node %s for request %v [%v]",
-			targetNodeID, rpc.GetMVSizeRequestToString(req), err)
+		log.Warn("ReplicationManager::GetMVSize: Failed to get MV size from node %s for %s/%s [%v]",
+			targetNodeID, req.RVName, req.MV, err)
 
-		rpcErr := rpc.GetRPCResponseError(err)
-		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-			//
-			// RPC server can return models.ErrorCode_NeedToRefreshClusterMap in two cases:
-			// 1. It genuinely wants the client to refresh the clustermap as it knows that
-			//    the client has an older clustermap.
-			// 2. It hit some transient error while fetching the clustermap itself, so it cannot
-			//    be sure whether clustermap refresh at the client will help or not. To be safe
-			//    we refresh the clustermap for a limited number of times before failing the read.
-			//
-			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
-			if errCM != nil {
-				// Log and retry, it'll help in case of transient errors at the server.
-				log.Warn("ReplicationManager::GetMVSize: RefreshClusterMap() failed for GetMVSize(%s) (retryCnt: %d): %v",
-					mvName, retryCnt, errCM)
-			} else {
-				clusterMapRefreshed = true
-			}
-
-			retryCnt++
-			goto retry
-		}
-
+		//
 		// Try another replica if available.
+		// Exclude already tried RVs from further iterations (if any).
+		//
+		excludeRVs = append(excludeRVs, readerRV.Name)
 	}
 
 	return mvSize, nil

@@ -42,6 +42,21 @@ type MirroredVolume struct {
 	RVs   map[string]StateEnum `json:"rvs"`
 }
 
+func (mv MirroredVolume) Equals(rhs *MirroredVolume) bool {
+	if mv.State != rhs.State {
+		return false
+	}
+	if len(mv.RVs) != len(rhs.RVs) {
+		return false
+	}
+	for k, v := range mv.RVs {
+		if rvState, ok := rhs.RVs[k]; !ok || rvState != v {
+			return false
+		}
+	}
+	return true
+}
+
 type RawVolume struct {
 	NodeId         string    `json:"node_id"`
 	IPAddress      string    `json:"ipaddr"`
