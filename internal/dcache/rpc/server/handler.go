@@ -1668,14 +1668,15 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 		//    it's outofsync so a refresh will get the desired state.
 		//
 		if targetRVNameAndState.State != validState {
-			errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s): %s [NeedToRefreshClusterMap]",
+			errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s), cepoch: %d, sepoch: %d: %s [NeedToRefreshClusterMap]",
 				targetRVName, validState,
 				sourceRVName, mv.mvName,
 				targetRVName, mv.mvName,
+				clientClustermapEpoch, cm.GetEpoch(),
 				rpc.ComponentRVsToString(mv.getComponentRVs()))
 
-			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s, clustermapRefreshed: %v, cepoch: %d",
-				errStr, clustermapRefreshed, clientClustermapEpoch)
+			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s, clustermapRefreshed: %v",
+				errStr, clustermapRefreshed)
 
 			//
 			// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
@@ -2567,8 +2568,9 @@ refreshFromClustermapAndRetry:
 				// not updated and it doesn't know about the RV going offline.
 				// We must refresh our rvInfo from the clustermap and retry the check.
 				//
-				errStr := fmt.Sprintf("PutChunk(client) sender wrongly skipped RV %s/%s which is %s as per them, while as per our rvInfo it's %s [NeedToRefreshClusterMap]",
-					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State)
+				errStr := fmt.Sprintf("PutChunk(client) sender wrongly skipped RV %s/%s which is %s as per them, while as per our rvInfo it's %s, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]",
+					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State,
+					req.ClustermapEpoch, cm.GetEpoch())
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 
 				//
@@ -2599,8 +2601,9 @@ refreshFromClustermapAndRetry:
 				// In such case it's best to let the sender know about it instead of silently completing the
 				// PutChunk.
 				//
-				errStr := fmt.Sprintf("PutChunk(client) sender did not skip RV %s/%s which is %s as per them, while as per our rvInfo it's %s [NeedToRefreshClusterMap]",
-					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State)
+				errStr := fmt.Sprintf("PutChunk(client) sender did not skip RV %s/%s which is %s as per them, while as per our rvInfo it's %s, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]",
+					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State,
+					req.ClustermapEpoch, cm.GetEpoch())
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 
 				//
@@ -2638,8 +2641,8 @@ refreshFromClustermapAndRetry:
 		//
 		syncJob := mvInfo.getSyncJob(req.SyncID)
 		if syncJob == nil {
-			errStr := fmt.Sprintf("PutChunk(sync) syncID %s not valid for %s/%s [NeedToRefreshClusterMap]",
-				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
+			errStr := fmt.Sprintf("PutChunk(sync) syncID %s not valid for %s/%s, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]",
+				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName, req.ClustermapEpoch, cm.GetEpoch())
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
@@ -3590,6 +3593,12 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// may have been issued to the other (good) replicas of this MV, so it's likely that the SyncSize value
 	// carried in the StartSync request is more than what we had reserved at the time of JoinMV.
 	// Log it for now to see how much can it differ in practice.
+	// In practice SyncSize will always be more than reservedSpace if writes were happening to the MV when the
+	// replica as detected and marked inband-offline. After that the fix-mv workflow is run that picks a new RV
+	// and marks it outofsync, sometime after after (upto 10 secs later) the resync-mv workflow is run. Till
+	// that time a lot of writes could have happened.
+	// Can it be less? Yes, if some file(s) were deleted from the MV after the replica was marked inband-offline,
+	// but before the sync started.
 	//
 	if common.IsDebugBuild() {
 		if !isSrcOfSync {

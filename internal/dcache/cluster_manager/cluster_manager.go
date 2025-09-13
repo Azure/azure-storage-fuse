@@ -1102,7 +1102,7 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
 	// TODO: Assert that clustermap has our local RVs.
 	common.Assert(cmi.config != nil)
-	common.Assert(*cmi.config == *dCacheConfig)
+	common.Assert(*cmi.config == *dCacheConfig, *cmi.config, *dCacheConfig)
 
 	return nil
 }
@@ -3255,7 +3255,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
 		// Without MV size we cannot proceed with JoinMV for fix-mv workflow.
 		// We got componentRVs from 'mv' which corresponds to cm.GetEpoch(), this is because the caller
-		// is updateMVList() which has locked the clustermap so the epoch cannot change.
+		// is updateMVList() which has locked the clustermap so the epoch cannot change after fetching
+		// the componentRVs.
 		//
 		reserveBytes, err = rm.GetMVSize(mvName, componentRVs, cm.GetEpoch())
 		if err != nil {
@@ -3418,7 +3419,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 				}
 				return
 			}
-			log.Debug("ClusterManager::joinMV: Success %s MV %s with RV %s in state %s, cepoch: %d took %s",
+			log.Debug("ClusterManager::joinMV: Success %s MV %s with RV %s in state %s, cepoch: %d, took %s",
 				action, mvName, rvName, rvState, cm.GetEpoch(), time.Since(start))
 
 			//
