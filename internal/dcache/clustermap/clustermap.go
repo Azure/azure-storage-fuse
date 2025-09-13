@@ -51,7 +51,8 @@ import (
 //go:generate $ASSERT_REMOVER $GOFILE
 
 var (
-	InvalidComponentRV = errors.New("invalid component RV")
+	InvalidComponentRV     = errors.New("invalid component RV")
+	ClusterMapBeingUpdated = errors.New("clustermap is currently being updated by another node or thread")
 )
 
 func Start() {
@@ -619,6 +620,7 @@ func (c *ClusterMap) getCacheConfig() *dcache.DCacheConfig {
 	return &c.getLocalMap().Config
 }
 
+// Note: This returns a shallow copy of the clustermap, so do not modify it, otherwise it will affect other users.
 func (c *ClusterMap) getClusterMap() dcache.ClusterMap {
 	return *c.getLocalMap()
 }

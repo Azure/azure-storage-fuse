@@ -36,6 +36,7 @@ package clustermanager
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -452,15 +453,18 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 // and the Blob etag corresponding to that.
 //
 // Note: Use this instead of directly calling getClusterMap() as it ensures that once it returns we can safely
-//
-//	call various clustermap functions and they will return information as per the latest downloaded clustermap.
-//	This is important, f.e., updateMVList() may be working on the latest clustermap copy and in the process
-//	it may call some clustermap methods hoping to query the latest clustermap, if it calls getClusterMap() to
-//	fetch the latest clustermap, and then calls the clustermap methods, those will be querying not the latest
-//	clustermap downloaded by the last getClusterMap() call but the one that's currently updated with clustermap
-//	package.
+//       call various clustermap functions and they will return information as per the latest downloaded clustermap.
+//       This is important, f.e., updateMVList() may be working on the latest clustermap copy and in the process
+//       it may call some clustermap methods hoping to query the latest clustermap, if it calls getClusterMap() to
+//       fetch the latest clustermap, and then calls the clustermap methods, those will be querying not the latest
+//       clustermap downloaded by the last getClusterMap() call but the one that's currently updated with clustermap
+//       package.
+// Note: Every caller gets a perfectly independent copy of the clustermap, so modifying it will not affect others.
+//       If the caller wishes its changes to be seen by others, it must write the updated clustermap back to the
+//       global clustermap json.
 //
 // TODO: Add stats for measuring time taken to download the clustermap, how many times it's downloaded, etc.
+
 func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, *string, error) {
 	atomic.AddInt64(&stats.Stats.CM.LocalClustermap.TimesUpdated, 1)
 	//
@@ -1069,7 +1073,6 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	currentTime = time.Now().Unix()
 	clusterMap = dcache.ClusterMap{
 		Readonly:      true,
-		State:         dcache.StateReady,
 		Epoch:         0,
 		CreatedAt:     currentTime,
 		LastUpdatedAt: currentTime,
@@ -1227,8 +1230,6 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 			continue
 		}
 
-		common.Assert(clusterMap.State == dcache.StateReady)
-
 		//
 		// Ok, no other node has added our RVs to the clustermap, we need to add them now.
 		//
@@ -1240,7 +1241,7 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 		// Note: We retry even if the failure is not due to etag mismatch, hoping the error to be transient.
 		//       Anyways, we have a timeout.
 		//
-		err = cmi.startClusterMapUpdate(clusterMap, etag)
+		err = cmi.startClusterMapUpdate(clusterMap, etag, false /* isStuck */)
 		if err != nil {
 			log.Warn("ClusterManager::updateStorageClusterMapWithMyRVs: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
@@ -1292,29 +1293,36 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVo
 // and try to claim ownership of clusterMap update.
 const thresholdClusterMapEpochTime = 60
 
-// This method checks if the cluster map is currently locked in an update (StateChecking) by another node and handles
-// stale or stuck updates.
+// This method checks if the cluster map is currently locked in an update by another node and handles stale or
+// stuck updates. Note that an odd ClusterMap.Epoch indicates that the cluster map is currently being updated,
+// while an even epoch indicates that the cluster map is in a steady state (not being updated).
 //
 // How it works:
-//   - If the cluster map is not in StateChecking, no update is happening → returns false.
+//   - If the cluster map epoch is even, no update is happening → returns false.
 //   - If this node (myNodeId) is the one updating it (possibly from another thread) → returns true, do nothing or
-//     retry after sometime.
+//     retry after sometime. This is not considered stale/stuck since this node is alive and updating it.
 //   - If another node started the update but the update is still within the allowed time threshold → returns true,
 //     do nothing or retry after sometime.
 //   - If another node started the update but it has exceeded the allowed time threshold → the update is considered
 //     stuck. In the stale/stuck case, this method:
 //     1. Logs a warning about the stale ownership.
 //     2. Cleanly ends the previous update using UpdateClusterMapStart and UpdateClusterMapEnd with the latest ETag.
-//     3. Resets the cluster map state to StateReady, so this node can safely take over updates.
+//     3. Resets the cluster map epoch to the next higher even value, so this node can safely take over updates.
 //
 // Returns:
-// - (false, nil): no active update or stale/stuck update and we successfully claimed ownership, safe to proceed.
+// - (false, nil): no active update or stale/stuck update or we successfully claimed ownership, safe to proceed.
+//                 Note that it doesn't guarantee that the caller can successfully claim ownership of the update,
+//                 the caller must still call startClusterMapUpdate() and handle possibility of failure to claim
+//                 ownership.
 // - (true, nil): an update is still ongoing (by this or another node).
 // - (true, error): something failed while recovering from a stale update.
+//
+// Note: This method will update the clusterMap and etag references to the latest values.
+
 func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcache.ClusterMap, etag *string) (bool, error) {
-	if clusterMap.State != dcache.StateChecking {
-		// If the cluster map is not in StateChecking, it means it's not being updated by another node.
-		log.Debug("ClusterManager::clusterMapBeingUpdatedByAnotherNode: ClusterMap is not in StateChecking state")
+	// An even epoch indicates that the cluster map is not being updated.
+	if clusterMap.Epoch%2 == 0 {
+		log.Debug("ClusterManager::clusterMapBeingUpdatedByAnotherNode: No, epoch is even (%d)", clusterMap.Epoch)
 		return false, nil
 	}
 
@@ -1323,10 +1331,20 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 	// Age older than this indicates stale/stuck clustermap update, likely a node started update but died.
 	staleThreshold := time.Duration(int(cmi.config.ClustermapEpoch)+thresholdClusterMapEpochTime) * time.Second
 
+	//
 	// Check if ownership is taken by this node, likely another thread.
+	// Usually we time bound the clustermap update operation, so this should not happen, but if it happens it's
+	// not safe to break the ongoing update by another thread. It usually indicates a bug in our code, so the best
+	// way to proceed is to crash the blobfuse process.
+	//
 	if clusterMap.LastUpdatedBy == cmi.myNodeId {
 		log.Debug("ClusterManager::clusterMapBeingUpdatedByAnotherNode: ClusterMap being updated by this node, possibly another thread, started %s ago", age)
-		common.Assert(age < staleThreshold, age, staleThreshold)
+
+		// Other thread is stuck?
+		if age >= staleThreshold {
+			log.GetLoggerObj().Panicf("[BUG] ClusterManager::clusterMapBeingUpdatedByAnotherNode: This node (%s) has stale/stuck clustermap update, started %s ago, exceeding stale threshold %s",
+				cmi.myNodeId, age, staleThreshold)
+		}
 		return true, nil
 	}
 
@@ -1336,13 +1354,17 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 		return true, nil
 	}
 
-	log.Warn("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Clustermap update stuck in StateChecking, by node %s at %d (%s ago), exceeding stale threshold %s, overriding ownership by node %s",
+	log.Warn("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Stuck clustermap update, by node %s at %d (%s ago), exceeding stale threshold %s, overriding ownership by node %s",
 		clusterMap.LastUpdatedBy, clusterMap.LastUpdatedAt, age, staleThreshold, cmi.myNodeId)
 
-	err := cmi.startClusterMapUpdate(clusterMap, etag)
+	err := cmi.startClusterMapUpdate(clusterMap, etag, true /* isStuck */)
 	if err != nil {
-		// If the failure is due to etag mismatch, it falls under the "another node is updating" category.
-		if mm.IsErrConditionNotMet(err) {
+		//
+		// We may race with some other node (or less likely, another thread in this node) trying to break the
+		// stale/stuck ownership, if they win we simply treat it as "clusterMap is being updated".
+		//
+		if errors.Is(err, cm.ClusterMapBeingUpdated) {
+			log.Info("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Lost ownership override to another node/thread")
 			return true, nil
 		}
 
@@ -1351,6 +1373,7 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 		return true, fmt.Errorf("ClusterManager::clusterMapBeingUpdatedByAnotherNode: startClusterMapUpdate() failed: %v", err)
 	}
 
+	// End the update, caller will claim ownership again.
 	err = cmi.endClusterMapUpdate(clusterMap)
 	if err != nil {
 		common.Assert(false, err)
@@ -1382,13 +1405,13 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 	//
 	// Between the endClusterMapUpdate() and fetchAndUpdateLocalClusterMap(), the clusterMap is in ready state,
 	// so some other node can start updating it. Our callers will call startClusterMapUpdate() with this etag
-	// that we return, hoping it corresponds to a StateReady clusterMap, we don't want them to be overwriting
+	// that we return, hoping it corresponds to a ready clusterMap, we don't want them to be overwriting
 	// a clusterMap being updated by some other node.
-	// This is a very small window, hence emit an info log.
+	// This is a very small window, hence emit a warning log.
 	//
-	if clusterMap.State == dcache.StateChecking {
+	if clusterMap.Epoch%2 == 1 {
 		age = time.Since(time.Unix(clusterMap.LastUpdatedAt, 0))
-		log.Info("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Node (%s), started updating clusterMap (%s ago)",
+		log.Warn("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Node (%s), started updating clusterMap (%s ago)",
 			clusterMap.LastUpdatedBy, age)
 		return true, nil
 	}
@@ -1396,7 +1419,7 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 	//
 	// This is our promise to the caller.
 	//
-	common.Assert(clusterMap.State == dcache.StateReady)
+	common.Assert(clusterMap.Epoch%2 == 0)
 	common.Assert(clusterMap.LastUpdatedBy == cmi.myNodeId)
 
 	// Sanity check to make sure we don't return an "already stale enough" clusterMap to the caller.
@@ -1411,26 +1434,63 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 // 1. fetch current clusterMap.
 // 2. claim update ownership telling other nodes to "keep away".
 // 3. process and update clusterMap object.
-// 4. commit the update clusterMap.
+// 4. commit the update clusterMap, ans open it up for other nodes to update.
 //
 // startClusterMapUpdate() implements step#2 in the above and
 // endClusterMapUpdate() implements step#4.
-func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, etag *string) error {
+func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, etag *string, isStuck bool) error {
+	oldEpoch := clusterMap.Epoch
+
+	// When isStuck is true, we are trying to override a stale/stuck clustermap update, so epoch must be odd.
+	common.Assert(!isStuck || (oldEpoch%2 == 1), oldEpoch, isStuck, *etag)
+
+	// Otherwise and odd epoch implies clustermap is being updated by some other node/thread, we give up.
+	if !isStuck && (oldEpoch%2 == 1) {
+		err := fmt.Errorf("ClusterManager::startClusterMapUpdate: ClusterMap being updated, epoch is odd (%d): %w",
+			oldEpoch, cm.ClusterMapBeingUpdated)
+		log.Debug("%v", err)
+		return err
+	} else if isStuck {
+		log.Warn("ClusterManager::startClusterMapUpdate: Overriding stale/stuck clustermap epoch (%d)",
+			oldEpoch)
+	}
+
+	var newEpoch int64
+
+	// Forward epoch to the next odd number.
+	if isStuck {
+		newEpoch = oldEpoch + 2
+	} else {
+		newEpoch = oldEpoch + 1
+	}
+
+	// newEpoch must be odd, indicating clustermap is being updated.
+	common.Assert(newEpoch%2 == 1, newEpoch)
+
+	oldLastUpdatedBy := clusterMap.LastUpdatedBy
+	oldLastUpdatedAt := clusterMap.LastUpdatedAt
 	isLeaderChanged := clusterMap.LastUpdatedBy != cmi.myNodeId
+
+	clusterMap.Epoch = newEpoch
 	clusterMap.LastUpdatedBy = cmi.myNodeId
+
 	//
 	// Set the LastUpdatedAt. This is useful as clusterMapBeingUpdatedByAnotherNode() uses that to log
 	// how long has the clusterMap been in "checking" state.
 	// Later endClusterMapUpdate() will punch the final time when the clusterMap update finished.
 	//
 	clusterMap.LastUpdatedAt = time.Now().Unix()
-	clusterMap.State = dcache.StateChecking
 
 	clusterMapByte, err := json.Marshal(clusterMap)
 	if err != nil {
 		log.Err("ClusterManager::startClusterMapUpdate: Marshal failed for clustermap: %v %+v",
 			err, clusterMap)
 		common.Assert(false, err)
+
+		// Revert changes, in good faith
+		clusterMap.Epoch = oldEpoch
+		clusterMap.LastUpdatedBy = oldLastUpdatedBy
+		clusterMap.LastUpdatedAt = oldLastUpdatedAt
 		return err
 	}
 
@@ -1439,10 +1499,17 @@ func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, 
 	//
 	err = mm.UpdateClusterMapStart(clusterMapByte, etag)
 	if err != nil {
-		log.Warn("ClusterManager::startClusterMapUpdate: Start Clustermap update failed for nodeId %s: %v.",
-			cmi.myNodeId, err)
 		// Etag mismatch is the only expected error.
 		common.Assert(mm.IsErrConditionNotMet(err), err)
+
+		// Wrap ClusterMapBeingUpdated error to indicate the caller that clustermap is being updated.
+		err = fmt.Errorf("ClusterManager::startClusterMapUpdate: mm.UpdateClusterMapStart() failed for nodeId %s [%v]: %w",
+			cmi.myNodeId, err, cm.ClusterMapBeingUpdated)
+
+		// Revert changes, in good faith
+		clusterMap.Epoch = oldEpoch
+		clusterMap.LastUpdatedBy = oldLastUpdatedBy
+		clusterMap.LastUpdatedAt = oldLastUpdatedAt
 		return err
 	}
 
@@ -1454,6 +1521,9 @@ func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, 
 		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitches), 1)
 	}
 
+	// startClusterMapUpdate() MUST only succeed with odd epoch, indicating clustermap is being updated.
+	common.Assert(clusterMap.Epoch%2 == 1, clusterMap.Epoch)
+
 	return nil
 }
 
@@ -1462,10 +1532,12 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 	// endClusterMapUpdate() must be called after startClusterMapUpdate(), hence state must be checking,
 	// and we must be the owner.
 	//
-	common.Assert(clusterMap.State == dcache.StateChecking, clusterMap.State)
+	common.Assert(clusterMap.Epoch%2 == 1, clusterMap.Epoch)
 	common.Assert(clusterMap.LastUpdatedBy == cmi.myNodeId)
 
-	clusterMap.State = dcache.StateReady
+	oldLastUpdatedAt := clusterMap.LastUpdatedAt
+	oldEpoch := clusterMap.Epoch
+
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 
 	//
@@ -1476,12 +1548,17 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 	// TODO: See if it's useful to update Epoch only on clusterMap content change.
 	//
 	clusterMap.Epoch++
+	common.Assert(clusterMap.Epoch%2 == 0)
 
 	clusterMapBytes, err := json.Marshal(clusterMap)
 	if err != nil {
 		err = fmt.Errorf("marshal failed for clustermap: %v %+v", err, clusterMap)
 		log.Err("ClusterManager::endClusterMapUpdate: %v", err)
 		common.Assert(false, err)
+
+		// Revert changes, in good faith
+		clusterMap.LastUpdatedAt = oldLastUpdatedAt
+		clusterMap.Epoch = oldEpoch
 		return err
 	}
 
@@ -1490,6 +1567,10 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 		err = fmt.Errorf("updateClusterMapEnd() failed: %v %+v", err, clusterMap)
 		log.Err("ClusterManager::endClusterMapUpdate: %v", err)
 		common.Assert(false, err)
+
+		// Revert changes, in good faith
+		clusterMap.LastUpdatedAt = oldLastUpdatedAt
+		clusterMap.Epoch = oldEpoch
 		return err
 	}
 
@@ -1742,7 +1823,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		//       proceed, but it can fail when some other asynchronous event like batchUpdateComponentRVState()
 		//       updates the clustermap, from the same node or another node.
 		//
-		err = cmi.startClusterMapUpdate(clusterMap, etag)
+		err = cmi.startClusterMapUpdate(clusterMap, etag, false /* isStuck */)
 		if err != nil {
 			err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
 			log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
@@ -4250,7 +4331,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 		//
 		// TODO: Check err to see if the failure is due to etag mismatch, if not retrying may not help.
 		//
-		err = cmi.startClusterMapUpdate(clusterMap, etag)
+		err = cmi.startClusterMapUpdate(clusterMap, etag, false /* isStuck */)
 		if err != nil {
 			log.Warn("ClusterManager::batchUpdateComponentRVState: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
