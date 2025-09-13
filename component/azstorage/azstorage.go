@@ -207,7 +207,7 @@ func (az *AzStorage) ListContainers() ([]string, error) {
 func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	log.Trace("AzStorage::CreateDir : %s", options.Name)
 
-	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name))
+	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name), options.ForceDirCreationDisabled)
 
 	if err == nil {
 		azStatsCollector.PushEvents(createDir, options.Name, map[string]any{mode: options.Mode.String()})
@@ -433,7 +433,7 @@ func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AzStorage::RenameFile : %s to %s", options.Src, options.Dst)
 
-	err := az.storage.RenameFile(options.Src, options.Dst, options.SrcAttr)
+	err := az.storage.RenameFile(options)
 
 	if err == nil {
 		azStatsCollector.PushEvents(renameFile, options.Src, map[string]any{src: options.Src, dest: options.Dst})
@@ -445,6 +445,10 @@ func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, err error) {
 	//log.Trace("AzStorage::ReadFile : Read %s", h.Path)
 	return az.storage.ReadBuffer(options.Handle.Path, 0, 0)
+}
+
+func (az *AzStorage) ReadFileWithName(options internal.ReadFileWithNameOptions) (data []byte, err error) {
+	return az.storage.ReadBuffer(options.Path, 0, options.Size)
 }
 
 func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length int, err error) {
@@ -581,6 +585,14 @@ func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
 	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
+}
+
+func (az *AzStorage) WriteFromBuffer(opt internal.WriteFromBufferOptions) (string, error) {
+	return az.storage.WriteFromBuffer(opt)
+}
+
+func (az *AzStorage) SetMetadata(options internal.SetMetadataOptions) error {
+	return az.storage.SetMetadata(options.Path, options.Metadata, options.Etag, options.Overwrite)
 }
 
 // TODO : Below methods are pending to be implemented

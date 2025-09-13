@@ -61,6 +61,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type LogOptions struct {
 	Type           string `config:"type" yaml:"type,omitempty"`
 	LogLevel       string `config:"level" yaml:"level,omitempty"`
@@ -97,6 +99,7 @@ type mountOptions struct {
 	AttrCache         bool     `config:"use-attr-cache"`
 	LibfuseOptions    []string `config:"libfuse-options"`
 	BlockCache        bool     `config:"block-cache"`
+	DistributedCache  bool     `config:"distributed-cache"`
 	Preload           bool     `config:"preload"`
 	EntryCacheTimeout int      `config:"list-cache-timeout"`
 }
@@ -293,6 +296,8 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "stream")
 			} else if config.IsSet("block-cache") && options.BlockCache {
 				pipeline = append(pipeline, "block_cache")
+			} else if config.IsSet("distributed-cache") && options.DistributedCache {
+				pipeline = append(pipeline, "distributed_cache")
 			} else if options.Preload {
 				pipeline = append(pipeline, "xload")
 			} else {
@@ -329,6 +334,13 @@ var mountCmd = &cobra.Command{
 			// CLI overriding the pipeline to inject xload
 			options.Components = common.UpdatePipeline(options.Components, "xload")
 			config.Set("read-only", "true") // preload is only supported in read-only mode
+		}
+
+		// Must be called only once.
+		common.Assert(!common.IsDistributedCacheEnabled)
+
+		if options.DistributedCache || common.ComponentInPipeline(options.Components, "distributed_cache") {
+			common.IsDistributedCacheEnabled = true
 		}
 
 		if config.IsSet("libfuse-options") {
@@ -852,6 +864,10 @@ func init() {
 
 	mountCmd.Flags().BoolVar(&options.Preload, "preload", false, "Enable Preload, to start downloading all files from container on mount.")
 	config.BindPFlag("preload", mountCmd.Flags().Lookup("preload"))
+
+	mountCmd.Flags().BoolVar(&options.DistributedCache, "dcache", false, "Enable Distributed-Cache.")
+	config.BindPFlag("distributed-cache", mountCmd.Flags().Lookup("dcache"))
+	mountCmd.Flags().Lookup("dcache").Hidden = true
 
 	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
 	config.BindPFlag("use-attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))

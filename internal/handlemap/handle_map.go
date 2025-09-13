@@ -45,6 +45,8 @@ import (
 	"go.uber.org/atomic"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 type HandleID uint64
 
 const InvalidHandleID HandleID = 0
@@ -55,6 +57,20 @@ const (
 	HandleFlagDirty          // File has been modified with write operation or is a new file
 	HandleFlagFSynced        // User has called fsync on the file explicitly
 	HandleFlagCached         // File is cached in the local system by blobfuse2
+	HandleFlagFSDebug
+	// Handle with HandleFSDebug is analogous to opening the proc files in linux, represents the file that was opened is
+	// for some dubugging/metrics for the user and this handle can only be read. only allow if the open flags are O_RDONLY.
+	// The flag is only valid in the context of open callback. If the component implements any proc files for the fs then
+	// those files must return file size to be zero in getattr/readdir, as the files are generated on fly the size maynot
+	// be known at the stat/open, but "read" must return EOF error when the size of the file has reached.
+
+	// Following are the Dcache Flags
+	HandleFSAzure  // Handle refers to a file in Azure
+	HandleFSDcache // Handle refers to a file in Distributed Cache.
+	// Both HandleFSAzure and HandleFSDcache will be set for handles corresponding
+	// to file paths without an explicit fs=azure/fs=dcache namespace specified.
+	HandleFlagDcacheAllowWrites // Write to Distributed Cache through this handle is only allowed if this flag is set
+	HandleFlagDcacheAllowReads  // Read from Distributed Cache through this handle is only allowed if this flag is set
 )
 
 // Structure to hold in memory cache for streaming layer
@@ -84,6 +100,7 @@ type Handle struct {
 	Flags    common.BitMap16 // Various states of the file
 	Path     string          // Always holds path relative to mount dir
 	values   map[string]any  // Map to hold other info if application wants to store
+	IFObj    any             // Generic file Object that can be used by other components.
 }
 
 func NewHandle(path string) *Handle {
@@ -154,6 +171,98 @@ func (handle *Handle) Cleanup() {
 		delete(handle.values, key)
 	}
 }
+
+// Set's the Flag that handle is pointing to a debug/proc File.
+// Refer the flag to see more info.
+func (handle *Handle) SetFsDebug() {
+	handle.Flags.Set(HandleFlagFSDebug)
+}
+
+func (handle *Handle) IsFsDebug() bool {
+	return handle.Flags.IsSet(HandleFlagFSDebug)
+}
+
+// **********************Dcache Related Methods Start******************************
+func (handle *Handle) SetFsAzure() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsFsAzure())
+	common.Assert(!handle.IsFsDcache())
+	handle.Flags.Set(HandleFSAzure)
+}
+
+func (handle *Handle) SetFsDcache() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsFsAzure())
+	common.Assert(!handle.IsFsDcache())
+	handle.Flags.Set(HandleFSDcache)
+}
+
+func (handle *Handle) SetFsDefault() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsFsAzure())
+	common.Assert(!handle.IsFsDcache())
+	handle.Flags.Set(HandleFSAzure)
+	handle.Flags.Set(HandleFSDcache)
+}
+
+func (handle *Handle) IsFsAzure() bool {
+	return handle.Flags.IsSet(HandleFSAzure)
+}
+
+func (handle *Handle) IsFsDcache() bool {
+	return handle.Flags.IsSet(HandleFSDcache)
+}
+
+func (handle *Handle) SetDcacheAllowWrites() {
+	// Must be set only once.
+	common.Assert(!handle.IsDcacheAllowWrites())
+	// Read and write to dcache are not allowed from the same handle.
+	common.Assert(!handle.IsDcacheAllowReads())
+	// Using a handle we can write to Azure, DCache or both.
+	common.Assert(handle.IsFsAzure() || handle.IsFsDcache())
+
+	handle.Flags.Set(HandleFlagDcacheAllowWrites)
+}
+
+func (handle *Handle) SetDcacheAllowReads() {
+	// Must be set only once.
+	common.Assert(!handle.IsDcacheAllowReads())
+	// Read and write to dcache are not allowed from the same handle.
+	common.Assert(!handle.IsDcacheAllowWrites())
+	// Using a handle we can read from Azure or DCache but never both.
+	common.Assert(handle.IsFsAzure() || handle.IsFsDcache())
+	common.Assert(!(handle.IsFsAzure() && handle.IsFsDcache()))
+
+	handle.Flags.Set(HandleFlagDcacheAllowReads)
+}
+
+func (handle *Handle) IsDcacheAllowWrites() bool {
+	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
+	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
+	_ = allowReads
+	// Read and write to dcache are not allowed from the same handle.
+	common.Assert(!(allowWrites && allowReads))
+	return allowWrites
+}
+
+func (handle *Handle) IsDcacheAllowReads() bool {
+	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
+	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
+	_ = allowWrites
+	// Read and write to dcache are not allowed from the same handle.
+	common.Assert(!(allowWrites && allowReads))
+	return allowReads
+}
+
+func (handle *Handle) SetDcacheStopWrites() {
+	// Close has come to the handle and success, no more writes to this handle
+	// from now.
+	handle.Flags.Clear(HandleFlagDcacheAllowWrites)
+	// From this point there cannot be any IO on this handle.
+	common.Assert(!handle.IsDcacheAllowReads() && !handle.IsDcacheAllowWrites())
+}
+
+// **********************Dcache Related Methods End******************************
 
 // defaultHandleMap holds a synchronized map[ HandleID ]*Handle
 var defaultHandleMap sync.Map

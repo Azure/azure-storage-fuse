@@ -36,6 +36,7 @@ package azstorage
 import (
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -105,13 +106,13 @@ type AzConnection interface {
 	SetPrefixPath(string) error
 
 	CreateFile(name string, mode os.FileMode) error
-	CreateDirectory(name string) error
+	CreateDirectory(name string, forceDirCreationDisabled bool) error
 	CreateLink(source string, target string) error
 
 	DeleteFile(name string) error
 	DeleteDirectory(name string) error
 
-	RenameFile(string, string, *internal.ObjAttr) error
+	RenameFile(options internal.RenameFileOptions) error
 	RenameDirectory(string, string) error
 
 	GetAttr(name string) (attr *internal.ObjAttr, err error)
@@ -124,7 +125,7 @@ type AzConnection interface {
 	ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
-	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
+	WriteFromBuffer(options internal.WriteFromBufferOptions) (string, error)
 	Write(options *internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)
 
@@ -140,6 +141,8 @@ type AzConnection interface {
 	UpdateServiceClient(_, _ string) error
 
 	SetFilter(string) error
+
+	SetMetadata(string, map[string]*string, *azcore.ETag, bool) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object
