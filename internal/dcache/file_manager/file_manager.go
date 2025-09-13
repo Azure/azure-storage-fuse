@@ -219,6 +219,8 @@ type DcacheFile struct {
 	// It is saved when the file is opened, if there are no more file opens done on that file, the same etag
 	// can be used to update the file open count on close.
 	attr *internal.ObjAttr
+
+	CacheWarmup *cacheWarmup
 }
 
 // Get the write error encountered during file writes, if any.
@@ -246,6 +248,55 @@ func (file *DcacheFile) initFreeChunks(maxChunks int) {
 	for i := 0; i < maxChunks; i++ {
 		file.freeChunks <- struct{}{}
 	}
+}
+
+func (file *DcacheFile) ReadPartialFile(offset int64, buf *[]byte) (bytesRead int, err error) {
+	log.Debug("DistributedCache::ReadPartialFile: file: %s, offset: %d, length: %d",
+		file.FileMetadata.Filename, offset, len(*buf))
+
+	maxReadChunkIdx := getChunkIdxFromFileOffset(offset+int64(len(*buf))-1, file.FileMetadata.FileLayout.ChunkSize)
+	common.Assert(file.CacheWarmup != nil)
+	common.Assert(file.CacheWarmup.Size >= 0, file.CacheWarmup.Size)
+	common.Assert(maxReadChunkIdx < file.CacheWarmup.SuccessfulChunks.Load(), maxReadChunkIdx,
+		file.CacheWarmup.SuccessfulChunks.Load(), file.FileMetadata.Filename)
+
+	endOffset := min(offset+int64(len(*buf)), file.CacheWarmup.Size)
+
+	for offset < endOffset {
+		chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
+		readSize := min(endOffset-offset, file.FileMetadata.FileLayout.ChunkSize-chunkOffset)
+
+		common.Assert(chunkIdx <= maxReadChunkIdx, chunkIdx, maxReadChunkIdx,
+			file.FileMetadata.Filename)
+
+		chunk, err := file.readChunk(offset, int64(len(*buf)), true /* sync */)
+		if err != nil {
+			return bytesRead, err
+		}
+
+		common.Assert(chunk.UpToDate.Load(), chunk.Idx, file.FileMetadata.Filename)
+		common.Assert((chunk.Offset+chunk.Len) <= file.FileMetadata.FileLayout.ChunkSize,
+			chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
+		common.Assert((chunkOffset+readSize) <= (chunk.Offset+chunk.Len),
+			chunkOffset, readSize, chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
+		common.Assert(chunk.RefCount.Load() > 0, chunk.Idx, chunk.RefCount.Load())
+
+		copied := copy((*buf)[bytesRead:], chunk.Buf[(chunkOffset-chunk.Offset):chunk.Len])
+
+		common.Assert(copied > 0, chunkOffset,
+			bytesRead, chunk.Offset, chunk.Len, len(*buf), chunk.Idx, file.FileMetadata.Filename)
+
+		offset += int64(copied)
+		bytesRead += copied
+
+		// Release our refcount on the chunk. If this is the last reference, it will free the chunk memory.
+		file.releaseChunk(chunk)
+	}
+	common.Assert(offset == endOffset, offset, endOffset)
+	common.Assert(offset <= file.CacheWarmup.Size, offset, file.CacheWarmup.Size)
+
+	return bytesRead, nil
 }
 
 // Reads the file data from the given offset and length to buf[].
@@ -451,7 +502,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
 	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
-	common.Assert(len(buf) <= common.MbToBytes, len(buf))
+	//	common.Assert(len(buf) <= common.MbToBytes, len(buf))
 	// Read patterm tracker must not be present for files opened for writing.
 	common.Assert(file.RPT == nil, file.FileMetadata.Filename)
 	// We should not be called for 0 byte writes.

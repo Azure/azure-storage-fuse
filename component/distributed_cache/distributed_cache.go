@@ -114,6 +114,7 @@ type DistributedCacheOptions struct {
 	RebalancePercentage uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
+	CacheWarmup         bool   `config:"cache-warmup" yaml:"cache-warmup,omitempty"`
 	IgnoreFD            bool   `config:"ignore-fd" yaml:"ignore-fd,omitempty"`
 	IgnoreUD            bool   `config:"ignore-ud" yaml:"ignore-ud,omitempty"`
 	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
@@ -137,6 +138,7 @@ const (
 	defaultRebalancePercentage       = 80
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
+	defaultCacheWarmup               = true
 	dcacheDirContToken               = "__DCDIRENT__"
 	defaultIgnoreFD                  = true // By default ignore VM Fault Domain for MV placement decisions.
 	defaultIgnoreUD                  = true // By default ignore VM Update Domain for MV placement decisions.
@@ -562,6 +564,9 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	}
 	if !config.IsSet(compName + ".cache-access") {
 		distributedCache.cfg.CacheAccess = defaultCacheAccess
+	}
+	if !config.IsSet(compName + ".cache-warmup") {
+		distributedCache.cfg.CacheWarmup = defaultCacheWarmup
 	}
 	if !config.IsSet(compName + ".ignore-fd") {
 		distributedCache.cfg.IgnoreFD = defaultIgnoreFD
@@ -1005,6 +1010,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		} else {
 			// todo: make sure we come here when opening dcache file is returning ENOENT
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s, Trying to Open the file in Azure", err.Error(), options.Name)
+
 			handle, err = dc.NextComponent().OpenFile(options)
 			if err != nil {
 				log.Err("DistributedCache::OpenFile : Azure File Open failed with err : %s, path : %s", err.Error(), options.Name)
@@ -1012,6 +1018,22 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			}
 			log.Debug("DistributedCache::OpenFile : Opening the file from Azure, path : %s", options.Name)
 			handle.SetFsAzure()
+
+			// Start Warming up the cache for this file in the background, if the file is present in Azure and not in
+			// dcache.
+			//
+			// Create the Dcache metadata file.
+			if dc.cfg.CacheWarmup == true && handle.Size > 0 {
+				log.Info("DistributedCache::OpenFile : Starting Cache Warmup for file : %s", options.Name)
+				dcFile, err = fm.NewDcacheFile(rawPath)
+				if err != nil {
+					log.Warn("DistributedCache::OpenFile : Dcache File Creation for cache warmup failed with err : %s, path : %v",
+						err, options.Name)
+				} else {
+					dcFile.CacheWarmup = fm.NewCacheWarmup(handle.Size, maxBackgroundCacheWarmupChunks)
+					go startCacheWarmup(dc, handle)
+				}
+			}
 		}
 	}
 
@@ -1034,7 +1056,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	}
 
 	// handle.IFObj must be set IFF DCache access is allowed through this handle.
-	common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
+	// common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
 	return handle, nil
 }
 
@@ -1059,6 +1081,28 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		log.Err("DistributedCache::ReadInBuffer : Failed to read file from Dcache, file: %s, offset: %d, length: %d",
 			options.Handle.Path, options.Offset, len(options.Data))
 	} else if options.Handle.IsFsAzure() {
+
+		if dc.cfg.CacheWarmup {
+			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+			if dcFile != nil {
+				err = waitForChunkWarmupCompletion(options.Handle, dcFile, options.Offset+int64(len(options.Data))-1)
+				if err != nil {
+					log.Warn("DistributedCache::ReadInBuffer : Cache warmup failed for file: %s, offset: %d, err: %v, continueing to read from Azure",
+						options.Handle.Path, options.Offset, err)
+				} else {
+					// Read from the dcache file if the chunk corresponding to the offset is already warmed up.
+					bytesRead, err = dcFile.ReadPartialFile(options.Offset, &options.Data)
+					if err == nil || err == io.EOF {
+						return bytesRead, err
+					} else {
+						// otherwise continue to read from Azure.
+						log.Warn("DistributedCache::ReadInBuffer : Cache warmup read failed for file: %s, offset: %d, err: %v, continueing to read from Azure",
+							options.Handle.Path, options.Offset, err)
+					}
+				}
+			}
+		}
+
 		bytesRead, err = dc.NextComponent().ReadInBuffer(options)
 		if err == nil || err == io.EOF {
 			return bytesRead, err
@@ -1260,6 +1304,15 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	}
 
 	if options.Handle.IsFsAzure() {
+
+		// emit a log on the status of cache warmup if enabled.
+		if dc.cfg.CacheWarmup {
+			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+			if dcFile != nil {
+				logStatusForCacheWarmup(options.Handle, dcFile)
+			}
+		}
+
 		azureErr = dc.NextComponent().CloseFile(options)
 		if azureErr != nil {
 			log.Err("DistributedCache::SyncFile : Failed to ReleaseFile for Azure file : %s", options.Handle.Path)
@@ -1303,7 +1356,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 
 	if isDcachePath {
 		log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", rawPath)
-		err := fm.DeleteDcacheFile(rawPath)
+		err := fm.DeleteDcacheFile(rawPath, false /* force delete */)
 		if err != nil {
 			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file %s: %v", options.Name, err)
 			return err
@@ -1325,7 +1378,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 
 		// Delete file from dcache.
-		dcacheErr = fm.DeleteDcacheFile(rawPath)
+		dcacheErr = fm.DeleteDcacheFile(rawPath, false /* force delete */)
 		if dcacheErr != nil {
 			if dcacheErr != syscall.ENOENT {
 				log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
@@ -1627,6 +1680,9 @@ func init() {
 
 	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
 	config.BindPFlag(compName+".cache-access", cacheAccess)
+
+	cacheWarmup := config.AddBoolFlag("cache-warmup", defaultCacheWarmup, "File will be cached on first read from Azure if not present in dcache (true/false) [Default: true]")
+	config.BindPFlag(compName+".cache-warmup", cacheWarmup)
 
 	ignoreFD := config.AddBoolFlag("ignore-fd", defaultIgnoreFD, "Ignore VM fault domain for MV placement decisions")
 	config.BindPFlag(compName+".ignore-fd", ignoreFD)

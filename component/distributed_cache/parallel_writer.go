@@ -95,7 +95,7 @@ func (pw *parallelWriter) EnqueuAzureWrite(azureWrite func() error) <-chan error
 
 	azureWriteWorkItem := &writeReq{
 		writer: azureWrite,
-		err:    make(chan error),
+		err:    make(chan error, 1),
 	}
 	// Queue the work Item.
 	pw.azureWriterQueue <- azureWriteWorkItem
