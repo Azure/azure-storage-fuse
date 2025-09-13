@@ -383,8 +383,15 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// All PutChunk requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	//
 	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+	// When called from forwardPutChunk() we cannot assert this as req.Request.ClustermapEpoch is the one sent
+	// by the originator and could be greater than what we have if our clustermap is stale.
+	//
+	common.Assert(fromFwder || (req.ClustermapEpoch <= cm.GetEpoch()),
+		req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.PutChunkRequestToString(req)
 	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s: %v", targetNodeID, reqStr)
@@ -504,6 +511,16 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.Request.SenderNodeID) == 0, req.Request.SenderNodeID)
 	req.Request.SenderNodeID = myNodeId
+
+	// All PutChunkDC requests must carry a valid clustermap epoch.
+	common.Assert(req.Request.ClustermapEpoch > 0, req.Request.ClustermapEpoch)
+	//
+	// Caller cannot send a clustermap epoch greater than what we have.
+	// When called from forwardPutChunk() we cannot assert this as req.Request.ClustermapEpoch is the one sent
+	// by the originator and could be greater than what we have if our clustermap is stale.
+	//
+	common.Assert(fromFwder || (req.Request.ClustermapEpoch <= cm.GetEpoch()),
+		req.Request.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.PutChunkDCRequestToString(req)
 	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC (fromFwder: %v) request to nexthop node %s and %d daisy chain RV(s): %v",
@@ -695,6 +712,8 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// All RemoveChunk requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
 	// Caller cannot send a clustermap epoch greater than what we have.
 	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
@@ -805,6 +824,8 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// All JoinMV requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
 	// Caller cannot send a clustermap epoch greater than what we have.
 	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
@@ -929,6 +950,8 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// All UpdateMV requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
 	// Caller cannot send a clustermap epoch greater than what we have.
 	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
@@ -1149,6 +1172,8 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// All StartSync requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
 	// Caller cannot send a clustermap epoch greater than what we have.
 	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
@@ -1268,6 +1293,8 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// All EndSync requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
 	// Caller cannot send a clustermap epoch greater than what we have.
 	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
@@ -1385,6 +1412,8 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
 	common.Assert(req != nil)
 
+	// All GetMVSize requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId

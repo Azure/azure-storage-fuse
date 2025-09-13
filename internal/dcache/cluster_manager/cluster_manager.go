@@ -1102,7 +1102,7 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
 	// TODO: Assert that clustermap has our local RVs.
 	common.Assert(cmi.config != nil)
-	common.Assert(*cmi.config == *dCacheConfig)
+	common.Assert(*cmi.config == *dCacheConfig, *cmi.config, *dCacheConfig)
 
 	return nil
 }
@@ -3254,8 +3254,11 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 		//
 		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
 		// Without MV size we cannot proceed with JoinMV for fix-mv workflow.
+		// We got componentRVs from 'mv' which corresponds to cm.GetEpoch(), this is because the caller
+		// is updateMVList() which has locked the clustermap so the epoch cannot change after fetching
+		// the componentRVs.
 		//
-		reserveBytes, err = rm.GetMVSize(mvName, componentRVs)
+		reserveBytes, err = rm.GetMVSize(mvName, componentRVs, cm.GetEpoch())
 		if err != nil {
 			//
 			// GetMVSize() must have queried all online component RVs, so if it has failed, failedRVs must
@@ -3309,19 +3312,25 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 		wg.Add(1)
 		go func(rvName string, rvState dcache.StateEnum) {
 			defer wg.Done()
-			log.Debug("ClusterManager::joinMV: Joining MV %s with RV %s in state %s", mvName, rvName, rvState)
+			log.Debug("ClusterManager::joinMV: Joining MV %s with RV %s in state %s, cepoch: %d",
+				mvName, rvName, rvState, cm.GetEpoch())
 
+			//
+			// Since clustermap would be locked, cm.GetEpoch() would correspond to componentRVs.
+			//
 			joinMvReq := &models.JoinMVRequest{
-				MV:           mvName,
-				RVName:       rvName,
-				ReserveSpace: reserveBytes,
-				ComponentRV:  componentRVs,
+				MV:              mvName,
+				RVName:          rvName,
+				ReserveSpace:    reserveBytes,
+				ComponentRV:     componentRVs,
+				ClustermapEpoch: cm.GetEpoch(),
 			}
 
 			updateMvReq := &models.UpdateMVRequest{
-				MV:          mvName,
-				RVName:      rvName,
-				ComponentRV: componentRVs,
+				MV:              mvName,
+				RVName:          rvName,
+				ComponentRV:     componentRVs,
+				ClustermapEpoch: cm.GetEpoch(),
 			}
 
 			// TODO: Use timeout from some global variable.
@@ -3388,8 +3397,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 			}
 
 			if err != nil {
-				err = fmt.Errorf("error %s MV %s with RV %s in state %s: %v",
-					action, mvName, rvName, rvState, err)
+				err = fmt.Errorf("error %s MV %s with RV %s in state %s, cepoch: %d: %v",
+					action, mvName, rvName, rvState, cm.GetEpoch(), err)
 				log.Err("ClusterManager::joinMV: %v", err)
 				errCh <- rpcCallComponentRVError{
 					rvName: rvName,
@@ -3410,8 +3419,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 				}
 				return
 			}
-			log.Debug("ClusterManager::joinMV: Success %s MV %s with RV %s in state %s",
-				action, mvName, rvName, rvState)
+			log.Debug("ClusterManager::joinMV: Success %s MV %s with RV %s in state %s, cepoch: %d, took %s",
+				action, mvName, rvName, rvState, cm.GetEpoch(), time.Since(start))
 
 			//
 			// A fix-mv/new-mv can only succeed when all the RVs correctly update the component RVs state in their
