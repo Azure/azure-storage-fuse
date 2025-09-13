@@ -174,7 +174,8 @@ type WriteMvRequest struct {
 // helper method which can be used for logging the request contents except the data buffer
 // Use this instead of %+v to avoid printing the data buffer
 func (req *WriteMvRequest) toString() string {
-	return fmt.Sprintf("{FileID: %s, MvName: %s, ChunkIndex: %d, ChunkSizeInMiB: %d, IsLastChunk: %v, Data buffer size: %d}",
+	// Use chunkIdx as that matches other places in the code and makes it easier to search.
+	return fmt.Sprintf("{FileID: %s, MvName: %s, chunkIdx: %d, ChunkSizeInMiB: %d, IsLastChunk: %v, Data buffer size: %d}",
 		req.FileID, req.MvName, req.ChunkIndex, req.ChunkSizeInMiB, req.IsLastChunk, len(req.Data))
 }
 

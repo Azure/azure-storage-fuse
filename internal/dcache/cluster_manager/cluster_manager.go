@@ -517,6 +517,8 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	//
 	// 4. Atomically update the local clustermap copy, along with corresponding localMapETag.
 	//
+	// TODO: If the local disk runs out of space we should not bring the cluster down.
+	//
 	common.Assert(len(cmi.localClusterMapPath) > 0)
 	tmp := cmi.localClusterMapPath + ".tmp"
 	if err := os.WriteFile(tmp, storageBytes, 0644); err != nil {

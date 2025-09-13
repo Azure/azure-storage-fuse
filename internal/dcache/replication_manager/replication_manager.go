@@ -406,8 +406,8 @@ retry:
 	//
 	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	log.Debug("ReplicationManager::writeMVInternal: Component RVs for %s (%s) are: %v",
-		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::writeMVInternal: %s (%s), componentRVs: %v, chunkIdx: %d, cepoch: %d",
+		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs), req.ChunkIndex, lastClusterMapEpoch)
 
 	//
 	// Response channel to receive response for the PutChunk RPCs sent to each component RV.
@@ -477,8 +477,8 @@ retry:
 		if rv.State == string(dcache.StateOffline) ||
 			rv.State == string(dcache.StateInbandOffline) ||
 			rv.State == string(dcache.StateOutOfSync) {
-			log.Debug("ReplicationManager::writeMVInternal: Skipping %s/%s (RV state: %s, MV state: %s)",
-				rv.Name, req.MvName, rv.State, mvState)
+			log.Debug("ReplicationManager::writeMVInternal: Skipping %s/%s (RV state: %s, MV state: %s), chunkIdx: %d, cepoch: %d",
+				rv.Name, req.MvName, rv.State, mvState, req.ChunkIndex, lastClusterMapEpoch)
 
 			// Online MV must have all replicas online.
 			common.Assert(mvState != dcache.StateOnline, req.MvName, rv.Name, rv.State)
@@ -501,8 +501,8 @@ retry:
 			targetNodeID := getNodeIDFromRVName(rv.Name)
 			common.Assert(common.IsValidUUID(targetNodeID))
 
-			log.Debug("ReplicationManager::writeMVInternal: Writing to %s/%s (rvID: %s, state: %s) on node %s",
-				rv.Name, req.MvName, rvID, rv.State, targetNodeID)
+			log.Debug("ReplicationManager::writeMVInternal: Writing to %s/%s (rvID: %s, state: %s) on node %s, chunkIdx: %d, cepoch: %d",
+				rv.Name, req.MvName, rvID, rv.State, targetNodeID, req.ChunkIndex, lastClusterMapEpoch)
 
 			// Add local component RV to putChunkDCReq.Request.
 			if targetNodeID == rpc.GetMyNodeUUID() {
@@ -523,8 +523,8 @@ retry:
 	// If none of the RVs was writeable, no PutChunk/PutChunkDC calls to make.
 	//
 	if len(responseChannel) == len(componentRVs) {
-		log.Err("ReplicationManager::writeMVInternal: Could not write to any component RV, req: %s, component RVs: %s",
-			req.toString(), rpc.ComponentRVsToString(componentRVs))
+		log.Err("ReplicationManager::writeMVInternal: Could not write to any component RV, req: %s, component RVs: %s, chunkIdx: %d, cepoch: %d",
+			req.toString(), rpc.ComponentRVsToString(componentRVs), req.ChunkIndex, lastClusterMapEpoch)
 		common.Assert(len(rvsWritten) == 0, len(rvsWritten))
 		goto processResponses
 	}
@@ -557,8 +557,9 @@ retry:
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk [%s] request for %s/%s to node %s: %s",
-			putChunkStyle, rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request))
+		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk [%s] request for %s/%s to node %s: %s, chunkIdx: %d, cepoch: %d",
+			putChunkStyle, rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkDCReq.Request),
+			req.ChunkIndex, lastClusterMapEpoch)
 
 		//
 		// Set it to OriginatorSendsToAll as we are sending PutChunk to all component RVs.
@@ -611,8 +612,9 @@ retry:
 				ClustermapEpoch: lastClusterMapEpoch,
 			}
 
-			log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk request for %s/%s to node %s: %s",
-				rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkReq))
+			log.Debug("ReplicationManager::writeMVInternal: Sending PutChunk request for %s/%s to node %s: %s, chunkIdx: %d, cepoch: %d",
+				rvName, req.MvName, targetNodeID, rpc.PutChunkRequestToString(putChunkReq),
+				req.ChunkIndex, lastClusterMapEpoch)
 
 			isLastComponentRV := componentRVIdx == (len(putChunkDCReq.NextRVs) - 1)
 			rm.tp.schedule(&workitem{
@@ -629,8 +631,9 @@ retry:
 		targetNodeID := getNodeIDFromRVName(rvName)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunkDC request for nexthop %s/%s to node %s: %s",
-			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq))
+		log.Debug("ReplicationManager::writeMVInternal: Sending PutChunkDC request for nexthop %s/%s to node %s: %s, chunkIdx: %d, cepoch: %d",
+			rvName, req.MvName, targetNodeID, rpc.PutChunkDCRequestToString(putChunkDCReq),
+			req.ChunkIndex, lastClusterMapEpoch)
 
 		//
 		// Check if next-hop RV and any RV in chain are present in the iffy RV map.
@@ -669,8 +672,8 @@ retry:
 		}
 
 		if err != nil {
-			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s: %v",
-				rvName, req.MvName, targetNodeID, err)
+			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",
+				rvName, req.MvName, targetNodeID, req.ChunkIndex, lastClusterMapEpoch, err)
 			common.Assert(putChunkDCResp == nil)
 
 			//
@@ -689,8 +692,8 @@ retry:
 			// indicate the caller (WriteMV) to retry the operation using OriginatorSendsToAll.
 			//
 			if errors.Is(err, rpc_client.NegativeNodeError) || errors.Is(err, rpc_client.IffyRVError) {
-				log.Warn("ReplicationManager::writeMVInternal: %s/%s is marked negative/iffy [%v], retrying with OriginatorSendsToAll",
-					rvName, req.MvName, err)
+				log.Warn("ReplicationManager::writeMVInternal: %s/%s is marked negative/iffy [%v], retrying with OriginatorSendsToAll, chunkIdx: %d, cepoch: %d",
+					rvName, req.MvName, err, req.ChunkIndex, lastClusterMapEpoch)
 				return nil, rpc.NewResponseError(models.ErrorCode_BrokenChain, err.Error())
 			}
 
@@ -701,8 +704,9 @@ retry:
 			//
 			putChunkDCResp = rpc.HandlePutChunkDCError(rvName, putChunkDCReq.NextRVs, req.MvName, err)
 		} else {
-			log.Debug("ReplicationManager::writeMVInternal: Received PutChunkDC response from nexthop %s/%s node %s: %s",
-				rvName, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp))
+			log.Debug("ReplicationManager::writeMVInternal: Received PutChunkDC response from nexthop %s/%s node %s, chunkIdx: %d, cepoch: %d: %s",
+				rvName, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp),
+				req.ChunkIndex, lastClusterMapEpoch)
 			common.Assert(len(putChunkDCResp.Responses) == len(putChunkDCReq.NextRVs)+1,
 				len(putChunkDCResp.Responses), len(putChunkDCReq.NextRVs))
 		}
@@ -765,8 +769,8 @@ processResponses:
 		if respItem.err == nil {
 			common.Assert(putChunkResp != nil)
 
-			log.Debug("ReplicationManager::writeMVInternal: PutChunk successful for %s/%s, RPC response: %s",
-				respItem.rvName, req.MvName, rpc.PutChunkResponseToString(putChunkResp))
+			log.Debug("ReplicationManager::writeMVInternal: PutChunk successful for %s/%s, chunkIdx: %d, cepoch: %d, RPC response: %s",
+				respItem.rvName, req.MvName, req.ChunkIndex, lastClusterMapEpoch, rpc.PutChunkResponseToString(putChunkResp))
 
 			//
 			// Write to this component RV was successful, add it to the list of RVs successfully written
@@ -778,8 +782,8 @@ processResponses:
 			continue
 		}
 
-		log.Err("ReplicationManager::writeMVInternal: [%v] PutChunk to %s/%s failed [%v]",
-			putChunkStyle, respItem.rvName, req.MvName, respItem.err)
+		log.Err("ReplicationManager::writeMVInternal: [%v] PutChunk to %s/%s failed, chunkIdx: %d, cepoch: %d [%v]",
+			putChunkStyle, respItem.rvName, req.MvName, req.ChunkIndex, lastClusterMapEpoch, respItem.err)
 
 		common.Assert(putChunkResp == nil)
 
@@ -935,8 +939,8 @@ processResponses:
 	//   - If PutChunk failed with non-retriable error.
 	//
 	if errWriteMV != nil {
-		err = fmt.Errorf("ReplicationManager::writeMVInternal: Failed to write to MV %s, %s [%v]",
-			req.MvName, req.toString(), errWriteMV)
+		err = fmt.Errorf("ReplicationManager::writeMVInternal: Failed to write to MV %s, %s, chunkIdx: %d, cepoch: %d [%v]",
+			req.MvName, req.toString(), req.ChunkIndex, lastClusterMapEpoch, errWriteMV)
 		log.Err("%v", err)
 		return nil, err
 	}

@@ -39,7 +39,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -87,7 +87,7 @@ func SetWriteIOMode(mode string) error {
 // Return the node address for the given node ID.
 // The returned node address is of the form <ip>:<port>
 func GetNodeAddressFromID(nodeID string) string {
-	nodeAddress := fmt.Sprintf("%s:%d", clustermap.NodeIdToIP(nodeID), defaultPort)
+	nodeAddress := fmt.Sprintf("%s:%d", cm.NodeIdToIP(nodeID), defaultPort)
 	common.Assert(common.IsValidHostPort(nodeAddress), fmt.Sprintf("node address is not valid: %s", nodeAddress))
 	return nodeAddress
 }
@@ -142,6 +142,10 @@ func ComponentRVsMapToList(m map[string]string) []*models.RVNameAndState {
 	return l
 }
 
+func ChunkAddressToChunkIdx(addr *models.Address) int64 {
+	return addr.OffsetInMiB / int64(cm.GetCacheConfig().ChunkSizeMB)
+}
+
 // convert *models.HelloRequest to string
 // used for logging
 func HelloRequestToString(req *models.HelloRequest) string {
@@ -157,22 +161,22 @@ func HelloResponseToString(resp *models.HelloResponse) string {
 // convert *models.GetChunkRequest to string
 // used for logging
 func GetChunkRequestToString(req *models.GetChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, OffsetInChunk %v, Length %v, IsLocalRV %v, ComponentRV %v, ClustermapEpoch %d}",
-		req.SenderNodeID, *req.Address, req.OffsetInChunk, req.Length,
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, chunkIdx: %d, OffsetInChunk %v, Length %v, IsLocalRV %v, ComponentRV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, *req.Address, ChunkAddressToChunkIdx(req.Address), req.OffsetInChunk, req.Length,
 		req.IsLocalRV, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 func GetChunkResponseToString(resp *models.GetChunkResponse) string {
-	return fmt.Sprintf("{Address %+v, DataLength: %v, ChunkWriteTime %v, TimeTaken %v, ComponentRV %v, ClustermapEpoch %d}",
-		*resp.Chunk.Address, len(resp.Chunk.Data), resp.ChunkWriteTime, resp.TimeTaken,
-		ComponentRVsToString(resp.ComponentRV), resp.ClustermapEpoch)
+	return fmt.Sprintf("{Address %+v, chunkIdx: %d, DataLength: %v, ChunkWriteTime %v, TimeTaken %v, ComponentRV %v, ClustermapEpoch %d}",
+		*resp.Chunk.Address, ChunkAddressToChunkIdx(resp.Chunk.Address), len(resp.Chunk.Data), resp.ChunkWriteTime,
+		resp.TimeTaken, ComponentRVsToString(resp.ComponentRV), resp.ClustermapEpoch)
 }
 
 // convert *models.PutChunkRequest to string
 // exclude data and hash from the string to prevent it from being logged
 func PutChunkRequestToString(req *models.PutChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, Length %v, SyncID %v, ComponentRV %v, MaybeOverwrite %v, ClustermapEpoch %d}",
-		req.SenderNodeID, *req.Chunk.Address, req.Length, req.SyncID,
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, chunkIdx: %d, Length %v, SyncID %v, ComponentRV %v, MaybeOverwrite %v, ClustermapEpoch %d}",
+		req.SenderNodeID, *req.Chunk.Address, ChunkAddressToChunkIdx(req.Chunk.Address), req.Length, req.SyncID,
 		ComponentRVsToString(req.ComponentRV), req.MaybeOverwrite, req.ClustermapEpoch)
 }
 
@@ -218,8 +222,9 @@ func PutChunkDCResponseToString(response *models.PutChunkDCResponse) string {
 // convert *models.RemoveChunkRequest to string
 // used for logging
 func RemoveChunkRequestToString(req *models.RemoveChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, ComponentRV %v, ClustermapEpoch %d}",
-		req.SenderNodeID, *req.Address, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, chunkIdx: %d, ComponentRV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, *req.Address, ChunkAddressToChunkIdx(req.Address),
+		ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 // convert *models.JoinMVRequest to string
