@@ -80,8 +80,12 @@ type ClusterManager struct {
 	hbTicker     *time.Ticker
 	hbTickerDone chan bool
 
-	clusterMapTicker     *time.Ticker
-	clusterMapTickerDone chan bool
+	clusterMapTicker       *time.Ticker
+	clusterMapTickerUrgent *time.Ticker
+	clusterMapTickerDone   chan bool
+
+	runUpdateClusterMapUrgent atomic.Bool
+	updateClusterMapRunning   atomic.Bool
 
 	componentRVStateBatchUpdateTicker     *time.Ticker
 	componentRVStateBatchUpdateTickerDone chan bool
@@ -299,6 +303,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		dCacheConfig.ClustermapEpoch, cmi.config.ClustermapEpoch)
 
 	cmi.clusterMapTicker = time.NewTicker(time.Duration(cmi.config.ClustermapEpoch) * time.Second)
+	cmi.clusterMapTickerUrgent = time.NewTicker(5 * time.Second)
 	cmi.clusterMapTickerDone = make(chan bool)
 
 	cmi.wg.Add(1)
@@ -321,9 +326,37 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 			case <-cmi.clusterMapTickerDone:
 				log.Info("ClusterManager::start: Scheduled task \"Update ClusterMap\" stopped")
 				return
+			case <-cmi.clusterMapTickerUrgent.C:
+				//
+				// If urgent update queued, do it now.
+				//
+				if cmi.runUpdateClusterMapUrgent.Swap(false) {
+					if cmi.updateClusterMapRunning.Swap(true) {
+						cmi.runUpdateClusterMapUrgent.Store(true)
+						continue
+					}
+					err = cmi.updateStorageClusterMapIfRequired()
+					ret := cmi.updateClusterMapRunning.Swap(false)
+					_ = ret
+					common.Assert(ret == true)
+					if err != nil {
+						log.Err("ClusterManager::start: updateStorageClusterMapIfRequired [Urgent] failed: %v", err)
+					}
+				}
 			case <-cmi.clusterMapTicker.C:
 				log.Debug("ClusterManager::start: Scheduled task \"Update ClusterMap\" triggered")
+				//
+				// updateStorageClusterMapIfRequired() loves to be non-reentrant.
+				//
+				if cmi.updateClusterMapRunning.Swap(true) {
+					// Schedule an urgent update.
+					cmi.runUpdateClusterMapUrgent.Store(true)
+					continue
+				}
 				err = cmi.updateStorageClusterMapIfRequired()
+				ret := cmi.updateClusterMapRunning.Swap(false)
+				_ = ret
+				common.Assert(ret == true)
 				if err != nil {
 					//
 					// We don't treat updateStorageClusterMapIfRequired() failure as fatal, since
@@ -584,6 +617,11 @@ func (cmi *ClusterManager) stop() error {
 	// mm.DeleteHeartbeat(cmi.myNodeId)
 	if cmi.clusterMapTicker != nil {
 		cmi.clusterMapTicker.Stop()
+		cmi.clusterMapTickerDone <- true
+	}
+
+	if cmi.clusterMapTickerUrgent != nil {
+		cmi.clusterMapTickerUrgent.Stop()
 		cmi.clusterMapTickerDone <- true
 	}
 
@@ -2793,6 +2831,11 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// At least one component RV is not online but at least one is online, degrade-mv.
 			if !mvUpdated && mv.State != dcache.StateDegraded {
 				mvUpdated = true
+				if !runFixMvNewMv {
+					if !cmi.runUpdateClusterMapUrgent.Swap(true) {
+						log.Debug("ClusterManager::updateMVList: urgent cluster map update marked due to degraded-mv %s", mvName)
+					}
+				}
 			}
 			mv.State = dcache.StateDegraded
 		} else if syncingRVs > 0 {
