@@ -1028,8 +1028,8 @@ func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcach
 		common.Assert(rv != nil)
 		if rv.Name == rvName {
 			common.Assert(rv.State == string(oldState), rvName, rv.State, oldState)
-			log.Debug("mvInfo::updateComponentRVState: %s/%s (%s -> %s) %s, changed by sender %s",
-				rvName, mv.mvName, rv.State, newState, rpc.ComponentRVsToString(mv.componentRVs),
+			log.Debug("mvInfo::updateComponentRVState: [%s/%s] %s (%s -> %s) %s, changed by sender %s",
+				mv.rv.rvName, mv.mvName, rvName, rv.State, newState, rpc.ComponentRVsToString(mv.componentRVs),
 				senderNodeId)
 
 			rv.State = string(newState)
@@ -2486,6 +2486,9 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	clustermapRefreshed := false
 
+	log.Debug("ChunkServiceHandler::PutChunk: PutChunk request (%v): %v, mvInfo.componentRVs: %s",
+		rpc.WriteIOMode, rpc.PutChunkRequestToString(req), rpc.ComponentRVsToString(mvInfo.componentRVs))
+
 refreshFromClustermapAndRetry:
 	componentRVsInMV := mvInfo.getComponentRVs()
 	_ = componentRVsInMV
@@ -3660,8 +3663,8 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Update the state of target RV in this MV replica from outofsync to syncing.
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateOutOfSync, dcache.StateSyncing, req.SenderNodeID)
 
-	log.Debug("ChunkServiceHandler::StartSync: %s/%s responding to StartSync request: %s, with syncID: %s",
-		rvInfo.rvName, req.MV, rpc.StartSyncRequestToString(req), syncID)
+	log.Debug("ChunkServiceHandler::StartSync: %s/%s responding to StartSync request: %s, with syncID: %s, mvInfo.componentRVs: %s",
+		rvInfo.rvName, req.MV, rpc.StartSyncRequestToString(req), syncID, rpc.ComponentRVsToString(mvInfo.componentRVs))
 
 	return &models.StartSyncResponse{
 		SyncID: syncID,
