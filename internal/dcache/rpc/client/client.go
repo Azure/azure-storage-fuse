@@ -146,9 +146,15 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 		log.Err("rpcClient::newRPCClient: Failed to create connection to node %s at %s, adding to negative nodes map: %v",
 			nodeID, nodeAddress, err)
 
+		//
+		// TODO: We can also get other errors here like,
+		//   - "cannot assign requested address" - can be caused due to port exhaustion if we are
+		//     creating too many connections in a short period of time.
+		//
 		common.Assert(rpc.IsTimedOut(err) ||
 			rpc.IsConnectionRefused(err) ||
-			rpc.IsConnectionReset(err), err)
+			rpc.IsConnectionReset(err) ||
+			rpc.IsNoRouteToHost(err), err)
 
 		//
 		// Any error indicates a problem connecting to the node, so add to negative nodes map to quarantine

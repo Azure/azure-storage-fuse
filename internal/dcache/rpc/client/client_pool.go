@@ -1085,9 +1085,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		// This will happen when the target node is not running the blob service (but the node
 		// itself is up). When the node is no up we should get a connection timeout error here.
 		//
-		// Also seen connection reset error here.
-		//
-		// TODO: Connection timeout has to be tested.
+		// Also seen connection reset, connection timeout and no route to host errors here.
 		//
 		// In any case when we come here that means we are not able to replenish connections to
 		// the target, in the connection pool. When we have no active connections and no more left
@@ -1096,6 +1094,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		common.Assert(rpc.IsConnectionRefused(err) ||
 			rpc.IsConnectionReset(err) ||
 			rpc.IsTimedOut(err) ||
+			rpc.IsNoRouteToHost(err) ||
 			errors.Is(err, NegativeNodeError), err)
 
 		cp.deleteNodeClientPoolIfInactive(client.nodeID)
@@ -1696,14 +1695,16 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]",
 				ncPool.nodeID, err)
 			//
-			// Only valid reason could be connection refused as the blobfuse process is not running
-			// on the remote node or a timeout if the node is down, or NegativeNodeError if the node
-			// is marked negative and newRPCClient() proactively failed the request.
-			// There is no point in retrying in that case.
+			// Only valid reason could be connection refused as the blobfuse process is not running on
+			// the remote node, a timeout if the node is down, no route to host error in some specific
+			// unreachability conditions, or NegativeNodeError if the node is marked negative and newRPCClient()
+			// proactively failed the request. There is no point in retrying in that case.
 			//
 			common.Assert(rpc.IsConnectionRefused(err) ||
 				rpc.IsTimedOut(err) ||
+				rpc.IsNoRouteToHost(err) ||
 				errors.Is(err, NegativeNodeError), err)
+
 			break
 		}
 		ncPool.clientChan <- client
