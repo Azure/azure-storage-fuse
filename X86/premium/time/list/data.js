@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1757222994766,
+  "lastUpdate": 1757827676822,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1031,6 +1031,38 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/4e93340509c9129fc1e9d7a3118f52b4bcdef1c7"
         },
         "date": 1757222994473,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": 0,
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": 0,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "241e272504fce43e648d3e75304666eb216165ca",
+          "message": "Document Blobfuse HTTPS communication and version check (#1945)",
+          "timestamp": "2025-09-08T05:26:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/241e272504fce43e648d3e75304666eb216165ca"
+        },
+        "date": 1757827676528,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
