@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1757220406643,
+  "lastUpdate": 1757825187045,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1357,6 +1357,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 8222.721644758802,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "241e272504fce43e648d3e75304666eb216165ca",
+          "message": "Document Blobfuse HTTPS communication and version check (#1945)",
+          "timestamp": "2025-09-08T05:26:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/241e272504fce43e648d3e75304666eb216165ca"
+        },
+        "date": 1757825186764,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 372.16216343450805,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 327.0247053484793,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 7635.44795397855,
             "unit": "milliseconds"
           }
         ]
