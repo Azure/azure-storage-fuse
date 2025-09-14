@@ -105,7 +105,6 @@ type ClusterMap struct {
 // Refer to ClusterMap before making any changes to this struct.
 type ClusterMapExport struct {
 	Readonly      bool                        `json:"readonly"`
-	State         StateEnum                   `json:"state"`
 	Epoch         int64                       `json:"epoch"`
 	CreatedAt     int64                       `json:"created-at"`
 	LastUpdatedAt int64                       `json:"last_updated_at"`

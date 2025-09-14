@@ -361,7 +361,10 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 			//
 			// Component RVs for this MV, as per clustermap.
 			//
-			componentRVMap := cm.GetRVs(mvName)
+			mvState, componentRVMap, clustermapEpoch := cm.GetRVsEx(mvName)
+			_ = mvState
+			// Offline MVs must not be present in the cache dir (see safeCleanupMyRVs()).
+			common.Assert(mvState != dcache.StateOffline, rvName, mvName, rv.LocalCachePath)
 			_, ok := componentRVMap[rvName]
 			_ = ok
 
@@ -383,7 +386,7 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 				common.Assert(false, rv.LocalCachePath, mvName, err)
 			}
 
-			mvInfo := newMVInfo(rvInfo, mvName, componentRVs, rpc.GetMyNodeUUID())
+			mvInfo := newMVInfo(rvInfo, mvName, componentRVs, clustermapEpoch, rpc.GetMyNodeUUID())
 			mvInfo.incTotalChunkBytes(mvDirSize)
 
 			//
@@ -401,16 +404,19 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 }
 
 // Create new mvInfo instance. This is used by the JoinMV() RPC call to create a new mvInfo.
-func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState, joinedBy string) *mvInfo {
+func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState,
+	clustermapEpoch int64, joinedBy string) *mvInfo {
 	common.Assert(common.IsValidUUID(joinedBy), rv.rvName, mvName, joinedBy)
 	common.Assert(!containsInbandOfflineState(&componentRVs), componentRVs)
+	common.Assert(clustermapEpoch > 0, rv.rvName, mvName, clustermapEpoch)
 
 	return &mvInfo{
-		rv:           rv,
-		mvName:       mvName,
-		componentRVs: componentRVs,
-		lmt:          time.Now(),
-		lmb:          joinedBy,
+		rv:              rv,
+		mvName:          mvName,
+		componentRVs:    componentRVs,
+		lmt:             time.Now(),
+		lmb:             joinedBy,
+		clustermapEpoch: clustermapEpoch,
 	}
 }
 
@@ -506,6 +512,10 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 			mvInfo.lmt)
 		common.Assert(!mvInfo.lmt.IsZero(), rv.rvName, mvInfo.mvName, mvInfo.lmb,
 			mvInfo.lmt)
+		// Must correspond to a valid clustermap epoch (client clustermap epoch when they sent the JoinMV, or
+		// clustermap epoch when NewChunkServiceHandler initialized the mvInfo from cache dir).
+		common.Assert(mvInfo.clustermapEpoch > 0, rv.rvName, mvInfo.mvName, mvInfo.clustermapEpoch,
+			mvInfo.lmb, mvInfo.lmt)
 
 		return mvInfo
 	}
@@ -580,11 +590,26 @@ func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
 func (rv *rvInfo) deleteFromMVMap(mvName string) {
 	common.Assert(rv.isRvInfoLocked(), rv.rvName)
 
-	_, ok := rv.mvMap.Load(mvName)
+	val, ok := rv.mvMap.Load(mvName)
 	if !ok {
 		common.Assert(false, fmt.Sprintf("mvMap[%s] not found", mvName))
 		return
 	}
+
+	mv := val.(*mvInfo)
+
+	common.Assert(mv != nil, rv.rvName, mvName)
+	common.Assert(mvName == mv.mvName, mvName, mv.mvName, rv.rvName)
+	common.Assert(rv.rvName == mv.rv.rvName, rv.rvName, mv.rv.rvName, mvName)
+
+	//
+	// Undo the reserved space for this MV if any, from the hosting RV.
+	//
+	common.Assert(mv.reservedSpace.Load() >= 0, mv.reservedSpace.Load(), rv.rvName, mvName)
+	common.Assert(rv.reservedSpace.Load() >= mv.reservedSpace.Load(), rv.rvName, mvName, rv.reservedSpace.Load(),
+		mv.reservedSpace.Load())
+
+	rv.decReservedSpace(mv.reservedSpace.Load())
 
 	rv.mvMap.Delete(mvName)
 	rv.mvCount.Add(-1)
@@ -876,6 +901,10 @@ func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
 }
 
 // Update the component RVs for the MV. Called by UpdateMV() handler.
+// clustermapEpoch is the clustermap epoch that triggers this update. If the update is done in response to
+// a client request, this is the client clustermap epoch, while if the update is done as part of
+// refreshFromClustermap(), this is the current clustermap epoch.
+//
 // UpdateMV RPC can only replace one or more component RVs and must not change the state of the unchanged
 // RVs, also for the RVs which are changed the state should change from offline (for the old RV) to outofsync
 // (for the replacement RV).
@@ -897,9 +926,14 @@ func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
 //
 // These checks must be performed to ensure consistent updates to mvInfo.
 // When called from refreshFromClustermap() we don't need to do these checks and forceUpdate must be true.
-func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forceUpdate bool, senderNodeId string) error {
+
+func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clustermapEpoch int64,
+	forceUpdate bool, senderNodeId string) error {
 	common.Assert(len(componentRVs) == int(cm.GetCacheConfig().NumReplicas),
 		len(componentRVs), cm.GetCacheConfig().NumReplicas)
+	common.Assert(clustermapEpoch > 0, mv.mvName, clustermapEpoch)
+	// We shouldn't go backwards in clustermap epoch.
+	common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch, mv.mvName)
 
 	mv.rwMutex.Lock()
 	defer mv.rwMutex.Unlock()
@@ -915,11 +949,11 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 	// mvInfo.componentRVs is a sorted list.
 	sortComponentRVs(componentRVs)
 
-	log.Debug("mvInfo::updateComponentRVs: %s from %s -> %s [forceUpdate: %v]",
+	log.Debug("mvInfo::updateComponentRVs: %s from %s -> %s [forceUpdate: %v, clustermapEpoch: %d]",
 		mv.mvName,
 		rpc.ComponentRVsToString(mv.componentRVs),
 		rpc.ComponentRVsToString(componentRVs),
-		forceUpdate)
+		forceUpdate, clustermapEpoch)
 
 	//
 	// Catch invalid membership changes.
@@ -965,8 +999,8 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 					continue
 				}
 
-				errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s)",
-					mv.mvName, oldName, oldState, oldName, newState)
+				errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s), clustermapEpoch: %d",
+					mv.mvName, oldName, oldState, oldName, newState, clustermapEpoch)
 				log.Info("mvInfo::updateComponentRVs: %s", errStr)
 
 				//
@@ -999,8 +1033,8 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 					continue
 				}
 
-				errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s)",
-					mv.mvName, oldName, oldState, newName, newState)
+				errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s), clustermapEpoch: %d",
+					mv.mvName, oldName, oldState, newName, newState, clustermapEpoch)
 				log.Info("mvInfo::updateComponentRVs: %s", errStr)
 
 				//
@@ -1016,6 +1050,7 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 
 	// Valid membership changes, update the saved componentRVs.
 	mv.componentRVs = componentRVs
+	mv.clustermapEpoch = clustermapEpoch
 	mv.lmt = time.Now()
 	mv.lmb = senderNodeId
 
@@ -1025,12 +1060,17 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 }
 
 // Update the state of the given component RV in this MV.
-func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcache.StateEnum, senderNodeId string) {
+func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcache.StateEnum,
+	clustermapEpoch int64, senderNodeId string) {
 	common.Assert(oldState != newState &&
 		cm.IsValidComponentRVState(oldState) &&
 		cm.IsValidComponentRVState(newState) &&
 		oldState != dcache.StateInbandOffline &&
 		newState != dcache.StateInbandOffline, rvName, oldState, newState)
+	common.Assert(clustermapEpoch > 0, rvName, mv.mvName, oldState, newState, clustermapEpoch)
+	// We shouldn't go backwards in clustermap epoch.
+	common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch,
+		rvName, mv.mvName, oldState, newState)
 
 	mv.rwMutex.Lock()
 	defer mv.rwMutex.Unlock()
@@ -1039,13 +1079,14 @@ func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcach
 		common.Assert(rv != nil)
 		if rv.Name == rvName {
 			common.Assert(rv.State == string(oldState), rvName, rv.State, oldState)
-			log.Debug("mvInfo::updateComponentRVState: [%s/%s] %s (%s -> %s) %s, changed by sender %s",
+			log.Debug("mvInfo::updateComponentRVState: [%s/%s] %s (%s -> %s) %s, changed by sender %s, epoch (%d -> %d)",
 				mv.rv.rvName, mv.mvName, rvName, rv.State, newState, rpc.ComponentRVsToString(mv.componentRVs),
-				senderNodeId)
+				senderNodeId, mv.clustermapEpoch, clustermapEpoch)
 
 			rv.State = string(newState)
 			mv.lmt = time.Now()
 			mv.lmb = senderNodeId
+			mv.clustermapEpoch = clustermapEpoch
 			common.Assert(common.IsValidUUID(mv.lmb), mv.lmb)
 			return
 		}
@@ -1121,10 +1162,18 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 // the RPC call and is the epoch to which we must refresh our clustermap.
 
 func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.ResponseError {
-	log.Debug("mvInfo::refreshFromClustermap: %s/%s cepoch: %d, sepoch: %d",
-		mv.rv.rvName, mv.mvName, clientClustermapEpoch, cm.GetEpoch())
+	log.Debug("mvInfo::refreshFromClustermap: %s/%s epoch: %d, cepoch: %d, sepoch: %d",
+		mv.rv.rvName, mv.mvName, mv.clustermapEpoch, clientClustermapEpoch, cm.GetEpoch())
 
 	common.Assert(clientClustermapEpoch > 0, clientClustermapEpoch)
+	//
+	// We should never refresh to an older epoch.
+	// Same epoch is allowed as we may want to undo what the previous update to this epoch did, the
+	// client RPCs never completed so they never committed those changes to clustermap, and we want
+	// to undo those now.
+	//
+	common.Assert(clientClustermapEpoch >= mv.clustermapEpoch, clientClustermapEpoch, mv.clustermapEpoch,
+		mv.rv.rvName, mv.mvName)
 
 	//
 	// Refresh the clustermap synchronously. Once this returns, clustermap package has the updated
@@ -1143,7 +1192,7 @@ func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.Res
 	}
 
 	// Get component RV details from the just refreshed clustermap.
-	cmRVs := cm.GetRVs(mv.mvName)
+	_, cmRVs, cmEpoch := cm.GetRVsEx(mv.mvName)
 	if cmRVs == nil {
 		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: GetRVs(%s) failed", mv.mvName)
 		log.Err("%s", errStr)
@@ -1191,8 +1240,8 @@ func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.Res
 		//
 		if (cm.GetRVState(rvName) == dcache.StateOffline && rvState != dcache.StateOffline) ||
 			rvState == dcache.StateInbandOffline {
-			log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is %s, marking component RV state as offline",
-				rvName, mv.mvName, rvState, cm.GetRVState(rvName))
+			log.Warn("mvInfo::refreshFromClustermap: clustermapEpoch: %d, %s/%s state is %s while RV state is %s, marking component RV state as offline",
+				cmEpoch, rvName, mv.mvName, rvState, cm.GetRVState(rvName))
 			rvState = dcache.StateOffline
 			//
 			// [BUG] This changes the state of the component RV in the local clustermap copy, obviously
@@ -1238,6 +1287,9 @@ func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.Res
 	//   as being due to incomplete state change workflow (JoinMV/StartSync etc) and not a transient state
 	//   of an ongoing transaction.
 	//
+	// TODO: Review this with the latest changes that convery clustermapEpoch between client and server.
+	//       We may be able to simplify this now.
+	//
 	clusterMapWantsToChangeMyRV := false
 
 	stateAsPerClustermap, isPresentInClusterMap := newRVs[mv.rv.rvName]
@@ -1268,8 +1320,9 @@ func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.Res
 		// That's the best we can do for resiliency and correctness.
 		//
 		if time.Since(mv.lmt) < mvInfoTimeout {
-			errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s)",
-				mv.rv.rvName, mv.mvName, stateAsPerClustermap, myRvInfo.State, time.Since(mv.lmt), mvInfoTimeout)
+			errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s), epoch: %d, cepoch: %d, sepoch: %d",
+				mv.rv.rvName, mv.mvName, stateAsPerClustermap, myRvInfo.State, time.Since(mv.lmt), mvInfoTimeout,
+				mv.clustermapEpoch, clientClustermapEpoch, cmEpoch)
 			log.Err("%s", errStr)
 			return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 		}
@@ -1306,9 +1359,10 @@ func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.Res
 			common.Assert(!isPresentInClusterMap || stateAsPerClustermap == dcache.StateOffline,
 				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap, isPresentInClusterMap)
 
-			log.Warn("mvInfo::refreshFromClustermap: Rolling back %s/%s (%s -> %s (present: %v)), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
+			log.Warn("mvInfo::refreshFromClustermap: Rolling back %s/%s (%s -> %s (present: %v)), clearing reservedSpace (%d bytes) left from previous incomplete join attempt, epoch: %d, cepoch: %d, sepoch: %d",
 				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap,
-				isPresentInClusterMap, mv.reservedSpace.Load())
+				isPresentInClusterMap, mv.reservedSpace.Load(),
+				mv.clustermapEpoch, clientClustermapEpoch, cmEpoch)
 
 			mv.rv.decReservedSpace(mv.reservedSpace.Load())
 			mv.reservedSpace.Store(0)
@@ -1351,8 +1405,9 @@ func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.Res
 			common.Assert(mv.syncJobsCount.Load() == 1, mv.rv.rvName, mv.mvName, mv.syncJobsCount.Load(),
 				mv.getSyncJobs(), rpc.ComponentRVsToString(mv.componentRVs))
 
-			log.Warn("mvInfo::refreshFromClustermap: Rolling back %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
-				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap, mv.getSyncJobs())
+			log.Warn("mvInfo::refreshFromClustermap: Rolling back %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v, epoch: %d, cepoch: %d, sepoch: %d",
+				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap, mv.getSyncJobs(),
+				mv.clustermapEpoch, clientClustermapEpoch, cmEpoch)
 
 			mv.deleteAllSyncJobs()
 		}
@@ -1368,7 +1423,7 @@ func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.Res
 	// We force the update as this is the membership info that we got from clustermap.
 	// Note that with forceUpdate=true, updateComponentRVs() must never fail, hence the assert.
 	//
-	err = mv.updateComponentRVs(newComponentRVs, true /* forceUpdate */, rpc.GetMyNodeUUID())
+	err = mv.updateComponentRVs(newComponentRVs, cmEpoch, true /* forceUpdate */, rpc.GetMyNodeUUID())
 	_ = err
 	common.Assert(err == nil, err)
 
@@ -1389,7 +1444,8 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 	//
 	err := cm.RefreshClusterMap(0 /* targetEpoch */)
 	if err != nil {
-		err := fmt.Errorf("mvInfo::pruneStaleEntriesFromMvMap: %s failed: %v", rv.rvName, err)
+		err := fmt.Errorf("mvInfo::pruneStaleEntriesFromMvMap: %s (%d MVs) failed: %v",
+			rv.rvName, rv.mvCount.Load(), err)
 		log.Err("%v", err)
 		common.Assert(false, err)
 		return err
@@ -1405,6 +1461,7 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 	// Caller will call us only when it wants to prune mvMap, which means it must have entries.
 	common.Assert(len(mvs) > 0, rv.rvName)
 
+	var cmEpoch int64
 	for _, mvName := range mvs {
 		mv := rv.getMVInfo(mvName)
 
@@ -1420,7 +1477,9 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 		}
 
 		// Get component RV details for this MV from the just refreshed clustermap.
-		rvs := cm.GetRVs(mvName)
+		var rvs map[string]dcache.StateEnum
+		_, rvs, cmEpoch = cm.GetRVsEx(mvName)
+		_ = cmEpoch
 		if rvs == nil {
 			err := fmt.Errorf("mvInfo::pruneStaleEntriesFromMvMap: GetRVs(%s) failed", mvName)
 			log.Err("%v", err)
@@ -1437,14 +1496,15 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 		rvState, ok := rvs[rv.rvName]
 		if !ok {
 			_ = rvState
-			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: deleting stale replica %s/%s (state: %s)",
-				rv.rvName, mvName, rvState)
+			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: deleting stale mv replica %s/%s (state: %s), epoch: %d, sepoch: %d",
+				rv.rvName, mvName, rvState, mv.clustermapEpoch, cmEpoch)
 			// Remove the stale MV replica.
 			rv.deleteFromMVMap(mvName)
 		}
 	}
 
-	log.Debug("mvInfo::pruneStaleEntriesFromMvMap: after pruning %s now hosts %d MVs", rv.rvName, rv.mvCount.Load())
+	log.Debug("mvInfo::pruneStaleEntriesFromMvMap: after pruning %s now hosts %d MVs, sepoch: %d",
+		rv.rvName, rv.mvCount.Load(), cmEpoch)
 	return nil
 }
 
@@ -2011,6 +2071,18 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
 	//
+	// Fail any attempt by client to push an older clustermap epoch with NeedToRefreshClusterMap error.
+	//
+	if req.ClustermapEpoch < mvInfo.clustermapEpoch {
+		errStr := fmt.Sprintf("[CLUSTERMAP EPOCH RENEGE] ChunkServiceHandler::GetChunk: for %s/%s, last updated at %s (%s ago), by %s, from (%d -> %d)",
+			mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
+			mvInfo.clustermapEpoch, req.ClustermapEpoch)
+		log.Err("%s", errStr)
+		// TODO: Return mvInfo.clustermapEpoch in the RPC response asking client to refresh to at least that.
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+	}
+
+	//
 	// RVInfo validation.
 	// The only RVInfo validation needed for GetChunk request is that the target RV is indeed a valid
 	// component RV for this MV and it's in a valid state for serving chunks. "online" is the only valid state
@@ -2436,8 +2508,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// Thrift should not be calling us with nil Address.
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
-	common.Assert(req.Length == int64(len(req.Chunk.Data)),
-		req.Length, len(req.Chunk.Data))
+	common.Assert(req.Length == int64(len(req.Chunk.Data)), req.Length, len(req.Chunk.Data))
 
 	startTime := time.Now()
 
@@ -2459,6 +2530,18 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	rvInfo := h.rvIDMap[req.Chunk.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Chunk.Address.MvName)
+
+	//
+	// Fail any attempt by client to push an older clustermap epoch with NeedToRefreshClusterMap error.
+	//
+	if req.ClustermapEpoch < mvInfo.clustermapEpoch {
+		errStr := fmt.Sprintf("[CLUSTERMAP EPOCH RENEGE] ChunkServiceHandler::GetChunk: for %s/%s, last updated at %s (%s ago), by %s, from (%d -> %d)",
+			mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
+			mvInfo.clustermapEpoch, req.ClustermapEpoch)
+		log.Err("%s", errStr)
+		// TODO: Return mvInfo.clustermapEpoch in the RPC response asking client to refresh to at least that.
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+	}
 
 	//
 	// If the component RVs list has any RV with inband-offline state, update it to offline.
@@ -3256,6 +3339,18 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo != nil {
 		//
+		// Fail any attempt by client to push an older clustermap epoch with NeedToRefreshClusterMap error.
+		//
+		if req.ClustermapEpoch < mvInfo.clustermapEpoch {
+			errStr := fmt.Sprintf("[CLUSTERMAP EPOCH RENEGE] ChunkServiceHandler::JoinMV: for %s/%s, last updated at %s (%s ago), by %s, from (%d -> %d)",
+				mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
+				mvInfo.clustermapEpoch, req.ClustermapEpoch)
+			log.Err("%s", errStr)
+			// TODO: Return mvInfo.clustermapEpoch in the RPC response asking client to refresh to at least that.
+			return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+		}
+
+		//
 		// JoinMV and UpdateMV need to be idempotent to not treat "double join" as failure.
 		// Double join can happen when let's say we have two or more outofsync component RVs
 		// for an MV and fixMV() sends JoinMV request to each of the outofsync RVs. If one or
@@ -3266,8 +3361,9 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		// picked a new RV in the next iteration), we should time out and undo the reservedSpace.
 		// This one is a TODO.
 		//
-		errStr := fmt.Sprintf("Double join for %s/%s, prev join at %s (%s ago), by %s",
-			req.RVName, req.MV, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb)
+		errStr := fmt.Sprintf("Double join for %s/%s, prev join at %s (%s ago), by %s, epoch (%d -> %d)",
+			req.RVName, req.MV, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
+			mvInfo.clustermapEpoch, req.ClustermapEpoch)
 
 		log.Warn("ChunkServiceHandler::JoinMV: %s", errStr)
 
@@ -3365,7 +3461,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	//
 	updateInbandOfflineToOffline(&req.ComponentRV)
 
-	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo, req.MV, req.ComponentRV, req.SenderNodeID), req.ReserveSpace)
+	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo, req.MV, req.ComponentRV, req.ClustermapEpoch, req.SenderNodeID),
+		req.ReserveSpace)
 
 	return &models.JoinMVResponse{}, nil
 }
@@ -3415,6 +3512,18 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 		}
 
+		//
+		// Fail any attempt by client to push an older clustermap epoch with NeedToRefreshClusterMap error.
+		//
+		if req.ClustermapEpoch < mvInfo.clustermapEpoch {
+			errStr := fmt.Sprintf("[CLUSTERMAP EPOCH RENEGE] ChunkServiceHandler::UpdateMV: for %s/%s, last updated at %s (%s ago), by %s, from (%d -> %d)",
+				mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
+				mvInfo.clustermapEpoch, req.ClustermapEpoch)
+			log.Err("%s", errStr)
+			// TODO: Return mvInfo.clustermapEpoch in the RPC response asking client to refresh to at least that.
+			return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+		}
+
 		componentRVsInMV := mvInfo.getComponentRVs()
 		_ = componentRVsInMV
 
@@ -3437,8 +3546,10 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		//       meanwhile some other node with an older clustermap wants to join an MV to this rv.
 		//       it fetched clustermap but then due to n/w down, by the time it reached fixMV, rv was
 		//       already marked syncing, but now it has rv as outofsync and it forces it as that
+		// Update: Now we are checking clustermap epoch and rejecting any attempt to push an older epoch, so
+		//       this should be safe.
 		//
-		err := mvInfo.updateComponentRVs(req.ComponentRV, false /* forceUpdate */, req.SenderNodeID)
+		err := mvInfo.updateComponentRVs(req.ComponentRV, req.ClustermapEpoch, false /* forceUpdate */, req.SenderNodeID)
 		if err != nil {
 			//
 			// Try refreshFromClustermap() twice, first time with local clustermap copy, and if that doesn't help,
@@ -3606,6 +3717,18 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	}
 
 	//
+	// Fail any attempt by client to push an older clustermap epoch with NeedToRefreshClusterMap error.
+	//
+	if req.ClustermapEpoch < mvInfo.clustermapEpoch {
+		errStr := fmt.Sprintf("[CLUSTERMAP EPOCH RENEGE] ChunkServiceHandler::StartSync: for %s/%s, last updated at %s (%s ago), by %s, from (%d -> %d)",
+			mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
+			mvInfo.clustermapEpoch, req.ClustermapEpoch)
+		log.Err("%s", errStr)
+		// TODO: Return mvInfo.clustermapEpoch in the RPC response asking client to refresh to at least that.
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+	}
+
+	//
 	// Target MV replica must have its reservedSpace set by JoinMV, at the time when this replica was chosen
 	// as the replacement for the offline replica. From JoinMV till StartSync, zero or more application writes
 	// may have been issued to the other (good) replicas of this MV, so it's likely that the SyncSize value
@@ -3676,7 +3799,8 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	syncID := mvInfo.addSyncJob(sourceRVName, targetRVName)
 
 	// Update the state of target RV in this MV replica from outofsync to syncing.
-	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateOutOfSync, dcache.StateSyncing, req.SenderNodeID)
+	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateOutOfSync, dcache.StateSyncing,
+		req.ClustermapEpoch, req.SenderNodeID)
 
 	log.Debug("ChunkServiceHandler::StartSync: %s/%s responding to StartSync request: %s, with syncID: %s, mvInfo.componentRVs: %s",
 		rvInfo.rvName, req.MV, rpc.StartSyncRequestToString(req), syncID, rpc.ComponentRVsToString(mvInfo.componentRVs))
@@ -3748,6 +3872,18 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	}
 
 	//
+	// Fail any attempt by client to push an older clustermap epoch with NeedToRefreshClusterMap error.
+	//
+	if req.ClustermapEpoch < mvInfo.clustermapEpoch {
+		errStr := fmt.Sprintf("[CLUSTERMAP EPOCH RENEGE] ChunkServiceHandler::EndSync: for %s/%s, last updated at %s (%s ago), by %s, from (%d -> %d)",
+			mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
+			mvInfo.clustermapEpoch, req.ClustermapEpoch)
+		log.Err("%s", errStr)
+		// TODO: Return mvInfo.clustermapEpoch in the RPC response asking client to refresh to at least that.
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+	}
+
+	//
 	// If the component RVs list has any RV with inband-offline state, update it to offline.
 	// This is done because we don't allow inband-offline state in the rvInfo.
 	//
@@ -3783,7 +3919,8 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	mvInfo.deleteSyncJob(req.SyncID)
 
 	// Update the state of target RV in this MV replica from syncing to online.
-	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline, req.SenderNodeID)
+	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline,
+		req.ClustermapEpoch, req.SenderNodeID)
 
 	//
 	// As sync has completed successfully, the sync process must have written all chunks to the MV replica.

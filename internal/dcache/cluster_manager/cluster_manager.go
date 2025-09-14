@@ -330,6 +330,10 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 			case <-cmi.clusterMapTickerUrgent.C:
 				//
 				// If urgent update queued, do it now.
+				// Urgent updates are queued when UpdateComponentRVState() marks one or more RVs as
+				// inband-offline, needing fix-mv workflow to fix those degraded MVs. Instead of waiting
+				// for the next clusterMapTicker we schedule an urgent update 5 secs later. That expedites
+				// not only the fix-mv but also the resync-mv.
 				//
 				if cmi.runUpdateClusterMapUrgent.Swap(false) {
 					if cmi.updateClusterMapRunning.Swap(true) {
@@ -354,6 +358,8 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 					cmi.runUpdateClusterMapUrgent.Store(true)
 					continue
 				}
+				// Urgent update not needed, if we are doing the regular update.
+				cmi.runUpdateClusterMapUrgent.Store(false)
 				err = cmi.updateStorageClusterMapIfRequired()
 				ret := cmi.updateClusterMapRunning.Swap(false)
 				_ = ret
@@ -621,7 +627,6 @@ func (cmi *ClusterManager) stop() error {
 	// mm.DeleteHeartbeat(cmi.myNodeId)
 	if cmi.clusterMapTicker != nil {
 		cmi.clusterMapTicker.Stop()
-		cmi.clusterMapTickerDone <- true
 	}
 
 	if cmi.clusterMapTickerUrgent != nil {
@@ -2922,9 +2927,14 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			// At least one component RV is not online but at least one is online, degrade-mv.
 			if !mvUpdated && mv.State != dcache.StateDegraded {
 				mvUpdated = true
+				//
+				// MV has been marked degraded and we will not be running the fix-mv workflow, so mark
+				// urgent cluster map update.
+				//
 				if !runFixMvNewMv {
 					if !cmi.runUpdateClusterMapUrgent.Swap(true) {
-						log.Debug("ClusterManager::updateMVList: urgent cluster map update marked due to degraded-mv %s", mvName)
+						log.Debug("ClusterManager::updateMVList: urgent cluster map update marked for degraded-mv %s",
+							mvName)
 					}
 				}
 			}
