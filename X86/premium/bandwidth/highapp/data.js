@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1757223334864,
+  "lastUpdate": 1757828042283,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1007,6 +1007,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 3.854053670037554,
+            "unit": "GiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "241e272504fce43e648d3e75304666eb216165ca",
+          "message": "Document Blobfuse HTTPS communication and version check (#1945)",
+          "timestamp": "2025-09-08T05:26:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/241e272504fce43e648d3e75304666eb216165ca"
+        },
+        "date": 1757828041993,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 6.852026548136907,
+            "unit": "GiB/s"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 3.8587687033447358,
             "unit": "GiB/s"
           }
         ]
