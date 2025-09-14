@@ -146,6 +146,17 @@ type mvInfo struct {
 	// sorted list of component RVs for this MV
 	componentRVs []*models.RVNameAndState
 
+	// mvInfo is updated in response to an RPC call made by a client.
+	// This is the ClustermapEpoch carried by that RPC call, but note that the mvInfo will typically
+	// contain changes on top of the clustermap corresponding to clustermapEpoch, e.g., a JoinMV RPC
+	// will carry the epoch of the clustermap which has one of the component RVs as offline, but mvInfo
+	// will contain the RV state as outofsync, which will be committed to clustermap only after the
+	// JoinMV RPC completes successfully and it'll get committed as the next epoch.
+	// Similarly, a StartSync RPC will carry the epoch of the clustermap which has the target component RV
+	// as outofsync, but mvInfo will contain the RV state as syncing, which will be committed to clustermap
+	// only after the StartSync RPC completes successfully and it'll get committed as the next epoch.
+	clustermapEpoch int64
+
 	// When was this MV replica composition/state last updated and by which node.
 	// An MV replica composition/state is updated by the following RPCs:
 	// JoinMV    - this creates a new MV replica. It is called by the new-mv and the fix-mv workflows.
@@ -3189,6 +3200,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	common.Assert(req != nil)
 	// Client must send a valid clustermap epoch.
 	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	// JoinMV is called by updateMVList() which holds the clustermap lock, so epoch must be odd.
+	common.Assert(req.ClustermapEpoch%2 == 1, req.ClustermapEpoch)
 
 	//
 	// See if it's a new-mv request (and not a fix-mv request)
@@ -3362,6 +3375,8 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 	common.Assert(req != nil)
 	// Client must send a valid clustermap epoch.
 	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	// UpdateMV is called by updateMVList() which holds the clustermap lock, so epoch must be odd.
+	common.Assert(req.ClustermapEpoch%2 == 1, req.ClustermapEpoch)
 
 	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %v", rpc.UpdateMVRequestToString(req))
 

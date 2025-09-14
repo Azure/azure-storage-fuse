@@ -1933,14 +1933,16 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 	return nil
 }
 
-// GetMVSize() is called from fixMV workflow, by the cluster manager. The cluster manager has the final MV
-// composition (which is different from the one in the clustermap as it would have replaced offline RVs with
-// new outofsync RVs and it may have also made some component RVs offline). So we take the new MV composition
-// from the caller and save wasted calls to offline RVs.
+// GetMVSize() is called from fixMV workflow, by the cluster manager or from syncMV() by replication manager.
+// The cluster manager has the final MV composition (which is different from the one in the clustermap as it
+// would have replaced offline RVs with new outofsync RVs and it may have also made some component RVs offline).
+// So we take the new MV composition from the caller and save wasted calls to offline RVs.
 // clustermapEpoch is the epoch at which the componentRVs were fetched by the caller.
 func GetMVSize(mvName string, componentRVs []*models.RVNameAndState, clustermapEpoch int64) (int64, error) {
 	common.Assert(cm.IsValidMVName(mvName), mvName, clustermapEpoch)
-	common.Assert(len(componentRVs) == int(getNumReplicas()), mvName, componentRVs, getNumReplicas(), clustermapEpoch)
+	common.Assert(len(componentRVs) == int(getNumReplicas()),
+		mvName, componentRVs, getNumReplicas(), clustermapEpoch)
+	// Since GetMVSize() can be called from syncMV() as well, we can't assert anything else.
 	common.Assert(clustermapEpoch > 0, clustermapEpoch, mvName)
 
 	var mvSize int64

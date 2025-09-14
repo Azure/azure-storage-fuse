@@ -487,6 +487,9 @@ func (c *ClusterMap) loadLocalMap() {
 	defer c.mu.Unlock()
 
 	c.localMap = &newClusterMap
+
+	log.Debug("ClusterMap::loadLocalMap: Updated local clustermap in %s, epoch: %d",
+		c.localClusterMapPath, newClusterMap.Epoch)
 }
 
 func (c *ClusterMap) getEpoch() int64 {

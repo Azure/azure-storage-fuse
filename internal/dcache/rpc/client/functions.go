@@ -826,8 +826,12 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 
 	// All JoinMV requests must carry a valid clustermap epoch.
 	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
-	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+	//
+	// See joinMV() comments in cluster_manager.go for details on the following asserts.
+	//
+	common.Assert(req.ClustermapEpoch%2 == 1, req.ClustermapEpoch, cm.GetEpoch())
+	common.Assert(req.ClustermapEpoch == cm.GetEpoch() || req.ClustermapEpoch == cm.GetEpoch()+1,
+		req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.JoinMVRequestToString(req)
 	log.Debug("rpc_client::JoinMV: Sending JoinMV request (newMV: %v) to node %s: %v", newMV, targetNodeID, reqStr)
@@ -952,8 +956,12 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 
 	// All UpdateMV requests must carry a valid clustermap epoch.
 	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
-	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+	//
+	// See joinMV() comments in cluster_manager.go for details on the following asserts.
+	//
+	common.Assert(req.ClustermapEpoch%2 == 1, req.ClustermapEpoch, cm.GetEpoch())
+	common.Assert(req.ClustermapEpoch == cm.GetEpoch() || req.ClustermapEpoch == cm.GetEpoch()+1,
+		req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.UpdateMVRequestToString(req)
 	log.Debug("rpc_client::UpdateMV: Sending UpdateMV request to node %s: %v", targetNodeID, reqStr)
@@ -1412,14 +1420,17 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
 	common.Assert(req != nil)
 
+	//
 	// All GetMVSize requests must carry a valid clustermap epoch.
+	// Other then this we cannot assert anything about the clustermap epoch since GetMVSize() can be called
+	// from joinMV() and also syncMV(). For joinMV() the epoch must be odd and == cm.GetEpoch()+1, as it's
+	// called from updateMVList() which locks the clustermap. We cannot say the same for syncMV().
+	//
 	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
-
-	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.GetMVSizeRequestToString(req)
 	log.Debug("rpc_client::GetMVSize: Sending GetMVSize request to node %s: %v", targetNodeID, reqStr)
