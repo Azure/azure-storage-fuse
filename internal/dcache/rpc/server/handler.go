@@ -1740,7 +1740,7 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 		//    StartSync request and we must have acknowledged it.
 		//
 		//    There is one possibility though. A prior StartSync succeeded and the mvInfo state was changed to
-		//    syncing, but the sender couldn' persist that change in the clustermap (some node that was updating
+		//    syncing, but the sender couldn't persist that change in the clustermap (some node that was updating
 		//    the clustermap took really long, due to some other node being down and JoinMV taking long time).
 		//    Meanwhile the lowest online RV on the node attempting the sync is marked offline in clustermap,
 		//    so some other node now has the lowest online RV, and that node now attempts the sync. It sends a
@@ -1748,11 +1748,11 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 		//    it's outofsync so a refresh will get the desired state.
 		//
 		if targetRVNameAndState.State != validState {
-			errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s), cepoch: %d, sepoch: %d: %s [NeedToRefreshClusterMap]",
+			errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s), epoch: %d, cepoch: %d, sepoch: %d: %s [NeedToRefreshClusterMap]",
 				targetRVName, validState,
 				sourceRVName, mv.mvName,
 				targetRVName, mv.mvName,
-				clientClustermapEpoch, cm.GetEpoch(),
+				mv.clustermapEpoch, clientClustermapEpoch, cm.GetEpoch(),
 				rpc.ComponentRVsToString(mv.getComponentRVs()))
 
 			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s, clustermapRefreshed: %v",
@@ -3771,6 +3771,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	//
 	updateInbandOfflineToOffline(&req.ComponentRV)
 
+	// This can call refreshFromClustermap(), and hence change mvInfo.clustermapEpoch.
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.ClustermapEpoch, req.SourceRVName,
 		req.TargetRVName, true /* isStartSync */)
 	if err != nil {
@@ -3813,9 +3814,15 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	//
 	syncID := mvInfo.addSyncJob(sourceRVName, targetRVName)
 
+	clustermapEpoch := req.ClustermapEpoch
+	if mvInfo.clustermapEpoch > clustermapEpoch {
+		// If mvInfo.clustermapEpoch was updated by validateComponentRVsInSync() we must use that.
+		clustermapEpoch = mvInfo.clustermapEpoch
+	}
+
 	// Update the state of target RV in this MV replica from outofsync to syncing.
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateOutOfSync, dcache.StateSyncing,
-		req.ClustermapEpoch, req.SenderNodeID)
+		clustermapEpoch, req.SenderNodeID)
 
 	log.Debug("ChunkServiceHandler::StartSync: %s/%s responding to StartSync request: %s, with syncID: %s, mvInfo.componentRVs: %s",
 		rvInfo.rvName, req.MV, rpc.StartSyncRequestToString(req), syncID, rpc.ComponentRVsToString(mvInfo.componentRVs))
@@ -3904,6 +3911,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	//
 	updateInbandOfflineToOffline(&req.ComponentRV)
 
+	// This can call refreshFromClustermap(), and hence change mvInfo.clustermapEpoch.
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.ClustermapEpoch, req.SourceRVName,
 		req.TargetRVName, false /* isStartSync */)
 	if err != nil {
@@ -3933,9 +3941,15 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// Delete the sync job from the syncJobs map.
 	mvInfo.deleteSyncJob(req.SyncID)
 
+	clustermapEpoch := req.ClustermapEpoch
+	if mvInfo.clustermapEpoch > clustermapEpoch {
+		// If mvInfo.clustermapEpoch was updated by validateComponentRVsInSync() we must use that.
+		clustermapEpoch = mvInfo.clustermapEpoch
+	}
+
 	// Update the state of target RV in this MV replica from syncing to online.
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline,
-		req.ClustermapEpoch, req.SenderNodeID)
+		clustermapEpoch, req.SenderNodeID)
 
 	//
 	// As sync has completed successfully, the sync process must have written all chunks to the MV replica.
