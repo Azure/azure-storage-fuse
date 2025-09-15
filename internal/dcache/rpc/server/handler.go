@@ -958,11 +958,11 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clus
 	// mvInfo.componentRVs is a sorted list.
 	sortComponentRVs(componentRVs)
 
-	log.Debug("mvInfo::updateComponentRVs: %s from %s -> %s [forceUpdate: %v, clustermapEpoch: %d]",
-		mv.mvName,
+	log.Debug("mvInfo::updateComponentRVs: %s/%s from %s -> %s [forceUpdate: %v, epoch: %d, cepoch: %d]",
+		mv.rv.rvName, mv.mvName,
 		rpc.ComponentRVsToString(mv.componentRVs),
 		rpc.ComponentRVsToString(componentRVs),
-		forceUpdate, clustermapEpoch)
+		forceUpdate, mv.clustermapEpoch, clustermapEpoch)
 
 	//
 	// Catch invalid membership changes.
@@ -1175,6 +1175,13 @@ func (mv *mvInfo) refreshFromClustermap(clientClustermapEpoch int64) *models.Res
 		mv.rv.rvName, mv.mvName, mv.clustermapEpoch, clientClustermapEpoch, cm.GetEpoch())
 
 	common.Assert(clientClustermapEpoch > 0, clientClustermapEpoch)
+
+	if clientClustermapEpoch < mv.clustermapEpoch {
+		log.Debug("mvInfo::refreshFromClustermap: %s/%s, our clustermapEpoch %d is ahead of client epoch %d, no need to refresh",
+			mv.rv.rvName, mv.mvName, mv.clustermapEpoch, clientClustermapEpoch)
+		return nil
+	}
+
 	//
 	// We should never refresh to an older epoch.
 	// Same epoch is allowed as we may want to undo what the previous update to this epoch did, the
@@ -2633,8 +2640,8 @@ refreshFromClustermapAndRetry:
 			//    incorrectly updated component RVs configuration to the correct state (matching the clustermap).
 			//
 			if rvNameAndState == nil {
-				errStr := fmt.Sprintf("PutChunk(client) sender has a non-existent RV %s/%s [NeedToRefreshClusterMap]",
-					rv.Name, req.Chunk.Address.MvName)
+				errStr := fmt.Sprintf("PutChunk(client) sender (%s) has a non-existent RV %s/%s, epoch: %d, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]",
+					req.SenderNodeID, rv.Name, req.Chunk.Address.MvName, mvInfo.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch())
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 				//common.Assert(false, errStr)
 
@@ -2674,9 +2681,9 @@ refreshFromClustermapAndRetry:
 				// not updated and it doesn't know about the RV going offline.
 				// We must refresh our rvInfo from the clustermap and retry the check.
 				//
-				errStr := fmt.Sprintf("PutChunk(client) sender wrongly skipped RV %s/%s which is %s as per them, while as per our rvInfo it's %s, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]",
-					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State,
-					req.ClustermapEpoch, cm.GetEpoch())
+				errStr := fmt.Sprintf("PutChunk(client) sender (%s) wrongly skipped RV %s/%s which is %s as per them, while as per our rvInfo it's %s, epoch: %d, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]",
+					req.SenderNodeID, rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State,
+					mvInfo.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch())
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 
 				//
@@ -2707,9 +2714,9 @@ refreshFromClustermapAndRetry:
 				// In such case it's best to let the sender know about it instead of silently completing the
 				// PutChunk.
 				//
-				errStr := fmt.Sprintf("PutChunk(client) sender did not skip RV %s/%s which is %s as per them, while as per our rvInfo it's %s, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]",
-					rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State,
-					req.ClustermapEpoch, cm.GetEpoch())
+				errStr := fmt.Sprintf("PutChunk(client) sender (%s) did not skip RV %s/%s which is %s as per them, while as per our rvInfo it's %s, epoch: %d, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]",
+					req.SenderNodeID, rv.Name, req.Chunk.Address.MvName, rv.State, rvNameAndState.State,
+					mvInfo.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch())
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 
 				//
