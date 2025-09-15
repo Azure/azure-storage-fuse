@@ -374,6 +374,9 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 			componentRVs := cm.RVMapToList(mvName, componentRVMap)
 			sortComponentRVs(componentRVs)
 
+			log.Debug("NewChunkServiceHandler: %s/%s has componentRVs: %v, at epoch: %d",
+				rvName, mvName, rpc.ComponentRVsToString(componentRVs), clustermapEpoch)
+
 			//
 			// If the component RVs list has any RV with inband-offline state, update it to offline.
 			// This is done because we don't allow inband-offline state in the rvInfo.
@@ -386,8 +389,7 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 				common.Assert(false, rv.LocalCachePath, mvName, err)
 			}
 
-			mvInfo := newMVInfo(rvInfo, mvName, componentRVs, clustermapEpoch, rpc.GetMyNodeUUID())
-			mvInfo.incTotalChunkBytes(mvDirSize)
+			mvInfo := newMVInfo(rvInfo, mvName, componentRVs, clustermapEpoch, mvDirSize, rpc.GetMyNodeUUID())
 
 			//
 			// Acquire lock on rvInfo.rwMutex.
@@ -405,12 +407,13 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 
 // Create new mvInfo instance. This is used by the JoinMV() RPC call to create a new mvInfo.
 func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState,
-	clustermapEpoch int64, joinedBy string) *mvInfo {
+	clustermapEpoch int64, totalChunkBytes int64, joinedBy string) *mvInfo {
 	common.Assert(common.IsValidUUID(joinedBy), rv.rvName, mvName, joinedBy)
 	common.Assert(!containsInbandOfflineState(&componentRVs), componentRVs)
 	common.Assert(clustermapEpoch > 0, rv.rvName, mvName, clustermapEpoch)
+	common.Assert(totalChunkBytes >= 0, rv.rvName, mvName, totalChunkBytes)
 
-	return &mvInfo{
+	mv := &mvInfo{
 		rv:              rv,
 		mvName:          mvName,
 		componentRVs:    componentRVs,
@@ -418,6 +421,12 @@ func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState,
 		lmb:             joinedBy,
 		clustermapEpoch: clustermapEpoch,
 	}
+
+	mv.totalChunkBytes.Store(totalChunkBytes)
+
+	log.Debug("newMVInfo: %s/%s, %+v", rv.rvName, mvName, *mv)
+
+	return mv
 }
 
 // Get the total chunk bytes for the MV path by summing up the size of all the chunks in the MV directory.
@@ -3337,6 +3346,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	// Check if RV is already part of the given MV.
 	mvInfo := rvInfo.getMVInfo(req.MV)
+	var totalChunkBytes int64
 	if mvInfo != nil {
 		//
 		// Fail any attempt by client to push an older clustermap epoch with NeedToRefreshClusterMap error.
@@ -3361,9 +3371,9 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		// picked a new RV in the next iteration), we should time out and undo the reservedSpace.
 		// This one is a TODO.
 		//
-		errStr := fmt.Sprintf("Double join for %s/%s, prev join at %s (%s ago), by %s, epoch (%d -> %d)",
+		errStr := fmt.Sprintf("Double join for %s/%s, prev join at %s (%s ago), by %s, totalChunkBytes: %d, epoch (%d -> %d)",
 			req.RVName, req.MV, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
-			mvInfo.clustermapEpoch, req.ClustermapEpoch)
+			mvInfo.totalChunkBytes.Load(), mvInfo.clustermapEpoch, req.ClustermapEpoch)
 
 		log.Warn("ChunkServiceHandler::JoinMV: %s", errStr)
 
@@ -3383,7 +3393,12 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 			}
 		}
 
+		//
 		// Remove the MV replica, we will add a fresh one later down.
+		// We need to initialized totalChunkBytes for the new mv replica to the value from the old mv replica,
+		// since that's the actual space used by the MV on this RV.
+		//
+		totalChunkBytes = mvInfo.totalChunkBytes.Load()
 		rvInfo.deleteFromMVMap(req.MV)
 		mvInfo = nil
 	}
@@ -3461,8 +3476,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	//
 	updateInbandOfflineToOffline(&req.ComponentRV)
 
-	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo, req.MV, req.ComponentRV, req.ClustermapEpoch, req.SenderNodeID),
-		req.ReserveSpace)
+	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo, req.MV, req.ComponentRV, req.ClustermapEpoch, totalChunkBytes,
+		req.SenderNodeID), req.ReserveSpace)
 
 	return &models.JoinMVResponse{}, nil
 }
@@ -3924,7 +3939,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	//
 	// As sync has completed successfully, the sync process must have written all chunks to the MV replica.
-	// These will be not less than mvInfo.reservedSpace. This is because spaced is reserved in JoinMV call
+	// These will be not less than mvInfo.reservedSpace. This is because space is reserved in JoinMV call
 	// which looks at the MV size at that time, from JoinMV till StartSync and finally when the sync process
 	// starts, the source MV replica can have more chunks added to it, hence we might end up writing more than
 	// the reservedSpace.
