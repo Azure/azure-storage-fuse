@@ -1,0 +1,42 @@
+name: Ask DeepWiki on Issue
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  deepwiki-query:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r mcp httpx python-dotenv requests openai
+
+    - name: Run DeepWiki Query
+      id: deepwiki-step
+      env:
+        # The repository to be queried by DeepWiki. Update this if needed.
+        TARGET_REPO: "Azure/azure-storage-fuse"
+        # Combine title and body to form a comprehensive question
+        ISSUE_TITLE: ${{ github.event.issue.title }}
+        ISSUE_BODY: ${{ github.event.issue.body }}
+      run: |
+        # Run the python script and capture its output to a file
+        python .github/scripts/ask_question.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" > deepwiki_response.md
+
+    - name: Post Comment to Issue
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        issue-number: ${{ github.event.issue.number }}
+        body-path: 'deepwiki_response.md'
+        token: ${{ secrets.GITHUB_TOKEN }}
