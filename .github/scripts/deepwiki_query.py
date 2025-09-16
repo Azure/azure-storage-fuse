@@ -45,7 +45,8 @@ class MCPClient:
             "ask_question", {"repoName": repo, "question": question}
         )
         
-        return result.content
+        # Join the list of content parts into a single string
+        return " ".join([str(part) for part in result.content])
 
 async def main(repo, title, body, output_file_path):
     client = MCPClient()
@@ -60,15 +61,15 @@ async def main(repo, title, body, output_file_path):
         print(question)
         print("="*50)
         
-        response_content = await client.ask_deepwiki(repo, question)
+        response = await client.ask_deepwiki(repo, question)
         
         print("\n" + "="*50)
         print("DeepWiki Response:")
         print("="*50)
-        print(response_content)
+        print(response)
         
         with open(output_file_path, 'w', encoding='utf-8') as f:
-            f.write(response_content)
+            f.write(response)
             
     finally:
         await client.cleanup()
