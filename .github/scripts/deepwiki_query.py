@@ -38,43 +38,47 @@ class MCPClient:
         if not self.session:
             raise RuntimeError("Client not connected.")
 
-        print(f"Calling 'ask_question' for repo: {repo} with question: {question}")
-        
+        print(f"Calling 'ask_question' for repo: {repo}")
+        print("\n" + "="*50)
+        print("DeepWiki Response:")
+        print("="*50)
+        print(question)
+        print("="*50)
+                
         # The MCP SDK handles the JSON-RPC call for you
         result = await self.session.call_tool(
             "ask_question", {"repoName": repo, "question": question}
         )
         
+        print("\n" + "="*50)
+        print("DeepWiki Response:")
+        print("="*50)
+        print(result.content)
+        
         return result.content
 
-async def main(repo, title, body):
+async def main(repo, title, body, output_file_path):
     client = MCPClient()
     try:
         await client.connect_to_sse_server(server_url=MCP_SSE_URL)
         
         question = f"{title}\n\n{body}"
-        print("\n" + "="*50)
-        print("DeepWiki Question:")
-        print("="*50)
-        print(question)
-        
         response_content = await client.ask_deepwiki(repo, question)
-        print("\n" + "="*50)
-        print("DeepWiki Response:")
-        print("="*50)
-        print(response_content)
-
+        
+        with open(output_file_path, 'w', encoding='utf-8') as f:
+            f.write(response_content)
+            
     finally:
         await client.cleanup()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print("Usage: python deepwiki_query.py <repo> <question title> <question body>")
+    if len(sys.argv) < 5:
+        print("Usage: python deepwiki_query.py <repo> <question title> <question body> <output_file_path>")
         sys.exit(1)
     
     repo_arg = sys.argv[1]
     issue_title = sys.argv[2]
     issue_body = sys.argv[3]
+    output_file_path = sys.argv[4]
     
-    
-    asyncio.run(main(repo_arg, issue_title, issue_body))
+    asyncio.run(main(repo_arg, issue_title, issue_body, output_file_path))
