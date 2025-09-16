@@ -1126,9 +1126,11 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 		// Online and syncing MV replicas can have non-zero totalChunkBytes as they receive PutChunk calls.
 		// Offline/inband-offline MV replicas can have non-zero totalChunkBytes from when they were online.
 		//
-		common.Assert((mv.rv.rvName != rv.Name) || (mv.totalChunkBytes.Load() == 0) ||
-			(rv.State != string(dcache.StateOutOfSync)),
-			rv.Name, mv.mvName, rv.State, mv.totalChunkBytes.Load())
+		/*
+			common.Assert((mv.rv.rvName != rv.Name) || (mv.totalChunkBytes.Load() == 0) ||
+				(rv.State != string(dcache.StateOutOfSync)),
+				rv.Name, mv.mvName, rv.State, mv.totalChunkBytes.Load())
+		*/
 
 		if rv.Name == rvName {
 			return rv
@@ -1267,6 +1269,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64, fromJoinOrUpdate bool) *mo
 	//
 	myRvInfo := mv.getComponentRVNameAndState(mv.rv.rvName)
 	common.Assert(myRvInfo != nil, mv.rv.rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs))
+	common.Assert(myRvInfo.Name == mv.rv.rvName, myRvInfo.Name, mv.rv.rvName, mv.mvName)
 
 	//
 	// Convert newRVs from RV Name->State map, to RVNameAndState slice.
@@ -1397,6 +1400,27 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64, fromJoinOrUpdate bool) *mo
 			// to clustermap, there can only be the following valid transitions for an RV.
 			// Syncing -> Online is a genuine state transition.
 			//
+			if isPresentInClusterMap && stateAsPerClustermap == dcache.StateOnline {
+				//
+				// As sync has completed successfully, the sync process must have written all chunks to the MV
+				// replica. These must be not less than mv.reservedSpace. This is because space is reserved
+				// in JoinMV call which looks at the MV size at that time. If no new writes are happening on the
+				// MV, the space at the time of JoinMV is what will be used to hold all the chunks, but in case of
+				// writes happening after JoinMV, we will need more space depending on how many extra client writes
+				// are done.
+				//
+				common.Assert(mv.totalChunkBytes.Load() >= mv.reservedSpace.Load(),
+					mv.rv.rvName, mv.mvName, mv.totalChunkBytes.Load(), mv.reservedSpace.Load())
+
+				// We must have reserved mv.reservedSpace in RV as well.
+				common.Assert(mv.rv.reservedSpace.Load() >= mv.reservedSpace.Load(),
+					mv.rv.reservedSpace.Load(), mv.reservedSpace.Load(), mv.rv.rvName,
+					mv.mvName)
+
+				mv.rv.decReservedSpace(mv.reservedSpace.Load())
+				mv.reservedSpace.Store(0)
+			}
+
 			if isPresentInClusterMap && stateAsPerClustermap != dcache.StateOnline {
 				common.Assert(isPresentInClusterMap && stateAsPerClustermap == dcache.StateOffline,
 					mv.rv.rvName, mv.mvName, stateAsPerClustermap, isPresentInClusterMap)

@@ -475,8 +475,7 @@ retry:
 		// copied to them.
 		//
 		if rv.State == string(dcache.StateOffline) ||
-			rv.State == string(dcache.StateInbandOffline) ||
-			rv.State == string(dcache.StateOutOfSync) {
+			rv.State == string(dcache.StateInbandOffline) {
 			log.Debug("ReplicationManager::writeMVInternal: Skipping %s/%s (RV state: %s, MV state: %s), chunkIdx: %d, cepoch: %d",
 				rv.Name, req.MvName, rv.State, mvState, req.ChunkIndex, lastClusterMapEpoch)
 
@@ -491,7 +490,9 @@ retry:
 			common.Assert(len(responseChannel) < len(componentRVs),
 				len(responseChannel), len(componentRVs))
 			responseChannel <- nil
-		} else if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
+		} else if rv.State == string(dcache.StateOnline) ||
+			rv.State == string(dcache.StateSyncing) ||
+			rv.State == string(dcache.StateOutOfSync) {
 			// Offline MV has all replicas offline.
 			common.Assert(mvState != dcache.StateOffline, req.MvName)
 
