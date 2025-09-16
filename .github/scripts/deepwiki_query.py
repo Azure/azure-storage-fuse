@@ -40,7 +40,7 @@ class MCPClient:
 
         print(f"Calling 'ask_question' for repo: {repo}")
         print("\n" + "="*50)
-        print("DeepWiki Response:")
+        print("DeepWiki Question:")
         print("="*50)
         print(question)
         print("="*50)
@@ -50,12 +50,17 @@ class MCPClient:
             "ask_question", {"repoName": repo, "question": question}
         )
         
+        # Join all parts of the response into a single string.
+        # This handles cases where the API returns multiple content items.
+        response_text = " ".join([str(part) for part in result.content])
+                
         print("\n" + "="*50)
         print("DeepWiki Response:")
         print("="*50)
-        print(result.content)
+        print(response_text)
         
-        return result.content
+        
+        return response_text
 
 async def main(repo, title, body, output_file_path):
     client = MCPClient()
