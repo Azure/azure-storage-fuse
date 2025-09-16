@@ -68,6 +68,11 @@ async def main(repo, title, body, output_file_path):
         print("="*50)
         print(response)
         
+        print("\n" + "="*50)
+        print("DeepWiki Response:")
+        print("="*50)
+        print(response_content)
+        
         with open(output_file_path, 'w', encoding='utf-8') as f:
             f.write(response)
             
