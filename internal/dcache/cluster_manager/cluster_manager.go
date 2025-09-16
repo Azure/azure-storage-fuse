@@ -3443,7 +3443,6 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 	}
 	wg.Wait()
 	close(errCh)
-
 	var allErrs []string
 	var failedRVs []string
 
