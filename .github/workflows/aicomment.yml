@@ -8,6 +8,12 @@ jobs:
   deepwiki-query:
     runs-on: ubuntu-latest
 
+    permissions:
+      id-token: write
+      contents: write
+      pages: write
+      security-events: write
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4

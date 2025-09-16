@@ -39,28 +39,13 @@ class MCPClient:
             raise RuntimeError("Client not connected.")
 
         print(f"Calling 'ask_question' for repo: {repo}")
-        print("\n" + "="*50)
-        print("DeepWiki Question:")
-        print("="*50)
-        print(question)
-        print("="*50)
                 
         # The MCP SDK handles the JSON-RPC call for you
         result = await self.session.call_tool(
             "ask_question", {"repoName": repo, "question": question}
         )
         
-        # Join all parts of the response into a single string.
-        # This handles cases where the API returns multiple content items.
-        response_text = " ".join([str(part) for part in result.content])
-                
-        print("\n" + "="*50)
-        print("DeepWiki Response:")
-        print("="*50)
-        print(response_text)
-        
-        
-        return response_text
+        return result.content
 
 async def main(repo, title, body, output_file_path):
     client = MCPClient()
@@ -68,7 +53,19 @@ async def main(repo, title, body, output_file_path):
         await client.connect_to_sse_server(server_url=MCP_SSE_URL)
         
         question = f"{title}\n\n{body}"
+        
+        print("\n" + "="*50)
+        print("DeepWiki Question:")
+        print("="*50)
+        print(question)
+        print("="*50)
+        
         response_content = await client.ask_deepwiki(repo, question)
+        
+        print("\n" + "="*50)
+        print("DeepWiki Response:")
+        print("="*50)
+        print(response_content)
         
         with open(output_file_path, 'w', encoding='utf-8') as f:
             f.write(response_content)
