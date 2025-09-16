@@ -44,6 +44,8 @@ class MCPClient:
         result = await self.session.call_tool(
             "ask_question", {"repoName": repo, "question": question}
         )
+        if not hasattr(result, "content") or not isinstance(result.content, str):
+            raise ValueError("MCP response does not contain a valid 'content' string.")
         return result.content
 
 async def main(repo, question):
