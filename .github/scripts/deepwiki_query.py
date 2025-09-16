@@ -61,7 +61,7 @@ async def main(repo, question):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python ask_question.py <repo> <question>")
+        print("Usage: python deepwiki_query.py <repo> <question>")
         sys.exit(1)
     
     repo_arg = sys.argv[1]
