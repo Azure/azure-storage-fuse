@@ -44,14 +44,20 @@ class MCPClient:
         result = await self.session.call_tool(
             "ask_question", {"repoName": repo, "question": question}
         )
-        if not hasattr(result, "content") or not isinstance(result.content, str):
-            raise ValueError("MCP response does not contain a valid 'content' string.")
+        
         return result.content
 
-async def main(repo, question):
+async def main(repo, title, body):
     client = MCPClient()
     try:
         await client.connect_to_sse_server(server_url=MCP_SSE_URL)
+        
+        question = f"{title}\n\n{body}"
+        print("\n" + "="*50)
+        print("DeepWiki Question:")
+        print("="*50)
+        print(question)
+        
         response_content = await client.ask_deepwiki(repo, question)
         print("\n" + "="*50)
         print("DeepWiki Response:")
@@ -62,11 +68,13 @@ async def main(repo, question):
         await client.cleanup()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python deepwiki_query.py <repo> <question>")
+    if len(sys.argv) < 4:
+        print("Usage: python deepwiki_query.py <repo> <question title> <question body>")
         sys.exit(1)
     
     repo_arg = sys.argv[1]
-    question_arg = sys.argv[2]
+    issue_title = sys.argv[2]
+    issue_body = sys.argv[3]
     
-    asyncio.run(main(repo_arg, question_arg))
+    
+    asyncio.run(main(repo_arg, issue_title, issue_body))
