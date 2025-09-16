@@ -42,6 +42,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -157,6 +158,9 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+
 	reqStr := rpc.HelloRequestToString(req)
 	log.Debug("rpc_client::Hello: Sending Hello request to node %s: %v", targetNodeID, reqStr)
 
@@ -208,10 +212,25 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -253,6 +272,9 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.GetChunkRequestToString(req)
 	log.Debug("rpc_client::GetChunk: Sending GetChunk request to node %s: %v", targetNodeID, reqStr)
@@ -300,10 +322,25 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -345,6 +382,16 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// All PutChunk requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	//
+	// Caller cannot send a clustermap epoch greater than what we have.
+	// When called from forwardPutChunk() we cannot assert this as req.Request.ClustermapEpoch is the one sent
+	// by the originator and could be greater than what we have if our clustermap is stale.
+	//
+	common.Assert(fromFwder || (req.ClustermapEpoch <= cm.GetEpoch()),
+		req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.PutChunkRequestToString(req)
 	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s: %v", targetNodeID, reqStr)
@@ -392,10 +439,25 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -449,6 +511,16 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.Request.SenderNodeID) == 0, req.Request.SenderNodeID)
 	req.Request.SenderNodeID = myNodeId
+
+	// All PutChunkDC requests must carry a valid clustermap epoch.
+	common.Assert(req.Request.ClustermapEpoch > 0, req.Request.ClustermapEpoch)
+	//
+	// Caller cannot send a clustermap epoch greater than what we have.
+	// When called from forwardPutChunk() we cannot assert this as req.Request.ClustermapEpoch is the one sent
+	// by the originator and could be greater than what we have if our clustermap is stale.
+	//
+	common.Assert(fromFwder || (req.Request.ClustermapEpoch <= cm.GetEpoch()),
+		req.Request.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.PutChunkDCRequestToString(req)
 	log.Debug("rpc_client::PutChunkDC: Sending PutChunkDC (fromFwder: %v) request to nexthop node %s and %d daisy chain RV(s): %v",
@@ -536,8 +608,23 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
 				//
 				// If we get timeout error in PutChunkDC(), it means that one/more of the downstream
@@ -575,7 +662,7 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 					log.Err("rpc_client::PutChunkDC: resetRPCClient failed for node %s: %v",
 						targetNodeID, err1)
 					// TODO: This will cause the closeRPCClient() assert to fail. Let it happen for now.
-					cp.deleteAllRPCClients(client, true /* onTimeout */)
+					cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				}
 
 				return nil, err
@@ -625,6 +712,11 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// All RemoveChunk requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+
 	reqStr := rpc.RemoveChunkRequestToString(req)
 	log.Debug("rpc_client::RemoveChunk: Sending RemoveChunk request to node %s: %v", targetNodeID, reqStr)
 
@@ -671,10 +763,25 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -716,6 +823,11 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// All JoinMV requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.JoinMVRequestToString(req)
 	log.Debug("rpc_client::JoinMV: Sending JoinMV request (newMV: %v) to node %s: %v", newMV, targetNodeID, reqStr)
@@ -777,10 +889,25 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -822,6 +949,11 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// All UpdateMV requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.UpdateMVRequestToString(req)
 	log.Debug("rpc_client::UpdateMV: Sending UpdateMV request to node %s: %v", targetNodeID, reqStr)
@@ -869,10 +1001,25 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -914,6 +1061,9 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.LeaveMVRequestToString(req)
 	log.Debug("rpc_client::LeaveMV: Sending LeaveMV request to node %s: %v", targetNodeID, reqStr)
@@ -961,10 +1111,25 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -1006,6 +1171,11 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// All StartSync requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.StartSyncRequestToString(req)
 	log.Debug("rpc_client::StartSync: Sending StartSync request to node %s: %v", targetNodeID, reqStr)
@@ -1053,10 +1223,25 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -1108,6 +1293,11 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
 
+	// All EndSync requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+
 	reqStr := rpc.EndSyncRequestToString(req)
 	log.Debug("rpc_client::EndSync: Sending EndSync request to node %s: %v", targetNodeID, reqStr)
 
@@ -1154,10 +1344,25 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -1207,9 +1412,14 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
 	common.Assert(req != nil)
 
+	// All GetMVSize requests must carry a valid clustermap epoch.
+	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
+
+	// Caller cannot send a clustermap epoch greater than what we have.
+	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.GetMVSizeRequestToString(req)
 	log.Debug("rpc_client::GetMVSize: Sending GetMVSize request to node %s: %v", targetNodeID, reqStr)
@@ -1257,10 +1467,25 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 				rpc.IsTimedOut(err), err)
 
 			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				cp.deleteAllRPCClients(client, false /* onTimeout */)
-				return nil, err
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* onTimeout */)
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
 				return nil, err
 			}
 
@@ -1340,4 +1565,5 @@ func Start() {
 // Silence unused import errors for release builds.
 func init() {
 	_ = errors.New("test error")
+	cm.IsValidRVName("rv0")
 }

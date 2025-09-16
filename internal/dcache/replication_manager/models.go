@@ -254,8 +254,9 @@ type syncJob struct {
 	// already been written to the target RV by the client PutChunk RPC calls.
 	syncStartTime int64
 
-	startedAt     time.Time // Time when this sync job was started.
-	copyStartedAt time.Time // Time when the actual chunk copy was started.
+	startedAt       time.Time // Time when this sync job was started.
+	copyStartedAt   time.Time // Time when the actual chunk copy was started.
+	clustermapEpoch int64     // cluster map epoch when this sync job was started.
 }
 
 // Helper method which can be used for logging the syncJob.
@@ -267,8 +268,8 @@ func (job *syncJob) toString() string {
 		copyRunningFor = time.Since(job.copyStartedAt)
 	}
 
-	return fmt.Sprintf("{%s/%s -> %s/%s, srcSyncID: %s, destSyncID: %s, syncSize: %d bytes, componentRVs: %v, running for: %v, chunk copy running for: %v}",
+	return fmt.Sprintf("{%s/%s -> %s/%s, srcSyncID: %s, destSyncID: %s, syncSize: %d bytes, componentRVs: %v, clustermapEpoch: %d, running for: %v, chunk copy running for: %v}",
 		job.srcRVName, job.mvName, job.destRVName, job.mvName, job.srcSyncID, job.destSyncID,
-		job.syncSize, rpc.ComponentRVsToString(job.componentRVs),
+		job.syncSize, rpc.ComponentRVsToString(job.componentRVs), job.clustermapEpoch,
 		time.Since(job.startedAt), copyRunningFor)
 }

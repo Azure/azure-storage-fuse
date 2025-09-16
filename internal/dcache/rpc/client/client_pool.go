@@ -698,6 +698,25 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
+	//
+	// It's possible that we got a connection error on some earlier client/connection to this node and hence
+	// marked the nodeClientPool as deleting. This RPC response may have come before the target process restarted
+	// and hence this got a success response, but this got processed after a connection with error. We should
+	// continue with deleting the nodeClientPool.
+	//
+	if ncPool.deleting.Load() {
+		log.Debug("clientPool::releaseRPCClient: Successful RPC response being processed after nodeClientPool is marked deleting, continuing with deleteAllRPCClients, client: %p, nodeID: %s", client, client.nodeID)
+
+		cp.releaseNodeLock(nodeLock, client.nodeID)
+		cp.releaseRWMutexReadLock()
+
+		cp.deleteAllRPCClients(client, false /* confirmedBadNode */)
+
+		cp.acquireRWMutexReadLock()
+		nodeLock = cp.acquireNodeLock(client.nodeID)
+		return nil
+	}
+
 	log.Debug("clientPool::releaseRPCClient: %p after %s, node: %s, free: %d, active: %d, hactive: %d, waiting: %d, hwaiting: %d, maxPerNode: %d",
 		client, time.Since(client.allocatedAt), client.nodeID, len(ncPool.clientChan), ncPool.numActive.Load(),
 		ncPool.numActiveHighPrio.Load(), ncPool.numWaiting.Load(), ncPool.numActiveHighPrio.Load(), cp.maxPerNode)
@@ -811,9 +830,9 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) {
 // making an RPC call to the target node.
 // It closes the passed in connection and all existing connections in the pool, and if there are no
 // active connections and no connections in the channel, it deletes the node client pool.
-func (cp *clientPool) deleteAllRPCClients(client *rpcClient, onTimeout bool) {
-	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, onTimeout: %v, adding to negative nodes map",
-		client.nodeAddress, client.nodeID, client, onTimeout)
+func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bool) {
+	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, confirmedBadNode: %v, adding to negative nodes map",
+		client.nodeAddress, client.nodeID, client, confirmedBadNode)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -835,7 +854,9 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, onTimeout bool) {
 	// deleteAllRPCClients() is called only when an RPC call to the node fails with timeout error.
 	// Add it to the negative nodes map to help other threads fail fast instead of waiting for timeout.
 	//
-	cp.addNegativeNode(client.nodeID)
+	if confirmedBadNode {
+		cp.addNegativeNode(client.nodeID)
+	}
 
 	numConnDeleted := 0
 	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
@@ -923,6 +944,75 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, onTimeout bool) {
 	cp.deleteNodeClientPoolIfInactive(client.nodeID)
 }
 
+// waitForNodeClientPoolToDelete waits till the node client pool for the given node is deleted, which
+// means that all existing connections in the pool are closed and deleted. Any new request for a client after
+// this would create a new node client pool with new connections. This is useful when we get a connection error
+// from a node and we want to make sure that all existing connections to the node are closed, before attempting
+// to send new requests to the node.
+// A to-be-deleted nodeClientPool waiting for existing connections to drain has "deleting" set to true, so this
+// waits till either of the following happens:
+// - getNodeClientPoolFromMap() return nil, which means the nodeClientPool is deleted.
+// - nodeClientPool.deleting is false, which means that the nodeClientPool is recreated after being deleted.
+func (cp *clientPool) waitForNodeClientPoolToDelete(nodeID string) error {
+	log.Debug("clientPool::waitForNodeClientPoolToDelete: node %s", nodeID)
+
+	//
+	// For a negative node there's not much point in waiting for the node client pool to be deleted.
+	// We anyways won't be able to create a new client to the node, so return error rightaway.
+	//
+	err := cp.checkNegativeNode(nodeID)
+	if err != nil {
+		err = fmt.Errorf("not waiting for node client pool to delete for negative node %s: %w", nodeID, err)
+		log.Debug("clientPool::waitForNodeClientPoolToDelete: %v", err)
+		return err
+	}
+
+	//
+	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
+	// releaseRPCClient(), deleteAllRPCClients(), etc. by other threads can process
+	// concurrently. Whereas closeAllNodeClientPools() which takes write lock will be blocked till
+	// all the read locks are released.
+	//
+	cp.acquireRWMutexReadLock()
+	defer cp.releaseRWMutexReadLock()
+
+	nodeLock := cp.acquireNodeLock(nodeID)
+	defer cp.releaseNodeLock(nodeLock, nodeID)
+
+	startTime := time.Now()
+
+	for {
+		ncPool := cp.getNodeClientPoolFromMap(nodeID)
+		if ncPool == nil || !ncPool.deleting.Load() {
+			log.Debug("clientPool::waitForNodeClientPoolToDelete: node: %s, now deleted (after %s)!",
+				nodeID, time.Since(startTime))
+			return nil
+		}
+
+		common.Assert(ncPool.nodeID == nodeID, ncPool.nodeID, nodeID)
+
+		//
+		// Caller will call waitForNodeClientPoolToDelete() when they get some connection errors when
+		// communicating with this node, so typically all connections will fail fast and nodeClientPool
+		// will be deleted almost immediately, but we give it some time.
+		//
+		if time.Since(startTime) > 10*time.Second {
+			err := fmt.Errorf("timeout (%s) waiting for node client pool to be deleted for node %s",
+				time.Since(startTime), nodeID)
+			log.Err("clientPool::waitForNodeClientPoolToDelete: %v", err)
+			return err
+		}
+
+		//
+		// If it's deleting, wait for it to be deleted.
+		// Since we expect it to be deleted soon, we wait for a short time.
+		//
+		cp.releaseNodeLock(nodeLock, nodeID)
+		time.Sleep(100 * time.Millisecond)
+		cp.acquireNodeLock(nodeID)
+	}
+}
+
 // Close client and create a new one to the same target/node as client.
 //
 // Note: This is an internal function, use resetRPCClient() instead.
@@ -995,9 +1085,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		// This will happen when the target node is not running the blob service (but the node
 		// itself is up). When the node is no up we should get a connection timeout error here.
 		//
-		// Also seen connection reset error here.
-		//
-		// TODO: Connection timeout has to be tested.
+		// Also seen connection reset, connection timeout and no route to host errors here.
 		//
 		// In any case when we come here that means we are not able to replenish connections to
 		// the target, in the connection pool. When we have no active connections and no more left
@@ -1006,6 +1094,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		common.Assert(rpc.IsConnectionRefused(err) ||
 			rpc.IsConnectionReset(err) ||
 			rpc.IsTimedOut(err) ||
+			rpc.IsNoRouteToHost(err) ||
 			errors.Is(err, NegativeNodeError), err)
 
 		cp.deleteNodeClientPoolIfInactive(client.nodeID)
@@ -1313,7 +1402,7 @@ func (cp *clientPool) removeNegativeNode(nodeID string) bool {
 }
 
 // Check if the node is marked negative.
-func (cp *clientPool) isNegativeNode(nodeID string) bool {
+func (cp *clientPool) IsNegativeNode(nodeID string) bool {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
 
 	// Fast path, avoid lock.
@@ -1326,7 +1415,7 @@ func (cp *clientPool) isNegativeNode(nodeID string) bool {
 }
 
 // Check if the given node is marked negative.
-// It is same as isNegativeNode(), but this method returns an appropriately wrapped error which can be used by the
+// It is same as IsNegativeNode(), but this method returns an appropriately wrapped error which can be used by the
 // callers to check for negative node error.
 func (cp *clientPool) checkNegativeNode(nodeID string) error {
 	// Fast path, keep it quick.
@@ -1340,6 +1429,26 @@ func (cp *clientPool) checkNegativeNode(nodeID string) error {
 		}
 	}
 	return nil
+}
+
+// Called from fixMV() in cluster_manager to initialize the "excluded nodes" map from the known negative nodes.
+func GetNegativeNodes() map[int]struct{} {
+	negativeNodes := make(map[int]struct{})
+
+	// Fast path, keep it quick.
+	if cp.negativeNodesCnt.Load() > 0 {
+		cp.negativeNodes.Range(func(key, value any) bool {
+			nodeID := key.(string)
+			common.Assert(common.IsValidUUID(nodeID), nodeID)
+
+			log.Debug("clientPool::GetNegativeNodes: Negative node: %s (%s ago) excluded from fix MV",
+				nodeID, time.Since(value.(time.Time)))
+			negativeNodes[cm.UUIDToUniqueInt(nodeID)] = struct{}{}
+			return true
+		})
+	}
+
+	return negativeNodes
 }
 
 // Add RV id to the iffyRvIdMap.
@@ -1586,14 +1695,16 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]",
 				ncPool.nodeID, err)
 			//
-			// Only valid reason could be connection refused as the blobfuse process is not running
-			// on the remote node or a timeout if the node is down, or NegativeNodeError if the node
-			// is marked negative and newRPCClient() proactively failed the request.
-			// There is no point in retrying in that case.
+			// Only valid reason could be connection refused as the blobfuse process is not running on
+			// the remote node, a timeout if the node is down, no route to host error in some specific
+			// unreachability conditions, or NegativeNodeError if the node is marked negative and newRPCClient()
+			// proactively failed the request. There is no point in retrying in that case.
 			//
 			common.Assert(rpc.IsConnectionRefused(err) ||
 				rpc.IsTimedOut(err) ||
+				rpc.IsNoRouteToHost(err) ||
 				errors.Is(err, NegativeNodeError), err)
+
 			break
 		}
 		ncPool.clientChan <- client

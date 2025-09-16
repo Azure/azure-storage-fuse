@@ -1102,7 +1102,7 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
 	// TODO: Assert that clustermap has our local RVs.
 	common.Assert(cmi.config != nil)
-	common.Assert(*cmi.config == *dCacheConfig)
+	common.Assert(*cmi.config == *dCacheConfig, *cmi.config, *dCacheConfig)
 
 	return nil
 }
@@ -2220,7 +2220,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		offlineRVs := 0
 		outofsyncRVs := 0
-		excludeNodes := make(map[int]struct{})
+		//
+		// Exclude negative nodes for picking replacement RVs, as the joinMV() call will anyway fail for
+		// these nodes, so save all the work. Note that negative nodes are not "definitively bad" that we
+		// go marking RVs on them offline but we have enough reason to not pick those for replacement RVs.
+		// If they are proven innocent, later updateMVList() calls will pick RVs on them for replacement.
+		//
+		excludeNodes := rpc_client.GetNegativeNodes()
 		excludeFaultDomains := make(map[int]struct{})
 		excludeUpdateDomains := make(map[int]struct{})
 
@@ -3207,41 +3213,10 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 	// Caller must call us only with all component RVs set.
 	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas), len(mv.RVs), cmi.config.NumReplicas)
 
-	//
-	// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV()
-	// is called from the new-mv workflow, but can be non-zero when called from the fix-mv workflow
-	// for replacing an offline RV with a new good RV. The new RV must need enough space to store
-	// the chunks for this MV.
-	//
-	var reserveBytes int64
-	var err error
-
-	if !newMV {
-		//
-		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
-		//
-		reserveBytes, err = rm.GetMVSize(mvName)
-		if err != nil {
-			err = fmt.Errorf("failed to get disk usage of %s [%v]", mvName, err)
-			log.Err("ClusterManager::joinMV: %v", err)
-			common.Assert(false, err)
-			// TODO: return error. Skipping it now because the caller of joinMV() expects failed RVs
-			// along with the error. So, the error handling part of the caller must be updated to handle
-			// the error returned in this case as below.
-			// return "", err
-		}
-	}
-
-	log.Debug("ClusterManager::joinMV: %s, state: %s, new-mv: %v, reserve bytes: %d",
-		mvName, string(mv.State), newMV, reserveBytes)
-
-	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
-	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)
-
 	// For all component RVs, we need to send JoinMV/UpdateMV RPC.
 	for rvName, rvState := range mv.RVs {
-		log.Debug("ClusterManager::joinMV: Populating componentRVs list MV %s with RV %s (%s)",
-			mvName, rvName, rvState)
+		log.Debug("ClusterManager::joinMV: Populating componentRVs list with %s/%s (%s)",
+			rvName, mvName, rvState)
 
 		//
 		// For new-mv all component RVs must be online, for fix-mv we can have the following component RV states:
@@ -3265,6 +3240,50 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 
 	// For newMV case, *all* component RVs must be online.
 	common.Assert(newMV == (numRVsOnline == len(mv.RVs)), mvName, mv.State, numRVsOnline)
+
+	//
+	// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV()
+	// is called from the new-mv workflow, but can be non-zero when called from the fix-mv workflow
+	// for replacing an offline RV with a new good RV. The new RV must have enough space to store
+	// the chunks for this MV.
+	//
+	var reserveBytes int64
+	var err error
+
+	if !newMV {
+		//
+		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
+		// Without MV size we cannot proceed with JoinMV for fix-mv workflow.
+		// We got componentRVs from 'mv' which corresponds to cm.GetEpoch(), this is because the caller
+		// is updateMVList() which has locked the clustermap so the epoch cannot change after fetching
+		// the componentRVs.
+		//
+		reserveBytes, err = rm.GetMVSize(mvName, componentRVs, cm.GetEpoch())
+		if err != nil {
+			//
+			// GetMVSize() must have queried all online component RVs, so if it has failed, failedRVs must
+			// contain all the online RVs.
+			//
+			failedRVs := make([]string, 0)
+			for _, rv := range componentRVs {
+				if rv.State == string(dcache.StateOnline) {
+					failedRVs = append(failedRVs, rv.Name)
+				}
+			}
+
+			err = fmt.Errorf("failed to get disk usage of %s, queried %v of %v [%v]",
+				mvName, failedRVs, componentRVs, err)
+			log.Err("ClusterManager::joinMV: %v", err)
+
+			return failedRVs, err
+		}
+	}
+
+	log.Debug("ClusterManager::joinMV: %s, state: %s, new-mv: %v, reserve bytes: %d",
+		mvName, string(mv.State), newMV, reserveBytes)
+
+	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
+	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)
 
 	// Struct to hold the status from each RPC call to a component RV.
 	type rpcCallComponentRVError struct {
@@ -3293,19 +3312,25 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 		wg.Add(1)
 		go func(rvName string, rvState dcache.StateEnum) {
 			defer wg.Done()
-			log.Debug("ClusterManager::joinMV: Joining MV %s with RV %s in state %s", mvName, rvName, rvState)
+			log.Debug("ClusterManager::joinMV: Joining MV %s with RV %s in state %s, cepoch: %d",
+				mvName, rvName, rvState, cm.GetEpoch())
 
+			//
+			// Since clustermap would be locked, cm.GetEpoch() would correspond to componentRVs.
+			//
 			joinMvReq := &models.JoinMVRequest{
-				MV:           mvName,
-				RVName:       rvName,
-				ReserveSpace: reserveBytes,
-				ComponentRV:  componentRVs,
+				MV:              mvName,
+				RVName:          rvName,
+				ReserveSpace:    reserveBytes,
+				ComponentRV:     componentRVs,
+				ClustermapEpoch: cm.GetEpoch(),
 			}
 
 			updateMvReq := &models.UpdateMVRequest{
-				MV:          mvName,
-				RVName:      rvName,
-				ComponentRV: componentRVs,
+				MV:              mvName,
+				RVName:          rvName,
+				ComponentRV:     componentRVs,
+				ClustermapEpoch: cm.GetEpoch(),
 			}
 
 			// TODO: Use timeout from some global variable.
@@ -3372,8 +3397,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 			}
 
 			if err != nil {
-				err = fmt.Errorf("error %s MV %s with RV %s in state %s: %v",
-					action, mvName, rvName, rvState, err)
+				err = fmt.Errorf("error %s MV %s with RV %s in state %s, cepoch: %d: %v",
+					action, mvName, rvName, rvState, cm.GetEpoch(), err)
 				log.Err("ClusterManager::joinMV: %v", err)
 				errCh <- rpcCallComponentRVError{
 					rvName: rvName,
@@ -3394,8 +3419,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) ([]st
 				}
 				return
 			}
-			log.Debug("ClusterManager::joinMV: Success %s MV %s with RV %s in state %s",
-				action, mvName, rvName, rvState)
+			log.Debug("ClusterManager::joinMV: Success %s MV %s with RV %s in state %s, cepoch: %d, took %s",
+				action, mvName, rvName, rvState, cm.GetEpoch(), time.Since(start))
 
 			//
 			// A fix-mv/new-mv can only succeed when all the RVs correctly update the component RVs state in their
