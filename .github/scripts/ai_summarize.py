@@ -77,7 +77,7 @@ def refine_summary_from_chunks(text, summarizer, tokenizer):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python summarize_text_hf.py <input_file_path> <output_file_path>", file=sys.stderr)
+        print("Usage: python ai_summarize.py <input_file_path> <output_file_path>", file=sys.stderr)
         sys.exit(1)
 
     input_file_path = sys.argv[1]
