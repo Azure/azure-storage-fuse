@@ -54,6 +54,7 @@ import (
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
+	gouuid "github.com/google/uuid"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -467,12 +468,12 @@ retry:
 	//
 	for _, rv := range componentRVs {
 		//
-		// Omit writing to RVs in “offline”, "inband-offline" or “outofsync” state. It’s ok to omit them as the chunks not
-		// written to them will be copied to them when the mv is (soon) resynced.
-		// Otoh if an RV is in “syncing” state then any new chunk written to it may not be copied by the
-		// ongoing resync operation as the source RV may have been already gone past the enumeration stage
-		// and hence won’t consider this chunk for resync, and hence those MUST have the chunks mandatorily
-		// copied to them.
+		// Omit writing to RVs in “offline” or "inband-offline" state. It’s ok to omit them as the chunks
+		// not written to them will be copied to them when the mv is (soon) fixed+resynced.
+		// RVs in "outofsync" state are good RVs and we must write chunks to them. Whatever chunks were
+		// not written to these RVs from the time the (bad) RV(s) went offline, till we got a replacement
+		// RV will be copied by the resync process.
+		// RVs in "syncing" and "online" must obviously be written to.
 		//
 		if rv.State == string(dcache.StateOffline) ||
 			rv.State == string(dcache.StateInbandOffline) {
@@ -706,8 +707,8 @@ retry:
 			putChunkDCResp = rpc.HandlePutChunkDCError(rvName, putChunkDCReq.NextRVs, req.MvName, err)
 		} else {
 			log.Debug("ReplicationManager::writeMVInternal: Received PutChunkDC response from nexthop %s/%s node %s, chunkIdx: %d, cepoch: %d: %s",
-				rvName, req.MvName, targetNodeID, rpc.PutChunkDCResponseToString(putChunkDCResp),
-				req.ChunkIndex, lastClusterMapEpoch)
+				rvName, req.MvName, targetNodeID, req.ChunkIndex, lastClusterMapEpoch,
+				rpc.PutChunkDCResponseToString(putChunkDCResp))
 			common.Assert(len(putChunkDCResp.Responses) == len(putChunkDCReq.NextRVs)+1,
 				len(putChunkDCResp.Responses), len(putChunkDCReq.NextRVs))
 		}
@@ -1208,6 +1209,7 @@ func periodicResyncMVs() {
 		case <-rm.ticker.C:
 			log.Debug("ReplicationManager::periodicResyncMVs: Resync of syncable MVs triggered")
 			resyncSyncableMVs()
+			abortStuckSyncJobs()
 		}
 	}
 }
@@ -1282,6 +1284,15 @@ func resyncSyncableMVs() {
 		// mvInfo corresponds to lastClusterMapEpoch.
 		syncMV(mvName, mvInfo, lastClusterMapEpoch)
 	}
+}
+
+// If the node running a sync job dies, the target RV will be stuck in syncing state.
+// We need to mark it offline again to restart the sync process for it.
+// This function goes over all RVs hosted by this node, which are in syncing state and are not making
+// progress, based on the mvInfo's lastChunkWriteTime. If the lastChunkWriteTime is older than a threshold
+// it'll mark the RV as inband-offline, which will trigger the fix-mv workflow to select a new RV.
+func abortStuckSyncJobs() {
+	// TODO: Implement this.
 }
 
 // syncMV is used for resyncing the degraded MV to online state. To be precise it will synchronize all component
@@ -1406,17 +1417,20 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	//
 	startTime := time.Now()
 
-	log.Debug("ReplicationManager::syncComponentRV: %s/%s -> %s/%s, sync size %d bytes, component RVs %v, cepoch: %d",
-		lioRV, mvName, targetRVName, mvName, syncSize, rpc.ComponentRVsToString(componentRVs), lastClusterMapEpoch)
-
-	common.Assert(lioRV != targetRVName, lioRV, targetRVName)
-	common.Assert(syncSize >= 0, syncSize)
-
 	sourceNodeID := getNodeIDFromRVName(lioRV)
 	common.Assert(common.IsValidUUID(sourceNodeID))
+	_ = sourceNodeID
 
 	targetNodeID := getNodeIDFromRVName(targetRVName)
 	common.Assert(common.IsValidUUID(targetNodeID))
+	_ = targetNodeID
+
+	log.Debug("ReplicationManager::syncComponentRV: %s/%s -> %s/%s [%s -> %s], sync size %d bytes, component RVs %v, cepoch: %d",
+		lioRV, mvName, targetRVName, mvName, sourceNodeID, targetNodeID, syncSize,
+		rpc.ComponentRVsToString(componentRVs), lastClusterMapEpoch)
+
+	common.Assert(lioRV != targetRVName, lioRV, targetRVName)
+	common.Assert(syncSize >= 0, syncSize)
 
 	//
 	// Update the destination RV from outofsync to syncing state. The cluster manager will take care of
@@ -1434,20 +1448,22 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	common.Assert(cm.GetEpoch() > lastClusterMapEpoch, cm.GetEpoch(), lastClusterMapEpoch)
 
 	//
-	// Now that the target RV state is updated to syncing from outofsync, the WriteMV() workflow will
-	// consider the target RV as valid candidate for client PutChunk() calls.
-	// This means that all the chunks written in this MV before now, will need to be synced or copied
-	// to the target RV by the sync PutChunk() RPC calls.
-	// The chunks written to the MV after this point will be written to the target RV as well,
-	// since the target RV is now in syncing state.
-	//
-	syncStartTime := time.Now().UnixMicro() + NTPClockSkewMargin
-
-	//
-	// Update the state of target RV from outofsync to syncing in local component RVs list.
-	// The updated component RVs list will be later used in the PutChunk(sync) RPC calls to the target RV.
+	// Update the state of target RV from outofsync to syncing in local component RVs list, to match the
+	// global clustermap state.
+	// This updated component RVs list will be later used in the PutChunk(sync) RPC calls to the target RV,
+	// hence the state must match the global clustermap state, else server will reject the PutChunk(sync).
 	//
 	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
+
+	//
+	// WriteMV() would be writing client writes to the target RV after it was joined to the MV (as outfofsync).
+	// Now that the sync job is starting, we will be syncing all chunks written to the MV before this point
+	// (with a clock skew margin as well), so we might end up copying more chunks than needed, but it's ok
+	// to be careful.
+	// The chunks written to the MV after this point will be written to the target RV as well, so those need
+	// not be sync'ed
+	//
+	syncStartTime := time.Now().UnixMicro() + NTPClockSkewMargin
 
 	syncJob := &syncJob{
 		mvName:          mvName,
@@ -1458,6 +1474,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		syncStartTime:   syncStartTime,
 		startedAt:       startTime,
 		clustermapEpoch: cm.GetEpoch(), // componentRVs corresponds to this epoch.
+		syncID:          gouuid.New().String(),
 	}
 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
@@ -1473,58 +1490,11 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	}
 }
 
-// sendStartSyncRequest sends the StartSync() RPC call to the target node.
-// rvName is the RV hosted in the target node, to which the StartSync() RPC call is sent.
-// Note that we send StartSync to every component RV of an MV.
-func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartSyncRequest) (string, error) {
-	log.Debug("ReplicationManager::sendStartSyncRequest: Sending StartSync RPC call to %s/%s, node %s %v",
-		rvName, req.MV, targetNodeID, rpc.StartSyncRequestToString(req))
-
-	common.Assert(common.IsValidUUID(targetNodeID))
-
-	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
-	defer cancel()
-
-	//
-	// Caller passes the same StartSyncRequest for both source and target RVs.
-	// Clear it here to keep the assert in StartSync() happy.
-	//
-	req.SenderNodeID = ""
-
-	resp, err := rpc_client.StartSync(ctx, targetNodeID, req)
-	if err != nil {
-		log.Err("ReplicationManager::sendStartSyncRequest: StartSync failed for %s/%s %v: %v",
-			rvName, req.MV, rpc.StartSyncRequestToString(req), err)
-
-		//
-		// Right now we treat all StartSync failures as being caused by stale clustermap.
-		// Refresh the clustermap and fail the job. This target replica will be picked up
-		// in the next periodic call to syncMV().
-		// Note that we pass 0 for higherThanEpoch as we don't have any specific epoch to refresh
-		// to, it's a best effort refresh.
-		//
-		// TODO: Check for NeedToRefreshClusterMap and only on that error, refresh the clustermap.
-		//
-		err1 := cm.RefreshClusterMap(0 /* higherThanEpoch */)
-		if err1 != nil {
-			log.Err("ReplicationManager::sendStartSyncRequest: RefreshClusterMap failed: %v", err1)
-		}
-
-		return "", err
-	}
-
-	common.Assert((resp != nil && common.IsValidUUID(resp.SyncID)),
-		rpc.StartSyncRequestToString(req))
-
-	log.Debug("ReplicationManager::sendStartSyncRequest: StartSync RPC response for %s/%s: %+v",
-		rvName, req.MV, *resp)
-
-	return resp.SyncID, nil
-}
-
 // This method runs one sync job that synchronizes one MV replica.
 // It copies all chunks from the source replica to the target replica.
-// Then it sends the EndSync() RPC call to both source and target nodes.
+// If all chunks are copied successfully, it updates the target RV state to online, else if any chunk
+// fails it marks the target RV as inband-offline, so that the fix-mv workflow can select a new RV for it
+// and the resync can be reattempted.
 func runSyncJob(job *syncJob) error {
 	log.Debug("ReplicationManager::runSyncJob: Sync job: %s, cepoch: %d", job.toString(), job.clustermapEpoch)
 
@@ -1541,7 +1511,10 @@ func runSyncJob(job *syncJob) error {
 		err = fmt.Errorf("failed to copy out of sync chunks for job %s [%v]", job.toString(), err)
 		log.Err("ReplicationManager::runSyncJob: %v", err)
 
+		//
 		// Sync failed, mark the target RV as inband-offline, to reattempt sync with a fresh target RV.
+		// If this fails, abortStuckSyncJobs() will redo this.
+		//
 		errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline)
 		if errRV != nil {
 			errStr := fmt.Sprintf("Failed to mark %s/%s as inband-offline for job %s [%v]",
@@ -1555,6 +1528,8 @@ func runSyncJob(job *syncJob) error {
 	// Now that we have successfully copied all chunks from source to target replica, update the
 	// destination RV from syncing to online state. The cluster manager will take care of
 	// updating the MV state to online if all component RVs have online state.
+	// If this fails, abortStuckSyncJobs() will mark this inband-offline which will restart the
+	// entire fix-mv+resync-mv workflows.
 	//
 	err = cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOnline)
 	if err != nil {
@@ -1592,7 +1567,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 
 	//
 	// Enumerate the chunks in the source MV path
-	// TODO: os.ReadDir() will returns all enumerated chunks. For really large number of chunk, consider
+	// TODO: os.ReadDir() will return all enumerated chunks. For really large number of chunk, consider
 	//       using getdents() kind of streaming API.
 	//
 	entries, err := os.ReadDir(sourceMVPath)
@@ -1602,9 +1577,10 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		return err
 	}
 
-	// TODO: make this parallel
 	chunksCopied := 0
 	bytesCopied := int64(0)
+
+	// TODO: make this parallel
 	for _, entry := range entries {
 		if entry.IsDir() {
 			log.Warn("ReplicationManager::copyOutOfSyncChunks: Skipping directory %s/%s",
@@ -1659,6 +1635,10 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			continue
 		}
 
+		// We don't expect any chunk to have mod time before 2025-01-01.
+		common.Assert(info.ModTime().Unix() > 1735689600, info.ModTime().Unix(), info.ModTime().String())
+		common.Assert(job.syncStartTime > 1735689600000000, job.syncStartTime)
+
 		if info.ModTime().UnixMicro() > job.syncStartTime {
 			// This chunk is created after the sync start time, so it will be written to both source and target
 			// RVs by the client PutChunk() RPC calls, so we can skip it here.
@@ -1708,8 +1688,8 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				Hash: "", // TODO: hash validation will be done later
 			},
 			Length: int64(len(srcData)),
-			// this is sync write RPC call, so the sync ID should be that of the target RV.
-			SyncID:          "<TBD>",
+			// SyncID is used for logging and debugging, to easily match client and server side logs.
+			SyncID:          job.syncID,
 			SourceRVName:    job.srcRVName,
 			ComponentRV:     job.componentRVs,
 			ClustermapEpoch: job.clustermapEpoch,
@@ -1744,22 +1724,13 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
 				//
 				// This error means that the node is not reachable.
-				//
-				// We should now run the inband RV offline detection workflow, basically we
-				// call the clustermap's UpdateComponentRVState() API to mark this
-				// component RV as inband-offline and force the fix-mv workflow which will finally
-				// trigger the resync-mv workflow.
+				// Mark the destination RV as inband-offline, so that the fix-mv workflow can select a new RV
+				// and the resync can be reattempted.
 				//
 				log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to reach node %s [%v]",
 					destNodeID, err)
 
-				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline)
-				if errRV != nil {
-					errStr := fmt.Sprintf("Failed to mark %s/%s as inband-offline [%v]",
-						job.destRVName, job.mvName, errRV)
-					log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-					common.Assert(false, errStr)
-				}
+				// Fall through and return error, caller will mark job.destRVName as inband-offline.
 			} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
 				//
 				// NeedToRefreshClusterMap is the only error on which we retry the PutChunk, but only if
@@ -1805,19 +1776,8 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			} else {
 				//
 				// Non-retriable error in syncing.
-				// Update the destination RV from syncing to outofsync state. The cluster manager
-				// will take care of updating the MV state to degraded.
-				// The periodic resyncMVs() will take care of resyncing this outofsync RV in next
-				// iteration.
+				// Fall through and return error, caller will mark job.destRVName as inband-offline.
 				//
-				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName,
-					dcache.StateInbandOffline)
-				if errRV != nil {
-					errStr := fmt.Sprintf("Failed to mark %s/%s as inband-offline [%v]",
-						job.destRVName, job.mvName, errRV)
-					log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-					common.Assert(false, errStr)
-				}
 			}
 
 			return err
@@ -1829,61 +1789,6 @@ func copyOutOfSyncChunks(job *syncJob) error {
 
 	log.Debug("ReplicationManager::copyOutOfSyncChunks: Copied %d chunks totalling %d bytes, Sync job: %s",
 		chunksCopied, bytesCopied, job.toString())
-	return nil
-}
-
-// sendEndSyncRequest sends the EndSync() RPC call to the target node.
-// rvName is the RV hosted in the target node, to which the EndSync() RPC call is sent.
-// Note that we send EndSync to every component RV of an MV.
-func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncRequest) error {
-	log.Debug("ReplicationManager::sendEndSyncRequest: Sending EndSync RPC call to %s/%s, node %s %v",
-		rvName, req.MV, targetNodeID, rpc.EndSyncRequestToString(req))
-
-	common.Assert(common.IsValidUUID(targetNodeID))
-
-	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
-	defer cancel()
-
-	//
-	// Caller passes the same StartSyncRequest for both source and target RVs.
-	// Clear it here to keep the assert in StartSync() happy.
-	//
-	req.SenderNodeID = ""
-
-	var resp *models.EndSyncResponse
-	var err error
-
-	for i := 0; i < 5; i++ {
-		resp, err = rpc_client.EndSync(ctx, targetNodeID, req)
-		_ = resp
-		if err != nil {
-			log.Err("ReplicationManager::sendEndSyncRequest: EndSync failed for %s/%s %v: %v",
-				rvName, req.MV, rpc.EndSyncRequestToString(req), err)
-
-			rpcErr := rpc.GetRPCResponseError(err)
-			if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-				errCM := cm.RefreshClusterMap(-req.ClustermapEpoch)
-				common.Assert(errCM == nil, errCM)
-				if errCM == nil {
-					req.ClustermapEpoch = cm.GetEpoch()
-					log.Debug("ReplicationManager::sendEndSyncRequest: Retrying EndSync for %s/%s after refreshing clustermap to epoch %d",
-						rvName, req.MV, req.ClustermapEpoch)
-					if i < 4 {
-						req.SenderNodeID = "" // Clear it again.
-						continue
-					}
-				}
-			}
-			return err
-		}
-		break
-	}
-
-	common.Assert(resp != nil, rpc.EndSyncRequestToString(req))
-
-	log.Debug("ReplicationManager::sendEndSyncRequest: EndSync RPC response for %s/%s %+v",
-		rvName, req.MV, *resp)
-
 	return nil
 }
 

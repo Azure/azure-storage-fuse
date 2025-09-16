@@ -38,7 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
+	//"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -848,18 +848,27 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 			log.Err("%v", err)
 
 			//
-			// This code is special only for JoinMV and specifically for the new-mv case.
-			// Note that ClusterManager.start() has a tiny window where it publishes its RVs into the
-			// clustermap but it has not started the RPC server yet.
-			// If some other node starts a new-mv workflow in the meantime, its attempt to create RPC
-			// client connections will fail with connection refused.
-			// Retry after a small wait.
+			// TODO: The following code is not right, as retrying after a wait will not help if the
+			//       connection creation fails, as we would have added the node to negative list and
+			//       getRPCClient() will fail fast, but we need to handle the issue described below.
+			//       Without this what will happen is that this new node will not be inducted into
+			//       the cluster till the next clustermap epoch, which is not very bad.
 			//
-			if newMV {
-				log.Info("rpc_client::JoinMV: Retrying after 5 secs in case the RPC server is just starting on the target")
-				time.Sleep(5 * time.Second)
-				continue
-			}
+			/*
+				//
+				// This code is special only for JoinMV and specifically for the new-mv case.
+				// Note that ClusterManager.start() has a tiny window where it publishes its RVs into the
+				// clustermap but it has not started the RPC server yet.
+				// If some other node starts a new-mv workflow in the meantime, its attempt to create RPC
+				// client connections will fail with connection refused.
+				// Retry after a small wait.
+				//
+				if newMV {
+					log.Info("rpc_client::JoinMV: Retrying after 2 secs in case the RPC server is just starting on the target")
+					time.Sleep(2 * time.Second)
+					continue
+				}
+			*/
 			return nil, err
 		}
 
@@ -1173,6 +1182,7 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 		targetNodeID, reqStr)
 }
 
+/*
 func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
 	common.Assert(req != nil)
 
@@ -1193,7 +1203,8 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false // highPrio
+)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::StartSync: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -1238,7 +1249,8 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 				// mark the node as negative, but if retrying also fails with similar error, it means the
 				// blobfuse2 process is still down so we mark it as negative.
 				//
-				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				cp.deleteAllRPCClients(client, i == 1 // confirmedBadNode
+		)
 				if i == 1 {
 					return nil, err
 				}
@@ -1249,7 +1261,8 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 				// Continue with newly created client.
 				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
+				cp.deleteAllRPCClients(client, true // confirmedBadNode
+		)
 				return nil, err
 			}
 
@@ -1314,7 +1327,8 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, false // highPrio
+		)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::EndSync: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -1359,7 +1373,8 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 				// mark the node as negative, but if retrying also fails with similar error, it means the
 				// blobfuse2 process is still down so we mark it as negative.
 				//
-				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
+				cp.deleteAllRPCClients(client, i == 1 // confirmedBadNode
+		)
 				if i == 1 {
 					return nil, err
 				}
@@ -1370,7 +1385,8 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 				// Continue with newly created client.
 				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
+				cp.deleteAllRPCClients(client, true // confirmedBadNode
+		)
 				return nil, err
 			}
 
@@ -1414,6 +1430,7 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	return nil, fmt.Errorf("rpc_client::EndSync: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
+*/
 
 // TODO:: integration : use this API in the fix-mv workflow to get the size of the MV
 // while making JoinMV calls to new online RVs

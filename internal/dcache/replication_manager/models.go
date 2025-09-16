@@ -174,7 +174,7 @@ type WriteMvRequest struct {
 // helper method which can be used for logging the request contents except the data buffer
 // Use this instead of %+v to avoid printing the data buffer
 func (req *WriteMvRequest) toString() string {
-	// Use chunkIdx as that matches other places in the code and makes it easier to search.
+	// Use chunkIdx as that matches other logs in the code and makes it easier to search.
 	return fmt.Sprintf("{FileID: %s, MvName: %s, chunkIdx: %d, ChunkSizeInMiB: %d, IsLastChunk: %v, Data buffer size: %d}",
 		req.FileID, req.MvName, req.ChunkIndex, req.ChunkSizeInMiB, req.IsLastChunk, len(req.Data))
 }
@@ -256,6 +256,7 @@ type syncJob struct {
 	startedAt       time.Time // time when this sync job was started.
 	copyStartedAt   time.Time // time when the actual chunk copy was started.
 	clustermapEpoch int64     // cluster map epoch when this sync job was started.
+	syncID          string    // unique ID for this sync job, mainly for logging purposes.
 }
 
 // Helper method which can be used for logging the syncJob.
@@ -267,8 +268,8 @@ func (job *syncJob) toString() string {
 		copyRunningFor = time.Since(job.copyStartedAt)
 	}
 
-	return fmt.Sprintf("{%s/%s -> %s/%s, syncSize: %d bytes, componentRVs: %v, cepoch: %d, running for: %v, chunk copy running for: %v}",
-		job.srcRVName, job.mvName, job.destRVName, job.mvName,
+	return fmt.Sprintf("{[%s] %s/%s -> %s/%s, syncSize: %d bytes, componentRVs: %v, cepoch: %d, running for: %v, chunk copy running for: %v}",
+		job.syncID, job.srcRVName, job.mvName, job.destRVName, job.mvName,
 		job.syncSize, rpc.ComponentRVsToString(job.componentRVs), job.clustermapEpoch,
 		time.Since(job.startedAt), copyRunningFor)
 }

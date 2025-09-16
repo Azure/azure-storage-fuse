@@ -55,7 +55,7 @@ import (
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
-	gouuid "github.com/google/uuid"
+	//gouuid "github.com/google/uuid"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -147,48 +147,29 @@ type mvInfo struct {
 	componentRVs []*models.RVNameAndState
 
 	// mvInfo is updated in response to an RPC call made by a client.
-	// This is the ClustermapEpoch carried by that RPC call, but note that the mvInfo will typically
-	// contain changes on top of the clustermap corresponding to clustermapEpoch, e.g., a JoinMV RPC
-	// will carry the epoch of the clustermap which has one of the component RVs as offline, but mvInfo
-	// will contain the RV state as outofsync, which will be committed to clustermap only after the
-	// JoinMV RPC completes successfully and it'll get committed as the next epoch.
-	// Similarly, a StartSync RPC will carry the epoch of the clustermap which has the target component RV
-	// as outofsync, but mvInfo will contain the RV state as syncing, which will be committed to clustermap
-	// only after the StartSync RPC completes successfully and it'll get committed as the next epoch.
-	//
-	// If mvInfo.clustermapEpoch is X, it means that the componentRVs list in mvInfo is based on the
-	// clustermap at epoch X, but it may contain changes on top of that clustermap.
+	// This is the ClustermapEpoch carried by that RPC call, but note that the mvInfo may contain changes
+	// on top of the clustermap corresponding to clustermapEpoch, e.g., a JoinMV RPC will carry the epoch
+	// of the clustermap which has one of the component RVs as offline, but mvInfo will not contain the
+	// offline RV but the new replacement RV with state as outofsync, which will be committed to clustermap
+	// only after the JoinMV RPC completes successfully (along with other UpdateMV) and it'll get committed
+	// as the next (even) epoch.
+	// The only case when the aboce is true if when the mvInfo.clustermapEpoch is odd, and one or more
+	// component RV state is outofsync. In all other cases, the componentRVs list in mvInfo will correspond
+	// exactly to the clustermap at epoch mvInfo.clustermapEpoch. This means for the above case, a clustermap
+	// with epoch X MUST NOT overwrite the componentRVs list of an mvInfo with clustermapEpoch X.
+	// See refreshFromClustermap() for more details.
 	clustermapEpoch int64
 
-	// When was this MV replica composition/state last updated and by which node.
-	// An MV replica composition/state is updated by the following RPCs:
+	// When was this MV replica components/state last updated and by which node.
+	// An MV replica components/state is updated by the following RPCs:
 	// JoinMV    - this creates a new MV replica. It is called by the new-mv and the fix-mv workflows.
 	//             A new-mv workflow causes an MV replica to start as "online" while a fix-mv workflow
 	//             causes an MV replica to start as "outofsync".
 	// UpdateMV  - this updates the composition of an MV replica.
-	// StartSync - this changes the state of an MV replica added by fix-mv workflow, to "syncing", from
-	//             "outofsync".
-	// EndSync   - this changes the state of an MV replica added by fix-mv workflow, and synchronized by the
-	//             sync-mv workflow, to "online", from "syncing".
 	//
-	// This can be used for logging and for timing out "incomplete transactions".
+	// Other than the above two RPCs, MV replica state/components can be updated by refreshFromClustermap().
 	//
-	// Incomplete transactions could be due to the following:
-	// Incomplete JoinMV is one for which the JoinMV was sent as a result of fix-mv workflow, but it
-	// was not followed by StartSync. This can happen if the fix-mv couldn't complete due to one or more
-	// RVs failing their JoinMV/UpdateMV calls.
-	// Incomplete StartSync is one for which the StartSync was sent as a result of sync-mv workflow, but
-	// the "syncing" state was not committed for some reason (either not all nodes responded to StartSync
-	// with success or the sender died before it could commit the updated clustermap).
-	//
-	// Since there's a finite time before a node responds positively to an RPC and before the update can be
-	// committed in the clustermap, we have to wait for some timeout period before we can consider the
-	// transaction as incomplete and can revert it. See mvInfoTimeout.
-	//
-	// Thus, after a workflow like JoinMV/StartSync/EndSync updates the rvInfo state and till mvInfoTimeout,
-	// we do not allow the rvInfo state to be changed, during that time RPCs that want to change the componentRVs
-	// will fail with ErrorCode_InvalidRV and the caller will need to handle this appropriately. For a JoinMV, it
-	// will skip this RV, for a StartSync it'll defer the sync for later.
+	// This is only used for logging and assertions.
 	//
 	// lmt - Last Modified Time
 	// lmb - Last Modified By
@@ -243,20 +224,23 @@ type mvInfo struct {
 	// [DEBUG ONLY]
 	opMutexDbgCntr atomic.Int64
 
-	// Zero or more sync jobs this MV Replica is participating in.
-	// If this is empty it means the MV Replica is currently not participating in any sync job.
-	// If non empty, these are all the sync jobs that this MV Replica is currently participating in, either
-	// as source or target of a sync job.
-	// The information on each sync job is held inside the syncJob struct. Since an MV Replica can be the
-	// source of multiple sync jobs but can be a target for only one sync job, if this contains more than
-	// one sync jobs, all of them MUST be source sync jobs.
-	//
-	// Indexed by syncID and stores value of type *syncJob.
-	// syncJobsCount is the count of sync jobs stored in syncJobs.
-	syncJobs      sync.Map
-	syncJobsCount atomic.Int64
+	/*
+		// Zero or more sync jobs this MV Replica is participating in.
+		// If this is empty it means the MV Replica is currently not participating in any sync job.
+		// If non empty, these are all the sync jobs that this MV Replica is currently participating in, either
+		// as source or target of a sync job.
+		// The information on each sync job is held inside the syncJob struct. Since an MV Replica can be the
+		// source of multiple sync jobs but can be a target for only one sync job, if this contains more than
+		// one sync jobs, all of them MUST be source sync jobs.
+		//
+		// Indexed by syncID and stores value of type *syncJob.
+		// syncJobsCount is the count of sync jobs stored in syncJobs.
+		syncJobs      sync.Map
+		syncJobsCount atomic.Int64
+	*/
 }
 
+/*
 // REMOVE THIS.
 // Time we wait after mvInfo.lmt before we can delete it from rvInfo.mvMap.
 // This should be the time during which the caller is gathering RPC responses from other component RV and/or
@@ -308,6 +292,7 @@ type syncJob struct {
 	sourceRVName string
 	targetRVName string
 }
+*/
 
 var handler *ChunkServiceHandler
 
@@ -729,6 +714,8 @@ func (rv *rvInfo) isRvInfoLocked() bool {
 	return rv.rwMutexDbgFlag.Load()
 }
 
+/*
+
 // Check if this MV replica is the source or target of any sync job.
 func (mv *mvInfo) isSyncing() bool {
 	return mv.syncJobsCount.Load() > 0
@@ -868,13 +855,13 @@ func (mv *mvInfo) isSourceOrTargetOfSync() (isSource bool, isTarget bool) {
 	// No entry in syncJobs map means that the MV is not in syncing state.
 	// This is the common case.
 	if mv.syncJobsCount.Load() == 0 {
-		return false, false /* MV replica is not syncing */
+		return false, false // MV replica is not syncing
 	}
 
 	// If there are more than one entries in the syncJobs map, it means that this MV replica is the source of
 	// all those sync jobs. Note that an MV replica can be target to one and only one sync job.
 	if mv.syncJobsCount.Load() > 1 {
-		return true, false /* MV replica is source for more than one sync jobs */
+		return true, false // MV replica is source for more than one sync jobs
 	}
 
 	mv.syncJobs.Range(func(key, val interface{}) bool {
@@ -888,12 +875,12 @@ func (mv *mvInfo) isSourceOrTargetOfSync() (isSource bool, isTarget bool) {
 		// If sourceRVName is set that means this MV Replica is the target of this syncJob,
 		// while if targetRVName is set it means this MV Replica is the source of this syncJob.
 		if syncJob.sourceRVName != "" {
-			/* MV replica is target for one syncJob */
+			// MV replica is target for one syncJob
 			isSource = false
 			isTarget = true
 			return false
 		} else {
-			/* MV replica is source for one syncJob */
+			// MV replica is source for one syncJob
 			isSource = true
 			isTarget = false
 			return false
@@ -902,6 +889,7 @@ func (mv *mvInfo) isSourceOrTargetOfSync() (isSource bool, isTarget bool) {
 
 	return isSource, isTarget
 }
+*/
 
 // Get component RVs for this MV.
 func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
@@ -975,7 +963,7 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clus
 	// Note: Cluster manager doesn't commit clustermap after the degrade-mv workflow that marks component
 	//       RVs as offline, so we won't get updated offline state even after a refresh.
 	//       We either let JoinMV fail in this iteration and the next time around when clustermap would have
-	//       the offline state, it succeeds or we change updateMvReq() to commit clustermap after marking
+	//       the offline state, it succeeds or we change updateMVList() to commit clustermap after marking
 	//       component RVs offline.
 	//
 	if !forceUpdate {
@@ -1044,6 +1032,14 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clus
 
 				if oldState == string(dcache.StateOffline) && newState == string(dcache.StateOutOfSync) {
 					// New RV replaced by fix-mv.
+					continue
+				}
+
+				if oldState == string(dcache.StateOutOfSync) && newState == string(dcache.StateOutOfSync) {
+					//
+					// New RV replaced by fix-mv, after the prev replacement RV went offline and had to be
+					// replaced by another RV.
+					//
 					continue
 				}
 
@@ -1471,6 +1467,12 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 	}
 
 	//
+	// pruneStaleEntriesFromMvMap() is called from JoinMV() which must have the clustermap lock held,
+	// which means that the clustermap epoch is odd.
+	//
+	common.Assert(cm.GetEpoch()%2 == 1, cm.GetEpoch())
+
+	//
 	// Go over all the MVs hosted on this RV as per our rvInfo, and for each of these MVs check clustermap
 	// to see if this RV is indeed a valid component RV for the MV. If not, this is a stale mvMap entry and
 	// we must remove it.
@@ -1484,14 +1486,17 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 	for _, mvName := range mvs {
 		mv := rv.getMVInfo(mvName)
 
+		common.Assert(mv.clustermapEpoch <= cm.GetEpoch(), mv.clustermapEpoch, cm.GetEpoch())
+
 		//
-		// Skip MVs which were added not earlier than mvInfoTimeout.
-		// These might be just added by a JoinMV RPC and sender might still be waiting JoinMV responses
-		// from all RVs and/or might be in the process of committing the changes to clustermap.
+		// Don't delete mvInfo entries added by this fix-mv run.
+		// Note that a single fix-mv run can add multiple MVs to the same RV, those added before
+		// this, in this same fix-mv run, will have the clustermapEpoch same as the current clustermap
+		// epoch, skip them.
 		//
-		if time.Since(mv.lmt) < mvInfoTimeout {
-			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: %s/%s (%d MVs), time since lmt (%s) < %s, skipping...",
-				rv.rvName, mvName, rv.mvCount.Load(), time.Since(mv.lmt), mvInfoTimeout)
+		if mv.clustermapEpoch == cm.GetEpoch() {
+			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: %s/%s (%d MVs), time since lmt (%s), added in this epoch , skipping...",
+				rv.rvName, mvName, rv.mvCount.Load(), time.Since(mv.lmt), mv.clustermapEpoch)
 			continue
 		}
 
@@ -1508,6 +1513,9 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 			//
 			continue
 		}
+
+		// We must be called with clustermap lock held, so epoch must not change.
+		common.Assert(cmEpoch == cm.GetEpoch(), cmEpoch, cm.GetEpoch(), mvName, rv.rvName)
 
 		//
 		// Is this RV a valid component RV for this MV as per the clustermap?
@@ -1657,6 +1665,7 @@ func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState
 	return nil
 }
 
+/*
 // Given component RVs and source and target RV names received in a StartSync/EndSync request, check their validity.
 // componentRVsInReq correspond to clientClustermapEpoch.
 // It checks the following:
@@ -1687,7 +1696,8 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 	// validate the component RVs in request against the component RVs in mvInfo.
 	// The state of the component RVs in the request is not checked for StartSync/EndSync requests.
 	//
-	err := mv.isComponentRVsValid(componentRVsInReq, clientClustermapEpoch, false /* checkState */)
+	err := mv.isComponentRVsValid(componentRVsInReq, clientClustermapEpoch, false // checkState
+	)
 	if err != nil {
 		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %v", err)
 		return err
@@ -1773,7 +1783,8 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 			// then try again with the latest clustermap from storage.
 			//
 			if !clustermapRefreshed {
-				rpcErr := mv.refreshFromClustermap(clientClustermapEpoch, false /* fromJoinOrUpdate */)
+				rpcErr := mv.refreshFromClustermap(clientClustermapEpoch, false // fromJoinOrUpdate
+		)
 				if rpcErr != nil {
 					err1 := fmt.Errorf("ChunkServiceHandler::validateComponentRVsInSync: Failed to refresh clustermap, to epoch %d [%s]",
 						clientClustermapEpoch, rpcErr.String())
@@ -1802,6 +1813,7 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 
 	return nil
 }
+*/
 
 // check the if the chunk address is valid
 // - check if the rvID is valid
@@ -3622,6 +3634,7 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	return &models.LeaveMVResponse{}, nil
 }
 
+/*
 func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
@@ -3727,7 +3740,8 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 
 	// This can call refreshFromClustermap(), and hence change mvInfo.clustermapEpoch.
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.ClustermapEpoch, req.SourceRVName,
-		req.TargetRVName, true /* isStartSync */)
+		req.TargetRVName, true // isStartSync
+    )
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err)
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
@@ -3867,7 +3881,8 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	// This can call refreshFromClustermap(), and hence change mvInfo.clustermapEpoch.
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.ClustermapEpoch, req.SourceRVName,
-		req.TargetRVName, false /* isStartSync */)
+		req.TargetRVName, false // isStartSync
+)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
@@ -3948,6 +3963,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	return &models.EndSyncResponse{}, nil
 }
+*/
 
 func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
 	// Thrift should not be calling us with nil req.
@@ -3990,6 +4006,41 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
 		//common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	//
+	// Caller will only call GetMVSize on online MV replicas, but our mvInfo may not be refreshed yet,
+	// so refresh from clustermap and even then if the MV replica is not online, ask client to refresh
+	// and retry.
+	//
+	clustermapRefreshed := false
+	for {
+		myRvInfo := mvInfo.getComponentRVNameAndState(req.RVName)
+		common.Assert(myRvInfo != nil, mvInfo.rv.rvName, mvInfo.mvName, rpc.ComponentRVsToString(mvInfo.componentRVs))
+		common.Assert(myRvInfo.Name == mvInfo.rv.rvName, myRvInfo.Name, mvInfo.rv.rvName, mvInfo.mvName)
+
+		// Happy path, MV replica is online.
+		if myRvInfo.State == string(dcache.StateOnline) {
+			break
+		}
+
+		if clustermapRefreshed {
+			errStr := fmt.Sprintf("GetMVSize() called on component RV %s/%s which is not online (is %s), epoch: %d, cepoch: %d, sepoch: %d",
+				mvInfo.rv.rvName, mvInfo.mvName, myRvInfo.State,
+				mvInfo.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch())
+			log.Info("ChunkServiceHandler::GetMVSize: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+		}
+
+		rpcErr := mvInfo.refreshFromClustermap(req.ClustermapEpoch, false /* fromJoinOrUpdate */)
+		if rpcErr != nil {
+			log.Err("ChunkServiceHandler::GetMVSize: Failed to refresh clustermap, to epoch %d [%s]",
+				req.ClustermapEpoch, rpcErr.String())
+			return nil, rpcErr
+		}
+
+		clustermapRefreshed = true
+		continue
 	}
 
 	//
