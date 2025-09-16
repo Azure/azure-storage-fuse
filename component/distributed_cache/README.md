@@ -82,7 +82,9 @@ The cluster becomes writable once at least `min-nodes` nodes (default: 3) are on
 
 ## Setup on Azure Kubernetes Service (AKS)
 
-### 1) Create an AKS Cluster
+### 1) Direct Linux Mount
+
+#### 1) Create an AKS Cluster
 
 - Create an AKS cluster using Azure CLI or Portal (ensure nodes have sufficient local SSD/NVMe for cache directories if using hostPath or ephemeral storage).
 
@@ -93,7 +95,148 @@ az aks create -g <rg-name> -n <cluster-name> --node-count 3 --generate-ssh-keys
 az aks get-credentials -g <rg-name> -n <cluster-name>
 ```
 
-### 2) Install the open-source Azure Blob CSI Driver via Helm
+#### 2) Install the blobfuse using daemonset
+
+Create a Daemonset (adjust parameters as needed):
+
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: blobfuse-installer
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: blobfuse-installer
+  template:
+    metadata:
+      labels:
+        name: blobfuse-installer
+    spec:
+      containers:
+      - name: installer
+        image: ubuntu:22.04
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -eux
+
+          # Enable Microsoft repo
+          apt-get update
+          apt-get install -y wget apt-transport-https gnupg
+          wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
+          dpkg -i packages-microsoft-prod.deb
+          apt-get update
+
+          # Remove old version if present on host
+          chroot /host apt-get remove -y blobfuse2 || true
+
+          # Install preview build in the container
+          apt-get install -y fuse3 blobfuse2-preview
+          dpkg -L blobfuse2-preview
+
+          # Copy the new blobfuse2 binary onto the host
+          cp /usr/bin/blobfuse2 /host/usr/bin/blobfuse2
+
+          # Prepare mount points and config on host
+          mkdir -p /host/mnt/blobfuseGlobal /host/mnt/blobfuseTmp /host/etc/blobfuse2
+          cp /etc/blobfuse2/blobfuse2.yaml /host/etc/blobfuse2/blobfuse2.yaml || true
+          chmod 777 /host/mnt/blobfuseGlobal /host/mnt/blobfuseTmp
+
+          echo "Mounting blobfuse2..."
+          nsenter --target 1 --mount --uts --ipc --net --pid  /usr/bin/blobfuse2 mount /mnt/blobfuseGlobal  --config-file=/etc/blobfuse2/blobfuse2.yaml -o allow_other &
+
+          #chroot /host /usr/bin/blobfuse2 mount /mnt/blobfuseGlobal --config-file=/etc/blobfuse2/blobfuse2.yaml -o allow_other &
+
+          echo "Blobfuse mounting completed, sleeping..."
+          sleep infinity
+
+        volumeMounts:
+        - name: host-mount
+          mountPath: /host/mnt
+        - name: host-bin
+          mountPath: /host/usr/bin
+        - name: host-etc
+          mountPath: /host/etc/blobfuse2
+        - name: blobfuse2-config
+          mountPath: /etc/blobfuse2
+          readOnly: true
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+      - operator: Exists
+      volumes:
+      - name: host-mount
+        hostPath:
+          path: /mnt
+      - name: host-bin
+        hostPath:
+          path: /usr/bin
+      - name: host-etc
+        hostPath:
+          path: /etc/blobfuse2
+          type: DirectoryOrCreate
+      - name: blobfuse2-config
+        secret:
+          secretName: blobfuse2-config
+```
+
+
+#### 3) Sample Deployment (Demo) using Distributed Cache
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blobfuse-consumer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: blobfuse-consumer
+  template:
+    metadata:
+      labels:
+        app: blobfuse-consumer
+    spec:
+      containers:
+      - name: app
+        image: azstortest.azurecr.io/mittas/fio:custom-3.28
+        imagePullPolicy: Always
+        command: ["/bin/bash"]
+        args: ["-c", "while true ;do sleep 50; done"]
+
+        #image: mcr.microsoft.com/ubuntu:22.04
+        #command: ["sleep", "infinity"]
+        volumeMounts:
+        - name: blobfuse-volume
+          mountPath: /mnt/blob-data   # This is where the pod will see the blobfuse data
+      volumes:
+      - name: blobfuse-volume
+        hostPath:
+          path: /mnt/blobfuseGlobal   # This must match the path used on the host
+          type: Directory
+```
+
+### 2) Through CSI Driver
+
+#### 1) Create an AKS Cluster
+
+- Create an AKS cluster using Azure CLI or Portal (ensure nodes have sufficient local SSD/NVMe for cache directories if using hostPath or ephemeral storage).
+
+Example with Azure CLI (adjust as needed):
+```bash
+az group create -n <rg-name> -l <region>
+az aks create -g <rg-name> -n <cluster-name> --node-count 3 --generate-ssh-keys
+az aks get-credentials -g <rg-name> -n <cluster-name>
+```
+
+#### 2) Install the open-source Azure Blob CSI Driver via Helm
 
 - Ensure Helm is installed: https://helm.sh/docs/intro/install/
 - Add the chart repo and install the driver with blobfuse proxy support enabled.
@@ -108,7 +251,7 @@ helm install blob-csi-driver blob-csi-driver/blob-csi-driver \
 
 Note: Use a tested chart version in your environment. Newer "latest" versions may change behavior.
 
-### 3) Verify CSI Driver Pods
+#### 3) Verify CSI Driver Pods
 
 ```bash
 kubectl --namespace=kube-system get pods --selector="app.kubernetes.io/name=blob-csi-driver" --watch
@@ -118,7 +261,7 @@ kubectl --namespace=kube-system get pods --selector="app.kubernetes.io/name=blob
 
 > Next steps (not shown here): create a `StorageClass` and `PersistentVolumeClaim` referencing the Azure Storage account/container, and deploy a DaemonSet/Deployment that mounts the volume and runs Blobfuse2 with the distributed cache config per node.
 
-### 4) Create StorageClass and PVC
+#### 4) Create StorageClass and PVC
 
 Create a StorageClass (adjust parameters as needed):
 
@@ -164,7 +307,7 @@ spec:
       storage: 100Gi
 ```
 
-### 5) Sample Deployment (Demo) using Distributed Cache
+#### 5) Sample Deployment (Demo) using Distributed Cache
 
 The example below demonstrates a simple Deployment that:
 - Mounts a PVC at `/mnt/blob` (backed by the Azure Blob CSI driver)
@@ -208,7 +351,7 @@ Notes:
 ---
 
 
-### 4.1) Create a PersistentVolume (optional, static PV)
+#### 4.1) Create a PersistentVolume (optional, static PV)
 
 If you prefer a static PV (instead of only dynamic provisioning via StorageClass), create a PV referencing the Azure Blob CSI driver and Blobfuse options:
 
