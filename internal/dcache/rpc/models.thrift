@@ -57,10 +57,11 @@ struct PutChunkRequest {
     1: string senderNodeID,
     2: Chunk chunk,
     3: i64 length,
-    4: string syncID,
-    5: list<RVNameAndState> componentRV, // used to validate the component RV for the MV
-    6: bool maybeOverwrite
-    7: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
+    4: string syncID, // only valid for PutChunk(sync) calls, syncID of the ongoing sync operation
+    5: string sourceRVName, // only valid for PutChunk(sync) calls, source RV from which data is being synced
+    6: list<RVNameAndState> componentRV, // used to validate the component RV for the MV
+    7: bool maybeOverwrite
+    8: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct PutChunkResponse {

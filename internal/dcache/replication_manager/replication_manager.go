@@ -1391,11 +1391,11 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int
 }
 
 // syncComponentRV is used for syncing the target RV from the lowest index online RV (or source RV).
-// It sends the StartSync() RPC call to both source and target nodes. The source node is the one
-// hosting the lowest index online RV and the target node is the one hosting the target RV.
-// It then updates the state from "outofsync" to "syncing" for the target RV and MV (if all RVs are syncing).
-// After this, a sync job is created which is responsible for copying the out of sync chunks from the source RV
-// to the target RV, and also sending the EndSync() RPC call to both source and target nodes.
+// It sets the target RV state to "syncing" in the global clustermap and then starts a sync job that
+// copies all chunks that were written to the MV before this point, from the source RV to the target RV.
+// When the first PutChunk(sync) call reaches the server, the server will note that the target RV is not
+// in syncing state, so it'll refresh its mvInfo from the clustermap. Since we have set the target RV state
+// as syncing, the server will now accept the PutChunk(sync) calls.
 func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize int64,
 	componentRVs []*models.RVNameAndState, lastClusterMapEpoch int64) {
 	//
@@ -1417,60 +1417,11 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	targetNodeID := getNodeIDFromRVName(targetRVName)
 	common.Assert(common.IsValidUUID(targetNodeID))
 
-	// Create StartSyncRequest. Same request will be sent to both source and target nodes.
-	startSyncReq := &models.StartSyncRequest{
-		MV:              mvName,
-		SourceRVName:    lioRV,
-		TargetRVName:    targetRVName,
-		ComponentRV:     componentRVs,
-		SyncSize:        syncSize,
-		ClustermapEpoch: lastClusterMapEpoch,
-	}
-
-	//
-	// Send StartSync() RPC call to the source and target RVs.
-	//
-	// TODO: Send StartSync() to all the component RVs, since it changes the RV state from outofsync
-	//       to syncing, every component RV needs to know the change, not just the source and target.
-	//       This will matter when an MV starts syncing during client write.
-	//
-	// TODO: If we encounter some failure before we send EndSync, we need to undo this StartSync?
-	//
-	// TODO: (sourav) If StartSync fails it could be because the target RV is offline, in that case
-	//       we should mark the state as inband-offline, else we might get stuck in a loop as StartSync
-	//       will keep failing with NeedToRefreshClusterMap error.
-	//       THIS IS IMPORTANT!
-	//
-	srcSyncId, err := sendStartSyncRequest(lioRV, sourceNodeID, startSyncReq)
-	if err != nil {
-		log.Err("ReplicationManager::syncComponentRV: %v", err)
-		return
-	}
-
-	dstSyncId, err := sendStartSyncRequest(targetRVName, targetNodeID, startSyncReq)
-	if err != nil {
-		log.Err("ReplicationManager::syncComponentRV: %v", err)
-		return
-	}
-
-	//
-	// StartSync causes mvInfo state to be changed to "syncing" but server can purge it after GetMvInfoTimeout()
-	// time if the state change is not committed in the clustermap. If we have spent more than that, we have to
-	// abort the sync.
-	//
-	if time.Since(startTime) > rpc_server.GetMvInfoTimeout() {
-		errStr := fmt.Sprintf("StartSync for %s/%s (%s, %s) took longer than %s, aborting sync",
-			targetRVName, mvName, srcSyncId, dstSyncId, rpc_server.GetMvInfoTimeout())
-		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
-		common.Assert(false, errStr)
-		return
-	}
-
 	//
 	// Update the destination RV from outofsync to syncing state. The cluster manager will take care of
 	// updating the MV state to syncing if all component RVs have either online or syncing state.
 	//
-	err = cm.UpdateComponentRVState(mvName, targetRVName, dcache.StateSyncing)
+	err := cm.UpdateComponentRVState(mvName, targetRVName, dcache.StateSyncing)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to update component RV %s/%s state to syncing [%v]",
 			targetRVName, mvName, err)
@@ -1480,10 +1431,6 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 
 	// UpdateComponentRVState() must result in a clustermap update.
 	common.Assert(cm.GetEpoch() > lastClusterMapEpoch, cm.GetEpoch(), lastClusterMapEpoch)
-
-	common.Assert(time.Since(startTime) < rpc_server.GetMvInfoTimeout(),
-		time.Since(startTime), rpc_server.GetMvInfoTimeout(),
-		lioRV, targetRVName, mvName, srcSyncId, dstSyncId)
 
 	//
 	// Now that the target RV state is updated to syncing from outofsync, the WriteMV() workflow will
@@ -1504,9 +1451,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	syncJob := &syncJob{
 		mvName:          mvName,
 		srcRVName:       lioRV,
-		srcSyncID:       srcSyncId,
 		destRVName:      targetRVName,
-		destSyncID:      dstSyncId,
 		syncSize:        syncSize,
 		componentRVs:    componentRVs,
 		syncStartTime:   syncStartTime,
@@ -1517,7 +1462,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
 
 	//
-	// Copy all chunks from source to target replica followed by EndSync to both.
+	// Copy all chunks from source to target replica.
 	//
 	err = runSyncJob(syncJob)
 	if err != nil {
@@ -1586,10 +1531,6 @@ func runSyncJob(job *syncJob) error {
 	common.Assert((job.srcRVName != job.destRVName) &&
 		cm.IsValidRVName(job.srcRVName) &&
 		cm.IsValidRVName(job.destRVName), job.srcRVName, job.destRVName)
-	common.Assert((job.srcSyncID != job.destSyncID &&
-		common.IsValidUUID(job.srcSyncID) &&
-		common.IsValidUUID(job.destSyncID)),
-		job.srcSyncID, job.destSyncID)
 
 	// Tag the time when copy started.
 	job.copyStartedAt = time.Now()
@@ -1598,79 +1539,14 @@ func runSyncJob(job *syncJob) error {
 	if err != nil {
 		err = fmt.Errorf("failed to copy out of sync chunks for job %s [%v]", job.toString(), err)
 		log.Err("ReplicationManager::runSyncJob: %v", err)
-		return err
-	}
 
-	// Call EndSync() RPC call to the source node which is hosting the source RV.
-	srcNodeID := getNodeIDFromRVName(job.srcRVName)
-	common.Assert(common.IsValidUUID(srcNodeID))
-
-	endSyncReq := &models.EndSyncRequest{
-		SyncID:          job.srcSyncID,
-		MV:              job.mvName,
-		SourceRVName:    job.srcRVName,
-		TargetRVName:    job.destRVName,
-		ComponentRV:     job.componentRVs,
-		SyncSize:        job.syncSize,
-		ClustermapEpoch: job.clustermapEpoch, // ComponentRVs corresponds to this epoch.
-	}
-
-	//
-	// TODO: Send EndSync to all the component RVs, since it changes the RV state from syncing
-	//       to online, every component RV needs to know the change, not just the source and target.
-	//       This will matter when an MV starts syncing during client write.
-	//
-	err = sendEndSyncRequest(job.srcRVName, srcNodeID, endSyncReq)
-	if err != nil {
-		// TODO: We need to check the error extensively as we do for the dest RV below.
-		err = fmt.Errorf("sendEndSyncRequest failed for job %s [%v]", job.toString(), err)
-		log.Err("ReplicationManager::runSyncJob: %v", err)
-		return err
-	}
-
-	// Call EndSync() RPC call to the target node which is hosting the target RV.
-	destNodeID := getNodeIDFromRVName(job.destRVName)
-	common.Assert(common.IsValidUUID(destNodeID))
-
-	endSyncReq.SyncID = job.destSyncID
-	err = sendEndSyncRequest(job.destRVName, destNodeID, endSyncReq)
-	if err != nil {
-		err = fmt.Errorf("sendEndSyncRequest failed for job %s [%v]", job.toString(), err)
-		log.Err("ReplicationManager::runSyncJob: %v", err)
-
-		rpcErr := rpc.GetRPCResponseError(err)
-		if rpcErr == nil {
-			//
-			// This error means that the node is not reachable.
-			//
-			// We should now run the inband RV offline detection workflow, basically we
-			// call the clustermap's UpdateComponentRVState() API to mark this
-			// component RV as inband-offline and force the fix-mv workflow which will finally
-			// trigger the resync-mv workflow.
-			//
-			log.Err("ReplicationManager::runSyncJob: Failed to reach node %s for job %s [%v]",
-				destNodeID, job.toString(), err)
-
-			errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline)
-			if errRV != nil {
-				errStr := fmt.Sprintf("Failed to mark %s/%s as inband-offline for job %s [%v]",
-					job.destRVName, job.mvName, job.toString(), errRV)
-				log.Err("ReplicationManager::runSyncJob: %s", errStr)
-			}
-		} else {
-			//
-			// Update the destination RV from syncing to outofsync state. The cluster manager will
-			// take care of updating the MV state to degraded.
-			// The periodic resyncMVs() will take care of resyncing this outofsync RV in next iteration.
-			//
-			errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOutOfSync)
-			if errRV != nil {
-				errStr := fmt.Sprintf("Failed to mark %s/%s as outofsync for job %s [%v]",
-					job.destRVName, job.mvName, job.toString(), errRV)
-				log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-			}
+		// Sync failed, mark the target RV as inband-offline, to reattempt sync with a fresh target RV.
+		errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline)
+		if errRV != nil {
+			errStr := fmt.Sprintf("Failed to mark %s/%s as inband-offline for job %s [%v]",
+				job.destRVName, job.mvName, job.toString(), errRV)
+			log.Err("ReplicationManager::runSyncJob: %s", errStr)
 		}
-
 		return err
 	}
 
@@ -1832,7 +1708,8 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			},
 			Length: int64(len(srcData)),
 			// this is sync write RPC call, so the sync ID should be that of the target RV.
-			SyncID:          job.destSyncID,
+			SyncID:          "<TBD>",
+			SourceRVName:    job.srcRVName,
 			ComponentRV:     job.componentRVs,
 			ClustermapEpoch: job.clustermapEpoch,
 		}
@@ -1974,6 +1851,7 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 
 	var resp *models.EndSyncResponse
 	var err error
+
 	for i := 0; i < 5; i++ {
 		resp, err = rpc_client.EndSync(ctx, targetNodeID, req)
 		_ = resp

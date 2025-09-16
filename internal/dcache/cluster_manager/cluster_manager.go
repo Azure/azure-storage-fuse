@@ -1449,7 +1449,7 @@ func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, 
 	// When isStuck is true, we are trying to override a stale/stuck clustermap update, so epoch must be odd.
 	common.Assert(!isStuck || (oldEpoch%2 == 1), oldEpoch, isStuck, *etag)
 
-	// Otherwise and odd epoch implies clustermap is being updated by some other node/thread, we give up.
+	// Otherwise an odd epoch implies clustermap is being updated by some other node/thread, we give up.
 	if !isStuck && (oldEpoch%2 == 1) {
 		err := fmt.Errorf("ClusterManager::startClusterMapUpdate: ClusterMap being updated, epoch is odd (%d): %w",
 			oldEpoch, cm.ClusterMapBeingUpdated)
