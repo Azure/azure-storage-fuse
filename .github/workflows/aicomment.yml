@@ -1,4 +1,4 @@
-name: Ask DeepWiki on Issue
+name: Auto Comment Issue with AI
 
 on:
   issues:
