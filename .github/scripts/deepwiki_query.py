@@ -79,5 +79,6 @@ if __name__ == "__main__":
     repo_arg = sys.argv[1]
     issue_title = sys.argv[2]
     issue_body = sys.argv[3]
+    output_file_path = sys.argv[4]
     
-    asyncio.run(main(repo_arg, issue_title, issue_body))
+    asyncio.run(main(repo_arg, issue_title, issue_body, output_file_path))
