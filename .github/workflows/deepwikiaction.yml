@@ -32,7 +32,7 @@ jobs:
         ISSUE_BODY: ${{ github.event.issue.body }}
       run: |
         # Run the python script and capture its output to a file
-        python .github/scripts/deepwiki_query.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" > deepwiki_full_response.md
+        python .github/scripts/deepwiki_query.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" "${{ env.ISSUE_BODY }}" > deepwiki_full_response.md
 
     - name: Print DeepWiki response
       run: cat deepwiki_full_response.md
