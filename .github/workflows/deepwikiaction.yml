@@ -20,7 +20,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install mcp httpx python-dotenv requests openai
+        pip install mcp httpx python-dotenv requests openai transformers torch
 
     - name: Run DeepWiki Query
       id: deepwiki-step
@@ -32,11 +32,22 @@ jobs:
         ISSUE_BODY: ${{ github.event.issue.body }}
       run: |
         # Run the python script and capture its output to a file
-        python .github/scripts/ask_question.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" > deepwiki_response.md
+        python .github/scripts/deepwiki_query.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" "${{ env.ISSUE_BODY }}" > deepwiki_full_response.md
+
+    - name: Print DeepWiki response
+      run: cat deepwiki_full_response.md
+
+    - name: Summarize DeepWiki Response with AI
+      id: summarization-step
+      run: |
+        python .github/scripts/ai_summarize.py deepwiki_full_response.md response_comment.md
+
+    - name: Print summarized response
+      run: cat response_comment.md
 
     - name: Post Comment to Issue
       uses: peter-evans/create-or-update-comment@v4
       with:
         issue-number: ${{ github.event.issue.number }}
-        body-path: 'deepwiki_response.md'
+        body-path: 'response_comment.md'
         token: ${{ secrets.GITHUB_TOKEN }}
