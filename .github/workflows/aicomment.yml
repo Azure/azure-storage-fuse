@@ -5,7 +5,7 @@ on:
     types: [opened]
 
 jobs:
-  deepwiki-query:
+  ai-comment-on-issue:
     runs-on: ubuntu-latest
 
     permissions:
