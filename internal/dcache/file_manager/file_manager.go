@@ -255,48 +255,14 @@ func (file *DcacheFile) ReadPartialFile(offset int64, buf *[]byte) (bytesRead in
 		file.FileMetadata.Filename, offset, len(*buf))
 
 	maxReadChunkIdx := getChunkIdxFromFileOffset(offset+int64(len(*buf))-1, file.FileMetadata.FileLayout.ChunkSize)
-	common.Assert(file.CacheWarmup != nil)
+	common.Assert(file.CacheWarmup != nil, file.FileMetadata.Filename)
 	common.Assert(file.CacheWarmup.Size >= 0, file.CacheWarmup.Size)
 	common.Assert(maxReadChunkIdx < file.CacheWarmup.SuccessfulChunks.Load(), maxReadChunkIdx,
 		file.CacheWarmup.SuccessfulChunks.Load(), file.FileMetadata.Filename)
 
-	endOffset := min(offset+int64(len(*buf)), file.CacheWarmup.Size)
+	warmDcFile := file.CacheWarmup.warmDcFile
 
-	for offset < endOffset {
-		chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-		readSize := min(endOffset-offset, file.FileMetadata.FileLayout.ChunkSize-chunkOffset)
-
-		common.Assert(chunkIdx <= maxReadChunkIdx, chunkIdx, maxReadChunkIdx,
-			file.FileMetadata.Filename)
-
-		chunk, err := file.readChunk(offset, int64(len(*buf)), true /* sync */)
-		if err != nil {
-			return bytesRead, err
-		}
-
-		common.Assert(chunk.UpToDate.Load(), chunk.Idx, file.FileMetadata.Filename)
-		common.Assert((chunk.Offset+chunk.Len) <= file.FileMetadata.FileLayout.ChunkSize,
-			chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
-		common.Assert((chunkOffset+readSize) <= (chunk.Offset+chunk.Len),
-			chunkOffset, readSize, chunk.Offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
-		common.Assert(chunk.RefCount.Load() > 0, chunk.Idx, chunk.RefCount.Load())
-
-		copied := copy((*buf)[bytesRead:], chunk.Buf[(chunkOffset-chunk.Offset):chunk.Len])
-
-		common.Assert(copied > 0, chunkOffset,
-			bytesRead, chunk.Offset, chunk.Len, len(*buf), chunk.Idx, file.FileMetadata.Filename)
-
-		offset += int64(copied)
-		bytesRead += copied
-
-		// Release our refcount on the chunk. If this is the last reference, it will free the chunk memory.
-		file.releaseChunk(chunk)
-	}
-	common.Assert(offset == endOffset, offset, endOffset)
-	common.Assert(offset <= file.CacheWarmup.Size, offset, file.CacheWarmup.Size)
-
-	return bytesRead, nil
+	return warmDcFile.ReadFile(offset, buf)
 }
 
 // Reads the file data from the given offset and length to buf[].
@@ -308,20 +274,20 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// Read must only be allowed on a properly finalized file, for which size must not be -1.
-	common.Assert(int64(file.FileMetadata.Size) >= 0)
+	common.Assert(int64(file.FileMetadata.Size) >= 0 || file.CacheWarmup.Size > 0)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
 	common.Assert(len(*buf) <= common.MbToBytes, len(*buf))
 	// Files opened for reading must have a valid read patterm tracker.
 	common.Assert(file.RPT != nil, file.FileMetadata.Filename)
 
-	if offset >= file.FileMetadata.Size {
+	if file.FileMetadata.Size >= 0 && offset >= file.FileMetadata.Size {
 		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d",
 			file.FileMetadata.Filename, offset, len(*buf), file.FileMetadata.Size)
 		return 0, io.EOF
 	}
 
 	// endOffset is 1 + offset of the last byte to be read, but not more than file size.
-	endOffset := min(offset+int64(len(*buf)), file.FileMetadata.Size)
+	endOffset := min(offset+int64(len(*buf)), file.getFileSize())
 	// Catch wraparound.
 	common.Assert(endOffset >= offset, endOffset, offset)
 
@@ -485,7 +451,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	// Must exactly read what's determined above (what user asks, capped by file size).
 	common.Assert(offset == endOffset, offset, endOffset)
 	// Must not read beyond eof.
-	common.Assert(offset <= file.FileMetadata.Size, offset, file.FileMetadata.Size)
+	// common.Assert(offset <= file.FileMetadata.Size, offset, file.FileMetadata.Size)
 	// Must never read more than the length asked.
 	common.Assert(bufOffset <= len(*buf), bufOffset, len(*buf))
 
@@ -1380,7 +1346,7 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		// Start readahead after the last chunk readahead by prev read calls or after this chunk.
 		readAheadStartChunkIdx := max(file.lastReadaheadChunkIdx.Load()+1, chunkIdx+1)
 		readAheadEndChunkIdx := min(readAheadStartChunkIdx+readAheadCount,
-			getChunkIdxFromFileOffset(file.FileMetadata.Size-1, file.FileMetadata.FileLayout.ChunkSize))
+			getChunkIdxFromFileOffset(file.getFileSize()-1, file.FileMetadata.FileLayout.ChunkSize))
 		common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
 
 		//
@@ -1402,17 +1368,22 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		file.chunkLock.Unlock()
 
 		for i := readAheadStartChunkIdx; i < readAheadEndChunkIdx; i++ {
-			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0, false /* sync */)
+
+			if ok := file.isReadAheadOkInWarmup(i); ok {
+				_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0, false /* sync */)
+
+				if err != nil {
+					// Don't fail the read because readahead failed.
+					log.Warn("DistributedCache::readChunkWithReadAhead: file: %s, chunkIdx: %d, readahead failed: %v",
+						file.FileMetadata.Filename, i, err)
+				}
+			}
 
 			common.Assert(file.readaheadToBeIssued.Load() > 0,
 				file.readaheadToBeIssued.Load(), file.FileMetadata.Filename)
 
 			file.readaheadToBeIssued.Add(-1)
-			if err != nil {
-				// Don't fail the read because readahead failed.
-				log.Warn("DistributedCache::readChunkWithReadAhead: file: %s, chunkIdx: %d, readahead failed: %v",
-					file.FileMetadata.Filename, i, err)
-			}
+
 		}
 	}
 

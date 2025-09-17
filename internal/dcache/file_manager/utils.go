@@ -83,10 +83,10 @@ func getChunkEndOffset(chunkIdx, chunkSize int64) int64 {
 // For all chunks except the last chunk, this will be equal to chunkSize.
 func getChunkSize(offset int64, file *DcacheFile) int64 {
 	// getChunkSize() must be called for a finalized file which will have size >= 0.
-	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
+	// common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
 
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-	size := min(file.FileMetadata.Size-
+	size := min(file.getFileSize()-
 		getChunkStartOffset(chunkIdx, file.FileMetadata.FileLayout.ChunkSize),
 		file.FileMetadata.FileLayout.ChunkSize)
 
@@ -496,6 +496,76 @@ loop:
 	chunk.RefCount.Store(1)
 
 	return chunk, nil
+}
+
+func (dcFile *DcacheFile) NewCacheWarmup(size int64, maxBackgroundCacheWarmupChunks int) *cacheWarmup {
+	numChunks := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
+	maxChunks := (size + numChunks - 1) / numChunks
+
+	numInts := int((maxChunks + 63) / 64)
+
+	cw := &cacheWarmup{
+		Size:             size,
+		MaxChunks:        maxChunks,
+		SuccessfulChunks: atomic.Int64{},
+		Bitmap:           make([]uint64, numInts),
+		SuccessCh:        make(chan ChunkWarmupStatus, maxBackgroundCacheWarmupChunks),
+	}
+
+	//
+	// This DcacheFile will be used for reading, hence it needs a read pattern tracker.
+	//
+	warmDcFile := &DcacheFile{
+		FileMetadata: dcFile.FileMetadata,
+		attr:         dcFile.attr,
+		RPT:          NewRPTracker(dcFile.FileMetadata.Filename),
+		StagedChunks: make(map[int64]*StagedChunk),
+		CacheWarmup:  cw,
+	}
+
+	//
+	// freeChunks semaphore is used to limit StagedChunks map to numReadAheadChunks plus
+	// the window size supported by read pattern tracker. See NewRPTracker().
+	// DO NOT make it very low else most IOs will have to wait for chunk reclaim.
+	//
+	warmDcFile.initFreeChunks(fileIOMgr.numReadAheadChunks + 300)
+	warmDcFile.lastReadaheadChunkIdx.Store(-1)
+
+	cw.warmDcFile = warmDcFile
+
+	dcFile.CacheWarmup = cw
+
+	return cw
+}
+
+func (dcFile *DcacheFile) getFileSize() int64 {
+	if dcFile.FileMetadata.Size >= 0 {
+		return dcFile.FileMetadata.Size
+	}
+
+	// File size is not known yet, file is being written by CacheWarmup.
+	return dcFile.CacheWarmup.Size
+}
+
+// This function is no op if CacheWarmup is nil.
+func (dcFile *DcacheFile) isReadAheadOkInWarmup(chunkIdx int64) bool {
+	if dcFile.CacheWarmup == nil {
+		return true
+	}
+
+	common.Assert(chunkIdx < dcFile.CacheWarmup.MaxChunks, chunkIdx, dcFile.CacheWarmup.MaxChunks)
+
+	if chunkIdx < dcFile.CacheWarmup.MaxChunks {
+		return false
+	}
+
+	// Allow read-ahead for the chunk only if it is already uploaded to the dcache.
+
+	if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); !ok {
+		return false
+	}
+
+	return true
 }
 
 // Silence unused import errors for release builds.
