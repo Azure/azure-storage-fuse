@@ -91,8 +91,14 @@ if __name__ == "__main__":
     with open(input_file_path, 'r', encoding='utf-8') as f:
         full_text = f.read()
     
-    summary = summarize_text_with_llm(full_text)
-    
+    resp_len = len(full_text)
+    if resp_len < 65000:
+        # Responce was smaller so just use the full text
+        summary = full_text
+    else:
+        # Use the LLM to summarize the text
+        summary = summarize_text_with_llm(full_text)
+        
     # Add the disclaimer
     final_comment = (
         "### AI Generated Response\n\n"

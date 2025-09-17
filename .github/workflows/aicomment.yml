@@ -27,6 +27,7 @@ jobs:
 
     - name: Install dependencies
       run: |
+        apt install jq
         python -m pip install --upgrade pip
         pip install mcp httpx python-dotenv requests openai transformers torch
 
@@ -36,8 +37,8 @@ jobs:
         # The repository to be queried by DeepWiki. Update this if needed.
         TARGET_REPO: "Azure/azure-storage-fuse"
         # Combine title and body to form a comprehensive question
-        ISSUE_TITLE: ${{ github.event.issue.title }}
-        ISSUE_BODY: ${{ github.event.issue.body }}
+        ISSUE_TITLE: $(jq -r '.issue.title // .discussion.title' "${{ github.event_path }}")
+        ISSUE_BODY: $(jq -r '.issue.body // .discussion.body' "${{ github.event_path }}")
       run: |
         # Run the python script and capture its output to a file
         python .github/scripts/deepwiki_query.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" "${{ env.ISSUE_BODY }}" > deepwiki_full_response.md
