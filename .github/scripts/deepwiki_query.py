@@ -46,7 +46,7 @@ class MCPClient:
         )
         
         # Join the list of content parts into a single string
-        return " ".join([str(part) for part in result.content])
+        return result.content
 
 async def main(repo, title, body):
     client = MCPClient()
