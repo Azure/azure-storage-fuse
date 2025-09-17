@@ -55,7 +55,6 @@ import (
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
-	//gouuid "github.com/google/uuid"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -117,8 +116,9 @@ type rvInfo struct {
 	rwMutexDbgFlag atomic.Bool
 
 	// reserved space for the RV is the space reserved for chunks which will be synced
-	// to the RV after the StartSync() call. This is used to calculate the available space
-	// in the RV after subtracting the reserved space from the actual disk space available.
+	// to the RV as a result of sync for all MVs hosted by this RV. This is used to calculate
+	// the available space in the RV after subtracting the reserved space from the actual disk
+	// space available.
 	// JoinMV() will increment this space indicating that new MV is being added to this RV.
 	// On the other hand, PutChunk() sync RPC call will decrement this space indicating
 	// that the chunk has been written to the RV.
@@ -200,29 +200,31 @@ type mvInfo struct {
 	// is corrected once sync completes.
 	reservedSpace atomic.Int64
 
-	// Two MV states are interesting from an IO standpoint.
-	// An online MV is the happy case where all RVs are online and sync'ed. In this state there won't be any
-	// resync Writes, and client Writes if any will be replicated to all the RVs, each of them storing the chunks
-	// in their respective mv folders. This is the normal case.
-	// A syncing MV is interesting. In this case there are resync writes going and possibly client writes too.
-	// The short period when an MV moves in and out of syncing state is important. We need to quiesce any IOs
-	// to make sure we don't miss resyncing any chunk.
-	// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
-	// resume IOs once the MV is safely moved into the new state.
-	//
-	// opMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or
-	// sync (start sync or end sync) is in progress at a time.
-	// IO operations like get, put or remove chunk takes read lock on opMutex, and sync operations
-	// like StartSync or EndSync takes write lock on it.
-	// This ensures that the sync operation waits for the ongoing IO operations to complete.
-	// It also makes sure that if start/end sync is waiting for the write lock,
-	// no new IO operations are started till the start/end sync gets the write lock and completes.
-	// This ensures that a continuous flow of IOs will not delay the start/end sync indefinitely.
-	opMutex sync.RWMutex
+	/*
+		// Two MV states are interesting from an IO standpoint.
+		// An online MV is the happy case where all RVs are online and sync'ed. In this state there won't be any
+		// resync Writes, and client Writes if any will be replicated to all the RVs, each of them storing the chunks
+		// in their respective mv folders. This is the normal case.
+		// A syncing MV is interesting. In this case there are resync writes going and possibly client writes too.
+		// The short period when an MV moves in and out of syncing state is important. We need to quiesce any IOs
+		// to make sure we don't miss resyncing any chunk.
+		// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
+		// resume IOs once the MV is safely moved into the new state.
+		//
+		// opMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or
+		// sync (start sync or end sync) is in progress at a time.
+		// IO operations like get, put or remove chunk takes read lock on opMutex, and sync operations
+		// like StartSync or EndSync takes write lock on it.
+		// This ensures that the sync operation waits for the ongoing IO operations to complete.
+		// It also makes sure that if start/end sync is waiting for the write lock,
+		// no new IO operations are started till the start/end sync gets the write lock and completes.
+		// This ensures that a continuous flow of IOs will not delay the start/end sync indefinitely.
+		opMutex sync.RWMutex
 
-	// Companion counter to opMutex for performing various locking related assertions.
-	// [DEBUG ONLY]
-	opMutexDbgCntr atomic.Int64
+		// Companion counter to opMutex for performing various locking related assertions.
+		// [DEBUG ONLY]
+		opMutexDbgCntr atomic.Int64
+	*/
 
 	/*
 		// Zero or more sync jobs this MV Replica is participating in.
@@ -1548,6 +1550,7 @@ func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	common.Assert(mv.totalChunkBytes.Load() >= 0, mv.mvName, mv.totalChunkBytes.Load(), bytes)
 }
 
+/*
 // acquire read lock on the opMutex.
 // This will allow other ongoing chunk IO operations to proceed in parallel
 // but will block sync operations like StartSync or EndSync,
@@ -1600,6 +1603,7 @@ func (mv *mvInfo) isSyncOpReadLocked() bool {
 func (mv *mvInfo) isSyncOpWriteLocked() bool {
 	return mv.opMutexDbgCntr.Load() == -12345
 }
+*/
 
 // Check if the component RVs in the request is valid for the given MV replica.
 // componentRVsInReq corresponds to clientClustermapEpoch.
@@ -2187,11 +2191,13 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		break
 	}
 
-	// acquire read lock on the opMutex for this MV
-	mvInfo.acquireSyncOpReadLock()
+	/*
+		// acquire read lock on the opMutex for this MV
+		mvInfo.acquireSyncOpReadLock()
 
-	// release the read lock on the opMutex for this MV when the function returns
-	defer mvInfo.releaseSyncOpReadLock()
+		// release the read lock on the opMutex for this MV when the function returns
+		defer mvInfo.releaseSyncOpReadLock()
+	*/
 
 	// TODO: check if lock is needed for GetChunk
 	// check if the chunk file is being updated in parallel by some other thread
@@ -2554,7 +2560,7 @@ cleanup_chunk_file_and_fail:
 // other.
 
 func (mv *mvInfo) isClientPutChunkRequestCompatible(req *models.PutChunkRequest) error {
-	common.Assert(mv.isSyncOpReadLocked())
+	//common.Assert(mv.isSyncOpReadLocked())
 
 	log.Debug("ChunkServiceHandler::isClientPutChunkRequestCompatible: Request: %v, mv: {%s/%s, componentRVs: %s}, epoch: %d, cepoch: %d, sepoch: %d",
 		rpc.PutChunkRequestToString(req), mv.rv.rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs),
@@ -2620,15 +2626,6 @@ refreshFromClustermapAndRetry:
 		//
 		// PutChunk(sync) - Make sure the source and target MV replica match.
 		//
-		// Q: Why refreshFromClustermap() cannot help this?
-		// A: PutChunk(sync) requests can only be sent after a successful StartSync response from
-		//    us and when we would have responded we would have added the syncJob.
-		//    Put another way, clustermap cannot dictate what sync jobs are active with us, so if
-		//    we don't have the sync job in our mv, refreshing from clustermap won't change that.
-		//    The only way to add/remove sync jobs is through StartSync/EndSync RPCs, so we must be in
-		//    the loop.
-		//
-		// Component RV details from mv.
 		sourceOK := true
 		targetOK := true
 		errStr := ""
@@ -2728,12 +2725,14 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	//
 	updateInbandOfflineToOffline(&req.ComponentRV)
 
-	//
-	// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
-	// we are accessing it.
-	//
-	mvInfo.acquireSyncOpReadLock()
-	defer mvInfo.releaseSyncOpReadLock()
+	/*
+		//
+		// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
+		// we are accessing it.
+		//
+		mvInfo.acquireSyncOpReadLock()
+		defer mvInfo.releaseSyncOpReadLock()
+	*/
 
 	//
 	// Do not allow incompatible PutChunk requests from client.
@@ -3163,13 +3162,15 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		return nil, err
 	}
 
-	//
-	// Acquire read lock on the opMutex for this MV to prevent sync from starting for this MV while
-	// we are deleting file chunks to avoid situations where a chunk is read by the sync thread but before
-	// it can read and copy, it's deleted.
-	//
-	mvInfo.acquireSyncOpReadLock()
-	defer mvInfo.releaseSyncOpReadLock()
+	/*
+		//
+		// Acquire read lock on the opMutex for this MV to prevent sync from starting for this MV while
+		// we are deleting file chunks to avoid situations where a chunk is read by the sync thread but before
+		// it can read and copy, it's deleted.
+		//
+		mvInfo.acquireSyncOpReadLock()
+		defer mvInfo.releaseSyncOpReadLock()
+	*/
 
 	cacheDir := rvInfo.cacheDir
 	numChunksDeleted := int64(0)
