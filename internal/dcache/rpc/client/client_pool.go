@@ -861,6 +861,20 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	numConnDeleted := 0
 	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
 
+	//
+	// Node client pool may not be present for the node in case of PutChunkDC timeout error,
+	// where we first reset the client, which closes the client and then creates a new client.
+	// If the new client creation fails, we come here to delete all clients. Meanwhile some other thread
+	// may have closed all the clients for the target node and deleted the node client pool.
+	// So, we assert here that the client passed in the argument is closed.
+	//
+	if ncPool == nil {
+		log.Debug("clientPool::deleteAllRPCClients: No client pool found for node %s at %s, nothing to delete",
+			client.nodeID, client.nodeAddress)
+		common.Assert(client.isClosed, client.nodeID, client.nodeAddress)
+		return
+	}
+
 	// client is allocated from the pool, so pool must exist.
 	common.Assert(ncPool != nil, client.nodeID)
 	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
@@ -884,11 +898,23 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 		client.nodeID, client.nodeAddress, client, ncPool.numActive.Load(), numClients, cp.maxPerNode)
 
 	//
-	// Delete this client. This closes this client and removes it from the pool.
-	// It can only fail if Thrift fails to close the connection.
-	// This should technically not happen, so we assert.
+	// In PutChunkDC fails with timeout, we first reset the client to the target node, which first closes
+	// the client and then creates a new client. If the new client creation fails, we delete all the clients
+	// to the target node, which again tries to close the same client which was already closed by the reset
+	// workflow. So, to prevent this, we check if the client is already closed.
 	//
-	cp.deleteRPCClient(client)
+	if client.isClosed {
+		log.Debug("clientPool::deleteAllRPCClients: client (%p) to %s node %s is already closed",
+			client, client.nodeAddress, client.nodeID)
+	} else {
+		//
+		// Delete this client. This closes this client and removes it from the pool.
+		// It can only fail if Thrift fails to close the connection.
+		// This should technically not happen, so we assert.
+		//
+		cp.deleteRPCClient(client)
+	}
+
 	numConnDeleted++
 
 	//
