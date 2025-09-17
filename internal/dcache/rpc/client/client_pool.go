@@ -864,8 +864,9 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	//
 	// Node client pool may not be present for the node in case of PutChunkDC timeout error,
 	// where we first reset the client, which closes the client and then creates a new client.
-	// If the new client creation fails, we come here to delete all clients. Meanwhile some other thread
-	// may have closed all the clients for the target node and deleted the node client pool.
+	// If the new client creation fails, we come here to delete all clients. Meanwhile after
+	// reset has released the node level lock, some other thread may have closed all the clients
+	// for the target node and deleted the node client pool.
 	// So, we assert here that the client passed in the argument is closed.
 	//
 	if ncPool == nil {
