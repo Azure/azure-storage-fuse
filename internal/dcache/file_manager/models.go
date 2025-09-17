@@ -36,9 +36,6 @@ package filemanager
 import (
 	"sync/atomic"
 	"time"
-
-	"github.com/Azure/azure-storage-fuse/v2/common"
-	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
 type StagedChunk struct {
@@ -94,21 +91,9 @@ type cacheWarmup struct {
 	// channel for capturing upload status of multiple chunks.
 	// currently used to limit number of parallel uploads to 16.
 	SuccessCh chan ChunkWarmupStatus
-}
 
-func NewCacheWarmup(size int64, maxBackgroundCacheWarmupChunks int) *cacheWarmup {
-	numChunks := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
-	maxChunks := (size + numChunks - 1) / numChunks
-
-	numInts := int((maxChunks + 63) / 64)
-
-	return &cacheWarmup{
-		Size:             size,
-		MaxChunks:        maxChunks,
-		SuccessfulChunks: atomic.Int64{},
-		Bitmap:           make([]uint64, numInts),
-		SuccessCh:        make(chan ChunkWarmupStatus, maxBackgroundCacheWarmupChunks),
-	}
+	// handle to read the warmed up chunks from the dcache.
+	warmDcFile *DcacheFile
 }
 
 type ChunkWarmupStatus struct {
