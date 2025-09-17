@@ -1,0 +1,27 @@
+# Refer ./setup/baseConfig.yaml for full set of config parameters
+
+logging:
+  type: base
+  level: log_debug
+
+components:
+  - libfuse
+  - distributed_cache
+  - azstorage
+
+# Libfuse configuration
+libfuse:
+  direct-io: true
+
+
+distributed_cache:
+  cache-id: my-dcache-cluster <Unique CacheId shared by all the nodes in the cluster>
+  cache-dirs:
+    - /mnt/cache1 <Local Cache directory Path for distributed caching. Ensure this directory exists on the node>
+
+azstorage:
+  type: block
+  account-name: <ACCOUNT_NAME>
+  account-key: <ACCOUNT_KEY>
+  mode: key
+  container: <CONTAINER_NAME>
