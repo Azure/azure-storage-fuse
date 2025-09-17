@@ -56,7 +56,12 @@ jobs:
 
     - name: Read comment body from file
       id: get-body
-      run: echo "COMMENT_BODY=$(cat response_comment.md)" >> $GITHUB_ENV
+      run: |
+        # Use a delimiter to correctly handle multi-line strings with GITHUB_OUTPUT
+        content=$(cat response_comment.md)
+        echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
+        echo "$content" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Post Comment to Issue
       if: github.event_name == 'issues'
@@ -71,7 +76,7 @@ jobs:
       uses: wesleyscholl/create-discussion-comment@v1.0.18
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        body: ${{ env.COMMENT_BODY }}
+        body: ${{ steps.get-body.outputs.COMMENT_BODY }}
         discussion-id: ${{ github.event.discussion.id }}
         client-mutation-id: "unique-id-1234"
 

@@ -22,6 +22,7 @@ def extract_text_field(text_content: str) -> str:
         if match:
             decoded_text = match.group(1).encode('utf-8').decode('unicode_escape')
             cleaned_text = decoded_text.split("Notes:")[0].strip()
+            cleaned_text = cleaned_text.split("View this search on")[0].strip()
             return cleaned_text 
     except re.error as e:
         print(f"Regular expression error: {e}")
