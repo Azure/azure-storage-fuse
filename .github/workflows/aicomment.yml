@@ -3,6 +3,8 @@ name: Auto Comment Issue with AI
 on:
   issues:
     types: [opened]
+  discussion:
+    types: [created]
 
 jobs:
   ai-comment-on-issue:
@@ -11,9 +13,8 @@ jobs:
     permissions:
       id-token: write
       contents: write
-      pages: write
-      security-events: write
       issues: write
+      discussions: write
 
     steps:
     - name: Checkout repository
@@ -55,6 +56,6 @@ jobs:
     - name: Post Comment to Issue
       uses: peter-evans/create-or-update-comment@v4
       with:
-        issue-number: ${{ github.event.issue.number }}
+        issue-number: ${{ github.event.issue.number || github.event.discussion.number }}
         body-path: 'response_comment.md'
         token: ${{ secrets.GITHUB_TOKEN }}
