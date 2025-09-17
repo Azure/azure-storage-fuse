@@ -562,6 +562,8 @@ func (dcFile *DcacheFile) isReadAheadOkInWarmup(chunkIdx int64) bool {
 	// Allow read-ahead for the chunk only if it is already uploaded to the dcache.
 
 	if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); !ok {
+		log.Warn("DistributedCache[FM]::isReadAheadOkInWarmup: Read-ahead for chunk %d not allowed as it is not yet uploaded to dcache, file: %s",
+			chunkIdx, dcFile.FileMetadata.Filename)
 		return false
 	}
 
