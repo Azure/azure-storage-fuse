@@ -54,6 +54,13 @@ jobs:
     - name: Print summarized response
       run: cat response_comment.md
 
+    - name: Read comment body from file
+      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
+      id: read_body
+      run: |
+        body=$(cat response_comment.md)
+        printf "body=%s\n" "$body" >> "$GITHUB_OUTPUT"
+
     - name: Post Comment to Issue
       if: github.event_name == 'issues'
       uses: peter-evans/create-or-update-comment@v4
@@ -61,14 +68,6 @@ jobs:
         issue-number: ${{ github.event.issue.number }}
         body-path: 'response_comment.md'
         token: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Read comment body from file
-      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
-      id: read_body
-      run: |
-        echo "body<<EOF" >> "$GITHUB_OUTPUT"
-        cat response_comment.md >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Post Comment to Discussion
       if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
