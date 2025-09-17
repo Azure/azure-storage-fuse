@@ -63,6 +63,9 @@ jobs:
         echo "$content" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
+    - name: Debug - Print comment body for discussion
+      run: echo "${{ steps.get-body.outputs.COMMENT_BODY }}"
+
     - name: Post Comment to Issue
       if: github.event_name == 'issues'
       uses: peter-evans/create-or-update-comment@v4
@@ -79,11 +82,3 @@ jobs:
         body: ${{ steps.get-body.outputs.COMMENT_BODY }}
         discussion-id: ${{ github.event.discussion.id }}
         client-mutation-id: "unique-id-1234"
-
-
-    # - name: Post Comment 
-    #   uses: peter-evans/create-or-update-comment@v4
-    #   with:
-    #     issue-number: ${{ github.event.issue.number || github.event.discussion.number }}
-    #     body-path: 'response_comment.md'
-    #     token: ${{ secrets.GITHUB_TOKEN }}
