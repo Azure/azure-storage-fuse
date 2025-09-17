@@ -20,7 +20,7 @@ def extract_text_field(text_content: str) -> str:
         pattern = r"text='(.*)'(?=, annotations=None, meta=None\)])"
         match = re.search(pattern, text_content, re.DOTALL)
         if match:
-            return match.group(1)
+            return match.group(1).encode('utf-8').decode('unicode_escape')
     except re.error as e:
         print(f"Regular expression error: {e}")
     
