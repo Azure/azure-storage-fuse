@@ -189,6 +189,7 @@ func (c *rpcClient) close() error {
 
 	//
 	// Mark the client as closed. This is to prevent closing of the client again.
+	// DeleteAllRPCClients() uses this flag to prevent double closing of the client.
 	// Refer comment in rpcClient struct for details.
 	//
 	c.isClosed = true
