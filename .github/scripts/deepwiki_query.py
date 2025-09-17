@@ -20,13 +20,13 @@ class MCPClient:
         self.exit_stack = AsyncExitStack()
 
     async def connect_to_sse_server(self, server_url: str):
-        print("Connecting to MCP SSE server...")
+        # print("Connecting to MCP SSE server...")
         self._streams_context = sse_client(url=server_url)
         streams = await self._streams_context.__aenter__()
         self._session_context = ClientSession(*streams)
         self.session: ClientSession = await self._session_context.__aenter__()
         await self.session.initialize()
-        print("Connected and initialized.")
+        # print("Connected and initialized.")
         
     async def cleanup(self):
         if self._session_context:
@@ -38,7 +38,7 @@ class MCPClient:
         if not self.session:
             raise RuntimeError("Client not connected.")
 
-        print(f"Calling 'ask_question' for repo: {repo}")
+        # print(f"Calling 'ask_question' for repo: {repo}")
                 
         # The MCP SDK handles the JSON-RPC call for you
         result = await self.session.call_tool(
@@ -46,42 +46,27 @@ class MCPClient:
         )
         
         # Join the list of content parts into a single string
-        return " ".join([str(part) for part in result.content])
+        return result.content
 
-async def main(repo, title, body, output_file_path):
+async def main(repo, title, body):
     client = MCPClient()
     try:
         await client.connect_to_sse_server(server_url=MCP_SSE_URL)
         
-        question = f"{title}\n\n{body}"
-        
-        print("\n" + "="*50)
-        print("DeepWiki Question:")
-        print("="*50)
-        print(question)
-        print("="*50)
-        
+        question = f"{title}\n\n{body}"        
         response = await client.ask_deepwiki(repo, question)
-        
-        print("\n" + "="*50)
-        print("DeepWiki Response:")
-        print("="*50)
         print(response)
-
-        with open(output_file_path, 'w', encoding='utf-8') as f:
-            f.write(response)
             
     finally:
         await client.cleanup()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 5:
-        print("Usage: python deepwiki_query.py <repo> <question title> <question body> <output_file_path>")
+    if len(sys.argv) < 4:
+        print("Usage: python deepwiki_query.py <repo> <question title> <question body>")
         sys.exit(1)
     
     repo_arg = sys.argv[1]
     issue_title = sys.argv[2]
     issue_body = sys.argv[3]
-    output_file_path = sys.argv[4]
     
-    asyncio.run(main(repo_arg, issue_title, issue_body, output_file_path))
+    asyncio.run(main(repo_arg, issue_title, issue_body))

@@ -98,6 +98,8 @@ if __name__ == "__main__":
         "### AI Generated Response\n\n"
         f"{summary}\n\n"
         "---\n"
+        "**Kindly share mount command, config file and debug-logs for further investigation.**\n\n"
+        "---\n"
         "*Disclaimer: This summary is AI-generated and may not be fully accurate.*"
     )
     
