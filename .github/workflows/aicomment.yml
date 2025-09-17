@@ -13,6 +13,7 @@ jobs:
       contents: write
       pages: write
       security-events: write
+      issues: write
 
     steps:
     - name: Checkout repository
