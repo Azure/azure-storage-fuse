@@ -590,10 +590,14 @@ func (c *ClusterMap) getActiveMVsForRV(rvName string) map[string]struct{} {
 		//
 		// We only leave the MV folder for component RVs that are online.
 		// If the component RV is offline/inband-offline, then the MV is not active.
-		// We even delete if component RV is in outofsync or syncing state. Though it will work
-		// if we leave those MVs but it's safer to delete them and start afresh.
+		// For any other state we MUST leave the MV data intact o/w it may cause data loss,
+		// since NewChunkServiceHandler() will create mvInfo state as per the clusterMap and
+		// if we don't have the MV data then data will not match the mvInfo state.
+		// e.g., if the component RV is outofsync/syncing, cluster is expecting some data in
+		// the MV, if we just set the mvInfo state of outofsync/syncing and don't have the MV
+		// data, then we will lose that data.
 		//
-		if rvState != dcache.StateOnline {
+		if rvState == dcache.StateOffline || rvState == dcache.StateInbandOffline {
 			continue
 		}
 

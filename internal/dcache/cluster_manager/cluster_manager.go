@@ -109,7 +109,8 @@ type ClusterManager struct {
 
 // Error return from here would cause clustermanager startup to fail which will prevent this node from
 // joining the cluster.
-// The caller has checked the validity(their existence and correct rw permissions) of the localCachePath directories corresponding to the RVs.
+// The caller has checked the validity(their existence and correct rw permissions) of the localCachePath
+// directories corresponding to the RVs.
 func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 
 	valid, err := cm.IsValidDcacheConfig(dCacheConfig)
@@ -942,8 +943,8 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		if myRV.NodeId != cmRV.NodeId || myRV.LocalCachePath != cmRV.LocalCachePath {
 			return false, fmt.Errorf(
-				"ClusterManager::safeCleanupMyRVs: Duplicate RVid %s detected, cache-dir %s being added by this node %s has the same RVid as existing cache-dir %s from node %s",
-				myRV.RvId, myRV.LocalCachePath, myRV.NodeId, cmRV.LocalCachePath, cmRV.NodeId)
+				"ClusterManager::safeCleanupMyRVs: Duplicate RVid %s detected, cache-dir %s being added by this node %s has the same RVid as existing cache-dir %s from node %s, epoch: %d",
+				myRV.RvId, myRV.LocalCachePath, myRV.NodeId, cmRV.LocalCachePath, cmRV.NodeId, cm.GetEpoch())
 		}
 	}
 
@@ -955,10 +956,10 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 	myRvIdToName := cm.MyRvIdToNameMap()
 
 	if len(myRvIdToName) > 0 {
-		log.Info("ClusterManager::safeCleanupMyRVs: %d of my RV(s) are already present in clustermap %+v",
-			len(myRvIdToName), myRvIdToName)
+		log.Info("ClusterManager::safeCleanupMyRVs: %d of my RV(s) are already present in clustermap %+v, epoch: %d",
+			len(myRvIdToName), myRvIdToName, cm.GetEpoch())
 	} else {
-		log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap, will delete all MVs in all my RVs")
+		log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap, will delete all MVs in all my RVs, epoch: %d", cm.GetEpoch())
 	}
 
 	var doNotDeleteMVs map[string]struct{}
@@ -971,9 +972,10 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		rvName, ok := myRvIdToName[rv.RvId]
 		if !ok {
-			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s doesn't exist in clustermap", rv.RvId)
+			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s doesn't exist in clustermap, epoch: %d", rv.RvId, cm.GetEpoch())
 		} else {
-			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s is present as %s in clustermap", rv.RvId, rvName)
+			log.Info("ClusterManager::safeCleanupMyRVs: My RV %s is present as %s (%s) in clustermap, epoch: %d",
+				rv.RvId, rvName, cm.GetRVState(rvName), cm.GetEpoch())
 
 			// Active MVs (for which this RV is online component RV), that we should not delete.
 			doNotDeleteMVs = cm.GetActiveMVsForRV(rvName)
@@ -1005,8 +1007,8 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			failedRV.Load())
 	}
 
-	log.Info("ClusterManager::safeCleanupMyRVs: ==> Successfully cleaned up %d RV(s) %v in %s",
-		len(myRVs), myRVs, time.Since(start))
+	log.Info("ClusterManager::safeCleanupMyRVs: ==> Successfully cleaned up %d RV(s) %v in %s, epoch: %d",
+		len(myRVs), myRVs, time.Since(start), cm.GetEpoch())
 	return true, nil
 }
 
@@ -1069,7 +1071,7 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 		// TODO: Need to check if we must purge all of my RVs, before punching the initial heartbeat.
 		//       See comments in ClusterManager::start().
 		//
-		log.Info("ClusterManager::ensureInitialClusterMap : clustermap already exists")
+		log.Info("ClusterManager::ensureInitialClusterMap : clustermap already exists, epoch: %d", cm.GetEpoch())
 		goto UpdateLocalClusterMapAndPunchInitialHeartbeat
 	}
 
