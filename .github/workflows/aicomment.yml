@@ -55,11 +55,8 @@ jobs:
       run: cat response_comment.md
 
     - name: Read comment body from file
-      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
-      id: read_body
-      run: |
-        body=$(cat response_comment.md)
-        printf "body=%s\n" "$body" >> "$GITHUB_OUTPUT"
+      id: get-body
+      run: echo "COMMENT_BODY=$(cat response_comment.md)" >> $GITHUB_ENV
 
     - name: Post Comment to Issue
       if: github.event_name == 'issues'
@@ -74,7 +71,7 @@ jobs:
       uses: wesleyscholl/create-discussion-comment@v1.0.18
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        body: ${{ steps.read_body.outputs.body }}
+        body: ${{ env.COMMENT_BODY }}
         discussion-id: ${{ github.event.discussion.id }}
         client-mutation-id: "unique-id-1234"
 

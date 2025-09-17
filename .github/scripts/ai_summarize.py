@@ -120,7 +120,7 @@ if __name__ == "__main__":
         "### AI Generated Response\n\n"
         f"{summary}\n\n"
         "---\n"
-        "**In case of issu, kindly share mount command, config file and debug-logs to investigate further.**\n\n"
+        "**In case of issue, share mount command, config file and debug-logs to investigate further.**\n\n"
         "---\n"
         "*Disclaimer: This summary is AI-generated and may not be fully accurate.*"
     )
