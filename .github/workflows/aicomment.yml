@@ -55,8 +55,24 @@ jobs:
       run: cat response_comment.md
 
     - name: Post Comment to Issue
+      if: github.event_name == 'issues'
       uses: peter-evans/create-or-update-comment@v4
       with:
-        issue-number: ${{ github.event.issue.number || github.event.discussion.number }}
+        issue-number: ${{ github.event.issue.number }}
         body-path: 'response_comment.md'
         token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Post Comment to Discussion
+      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
+      uses: peter-evans/create-or-update-discussion-comment@v1
+      with:
+        discussion-number: ${{ github.event.discussion.number }}
+        body-path: 'response_comment.md'
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    # - name: Post Comment 
+    #   uses: peter-evans/create-or-update-comment@v4
+    #   with:
+    #     issue-number: ${{ github.event.issue.number || github.event.discussion.number }}
+    #     body-path: 'response_comment.md'
+    #     token: ${{ secrets.GITHUB_TOKEN }}
