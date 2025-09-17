@@ -91,23 +91,25 @@ if __name__ == "__main__":
 
     with open(input_file_path, 'r', encoding='utf-8') as f:
         full_text = f.read()
+   
+    # Call the extract_text.py script to get the cleaned text
+    result = subprocess.run(
+        ["python", ".github/scripts/extract_text.py", input_file_path], 
+        capture_output=True, 
+        text=True
+    )
     
+    # The result object contains the output
+    if result.returncode == 0:
+        full_text = result.stdout
+    else:
+        print(f"\n--- Script Error (stderr) ---")
+        print(result.stderr)   
+        
     resp_len = len(full_text)
+
     if resp_len < 65000:
         # Responce was smaller so just use the full text
-        result = subprocess.run(
-            ["python", ".github/scripts/extract_text.py", input_file_path], 
-            capture_output=True, 
-            text=True
-        )
-        
-        # The result object contains the output
-        if result.returncode == 0:
-            full_text = result.stdout
-        else:
-            print(f"\n--- Script Error (stderr) ---")
-            print(result.stderr)
-            
         summary = full_text
     else:
         # Use the LLM to summarize the text
