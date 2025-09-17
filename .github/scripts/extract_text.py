@@ -17,11 +17,12 @@ def extract_text_field(text_content: str) -> str:
     # of the string (', annotations=None, meta=None)]'). This prevents
     # the regex from stopping at single quotes within the text content.
     try:
-        # pattern = r"text='(.*)'(?=, annotations=None, meta=None\)])"
-        pattern = r"text='(.*)'(?=, Notes:)"
+        pattern = r"text='(.*)'(?=, annotations=None, meta=None\)])"
         match = re.search(pattern, text_content, re.DOTALL)
         if match:
-            return match.group(1).encode('utf-8').decode('unicode_escape')
+            decoded_text = match.group(1).encode('utf-8').decode('unicode_escape')
+            cleaned_text = decoded_text.split("Notes:")[0].strip()
+            return cleaned_text 
     except re.error as e:
         print(f"Regular expression error: {e}")
     
