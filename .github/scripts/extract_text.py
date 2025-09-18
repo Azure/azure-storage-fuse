@@ -21,8 +21,13 @@ def extract_text_field(text_content: str) -> str:
         match = re.search(pattern, text_content, re.DOTALL)
         if match:
             decoded_text = match.group(1).encode('utf-8').decode('unicode_escape')
-            cleaned_text = decoded_text.split("## Notes\n")[0].strip()
-            return cleaned_text 
+            
+            # Remove everything after either "## Notes\n" or "Notes:\n"
+            for delimiter in ["## Notes\n", "Notes:\n"]:
+                if delimiter in decoded_text:
+                    decoded_text = decoded_text.split(delimiter)[0]
+                    
+            return decoded_text.strip() 
     except re.error as e:
         print(f"Regular expression error: {e}")
     

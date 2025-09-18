@@ -127,7 +127,7 @@ jobs:
         script: |
           const fs = require('fs');
           const path = 'deepwiki_parsed.md'; 
-          const body = fs.readFileSync(path, 'utf8').replace(/`/g, '\\`');
+          const body = fs.readFileSync(path, 'utf8').replace(/`/g, '\`');
           const discussion_id = ${{ github.event.discussion.id }};
           await github.graphql(`
             mutation {
