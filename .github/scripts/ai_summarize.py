@@ -111,16 +111,20 @@ if __name__ == "__main__":
     # Use the LLM to summarize the text
     summary = summarize_text_with_llm(full_text)
     
-    if resp_len > 65000:
-        full_text = "AI Generated response skipped due to large size."
-        
-    # Add the disclaimer
     final_comment = (
         "### AI Generated Response\n\n"
         "**Summary**\n\n"
         f"{summary}\n\n"
-        "**Details**\n\n"
-        f"{full_text}\n\n"
+    )
+    
+    if resp_len > 65000:
+        final_comment += (
+            "**Details**\n\n"
+            f"{full_text}\n\n"
+        )
+        
+    # Add the disclaimer
+    final_comment += (
         "---\n"
         "**In case of issue, share mount command, config file and debug-logs to investigate further.**\n\n"
         "---\n"
