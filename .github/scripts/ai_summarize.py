@@ -117,14 +117,14 @@ if __name__ == "__main__":
     summary_len = len(summary)
     
     final_comment = (
-        "### AI Generated Response\n\n"
-        "####Summary**\n\n"
+        "## Summary \n\n"
         f"{summary}\n\n"
     )
     
     if (resp_len + summary_len) < 65000:
+        full_text = full_text.replace("## ", "### ")
         final_comment += (
-            "####Details**\n\n"
+            "## Details \n\n"
             f"{full_text}\n\n"
         )
         
