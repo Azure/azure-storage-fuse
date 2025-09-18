@@ -92,44 +92,25 @@ if __name__ == "__main__":
     with open(input_file_path, 'r', encoding='utf-8') as f:
         full_text = f.read()
    
-    # Call the extract_text.py script to get the cleaned text
-    result = subprocess.run(
-        ["python", ".github/scripts/extract_text.py", input_file_path], 
-        capture_output=True, 
-        text=True
-    )
-    
-    # The result object contains the output
-    if result.returncode == 0:
-        full_text = result.stdout
-    else:
-        print(f"Error extracting text: {result.stderr}", file=sys.stderr)
-        sys.exit(1)  
-        
-    resp_len = len(full_text)
-    if resp_len <= 100:
-        # If the extracted text is too short, we skip commenting on the issue
-        print("Error: Extracted text is too short to summarize.", file=sys.stderr)
-        sys.exit(1)
-
     # Use the LLM to summarize the text
     summary = summarize_text_with_llm(full_text)
     summary_len = len(summary)
+    resp_len = len(full_text) + summary_len
     
-    final_comment = (
+    issue_comment_body = (
         "## Summary \n\n"
         f"{summary}\n\n"
     )
     
-    if (resp_len + summary_len) < 65000:
+    if resp_len < 65000:
         full_text = full_text.replace("## ", "### ")
-        final_comment += (
+        issue_comment_body += (
             "## Details \n\n"
             f"{full_text}\n\n"
         )
         
     # Add the disclaimer
-    final_comment += (
+    issue_comment_body += (
         "---\n"
         "**In case of issue, share mount command, config file and debug-logs to investigate further.**\n\n"
         "---\n"
@@ -137,4 +118,4 @@ if __name__ == "__main__":
     )
     
     with open(output_file_path, 'w', encoding='utf-8') as f:
-        f.write(final_comment)
+        f.write(issue_comment_body)

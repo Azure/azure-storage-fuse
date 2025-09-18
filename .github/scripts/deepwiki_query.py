@@ -3,6 +3,7 @@ import os
 import sys
 from contextlib import AsyncExitStack
 from typing import Optional
+import subprocess
 
 import httpx
 from mcp import ClientSession
@@ -46,25 +47,51 @@ class MCPClient:
         # Join the list of content parts into a single string
         return result.content
 
-async def main(repo, title, body):
+async def main(repo, title, body, output_file):
     client = MCPClient()
     try:
         await client.connect_to_sse_server(server_url=MCP_SSE_URL)
         
         question = f"{title}\n\n{body}"        
         response = await client.ask_deepwiki(repo, question)
-        print(response)
+        
+        resp_len = len(response)
+        if resp_len <= 100:
+            # If the extracted text is too short, we skip commenting on the issue
+            print("Error: Extracted text is too short to summarize.", file=sys.stderr)
+            sys.exit(1)
+            
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(response)
+   
+        # Call the extract_text.py script to get the cleaned text
+        result = subprocess.run(
+            ["python", ".github/scripts/extract_text.py", output_file], 
+            capture_output=True, 
+            text=True
+        )
+    
+        # The result object contains the output
+        if result.returncode == 0:
+            response = result.stdout
+        else:
+            print(f"Error extracting text: {result.stderr}", file=sys.stderr)
+            sys.exit(1)  
+            
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(response)
             
     finally:
         await client.cleanup()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print("Usage: python deepwiki_query.py <repo> <question title> <question body>")
+    if len(sys.argv) < 5:
+        print("Usage: python deepwiki_query.py <repo> <question title> <question body> <output file>")
         sys.exit(1)
     
     repo_arg = sys.argv[1]
     issue_title = sys.argv[2]
     issue_body = sys.argv[3]
+    output_file = sys.argv[4]
     
-    asyncio.run(main(repo_arg, issue_title, issue_body))
+    asyncio.run(main(repo_arg, issue_title, issue_body, output_file))
