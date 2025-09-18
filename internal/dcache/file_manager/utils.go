@@ -534,6 +534,7 @@ func (dcFile *DcacheFile) NewCacheWarmup(size int64, maxBackgroundCacheWarmupChu
 	cw.warmDcFile = warmDcFile
 
 	dcFile.CacheWarmup = cw
+	dcFile.cacheWarmupInProgress = true
 
 	return cw
 }
@@ -548,26 +549,25 @@ func (dcFile *DcacheFile) getFileSize() int64 {
 }
 
 // This function is no op if CacheWarmup is nil.
-func (dcFile *DcacheFile) isReadAheadOkInWarmup(chunkIdx int64) bool {
-	if dcFile.CacheWarmup == nil {
-		return true
+// It modifies the read-ahead range [readAheadStartIdx, readAheadEndIdx) to ensure that we only do
+// read-ahead for chunks which are already uploaded to the dcache.
+func (dcFile *DcacheFile) getModifiedReadaheadOnWarmup(readAheadStartIdx int64, readAheadEndIdx int64) (int64, int64) {
+	if dcFile.CacheWarmup == nil || readAheadStartIdx == readAheadEndIdx {
+		return readAheadStartIdx, readAheadEndIdx
 	}
 
-	common.Assert(chunkIdx < dcFile.CacheWarmup.MaxChunks, chunkIdx, dcFile.CacheWarmup.MaxChunks)
+	common.Assert(readAheadEndIdx <= dcFile.CacheWarmup.MaxChunks && readAheadStartIdx <= dcFile.CacheWarmup.MaxChunks,
+		readAheadEndIdx, readAheadStartIdx, dcFile.CacheWarmup.MaxChunks)
 
-	if chunkIdx < dcFile.CacheWarmup.MaxChunks {
-		return false
+	// Allow only seq read-ahead for the chunks.
+	var chunkIdx int64
+	for chunkIdx = readAheadStartIdx; chunkIdx < readAheadEndIdx; chunkIdx++ {
+		if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); !ok {
+			break
+		}
 	}
 
-	// Allow read-ahead for the chunk only if it is already uploaded to the dcache.
-
-	if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); !ok {
-		log.Warn("DistributedCache[FM]::isReadAheadOkInWarmup: Read-ahead for chunk %d not allowed as it is not yet uploaded to dcache, file: %s",
-			chunkIdx, dcFile.FileMetadata.Filename)
-		return false
-	}
-
-	return true
+	return readAheadStartIdx, chunkIdx
 }
 
 // Silence unused import errors for release builds.

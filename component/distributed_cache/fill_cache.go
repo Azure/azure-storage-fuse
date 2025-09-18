@@ -38,9 +38,6 @@ func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 			return err
 		} else {
 			dcFile.CacheWarmup.SuccessfulChunks.Add(1)
-			ok := common.AtomicTestAndSetBitUint64(&dcFile.CacheWarmup.Bitmap[chunkStatus.ChunkIdx/64], uint(chunkStatus.ChunkIdx%64))
-			common.Assert(ok, chunkStatus.ChunkIdx)
-			_ = ok
 		}
 		return nil
 	}
@@ -203,6 +200,15 @@ func checkStatusForCacheWarmup(handle *handlemap.Handle, dcFile *fm.DcacheFile) 
 		} else {
 			log.Info("DistributedCache::checkStatusForCacheWarmup : Successfully finalized Dcache file : %s",
 				handle.Path)
+			// remove the chunks from the chunk map.
+			if err = dcFile.ReleaseFile(false); err != nil {
+				log.Err("DistributedCache::checkStatusForCacheWarmup : Failed to ReleaseFile for Dcache file : %s, error: %v",
+					handle.Path, err)
+				// No need to delete the dcache file as its finalized successfully.
+			} else {
+				log.Info("DistributedCache::checkStatusForCacheWarmup : Successfully Released Dcache file : %s",
+					handle.Path)
+			}
 		}
 	} else {
 		// delete the dcache file if the cache warmup did not complete successfully or there was an error during
