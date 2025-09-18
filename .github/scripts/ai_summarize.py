@@ -118,13 +118,13 @@ if __name__ == "__main__":
     
     final_comment = (
         "### AI Generated Response\n\n"
-        "**Summary**\n\n"
+        "####Summary**\n\n"
         f"{summary}\n\n"
     )
     
     if (resp_len + summary_len) < 65000:
         final_comment += (
-            "**Details**\n\n"
+            "####Details**\n\n"
             f"{full_text}\n\n"
         )
         
