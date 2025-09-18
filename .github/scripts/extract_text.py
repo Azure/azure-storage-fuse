@@ -17,17 +17,29 @@ def extract_text_field(text_content: str) -> str:
     # of the string (', annotations=None, meta=None)]'). This prevents
     # the regex from stopping at single quotes within the text content.
     try:
-        pattern = r"text='(.*)'(?=, annotations=None, meta=None\)])"
+        pattern = ""
+        if 'text="' in text_content:
+            pattern = r"text=\"(.*)\"(?=, annotations=None, meta=None\)])"
+        elif "text='" in text_content:
+            pattern = r"text='(.*)'(?=, annotations=None, meta=None\)])"
+        else:
+            print("Error: The input text does not contain a recognizable text field.")
+            sys.exit(1)
+
         match = re.search(pattern, text_content, re.DOTALL)
         if match:
             decoded_text = match.group(1).encode('utf-8').decode('unicode_escape')
-            
+
             # Remove everything after either "## Notes\n" or "Notes:\n"
             for delimiter in ["## Notes\n", "Notes:\n"]:
                 if delimiter in decoded_text:
                     decoded_text = decoded_text.split(delimiter)[0]
                     
             return decoded_text.strip() 
+        else:
+            print("No match found for the text field.")
+            sys.exit(1)
+            
     except re.error as e:
         print(f"Regular expression error: {e}")
     
