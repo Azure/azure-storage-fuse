@@ -76,7 +76,6 @@ jobs:
         body-path: 'response_comment.md'
         token: ${{ secrets.GITHUB_TOKEN }}
 
-
     - name: Read comment summary from file
       if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
       id: read_body
@@ -84,9 +83,12 @@ jobs:
         body=$(<response_comment.md)
         body="${body//$'\n'/'%0A'}"
         body="${body//'%'/'%25'}"
-        # body="${body//$'\r'/'%0D'}"
+        body="${body//$'\r'/'%0D'}"
         echo "body=$body" >> "$GITHUB_OUTPUT"
 
+    - name: Print summary body
+      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
+      run: echo "${{ steps.read_body.outputs.body }}"
 
     - name: Post Comment to Discussion
       if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
@@ -94,13 +96,17 @@ jobs:
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
+          const fs = require('fs');
+          const path = 'response_comment.md'; 
+          const body = fs.readFileSync(path, 'utf8');
           const discussion_id = ${{ github.event.discussion.id }};
-          const body = `${{ steps.read_body.outputs.body }}`;
+          #const body = `${{ steps.read_body.outputs.body }}`;
           await github.graphql(`
             mutation {
               addDiscussionComment(input: {
                 discussionId: "${discussion_id}",
-                body: "${body}"
+                body: "${body.replace(/"/g, '\\"')}"
+                # body: "${body}"
               }) {
                 comment {
                   id
