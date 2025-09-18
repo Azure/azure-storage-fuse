@@ -103,13 +103,18 @@ if __name__ == "__main__":
     if result.returncode == 0:
         full_text = result.stdout
     else:
-        print(f"\n--- Script Error (stderr) ---")
-        print(result.stderr)   
+        print(f"Error extracting text: {result.stderr}", file=sys.stderr)
+        sys.exit(1)  
         
     resp_len = len(full_text)
+    if resp_len <= 100:
+        # If the extracted text is too short, we skip commenting on the issue
+        print("Error: Extracted text is too short to summarize.", file=sys.stderr)
+        sys.exit(1)
 
     # Use the LLM to summarize the text
     summary = summarize_text_with_llm(full_text)
+    summary_len = len(summary)
     
     final_comment = (
         "### AI Generated Response\n\n"
@@ -117,7 +122,7 @@ if __name__ == "__main__":
         f"{summary}\n\n"
     )
     
-    if resp_len > 65000:
+    if (resp_len + summary_len) < 65000:
         final_comment += (
             "**Details**\n\n"
             f"{full_text}\n\n"

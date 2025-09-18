@@ -38,8 +38,6 @@ class MCPClient:
         if not self.session:
             raise RuntimeError("Client not connected.")
 
-        # print(f"Calling 'ask_question' for repo: {repo}")
-                
         # The MCP SDK handles the JSON-RPC call for you
         result = await self.session.call_tool(
             "ask_question", {"repoName": repo, "question": question}
