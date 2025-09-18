@@ -1,4 +1,4 @@
-name: Auto Comment Issue with AI
+name: Auto Comment Issue OR Discussion
 
 on:
   issues:
@@ -7,7 +7,7 @@ on:
     types: [created]
 
 jobs:
-  ai-comment-on-issue:
+  auto-comment:
     runs-on: ubuntu-latest
 
     permissions:

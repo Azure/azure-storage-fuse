@@ -47,7 +47,7 @@ class MCPClient:
         # Join the list of content parts into a single string
         return result.content
 
-async def main(repo, title, body, output_file):
+async def main(repo, title, body):
     client = MCPClient()
     try:
         await client.connect_to_sse_server(server_url=MCP_SSE_URL)
