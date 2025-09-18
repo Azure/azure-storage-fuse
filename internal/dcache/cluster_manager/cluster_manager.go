@@ -1973,6 +1973,10 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 			return err
 		}
 
+		//
+		// TODO: endClusterMapUpdate() must take etag and ensure we're ending the same update that we started,
+		//       to prevent clustermap corruption if some other node updated the clustermap in between.
+		//
 		err = cmi.endClusterMapUpdate(clusterMap)
 		if err != nil {
 			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: %v", err)

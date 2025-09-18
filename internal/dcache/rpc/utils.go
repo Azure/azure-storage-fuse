@@ -248,24 +248,6 @@ func LeaveMVRequestToString(req *models.LeaveMVRequest) string {
 		req.SenderNodeID, req.MV, req.RVName, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
-// convert *models.StartSyncRequest to string
-// used for logging
-func StartSyncRequestToString(req *models.StartSyncRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, MV %v, SourceRVName %v, TargetRVName %v, "+
-		"ComponentRV %v, SyncSize %v, ClustermapEpoch %d}",
-		req.SenderNodeID, req.MV, req.SourceRVName, req.TargetRVName,
-		ComponentRVsToString(req.ComponentRV), req.SyncSize, req.ClustermapEpoch)
-}
-
-// convert *models.EndSyncRequest to string
-// used for logging
-func EndSyncRequestToString(req *models.EndSyncRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, SyncID %v, MV %v, SourceRVName %v, "+
-		"TargetRVName %v, ComponentRV %v, SyncSize %v, ClustermapEpoch %d}",
-		req.SenderNodeID, req.SyncID, req.MV, req.SourceRVName,
-		req.TargetRVName, ComponentRVsToString(req.ComponentRV), req.SyncSize, req.ClustermapEpoch)
-}
-
 // convert *models.GetMVSizeRequest to string
 // used for logging
 func GetMVSizeRequestToString(req *models.GetMVSizeRequest) string {
