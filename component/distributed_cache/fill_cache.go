@@ -14,7 +14,9 @@ import (
 )
 
 const (
-	maxBackgroundCacheWarmupChunks = 16
+	maxBackgroundCacheWarmupChunksPerFile = 32
+	// TODO: Remove the following const. It is same as the staging area in dcache file.
+	numStagingChunks = 256 // this is same as the staging area in dcache file
 )
 
 func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
@@ -25,28 +27,72 @@ func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 		return
 	}
 
+	log.Info("DistributedCache::startCacheWarmup: Starting cache warmup for file: %s, handle: %d, size: %d bytes",
+		handle.Path, handle.ID, dcFile.CacheWarmup.Size)
+
 	var err error
 
 	// wait for status of last write to complete.
-	waitForLastWrite := func() error {
+	waitForChunkWriteToComplete := func() (int64, error) {
 		chunkStatus := <-dcFile.CacheWarmup.SuccessCh
+		dcFile.CacheWarmup.ProcessedChunkWrites.Add(1)
 		if chunkStatus.Err != nil {
 			log.Err("DistributedCache::startCacheWarmup: Error during cache warmup for file: %s, handle: %d, error: %v",
 				handle.Path, handle.ID, err)
-			// stop further cache warmup.
-			dcFile.CacheWarmup.Error.Store(err)
-			return err
+			return chunkStatus.ChunkIdx, err
 		} else {
-			dcFile.CacheWarmup.SuccessfulChunks.Add(1)
+			dcFile.CacheWarmup.SuccessfulChunkWrites.Add(1)
 		}
+
+		return chunkStatus.ChunkIdx, nil
+	}
+
+	// wait for first chunk in dcache write staging area to be successfully flushed out to dcache before proceeding.
+	waitForChunkUploadToComplete := func(chunkIdx int64) error {
+		for {
+			// This error would be set by the file manager when the chunk failed to write to any of the MV.
+			if Ierr := dcFile.CacheWarmup.Error.Load(); Ierr != nil {
+				// cache warmup failed.
+				err = Ierr.(error)
+				return err
+			}
+
+			// check if corresponding bit is set in the bitmap.
+			if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); ok {
+				break
+			}
+
+			log.Debug("DistributedCache::startCacheWarmup: Waiting for chunk upload completion for file: %s, handle: %d, chunk Idx: %d, SuccessfulChunks: %d, MaxChunks: %d",
+				handle.Path, handle.ID, chunkIdx, dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
 		return nil
 	}
 
-	// work on 16 chunks at a time.
 	for i := int64(0); i < dcFile.CacheWarmup.MaxChunks; i++ {
-		if i > maxBackgroundCacheWarmupChunks {
-			// wait for the first write to complete before proceeding.
-			if err = waitForLastWrite(); err != nil {
+		if i > maxBackgroundCacheWarmupChunksPerFile {
+			// wait for any one of the write to complete before proceeding.
+			if chunkIdx, err := waitForChunkWriteToComplete(); err != nil {
+				log.Err("DistributedCache::startCacheWarmup: Error during cache warmup for file: %s, handle: %d, chunk Idx: %d, error: %v",
+					handle.Path, handle.ID, chunkIdx, err)
+				break
+			}
+		}
+
+		// There is a write-back cache/staging aread maintained in the dcache file while file is being written. which is
+		// set to 256 chunks by default. Although we are writing the 32 chunks in parallel, but the status of writes are
+		// captured in the channel. So it is possible that the writes are completed out of order and slowly exhausting
+		// staging aread and detecting our further writes as random write and fail. So better wait all the chunks that
+		// fall outside the staging area to be written before proceeding to issue more writes.
+		//
+		if i >= numStagingChunks {
+			// wait for the first chunk in the staging area to be uploaded before proceeding.
+			// This condition is rarely hit as we are writing 32 chunks in parallel and the staging area is 256 chunks.
+			if err := waitForChunkUploadToComplete(i - numStagingChunks); err != nil {
+				log.Err("DistributedCache::startCacheWarmup: Error during cache warmup for file: %s, handle: %d, chunk Idx: %d, error: %v",
+					handle.Path, handle.ID, i-numStagingChunks, err)
 				break
 			}
 		}
@@ -60,15 +106,18 @@ func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 			break
 		}
 
+		dcFile.CacheWarmup.ScheduledChunkWrites.Add(1)
 	}
 
 	// wait for all pending writes to complete.
-	for dcFile.CacheWarmup.SuccessfulChunks.Load() < dcFile.CacheWarmup.MaxChunks && dcFile.CacheWarmup.Error.Load() == nil {
-		waitForLastWrite()
+	for dcFile.CacheWarmup.ProcessedChunkWrites.Load() < dcFile.CacheWarmup.ScheduledChunkWrites.Load() {
+		if chunkIdx, err := waitForChunkWriteToComplete(); err != nil {
+			log.Err("DistributedCache::startCacheWarmup: Error during cache warmup for file: %s, handle: %d, chunk Idx: %d, error: %v",
+				handle.Path, handle.ID, chunkIdx, err)
+		}
 	}
 
-	// flush and finalize the dcache file if the cache warmup completed successfully.
-	checkStatusForCacheWarmup(handle, dcFile)
+	finishCacheWarmupForFile(handle, dcFile)
 }
 
 func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.DcacheFile, chunkIdx int64) error {
@@ -104,6 +153,9 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 	if err != io.EOF && err != nil {
 		log.Err("DistributedCache::fillCache: failed to read chunk idx: %d, offset: %d for file: %s, handle: %d, error: %v",
 			chunkIdx, chunkStartoffset, handle.Path, handle.ID, err)
+
+		// free the buffer.
+		dcache.PutBuffer(chunkData)
 		return err
 	}
 
@@ -122,6 +174,10 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 			return err
 		}
 		dcFile.CacheWarmup.SuccessCh <- fm.ChunkWarmupStatus{ChunkIdx: chunkIdx, Err: nil}
+
+		// free the buffer.
+		// TODO: we can avoid the buf copy in the write flow.. as we chunkData was allocated from the buffer pool.
+		dcache.PutBuffer(chunkData)
 		return nil
 	}
 
@@ -151,7 +207,7 @@ func waitForChunkWarmupCompletion(handle *handlemap.Handle, dcFile *fm.DcacheFil
 		}
 
 		log.Debug("DistributedCache::waitForChunkWarmupCompletion: Waiting for cache warmup completion for file: %s, handle: %d, chunk Idx: %d, SuccessfulChunks: %d, MaxChunks: %d",
-			handle.Path, handle.ID, chunkIdx, dcFile.CacheWarmup.SuccessfulChunks.Load(), dcFile.CacheWarmup.MaxChunks)
+			handle.Path, handle.ID, chunkIdx, dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
 
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -161,7 +217,7 @@ func waitForChunkWarmupCompletion(handle *handlemap.Handle, dcFile *fm.DcacheFil
 
 func logStatusForCacheWarmup(handle *handlemap.Handle, dcFile *fm.DcacheFile) {
 	log.Info("DistributedCache::logStatusForCacheWarmup : Cache warmup status for Dcache file : %s, handle: %d, Successful chunks: %d, MaxChunks: %d",
-		handle.Path, handle.ID, dcFile.CacheWarmup.SuccessfulChunks.Load(), dcFile.CacheWarmup.MaxChunks)
+		handle.Path, handle.ID, dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
 
 	if dcFile.CacheWarmup.Error.Load() != nil {
 		log.Err("DistributedCache::logStatusForCacheWarmup : Cache warmup failed for Dcache file : %s, handle: %d, error: %v",
@@ -169,24 +225,36 @@ func logStatusForCacheWarmup(handle *handlemap.Handle, dcFile *fm.DcacheFile) {
 	}
 }
 
-func checkStatusForCacheWarmup(handle *handlemap.Handle, dcFile *fm.DcacheFile) {
+func finishCacheWarmupForFile(handle *handlemap.Handle, dcFile *fm.DcacheFile) {
 	log.Debug("DistributedCache::checkStatusForCacheWarmup : Checking cache warmup status for Dcache file : %s, handle: %d",
 		handle.Path, handle.ID)
+
+	defer func() {
+		dcFile.CacheWarmup.Completed.Store(true)
+	}()
 
 	// check if the cache warmup completed successfully.
 	if dcFile.CacheWarmup.Error.Load() != nil {
 		// no cache warmup setup for this file.
 		log.Err("DistributedCache::checkStatusForCacheWarmup : Cache warmup failed for Dcache file : %s, handle: %d, error: %v",
 			handle.Path, handle.ID, dcFile.CacheWarmup.Error.Load())
+
+		if err := dcFile.ReleaseFile(true); err != nil {
+			log.Err("DistributedCache::checkStatusForCacheWarmup : Failed to ReleaseFile for Dcache file : %s, error: %v",
+				handle.Path, err)
+		}
 		return
 	}
 
-	common.Assert(dcFile.CacheWarmup.SuccessfulChunks.Load() == dcFile.CacheWarmup.MaxChunks,
-		dcFile.CacheWarmup.SuccessfulChunks.Load(), dcFile.CacheWarmup.MaxChunks)
+	common.Assert(dcFile.CacheWarmup.SuccessfulChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks &&
+		dcFile.CacheWarmup.ScheduledChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks &&
+		dcFile.CacheWarmup.ProcessedChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks,
+		dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.ScheduledChunkWrites.Load(),
+		dcFile.CacheWarmup.ProcessedChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
 
 	removeFile := false
 
-	if dcFile.CacheWarmup.SuccessfulChunks.Load() == dcFile.CacheWarmup.MaxChunks {
+	if dcFile.CacheWarmup.SuccessfulChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks {
 
 		// finalize the dcache file only if the cache warmup completed successfully and all chunks are read.
 		// Flush and release the dcache file. Any error during the flush will result in deleteing
@@ -213,8 +281,8 @@ func checkStatusForCacheWarmup(handle *handlemap.Handle, dcFile *fm.DcacheFile) 
 	} else {
 		// delete the dcache file if the cache warmup did not complete successfully or there was an error during
 		// cache warmup.
-		log.Err("DistributedCache::checkStatusForCacheWarmup : Cache warmup status for Dcache file : %s, Successful chunks: %d, MaxChunks: %d",
-			handle.Path, dcFile.CacheWarmup.SuccessfulChunks.Load(), dcFile.CacheWarmup.MaxChunks)
+		log.Err("DistributedCache::checkStatusForCacheWarmup : [BUG] Cache warmup status for Dcache file : %s, Successful chunks: %d, MaxChunks: %d",
+			handle.Path, dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
 		removeFile = true
 	}
 
