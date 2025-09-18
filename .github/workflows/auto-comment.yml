@@ -103,22 +103,6 @@ jobs:
     # --------------------------------------------------------------------------------------------------------------- 
 
     # Post the summary as a comment on discussion
-    # - name: Read comment summary from file
-    #   if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
-    #   id: read_body
-    #   run: |
-    #     body=$(<issue_comment.md)
-    #     body="${body//$'\n'/'%0A'}"
-    #     body="${body//'%'/'%25'}"
-    #     body="${body//$'\r'/'%0D'}"
-    #     echo "body=$body" >> "$GITHUB_OUTPUT"
-
-    # - name: Print summary body
-    #   if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
-    #   run: echo "${{ steps.read_body.outputs.body }}"
-    
-      # body: "${body}"
-      # const body = `${{ steps.read_body.outputs.body }}`;
     - name: Post Comment to Discussion
       if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
       uses: actions/github-script@v7
@@ -127,14 +111,15 @@ jobs:
         script: |
           const fs = require('fs');
           const path = 'deepwiki_parsed.md'; 
-          const body = fs.readFileSync(path, 'utf8').replace(/`/g, '\`');
-          const discussion_id = ${{ github.event.discussion.id }};
+          const body = fs.readFileSync(path, 'utf8')
+            .replace(/`/g, '\`')    // remove backticks
+            .replace(/"/g, '\"');     // escape double quotes
+          const discussion_id = context.payload.discussion.node_id;
           await github.graphql(`
             mutation {
               addDiscussionComment(input: {
                 discussionId: "${discussion_id}",
-                body: "${body.replace(/"/g, '\\"')}"
-                
+                body: "${body}"
               }) {
                 comment {
                   id
@@ -142,14 +127,5 @@ jobs:
               }
             }
           `);
-
-    # - name: Post Comment to Discussion
-    #   if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
-    #   uses: wesleyscholl/create-discussion-comment@v1.0.18
-    #   with:
-    #     token: ${{ secrets.GITHUB_TOKEN }}
-    #     body: ${{ steps.get-body.outputs.COMMENT_BODY }}
-    #     discussion-id: ${{ github.event.discussion.id }}
-    #     client-mutation-id: "unique-id-1234"
 
     # --------------------------------------------------------------------------------------------------------------- 
