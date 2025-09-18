@@ -505,11 +505,11 @@ func (dcFile *DcacheFile) NewCacheWarmup(size int64, maxBackgroundCacheWarmupChu
 	numInts := int((maxChunks + 63) / 64)
 
 	cw := &cacheWarmup{
-		Size:             size,
-		MaxChunks:        maxChunks,
-		SuccessfulChunks: atomic.Int64{},
-		Bitmap:           make([]uint64, numInts),
-		SuccessCh:        make(chan ChunkWarmupStatus, maxBackgroundCacheWarmupChunks),
+		Size:                  size,
+		MaxChunks:             maxChunks,
+		SuccessfulChunkWrites: atomic.Int64{},
+		Bitmap:                make([]uint64, numInts),
+		SuccessCh:             make(chan ChunkWarmupStatus, maxBackgroundCacheWarmupChunks),
 	}
 
 	//

@@ -34,6 +34,7 @@
 package filemanager
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -224,6 +225,13 @@ func (wp *workerPool) writeChunk(task *task) {
 
 	log.Err("DistrubuteCache[FM]::WriteChunk: Writing chunk to DCache failed, chunkIdx: %d, file: %s: %v",
 		task.chunk.Idx, task.file.FileMetadata.Filename, err)
+
+	// If the file is being written by warmup, we should mark the error in the warmup structure.
+	if task.file.CacheWarmup != nil {
+		warmupErr := fmt.Errorf("[FM] writeChunk: write failed for file: %s, chunkIdx: %d: %v",
+			task.file.FileMetadata.Filename, task.chunk.Idx, err)
+		task.file.CacheWarmup.Error.Store(warmupErr)
+	}
 
 	task.chunk.Err <- err
 }

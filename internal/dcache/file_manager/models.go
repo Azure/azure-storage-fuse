@@ -76,16 +76,25 @@ type StagedChunk struct {
 
 type cacheWarmup struct {
 	// file size in bytes to warm up
-	Size      int64
+	Size int64
+
+	// number of chunks to warm up
 	MaxChunks int64
 
 	// any error during cache warmup.
 	Error atomic.Value
 
-	// number of chunks successfully uploaded to dcache.
-	SuccessfulChunks atomic.Int64
+	// number of schedules chunk writes to dcache.
+	ScheduledChunkWrites atomic.Int64
 
-	// track upload status of each chunk.
+	// number of chunks successfully written to dcache.
+	SuccessfulChunkWrites atomic.Int64
+
+	// number of chunks processed for write to dcache (successful or failed).
+	ProcessedChunkWrites atomic.Int64
+
+	// Track upload success status for each chunk.
+	// It represents the chunk was not only written but also committed in the dcache.
 	Bitmap []uint64
 
 	// channel for capturing upload status of multiple chunks.
@@ -94,6 +103,8 @@ type cacheWarmup struct {
 
 	// handle to read the warmed up chunks from the dcache.
 	warmDcFile *DcacheFile
+
+	Completed atomic.Bool
 }
 
 type ChunkWarmupStatus struct {
