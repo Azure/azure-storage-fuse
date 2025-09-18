@@ -1552,6 +1552,10 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 	oldLastUpdatedAt := clusterMap.LastUpdatedAt
 	oldEpoch := clusterMap.Epoch
 
+	// Time from startClusterMapUpdate() to endClusterMapUpdate().
+	updateTook := time.Since(time.Unix(clusterMap.LastUpdatedAt, 0))
+	_ = updateTook
+
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 
 	//
@@ -1587,6 +1591,9 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 		clusterMap.Epoch = oldEpoch
 		return err
 	}
+
+	log.Warn("ClusterManager::endClusterMapUpdate: Succeeded with epoch: %d, took %s",
+		clusterMap.Epoch, updateTook)
 
 	return nil
 }
@@ -3626,9 +3633,12 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, cepoc
 	// Error from any JoinMV/UpdateMV RPC call is considered a failure and we return the list of failed RVs.
 	//
 	if len(allErrs) > 0 {
-		return failedRVs, fmt.Errorf("ClusterManager::joinMV: errors:\n%s", strings.Join(allErrs, "\n"))
+		err := fmt.Errorf("ClusterManager::joinMV: %s, errors:\n%s", mvName, strings.Join(allErrs, "\n"))
+		log.Err("%v", err)
+		return failedRVs, err
 	}
 
+	log.Debug("ClusterManager::joinMV: JoinMV(%s, %+v) success!", mvName, mv)
 	return nil, nil
 }
 

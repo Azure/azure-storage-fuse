@@ -369,6 +369,16 @@ func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*Wri
 	var err error
 
 	//
+	// If PutChunk fails with NeedToRefreshClusterMap more than once, it most likely is due to clustermap
+	// being stuck in "updating" state (odd epoch number) as the node responsible for updating the clustermap
+	// is either stuck or down. Note that PutChunk fails with NeedToRefreshClusterMap when an offline MV
+	// replica is replaced with an outofsync RV and the clustermap epoch is odd i.e., it's in transition.
+	// Since a new leader may take upto 6 minutes, we need to set the write temout sufficiently high.
+	//
+	writeStartTime := time.Now()
+	writeTimeout := 900 * time.Second
+
+	//
 	// If the putChunkStyle is OriginatorSendsToAll, it means that we are retrying after BrokenChain
 	// error in the previous attempt using DaisyChain mode.
 	//
@@ -868,15 +878,23 @@ processResponses:
 			// This is to allow multiple changes to the MV during the course of a single write.
 			// It's unlikely but we need to be resilient.
 			//
-			if retryCnt > 5 {
-				errWriteMV = fmt.Errorf("failed to write to %s/%s after refreshing clustermap [%v]",
-					respItem.rvName, req.MvName, respItem.err)
+			if time.Since(writeStartTime) > writeTimeout {
+				errWriteMV = fmt.Errorf("failed to write to %s/%s even after refreshing clustermap %d times, for %s [%v]",
+					respItem.rvName, req.MvName, retryCnt, time.Since(writeStartTime), respItem.err)
 				log.Err("ReplicationManager::writeMVInternal: %v", errWriteMV)
 				continue
 			}
 
 			if clusterMapRefreshed {
 				// Clustermap has already been refreshed once in this try, so skip it.
+				time.Sleep(100 * time.Millisecond)
+				//
+				// We will be asked to refresh more than once only if the clustermap is being updated.
+				// In this state, refreshFromClustermap() cannot safely override mvInfo from the clustermap,
+				// so it keeps asking the client to retry.
+				//
+				common.Assert(retryCnt < 2 || lastClusterMapEpoch%2 == 1,
+					respItem.rvName, req.MvName, retryCnt, lastClusterMapEpoch)
 				continue
 			}
 
@@ -1456,12 +1474,13 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
 
 	//
-	// WriteMV() would be writing client writes to the target RV after it was joined to the MV (as outfofsync).
+	// WriteMV() would be writing client writes to the target RV after it was joined to the MV (as outofsync).
 	// Now that the sync job is starting, we will be syncing all chunks written to the MV before this point
-	// (with a clock skew margin as well), so we might end up copying more chunks than needed, but it's ok
-	// to be careful.
-	// The chunks written to the MV after this point will be written to the target RV as well, so those need
-	// not be sync'ed
+	// (with a clock skew margin as well), so we might end up copying (much) more chunks than needed, but it's
+	// ok to be careful.
+	//
+	// TODO: See if the chunks copied is very high for actively written MVs. If yes, we may want to reduce
+	//       syncStartTime to when the RV was marked outofsync and not when sync job started.
 	//
 	syncStartTime := time.Now().UnixMicro() + NTPClockSkewMargin
 

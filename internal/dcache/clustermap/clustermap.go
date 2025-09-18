@@ -293,6 +293,7 @@ func RefreshClusterMap(targetEpoch int64) error {
 		// Break if we got the desired epoch, else try after a small wait.
 		//
 		if GetEpoch() >= targetEpoch {
+			log.Debug("RefreshClusterMap: Got epoch %d >= %d!", GetEpoch(), targetEpoch)
 			break
 		}
 
