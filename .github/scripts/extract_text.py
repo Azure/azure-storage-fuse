@@ -39,12 +39,17 @@ if __name__ == "__main__":
         with open(file_path, 'r', encoding='utf-8') as f:
             input_text = f.read()
             
+            input_len = len(input_text)
+            if input_len < 100:   
+                print("Input text is too short to process.")
+                sys.exit(1)
+                
             extracted_content = extract_text_field(input_text)
-            
             if extracted_content:
                 print(extracted_content)
             else:
-                print("Failed to extract the 'text' field.")
+                print("Error: Could not extract text content.")
+                sys.exit(1)
                 
     except FileNotFoundError:
         print(f"Error: The file '{file_path}' was not found.")

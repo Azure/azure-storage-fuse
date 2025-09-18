@@ -94,9 +94,16 @@ if __name__ == "__main__":
    
     # Use the LLM to summarize the text
     summary = summarize_text_with_llm(full_text)
+    if summary == "":
+        print("Error: Could not generate summary.")
+        sys.exit(1)
+        
     summary_len = len(summary)
+    if summary_len < 50:
+        print("Error: Generated summary is too short to be meaningful.")
+        sys.exit(1)
+        
     resp_len = len(full_text) + summary_len
-    
     issue_comment_body = (
         "## Summary \n\n"
         f"{summary}\n\n"

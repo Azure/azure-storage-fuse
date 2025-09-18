@@ -25,12 +25,15 @@ jobs:
       with:
         python-version: '3.11'
 
+    # Install dependencies
     - name: Install dependencies
       run: |
         sudo apt-get install jq
         python -m pip install --upgrade pip
         pip install mcp httpx python-dotenv requests openai transformers torch
 
+    # ---------------------------------------------------------------------------------------------------------------
+    # Query DeepWiki using title and body of the issue/discussion
     - name: Run DeepWiki Query
       id: deepwiki-step
       env:
@@ -41,7 +44,7 @@ jobs:
         ISSUE_BODY: $(jq -r '.issue.body // .discussion.body' "${{ github.event_path }}")
       run: |
         # Run the python script and capture its output to a file
-        python .github/scripts/deepwiki_query.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" "${{ env.ISSUE_BODY }}" deepwiki_response.md
+        python .github/scripts/deepwiki_query.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" "${{ env.ISSUE_BODY }}" > deepwiki_response.md
 
     # If above script failed then fail the workflow
     - name: Check DeepWiki Query Success
@@ -52,11 +55,31 @@ jobs:
 
     - name: Print DeepWiki response
       run: cat deepwiki_response.md
+    # ---------------------------------------------------------------------------------------------------------------
 
+    # Parse DeepWiki response to extract relevant text
+    - name: Parse DeepWiki Responce and extract text
+      id: deepwiki-parse-step
+      run: |
+        # Run the python script and capture its output to a file
+        python .github/scripts/extract_text.py deepwiki_response.md > deepwiki_parsed.md
+
+    # If above script failed then fail the workflow
+    - name: Check DeepWiki Parsing Success
+      if: ${{ failure() }}
+      run: |
+        echo "DeepWiki parsing failed. Exiting workflow."
+        exit 1
+
+    - name: Print DeepWiki response
+      run: cat deepwiki_parsed.md
+    # --------------------------------------------------------------------------------------------------------------- 
+
+    # Summarize DeepWiki response using AI
     - name: Summarize DeepWiki Response with AI
       id: summarization-step
       run: |
-        python .github/scripts/ai_summarize.py deepwiki_response.md issue_comment.md
+        python .github/scripts/ai_summarize.py deepwiki_parsed.md issue_comment.md
 
     # If above script failed then fail the workflow
     - name: Check Summarization Success
@@ -67,7 +90,9 @@ jobs:
 
     - name: Print summarized response
       run: cat issue_comment.md
+    # --------------------------------------------------------------------------------------------------------------- 
 
+    # Post the summary as a comment on the issue
     - name: Post Comment to Issue
       if: github.event_name == 'issues'
       uses: peter-evans/create-or-update-comment@v4
@@ -75,7 +100,9 @@ jobs:
         issue-number: ${{ github.event.issue.number }}
         body-path: 'issue_comment.md'
         token: ${{ secrets.GITHUB_TOKEN }}
+    # --------------------------------------------------------------------------------------------------------------- 
 
+    # Post the summary as a comment on discussion
     # - name: Read comment summary from file
     #   if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
     #   id: read_body
@@ -99,7 +126,7 @@ jobs:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
           const fs = require('fs');
-          const path = 'deepwiki_response.md'; 
+          const path = 'deepwiki_parsed.md'; 
           const body = fs.readFileSync(path, 'utf8').replace(/`/g, '\\`');
           const discussion_id = ${{ github.event.discussion.id }};
           await github.graphql(`
@@ -124,3 +151,5 @@ jobs:
     #     body: ${{ steps.get-body.outputs.COMMENT_BODY }}
     #     discussion-id: ${{ github.event.discussion.id }}
     #     client-mutation-id: "unique-id-1234"
+
+    # --------------------------------------------------------------------------------------------------------------- 
