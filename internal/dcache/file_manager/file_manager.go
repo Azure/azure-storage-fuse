@@ -221,6 +221,8 @@ type DcacheFile struct {
 	attr *internal.ObjAttr
 
 	CacheWarmup *cacheWarmup
+
+	cacheWarmupInProgress bool
 }
 
 // Get the write error encountered during file writes, if any.
@@ -254,11 +256,8 @@ func (file *DcacheFile) ReadPartialFile(offset int64, buf *[]byte) (bytesRead in
 	log.Debug("DistributedCache::ReadPartialFile: file: %s, offset: %d, length: %d",
 		file.FileMetadata.Filename, offset, len(*buf))
 
-	maxReadChunkIdx := getChunkIdxFromFileOffset(offset+int64(len(*buf))-1, file.FileMetadata.FileLayout.ChunkSize)
 	common.Assert(file.CacheWarmup != nil, file.FileMetadata.Filename)
 	common.Assert(file.CacheWarmup.Size >= 0, file.CacheWarmup.Size)
-	common.Assert(maxReadChunkIdx < file.CacheWarmup.SuccessfulChunks.Load(), maxReadChunkIdx,
-		file.CacheWarmup.SuccessfulChunks.Load(), file.FileMetadata.Filename)
 
 	warmDcFile := file.CacheWarmup.warmDcFile
 
@@ -826,6 +825,15 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 		//
 		common.Assert(chunk.RefCount.Load() == 1 || chunk.RefCount.Load() == 2, chunk.Idx, chunk.RefCount.Load())
 		file.releaseChunk(chunk)
+
+		// if this file is being warmed up(i.e., writing to dcache from azure), notify the warmer threads that the upload is
+		// done for the chunk.
+		if file.CacheWarmup != nil && file.cacheWarmupInProgress {
+			ok := common.AtomicTestAndSetBitUint64(&file.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64))
+			_ = ok
+			common.Assert(ok, file.FileMetadata.Filename, chunkIdx)
+		}
+
 	}
 
 	//
@@ -1140,6 +1148,14 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) bool {
 	// Remove from the map, regardless of whether chunk memory is freed or not.
 	delete(file.StagedChunks, chunkIdx)
 
+	// if this file is being warmed up(i.e., writing to dcache from azure), notify the warmer threads that the upload is
+	// done for the chunk.
+	if file.CacheWarmup != nil && file.cacheWarmupInProgress {
+		ok := common.AtomicTestAndSetBitUint64(&file.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64))
+		_ = ok
+		common.Assert(ok, file.FileMetadata.Filename, chunkIdx)
+	}
+
 	return true
 }
 
@@ -1257,8 +1273,8 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 		chunkOffset = getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	}
 
-	log.Debug("DistributedCache::readChunk: file: %s, offset: %d, chunkIdx: %d, chunkOffset: %d, length: %d, sync: %t",
-		file.FileMetadata.Filename, offset, chunkIdx, chunkOffset, length, sync)
+	log.Debug("DistributedCache::readChunk: file: %s, offset: %d, chunkIdx: %d, chunkOffset: %d, length: %d, sync: %t, readaheadLastIdx: %d",
+		file.FileMetadata.Filename, offset, chunkIdx, chunkOffset, length, sync, file.lastReadaheadChunkIdx.Load())
 
 	//
 	// If this chunk is already staged, return the staged chunk else create a new chunk, add to the staged
@@ -1349,6 +1365,8 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 			getChunkIdxFromFileOffset(file.getFileSize()-1, file.FileMetadata.FileLayout.ChunkSize))
 		common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
 
+		readAheadStartChunkIdx, readAheadEndChunkIdx = file.getModifiedReadaheadOnWarmup(readAheadStartChunkIdx, readAheadEndChunkIdx)
+
 		//
 		// Update lastReadaheadChunkIdx inside the lock to avoid duplicate readahead by multiple threads.
 		// The actual readahead is done outside the lock. In the unlikely event of readahead reads failing,
@@ -1369,14 +1387,11 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 
 		for i := readAheadStartChunkIdx; i < readAheadEndChunkIdx; i++ {
 
-			if ok := file.isReadAheadOkInWarmup(i); ok {
-				_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0, false /* sync */)
-
-				if err != nil {
-					// Don't fail the read because readahead failed.
-					log.Warn("DistributedCache::readChunkWithReadAhead: file: %s, chunkIdx: %d, readahead failed: %v",
-						file.FileMetadata.Filename, i, err)
-				}
+			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0, false /* sync */)
+			if err != nil {
+				// Don't fail the read because readahead failed.
+				log.Warn("DistributedCache::readChunkWithReadAhead: file: %s, chunkIdx: %d, readahead failed: %v",
+					file.FileMetadata.Filename, i, err)
 			}
 
 			common.Assert(file.readaheadToBeIssued.Load() > 0,
