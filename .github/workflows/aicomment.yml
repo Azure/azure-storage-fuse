@@ -82,6 +82,9 @@ jobs:
       id: read_body
       run: |
         body=$(<response_comment.md)
+        body="${body//$'\n'/'%0A'}"
+        body="${body//'%'/'%25'}"
+        # body="${body//$'\r'/'%0D'}"
         echo "body=$body" >> "$GITHUB_OUTPUT"
 
 
