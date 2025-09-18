@@ -499,8 +499,8 @@ loop:
 }
 
 func (dcFile *DcacheFile) NewCacheWarmup(size int64, maxBackgroundCacheWarmupChunks int) *cacheWarmup {
-	numChunks := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
-	maxChunks := (size + numChunks - 1) / numChunks
+	chunkSize := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
+	maxChunks := (size + chunkSize - 1) / chunkSize
 
 	numInts := int((maxChunks + 63) / 64)
 

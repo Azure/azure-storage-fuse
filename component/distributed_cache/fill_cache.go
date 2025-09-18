@@ -117,7 +117,7 @@ func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 		}
 	}
 
-	finishCacheWarmupForFile(handle, dcFile)
+	finishCacheWarmupForFile(dc, handle, dcFile)
 }
 
 func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.DcacheFile, chunkIdx int64) error {
@@ -181,20 +181,25 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 		return nil
 	}
 
-	dc.pw.EnqueuAzureWrite(dcacheWrite)
+	dc.pw.EnqueuDcacheWrite(dcacheWrite)
 
 	return nil
 }
 
-// It blocks the caller until the chunk enclosing this offset is uploaded to the cache.
-func waitForChunkWarmupCompletion(handle *handlemap.Handle, dcFile *fm.DcacheFile, offset int64) error {
+// It blocks the caller until the chunks enclosing this offset is uploaded to the cache.
+func waitForChunksToCompleteWarmup(handle *handlemap.Handle, dcFile *fm.DcacheFile, offset int64, bufSize int64) error {
 
 	chunkSize := clustermap.GetCacheConfig().ChunkSizeMB * common.MbToBytes
-	chunkIdx := offset / int64(chunkSize)
+	startChunkIdx := offset / int64(chunkSize)
+	endOffset := offset + bufSize - 1
+	endChunkIdx := min(endOffset/int64(chunkSize), dcFile.CacheWarmup.MaxChunks-1)
+
+	// max Read Buf Size can be 1MB from FUSE. Hence that can fall in 2 chunks at max.
+	common.Assert(endChunkIdx-startChunkIdx <= 1, startChunkIdx, endChunkIdx, offset, bufSize, chunkSize)
 
 	var err error
 
-	for {
+	for chunkIdx := startChunkIdx; chunkIdx <= endChunkIdx; chunkIdx++ {
 		if Ierr := dcFile.CacheWarmup.Error.Load(); err != nil {
 			// cache warmup failed.
 			err = Ierr.(error)
@@ -202,14 +207,13 @@ func waitForChunkWarmupCompletion(handle *handlemap.Handle, dcFile *fm.DcacheFil
 		}
 
 		// check if corresponding bit is set in the bitmap.
-		if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); ok {
-			break
+		if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); !ok {
+			log.Debug("DistributedCache::waitForChunksToComplete: Waiting for cache warmup completion for file: %s, handle: %d, chunk Idx: %d, SuccessfulChunks: %d, MaxChunks: %d",
+				handle.Path, handle.ID, chunkIdx, dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
+
+			time.Sleep(100 * time.Millisecond)
+			chunkIdx--
 		}
-
-		log.Debug("DistributedCache::waitForChunkWarmupCompletion: Waiting for cache warmup completion for file: %s, handle: %d, chunk Idx: %d, SuccessfulChunks: %d, MaxChunks: %d",
-			handle.Path, handle.ID, chunkIdx, dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
-
-		time.Sleep(100 * time.Millisecond)
 	}
 
 	return err
@@ -225,12 +229,23 @@ func logStatusForCacheWarmup(handle *handlemap.Handle, dcFile *fm.DcacheFile) {
 	}
 }
 
-func finishCacheWarmupForFile(handle *handlemap.Handle, dcFile *fm.DcacheFile) {
+func finishCacheWarmupForFile(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.DcacheFile) {
 	log.Debug("DistributedCache::checkStatusForCacheWarmup : Checking cache warmup status for Dcache file : %s, handle: %d",
 		handle.Path, handle.ID)
 
 	defer func() {
-		dcFile.CacheWarmup.Completed.Store(true)
+		// check if the read handle is closed before warmup and mark the cache warmup as completed. in that case we
+		// should also release azure handle.
+		if ok := dcFile.CacheWarmup.Completed.CompareAndSwap(false, true); !ok {
+			azureErr := dc.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
+			if azureErr != nil {
+				log.Err("DistributedCache::checkStatusForCacheWarmup : Failed to Close Azure handle for file : %s, handle: %d, error: %v",
+					handle.Path, handle.ID, azureErr)
+			} else {
+				log.Info("DistributedCache::checkStatusForCacheWarmup : Successfully Closed Azure handle for file : %s, handle: %d",
+					handle.Path, handle.ID)
+			}
+		}
 	}()
 
 	// check if the cache warmup completed successfully.

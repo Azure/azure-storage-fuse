@@ -1117,7 +1117,7 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		if dc.cfg.CacheWarmup {
 			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 			if dcFile != nil {
-				err = waitForChunkWarmupCompletion(options.Handle, dcFile, options.Offset+int64(len(options.Data))-1)
+				err = waitForChunksToCompleteWarmup(options.Handle, dcFile, options.Offset, int64(len(options.Data)))
 				if err != nil {
 					log.Warn("DistributedCache::ReadInBuffer : Cache warmup failed for file: %s, offset: %d, err: %v, continueing to read from Azure",
 						options.Handle.Path, options.Offset, err)
@@ -1336,19 +1336,31 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	}
 
 	if options.Handle.IsFsAzure() {
-
+		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+		skipClose := false
 		// emit a log on the status of cache warmup if enabled.
-		if dc.cfg.CacheWarmup {
-			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
-			if dcFile != nil {
-				logStatusForCacheWarmup(options.Handle, dcFile)
+		if dc.cfg.CacheWarmup && dcFile != nil {
+			logStatusForCacheWarmup(options.Handle, dcFile)
+			if err := dcFile.CacheWarmup.ReleaseReadHandle(dcFile); err != nil {
+				log.Err("DistributedCache::CloseFile : Failed to release read handle for cache warmup for file : %s, err: %v",
+					options.Handle.Path, err)
+			}
+			if ok := dcFile.CacheWarmup.Completed.CompareAndSwap(false, true); ok {
+				// skip closing the Azure file, as cache warmup is in progress. This release will be called by the warmup
+				// goroutine once the warmup is complete.
+				log.Info("DistributedCache::CloseFile : Skipping CloseFile for Azure file as cache warmup is in progress : %s",
+					options.Handle.Path)
+				skipClose = true
 			}
 		}
 
-		azureErr = dc.NextComponent().CloseFile(options)
-		if azureErr != nil {
-			log.Err("DistributedCache::SyncFile : Failed to ReleaseFile for Azure file : %s", options.Handle.Path)
+		if !skipClose {
+			azureErr = dc.NextComponent().CloseFile(options)
+			if azureErr != nil {
+				log.Err("DistributedCache::SyncFile : Failed to ReleaseFile for Azure file : %s", options.Handle.Path)
+			}
 		}
+
 	}
 
 	if options.Handle.IsFsDebug() {
