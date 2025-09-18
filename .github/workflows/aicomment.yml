@@ -12,7 +12,7 @@ jobs:
 
     permissions:
       id-token: write
-      contents: write
+      contents: read
       issues: write
       discussions: write
 
@@ -75,6 +75,39 @@ jobs:
         issue-number: ${{ github.event.issue.number }}
         body-path: 'response_comment.md'
         token: ${{ secrets.GITHUB_TOKEN }}
+
+
+    - name: Read thank you message from file
+      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
+      id: read_body
+      run: |
+        body=$(<response_comment.md)
+        body="${body//'%'/'%25'}"
+        body="${body//$'\n'/'%0A'}"
+        body="${body//$'\r'/'%0D'}"
+        echo "body=$body" >> "$GITHUB_OUTPUT
+
+
+    - name: Post Thank You Comment
+      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const discussion_id = ${{ github.event.discussion.id }};
+          const body = `${{ steps.read_body.outputs.body }}`;
+          await github.graphql(`
+            mutation {
+              addDiscussionComment(input: {
+                discussionId: "${discussion_id}",
+                body: "${body}"
+              }) {
+                comment {
+                  id
+                }
+              }
+            }
+          `);
 
     # - name: Post Comment to Discussion
     #   if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
