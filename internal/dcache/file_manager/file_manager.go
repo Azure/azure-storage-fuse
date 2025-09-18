@@ -259,6 +259,12 @@ func (file *DcacheFile) ReadPartialFile(offset int64, buf *[]byte) (bytesRead in
 	common.Assert(file.CacheWarmup != nil, file.FileMetadata.Filename)
 	common.Assert(file.CacheWarmup.Size >= 0, file.CacheWarmup.Size)
 
+	if offset >= file.CacheWarmup.Size {
+		log.Warn("DistributedCache::ReadPartialFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d",
+			file.FileMetadata.Filename, offset, len(*buf), file.CacheWarmup.Size)
+		return 0, io.EOF
+	}
+
 	warmDcFile := file.CacheWarmup.warmDcFile
 
 	return warmDcFile.ReadFile(offset, buf)
@@ -840,7 +846,7 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	// Decrement the file open count if safeDeletes is enabled and handle corresponds to a file opened for
 	// reading.
 	//
-	if fileIOMgr.safeDeletes && isReadOnlyHandle {
+	if fileIOMgr.safeDeletes && isReadOnlyHandle && file.CacheWarmup == nil {
 		// attr must have been saved when file was opened for read.
 		common.Assert(file.attr != nil, file.FileMetadata)
 

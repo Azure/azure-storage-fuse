@@ -45,25 +45,31 @@ import (
 // The following go-routines are used when writing the file to Unqualified Path(i.e., Dcache, Azure) at the same time.
 
 type writeReq struct {
-	writer func() error // Function for writing to the file.
-	err    chan error   // writer returns the error on this channel.
+	write func() error // Function for writing to the file.
+	err   chan error   // writer returns the error on this channel.
 }
 
 type parallelWriter struct {
-	maxWriters       int
-	azureWriterQueue chan *writeReq
-	wg               sync.WaitGroup
+	maxWriters        int
+	azureWriterQueue  chan *writeReq
+	dcacheWriterQueue chan *writeReq
+	wg                sync.WaitGroup
 }
 
 // Spawns 64 go-routines for Dcache for writing.
 func newParallelWriter() *parallelWriter {
 	pw := &parallelWriter{
-		maxWriters:       64,
-		azureWriterQueue: make(chan *writeReq, 64),
+		maxWriters:        64,
+		azureWriterQueue:  make(chan *writeReq, 64),
+		dcacheWriterQueue: make(chan *writeReq, 128),
 	}
 
 	for range pw.maxWriters {
 		go pw.azureWriter()
+	}
+
+	for range pw.maxWriters * 2 {
+		go pw.dcacheWriter()
 	}
 
 	log.Info("parallelWriter:: %d writers started for dcache, Used when writing to Unqualified path",
@@ -74,6 +80,7 @@ func newParallelWriter() *parallelWriter {
 
 func (pw *parallelWriter) destroyParallelWriter() {
 	close(pw.azureWriterQueue)
+	close(pw.dcacheWriterQueue)
 	pw.wg.Wait()
 	log.Info("parallelWriter:: %d writers destroyed for dcache, Used when writing to Unqualified path",
 		pw.maxWriters)
@@ -84,8 +91,17 @@ func (pw *parallelWriter) azureWriter() {
 	defer pw.wg.Done()
 
 	for az := range pw.azureWriterQueue {
-		err := az.writer()
+		err := az.write()
 		az.err <- err
+	}
+}
+
+func (pw *parallelWriter) dcacheWriter() {
+	pw.wg.Add(1)
+	defer pw.wg.Done()
+
+	for dc := range pw.dcacheWriterQueue {
+		dc.write()
 	}
 }
 
@@ -94,13 +110,24 @@ func (pw *parallelWriter) EnqueuAzureWrite(azureWrite func() error) <-chan error
 	common.Assert(azureWrite != nil)
 
 	azureWriteWorkItem := &writeReq{
-		writer: azureWrite,
-		err:    make(chan error, 1),
+		write: azureWrite,
+		err:   make(chan error, 1),
 	}
 	// Queue the work Item.
 	pw.azureWriterQueue <- azureWriteWorkItem
 
 	return azureWriteWorkItem.err
+}
+
+func (pw *parallelWriter) EnqueuDcacheWrite(dcacheWrite func() error) {
+	common.Assert(dcacheWrite != nil)
+
+	dcacheWriteWorkItem := &writeReq{
+		write: dcacheWrite,
+		err:   nil, // caller has mechanism to retrieve the error if any.
+	}
+	// Queue the work Item.
+	pw.dcacheWriterQueue <- dcacheWriteWorkItem
 }
 
 // Silence unused import errors for release builds.
