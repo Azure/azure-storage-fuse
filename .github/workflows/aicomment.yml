@@ -68,18 +68,6 @@ jobs:
     - name: Print summarized response
       run: cat response_comment.md
 
-    - name: Read comment body from file
-      id: get-body
-      run: |
-        # Use a delimiter to correctly handle multi-line strings with GITHUB_OUTPUT
-        content=$(cat response_comment.md)
-        echo "COMMENT_BODY<<EOF" >> $GITHUB_OUTPUT
-        echo "$content" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-
-    - name: Debug - Print comment body for discussion
-      run: echo "${{ steps.get-body.outputs.COMMENT_BODY }}"
-
     - name: Post Comment to Issue
       if: github.event_name == 'issues'
       uses: peter-evans/create-or-update-comment@v4
@@ -88,11 +76,11 @@ jobs:
         body-path: 'response_comment.md'
         token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Post Comment to Discussion
-      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
-      uses: wesleyscholl/create-discussion-comment@v1.0.18
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        body: ${{ steps.get-body.outputs.COMMENT_BODY }}
-        discussion-id: ${{ github.event.discussion.id }}
-        client-mutation-id: "unique-id-1234"
+    # - name: Post Comment to Discussion
+    #   if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
+    #   uses: wesleyscholl/create-discussion-comment@v1.0.18
+    #   with:
+    #     token: ${{ secrets.GITHUB_TOKEN }}
+    #     body: ${{ steps.get-body.outputs.COMMENT_BODY }}
+    #     discussion-id: ${{ github.event.discussion.id }}
+    #     client-mutation-id: "unique-id-1234"
