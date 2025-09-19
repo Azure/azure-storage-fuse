@@ -193,6 +193,7 @@ type AzStorageOptions struct {
 	CPKEncryptionKey        string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
 	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
+	DisableSetAccessControl bool   `config:"disable-setaccesscontrol" yaml:"disable-setaccesscontrol"`
 	Filter                  string `config:"filter" yaml:"filter"`
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
 
@@ -523,6 +524,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	az.stConfig.preserveACL = opt.PreserveACL
+	az.stConfig.disableSetAccessControl = opt.DisableSetAccessControl
 	if opt.Filter != "" {
 		err = configureBlobFilter(az, opt)
 		if err != nil {
@@ -534,8 +536,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
 		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.disableCompression, az.stConfig.cpkEnabled)
 	log.Crit("ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
-	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
-		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
+	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v, disable-setaccesscontrol: %v",
+		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL, az.stConfig.disableSetAccessControl)
 
 	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
 
