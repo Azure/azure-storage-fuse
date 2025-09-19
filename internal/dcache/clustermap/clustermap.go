@@ -51,7 +51,8 @@ import (
 //go:generate $ASSERT_REMOVER $GOFILE
 
 var (
-	InvalidComponentRV = errors.New("invalid component RV")
+	InvalidComponentRV     = errors.New("invalid component RV")
+	ClusterMapBeingUpdated = errors.New("clustermap is currently being updated by another node or thread")
 )
 
 func Start() {
@@ -292,6 +293,7 @@ func RefreshClusterMap(targetEpoch int64) error {
 		// Break if we got the desired epoch, else try after a small wait.
 		//
 		if GetEpoch() >= targetEpoch {
+			log.Debug("RefreshClusterMap: Got epoch %d >= %d!", GetEpoch(), targetEpoch)
 			break
 		}
 
@@ -486,6 +488,9 @@ func (c *ClusterMap) loadLocalMap() {
 	defer c.mu.Unlock()
 
 	c.localMap = &newClusterMap
+
+	log.Debug("ClusterMap::loadLocalMap: Updated local clustermap in %s, epoch: %d",
+		c.localClusterMapPath, newClusterMap.Epoch)
 }
 
 func (c *ClusterMap) getEpoch() int64 {
@@ -586,10 +591,14 @@ func (c *ClusterMap) getActiveMVsForRV(rvName string) map[string]struct{} {
 		//
 		// We only leave the MV folder for component RVs that are online.
 		// If the component RV is offline/inband-offline, then the MV is not active.
-		// We even delete if component RV is in outofsync or syncing state. Though it will work
-		// if we leave those MVs but it's safer to delete them and start afresh.
+		// For any other state we MUST leave the MV data intact o/w it may cause data loss,
+		// since NewChunkServiceHandler() will create mvInfo state as per the clusterMap and
+		// if we don't have the MV data then data will not match the mvInfo state.
+		// e.g., if the component RV is outofsync/syncing, cluster is expecting some data in
+		// the MV, if we just set the mvInfo state of outofsync/syncing and don't have the MV
+		// data, then we will lose that data.
 		//
-		if rvState != dcache.StateOnline {
+		if rvState == dcache.StateOffline || rvState == dcache.StateInbandOffline {
 			continue
 		}
 
@@ -619,6 +628,7 @@ func (c *ClusterMap) getCacheConfig() *dcache.DCacheConfig {
 	return &c.getLocalMap().Config
 }
 
+// Note: This returns a shallow copy of the clustermap, so do not modify it, otherwise it will affect other users.
 func (c *ClusterMap) getClusterMap() dcache.ClusterMap {
 	return *c.getLocalMap()
 }

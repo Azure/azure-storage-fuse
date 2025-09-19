@@ -38,7 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
+	//"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -826,8 +826,12 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 
 	// All JoinMV requests must carry a valid clustermap epoch.
 	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
-	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+	//
+	// See joinMV() comments in cluster_manager.go for details on the following asserts.
+	//
+	common.Assert(req.ClustermapEpoch%2 == 1, req.ClustermapEpoch, cm.GetEpoch())
+	common.Assert(req.ClustermapEpoch == cm.GetEpoch() || req.ClustermapEpoch == cm.GetEpoch()+1,
+		req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.JoinMVRequestToString(req)
 	log.Debug("rpc_client::JoinMV: Sending JoinMV request (newMV: %v) to node %s: %v", newMV, targetNodeID, reqStr)
@@ -844,18 +848,27 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 			log.Err("%v", err)
 
 			//
-			// This code is special only for JoinMV and specifically for the new-mv case.
-			// Note that ClusterManager.start() has a tiny window where it publishes its RVs into the
-			// clustermap but it has not started the RPC server yet.
-			// If some other node starts a new-mv workflow in the meantime, its attempt to create RPC
-			// client connections will fail with connection refused.
-			// Retry after a small wait.
+			// TODO: The following code is not right, as retrying after a wait will not help if the
+			//       connection creation fails, as we would have added the node to negative list and
+			//       getRPCClient() will fail fast, but we need to handle the issue described below.
+			//       Without this what will happen is that this new node will not be inducted into
+			//       the cluster till the next clustermap epoch, which is not very bad too.
 			//
-			if newMV {
-				log.Info("rpc_client::JoinMV: Retrying after 5 secs in case the RPC server is just starting on the target")
-				time.Sleep(5 * time.Second)
-				continue
-			}
+			/*
+				//
+				// This code is special only for JoinMV and specifically for the new-mv case.
+				// Note that ClusterManager.start() has a tiny window where it publishes its RVs into the
+				// clustermap but it has not started the RPC server yet.
+				// If some other node starts a new-mv workflow in the meantime, its attempt to create RPC
+				// client connections will fail with connection refused.
+				// Retry after a small wait.
+				//
+				if newMV {
+					log.Info("rpc_client::JoinMV: Retrying after 2 secs in case the RPC server is just starting on the target")
+					time.Sleep(2 * time.Second)
+					continue
+				}
+			*/
 			return nil, err
 		}
 
@@ -952,8 +965,12 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 
 	// All UpdateMV requests must carry a valid clustermap epoch.
 	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
-	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
+	//
+	// See joinMV() comments in cluster_manager.go for details on the following asserts.
+	//
+	common.Assert(req.ClustermapEpoch%2 == 1, req.ClustermapEpoch, cm.GetEpoch())
+	common.Assert(req.ClustermapEpoch == cm.GetEpoch() || req.ClustermapEpoch == cm.GetEpoch()+1,
+		req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.UpdateMVRequestToString(req)
 	log.Debug("rpc_client::UpdateMV: Sending UpdateMV request to node %s: %v", targetNodeID, reqStr)
@@ -1165,261 +1182,22 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 		targetNodeID, reqStr)
 }
 
-func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
-	common.Assert(req != nil)
-
-	// Caller must not set SenderNodeID, catch misbehaving callers.
-	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
-	req.SenderNodeID = myNodeId
-
-	// All StartSync requests must carry a valid clustermap epoch.
-	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
-	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
-
-	reqStr := rpc.StartSyncRequestToString(req)
-	log.Debug("rpc_client::StartSync: Sending StartSync request to node %s: %v", targetNodeID, reqStr)
-
-	//
-	// We retry once after resetting bad connections.
-	//
-	for i := 0; i < 2; i++ {
-		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
-		if err != nil {
-			err = fmt.Errorf("rpc_client::StartSync: Failed to get RPC client for node %s %v: %v [%w]",
-				targetNodeID, reqStr, err, NoFreeRPCClient)
-			log.Err("%v", err)
-			return nil, err
-		}
-
-		// Call the rpc method.
-		resp, err := client.svcClient.StartSync(ctx, req)
-		if err != nil {
-			log.Err("rpc_client::StartSync: StartSync failed to node %s %v: %v",
-				targetNodeID, reqStr, err)
-
-			//
-			// Only possible errors:
-			// - Actual RPC error returned by the server.
-			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			//   In this case we could send the request before the blobfuse2 process stopped but it
-			//   stopped before it could respond.
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			// - TimedOut means the node is down or cannot be reached over the n/w.
-			//
-			// All other errors other than RPC error indicate some problem with the target node or the
-			// n/w, so we delete all existing connections to the node, prohibit new connections for a
-			// short period and then create new connections when needed.
-			//
-			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsBrokenPipe(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err) ||
-				rpc.IsTimedOut(err), err)
-
-			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				//
-				// Common reason for first time error could be that we have old connections and since
-				// then blobfuse2 process or the node has restarted causing those connections to fail
-				// with broken pipe or connection closed/reset errors, so first time around we don't
-				// mark the node as negative, but if retrying also fails with similar error, it means the
-				// blobfuse2 process is still down so we mark it as negative.
-				//
-				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
-				if i == 1 {
-					return nil, err
-				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
-				if err1 != nil {
-					return nil, err
-				}
-				// Continue with newly created client.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
-				return nil, err
-			}
-
-			// Fall through to release the RPC client.
-			resp = nil
-		} else {
-			//
-			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
-			// clear it now.
-			//
-			cp.removeNegativeNode(targetNodeID)
-
-			//
-			// We send StartSync() to source and target of the sync. So, on successful StartSync()
-			// RPC call remove the corresponding RV from the iffyRvIdMap.
-			//
-			if req.SenderNodeID == targetNodeID {
-				cp.removeIffyRvName(req.SourceRVName)
-			} else {
-				cp.removeIffyRvName(req.TargetRVName)
-			}
-		}
-
-		// Release RPC client back to the pool.
-		err1 := cp.releaseRPCClient(client)
-		if err1 != nil {
-			log.Err("rpc_client::StartSync: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err1)
-			// Assert, but not fail the StartSync call.
-			common.Assert(false, err1)
-		}
-
-		return resp, err
-	}
-
-	//
-	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
-	// quick succession.
-	//
-	return nil, fmt.Errorf("rpc_client::StartSync: Could not find a valid RPC client for node %s %v",
-		targetNodeID, reqStr)
-}
-
-func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
-	common.Assert(req != nil)
-
-	// Caller must not set SenderNodeID, catch misbehaving callers.
-	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
-	req.SenderNodeID = myNodeId
-
-	// All EndSync requests must carry a valid clustermap epoch.
-	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
-	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
-
-	reqStr := rpc.EndSyncRequestToString(req)
-	log.Debug("rpc_client::EndSync: Sending EndSync request to node %s: %v", targetNodeID, reqStr)
-
-	//
-	// We retry once after resetting bad connections.
-	//
-	for i := 0; i < 2; i++ {
-		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
-		if err != nil {
-			err = fmt.Errorf("rpc_client::EndSync: Failed to get RPC client for node %s %v: %v [%w]",
-				targetNodeID, reqStr, err, NoFreeRPCClient)
-			log.Err("%v", err)
-			return nil, err
-		}
-
-		// Call the rpc method.
-		resp, err := client.svcClient.EndSync(ctx, req)
-		if err != nil {
-			log.Err("rpc_client::EndSync: EndSync failed to node %s %v: %v",
-				targetNodeID, reqStr, err)
-
-			//
-			// Only possible errors:
-			// - Actual RPC error returned by the server.
-			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
-			// - Connection closed by the server (maybe it restarted before it could respond).
-			//   In this case we could send the request before the blobfuse2 process stopped but it
-			//   stopped before it could respond.
-			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
-			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
-			// - TimedOut means the node is down or cannot be reached over the n/w.
-			//
-			// All other errors other than RPC error indicate some problem with the target node or the
-			// n/w, so we delete all existing connections to the node, prohibit new connections for a
-			// short period and then create new connections when needed.
-			//
-			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
-			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsBrokenPipe(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionReset(err) ||
-				rpc.IsTimedOut(err), err)
-
-			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
-				//
-				// Common reason for first time error could be that we have old connections and since
-				// then blobfuse2 process or the node has restarted causing those connections to fail
-				// with broken pipe or connection closed/reset errors, so first time around we don't
-				// mark the node as negative, but if retrying also fails with similar error, it means the
-				// blobfuse2 process is still down so we mark it as negative.
-				//
-				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */)
-				if i == 1 {
-					return nil, err
-				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
-				if err1 != nil {
-					return nil, err
-				}
-				// Continue with newly created client.
-				continue
-			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* confirmedBadNode */)
-				return nil, err
-			}
-
-			// Fall through to release the RPC client.
-			resp = nil
-		} else {
-			//
-			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
-			// clear it now.
-			//
-			cp.removeNegativeNode(targetNodeID)
-
-			//
-			// We send EndSync() to source and target of the sync. So, on successful EndSync()
-			// RPC call remove the corresponding RV from the iffyRvIdMap.
-			//
-			if req.SenderNodeID == targetNodeID {
-				cp.removeIffyRvName(req.SourceRVName)
-			} else {
-				cp.removeIffyRvName(req.TargetRVName)
-			}
-		}
-
-		// Release RPC client back to the pool.
-		err1 := cp.releaseRPCClient(client)
-		if err1 != nil {
-			log.Err("rpc_client::EndSync: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err1)
-			// Assert, but not fail the EndSync call.
-			common.Assert(false, err1)
-		}
-
-		return resp, err
-	}
-
-	//
-	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
-	// quick succession.
-	//
-	return nil, fmt.Errorf("rpc_client::EndSync: Could not find a valid RPC client for node %s %v",
-		targetNodeID, reqStr)
-}
-
 // TODO:: integration : use this API in the fix-mv workflow to get the size of the MV
 // while making JoinMV calls to new online RVs
 func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
 	common.Assert(req != nil)
 
+	//
 	// All GetMVSize requests must carry a valid clustermap epoch.
+	// Other then this we cannot assert anything about the clustermap epoch since GetMVSize() can be called
+	// from joinMV() and also syncMV(). For joinMV() the epoch must be odd and == cm.GetEpoch()+1, as it's
+	// called from updateMVList() which locks the clustermap. We cannot say the same for syncMV().
+	//
 	common.Assert(req.ClustermapEpoch > 0, req.ClustermapEpoch)
+
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
 	req.SenderNodeID = myNodeId
-
-	// Caller cannot send a clustermap epoch greater than what we have.
-	common.Assert(req.ClustermapEpoch <= cm.GetEpoch(), req.ClustermapEpoch, cm.GetEpoch())
 
 	reqStr := rpc.GetMVSizeRequestToString(req)
 	log.Debug("rpc_client::GetMVSize: Sending GetMVSize request to node %s: %v", targetNodeID, reqStr)

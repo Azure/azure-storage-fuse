@@ -88,12 +88,6 @@ type ChunkService interface {
 	LeaveMV(ctx context.Context, request *models.LeaveMVRequest) (_r *models.LeaveMVResponse, _err error)
 	// Parameters:
 	//  - Request
-	StartSync(ctx context.Context, request *models.StartSyncRequest) (_r *models.StartSyncResponse, _err error)
-	// Parameters:
-	//  - Request
-	EndSync(ctx context.Context, request *models.EndSyncRequest) (_r *models.EndSyncResponse, _err error)
-	// Parameters:
-	//  - Request
 	GetMVSize(ctx context.Context, request *models.GetMVSizeRequest) (_r *models.GetMVSizeResponse, _err error)
 }
 
@@ -318,12 +312,12 @@ func (p *ChunkServiceClient) LeaveMV(ctx context.Context, request *models.LeaveM
 
 // Parameters:
 //   - Request
-func (p *ChunkServiceClient) StartSync(ctx context.Context, request *models.StartSyncRequest) (_r *models.StartSyncResponse, _err error) {
-	var _args32 ChunkServiceStartSyncArgs
+func (p *ChunkServiceClient) GetMVSize(ctx context.Context, request *models.GetMVSizeRequest) (_r *models.GetMVSizeResponse, _err error) {
+	var _args32 ChunkServiceGetMVSizeArgs
 	_args32.Request = request
-	var _result34 ChunkServiceStartSyncResult
+	var _result34 ChunkServiceGetMVSizeResult
 	var _meta33 thrift.ResponseMeta
-	_meta33, _err = p.Client_().Call(ctx, "StartSync", &_args32, &_result34)
+	_meta33, _err = p.Client_().Call(ctx, "GetMVSize", &_args32, &_result34)
 	p.SetLastResponseMeta_(_meta33)
 	if _err != nil {
 		return
@@ -335,52 +329,6 @@ func (p *ChunkServiceClient) StartSync(ctx context.Context, request *models.Star
 
 	if _ret35 := _result34.GetSuccess(); _ret35 != nil {
 		return _ret35, nil
-	}
-	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "StartSync failed: unknown result")
-}
-
-// Parameters:
-//   - Request
-func (p *ChunkServiceClient) EndSync(ctx context.Context, request *models.EndSyncRequest) (_r *models.EndSyncResponse, _err error) {
-	var _args36 ChunkServiceEndSyncArgs
-	_args36.Request = request
-	var _result38 ChunkServiceEndSyncResult
-	var _meta37 thrift.ResponseMeta
-	_meta37, _err = p.Client_().Call(ctx, "EndSync", &_args36, &_result38)
-	p.SetLastResponseMeta_(_meta37)
-	if _err != nil {
-		return
-	}
-	switch {
-	case _result38.Err != nil:
-		return _r, _result38.Err
-	}
-
-	if _ret39 := _result38.GetSuccess(); _ret39 != nil {
-		return _ret39, nil
-	}
-	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "EndSync failed: unknown result")
-}
-
-// Parameters:
-//   - Request
-func (p *ChunkServiceClient) GetMVSize(ctx context.Context, request *models.GetMVSizeRequest) (_r *models.GetMVSizeResponse, _err error) {
-	var _args40 ChunkServiceGetMVSizeArgs
-	_args40.Request = request
-	var _result42 ChunkServiceGetMVSizeResult
-	var _meta41 thrift.ResponseMeta
-	_meta41, _err = p.Client_().Call(ctx, "GetMVSize", &_args40, &_result42)
-	p.SetLastResponseMeta_(_meta41)
-	if _err != nil {
-		return
-	}
-	switch {
-	case _result42.Err != nil:
-		return _r, _result42.Err
-	}
-
-	if _ret43 := _result42.GetSuccess(); _ret43 != nil {
-		return _ret43, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "GetMVSize failed: unknown result")
 }
@@ -405,19 +353,17 @@ func (p *ChunkServiceProcessor) ProcessorMap() map[string]thrift.TProcessorFunct
 
 func NewChunkServiceProcessor(handler ChunkService) *ChunkServiceProcessor {
 
-	self44 := &ChunkServiceProcessor{handler: handler, processorMap: make(map[string]thrift.TProcessorFunction)}
-	self44.processorMap["Hello"] = &chunkServiceProcessorHello{handler: handler}
-	self44.processorMap["GetChunk"] = &chunkServiceProcessorGetChunk{handler: handler}
-	self44.processorMap["PutChunk"] = &chunkServiceProcessorPutChunk{handler: handler}
-	self44.processorMap["PutChunkDC"] = &chunkServiceProcessorPutChunkDC{handler: handler}
-	self44.processorMap["RemoveChunk"] = &chunkServiceProcessorRemoveChunk{handler: handler}
-	self44.processorMap["JoinMV"] = &chunkServiceProcessorJoinMV{handler: handler}
-	self44.processorMap["UpdateMV"] = &chunkServiceProcessorUpdateMV{handler: handler}
-	self44.processorMap["LeaveMV"] = &chunkServiceProcessorLeaveMV{handler: handler}
-	self44.processorMap["StartSync"] = &chunkServiceProcessorStartSync{handler: handler}
-	self44.processorMap["EndSync"] = &chunkServiceProcessorEndSync{handler: handler}
-	self44.processorMap["GetMVSize"] = &chunkServiceProcessorGetMVSize{handler: handler}
-	return self44
+	self36 := &ChunkServiceProcessor{handler: handler, processorMap: make(map[string]thrift.TProcessorFunction)}
+	self36.processorMap["Hello"] = &chunkServiceProcessorHello{handler: handler}
+	self36.processorMap["GetChunk"] = &chunkServiceProcessorGetChunk{handler: handler}
+	self36.processorMap["PutChunk"] = &chunkServiceProcessorPutChunk{handler: handler}
+	self36.processorMap["PutChunkDC"] = &chunkServiceProcessorPutChunkDC{handler: handler}
+	self36.processorMap["RemoveChunk"] = &chunkServiceProcessorRemoveChunk{handler: handler}
+	self36.processorMap["JoinMV"] = &chunkServiceProcessorJoinMV{handler: handler}
+	self36.processorMap["UpdateMV"] = &chunkServiceProcessorUpdateMV{handler: handler}
+	self36.processorMap["LeaveMV"] = &chunkServiceProcessorLeaveMV{handler: handler}
+	self36.processorMap["GetMVSize"] = &chunkServiceProcessorGetMVSize{handler: handler}
+	return self36
 }
 
 func (p *ChunkServiceProcessor) Process(ctx context.Context, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
@@ -430,12 +376,12 @@ func (p *ChunkServiceProcessor) Process(ctx context.Context, iprot, oprot thrift
 	}
 	iprot.Skip(ctx, thrift.STRUCT)
 	iprot.ReadMessageEnd(ctx)
-	x45 := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "Unknown function "+name)
+	x37 := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "Unknown function "+name)
 	oprot.WriteMessageBegin(ctx, name, thrift.EXCEPTION, seqId)
-	x45.Write(ctx, oprot)
+	x37.Write(ctx, oprot)
 	oprot.WriteMessageEnd(ctx)
 	oprot.Flush(ctx)
-	return false, x45
+	return false, x37
 
 }
 
@@ -444,7 +390,7 @@ type chunkServiceProcessorHello struct {
 }
 
 func (p *chunkServiceProcessorHello) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err46 error
+	var _write_err38 error
 	args := ChunkServiceHelloArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -499,21 +445,21 @@ func (p *chunkServiceProcessorHello) Process(ctx context.Context, seqId int32, i
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc47 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing Hello: "+err2.Error())
+			_exc39 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing Hello: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "Hello", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err46 = thrift.WrapTException(err2)
+				_write_err38 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc47.Write(ctx, oprot); _write_err46 == nil && err2 != nil {
-				_write_err46 = thrift.WrapTException(err2)
+			if err2 := _exc39.Write(ctx, oprot); _write_err38 == nil && err2 != nil {
+				_write_err38 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err46 == nil && err2 != nil {
-				_write_err46 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err38 == nil && err2 != nil {
+				_write_err38 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err46 == nil && err2 != nil {
-				_write_err46 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err38 == nil && err2 != nil {
+				_write_err38 = thrift.WrapTException(err2)
 			}
-			if _write_err46 != nil {
-				return false, thrift.WrapTException(_write_err46)
+			if _write_err38 != nil {
+				return false, thrift.WrapTException(_write_err38)
 			}
 			return true, err
 		}
@@ -522,19 +468,19 @@ func (p *chunkServiceProcessorHello) Process(ctx context.Context, seqId int32, i
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "Hello", thrift.REPLY, seqId); err2 != nil {
-		_write_err46 = thrift.WrapTException(err2)
+		_write_err38 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err46 == nil && err2 != nil {
-		_write_err46 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err38 == nil && err2 != nil {
+		_write_err38 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err46 == nil && err2 != nil {
-		_write_err46 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err38 == nil && err2 != nil {
+		_write_err38 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err46 == nil && err2 != nil {
-		_write_err46 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err38 == nil && err2 != nil {
+		_write_err38 = thrift.WrapTException(err2)
 	}
-	if _write_err46 != nil {
-		return false, thrift.WrapTException(_write_err46)
+	if _write_err38 != nil {
+		return false, thrift.WrapTException(_write_err38)
 	}
 	return true, err
 }
@@ -544,7 +490,7 @@ type chunkServiceProcessorGetChunk struct {
 }
 
 func (p *chunkServiceProcessorGetChunk) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err48 error
+	var _write_err40 error
 	args := ChunkServiceGetChunkArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -599,21 +545,21 @@ func (p *chunkServiceProcessorGetChunk) Process(ctx context.Context, seqId int32
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc49 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing GetChunk: "+err2.Error())
+			_exc41 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing GetChunk: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "GetChunk", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err48 = thrift.WrapTException(err2)
+				_write_err40 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc49.Write(ctx, oprot); _write_err48 == nil && err2 != nil {
-				_write_err48 = thrift.WrapTException(err2)
+			if err2 := _exc41.Write(ctx, oprot); _write_err40 == nil && err2 != nil {
+				_write_err40 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err48 == nil && err2 != nil {
-				_write_err48 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err40 == nil && err2 != nil {
+				_write_err40 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err48 == nil && err2 != nil {
-				_write_err48 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err40 == nil && err2 != nil {
+				_write_err40 = thrift.WrapTException(err2)
 			}
-			if _write_err48 != nil {
-				return false, thrift.WrapTException(_write_err48)
+			if _write_err40 != nil {
+				return false, thrift.WrapTException(_write_err40)
 			}
 			return true, err
 		}
@@ -622,19 +568,19 @@ func (p *chunkServiceProcessorGetChunk) Process(ctx context.Context, seqId int32
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "GetChunk", thrift.REPLY, seqId); err2 != nil {
-		_write_err48 = thrift.WrapTException(err2)
+		_write_err40 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err48 == nil && err2 != nil {
-		_write_err48 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err40 == nil && err2 != nil {
+		_write_err40 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err48 == nil && err2 != nil {
-		_write_err48 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err40 == nil && err2 != nil {
+		_write_err40 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err48 == nil && err2 != nil {
-		_write_err48 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err40 == nil && err2 != nil {
+		_write_err40 = thrift.WrapTException(err2)
 	}
-	if _write_err48 != nil {
-		return false, thrift.WrapTException(_write_err48)
+	if _write_err40 != nil {
+		return false, thrift.WrapTException(_write_err40)
 	}
 	return true, err
 }
@@ -644,7 +590,7 @@ type chunkServiceProcessorPutChunk struct {
 }
 
 func (p *chunkServiceProcessorPutChunk) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err50 error
+	var _write_err42 error
 	args := ChunkServicePutChunkArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -699,21 +645,21 @@ func (p *chunkServiceProcessorPutChunk) Process(ctx context.Context, seqId int32
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc51 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing PutChunk: "+err2.Error())
+			_exc43 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing PutChunk: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "PutChunk", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err50 = thrift.WrapTException(err2)
+				_write_err42 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc51.Write(ctx, oprot); _write_err50 == nil && err2 != nil {
-				_write_err50 = thrift.WrapTException(err2)
+			if err2 := _exc43.Write(ctx, oprot); _write_err42 == nil && err2 != nil {
+				_write_err42 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err50 == nil && err2 != nil {
-				_write_err50 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err42 == nil && err2 != nil {
+				_write_err42 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err50 == nil && err2 != nil {
-				_write_err50 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err42 == nil && err2 != nil {
+				_write_err42 = thrift.WrapTException(err2)
 			}
-			if _write_err50 != nil {
-				return false, thrift.WrapTException(_write_err50)
+			if _write_err42 != nil {
+				return false, thrift.WrapTException(_write_err42)
 			}
 			return true, err
 		}
@@ -722,19 +668,19 @@ func (p *chunkServiceProcessorPutChunk) Process(ctx context.Context, seqId int32
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "PutChunk", thrift.REPLY, seqId); err2 != nil {
-		_write_err50 = thrift.WrapTException(err2)
+		_write_err42 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err50 == nil && err2 != nil {
-		_write_err50 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err42 == nil && err2 != nil {
+		_write_err42 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err50 == nil && err2 != nil {
-		_write_err50 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err42 == nil && err2 != nil {
+		_write_err42 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err50 == nil && err2 != nil {
-		_write_err50 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err42 == nil && err2 != nil {
+		_write_err42 = thrift.WrapTException(err2)
 	}
-	if _write_err50 != nil {
-		return false, thrift.WrapTException(_write_err50)
+	if _write_err42 != nil {
+		return false, thrift.WrapTException(_write_err42)
 	}
 	return true, err
 }
@@ -744,7 +690,7 @@ type chunkServiceProcessorPutChunkDC struct {
 }
 
 func (p *chunkServiceProcessorPutChunkDC) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err52 error
+	var _write_err44 error
 	args := ChunkServicePutChunkDCArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -799,21 +745,21 @@ func (p *chunkServiceProcessorPutChunkDC) Process(ctx context.Context, seqId int
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc53 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing PutChunkDC: "+err2.Error())
+			_exc45 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing PutChunkDC: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "PutChunkDC", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err52 = thrift.WrapTException(err2)
+				_write_err44 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc53.Write(ctx, oprot); _write_err52 == nil && err2 != nil {
-				_write_err52 = thrift.WrapTException(err2)
+			if err2 := _exc45.Write(ctx, oprot); _write_err44 == nil && err2 != nil {
+				_write_err44 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err52 == nil && err2 != nil {
-				_write_err52 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err44 == nil && err2 != nil {
+				_write_err44 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err52 == nil && err2 != nil {
-				_write_err52 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err44 == nil && err2 != nil {
+				_write_err44 = thrift.WrapTException(err2)
 			}
-			if _write_err52 != nil {
-				return false, thrift.WrapTException(_write_err52)
+			if _write_err44 != nil {
+				return false, thrift.WrapTException(_write_err44)
 			}
 			return true, err
 		}
@@ -822,19 +768,19 @@ func (p *chunkServiceProcessorPutChunkDC) Process(ctx context.Context, seqId int
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "PutChunkDC", thrift.REPLY, seqId); err2 != nil {
-		_write_err52 = thrift.WrapTException(err2)
+		_write_err44 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err52 == nil && err2 != nil {
-		_write_err52 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err44 == nil && err2 != nil {
+		_write_err44 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err52 == nil && err2 != nil {
-		_write_err52 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err44 == nil && err2 != nil {
+		_write_err44 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err52 == nil && err2 != nil {
-		_write_err52 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err44 == nil && err2 != nil {
+		_write_err44 = thrift.WrapTException(err2)
 	}
-	if _write_err52 != nil {
-		return false, thrift.WrapTException(_write_err52)
+	if _write_err44 != nil {
+		return false, thrift.WrapTException(_write_err44)
 	}
 	return true, err
 }
@@ -844,7 +790,7 @@ type chunkServiceProcessorRemoveChunk struct {
 }
 
 func (p *chunkServiceProcessorRemoveChunk) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err54 error
+	var _write_err46 error
 	args := ChunkServiceRemoveChunkArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -899,21 +845,21 @@ func (p *chunkServiceProcessorRemoveChunk) Process(ctx context.Context, seqId in
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc55 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing RemoveChunk: "+err2.Error())
+			_exc47 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing RemoveChunk: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "RemoveChunk", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err54 = thrift.WrapTException(err2)
+				_write_err46 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc55.Write(ctx, oprot); _write_err54 == nil && err2 != nil {
-				_write_err54 = thrift.WrapTException(err2)
+			if err2 := _exc47.Write(ctx, oprot); _write_err46 == nil && err2 != nil {
+				_write_err46 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err54 == nil && err2 != nil {
-				_write_err54 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err46 == nil && err2 != nil {
+				_write_err46 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err54 == nil && err2 != nil {
-				_write_err54 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err46 == nil && err2 != nil {
+				_write_err46 = thrift.WrapTException(err2)
 			}
-			if _write_err54 != nil {
-				return false, thrift.WrapTException(_write_err54)
+			if _write_err46 != nil {
+				return false, thrift.WrapTException(_write_err46)
 			}
 			return true, err
 		}
@@ -922,19 +868,19 @@ func (p *chunkServiceProcessorRemoveChunk) Process(ctx context.Context, seqId in
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "RemoveChunk", thrift.REPLY, seqId); err2 != nil {
-		_write_err54 = thrift.WrapTException(err2)
+		_write_err46 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err54 == nil && err2 != nil {
-		_write_err54 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err46 == nil && err2 != nil {
+		_write_err46 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err54 == nil && err2 != nil {
-		_write_err54 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err46 == nil && err2 != nil {
+		_write_err46 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err54 == nil && err2 != nil {
-		_write_err54 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err46 == nil && err2 != nil {
+		_write_err46 = thrift.WrapTException(err2)
 	}
-	if _write_err54 != nil {
-		return false, thrift.WrapTException(_write_err54)
+	if _write_err46 != nil {
+		return false, thrift.WrapTException(_write_err46)
 	}
 	return true, err
 }
@@ -944,7 +890,7 @@ type chunkServiceProcessorJoinMV struct {
 }
 
 func (p *chunkServiceProcessorJoinMV) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err56 error
+	var _write_err48 error
 	args := ChunkServiceJoinMVArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -999,21 +945,21 @@ func (p *chunkServiceProcessorJoinMV) Process(ctx context.Context, seqId int32, 
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc57 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing JoinMV: "+err2.Error())
+			_exc49 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing JoinMV: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "JoinMV", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err56 = thrift.WrapTException(err2)
+				_write_err48 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc57.Write(ctx, oprot); _write_err56 == nil && err2 != nil {
-				_write_err56 = thrift.WrapTException(err2)
+			if err2 := _exc49.Write(ctx, oprot); _write_err48 == nil && err2 != nil {
+				_write_err48 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err56 == nil && err2 != nil {
-				_write_err56 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err48 == nil && err2 != nil {
+				_write_err48 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err56 == nil && err2 != nil {
-				_write_err56 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err48 == nil && err2 != nil {
+				_write_err48 = thrift.WrapTException(err2)
 			}
-			if _write_err56 != nil {
-				return false, thrift.WrapTException(_write_err56)
+			if _write_err48 != nil {
+				return false, thrift.WrapTException(_write_err48)
 			}
 			return true, err
 		}
@@ -1022,19 +968,19 @@ func (p *chunkServiceProcessorJoinMV) Process(ctx context.Context, seqId int32, 
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "JoinMV", thrift.REPLY, seqId); err2 != nil {
-		_write_err56 = thrift.WrapTException(err2)
+		_write_err48 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err56 == nil && err2 != nil {
-		_write_err56 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err48 == nil && err2 != nil {
+		_write_err48 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err56 == nil && err2 != nil {
-		_write_err56 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err48 == nil && err2 != nil {
+		_write_err48 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err56 == nil && err2 != nil {
-		_write_err56 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err48 == nil && err2 != nil {
+		_write_err48 = thrift.WrapTException(err2)
 	}
-	if _write_err56 != nil {
-		return false, thrift.WrapTException(_write_err56)
+	if _write_err48 != nil {
+		return false, thrift.WrapTException(_write_err48)
 	}
 	return true, err
 }
@@ -1044,7 +990,7 @@ type chunkServiceProcessorUpdateMV struct {
 }
 
 func (p *chunkServiceProcessorUpdateMV) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err58 error
+	var _write_err50 error
 	args := ChunkServiceUpdateMVArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -1099,21 +1045,21 @@ func (p *chunkServiceProcessorUpdateMV) Process(ctx context.Context, seqId int32
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc59 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing UpdateMV: "+err2.Error())
+			_exc51 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing UpdateMV: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "UpdateMV", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err58 = thrift.WrapTException(err2)
+				_write_err50 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc59.Write(ctx, oprot); _write_err58 == nil && err2 != nil {
-				_write_err58 = thrift.WrapTException(err2)
+			if err2 := _exc51.Write(ctx, oprot); _write_err50 == nil && err2 != nil {
+				_write_err50 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err58 == nil && err2 != nil {
-				_write_err58 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err50 == nil && err2 != nil {
+				_write_err50 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err58 == nil && err2 != nil {
-				_write_err58 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err50 == nil && err2 != nil {
+				_write_err50 = thrift.WrapTException(err2)
 			}
-			if _write_err58 != nil {
-				return false, thrift.WrapTException(_write_err58)
+			if _write_err50 != nil {
+				return false, thrift.WrapTException(_write_err50)
 			}
 			return true, err
 		}
@@ -1122,19 +1068,19 @@ func (p *chunkServiceProcessorUpdateMV) Process(ctx context.Context, seqId int32
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "UpdateMV", thrift.REPLY, seqId); err2 != nil {
-		_write_err58 = thrift.WrapTException(err2)
+		_write_err50 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err58 == nil && err2 != nil {
-		_write_err58 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err50 == nil && err2 != nil {
+		_write_err50 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err58 == nil && err2 != nil {
-		_write_err58 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err50 == nil && err2 != nil {
+		_write_err50 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err58 == nil && err2 != nil {
-		_write_err58 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err50 == nil && err2 != nil {
+		_write_err50 = thrift.WrapTException(err2)
 	}
-	if _write_err58 != nil {
-		return false, thrift.WrapTException(_write_err58)
+	if _write_err50 != nil {
+		return false, thrift.WrapTException(_write_err50)
 	}
 	return true, err
 }
@@ -1144,7 +1090,7 @@ type chunkServiceProcessorLeaveMV struct {
 }
 
 func (p *chunkServiceProcessorLeaveMV) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err60 error
+	var _write_err52 error
 	args := ChunkServiceLeaveMVArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -1199,21 +1145,21 @@ func (p *chunkServiceProcessorLeaveMV) Process(ctx context.Context, seqId int32,
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc61 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing LeaveMV: "+err2.Error())
+			_exc53 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing LeaveMV: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "LeaveMV", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err60 = thrift.WrapTException(err2)
+				_write_err52 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc61.Write(ctx, oprot); _write_err60 == nil && err2 != nil {
-				_write_err60 = thrift.WrapTException(err2)
+			if err2 := _exc53.Write(ctx, oprot); _write_err52 == nil && err2 != nil {
+				_write_err52 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err60 == nil && err2 != nil {
-				_write_err60 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err52 == nil && err2 != nil {
+				_write_err52 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err60 == nil && err2 != nil {
-				_write_err60 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err52 == nil && err2 != nil {
+				_write_err52 = thrift.WrapTException(err2)
 			}
-			if _write_err60 != nil {
-				return false, thrift.WrapTException(_write_err60)
+			if _write_err52 != nil {
+				return false, thrift.WrapTException(_write_err52)
 			}
 			return true, err
 		}
@@ -1222,219 +1168,19 @@ func (p *chunkServiceProcessorLeaveMV) Process(ctx context.Context, seqId int32,
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "LeaveMV", thrift.REPLY, seqId); err2 != nil {
-		_write_err60 = thrift.WrapTException(err2)
+		_write_err52 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err60 == nil && err2 != nil {
-		_write_err60 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err52 == nil && err2 != nil {
+		_write_err52 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err60 == nil && err2 != nil {
-		_write_err60 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err52 == nil && err2 != nil {
+		_write_err52 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err60 == nil && err2 != nil {
-		_write_err60 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err52 == nil && err2 != nil {
+		_write_err52 = thrift.WrapTException(err2)
 	}
-	if _write_err60 != nil {
-		return false, thrift.WrapTException(_write_err60)
-	}
-	return true, err
-}
-
-type chunkServiceProcessorStartSync struct {
-	handler ChunkService
-}
-
-func (p *chunkServiceProcessorStartSync) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err62 error
-	args := ChunkServiceStartSyncArgs{}
-	if err2 := args.Read(ctx, iprot); err2 != nil {
-		iprot.ReadMessageEnd(ctx)
-		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
-		oprot.WriteMessageBegin(ctx, "StartSync", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return false, thrift.WrapTException(err2)
-	}
-	iprot.ReadMessageEnd(ctx)
-
-	tickerCancel := func() {}
-	// Start a goroutine to do server side connectivity check.
-	if thrift.ServerConnectivityCheckInterval > 0 {
-		var cancel context.CancelCauseFunc
-		ctx, cancel = context.WithCancelCause(ctx)
-		defer cancel(nil)
-		var tickerCtx context.Context
-		tickerCtx, tickerCancel = context.WithCancel(context.Background())
-		defer tickerCancel()
-		go func(ctx context.Context, cancel context.CancelCauseFunc) {
-			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if !iprot.Transport().IsOpen() {
-						cancel(thrift.ErrAbandonRequest)
-						return
-					}
-				}
-			}
-		}(tickerCtx, cancel)
-	}
-
-	result := ChunkServiceStartSyncResult{}
-	if retval, err2 := p.handler.StartSync(ctx, args.Request); err2 != nil {
-		tickerCancel()
-		err = thrift.WrapTException(err2)
-		switch v := err2.(type) {
-		case *models.ResponseError:
-			result.Err = v
-		default:
-			if errors.Is(err2, thrift.ErrAbandonRequest) {
-				return false, thrift.WrapTException(err2)
-			}
-			if errors.Is(err2, context.Canceled) {
-				if err := context.Cause(ctx); errors.Is(err, thrift.ErrAbandonRequest) {
-					return false, thrift.WrapTException(err)
-				}
-			}
-			_exc63 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing StartSync: "+err2.Error())
-			if err2 := oprot.WriteMessageBegin(ctx, "StartSync", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err62 = thrift.WrapTException(err2)
-			}
-			if err2 := _exc63.Write(ctx, oprot); _write_err62 == nil && err2 != nil {
-				_write_err62 = thrift.WrapTException(err2)
-			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err62 == nil && err2 != nil {
-				_write_err62 = thrift.WrapTException(err2)
-			}
-			if err2 := oprot.Flush(ctx); _write_err62 == nil && err2 != nil {
-				_write_err62 = thrift.WrapTException(err2)
-			}
-			if _write_err62 != nil {
-				return false, thrift.WrapTException(_write_err62)
-			}
-			return true, err
-		}
-	} else {
-		result.Success = retval
-	}
-	tickerCancel()
-	if err2 := oprot.WriteMessageBegin(ctx, "StartSync", thrift.REPLY, seqId); err2 != nil {
-		_write_err62 = thrift.WrapTException(err2)
-	}
-	if err2 := result.Write(ctx, oprot); _write_err62 == nil && err2 != nil {
-		_write_err62 = thrift.WrapTException(err2)
-	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err62 == nil && err2 != nil {
-		_write_err62 = thrift.WrapTException(err2)
-	}
-	if err2 := oprot.Flush(ctx); _write_err62 == nil && err2 != nil {
-		_write_err62 = thrift.WrapTException(err2)
-	}
-	if _write_err62 != nil {
-		return false, thrift.WrapTException(_write_err62)
-	}
-	return true, err
-}
-
-type chunkServiceProcessorEndSync struct {
-	handler ChunkService
-}
-
-func (p *chunkServiceProcessorEndSync) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err64 error
-	args := ChunkServiceEndSyncArgs{}
-	if err2 := args.Read(ctx, iprot); err2 != nil {
-		iprot.ReadMessageEnd(ctx)
-		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
-		oprot.WriteMessageBegin(ctx, "EndSync", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return false, thrift.WrapTException(err2)
-	}
-	iprot.ReadMessageEnd(ctx)
-
-	tickerCancel := func() {}
-	// Start a goroutine to do server side connectivity check.
-	if thrift.ServerConnectivityCheckInterval > 0 {
-		var cancel context.CancelCauseFunc
-		ctx, cancel = context.WithCancelCause(ctx)
-		defer cancel(nil)
-		var tickerCtx context.Context
-		tickerCtx, tickerCancel = context.WithCancel(context.Background())
-		defer tickerCancel()
-		go func(ctx context.Context, cancel context.CancelCauseFunc) {
-			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if !iprot.Transport().IsOpen() {
-						cancel(thrift.ErrAbandonRequest)
-						return
-					}
-				}
-			}
-		}(tickerCtx, cancel)
-	}
-
-	result := ChunkServiceEndSyncResult{}
-	if retval, err2 := p.handler.EndSync(ctx, args.Request); err2 != nil {
-		tickerCancel()
-		err = thrift.WrapTException(err2)
-		switch v := err2.(type) {
-		case *models.ResponseError:
-			result.Err = v
-		default:
-			if errors.Is(err2, thrift.ErrAbandonRequest) {
-				return false, thrift.WrapTException(err2)
-			}
-			if errors.Is(err2, context.Canceled) {
-				if err := context.Cause(ctx); errors.Is(err, thrift.ErrAbandonRequest) {
-					return false, thrift.WrapTException(err)
-				}
-			}
-			_exc65 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing EndSync: "+err2.Error())
-			if err2 := oprot.WriteMessageBegin(ctx, "EndSync", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err64 = thrift.WrapTException(err2)
-			}
-			if err2 := _exc65.Write(ctx, oprot); _write_err64 == nil && err2 != nil {
-				_write_err64 = thrift.WrapTException(err2)
-			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err64 == nil && err2 != nil {
-				_write_err64 = thrift.WrapTException(err2)
-			}
-			if err2 := oprot.Flush(ctx); _write_err64 == nil && err2 != nil {
-				_write_err64 = thrift.WrapTException(err2)
-			}
-			if _write_err64 != nil {
-				return false, thrift.WrapTException(_write_err64)
-			}
-			return true, err
-		}
-	} else {
-		result.Success = retval
-	}
-	tickerCancel()
-	if err2 := oprot.WriteMessageBegin(ctx, "EndSync", thrift.REPLY, seqId); err2 != nil {
-		_write_err64 = thrift.WrapTException(err2)
-	}
-	if err2 := result.Write(ctx, oprot); _write_err64 == nil && err2 != nil {
-		_write_err64 = thrift.WrapTException(err2)
-	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err64 == nil && err2 != nil {
-		_write_err64 = thrift.WrapTException(err2)
-	}
-	if err2 := oprot.Flush(ctx); _write_err64 == nil && err2 != nil {
-		_write_err64 = thrift.WrapTException(err2)
-	}
-	if _write_err64 != nil {
-		return false, thrift.WrapTException(_write_err64)
+	if _write_err52 != nil {
+		return false, thrift.WrapTException(_write_err52)
 	}
 	return true, err
 }
@@ -1444,7 +1190,7 @@ type chunkServiceProcessorGetMVSize struct {
 }
 
 func (p *chunkServiceProcessorGetMVSize) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
-	var _write_err66 error
+	var _write_err54 error
 	args := ChunkServiceGetMVSizeArgs{}
 	if err2 := args.Read(ctx, iprot); err2 != nil {
 		iprot.ReadMessageEnd(ctx)
@@ -1499,21 +1245,21 @@ func (p *chunkServiceProcessorGetMVSize) Process(ctx context.Context, seqId int3
 					return false, thrift.WrapTException(err)
 				}
 			}
-			_exc67 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing GetMVSize: "+err2.Error())
+			_exc55 := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing GetMVSize: "+err2.Error())
 			if err2 := oprot.WriteMessageBegin(ctx, "GetMVSize", thrift.EXCEPTION, seqId); err2 != nil {
-				_write_err66 = thrift.WrapTException(err2)
+				_write_err54 = thrift.WrapTException(err2)
 			}
-			if err2 := _exc67.Write(ctx, oprot); _write_err66 == nil && err2 != nil {
-				_write_err66 = thrift.WrapTException(err2)
+			if err2 := _exc55.Write(ctx, oprot); _write_err54 == nil && err2 != nil {
+				_write_err54 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.WriteMessageEnd(ctx); _write_err66 == nil && err2 != nil {
-				_write_err66 = thrift.WrapTException(err2)
+			if err2 := oprot.WriteMessageEnd(ctx); _write_err54 == nil && err2 != nil {
+				_write_err54 = thrift.WrapTException(err2)
 			}
-			if err2 := oprot.Flush(ctx); _write_err66 == nil && err2 != nil {
-				_write_err66 = thrift.WrapTException(err2)
+			if err2 := oprot.Flush(ctx); _write_err54 == nil && err2 != nil {
+				_write_err54 = thrift.WrapTException(err2)
 			}
-			if _write_err66 != nil {
-				return false, thrift.WrapTException(_write_err66)
+			if _write_err54 != nil {
+				return false, thrift.WrapTException(_write_err54)
 			}
 			return true, err
 		}
@@ -1522,19 +1268,19 @@ func (p *chunkServiceProcessorGetMVSize) Process(ctx context.Context, seqId int3
 	}
 	tickerCancel()
 	if err2 := oprot.WriteMessageBegin(ctx, "GetMVSize", thrift.REPLY, seqId); err2 != nil {
-		_write_err66 = thrift.WrapTException(err2)
+		_write_err54 = thrift.WrapTException(err2)
 	}
-	if err2 := result.Write(ctx, oprot); _write_err66 == nil && err2 != nil {
-		_write_err66 = thrift.WrapTException(err2)
+	if err2 := result.Write(ctx, oprot); _write_err54 == nil && err2 != nil {
+		_write_err54 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.WriteMessageEnd(ctx); _write_err66 == nil && err2 != nil {
-		_write_err66 = thrift.WrapTException(err2)
+	if err2 := oprot.WriteMessageEnd(ctx); _write_err54 == nil && err2 != nil {
+		_write_err54 = thrift.WrapTException(err2)
 	}
-	if err2 := oprot.Flush(ctx); _write_err66 == nil && err2 != nil {
-		_write_err66 = thrift.WrapTException(err2)
+	if err2 := oprot.Flush(ctx); _write_err54 == nil && err2 != nil {
+		_write_err54 = thrift.WrapTException(err2)
 	}
-	if _write_err66 != nil {
-		return false, thrift.WrapTException(_write_err66)
+	if _write_err54 != nil {
+		return false, thrift.WrapTException(_write_err54)
 	}
 	return true, err
 }
@@ -3675,540 +3421,6 @@ func (p *ChunkServiceLeaveMVResult) String() string {
 		return "<nil>"
 	}
 	return fmt.Sprintf("ChunkServiceLeaveMVResult(%+v)", *p)
-}
-
-// Attributes:
-//   - Request
-type ChunkServiceStartSyncArgs struct {
-	Request *models.StartSyncRequest `thrift:"request,1" db:"request" json:"request"`
-}
-
-func NewChunkServiceStartSyncArgs() *ChunkServiceStartSyncArgs {
-	return &ChunkServiceStartSyncArgs{}
-}
-
-var ChunkServiceStartSyncArgs_Request_DEFAULT *models.StartSyncRequest
-
-func (p *ChunkServiceStartSyncArgs) GetRequest() *models.StartSyncRequest {
-	if !p.IsSetRequest() {
-		return ChunkServiceStartSyncArgs_Request_DEFAULT
-	}
-	return p.Request
-}
-func (p *ChunkServiceStartSyncArgs) IsSetRequest() bool {
-	return p.Request != nil
-}
-
-func (p *ChunkServiceStartSyncArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
-	if _, err := iprot.ReadStructBegin(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
-	}
-
-	for {
-		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
-		if err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
-		}
-		if fieldTypeId == thrift.STOP {
-			break
-		}
-		switch fieldId {
-		case 1:
-			if fieldTypeId == thrift.STRUCT {
-				if err := p.ReadField1(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
-		default:
-			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-				return err
-			}
-		}
-		if err := iprot.ReadFieldEnd(ctx); err != nil {
-			return err
-		}
-	}
-	if err := iprot.ReadStructEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceStartSyncArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Request = &models.StartSyncRequest{}
-	if err := p.Request.Read(ctx, iprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceStartSyncArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "StartSync_args"); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
-	}
-	if p != nil {
-		if err := p.writeField1(ctx, oprot); err != nil {
-			return err
-		}
-	}
-	if err := oprot.WriteFieldStop(ctx); err != nil {
-		return thrift.PrependError("write field stop error: ", err)
-	}
-	if err := oprot.WriteStructEnd(ctx); err != nil {
-		return thrift.PrependError("write struct stop error: ", err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceStartSyncArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
-	}
-	if err := p.Request.Write(ctx, oprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
-	}
-	return err
-}
-
-func (p *ChunkServiceStartSyncArgs) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("ChunkServiceStartSyncArgs(%+v)", *p)
-}
-
-// Attributes:
-//   - Success
-//   - Err
-type ChunkServiceStartSyncResult struct {
-	Success *models.StartSyncResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
-	Err     *models.ResponseError     `thrift:"err,1" db:"err" json:"err,omitempty"`
-}
-
-func NewChunkServiceStartSyncResult() *ChunkServiceStartSyncResult {
-	return &ChunkServiceStartSyncResult{}
-}
-
-var ChunkServiceStartSyncResult_Success_DEFAULT *models.StartSyncResponse
-
-func (p *ChunkServiceStartSyncResult) GetSuccess() *models.StartSyncResponse {
-	if !p.IsSetSuccess() {
-		return ChunkServiceStartSyncResult_Success_DEFAULT
-	}
-	return p.Success
-}
-
-var ChunkServiceStartSyncResult_Err_DEFAULT *models.ResponseError
-
-func (p *ChunkServiceStartSyncResult) GetErr() *models.ResponseError {
-	if !p.IsSetErr() {
-		return ChunkServiceStartSyncResult_Err_DEFAULT
-	}
-	return p.Err
-}
-func (p *ChunkServiceStartSyncResult) IsSetSuccess() bool {
-	return p.Success != nil
-}
-
-func (p *ChunkServiceStartSyncResult) IsSetErr() bool {
-	return p.Err != nil
-}
-
-func (p *ChunkServiceStartSyncResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
-	if _, err := iprot.ReadStructBegin(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
-	}
-
-	for {
-		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
-		if err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
-		}
-		if fieldTypeId == thrift.STOP {
-			break
-		}
-		switch fieldId {
-		case 0:
-			if fieldTypeId == thrift.STRUCT {
-				if err := p.ReadField0(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
-		case 1:
-			if fieldTypeId == thrift.STRUCT {
-				if err := p.ReadField1(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
-		default:
-			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-				return err
-			}
-		}
-		if err := iprot.ReadFieldEnd(ctx); err != nil {
-			return err
-		}
-	}
-	if err := iprot.ReadStructEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceStartSyncResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Success = &models.StartSyncResponse{}
-	if err := p.Success.Read(ctx, iprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceStartSyncResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Err = &models.ResponseError{}
-	if err := p.Err.Read(ctx, iprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceStartSyncResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "StartSync_result"); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
-	}
-	if p != nil {
-		if err := p.writeField0(ctx, oprot); err != nil {
-			return err
-		}
-		if err := p.writeField1(ctx, oprot); err != nil {
-			return err
-		}
-	}
-	if err := oprot.WriteFieldStop(ctx); err != nil {
-		return thrift.PrependError("write field stop error: ", err)
-	}
-	if err := oprot.WriteStructEnd(ctx); err != nil {
-		return thrift.PrependError("write struct stop error: ", err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceStartSyncResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if p.IsSetSuccess() {
-		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
-		}
-		if err := p.Success.Write(ctx, oprot); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
-		}
-		if err := oprot.WriteFieldEnd(ctx); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
-		}
-	}
-	return err
-}
-
-func (p *ChunkServiceStartSyncResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if p.IsSetErr() {
-		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
-		}
-		if err := p.Err.Write(ctx, oprot); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
-		}
-		if err := oprot.WriteFieldEnd(ctx); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
-		}
-	}
-	return err
-}
-
-func (p *ChunkServiceStartSyncResult) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("ChunkServiceStartSyncResult(%+v)", *p)
-}
-
-// Attributes:
-//   - Request
-type ChunkServiceEndSyncArgs struct {
-	Request *models.EndSyncRequest `thrift:"request,1" db:"request" json:"request"`
-}
-
-func NewChunkServiceEndSyncArgs() *ChunkServiceEndSyncArgs {
-	return &ChunkServiceEndSyncArgs{}
-}
-
-var ChunkServiceEndSyncArgs_Request_DEFAULT *models.EndSyncRequest
-
-func (p *ChunkServiceEndSyncArgs) GetRequest() *models.EndSyncRequest {
-	if !p.IsSetRequest() {
-		return ChunkServiceEndSyncArgs_Request_DEFAULT
-	}
-	return p.Request
-}
-func (p *ChunkServiceEndSyncArgs) IsSetRequest() bool {
-	return p.Request != nil
-}
-
-func (p *ChunkServiceEndSyncArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
-	if _, err := iprot.ReadStructBegin(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
-	}
-
-	for {
-		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
-		if err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
-		}
-		if fieldTypeId == thrift.STOP {
-			break
-		}
-		switch fieldId {
-		case 1:
-			if fieldTypeId == thrift.STRUCT {
-				if err := p.ReadField1(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
-		default:
-			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-				return err
-			}
-		}
-		if err := iprot.ReadFieldEnd(ctx); err != nil {
-			return err
-		}
-	}
-	if err := iprot.ReadStructEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceEndSyncArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Request = &models.EndSyncRequest{}
-	if err := p.Request.Read(ctx, iprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceEndSyncArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "EndSync_args"); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
-	}
-	if p != nil {
-		if err := p.writeField1(ctx, oprot); err != nil {
-			return err
-		}
-	}
-	if err := oprot.WriteFieldStop(ctx); err != nil {
-		return thrift.PrependError("write field stop error: ", err)
-	}
-	if err := oprot.WriteStructEnd(ctx); err != nil {
-		return thrift.PrependError("write struct stop error: ", err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceEndSyncArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
-	}
-	if err := p.Request.Write(ctx, oprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
-	}
-	return err
-}
-
-func (p *ChunkServiceEndSyncArgs) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("ChunkServiceEndSyncArgs(%+v)", *p)
-}
-
-// Attributes:
-//   - Success
-//   - Err
-type ChunkServiceEndSyncResult struct {
-	Success *models.EndSyncResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
-	Err     *models.ResponseError   `thrift:"err,1" db:"err" json:"err,omitempty"`
-}
-
-func NewChunkServiceEndSyncResult() *ChunkServiceEndSyncResult {
-	return &ChunkServiceEndSyncResult{}
-}
-
-var ChunkServiceEndSyncResult_Success_DEFAULT *models.EndSyncResponse
-
-func (p *ChunkServiceEndSyncResult) GetSuccess() *models.EndSyncResponse {
-	if !p.IsSetSuccess() {
-		return ChunkServiceEndSyncResult_Success_DEFAULT
-	}
-	return p.Success
-}
-
-var ChunkServiceEndSyncResult_Err_DEFAULT *models.ResponseError
-
-func (p *ChunkServiceEndSyncResult) GetErr() *models.ResponseError {
-	if !p.IsSetErr() {
-		return ChunkServiceEndSyncResult_Err_DEFAULT
-	}
-	return p.Err
-}
-func (p *ChunkServiceEndSyncResult) IsSetSuccess() bool {
-	return p.Success != nil
-}
-
-func (p *ChunkServiceEndSyncResult) IsSetErr() bool {
-	return p.Err != nil
-}
-
-func (p *ChunkServiceEndSyncResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
-	if _, err := iprot.ReadStructBegin(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
-	}
-
-	for {
-		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
-		if err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
-		}
-		if fieldTypeId == thrift.STOP {
-			break
-		}
-		switch fieldId {
-		case 0:
-			if fieldTypeId == thrift.STRUCT {
-				if err := p.ReadField0(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
-		case 1:
-			if fieldTypeId == thrift.STRUCT {
-				if err := p.ReadField1(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
-		default:
-			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-				return err
-			}
-		}
-		if err := iprot.ReadFieldEnd(ctx); err != nil {
-			return err
-		}
-	}
-	if err := iprot.ReadStructEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceEndSyncResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Success = &models.EndSyncResponse{}
-	if err := p.Success.Read(ctx, iprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceEndSyncResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Err = &models.ResponseError{}
-	if err := p.Err.Read(ctx, iprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceEndSyncResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "EndSync_result"); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
-	}
-	if p != nil {
-		if err := p.writeField0(ctx, oprot); err != nil {
-			return err
-		}
-		if err := p.writeField1(ctx, oprot); err != nil {
-			return err
-		}
-	}
-	if err := oprot.WriteFieldStop(ctx); err != nil {
-		return thrift.PrependError("write field stop error: ", err)
-	}
-	if err := oprot.WriteStructEnd(ctx); err != nil {
-		return thrift.PrependError("write struct stop error: ", err)
-	}
-	return nil
-}
-
-func (p *ChunkServiceEndSyncResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if p.IsSetSuccess() {
-		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
-		}
-		if err := p.Success.Write(ctx, oprot); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
-		}
-		if err := oprot.WriteFieldEnd(ctx); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
-		}
-	}
-	return err
-}
-
-func (p *ChunkServiceEndSyncResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if p.IsSetErr() {
-		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
-		}
-		if err := p.Err.Write(ctx, oprot); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
-		}
-		if err := oprot.WriteFieldEnd(ctx); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
-		}
-	}
-	return err
-}
-
-func (p *ChunkServiceEndSyncResult) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("ChunkServiceEndSyncResult(%+v)", *p)
 }
 
 // Attributes:
