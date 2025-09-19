@@ -108,7 +108,7 @@ type cacheWarmup struct {
 }
 
 // This method is called when read handle which triggered the cache warmup is closed.
-// This will release the chunks that were held while reading the file.
+// This will release the chunks that were held while reading the dcache file.
 func (cw *cacheWarmup) ReleaseReadHandle(dcFile *DcacheFile) error {
 	return dcFile.CacheWarmup.warmDcFile.ReleaseFile(true)
 }

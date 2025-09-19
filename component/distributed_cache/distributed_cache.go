@@ -1087,8 +1087,9 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		handle.SetDcacheAllowReads()
 	}
 
-	// handle.IFObj must be set IFF DCache access is allowed through this handle.
-	// common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
+	// handle.IFObj must be set if DCache access is allowed through this handle, or if file is getting warmed up.
+	common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil) ||
+		(handle.IFObj.(*fm.DcacheFile) != nil && handle.IsFsAzure()))
 	return handle, nil
 }
 

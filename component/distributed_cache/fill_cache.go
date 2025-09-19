@@ -167,8 +167,7 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 		return err
 	}
 
-	common.Assert(currentChunkSize == int64(bytesRead), currentChunkSize, bytesRead, err)
-	common.Assert(int64(bytesRead) == currentChunkSize && bytesRead > 0, bytesRead, currentChunkSize)
+	common.Assert(int64(bytesRead) == currentChunkSize && bytesRead > 0, bytesRead, currentChunkSize, err)
 
 	if bytesRead == 0 || currentChunkSize != int64(bytesRead) {
 		// This should happen only when the file is being update in Azure, else this is a bug.
@@ -325,7 +324,7 @@ func finishCacheWarmupForFile(dc *DistributedCache, handle *handlemap.Handle, dc
 	if removeFile {
 		log.Info("DistributedCache::checkStatusForCacheWarmup : Deleting Dcache file : %s", dcFile.FileMetadata.Filename)
 
-		err := fm.DeleteDcacheFile(dcFile.FileMetadata.Filename, true)
+		err := fm.DeleteDcacheFile(dcFile.FileMetadata.Filename, true /* force delete */)
 		if err != nil {
 			log.Err("DistributedCache::checkStatusForCacheWarmup : Failed to Delete wDcache file : %s, error: %v",
 				dcFile.FileMetadata.Filename, err)
