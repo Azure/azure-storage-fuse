@@ -60,8 +60,8 @@ type parallelWriter struct {
 func newParallelWriter() *parallelWriter {
 	pw := &parallelWriter{
 		maxWriters:        64,
-		azureWriterQueue:  make(chan *writeReq, 64),
-		dcacheWriterQueue: make(chan *writeReq, 128),
+		azureWriterQueue:  make(chan *writeReq, 128),
+		dcacheWriterQueue: make(chan *writeReq, 256),
 	}
 
 	for range pw.maxWriters {
