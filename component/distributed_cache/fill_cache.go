@@ -19,6 +19,14 @@ const (
 	numStagingChunks = 256 // this is same as the staging area in dcache file
 )
 
+// Cache warmup logic: When a file is opened for read, we check if the file is already present in the dcache.
+// If not, we create a dcache file and start a background go-routine to download the file from Azure in chunks
+// and write it to the dcache file. The chunks are written in parallel. The read path checks if the chunk
+// enclosing the read offset is successfully written to dcache(i.e, writeMV is success). If not, it waits for the
+// chunk to be successfully written to dcache before reading the data from dcache file. The read path also
+// maintains a bitmap to track which chunks have been successfully written to dcache. The reads for this handle
+// can proceed in parallel with the background cache warmup. user application reads were server from the different
+// dcache file while the cache warmup was in progress (i.e., from dcFile.CacheWarmup.warmDcFile).
 func startCacheWarmup(dc *DistributedCache, handle *handlemap.Handle) {
 	dcFile := handle.IFObj.(*fm.DcacheFile)
 
@@ -260,6 +268,8 @@ func finishCacheWarmupForFile(dc *DistributedCache, handle *handlemap.Handle, dc
 		}
 	}()
 
+	removeFile := false
+
 	// check if the cache warmup completed successfully.
 	if dcFile.CacheWarmup.Error.Load() != nil {
 		// no cache warmup setup for this file.
@@ -270,16 +280,15 @@ func finishCacheWarmupForFile(dc *DistributedCache, handle *handlemap.Handle, dc
 			log.Err("DistributedCache::checkStatusForCacheWarmup : Failed to ReleaseFile for Dcache file : %s, error: %v",
 				handle.Path, err)
 		}
-		return
+		removeFile = true
 	}
 
-	common.Assert(dcFile.CacheWarmup.SuccessfulChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks &&
-		dcFile.CacheWarmup.ScheduledChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks &&
-		dcFile.CacheWarmup.ProcessedChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks,
+	common.Assert(dcFile.CacheWarmup.Error.Load() != nil ||
+		(dcFile.CacheWarmup.SuccessfulChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks &&
+			dcFile.CacheWarmup.ScheduledChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks &&
+			dcFile.CacheWarmup.ProcessedChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks),
 		dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.ScheduledChunkWrites.Load(),
 		dcFile.CacheWarmup.ProcessedChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
-
-	removeFile := false
 
 	if dcFile.CacheWarmup.SuccessfulChunkWrites.Load() == dcFile.CacheWarmup.MaxChunks {
 
@@ -308,7 +317,7 @@ func finishCacheWarmupForFile(dc *DistributedCache, handle *handlemap.Handle, dc
 	} else {
 		// delete the dcache file if the cache warmup did not complete successfully or there was an error during
 		// cache warmup.
-		log.Err("DistributedCache::checkStatusForCacheWarmup : [BUG] Cache warmup status for Dcache file : %s, Successful chunks: %d, MaxChunks: %d",
+		log.Err("DistributedCache::checkStatusForCacheWarmup : Cache warmup status for Dcache file : %s, Successful chunks: %d, MaxChunks: %d",
 			handle.Path, dcFile.CacheWarmup.SuccessfulChunkWrites.Load(), dcFile.CacheWarmup.MaxChunks)
 		removeFile = true
 	}

@@ -285,6 +285,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	// Files opened for reading must have a valid read patterm tracker.
 	common.Assert(file.RPT != nil, file.FileMetadata.Filename)
 
+	// size can be -1 if the file is not finalized yet, incase of warming up the file.
 	if file.FileMetadata.Size >= 0 && offset >= file.FileMetadata.Size {
 		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d",
 			file.FileMetadata.Filename, offset, len(*buf), file.FileMetadata.Size)
@@ -456,7 +457,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	// Must exactly read what's determined above (what user asks, capped by file size).
 	common.Assert(offset == endOffset, offset, endOffset)
 	// Must not read beyond eof.
-	// common.Assert(offset <= file.FileMetadata.Size, offset, file.FileMetadata.Size)
+	common.Assert(offset <= file.getFileSize(), offset, file.FileMetadata.Size)
 	// Must never read more than the length asked.
 	common.Assert(bufOffset <= len(*buf), bufOffset, len(*buf))
 
@@ -835,9 +836,19 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 		// if this file is being warmed up(i.e., writing to dcache from azure), notify the warmer threads that the upload is
 		// done for the chunk.
 		if file.CacheWarmup != nil && file.cacheWarmupInProgress {
-			ok := common.AtomicTestAndSetBitUint64(&file.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64))
-			_ = ok
-			common.Assert(ok, file.FileMetadata.Filename, chunkIdx)
+			err := <-chunk.Err
+			if err != nil {
+				log.Err("DistributedCache::removeChunk: chunk upload failed, file: %s, chunk idx: %d, err: %v",
+					file.FileMetadata.Filename, chunkIdx, err)
+
+				file.CacheWarmup.Error.Store(err)
+				chunk.Err <- err
+			} else {
+				// return the success to the warmer thread.
+				ok := common.AtomicTestAndSetBitUint64(&file.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64))
+				_ = ok
+				common.Assert(ok, file.FileMetadata.Filename, chunkIdx)
+			}
 		}
 
 	}
@@ -1157,9 +1168,19 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) bool {
 	// if this file is being warmed up(i.e., writing to dcache from azure), notify the warmer threads that the upload is
 	// done for the chunk.
 	if file.CacheWarmup != nil && file.cacheWarmupInProgress {
-		ok := common.AtomicTestAndSetBitUint64(&file.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64))
-		_ = ok
-		common.Assert(ok, file.FileMetadata.Filename, chunkIdx)
+		err := <-chunk.Err
+		if err != nil {
+			log.Err("DistributedCache::removeChunk: chunk upload failed, file: %s, chunk idx: %d, err: %v",
+				file.FileMetadata.Filename, chunkIdx, err)
+
+			file.CacheWarmup.Error.Store(err)
+			chunk.Err <- err
+		} else {
+			// return the success to the warmer thread.
+			ok := common.AtomicTestAndSetBitUint64(&file.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64))
+			_ = ok
+			common.Assert(ok, file.FileMetadata.Filename, chunkIdx)
+		}
 	}
 
 	return true
