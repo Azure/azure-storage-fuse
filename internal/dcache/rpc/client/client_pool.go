@@ -710,7 +710,7 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		cp.releaseNodeLock(nodeLock, client.nodeID)
 		cp.releaseRWMutexReadLock()
 
-		cp.deleteAllRPCClients(client, false /* confirmedBadNode */)
+		cp.deleteAllRPCClients(client, false /* confirmedBadNode */, false /* isClientClosed */)
 
 		cp.acquireRWMutexReadLock()
 		nodeLock = cp.acquireNodeLock(client.nodeID)
@@ -830,9 +830,18 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) {
 // making an RPC call to the target node.
 // It closes the passed in connection and all existing connections in the pool, and if there are no
 // active connections and no connections in the channel, it deletes the node client pool.
-func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bool) {
-	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, confirmedBadNode: %v, adding to negative nodes map",
-		client.nodeAddress, client.nodeID, client, confirmedBadNode)
+//
+// It also takes a boolean flag to indicate if the client has been closed or not. This is used to avoid
+// double closing of the client. In PutChunkDC we can get timeout because of bad connection between the
+// downstream nodes, and not necessarily between the client node and target/next-hop node. So, we reset
+// the client for the target node. Resetting involves closing the client first and then creating a new one.
+// If the target node is bad, then RPC client creation fails. We then call deleteAllRPCClients() to delete
+// all clients to the target node, which tries to close the same client again which was already closed by the
+// reset workflow. So, to prevent this, we use this flag.
+// The value of this flag is true only in case of PutChunkDC timeout error when the target node is confirmed bad.
+func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bool, isClientClosed bool) {
+	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, confirmedBadNode: %v, isClientClosed: %v, adding to negative nodes map",
+		client.nodeAddress, client.nodeID, client, confirmedBadNode, isClientClosed)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -861,6 +870,21 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	numConnDeleted := 0
 	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
 
+	//
+	// Node client pool may not be present for the node in case of PutChunkDC timeout error,
+	// where we first reset the client, which closes the client and then creates a new client.
+	// If the new client creation fails, we come here to delete all clients. Meanwhile after
+	// reset has released the node level lock, some other thread may have closed all the clients
+	// for the target node and deleted the node client pool.
+	// So, we assert here that the client passed in the argument is closed.
+	//
+	if ncPool == nil {
+		log.Debug("clientPool::deleteAllRPCClients: No client pool found for node %s at %s, nothing to delete",
+			client.nodeID, client.nodeAddress)
+		common.Assert(isClientClosed, client.nodeID, client.nodeAddress)
+		return
+	}
+
 	// client is allocated from the pool, so pool must exist.
 	common.Assert(ncPool != nil, client.nodeID)
 	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
@@ -870,6 +894,17 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	// This is regardless of whether we are able to delete all clients or not.
 	//
 	defer ncPool.returnClientToPoolAndSignalWaiters(nil /* client */, true /* signalAll */)
+
+	//
+	// We need to take the mu lock to prevent other threads from releasing a client to the pool
+	// after we get numClients below, and before we delete all clients.
+	// MAKE SURE NO FUNCTION CALLED FROM THIS POINT TILL THE DEFER RELEASES THE MU LOCK, TRIES TO
+	// ACQUIRE MU LOCK, also note that the returnClientToPoolAndSignalWaiters() above acquires mu
+	// lock, so defer mu.Unlock() MUST BE AFTER defer returnClientToPoolAndSignalWaiters(), so that
+	// we don't have a deadlock.
+	//
+	ncPool.mu.Lock()
+	defer ncPool.mu.Unlock()
 
 	//
 	// Clients present in the pool. The one that we are deleting is not in the pool so the pool can have
@@ -884,12 +919,23 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 		client.nodeID, client.nodeAddress, client, ncPool.numActive.Load(), numClients, cp.maxPerNode)
 
 	//
-	// Delete this client. This closes this client and removes it from the pool.
-	// It can only fail if Thrift fails to close the connection.
-	// This should technically not happen, so we assert.
+	// In PutChunkDC fails with timeout, we reset the client to the target node, which first closes the
+	// client and then creates a new client. If the new client creation fails, we delete all the clients
+	// to the target node, which tries to close the same client again which was already closed by the reset
+	// workflow. So, to prevent this, we check if the client is already closed.
 	//
-	cp.deleteRPCClient(client)
-	numConnDeleted++
+	if isClientClosed {
+		log.Debug("clientPool::deleteAllRPCClients: client (%p) to %s node %s is already closed",
+			client, client.nodeAddress, client.nodeID)
+	} else {
+		//
+		// Delete this client. This closes this client and removes it from the pool.
+		// It can only fail if Thrift fails to close the connection.
+		// This should technically not happen, so we assert.
+		//
+		cp.deleteRPCClient(client)
+		numConnDeleted++
+	}
 
 	//
 	// Delete all remaining clients in the pool. We try to delete as many as we can, and don't fail
@@ -917,9 +963,6 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	log.Debug("clientPool::deleteAllRPCClients: Deleted %d RPC clients to %s node %s, now available (%d / %d), active: %d",
 		numConnDeleted, client.nodeAddress, client.nodeID, len(ncPool.clientChan),
 		cp.maxPerNode, ncPool.numActive.Load())
-
-	// We must have deleted at least the client we are called for (and maybe more).
-	common.Assert(numConnDeleted > 0)
 
 	// We don't expect failure closing any client connection, so there shouldn't be any client left in the pool.
 	common.Assert(len(ncPool.clientChan) == 0, len(ncPool.clientChan), client.nodeAddress, client.nodeID)
@@ -1085,9 +1128,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		// This will happen when the target node is not running the blob service (but the node
 		// itself is up). When the node is no up we should get a connection timeout error here.
 		//
-		// Also seen connection reset error here.
-		//
-		// TODO: Connection timeout has to be tested.
+		// Also seen connection reset, connection timeout and no route to host errors here.
 		//
 		// In any case when we come here that means we are not able to replenish connections to
 		// the target, in the connection pool. When we have no active connections and no more left
@@ -1096,6 +1137,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		common.Assert(rpc.IsConnectionRefused(err) ||
 			rpc.IsConnectionReset(err) ||
 			rpc.IsTimedOut(err) ||
+			rpc.IsNoRouteToHost(err) ||
 			errors.Is(err, NegativeNodeError), err)
 
 		cp.deleteNodeClientPoolIfInactive(client.nodeID)
@@ -1696,14 +1738,16 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]",
 				ncPool.nodeID, err)
 			//
-			// Only valid reason could be connection refused as the blobfuse process is not running
-			// on the remote node or a timeout if the node is down, or NegativeNodeError if the node
-			// is marked negative and newRPCClient() proactively failed the request.
-			// There is no point in retrying in that case.
+			// Only valid reason could be connection refused as the blobfuse process is not running on
+			// the remote node, a timeout if the node is down, no route to host error in some specific
+			// unreachability conditions, or NegativeNodeError if the node is marked negative and newRPCClient()
+			// proactively failed the request. There is no point in retrying in that case.
 			//
 			common.Assert(rpc.IsConnectionRefused(err) ||
 				rpc.IsTimedOut(err) ||
+				rpc.IsNoRouteToHost(err) ||
 				errors.Is(err, NegativeNodeError), err)
+
 			break
 		}
 		ncPool.clientChan <- client

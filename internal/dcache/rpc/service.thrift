@@ -28,10 +28,6 @@ service ChunkService {
     // remove RV from the given MV
     models.LeaveMVResponse LeaveMV(1: models.LeaveMVRequest request) throws (1:models.ResponseError err)
 
-    models.StartSyncResponse StartSync(1: models.StartSyncRequest request) throws (1:models.ResponseError err)
-
-    models.EndSyncResponse EndSync(1: models.EndSyncRequest request) throws (1:models.ResponseError err)
-
     // retrieve the size of the specified MV
     models.GetMVSizeResponse GetMVSize(1: models.GetMVSizeRequest request) throws (1:models.ResponseError err)
 }

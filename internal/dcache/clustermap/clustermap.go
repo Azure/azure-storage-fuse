@@ -51,7 +51,8 @@ import (
 //go:generate $ASSERT_REMOVER $GOFILE
 
 var (
-	InvalidComponentRV = errors.New("invalid component RV")
+	InvalidComponentRV     = errors.New("invalid component RV")
+	ClusterMapBeingUpdated = errors.New("clustermap is currently being updated by another node or thread")
 )
 
 func Start() {
@@ -226,21 +227,38 @@ func IsClusterReadonly() bool {
 // Refresh clustermap local copy from the metadata store.
 // Once RefreshClusterMap() completes successfully, any clustermap call made would return results from the
 // updated clustermap.
-// higherThanEpoch is typically the current clustermap epoch value that solicited a NeedToRefreshClusterMap
-// error from the server, so the caller is interested in a clustermap having epoch value higher than this.
-// Note that it's not guaranteed that the next higher epoch would have the changes the caller expects, it's
-// upto the caller to retry till it gets the required clusterMap.
-// If you do not care about any specific clusterMap epoch but just want it to be refreshed once, pass 0 for
-// higherThanEpoch.
+//
+// targetEpoch specifies the epoch value that we should refresh the clustermap to.
+// It has the following semantics:
+// - targetEpoch > 0: refresh the clustermap to an epoch value >= targetEpoch.
+// - targetEpoch == 0: refresh the clustermap once (to the latest epoch value available).
+// - targetEpoch < 0: refresh the clustermap to an epoch value > -targetEpoch.
 //
 // Note: Usually you will not need to work on the most up-to-date clustermap, the last periodically refreshed copy
 //       of clustermap should be fine for most users. This API must be used by callers which cannot safely proceed
 //       w/o knowing the latest clustermap. This should not be a common requirement and codepaths calling it should
 //       be very infrequently executed.
 
-func RefreshClusterMap(higherThanEpoch int64) error {
+func RefreshClusterMap(targetEpoch int64) error {
 	// Clustermanager must call RegisterClusterMapSyncRefresher() in startup, so we don't expect this to be nil.
 	common.Assert(clusterMapRefresher != nil)
+
+	//
+	// targetEpoch==0 means caller wants an unconditional refresh, set targetEpoch to current epoch.
+	// targetEpoch<0 means caller wants an epoch higher than -targetEpoch.
+	//
+	if targetEpoch == 0 {
+		targetEpoch = GetEpoch()
+	} else {
+		if targetEpoch < 0 {
+			targetEpoch = -targetEpoch + 1
+		}
+
+		if GetEpoch() >= targetEpoch {
+			log.Debug("RefreshClusterMap: already at epoch %d, need %d", GetEpoch(), targetEpoch)
+			return nil
+		}
+	}
 
 	//
 	// NeedToRefreshClusterMap return from the server typically means that the global clusterMap is always
@@ -260,7 +278,7 @@ func RefreshClusterMap(higherThanEpoch int64) error {
 			// Let the caller know and handle it as they see fit.
 			//
 			return fmt.Errorf("RefreshClusterMap: timed out waiting for epoch %d, got %d",
-				higherThanEpoch+1, GetEpoch())
+				targetEpoch, GetEpoch())
 		}
 
 		log.Debug("RefreshClusterMap: Fetching latest clustermap from metadata store")
@@ -274,12 +292,13 @@ func RefreshClusterMap(higherThanEpoch int64) error {
 		//
 		// Break if we got the desired epoch, else try after a small wait.
 		//
-		if GetEpoch() > higherThanEpoch {
+		if GetEpoch() >= targetEpoch {
+			log.Debug("RefreshClusterMap: Got epoch %d >= %d!", GetEpoch(), targetEpoch)
 			break
 		}
 
 		log.Warn("RefreshClusterMap: Got epoch %d, while waiting for %d, retrying...",
-			GetEpoch(), higherThanEpoch+1)
+			GetEpoch(), targetEpoch)
 		time.Sleep(1 * time.Second)
 	}
 
@@ -469,6 +488,9 @@ func (c *ClusterMap) loadLocalMap() {
 	defer c.mu.Unlock()
 
 	c.localMap = &newClusterMap
+
+	log.Debug("ClusterMap::loadLocalMap: Updated local clustermap in %s, epoch: %d",
+		c.localClusterMapPath, newClusterMap.Epoch)
 }
 
 func (c *ClusterMap) getEpoch() int64 {
@@ -516,6 +538,7 @@ func (c *ClusterMap) getSyncableMVs() (map[string]dcache.MirroredVolume, int64) 
 			rvs := c.getRVs(mvName)
 			// We got mvName from MVMap, so getRVs() should succeed.
 			common.Assert(rvs != nil, mvName)
+			common.Assert(len(rvs) == int(GetCacheConfig().NumReplicas), mvName, rvs)
 
 			for _, rvState := range rvs {
 				if rvState == dcache.StateOutOfSync {
@@ -568,10 +591,14 @@ func (c *ClusterMap) getActiveMVsForRV(rvName string) map[string]struct{} {
 		//
 		// We only leave the MV folder for component RVs that are online.
 		// If the component RV is offline/inband-offline, then the MV is not active.
-		// We even delete if component RV is in outofsync or syncing state. Though it will work
-		// if we leave those MVs but it's safer to delete them and start afresh.
+		// For any other state we MUST leave the MV data intact o/w it may cause data loss,
+		// since NewChunkServiceHandler() will create mvInfo state as per the clusterMap and
+		// if we don't have the MV data then data will not match the mvInfo state.
+		// e.g., if the component RV is outofsync/syncing, cluster is expecting some data in
+		// the MV, if we just set the mvInfo state of outofsync/syncing and don't have the MV
+		// data, then we will lose that data.
 		//
-		if rvState != dcache.StateOnline {
+		if rvState == dcache.StateOffline || rvState == dcache.StateInbandOffline {
 			continue
 		}
 
@@ -601,6 +628,7 @@ func (c *ClusterMap) getCacheConfig() *dcache.DCacheConfig {
 	return &c.getLocalMap().Config
 }
 
+// Note: This returns a shallow copy of the clustermap, so do not modify it, otherwise it will affect other users.
 func (c *ClusterMap) getClusterMap() dcache.ClusterMap {
 	return *c.getLocalMap()
 }

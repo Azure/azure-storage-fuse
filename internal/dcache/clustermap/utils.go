@@ -141,11 +141,6 @@ func IsValidClusterMap(cm *dcache.ClusterMap) (bool, error) {
 	// Top level fields
 	//
 
-	// Only valid clustermap states are "ready" and "checking".
-	if cm.State != dcache.StateReady && cm.State != dcache.StateChecking {
-		return false, fmt.Errorf("ClusterMap: Invalid State: %s %+v", cm.State, *cm)
-	}
-
 	if cm.CreatedAt < MinUnixEpoch || cm.CreatedAt > MaxUnixEpoch {
 		return false, fmt.Errorf("ClusterMap: Invalid CreatedAt: %d %+v", cm.CreatedAt, *cm)
 	}
@@ -503,7 +498,6 @@ func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 
 	return &dcache.ClusterMapExport{
 		Readonly:      cm.Readonly,
-		State:         cm.State,
 		Epoch:         cm.Epoch,
 		CreatedAt:     cm.CreatedAt,
 		LastUpdatedAt: cm.LastUpdatedAt,

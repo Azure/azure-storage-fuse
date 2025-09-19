@@ -79,10 +79,8 @@ const (
 	StateDegraded  StateEnum = "degraded"
 	StateDown      StateEnum = "down"
 	StateOutOfSync StateEnum = "outofsync"
-	StateReady     StateEnum = "ready"
 	StateSyncing   StateEnum = "syncing"
 	StateReadOnly  StateEnum = "readOnly"
-	StateChecking  StateEnum = "checking"
 	//
 	// Inband offline is a state for RVs that are not reachable from a given node,
 	// but are not marked offline yet by the heartbeat mechanism.
@@ -93,7 +91,6 @@ const (
 // Please change the ClusterMapExport struct if you change this struct.
 type ClusterMap struct {
 	Readonly      bool                      `json:"readonly"`
-	State         StateEnum                 `json:"state"`
 	Epoch         int64                     `json:"epoch"`
 	CreatedAt     int64                     `json:"created-at"`
 	LastUpdatedAt int64                     `json:"last_updated_at"`
@@ -108,7 +105,6 @@ type ClusterMap struct {
 // Refer to ClusterMap before making any changes to this struct.
 type ClusterMapExport struct {
 	Readonly      bool                        `json:"readonly"`
-	State         StateEnum                   `json:"state"`
 	Epoch         int64                       `json:"epoch"`
 	CreatedAt     int64                       `json:"created-at"`
 	LastUpdatedAt int64                       `json:"last_updated_at"`

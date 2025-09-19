@@ -57,10 +57,11 @@ struct PutChunkRequest {
     1: string senderNodeID,
     2: Chunk chunk,
     3: i64 length,
-    4: string syncID,
-    5: list<RVNameAndState> componentRV, // used to validate the component RV for the MV
-    6: bool maybeOverwrite
-    7: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
+    4: string syncID, // only valid for PutChunk(sync) calls, syncID of the ongoing sync operation
+    5: string sourceRVName, // only valid for PutChunk(sync) calls, source RV from which data is being synced
+    6: list<RVNameAndState> componentRV, // used to validate the component RV for the MV
+    7: bool maybeOverwrite
+    8: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
 }
 
 struct PutChunkResponse {
@@ -145,38 +146,6 @@ struct LeaveMVRequest {
 }
 
 struct LeaveMVResponse {
-    // status will be returned in the error
-    1: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
-}
-
-struct StartSyncRequest {
-    1: string senderNodeID,
-    2: string MV,
-    3: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the start sync call to the component RVs
-    4: string targetRVName, // target RV is the target of the start sync request
-    5: list<RVNameAndState> componentRV,
-    6: i64 syncSize
-    7: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
-}
-
-struct StartSyncResponse {
-    // status will be returned in the error
-    1: string syncID
-    2: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
-}
-
-struct EndSyncRequest {
-    1: string senderNodeID,
-    2: string syncID,
-    3: string MV,
-    4: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the end sync call to the component RVs
-    5: string targetRVName, // target RV is the RV which has to stop the sync marking it as completed
-    6: list<RVNameAndState> componentRV,
-    7: i64 syncSize
-    8: i64 clustermapEpoch, // Sender's clustermap epoch when the request is sent
-}
-
-struct EndSyncResponse {
     // status will be returned in the error
     1: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
