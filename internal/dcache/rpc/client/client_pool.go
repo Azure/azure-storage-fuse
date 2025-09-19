@@ -838,6 +838,7 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) {
 // If the target node is bad, then RPC client creation fails. We then call deleteAllRPCClients() to delete
 // all clients to the target node, which tries to close the same client again which was already closed by the
 // reset workflow. So, to prevent this, we use this flag.
+// The value of this flag is true only in case of PutChunkDC timeout error when the target node is confirmed bad.
 func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bool, isClientClosed bool) {
 	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, confirmedBadNode: %v, isClientClosed: %v, adding to negative nodes map",
 		client.nodeAddress, client.nodeID, client, confirmedBadNode, isClientClosed)

@@ -662,7 +662,11 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				if err1 != nil {
 					log.Err("rpc_client::PutChunkDC: resetRPCClient failed for node %s: %v",
 						targetNodeID, err1)
-					// TODO: This will cause the closeRPCClient() assert to fail. Let it happen for now.
+
+					//
+					// The client has already been closed in resetRPCClient().
+					// So, we pass true for isClientClosed flag.
+					//
 					cp.deleteAllRPCClients(client, true /* confirmedBadNode */, true /* isClientClosed */)
 				}
 
