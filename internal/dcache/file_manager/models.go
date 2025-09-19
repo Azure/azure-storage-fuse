@@ -104,6 +104,9 @@ type cacheWarmup struct {
 	// handle to read the warmed up chunks from the dcache.
 	warmDcFile *DcacheFile
 
+	// boolean to indicate if the cache warmup is completed. This is also used if the read
+	// handle which triggered the cache warmup is closed before the warmup is completed, so
+	// that the release on azure file handle would be defered until the cache warmup completes.
 	Completed atomic.Bool
 }
 
