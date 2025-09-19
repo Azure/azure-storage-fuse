@@ -710,7 +710,7 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		cp.releaseNodeLock(nodeLock, client.nodeID)
 		cp.releaseRWMutexReadLock()
 
-		cp.deleteAllRPCClients(client, false /* confirmedBadNode */)
+		cp.deleteAllRPCClients(client, false /* confirmedBadNode */, false /* isClientClosed */)
 
 		cp.acquireRWMutexReadLock()
 		nodeLock = cp.acquireNodeLock(client.nodeID)
@@ -830,9 +830,17 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) {
 // making an RPC call to the target node.
 // It closes the passed in connection and all existing connections in the pool, and if there are no
 // active connections and no connections in the channel, it deletes the node client pool.
-func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bool) {
-	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, confirmedBadNode: %v, adding to negative nodes map",
-		client.nodeAddress, client.nodeID, client, confirmedBadNode)
+//
+// It also takes a boolean flag to indicate if the client has been closed or not. This is used to avoid
+// double closing of the client. In PutChunkDC we can get timeout because of bad connection between the
+// downstream nodes, and not necessarily between the client node and target/next-hop node. So, we reset
+// the client for the target node. Resetting involves closing the client first and then creating a new one.
+// If the target node is bad, then RPC client creation fails. We then call deleteAllRPCClients() to delete
+// all clients to the target node, which tries to close the same client again which was already closed by the
+// reset workflow. So, to prevent this, we use this flag.
+func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bool, isClientClosed bool) {
+	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, confirmedBadNode: %v, isClientClosed: %v, adding to negative nodes map",
+		client.nodeAddress, client.nodeID, client, confirmedBadNode, isClientClosed)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -872,7 +880,7 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	if ncPool == nil {
 		log.Debug("clientPool::deleteAllRPCClients: No client pool found for node %s at %s, nothing to delete",
 			client.nodeID, client.nodeAddress)
-		common.Assert(client.isClosed, client.nodeID, client.nodeAddress)
+		common.Assert(isClientClosed, client.nodeID, client.nodeAddress)
 		return
 	}
 
@@ -910,12 +918,12 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 		client.nodeID, client.nodeAddress, client, ncPool.numActive.Load(), numClients, cp.maxPerNode)
 
 	//
-	// In PutChunkDC fails with timeout, we first reset the client to the target node, which first closes
-	// the client and then creates a new client. If the new client creation fails, we delete all the clients
-	// to the target node, which again tries to close the same client which was already closed by the reset
+	// In PutChunkDC fails with timeout, we reset the client to the target node, which first closes the
+	// client and then creates a new client. If the new client creation fails, we delete all the clients
+	// to the target node, which tries to close the same client again which was already closed by the reset
 	// workflow. So, to prevent this, we check if the client is already closed.
 	//
-	if client.isClosed {
+	if isClientClosed {
 		log.Debug("clientPool::deleteAllRPCClients: client (%p) to %s node %s is already closed",
 			client, client.nodeAddress, client.nodeID)
 	} else {

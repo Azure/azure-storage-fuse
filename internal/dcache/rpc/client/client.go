@@ -94,17 +94,6 @@ type rpcClient struct {
 	// highPrio indicates if this client is used for high priority requests (case 2 above).
 	//
 	highPrio bool
-
-	//
-	// Boolean flag to indicate if this client has been closed. This is used to avoid double closing of
-	// the client. In PutChunkDC we can get timeout because of bad connection between the downstream nodes,
-	// and not necessarily between the client node and target/next-hop node. So, we reset the client for the
-	// target node. Resetting involves closing the client and creating a new one. If the target node is bad,
-	// then creating a new RPC client for the node will fail. So, we then delete all the clients for the
-	// target node. In deleteRPCClient() we will try to close the client again. So, to prevent this, we use
-	// this flag.
-	//
-	isClosed bool
 }
 
 var protocolFactory thrift.TProtocolFactory
@@ -186,13 +175,6 @@ func (c *rpcClient) close() error {
 		log.Err("rpcClient::close: Failed to close transport for node %s at %s [%v]", c.nodeID, c.nodeAddress, err.Error())
 		return err
 	}
-
-	//
-	// Mark the client as closed. This is to prevent closing of the client again.
-	// DeleteAllRPCClients() uses this flag to prevent double closing of the client.
-	// Refer comment in rpcClient struct for details.
-	//
-	c.isClosed = true
 
 	return nil
 }
