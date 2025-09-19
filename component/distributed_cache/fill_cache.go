@@ -160,12 +160,24 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 	}
 
 	common.Assert(currentChunkSize == int64(bytesRead), currentChunkSize, bytesRead, err)
+	common.Assert(int64(bytesRead) == currentChunkSize && bytesRead > 0, bytesRead, currentChunkSize)
+
+	if bytesRead == 0 || currentChunkSize != int64(bytesRead) {
+		// This should happen only when the file is being update in Azure, else this is a bug.
+		err = io.ErrUnexpectedEOF
+		log.Err("DistributedCache::fillCache: [BUG] failed to read chunk idx: %d, offset: %d for file: %s, handle: %d, error: %v",
+			chunkIdx, chunkStartoffset, handle.Path, handle.ID, err)
+
+		// free the buffer.
+		dcache.PutBuffer(chunkData)
+		return err
+	}
 
 	dcacheWrite := func() error {
 		log.Debug("DistributedCache::fillCache: writing chunk idx: %d, offset: %d to cache for file: %s, handle: %d",
 			chunkIdx, chunkStartoffset, handle.Path, handle.ID)
 
-		err = dcFile.WriteFile(chunkStartoffset, chunkData)
+		err = dcFile.WriteFile(chunkStartoffset, chunkData[:bytesRead])
 		if err != nil {
 			log.Err("DistributedCache::fillCache: failed to write chunk idx: %d, offset: %d to cache for file: %s, handle: %d, error: %v",
 				chunkIdx, chunkStartoffset, handle.Path, handle.ID, err)
@@ -176,7 +188,7 @@ func fillCache(dc *DistributedCache, handle *handlemap.Handle, dcFile *fm.Dcache
 		dcFile.CacheWarmup.SuccessCh <- fm.ChunkWarmupStatus{ChunkIdx: chunkIdx, Err: nil}
 
 		// free the buffer.
-		// TODO: we can avoid the buf copy in the write flow.. as we chunkData was allocated from the buffer pool.
+		// TODO: we can avoid the buf copy in the write flow.. as chunkData was allocated from the buffer pool.
 		dcache.PutBuffer(chunkData)
 		return nil
 	}
