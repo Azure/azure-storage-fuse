@@ -934,9 +934,8 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 		// This should technically not happen, so we assert.
 		//
 		cp.deleteRPCClient(client)
+		numConnDeleted++
 	}
-
-	numConnDeleted++
 
 	//
 	// Delete all remaining clients in the pool. We try to delete as many as we can, and don't fail
@@ -964,9 +963,6 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	log.Debug("clientPool::deleteAllRPCClients: Deleted %d RPC clients to %s node %s, now available (%d / %d), active: %d",
 		numConnDeleted, client.nodeAddress, client.nodeID, len(ncPool.clientChan),
 		cp.maxPerNode, ncPool.numActive.Load())
-
-	// We must have deleted at least the client we are called for (and maybe more).
-	common.Assert(numConnDeleted > 0)
 
 	// We don't expect failure closing any client connection, so there shouldn't be any client left in the pool.
 	common.Assert(len(ncPool.clientChan) == 0, len(ncPool.clientChan), client.nodeAddress, client.nodeID)
