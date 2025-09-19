@@ -2741,6 +2741,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		numChunksDeleted++
 	}
 
+	log.Debug("ChunkServiceHandler::RemoveChunk: Deleted %d chunks from %s", numChunksDeleted, mvDir)
 	common.Assert(numChunksDeleted >= 0)
 
 	availableSpace, err := rvInfo.getAvailableSpace()
