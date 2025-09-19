@@ -2624,8 +2624,9 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 
 			dcResp = rpc.HandlePutChunkDCError(nexthopRV, nextRVs, req.Chunk.Address.MvName, err)
 		} else {
-			log.Debug("ChunkServiceHandler::forwardPutChunk: Received response from nexthop %s/%s (file id %s, offset in MiB %d): %s",
+			log.Debug("ChunkServiceHandler::forwardPutChunk: Received response from nexthop %s/%s (file id %s, offset in MiB %d, chunkIdx: %d): %s",
 				nexthopRV, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB,
+				rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 				rpc.PutChunkDCResponseToString(dcResp))
 		}
 
