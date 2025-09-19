@@ -887,6 +887,17 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	defer ncPool.returnClientToPoolAndSignalWaiters(nil /* client */, true /* signalAll */)
 
 	//
+	// We need to take the mu lock to prevent other threads from releasing a client to the pool
+	// after we get numClients below, and before we delete all clients.
+	// MAKE SURE NO FUNCTION CALLED FROM THIS POINT TILL THE DEFER RELEASES THE MU LOCK, TRIES TO
+	// ACQUIRE MU LOCK, also note that the returnClientToPoolAndSignalWaiters() above acquires mu
+	// lock, so defer mu.Unlock() MUST BE AFTER defer returnClientToPoolAndSignalWaiters(), so that
+	// we don't have a deadlock.
+	//
+	ncPool.mu.Lock()
+	defer ncPool.mu.Unlock()
+
+	//
 	// Clients present in the pool. The one that we are deleting is not in the pool so the pool can have
 	// max cp.maxPerNode-1 clients. If it's less than cp.maxPerNode-1, rest are currently allocated to other
 	// callers. We cannot replenish those. Those will be deleted by their respective caller when their RPC
