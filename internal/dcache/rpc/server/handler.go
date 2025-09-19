@@ -950,7 +950,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 	//common.Assert(mv.clustermapEpoch <= cm.GetEpoch(), mv.clustermapEpoch, cm.GetEpoch(), mv.rv.rvName, mv.mvName)
 
 	//
-	// The equal to in >= below is important, see the comment below!!
+	// The equal to in >= below is important!!
 	// mv.clustermapEpoch X already contains the changes from cepoch X, and may contain some
 	// ongoing changes on top (e.g., JoinMV replacing offline RV with a new outofsync RV), so we don't refresh,
 	// else we risk overwriting the ongoing change.

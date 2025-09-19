@@ -886,8 +886,18 @@ processResponses:
 			}
 
 			if clusterMapRefreshed {
+				//
 				// Clustermap has already been refreshed once in this try, so skip it.
-				time.Sleep(100 * time.Millisecond)
+				// We wait a little before retrying to allow the clustermap update to
+				// complete. Beyond 5 seconds the chances that the clustermap epoch is
+				// stuck due to a node failure increases, so we wait longer.
+				//
+				if time.Since(writeStartTime) < 5*time.Second {
+					time.Sleep(100 * time.Millisecond)
+				} else {
+					time.Sleep(5 * time.Second)
+				}
+
 				//
 				// We will be asked to refresh more than once only if the clustermap is being updated.
 				// In this state, refreshFromClustermap() cannot safely override mvInfo from the clustermap,

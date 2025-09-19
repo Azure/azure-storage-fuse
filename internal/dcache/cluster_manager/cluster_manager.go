@@ -4509,7 +4509,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 			//
 			if currentState == dcache.StateOutOfSync && rvNewState == dcache.StateSyncing ||
 				currentState == dcache.StateSyncing && rvNewState == dcache.StateOnline ||
-				currentState == dcache.StateSyncing && rvNewState == dcache.StateOutOfSync ||
+				currentState == dcache.StateOutOfSync && rvNewState == dcache.StateInbandOffline ||
 				currentState == dcache.StateSyncing && rvNewState == dcache.StateInbandOffline ||
 				currentState == dcache.StateOnline && rvNewState == dcache.StateInbandOffline {
 
@@ -4520,6 +4520,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				//
 				// Following transitions are reported when an inband PutChunk failure suggests an RV as offline.
 				// StateOnline  -> StateInbandOffline
+				// StateOutOfSync  -> StateInbandOffline
 				// StateSyncing -> StateInbandOffline
 				//
 				// We can have multiple PutChunk requests outstanding where there can be multiple updates for
