@@ -83,10 +83,10 @@ func getChunkEndOffset(chunkIdx, chunkSize int64) int64 {
 // For all chunks except the last chunk, this will be equal to chunkSize.
 func getChunkSize(offset int64, file *DcacheFile) int64 {
 	// getChunkSize() must be called for a finalized file which will have size >= 0.
-	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
+	// common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
 
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-	size := min(file.FileMetadata.Size-
+	size := min(file.getFileSize()-
 		getChunkStartOffset(chunkIdx, file.FileMetadata.FileLayout.ChunkSize),
 		file.FileMetadata.FileLayout.ChunkSize)
 
@@ -305,7 +305,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	return dcacheFile, nil
 }
 
-func DeleteDcacheFile(fileName string) error {
+func DeleteDcacheFile(fileName string, forceDelete bool) error {
 	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
 
 	fileMetadata, _, err := GetDcacheFile(fileName)
@@ -322,7 +322,7 @@ func DeleteDcacheFile(fileName string) error {
 	// TODO: We should allow deleting stale files which are left in creating state indefinitely due to
 	//       blobfuse crashing between createFileInit() and createFileFinalize().
 	//
-	if fileMetadata.State != dcache.Ready {
+	if !forceDelete && fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::DeleteDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
 		return syscall.EBUSY
@@ -497,6 +497,78 @@ loop:
 	chunk.RefCount.Store(1)
 
 	return chunk, nil
+}
+
+func (dcFile *DcacheFile) NewCacheWarmup(size int64, maxBackgroundCacheWarmupChunks int) *cacheWarmup {
+	chunkSize := int64((cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes))
+	maxChunks := (size + chunkSize - 1) / chunkSize
+
+	numInts := int((maxChunks + 63) / 64)
+
+	cw := &cacheWarmup{
+		Size:                  size,
+		MaxChunks:             maxChunks,
+		SuccessfulChunkWrites: atomic.Int64{},
+		Bitmap:                make([]uint64, numInts),
+		SuccessCh:             make(chan ChunkWarmupStatus, maxBackgroundCacheWarmupChunks),
+	}
+
+	//
+	// This DcacheFile will be used for reading, hence it needs a read pattern tracker.
+	//
+	warmDcFile := &DcacheFile{
+		FileMetadata: dcFile.FileMetadata,
+		attr:         dcFile.attr,
+		RPT:          NewRPTracker(dcFile.FileMetadata.Filename),
+		StagedChunks: make(map[int64]*StagedChunk),
+		CacheWarmup:  cw,
+	}
+
+	//
+	// freeChunks semaphore is used to limit StagedChunks map to numReadAheadChunks plus
+	// the window size supported by read pattern tracker. See NewRPTracker().
+	// DO NOT make it very low else most IOs will have to wait for chunk reclaim.
+	//
+	warmDcFile.initFreeChunks(fileIOMgr.numReadAheadChunks + 300)
+	warmDcFile.lastReadaheadChunkIdx.Store(-1)
+
+	cw.warmDcFile = warmDcFile
+
+	dcFile.CacheWarmup = cw
+	dcFile.cacheWarmupInProgress = true
+
+	return cw
+}
+
+func (dcFile *DcacheFile) getFileSize() int64 {
+	if dcFile.FileMetadata.Size >= 0 {
+		return dcFile.FileMetadata.Size
+	}
+
+	// File size is not known yet, file is being written by CacheWarmup.
+	return dcFile.CacheWarmup.Size
+}
+
+// This function is no op if CacheWarmup is nil.
+// It modifies the read-ahead range [readAheadStartIdx, readAheadEndIdx) to ensure that we only do
+// read-ahead for chunks which are already uploaded to the dcache.
+func (dcFile *DcacheFile) getModifiedReadaheadOnWarmup(readAheadStartIdx int64, readAheadEndIdx int64) (int64, int64) {
+	if dcFile.CacheWarmup == nil || readAheadStartIdx == readAheadEndIdx {
+		return readAheadStartIdx, readAheadEndIdx
+	}
+
+	common.Assert(readAheadEndIdx <= dcFile.CacheWarmup.MaxChunks && readAheadStartIdx <= dcFile.CacheWarmup.MaxChunks,
+		readAheadEndIdx, readAheadStartIdx, dcFile.CacheWarmup.MaxChunks)
+
+	// Allow only seq read-ahead for the chunks.
+	var chunkIdx int64
+	for chunkIdx = readAheadStartIdx; chunkIdx < readAheadEndIdx; chunkIdx++ {
+		if ok := common.AtomicTestBitUint64(&dcFile.CacheWarmup.Bitmap[chunkIdx/64], uint(chunkIdx%64)); !ok {
+			break
+		}
+	}
+
+	return readAheadStartIdx, chunkIdx
 }
 
 // Silence unused import errors for release builds.
