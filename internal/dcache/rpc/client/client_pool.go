@@ -1768,6 +1768,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 		log.Err("nodeClientPool::createRPCClients: Created %d of %d clients for node %s, cleaning up",
 			len(ncPool.clientChan), numClients, ncPool.nodeID)
 
+		close(ncPool.clientChan)
 		for client := range ncPool.clientChan {
 			err1 := client.close()
 			_ = err1

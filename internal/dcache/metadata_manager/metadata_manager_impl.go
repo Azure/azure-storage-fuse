@@ -367,8 +367,8 @@ func IsErrConditionNotMet(err error) bool {
 // It's resilient against changes to the Blob between GetProperties and GetBlob.
 //
 // Note: Callers expect this to return raw errors returned by the storage callback methods, f.e.,
-//
-//	if the blob is not present it MUST return the raw error syscall.ENOENT.
+//       if the blob is not present it MUST return the raw error syscall.ENOENT.
+
 func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.ObjAttr, error) {
 	start := time.Now()
 	atomic.AddInt64(&stats.Stats.MM.GetBlobSafe.Calls, 1)
