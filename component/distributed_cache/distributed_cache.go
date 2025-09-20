@@ -123,7 +123,7 @@ type DistributedCacheOptions struct {
 
 const (
 	compName                         = "distributed_cache"
-	defaultHeartBeatDurationInSecond = 30
+	defaultHeartBeatDurationInSecond = 10
 	defaultReplicas                  = 3
 	defaultMaxMissedHBs              = 3
 	defaultChunkSizeMB               = 4 // 4 MB
@@ -484,7 +484,16 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 
 	if !config.IsSet(compName + ".replicas") {
 		distributedCache.cfg.Replicas = defaultReplicas
+	} else if int64(distributedCache.cfg.Replicas) < cm.MinNumReplicas ||
+		int64(distributedCache.cfg.Replicas) > cm.MaxNumReplicas {
+		//
+		// We check for valid range of replicas and some other config here, needed for MVsPerRV calculation,
+		// exhaustive check will be done later by IsValidDcacheConfig().
+		//
+		return fmt.Errorf("config error in %s: [replicas (%d) invalid, valid range is [%d, %d]]",
+			distributedCache.Name(), distributedCache.cfg.Replicas, cm.MinNumReplicas, cm.MaxNumReplicas)
 	}
+
 	if !config.IsSet(compName + ".heartbeat-duration") {
 		distributedCache.cfg.HeartbeatDuration = defaultHeartBeatDurationInSecond
 	}
@@ -497,26 +506,49 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".min-nodes") {
 		distributedCache.cfg.MinNodes = defaultMinNodes
 	}
+
 	if !config.IsSet(compName + ".max-rvs") {
 		distributedCache.cfg.MaxRVs = defaultMaxRVs
+	} else if int64(distributedCache.cfg.MaxRVs) < cm.MinMaxRVs ||
+		int64(distributedCache.cfg.MaxRVs) > cm.MaxMaxRVs {
+		return fmt.Errorf("config error in %s: [max-rvs (%d) invalid, valid range is [%d, %d]]",
+			distributedCache.Name(), distributedCache.cfg.MaxRVs, cm.MinMaxRVs, cm.MaxMaxRVs)
 	}
+
 	if !config.IsSet(compName + ".stripe-width") {
 		distributedCache.cfg.StripeWidth = defaultStripeWidth
 	}
-	if !config.IsSet(compName + ".mvs-per-rv") {
+	if config.IsSet(compName + ".mvs-per-rv") {
+		// If user sets mvs-per-rv in the config then that value MUST be honoured.
+		cm.MVsPerRVLocked = true
+	} else {
+		common.Assert(distributedCache.cfg.MaxRVs > 0, distributedCache.cfg)
+		common.Assert(distributedCache.cfg.Replicas > 0, distributedCache.cfg)
+		common.Assert(cm.MinMVsPerRV < cm.MaxMVsPerRV, cm.MinMVsPerRV, cm.MaxMVsPerRV)
+
 		//
-		// If user sets mvs-per-rv in the config then we use that value and that decides the number of MVs,
-		// depending on the number of RVs and replicas, but the more common case is that user does not specify
-		// mvs-per-rv in the config, but instead they specify max-rvs, in that case we need to calculate the
-		// MV count accordingly.
+		// If user sets mvs-per-rv in the config then they want us to create that many MV replicas on
+		// every RV, regardless of the number of RVs, period. That along with actual number of RVs and
+		// the "replicas" config then decides the actual number of MVs we have.
+		// The more common case however is that users do not specify mvs-per-rv in the config, but instead
+		// they specify max-rvs, in that case we need to calculate the MV count accordingly.
 		//
 
+		//
 		// This is the minimum number of MVs possible, what we get if we host one MV per RV.
+		// This is the absolute minimum number of MVs we must have in order to utilize space from all RVs.
+		//
 		minMVs := int64((int64(distributedCache.cfg.MaxRVs) * cm.MinMVsPerRV) / int64(distributedCache.cfg.Replicas))
 		common.Assert(minMVs > 0, distributedCache.cfg)
 		minMVs = max(minMVs, 1)
 
-		// For the given cfg.MaxRVs value, this is the maximum number of MVs that we can have.
+		//
+		// For the given cfg.MaxRVs value, this is the maximum number of MVs that we can have, given that
+		// we don't want to allow more than cm.MaxMVsPerRV MV replicas on any RV.
+		// Note that we don't want too many MVs, as it affects many workflows that depend on the number of MVs.
+		// If there are too many MV replicas on an RV, every time that RV goes down, that many MV replicas
+		// need to be fixed.
+		//
 		maxMVs := int64((int64(distributedCache.cfg.MaxRVs) * cm.MaxMVsPerRV) / int64(distributedCache.cfg.Replicas))
 
 		// Start with the minimum number of MVs.
@@ -537,13 +569,13 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 			uint64(math.Ceil(float64(numMVs*int64(distributedCache.cfg.Replicas)) /
 				float64(distributedCache.cfg.MaxRVs)))
 
-		log.Info("DistributedCache::Configure : cfg.MVsPerRV set to %d, minMVs: %d, maxMVs: %d",
-			distributedCache.cfg.MVsPerRV, minMVs, maxMVs)
+		log.Info("DistributedCache::Configure : cfg.MVsPerRV: %d, minMVs: %d, maxMVs: %d, replicas: %d, maxRVs: %d",
+			distributedCache.cfg.MVsPerRV, minMVs, maxMVs, distributedCache.cfg.Replicas, distributedCache.cfg.MaxRVs)
 
 		// Our calculated MVsPerRV must be within the allowed range.
 		common.Assert(distributedCache.cfg.MVsPerRV >= uint64(cm.MinMVsPerRV) &&
 			distributedCache.cfg.MVsPerRV <= uint64(cm.MaxMVsPerRV),
-			distributedCache.cfg, numMVs, minMVs, maxMVs)
+			distributedCache.cfg, numMVs, minMVs, maxMVs, cm.MinMVsPerRV, cm.MaxMVsPerRV)
 	}
 	if !config.IsSet(compName + ".rv-full-threshold") {
 		distributedCache.cfg.RVFullThreshold = defaultRvFullThreshold
