@@ -856,6 +856,8 @@ func libfuse_unlink(path *C.char) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		}
 		return -C.EIO
 	}

@@ -34,12 +34,15 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +67,7 @@ type BaseLogger struct {
 	logger        *log.Logger
 	logFileHandle io.WriteCloser
 	procPID       int
+	hostname      string
 
 	fileConfig LogFileConfig
 }
@@ -162,6 +166,13 @@ func (l *BaseLogger) SetLogLevel(level common.LogLevel) {
 func (l *BaseLogger) init() error {
 	l.procPID = os.Getpid()
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		l.hostname = "unknown-host"
+	} else {
+		l.hostname = hostname
+	}
+
 	// Set default for config
 	if l.fileConfig.LogFile == "" {
 		err := l.SetLogFile("stdout")
@@ -217,18 +228,61 @@ func (l *BaseLogger) Destroy() error {
 // logEvent : Enqueue the log to the channel
 func (l *BaseLogger) logEvent(lvl string, format string, args ...any) {
 	// Only log if the log level matches the log request
-	_, fn, ln, _ := runtime.Caller(3)
-	msg := fmt.Sprintf(format, args...)
-	msg = fmt.Sprintf("%s : %s[%d] : [%s] %s [%s (%d)]: %s",
-		time.Now().Format(time.UnixDate),
+	pc, fn, ln, _ := runtime.Caller(3)
+
+	// full func name: e.g. github.com/Azure/…/common/log.(*BaseLogger).Info
+	fullName := runtime.FuncForPC(pc).Name()
+
+	pkgName := ""
+	if strings.Contains(fullName, "distributed_cache") || strings.Contains(fullName, "dcache") {
+		pkgName = "DCACHE"
+	}
+
+	base := fmt.Sprintf("%s : [%s] %s[%d][%d] : [%s] %s",
+		time.Now().Format("Mon Jan _2 15:04:05.000 MST 2006"),
+		l.hostname,
 		l.fileConfig.LogTag,
 		l.procPID,
+		getGoRoutineID(),
 		common.MountPath,
-		lvl,
-		filepath.Base(fn), ln,
-		msg)
+		lvl)
+	fileLine := fmt.Sprintf("[%s (%d)]", filepath.Base(fn), ln)
+	msg := fmt.Sprintf(format, args...)
 
-	l.channel <- msg
+	if pkgName != "" {
+		l.channel <- fmt.Sprintf("%s [%s] %s: %s", base, pkgName, fileLine, msg)
+	} else {
+		l.channel <- fmt.Sprintf("%s %s: %s", base, fileLine, msg)
+	}
+
+}
+
+// Example goroutine 17 [running]: => This method will return 17
+func getGoRoutineID() uint64 {
+	// Grab up to 64 bytes of the current goroutine’s stack
+	b := make([]byte, 64)
+
+	// Write the current goroutine’s stack trace into the byte buffer.
+	// Reslices bytes to only those n bytes (b = b[:n]), so you drop any unused capacity at the end of the buffer
+	// and work only with the real stack‐trace bytes.
+	b = b[:runtime.Stack(b, false)]
+
+	// Strip the literal “goroutine ” prefix
+	b = bytes.TrimPrefix(b, []byte("goroutine "))
+
+	// Find the first space (everything before it is the ID)
+	i := bytes.IndexByte(b, ' ')
+	if i < 0 {
+		return 0
+	}
+
+	// Parse those digits into a number
+	goRoutineId, err := strconv.ParseUint(string(b[:i]), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return goRoutineId
 }
 
 // logDumper : logEvent just enqueues an event in the channel, this thread dumps that log to the file
