@@ -117,6 +117,12 @@ var (
 	//
 	MVsPerRVForFixMV atomic.Int32
 
+	//
+	// MVsPerRVScaleFactor decides how many times more MVs can we allow in the FixMV workflow, than the NewMV
+	// workflow.
+	//
+	MVsPerRVScaleFactor int64 = 4
+
 	MinRvFullThreshold int64 = 80
 	MaxRvFullThreshold int64 = 100
 
