@@ -141,18 +141,13 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		MVList:      make([]string, stripeWidth),
 	}
 
+	//
 	// Get active MV's from the clustermap
+	//
+	// TODO: Allow degraded MVs to be used for placement too.
+	// TODO: See if we can use some heuristics to pick MVs, instead of random.
+	//
 	activeMVs := cm.GetActiveMVNames()
-
-	//
-	// Cannot create file if we don't have enough active MVs.
-	//
-	if len(activeMVs) < int(stripeWidth) {
-		err := fmt.Errorf("Cannot create file %s, active MVs (%d) < stripeWidth (%d)",
-			fileName, len(activeMVs), stripeWidth)
-		log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
-		return nil, err
-	}
 
 	//
 	// Shuffle the slice and pick starting numMVs.
@@ -163,9 +158,13 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
 	})
 
+	//
 	// Pick starting numMVs from the active MVs.
+	// If not enough MVs are active, repeat from the start of the list.
+	// It's ok to pick same MV multiple times.
+	//
 	for i := range stripeWidth {
-		fileMetadata.FileLayout.MVList[i] = activeMVs[i]
+		fileMetadata.FileLayout.MVList[i] = activeMVs[int(i)%len(activeMVs)]
 	}
 
 	log.Debug("DistributedCache[FM]::NewDcacheFile: Initial metadata for file %s %+v",

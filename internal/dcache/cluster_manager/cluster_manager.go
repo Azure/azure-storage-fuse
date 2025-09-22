@@ -1629,18 +1629,24 @@ var getAllNodes = func() ([]string, error) {
 //       THIS IS VERY IMPORTANT!!
 
 func (cmi *ClusterManager) computeMVsPerRV(cfg *dcache.DCacheConfig, numRVs, numMVs int) {
+	//
+	// We have numMVs MVs currently present in the cluster, use numRVs/NumReplicas as a rough estimate of how
+	// many MVs we can create using the available RVs with MVsPerRV=1.
+	//
+	numLikelyMVs := max(numMVs, numRVs/int(cmi.config.NumReplicas))
+
 	// If user has used mvs-per-rv option, we must honour that.
 	if cm.MVsPerRVLocked {
 		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV)
-	} else if numMVs >= int(cm.PreferredMVs) {
+	} else if numLikelyMVs >= int(cm.PreferredMVs) {
 		// We already have PreferredMVs MVs, allow only MinMVsPerRV MVs per RV.
 		cm.MVsPerRVForNewMV = int(cm.MinMVsPerRV)
-	} else if numMVs < int(cm.PreferredMVs/8) {
+	} else if numLikelyMVs < int(cm.PreferredMVs/8) {
 		// o/w gradually scale down MVsPerRV as we approach PreferredMVs.
 		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV)
-	} else if numMVs < int(cm.PreferredMVs/4) {
+	} else if numLikelyMVs < int(cm.PreferredMVs/4) {
 		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV / 2)
-	} else if numMVs < int(cm.PreferredMVs/2) {
+	} else if numLikelyMVs < int(cm.PreferredMVs/2) {
 		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV / 4)
 	} else {
 		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV / 8)
