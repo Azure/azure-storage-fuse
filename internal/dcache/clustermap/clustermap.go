@@ -905,6 +905,7 @@ func (c *ClusterMap) refreshMVWithSpace() {
 	for mvName, mv := range localMap.MVMap {
 		// Offline MVs are not of interest to our callers.
 		if mv.State == dcache.StateOffline {
+			log.Debug("ClusterMap::refreshMVWithSpace: %s offline, skipping", mvName)
 			continue
 		}
 
@@ -918,6 +919,7 @@ func (c *ClusterMap) refreshMVWithSpace() {
 
 			// Offline RVs will soon be replaced, so they cannot be used to decide available space for the MV.
 			if rvState == dcache.StateOffline || rv.State == dcache.StateOffline {
+				log.Debug("ClusterMap::refreshMVWithSpace: %s/%s offline, skipping", rvName, mvName)
 				continue
 			}
 
@@ -928,14 +930,22 @@ func (c *ClusterMap) refreshMVWithSpace() {
 			rvSpaceUsed := rv.TotalSpace - rv.AvailableSpace
 			rvSpaceUtil := (rvSpaceUsed * 100) / rv.TotalSpace
 			if rvSpaceUtil >= GetCacheConfig().RvFullThreshold {
+				log.Debug("ClusterMap::refreshMVWithSpace: %s/%s util: %d > %d%%, skipping",
+					rvName, mvName, rvSpaceUtil, GetCacheConfig().RvFullThreshold)
+
 				minAvailableSpace = int64(math.MaxInt64)
 				break
 			}
+
+			log.Debug("ClusterMap::refreshMVWithSpace: %s/%s availableSpace: %d util: %d%%",
+				rvName, mvName, rv.AvailableSpace, rvSpaceUtil)
 
 			minAvailableSpace = min(minAvailableSpace, int64(rv.AvailableSpace))
 		}
 
 		if minAvailableSpace != int64(math.MaxInt64) {
+			log.Debug("ClusterMap::refreshMVWithSpace: %s availableSpace: %d", mvName, minAvailableSpace)
+
 			mvs = append(mvs, MVWithSpace{
 				MVName:         mvName,
 				MVState:        mv.State,
@@ -943,6 +953,8 @@ func (c *ClusterMap) refreshMVWithSpace() {
 			})
 		}
 	}
+
+	log.Debug("ClusterMap::refreshMVWithSpace: Created sorted MV list with %d MVs", len(mvs))
 
 	sort.Slice(mvs, func(i, j int) bool {
 		if mvs[i].AvailableSpace == mvs[j].AvailableSpace {
