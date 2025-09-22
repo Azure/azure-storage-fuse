@@ -37,7 +37,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -141,31 +140,30 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		MVList:      make([]string, stripeWidth),
 	}
 
-	// Get active MV's from the clustermap
-	activeMVs := cm.GetActiveMVNames()
+	// MVs sorted in decreasing order of available space.
+	sortedMVs := cm.GetMVsSortedWithAvailableSpace()
+	common.Assert(len(*sortedMVs) > 0, len(*sortedMVs), fileName)
 
-	//
-	// Cannot create file if we don't have enough active MVs.
-	//
-	if len(activeMVs) < int(stripeWidth) {
-		err := fmt.Errorf("Cannot create file %s, active MVs (%d) < stripeWidth (%d)",
-			fileName, len(activeMVs), stripeWidth)
-		log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
-		return nil, err
-	}
-
-	//
-	// Shuffle the slice and pick starting numMVs.
-	//
-	// TODO: For very large number of MVs, we can avoid shuffling all and just picking numMVs randomly.
-	//
-	rand.Shuffle(len(activeMVs), func(i, j int) {
-		activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
-	})
-
-	// Pick starting numMVs from the active MVs.
+	// Pick starting stripeWidth active MVs from the sorted MVs.
+	j := 0
 	for i := range stripeWidth {
-		fileMetadata.FileLayout.MVList[i] = activeMVs[i]
+		if int(i) >= len(*sortedMVs) {
+			err := fmt.Errorf("Cannot create file %s, active MVs (%d) < stripeWidth (%d)",
+				fileName, i, stripeWidth)
+			log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
+			return nil, err
+		}
+		mv := (*sortedMVs)[i]
+
+		//
+		// TODO: Add support for picking degraded MVs too.
+		//
+		if mv.MVState != dcache.StateOnline {
+			continue
+		}
+
+		fileMetadata.FileLayout.MVList[j] = mv.MVName
+		j++
 	}
 
 	log.Debug("DistributedCache[FM]::NewDcacheFile: Initial metadata for file %s %+v",

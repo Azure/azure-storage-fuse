@@ -37,8 +37,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +51,14 @@ import (
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
+
+// Store MV name with state and available space for maintaining MV list sorted by available space,
+// used for file placement decisions.
+type MVWithSpace struct {
+	MVName         string
+	MVState        dcache.StateEnum
+	AvailableSpace int64
+}
 
 var (
 	InvalidComponentRV     = errors.New("invalid component RV")
@@ -67,6 +77,14 @@ func Stop() {
 // Update will load the local clustermap.
 func Update() {
 	clusterMap.loadLocalMap()
+
+	//
+	// clusterMap.sortedMVs is set here for the first time, and then it's set only periodically from
+	// updateStorageClusterMapIfRequired().
+	//
+	if clusterMap.sortedMVs == nil {
+		clusterMap.refreshMVWithSpace()
+	}
 }
 
 // Return Epoch value of the cached clustermap.
@@ -210,6 +228,16 @@ func RVNameToNodeId(rvName string) string {
 // It will return the IP address of the given RV name as per local cache copy of cluster map.
 func RVNameToIp(rvName string) string {
 	return clusterMap.rVNameToIp(rvName)
+}
+
+// Refresh the sorted MV list with available space, from the local clustermap.
+func RefreshMVWithSpace() {
+	clusterMap.refreshMVWithSpace()
+}
+
+// Get the sorted MV list with available space.
+func GetMVsSortedWithAvailableSpace() *[]MVWithSpace {
+	return clusterMap.getMVsSortedWithAvailableSpace()
 }
 
 func GetActiveMVNames() []string {
@@ -447,6 +475,7 @@ type ClusterMap struct {
 	localMap            *dcache.ClusterMap
 	mu                  sync.RWMutex // Synchronizes access to localMap.
 	localClusterMapPath string
+	sortedMVs           *[]MVWithSpace // MVs sorted by available space.
 }
 
 func (c *ClusterMap) stop() {
@@ -858,4 +887,82 @@ func (c *ClusterMap) rVNameToIp(rvName string) string {
 		return ""
 	}
 	return rv.IPAddress
+}
+func (c *ClusterMap) refreshMVWithSpace() {
+	localMap := c.getLocalMap()
+
+	if len(localMap.MVMap) == 0 {
+		common.Assert(c.sortedMVs == nil)
+		return
+	}
+
+	mvs := make([]MVWithSpace, 0, len(localMap.MVMap))
+
+	//
+	// Go over all MVs and find available space in each MV.
+	// Available space for an MV is the minimum available space across all its online component RVs.
+	//
+	for mvName, mv := range localMap.MVMap {
+		// Offline MVs are not of interest to our callers.
+		if mv.State == dcache.StateOffline {
+			continue
+		}
+
+		common.Assert(len(mv.RVs) == int(GetCacheConfig().NumReplicas), mvName, mv.RVs)
+
+		// Find the minimum available space across all online component RVs.
+		minAvailableSpace := int64(math.MaxInt64)
+		for rvName, rvState := range mv.RVs {
+			rv, ok := localMap.RVMap[rvName]
+			common.Assert(ok, rvName, mvName)
+
+			// Offline RVs will soon be replaced, so they cannot be used to decide available space for the MV.
+			if rvState == dcache.StateOffline || rv.State == dcache.StateOffline {
+				continue
+			}
+
+			// We skip those MVs which have one or more component RVs running out of space.
+			common.Assert(rv.TotalSpace >= rv.AvailableSpace, rvName, rv.TotalSpace, rv.AvailableSpace)
+			common.Assert(rv.AvailableSpace >= 0 && int64(rv.AvailableSpace) < math.MaxInt64, rvName, rv.AvailableSpace)
+
+			rvSpaceUsed := rv.TotalSpace - rv.AvailableSpace
+			rvSpaceUtil := (rvSpaceUsed * 100) / rv.TotalSpace
+			if rvSpaceUtil >= GetCacheConfig().RvFullThreshold {
+				minAvailableSpace = int64(math.MaxInt64)
+				break
+			}
+
+			minAvailableSpace = min(minAvailableSpace, int64(rv.AvailableSpace))
+		}
+
+		if minAvailableSpace != int64(math.MaxInt64) {
+			mvs = append(mvs, MVWithSpace{
+				MVName:         mvName,
+				MVState:        mv.State,
+				AvailableSpace: minAvailableSpace,
+			})
+		}
+	}
+
+	sort.Slice(mvs, func(i, j int) bool {
+		if mvs[i].AvailableSpace == mvs[j].AvailableSpace {
+			return mvs[i].MVName < mvs[j].MVName
+		}
+		return mvs[i].AvailableSpace > mvs[j].AvailableSpace
+	})
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(mvs) > 0 {
+		c.sortedMVs = &mvs
+	}
+}
+
+func (c *ClusterMap) getMVsSortedWithAvailableSpace() *[]MVWithSpace {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	common.Assert(c.sortedMVs != nil)
+	return c.sortedMVs
 }
