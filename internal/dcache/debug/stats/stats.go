@@ -384,8 +384,6 @@ type CMStats struct {
 		NumReplicas int64 `json:"num_replicas,omitempty"`
 		// Total RVs (from all nodes) at our disposal.
 		TotalRVs int64 `json:"total_rvs,omitempty"`
-		// With TotalRVs, NumReplicas and MVsPerRV, how many MVs can the cluster have?
-		MaxMVsPossible int64 `json:"max_mvs_possible,omitempty"`
 		// How many are offline? Rest are online.
 		OfflineRVs int64 `json:"offline_rvs,omitempty"`
 		// Total MVs, created from all the RVs that we have.
@@ -632,7 +630,6 @@ func (s *DCacheStats) Preprocess() {
 		s.CM.NewMV.DegradedMVs = 0
 		s.CM.NewMV.OfflineMVs = 0
 		s.CM.NewMV.SyncingMVs = 0
-		s.CM.NewMV.MaxMVsPossible = 0
 		s.CM.NewMV.AvailableNodes = 0
 	}
 

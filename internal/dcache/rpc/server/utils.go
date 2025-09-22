@@ -145,7 +145,10 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 // This returns the maximum MVsPerRV value that we allow.
 // We allow more MVs to be placed per RV in fix-mv than new-mv.
 func getMVsPerRV() int64 {
-	return int64(cm.GetCacheConfig().MVsPerRV) * cm.MVsPerRVScaleFactor
+	mvsPerRV := int64(cm.MVsPerRVForFixMV.Load())
+	common.Assert(mvsPerRV > 0, mvsPerRV)
+	common.Assert(mvsPerRV > int64(cm.MVsPerRVForNewMV), mvsPerRV, cm.MVsPerRVForNewMV)
+	return mvsPerRV
 }
 
 // Check if any of the RV present in the component RVs has inband-offline state.

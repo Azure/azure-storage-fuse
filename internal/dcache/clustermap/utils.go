@@ -42,6 +42,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -60,6 +61,9 @@ var (
 	MinHeartbeatFrequency int64 = 5
 	MaxHeartbeatFrequency int64 = 60
 
+	MinHeartbeatsTillNodeDown int64 = 2
+	MaxHeartbeatsTillNodeDown int64 = 5
+
 	//
 	// The range of chunk size and stripe width is deliberately kept large so that we can experiment with
 	// various values and find the optimal ones.
@@ -75,6 +79,9 @@ var (
 	MinNumReplicas int64 = 1
 	MaxNumReplicas int64 = 256
 
+	MinMaxRVs int64 = 100
+	MaxMaxRVs int64 = 100000
+
 	//
 	// Unless explicitly set, the system sets cfg.MVsPerRV in a way so as to get close to PreferredMVs
 	// number of MVs. Obviously it'll honour MaxMVsPerRV.
@@ -87,18 +94,32 @@ var (
 	MinMVsPerRV int64 = 1
 	MaxMVsPerRV int64 = 100
 
+	MVsPerRVLocked bool = false
+
 	//
-	// DCacheConfig.MVsPerRV decides how many new MVs are created depending on the number of RVs we have,
-	// but when nodes go down we need to move MVs from offline nodes to available nodes. FixMV workflow
-	// does that. For this we need to allow FixMV workflow to place more MVs per RV than DCacheConfig.MVsPerRV.
+	// When using an RV for placing a new MV, how many MV replicas are we allowed to place on an RV.
+	// See MVsPerRVForFixMV which is a higher value used when using an RV to place MV replicas for
+	// fixing degraded MVs.
+	// This is not a fixed value, instead it's updated dynamically based on the number of RVs and MVs.
+	// It starts with the value from config.MVsPerRV, so as to quickly get PreferredMVs and as the number
+	// of RVs grows, it's exponentially reduced to limit the total number of MVs in the cluster while
+	// still adding new MVs as we add more RVs. See ClusterManager.computeMVsPerRV().
+	// Our goal is to distribute MVs as evenly as possible across all RVs, while also making sure that we
+	// utilize new RVs for placing additional new MVs.
+	//
+	MVsPerRVForNewMV int
+
+	//
+	// When using an RV for placing MV replicas for fixing degraded MVs, how many MV replicas are we allowed
+	// to place on an RV. This is a higher value than MVsPerRVForNewMV as we technically we have fewer RVs
+	// to place the same number of MV replicas, so we need to allow more MV replicas per RV.
+	// See ClusterManager.computeMVsPerRV().
+	//
+	MVsPerRVForFixMV atomic.Int32
+
+	//
 	// MVsPerRVScaleFactor decides how many times more MVs can we allow in the FixMV workflow, than the NewMV
 	// workflow.
-	//
-	// TODO: We need to add support for rebalancing MVs back to newly joined nodes, else we will end up not
-	//       using the full capacity of the cluster. This is the "optional rebalancing" needed to distribute
-	//       MVs evenly across all RVs. The other rebalancing is the "mandatory rebalancing" that we do when
-	//       nodes go down, and we need to move MVs from offline nodes to available nodes.
-	//       THIS IS VERY IMPORTANT!!
 	//
 	MVsPerRVScaleFactor int64 = 4
 
@@ -199,63 +220,86 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 	// MinNodes must be at least 1.
 	// We add an upper limit of 1000 as a sanity check.
 	if cfg.MinNodes < 1 || cfg.MinNodes > 1000 {
-		return false, fmt.Errorf("DCacheConfig: Invalid MinNodes: %d %+v", cfg.MinNodes, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid MinNodes: %d (valid range [%d, %d]) %+v",
+			cfg.MinNodes, 1, 1000, *cfg)
+	}
+
+	if int64(cfg.MaxRVs) < MinMaxRVs || int64(cfg.MaxRVs) > MaxMaxRVs {
+		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d (valid range [%d, %d]) %+v",
+			cfg.MaxRVs, MinMaxRVs, MaxMaxRVs, *cfg)
 	}
 
 	// Every node must contribute at least one RV.
+	if cfg.MaxRVs < cfg.MinNodes {
+		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d (cannot be less than min-nodes (%d)) %+v",
+			cfg.MaxRVs, cfg.MinNodes, *cfg)
+	}
+
 	// We must have RVs no less than NumReplicas.
-	// 100K is an arbitrary upper limit for the number of RVs in the cluster.
-	if cfg.MaxRVs < cfg.MinNodes || cfg.MaxRVs < cfg.NumReplicas || cfg.MaxRVs > 100000 {
-		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d %+v", cfg.MaxRVs, *cfg)
+	if cfg.MaxRVs < cfg.NumReplicas {
+		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d (cannot be less than replicas (%d)) %+v",
+			cfg.MaxRVs, cfg.NumReplicas, *cfg)
 	}
 
 	if int64(cfg.HeartbeatSeconds) < MinHeartbeatFrequency ||
 		int64(cfg.HeartbeatSeconds) > MaxHeartbeatFrequency {
-		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatSeconds: %d %+v", cfg.HeartbeatSeconds, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatSeconds: %d (valid range [%d, %d]) %+v",
+			cfg.HeartbeatSeconds, MinHeartbeatFrequency, MaxHeartbeatFrequency, *cfg)
 	}
 
 	// At least two heartbeats till node down.
-	if cfg.HeartbeatsTillNodeDown < 2 {
-		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatsTillNodeDown: %d %+v",
-			cfg.HeartbeatsTillNodeDown, *cfg)
+	if int64(cfg.HeartbeatsTillNodeDown) < MinHeartbeatsTillNodeDown ||
+		int64(cfg.HeartbeatsTillNodeDown) > MaxHeartbeatsTillNodeDown {
+		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatsTillNodeDown: %d (valid range [%d, %d]) %+v",
+			cfg.HeartbeatsTillNodeDown, MinHeartbeatsTillNodeDown, MaxHeartbeatsTillNodeDown, *cfg)
 	}
 
-	if int64(cfg.ClustermapEpoch) < MinClusterMapEpoch || int64(cfg.ClustermapEpoch) > MaxClusterMapEpoch {
-		return false, fmt.Errorf("DCacheConfig: Invalid ClustermapEpoch: %d %+v", cfg.ClustermapEpoch, *cfg)
+	if int64(cfg.ClustermapEpoch) < MinClusterMapEpoch ||
+		int64(cfg.ClustermapEpoch) > MaxClusterMapEpoch {
+		return false, fmt.Errorf("DCacheConfig: Invalid ClustermapEpoch: %d (valid range [%d, %d]) %+v",
+			cfg.ClustermapEpoch, MinClusterMapEpoch, MaxClusterMapEpoch, *cfg)
 	}
 
 	// Updating clustermap sooner than one heartbeat is usually pointless.
 	if uint64(cfg.HeartbeatSeconds) > cfg.ClustermapEpoch {
-		return false, fmt.Errorf("DCacheConfig: HeartbeatSeconds (%d) > ClustermapEpoch (%d) %+v", cfg.HeartbeatSeconds, cfg.ClustermapEpoch, *cfg)
+		return false, fmt.Errorf("DCacheConfig: HeartbeatSeconds (%d) > ClustermapEpoch (%d) %+v",
+			cfg.HeartbeatSeconds, cfg.ClustermapEpoch, *cfg)
 	}
 
 	if int64(cfg.ChunkSizeMB) < MinChunkSizeMB || int64(cfg.ChunkSizeMB) > MaxChunkSizeMB {
-		return false, fmt.Errorf("DCacheConfig: Invalid ChunkSizeMB: %d %+v", cfg.ChunkSizeMB, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid ChunkSizeMB: %d (valid range [%d, %d]) %+v",
+			cfg.ChunkSizeMB, MinChunkSizeMB, MaxChunkSizeMB, *cfg)
 	}
 
 	if int64(cfg.StripeWidth) < MinStripeWidth || int64(cfg.StripeWidth) > MaxStripeWidth {
-		return false, fmt.Errorf("DCacheConfig: Invalid StripeWidth: %d %+v", cfg.StripeWidth, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid StripeWidth: %d (valid range [%d, %d]) %+v",
+			cfg.StripeWidth, MinStripeWidth, MaxStripeWidth, *cfg)
 	}
 
 	if int64(cfg.NumReplicas) < MinNumReplicas || int64(cfg.NumReplicas) > MaxNumReplicas {
-		return false, fmt.Errorf("DCacheConfig: Invalid NumReplicas: %d %+v", cfg.NumReplicas, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid NumReplicas: %d (valid range [%d, %d]) %+v",
+			cfg.NumReplicas, MinNumReplicas, MaxNumReplicas, *cfg)
 	}
 
 	if int64(cfg.MVsPerRV) < MinMVsPerRV || int64(cfg.MVsPerRV) > MaxMVsPerRV {
-		return false, fmt.Errorf("DCacheConfig: Invalid MVsPerRV: %d %+v", cfg.MVsPerRV, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid MVsPerRV: %d (valid range [%d, %d]) %+v",
+			cfg.MVsPerRV, MinMVsPerRV, MaxMVsPerRV, *cfg)
 	}
 
 	if int64(cfg.RvFullThreshold) < MinRvFullThreshold || int64(cfg.RvFullThreshold) > MaxRvFullThreshold {
-		return false, fmt.Errorf("DCacheConfig: Invalid RvFullThreshold: %d %+v", cfg.RvFullThreshold, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid RvFullThreshold: %d (valid range [%d, %d]) %+v",
+			cfg.RvFullThreshold, MinRvFullThreshold, MaxRvFullThreshold, *cfg)
 	}
 
 	if int64(cfg.RvNearfullThreshold) < MinRvNearFullThreshold ||
 		int64(cfg.RvNearfullThreshold) > MaxRvNearFullThreshold {
-		return false, fmt.Errorf("DCacheConfig: Invalid RvNearfullThreshold: %d %+v", cfg.RvFullThreshold, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid RvNearfullThreshold: %d (valid range [%d, %d]) %+v",
+			cfg.RvNearfullThreshold, MinRvNearFullThreshold, MaxRvNearFullThreshold, *cfg)
 	}
 
 	if cfg.RvFullThreshold < cfg.RvNearfullThreshold {
-		return false, fmt.Errorf("DCacheConfig: RvFullThreshold (%d) < RvNearfullThreshold (%d) %+v", cfg.RvFullThreshold, cfg.RvNearfullThreshold, *cfg)
+		return false, fmt.Errorf("DCacheConfig: RvFullThreshold (%d) < RvNearfullThreshold (%d) %+v",
+			cfg.RvFullThreshold, cfg.RvNearfullThreshold, *cfg)
 	}
 
 	return true, nil

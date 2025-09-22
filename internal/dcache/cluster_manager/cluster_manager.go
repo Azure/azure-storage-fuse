@@ -125,6 +125,14 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		return fmt.Errorf("ClusterManager::start Not valid RV list: %v", err)
 	}
 
+	//
+	// Starting value, will be updated later based on the current number of RVs and MVs in the cluster.
+	// MVsPerRVForFixMV is set higher than MVsPerRVForNewMV to allow JoinMV() to succeed till we get a
+	// chance to set them correctly.
+	//
+	cm.MVsPerRVForNewMV = int(dCacheConfig.MVsPerRV)
+	cm.MVsPerRVForFixMV.Store(int32(cm.MVsPerRVForNewMV * int(cm.MVsPerRVScaleFactor)))
+
 	// All RVs exported by a node have the same NodeId and IPAddress, use from the first RV.
 	// These will be used as the current node's id and IP address.
 	cmi.myNodeId = rvs[0].NodeId
@@ -1612,6 +1620,54 @@ var getAllNodes = func() ([]string, error) {
 	return mm.GetAllNodes()
 }
 
+// Given current number of RVs and MVs, compute a good value for MVsPerRV to use for new to-be-added MVs.
+//
+// TODO: We need to add support for rebalancing MVs back to newly joined nodes, else we will end up not
+//       using the full capacity of the cluster. This is the "optional rebalancing" needed to distribute
+//       MVs evenly across all RVs. The other rebalancing is the "mandatory rebalancing" that we do when
+//       nodes go down, and we need to move MVs from offline nodes to available nodes.
+//       THIS IS VERY IMPORTANT!!
+
+func (cmi *ClusterManager) computeMVsPerRV(cfg *dcache.DCacheConfig, numRVs, numMVs int) {
+	// If user has used mvs-per-rv option, we must honour that.
+	if cm.MVsPerRVLocked {
+		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV)
+	} else if numMVs >= int(cm.PreferredMVs) {
+		// We already have PreferredMVs MVs, allow only MinMVsPerRV MVs per RV.
+		cm.MVsPerRVForNewMV = int(cm.MinMVsPerRV)
+	} else if numMVs < int(cm.PreferredMVs/8) {
+		// o/w gradually scale down MVsPerRV as we approach PreferredMVs.
+		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV)
+	} else if numMVs < int(cm.PreferredMVs/4) {
+		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV / 2)
+	} else if numMVs < int(cm.PreferredMVs/2) {
+		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV / 4)
+	} else {
+		cm.MVsPerRVForNewMV = int(cfg.MVsPerRV / 8)
+	}
+
+	cm.MVsPerRVForNewMV = max(cm.MVsPerRVForNewMV, int(cm.MinMVsPerRV))
+
+	// Support 3/4th of the RVs being down. This is too conservative, but we love resiliency.
+	numRVsCritical := max(numRVs/4, int(cmi.config.NumReplicas))
+	// Total MV replicas all available RVs must host together.
+	totalMVReplicas := numMVs * int(cmi.config.NumReplicas)
+	// MV replicas each available RV must host, to support 3/4th of RVs being down.
+	cm.MVsPerRVForFixMV.Store(int32(totalMVReplicas / numRVsCritical))
+	// Not less than what MVsPerRVScaleFactor demands.
+	cm.MVsPerRVForFixMV.Store(int32(max(cm.MVsPerRVForFixMV.Load(),
+		int32(int64(cfg.MVsPerRV)*cm.MVsPerRVScaleFactor))))
+
+	log.Debug("ClusterManager::computeMVsPerRV: numRVs: %d, numMVs: %d, MVsPerRVForNewMV: %d, MVsPerRVForFixMV: %d",
+		numRVs, numMVs, cm.MVsPerRVForNewMV, cm.MVsPerRVForFixMV.Load())
+
+	// MVsPerRVForFixMV must be greater than MVsPerRVForNewMV, else we cannot handle node down gracefully.
+	common.Assert(cm.MVsPerRVForFixMV.Load() > int32(cm.MVsPerRVForNewMV),
+		cm.MVsPerRVForFixMV.Load(), cm.MVsPerRVForNewMV)
+	common.Assert(cm.MVsPerRVForFixMV.Load() > int32(cfg.MVsPerRV),
+		cm.MVsPerRVForFixMV.Load(), int(cfg.MVsPerRV))
+}
+
 // Publishes the heartbeat for this node.
 // initialHB indicates if this is the initial heartbeat for this node.
 func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bool) error {
@@ -1924,6 +1980,12 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		}
 
 		//
+		// Now that we know the actual number of RVs and current MVs, set MVsPerRVForNewMV to an
+		// appropriate value, also sets MVsPerRVForFixMV.
+		//
+		cmi.computeMVsPerRV(cmi.config, len(clusterMap.RVMap), len(clusterMap.MVMap))
+
+		//
 		// If one or more RVs changed state or new RV(s) were added, MV list will need to be recomputed.
 		//
 		// TODO: If no RV changes state, RV list and MV list won't be updated. In such case we need not update
@@ -2111,15 +2173,14 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	common.Assert(len(rvMap) > 0)
 
 	NumReplicas := int(cmi.config.NumReplicas)
-	MVsPerRVForNewMV := int(cmi.config.MVsPerRV)
-	MVsPerRVForFixMV := MVsPerRVForNewMV * int(cm.MVsPerRVScaleFactor)
 
 	common.Assert(NumReplicas >= int(cm.MinNumReplicas) && NumReplicas <= int(cm.MaxNumReplicas), NumReplicas)
-	common.Assert(MVsPerRVForNewMV >= int(cm.MinMVsPerRV) && MVsPerRVForNewMV <= int(cm.MaxMVsPerRV), MVsPerRVForNewMV)
-	// MVsPerRVForFixMV must be greater than MVsPerRVForNewMV, else we cannot handle node down gracefully.
-	common.Assert(MVsPerRVForFixMV > MVsPerRVForNewMV, MVsPerRVForFixMV, MVsPerRVForNewMV, cm.MVsPerRVScaleFactor)
+	common.Assert(cm.MVsPerRVForNewMV >= int(cm.MinMVsPerRV) && cm.MVsPerRVForNewMV <= int(cm.MaxMVsPerRV), cm.MVsPerRVForNewMV)
 	common.Assert(cm.IsValidRVMap(rvMap))
 	common.Assert(cm.IsValidMvMap(existingMVMap, NumReplicas))
+
+	log.Debug("ClusterManager::updateMVList: TotalRVs: %d, NumReplicas: %d, MVsPerRVForNewMV: %d, MVsPerRVForFixMV: %d, ExistingMVs: %d",
+		len(rvMap), NumReplicas, cm.MVsPerRVForNewMV, cm.MVsPerRVForFixMV.Load(), len(existingMVMap))
 
 	//
 	//
@@ -2237,7 +2298,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
 
 			// Max slots for an RV is MVsPerRVForFixMV.
-			common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
+			common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()), *rv, cm.MVsPerRVForFixMV)
+			common.Assert(rv.slots >= 0, *rv)
 
 			// Must have a valid nodeIdInt assigned.
 			common.Assert(rv.nodeIdInt > 0, *rv)
@@ -2246,12 +2308,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			// Skip an RV if it has no free slots left or for newMV case, the used slot count has
 			// reached MVsPerRVForNewMV.
 			//
-			usedSlots := MVsPerRVForFixMV - rv.slots
-			if rv.slots > MVsPerRVForFixMV {
-				usedSlots = MVsPerRVForFixMV
-			}
+			usedSlots := uint32(cm.MVsPerRVForFixMV.Load()) - uint32(rv.slots)
 
-			if rv.slots == 0 || (newMV && usedSlots >= MVsPerRVForNewMV) {
+			if rv.slots == 0 || (newMV && usedSlots >= uint32(cm.MVsPerRVForNewMV)) {
 				continue
 			}
 
@@ -2310,13 +2369,25 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		common.Assert(rv.udId == rvMap[rvName].UDId, rvName, mvName, nodeId, rv.udId, rvMap[rvName].UDId)
 
 		// We initialize slot count to MVsPerRVForFixMV and then reduce it from there.
-		common.Assert(rv.slots <= MVsPerRVForFixMV, rvName, mvName, nodeId, rv.slots, MVsPerRVForFixMV)
+		common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()),
+			rvName, mvName, nodeId, rv.slots, cm.MVsPerRVForFixMV.Load())
+
+		//
 		// Caller must call consumeRVSlot() only for RVs with at least one slot available.
+		// Note: We can have some RVs with more than MVsPerRVForFixMV MV replicas, if in the past
+		//       MVsPerRVForFixMV had an higher value and thus allowed more replicas on the RV.
+		//       Leave the assert as it's uncommon and we'd like to know if it happens.
+		//
 		common.Assert(rv.slots > 0, rvName, mvName, nodeId, availableRVsMap)
 
-		rv.slots--
-		log.Debug("ClusterManager::consumeRVSlot: Consumed slot for %s/%s, (used: %d, remaining: %d)",
-			rvName, mvName, MVsPerRVForFixMV-rv.slots, rv.slots)
+		if rv.slots > 0 {
+			rv.slots--
+			log.Debug("ClusterManager::consumeRVSlot: Consumed slot for %s/%s, (used: %d, remaining: %d)",
+				rvName, mvName, int(cm.MVsPerRVForFixMV.Load())-rv.slots, rv.slots)
+		} else {
+			log.Warn("ClusterManager::consumeRVSlot: %s/%s has more than %d MV replicas placed!",
+				rvName, mvName, cm.MVsPerRVForFixMV.Load())
+		}
 	}
 
 	//
@@ -2597,6 +2668,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 			//
 			// Iterate over the availableRVsList and pick the first suitable RV.
+			// availableRVsList is sorted by the number of slots available, so that the RVs with more slots
+			// are at the front so they are picked first for placing MVs, thus resulting in a more balanced
+			// distribution of MVs across the RVs over time as nodes go down and come up.
 			//
 			// Note: Since the number of RVs can be very large (100K+) we need to be careful that this loop
 			//       should run very very fast, as we need to fix all the degraded MVs in a short time.
@@ -2604,7 +2678,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			//
 			for _, rv := range availableRVsList {
 				// Max slots for an RV is MVsPerRVForFixMV.
-				common.Assert(rv.slots <= MVsPerRVForFixMV, rv.slots, MVsPerRVForFixMV)
+				common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()), *rv, cm.MVsPerRVForFixMV.Load())
+				common.Assert(rv.slots >= 0, *rv)
 
 				//
 				// Skip an RV if it has no free slots left.
@@ -2832,7 +2907,7 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 				nodeIdInt: cm.UUIDToUniqueInt(rvInfo.NodeId),
 				fdId:      rvInfo.FDId,
 				udId:      rvInfo.UDId,
-				slots:     MVsPerRVForFixMV,
+				slots:     int(cm.MVsPerRVForFixMV.Load()),
 			}
 		}
 
@@ -3100,34 +3175,33 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	//
 	// Note: getAvailableRVsList() returns a sorted list of RVs with most free slots at the beginning.
 	//       When placing new MVs for the first time, all RVs will have same number of free slots.
+	//       With newMV==true only RVs with used slots < MVsPerRVForNewMV are included in the list, i.e.,
+	//       they must be usable for placing new MVs.
 	//
 	getAvailableRVsList(true /* newMV */)
 
-	maxMVsPossible := (len(rvMap) * MVsPerRVForNewMV) / NumReplicas
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.MVsPerRV, int64(MVsPerRVForNewMV))
+	atomic.StoreInt64(&stats.Stats.CM.NewMV.MVsPerRV, int64(cm.MVsPerRVForNewMV))
 	atomic.StoreInt64(&stats.Stats.CM.NewMV.NumReplicas, int64(NumReplicas))
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.MaxMVsPossible, int64(maxMVsPossible))
 
-	for {
-		//
-		// With rvMap and MVsPerRVForNewMV and NumReplicas, we cannot have more than maxMVsPossible usable MVs.
-		// Note that we are talking of online or degraded/syncing MVs. Offline MVs have all component RVs
-		// offline and they don't consume any RV slot, so they should be omitted from usable MVs.
-		//
-		// Q: Why do we need to limit numUsableMVs to maxMVsPossible?
-		//    IOW, why is it not ok to create as many new MVs as we can till we have available RV slots.
-		// A: If we create as many new MVs as we can with the available RVs, we might end up creating more than
-		//    maxMVsPossible if some of the MVs have offline RVs (fixMV() would have attempted to replace offline
-		//    RVs for all degraded MVs but if joinMV() fails or any other error we can have some component RVs as
-		//    offline). We don't want to create more MVs leaving some MVs with no replacement RVs available.
-		//
-		common.Assert(numUsableMVs <= maxMVsPossible, numUsableMVs, maxMVsPossible)
-		if numUsableMVs == maxMVsPossible {
-			log.Debug("ClusterManager::updateMVList: numUsableMVs [%d] == maxMVsPossible [%d]",
-				numUsableMVs, maxMVsPossible)
+	//
+	// All new RVs will be at the beginning of availableRVsList as they have all slots free, find how many
+	// are there.
+	//
+	numNewRVs := 0
+	for ; numNewRVs < len(availableRVsList); numNewRVs++ {
+		common.Assert(availableRVsList[numNewRVs].slots > 0 &&
+			availableRVsList[numNewRVs].slots <= int(cm.MVsPerRVForFixMV.Load()),
+			availableRVsList[numNewRVs].rvName, availableRVsList[numNewRVs].slots, cm.MVsPerRVForFixMV.Load())
+
+		if availableRVsList[numNewRVs].slots != int(cm.MVsPerRVForFixMV.Load()) {
 			break
 		}
+	}
 
+	log.Debug("ClusterManager::updateMVList: Starting new-mv with %d new RVs (available: %d, total: %d), numMVs: %d",
+		numNewRVs, len(availableRVsList), len(rvMap), len(existingMVMap))
+
+	for {
 		//
 		// We need at least NumReplicas RVs with free slots to create a new MV.
 		//
@@ -3157,16 +3231,18 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//       20K MVs, it'll take ~20s to create all MVs, which should be fine.
 		//
 		startIdx := rand.Intn(len(availableRVsList))
+		if numNewRVs > 0 {
+			startIdx = rand.Intn(numNewRVs)
+		}
+
 		for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
 			rv := availableRVsList[idx%len(availableRVsList)]
-			usedSlots := MVsPerRVForFixMV - rv.slots
-			if rv.slots > MVsPerRVForFixMV {
-				common.Assert(false, rv.slots, MVsPerRVForFixMV, MVsPerRVForNewMV)
-				usedSlots = MVsPerRVForFixMV
-			}
+			usedSlots := int(cm.MVsPerRVForFixMV.Load()) - rv.slots
+			common.Assert(usedSlots >= 0 && usedSlots <= int(cm.MVsPerRVForFixMV.Load()),
+				*rv, cm.MVsPerRVForFixMV.Load())
 
 			// This check is the fastest, so we do it first.
-			if usedSlots >= MVsPerRVForNewMV {
+			if usedSlots >= cm.MVsPerRVForNewMV {
 				//
 				// new-mv workflow cannot use an RV more than MVsPerRVForNewMV times.
 				// Note that the slots may not be 0 as we initialize slots to MVsPerRVForFixMV, which is
@@ -3242,8 +3318,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		// attempting to create more new MVs.
 		//
 		if len(existingMVMap[mvName].RVs) != NumReplicas {
-			log.Debug("ClusterManager::updateMVList: Could not place %s, numUsableMVs: %d, maxMVsPossible: %d",
-				mvName, numUsableMVs, maxMVsPossible)
+			log.Debug("ClusterManager::updateMVList: Could not place %s, numUsableMVs: %d",
+				mvName, numUsableMVs)
+
 			// Delete the incomplete MV from the existingMVMap.
 			delete(existingMVMap, mvName)
 			break
@@ -3294,8 +3371,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		}
 
 		if time.Now().After(completeBy) {
-			log.Warn("ClusterManager::updateMVList: Prematurely exiting new-mv numUsableMVs: %d, maxMVsPossible: %d [%s]",
-				numUsableMVs, maxMVsPossible, completeBy)
+			log.Warn("ClusterManager::updateMVList: Prematurely exiting new-mv, numUsableMVs: %d [%s]",
+				numUsableMVs, completeBy)
 			break
 		}
 	}
