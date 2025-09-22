@@ -17,6 +17,8 @@ Prerequisites:
 
 import os
 import json
+import sys
+from datetime import datetime, timezone
 from github import Github, GithubException, Auth
 
 def get_item_comments(item):
@@ -36,7 +38,7 @@ def get_item_comments(item):
         
     return comments_list
 
-def main():
+def main(since_date_str):
     """
     Main function to fetch data and write to JSONL files.
     """
@@ -50,11 +52,25 @@ def main():
         print("Please set GITHUB_TOKEN, GITHUB_REPO_OWNER, and GITHUB_REPO_NAME and try again.")
         return
 
+    since_date = None
+    if since_date_str:
+        try:
+            since_date = datetime.fromisoformat(since_date_str).replace(tzinfo=timezone.utc)
+            print(f"Fetching data created since: {since_date.isoformat()}")
+        except ValueError:
+            print("Warning: Invalid since_date format. Fetching all data instead.")
+            exit(1)
+            
     issues_file_path = 'issues.jsonl'
     prs_file_path = 'prs.jsonl'
     issues_count = 0
     prs_count = 0
 
+    mode = 'a'
+    if not since_date:
+        mode = 'w'
+        print("Warning: Overwriting existing github_data.jsonl file for full sync.")
+            
     try:
         # 2. Authenticate with GitHub using the new Auth class
         auth = Auth.Token(github_token)
@@ -63,12 +79,15 @@ def main():
         print(f"Connected to repository: {repo.full_name}\n")
 
         # 3. Open files for writing at the beginning
-        with open(issues_file_path, 'w', encoding='utf-8') as issues_file, \
-             open(prs_file_path, 'w', encoding='utf-8') as prs_file:
+        with open(issues_file_path, mode, encoding='utf-8') as issues_file, \
+             open(prs_file_path, mode, encoding='utf-8') as prs_file:
             
             # 4. Fetch all items (issues and pull requests)
             print("Fetching issues and pull requests...")
-            all_items = repo.get_issues(state='all')
+            if since_date:
+                all_items = repo.get_issues(state='all', since=since_date)
+            else :
+                all_items = repo.get_issues(state='all')
             
             for item in all_items:
                 if item.body == "" or item.body is None:
@@ -84,6 +103,7 @@ def main():
                     'title': item.title.strip(),
                     'body': item.body.strip() if item.body else "",
                     'author': item.user.login,
+                    'created_at': item.created_at.isoformat(),
                     'comments': get_item_comments(item)
                 }
 
@@ -129,4 +149,5 @@ def main():
     print(f"Successfully wrote {prs_count} merged pull request records to {prs_file_path}")
 
 if __name__ == "__main__":
-    main()
+    since = sys.argv[1] if len(sys.argv) > 1 else None
+    main(since)
