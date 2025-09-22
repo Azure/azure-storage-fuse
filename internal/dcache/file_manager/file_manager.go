@@ -498,8 +498,12 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// If not that, we can only allow strictly sequential writes which can be tracked using maxWriteOffset.
 	// Once strict sequential writes are enforced on a file handle, we cannot go back to parallel writes.
 	//
+	// This rule is not applicable while warming up the cache, as we know that the writes are coming sequntially.
+	// TODO: do we really need to track IO in cache warmup?
+	//
 	if !file.strictSeqWrites &&
-		(offset%int64(GetMinTrackableIOSize()) != 0 || len(buf)%int(GetMinTrackableIOSize()) != 0) {
+		(offset%int64(GetMinTrackableIOSize()) != 0 || len(buf)%int(GetMinTrackableIOSize()) != 0) &&
+		!file.cacheWarmupInProgress {
 		log.Debug("DistributedCache[FM]::WriteFile: Enforcing strict sequential writes as offset (%d) or length (%d) is not a multiple of MinTrackableIOSize (%d)",
 			offset, len(buf), GetMinTrackableIOSize())
 		file.strictSeqWrites = true
