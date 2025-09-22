@@ -52,12 +52,21 @@ import (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
+type RVWithSpace struct {
+	RVName         string
+	RVState        dcache.StateEnum	
+	AvailableSpace int64
+	Utilization    int // 0-100
+}
+
 // Store MV name with state and available space for maintaining MV list sorted by available space,
 // used for file placement decisions.
 type MVWithSpace struct {
 	MVName         string
 	MVState        dcache.StateEnum
+	RVs	  []RVWithSpace // Component RVs with their state and available space.
 	AvailableSpace int64
+	RVName         string // Component RV that has the lowest available space.
 }
 
 var (
@@ -913,6 +922,7 @@ func (c *ClusterMap) refreshMVWithSpace() {
 
 		// Find the minimum available space across all online component RVs.
 		minAvailableSpace := int64(math.MaxInt64)
+		var minRV string
 		for rvName, rvState := range mv.RVs {
 			rv, ok := localMap.RVMap[rvName]
 			common.Assert(ok, rvName, mvName)
@@ -929,7 +939,7 @@ func (c *ClusterMap) refreshMVWithSpace() {
 
 			rvSpaceUsed := rv.TotalSpace - rv.AvailableSpace
 			rvSpaceUtil := (rvSpaceUsed * 100) / rv.TotalSpace
-			if rvSpaceUtil >= GetCacheConfig().RvFullThreshold {
+			if rvSpaceUtil > GetCacheConfig().RvFullThreshold {
 				log.Debug("ClusterMap::refreshMVWithSpace: %s/%s util: %d > %d%%, skipping",
 					rvName, mvName, rvSpaceUtil, GetCacheConfig().RvFullThreshold)
 
@@ -940,16 +950,23 @@ func (c *ClusterMap) refreshMVWithSpace() {
 			log.Debug("ClusterMap::refreshMVWithSpace: %s/%s availableSpace: %d util: %d%%",
 				rvName, mvName, rv.AvailableSpace, rvSpaceUtil)
 
-			minAvailableSpace = min(minAvailableSpace, int64(rv.AvailableSpace))
+			if int64(rv.AvailableSpace) < minAvailableSpace {
+				minRV = rvName
+				minAvailableSpace = int64(rv.AvailableSpace)
+			}
 		}
 
 		if minAvailableSpace != int64(math.MaxInt64) {
-			log.Debug("ClusterMap::refreshMVWithSpace: %s availableSpace: %d", mvName, minAvailableSpace)
+			common.Assert(minRV != "", mvName)
+
+			log.Debug("ClusterMap::refreshMVWithSpace: %s availableSpace: %d, minRV: %s",
+				mvName, minAvailableSpace, minRV)
 
 			mvs = append(mvs, MVWithSpace{
 				MVName:         mvName,
 				MVState:        mv.State,
 				AvailableSpace: minAvailableSpace,
+				RVName:         minRV,
 			})
 		}
 	}

@@ -1770,6 +1770,11 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		}
 
 		//
+		// With the latest clusterMap, update the sorted MV list with available space.
+		//
+		cm.RefreshMVWithSpace()
+
+		//
 		// The node that updated the clusterMap last is preferred over others, for updating the clusterMap.
 		// This helps to avoid multiple nodes unnecessarily trying to update the clusterMap (only one of them will
 		// succeed but we don't want to waste the effort put by all nodes). But, we have to be wary of the fact that
