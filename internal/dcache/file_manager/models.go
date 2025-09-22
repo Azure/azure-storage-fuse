@@ -73,3 +73,50 @@ type StagedChunk struct {
 	//
 	AllocatedAt time.Time
 }
+
+type cacheWarmup struct {
+	// file size in bytes to warm up
+	Size int64
+
+	// number of chunks to warm up
+	MaxChunks int64
+
+	// any error during cache warmup.
+	Error atomic.Value
+
+	// number of schedules chunk writes to dcache.
+	ScheduledChunkWrites atomic.Int64
+
+	// number of chunks successfully written to dcache.
+	SuccessfulChunkWrites atomic.Int64
+
+	// number of chunks processed for write to dcache (successful or failed).
+	ProcessedChunkWrites atomic.Int64
+
+	// Track upload success status for each chunk.
+	// It represents the chunk was not only written but also committed in the dcache.
+	Bitmap []uint64
+
+	// channel for capturing upload status of multiple chunks.
+	// currently used to limit number of parallel uploads to 16.
+	SuccessCh chan ChunkWarmupStatus
+
+	// handle to read the warmed up chunks from the dcache.
+	warmDcFile *DcacheFile
+
+	// boolean to indicate if the cache warmup is completed. This is also used if the read
+	// handle which triggered the cache warmup is closed before the warmup is completed, so
+	// that the release on azure file handle would be defered until the cache warmup completes.
+	Completed atomic.Bool
+}
+
+// This method is called when read handle which triggered the cache warmup is closed.
+// This will release the chunks that were held while reading the dcache file.
+func (cw *cacheWarmup) ReleaseReadHandle(dcFile *DcacheFile) error {
+	return dcFile.CacheWarmup.warmDcFile.ReleaseFile(true)
+}
+
+type ChunkWarmupStatus struct {
+	ChunkIdx int64
+	Err      error
+}
