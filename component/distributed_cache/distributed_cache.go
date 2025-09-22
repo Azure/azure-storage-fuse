@@ -1063,6 +1063,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 						err, options.Name)
 				} else {
 					dcFile.NewCacheWarmup(handle.Size, maxBackgroundCacheWarmupChunksPerFile)
+					handle.IFObj = dcFile
 					go startCacheWarmup(dc, handle)
 				}
 			}
