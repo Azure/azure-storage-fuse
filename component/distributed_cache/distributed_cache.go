@@ -126,10 +126,10 @@ const (
 	defaultHeartBeatDurationInSecond = 10
 	defaultReplicas                  = 3
 	defaultMaxMissedHBs              = 3
-	defaultChunkSizeMB               = 4 // 4 MB
+	defaultChunkSizeMB               = 16 // 16 MB
 	defaultMinNodes                  = 1
 	defaultMaxRVs                    = 100
-	defaultStripeWidth               = 4 // defaultStripeSize = 4 * 4 = 16 MB
+	defaultStripeWidth               = 64 // defaultStripeSize = 16 * 64 = 1 GiB
 	defaultMVsPerRV                  = 10
 	defaultRvFullThreshold           = 95
 	defaultRvNearfullThreshold       = 80
