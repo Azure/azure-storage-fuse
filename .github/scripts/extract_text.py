@@ -34,6 +34,10 @@ def extract_text_field(text_content: str) -> str:
             for delimiter in ["## Notes\n", "Notes:\n"]:
                 if delimiter in decoded_text:
                     decoded_text = decoded_text.split(delimiter)[0]
+                
+
+            # Replace all double quotes with single quotes
+            decoded_text = decoded_text.replace('"', "'")
                     
             return decoded_text.strip() 
         else:
