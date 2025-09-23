@@ -2367,7 +2367,7 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
 
 			// Max slots for an RV is MVsPerRVForFixMV.
-			common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()), *rv, cm.MVsPerRVForFixMV)
+			common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()), *rv, cm.MVsPerRVForFixMV.Load())
 			common.Assert(rv.slots >= 0, *rv)
 
 			// Must have a valid nodeIdInt assigned.

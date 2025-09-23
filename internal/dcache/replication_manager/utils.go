@@ -55,6 +55,23 @@ const (
 	// our responsiveness.
 	RPCClientTimeout = 2 // in seconds
 
+	// Timeout to check if a sync job is stuck or not.
+	// If a sync job is running for more than this time, and there is no progress (no sync writes)
+	// this means that the source RV has gone offline. So, we mark the target RV as inband-offline
+	// to trigger the fix-mv workflow to select a new RV.
+	AbortOngoingSyncThresholdSecs = 60 // in seconds
+
+	// Timeout to check if a sync job (after a join) is stuck or not.
+	// This happens when the source RV updates the state of target RV to syncing in the clustermap.
+	// But before it sends the PutChunk(sync) calls to the target RV, it goes down. In this case,
+	// we use the time at which the target RV joined the MV and use this threshold to detect if the
+	// sync job is stuck or not. If the sync job is stuck, we mark the target RV as inband-offline
+	// to trigger the fix-mv workflow to select a new RV.
+	// Note: This threshold should be significantly higher than AbortOngoingSyncThresholdSecs, as
+	// the target RV waits for clustermap epoch time to update its local clustermap as well as the
+	// replication manager ticker time to run the abortStuckSyncJobs() thread.
+	AbortSyncAfterJoinMVThresholdSecs = 300 // in seconds
+
 	// This is a practically infeasible chunk index, for sanity checks.
 	ChunkIndexUpperBound = 1e9
 

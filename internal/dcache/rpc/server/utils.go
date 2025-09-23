@@ -249,6 +249,26 @@ func GetMVSizeLocal(ctx context.Context, req *models.GetMVSizeRequest) (*models.
 	return handler.GetMVSize(ctx, req)
 }
 
+// Get the time when the RV joined this MV and the last write to this RV/MV replica by a sync PutChunk request.
+// This will be used to determine if there are any stuck sync jobs caused due to source RV going offline.
+// For more details see the comments in mvInfo.lastSyncWriteTime.
+func GetMVJoinAndLastSyncWriteTime(rvName string, mvName string) (int64, int64) {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	common.Assert(cm.IsValidMVName(mvName), mvName)
+	common.Assert(handler != nil)
+
+	rvInfo := handler.getRVInfoFromRVName(rvName)
+	common.Assert(rvInfo != nil, rvName)
+
+	mvInfo := rvInfo.getMVInfo(mvName)
+	common.Assert(mvInfo != nil, rvName, mvName)
+
+	// Since the RV has joined the MV, the joinTime must be set.
+	common.Assert(mvInfo.joinTime.Load() > 0, rvName, mvName)
+
+	return mvInfo.joinTime.Load(), mvInfo.lastSyncWriteTime.Load()
+}
+
 // Maps are passed as reference in Go. So, if we get the local clustermap reference and update it,
 // it can lead to inconsistency. So, as temporary workaround, we are deep copying the map here.
 //
