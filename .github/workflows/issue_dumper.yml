@@ -36,7 +36,7 @@ jobs:
           pip install --only-binary :all: requests PyGithub
           
       - name: Run issue dump script
-        run: python ./github/scripts/issue_normalizer.py
+        run: python .github/scripts/issue_normalizer.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_NAME: ${{ github.repository }}
