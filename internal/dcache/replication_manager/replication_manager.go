@@ -1456,14 +1456,11 @@ func resyncSyncableMVs() {
 // progress, based on the mvInfo's lastSyncWriteTime. If the lastSyncWriteTime is older than a threshold
 // it'll mark the RV as inband-offline, which will trigger the fix-mv workflow to select a new RV.
 func abortStuckSyncJobs() {
-	// TODO: Implement this.
 	myRVs := cm.GetMyRVs()
 	common.Assert(len(myRVs) > 0, myRVs)
 
 	for rvName, rvInfo := range myRVs {
 		common.Assert(cm.IsValidRVName(rvName), rvName)
-		common.Assert(common.IsValidUUID(rvInfo.RvId), rvName, rvInfo.RvId)
-		common.Assert(cm.IsValidComponentRVState(rvInfo.State), rvName, rvInfo.State)
 		common.Assert(rvInfo.State == dcache.StateOnline, rvName, rvInfo.State)
 
 		myMVs := cm.GetActiveMVsForRV(rvName)
@@ -1495,10 +1492,10 @@ func abortSyncJob(rvName string, mvName string) {
 
 	//
 	// If lastSyncWriteTime is 0, it means that the sync job hasn't yet started writing any chunks to
-	// the target RV. There can be a case where the source RV marked the target RV as syncing in the clustermap,
+	// the target RV. This can be the case where the source RV marked the target RV as syncing in the clustermap,
 	// but before it could send the PutChunk(sync) RPC calls, it went down.
 	// In this case, we check if the time after the target RV joined the MV becomes greater than
-	// AbortSyncAfterJoinMVThresholdSecs, we mark this RV as inband-offline, which will trigger the
+	// AbortSyncAfterJoinMVThresholdSecs, we mark the target RV as inband-offline, which will trigger the
 	// fix-mv workflow to select a new RV.
 	//
 	if lastSyncWriteTime == 0 && time.Now().Unix()-joinMVTime > AbortSyncAfterJoinMVThresholdSecs {
@@ -1516,7 +1513,7 @@ func abortSyncJob(rvName string, mvName string) {
 	//
 	// If the last sync write time is older than AbortOngoingSyncThresholdSecs, we mark this RV as inband-offline.
 	// This will trigger the fix-mv workflow to select a new RV and mark it outofsync, which will
-	// be sync'ed next time around by resyncSyncableMVs().
+	// be synced next time around by resyncSyncableMVs().
 	//
 	if time.Now().Unix()-lastSyncWriteTime > AbortOngoingSyncThresholdSecs {
 		log.Warn("ReplicationManager::abortSyncJob: %s/%s has been in syncing state since %d secs, marking it inband-offline",

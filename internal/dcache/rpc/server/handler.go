@@ -262,6 +262,7 @@ type mvInfo struct {
 	// is corrected once sync completes.
 	reservedSpace atomic.Int64
 
+	//
 	// Time when the RV joined this MV.
 	// We use this time to determine if the sync operation is stuck or not.
 	// There can be a case when the source RV updates the state of the target RV to syncing in the clustermap,
@@ -269,9 +270,11 @@ type mvInfo struct {
 	// In this case, the target RV will remain in syncing state forever, as the syncMV workflow only picks
 	// up outofsync RVs for new sync operations.
 	//
-	// To detect this, the target RV uses the time it joined the MV, and if this time is older than
-	// a threshold (300 seconds), and the RV/MV replica is still in syncing state, it marks itself
+	// To detect this, the target RV uses the time it joined the MV (not the lastSyncWriteTime as it is 0
+	// since there are no PutChunk(sync) calls to the target RV). If this time is older than
+	// a threshold (say 300 seconds), and the RV/MV replica is still in syncing state, it marks itself
 	// as inband-offline. This will trigger the fix-mv workflow to select a new RV.
+	//
 	joinTime atomic.Int64
 
 	//

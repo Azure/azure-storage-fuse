@@ -251,7 +251,7 @@ func GetMVSizeLocal(ctx context.Context, req *models.GetMVSizeRequest) (*models.
 
 // Get the time when the RV joined this MV and the last write to this RV/MV replica by a sync PutChunk request.
 // This will be used to determine if there are any stuck sync jobs caused due to source RV going offline.
-// For more details see the comments in mvInfo.lastSyncWriteTime.
+// For more details see the comments in mvInfo.joinTime and mvInfo.lastSyncWriteTime.
 func GetMVJoinAndLastSyncWriteTime(rvName string, mvName string) (int64, int64) {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
 	common.Assert(cm.IsValidMVName(mvName), mvName)
