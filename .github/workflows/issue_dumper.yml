@@ -27,9 +27,11 @@ jobs:
 
       - name: Install dependencies
         run: |
+          sudo apt-get update
+          apt-get install python3-dev
           python -m pip install --upgrade pip
           pip install datetime github requests PyGithub
-
+          
       - name: Run issue dump script
         run: python ./github/scripts/issue_normalizer.py
         env:
