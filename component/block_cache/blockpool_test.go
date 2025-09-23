@@ -192,7 +192,7 @@ func (suite *blockpoolTestSuite) TestBufferExhaustion() {
 	suite.assert.True(validateNullData(bp.zeroBlock))
 
 	var blocks []*Block
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		b, err := bp.MustGet()
 		suite.assert.Nil(err)
 		suite.assert.NotNil(b)
@@ -224,7 +224,7 @@ func (suite *blockpoolTestSuite) TestBufferExhaustion() {
 // get n blocks
 func getBlocks(suite *blockpoolTestSuite, bp *BlockPool, n int) []*Block {
 	var blocks []*Block
-	for i := 0; i < n; i++ {
+	for range n {
 		b := bp.TryGet()
 		suite.assert.NotNil(b)
 

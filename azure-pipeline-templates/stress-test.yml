@@ -1,10 +1,4 @@
 parameters:
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
-    type: string
   - name: stress_dir
     type: string
   - name: idstring
@@ -25,9 +19,6 @@ steps:
   # Mount the container
   - template: 'mount.yml'
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       mountStep: ${{ parameters.mountStep }}
 
@@ -35,13 +26,13 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-timeout 120m -v test/stress_test/stress_test.go -args -mnt-path=${{ parameters.mount_dir }} -quick=${{parameters.quick}}'
-      workingDirectory: ${{ parameters.working_dir }}
+      arguments: '-timeout 120m -v test/stress_test/stress_test.go -args -mnt-path=$(MOUNT_DIR) -quick=${{parameters.quick}}'
+      workingDirectory: $(WORK_DIR)
     displayName: 'StressTest: ${{ parameters.idstring }}'
     timeoutInMinutes: 120
     continueOnError: true
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   # Delete all files test
   - script: rm -rf ${mount_dir}/*
@@ -49,7 +40,7 @@ steps:
     displayName: 'StressTest: ${{ parameters.idstring }} Cleanup'
     continueOnError: true
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
       cat blobfuse2-logs.txt
@@ -62,8 +53,7 @@ steps:
   # Cleanup 
   - template: 'cleanup.yml'
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
+      unmount: true
+      delete_containers: false
     
 

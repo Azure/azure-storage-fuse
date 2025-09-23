@@ -224,7 +224,7 @@ func (suite *LoopbackFSTestSuite) TestReadInBuffer() {
 	}
 
 	for _, testCase := range testCases {
-		n, err := suite.lfs.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: testCase.offset, Data: testCase.data})
+		n, err := suite.lfs.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: testCase.offset, Data: testCase.data})
 		assert.Nil(err)
 		assert.Equal(n, len(testCase.truth), "ReadInBuffer: number of bytes returned not equal to input size")
 		assert.Equal(testCase.data, testCase.truth)
@@ -241,11 +241,11 @@ func (suite *LoopbackFSTestSuite) TestWriteFile() {
 	assert.Nil(err, "WriteFile: failed to open file")
 	assert.NotNil(handle)
 
-	n, err := suite.lfs.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte(quotesText)[:5]})
+	n, err := suite.lfs.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte(quotesText)[:5]})
 	assert.Nil(err)
 	assert.Equal(n, 5, "WriteFile: failed to write the specified number of bytes")
 
-	n, err = suite.lfs.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 5, Data: []byte(quotesText)[5:]})
+	n, err = suite.lfs.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 5, Data: []byte(quotesText)[5:]})
 	assert.Nil(err)
 	assert.Equal(n, len([]byte(quotesText)[5:]), "WriteFile: failed to write specified number of bytes")
 

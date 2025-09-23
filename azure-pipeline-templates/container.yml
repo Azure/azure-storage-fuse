@@ -1,0 +1,74 @@
+# Responsible for creation and deletion of container.
+parameters:
+  - name: generate_container
+    type: boolean
+    default: false
+  - name: create_container
+    type: boolean
+    default: false
+  - name: delete_container
+    type: boolean
+    default: false
+  - name: generate_adls_sas
+    type: boolean
+    default: false
+  - name: account_type   # accepted values: block, adls
+    type: string
+    default: invalid
+  - name: account_name
+    type: string
+    default: invalid
+  - name: account_key
+    type: string
+    default: invalid
+  - name: container_name
+    type: string
+    default: invalid
+
+steps:
+  # Generate the Container Name
+  - ${{ if eq(parameters.generate_container, true) }}:
+    - script: |
+        CONTAINER_NAME=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 40 | head -n 1)
+        echo "Generated container name: $CONTAINER_NAME"
+        echo "##vso[task.setvariable variable=containerName]$CONTAINER_NAME"
+      displayName: 'Generate random container name'
+      condition: eq(variables['distro'], 'ubuntu')
+  # Creating the Container
+  - ${{ if eq(parameters.create_container, true) }}:
+    - script: |
+        az --version
+        echo "Creating Container: $(containerName)"
+        az storage container create --name $(containerName) \
+        --account-name ${{ parameters.account_name }} \
+        --account-key ${{ parameters.account_key }} \
+        --fail-on-exist
+      displayName: 'Creating ${{ parameters.account_type }} Container'
+      condition: eq(variables['distro'], 'ubuntu')
+  
+  # Generate ADLS SAS for the container as account SAS is not enough for modifying ACL's
+  # set the generated container SAS to the global variable
+  - ${{ if eq(parameters.generate_adls_sas, true) }}:
+    - script: |
+        az --version
+        end=`date -u -d "70 minutes" '+%Y-%m-%dT%H:%MZ'` 
+        sas=`az storage fs generate-sas -n $(containerName) \
+        --account-name ${{ parameters.account_name }} \
+        --account-key ${{ parameters.account_key }} \
+        --permissions acdelmoprw \
+        --expiry $end \
+        -o tsv`
+        echo "##vso[task.setvariable variable=BF2_ADLS_ACC_SAS]$sas"
+      displayName: 'Creating ADLS SAS for ${{ parameters.account_type }} Container'
+      condition: eq(variables['distro'], 'ubuntu')
+
+  # Destroying the Container
+  - ${{ if eq(parameters.delete_container, true) }}:
+    - script: |
+        az --version
+        echo "Deleting Container: $(containerName)"
+        az storage container delete --name $(containerName) \
+        --account-name ${{ parameters.account_name }} \
+        --account-key ${{ parameters.account_key }} \
+      displayName: 'Deleting ${{ parameters.account_type }} Container'
+      condition: eq(variables['distro'], 'ubuntu')

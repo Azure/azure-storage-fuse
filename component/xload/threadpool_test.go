@@ -121,7 +121,7 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 	suite.assert.NotNil(tp.priorityItems)
 	suite.assert.NotNil(tp.workItems)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		if i < 20 {
 			tp.Schedule(&WorkItem{Priority: true})
 		} else {

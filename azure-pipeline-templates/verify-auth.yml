@@ -1,10 +1,4 @@
 parameters:
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
-    type: string
   - name: mountStep
     type: step
   - name: idstring
@@ -16,9 +10,6 @@ steps:
   # Mount the container
   - template: 'mount.yml'
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       mountStep: ${{ parameters.mountStep }}
 
@@ -26,32 +17,32 @@ steps:
   - script: |
       df
       sudo ps -aux | grep blobfuse2
-      ls -l ${mount_dir}
+      ls -l $(MOUNT_DIR)
     displayName: 'AuthVerify: ${{ parameters.idstring }} list'
     continueOnError: true
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   # Run basic test case to validate auth is allowing the operations
   - script: |
-      rm -rf ${mount_dir}/*
-      mkdir ${mount_dir}/A
-      touch ${mount_dir}/A/a.txt
-      echo "ASDF" > ${mount_dir}/A/b.txt
-      cp ${mount_dir}/A/b.txt ${mount_dir}/A/c.txt
-      ls -lRt ${mount_dir}/A
+      rm -rf $(MOUNT_DIR)/*
+      mkdir $(MOUNT_DIR)/A
+      touch $(MOUNT_DIR)/A/a.txt
+      echo "ASDF" > $(MOUNT_DIR)/A/b.txt
+      cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/A/c.txt
+      ls -lRt $(MOUNT_DIR)/A
     displayName: 'AuthVerify: ${{ parameters.idstring }} fileops'
     continueOnError: true
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   # Delete the directories 
   - script: |
-      rm -rf ${mount_dir}/A
+      rm -rf $(MOUNT_DIR)/A
     displayName: 'AuthVerify: ${{ parameters.idstring }} remove'
     continueOnError: true
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
       cat blobfuse2-logs.txt

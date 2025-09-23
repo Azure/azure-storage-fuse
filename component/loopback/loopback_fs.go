@@ -334,7 +334,7 @@ func (lfs *LoopbackFS) ReadLink(options internal.ReadLinkOptions) (string, error
 	return strings.TrimPrefix(targetPath, lfs.path), nil
 }
 
-func (lfs *LoopbackFS) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	// if handle is nil, create a new handle
 	// added because after changes in xload, path and size can be passed in ReadInBufferOptions, where handle can be nil
 	if options.Handle == nil {
@@ -368,7 +368,7 @@ func (lfs *LoopbackFS) ReadInBuffer(options internal.ReadInBufferOptions) (int, 
 	return n, err
 }
 
-func (lfs *LoopbackFS) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	log.Trace("LoopbackFS::WriteFile : name=%s", options.Handle.Path)
 	f := options.Handle.GetFileObject()
 
@@ -575,7 +575,7 @@ func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBl
 	blocks := info.Size() / (int64)(blockSize)
 	list := make(internal.CommittedBlockList, 0)
 
-	for i := int64(0); i < blocks; i++ {
+	for i := range blocks {
 		list = append(list, internal.CommittedBlock{
 			Id:     fmt.Sprintf("%d", i),
 			Offset: i * (int64)(blockSize),

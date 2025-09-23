@@ -38,6 +38,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -126,6 +127,14 @@ func (suite *mountTestSuite) SetupTest() {
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
 	if err != nil {
 		panic("Unable to set silent logger as default.")
+	}
+}
+
+func (suite *mountTestSuite) SetupSuite() {
+	out, err := executeCommandC(rootCmd, "mount")
+	strings.Contains(out, "accepts 1 arg(s), received 0")
+	if err == nil {
+		panic("Unable to parse the empty flags to mount command")
 	}
 }
 
@@ -358,6 +367,21 @@ func (suite *mountTestSuite) TestStreamAttrCacheOptionsV1() {
 		"--streaming", "--use-attr-cache", "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check", "-o", "direct_io")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
+}
+
+func (suite *mountTestSuite) TestDirectIODisableKernelCacheCombo() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	tempLogDir := "/tmp/templogs_" + randomString(6)
+	defer os.RemoveAll(tempLogDir)
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, "-o", "direct_io", "--disable-kernel-cache")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "direct-io and disable-kernel-cache cannot be enabled together")
 }
 
 // mount failure test where a libfuse option is incorrect

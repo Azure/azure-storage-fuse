@@ -65,7 +65,7 @@ func (nw *NetworkProfiler) Monitor() error {
 	return nil
 }
 
-func (nw *NetworkProfiler) ExportStats(timestamp string, st interface{}) {
+func (nw *NetworkProfiler) ExportStats(timestamp string, st any) {
 	se, err := hminternal.NewStatsExporter()
 	if err != nil || se == nil {
 		log.Err("network_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)

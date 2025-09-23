@@ -1,10 +1,4 @@
 parameters:
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
-    type: string
   - name: idstring
     type: string
   - name: distro_name
@@ -33,9 +27,6 @@ steps:
   # Mount the container
   - template: 'mount.yml'
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       mountStep: ${{ parameters.mountStep }}
 
@@ -66,13 +57,11 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-path=${{parameters.temp_dir}} -quick-test=${{parameters.quick_test}} -enable-symlink-adls=${{parameters.enable_symlink_adls}} -distro-name="${{parameters.distro_name}}"'
-      workingDirectory: ${{ parameters.working_dir }}/test/e2e_tests
+      arguments: '-v -timeout=2h ./... -args -mnt-path=$(MOUNT_DIR) -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-path=$(TEMP_DIR) -quick-test=${{parameters.quick_test}} -enable-symlink-adls=${{parameters.enable_symlink_adls}} -distro-name="${{parameters.distro_name}}"'
+      workingDirectory: $(WORK_DIR)/test/e2e_tests
     displayName: 'E2E Test: ${{ parameters.idstring }}'
     timeoutInMinutes: 120
     continueOnError: false
-    env:
-      mount_dir: ${{ parameters.mount_dir }}
 
   # Publish build artifacts
   # Publish build artifacts to Azure Pipelines or a Windows file share

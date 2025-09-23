@@ -27,10 +27,10 @@ attr_cache:
 
 azstorage:
   type: block
-  endpoint: { ACCOUNT_ENDPOINT }
+  endpoint: { STO_ACC_ENDPOINT }
   use-http: false
-  account-name: { NIGHTLY_STO_BLOB_ACC_NAME }
-  sas: { NIGHTLY_STO_ACC_SAS }
+  account-name: { STO_ACC_NAME }
+  sas: { STO_ACC_SAS }
   mode: sas
   container: { 0 }
   tier: hot

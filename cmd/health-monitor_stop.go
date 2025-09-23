@@ -78,8 +78,8 @@ func getPid(blobfuse2Pid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	processes := strings.Split(string(out), "\n")
-	for _, process := range processes {
+	processes := strings.SplitSeq(string(out), "\n")
+	for process := range processes {
 		if strings.Contains(process, "bfusemon") && strings.Contains(process, fmt.Sprintf("--pid=%s", blobfuse2Pid)) {
 			re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
 			pids := re.FindAllString(process, 1)

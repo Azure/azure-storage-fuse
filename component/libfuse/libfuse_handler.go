@@ -752,7 +752,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
-			internal.ReadInBufferOptions{
+			&internal.ReadInBufferOptions{
 				Handle: handle,
 				Offset: int64(offset),
 				Data:   data[:size],
@@ -781,7 +781,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
-		internal.WriteFileOptions{
+		&internal.WriteFileOptions{
 			Handle:   handle,
 			Offset:   int64(offset),
 			Data:     data[:size],
@@ -829,14 +829,35 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 }
 
 // libfuse_truncate changes the size of a file
+// There are two filesystem calls which can lead to this callback:
+//  1. Truncate() -> SetAttr() called on file path.
+//  2. ftruncate()-> SetAttr() called on file handle.
+//
+// man page:    https://man7.org/linux/man-pages/man2/truncate.2.html
+// Libfuse Doc: https://github.com/libfuse/libfuse/blob/fc95fd5076fd845e496bfbcec1ad9da16534b1c9/include/fuse_lowlevel.h#L328
 //
 //export libfuse_truncate
 func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_truncate : %s size %d", name, off)
 
-	err := fuseFS.NextComponent().TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(off)})
+	var handle *handlemap.Handle
+	if fi == nil {
+		handle = nil
+		log.Trace("Libfuse::libfuse_truncate : %s, size: %d", name, off)
+	} else {
+		fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+		handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+		log.Trace("Libfuse::libfuse_truncate : %s, handle: %d, size: %d", handle.Path, handle.ID, off)
+	}
+
+	err := fuseFS.NextComponent().TruncateFile(
+		internal.TruncateFileOptions{
+			Handle: handle,
+			Name:   name,
+			Size:   int64(off),
+		})
+
 	if err != nil {
 		log.Err("Libfuse::libfuse_truncate : error truncating file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {

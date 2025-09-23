@@ -46,6 +46,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -74,21 +75,22 @@ type mountOptions struct {
 	inputMountPath string
 	ConfigFile     string
 
-	Logging           LogOptions     `config:"logging"`
-	Components        []string       `config:"components"`
-	Foreground        bool           `config:"foreground"`
-	NonEmpty          bool           `config:"nonempty"`
-	DefaultWorkingDir string         `config:"default-working-dir"`
-	CPUProfile        string         `config:"cpu-profile"`
-	MemProfile        string         `config:"mem-profile"`
-	PassPhrase        string         `config:"passphrase"`
-	SecureConfig      bool           `config:"secure-config"`
-	DynamicProfiler   bool           `config:"dynamic-profile"`
-	ProfilerPort      int            `config:"profiler-port"`
-	ProfilerIP        string         `config:"profiler-ip"`
-	MonitorOpt        monitorOptions `config:"health_monitor"`
-	WaitForMount      time.Duration  `config:"wait-for-mount"`
-	LazyWrite         bool           `config:"lazy-write"`
+	Logging            LogOptions     `config:"logging"`
+	Components         []string       `config:"components"`
+	Foreground         bool           `config:"foreground"`
+	NonEmpty           bool           `config:"nonempty"`
+	DefaultWorkingDir  string         `config:"default-working-dir"`
+	CPUProfile         string         `config:"cpu-profile"`
+	MemProfile         string         `config:"mem-profile"`
+	PassPhrase         string         `config:"passphrase"`
+	SecureConfig       bool           `config:"secure-config"`
+	DynamicProfiler    bool           `config:"dynamic-profile"`
+	ProfilerPort       int            `config:"profiler-port"`
+	ProfilerIP         string         `config:"profiler-ip"`
+	MonitorOpt         monitorOptions `config:"health_monitor"`
+	WaitForMount       time.Duration  `config:"wait-for-mount"`
+	LazyWrite          bool           `config:"lazy-write"`
+	disableKernelCache bool           `config:"disable-kernel-cache"`
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
@@ -393,6 +395,11 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
+		if config.IsSet("disable-kernel-cache") && directIO {
+			// Both flag shall not be enable together
+			return fmt.Errorf("direct-io and disable-kernel-cache cannot be enabled together")
+		}
+
 		if !config.IsSet("logging.file-path") {
 			options.Logging.LogFilePath = common.DefaultLogFilePath
 		}
@@ -444,11 +451,8 @@ var mountCmd = &cobra.Command{
 		common.EnableMonitoring = options.MonitorOpt.EnableMon
 
 		// check if blobfuse stats monitor is added in the disable list
-		for _, mon := range options.MonitorOpt.DisableList {
-			if mon == common.BfuseStats {
-				common.BfsDisabled = true
-				break
-			}
+		if slices.Contains(options.MonitorOpt.DisableList, common.BfuseStats) {
+			common.BfsDisabled = true
 		}
 
 		config.Set("mount-path", options.MountPath)
@@ -869,6 +873,9 @@ func init() {
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
 
 	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
+
+	mountCmd.PersistentFlags().Bool("disable-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
+	config.BindPFlag("disable-kernel-cache", mountCmd.PersistentFlags().Lookup("disable-kernel-cache"))
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)

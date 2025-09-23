@@ -3,11 +3,11 @@ logging:
   file-path: "blobfuse2-logs.txt"
   type: base
 
-account-name: { NIGHTLY_STO_ACC_NAME }
+account-name: { STO_ACC_NAME }
 container-name: { 0 }
 auth:
   type: key
-  account-account-key: { NIGHTLY_STO_ACC_KEY }
+  account-account-key: { STO_ACC_KEY }
 components:
   - libfuse
   - loopbackfs

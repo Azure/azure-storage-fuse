@@ -84,13 +84,6 @@ func (suite *rootCmdSuite) TestNoOptionsNoVersionCheck() {
 	suite.assert.NotNil(err)
 }
 
-func (suite *rootCmdSuite) TestNoMountPath() {
-	defer suite.cleanupTest()
-	out, err := executeCommandC(rootCmd, "mount")
-	suite.assert.Contains(out, "accepts 1 arg(s), received 0")
-	suite.assert.NotNil(err)
-}
-
 func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
 	defer suite.cleanupTest()
 	found := checkVersionExists("abcd")

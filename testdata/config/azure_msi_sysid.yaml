@@ -26,8 +26,8 @@ attr_cache:
   timeout-sec: 3600
 
 azstorage:
-  type: { ACCOUNT_TYPE }
-  account-name: { NIGHTLY_STO_BLOB_ACC_NAME }
+  type: { STO_ACC_TYPE }
+  account-name: { STO_ACC_NAME }
   mode: msi
   container: { 0 }
   tier: hot

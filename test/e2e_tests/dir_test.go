@@ -376,7 +376,7 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 	err = os.Mkdir(dirName+"/tmp", 0777)
 	suite.Equal(nil, err)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		newFile := fileName + strconv.Itoa(i)
 		err := os.WriteFile(newFile, suite.medBuff, 0777)
 		suite.Equal(nil, err)
@@ -447,6 +447,8 @@ func (suite *dirTestSuite) TestGitStash() {
 		suite.Equal(nil, err)
 		suite.EqualValues(10, n)
 		suite.EqualValues("TestString", string(data))
+		err = f.Close()
+		suite.Equal(nil, err)
 
 		cmd = exec.Command("git", "status")
 		cliOut, err = cmd.Output()

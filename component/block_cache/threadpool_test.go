@@ -127,7 +127,7 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 	suite.assert.NotNil(tp.priorityCh)
 	suite.assert.NotNil(tp.normalCh)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		tp.Schedule(i < 20, &workItem{failCnt: 5})
 	}
 
@@ -159,7 +159,7 @@ func (suite *threadPoolTestSuite) TestPriorityScheduleWithWriter() {
 	suite.assert.NotNil(tp.priorityCh)
 	suite.assert.NotNil(tp.normalCh)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		tp.Schedule(i < 20, &workItem{failCnt: 5, upload: true, blockId: "test"})
 	}
 

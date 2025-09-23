@@ -1,0 +1,64 @@
+steps:
+  - script: |
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_hmon.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+    displayName: Create Key Config File
+    env:
+      STO_ACC_TYPE: 'block'
+      STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+      STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
+      STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
+      VERBOSE_LOG: false
+      USE_HTTP: false
+      HMON_OUTPUT: $(WORK_DIR)
+    continueOnError: false
+
+  - script: cat $(BLOBFUSE2_CFG)
+    displayName: Print config file
+
+  - script:
+      mkdir -p $(MOUNT_DIR)
+      mkdir -p $(TEMP_DIR)
+    displayName: "Create directory structure"
+
+  - template: 'mount.yml'
+    parameters:
+      prefix: "Mount"
+      mountStep:
+        script: |
+          sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
+          ls -l /usr/local/bin/bfusemon*
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+        displayName: 'Mount Blobfuse2'
+        workingDirectory: $(WORK_DIR)
+        timeoutInMinutes: 3
+        continueOnError: false
+
+  - script: |
+      sudo ps -aux | grep bfusemon
+    displayName: 'Print bfusemon Process info'
+    env:
+      mount_dir: $(MOUNT_DIR)
+
+  - script: |
+      touch $(MOUNT_DIR)/h1.txt
+      echo "123456" > $(MOUNT_DIR)/h2.txt
+      cp *.md $(MOUNT_DIR)/
+      mkdir $(MOUNT_DIR)/A
+      mv $(MOUNT_DIR)/h1.txt $(MOUNT_DIR)/h5.txt
+      mv $(MOUNT_DIR)/h*.* $(MOUNT_DIR)/A
+      rm -rf $(MOUNT_DIR)/*.md
+      rm -rf $(MOUNT_DIR)/A
+    displayName: "Test for health monitor"
+    workingDirectory: $(WORK_DIR)
+
+  - script: |
+      sleep 20s
+      cat $(WORK_DIR)/monitor_*.json
+    displayName: "Print bfusemon output"
+    workingDirectory: $(WORK_DIR)
+
+  - template: 'cleanup.yml'
+    parameters:
+      unmount: true
+      delete_containers: false

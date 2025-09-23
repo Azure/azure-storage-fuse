@@ -61,7 +61,7 @@ func fastTestCrit(lts *LoggerTestSuite) {
 
 func simpleTest(lts *LoggerTestSuite) {
 	Crit("Running Simple Test")
-	for l := 0; l < 3; l++ {
+	for l := range 3 {
 		switch l {
 		case 0:
 			SetLogLevel(common.ELogLevel.LOG_DEBUG())

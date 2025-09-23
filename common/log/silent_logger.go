@@ -54,27 +54,27 @@ func (*SilentLogger) GetLogLevel() common.LogLevel {
 	return common.ELogLevel.LOG_OFF()
 }
 
-func (*SilentLogger) Debug(_ string, _ ...interface{}) {
+func (*SilentLogger) Debug(_ string, _ ...any) {
 
 }
 
-func (*SilentLogger) Trace(_ string, _ ...interface{}) {
+func (*SilentLogger) Trace(_ string, _ ...any) {
 
 }
 
-func (*SilentLogger) Info(_ string, _ ...interface{}) {
+func (*SilentLogger) Info(_ string, _ ...any) {
 
 }
 
-func (*SilentLogger) Warn(_ string, _ ...interface{}) {
+func (*SilentLogger) Warn(_ string, _ ...any) {
 
 }
 
-func (*SilentLogger) Err(_ string, _ ...interface{}) {
+func (*SilentLogger) Err(_ string, _ ...any) {
 
 }
 
-func (*SilentLogger) Crit(_ string, _ ...interface{}) {
+func (*SilentLogger) Crit(_ string, _ ...any) {
 
 }
 
