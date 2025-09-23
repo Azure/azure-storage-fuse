@@ -39,8 +39,8 @@ jobs:
         run: python .github/scripts/issue_normalizer.py
         env:
           GITHUB_TOKEN: ${{ secrets.MAIN_REPO_SEC }}
-          GITHUB_REPO_NAME: "Azure"
-          GITHUB_REPO_OWNER: "azure-storage-fuse"
+          GITHUB_REPO_OWNER: "Azure"
+          GITHUB_REPO_NAME: "azure-storage-fuse"
 
       - name: Create new branch
         run: |
