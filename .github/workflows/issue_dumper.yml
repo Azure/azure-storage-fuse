@@ -42,13 +42,22 @@ jobs:
           GITHUB_REPO_OWNER: "Azure"
           GITHUB_REPO_NAME: "azure-storage-fuse"
 
+      - name: Print git diff
+        run: git diff
+
+      - name: Print the doc directory contents
+        run: |
+          mv *.jsonl ./doc/
+          ls -la ./doc/
+
       - name: Create new branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b issue-dump-$(date +'%Y-%m')
-          mv *.jsonl ./doc/
+          git status
           git add .
+          git status
           git commit -m "Monthly issue dump for $(date +'%B %Y')"
           git push origin issue-dump-$(date +'%Y-%m')
 
