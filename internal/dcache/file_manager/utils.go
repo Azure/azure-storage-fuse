@@ -270,6 +270,8 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	fileMetadata.OpenCount = openCount
 	common.Assert(fileMetadata.OpenCount >= 0, fileName, fileMetadata.OpenCount, fileMetadata)
 
+	log.Debug("DistributedCache[FM]::GetDcacheFile: File %s metadata %+v", fileName, fileMetadata)
+
 	return &fileMetadata, prop, nil
 }
 

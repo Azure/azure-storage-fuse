@@ -658,6 +658,7 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 
 	// Populate stat
 	fuseFS.fillStat(attr, stbuf)
+	log.Trace("Libfuse::libfuse_getattr : %s, stbuf.st_size=%d", name, stbuf.st_size)
 	return 0
 }
 
@@ -1033,6 +1034,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	}
 
 	common.Assert(bytesRead >= 0 && bytesRead <= int(size), bytesRead, size, handle.Path, handle.ID)
+	log.Err("Libfuse::libfuse_read : file %s, offset %d, size %d, read %d", handle.Path, offset, size, bytesRead)
 	return C.int(bytesRead)
 }
 

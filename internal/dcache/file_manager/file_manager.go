@@ -260,21 +260,26 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
+	fileSize := file.FileMetadata.Size
+	if fileSize == -1 {
+		fileSize = file.FileMetadata.PartialSize
+	}
+
 	// Read must only be allowed on a properly finalized file, for which size must not be -1.
-	common.Assert(int64(file.FileMetadata.Size) >= 0)
+	common.Assert(fileSize >= 0)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
 	common.Assert(len(*buf) <= common.MbToBytes, len(*buf))
 	// Files opened for reading must have a valid read patterm tracker.
 	common.Assert(file.RPT != nil, file.FileMetadata.Filename)
 
-	if offset >= file.FileMetadata.Size {
+	if offset >= fileSize {
 		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d",
-			file.FileMetadata.Filename, offset, len(*buf), file.FileMetadata.Size)
+			file.FileMetadata.Filename, offset, len(*buf), fileSize)
 		return 0, io.EOF
 	}
 
 	// endOffset is 1 + offset of the last byte to be read, but not more than file size.
-	endOffset := min(offset+int64(len(*buf)), file.FileMetadata.Size)
+	endOffset := min(offset+int64(len(*buf)), fileSize)
 	// Catch wraparound.
 	common.Assert(endOffset >= offset, endOffset, offset)
 
@@ -438,9 +443,12 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	// Must exactly read what's determined above (what user asks, capped by file size).
 	common.Assert(offset == endOffset, offset, endOffset)
 	// Must not read beyond eof.
-	common.Assert(offset <= file.FileMetadata.Size, offset, file.FileMetadata.Size)
+	common.Assert(offset <= fileSize, offset, fileSize)
 	// Must never read more than the length asked.
 	common.Assert(bufOffset <= len(*buf), bufOffset, len(*buf))
+
+	log.Debug("DistributedCache::ReadFile: file: %s, bytesRead: %d",
+		file.FileMetadata.Filename, bufOffset)
 
 	return bufOffset, nil
 }

@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -69,6 +70,14 @@ func NewContiguityTracker(file *DcacheFile) *ContiguityTracker {
 	return &ContiguityTracker{
 		file: file,
 	}
+}
+
+func allocAlignedBuffer(size int) []byte {
+	const alignment = 512
+	raw := make([]byte, size+alignment)
+	addr := uintptr(unsafe.Pointer(&raw[0]))
+	offset := int((alignment - (addr % alignment)) % alignment)
+	return raw[offset : offset+size]
 }
 
 // OnSuccessfulUpload marks chunkIdx as uploaded.
@@ -154,10 +163,12 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 			mdChunk, err)
 		return
 	}
+	alignedJsonData := allocAlignedBuffer(len(jsonData))
+	copy(alignedJsonData, jsonData)
 
 	// We write just one chunk for the metadata, so it must fit in one chunk.
-	common.Assert(len(jsonData) <= int(t.file.FileMetadata.FileLayout.ChunkSize),
-		len(jsonData), t.file.FileMetadata.FileLayout.ChunkSize,
+	common.Assert(len(alignedJsonData) <= int(t.file.FileMetadata.FileLayout.ChunkSize),
+		len(alignedJsonData), t.file.FileMetadata.FileLayout.ChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 	common.Assert(len(t.file.FileMetadata.FileLayout.MVList) > 0,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
@@ -170,7 +181,7 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 		FileID:         t.file.FileMetadata.FileID,
 		MvName:         t.file.FileMetadata.FileLayout.MVList[0],
 		ChunkIndex:     dcache.MDChunkIdx,
-		Data:           jsonData,
+		Data:           alignedJsonData,
 		ChunkSizeInMiB: t.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
 		IsLastChunk:    true,
 	}

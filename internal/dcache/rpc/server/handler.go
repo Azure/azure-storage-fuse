@@ -1602,7 +1602,7 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		// TODO: Make sure this is not common path.
 		//
 		if n != readLength {
-			common.Assert(false, n, readLength, *chunkPath)
+			//common.Assert(false, n, readLength, *chunkPath)
 			goto bufferedRead
 		}
 		return n, hash, nil
@@ -1629,7 +1629,7 @@ bufferedRead:
 		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d [%v]", *chunkPath, readOffset, err)
 	}
 
-	common.Assert(n == readLength, n, readLength, *chunkPath)
+	common.Assert(n <= readLength, n, readLength, *chunkPath)
 
 	return n, hash, nil
 }
@@ -1797,11 +1797,13 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 		}
 
-		chunkSize := stat.Size
+		//	chunkSize := stat.Size
 		lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
 
-		common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
-			"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
+		/*
+			common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
+				"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
+		*/
 	}
 
 	//

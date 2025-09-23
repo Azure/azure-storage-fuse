@@ -634,6 +634,8 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		return nil, syscall.ENOENT
 	}
 
+	origName := options.Name
+
 	var attr *internal.ObjAttr
 	var err error
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
@@ -713,7 +715,21 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		if err != nil {
 			return nil, err
 		}
+
+		if attr.Size == math.MaxInt64 {
+			fileMetadata, _, err := fm.GetDcacheFile(origName)
+			if err == nil {
+					log.Debug("DistributedCache::GetAttr : File %s is partial, setting size to %d",
+						origName, fileMetadata.PartialSize)
+					attr.Size = fileMetadata.PartialSize
+			} else {
+					attr.Size = 0
+					log.Debug("DistributedCache::GetAttr : File %s is partial, setting size to %d",
+						origName, 0)
+			}
+		}
 	}
+
 	return attr, nil
 }
 
