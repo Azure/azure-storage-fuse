@@ -1324,6 +1324,7 @@ func abortStuckSyncJobs() {
 	common.Assert(len(myRVs) > 0, myRVs)
 
 	for rvName, rvInfo := range myRVs {
+		_ = rvInfo
 		common.Assert(cm.IsValidRVName(rvName), rvName)
 		common.Assert(rvInfo.State == dcache.StateOnline, rvName, rvInfo.State)
 
@@ -1343,6 +1344,7 @@ func abortSyncJob(rvName string, mvName string) {
 		mvName, componentRVs, getNumReplicas())
 
 	rvState, ok := componentRVs[rvName]
+	_ = ok
 	common.Assert(ok, mvName, rvName, componentRVs)
 	common.Assert(cm.IsValidComponentRVState(rvState), mvName, rvName, rvState)
 
