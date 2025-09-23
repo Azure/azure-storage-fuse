@@ -40,6 +40,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
@@ -94,7 +95,8 @@ func (req *ReadMvRequest) isValid() error {
 		return err
 	}
 
-	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
+	if (req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound) &&
+		(req.ChunkIndex != dcache.MDChunkIdx) {
 		reqStr := req.toString()
 		err := fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
 		log.Err("ReadMvRequest::isValid: %v", err)
@@ -191,7 +193,8 @@ func (req *WriteMvRequest) isValid() error {
 		return err
 	}
 
-	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
+	if (req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound) &&
+		(req.ChunkIndex != dcache.MDChunkIdx) {
 		reqStr := req.toString()
 		err := fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
 		log.Err("WriteMvRequest::isValid: %v", err)

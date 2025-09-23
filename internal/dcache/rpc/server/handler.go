@@ -209,6 +209,12 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 	log.Debug("NewChunkServiceHandler: called with rvMap: %+v, sepoch: %d", rvMap, cm.GetEpoch())
 	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
+	// Must be called only once.
+	common.Assert(dcache.MDChunkOffsetInMiB == 0, dcache.MDChunkOffsetInMiB, dcache.MDChunkIdx)
+	dcache.MDChunkOffsetInMiB = int64(cm.GetCacheConfig().ChunkSizeMB) * dcache.MDChunkIdx
+	common.Assert(dcache.MDChunkOffsetInMiB > (1024*1024*1024*1024),
+		dcache.MDChunkOffsetInMiB, cm.GetCacheConfig().ChunkSizeMB, dcache.MDChunkIdx)
+
 	handler = &ChunkServiceHandler{
 		rvIDMap: getRvIDMap(rvMap),
 	}
@@ -2282,6 +2288,22 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	if performDummyReadWrite() {
 		goto dummy_write
+	}
+
+	//
+	// If the PutChunk is for the special metadata chunk, remove existing metadata chunk file if any, to
+	// be able to write the new metadata chunk.
+	//
+	// TODO: See if we should write the metadata chunk with writeable permissions so that we can overwrite it
+	//       without needing to delete it first.
+	//
+	if req.Chunk.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
+		err1 := os.Remove(chunkPath)
+		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
+			errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
 	}
 
 	// TODO: hash validation will be done later

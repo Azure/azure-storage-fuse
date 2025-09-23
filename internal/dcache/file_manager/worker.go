@@ -218,6 +218,9 @@ func (wp *workerPool) writeChunk(task *task) {
 		log.Debug("DistributedCache::writeChunk: Writing completed file: %s, chunkIdx: %d, chunk.Len: %d, refcount: %d",
 			task.file.FileMetadata.Filename, task.chunk.Idx, task.chunk.Len, task.chunk.RefCount.Load())
 
+		// Notify contiguity tracker of this chunk's successful upload.
+		task.file.CT.OnSuccessfulUpload(task.chunk.Idx)
+
 		task.file.removeChunk(task.chunk.Idx)
 		return
 	}

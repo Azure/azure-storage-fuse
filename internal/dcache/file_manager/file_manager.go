@@ -149,6 +149,10 @@ type DcacheFile struct {
 	// Only valid for files opened for reading, nil for files opened for writing.
 	RPT *RPTracker
 
+	// Contiguity tracker for finding last valid byte in partially written files.
+	// Only valid for files opened for writing, nil for files opened for reading.
+	CT *ContiguityTracker
+
 	// Last byte written + 1, also the next write offset we expect in case of sequential writes.
 	// We don't support overwrites but we support slightly out-of-order writes to enable parallel
 	// processing of writes issued by FUSE as a result of large application writes.

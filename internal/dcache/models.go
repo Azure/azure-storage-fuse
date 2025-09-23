@@ -152,6 +152,16 @@ const (
 
 const (
 	DcacheDeletingFileNameSuffix = ".dcache.deleting"
+	//
+	// Chunk index used for the metadata chunk is the following special value.
+	// This value is chosen to be very large so that it does not conflict with an actual data chunk index.
+	// With 4MiB chunk size, this value allows for files up to 4 ZiB in size.
+	//
+	MDChunkIdx = (int64(1) << 50)
+)
+
+var (
+	MDChunkOffsetInMiB int64
 )
 
 type FileMetadata struct {
@@ -163,6 +173,14 @@ type FileMetadata struct {
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
 	FileLayout      FileLayout `json:"file_layout"`
 	Sha1hash        []byte     `json:"sha256"`
+}
+
+// This is the content of the metadata chunk used to store size for partially written files.
+// Note that the file metadata stores the file size as -1 until the file is closed after writing, so if a reader
+// wants to read such a file it needs to read this metadata chunk to know the actual size of the file.
+type MetadataChunk struct {
+	Size          int64     `json:"size"`
+	LastUpdatedAt time.Time `json:"last_updated_at,omitzero"`
 }
 
 type FileLayout struct {

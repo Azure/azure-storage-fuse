@@ -194,6 +194,12 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		StagedChunks: make(map[int64]*StagedChunk),
 	}
 
+	//
+	// Contiguity tracker is used to track contiguous chunks written to the file.
+	// Useful for reading partially written files.
+	//
+	dcacheFile.CT = NewContiguityTracker(dcacheFile)
+
 	// freeChunks semaphore is used to limit StagedChunks map to numStagingChunks.
 	dcacheFile.initFreeChunks(fileIOMgr.numStagingChunks)
 
