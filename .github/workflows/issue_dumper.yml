@@ -33,7 +33,7 @@ jobs:
       
       - name: Install pip packages
         run: |
-          pip install datetime github requests PyGithub
+          pip install --only-binary :all: requests PyGithub
           
       - name: Run issue dump script
         run: python ./github/scripts/issue_normalizer.py
