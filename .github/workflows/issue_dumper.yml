@@ -39,7 +39,7 @@ jobs:
         run: python .github/scripts/issue_normalizer.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO_NAME: ${{ github.repository }}
+          GITHUB_REPO_NAME: ${{ github.repository }}
           GITHUB_REPO_OWNER: ${{ github.repository_owner }}
 
       - name: Create new branch

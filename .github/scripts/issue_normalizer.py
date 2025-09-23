@@ -50,7 +50,7 @@ def main(since_date_str):
     if not all([github_token, repo_owner, repo_name]):
         print("Error: One or more required environment variables are not set.")
         print("Please set GITHUB_TOKEN, GITHUB_REPO_OWNER, and GITHUB_REPO_NAME and try again.")
-        return
+        exit(1)
 
     since_date = None
     if since_date_str:
