@@ -1333,7 +1333,8 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		// Start readahead after the last chunk readahead by prev read calls or after this chunk.
 		readAheadStartChunkIdx := max(file.lastReadaheadChunkIdx.Load()+1, chunkIdx+1)
 		readAheadEndChunkIdx := min(readAheadStartChunkIdx+readAheadCount,
-			getChunkIdxFromFileOffset(file.FileMetadata.Size-1, file.FileMetadata.FileLayout.ChunkSize))
+			getMaxChunkIdxForFile(file.FileMetadata))
+
 		common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
 
 		//

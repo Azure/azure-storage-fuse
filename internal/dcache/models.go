@@ -169,6 +169,7 @@ type FileMetadata struct {
 	State           FileState  `json:"-"`
 	FileID          string     `json:"file_id"`
 	Size            int64      `json:"-"`
+	PartialSize     int64      `json:"-"`
 	OpenCount       int        `json:"-"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
 	FileLayout      FileLayout `json:"file_layout"`
@@ -176,7 +177,7 @@ type FileMetadata struct {
 }
 
 // This is the content of the metadata chunk used to store size for partially written files.
-// Note that the file metadata stores the file size as -1 until the file is closed after writing, so if a reader
+// Note that the metadata file stores the file size as -1 until the file is closed after writing, so if a reader
 // wants to read such a file it needs to read this metadata chunk to know the actual size of the file.
 type MetadataChunk struct {
 	Size          int64     `json:"size"`

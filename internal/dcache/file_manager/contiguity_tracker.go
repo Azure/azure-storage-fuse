@@ -85,7 +85,11 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	// Bit corresponding to chunkIdx.
 	bitOffset := chunkIdx - t.lastContiguous
 
+	//
 	// We support only limited deviation from sequential writes.
+	// With numStagingChunks=256 and chunk size=16MiB, this can be upto 4GiB of out of order writes,
+	// set slightly higher value to account for higher chunk sizes.
+	//
 	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (16*common.GbToBytes),
 		bitOffset, t.file.FileMetadata.FileLayout.ChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
@@ -184,9 +188,41 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	}
 }
 
-// HighestContiguous returns the highest contiguous uploaded chunk index.
-func (t *ContiguityTracker) HighestUploaded() int64 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.lastContiguous
+func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) int64 {
+	readMVReq := &rm.ReadMvRequest{
+		FileID:         fileMetadata.FileID,
+		MvName:         fileMetadata.FileLayout.MVList[0],
+		ChunkIndex:     dcache.MDChunkIdx,
+		OffsetInChunk:  0,
+		Length:         fileMetadata.FileLayout.ChunkSize,
+		ChunkSizeInMiB: fileMetadata.FileLayout.ChunkSize / common.MbToBytes,
+	}
+
+	common.Assert(readMVReq.ChunkSizeInMiB > 0)
+
+	readMVresp, err := rm.ReadMV(readMVReq)
+	if err != nil {
+		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to read metadata chunk, file: %s, fileID: %s: %v",
+			fileMetadata.Filename, fileMetadata.FileID, err)
+		// Unable to read metadata chunk, return size as 0.
+		return 0
+	}
+
+	var mdChunk dcache.MetadataChunk
+	err = json.Unmarshal(readMVresp.Data, &mdChunk)
+	if err != nil {
+		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to unmarshal metadata chunk data, file: %s, fileID: %s: %v",
+			fileMetadata.Filename, fileMetadata.FileID, err)
+		// Unable to read metadata chunk, return size as 0.
+		return 0
+	}
+
+	if !readMVresp.IsBufExternal {
+		dcache.PutBuffer(readMVresp.Data)
+	}
+
+	log.Debug("contiguity_tracker::GetHighestUploadedByte: Read metadata chunk %+v from file: %s, fileID: %s",
+		mdChunk, fileMetadata.Filename, fileMetadata.FileID)
+
+	return mdChunk.Size
 }

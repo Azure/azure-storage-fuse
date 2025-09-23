@@ -212,6 +212,7 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 	// Must be called only once.
 	common.Assert(dcache.MDChunkOffsetInMiB == 0, dcache.MDChunkOffsetInMiB, dcache.MDChunkIdx)
 	dcache.MDChunkOffsetInMiB = int64(cm.GetCacheConfig().ChunkSizeMB) * dcache.MDChunkIdx
+	// It'll be larger than 1ZiB but that's enough for a sanity check.
 	common.Assert(dcache.MDChunkOffsetInMiB > (1024*1024*1024*1024),
 		dcache.MDChunkOffsetInMiB, cm.GetCacheConfig().ChunkSizeMB, dcache.MDChunkIdx)
 
@@ -1751,7 +1752,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		if err != nil {
 			errStr := fmt.Sprintf("failed to Allocate Buffer for chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-			common.Assert(false, err)
+			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
 		// Reslice the data buffer accordingly, length of the buffer that we get from the BufferPool is of
@@ -1791,7 +1792,8 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-			common.Assert(false, errStr)
+			// Metadata chunk may be missing.
+			common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 		}
 

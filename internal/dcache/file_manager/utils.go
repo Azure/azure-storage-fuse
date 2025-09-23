@@ -94,6 +94,15 @@ func getChunkSize(offset int64, file *DcacheFile) int64 {
 	return size
 }
 
+func getMaxChunkIdxForFile(file *dcache.FileMetadata) int64 {
+	if file.Size > 0 {
+		common.Assert(file.Size >= file.PartialSize, file.Size, file.PartialSize, *file)
+		return getChunkIdxFromFileOffset(file.Size-1, file.FileLayout.ChunkSize)
+	} else {
+		return getChunkIdxFromFileOffset(max(file.PartialSize-1, 0), file.FileLayout.ChunkSize)
+	}
+}
+
 func isOffsetChunkStarting(offset, chunkSize int64) bool {
 	return (offset%chunkSize == 0)
 }
@@ -227,9 +236,17 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	// Following fields must be ignored by unmarshal.
 	common.Assert(len(fileMetadata.State) == 0, fileMetadata.State, fileMetadata)
 	common.Assert(fileMetadata.Size == 0, fileMetadata.Size, fileMetadata)
+	common.Assert(fileMetadata.PartialSize == 0, fileMetadata.PartialSize, fileMetadata)
 	common.Assert(fileMetadata.OpenCount == 0, fileMetadata.OpenCount, fileMetadata)
 
 	fileMetadata.State = fileState
+
+	common.Assert(fileMetadata.FileLayout.ChunkSize == int64(cm.GetCacheConfig().ChunkSizeMB*common.MbToBytes),
+		fileMetadata.FileLayout.ChunkSize, fileMetadata)
+	common.Assert(fileMetadata.FileLayout.StripeWidth == int64(cm.GetCacheConfig().StripeWidth),
+		fileMetadata.FileLayout.StripeWidth, fileMetadata)
+	common.Assert(int64(len(fileMetadata.FileLayout.MVList)) == fileMetadata.FileLayout.StripeWidth,
+		len(fileMetadata.FileLayout.MVList), fileMetadata)
 
 	//
 	// Filesize can be following under various file states:
@@ -242,6 +259,13 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 
 	fileMetadata.Size = fileSize
 	common.Assert(fileMetadata.Size >= -1, fileName, fileMetadata.Size, fileMetadata)
+
+	//
+	// If file is currently being written, fileSize will be -1, set PartialSize in that case.
+	//
+	if fileMetadata.Size == -1 {
+		fileMetadata.PartialSize = GetHighestUploadedByte(&fileMetadata)
+	}
 
 	fileMetadata.OpenCount = openCount
 	common.Assert(fileMetadata.OpenCount >= 0, fileName, fileMetadata.OpenCount, fileMetadata)
@@ -258,17 +282,19 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 
 	common.Assert(prop != nil, fileName)
 
-	//
-	// This is to prevent files which are being created, from being opened.
-	//
-	if fileMetadata.State != dcache.Ready {
-		log.Info("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
-			fileName, fileMetadata)
-		return nil, ErrFileNotReady
-	}
+	/*
+		//
+		// This is to prevent files which are being created, from being opened.
+		//
+		if fileMetadata.State != dcache.Ready {
+			log.Info("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
+				fileName, fileMetadata)
+			return nil, ErrFileNotReady
+		}
 
-	// Finalized files must have size >= 0.
-	common.Assert(fileMetadata.Size >= 0, fileMetadata.Size)
+		// Finalized files must have size >= 0.
+		common.Assert(fileMetadata.Size >= 0, fileMetadata.Size)
+	*/
 
 	//
 	// Increment the open count, if safe deletes is enabled.
@@ -277,7 +303,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// unless some other node/thread opens the file between the GetDcacheFile() above and till mm.OpenFile()
 	// increments the opencount.
 	//
-	if fileIOMgr.safeDeletes {
+	if fileIOMgr.safeDeletes && (fileMetadata.State == dcache.Ready) {
 		newOpenCount, err := mm.OpenFile(fileName, prop)
 		_ = newOpenCount
 		if err != nil {

@@ -324,6 +324,8 @@ retry:
 
 			retryCnt++
 			goto retry
+		} else if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_ChunkNotFound {
+			return nil, err
 		}
 
 		// Try another replica if available.
