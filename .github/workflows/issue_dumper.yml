@@ -27,7 +27,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          apt-get install python3-dev
+          sudo apt-get install fuse3 make cmake gcc g++ python3 python3-setuptools python3-pip parallel -y
           python -m pip install --upgrade pip
           pip install datetime github requests PyGithub
           
