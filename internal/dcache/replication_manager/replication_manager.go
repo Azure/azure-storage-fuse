@@ -1486,6 +1486,9 @@ func abortSyncJob(rvName string, mvName string) {
 		return
 	}
 
+	log.Debug("ReplicationManager::abortSyncJob: Checking if sync job for %s/%s needs to be aborted, state: %s",
+		rvName, mvName, rvState)
+
 	// Get the joinMV and last sync write time for this RV/MV.
 	joinMVTime, lastSyncWriteTime := rpc_server.GetMVJoinAndLastSyncWriteTime(rvName, mvName)
 	common.Assert(joinMVTime > 0, rvName, mvName, joinMVTime)
