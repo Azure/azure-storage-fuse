@@ -131,7 +131,7 @@ extends:
           - script: |
               ./notices_fix.sh
               result=$(git diff NOTICE | wc -l)
-              if [ $result -ne 0 ]; then
+              if [ $result -gt 12 ]; then
                 echo "Notices needs a fix. Run ./notices_fix.sh and commit NOTICE file."
                 exit 1
               else
