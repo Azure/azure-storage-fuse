@@ -1305,13 +1305,15 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 // increment the total chunk bytes for this MV
 func (mv *mvInfo) incTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(bytes)
-	log.Debug("mvInfo::incTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
+	log.Debug("mvInfo::incTotalChunkBytes: totalChunkBytes for %s/%s is %d",
+		mv.rv.rvName, mv.mvName, mv.totalChunkBytes.Load())
 }
 
 // decrement the total chunk bytes for this MV
 func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(-bytes)
-	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
+	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for %s/%s is %d",
+		mv.rv.rvName, mv.mvName, mv.totalChunkBytes.Load())
 	common.Assert(mv.totalChunkBytes.Load() >= 0, mv.mvName, mv.totalChunkBytes.Load(), bytes)
 }
 
@@ -2322,11 +2324,27 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	if req.Chunk.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
 		common.Assert(req.Length < dcache.MDChunkSize, req.Length, dcache.MDChunkSize, chunkPath)
 
-		err1 := os.Remove(chunkPath)
+		info, err1 := os.Stat(chunkPath)
+		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
+			errStr := fmt.Sprintf("failed to stat metadata chunk file %s before deleting [%v]", chunkPath, err1)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		err1 = os.Remove(chunkPath)
 		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
 			errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		// Successfully deleted the metadata chunk, update the mvInfo accounting.
+		if err1 == nil {
+			common.Assert(info != nil)
+			common.Assert(info.Size() < dcache.MDChunkSize, info.Size(), dcache.MDChunkSize, chunkPath)
+			mvInfo.decTotalChunkBytes(info.Size())
 		}
 	}
 
