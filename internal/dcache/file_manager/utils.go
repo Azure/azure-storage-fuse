@@ -60,6 +60,9 @@ var (
 
 // Returns the actual file size if finalized else the partial size.
 func getFileSize(file *dcache.FileMetadata) int64 {
+	common.Assert((file.Size >= 0) == (file.State == dcache.Ready), *file)
+	common.Assert((file.Size == -1) == (file.State == dcache.Writing), *file)
+
 	if file.Size > 0 {
 		// PartialSize can never be more than actual file size.
 		common.Assert(file.Size >= file.PartialSize, file.Size, file.PartialSize, *file)
@@ -279,8 +282,10 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	// have it in which case we will set it to 0.
 	//
 	if fileMetadata.Size == -1 {
-		fileMetadata.PartialSize = GetHighestUploadedByte(&fileMetadata)
+		fileMetadata.PartialSize, fileMetadata.PartialSizeAt = GetHighestUploadedByte(&fileMetadata)
 		common.Assert(fileMetadata.PartialSize >= 0, fileName, fileMetadata.PartialSize, fileMetadata)
+		common.Assert(!fileMetadata.PartialSizeAt.After(time.Now()),
+			fileName, fileMetadata.PartialSizeAt, time.Now(), fileMetadata)
 	}
 
 	fileMetadata.OpenCount = openCount
@@ -375,7 +380,13 @@ func DeleteDcacheFile(fileName string) error {
 	if fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::DeleteDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
-		return syscall.EBUSY
+
+		if time.Since(fileMetadata.PartialSizeAt) < CommitLivenessPeriod {
+			return syscall.EBUSY
+		}
+
+		log.Warn("DistributedCache[FM]::DeleteDcacheFile: File %s possibly stuck in writing state (not updated for %v), proceeding with delete",
+			fileName, time.Since(fileMetadata.PartialSizeAt))
 	}
 
 	//

@@ -261,11 +261,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// For finalized files FileMetadata.Size must be valid, else use the PartialSize for files still being written.
-	fileSize := file.FileMetadata.Size
-	if fileSize == -1 {
-		common.Assert(file.FileMetadata.State == dcache.Writing, *file.FileMetadata)
-		fileSize = file.FileMetadata.PartialSize
-	}
+	fileSize := getFileSize(file.FileMetadata)
 
 	// fileSize is either Size or PartialSize.
 	common.Assert(fileSize >= 0)

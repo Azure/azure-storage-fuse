@@ -661,8 +661,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 	if isDcachePath {
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
-		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
-		options.Name = rawPath
+		options.Name = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 
 		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
 			return nil, err
@@ -716,7 +715,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 
 		// For non-finalized files, use PartialSize.
 		if attr.Size == math.MaxInt64 {
-			fileMetadata, _, err := fm.GetDcacheFile(attr.Name)
+			fileMetadata, _, err := fm.GetDcacheFile(rawPath)
 			if err == nil {
 				attr.Size = fileMetadata.PartialSize
 			} else {

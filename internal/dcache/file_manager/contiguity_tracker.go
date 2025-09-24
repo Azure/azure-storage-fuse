@@ -63,6 +63,14 @@ const (
 	// a file with a non-Ready state is stale and can be deleted, or is it still being written to.
 	//
 	commitInterval = 5 * time.Second
+
+	//
+	// If metadata chunk is not updated for this much time, it's considered that the writer has gone away
+	// without closing the file, and such files can be deleted by DeleteDcacheFile().
+	// This can be smaller than 1min but deleting an in-progress file can have nasty consequences, so make
+	// it less likely.
+	//
+	CommitLivenessPeriod = 60 * time.Second
 )
 
 type ContiguityTracker struct {
@@ -231,7 +239,7 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 }
 
 // Read the metadata chunk for the given file, to get the highest uploaded byte for the file.
-func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) int64 {
+func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time) {
 	readMVReq := &rm.ReadMvRequest{
 		FileID:         fileMetadata.FileID,
 		MvName:         fileMetadata.FileLayout.MVList[0],
@@ -247,7 +255,7 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) int64 {
 		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to read metadata chunk, %+v: %v",
 			*fileMetadata, err)
 		// Return size as 0.
-		return 0
+		return 0, time.Now()
 	}
 
 	var mdChunk dcache.MetadataChunk
@@ -256,7 +264,7 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) int64 {
 		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to unmarshal metadata chunk, %+v, %v: %v",
 			*fileMetadata, readMVresp.Data, err)
 		// Unable to read metadata chunk, return size as 0.
-		return 0
+		return 0, time.Now()
 	}
 
 	if !readMVresp.IsBufExternal {
@@ -266,5 +274,5 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) int64 {
 	log.Debug("contiguity_tracker::GetHighestUploadedByte: Read metadata chunk %+v for %+v",
 		mdChunk, *fileMetadata)
 
-	return mdChunk.Size
+	return mdChunk.Size, mdChunk.LastUpdatedAt
 }
