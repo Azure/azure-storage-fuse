@@ -1574,6 +1574,10 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		readLength%common.FS_BLOCK_SIZE != 0 ||
 		readOffset%common.FS_BLOCK_SIZE != 0 ||
 		!isDataBufferAligned {
+		if rpc.ReadIOMode != rpc.BufferedIO {
+			log.Debug("readChunkAndHash: Performing buffered read for chunk %s, offset %d, readLength %d, isDataBufferAligned: %v",
+				*chunkPath, readOffset, readLength, isDataBufferAligned)
+		}
 		goto bufferedRead
 	}
 
@@ -1606,6 +1610,8 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		//       but that's not partial read, so relax the assert for metadata chunk.
 		//
 		if n != readLength {
+			log.Debug("readChunkAndHash: Partial read (%d of %d), chunk file %s, offset %d, falling back to buffered read",
+				n, readLength, *chunkPath, readOffset)
 			common.Assert(readLength == dcache.MDChunkSize, n, readLength, *chunkPath)
 			goto bufferedRead
 		}
@@ -1629,8 +1635,9 @@ bufferedRead:
 	defer fh.Close()
 
 	n, err = fh.ReadAt(*data, readOffset)
-	if err != nil {
-		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d [%v]", *chunkPath, readOffset, err)
+	if err != nil && err.Error() != "EOF" {
+		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d, readLength: %d [%v]",
+			*chunkPath, readOffset, readLength, err)
 	}
 
 	// See comment in readChunkAndHash() why metadata chunk read may return less data than requested.
@@ -1813,6 +1820,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		common.Assert((req.OffsetInChunk+req.Length <= chunkSize) ||
 			(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB),
 			"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
+		log.Debug("ChunkServiceHandler::GetChunk: %s, chunkSize: %d", chunkPath, chunkSize)
 	}
 
 	//
@@ -1829,7 +1837,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
-	common.Assert(n == len(data),
+	common.Assert((n == len(data)) || (n > 0 && n < len(data) && len(data) == dcache.MDChunkSize),
 		fmt.Sprintf("bytes read %d is less than expected buffer size %d", n, len(data)))
 
 	rvInfo.totalBytesRead.Add(int64(n))
@@ -1840,8 +1848,8 @@ dummy_read:
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
-			Data:    data,
-			Hash:    "", // TODO: hash validation will be done later
+			Data:    data[:n], // reslice to actual read length (only really needed for metadata chunk)
+			Hash:    "",       // TODO: hash validation will be done later
 		},
 		ChunkWriteTime: lmt,
 		TimeTaken:      time.Since(startTime).Microseconds(),

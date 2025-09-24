@@ -58,6 +58,17 @@ var (
 	ErrFileNotReady error = errors.New("Dcache file not in ready state")
 )
 
+// Returns the actual file size if finalized else the partial size.
+func getFileSize(file *dcache.FileMetadata) int64 {
+	if file.Size > 0 {
+		// PartialSize can never be more than actual file size.
+		common.Assert(file.Size >= file.PartialSize, file.Size, file.PartialSize, *file)
+		return file.Size
+	} else {
+		return file.PartialSize
+	}
+}
+
 // Index of the chunk that contains the given file offset.
 func getChunkIdxFromFileOffset(offset, chunkSize int64) int64 {
 	return offset / chunkSize
@@ -81,12 +92,10 @@ func getChunkEndOffset(chunkIdx, chunkSize int64) int64 {
 
 // Returns the size of the chunk containing the given file offset.
 // For all chunks except the last chunk, this will be equal to chunkSize.
+// Can we called for both finalized and non-finalized files.
 func getChunkSize(offset int64, file *DcacheFile) int64 {
-	// getChunkSize() must be called for a finalized file which will have size >= 0.
-	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
-
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-	size := min(file.FileMetadata.Size-
+	size := min(getFileSize(file.FileMetadata)-
 		getChunkStartOffset(chunkIdx, file.FileMetadata.FileLayout.ChunkSize),
 		file.FileMetadata.FileLayout.ChunkSize)
 

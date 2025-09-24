@@ -292,8 +292,13 @@ retry:
 				rpcResp.Chunk.Address != nil),
 				rpc.GetChunkRequestToString(rpcReq))
 
+			//
 			// Must read all the requested data.
-			common.Assert(len(rpcResp.Chunk.Data) == int(req.Length), len(rpcResp.Chunk.Data), req.Length)
+			// For metadata chunk, we ask for more so we will read less than requested.
+			//
+			common.Assert((len(rpcResp.Chunk.Data) == int(req.Length)) ||
+				(len(rpcResp.Chunk.Data) < int(req.Length) && int(req.Length) == dcache.MDChunkSize),
+				len(rpcResp.Chunk.Data), req.Length)
 
 			break
 		}

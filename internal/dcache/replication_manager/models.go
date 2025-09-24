@@ -139,8 +139,13 @@ type ReadMvResponse struct {
 }
 
 func (resp *ReadMvResponse) isValid(req *ReadMvRequest) error {
+	//
 	// Must read all the data that was requested.
-	if len(resp.Data) != int(req.Length) {
+	// Metadata chunks requests are an exception, as we do not know the exact size of the metadata blob
+	// and hence ask for slightly more.
+	//
+	if (len(resp.Data) != int(req.Length)) &&
+		!(len(resp.Data) < int(req.Length) && req.ChunkIndex == dcache.MDChunkIdx) {
 		reqStr := req.toString()
 		err := fmt.Errorf("ReadMV returned less data (%d) than requested: %s", len(resp.Data), reqStr)
 		log.Err("ReadMvResponse::isValid: %v", err)

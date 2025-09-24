@@ -634,8 +634,6 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		return nil, syscall.ENOENT
 	}
 
-	origName := options.Name
-
 	var attr *internal.ObjAttr
 	var err error
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
@@ -718,16 +716,16 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 
 		// For non-finalized files, use PartialSize.
 		if attr.Size == math.MaxInt64 {
-			fileMetadata, _, err := fm.GetDcacheFile(origName)
+			fileMetadata, _, err := fm.GetDcacheFile(attr.Name)
 			if err == nil {
 				attr.Size = fileMetadata.PartialSize
 			} else {
-				common.Assert(false, *attr, origName, err)
+				common.Assert(false, *attr, err)
 				attr.Size = 0
 			}
 
 			log.Debug("DistributedCache::GetAttr : File %s is non-finalized, setting size to %d",
-				origName, attr.Size)
+				attr.Name, attr.Size)
 		}
 	}
 
