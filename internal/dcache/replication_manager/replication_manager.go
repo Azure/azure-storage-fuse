@@ -1520,7 +1520,7 @@ func abortSyncJob(rvName string, mvName string) {
 	// This will trigger the fix-mv workflow to select a new RV and mark it outofsync, which will
 	// be synced next time around by resyncSyncableMVs().
 	//
-	if time.Now().Unix()-lastSyncWriteTime > AbortOngoingSyncThresholdSecs {
+	if lastSyncWriteTime != 0 && time.Now().Unix()-lastSyncWriteTime > AbortOngoingSyncThresholdSecs {
 		log.Warn("ReplicationManager::abortSyncJob: %s/%s has been in syncing state since %d secs, marking it inband-offline",
 			rvName, mvName, time.Now().Unix()-lastSyncWriteTime)
 
