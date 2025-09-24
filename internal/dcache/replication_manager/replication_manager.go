@@ -335,6 +335,8 @@ retry:
 			// Only expected for metadata chunks.
 			common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, rpc.GetChunkRequestToString(rpcReq))
 			common.Assert(rpcReq.Length == dcache.MDChunkSize, rpc.GetChunkRequestToString(rpcReq))
+			// Now we create metadata chunk on file create, so this should also not happen.
+			common.Assert(false, rpc.GetChunkRequestToString(rpcReq))
 			return nil, err
 		}
 

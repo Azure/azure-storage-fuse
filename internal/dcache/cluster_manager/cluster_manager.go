@@ -4685,8 +4685,8 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 		common.Assert(false, err)
 	}
 
-	log.Info("ClusterManager::batchUpdateComponentRVState: total: %d, succeeded: %d, failed: %d, ignored: %d",
-		len(msgBatch), successCount, failureCount, ignoredCount)
+	log.Info("ClusterManager::batchUpdateComponentRVState: total: %d, succeeded: %d, failed: %d, ignored: %d, took %s",
+		len(msgBatch), successCount, failureCount, ignoredCount, time.Since(startTime))
 
 	common.Assert(len(msgBatch) == (successCount+failureCount+ignoredCount),
 		len(msgBatch), successCount, failureCount, ignoredCount)

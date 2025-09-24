@@ -37,6 +37,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1607,14 +1608,10 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		// try to read all the requested byted.
 		// TODO: Make sure this is not common path.
 		//
-		// Note: When reading the metadata chunk the caller doesn't know the actual size, so it asks for
-		//       more data than the actual file size, in that case we will get less data than requested,
-		//       but that's not partial read, so relax the assert for metadata chunk.
-		//
 		if n != readLength {
 			log.Debug("readChunkAndHash: Partial read (%d of %d), chunk file %s, offset %d, falling back to buffered read",
 				n, readLength, *chunkPath, readOffset)
-			common.Assert(readLength == dcache.MDChunkSize, n, readLength, *chunkPath)
+			common.Assert(false, n, readLength, *chunkPath)
 			goto bufferedRead
 		}
 		return n, hash, nil
@@ -1636,14 +1633,19 @@ bufferedRead:
 	}
 	defer fh.Close()
 
+	//
+	// When reading metadata chunk, we may read less than requested length and hence EOF will be returned
+	// but that's not an error.
+	//
 	n, err = fh.ReadAt(*data, readOffset)
-	if err != nil && err.Error() != "EOF" {
+	if err != nil && err != io.EOF {
 		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d, readLength: %d [%v]",
 			*chunkPath, readOffset, readLength, err)
 	}
 
 	// See comment in readChunkAndHash() why metadata chunk read may return less data than requested.
-	common.Assert((n == readLength) || (n < readLength && readLength == dcache.MDChunkSize),
+	common.Assert((n == readLength) ||
+		(n > 0 && n < readLength && readLength == dcache.MDChunkSize && err == io.EOF),
 		n, readLength, *chunkPath)
 
 	return n, hash, nil
@@ -1812,6 +1814,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 			//
 			common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
 			common.Assert(req.Length == dcache.MDChunkSize, errStr)
+
+			// Now we create metadata chunk on file create, so this should not happen.
+			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 		}
 

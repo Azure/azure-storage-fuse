@@ -714,6 +714,8 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 			return nil, err
 		}
 
+		common.Assert(attr.Size >= 0, *attr)
+
 		// For non-finalized files, use PartialSize.
 		if attr.Size == math.MaxInt64 {
 			fileMetadata, _, err := fm.GetDcacheFile(rawPath)
@@ -729,6 +731,8 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		}
 	}
 
+	// We must never return negative size.
+	common.Assert(attr.Size >= 0, *attr)
 	return attr, nil
 }
 

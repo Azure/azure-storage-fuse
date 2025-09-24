@@ -95,6 +95,7 @@ func NewContiguityTracker(file *DcacheFile) *ContiguityTracker {
 		LastUpdatedAt: time.Now(),
 	}
 
+	// Write initial metadata chunk with size=0.
 	ct.writeMetadataChunk(mdChunk)
 
 	return ct
@@ -116,7 +117,10 @@ func (t *ContiguityTracker) writeMetadataChunk(mdChunk *dcache.MetadataChunk) {
 		return
 	}
 
+	//
 	// Use aligned buffer to keep server PutChunk assertions happy.
+	// Slight inefficiency here is ok since metadata chunk is small and the update is infrequent.
+	//
 	alignedJsonData := allocAlignedBuffer(len(jsonData))
 	copy(alignedJsonData, jsonData)
 
@@ -210,6 +214,7 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 			fullWords++
 			continue
 		} else if word&(word+1) == 0 {
+			// Trailing bits are contiguous, e.g. 000011111111111
 			newChunks = int64(bits.TrailingZeros64(word + 1))
 		}
 
@@ -221,6 +226,7 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 		return
 	}
 
+	// One or more full words can be now removed from the bitmap?
 	if fullWords > 0 {
 		t.lastContiguous += fullWords * 64
 		t.bitmap = t.bitmap[fullWords:]
@@ -267,7 +273,11 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time
 		// Most likely error is that the metadata chunk does not exist yet.
 		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to read metadata chunk, %+v: %v",
 			*fileMetadata, err)
-		// Return size as 0.
+		//
+		// Since we create the metadata chunk with size=0 when the file is created, this should not happen.
+		// We return time as 0 to allow the file to be deleted if it ever happens.
+		//
+		common.Assert(false, *fileMetadata, err)
 		return 0, time.Time{}
 	}
 
@@ -276,7 +286,13 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time
 	if err != nil {
 		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to unmarshal metadata chunk, %+v, %v: %v",
 			*fileMetadata, readMVresp.Data, err)
+		//
 		// Unable to read metadata chunk, return size as 0.
+		// We return time as now to prevent the file from being deleted, as we are not sure whether the file
+		// is being currently written to or not.
+		// Again, this should not happen unless there is some bug.
+		//
+		common.Assert(false, *fileMetadata, err)
 		return 0, time.Now()
 	}
 
@@ -286,6 +302,9 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time
 
 	log.Debug("contiguity_tracker::GetHighestUploadedByte: Read metadata chunk %+v for %+v",
 		mdChunk, *fileMetadata)
+
+	common.Assert(mdChunk.Size >= 0, mdChunk.Size, *fileMetadata)
+	common.Assert(!mdChunk.LastUpdatedAt.IsZero(), mdChunk.LastUpdatedAt, *fileMetadata)
 
 	return mdChunk.Size, mdChunk.LastUpdatedAt
 }
