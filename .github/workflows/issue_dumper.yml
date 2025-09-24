@@ -59,6 +59,7 @@ jobs:
           git add ./doc/issues.jsonl
           git add ./doc/prs.jsonl
           touch ./doc/issue_dump_$(date +'%Y-%m').md
+          git add ./doc/issue_dump_$(date +'%Y-%m').md
           git status
           git commit -m "Monthly issue dump for $(date +'%B %Y')"
           git push origin issue-dump-$(date +'%Y-%m')
