@@ -158,9 +158,17 @@ const (
 	// With 4MiB chunk size, this value allows for files up to 4 ZiB in size.
 	//
 	MDChunkIdx = (int64(1) << 50)
+
+	//
+	// When reading the metadata chunk, we do not know the size, so we read this much data.
+	// The metadata chunk is guaranteed to be smaller, so this should be sufficient.
+	// This is needed for better asserting in the RPC handler.
+	//
+	MDChunkSize = 101
 )
 
 var (
+	// This is MDChunkIdx*ChunkSizeInMiB, setup once we know the chunk size.
 	MDChunkOffsetInMiB int64
 )
 
@@ -178,7 +186,8 @@ type FileMetadata struct {
 
 // This is the content of the metadata chunk used to store size for partially written files.
 // Note that the metadata file stores the file size as -1 until the file is closed after writing, so if a reader
-// wants to read such a file it needs to read this metadata chunk to know the actual size of the file.
+// wants to read a file that's currently being written it needs to read this metadata chunk to know the partial
+// size of the file. The partial size is updated in this chunk as the file is being written.
 type MetadataChunk struct {
 	Size          int64     `json:"size"`
 	LastUpdatedAt time.Time `json:"last_updated_at,omitzero"`

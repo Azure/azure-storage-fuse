@@ -716,17 +716,18 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 			return nil, err
 		}
 
+		// For non-finalized files, use PartialSize.
 		if attr.Size == math.MaxInt64 {
 			fileMetadata, _, err := fm.GetDcacheFile(origName)
 			if err == nil {
-					log.Debug("DistributedCache::GetAttr : File %s is partial, setting size to %d",
-						origName, fileMetadata.PartialSize)
-					attr.Size = fileMetadata.PartialSize
+				attr.Size = fileMetadata.PartialSize
 			} else {
-					attr.Size = 0
-					log.Debug("DistributedCache::GetAttr : File %s is partial, setting size to %d",
-						origName, 0)
+				common.Assert(false, *attr, origName, err)
+				attr.Size = 0
 			}
+
+			log.Debug("DistributedCache::GetAttr : File %s is non-finalized, setting size to %d",
+				origName, attr.Size)
 		}
 	}
 

@@ -73,7 +73,7 @@ func NewContiguityTracker(file *DcacheFile) *ContiguityTracker {
 }
 
 func allocAlignedBuffer(size int) []byte {
-	const alignment = 512
+	const alignment = common.FS_BLOCK_SIZE
 	raw := make([]byte, size+alignment)
 	addr := uintptr(unsafe.Pointer(&raw[0]))
 	offset := int((alignment - (addr % alignment)) % alignment)
@@ -163,12 +163,18 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 			mdChunk, err)
 		return
 	}
+
+	// Use aligned buffer to keep server PutChunk assertions happy.
 	alignedJsonData := allocAlignedBuffer(len(jsonData))
 	copy(alignedJsonData, jsonData)
 
 	// We write just one chunk for the metadata, so it must fit in one chunk.
 	common.Assert(len(alignedJsonData) <= int(t.file.FileMetadata.FileLayout.ChunkSize),
 		len(alignedJsonData), t.file.FileMetadata.FileLayout.ChunkSize,
+		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+	// Infact it must be much less, smaller than MDChunkSize.
+	common.Assert(len(alignedJsonData) < dcache.MDChunkSize,
+		len(alignedJsonData), dcache.MDChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 	common.Assert(len(t.file.FileMetadata.FileLayout.MVList) > 0,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
@@ -189,41 +195,39 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	// Call WriteMV method for writing the chunk.
 	_, err = rm.WriteMV(writeMVReq)
 	if err != nil {
-		log.Err("contiguity_tracker::OnSuccessfulUpload: Failed to upload metadata chunk %+v to %s, file: %s, fileID: %s: %v",
-			mdChunk, t.file.FileMetadata.FileLayout.MVList[0],
-			t.file.FileMetadata.Filename, t.file.FileMetadata.FileID, err)
+		log.Err("contiguity_tracker::OnSuccessfulUpload: Failed to upload metadata chunk %+v for %+v: %v",
+			mdChunk, *t.file.FileMetadata, err)
 	} else {
-		log.Debug("contiguity_tracker::OnSuccessfulUpload: Uploaded metadata chunk %+v to %s, file: %s, fileID: %s",
-			mdChunk, t.file.FileMetadata.FileLayout.MVList[0],
-			t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+		log.Debug("contiguity_tracker::OnSuccessfulUpload: Uploaded metadata chunk %+v for %+v",
+			mdChunk, *t.file.FileMetadata)
 	}
 }
 
+// Read the metadata chunk for the given file, to get the highest uploaded byte for the file.
 func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) int64 {
 	readMVReq := &rm.ReadMvRequest{
 		FileID:         fileMetadata.FileID,
 		MvName:         fileMetadata.FileLayout.MVList[0],
 		ChunkIndex:     dcache.MDChunkIdx,
 		OffsetInChunk:  0,
-		Length:         fileMetadata.FileLayout.ChunkSize,
+		Length:         dcache.MDChunkSize,
 		ChunkSizeInMiB: fileMetadata.FileLayout.ChunkSize / common.MbToBytes,
 	}
 
-	common.Assert(readMVReq.ChunkSizeInMiB > 0)
-
 	readMVresp, err := rm.ReadMV(readMVReq)
 	if err != nil {
-		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to read metadata chunk, file: %s, fileID: %s: %v",
-			fileMetadata.Filename, fileMetadata.FileID, err)
-		// Unable to read metadata chunk, return size as 0.
+		// Most likely error is that the metadata chunk does not exist yet.
+		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to read metadata chunk, %+v: %v",
+			*fileMetadata, err)
+		// Return size as 0.
 		return 0
 	}
 
 	var mdChunk dcache.MetadataChunk
 	err = json.Unmarshal(readMVresp.Data, &mdChunk)
 	if err != nil {
-		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to unmarshal metadata chunk data, file: %s, fileID: %s: %v",
-			fileMetadata.Filename, fileMetadata.FileID, err)
+		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to unmarshal metadata chunk, %+v, %v: %v",
+			*fileMetadata, readMVresp.Data, err)
 		// Unable to read metadata chunk, return size as 0.
 		return 0
 	}
@@ -232,8 +236,8 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) int64 {
 		dcache.PutBuffer(readMVresp.Data)
 	}
 
-	log.Debug("contiguity_tracker::GetHighestUploadedByte: Read metadata chunk %+v from file: %s, fileID: %s",
-		mdChunk, fileMetadata.Filename, fileMetadata.FileID)
+	log.Debug("contiguity_tracker::GetHighestUploadedByte: Read metadata chunk %+v for %+v",
+		mdChunk, *fileMetadata)
 
 	return mdChunk.Size
 }

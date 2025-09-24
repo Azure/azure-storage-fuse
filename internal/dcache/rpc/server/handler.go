@@ -212,7 +212,7 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 	// Must be called only once.
 	common.Assert(dcache.MDChunkOffsetInMiB == 0, dcache.MDChunkOffsetInMiB, dcache.MDChunkIdx)
 	dcache.MDChunkOffsetInMiB = int64(cm.GetCacheConfig().ChunkSizeMB) * dcache.MDChunkIdx
-	// It'll be larger than 1ZiB but that's enough for a sanity check.
+	// It'll be larger than 1ZiB but this's enough for sanity check.
 	common.Assert(dcache.MDChunkOffsetInMiB > (1024*1024*1024*1024),
 		dcache.MDChunkOffsetInMiB, cm.GetCacheConfig().ChunkSizeMB, dcache.MDChunkIdx)
 
@@ -1601,8 +1601,12 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		// try to read all the requested byted.
 		// TODO: Make sure this is not common path.
 		//
+		// Note: When reading the metadata chunk the caller doesn't know the actual size, so it asks for
+		//       more data than the actual file size, in that case we will get less data than requested,
+		//       but that's not partial read, so relax the assert for metadata chunk.
+		//
 		if n != readLength {
-			//common.Assert(false, n, readLength, *chunkPath)
+			common.Assert(readLength == dcache.MDChunkSize, n, readLength, *chunkPath)
 			goto bufferedRead
 		}
 		return n, hash, nil
@@ -1629,7 +1633,9 @@ bufferedRead:
 		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d [%v]", *chunkPath, readOffset, err)
 	}
 
-	common.Assert(n <= readLength, n, readLength, *chunkPath)
+	// See comment in readChunkAndHash() why metadata chunk read may return less data than requested.
+	common.Assert((n == readLength) || (n < readLength && readLength == dcache.MDChunkSize),
+		n, readLength, *chunkPath)
 
 	return n, hash, nil
 }
@@ -1792,18 +1798,21 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-			// Metadata chunk may be missing.
+			//
+			// Metadata chunk is special, caller may ask for it even before it's created.
+			//
 			common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
+			common.Assert(req.Length == dcache.MDChunkSize, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 		}
 
-		//	chunkSize := stat.Size
+		chunkSize := stat.Size
 		lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
 
-		/*
-			common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
-				"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
-		*/
+		// Again, relax the assert for metadata chunk.
+		common.Assert((req.OffsetInChunk+req.Length <= chunkSize) ||
+			(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB),
+			"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
 	}
 
 	//
@@ -2299,9 +2308,12 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// be able to write the new metadata chunk.
 	//
 	// TODO: See if we should write the metadata chunk with writeable permissions so that we can overwrite it
-	//       without needing to delete it first.
+	//       without needing to delete it first. Metadata chunk write should be very infrequent so this is not
+	//       a big deal.
 	//
 	if req.Chunk.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
+		common.Assert(req.Length < dcache.MDChunkSize, req.Length, dcache.MDChunkSize, chunkPath)
+
 		err1 := os.Remove(chunkPath)
 		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
 			errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)

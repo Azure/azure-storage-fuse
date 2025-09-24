@@ -325,6 +325,11 @@ retry:
 			retryCnt++
 			goto retry
 		} else if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_ChunkNotFound {
+			log.Err("ReplicationManager::ReadMV: Chunk not found on node %s for request %s: %v",
+				targetNodeID, rpc.GetChunkRequestToString(rpcReq), err)
+			// Only expected for metadata chunks.
+			common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, rpc.GetChunkRequestToString(rpcReq))
+			common.Assert(rpcReq.Length == dcache.MDChunkSize, rpc.GetChunkRequestToString(rpcReq))
 			return nil, err
 		}
 

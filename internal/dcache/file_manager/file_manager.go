@@ -260,12 +260,14 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
+	// For finalized files FileMetadata.Size must be valid, else use the PartialSize for files still being written.
 	fileSize := file.FileMetadata.Size
 	if fileSize == -1 {
+		common.Assert(file.FileMetadata.State == dcache.Writing, *file.FileMetadata)
 		fileSize = file.FileMetadata.PartialSize
 	}
 
-	// Read must only be allowed on a properly finalized file, for which size must not be -1.
+	// fileSize is either Size or PartialSize.
 	common.Assert(fileSize >= 0)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
 	common.Assert(len(*buf) <= common.MbToBytes, len(*buf))
@@ -273,8 +275,8 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	common.Assert(file.RPT != nil, file.FileMetadata.Filename)
 
 	if offset >= fileSize {
-		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d",
-			file.FileMetadata.Filename, offset, len(*buf), fileSize)
+		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d %+v",
+			file.FileMetadata.Filename, offset, len(*buf), fileSize, *file.FileMetadata)
 		return 0, io.EOF
 	}
 

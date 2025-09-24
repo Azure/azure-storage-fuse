@@ -94,8 +94,11 @@ func getChunkSize(offset int64, file *DcacheFile) int64 {
 	return size
 }
 
+// Get the highest chunk index for the file.
+// Works for both finalized and non-finalized files.
 func getMaxChunkIdxForFile(file *dcache.FileMetadata) int64 {
 	if file.Size > 0 {
+		// PartialSize can never be more than actual file size.
 		common.Assert(file.Size >= file.PartialSize, file.Size, file.PartialSize, *file)
 		return getChunkIdxFromFileOffset(file.Size-1, file.FileLayout.ChunkSize)
 	} else {
@@ -262,15 +265,20 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 
 	//
 	// If file is currently being written, fileSize will be -1, set PartialSize in that case.
+	// Note that since the metadata chunk (that holds the partial size) is updated infrequently,
+	// we may not have the latest partial size, or if the file just started writing, we may not
+	// have it in which case we will set it to 0.
 	//
 	if fileMetadata.Size == -1 {
 		fileMetadata.PartialSize = GetHighestUploadedByte(&fileMetadata)
+		common.Assert(fileMetadata.PartialSize >= 0, fileName, fileMetadata.PartialSize, fileMetadata)
 	}
 
 	fileMetadata.OpenCount = openCount
 	common.Assert(fileMetadata.OpenCount >= 0, fileName, fileMetadata.OpenCount, fileMetadata)
 
-	log.Debug("DistributedCache[FM]::GetDcacheFile: File %s metadata %+v", fileName, fileMetadata)
+	log.Debug("DistributedCache[FM]::GetDcacheFile: File %s metadata %+v, prop %+v",
+		fileName, fileMetadata, *prop)
 
 	return &fileMetadata, prop, nil
 }
@@ -284,19 +292,17 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 
 	common.Assert(prop != nil, fileName)
 
-	/*
-		//
-		// This is to prevent files which are being created, from being opened.
-		//
-		if fileMetadata.State != dcache.Ready {
-			log.Info("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
-				fileName, fileMetadata)
-			return nil, ErrFileNotReady
-		}
-
+	//
+	// This is to prevent files which are being created, from being opened.
+	//
+	if fileMetadata.State != dcache.Ready {
+		log.Debug("DistributedCache[FM]::OpenDcacheFile: File %s being open'ed in non-ready state, metadata: %+v",
+			fileName, fileMetadata)
+		common.Assert(fileMetadata.Size == -1 && fileMetadata.PartialSize >= 0, fileMetadata.Size, *fileMetadata)
+	} else {
 		// Finalized files must have size >= 0.
-		common.Assert(fileMetadata.Size >= 0, fileMetadata.Size)
-	*/
+		common.Assert(fileMetadata.Size >= 0, fileMetadata.Size, *fileMetadata)
+	}
 
 	//
 	// Increment the open count, if safe deletes is enabled.
@@ -304,6 +310,8 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// w/o needing to do a GetPropertiesFromStorage() call. For the most common case this will work,
 	// unless some other node/thread opens the file between the GetDcacheFile() above and till mm.OpenFile()
 	// increments the opencount.
+	//
+	// TODO: Shall we support safe deletes for partial files too?
 	//
 	if fileIOMgr.safeDeletes && (fileMetadata.State == dcache.Ready) {
 		newOpenCount, err := mm.OpenFile(fileName, prop)
