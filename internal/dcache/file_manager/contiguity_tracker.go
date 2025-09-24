@@ -86,9 +86,18 @@ func NewContiguityTracker(file *DcacheFile) *ContiguityTracker {
 	log.Debug("contiguity_tracker: NewContiguityTracker for file: %s, fileID: %s, commitInterval: %v",
 		file.FileMetadata.Filename, file.FileMetadata.FileID, commitInterval)
 
-	return &ContiguityTracker{
+	ct := &ContiguityTracker{
 		file: file,
 	}
+
+	mdChunk := &dcache.MetadataChunk{
+		Size:          0,
+		LastUpdatedAt: time.Now(),
+	}
+
+	ct.writeMetadataChunk(mdChunk)
+
+	return ct
 }
 
 func allocAlignedBuffer(size int) []byte {
@@ -97,6 +106,53 @@ func allocAlignedBuffer(size int) []byte {
 	addr := uintptr(unsafe.Pointer(&raw[0]))
 	offset := int((alignment - (addr % alignment)) % alignment)
 	return raw[offset : offset+size]
+}
+
+func (t *ContiguityTracker) writeMetadataChunk(mdChunk *dcache.MetadataChunk) {
+	jsonData, err := json.Marshal(mdChunk)
+	if err != nil {
+		log.Err("contiguity_tracker::writeMetadataChunk: Failed to marshal %+v: %v",
+			*mdChunk, err)
+		return
+	}
+
+	// Use aligned buffer to keep server PutChunk assertions happy.
+	alignedJsonData := allocAlignedBuffer(len(jsonData))
+	copy(alignedJsonData, jsonData)
+
+	// We write just one chunk for the metadata, so it must fit in one chunk.
+	common.Assert(len(alignedJsonData) <= int(t.file.FileMetadata.FileLayout.ChunkSize),
+		len(alignedJsonData), t.file.FileMetadata.FileLayout.ChunkSize,
+		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+	// Infact it must be much less, smaller than MDChunkSize.
+	common.Assert(len(alignedJsonData) < dcache.MDChunkSize,
+		len(alignedJsonData), dcache.MDChunkSize,
+		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+	common.Assert(len(t.file.FileMetadata.FileLayout.MVList) > 0,
+		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+
+	//
+	// Upload the metadata chunk.
+	// It's uploaded to the first MV in the MVList.
+	//
+	writeMVReq := &rm.WriteMvRequest{
+		FileID:         t.file.FileMetadata.FileID,
+		MvName:         t.file.FileMetadata.FileLayout.MVList[0],
+		ChunkIndex:     dcache.MDChunkIdx,
+		Data:           alignedJsonData,
+		ChunkSizeInMiB: t.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
+		IsLastChunk:    true,
+	}
+
+	// Call WriteMV method for writing the chunk.
+	_, err = rm.WriteMV(writeMVReq)
+	if err != nil {
+		log.Err("contiguity_tracker::writeMetadataChunk: Failed to upload metadata chunk %+v for %+v: %v",
+			*mdChunk, *t.file.FileMetadata, err)
+	} else {
+		log.Debug("contiguity_tracker::writeMetadataChunk: Uploaded metadata chunk %+v for %+v",
+			*mdChunk, *t.file.FileMetadata)
+	}
 }
 
 // OnSuccessfulUpload marks chunkIdx as uploaded.
@@ -192,50 +248,7 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	t.lastCommitted = mdChunk.LastUpdatedAt
 	t.mu.Unlock()
 
-	jsonData, err := json.Marshal(mdChunk)
-	if err != nil {
-		log.Err("contiguity_tracker::OnSuccessfulUpload: Failed to marshal %+v: %v",
-			mdChunk, err)
-		return
-	}
-
-	// Use aligned buffer to keep server PutChunk assertions happy.
-	alignedJsonData := allocAlignedBuffer(len(jsonData))
-	copy(alignedJsonData, jsonData)
-
-	// We write just one chunk for the metadata, so it must fit in one chunk.
-	common.Assert(len(alignedJsonData) <= int(t.file.FileMetadata.FileLayout.ChunkSize),
-		len(alignedJsonData), t.file.FileMetadata.FileLayout.ChunkSize,
-		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
-	// Infact it must be much less, smaller than MDChunkSize.
-	common.Assert(len(alignedJsonData) < dcache.MDChunkSize,
-		len(alignedJsonData), dcache.MDChunkSize,
-		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
-	common.Assert(len(t.file.FileMetadata.FileLayout.MVList) > 0,
-		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
-
-	//
-	// Upload the metadata chunk.
-	// It's uploaded to the first MV in the MVList.
-	//
-	writeMVReq := &rm.WriteMvRequest{
-		FileID:         t.file.FileMetadata.FileID,
-		MvName:         t.file.FileMetadata.FileLayout.MVList[0],
-		ChunkIndex:     dcache.MDChunkIdx,
-		Data:           alignedJsonData,
-		ChunkSizeInMiB: t.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
-		IsLastChunk:    true,
-	}
-
-	// Call WriteMV method for writing the chunk.
-	_, err = rm.WriteMV(writeMVReq)
-	if err != nil {
-		log.Err("contiguity_tracker::OnSuccessfulUpload: Failed to upload metadata chunk %+v for %+v: %v",
-			mdChunk, *t.file.FileMetadata, err)
-	} else {
-		log.Debug("contiguity_tracker::OnSuccessfulUpload: Uploaded metadata chunk %+v for %+v",
-			mdChunk, *t.file.FileMetadata)
-	}
+	t.writeMetadataChunk(mdChunk)
 }
 
 // Read the metadata chunk for the given file, to get the highest uploaded byte for the file.
@@ -255,7 +268,7 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time
 		log.Err("contiguity_tracker::GetHighestUploadedByte: Failed to read metadata chunk, %+v: %v",
 			*fileMetadata, err)
 		// Return size as 0.
-		return 0, time.Now()
+		return 0, time.Time{}
 	}
 
 	var mdChunk dcache.MetadataChunk
