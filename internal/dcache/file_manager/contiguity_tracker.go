@@ -35,6 +35,7 @@ package filemanager
 
 import (
 	"encoding/json"
+	"math/bits"
 	"sync"
 	"time"
 	"unsafe"
@@ -55,17 +56,27 @@ import (
 // read up to this chunk index from such partially written files.
 //
 
+const (
+	//
+	// Commit partial size no later than this interval (even if it has not changed).
+	// This acts as a liveness indicator for DeleteDcacheFile() which uses this to determine if
+	// a file with a non-Ready state is stale and can be deleted, or is it still being written to.
+	//
+	commitInterval = 5 * time.Second
+)
+
 type ContiguityTracker struct {
 	mu             sync.Mutex
 	file           *DcacheFile // DCache file being tracked.
 	lastContiguous int64       // All chunks [0, lastContiguous) are uploaded.
+	lastCommitted  time.Time   // Last time we updated the metadata chunk (not necessarily with a changed size).
 	bitmap         []uint64
 }
 
 // NewContiguityTracker creates a new tracker with the given block size.
 func NewContiguityTracker(file *DcacheFile) *ContiguityTracker {
-	log.Debug("contiguity_tracker: NewContiguityTracker for file: %s, fileID: %s",
-		file.FileMetadata.Filename, file.FileMetadata.FileID)
+	log.Debug("contiguity_tracker: NewContiguityTracker for file: %s, fileID: %s, commitInterval: %v",
+		file.FileMetadata.Filename, file.FileMetadata.FileID, commitInterval)
 
 	return &ContiguityTracker{
 		file: file,
@@ -125,23 +136,31 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	// Advance lastContiguous if we have uploaded one or more full uint64 bit worth of chunks, i.e. 64 chunks.
 	// For 16MiB chunk size, this means 1GiB of contiguous data.
 	// Every 1GiB of data upload we will update the metadata chunk with the new size.
+	// If commitInterval or more time has elapsed since last update, we will update the metadata chunk even with
+	// less than 1GiB of new contiguous data or even no new contiguous data.
 	//
 	fullWords := int64(0)
+	newChunks := int64(0)
 	for _, word := range t.bitmap {
 		if word == ^uint64(0) {
 			fullWords++
 			continue
+		} else if word&(word+1) == 0 {
+			newChunks = int64(bits.TrailingZeros64(word + 1))
 		}
+
 		break
 	}
 
-	if fullWords == 0 {
+	if fullWords == 0 && newChunks == 0 {
 		t.mu.Unlock()
 		return
 	}
 
-	t.lastContiguous += fullWords * 64
-	t.bitmap = t.bitmap[fullWords:]
+	if fullWords > 0 {
+		t.lastContiguous += fullWords * 64
+		t.bitmap = t.bitmap[fullWords:]
+	}
 
 	//
 	// Now update the metadata chunk with the new size.
@@ -152,9 +171,17 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	// read the full file.
 	//
 	mdChunk := &dcache.MetadataChunk{
-		Size:          t.file.FileMetadata.FileLayout.ChunkSize * t.lastContiguous,
+		Size:          t.file.FileMetadata.FileLayout.ChunkSize * (t.lastContiguous + newChunks),
 		LastUpdatedAt: time.Now(),
 	}
+
+	// Partial word update is done no sooner than commitInterval.
+	if (time.Since(t.lastCommitted) < commitInterval) && (fullWords == 0) {
+		t.mu.Unlock()
+		return
+	}
+
+	t.lastCommitted = mdChunk.LastUpdatedAt
 	t.mu.Unlock()
 
 	jsonData, err := json.Marshal(mdChunk)
