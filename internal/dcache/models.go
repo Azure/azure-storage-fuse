@@ -189,6 +189,8 @@ type FileMetadata struct {
 // Note that the metadata file stores the file size as -1 until the file is closed after writing, so if a reader
 // wants to read a file that's currently being written it needs to read this metadata chunk to know the partial
 // size of the file. The partial size is updated in this chunk as the file is being written.
+//
+// Note: Update MDChunkSize if you change this struct. MDChunkSize must be > size of this struct.
 type MetadataChunk struct {
 	Size          int64     `json:"size"`
 	LastUpdatedAt time.Time `json:"last_updated_at,omitzero"`

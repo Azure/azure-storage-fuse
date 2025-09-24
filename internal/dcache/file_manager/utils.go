@@ -298,7 +298,7 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 }
 
 // Does all init process for opening the file.
-func OpenDcacheFile(fileName string) (*DcacheFile, error) {
+func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	fileMetadata, prop, err := GetDcacheFile(fileName)
 	if err != nil {
 		return nil, err
@@ -310,9 +310,15 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// This is to prevent files which are being created, from being opened.
 	//
 	if fileMetadata.State != dcache.Ready {
-		log.Debug("DistributedCache[FM]::OpenDcacheFile: File %s being open'ed in non-ready state, metadata: %+v",
-			fileName, fileMetadata)
 		common.Assert(fileMetadata.Size == -1 && fileMetadata.PartialSize >= 0, fileMetadata.Size, *fileMetadata)
+		if fromFuse {
+			log.Err("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
+				fileName, fileMetadata)
+			return nil, ErrFileNotReady
+		} else {
+			log.Debug("DistributedCache[FM]::OpenDcacheFile: File %s being open'ed in non-ready state, metadata: %+v",
+				fileName, fileMetadata)
+		}
 	} else {
 		// Finalized files must have size >= 0.
 		common.Assert(fileMetadata.Size >= 0, fileMetadata.Size, *fileMetadata)
