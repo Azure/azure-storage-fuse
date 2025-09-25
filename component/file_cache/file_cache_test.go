@@ -408,11 +408,11 @@ func (suite *fileCacheTestSuite) TestReadDirCase3() {
 	suite.fileCache.CreateDir(internal.CreateDirOptions{Name: subdir, Mode: 0777})
 	// By default createEmptyFile is false, so we will not create these files in storage until they are closed.
 	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file1, Mode: 0777})
-	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file1, Size: 1024})
+	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file1, NewSize: 1024})
 	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file2, Mode: 0777})
-	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file2, Size: 1024})
+	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file2, NewSize: 1024})
 	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file3, Mode: 0777})
-	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file3, Size: 1024})
+	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file3, NewSize: 1024})
 	// Create the files in fake_storage and simulate different sizes
 	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file1, Mode: 0777}) // Length is default 0
 	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file2, Mode: 0777})
@@ -456,17 +456,17 @@ func (suite *fileCacheTestSuite) TestReadDirMixed() {
 
 	// By default createEmptyFile is false, so we will not create these files in storage until they are closed.
 	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file2, Mode: 0777})
-	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file2, Size: 1024})
+	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file2, NewSize: 1024})
 	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file3, Mode: 0777})
-	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file3, Size: 1024})
+	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file3, NewSize: 1024})
 
 	// Create the files in fake_storage and simulate different sizes
 	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file1, Mode: 0777}) // Length is default 0
 	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file3, Mode: 0777})
 
 	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file4, Mode: 0777})
-	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file4, Size: 1024})
-	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file4, Size: 0})
+	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file4, NewSize: 1024})
+	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file4, NewSize: 0})
 
 	// Read the Directory
 	dir, err := suite.fileCache.ReadDir(internal.ReadDirOptions{Name: name})
@@ -1193,7 +1193,7 @@ func (suite *fileCacheTestSuite) TestGetAttrCase3() {
 	file := "file26"
 	// By default createEmptyFile is false, so we will not create these files in storage until they are closed.
 	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
-	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file, Size: 1024})
+	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file, NewSize: 1024})
 	// Create the files in fake_storage and simulate different sizes
 	//suite.loopback.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777}) // Length is default 0
 
@@ -1446,7 +1446,7 @@ func (suite *fileCacheTestSuite) TestTruncateFileNotInCache() {
 
 	// Chmod
 	size := 1024
-	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: path, Size: int64(size)})
+	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: path, NewSize: int64(size)})
 	suite.assert.Nil(err)
 
 	// Path in fake storage should be updated
@@ -1471,7 +1471,7 @@ func (suite *fileCacheTestSuite) TestTruncateFileInCache() {
 
 	// Chmod
 	size := 1024
-	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: path, Size: int64(size)})
+	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: path, NewSize: int64(size)})
 	suite.assert.Nil(err)
 	// Path in fake storage and file cache should be updated
 	info, _ := os.Stat(suite.cache_path + "/" + path)
@@ -1489,7 +1489,7 @@ func (suite *fileCacheTestSuite) TestTruncateFileCase2() {
 	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0666})
 
 	size := 1024
-	err := suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: path, Size: int64(size)})
+	err := suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: path, NewSize: int64(size)})
 	suite.assert.Nil(err)
 
 	// Path should be in the file cache and size should be updated
@@ -1902,11 +1902,11 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	suite.assert.Nil(err)
 
 	// try opening small file
-	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, Size: 1 * MB})
+	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, NewSize: 1 * MB})
 	suite.assert.Nil(err)
 
 	// try opening small file
-	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, Size: 3 * MB})
+	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, NewSize: 3 * MB})
 	suite.assert.NotNil(err)
 }
 

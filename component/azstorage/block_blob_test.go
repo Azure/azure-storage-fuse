@@ -74,6 +74,7 @@ import (
 var ctx = context.Background()
 
 const MB = 1024 * 1024
+const GB = 1024 * MB
 
 // A UUID representation compliant with specification in RFC 4122 document.
 type uuid [16]byte
@@ -995,7 +996,7 @@ func (s *blockBlobTestSuite) TestOpenFileSize() {
 	name := generateFileName()
 	size := 10
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(size)})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(size)})
 
 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
 	s.assert.Nil(err)
@@ -1345,7 +1346,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileSmaller() {
 	truncatedLength := 5
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1368,7 +1369,7 @@ func (s *blockBlobTestSuite) TestTruncateEmptyFileToLargeSize() {
 	s.assert.NotNil(h)
 
 	blobSize := int64((1 * common.GbToBytes) + 13)
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: blobSize})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: blobSize})
 	s.assert.Nil(err)
 
 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
@@ -1394,7 +1395,7 @@ func (s *blockBlobTestSuite) TestTruncateChunkedFileSmaller() {
 	})
 	s.assert.Nil(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1419,7 +1420,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileEqual() {
 	truncatedLength := 9
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1448,7 +1449,7 @@ func (s *blockBlobTestSuite) TestTruncateChunkedFileEqual() {
 	})
 	s.assert.Nil(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1473,7 +1474,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileBigger() {
 	truncatedLength := 15
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1502,7 +1503,7 @@ func (s *blockBlobTestSuite) TestTruncateChunkedFileBigger() {
 	})
 	s.assert.Nil(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1522,7 +1523,7 @@ func (s *blockBlobTestSuite) TestTruncateFileError() {
 	// Setup
 	name := generateFileName()
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
@@ -2342,8 +2343,7 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsSmallFile() {
 	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.Len(offsetList.BlockList, 0)
-	s.assert.True(offsetList.SmallFile())
-	s.assert.EqualValues(0, offsetList.BlockIdLength)
+	s.assert.True(offsetList.HasNoBlocks())
 }
 
 func (s *blockBlobTestSuite) TestGetFileBlockOffsetsChunkedFile() {
@@ -2540,7 +2540,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksEmptyFile() {
 	}
 	blk3.Flags.Set(common.DirtyBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
@@ -2603,7 +2603,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 	}
 	blk3.Flags.Set(common.DirtyBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
@@ -2653,7 +2653,7 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksEmptyFile() {
 	blk3.Flags.Set(common.TruncatedBlock)
 	blk3.Flags.Set(common.DirtyBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
@@ -2709,7 +2709,7 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
 	blk3.Flags.Set(common.TruncatedBlock)
 	blk3.Flags.Set(common.DirtyBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
@@ -2760,7 +2760,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
 	blk3.Flags.Set(common.DirtyBlock)
 	blk3.Flags.Set(common.TruncatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
@@ -2820,7 +2820,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	blk3.Flags.Set(common.DirtyBlock)
 	blk3.Flags.Set(common.TruncatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
@@ -3553,7 +3553,7 @@ func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size i
 	data := make([]byte, size)
 	suite.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	suite.assert.Nil(err)
 
 	// Blob should have updated data
@@ -3585,7 +3585,7 @@ func (suite *blockBlobTestSuite) UtilityFunctionTruncateFileToLarger(size int, t
 	data := make([]byte, size)
 	suite.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	suite.assert.Nil(err)
 
 	// Blob should have updated data

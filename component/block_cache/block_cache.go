@@ -1923,6 +1923,22 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	return nil
 }
 
+func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
+	log.Trace("BlockCache::TruncateFile : handle=%d, path=%s, size=%d", options.Handle.ID,
+		options.Handle.Path, options.NewSize)
+
+	// Set the block size that need to used by the next component
+	options.BlockSize = int64(bc.blockSize)
+
+	err := bc.NextComponent().TruncateFile(options)
+	if err != nil {
+		log.Err("BlockCache::TruncateFile : failed to truncate file %s", options.Handle.Path)
+		return err
+	}
+
+	return nil
+}
+
 func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	var maxCacheSize uint64
 	if bc.diskSize > 0 {

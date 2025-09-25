@@ -792,7 +792,7 @@ func (suite *attrCacheTestSuite) TestTruncateFile() {
 	path := "a"
 	size := 1024
 
-	options := internal.TruncateFileOptions{Name: path, Size: int64(size)}
+	options := internal.TruncateFileOptions{Name: path, NewSize: int64(size)}
 
 	// Error
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("Failed to truncate a file"))

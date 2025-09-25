@@ -2,6 +2,9 @@
 **Bug Fixes**
 - Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
 - Mount will fail if FNS account is mounted as HNS account.
+- Truncating the file in file_cache resulting resulting out-of-memory panic by go-runtime in some scenarios.
+- Open file error(No BlockList error) in block_cache when file is truncated before to less than 256MiB.
+- Prevent reusing the same block ID in truncate operation which could lead to inconsistenties.
 
 ## 2.5.0 (2025-07-17)
 **Bug Fixes**
