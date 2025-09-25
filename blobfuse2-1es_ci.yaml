@@ -90,7 +90,7 @@ extends:
           - script: |
               curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
               $(go env GOPATH)/bin/golangci-lint --version
-              $(go env GOPATH)/bin/golangci-lint run --tests=false > lint.log
+              $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags $(tags) > lint.log
               result=$(cat lint.log | wc -l)
               if [ $result -ne 1 ]; then
                 echo "-----------------------------------"
