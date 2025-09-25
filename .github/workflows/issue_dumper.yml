@@ -12,14 +12,13 @@ jobs:
 
     permissions:
       id-token: write
-      contents: read
+      contents: write
       issues: write
       discussions: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -58,8 +57,6 @@ jobs:
           git status
           git add ./doc/issues.jsonl
           git add ./doc/prs.jsonl
-          touch ./doc/issue_dump_$(date +'%Y-%m').md
-          git add ./doc/issue_dump_$(date +'%Y-%m').md
           git status
           git commit -m "Monthly issue dump for $(date +'%B %Y')"
           git push origin issue-dump-$(date +'%Y-%m')
