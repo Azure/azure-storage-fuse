@@ -416,7 +416,7 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		RvName:     rvName,
 		RvNewState: rvNewState,
 		QueuedAt:   time.Now(),
-		Err:        make(chan error),
+		Err:        make(chan error, 1),
 	}
 	common.Assert(updateComponentRVStateChannel != nil)
 
