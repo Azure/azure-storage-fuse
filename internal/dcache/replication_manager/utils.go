@@ -36,6 +36,7 @@ package replication_manager
 import (
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -60,6 +61,12 @@ const (
 
 	// Time in microseconds to add to the sync start time to account for clock skew
 	NTPClockSkewMargin = 5 * 1e6
+
+	// Max concurrent PutChunkDC calls across all nodes.
+	PutChunkDCIODepthTotal = 64
+
+	// Max concurrent PutChunkDC calls to a specific node.
+	PutChunkDCIODepthPerNode = 8
 
 	//
 	// Number of workers in the thread pool for sending the RPC requests.
@@ -91,6 +98,11 @@ const (
 	DaisyChain
 )
 
+// Semaphores to limit the number of concurrent PutChunkDC calls across all nodes.
+var putChunkDCTotalSem = make(chan struct{}, PutChunkDCIODepthTotal)
+var putChunkDCPerNodeSemMap = make(map[string]*chan struct{})
+var putChunkDCPerNodeSemMapLock sync.Mutex
+
 func (s PutChunkStyleEnum) String() string {
 	switch s {
 	case OriginatorSendsToAll:
@@ -101,6 +113,28 @@ func (s PutChunkStyleEnum) String() string {
 		common.Assert(false, s)
 		return "Unknown"
 	}
+}
+
+func getPutChunkDCSem(targetNodeID string) *chan struct{} {
+	// Grab global semaphore.
+	putChunkDCTotalSem <- struct{}{}
+
+	// Grab per-node semaphore.
+	putChunkDCPerNodeSemMapLock.Lock()
+	putChunkDCSemNode, ok := putChunkDCPerNodeSemMap[targetNodeID]
+	if !ok {
+		sem := make(chan struct{}, PutChunkDCIODepthPerNode)
+		putChunkDCSemNode = &sem
+		putChunkDCPerNodeSemMap[targetNodeID] = putChunkDCSemNode
+	}
+	putChunkDCPerNodeSemMapLock.Unlock()
+
+	return putChunkDCSemNode
+}
+
+func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}) {
+	<-*putChunkDCSemNode
+	<-putChunkDCTotalSem
 }
 
 // Return the most suitable online RV from the list of component RVs to which we should send the RPC call.

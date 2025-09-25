@@ -1756,6 +1756,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	}
 
 	startTime := time.Now()
+	_ = startTime
 
 	// Create RPC clients and add them to the channel.
 	for i := 0; i < int(numClients); i++ {

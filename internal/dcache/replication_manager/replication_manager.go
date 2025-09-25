@@ -697,6 +697,9 @@ retry:
 
 		var putChunkDCResp *models.PutChunkDCResponse
 
+		// Acquire a semaphore slot to limit concurrency.
+		putChunkSem := getPutChunkDCSem(targetNodeID)
+
 		//
 		// If the node to which the PutChunkDC() RPC call must be made is local,
 		// then we directly call the PutChunkDC() method using the local server's handler.
@@ -707,6 +710,8 @@ retry:
 		} else {
 			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}
+
+		releasePutChunkDCSem(putChunkSem)
 
 		if err != nil {
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",

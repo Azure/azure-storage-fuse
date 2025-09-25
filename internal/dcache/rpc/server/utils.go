@@ -46,7 +46,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
-	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
+	//rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -211,6 +211,9 @@ func PutChunkLocal(ctx context.Context, req *models.PutChunkRequest) (*models.Pu
 	return handler.PutChunk(ctx, req)
 }
 
+// Not more than 8 concurrent PutChunkDC calls.
+var putChunkDCSem = make(chan struct{}, 8)
+
 // This method is wrapper for the PutChunkDC() RPC call. It is used when the both the client and server
 // belong to the same node, i.e. the RPC is called locally.
 func PutChunkDCLocal(ctx context.Context, req *models.PutChunkDCRequest) (*models.PutChunkDCResponse, error) {
@@ -219,6 +222,10 @@ func PutChunkDCLocal(ctx context.Context, req *models.PutChunkDCRequest) (*model
 	common.Assert(req.Request.Chunk != nil)
 	common.Assert(req.Request.Chunk.Address != nil)
 	common.Assert(len(req.NextRVs) > 0)
+
+	// Acquire a semaphore slot to limit concurrency.
+	//putChunkDCSem <- struct{}{}
+	//defer func() { <-putChunkDCSem }()
 
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.Request.SenderNodeID) == 0, req.Request.SenderNodeID)
@@ -234,25 +241,29 @@ func PutChunkDCLocal(ctx context.Context, req *models.PutChunkDCRequest) (*model
 	// calls, then multiple nodes may might run out of RPC clients in the pool and they might deadlock
 	// waiting for each other's PutChunkDC response.
 	//
-	client, err := rpc_client.GetRPCClientDummy(req.Request.SenderNodeID)
-	if err != nil {
-		err = fmt.Errorf("rpc_server::PutChunkDCLocal: Failed to get dummy RPC client for node %s %v: %v",
-			req.Request.SenderNodeID, rpc.PutChunkDCRequestToString(req), err)
-		log.Err("%v", err)
-		common.Assert(false, err)
-		return nil, err
-	}
+	/*
+		client, err := rpc_client.GetRPCClientDummy(req.Request.SenderNodeID)
+		if err != nil {
+			err = fmt.Errorf("rpc_server::PutChunkDCLocal: Failed to get dummy RPC client for node %s %v: %v",
+				req.Request.SenderNodeID, rpc.PutChunkDCRequestToString(req), err)
+			log.Err("%v", err)
+			common.Assert(false, err)
+			return nil, err
+		}
+	*/
 
 	resp, err := handler.PutChunkDC(ctx, req)
 
-	// Release RPC client back to the pool.
-	err1 := rpc_client.ReleaseRPCClientDummy(client)
-	if err1 != nil {
-		log.Err("rpc_server::PutChunkDCLocal: Failed to release dummy RPC client for node %s %v: %v",
-			req.Request.SenderNodeID, rpc.PutChunkDCRequestToString(req), err1)
-		// Assert, but do not fail the PutChunkDC call.
-		common.Assert(false, err1)
-	}
+	/*
+		// Release RPC client back to the pool.
+		err1 := rpc_client.ReleaseRPCClientDummy(client)
+		if err1 != nil {
+			log.Err("rpc_server::PutChunkDCLocal: Failed to release dummy RPC client for node %s %v: %v",
+				req.Request.SenderNodeID, rpc.PutChunkDCRequestToString(req), err1)
+			// Assert, but do not fail the PutChunkDC call.
+			common.Assert(false, err1)
+		}
+	*/
 
 	return resp, err
 }
