@@ -176,7 +176,12 @@ func processCommand() error {
 
 	if len(containerList) > 0 {
 		containerList = filterAllowedContainerList(containerList)
-		err = mountAllContainers(containerList, options.ConfigFile, options.MountPath, configFileExists)
+		err = mountAllContainers(
+			containerList,
+			options.ConfigFile,
+			options.MountPath,
+			configFileExists,
+		)
 		if err != nil {
 			return err
 		}
@@ -220,10 +225,7 @@ func getContainerList() ([]string, error) {
 
 // FiterAllowedContainer : Filter which containers are allowed to be mounted
 func filterAllowedContainerList(containers []string) []string {
-	allowListing := false
-	if len(mountAllOpts.AllowList) > 0 {
-		allowListing = true
-	}
+	allowListing := len(mountAllOpts.AllowList) > 0
 
 	// Convert the entire container list into a map
 	var filterContainer = make(map[string]bool)
@@ -262,7 +264,12 @@ func filterAllowedContainerList(containers []string) []string {
 }
 
 // mountAllContainers : Iterate allowed container list and create config file and mount path for them
-func mountAllContainers(containerList []string, configFile string, mountPath string, configFileExists bool) error {
+func mountAllContainers(
+	containerList []string,
+	configFile string,
+	mountPath string,
+	configFileExists bool,
+) error {
 	// Now iterate filtered container list and prepare mount path, temp path, and config file for them
 	fileCachePath := ""
 	_ = config.UnmarshalKey("file_cache.path", &fileCachePath)
@@ -335,7 +342,11 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		}
 	}
 
-	fmt.Printf("%d of %d containers were successfully mounted\n", (len(containerList) - failCount), len(containerList))
+	fmt.Printf(
+		"%d of %d containers were successfully mounted\n",
+		(len(containerList) - failCount),
+		len(containerList),
+	)
 	return nil
 }
 

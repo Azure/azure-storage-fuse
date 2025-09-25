@@ -107,9 +107,12 @@ var generateTestConfig = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(generateTestConfig)
-	generateTestConfig.Flags().StringVar(&opts.configFilePath, "config-file", "", "Input config file.")
-	generateTestConfig.Flags().StringVar(&opts.outputConfigPath, "output-file", "", "Output config file path.")
-	generateTestConfig.Flags().StringVar(&opts.containerName, "container-name", "", "Container name.")
+	generateTestConfig.Flags().
+		StringVar(&opts.configFilePath, "config-file", "", "Input config file.")
+	generateTestConfig.Flags().
+		StringVar(&opts.outputConfigPath, "output-file", "", "Output config file path.")
+	generateTestConfig.Flags().
+		StringVar(&opts.containerName, "container-name", "", "Container name.")
 	generateTestConfig.Flags().StringVar(&opts.tempDirPath, "temp-path", "", "Temporary file path.")
 
 }

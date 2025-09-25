@@ -185,7 +185,9 @@ func (fc *FileCache) createEvent(event *watcher.Event) {
 		delete(fc.cacheObj.fileRemovedMap, event.Path)
 		fc.cacheObj.fileCreatedMap[event.Path] = event.Size()
 		fc.cacheObj.cacheSize += event.Size()
-		fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
+		fc.cacheObj.cacheConsumed = (float64)(
+			fc.cacheObj.cacheSize*100,
+		) / (fc.maxSizeMB * common.MbToBytes)
 	}
 
 	e := fc.getCacheEventObj(event)
@@ -201,7 +203,9 @@ func (fc *FileCache) removeEvent(event *watcher.Event) {
 		delete(fc.cacheObj.fileCreatedMap, event.Path)
 		fc.cacheObj.fileRemovedMap[event.Path] = event.Size()
 		fc.cacheObj.cacheSize = int64(math.Max(0, float64(fc.cacheObj.cacheSize-event.Size())))
-		fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
+		fc.cacheObj.cacheConsumed = (float64)(
+			fc.cacheObj.cacheSize*100,
+		) / (fc.maxSizeMB * common.MbToBytes)
 	}
 
 	e := fc.getCacheEventObj(event)
@@ -220,7 +224,9 @@ func (fc *FileCache) chmodEvent(event *watcher.Event) {
 		if fileSize != event.Size() {
 			fc.cacheObj.cacheSize += event.Size() - fileSize
 			fc.cacheObj.fileCreatedMap[event.Path] = event.Size()
-			fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
+			fc.cacheObj.cacheConsumed = (float64)(
+				fc.cacheObj.cacheSize*100,
+			) / (fc.maxSizeMB * common.MbToBytes)
 		}
 	}
 
@@ -241,7 +247,9 @@ func (fc *FileCache) writeEvent(event *watcher.Event) {
 
 		fc.cacheObj.cacheSize += event.Size() - fileSize
 		fc.cacheObj.fileCreatedMap[event.Path] = event.Size()
-		fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
+		fc.cacheObj.cacheConsumed = (float64)(
+			fc.cacheObj.cacheSize*100,
+		) / (fc.maxSizeMB * common.MbToBytes)
 	} else {
 		return
 	}

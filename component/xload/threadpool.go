@@ -102,7 +102,10 @@ func (threadPool *ThreadPool) Schedule(item *WorkItem) error {
 	// true means high priority and false means low priority
 	select {
 	case <-threadPool.ctx.Done():
-		log.Err("ThreadPool::Schedule : Thread pool is closed, cannot schedule workitem %s", item.Path)
+		log.Err(
+			"ThreadPool::Schedule : Thread pool is closed, cannot schedule workitem %s",
+			item.Path,
+		)
 		return fmt.Errorf("thread pool is closed, cannot schedule workitem %s", item.Path)
 	default:
 		if item.Priority {
@@ -157,7 +160,12 @@ func (threadPool *ThreadPool) process(item *WorkItem) {
 	dataLength, err := threadPool.callback(item)
 	if err != nil {
 		// TODO:: xload : add retry logic
-		log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err.Error())
+		log.Err(
+			"ThreadPool::Do : Error in %s processing workitem %s : %v",
+			item.CompName,
+			item.Path,
+			err.Error(),
+		)
 	}
 
 	// add this error in response channel

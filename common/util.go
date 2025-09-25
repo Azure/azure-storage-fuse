@@ -105,7 +105,7 @@ func IsMountActive(path string) (bool, error) {
 	}
 
 	// out contains the list of pids of the processes that are running
-	pidString := strings.Replace(out.String(), "\n", " ", -1)
+	pidString := strings.ReplaceAll(out.String(), "\n", " ")
 	pids := strings.Split(pidString, " ")
 	myPid := strconv.Itoa(os.Getpid())
 	for _, pid := range pids {
@@ -122,7 +122,11 @@ func IsMountActive(path string) (bool, error) {
 
 		err := cmd.Run()
 		if err != nil {
-			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v]", pid, err.Error())
+			return true, fmt.Errorf(
+				"failed to get command line arguments for pid %s [%v]",
+				pid,
+				err.Error(),
+			)
 		}
 
 		if strings.Contains(out.String(), path) {
@@ -364,7 +368,14 @@ func NotifyMountToParent() error {
 	return nil
 }
 
-var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
+var duPath []string = []string{
+	"/usr/bin/du",
+	"/usr/local/bin/du",
+	"/usr/sbin/du",
+	"/usr/local/sbin/du",
+	"/sbin/du",
+	"/bin/du",
+}
 var selectedDuPath string = ""
 
 // GetUsage: The current disk usage in MB
@@ -512,10 +523,10 @@ func WriteToFile(filename string, data string, options WriteToFileOptions) error
 	return nil
 }
 
-func GetCRC64(data []byte, len int) []byte {
+func GetCRC64(data []byte, length int) []byte {
 	// Create a CRC64 hash using the ECMA polynomial
 	crc64Table := crc64.MakeTable(crc64.ECMA)
-	checksum := crc64.Checksum(data[:len], crc64Table)
+	checksum := crc64.Checksum(data[:length], crc64Table)
 
 	checksumBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(checksumBytes, checksum)

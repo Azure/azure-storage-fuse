@@ -94,13 +94,13 @@ type PipelineConfig struct {
 	ReadOnlyOption              bool `yaml:"read-only,omitempty"`
 	AllowOtherOption            bool `yaml:"allow-other,omitempty"`
 	NonEmptyMountOption         bool `yaml:"nonempty,omitempty"`
-	LogOptions                  `yaml:"logging,omitempty"`
-	libfuse.LibfuseOptions      `yaml:"libfuse,omitempty"`
-	block_cache.StreamOptions   `yaml:"stream,omitempty"`
-	file_cache.FileCacheOptions `yaml:"file_cache,omitempty"`
-	attr_cache.AttrCacheOptions `yaml:"attr_cache,omitempty"`
-	azstorage.AzStorageOptions  `yaml:"azstorage,omitempty"`
-	ComponentsConfig            `yaml:"components,omitempty"`
+	LogOptions                  `     yaml:"logging,omitempty"`
+	libfuse.LibfuseOptions      `     yaml:"libfuse,omitempty"`
+	block_cache.StreamOptions   `     yaml:"stream,omitempty"`
+	file_cache.FileCacheOptions `     yaml:"file_cache,omitempty"`
+	attr_cache.AttrCacheOptions `     yaml:"attr_cache,omitempty"`
+	azstorage.AzStorageOptions  `     yaml:"azstorage,omitempty"`
+	ComponentsConfig            `     yaml:"components,omitempty"`
 }
 
 var outputFilePath string
@@ -175,13 +175,19 @@ var generateConfigCmd = &cobra.Command{
 					continue
 				}
 				if len(configParam) != 2 {
-					return fmt.Errorf("failed to read configuration file. Configuration %s is incorrect. Make sure your configuration file parameters are of the format `key value`", configParam)
+					return fmt.Errorf(
+						"failed to read configuration file. Configuration %s is incorrect. Make sure your configuration file parameters are of the format `key value`",
+						configParam,
+					)
 				}
 
 				// get corresponding Blobfuse2 configurations from the config file parameters
 				err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
 				if err != nil {
-					return fmt.Errorf("failed to convert configuration parameters [%s]", err.Error())
+					return fmt.Errorf(
+						"failed to convert configuration parameters [%s]",
+						err.Error(),
+					)
 				}
 
 			}
@@ -229,14 +235,20 @@ var generateConfigCmd = &cobra.Command{
 			}
 
 			accountType := ""
-			if bfv2StorageConfigOptions.AccountType == "" || bfv2StorageConfigOptions.AccountType == "blob" {
+			switch bfv2StorageConfigOptions.AccountType {
+			case "", "blob":
 				accountType = "blob"
-			} else if bfv2StorageConfigOptions.AccountType == "adls" {
+			case "adls":
 				accountType = "dfs"
-			} else {
+			default:
 				return fmt.Errorf("invalid account type")
 			}
-			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf("%s://%s.%s.core.windows.net", http, accountName, accountType)
+			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf(
+				"%s://%s.%s.core.windows.net",
+				http,
+				accountName,
+				accountType,
+			)
 		}
 		bfv2StorageConfigOptions.VirtualDirectory = true
 
@@ -264,7 +276,14 @@ var generateConfigCmd = &cobra.Command{
 			rootCmd.SetOut(buf)
 			rootCmd.SetErr(buf)
 			if enableGen1 {
-				rootCmd.SetArgs([]string{"mountgen1", mountPath, fmt.Sprintf("--config-file=%s", outputFilePath), fmt.Sprintf("--required-free-space-mb=%v", reqFreeSpaceMB)})
+				rootCmd.SetArgs(
+					[]string{
+						"mountgen1",
+						mountPath,
+						fmt.Sprintf("--config-file=%s", outputFilePath),
+						fmt.Sprintf("--required-free-space-mb=%v", reqFreeSpaceMB),
+					},
+				)
 			} else {
 				rootCmd.SetArgs([]string{"mount", mountPath, fmt.Sprintf("--config-file=%s", outputFilePath), "--disable-version-check=true"})
 			}
@@ -337,7 +356,11 @@ func parseFuseConfig(config []string) error {
 }
 
 // helper method: converts config file options
-func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, configParameterValue string) error {
+func convertBfConfigParameter(
+	flags *pflag.FlagSet,
+	configParameterKey string,
+	configParameterValue string,
+) error {
 	switch configParameterKey {
 	case "logLevel":
 		if !flags.Lookup("log-level").Changed {
@@ -387,7 +410,10 @@ func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, c
 		return nil
 
 	default:
-		return fmt.Errorf("failed to parse configuration file. Configuration parameter `%s` is not supported in Blobfuse2", configParameterKey)
+		return fmt.Errorf(
+			"failed to parse configuration file. Configuration parameter `%s` is not supported in Blobfuse2",
+			configParameterKey,
+		)
 	}
 
 	return nil
@@ -395,10 +421,17 @@ func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, c
 
 // helper method: converts cli options - cli options that overlap with config file take precedence
 func convertBfCliParameters(flags *pflag.FlagSet) error {
-	if flags.Lookup("set-content-type").Changed || flags.Lookup("ca-cert-file").Changed || flags.Lookup("basic-remount-check").Changed || flags.Lookup(
-		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed || flags.Lookup("debug-libcurl").Changed {
+	if flags.Lookup("set-content-type").Changed || flags.Lookup("ca-cert-file").Changed ||
+		flags.Lookup("basic-remount-check").Changed ||
+		flags.Lookup(
+			"background-download").Changed ||
+		flags.Lookup("cache-poll-timeout-msec").Changed ||
+		flags.Lookup("upload-modified-only").Changed ||
+		flags.Lookup("debug-libcurl").Changed {
 		logWriter, _ := syslog.New(syslog.LOG_WARNING, "")
-		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only, debug-libcurl] have been passed, ignoring and proceeding to mount")
+		_ = logWriter.Warning(
+			"one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only, debug-libcurl] have been passed, ignoring and proceeding to mount",
+		)
 	}
 
 	bfv2LoggingConfigOptions.Type = "syslog"
@@ -414,7 +447,9 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 				bfv2StreamConfigOptions.BlockSize = bfConfCliOptions.blockSize
 			}
 			if flags.Lookup("max-blocks-per-file").Changed {
-				bfv2StreamConfigOptions.BufferSize = bfConfCliOptions.blockSize * uint64(bfConfCliOptions.maxBlocksPerFile)
+				bfv2StreamConfigOptions.BufferSize = bfConfCliOptions.blockSize * uint64(
+					bfConfCliOptions.maxBlocksPerFile,
+				)
 			}
 			if flags.Lookup("stream-cache-mb").Changed {
 				bfv2StreamConfigOptions.CachedObjLimit = bfConfCliOptions.streamCacheSize / bfv2StreamConfigOptions.BufferSize
@@ -510,54 +545,93 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 
 func init() {
 	rootCmd.AddCommand(generateConfigCmd)
-	generateConfigCmd.Flags().StringVar(&outputFilePath, "output-file", "config.yaml", "Output Blobfuse configuration file.")
+	generateConfigCmd.Flags().
+		StringVar(&outputFilePath, "output-file", "config.yaml", "Output Blobfuse configuration file.")
 
-	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.tmpPath, "tmp-path", "", "Tmp location for the file cache.")
-	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.configFile, "config-file", "", "Input Blobfuse configuration file.")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.useHttps, "use-https", false, "Enables HTTPS communication with Blob storage.")
-	generateConfigCmd.Flags().Uint32Var(&bfConfCliOptions.fileCacheTimeout, "file-cache-timeout-in-seconds", 0, "During this time, blobfuse will not check whether the file is up to date or not.")
-	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.containerName, "container-name", "", "Required if no configuration file is specified.")
-	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.logLevel, "log-level", "LOG_WARNING", "Logging level.")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.useAttrCache, "use-attr-cache", false, "Enable attribute cache.")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.useAdls, "use-adls", false, "Enables blobfuse to access Azure DataLake storage account.")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.noSymlinks, "no-symlinks", false, "Disables symlink support.")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.cacheOnList, "cache-on-list", true, "Cache attributes on listing.")
-	generateConfigCmd.Flags().Uint16Var(&bfConfCliOptions.maxConcurrency, "max-concurrency", 0, "Option to override default number of concurrent storage connections")
-	generateConfigCmd.Flags().Float64Var(&bfConfCliOptions.cacheSize, "cache-size-mb", 0, "File cache size.")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.emptyDirCheck, "empty-dir-check", false, "Disallows remounting using a non-empty tmp-path.")
-	generateConfigCmd.Flags().Uint16Var(&bfConfCliOptions.cancelListOnMount, "cancel-list-on-mount-seconds", 0, "A list call to the container is by default issued on mount.")
-	generateConfigCmd.Flags().Uint32Var(&bfConfCliOptions.highDiskThreshold, "high-disk-threshold", 0, "High disk threshold percentage.")
-	generateConfigCmd.Flags().Uint32Var(&bfConfCliOptions.lowDiskThreshold, "low-disk-threshold", 0, "Low disk threshold percentage.")
-	generateConfigCmd.Flags().Uint32Var(&bfConfCliOptions.maxEviciton, "max-eviction", 0, "Number of files to be evicted from cache at once.")
-	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.httpsProxy, "https-proxy", "", "HTTPS Proxy address.")
-	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.httpProxy, "http-proxy", "", "HTTP Proxy address.")
-	generateConfigCmd.Flags().Int32Var(&bfConfCliOptions.maxRetry, "max-retry", 0, "Maximum retry count if the failure codes are retryable.")
-	generateConfigCmd.Flags().Int32Var(&bfConfCliOptions.maxRetryInterval, "max-retry-interval-in-seconds", 0, "Maximum number of seconds between 2 retries.")
-	generateConfigCmd.Flags().Int32Var(&bfConfCliOptions.retryDelayFactor, "retry-delay-factor", 0, "Retry delay between two tries")
+	generateConfigCmd.Flags().
+		StringVar(&bfConfCliOptions.tmpPath, "tmp-path", "", "Tmp location for the file cache.")
+	generateConfigCmd.Flags().
+		StringVar(&bfConfCliOptions.configFile, "config-file", "", "Input Blobfuse configuration file.")
+	generateConfigCmd.Flags().
+		BoolVar(&bfConfCliOptions.useHttps, "use-https", false, "Enables HTTPS communication with Blob storage.")
+	generateConfigCmd.Flags().
+		Uint32Var(&bfConfCliOptions.fileCacheTimeout, "file-cache-timeout-in-seconds", 0, "During this time, blobfuse will not check whether the file is up to date or not.")
+	generateConfigCmd.Flags().
+		StringVar(&bfConfCliOptions.containerName, "container-name", "", "Required if no configuration file is specified.")
+	generateConfigCmd.Flags().
+		StringVar(&bfConfCliOptions.logLevel, "log-level", "LOG_WARNING", "Logging level.")
+	generateConfigCmd.Flags().
+		BoolVar(&bfConfCliOptions.useAttrCache, "use-attr-cache", false, "Enable attribute cache.")
+	generateConfigCmd.Flags().
+		BoolVar(&bfConfCliOptions.useAdls, "use-adls", false, "Enables blobfuse to access Azure DataLake storage account.")
+	generateConfigCmd.Flags().
+		BoolVar(&bfConfCliOptions.noSymlinks, "no-symlinks", false, "Disables symlink support.")
+	generateConfigCmd.Flags().
+		BoolVar(&bfConfCliOptions.cacheOnList, "cache-on-list", true, "Cache attributes on listing.")
+	generateConfigCmd.Flags().
+		Uint16Var(&bfConfCliOptions.maxConcurrency, "max-concurrency", 0, "Option to override default number of concurrent storage connections")
+	generateConfigCmd.Flags().
+		Float64Var(&bfConfCliOptions.cacheSize, "cache-size-mb", 0, "File cache size.")
+	generateConfigCmd.Flags().
+		BoolVar(&bfConfCliOptions.emptyDirCheck, "empty-dir-check", false, "Disallows remounting using a non-empty tmp-path.")
+	generateConfigCmd.Flags().
+		Uint16Var(&bfConfCliOptions.cancelListOnMount, "cancel-list-on-mount-seconds", 0, "A list call to the container is by default issued on mount.")
+	generateConfigCmd.Flags().
+		Uint32Var(&bfConfCliOptions.highDiskThreshold, "high-disk-threshold", 0, "High disk threshold percentage.")
+	generateConfigCmd.Flags().
+		Uint32Var(&bfConfCliOptions.lowDiskThreshold, "low-disk-threshold", 0, "Low disk threshold percentage.")
+	generateConfigCmd.Flags().
+		Uint32Var(&bfConfCliOptions.maxEviciton, "max-eviction", 0, "Number of files to be evicted from cache at once.")
+	generateConfigCmd.Flags().
+		StringVar(&bfConfCliOptions.httpsProxy, "https-proxy", "", "HTTPS Proxy address.")
+	generateConfigCmd.Flags().
+		StringVar(&bfConfCliOptions.httpProxy, "http-proxy", "", "HTTP Proxy address.")
+	generateConfigCmd.Flags().
+		Int32Var(&bfConfCliOptions.maxRetry, "max-retry", 0, "Maximum retry count if the failure codes are retryable.")
+	generateConfigCmd.Flags().
+		Int32Var(&bfConfCliOptions.maxRetryInterval, "max-retry-interval-in-seconds", 0, "Maximum number of seconds between 2 retries.")
+	generateConfigCmd.Flags().
+		Int32Var(&bfConfCliOptions.retryDelayFactor, "retry-delay-factor", 0, "Retry delay between two tries")
 	//invalidate-on-sync is always on - accept it as an arg and just ignore it
 	generateConfigCmd.Flags().Bool("invalidate-on-sync", true, "Invalidate file/dir on sync/fsync")
 	//pre-mount-validate is always on - accept it as an arg and just ignore it
 	generateConfigCmd.Flags().Bool("pre-mount-validate", true, "Validate blobfuse2 is mounted")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.useStreaming, "streaming", false, "Enable Streaming.")
-	generateConfigCmd.Flags().Uint64Var(&bfConfCliOptions.streamCacheSize, "stream-cache-mb", 0, "Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.")
-	generateConfigCmd.Flags().IntVar(&bfConfCliOptions.maxBlocksPerFile, "max-blocks-per-file", 0, "Maximum number of blocks to be cached in memory for streaming.")
-	generateConfigCmd.Flags().Uint64Var(&bfConfCliOptions.blockSize, "block-size-mb", 0, "Size (in MB) of a block to be downloaded during streaming.")
+	generateConfigCmd.Flags().
+		BoolVar(&bfConfCliOptions.useStreaming, "streaming", false, "Enable Streaming.")
+	generateConfigCmd.Flags().
+		Uint64Var(&bfConfCliOptions.streamCacheSize, "stream-cache-mb", 0, "Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.")
+	generateConfigCmd.Flags().
+		IntVar(&bfConfCliOptions.maxBlocksPerFile, "max-blocks-per-file", 0, "Maximum number of blocks to be cached in memory for streaming.")
+	generateConfigCmd.Flags().
+		Uint64Var(&bfConfCliOptions.blockSize, "block-size-mb", 0, "Size (in MB) of a block to be downloaded during streaming.")
 
-	generateConfigCmd.Flags().StringSliceVarP(&libfuseOptions, "o", "o", []string{}, "FUSE options.")
-	generateConfigCmd.Flags().BoolVarP(&bfConfCliOptions.fuseLogging, "d", "d", false, "Mount with foreground and FUSE logs on.")
-	generateConfigCmd.Flags().BoolVar(&convertConfigOnly, "convert-config-only", false, "Don't mount - only convert v1 configuration to v2.")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.ignoreOpenFlags, "ignore-open-flags", false, "Flag to ignore open flags unsupported by blobfuse.")
+	generateConfigCmd.Flags().
+		StringSliceVarP(&libfuseOptions, "o", "o", []string{}, "FUSE options.")
+	generateConfigCmd.Flags().
+		BoolVarP(&bfConfCliOptions.fuseLogging, "d", "d", false, "Mount with foreground and FUSE logs on.")
+	generateConfigCmd.Flags().
+		BoolVar(&convertConfigOnly, "convert-config-only", false, "Don't mount - only convert v1 configuration to v2.")
+	generateConfigCmd.Flags().
+		BoolVar(&bfConfCliOptions.ignoreOpenFlags, "ignore-open-flags", false, "Flag to ignore open flags unsupported by blobfuse.")
 
 	// options that are not available in V2:
-	generateConfigCmd.Flags().Bool("set-content-type", false, "Turns on automatic 'content-type' property based on the file extension.")
-	generateConfigCmd.Flags().String("ca-cert-file", "", "Specifies the proxy pem certificate path if its not in the default path.")
-	generateConfigCmd.Flags().Bool("basic-remount-check", false, "Check for an already mounted status using /etc/mtab.")
-	generateConfigCmd.Flags().Bool("background-download", false, "File download to run in the background on open call.")
-	generateConfigCmd.Flags().Uint64("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
-	generateConfigCmd.Flags().Bool("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
-	generateConfigCmd.Flags().Bool("debug-libcurl", false, "Flag to allow users to debug libcurl calls.")
+	generateConfigCmd.Flags().
+		Bool("set-content-type", false, "Turns on automatic 'content-type' property based on the file extension.")
+	generateConfigCmd.Flags().
+		String("ca-cert-file", "", "Specifies the proxy pem certificate path if its not in the default path.")
+	generateConfigCmd.Flags().
+		Bool("basic-remount-check", false, "Check for an already mounted status using /etc/mtab.")
+	generateConfigCmd.Flags().
+		Bool("background-download", false, "File download to run in the background on open call.")
+	generateConfigCmd.Flags().
+		Uint64("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
+	generateConfigCmd.Flags().
+		Bool("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
+	generateConfigCmd.Flags().
+		Bool("debug-libcurl", false, "Flag to allow users to debug libcurl calls.")
 
 	// flags for gen1 mount
 	generateConfigCmd.Flags().BoolVar(&enableGen1, "enable-gen1", false, "To enable Gen1 mount")
-	generateConfigCmd.Flags().IntVar(&reqFreeSpaceMB, "required-free-space-mb", 0, "Required free space in MB")
+	generateConfigCmd.Flags().
+		IntVar(&reqFreeSpaceMB, "required-free-space-mb", 0, "Required free space in MB")
 }

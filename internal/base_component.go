@@ -286,7 +286,9 @@ func (base *BaseComponent) GetAttr(options GetAttrOptions) (*ObjAttr, error) {
 	return &ObjAttr{}, nil
 }
 
-func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
+func (base *BaseComponent) GetFileBlockOffsets(
+	options GetFileBlockOffsetsOptions,
+) (*common.BlockOffsetList, error) {
 	if base.next != nil {
 		return base.next.GetFileBlockOffsets(options)
 	}

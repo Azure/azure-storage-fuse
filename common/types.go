@@ -76,7 +76,21 @@ const (
 )
 
 func FuseIgnoredFlags() []string {
-	return []string{"default_permissions", "rw", "dev", "nodev", "suid", "nosuid", "delay_connect", "auto", "noauto", "user", "nouser", "exec", "noexec"}
+	return []string{
+		"default_permissions",
+		"rw",
+		"dev",
+		"nodev",
+		"suid",
+		"nosuid",
+		"delay_connect",
+		"auto",
+		"noauto",
+		"user",
+		"nouser",
+		"exec",
+		"noexec",
+	}
 }
 
 var Blobfuse2Version = Blobfuse2Version_()
@@ -213,7 +227,8 @@ func (bol BlockOffsetList) BinarySearch(offset int64) (bool, int) {
 	for lowerBound <= higherBound {
 		middleIndex := (lowerBound + higherBound) / 2
 		// we found the starting block that changes are being applied to
-		if bol.BlockList[middleIndex].EndIndex > offset && bol.BlockList[middleIndex].StartIndex <= offset {
+		if bol.BlockList[middleIndex].EndIndex > offset &&
+			bol.BlockList[middleIndex].StartIndex <= offset {
 			return true, middleIndex
 			// if the end index is smaller or equal then we need to increase our lower bound
 		} else if bol.BlockList[middleIndex].EndIndex <= offset {
@@ -240,7 +255,8 @@ func (bol BlockOffsetList) FindBlocks(offset, length int64) ([]*Block, bool) {
 		if blk.StartIndex > offset+length {
 			break
 		}
-		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
+		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex &&
+			currentBlockOffset <= offset+length {
 			blocks = append(blocks, blk)
 			currentBlockOffset = blk.EndIndex
 		}
@@ -263,7 +279,8 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 		if blk.StartIndex > offset+length {
 			break
 		}
-		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
+		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex &&
+			currentBlockOffset <= offset+length {
 			appendOnly = false
 			blk.Flags.Set(DirtyBlock)
 			currentBlockOffset = blk.EndIndex
@@ -310,8 +327,8 @@ func NewUUID() (u uuid) {
 }
 
 // returns block id of given length
-func GetBlockID(len int64) string {
-	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(len))
+func GetBlockID(length int64) string {
+	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(length))
 }
 
 func GetIdLength(id string) int64 {

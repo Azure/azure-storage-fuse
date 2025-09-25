@@ -71,14 +71,14 @@ type Xload struct {
 
 // Structure defining your config parameters
 type XloadOptions struct {
-	BlockSize      float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	Mode           string  `config:"mode" yaml:"mode,omitempty"`
-	Path           string  `config:"path" yaml:"path,omitempty"`
-	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
-	ValidateMD5    bool    `config:"validate-md5" yaml:"validate-md5,omitempty"`
+	BlockSize      float64 `config:"block-size-mb"    yaml:"block-size-mb,omitempty"`
+	Mode           string  `config:"mode"             yaml:"mode,omitempty"`
+	Path           string  `config:"path"             yaml:"path,omitempty"`
+	ExportProgress bool    `config:"export-progress"  yaml:"path,omitempty"`
+	ValidateMD5    bool    `config:"validate-md5"     yaml:"validate-md5,omitempty"`
 	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
-	Workers        int32   `config:"workers" yaml:"workers,omitempty"`
-	PoolSize       uint32  `config:"pool-size" yaml:"pool-size,omitempty"`
+	Workers        int32   `config:"workers"          yaml:"workers,omitempty"`
+	PoolSize       uint32  `config:"pool-size"        yaml:"pool-size,omitempty"`
 	// TODO:: xload : add parallelism parameter
 }
 
@@ -185,7 +185,7 @@ func (xl *Xload) Configure(_ bool) error {
 		}
 	}
 
-	var mode Mode = EMode.PRELOAD() // using preload as the default mode
+	var mode = EMode.PRELOAD() // using preload as the default mode
 	if len(conf.Mode) > 0 {
 		err = mode.Parse(conf.Mode)
 		if err != nil {
@@ -228,8 +228,15 @@ func (xl *Xload) Configure(_ bool) error {
 
 	xl.poolctx, xl.poolCancelFunc = context.WithCancel(context.Background())
 
-	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v", xl.blockSize,
-		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5)
+	log.Crit(
+		"Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v",
+		xl.blockSize,
+		xl.mode.String(),
+		xl.path,
+		xl.defaultPermission,
+		xl.exportProgress,
+		xl.validateMD5,
+	)
 
 	return nil
 }
@@ -420,7 +427,11 @@ func (xl *Xload) downloadFile(fileName string) error {
 	// create the local path where the file will be downloaded
 	err = os.MkdirAll(filepath.Dir(filepath.Join(xl.path, fileName)), xl.defaultPermission)
 	if err != nil {
-		log.Err("Xload::downloadFile : Failed to create local directory for %s [%s]", fileName, err.Error())
+		log.Err(
+			"Xload::downloadFile : Failed to create local directory for %s [%s]",
+			fileName,
+			err.Error(),
+		)
 		return err
 	}
 
@@ -445,7 +456,12 @@ func (xl *Xload) downloadFile(fileName string) error {
 
 // OpenFile: Download the file if not already downloaded and return the file handle
 func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("Xload::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
+	log.Trace(
+		"Xload::OpenFile : name=%s, flags=%d, mode=%s",
+		options.Name,
+		options.Flags,
+		options.Mode,
+	)
 	localPath := filepath.Join(xl.path, options.Name)
 
 	flock := xl.fileLocks.Get(options.Name)
@@ -515,9 +531,17 @@ func NewXloadComponent() internal.Component {
 func init() {
 	internal.AddComponent(compName, NewXloadComponent)
 
-	workers := config.AddInt32Flag("workers", 100, "number of workers to execute parallel download during preload")
+	workers := config.AddInt32Flag(
+		"workers",
+		100,
+		"number of workers to execute parallel download during preload",
+	)
 	config.BindPFlag(compName+".workers", workers)
 
-	poolSize := config.AddInt32Flag("pool-size", 300, "number of blocks in the blockpool for preload")
+	poolSize := config.AddInt32Flag(
+		"pool-size",
+		300,
+		"number of blocks in the blockpool for preload",
+	)
 	config.BindPFlag(compName+".pool-size", poolSize)
 }

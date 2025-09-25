@@ -80,7 +80,8 @@ func getPid(blobfuse2Pid string) (string, error) {
 	}
 	processes := strings.SplitSeq(string(out), "\n")
 	for process := range processes {
-		if strings.Contains(process, "bfusemon") && strings.Contains(process, fmt.Sprintf("--pid=%s", blobfuse2Pid)) {
+		if strings.Contains(process, "bfusemon") &&
+			strings.Contains(process, fmt.Sprintf("--pid=%s", blobfuse2Pid)) {
 			re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
 			pids := re.FindAllString(process, 1)
 			if pids == nil {
@@ -111,6 +112,7 @@ func init() {
 	healthMonCmd.AddCommand(healthMonStop)
 	healthMonStop.AddCommand(healthMonStopAll)
 
-	healthMonStop.Flags().StringVar(&blobfuse2Pid, "pid", "", "Blobfuse2 PID associated with the health monitor that should be stopped")
+	healthMonStop.Flags().
+		StringVar(&blobfuse2Pid, "pid", "", "Blobfuse2 PID associated with the health monitor that should be stopped")
 	_ = healthMonStop.MarkFlagRequired("pid")
 }

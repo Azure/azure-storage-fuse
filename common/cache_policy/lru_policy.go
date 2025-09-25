@@ -112,7 +112,11 @@ func (cache *LRUCache) Put(key int64, value *common.Block) bool {
 
 func (cache *LRUCache) Print() {
 	for _, value := range cache.Elements {
-		log.Debug("Key:%+v,Value:%+v\n", getKeyPair(value).value.StartIndex, getKeyPair(value).value.EndIndex)
+		log.Debug(
+			"Key:%+v,Value:%+v\n",
+			getKeyPair(value).value.StartIndex,
+			getKeyPair(value).value.EndIndex,
+		)
 	}
 }
 

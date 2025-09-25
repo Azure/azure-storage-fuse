@@ -1,0 +1,57 @@
+version: "2"
+
+# Here is the full list of customizable features
+# https://github.com/golangci/golangci-lint/blob/master/.golangci.reference.yml
+linters:
+  enable:
+    - errcheck # Errcheck is a program for checking for unchecked errors in go programs.
+    - gocheckcompilerdirectives # Checks that go compiler directive comments (//go:) are valid.
+    - govet # Vet examines Go source code and reports suspicious constructs
+    - ineffassign # Detects when assignments to existing variables are not used
+    - misspell # Finds commonly misspelled English words in comments.
+    - predeclared # Find code that shadows one of Go's predeclared identifiers.
+    - staticcheck # Set of rules from staticcheck.
+    - testifylint # Checks usage of github.com/stretchr/testify.
+    - unused # Checks Go code for unused constants, variables, functions and types
+  settings:
+    testifylint:
+      # Enable all checkers (https://github.com/Antonboom/testifylint#checkers).
+      enable-all: true
+      disable:
+        - require-error
+        - suite-thelper
+    staticcheck:
+      checks: ["all", "-ST1003", "-ST1005"]
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - component/azstorage/config.go
+      - common/version.go
+    rules:
+      - path: component/libfuse/libfuse2_handler_test_wrapper.go
+        text: "(\\w) (\\w+|\\(\\*\\w+\\)\\.\\w+) is unused"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - golines
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

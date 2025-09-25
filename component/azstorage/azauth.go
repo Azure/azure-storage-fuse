@@ -220,12 +220,18 @@ func (base *azOAuthBase) getAzIdentityClientOptions(config *azAuthConfig) azcore
 	}
 
 	if config.ActiveDirectoryEndpoint != "" {
-		log.Debug("azAuthBase::getAzIdentityClientOptions : ActiveDirectoryAuthorityHost = %s", config.ActiveDirectoryEndpoint)
+		log.Debug(
+			"azAuthBase::getAzIdentityClientOptions : ActiveDirectoryAuthorityHost = %s",
+			config.ActiveDirectoryEndpoint,
+		)
 		opts.Cloud.ActiveDirectoryAuthorityHost = config.ActiveDirectoryEndpoint
 	}
 	if config.AuthResource != "" {
 		if val, ok := opts.Cloud.Services[cloud.ResourceManager]; ok {
-			log.Debug("azAuthBase::getAzIdentityClientOptions : AuthResource = %s", config.AuthResource)
+			log.Debug(
+				"azAuthBase::getAzIdentityClientOptions : AuthResource = %s",
+				config.AuthResource,
+			)
 			val.Endpoint = config.AuthResource
 			opts.Cloud.Services[cloud.ResourceManager] = val
 		}

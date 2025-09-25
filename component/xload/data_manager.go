@@ -63,11 +63,16 @@ type remoteDataManagerOptions struct {
 
 func newRemoteDataManager(opts *remoteDataManagerOptions) (*remoteDataManager, error) {
 	if opts == nil || opts.remote == nil || opts.statsMgr == nil || opts.workerCount == 0 {
-		log.Err("data_manager::NewRemoteDataManager : invalid parameters sent to create remote data manager")
+		log.Err(
+			"data_manager::NewRemoteDataManager : invalid parameters sent to create remote data manager",
+		)
 		return nil, fmt.Errorf("invalid parameters sent to create remote data manager")
 	}
 
-	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager, workers %v", opts.workerCount)
+	log.Debug(
+		"data_manager::NewRemoteDataManager : create new remote data manager, workers %v",
+		opts.workerCount,
+	)
 
 	rdm := &remoteDataManager{}
 
@@ -103,8 +108,16 @@ func (rdm *remoteDataManager) Stop() {
 func (rdm *remoteDataManager) Process(item *WorkItem) (int, error) {
 	select {
 	case <-item.Ctx.Done(): // listen for cancellation signal
-		log.Err("remoteDataManager::Process : Cancelling download for offset %v of %v", item.Block.Offset, item.Path)
-		return 0, fmt.Errorf("cancelling download for offset %v of %v", item.Block.Offset, item.Path)
+		log.Err(
+			"remoteDataManager::Process : Cancelling download for offset %v of %v",
+			item.Block.Offset,
+			item.Path,
+		)
+		return 0, fmt.Errorf(
+			"cancelling download for offset %v of %v",
+			item.Block.Offset,
+			item.Path,
+		)
 
 	default:
 		if item.Download {
@@ -159,7 +172,12 @@ func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 */
 
 // send stats to stats manager
-func (rdm *remoteDataManager) sendStats(path string, isDownload bool, bytesTransferred uint64, isSuccess bool) {
+func (rdm *remoteDataManager) sendStats(
+	path string,
+	isDownload bool,
+	bytesTransferred uint64,
+	isSuccess bool,
+) {
 	rdm.GetStatsManager().AddStats(&StatsItem{
 		Component:        DATA_MANAGER,
 		Name:             path,

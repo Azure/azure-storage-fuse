@@ -69,7 +69,10 @@ var docCmd = &cobra.Command{
 		// it will include this command too, which is intended
 		err = doc.GenMarkdownTree(rootCmd, docCmdInput.outputLocation)
 		if err != nil {
-			return fmt.Errorf("cannot generate command tree [%s]. Please contact the dev team", err.Error())
+			return fmt.Errorf(
+				"cannot generate command tree [%s]. Please contact the dev team",
+				err.Error(),
+			)
 		}
 		return nil
 	},

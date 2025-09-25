@@ -96,11 +96,17 @@ func NewStatsManager(count uint32, isExportEnabled bool, pool *BlockPool) (*Stat
 	var err error
 	if isExportEnabled {
 		pid := fmt.Sprintf("%v", os.Getpid())
-		path := common.ExpandPath(filepath.Join(common.DefaultWorkDir, strings.ReplaceAll(JSON_FILE_NAME, "{PID}", pid)))
+		path := common.ExpandPath(
+			filepath.Join(common.DefaultWorkDir, strings.ReplaceAll(JSON_FILE_NAME, "{PID}", pid)),
+		)
 		log.Crit("statsManager::NewStatsManager : creating json file %v", path)
 		fh, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
-			log.Err("statsManager::NewStatsManager : failed to create json file %v [%v]", path, err.Error())
+			log.Err(
+				"statsManager::NewStatsManager : failed to create json file %v [%v]",
+				path,
+				err.Error(),
+			)
 			return nil, err
 		}
 	}
@@ -116,7 +122,10 @@ func NewStatsManager(count uint32, isExportEnabled bool, pool *BlockPool) (*Stat
 func (sm *StatsManager) Start() {
 	sm.waitGroup.Add(1)
 	sm.startTime = time.Now().UTC()
-	log.Debug("statsManager::start : start stats manager at time %v", sm.startTime.Format(time.RFC1123))
+	log.Debug(
+		"statsManager::start : start stats manager at time %v",
+		sm.startTime.Format(time.RFC1123),
+	)
 	_ = sm.writeToJSON([]byte("[\n"), false)
 	_ = sm.marshalStatsData(&statsJSONData{Timestamp: sm.startTime.Format(time.RFC1123)}, false)
 	_ = sm.writeToJSON([]byte("\n]"), false)
@@ -129,7 +138,9 @@ func (sm *StatsManager) Start() {
 func (sm *StatsManager) Stop() {
 	log.Debug("statsManager::stop : stop stats manager")
 	sm.done <- true // close the stats exporter thread
-	close(sm.done)  // TODO::xload : check if closing the done channel here will lead to closing the stats exporter thread
+	close(
+		sm.done,
+	) // TODO::xload : check if closing the done channel here will lead to closing the stats exporter thread
 	close(sm.items)
 	sm.waitGroup.Wait()
 
@@ -212,7 +223,10 @@ func (sm *StatsManager) statsExporter() {
 
 func (sm *StatsManager) calculateBandwidth() {
 	if sm.totalFiles == 0 {
-		log.Debug("statsManager::calculateBandwidth : skipping as total files listed so far is %v", sm.totalFiles)
+		log.Debug(
+			"statsManager::calculateBandwidth : skipping as total files listed so far is %v",
+			sm.totalFiles,
+		)
 		return
 	}
 
@@ -225,12 +239,12 @@ func (sm *StatsManager) calculateBandwidth() {
 	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(MB))
 	diskSpeedMbps := float64(sm.diskIOBytes*8) / (timeLapsed * float64(MB))
 
-	var max, pr, reg uint32
+	var maxUsage, pr, reg uint32
 	var waiting int32
 	var poolusage uint32
 
 	if sm.pool != nil {
-		max, pr, reg, waiting = sm.pool.GetUsageDetails()
+		maxUsage, pr, reg, waiting = sm.pool.GetUsageDetails()
 		sm.pool.Usage()
 	}
 
@@ -238,7 +252,7 @@ func (sm *StatsManager) calculateBandwidth() {
 		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f, Disk Speed (Mbps): %.2f, Blockpool usage: %v%%, (%v / %v / %v : %v), Time: %.2f",
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
 		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps, diskSpeedMbps, poolusage,
-		max, pr, reg, waiting, timeLapsed)
+		maxUsage, pr, reg, waiting, timeLapsed)
 
 	if sm.fileHandle != nil {
 		err := sm.marshalStatsData(&statsJSONData{
@@ -252,7 +266,10 @@ func (sm *StatsManager) calculateBandwidth() {
 			BandwidthMbps:    RoundFloat(bandwidthMbps, 2),
 		}, true)
 		if err != nil {
-			log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
+			log.Err(
+				"statsManager::calculateBandwidth : failed to write to json file [%v]",
+				err.Error(),
+			)
 		}
 	}
 

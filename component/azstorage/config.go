@@ -152,55 +152,55 @@ const (
 )
 
 type AzStorageOptions struct {
-	AccountType             string `config:"type" yaml:"type,omitempty"`
-	UseHTTP                 bool   `config:"use-http" yaml:"use-http,omitempty"`
-	AccountName             string `config:"account-name" yaml:"account-name,omitempty"`
-	AccountKey              string `config:"account-key" yaml:"account-key,omitempty"`
-	SaSKey                  string `config:"sas" yaml:"sas,omitempty"`
-	ApplicationID           string `config:"appid" yaml:"appid,omitempty"`
-	ResourceID              string `config:"resid" yaml:"resid,omitempty"`
-	ObjectID                string `config:"objid" yaml:"objid,omitempty"`
-	TenantID                string `config:"tenantid" yaml:"tenantid,omitempty"`
-	ClientID                string `config:"clientid" yaml:"clientid,omitempty"`
-	ClientSecret            string `config:"clientsecret" yaml:"clientsecret,omitempty"`
-	OAuthTokenFilePath      string `config:"oauth-token-path" yaml:"oauth-token-path,omitempty"`
-	WorkloadIdentityToken   string `config:"workload-identity-token" yaml:"workload-identity-token,omitempty"`
-	ActiveDirectoryEndpoint string `config:"aadendpoint" yaml:"aadendpoint,omitempty"`
-	Endpoint                string `config:"endpoint" yaml:"endpoint,omitempty"`
-	AuthMode                string `config:"mode" yaml:"mode,omitempty"`
-	Container               string `config:"container" yaml:"container,omitempty"`
-	PrefixPath              string `config:"subdirectory" yaml:"subdirectory,omitempty"`
-	BlockSize               int64  `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	MaxConcurrency          uint16 `config:"max-concurrency" yaml:"max-concurrency,omitempty"`
-	DefaultTier             string `config:"tier" yaml:"tier,omitempty"`
-	CancelListForSeconds    uint16 `config:"block-list-on-mount-sec" yaml:"block-list-on-mount-sec,omitempty"`
-	MaxRetries              int32  `config:"max-retries" yaml:"max-retries,omitempty"`
-	MaxTimeout              int32  `config:"max-retry-timeout-sec" yaml:"max-retry-timeout-sec,omitempty"`
-	BackoffTime             int32  `config:"retry-backoff-sec" yaml:"retry-backoff-sec,omitempty"`
-	MaxRetryDelay           int32  `config:"max-retry-delay-sec" yaml:"max-retry-delay-sec,omitempty"`
-	HttpProxyAddress        string `config:"http-proxy" yaml:"http-proxy,omitempty"`
-	HttpsProxyAddress       string `config:"https-proxy" yaml:"https-proxy,omitempty"`
-	FailUnsupportedOp       bool   `config:"fail-unsupported-op" yaml:"fail-unsupported-op,omitempty"`
-	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
-	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
-	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
-	VirtualDirectory        bool   `config:"virtual-directory" yaml:"virtual-directory"`
-	MaxResultsForList       int32  `config:"max-results-for-list" yaml:"max-results-for-list"`
-	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
-	Telemetry               string `config:"telemetry" yaml:"telemetry"`
-	HonourACL               bool   `config:"honour-acl" yaml:"honour-acl"`
-	CPKEnabled              bool   `config:"cpk-enabled" yaml:"cpk-enabled"`
-	CPKEncryptionKey        string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
+	AccountType             string `config:"type"                      yaml:"type,omitempty"`
+	UseHTTP                 bool   `config:"use-http"                  yaml:"use-http,omitempty"`
+	AccountName             string `config:"account-name"              yaml:"account-name,omitempty"`
+	AccountKey              string `config:"account-key"               yaml:"account-key,omitempty"`
+	SaSKey                  string `config:"sas"                       yaml:"sas,omitempty"`
+	ApplicationID           string `config:"appid"                     yaml:"appid,omitempty"`
+	ResourceID              string `config:"resid"                     yaml:"resid,omitempty"`
+	ObjectID                string `config:"objid"                     yaml:"objid,omitempty"`
+	TenantID                string `config:"tenantid"                  yaml:"tenantid,omitempty"`
+	ClientID                string `config:"clientid"                  yaml:"clientid,omitempty"`
+	ClientSecret            string `config:"clientsecret"              yaml:"clientsecret,omitempty"`
+	OAuthTokenFilePath      string `config:"oauth-token-path"          yaml:"oauth-token-path,omitempty"`
+	WorkloadIdentityToken   string `config:"workload-identity-token"   yaml:"workload-identity-token,omitempty"`
+	ActiveDirectoryEndpoint string `config:"aadendpoint"               yaml:"aadendpoint,omitempty"`
+	Endpoint                string `config:"endpoint"                  yaml:"endpoint,omitempty"`
+	AuthMode                string `config:"mode"                      yaml:"mode,omitempty"`
+	Container               string `config:"container"                 yaml:"container,omitempty"`
+	PrefixPath              string `config:"subdirectory"              yaml:"subdirectory,omitempty"`
+	BlockSize               int64  `config:"block-size-mb"             yaml:"block-size-mb,omitempty"`
+	MaxConcurrency          uint16 `config:"max-concurrency"           yaml:"max-concurrency,omitempty"`
+	DefaultTier             string `config:"tier"                      yaml:"tier,omitempty"`
+	CancelListForSeconds    uint16 `config:"block-list-on-mount-sec"   yaml:"block-list-on-mount-sec,omitempty"`
+	MaxRetries              int32  `config:"max-retries"               yaml:"max-retries,omitempty"`
+	MaxTimeout              int32  `config:"max-retry-timeout-sec"     yaml:"max-retry-timeout-sec,omitempty"`
+	BackoffTime             int32  `config:"retry-backoff-sec"         yaml:"retry-backoff-sec,omitempty"`
+	MaxRetryDelay           int32  `config:"max-retry-delay-sec"       yaml:"max-retry-delay-sec,omitempty"`
+	HttpProxyAddress        string `config:"http-proxy"                yaml:"http-proxy,omitempty"`
+	HttpsProxyAddress       string `config:"https-proxy"               yaml:"https-proxy,omitempty"`
+	FailUnsupportedOp       bool   `config:"fail-unsupported-op"       yaml:"fail-unsupported-op,omitempty"`
+	AuthResourceString      string `config:"auth-resource"             yaml:"auth-resource,omitempty"`
+	UpdateMD5               bool   `config:"update-md5"                yaml:"update-md5"`
+	ValidateMD5             bool   `config:"validate-md5"              yaml:"validate-md5"`
+	VirtualDirectory        bool   `config:"virtual-directory"         yaml:"virtual-directory"`
+	MaxResultsForList       int32  `config:"max-results-for-list"      yaml:"max-results-for-list"`
+	DisableCompression      bool   `config:"disable-compression"       yaml:"disable-compression"`
+	Telemetry               string `config:"telemetry"                 yaml:"telemetry"`
+	HonourACL               bool   `config:"honour-acl"                yaml:"honour-acl"`
+	CPKEnabled              bool   `config:"cpk-enabled"               yaml:"cpk-enabled"`
+	CPKEncryptionKey        string `config:"cpk-encryption-key"        yaml:"cpk-encryption-key"`
 	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
-	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
-	Filter                  string `config:"filter" yaml:"filter"`
-	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
+	PreserveACL             bool   `config:"preserve-acl"              yaml:"preserve-acl"`
+	Filter                  string `config:"filter"                    yaml:"filter"`
+	UserAssertion           string `config:"user-assertion"            yaml:"user-assertions"`
 
 	// v1 support
-	UseAdls        bool   `config:"use-adls" yaml:"-"`
-	UseHTTPS       bool   `config:"use-https" yaml:"-"`
+	UseAdls        bool   `config:"use-adls"         yaml:"-"`
+	UseHTTPS       bool   `config:"use-https"        yaml:"-"`
 	SetContentType bool   `config:"set-content-type" yaml:"-"`
-	CaCertFile     string `config:"ca-cert-file" yaml:"-"`
+	CaCertFile     string `config:"ca-cert-file"     yaml:"-"`
 }
 
 // RegisterEnvVariables : Register environment varilables
@@ -248,8 +248,8 @@ func formatEndpointProtocol(endpoint string, http bool) string {
 	// If the pvtEndpoint does not have protocol mentioned in front, pvtEndpoint parsing will fail while
 	// creating URI also the string shall end with "/"
 	if correctedEndpoint != "" {
-		if !(strings.HasPrefix(correctedEndpoint, "https://") ||
-			strings.HasPrefix(correctedEndpoint, "http://")) {
+		if !strings.HasPrefix(correctedEndpoint, "https://") &&
+			!strings.HasPrefix(correctedEndpoint, "http://") {
 			if http {
 				correctedEndpoint = "http://" + correctedEndpoint
 			} else {
@@ -294,7 +294,9 @@ func validateMsiConfig(opt AzStorageOptions) error {
 		v[opt.ResourceID] = true
 	}
 	if len(v) > 1 {
-		return errors.New("client ID, object ID and MSI resource ID are mutually exclusive and zero or one of the inputs need to be provided")
+		return errors.New(
+			"client ID, object ID and MSI resource ID are mutually exclusive and zero or one of the inputs need to be provided",
+		)
 	}
 	return nil
 }
@@ -338,7 +340,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	if opt.BlockSize != 0 {
 		if opt.BlockSize > blockblob.MaxStageBlockBytes {
-			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes", blockblob.MaxStageBlockBytes)
+			log.Err(
+				"ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes",
+				blockblob.MaxStageBlockBytes,
+			)
 			return errors.New("block size is too large")
 		}
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
@@ -372,7 +377,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	// Validate endpoint
 	if opt.Endpoint == "" {
-		log.Warn("ParseAndValidateConfig : account endpoint not provided, assuming the default .core.windows.net style endpoint")
+		log.Warn(
+			"ParseAndValidateConfig : account endpoint not provided, assuming the default .core.windows.net style endpoint",
+		)
 		if az.stConfig.authConfig.AccountType == EAccountType.BLOCK() {
 			opt.Endpoint = fmt.Sprintf("%s.blob.core.windows.net", opt.AccountName)
 		} else if az.stConfig.authConfig.AccountType == EAccountType.ADLS() {
@@ -380,11 +387,20 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 	}
 	az.stConfig.authConfig.Endpoint = opt.Endpoint
-	az.stConfig.authConfig.Endpoint = formatEndpointProtocol(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
-	az.stConfig.authConfig.Endpoint = formatEndpointAccountType(az.stConfig.authConfig.Endpoint, az.stConfig.authConfig.AccountType)
+	az.stConfig.authConfig.Endpoint = formatEndpointProtocol(
+		az.stConfig.authConfig.Endpoint,
+		opt.UseHTTP,
+	)
+	az.stConfig.authConfig.Endpoint = formatEndpointAccountType(
+		az.stConfig.authConfig.Endpoint,
+		az.stConfig.authConfig.AccountType,
+	)
 
 	az.stConfig.authConfig.ActiveDirectoryEndpoint = opt.ActiveDirectoryEndpoint
-	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndpointProtocol(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
+	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndpointProtocol(
+		az.stConfig.authConfig.ActiveDirectoryEndpoint,
+		false,
+	)
 
 	// If subdirectory is mounted, take the prefix path
 	az.stConfig.prefixPath = removeLeadingSlashes(opt.PrefixPath)
@@ -416,7 +432,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 	}
 	az.stConfig.proxyAddress = formatEndpointProtocol(az.stConfig.proxyAddress, opt.UseHTTP)
-	log.Info("ParseAndValidateConfig : using the following proxy address from the config file: %s", az.stConfig.proxyAddress)
+	log.Info(
+		"ParseAndValidateConfig : using the following proxy address from the config file: %s",
+		az.stConfig.proxyAddress,
+	)
 
 	err = ParseAndReadDynamicConfig(az, opt, false)
 	if err != nil {
@@ -463,9 +482,13 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
-		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.OAuthTokenFilePath == "" && opt.WorkloadIdentityToken == "") || opt.TenantID == "" {
+		if opt.ClientID == "" ||
+			(opt.ClientSecret == "" && opt.OAuthTokenFilePath == "" && opt.WorkloadIdentityToken == "") ||
+			opt.TenantID == "" {
 			//lint:ignore ST1005 ignore
-			return errors.New("Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
+			return errors.New(
+				"Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided",
+			)
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
@@ -516,7 +539,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Warn("unsupported v1 CLI parameter: set-content-type is always true in blobfuse2.")
 	}
 	if config.IsSet(compName + ".ca-cert-file") {
-		log.Warn("unsupported v1 CLI parameter: ca-cert-file is not supported in blobfuse2. Use the default ca cert path for your environment.")
+		log.Warn(
+			"unsupported v1 CLI parameter: ca-cert-file is not supported in blobfuse2. Use the default ca cert path for your environment.",
+		)
 	}
 	if config.IsSet(compName + ".debug-libcurl") {
 		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
@@ -530,14 +555,43 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 	}
 
-	log.Crit("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
-		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
-		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.disableCompression, az.stConfig.cpkEnabled)
-	log.Crit("ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
-	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
-		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
+	log.Crit(
+		"ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
+		az.stConfig.authConfig.AccountName,
+		az.stConfig.container,
+		az.stConfig.authConfig.AccountType,
+		az.stConfig.authConfig.AuthMode,
+		az.stConfig.prefixPath,
+		az.stConfig.authConfig.Endpoint,
+		az.stConfig.validateMD5,
+		az.stConfig.updateMD5,
+		az.stConfig.virtualDirectory,
+		az.stConfig.disableCompression,
+		az.stConfig.cpkEnabled,
+	)
+	log.Crit(
+		"ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t",
+		az.stConfig.authConfig.UseHTTP,
+		az.stConfig.blockSize,
+		az.stConfig.maxConcurrency,
+		az.stConfig.defaultTier,
+		az.stConfig.ignoreAccessModifiers,
+		az.stConfig.mountAllContainers,
+	)
+	log.Crit(
+		"ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
+		az.stConfig.maxRetries,
+		az.stConfig.maxTimeout,
+		az.stConfig.backoffTime,
+		az.stConfig.maxRetryDelay,
+		az.stConfig.preserveACL,
+	)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
+	log.Crit(
+		"ParseAndValidateConfig : Telemetry : %s, honour-ACL %v",
+		az.stConfig.telemetry,
+		az.stConfig.honourACL,
+	)
 
 	return nil
 }

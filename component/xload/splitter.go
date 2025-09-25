@@ -76,12 +76,20 @@ type downloadSplitterOptions struct {
 }
 
 func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, error) {
-	if opts == nil || opts.blockPool == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.fileLocks == nil || opts.workerCount == 0 {
+	if opts == nil || opts.blockPool == nil || opts.path == "" || opts.remote == nil ||
+		opts.statsMgr == nil ||
+		opts.fileLocks == nil ||
+		opts.workerCount == 0 {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create download splitter")
 		return nil, fmt.Errorf("invalid parameters sent to create download splitter")
 	}
 
-	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v, workers %v", opts.path, opts.blockPool.GetBlockSize(), opts.workerCount)
+	log.Debug(
+		"splitter::NewDownloadSplitter : create new download splitter for %s, block size %v, workers %v",
+		opts.path,
+		opts.blockPool.GetBlockSize(),
+		opts.workerCount,
+	)
 
 	ds := &downloadSplitter{
 		splitter: splitter{
@@ -122,8 +130,15 @@ func (ds *downloadSplitter) Stop() {
 
 // download data in chunks and then write to the local file
 func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
-	log.Debug("downloadSplitter::Process : Splitting data for %s, size %v, mode %v, priority %v, access time %v, modified time %v", item.Path, item.DataLen,
-		item.Mode, item.Priority, item.Atime.Format(time.DateTime), item.Mtime.Format(time.DateTime))
+	log.Debug(
+		"downloadSplitter::Process : Splitting data for %s, size %v, mode %v, priority %v, access time %v, modified time %v",
+		item.Path,
+		item.DataLen,
+		item.Mode,
+		item.Priority,
+		item.Atime.Format(time.DateTime),
+		item.Mtime.Format(time.DateTime),
+	)
 
 	var err error
 	localPath := filepath.Join(ds.path, item.Path)
@@ -176,12 +191,20 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	// truncate the file to its size
 	err = item.FileHandle.Truncate(int64(item.DataLen))
 	if err != nil {
-		log.Err("downloadSplitter::Process : Failed to truncate file %s, so deleting it from local path [%s]", item.Path, err.Error())
+		log.Err(
+			"downloadSplitter::Process : Failed to truncate file %s, so deleting it from local path [%s]",
+			item.Path,
+			err.Error(),
+		)
 
 		// delete the file which failed to truncate from the local path
 		err1 := os.Remove(localPath)
 		if err1 != nil {
-			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err1.Error())
+			log.Err(
+				"downloadSplitter::Process : Failed to delete file %s [%s]",
+				item.Path,
+				err1.Error(),
+			)
 		}
 
 		return -1, fmt.Errorf("failed to truncate file %s [%s]", item.Path, err.Error())
@@ -209,7 +232,10 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 				return
 			case respSplitItem := <-responseChannel:
 				if respSplitItem.Err != nil {
-					log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
+					log.Err(
+						"downloadSplitter::Process : Failed to download data for file %s",
+						item.Path,
+					)
 					operationSuccess = false
 					cancel() // cancel the context to stop download of other chunks
 				} else {
@@ -277,14 +303,22 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		// TODO:: xload : verify if the lmt is updated correctly
 		err = os.Chtimes(localPath, item.Atime, item.Mtime)
 		if err != nil {
-			log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
+			log.Err(
+				"downloadSplitter::Process : Failed to change times of file %s [%s]",
+				item.Path,
+				err.Error(),
+			)
 		}
 
 		if ds.validateMD5 {
 			err = ds.checkConsistency(item)
 			if err != nil {
 				// TODO:: xload : retry if md5 validation fails
-				log.Err("downloadSplitter::Process : unable to validate md5 for %s [%s]", item.Path, err.Error())
+				log.Err(
+					"downloadSplitter::Process : unable to validate md5 for %s [%s]",
+					item.Path,
+					err.Error(),
+				)
 				operationSuccess = false
 			}
 		}
@@ -299,18 +333,29 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	})
 
 	if !operationSuccess {
-		log.Err("downloadSplitter::Process : Failed to download data for file %s, so deleting it from local path", item.Path)
+		log.Err(
+			"downloadSplitter::Process : Failed to download data for file %s, so deleting it from local path",
+			item.Path,
+		)
 
 		// delete the file which failed to download from the local path
 		err = os.Remove(localPath)
 		if err != nil {
-			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err.Error())
+			log.Err(
+				"downloadSplitter::Process : Failed to delete file %s [%s]",
+				item.Path,
+				err.Error(),
+			)
 		}
 
 		return -1, fmt.Errorf("failed to download data for file %s", item.Path)
 	}
 
-	log.Debug("downloadSplitter::Process : Download completed for file %s, priority %v", item.Path, item.Priority)
+	log.Debug(
+		"downloadSplitter::Process : Download completed for file %s, priority %v",
+		item.Path,
+		item.Priority,
+	)
 	return 0, nil
 }
 

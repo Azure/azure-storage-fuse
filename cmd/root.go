@@ -75,7 +75,9 @@ var rootCmd = &cobra.Command{
 				return err
 			}
 		}
-		return errors.New("missing command options\n\nDid you mean this?\n\tblobfuse2 mount\n\nRun 'blobfuse2 --help' for usage")
+		return errors.New(
+			"missing command options\n\nDid you mean this?\n\tblobfuse2 mount\n\nRun 'blobfuse2 --help' for usage",
+		)
 	},
 }
 
@@ -167,9 +169,22 @@ func beginDetectNewVersion() chan any {
 
 			if isBlocked {
 				// This version is blocked and customer shall not be allowed to use this.
-				blockedPage := common.BlobFuse2BlockingURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
-				fmt.Fprintf(stderr, "PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
-				log.Warn("PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
+				blockedPage := common.BlobFuse2BlockingURL + "#" + strings.ReplaceAll(
+					strings.ReplaceAll(common.Blobfuse2Version, ".", ""),
+					"~",
+					"",
+				)
+				fmt.Fprintf(
+					stderr,
+					"PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n",
+					blockedPage,
+					common.Blobfuse2Version,
+				)
+				log.Warn(
+					"PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n",
+					blockedPage,
+					common.Blobfuse2Version,
+				)
 				os.Exit(1)
 			} else {
 				// This version is not blocked but has know issues list which customer shall visit.
@@ -180,11 +195,22 @@ func beginDetectNewVersion() chan any {
 		}
 
 		if local.OlderThan(*remote) {
-			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
+			executablePathSegments := strings.Split(strings.ReplaceAll(os.Args[0], "\\", "/"), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
-			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
-			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
-			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			log.Info(
+				"beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s",
+				common.Blobfuse2Version,
+				remoteVersion,
+			)
+			fmt.Fprintf(
+				stderr,
+				"*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n",
+				remoteVersion,
+			)
+			log.Info(
+				"*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n",
+				remoteVersion,
+			)
 
 			completed <- "A new version of Blobfuse2 is available"
 		}
@@ -198,7 +224,9 @@ func VersionCheck() error {
 	//either wait till this routine completes or timeout if it exceeds 8 secs
 	case <-beginDetectNewVersion():
 	case <-time.After(8 * time.Second):
-		return fmt.Errorf("unable to obtain latest version information. please check your internet connection")
+		return fmt.Errorf(
+			"unable to obtain latest version information. please check your internet connection",
+		)
 	}
 	return nil
 }
@@ -288,5 +316,6 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&disableVersionCheck, "disable-version-check", false, "To disable version check that is performed automatically")
+	rootCmd.PersistentFlags().
+		BoolVar(&disableVersionCheck, "disable-version-check", false, "To disable version check that is performed automatically")
 }

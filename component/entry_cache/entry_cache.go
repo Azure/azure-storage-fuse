@@ -126,7 +126,9 @@ func (c *EntryCache) Configure(_ bool) error {
 	}
 
 	if !readonly {
-		log.Err("EntryCache::Configure : EntryCache component should be used only in read-only mode")
+		log.Err(
+			"EntryCache::Configure : EntryCache component should be used only in read-only mode",
+		)
 		return fmt.Errorf("EntryCache component should be used in only in read-only mode")
 	}
 
@@ -155,7 +157,9 @@ func (c *EntryCache) Configure(_ bool) error {
 }
 
 // StreamDir : Optionally cache entries of the list
-func (c *EntryCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+func (c *EntryCache) StreamDir(
+	options internal.StreamDirOptions,
+) ([]*internal.ObjAttr, string, error) {
 	log.Trace("AttrCache::StreamDir : %s", options.Name)
 
 	pathKey := fmt.Sprintf("%s##%s", options.Name, options.Token)
@@ -165,7 +169,11 @@ func (c *EntryCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	pathEntry, found := c.pathMap.Load(pathKey)
 	if !found {
-		log.Debug("EntryCache::StreamDir : Cache not valid, fetch new list for path: %s, token %s", options.Name, options.Token)
+		log.Debug(
+			"EntryCache::StreamDir : Cache not valid, fetch new list for path: %s, token %s",
+			options.Name,
+			options.Token,
+		)
 		pathList, token, err := c.NextComponent().StreamDir(options)
 		if err == nil && len(pathList) > 0 {
 			item := pathCacheItem{
@@ -209,6 +217,10 @@ func NewEntryCacheComponent() internal.Component {
 func init() {
 	internal.AddComponent(compName, NewEntryCacheComponent)
 
-	entryTimeout := config.AddUint32Flag("list-cache-timeout", defaultEntryCacheTimeout, "list entry timeout")
+	entryTimeout := config.AddUint32Flag(
+		"list-cache-timeout",
+		defaultEntryCacheTimeout,
+		"list entry timeout",
+	)
 	config.BindPFlag(compName+".timeout-sec", entryTimeout)
 }

@@ -72,14 +72,28 @@ func initializePlugins() error {
 
 		getExternalComponentFunc, err := p.Lookup("GetExternalComponent")
 		if err != nil {
-			log.Err("initializePlugins: GetExternalComponent function lookup error in plugin %s: %s", file, err.Error())
-			return fmt.Errorf("GetExternalComponent function lookup error in plugin %s: %s", file, err.Error())
+			log.Err(
+				"initializePlugins: GetExternalComponent function lookup error in plugin %s: %s",
+				file,
+				err.Error(),
+			)
+			return fmt.Errorf(
+				"GetExternalComponent function lookup error in plugin %s: %s",
+				file,
+				err.Error(),
+			)
 		}
 
 		getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() exported.Component))
 		if !ok {
-			log.Err("initializePlugins: GetExternalComponent function in %s has some incorrect definition", file)
-			return fmt.Errorf("GetExternalComponent function in %s has some incorrect definition", file)
+			log.Err(
+				"initializePlugins: GetExternalComponent function in %s has some incorrect definition",
+				file,
+			)
+			return fmt.Errorf(
+				"GetExternalComponent function in %s has some incorrect definition",
+				file,
+			)
 		}
 
 		compName, initExternalComponent := getExternalComponent()

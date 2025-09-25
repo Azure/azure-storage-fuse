@@ -96,7 +96,9 @@ func main() {
 	if len(strings.TrimSpace(hmcommon.Pid)) == 0 {
 		fmt.Printf("pid of blobfuse2 process not provided\n")
 		log.Err("main::main : pid of blobfuse2 process not provided")
-		time.Sleep(1 * time.Second) // adding 1 second wait for adding to log(base type) before exiting
+		time.Sleep(
+			1 * time.Second,
+		) // adding 1 second wait for adding to log(base type) before exiting
 		os.Exit(1)
 	}
 
@@ -113,16 +115,24 @@ func main() {
 	common.TransferPipe += "_" + hmcommon.Pid
 	common.PollingPipe += "_" + hmcommon.Pid
 
-	log.Debug("Blobfuse2 Pid: %v \n"+
-		"Transfer Pipe: %v \n"+
-		"Polling Pipe: %v \n"+
-		"Blobfuse2 Stats poll interval: %v \n"+
-		"Health Stats poll interval: %v \n"+
-		"Cache Path: %v \n"+
-		"Max cache size in MB: %v \n",
+	log.Debug(
+		"Blobfuse2 Pid: %v \n"+
+			"Transfer Pipe: %v \n"+
+			"Polling Pipe: %v \n"+
+			"Blobfuse2 Stats poll interval: %v \n"+
+			"Health Stats poll interval: %v \n"+
+			"Cache Path: %v \n"+
+			"Max cache size in MB: %v \n",
 		"Output path: %v",
-		hmcommon.Pid, common.TransferPipe, common.PollingPipe, hmcommon.BfsPollInterval,
-		hmcommon.ProcMonInterval, hmcommon.TempCachePath, hmcommon.MaxCacheSize, hmcommon.OutputPath)
+		hmcommon.Pid,
+		common.TransferPipe,
+		common.PollingPipe,
+		hmcommon.BfsPollInterval,
+		hmcommon.ProcMonInterval,
+		hmcommon.TempCachePath,
+		hmcommon.MaxCacheSize,
+		hmcommon.OutputPath,
+	)
 
 	comps := getMonitors()
 
@@ -145,18 +155,63 @@ func main() {
 
 func init() {
 	flag.StringVar(&hmcommon.Pid, "pid", "", "Pid of blobfuse2 process")
-	flag.IntVar(&hmcommon.BfsPollInterval, "stats-poll-interval-sec", 10, "Blobfuse2 stats polling interval in seconds")
-	flag.IntVar(&hmcommon.ProcMonInterval, "process-monitor-interval-sec", 30, "CPU, memory and network usage polling interval in seconds")
-	flag.StringVar(&hmcommon.OutputPath, "output-path", "", "Path where output files will be created")
+	flag.IntVar(
+		&hmcommon.BfsPollInterval,
+		"stats-poll-interval-sec",
+		10,
+		"Blobfuse2 stats polling interval in seconds",
+	)
+	flag.IntVar(
+		&hmcommon.ProcMonInterval,
+		"process-monitor-interval-sec",
+		30,
+		"CPU, memory and network usage polling interval in seconds",
+	)
+	flag.StringVar(
+		&hmcommon.OutputPath,
+		"output-path",
+		"",
+		"Path where output files will be created",
+	)
 
 	flag.BoolVar(&hmcommon.NoBfsMon, "no-blobfuse2-stats", false, "Disable blobfuse2 stats polling")
-	flag.BoolVar(&hmcommon.NoCpuProf, "no-cpu-profiler", false, "Disable CPU monitoring on blobfuse2 process")
-	flag.BoolVar(&hmcommon.NoMemProf, "no-memory-profiler", false, "Disable memory monitoring on blobfuse2 process")
-	flag.BoolVar(&hmcommon.NoNetProf, "no-network-profiler", false, "Disable network monitoring on blobfuse2 process")
-	flag.BoolVar(&hmcommon.NoFileCacheMon, "no-file-cache-monitor", false, "Disable file cache directory monitor")
+	flag.BoolVar(
+		&hmcommon.NoCpuProf,
+		"no-cpu-profiler",
+		false,
+		"Disable CPU monitoring on blobfuse2 process",
+	)
+	flag.BoolVar(
+		&hmcommon.NoMemProf,
+		"no-memory-profiler",
+		false,
+		"Disable memory monitoring on blobfuse2 process",
+	)
+	flag.BoolVar(
+		&hmcommon.NoNetProf,
+		"no-network-profiler",
+		false,
+		"Disable network monitoring on blobfuse2 process",
+	)
+	flag.BoolVar(
+		&hmcommon.NoFileCacheMon,
+		"no-file-cache-monitor",
+		false,
+		"Disable file cache directory monitor",
+	)
 
 	flag.StringVar(&hmcommon.TempCachePath, "cache-path", "", "path to local disk cache")
-	flag.Float64Var(&hmcommon.MaxCacheSize, "max-size-mb", 0, "maximum cache size allowed. Default - 0 (unlimited)")
+	flag.Float64Var(
+		&hmcommon.MaxCacheSize,
+		"max-size-mb",
+		0,
+		"maximum cache size allowed. Default - 0 (unlimited)",
+	)
 
-	flag.BoolVar(&hmcommon.CheckVersion, "version", false, "Print the current version of health-monitor")
+	flag.BoolVar(
+		&hmcommon.CheckVersion,
+		"version",
+		false,
+		"Print the current version of health-monitor",
+	)
 }

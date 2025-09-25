@@ -46,10 +46,10 @@ import (
 
 type genConfigParams struct {
 	blockCache bool   `config:"block-cache" yaml:"block-cache,omitempty"`
-	directIO   bool   `config:"direct-io" yaml:"direct-io,omitempty"`
-	readOnly   bool   `config:"ro" yaml:"ro,omitempty"`
-	tmpPath    string `config:"tmp-path" yaml:"tmp-path,omitempty"`
-	outputFile string `config:"o" yaml:"o,omitempty"`
+	directIO   bool   `config:"direct-io"   yaml:"direct-io,omitempty"`
+	readOnly   bool   `config:"ro"          yaml:"ro,omitempty"`
+	tmpPath    string `config:"tmp-path"    yaml:"tmp-path,omitempty"`
+	outputFile string `config:"o"           yaml:"o,omitempty"`
 }
 
 var optsGenCfg genConfigParams
@@ -66,7 +66,9 @@ var generatedConfig = &cobra.Command{
 
 		// Check if configTmp is not provided when component is fc
 		if (!optsGenCfg.blockCache) && optsGenCfg.tmpPath == "" {
-			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
+			return fmt.Errorf(
+				"temp path is required for file cache mode. Use flag --tmp-path to provide the path",
+			)
 		}
 
 		// Set the configs
@@ -103,8 +105,12 @@ var generatedConfig = &cobra.Command{
 			sb.WriteString("read-only: true\n\n")
 		}
 
-		sb.WriteString("# Logger configuration\n#logging:\n  #  type: syslog|silent|base\n  #  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug\n")
-		sb.WriteString("  #  file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>\n")
+		sb.WriteString(
+			"# Logger configuration\n#logging:\n  #  type: syslog|silent|base\n  #  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug\n",
+		)
+		sb.WriteString(
+			"  #  file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>\n",
+		)
 
 		sb.WriteString("\ncomponents:\n")
 		for _, component := range pipeline {
@@ -120,8 +126,12 @@ var generatedConfig = &cobra.Command{
 			sb.WriteString(c.GenConfig())
 		}
 
-		sb.WriteString("\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  ")
-		sb.WriteString("#  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN")
+		sb.WriteString(
+			"\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  ",
+		)
+		sb.WriteString(
+			"#  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN",
+		)
 
 		filePath := ""
 		if optsGenCfg.outputFile == "" {
@@ -144,9 +154,12 @@ var generatedConfig = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(generatedConfig)
 
-	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Block-Cache shall be used as caching strategy")
-	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Direct-io mode shall be used")
+	generatedConfig.Flags().
+		BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Block-Cache shall be used as caching strategy")
+	generatedConfig.Flags().
+		BoolVar(&optsGenCfg.directIO, "direct-io", false, "Direct-io mode shall be used")
 	generatedConfig.Flags().BoolVar(&optsGenCfg.readOnly, "ro", false, "Mount in read-only mode")
-	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Temp cache path to be used")
+	generatedConfig.Flags().
+		StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Temp cache path to be used")
 	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Output file location")
 }

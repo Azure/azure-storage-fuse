@@ -136,7 +136,9 @@ func validateOptions() error {
 	}
 
 	if secOpts.PassPhrase == "" {
-		return errors.New("provide the passphrase as a cli parameter or configure the BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
+		return errors.New(
+			"provide the passphrase as a cli parameter or configure the BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable",
+		)
 	}
 
 	return nil
@@ -157,7 +159,10 @@ func encryptConfigFile(saveConfig bool) ([]byte, error) {
 	if saveConfig {
 		outputFileName := ""
 		if secOpts.OutputFile == "" {
-			outputFileName = filepath.Join(common.ExpandPath(common.DefaultWorkDir), filepath.Base(secOpts.ConfigFile))
+			outputFileName = filepath.Join(
+				common.ExpandPath(common.DefaultWorkDir),
+				filepath.Base(secOpts.ConfigFile),
+			)
 			outputFileName += SecureConfigExtension
 		} else {
 			outputFileName = secOpts.OutputFile
@@ -184,7 +189,10 @@ func decryptConfigFile(saveConfig bool) ([]byte, error) {
 	if saveConfig {
 		outputFileName := ""
 		if secOpts.OutputFile == "" {
-			outputFileName = filepath.Join(os.ExpandEnv(common.DefaultWorkDir), filepath.Base(secOpts.ConfigFile))
+			outputFileName = filepath.Join(
+				os.ExpandEnv(common.DefaultWorkDir),
+				filepath.Base(secOpts.ConfigFile),
+			)
 			extension := filepath.Ext(outputFileName)
 			outputFileName = outputFileName[0 : len(outputFileName)-len(extension)]
 		} else {

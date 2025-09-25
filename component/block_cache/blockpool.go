@@ -154,8 +154,12 @@ func (pool *BlockPool) MustGet() (*Block, error) {
 		break
 	// Return error in case no blocks are available after default timeout
 	case <-defaultTimeout:
-		err := fmt.Errorf("Failed to Allocate Buffer, Len (priorityCh: %d, blockCh: %d), MaxBlocks: %d",
-			len(pool.priorityCh), len(pool.blocksCh), pool.maxBlocks)
+		err := fmt.Errorf(
+			"Failed to Allocate Buffer, Len (priorityCh: %d, blockCh: %d), MaxBlocks: %d",
+			len(pool.priorityCh),
+			len(pool.blocksCh),
+			pool.maxBlocks,
+		)
 		log.Err("BlockPool::MustGet : %v", err)
 		return nil, err
 	}

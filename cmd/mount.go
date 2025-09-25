@@ -62,12 +62,12 @@ import (
 )
 
 type LogOptions struct {
-	Type           string `config:"type" yaml:"type,omitempty"`
-	LogLevel       string `config:"level" yaml:"level,omitempty"`
-	LogFilePath    string `config:"file-path" yaml:"file-path,omitempty"`
+	Type           string `config:"type"             yaml:"type,omitempty"`
+	LogLevel       string `config:"level"            yaml:"level,omitempty"`
+	LogFilePath    string `config:"file-path"        yaml:"file-path,omitempty"`
 	MaxLogFileSize uint64 `config:"max-file-size-mb" yaml:"max-file-size-mb,omitempty"`
-	LogFileCount   uint64 `config:"file-count" yaml:"file-count,omitempty"`
-	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
+	LogFileCount   uint64 `config:"file-count"       yaml:"file-count,omitempty"`
+	TimeTracker    bool   `config:"track-time"       yaml:"track-time,omitempty"`
 }
 
 type mountOptions struct {
@@ -75,22 +75,21 @@ type mountOptions struct {
 	inputMountPath string
 	ConfigFile     string
 
-	Logging            LogOptions     `config:"logging"`
-	Components         []string       `config:"components"`
-	Foreground         bool           `config:"foreground"`
-	NonEmpty           bool           `config:"nonempty"`
-	DefaultWorkingDir  string         `config:"default-working-dir"`
-	CPUProfile         string         `config:"cpu-profile"`
-	MemProfile         string         `config:"mem-profile"`
-	PassPhrase         string         `config:"passphrase"`
-	SecureConfig       bool           `config:"secure-config"`
-	DynamicProfiler    bool           `config:"dynamic-profile"`
-	ProfilerPort       int            `config:"profiler-port"`
-	ProfilerIP         string         `config:"profiler-ip"`
-	MonitorOpt         monitorOptions `config:"health_monitor"`
-	WaitForMount       time.Duration  `config:"wait-for-mount"`
-	LazyWrite          bool           `config:"lazy-write"`
-	disableKernelCache bool           `config:"disable-kernel-cache"`
+	Logging           LogOptions     `config:"logging"`
+	Components        []string       `config:"components"`
+	Foreground        bool           `config:"foreground"`
+	NonEmpty          bool           `config:"nonempty"`
+	DefaultWorkingDir string         `config:"default-working-dir"`
+	CPUProfile        string         `config:"cpu-profile"`
+	MemProfile        string         `config:"mem-profile"`
+	PassPhrase        string         `config:"passphrase"`
+	SecureConfig      bool           `config:"secure-config"`
+	DynamicProfiler   bool           `config:"dynamic-profile"`
+	ProfilerPort      int            `config:"profiler-port"`
+	ProfilerIP        string         `config:"profiler-ip"`
+	MonitorOpt        monitorOptions `config:"health_monitor"`
+	WaitForMount      time.Duration  `config:"wait-for-mount"`
+	LazyWrite         bool           `config:"lazy-write"`
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
@@ -216,17 +215,27 @@ func parseConfig() error {
 		}
 
 		if options.PassPhrase == "" {
-			return fmt.Errorf("no passphrase provided to decrypt the config file.\n Either use --passphrase cli option or store passphrase in BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
+			return fmt.Errorf(
+				"no passphrase provided to decrypt the config file.\n Either use --passphrase cli option or store passphrase in BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable",
+			)
 		}
 
 		cipherText, err := os.ReadFile(options.ConfigFile)
 		if err != nil {
-			return fmt.Errorf("failed to read encrypted config file %s [%s]", options.ConfigFile, err.Error())
+			return fmt.Errorf(
+				"failed to read encrypted config file %s [%s]",
+				options.ConfigFile,
+				err.Error(),
+			)
 		}
 
 		plainText, err := common.DecryptData(cipherText, []byte(options.PassPhrase))
 		if err != nil {
-			return fmt.Errorf("failed to decrypt config file %s [%s]", options.ConfigFile, err.Error())
+			return fmt.Errorf(
+				"failed to decrypt config file %s [%s]",
+				options.ConfigFile,
+				err.Error(),
+			)
 		}
 
 		config.SetConfigFile(options.ConfigFile)
@@ -310,7 +319,9 @@ var mountCmd = &cobra.Command{
 		}
 
 		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
-			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
+			options.Components = append(
+				options.Components[:1],
+				append([]string{"entry_cache"}, options.Components[1:]...)...)
 		}
 
 		if err = common.ValidatePipeline(options.Components); err != nil {
@@ -439,13 +450,19 @@ var mountCmd = &cobra.Command{
 		}
 
 		if config.IsSet("invalidate-on-sync") {
-			log.Warn("mount: unsupported v1 CLI parameter: invalidate-on-sync is always true in blobfuse2.")
+			log.Warn(
+				"mount: unsupported v1 CLI parameter: invalidate-on-sync is always true in blobfuse2.",
+			)
 		}
 		if config.IsSet("pre-mount-validate") {
-			log.Warn("mount: unsupported v1 CLI parameter: pre-mount-validate is always true in blobfuse2.")
+			log.Warn(
+				"mount: unsupported v1 CLI parameter: pre-mount-validate is always true in blobfuse2.",
+			)
 		}
 		if config.IsSet("basic-remount-check") {
-			log.Warn("mount: unsupported v1 CLI parameter: basic-remount-check is always true in blobfuse2.")
+			log.Warn(
+				"mount: unsupported v1 CLI parameter: basic-remount-check is always true in blobfuse2.",
+			)
 		}
 
 		common.EnableMonitoring = options.MonitorOpt.EnableMon
@@ -459,7 +476,11 @@ var mountCmd = &cobra.Command{
 
 		var pipeline *internal.Pipeline
 
-		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
+		log.Crit(
+			"Starting Blobfuse2 Mount : %s on [%s]",
+			common.Blobfuse2Version,
+			common.GetCurrentDistro(),
+		)
 		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
@@ -469,7 +490,9 @@ var mountCmd = &cobra.Command{
 			for i, name := range options.Components {
 				if name == "attr_cache" {
 					options.Components = append(options.Components[:i], options.Components[i+1:]...)
-					log.Crit("Mount::runPipeline : Direct IO enabled, removing attr_cache from pipeline")
+					log.Crit(
+						"Mount::runPipeline : Direct IO enabled, removing attr_cache from pipeline",
+					)
 					break
 				}
 			}
@@ -492,7 +515,7 @@ var mountCmd = &cobra.Command{
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
-			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
+			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
 			pid := os.Getpid()
@@ -525,7 +548,10 @@ var mountCmd = &cobra.Command{
 			// a cleanup of the .pid file. If cleanup goes through then retry the daemonization.
 			child, err := dmnCtx.Reborn()
 			if err != nil {
-				log.Err("mount : failed to daemonize application [%s], trying auto cleanup", err.Error())
+				log.Err(
+					"mount : failed to daemonize application [%s], trying auto cleanup",
+					err.Error(),
+				)
 				rmErr := os.Remove(pidFileName)
 				if rmErr != nil {
 					log.Err("mount : auto cleanup failed [%v]", rmErr.Error())
@@ -652,7 +678,12 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 	pid := fmt.Sprintf("%v", os.Getpid())
 	common.TransferPipe += "_" + pid
 	common.PollingPipe += "_" + pid
-	log.Debug("Mount::runPipeline : blobfuse2 pid = %v, transfer pipe = %v, polling pipe = %v", pid, common.TransferPipe, common.PollingPipe)
+	log.Debug(
+		"Mount::runPipeline : blobfuse2 pid = %v, transfer pipe = %v, polling pipe = %v",
+		pid,
+		common.TransferPipe,
+		common.PollingPipe,
+	)
 
 	go startMonitor(os.Getpid())
 
@@ -678,7 +709,13 @@ func startMonitor(pid int) {
 		buf := new(bytes.Buffer)
 		rootCmd.SetOut(buf)
 		rootCmd.SetErr(buf)
-		rootCmd.SetArgs([]string{"health-monitor", fmt.Sprintf("--pid=%v", pid), fmt.Sprintf("--config-file=%s", options.ConfigFile)})
+		rootCmd.SetArgs(
+			[]string{
+				"health-monitor",
+				fmt.Sprintf("--pid=%v", pid),
+				fmt.Sprintf("--config-file=%s", options.ConfigFile),
+			},
+		)
 		err := rootCmd.Execute()
 		if err != nil {
 			common.EnableMonitoring = false
@@ -725,7 +762,12 @@ func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
 	// Clean up if either global or component-specific flag is set
 	if globalCleanupFlag || componentCleanupFlag {
 		if err := common.TempCacheCleanup(cachePath); err != nil {
-			return fmt.Errorf("failed to cleanup temp cache path: %s for %s component: %v", cachePath, componentName, err)
+			return fmt.Errorf(
+				"failed to cleanup temp cache path: %s for %s component: %v",
+				cachePath,
+				componentName,
+				err,
+			)
 		}
 	}
 
@@ -807,40 +849,63 @@ func init() {
 	mountCmd.PersistentFlags().StringVar(&options.PassPhrase, "passphrase", "",
 		"Key to decrypt config file. Can also be specified by env-variable BLOBFUSE2_SECURE_CONFIG_PASSPHRASE.\nKey length shall be 16 (AES-128), 24 (AES-192), or 32 (AES-256) bytes in length.")
 
-	mountCmd.PersistentFlags().String("log-type", "syslog", "Type of logger to be used by the system. Set to syslog by default. Allowed values are silent|syslog|base.")
+	mountCmd.PersistentFlags().
+		String("log-type", "syslog", "Type of logger to be used by the system. Set to syslog by default. Allowed values are silent|syslog|base.")
 	config.BindPFlag("logging.type", mountCmd.PersistentFlags().Lookup("log-type"))
-	_ = mountCmd.RegisterFlagCompletionFunc("log-type", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"silent", "base", "syslog"}, cobra.ShellCompDirectiveNoFileComp
-	})
+	_ = mountCmd.RegisterFlagCompletionFunc(
+		"log-type",
+		func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return []string{"silent", "base", "syslog"}, cobra.ShellCompDirectiveNoFileComp
+		},
+	)
 
 	// Add a generic cleanup-on-start flag that applies to all cache components
-	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache, block_cache, xload components.")
+	mountCmd.PersistentFlags().
+		Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache, block_cache, xload components.")
 	config.BindPFlag("cleanup-on-start", mountCmd.PersistentFlags().Lookup("cleanup-on-start"))
 
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")
 	config.BindPFlag("logging.level", mountCmd.PersistentFlags().Lookup("log-level"))
-	_ = mountCmd.RegisterFlagCompletionFunc("log-level", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"LOG_OFF", "LOG_CRIT", "LOG_ERR", "LOG_WARNING", "LOG_INFO", "LOG_TRACE", "LOG_DEBUG"}, cobra.ShellCompDirectiveNoFileComp
-	})
+	_ = mountCmd.RegisterFlagCompletionFunc(
+		"log-level",
+		func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return []string{
+				"LOG_OFF",
+				"LOG_CRIT",
+				"LOG_ERR",
+				"LOG_WARNING",
+				"LOG_INFO",
+				"LOG_TRACE",
+				"LOG_DEBUG",
+			}, cobra.ShellCompDirectiveNoFileComp
+		},
+	)
 
 	mountCmd.PersistentFlags().String("log-file-path",
 		common.DefaultLogFilePath, "Configures the path for log files. Default is "+common.DefaultLogFilePath)
 	config.BindPFlag("logging.file-path", mountCmd.PersistentFlags().Lookup("log-file-path"))
 	_ = mountCmd.MarkPersistentFlagDirname("log-file-path")
 
-	mountCmd.PersistentFlags().Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
+	mountCmd.PersistentFlags().
+		Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
 	config.BindPFlag("foreground", mountCmd.PersistentFlags().Lookup("foreground"))
 
-	mountCmd.PersistentFlags().Bool("read-only", false, "Mount the system in read only mode. Default value false.")
+	mountCmd.PersistentFlags().
+		Bool("read-only", false, "Mount the system in read only mode. Default value false.")
 	config.BindPFlag("read-only", mountCmd.PersistentFlags().Lookup("read-only"))
 
-	mountCmd.PersistentFlags().Bool("lazy-write", false, "Async write to storage container after file handle is closed.")
+	mountCmd.PersistentFlags().
+		Bool("lazy-write", false, "Async write to storage container after file handle is closed.")
 	config.BindPFlag("lazy-write", mountCmd.PersistentFlags().Lookup("lazy-write"))
 
-	mountCmd.PersistentFlags().String("default-working-dir", "", "Default working directory for storing log files and other blobfuse2 information")
+	mountCmd.PersistentFlags().
+		String("default-working-dir", "", "Default working directory for storing log files and other blobfuse2 information")
 	mountCmd.PersistentFlags().Lookup("default-working-dir").Hidden = true
-	config.BindPFlag("default-working-dir", mountCmd.PersistentFlags().Lookup("default-working-dir"))
+	config.BindPFlag(
+		"default-working-dir",
+		mountCmd.PersistentFlags().Lookup("default-working-dir"),
+	)
 	_ = mountCmd.MarkPersistentFlagDirname("default-working-dir")
 
 	mountCmd.Flags().BoolVar(&options.Streaming, "streaming", false, "Enable Streaming.")
@@ -850,7 +915,8 @@ func init() {
 	mountCmd.Flags().BoolVar(&options.BlockCache, "block-cache", false, "Enable Block-Cache.")
 	config.BindPFlag("block-cache", mountCmd.Flags().Lookup("block-cache"))
 
-	mountCmd.Flags().BoolVar(&options.Preload, "preload", false, "Enable Preload, to start downloading all files from container on mount.")
+	mountCmd.Flags().
+		BoolVar(&options.Preload, "preload", false, "Enable Preload, to start downloading all files from container on mount.")
 	config.BindPFlag("preload", mountCmd.Flags().Lookup("preload"))
 
 	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
@@ -864,18 +930,25 @@ func init() {
 	config.BindPFlag("pre-mount-validate", mountCmd.Flags().Lookup("pre-mount-validate"))
 	mountCmd.Flags().Lookup("pre-mount-validate").Hidden = true
 
-	mountCmd.Flags().Bool("basic-remount-check", true, "Validate blobfuse2 is mounted by reading /etc/mtab.")
+	mountCmd.Flags().
+		Bool("basic-remount-check", true, "Validate blobfuse2 is mounted by reading /etc/mtab.")
 	config.BindPFlag("basic-remount-check", mountCmd.Flags().Lookup("basic-remount-check"))
 	mountCmd.Flags().Lookup("basic-remount-check").Hidden = true
 
-	mountCmd.PersistentFlags().StringSliceVarP(&options.LibfuseOptions, "o", "o", []string{}, "FUSE options.")
+	mountCmd.PersistentFlags().
+		StringSliceVarP(&options.LibfuseOptions, "o", "o", []string{}, "FUSE options.")
 	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
 
-	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
+	mountCmd.PersistentFlags().
+		DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
 
-	mountCmd.PersistentFlags().Bool("disable-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
-	config.BindPFlag("disable-kernel-cache", mountCmd.PersistentFlags().Lookup("disable-kernel-cache"))
+	mountCmd.PersistentFlags().
+		Bool("disable-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
+	config.BindPFlag(
+		"disable-kernel-cache",
+		mountCmd.PersistentFlags().Lookup("disable-kernel-cache"),
+	)
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)

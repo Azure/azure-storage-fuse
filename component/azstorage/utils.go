@@ -85,9 +85,13 @@ const (
 // getAzStorageClientOptions : Create client options based on the config
 func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, error) {
 	retryOptions := policy.RetryOptions{
-		MaxRetries:    conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
-		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
-		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
+		MaxRetries: conf.maxRetries, // Try at most 3 times to perform the operation (set to 1 to disable retries)
+		TryTimeout: time.Second * time.Duration(
+			conf.maxTimeout,
+		), // Maximum time allowed for any single try
+		RetryDelay: time.Second * time.Duration(
+			conf.backoffTime,
+		), // Backoff amount for each retry (exponential or linear)
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
 
@@ -102,7 +106,10 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 
 	transportOptions, err := newBlobfuse2HttpClient(conf)
 	if err != nil {
-		log.Err("utils::getAzStorageClientOptions : Failed to create transport client [%s]", err.Error())
+		log.Err(
+			"utils::getAzStorageClientOptions : Failed to create transport client [%s]",
+			err.Error(),
+		)
 	}
 
 	perCallPolicies := []policy.Policy{telemetryPolicy}
@@ -160,7 +167,8 @@ func getSDKLogOptions() policy.LogOptions {
 //   - logging type is silent
 //   - logging level is less than debug
 func setSDKLogListener() {
-	if os.Getenv("BLOBFUSE_DISABLE_SDK_LOG") == "true" || log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
+	if os.Getenv("BLOBFUSE_DISABLE_SDK_LOG") == "true" || log.GetType() == "silent" ||
+		log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		// reset listener
 		azlog.SetListener(nil)
 	} else {
@@ -505,8 +513,16 @@ func getFileMode(permissions string) (os.FileMode, error) {
 	// Expect service to return a 9 char string with r, w, x, or -
 	const rwx = "rwxrwxrwx"
 	if len(rwx) > len(permissions) {
-		log.Err("utils::getFileMode : Unexpected length of permissions from the service %d: %s", len(permissions), permissions)
-		return 0, fmt.Errorf("unexpected length of permissions from the service %d: %s", len(permissions), permissions)
+		log.Err(
+			"utils::getFileMode : Unexpected length of permissions from the service %d: %s",
+			len(permissions),
+			permissions,
+		)
+		return 0, fmt.Errorf(
+			"unexpected length of permissions from the service %d: %s",
+			len(permissions),
+			permissions,
+		)
 	} else if len(rwx) < len(permissions) {
 		log.Debug("utils::getFileMode : Unexpected permissions from the service: %s", permissions)
 	}

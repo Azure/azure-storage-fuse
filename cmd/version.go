@@ -59,5 +59,6 @@ var versionCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(versionCmd)
 
-	versionCmd.Flags().BoolVar(&check, "check", false, "To check whether latest version exists or not")
+	versionCmd.Flags().
+		BoolVar(&check, "check", false, "To check whether latest version exists or not")
 }

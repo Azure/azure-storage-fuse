@@ -106,7 +106,8 @@ var gen1Cmd = &cobra.Command{
 		}
 
 		// not checking ClientSecret since adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET)
-		if azStorageOpt.ClientID == "" || azStorageOpt.TenantID == "" || azStorageOpt.AccountName == "" {
+		if azStorageOpt.ClientID == "" || azStorageOpt.TenantID == "" ||
+			azStorageOpt.AccountName == "" {
 			log.Err("mountgen1 : clientId, tenantId or accountName can't be empty")
 			return fmt.Errorf("clientId, tenantId or accountName can't be empty")
 		}
@@ -181,7 +182,10 @@ func generateAdlsGenOneJson() error {
 	var allowOther bool
 	err := config.UnmarshalKey("allow-other", &allowOther)
 	if err != nil {
-		log.Err("mountgen1 : generateAdlsGenOneJson:allow-other config error (invalid config attributes) [%s]", err.Error())
+		log.Err(
+			"mountgen1 : generateAdlsGenOneJson:allow-other config error (invalid config attributes) [%s]",
+			err.Error(),
+		)
 		return fmt.Errorf("unable to parse allow-other config [%s]", err.Error())
 	}
 
@@ -219,7 +223,10 @@ func generateAdlsGenOneJson() error {
 
 	err = os.WriteFile(gen1ConfigFilePath, jsonData, 0777)
 	if err != nil {
-		log.Err("mountgen1 : generateAdlsGenOneJson:failed to write adlsgen1fuse.json [%s]", err.Error())
+		log.Err(
+			"mountgen1 : generateAdlsGenOneJson:failed to write adlsgen1fuse.json [%s]",
+			err.Error(),
+		)
 		return fmt.Errorf("failed to write adlsgen1fuse.json [%s]", err.Error())
 	}
 
@@ -234,7 +241,11 @@ func runAdlsGenOneBinary() error {
 	_, err := adlsgen1fuseCmd.Output()
 
 	if err != nil {
-		log.Err("mountgen1 : runAdlsGenOneBinary: unable to run adlsgen1fuse binary (%s : %s)", err.Error(), errb.String())
+		log.Err(
+			"mountgen1 : runAdlsGenOneBinary: unable to run adlsgen1fuse binary (%s : %s)",
+			err.Error(),
+			errb.String(),
+		)
 		return fmt.Errorf("unable to run adlsgen1fuse binary (%s : %s)", err.Error(), errb.String())
 	}
 
@@ -247,9 +258,12 @@ func init() {
 	gen1Cmd.Flags().StringVar(&configFile, "config-file", "config.yaml",
 		"Configures the path for the file where the account credentials are provided. Default is config.yaml")
 
-	gen1Cmd.Flags().IntVar(&requiredFreeSpace, "required-free-space-mb", 0, "Required free space in MB")
+	gen1Cmd.Flags().
+		IntVar(&requiredFreeSpace, "required-free-space-mb", 0, "Required free space in MB")
 
-	gen1Cmd.Flags().BoolVar(&generateJsonOnly, "generate-json-only", false, "Don't mount, only generate the JSON file needed for gen1 mount")
+	gen1Cmd.Flags().
+		BoolVar(&generateJsonOnly, "generate-json-only", false, "Don't mount, only generate the JSON file needed for gen1 mount")
 
-	gen1Cmd.Flags().StringVar(&gen1ConfigFilePath, "output-file", "/tmp/adlsgen1fuse.json", "Output JSON file needed for gen1 mount")
+	gen1Cmd.Flags().
+		StringVar(&gen1ConfigFilePath, "output-file", "/tmp/adlsgen1fuse.json", "Output JSON file needed for gen1 mount")
 }

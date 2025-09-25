@@ -126,7 +126,11 @@ func (pool *BlockPool) Usage() uint32 {
 }
 
 func (pool *BlockPool) GetUsageDetails() (uint32, uint32, uint32, int32) {
-	return pool.maxBlocks, uint32(len(pool.priorityCh)), uint32(len(pool.blocksCh)), pool.waitLength.Load()
+	return pool.maxBlocks, uint32(
+			len(pool.priorityCh),
+		), uint32(
+			len(pool.blocksCh),
+		), pool.waitLength.Load()
 }
 
 func (pool *BlockPool) GetBlockSize() uint64 {
@@ -152,8 +156,12 @@ func (pool *BlockPool) tryGet() *Block {
 
 	select {
 	case <-pool.ctx.Done():
-		err := fmt.Errorf("Failed to Allocate Buffer as the process was cancelled, Len (blocksCh: %d, priorityCh: %d), MaxBlocks: %d",
-			len(pool.blocksCh), len(pool.priorityCh), pool.maxBlocks)
+		err := fmt.Errorf(
+			"Failed to Allocate Buffer as the process was cancelled, Len (blocksCh: %d, priorityCh: %d), MaxBlocks: %d",
+			len(pool.blocksCh),
+			len(pool.priorityCh),
+			pool.maxBlocks,
+		)
 		log.Debug("BlockPool::GetBlock : %v", err)
 		return nil
 	// getting a block from pool will be a blocking operation if the pool is empty
@@ -171,8 +179,12 @@ func (pool *BlockPool) mustGet() *Block {
 
 	select {
 	case <-pool.ctx.Done():
-		err := fmt.Errorf("Failed to Allocate Buffer as the process was cancelled, Len (priorityCh: %d, blockCh: %d), MaxBlocks: %d",
-			len(pool.priorityCh), len(pool.blocksCh), pool.maxBlocks)
+		err := fmt.Errorf(
+			"Failed to Allocate Buffer as the process was cancelled, Len (priorityCh: %d, blockCh: %d), MaxBlocks: %d",
+			len(pool.priorityCh),
+			len(pool.blocksCh),
+			pool.maxBlocks,
+		)
 		log.Debug("BlockPool::MustGet : %v", err)
 		return nil
 	case block = <-pool.priorityCh:

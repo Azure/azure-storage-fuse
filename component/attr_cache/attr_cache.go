@@ -66,9 +66,9 @@ type AttrCache struct {
 
 // Structure defining your config parameters
 type AttrCacheOptions struct {
-	Timeout       uint32 `config:"timeout-sec" yaml:"timeout-sec,omitempty"`
+	Timeout       uint32 `config:"timeout-sec"      yaml:"timeout-sec,omitempty"`
 	NoCacheOnList bool   `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
-	NoSymlinks    bool   `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
+	NoSymlinks    bool   `config:"no-symlinks"      yaml:"no-symlinks,omitempty"`
 
 	//maximum file attributes overall to be cached
 	MaxFiles int `config:"max-files" yaml:"max-files,omitempty"`
@@ -346,7 +346,9 @@ func (ac *AttrCache) DeleteDir(options internal.DeleteDirOptions) error {
 }
 
 // ReadDir : Optionally cache attributes of paths returned by next component
-func (ac *AttrCache) ReadDir(options internal.ReadDirOptions) (pathList []*internal.ObjAttr, err error) {
+func (ac *AttrCache) ReadDir(
+	options internal.ReadDirOptions,
+) (pathList []*internal.ObjAttr, err error) {
 	log.Trace("AttrCache::ReadDir : %s", options.Name)
 
 	pathList, err = ac.NextComponent().ReadDir(options)
@@ -358,7 +360,9 @@ func (ac *AttrCache) ReadDir(options internal.ReadDirOptions) (pathList []*inter
 }
 
 // StreamDir : Optionally cache attributes of paths returned by next component
-func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+func (ac *AttrCache) StreamDir(
+	options internal.StreamDirOptions,
+) ([]*internal.ObjAttr, string, error) {
 	log.Trace("AttrCache::StreamDir : %s", options.Name)
 
 	pathList, token, err := ac.NextComponent().StreamDir(options)
@@ -379,12 +383,19 @@ func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 
 		for _, attr := range pathList {
 			if len(ac.cacheMap) > ac.maxFiles {
-				log.Debug("AttrCache::cacheAttributes : %s skipping adding path to attribute cache because it is full", pathList)
+				log.Debug(
+					"AttrCache::cacheAttributes : %s skipping adding path to attribute cache because it is full",
+					pathList,
+				)
 				break
 			}
 
 			ac.cacheLock.Lock()
-			ac.cacheMap[internal.TruncateDirName(attr.Path)] = newAttrCacheItem(attr, true, currTime)
+			ac.cacheMap[internal.TruncateDirName(attr.Path)] = newAttrCacheItem(
+				attr,
+				true,
+				currTime,
+			)
 			ac.cacheLock.Unlock()
 		}
 
@@ -461,10 +472,12 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 func (ac *AttrCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
-	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})
+	attr, err := ac.GetAttr(
+		internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true},
+	)
 	if err != nil {
 		// Ignore not exists errors - this can happen if createEmptyFile is set to false
-		if !(os.IsNotExist(err) || err == syscall.ENOENT) {
+		if !os.IsNotExist(err) && err != syscall.ENOENT {
 			return 0, err
 		}
 	}
@@ -513,7 +526,7 @@ func (ac *AttrCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Name, RetrieveMetadata: true})
 	if err != nil {
 		// Ignore not exists errors - this can happen if createEmptyFile is set to false
-		if !(os.IsNotExist(err) || err == syscall.ENOENT) {
+		if !os.IsNotExist(err) && err != syscall.ENOENT {
 			return err
 		}
 	}
@@ -583,14 +596,15 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 	ac.cacheLock.Lock()
 	defer ac.cacheLock.Unlock()
 
-	if err == nil {
+	switch err {
+	case nil:
 		// Retrieved attributes so cache them
 		if len(ac.cacheMap) < ac.maxFiles {
 			ac.cacheMap[truncatedPath] = newAttrCacheItem(pathAttr, true, time.Now())
 		} else {
 			log.Debug("AttrCache::GetAttr : %s skipping adding to attribute cache because it is full", options.Name)
 		}
-	} else if err == syscall.ENOENT {
+	case syscall.ENOENT:
 		// Path does not exist so cache a no-entry item
 		ac.cacheMap[truncatedPath] = newAttrCacheItem(&internal.ObjAttr{}, false, time.Now())
 	}
@@ -608,7 +622,9 @@ func (ac *AttrCache) CreateLink(options internal.CreateLinkOptions) error {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
 		ac.invalidatePath(options.Name)
-		ac.invalidatePath(options.Target) // TODO : Why do we invalidate the target? Shouldn't the target remain unchanged?
+		ac.invalidatePath(
+			options.Target,
+		) // TODO : Why do we invalidate the target? Shouldn't the target remain unchanged?
 	}
 
 	return err
@@ -684,10 +700,18 @@ func NewAttrCacheComponent() internal.Component {
 func init() {
 	internal.AddComponent(compName, NewAttrCacheComponent)
 
-	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", defaultAttrCacheTimeout, "attribute cache timeout")
+	attrCacheTimeout := config.AddUint32Flag(
+		"attr-cache-timeout",
+		defaultAttrCacheTimeout,
+		"attribute cache timeout",
+	)
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
 
-	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
+	noSymlinks := config.AddBoolFlag(
+		"no-symlinks",
+		false,
+		"whether or not symlinks should be supported",
+	)
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
 
 	cacheOnList := config.AddBoolFlag("cache-on-list", true, "Cache attributes on listing.")

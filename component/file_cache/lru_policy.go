@@ -139,7 +139,9 @@ func (p *lruPolicy) StartPolicy() error {
 	log.Info("lruPolicy::StartPolicy : Policy set with %v timeout", p.cacheTimeout)
 
 	if p.cacheTimeout != 0 {
-		p.cacheTimeoutMonitor = time.Tick(time.Duration(time.Duration(p.cacheTimeout) * time.Second))
+		p.cacheTimeoutMonitor = time.Tick(
+			time.Duration(time.Duration(p.cacheTimeout) * time.Second),
+		)
 	}
 
 	go p.clearCache()
@@ -297,7 +299,11 @@ func (p *lruPolicy) clearCache() {
 			if pUsage > p.highThreshold {
 				continueDeletion := true
 				for continueDeletion {
-					log.Info("lruPolicy::ClearCache : High threshold reached %f > %f", pUsage, p.highThreshold)
+					log.Info(
+						"lruPolicy::ClearCache : High threshold reached %f > %f",
+						pUsage,
+						p.highThreshold,
+					)
 
 					cleanupCount++
 					p.updateMarker()
@@ -306,7 +312,11 @@ func (p *lruPolicy) clearCache() {
 
 					pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB)
 					if pUsage < p.lowThreshold || cleanupCount >= 3 {
-						log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
+						log.Info(
+							"lruPolicy::ClearCache : Threshold stabilized %f > %f",
+							pUsage,
+							p.lowThreshold,
+						)
 						continueDeletion = false
 					}
 				}
@@ -428,7 +438,11 @@ func (p *lruPolicy) deleteItem(name string) {
 
 	azPath := strings.TrimPrefix(name, p.tmpPath)
 	if azPath == "" {
-		log.Err("lruPolicy::DeleteItem : Empty file name formed name : %s, tmpPath : %s", name, p.tmpPath)
+		log.Err(
+			"lruPolicy::DeleteItem : Empty file name formed name : %s, tmpPath : %s",
+			name,
+			p.tmpPath,
+		)
 		return
 	}
 
@@ -471,7 +485,7 @@ func (p *lruPolicy) printNodes() {
 
 	node := p.head
 
-	var count int = 0
+	var count = 0
 	log.Debug("lruPolicy::printNodes : Starts")
 
 	for ; node != nil; node = node.next {

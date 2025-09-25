@@ -52,14 +52,14 @@ type Stream struct {
 }
 
 type StreamOptions struct {
-	BlockSize      uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	BlockSize      uint64 `config:"block-size-mb"  yaml:"block-size-mb,omitempty"`
 	BufferSize     uint64 `config:"buffer-size-mb" yaml:"buffer-size-mb,omitempty"`
-	CachedObjLimit uint64 `config:"max-buffers" yaml:"max-buffers,omitempty"`
-	FileCaching    bool   `config:"file-caching" yaml:"file-caching,omitempty"`
-	readOnly       bool   `config:"read-only" yaml:"-"`
+	CachedObjLimit uint64 `config:"max-buffers"    yaml:"max-buffers,omitempty"`
+	FileCaching    bool   `config:"file-caching"   yaml:"file-caching,omitempty"`
+	readOnly       bool   `config:"read-only"      yaml:"-"`
 
 	// v1 support
-	StreamCacheMb    uint64 `config:"stream-cache-mb" yaml:"-"`
+	StreamCacheMb    uint64 `config:"stream-cache-mb"     yaml:"-"`
 	MaxBlocksPerFile uint64 `config:"max-blocks-per-file" yaml:"-"`
 }
 
@@ -102,12 +102,22 @@ func (st *Stream) Configure(_ bool) error {
 	}
 
 	if uint64((conf.BufferSize*conf.CachedObjLimit)*mb) > memory.FreeMemory() {
-		log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
+		log.Err(
+			"Stream::Configure : config error, not enough free memory for provided configuration",
+		)
 		return errors.New("not enough free memory for provided stream configuration")
 	}
 
-	log.Info("Stream to Block Cache::Configure : Buffer size %v, Block size %v, Handle limit %v, FileCaching %v, Read-only %v, StreamCacheMb %v, MaxBlocksPerFile %v",
-		conf.BufferSize, conf.BlockSize, conf.CachedObjLimit, conf.FileCaching, conf.readOnly, conf.StreamCacheMb, conf.MaxBlocksPerFile)
+	log.Info(
+		"Stream to Block Cache::Configure : Buffer size %v, Block size %v, Handle limit %v, FileCaching %v, Read-only %v, StreamCacheMb %v, MaxBlocksPerFile %v",
+		conf.BufferSize,
+		conf.BlockSize,
+		conf.CachedObjLimit,
+		conf.FileCaching,
+		conf.readOnly,
+		conf.StreamCacheMb,
+		conf.MaxBlocksPerFile,
+	)
 
 	if conf.BlockSize > 0 {
 		config.Set(compName+".block-size-mb", fmt.Sprint(conf.BlockSize))
@@ -123,14 +133,26 @@ func (st *Stream) Configure(_ bool) error {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
-	blockSizeMb := config.AddFloat64Flag("block-size-mb", 0.0, "Size (in MB) of a block to be downloaded during streaming.")
+	blockSizeMb := config.AddFloat64Flag(
+		"block-size-mb",
+		0.0,
+		"Size (in MB) of a block to be downloaded during streaming.",
+	)
 	config.BindPFlag(compStream+".block-size-mb", blockSizeMb)
 
-	maxBlocksMb := config.AddIntFlag("max-blocks-per-file", 0, "Maximum number of blocks to be cached in memory for streaming.")
+	maxBlocksMb := config.AddIntFlag(
+		"max-blocks-per-file",
+		0,
+		"Maximum number of blocks to be cached in memory for streaming.",
+	)
 	config.BindPFlag(compStream+".max-blocks-per-file", maxBlocksMb)
 	maxBlocksMb.Hidden = true
 
-	streamCacheSize := config.AddUint64Flag("stream-cache-mb", 0, "Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.")
+	streamCacheSize := config.AddUint64Flag(
+		"stream-cache-mb",
+		0,
+		"Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.",
+	)
 	config.BindPFlag(compStream+".stream-cache-mb", streamCacheSize)
 	streamCacheSize.Hidden = true
 }

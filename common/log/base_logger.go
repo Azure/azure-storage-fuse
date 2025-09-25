@@ -276,7 +276,11 @@ func (l *BaseLogger) LogRotate() error {
 	_ = os.Rename(l.fileConfig.LogFile, l.fileConfig.LogFile+".1")
 
 	var err error
-	l.logFileHandle, err = os.OpenFile(l.fileConfig.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	l.logFileHandle, err = os.OpenFile(
+		l.fileConfig.LogFile,
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+		0644,
+	)
 	if err != nil {
 		l.logFileHandle = os.Stdout
 	}

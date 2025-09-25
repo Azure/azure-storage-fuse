@@ -78,12 +78,18 @@ type remoteListerOptions struct {
 }
 
 func newRemoteLister(opts *remoteListerOptions) (*remoteLister, error) {
-	if opts == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.workerCount == 0 {
+	if opts == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil ||
+		opts.workerCount == 0 {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create remote lister")
 		return nil, fmt.Errorf("invalid parameters sent to create remote lister")
 	}
 
-	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v, workers %v", opts.path, opts.defaultPermission, opts.workerCount)
+	log.Debug(
+		"lister::NewRemoteLister : create new remote lister for %s, default permission %v, workers %v",
+		opts.path,
+		opts.defaultPermission,
+		opts.workerCount,
+	)
 
 	rl := &remoteLister{
 		lister: lister{
@@ -141,10 +147,15 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 	// this block will be executed only in the first list call for the remote directory
 	// so haven't made the listBlocked variable atomic
 	if !rl.listBlocked {
-		log.Debug("remoteLister::Process : Waiting for block-list-on-mount-sec before making the list call")
+		log.Debug(
+			"remoteLister::Process : Waiting for block-list-on-mount-sec before making the list call",
+		)
 		err := waitForListTimeout()
 		if err != nil {
-			log.Err("remoteLister::Process : unable to unmarshal block-list-on-mount-sec [%s]", err.Error())
+			log.Err(
+				"remoteLister::Process : unable to unmarshal block-list-on-mount-sec [%s]",
+				err.Error(),
+			)
 			return 0, err
 		}
 		rl.listBlocked = true
@@ -158,7 +169,11 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 			Token: marker,
 		})
 		if err != nil {
-			log.Err("remoteLister::Process : Remote listing failed for %s [%s]", relPath, err.Error())
+			log.Err(
+				"remoteLister::Process : Remote listing failed for %s [%s]",
+				relPath,
+				err.Error(),
+			)
 			break
 		}
 
@@ -175,7 +190,11 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 		})
 
 		for _, entry := range entries {
-			log.Debug("remoteLister::Process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
+			log.Debug(
+				"remoteLister::Process : Iterating: %s, Is directory: %v",
+				entry.Path,
+				entry.IsDir(),
+			)
 
 			if entry.IsDir() {
 				// create directory in local
@@ -187,7 +206,10 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 					err = rl.mkdir(localPath)
 					// TODO:: xload : handle error
 					if err != nil {
-						log.Err("remoteLister::Process : Failed to create directory [%s]", err.Error())
+						log.Err(
+							"remoteLister::Process : Failed to create directory [%s]",
+							err.Error(),
+						)
 						return
 					}
 
@@ -197,7 +219,11 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 						Path:     name,
 					})
 					if err != nil {
-						log.Err("remoteLister::Process : Failed to schedule directory listing for %s [%s]", name, err.Error())
+						log.Err(
+							"remoteLister::Process : Failed to schedule directory listing for %s [%s]",
+							name,
+							err.Error(),
+						)
 						return
 					}
 				}(entry.Path)

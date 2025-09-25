@@ -77,7 +77,7 @@ var _ AzConnection = &Datalake{}
 // This is also a known problem with the SDKs.
 func transformAccountEndpoint(potentialDfsEndpoint string) string {
 	if strings.Contains(potentialDfsEndpoint, ".dfs.") {
-		return strings.Replace(potentialDfsEndpoint, ".dfs.", ".blob.", -1)
+		return strings.ReplaceAll(potentialDfsEndpoint, ".dfs.", ".blob.")
 	} else {
 		// Should we just throw here?
 		log.Warn("Datalake::transformAccountEndpoint : Detected use of a custom endpoint. Not all operations are guaranteed to work.")
@@ -128,7 +128,10 @@ func (dl *Datalake) UpdateServiceClient(key, value string) (err error) {
 		// get the service client with updated SAS
 		svcClient, err := dl.Auth.getServiceClient(&dl.Config)
 		if err != nil {
-			log.Err("Datalake::UpdateServiceClient : Failed to get service client [%s]", err.Error())
+			log.Err(
+				"Datalake::UpdateServiceClient : Failed to get service client [%s]",
+				err.Error(),
+			)
 			return err
 		}
 
@@ -200,7 +203,10 @@ func (dl *Datalake) TestPipeline() error {
 	// we are just validating the auth mode used. So, no need to iterate over the pages
 	resp, err := listPathPager.NextPage(context.Background())
 	if err != nil {
-		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error())
+		log.Err(
+			"Datalake::TestPipeline : Failed to validate account with given auth %s",
+			err.Error(),
+		)
 		var respErr *azcore.ResponseError
 		errors.As(err, &respErr)
 		if respErr != nil {
@@ -248,7 +254,11 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 	}
 	err = dl.ChangeMod(name, mode)
 	if err != nil {
-		log.Err("Datalake::CreateFile : Failed to set permissions on file %s [%s]", name, err.Error())
+		log.Err(
+			"Datalake::CreateFile : Failed to set permissions on file %s [%s]",
+			name,
+			err.Error(),
+		)
 		return err
 	}
 
@@ -271,14 +281,27 @@ func (dl *Datalake) CreateDirectory(name string) error {
 
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
-		if serr == InvalidPermission {
-			log.Err("Datalake::CreateDirectory : Insufficient permissions for %s [%s]", name, err.Error())
+		switch serr {
+		case InvalidPermission:
+			log.Err(
+				"Datalake::CreateDirectory : Insufficient permissions for %s [%s]",
+				name,
+				err.Error(),
+			)
 			return syscall.EACCES
-		} else if serr == ErrFileAlreadyExists {
-			log.Err("Datalake::CreateDirectory : Path already exists for %s [%s]", name, err.Error())
+		case ErrFileAlreadyExists:
+			log.Err(
+				"Datalake::CreateDirectory : Path already exists for %s [%s]",
+				name,
+				err.Error(),
+			)
 			return syscall.EEXIST
-		} else {
-			log.Err("Datalake::CreateDirectory : Failed to create directory %s [%s]", name, err.Error())
+		default:
+			log.Err(
+				"Datalake::CreateDirectory : Failed to create directory %s [%s]",
+				name,
+				err.Error(),
+			)
 			return err
 		}
 	}
@@ -299,16 +322,21 @@ func (dl *Datalake) DeleteFile(name string) (err error) {
 	_, err = fileClient.Delete(context.Background(), nil)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
-		if serr == ErrFileNotFound {
+		switch serr {
+		case ErrFileNotFound:
 			log.Err("Datalake::DeleteFile : %s does not exist", name)
 			return syscall.ENOENT
-		} else if serr == BlobIsUnderLease {
+		case BlobIsUnderLease:
 			log.Err("Datalake::DeleteFile : %s is under lease [%s]", name, err.Error())
 			return syscall.EIO
-		} else if serr == InvalidPermission {
-			log.Err("Datalake::DeleteFile : Insufficient permissions for %s [%s]", name, err.Error())
+		case InvalidPermission:
+			log.Err(
+				"Datalake::DeleteFile : Insufficient permissions for %s [%s]",
+				name,
+				err.Error(),
+			)
 			return syscall.EACCES
-		} else {
+		default:
 			log.Err("Datalake::DeleteFile : Failed to delete file %s [%s]", name, err.Error())
 			return err
 		}
@@ -344,11 +372,17 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("Datalake::RenameFile : %s -> %s", source, target)
 
-	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
+	fileClient := dl.Filesystem.NewFileClient(
+		url.PathEscape(filepath.Join(dl.Config.prefixPath, source)),
+	)
 
-	renameResponse, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{
-		CPKInfo: dl.datalakeCPKOpt,
-	})
+	renameResponse, err := fileClient.Rename(
+		context.Background(),
+		filepath.Join(dl.Config.prefixPath, target),
+		&file.RenameOptions{
+			CPKInfo: dl.datalakeCPKOpt,
+		},
+	)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -367,10 +401,16 @@ func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.O
 func (dl *Datalake) RenameDirectory(source string, target string) error {
 	log.Trace("Datalake::RenameDirectory : %s -> %s", source, target)
 
-	directoryClient := dl.Filesystem.NewDirectoryClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
-	_, err := directoryClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &directory.RenameOptions{
-		CPKInfo: dl.datalakeCPKOpt,
-	})
+	directoryClient := dl.Filesystem.NewDirectoryClient(
+		url.PathEscape(filepath.Join(dl.Config.prefixPath, source)),
+	)
+	_, err := directoryClient.Rename(
+		context.Background(),
+		filepath.Join(dl.Config.prefixPath, target),
+		&directory.RenameOptions{
+			CPKInfo: dl.datalakeCPKOpt,
+		},
+	)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -395,13 +435,18 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 	})
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound {
+		switch e {
+		case ErrFileNotFound:
 			return blobAttr, syscall.ENOENT
-		} else if e == InvalidPermission {
+		case InvalidPermission:
 			log.Err("Datalake::GetAttr : Insufficient permissions for %s [%s]", name, err.Error())
 			return blobAttr, syscall.EACCES
-		} else {
-			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", name, err.Error())
+		default:
+			log.Err(
+				"Datalake::GetAttr : Failed to get path properties for %s [%s]",
+				name,
+				err.Error(),
+			)
 			return blobAttr, err
 		}
 	}
@@ -463,7 +508,11 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 // List : Get a list of path matching the given prefix
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries
-func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
+func (dl *Datalake) List(
+	prefix string,
+	marker *string,
+	count int32,
+) ([]*internal.ObjAttr, *string, error) {
 	return dl.BlockBlob.List(prefix, marker, count)
 }
 
@@ -473,21 +522,31 @@ func (dl *Datalake) ReadToFile(name string, offset int64, count int64, fi *os.Fi
 }
 
 // ReadBuffer : Download a specific range from a file to a buffer
-func (dl *Datalake) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
-	return dl.BlockBlob.ReadBuffer(name, offset, len)
+func (dl *Datalake) ReadBuffer(name string, offset int64, length int64) ([]byte, error) {
+	return dl.BlockBlob.ReadBuffer(name, offset, length)
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
-	return dl.BlockBlob.ReadInBuffer(name, offset, len, data, etag)
+func (dl *Datalake) ReadInBuffer(
+	name string,
+	offset int64,
+	length int64,
+	data []byte,
+	etag *string,
+) error {
+	return dl.BlockBlob.ReadInBuffer(name, offset, length, data, etag)
 }
 
 // WriteFromFile : Upload local file to file
-func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *os.File) (err error) {
+func (dl *Datalake) WriteFromFile(
+	name string,
+	metadata map[string]*string,
+	fi *os.File,
+) (err error) {
 	// File in DataLake may have permissions and ACL set. Just uploading the file will override them.
 	// So, we need to get the existing permissions and ACL and set them back after uploading the file.
 
-	var acl string = ""
+	var acl = ""
 	var fileClient *file.Client = nil
 
 	if dl.Config.preserveACL {
@@ -567,13 +626,19 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 		Permissions: &newPerm,
 	})
 	if err != nil {
-		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
+		log.Err(
+			"Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]",
+			name,
+			mode,
+			err.Error(),
+		)
 		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound {
+		switch e {
+		case ErrFileNotFound:
 			return syscall.ENOENT
-		} else if e == InvalidPermission {
+		case InvalidPermission:
 			return syscall.EACCES
-		} else {
+		default:
 			return err
 		}
 	}

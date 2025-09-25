@@ -76,10 +76,10 @@ var defaultSize = int64(0)
 var defaultMode = 0777
 
 func newTestLibfuse(next internal.Component, configuration string) *Libfuse {
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	libfuse := NewLibfuseComponent()
 	libfuse.SetNextComponent(next)
-	libfuse.Configure(true)
+	_ = libfuse.Configure(true)
 
 	return libfuse.(*Libfuse)
 }
@@ -204,7 +204,9 @@ func testCreateError(suite *libfuseTestSuite) {
 	mode := fs.FileMode(0775)
 	info := &C.fuse_file_info_t{}
 	options := internal.CreateFileOptions{Name: name, Mode: mode}
-	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, errors.New("failed to create file"))
+	suite.mock.EXPECT().
+		CreateFile(options).
+		Return(&handlemap.Handle{}, errors.New("failed to create file"))
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
@@ -268,7 +270,9 @@ func testOpenAppendFlagDisableWritebackCache(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
 	config := "libfuse:\n  disable-writeback-cache: true\n"
-	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
+	suite.setupTestHelper(
+		config,
+	) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 	suite.assert.True(suite.libfuse.disableWritebackCache)
 
 	name := "path"
@@ -298,7 +302,9 @@ func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
 	config := "libfuse:\n  ignore-open-flags: true\n"
-	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
+	suite.setupTestHelper(
+		config,
+	) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 	suite.assert.True(suite.libfuse.ignoreOpenFlags)
 
 	name := "path"
@@ -361,7 +367,9 @@ func testOpenError(suite *libfuseTestSuite) {
 	info := &C.fuse_file_info_t{}
 	info.flags = C.O_RDWR
 	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, errors.New("failed to open a file"))
+	suite.mock.EXPECT().
+		OpenFile(options).
+		Return(&handlemap.Handle{}, errors.New("failed to open a file"))
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
@@ -401,7 +409,11 @@ func testFTruncate(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	ret_val := C.allocate_native_file_object(
+		C.ulong(handle.UnixFD),
+		C.ulong(uintptr(unsafe.Pointer(handle))),
+		C.ulong(handle.Size),
+	)
 	fi := C.fuse_file_info_t{}
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
@@ -420,7 +432,11 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	ret_val := C.allocate_native_file_object(
+		C.ulong(handle.UnixFD),
+		C.ulong(uintptr(unsafe.Pointer(handle))),
+		C.ulong(handle.Size),
+	)
 	fi := C.fuse_file_info_t{}
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
@@ -675,10 +691,10 @@ func testStatFs(suite *libfuseTestSuite) {
 	buf := &C.statvfs_t{}
 	libfuse_statfs(path, buf)
 
-	suite.assert.Equal(int(buf.f_frsize), 1)
-	suite.assert.Equal(int(buf.f_blocks), 2)
-	suite.assert.Equal(int(buf.f_bavail), 3)
-	suite.assert.Equal(int(buf.f_bfree), 4)
+	suite.assert.Equal(1, int(buf.f_frsize))
+	suite.assert.Equal(2, int(buf.f_blocks))
+	suite.assert.Equal(3, int(buf.f_bavail))
+	suite.assert.Equal(4, int(buf.f_bfree))
 }
 
 func testChmodError(suite *libfuseTestSuite) {
