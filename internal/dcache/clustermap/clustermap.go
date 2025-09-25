@@ -416,7 +416,11 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		RvName:     rvName,
 		RvNewState: rvNewState,
 		QueuedAt:   time.Now(),
-		Err:        make(chan error, 1),
+
+		// Create buffered channel so that the batch updater thread is not blocked if the caller is not
+		// listening on the channel yet. This can happen in case of non-blocking UpdateComponentRVState() calls,
+		// where we send all the update messages and then at last we listen on the error channel of each update.
+		Err: make(chan error, 1),
 	}
 	common.Assert(updateComponentRVStateChannel != nil)
 
