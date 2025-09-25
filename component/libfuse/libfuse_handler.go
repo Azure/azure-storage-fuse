@@ -658,6 +658,7 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 
 	// Populate stat
 	fuseFS.fillStat(attr, stbuf)
+	//log.Trace("Libfuse::libfuse_getattr : %s, stbuf.st_size=%d", name, stbuf.st_size)
 	return 0
 }
 
@@ -955,6 +956,13 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
+	//
+	// We overload O_DIRECTORY flag to convey to dcache that the open is being done by fuse and it must fail
+	// open for non-finalized files (which are currently being uploaded). We want those files to be readable
+	// only internally by dcache (for serving data from cache) and not by fuse.
+	//
+	fi.flags = fi.flags | C.O_DIRECTORY
+
 	handle, err := fuseFS.NextComponent().OpenFile(
 		internal.OpenFileOptions{
 			Name:  name,
@@ -968,6 +976,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		} else {
 			return -C.EIO
 		}
@@ -1033,6 +1043,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	}
 
 	common.Assert(bytesRead >= 0 && bytesRead <= int(size), bytesRead, size, handle.Path, handle.ID)
+	//log.Err("Libfuse::libfuse_read : file %s, offset %d, size %d, read %d", handle.Path, offset, size, bytesRead)
 	return C.int(bytesRead)
 }
 

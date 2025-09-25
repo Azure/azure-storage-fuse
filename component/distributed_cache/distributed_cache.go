@@ -62,6 +62,7 @@ import (
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	gouuid "github.com/google/uuid"
+	"golang.org/x/sys/unix"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -661,8 +662,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 	if isDcachePath {
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
-		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
-		options.Name = rawPath
+		options.Name = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 
 		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
 			return nil, err
@@ -713,7 +713,26 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		if err != nil {
 			return nil, err
 		}
+
+		common.Assert(attr.Size >= 0, *attr)
+
+		// For non-finalized files, use PartialSize.
+		if attr.Size == math.MaxInt64 {
+			fileMetadata, _, err := fm.GetDcacheFile(rawPath)
+			if err == nil {
+				attr.Size = fileMetadata.PartialSize
+			} else {
+				common.Assert(false, *attr, err)
+				attr.Size = 0
+			}
+
+			log.Debug("DistributedCache::GetAttr : File %s is non-finalized, setting size to %d",
+				attr.Name, attr.Size)
+		}
 	}
+
+	// We must never return negative size.
+	common.Assert(attr.Size >= 0, *attr)
 	return attr, nil
 }
 
@@ -970,6 +989,16 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	var handle *handlemap.Handle
 	var err error
 
+	//
+	// libfuse_open() calls us with O_DIRECTORY flag to identify itself.
+	// This is needed as we don't support opening of non-finalized files when called from fuse as that
+	// confuses the kernel/fuse since writes being done on the file suggest to the kernel/fuse that the
+	// file size is increasing while our read handler will return EOF for a smaller size (note that partial
+	// size is updated only after full contiguous chunks are written). This results in read to return 0's,
+	// causing unexpected data.
+	//
+	fromFuse := ((options.Flags & unix.O_DIRECTORY) != 0)
+
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
 
 	//
@@ -995,11 +1024,11 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	if isDcachePath {
 		log.Debug("DistributedCache::OpenFile : Path is having Dcache subcomponent, path : %s", options.Name)
 		options.Name = rawPath
-		dcFile, err = fm.OpenDcacheFile(options.Name)
+		dcFile, err = fm.OpenDcacheFile(options.Name, fromFuse)
 		if err != nil {
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s", err.Error(), options.Name)
 			if err == fm.ErrFileNotReady {
-				return nil, syscall.ENOENT
+				return nil, syscall.EBUSY
 			}
 			return nil, err
 		}
@@ -1021,7 +1050,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		// else if file is present in dcache, but not in ready state, fail with ENOENT,
 		// else check in azure if present, read from azure, else fail the open.
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
-		dcFile, err = fm.OpenDcacheFile(rawPath)
+		dcFile, err = fm.OpenDcacheFile(rawPath, fromFuse)
 		if err == nil {
 			log.Debug("DistributedCache::OpenFile : Opening the file from Dcache, path : %s", options.Name)
 			handle = handlemap.NewHandle(options.Name)
@@ -1033,7 +1062,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			// namespace of fs=azure to access such files.
 			//
 			log.Err("DistributedCache::OpenFile : Failed Opening the file from Dcache, path: %s: %v", options.Name, err)
-			return nil, syscall.ENOENT
+			return nil, syscall.EBUSY
 		} else {
 			// todo: make sure we come here when opening dcache file is returning ENOENT
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s, Trying to Open the file in Azure", err.Error(), options.Name)

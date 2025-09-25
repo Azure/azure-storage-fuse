@@ -152,6 +152,24 @@ const (
 
 const (
 	DcacheDeletingFileNameSuffix = ".dcache.deleting"
+	//
+	// Chunk index used for the metadata chunk is the following special value.
+	// This value is chosen to be very large so that it does not conflict with an actual data chunk index.
+	// With 4MiB chunk size, this value allows for files up to 4 ZiB in size.
+	//
+	MDChunkIdx = (int64(1) << 50)
+
+	//
+	// When reading the metadata chunk, we do not know the size, so we read this much data.
+	// The metadata chunk is guaranteed to be smaller, so this should be sufficient.
+	// This is needed for better asserting in the RPC handler.
+	//
+	MDChunkSize = 101
+)
+
+var (
+	// This is MDChunkIdx*ChunkSizeInMiB, setup once we know the chunk size.
+	MDChunkOffsetInMiB int64
 )
 
 type FileMetadata struct {
@@ -159,10 +177,23 @@ type FileMetadata struct {
 	State           FileState  `json:"-"`
 	FileID          string     `json:"file_id"`
 	Size            int64      `json:"-"`
+	PartialSize     int64      `json:"-"`
+	PartialSizeAt   time.Time  `json:"-"`
 	OpenCount       int        `json:"-"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
 	FileLayout      FileLayout `json:"file_layout"`
 	Sha1hash        []byte     `json:"sha256"`
+}
+
+// This is the content of the metadata chunk used to store size for partially written files.
+// Note that the metadata file stores the file size as -1 until the file is closed after writing, so if a reader
+// wants to read a file that's currently being written it needs to read this metadata chunk to know the partial
+// size of the file. The partial size is updated in this chunk as the file is being written.
+//
+// Note: Update MDChunkSize if you change this struct. MDChunkSize must be > size of this struct.
+type MetadataChunk struct {
+	Size          int64     `json:"size"`
+	LastUpdatedAt time.Time `json:"last_updated_at,omitzero"`
 }
 
 type FileLayout struct {

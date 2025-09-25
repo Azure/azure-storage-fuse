@@ -292,8 +292,13 @@ retry:
 				rpcResp.Chunk.Address != nil),
 				rpc.GetChunkRequestToString(rpcReq))
 
+			//
 			// Must read all the requested data.
-			common.Assert(len(rpcResp.Chunk.Data) == int(req.Length), len(rpcResp.Chunk.Data), req.Length)
+			// For metadata chunk, we ask for more so we will read less than requested.
+			//
+			common.Assert((len(rpcResp.Chunk.Data) == int(req.Length)) ||
+				(len(rpcResp.Chunk.Data) < int(req.Length) && int(req.Length) == dcache.MDChunkSize),
+				len(rpcResp.Chunk.Data), req.Length)
 
 			break
 		}
@@ -324,6 +329,15 @@ retry:
 
 			retryCnt++
 			goto retry
+		} else if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_ChunkNotFound {
+			log.Err("ReplicationManager::ReadMV: Chunk not found on node %s for request %s: %v",
+				targetNodeID, rpc.GetChunkRequestToString(rpcReq), err)
+			// Only expected for metadata chunks.
+			common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, rpc.GetChunkRequestToString(rpcReq))
+			common.Assert(rpcReq.Length == dcache.MDChunkSize, rpc.GetChunkRequestToString(rpcReq))
+			// Now we create metadata chunk on file create, so this should also not happen.
+			common.Assert(false, rpc.GetChunkRequestToString(rpcReq))
+			return nil, err
 		}
 
 		// Try another replica if available.

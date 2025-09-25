@@ -37,6 +37,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -234,6 +235,13 @@ var handler *ChunkServiceHandler
 func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 	log.Debug("NewChunkServiceHandler: called with rvMap: %+v, sepoch: %d", rvMap, cm.GetEpoch())
 	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
+
+	// Must be called only once.
+	common.Assert(dcache.MDChunkOffsetInMiB == 0, dcache.MDChunkOffsetInMiB, dcache.MDChunkIdx)
+	dcache.MDChunkOffsetInMiB = int64(cm.GetCacheConfig().ChunkSizeMB) * dcache.MDChunkIdx
+	// It'll be larger than 1ZiB but this's enough for sanity check.
+	common.Assert(dcache.MDChunkOffsetInMiB > (1024*1024*1024*1024),
+		dcache.MDChunkOffsetInMiB, cm.GetCacheConfig().ChunkSizeMB, dcache.MDChunkIdx)
 
 	handler = &ChunkServiceHandler{
 		rvIDMap: getRvIDMap(rvMap),
@@ -1329,13 +1337,15 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 // increment the total chunk bytes for this MV
 func (mv *mvInfo) incTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(bytes)
-	log.Debug("mvInfo::incTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
+	log.Debug("mvInfo::incTotalChunkBytes: totalChunkBytes for %s/%s is %d",
+		mv.rv.rvName, mv.mvName, mv.totalChunkBytes.Load())
 }
 
 // decrement the total chunk bytes for this MV
 func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(-bytes)
-	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
+	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for %s/%s is %d",
+		mv.rv.rvName, mv.mvName, mv.totalChunkBytes.Load())
 	common.Assert(mv.totalChunkBytes.Load() >= 0, mv.mvName, mv.totalChunkBytes.Load(), bytes)
 }
 
@@ -1598,6 +1608,10 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		readLength%common.FS_BLOCK_SIZE != 0 ||
 		readOffset%common.FS_BLOCK_SIZE != 0 ||
 		!isDataBufferAligned {
+		if rpc.ReadIOMode != rpc.BufferedIO {
+			log.Debug("readChunkAndHash: Performing buffered read for chunk %s, offset %d, readLength %d, isDataBufferAligned: %v",
+				*chunkPath, readOffset, readLength, isDataBufferAligned)
+		}
 		goto bufferedRead
 	}
 
@@ -1626,6 +1640,8 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		// TODO: Make sure this is not common path.
 		//
 		if n != readLength {
+			log.Debug("readChunkAndHash: Partial read (%d of %d), chunk file %s, offset %d, falling back to buffered read",
+				n, readLength, *chunkPath, readOffset)
 			common.Assert(false, n, readLength, *chunkPath)
 			goto bufferedRead
 		}
@@ -1648,12 +1664,20 @@ bufferedRead:
 	}
 	defer fh.Close()
 
+	//
+	// When reading metadata chunk, we may read less than requested length and hence EOF will be returned
+	// but that's not an error.
+	//
 	n, err = fh.ReadAt(*data, readOffset)
-	if err != nil {
-		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d [%v]", *chunkPath, readOffset, err)
+	if err != nil && err != io.EOF {
+		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d, readLength: %d [%v]",
+			*chunkPath, readOffset, readLength, err)
 	}
 
-	common.Assert(n == readLength, n, readLength, *chunkPath)
+	// See comment in readChunkAndHash() why metadata chunk read may return less data than requested.
+	common.Assert((n == readLength) ||
+		(n > 0 && n < readLength && readLength == dcache.MDChunkSize && err == io.EOF),
+		n, readLength, *chunkPath)
 
 	return n, hash, nil
 }
@@ -1776,7 +1800,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		if err != nil {
 			errStr := fmt.Sprintf("failed to Allocate Buffer for chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-			common.Assert(false, err)
+			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
 		// Reslice the data buffer accordingly, length of the buffer that we get from the BufferPool is of
@@ -1816,6 +1840,13 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to stat chunk file %s [%v]", chunkPath, err)
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+			//
+			// Metadata chunk is special, caller may ask for it even before it's created.
+			//
+			common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
+			common.Assert(req.Length == dcache.MDChunkSize, errStr)
+
+			// Now we create metadata chunk on file create, so this should not happen.
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 		}
@@ -1823,8 +1854,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		chunkSize := stat.Size
 		lmt = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC().String()
 
-		common.Assert(req.OffsetInChunk+req.Length <= chunkSize,
+		// Again, relax the assert for metadata chunk.
+		common.Assert((req.OffsetInChunk+req.Length <= chunkSize) ||
+			(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB),
 			"Read beyond eof", chunkPath, req.OffsetInChunk, req.Length, chunkSize)
+		log.Debug("ChunkServiceHandler::GetChunk: %s, chunkSize: %d", chunkPath, chunkSize)
 	}
 
 	//
@@ -1841,7 +1875,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
-	common.Assert(n == len(data),
+	common.Assert((n == len(data)) || (n > 0 && n < len(data) && len(data) == dcache.MDChunkSize),
 		fmt.Sprintf("bytes read %d is less than expected buffer size %d", n, len(data)))
 
 	rvInfo.totalBytesRead.Add(int64(n))
@@ -1852,8 +1886,8 @@ dummy_read:
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
-			Data:    data,
-			Hash:    "", // TODO: hash validation will be done later
+			Data:    data[:n], // reslice to actual read length (only really needed for metadata chunk)
+			Hash:    "",       // TODO: hash validation will be done later
 		},
 		ChunkWriteTime: lmt,
 		TimeTaken:      time.Since(startTime).Microseconds(),
@@ -2313,6 +2347,41 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	if performDummyReadWrite() {
 		goto dummy_write
+	}
+
+	//
+	// If the PutChunk is for the special metadata chunk, remove existing metadata chunk file if any, to
+	// be able to write the new metadata chunk.
+	//
+	// TODO: See if we should write the metadata chunk with writeable permissions so that we can overwrite it
+	//       without needing to delete it first. Metadata chunk write should be very infrequent so this is not
+	//       a big deal.
+	//
+	if req.Chunk.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
+		common.Assert(req.Length < dcache.MDChunkSize, req.Length, dcache.MDChunkSize, chunkPath)
+
+		info, err1 := os.Stat(chunkPath)
+		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
+			errStr := fmt.Sprintf("failed to stat metadata chunk file %s before deleting [%v]", chunkPath, err1)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		err1 = os.Remove(chunkPath)
+		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
+			errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
+
+		// Successfully deleted the metadata chunk, update the mvInfo accounting.
+		if err1 == nil {
+			common.Assert(info != nil)
+			common.Assert(info.Size() < dcache.MDChunkSize, info.Size(), dcache.MDChunkSize, chunkPath)
+			mvInfo.decTotalChunkBytes(info.Size())
+		}
 	}
 
 	// TODO: hash validation will be done later

@@ -40,6 +40,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
@@ -85,6 +86,9 @@ func (req *ReadMvRequest) toString() string {
 func (req *ReadMvRequest) isValid() error {
 	common.Assert(common.IsValidUUID(req.FileID))
 	common.Assert(cm.IsValidMVName(req.MvName))
+	// Metadata chunk request must be of dcache.MDChunkSize
+	common.Assert(req.ChunkIndex != dcache.MDChunkIdx || req.Length == dcache.MDChunkSize,
+		req.ChunkIndex, dcache.MDChunkIdx, req.Length, dcache.MDChunkSize)
 
 	if req.ChunkSizeInMiB < cm.MinChunkSizeMB ||
 		req.ChunkSizeInMiB > cm.MaxChunkSizeMB {
@@ -94,7 +98,9 @@ func (req *ReadMvRequest) isValid() error {
 		return err
 	}
 
-	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
+	// dcache.MDChunkIdx is a special chunk index used for metadata chunks.
+	if (req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound) &&
+		(req.ChunkIndex != dcache.MDChunkIdx) {
 		reqStr := req.toString()
 		err := fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
 		log.Err("ReadMvRequest::isValid: %v", err)
@@ -133,8 +139,13 @@ type ReadMvResponse struct {
 }
 
 func (resp *ReadMvResponse) isValid(req *ReadMvRequest) error {
+	//
 	// Must read all the data that was requested.
-	if len(resp.Data) != int(req.Length) {
+	// Metadata chunks requests are an exception, as we do not know the exact size of the metadata blob
+	// and hence ask for slightly more.
+	//
+	if (len(resp.Data) != int(req.Length)) &&
+		!(len(resp.Data) < int(req.Length) && req.ChunkIndex == dcache.MDChunkIdx) {
 		reqStr := req.toString()
 		err := fmt.Errorf("ReadMV returned less data (%d) than requested: %s", len(resp.Data), reqStr)
 		log.Err("ReadMvResponse::isValid: %v", err)
@@ -183,6 +194,9 @@ func (req *WriteMvRequest) toString() string {
 func (req *WriteMvRequest) isValid() error {
 	common.Assert(common.IsValidUUID(req.FileID))
 	common.Assert(cm.IsValidMVName(req.MvName))
+	// Metadata chunk request must be less than dcache.MDChunkSize
+	common.Assert(req.ChunkIndex != dcache.MDChunkIdx || len(req.Data) < dcache.MDChunkSize,
+		req.ChunkIndex, dcache.MDChunkIdx, len(req.Data), dcache.MDChunkSize)
 
 	if req.ChunkSizeInMiB < cm.MinChunkSizeMB || req.ChunkSizeInMiB > cm.MaxChunkSizeMB {
 		reqStr := req.toString()
@@ -191,7 +205,9 @@ func (req *WriteMvRequest) isValid() error {
 		return err
 	}
 
-	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
+	// dcache.MDChunkIdx is a special chunk index used for metadata chunks.
+	if (req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound) &&
+		(req.ChunkIndex != dcache.MDChunkIdx) {
 		reqStr := req.toString()
 		err := fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
 		log.Err("WriteMvRequest::isValid: %v", err)

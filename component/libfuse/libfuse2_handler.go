@@ -649,6 +649,13 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
 
+	//
+	// We overload O_DIRECTORY flag to convey to dcache that the open is being done by fuse and it must fail
+	// open for non-finalized files (which are currently being uploaded). We want those files to be readable
+	// only internally by dcache (for serving data from cache) and not by fuse.
+	//
+	fi.flags = fi.flags | C.O_DIRECTORY
+
 	handle, err := fuseFS.NextComponent().OpenFile(
 		internal.OpenFileOptions{
 			Name:  name,
@@ -662,6 +669,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		} else {
 			return -C.EIO
 		}
