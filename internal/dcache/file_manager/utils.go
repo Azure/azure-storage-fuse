@@ -58,6 +58,21 @@ var (
 	ErrFileNotReady error = errors.New("Dcache file not in ready state")
 )
 
+// Returns the actual file size if finalized else the partial size.
+func getFileSize(file *dcache.FileMetadata) int64 {
+	common.Assert((file.Size >= 0) == (file.State == dcache.Ready), *file)
+	common.Assert((file.Size == -1) == (file.State == dcache.Writing), *file)
+	common.Assert(file.PartialSize >= 0, *file)
+
+	if file.Size > 0 {
+		// PartialSize can never be more than actual file size.
+		common.Assert(file.Size >= file.PartialSize, file.Size, file.PartialSize, *file)
+		return file.Size
+	} else {
+		return file.PartialSize
+	}
+}
+
 // Index of the chunk that contains the given file offset.
 func getChunkIdxFromFileOffset(offset, chunkSize int64) int64 {
 	return offset / chunkSize
@@ -81,17 +96,27 @@ func getChunkEndOffset(chunkIdx, chunkSize int64) int64 {
 
 // Returns the size of the chunk containing the given file offset.
 // For all chunks except the last chunk, this will be equal to chunkSize.
+// Can be called for both finalized and non-finalized files.
 func getChunkSize(offset int64, file *DcacheFile) int64 {
-	// getChunkSize() must be called for a finalized file which will have size >= 0.
-	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
-
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-	size := min(file.FileMetadata.Size-
+	size := min(getFileSize(file.FileMetadata)-
 		getChunkStartOffset(chunkIdx, file.FileMetadata.FileLayout.ChunkSize),
 		file.FileMetadata.FileLayout.ChunkSize)
 
 	common.Assert(size >= 0, size)
 	return size
+}
+
+// Get the highest chunk index for the file.
+// Works for both finalized and non-finalized files.
+func getMaxChunkIdxForFile(file *dcache.FileMetadata) int64 {
+	if file.Size > 0 {
+		// PartialSize can never be more than actual file size.
+		common.Assert(file.Size >= file.PartialSize, file.Size, file.PartialSize, *file)
+		return getChunkIdxFromFileOffset(file.Size-1, file.FileLayout.ChunkSize)
+	} else {
+		return getChunkIdxFromFileOffset(max(file.PartialSize-1, 0), file.FileLayout.ChunkSize)
+	}
 }
 
 func isOffsetChunkStarting(offset, chunkSize int64) bool {
@@ -194,6 +219,12 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		StagedChunks: make(map[int64]*StagedChunk),
 	}
 
+	//
+	// Contiguity tracker is used to track contiguous chunks written to the file.
+	// Useful for reading partially written files.
+	//
+	dcacheFile.CT = NewContiguityTracker(dcacheFile)
+
 	// freeChunks semaphore is used to limit StagedChunks map to numStagingChunks.
 	dcacheFile.initFreeChunks(fileIOMgr.numStagingChunks)
 
@@ -221,9 +252,18 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	// Following fields must be ignored by unmarshal.
 	common.Assert(len(fileMetadata.State) == 0, fileMetadata.State, fileMetadata)
 	common.Assert(fileMetadata.Size == 0, fileMetadata.Size, fileMetadata)
+	common.Assert(fileMetadata.PartialSize == 0, fileMetadata.PartialSize, fileMetadata)
+	common.Assert(fileMetadata.PartialSizeAt.IsZero(), fileMetadata.PartialSizeAt, fileMetadata)
 	common.Assert(fileMetadata.OpenCount == 0, fileMetadata.OpenCount, fileMetadata)
 
 	fileMetadata.State = fileState
+
+	common.Assert(fileMetadata.FileLayout.ChunkSize == int64(cm.GetCacheConfig().ChunkSizeMB*common.MbToBytes),
+		fileMetadata.FileLayout.ChunkSize, fileMetadata)
+	common.Assert(fileMetadata.FileLayout.StripeWidth == int64(cm.GetCacheConfig().StripeWidth),
+		fileMetadata.FileLayout.StripeWidth, fileMetadata)
+	common.Assert(int64(len(fileMetadata.FileLayout.MVList)) == fileMetadata.FileLayout.StripeWidth,
+		len(fileMetadata.FileLayout.MVList), fileMetadata)
 
 	//
 	// Filesize can be following under various file states:
@@ -237,14 +277,30 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	fileMetadata.Size = fileSize
 	common.Assert(fileMetadata.Size >= -1, fileName, fileMetadata.Size, fileMetadata)
 
+	//
+	// If file is currently being written, fileSize will be -1, set PartialSize in that case.
+	// Note that since the metadata chunk (that holds the partial size) is updated infrequently,
+	// we may not have the latest partial size. Since we create the metadata chunk on file create,
+	// it must always be present for a file.
+	//
+	if fileMetadata.Size == -1 {
+		fileMetadata.PartialSize, fileMetadata.PartialSizeAt = GetHighestUploadedByte(&fileMetadata)
+		common.Assert(fileMetadata.PartialSize >= 0, fileName, fileMetadata.PartialSize, fileMetadata)
+		common.Assert(!fileMetadata.PartialSizeAt.After(time.Now()),
+			fileName, fileMetadata.PartialSizeAt, time.Now(), fileMetadata)
+	}
+
 	fileMetadata.OpenCount = openCount
 	common.Assert(fileMetadata.OpenCount >= 0, fileName, fileMetadata.OpenCount, fileMetadata)
+
+	log.Debug("DistributedCache[FM]::GetDcacheFile: File %s metadata %+v, prop %+v",
+		fileName, fileMetadata, *prop)
 
 	return &fileMetadata, prop, nil
 }
 
 // Does all init process for opening the file.
-func OpenDcacheFile(fileName string) (*DcacheFile, error) {
+func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	fileMetadata, prop, err := GetDcacheFile(fileName)
 	if err != nil {
 		return nil, err
@@ -256,13 +312,20 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// This is to prevent files which are being created, from being opened.
 	//
 	if fileMetadata.State != dcache.Ready {
-		log.Info("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
-			fileName, fileMetadata)
-		return nil, ErrFileNotReady
+		common.Assert(fileMetadata.Size == -1 && fileMetadata.PartialSize >= 0, fileMetadata.Size, *fileMetadata)
+		// We don't allow reading non-finalized files from fuse, but we do allow internal readers.
+		if fromFuse {
+			log.Err("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
+				fileName, fileMetadata)
+			return nil, ErrFileNotReady
+		} else {
+			log.Debug("DistributedCache[FM]::OpenDcacheFile: File %s being open'ed in non-ready state, metadata: %+v",
+				fileName, fileMetadata)
+		}
+	} else {
+		// Finalized files must have size >= 0.
+		common.Assert(fileMetadata.Size >= 0, fileMetadata.Size, *fileMetadata)
 	}
-
-	// Finalized files must have size >= 0.
-	common.Assert(fileMetadata.Size >= 0, fileMetadata.Size)
 
 	//
 	// Increment the open count, if safe deletes is enabled.
@@ -271,7 +334,9 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// unless some other node/thread opens the file between the GetDcacheFile() above and till mm.OpenFile()
 	// increments the opencount.
 	//
-	if fileIOMgr.safeDeletes {
+	// TODO: Shall we support safe deletes for partial files too?
+	//
+	if fileIOMgr.safeDeletes && (fileMetadata.State == dcache.Ready) {
 		newOpenCount, err := mm.OpenFile(fileName, prop)
 		_ = newOpenCount
 		if err != nil {
@@ -318,13 +383,19 @@ func DeleteDcacheFile(fileName string) error {
 	//
 	// Prevent deletion of files which are being created.
 	//
-	// TODO: We should allow deleting stale files which are left in creating state indefinitely due to
-	//       blobfuse crashing between createFileInit() and createFileFinalize().
-	//
 	if fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::DeleteDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
-		return syscall.EBUSY
+		//
+		// If the file is currently being written to, don't delete it, else if it is stuck in writing (likely
+		// the writer node crashed) then allow delete only if it has not been updated for CommitLivenessPeriod.
+		//
+		if time.Since(fileMetadata.PartialSizeAt) < CommitLivenessPeriod {
+			return syscall.EBUSY
+		}
+
+		log.Warn("DistributedCache[FM]::DeleteDcacheFile: File %s possibly stuck in writing state (not updated for %v), proceeding with delete",
+			fileName, time.Since(fileMetadata.PartialSizeAt))
 	}
 
 	//
