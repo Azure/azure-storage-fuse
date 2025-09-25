@@ -835,6 +835,7 @@ processResponses:
 			//
 			if putChunkStyle != DaisyChain {
 				errRV, errChan := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline, true /* isBlocking */)
+				_ = errChan
 				common.Assert(errChan == nil)
 
 				if errRV != nil {
@@ -1460,6 +1461,7 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 			rvName, mvName, time.Now().Unix()-joinMVTime)
 
 		err, errChan := cm.UpdateComponentRVState(mvName, rvName, dcache.StateInbandOffline, false /* isBlocking */)
+		_ = err
 		common.Assert(err == nil, rvName, mvName, err)
 		common.Assert(errChan != nil, rvName, mvName)
 
@@ -1476,6 +1478,7 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 			rvName, mvName, time.Now().Unix()-lastSyncWriteTime)
 
 		err, errChan := cm.UpdateComponentRVState(mvName, rvName, dcache.StateInbandOffline, false /* isBlocking */)
+		_ = err
 		common.Assert(err == nil, rvName, mvName, err)
 		common.Assert(errChan != nil, rvName, mvName)
 
@@ -1627,6 +1630,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	// updating the MV state to syncing if all component RVs have either online or syncing state.
 	//
 	err, errChan := cm.UpdateComponentRVState(mvName, targetRVName, dcache.StateSyncing, true /* isBlocking */)
+	_ = errChan
 	common.Assert(errChan == nil)
 
 	if err != nil {
@@ -1709,6 +1713,7 @@ func runSyncJob(job *syncJob) error {
 		// If this fails, abortStuckSyncJobs() will redo this.
 		//
 		errRV, errChan := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline, true /* isBlocking */)
+		_ = errChan
 		common.Assert(errChan == nil)
 
 		if errRV != nil {
@@ -1727,6 +1732,7 @@ func runSyncJob(job *syncJob) error {
 	// entire fix-mv+resync-mv workflows.
 	//
 	err, errChan := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOnline, true /* isBlocking */)
+	_ = errChan
 	common.Assert(errChan == nil)
 
 	if err != nil {
