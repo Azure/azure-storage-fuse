@@ -91,7 +91,7 @@ const (
 	// Note: 64 is seen to perform better, since we only have 16 regular clients which are used for
 	//       all operations other than PutChunkDC from forwardPutChunk().
 	//
-	defaultMaxPerNode = 64
+	defaultMaxPerNode = 256
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
