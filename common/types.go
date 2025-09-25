@@ -159,7 +159,6 @@ const (
 	BlockFlagUnknown uint16 = iota
 	DirtyBlock
 	TruncatedBlock
-	DuplicateBlock
 )
 
 type Block struct {
@@ -179,11 +178,6 @@ func (block *Block) Dirty() bool {
 // Truncated : block created on a truncate operation
 func (block *Block) Truncated() bool {
 	return block.Flags.IsSet(TruncatedBlock)
-}
-
-// Duplicate : block is a duplicate of another block
-func (block *Block) Duplicate() bool {
-	return block.Flags.IsSet(DuplicateBlock)
 }
 
 // Flags for block offset list

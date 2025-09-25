@@ -583,11 +583,3 @@ func UpdatePipeline(pipeline []string, component string) []string {
 
 	return pipeline
 }
-
-// Calculates Ceil division of two integers.
-func CeilDivInt64(a, b int64) int64 {
-	if b == 0 {
-		panic("division by zero")
-	}
-	return (a + b - 1) / b
-}

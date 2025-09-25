@@ -1502,6 +1502,26 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
+	if options.Handle != nil {
+		// The call is coming from an open handle, so we can just truncate the local file, and the chanage will be
+		// flushed to storage on close.
+		f := options.Handle.GetFileObject()
+		if f == nil {
+			log.Err("FileCache::TruncateFile : error [couldn't find fd in handle] %s", options.Handle.Path)
+			return syscall.EBADF
+		}
+
+		err := f.Truncate(options.NewSize)
+		if err != nil {
+			log.Err("FileCache::TruncateFile : error truncating file %s [%s]", options.Handle.Path, err.Error())
+			return err
+		}
+
+		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
+
+		return nil
+	}
+
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
