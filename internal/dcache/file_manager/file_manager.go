@@ -95,11 +95,10 @@ func NewFileIOManager() error {
 	//
 	// How many chunks will we readahead per file.
 	// To achieve high sequential read throughput, this number should be kept reasonably high.
-	// With 4MiB chunk size, 64 readahead chunks will use up 256MiB of memory per file.
 	//
-	// TODO: 256 readahead chunks perform better, let's see if we want to reduce it.
+	// TODO: 1GiB readahead performs better, let's see if we want to reduce it.
 	//
-	numReadAheadChunks := 256
+	numReadAheadChunks := int(1024 / cm.GetCacheConfig().ChunkSizeMB)
 
 	//
 	// How many writeback chunks per file.
@@ -109,7 +108,7 @@ func NewFileIOManager() error {
 	// Hopefully we won't be writing too many large files simultaneously, so we can keep this number
 	// high enough to give 1GiB writeback space per file.
 	//
-	numStagingChunks := 256
+	numStagingChunks := int(1024 / cm.GetCacheConfig().ChunkSizeMB)
 
 	common.Assert(workers > 0)
 	common.Assert(numReadAheadChunks > 0)

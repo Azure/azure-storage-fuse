@@ -135,8 +135,9 @@ type rvInfo struct {
 // Note that this is not information about the entire MV. One MV is replicated across multiple RVs and this holds
 // only the information about the "MV Replica" that our RV hosts.
 type mvInfo struct {
-	rwMutex sync.RWMutex
-	mvName  string // mv0, mv1, etc.
+	rwMutex      sync.RWMutex
+	mdChunkMutex sync.Mutex // to serialize writes to the MD chunk
+	mvName       string     // mv0, mv1, etc.
 
 	// RV this MV is part of.
 	// Note that mvInfo is referenced via rvInfo.mvMap so when we have rvInfo we already know the
@@ -1801,6 +1802,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		goto dummy_read
 	}
 
+	// Metadata chunk IOs are serialized as it's mutable unlike other data chunks.
+	if req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
+		mvInfo.mdChunkMutex.Lock()
+		defer mvInfo.mdChunkMutex.Unlock()
+	}
+
 	// Avoid the stats() call for release builds.
 	if common.IsDebugBuild() {
 		var stat syscall.Stat_t
@@ -1811,12 +1818,13 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 			//
 			// Metadata chunk is special, caller may ask for it even before it's created.
+			// Note that we create the metadata chunk on file create, so this should not happen, but
+			// there's a small window between file create and metadata chunk create which can cause this.
+			// See NewDcacheFile().
 			//
 			common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
 			common.Assert(req.Length == dcache.MDChunkSize, errStr)
 
-			// Now we create metadata chunk on file create, so this should not happen.
-			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 		}
 
@@ -2327,28 +2335,36 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	//       a big deal.
 	//
 	if req.Chunk.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
+		//
+		// Metadata chunk can be written multiple times and even simultaneously from different threads, so
+		// we need to serialize in order to update the totalChunkBytes correctly.
+		//
+		mvInfo.mdChunkMutex.Lock()
+		defer mvInfo.mdChunkMutex.Unlock()
+
 		common.Assert(req.Length < dcache.MDChunkSize, req.Length, dcache.MDChunkSize, chunkPath)
 
 		info, err1 := os.Stat(chunkPath)
-		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
+		if err1 != nil && !os.IsNotExist(err1) {
 			errStr := fmt.Sprintf("failed to stat metadata chunk file %s before deleting [%v]", chunkPath, err1)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
 
-		err1 = os.Remove(chunkPath)
-		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
-			errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)
-			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-			common.Assert(false, errStr)
-			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-		}
+		if err == nil && info != nil {
+			err1 = os.Remove(chunkPath)
+			if err1 != nil {
+				errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+				// Stat() just returned success, so the file must be present.
+				common.Assert(!os.IsNotExist(err1), errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+			}
 
-		// Successfully deleted the metadata chunk, update the mvInfo accounting.
-		if err1 == nil {
-			common.Assert(info != nil)
-			common.Assert(info.Size() < dcache.MDChunkSize, info.Size(), dcache.MDChunkSize, chunkPath)
+			// Successfully deleted the metadata chunk, update the mvInfo accounting.
+			common.Assert(info.Size() > 0 && info.Size() < dcache.MDChunkSize,
+				info.Size(), dcache.MDChunkSize, chunkPath)
 			mvInfo.decTotalChunkBytes(info.Size())
 		}
 	}

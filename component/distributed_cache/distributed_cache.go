@@ -709,25 +709,9 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 
 	// Parse the metadata info for dcache specific files.
 	if !isAzurePath && !isDebugPath {
-		err := parseDcacheMetadata(attr)
+		err := parseDcacheMetadata(attr, filepath.Dir(rawPath))
 		if err != nil {
 			return nil, err
-		}
-
-		common.Assert(attr.Size >= 0, *attr)
-
-		// For non-finalized files, use PartialSize.
-		if attr.Size == math.MaxInt64 {
-			fileMetadata, _, err := fm.GetDcacheFile(rawPath)
-			if err == nil {
-				attr.Size = fileMetadata.PartialSize
-			} else {
-				common.Assert(false, *attr, err)
-				attr.Size = 0
-			}
-
-			log.Debug("DistributedCache::GetAttr : File %s is non-finalized, setting size to %d",
-				attr.Name, attr.Size)
 		}
 	}
 
@@ -746,12 +730,11 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 startListingWithNewToken:
 	if isDcachePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
-		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
-		options.Name = rawPath
+		options.Name = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 			return dirList, token, err
 		}
-		dirList = parseDcacheMetadataForDirEntries(dirList)
+		dirList = parseDcacheMetadataForDirEntries(dirList, filepath.Dir(rawPath))
 	} else if isAzurePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
 		options.Name = rawPath
@@ -791,7 +774,7 @@ startListingWithNewToken:
 				return dirList, token, err
 			}
 
-			dirList = parseDcacheMetadataForDirEntries(dirList)
+			dirList = parseDcacheMetadataForDirEntries(dirList, filepath.Dir(rawPath))
 			for _, attr := range dirList {
 				options.DcacheEntries[attr.Name] = struct{}{}
 			}
