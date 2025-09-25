@@ -494,14 +494,17 @@ var mountCmd = &cobra.Command{
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
+			// Save the stack trace of the mount process in case of any panic
 			pid := os.Getpid()
-			childStdErrFileName := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
+			traceFile := fmt.Sprintf("%s.%d.trace", strings.Replace(options.MountPath, "/", "_", -1), pid)
+			// we link this file to stderr of child process in daemon mode
+			traceFilePath := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
 
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       022,
-				LogFileName: childStdErrFileName, // this will redirect stderr of child to given file
+				LogFileName: traceFilePath, // this will redirect stderr of child to given file
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
@@ -540,7 +543,9 @@ var mountCmd = &cobra.Command{
 				// gracefully unmounted. In case of any panic caused by go runtime/ by our application. This file
 				// would have the essential stack trace to debug the issue.
 				ppid := os.Getppid()
-				childStdErrFileName = fmt.Sprintf("/tmp/blobfuse2.%v", ppid)
+				traceFile = fmt.Sprintf("%s.%d.trace", strings.Replace(options.MountPath, "/", "_", -1), ppid)
+				// we link this file to stderr of child process in daemon mode
+				traceFilePath = filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
 
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
@@ -554,9 +559,9 @@ var mountCmd = &cobra.Command{
 					// if there is any error while initializing the components, we shouldn't delete this temp file.
 					// as this file is used by the parent to get the errors from it's child.
 					if err == nil {
-						rmErr := os.Remove(childStdErrFileName)
+						rmErr := os.Remove(traceFilePath)
 						if rmErr != nil {
-							log.Err("mount : Failed to delete temp file: %s[%v]", childStdErrFileName, err)
+							log.Err("mount : Failed to delete temp file: %s[%v]", traceFilePath, err)
 						}
 					}
 				}()
@@ -584,9 +589,9 @@ var mountCmd = &cobra.Command{
 					}
 
 					// Safe to delete the temp file.
-					rmErr := os.Remove(childStdErrFileName)
+					rmErr := os.Remove(traceFilePath)
 					if rmErr != nil {
-						log.Err("mount : Failed to delete temp file: %s[%v]", childStdErrFileName, err)
+						log.Err("mount : Failed to delete temp file: %s[%v]", traceFilePath, err)
 					}
 
 					return errors.Join(err, rmErr)
