@@ -333,7 +333,13 @@ func ReportRVOffline(rvName string) error {
 // concurrent update, it batches updates received till the next update window and then makes a single update
 // to the clustermap. The success or failure of this batched update will decide the success/failure of each
 // of the individual updates.
-func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
+//
+// This method also takes isBlocking argument which specifies if the caller wants to wait for the update to
+// complete or wants to get an error channel on which it can wait for the update result later.
+//   - If isBlocking is true, the method returns (error, nil) where error is the result of the update operation.
+//   - If isBlocking is false, the method returns (nil, errChan) where errChan is a channel on which the caller
+//     can wait for the result of the update operation later.
+func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum, isBlocking bool) (error, <-chan error) {
 	if common.IsDebugBuild() {
 		startTime := time.Now()
 		defer func() {
@@ -364,7 +370,7 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		if rvNewState == dcache.StateInbandOffline {
 			log.Debug("ClusterMap::UpdateComponentRVState: %s/%s -> %s, old duplicate udpate, ignoring, rvs: %+v",
 				rvName, mvName, rvNewState, rvs)
-			return nil
+			return nil, nil
 		}
 
 		//
@@ -388,7 +394,19 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 			rvName, mvName, rvNewState, rvs, InvalidComponentRV, GetEpoch())
 		log.Err("%v", err)
 		common.Assert(false, err)
-		return err
+
+		//
+		// If the UpdateComponentRVState() call is blocking, we return the error.
+		// Else we return the error on a channel.
+		//
+		if isBlocking {
+			return err, nil
+		} else {
+			errChan := make(chan error, 1)
+			errChan <- err
+			close(errChan)
+			return nil, errChan
+		}
 	}
 
 	log.Debug("ClusterMap::UpdateComponentRVState: %s/%s (%s -> %s)", rvName, mvName, rvCurState, rvNewState)
@@ -411,6 +429,14 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	updateComponentRVStateChannel <- updateRVMessage
 
 	common.Assert(updateRVMessage.Err != nil)
+
+	//
+	// For non-blocking update calls, return the error channel on which
+	// the caller can wait for the result later.
+	//
+	if !isBlocking {
+		return nil, updateRVMessage.Err
+	}
 
 	err := <-updateRVMessage.Err
 
@@ -436,7 +462,7 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	common.Assert(time.Since(updateRVMessage.QueuedAt) < 30*time.Second,
 		updateRVMessage, time.Since(updateRVMessage.QueuedAt))
 
-	return err
+	return err, nil
 }
 
 func GetComponentRVStateChannel() chan dcache.ComponentRVUpdateMessage {

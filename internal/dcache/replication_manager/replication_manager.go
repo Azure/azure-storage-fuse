@@ -923,7 +923,9 @@ processResponses:
 			// which will mark the RV as inband-offline if the PutChunk to that RV fails again.
 			//
 			if putChunkStyle != DaisyChain {
-				errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
+				errRV, errChan := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline, true /* isBlocking */)
+				common.Assert(errChan == nil)
+
 				if errRV != nil {
 					//
 					// If we fail to update the component RV as offline, we cannot safely complete
@@ -1459,6 +1461,12 @@ func abortStuckSyncJobs() {
 	myRVs := cm.GetMyRVs()
 	common.Assert(len(myRVs) > 0, myRVs)
 
+	//
+	// Store the responses for all RV/MV state update for which we attempted to abort the sync job
+	// by marking the RV as inband-offline.
+	//
+	var updateResponses []*updateRVStateResponse
+
 	for rvName, rvInfo := range myRVs {
 		_ = rvInfo
 		common.Assert(cm.IsValidRVName(rvName), rvName)
@@ -1472,12 +1480,39 @@ func abortStuckSyncJobs() {
 		//
 		myMVs := cm.GetActiveMVsForRV(rvName)
 		for mvName, _ := range myMVs {
-			checkAndAbortSyncJob(rvName, mvName)
+			errChan := checkAndAbortSyncJob(rvName, mvName)
+
+			//
+			// If errChan is not nil, it means that we attempted to abort the sync job for this RV/MV
+			// by updating the RV state to inband-offline. We make non-blocking call to UpdateComponentRVState()
+			// and get an error channel on which we can wait for the result later.
+			//
+			if errChan != nil {
+				updateResponses = append(updateResponses, &updateRVStateResponse{
+					mvName:  mvName,
+					rvName:  rvName,
+					errChan: errChan,
+				})
+			}
+		}
+	}
+
+	//
+	// Wait for all the UpdateComponentRVState() calls to complete and log the result.
+	//
+	for _, updateResp := range updateResponses {
+		err := <-updateResp.errChan
+		if err != nil {
+			log.Err("ReplicationManager::abortStuckSyncJobs: Failed to mark %s/%s inband-offline: %v",
+				updateResp.rvName, updateResp.mvName, err)
+		} else {
+			log.Info("ReplicationManager::abortStuckSyncJobs: Marked %s/%s inband-offline",
+				updateResp.rvName, updateResp.mvName)
 		}
 	}
 }
 
-func checkAndAbortSyncJob(rvName, mvName string) {
+func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
 	common.Assert(cm.IsValidMVName(mvName), mvName)
 
@@ -1497,14 +1532,14 @@ func checkAndAbortSyncJob(rvName, mvName string) {
 	if !ok {
 		// Assert, since it's uncommon.
 		common.Assert(false, rvName, mvName, componentRVs, epoch)
-		return
+		return nil
 	}
 
 	common.Assert(cm.IsValidComponentRVState(rvState), rvName, mvName, rvState)
 
 	// This component RV is not the target of a sync job.
 	if rvState != dcache.StateSyncing {
-		return
+		return nil
 	}
 
 	log.Debug("ReplicationManager::checkAndAbortSyncJob: Checking if sync job for %s/%s needs to be aborted, state: %s",
@@ -1546,13 +1581,11 @@ func checkAndAbortSyncJob(rvName, mvName string) {
 		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s stuck in syncing state since %d secs after JoinMV, marking it inband-offline",
 			rvName, mvName, time.Now().Unix()-joinMVTime)
 
-		err := cm.UpdateComponentRVState(mvName, rvName, dcache.StateInbandOffline)
-		if err != nil {
-			log.Err("ReplicationManager::checkAndAbortSyncJob: failed to mark %s/%s as inband-offline: %v",
-				rvName, mvName, err)
-		}
+		err, errChan := cm.UpdateComponentRVState(mvName, rvName, dcache.StateInbandOffline, false /* isBlocking */)
+		common.Assert(err == nil, rvName, mvName, err)
+		common.Assert(errChan != nil, rvName, mvName)
 
-		return
+		return errChan
 	}
 
 	//
@@ -1564,12 +1597,14 @@ func checkAndAbortSyncJob(rvName, mvName string) {
 		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s stuck in syncing state since %d secs, marking it inband-offline",
 			rvName, mvName, time.Now().Unix()-lastSyncWriteTime)
 
-		err := cm.UpdateComponentRVState(mvName, rvName, dcache.StateInbandOffline)
-		if err != nil {
-			log.Err("ReplicationManager::checkAndAbortSyncJob: failed to mark %s/%s as inband-offline: %v",
-				rvName, mvName, err)
-		}
+		err, errChan := cm.UpdateComponentRVState(mvName, rvName, dcache.StateInbandOffline, false /* isBlocking */)
+		common.Assert(err == nil, rvName, mvName, err)
+		common.Assert(errChan != nil, rvName, mvName)
+
+		return errChan
 	}
+
+	return nil
 }
 
 // syncMV is used for resyncing the degraded MV to online state. To be precise it will synchronize all component
@@ -1713,7 +1748,9 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	// Update the destination RV from outofsync to syncing state. The cluster manager will take care of
 	// updating the MV state to syncing if all component RVs have either online or syncing state.
 	//
-	err := cm.UpdateComponentRVState(mvName, targetRVName, dcache.StateSyncing)
+	err, errChan := cm.UpdateComponentRVState(mvName, targetRVName, dcache.StateSyncing, true /* isBlocking */)
+	common.Assert(errChan == nil)
+
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to update component RV %s/%s state to syncing [%v]",
 			targetRVName, mvName, err)
@@ -1793,7 +1830,9 @@ func runSyncJob(job *syncJob) error {
 		// Sync failed, mark the target RV as inband-offline, to reattempt sync with a fresh target RV.
 		// If this fails, abortStuckSyncJobs() will redo this.
 		//
-		errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline)
+		errRV, errChan := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateInbandOffline, true /* isBlocking */)
+		common.Assert(errChan == nil)
+
 		if errRV != nil {
 			errStr := fmt.Sprintf("Failed to mark %s/%s as inband-offline for job %s [%v]",
 				job.destRVName, job.mvName, job.toString(), errRV)
@@ -1809,7 +1848,9 @@ func runSyncJob(job *syncJob) error {
 	// If this fails, abortStuckSyncJobs() will mark this inband-offline which will restart the
 	// entire fix-mv+resync-mv workflows.
 	//
-	err = cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOnline)
+	err, errChan := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOnline, true /* isBlocking */)
+	common.Assert(errChan == nil)
+
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to mark %s/%s as online for job %s [%v]",
 			job.destRVName, job.mvName, job.toString(), err)
