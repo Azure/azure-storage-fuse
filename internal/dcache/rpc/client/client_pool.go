@@ -1730,8 +1730,11 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 
 	var err error
 
-	// Create RPC clients and add them to the channel.
-	for i := 0; i < int(numClients); i++ {
+	var wg sync.WaitGroup
+
+	createOneClient := func() {
+		defer wg.Done()
+
 		var client *rpcClient
 		client, err = newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
 		if err != nil {
@@ -1747,11 +1750,23 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 				rpc.IsTimedOut(err) ||
 				rpc.IsNoRouteToHost(err) ||
 				errors.Is(err, NegativeNodeError), err)
-
-			break
+			return
 		}
 		ncPool.clientChan <- client
 	}
+
+	startTime := time.Now()
+
+	// Create RPC clients and add them to the channel.
+	for i := 0; i < int(numClients); i++ {
+		wg.Add(1)
+		go createOneClient()
+	}
+
+	wg.Wait()
+
+	log.Debug("nodeClientPool::createRPCClients: Created %d RPC clients for node %s in %s",
+		len(ncPool.clientChan), ncPool.nodeID, time.Since(startTime))
 
 	//
 	// If we are not able to create all requested connections there's something seriously wrong
