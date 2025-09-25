@@ -178,8 +178,15 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	// With numStagingChunks=256 and chunk size=16MiB, this can be upto 4GiB of out of order writes,
 	// set slightly higher value to account for higher chunk sizes.
 	//
-	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (16*common.GbToBytes),
-		bitOffset, t.file.FileMetadata.FileLayout.ChunkSize,
+	// Update: The deviation can be much higher because though the PutChunk calls are mostly issued in
+	//         order, due to the (un)availability of RPC clients to different RVs, they complete wildly
+	//         out of order. So we have to support much higher deviation.
+	//
+	// TODO: Make this tighter once we sort out the RPC client availability issue.
+	//       We should set this back to 16GB.
+	//
+	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (128*common.GbToBytes),
+		bitOffset, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 
 	// Ensure bitmap is large enough.
@@ -230,6 +237,10 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	if fullWords > 0 {
 		t.lastContiguous += fullWords * 64
 		t.bitmap = t.bitmap[fullWords:]
+
+		log.Debug("contiguity_tracker::OnSuccessfulUpload file: %s, fileID: %s, fullWords: %d, lastContiguous: %d, newChunks: %d, len(bitmap): %d",
+			t.file.FileMetadata.Filename, t.file.FileMetadata.FileID, fullWords, t.lastContiguous,
+			newChunks, len(t.bitmap))
 	}
 
 	//

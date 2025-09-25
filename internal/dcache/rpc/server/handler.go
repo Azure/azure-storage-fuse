@@ -135,8 +135,9 @@ type rvInfo struct {
 // Note that this is not information about the entire MV. One MV is replicated across multiple RVs and this holds
 // only the information about the "MV Replica" that our RV hosts.
 type mvInfo struct {
-	rwMutex sync.RWMutex
-	mvName  string // mv0, mv1, etc.
+	rwMutex      sync.RWMutex
+	mdChunkMutex sync.Mutex // to serialize writes to the MD chunk
+	mvName       string     // mv0, mv1, etc.
 
 	// RV this MV is part of.
 	// Note that mvInfo is referenced via rvInfo.mvMap so when we have rvInfo we already know the
@@ -2327,26 +2328,33 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	//       a big deal.
 	//
 	if req.Chunk.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
+		mvInfo.mdChunkMutex.Lock()
+		defer mvInfo.mdChunkMutex.Unlock()
+
 		common.Assert(req.Length < dcache.MDChunkSize, req.Length, dcache.MDChunkSize, chunkPath)
 
 		info, err1 := os.Stat(chunkPath)
-		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
+		if err1 != nil && !os.IsNotExist(err1) {
 			errStr := fmt.Sprintf("failed to stat metadata chunk file %s before deleting [%v]", chunkPath, err1)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
 
-		err1 = os.Remove(chunkPath)
-		if err1 != nil && !errors.Is(err1, os.ErrNotExist) {
-			errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)
-			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-			common.Assert(false, errStr)
-			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-		}
+		if info != nil {
+			err1 = os.Remove(chunkPath)
+			if err1 != nil && !os.IsNotExist(err1) {
+				errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+				common.Assert(false, errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+			} else if os.IsNotExist(err1) {
+				errStr := fmt.Sprintf("failed to remove metadata chunk file %s before writing [%v]", chunkPath, err1)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+			}
 
-		// Successfully deleted the metadata chunk, update the mvInfo accounting.
-		if err1 == nil {
+			// Successfully deleted the metadata chunk, update the mvInfo accounting.
 			common.Assert(info != nil)
 			common.Assert(info.Size() < dcache.MDChunkSize, info.Size(), dcache.MDChunkSize, chunkPath)
 			mvInfo.decTotalChunkBytes(info.Size())

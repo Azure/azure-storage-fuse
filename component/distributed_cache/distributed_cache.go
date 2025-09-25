@@ -716,6 +716,9 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 
 		common.Assert(attr.Size >= 0, *attr)
 
+		log.Debug("DistributedCache::GetAttr : TOMAR: rawPath: %s, options.Name: %s, attr: %+v",
+			rawPath, options.Name, *attr)
+
 		// For non-finalized files, use PartialSize.
 		if attr.Size == math.MaxInt64 {
 			fileMetadata, _, err := fm.GetDcacheFile(rawPath)
@@ -746,8 +749,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 startListingWithNewToken:
 	if isDcachePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
-		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
-		options.Name = rawPath
+		options.Name = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 			return dirList, token, err
 		}
