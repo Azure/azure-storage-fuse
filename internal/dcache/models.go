@@ -208,5 +208,5 @@ type ComponentRVUpdateMessage struct {
 	RvNewState StateEnum
 	QueuedAt   time.Time
 	Err        chan error
-	Closed     bool // boolean to indicate if Err channel is closed
+	Closed     bool // boolean flag to indicate if Err channel is closed
 }
