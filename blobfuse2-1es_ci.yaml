@@ -90,9 +90,9 @@ extends:
           - script: |
               curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
               $(go env GOPATH)/bin/golangci-lint --version
-              $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags $(tags) --exclude-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --exclude-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
+              $(go env GOPATH)/bin/golangci-lint run --tests=false > lint.log
               result=$(cat lint.log | wc -l)
-              if [ $result -ne 0 ]; then
+              if [ $result -ne 1 ]; then
                 echo "-----------------------------------"
                 echo "Below issues are found in SA"
                 cat lint.log
