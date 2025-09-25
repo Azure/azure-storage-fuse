@@ -64,14 +64,15 @@ const (
 	// Timeout to check if a sync job is stuck or not (after the JoinMV operation).
 	// This can happen when the source RV updates the state of target RV to syncing in the clustermap.
 	// But before it sends the PutChunk(sync) calls to the target RV, it goes down. In this case, the
-	// mnInfo.lastSyncWriteTime will be 0, as the sync job hasn't yet started writing any chunks.
+	// mvInfo.lastSyncWriteTime will be 0, as the sync job hasn't yet started writing any chunks.
 	// So, we use the time at which the target RV joined the MV and use this threshold to detect if the
 	// sync job is stuck or not. If the sync job is stuck, we mark the target RV as inband-offline
 	// to trigger the fix-mv workflow to select a new RV.
 	// Note: This threshold should be significantly higher than AbortOngoingSyncThresholdSecs, as
-	// the target RV waits for clustermap epoch time to update its local clustermap as well as the
-	// replication manager ticker time to run the abortStuckSyncJobs() thread.
-	AbortSyncAfterJoinMVThresholdSecs = 300 // in seconds
+	//       the target RV waits for clustermap epoch time to update its local clustermap as well as the
+	//       replication manager ticker time to run the abortStuckSyncJobs() thread.
+	//       So, we use cm.MaxClusterMapEpoch + some margin for replication manager ticker to run.
+	AbortSyncAfterJoinMVThresholdSecs = cm.MaxClusterMapEpoch + 60 // in seconds
 
 	// This is a practically infeasible chunk index, for sanity checks.
 	ChunkIndexUpperBound = 1e9

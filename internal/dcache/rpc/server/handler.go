@@ -262,7 +262,6 @@ type mvInfo struct {
 	// is corrected once sync completes.
 	reservedSpace atomic.Int64
 
-	//
 	// Time when the RV joined this MV.
 	// We use this time to determine if the sync operation is stuck or not.
 	// There can be a case when the source RV updates the state of the target RV to syncing in the clustermap,
@@ -274,10 +273,8 @@ type mvInfo struct {
 	// since there are no PutChunk(sync) calls to the target RV). If this time is older than
 	// a threshold (say 300 seconds), and the RV/MV replica is still in syncing state, it marks itself
 	// as inband-offline. This will trigger the fix-mv workflow to select a new RV.
-	//
 	joinTime atomic.Int64
 
-	//
 	// Time of last write to this RV/MV replica by a sync PutChunk request.
 	// This is used to determine if a sync operation is stuck due to source RV going offline.
 	// When we start the sync operation, we mark the target RV from outofsync to syncing state.
@@ -289,7 +286,6 @@ type mvInfo struct {
 	// writes a chunk to this MV replica. If this timestamp does not change for a long time (say 180 seconds),
 	// we can assume that the sync operation is stuck, and mark the target RV as inband-offline, which triggers
 	// the fix-mv workflow to select a new RV.
-	//
 	lastSyncWriteTime atomic.Int64
 }
 
@@ -1241,6 +1237,10 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 		// perform some rollback/update actions, depending on the state transition.
 		//
 		if myRvInfo.State == string(dcache.StateOutOfSync) {
+			// If component RV is in OutOfSync state, it must have been added by a JoinMV call.
+			common.Assert(mv.joinTime.Load() > 0 && mv.joinTime.Load() <= time.Now().Unix(),
+				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap)
+
 			//
 			// mvInfo is marked OutOfSync during JoinMV call made from the fix-mv workflow.
 			// During that, space is reserved in both mvInfo and rvInfo, which we have to undo once we
@@ -2664,6 +2664,11 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 			rvInfo.reservedSpace.Load(), req.Length, rvInfo.rvName, mvInfo.mvName, req.SyncID)
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load(), rvInfo.rvName, mvInfo.mvName, req.SyncID)
+
+		// We must get PutChunk(sync) only for MV replicas which are syncing, and those must have joined the MV,
+		// in the past.
+		common.Assert(mvInfo.joinTime.Load() > 0 && mvInfo.joinTime.Load() <= time.Now().Unix(),
+			mvInfo.rv.rvName, mvInfo.mvName, mvInfo.joinTime.Load(), req.SyncID)
 
 		mvInfo.incTotalChunkBytes(req.Length)
 
