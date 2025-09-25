@@ -287,8 +287,9 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time
 		//
 		// Since we create the metadata chunk with size=0 when the file is created, this should not happen.
 		// We return time as 0 to allow the file to be deleted if it ever happens.
+		// See comment in NewDcacheFile(), how this can happen.
 		//
-		common.Assert(false, *fileMetadata, err)
+		//common.Assert(false, *fileMetadata, err)
 		return 0, time.Time{}
 	}
 
