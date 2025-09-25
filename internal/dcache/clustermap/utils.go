@@ -51,7 +51,7 @@ import (
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
-var (
+const (
 	MinUnixEpoch int64 = 1735689600 // Jan 1 2025, safe lowerlimit for Unix epoch validity check
 	MaxUnixEpoch int64 = 2524608000 // Jan 1 2050, safe upperlimit for Unix epoch validity check
 
@@ -94,6 +94,20 @@ var (
 	MinMVsPerRV int64 = 1
 	MaxMVsPerRV int64 = 100
 
+	//
+	// MVsPerRVScaleFactor decides how many times more MVs can we allow in the FixMV workflow, than the NewMV
+	// workflow.
+	//
+	MVsPerRVScaleFactor int64 = 4
+
+	MinRvFullThreshold int64 = 80
+	MaxRvFullThreshold int64 = 100
+
+	MinRvNearFullThreshold int64 = 80
+	MaxRvNearFullThreshold int64 = 100
+)
+
+var (
 	MVsPerRVLocked bool = false
 
 	//
@@ -116,18 +130,6 @@ var (
 	// See ClusterManager.computeMVsPerRV().
 	//
 	MVsPerRVForFixMV atomic.Int32
-
-	//
-	// MVsPerRVScaleFactor decides how many times more MVs can we allow in the FixMV workflow, than the NewMV
-	// workflow.
-	//
-	MVsPerRVScaleFactor int64 = 4
-
-	MinRvFullThreshold int64 = 80
-	MaxRvFullThreshold int64 = 100
-
-	MinRvNearFullThreshold int64 = 80
-	MaxRvNearFullThreshold int64 = 100
 
 	rvNameRegex = regexp.MustCompile("^rv[0-9]+$")
 	mvNameRegex = regexp.MustCompile("^mv[0-9]+$")

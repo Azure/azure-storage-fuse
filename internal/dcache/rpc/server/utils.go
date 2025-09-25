@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"maps"
 
@@ -286,7 +287,14 @@ func GetMVJoinAndLastSyncWriteTime(rvName string, mvName string) (int64, int64) 
 	common.Assert(mvInfo != nil, rvName, mvName)
 
 	// Since the RV has joined the MV, the joinTime must be set.
-	common.Assert(mvInfo.joinTime.Load() > 0, rvName, mvName)
+	common.Assert(mvInfo.joinTime.Load() > 0 && mvInfo.joinTime.Load() <= time.Now().Unix(),
+		rvName, mvName, mvInfo.joinTime.Load(), time.Now().Unix())
+	// lastSyncWriteTime can be 0 if there has not been any sync write to this RV/MV replica.
+	common.Assert(mvInfo.lastSyncWriteTime.Load() >= 0 && mvInfo.lastSyncWriteTime.Load() <= time.Now().Unix(),
+		rvName, mvName, mvInfo.lastSyncWriteTime.Load(), time.Now().Unix())
+	// If set, lastSyncWriteTime must be >= joinTime.
+	common.Assert(mvInfo.lastSyncWriteTime.Load() == 0 || mvInfo.lastSyncWriteTime.Load() >= mvInfo.joinTime.Load(),
+		rvName, mvName, mvInfo.lastSyncWriteTime.Load(), mvInfo.joinTime.Load())
 
 	return mvInfo.joinTime.Load(), mvInfo.lastSyncWriteTime.Load()
 }
@@ -309,4 +317,5 @@ func deepCopyRVMap(rvs map[string]dcache.StateEnum) map[string]dcache.StateEnum 
 // Silence unused import errors for release builds.
 func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	time.Since(time.Now())
 }
