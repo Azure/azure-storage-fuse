@@ -290,7 +290,8 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	if fileMetadata.Size == -1 {
 		fileMetadata.PartialSize, fileMetadata.PartialSizeAt = GetHighestUploadedByte(&fileMetadata)
 		common.Assert(fileMetadata.PartialSize >= 0, fileName, fileMetadata.PartialSize, fileMetadata)
-		common.Assert(!fileMetadata.PartialSizeAt.After(time.Now()),
+		// 5 sec to account for clock skews.
+		common.Assert(!fileMetadata.PartialSizeAt.After(time.Now().Add(5*time.Second)),
 			fileName, fileMetadata.PartialSizeAt, time.Now(), fileMetadata)
 	}
 

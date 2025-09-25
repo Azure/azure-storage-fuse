@@ -151,6 +151,19 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 	var err error
 	var lastClusterMapEpoch int64
 
+	if common.IsDebugBuild() {
+		startTime := time.Now()
+		defer func() {
+			if err != nil {
+				log.Err("[TIMING] ReplicationManager::ReadMV: ReadMV failed after %s: %v: %v",
+					time.Since(startTime), req.toString(), err)
+			} else {
+				log.Debug("[TIMING] ReplicationManager::ReadMV: ReadMV request took %s: %v",
+					time.Since(startTime), req.toString())
+			}
+		}()
+	}
+
 	clusterMapRefreshed := false
 	retryCnt := 0
 
