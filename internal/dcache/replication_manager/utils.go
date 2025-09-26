@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -62,10 +63,27 @@ const (
 	// Time in microseconds to add to the sync start time to account for clock skew
 	NTPClockSkewMargin = 5 * 1e6
 
-	// Max concurrent PutChunkDC calls across all nodes.
-	PutChunkDCIODepthTotal = 64
-
-	// Max concurrent PutChunkDC calls to a specific node.
+	//
+	// Max concurrent PutChunkDC calls across all nodes and to a specific node.
+	// Both of these (specially the global limit) need to be carefully tuned based on experiments
+	// on different size clusters.
+	//
+	// Note: This is not an ideal situation, ideally we would not like to limit ourselves artifically,
+	//       and would like to get limited only by resources like n/w and disk throughput. We are
+	//       having to do this because Thrift does not support asynchronous calls (where multiple RPC
+	//       calls can be in-flight on the same connection and the responses are matched using a unique
+	//       RPC Id that each request/response carries), so if do not limit the number of concurrent calls,
+	//       it puts a lot of pressure on the RPC connection pool and under load it takes multiple seconds
+	//       to get a connection from the pool, which results in timeouts and failures and hurts performance.
+	//
+	//       If the outstanding PutChunkDC calls hang/get delayed for any reason, then we would not be
+	//       optimally utilizing the available n/w and disk throughput. Hopefully this will not happen often.
+	//
+	// TODO: Consider gRPC which supports async calls.
+	//
+	// Note: These values need to be set in close coordination with defaultMaxPerNode.
+	//
+	PutChunkDCIODepthTotal   = 32
 	PutChunkDCIODepthPerNode = 8
 
 	//
@@ -98,7 +116,7 @@ const (
 	DaisyChain
 )
 
-// Semaphores to limit the number of concurrent PutChunkDC calls across all nodes.
+// Semaphores to limit the number of concurrent PutChunkDC calls across all nodes and to a specific node.
 var putChunkDCTotalSem = make(chan struct{}, PutChunkDCIODepthTotal)
 var putChunkDCPerNodeSemMap = make(map[string]*chan struct{})
 var putChunkDCPerNodeSemMapLock sync.Mutex
@@ -116,6 +134,13 @@ func (s PutChunkStyleEnum) String() string {
 }
 
 func getPutChunkDCSem(targetNodeID string) *chan struct{} {
+	var startTime time.Time
+	_ = startTime
+
+	if common.IsDebugBuild() {
+		startTime = time.Now()
+	}
+
 	// Grab global semaphore.
 	putChunkDCTotalSem <- struct{}{}
 
@@ -129,12 +154,28 @@ func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 	}
 	putChunkDCPerNodeSemMapLock.Unlock()
 
+	(*putChunkDCSemNode) <- struct{}{}
+
+	log.Debug("getPutChunkDCSem: Acquired semaphore for node %s, took %s, now available: {global: %d/%d, node: %d/%d}",
+		targetNodeID, time.Since(startTime),
+		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode)
+
 	return putChunkDCSemNode
 }
 
-func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}) {
+func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string) {
+	// We must be releasing a semaphore that we have acquired.
+	common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))
+	common.Assert(len(putChunkDCTotalSem) > 0, len(putChunkDCTotalSem))
+
 	<-*putChunkDCSemNode
 	<-putChunkDCTotalSem
+
+	log.Debug("getPutChunkDCSem: Released semaphore for node %s, now available: {global: %d/%d, node: %d/%d}",
+		targetNodeID,
+		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode)
 }
 
 // Return the most suitable online RV from the list of component RVs to which we should send the RPC call.

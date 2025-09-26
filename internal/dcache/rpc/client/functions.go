@@ -90,8 +90,9 @@ const (
 	//
 	// Note: 64 is seen to perform better, since we only have 16 regular clients which are used for
 	//       all operations other than PutChunkDC from forwardPutChunk().
+	// Note: If you modify this, also modify PutChunkDCIODepthTotal and PutChunkDCIODepthPerNode.
 	//
-	defaultMaxPerNode = 64
+	defaultMaxPerNode = 96
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
@@ -131,22 +132,6 @@ var (
 	IffyRVError       = errors.New("RV is marked iffy")
 	NoFreeRPCClient   = errors.New("no free RPC client")
 )
-
-// This is for use by PutChunkDCLocal() to ensure it doesn't overwhelm the target node with too many
-// daisy chain PutChunkDC requests.
-func GetRPCClientDummy(nodeID string) (*rpcClient, error) {
-	client, err := cp.getRPCClient(nodeID, false /* highPrio */)
-	if err != nil {
-		err = fmt.Errorf("rpc_client::GetRPCClientDummy: Failed to get dummy RPC client: %v [%w]",
-			err, NoFreeRPCClient)
-		log.Err("%v", err)
-	}
-	return client, err
-}
-
-func ReleaseRPCClientDummy(client *rpcClient) error {
-	return cp.releaseRPCClient(client)
-}
 
 // TODO: add asserts for function arguments and return values
 // refer this for details, https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047924726
