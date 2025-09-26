@@ -77,10 +77,10 @@ var defaultSize = int64(0)
 var defaultMode = 0777
 
 func newTestLibfuse(next internal.Component, configuration string) *Libfuse {
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	libfuse := NewLibfuseComponent()
 	libfuse.SetNextComponent(next)
-	libfuse.Configure(true)
+	_ = libfuse.Configure(true)
 
 	return libfuse.(*Libfuse)
 }
@@ -130,10 +130,10 @@ func testStatFs(suite *libfuseTestSuite) {
 	buf := &C.statvfs_t{}
 	libfuse_statfs(path, buf)
 
-	suite.assert.Equal(int(buf.f_frsize), 1)
-	suite.assert.Equal(int(buf.f_blocks), 2)
-	suite.assert.Equal(int(buf.f_bavail), 3)
-	suite.assert.Equal(int(buf.f_bfree), 4)
+	suite.assert.Equal(1, int(buf.f_frsize))
+	suite.assert.Equal(2, int(buf.f_blocks))
+	suite.assert.Equal(3, int(buf.f_bavail))
+	suite.assert.Equal(4, int(buf.f_bfree))
 }
 
 func testMkDirError(suite *libfuseTestSuite) {
@@ -143,7 +143,9 @@ func testMkDirError(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	mode := fs.FileMode(0775)
 	options := internal.CreateDirOptions{Name: name, Mode: mode}
-	suite.mock.EXPECT().CreateDir(options).Return(errors.New("failed to create directory"))
+	suite.mock.EXPECT().
+		CreateDir(options).
+		Return(errors.New("failed to create directory"))
 
 	err := libfuse_mkdir(path, 0775)
 	suite.assert.Equal(C.int(-C.EIO), err)
@@ -221,7 +223,9 @@ func testCreateError(suite *libfuseTestSuite) {
 	mode := fs.FileMode(0775)
 	info := &C.fuse_file_info_t{}
 	options := internal.CreateFileOptions{Name: name, Mode: mode}
-	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, errors.New("failed to create file"))
+	suite.mock.EXPECT().
+		CreateFile(options).
+		Return(&handlemap.Handle{}, errors.New("failed to create file"))
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
