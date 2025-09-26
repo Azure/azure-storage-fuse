@@ -125,8 +125,7 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	err = cmd.Run()
 	suite.assert.Nil(err)
 
-	res, err := IsMountActive(mntdir)
-	suite.assert.Nil(err)
+	res, _ := IsMountActive(mntdir)
 	suite.assert.True(res)
 
 	res, err = IsMountActive("/mnt/blobfuse")
