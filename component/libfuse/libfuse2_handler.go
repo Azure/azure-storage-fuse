@@ -141,7 +141,10 @@ func (lf *Libfuse) initFuse() error {
 		errc = C.get_extension_callbacks(&operations)
 		if errc != 0 {
 			C.unload_library()
-			log.Err("Libfuse::InitFuse : Failed to get callback table from extension. error code %d", errc)
+			log.Err(
+				"Libfuse::InitFuse : Failed to get callback table from extension. error code %d",
+				errc,
+			)
 			return errors.New("failed to get callback table from extension")
 		}
 		log.Trace("Libfuse::InitFuse : Extension callback retrieved")
@@ -154,7 +157,10 @@ func (lf *Libfuse) initFuse() error {
 		errc = C.register_callback_to_extension(&my_operations)
 		if errc != 0 {
 			C.unload_library()
-			log.Err("Libfuse::InitFuse : Failed to register callback table to extension. error code %d", errc)
+			log.Err(
+				"Libfuse::InitFuse : Failed to register callback table to extension. error code %d",
+				errc,
+			)
 			return errors.New("failed to register callback table to extension")
 		}
 		log.Trace("Libfuse::InitFuse : Callbacks registered to extension")
@@ -432,7 +438,8 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_mkdir : %s", name)
 
-	err := fuseFS.NextComponent().CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
+	err := fuseFS.NextComponent().
+		CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_mkdir : Failed to create %s [%s]", name, err.Error())
 		if os.IsPermission(err) {
@@ -444,7 +451,11 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		}
 	}
 
-	libfuseStatsCollector.PushEvents(createDir, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(
+		createDir,
+		name,
+		map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)},
+	)
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
 
 	return 0
@@ -494,7 +505,13 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse2_readdir reads a directory
 //
 //export libfuse2_readdir
-func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
+func libfuse2_readdir(
+	_ *C.char,
+	buf unsafe.Pointer,
+	filler C.fuse_fill_dir_t,
+	off C.off_t,
+	fi *C.fuse_file_info_t,
+) C.int {
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 
 	handle.RLock()
@@ -517,7 +534,13 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 		})
 
 		if err != nil {
-			log.Err("Libfuse::libfuse2_readdir : Path %s, handle: %d, offset %d. Error in retrieval %s", handle.Path, handle.ID, off_64, err.Error())
+			log.Err(
+				"Libfuse::libfuse2_readdir : Path %s, handle: %d, offset %d. Error in retrieval %s",
+				handle.Path,
+				handle.ID,
+				off_64,
+				err.Error(),
+			)
 			if os.IsNotExist(err) {
 				return C.int(C_ENOENT)
 			} else if os.IsPermission(err) {
@@ -528,7 +551,12 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 		}
 
 		if off_64 == 0 {
-			attrs = append([]*internal.ObjAttr{{Flags: fuseFS.lsFlags, Name: "."}, {Flags: fuseFS.lsFlags, Name: ".."}}, attrs...)
+			attrs = append(
+				[]*internal.ObjAttr{
+					{Flags: fuseFS.lsFlags, Name: "."},
+					{Flags: fuseFS.lsFlags, Name: ".."},
+				},
+				attrs...)
 		}
 
 		cacheInfo.sIndex = off_64
@@ -603,7 +631,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_create : %s", name)
 
-	handle, err := fuseFS.NextComponent().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
+	handle, err := fuseFS.NextComponent().
+		CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
@@ -616,14 +645,22 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), 0)
+	ret_val := C.allocate_native_file_object(
+		C.ulong(handle.UnixFD),
+		C.ulong(uintptr(unsafe.Pointer(handle))),
+		0,
+	)
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
 	log.Trace("Libfuse::libfuse2_create : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
-	libfuseStatsCollector.PushEvents(createFile, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(
+		createFile,
+		name,
+		map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)},
+	)
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -669,7 +706,11 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	ret_val := C.allocate_native_file_object(
+		C.ulong(handle.UnixFD),
+		C.ulong(uintptr(unsafe.Pointer(handle))),
+		C.ulong(handle.Size),
+	)
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
@@ -685,7 +726,13 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse_read reads data from an open file
 //
 //export libfuse_read
-func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
+func libfuse_read(
+	path *C.char,
+	buf *C.char,
+	size C.size_t,
+	off C.off_t,
+	fi *C.fuse_file_info_t,
+) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
@@ -711,7 +758,12 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		err = nil
 	}
 	if err != nil {
-		log.Err("Libfuse::libfuse2_read : error reading file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		log.Err(
+			"Libfuse::libfuse2_read : error reading file %s, handle: %d [%s]",
+			handle.Path,
+			handle.ID,
+			err.Error(),
+		)
 		return -C.EIO
 	}
 
@@ -721,7 +773,13 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 // libfuse_write writes data to an open file
 //
 //export libfuse_write
-func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
+func libfuse_write(
+	path *C.char,
+	buf *C.char,
+	size C.size_t,
+	off C.off_t,
+	fi *C.fuse_file_info_t,
+) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
@@ -736,7 +794,12 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		})
 
 	if err != nil {
-		log.Err("Libfuse::libfuse2_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		log.Err(
+			"Libfuse::libfuse2_write : error writing file %s, handle: %d [%s]",
+			handle.Path,
+			handle.ID,
+			err.Error(),
+		)
 		return -C.EIO
 	}
 
@@ -763,7 +826,12 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		log.Err(
+			"Libfuse::libfuse2_flush : error flushing file %s, handle: %d [%s]",
+			handle.Path,
+			handle.ID,
+			err.Error(),
+		)
 		switch err {
 		case syscall.ENOENT:
 			return -C.ENOENT
@@ -794,7 +862,8 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 
 	log.Trace("Libfuse::libfuse2_truncate : %s size %d", name, off)
 
-	err := fuseFS.NextComponent().TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(off)})
+	err := fuseFS.NextComponent().
+		TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(off)})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_truncate : error truncating file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
@@ -824,7 +893,12 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		log.Err(
+			"Libfuse::libfuse2_release : error closing file %s, handle: %d [%s]",
+			handle.Path,
+			handle.ID,
+			err.Error(),
+		)
 		switch err {
 		case syscall.ENOENT:
 			return -C.ENOENT
@@ -886,26 +960,42 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 
 	// ENOENT. Not covered: a directory component in dst does not exist
 	if srcPath == "" || dstPath == "" {
-		log.Err("Libfuse::libfuse2_rename : src: [%s] or dst: [%s] is an empty string", srcPath, dstPath)
+		log.Err(
+			"Libfuse::libfuse2_rename : src: [%s] or dst: [%s] is an empty string",
+			srcPath,
+			dstPath,
+		)
 		return -C.ENOENT
 	}
 
 	srcAttr, srcErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: srcPath})
 	if os.IsNotExist(srcErr) {
-		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s [%s]", srcPath, srcErr.Error())
+		log.Err(
+			"Libfuse::libfuse2_rename : Failed to get attributes of %s [%s]",
+			srcPath,
+			srcErr.Error(),
+		)
 		return -C.ENOENT
 	}
 	dstAttr, dstErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: dstPath})
 
 	// EISDIR
 	if (dstErr == nil || os.IsExist(dstErr)) && dstAttr.IsDir() && !srcAttr.IsDir() {
-		log.Err("Libfuse::libfuse2_rename : dst [%s] is an existing directory but src [%s] is not a directory", dstPath, srcPath)
+		log.Err(
+			"Libfuse::libfuse2_rename : dst [%s] is an existing directory but src [%s] is not a directory",
+			dstPath,
+			srcPath,
+		)
 		return -C.EISDIR
 	}
 
 	// ENOTDIR
 	if (dstErr == nil || os.IsExist(dstErr)) && !dstAttr.IsDir() && srcAttr.IsDir() {
-		log.Err("Libfuse::libfuse2_rename : dst [%s] is an existing file but src [%s] is a directory", dstPath, srcPath)
+		log.Err(
+			"Libfuse::libfuse2_rename : dst [%s] is an existing file but src [%s] is a directory",
+			dstPath,
+			srcPath,
+		)
 		return -C.ENOTDIR
 	}
 
@@ -918,13 +1008,23 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 			}
 		}
 
-		err := fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
+		err := fuseFS.NextComponent().
+			RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
-			log.Err("Libfuse::libfuse2_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
+			log.Err(
+				"Libfuse::libfuse2_rename : error renaming directory %s -> %s [%s]",
+				srcPath,
+				dstPath,
+				err.Error(),
+			)
 			return -C.EIO
 		}
 
-		libfuseStatsCollector.PushEvents(renameDir, srcPath, map[string]interface{}{source: srcPath, dest: dstPath})
+		libfuseStatsCollector.PushEvents(
+			renameDir,
+			srcPath,
+			map[string]interface{}{source: srcPath, dest: dstPath},
+		)
 		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
 
 	} else {
@@ -959,9 +1059,15 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 	targetPath = common.NormalizeObjectName(targetPath)
 	log.Trace("Libfuse::libfuse2_symlink : Received for %s -> %s", name, targetPath)
 
-	err := fuseFS.NextComponent().CreateLink(internal.CreateLinkOptions{Name: name, Target: targetPath})
+	err := fuseFS.NextComponent().
+		CreateLink(internal.CreateLinkOptions{Name: name, Target: targetPath})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_symlink : error linking file %s -> %s [%s]", name, targetPath, err.Error())
+		log.Err(
+			"Libfuse::libfuse2_symlink : error linking file %s -> %s [%s]",
+			name,
+			targetPath,
+			err.Error(),
+		)
 		return -C.EIO
 	}
 
@@ -985,7 +1091,8 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 		linkSize = attr.Size
 	}
 
-	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name, Size: linkSize})
+	targetPath, err := fuseFS.NextComponent().
+		ReadLink(internal.ReadLinkOptions{Name: name, Size: linkSize})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_readlink : error reading link file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
@@ -1078,7 +1185,11 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 		return -C.EIO
 	}
 
-	libfuseStatsCollector.PushEvents(chmod, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(
+		chmod,
+		name,
+		map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)},
+	)
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, chmod, (int64)(1))
 
 	return 0

@@ -296,7 +296,9 @@ func testOpenAppendFlagDisableWritebackCache(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
 	config := "libfuse:\n  disable-writeback-cache: true\n"
-	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
+	suite.setupTestHelper(
+		config,
+	) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 	suite.assert.True(suite.libfuse.disableWritebackCache)
 
 	name := "path"
@@ -326,7 +328,9 @@ func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
 	config := "libfuse:\n  ignore-open-flags: true\n"
-	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
+	suite.setupTestHelper(
+		config,
+	) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 	suite.assert.True(suite.libfuse.ignoreOpenFlags)
 
 	name := "path"
@@ -387,7 +391,9 @@ func testOpenError(suite *libfuseTestSuite) {
 	info := &C.fuse_file_info_t{}
 	info.flags = C.O_RDWR
 	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, errors.New("failed to open a file"))
+	suite.mock.EXPECT().
+		OpenFile(options).
+		Return(&handlemap.Handle{}, errors.New("failed to open a file"))
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
