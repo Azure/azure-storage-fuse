@@ -184,8 +184,10 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	//
 	// TODO: Make this tighter once we sort out the RPC client availability issue.
 	//       We should set this back to 16GB.
+	// Update: Now we should not have RPC client availability issue, so let's set it back to 16GB.
+	//       If this assertion fails, it indicates issue with RPC client availability, check that up.
 	//
-	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (128*common.GbToBytes),
+	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (16*common.GbToBytes),
 		bitOffset, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 

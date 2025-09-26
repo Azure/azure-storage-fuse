@@ -698,6 +698,17 @@ retry:
 		var putChunkDCResp *models.PutChunkDCResponse
 
 		//
+		// Acquire a semaphore slot to limit PutChunkDC concurrency.
+		// Note that PutChunkDC has a snowballing effect on the number of RPC clients needed as higher
+		// number of calls means higher number of daisy chain calls, and there's no gain in throughput
+		// beyond a point, infact it's detrimental as it causes higher/useless load on the nodes.
+		// We have a global limit (how many PutChunkDC calls can one node send to all other nodes put
+		// together) and a per-node limit (how many PutChunkDC calls can one node send to a particular
+		// target node). Only if both the limits are satisfied, we allow the PutChunkDC call to proceed.
+		//
+		putChunkSem := getPutChunkDCSem(targetNodeID)
+
+		//
 		// If the node to which the PutChunkDC() RPC call must be made is local,
 		// then we directly call the PutChunkDC() method using the local server's handler.
 		// Else we call the PutChunkDC() RPC via the Thrift RPC client.
@@ -707,6 +718,9 @@ retry:
 		} else {
 			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}
+
+		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
+		releasePutChunkDCSem(putChunkSem, targetNodeID)
 
 		if err != nil {
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",
