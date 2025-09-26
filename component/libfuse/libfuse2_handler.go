@@ -375,14 +375,13 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
 		//log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s [%s]", name, err.Error())
-		switch (err) {
-			case syscall.ENOENT:
-				return -C.ENOENT
-			case syscall.EACCES:
-				return -C.EACCES
-			default:
-				return -C.EIO
-			}
+		switch err {
+		case syscall.ENOENT:
+			return -C.ENOENT
+		case syscall.EACCES:
+			return -C.EACCES
+		default:
+			return -C.EIO
 		}
 	}
 
@@ -553,7 +552,7 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 		fuseFS.fillStat(cacheInfo.children[segmentIdx], &stbuf)
 
 		name := C.CString(cacheInfo.children[segmentIdx].Name)
-		if ret := C.fill_dir_entry(filler, buf, name, &stbuf, idx+1); ret != 0  {
+		if ret := C.fill_dir_entry(filler, buf, name, &stbuf, idx+1); ret != 0 {
 			C.free(unsafe.Pointer(name))
 			break
 		}
@@ -765,14 +764,13 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		switch (err) {
-			case syscall.ENOENT:
-				return -C.ENOENT
-			case syscall.EACCES:
-				return -C.EACCES
-			default:
-				return -C.EIO
-			}
+		switch err {
+		case syscall.ENOENT:
+			return -C.ENOENT
+		case syscall.EACCES:
+			return -C.EACCES
+		default:
+			return -C.EIO
 		}
 	}
 
@@ -827,14 +825,13 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		switch (err) {
-			case syscall.ENOENT:
-				return -C.ENOENT
-			case syscall.EACCES:
-				return -C.EACCES
-			default:
-				return -C.EIO
-			}
+		switch err {
+		case syscall.ENOENT:
+			return -C.ENOENT
+		case syscall.EACCES:
+			return -C.EACCES
+		default:
+			return -C.EIO
 		}
 	}
 
