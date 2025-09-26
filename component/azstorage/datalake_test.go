@@ -260,7 +260,7 @@ func (s *datalakeTestSuite) TestFNSOverHNS() {
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n ",
 		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
-	s.setupTestHelper(config, "fnsoverhns", true)
+	s.setupTestHelper(config, s.container, true)
 
 	var paths = []string{generateDirectoryName(), generateDirectoryName() + "/"}
 	for _, path := range paths {
