@@ -1922,8 +1922,6 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 	ncPool.clientChan = make(chan *rpcClient, numClients)
 	ncPool.lastUsed.Store(time.Now().Unix())
 
-	var err error
-
 	var wg sync.WaitGroup
 
 	createOneClient := func() {
@@ -1957,7 +1955,7 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 	}
 
 	// Create RPC clients and add them to the channel.
-	for i := 0; i < int(numClients); i++ {
+	for range int(numClients) {
 		wg.Add(1)
 		go createOneClient()
 	}
