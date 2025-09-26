@@ -39,7 +39,7 @@ package libfuse
 // CFLAGS: compile time flags -D object file creation. D= Define
 // LFLAGS: loader flags link library -l binary file. l=link -ldl is for the extension to dynamically link
 
-// #cgo CFLAGS: -DFUSE_USE_VERSION=39 -D_FILE_OFFSET_BITS=64
+// #cgo CFLAGS: -DFUSE_USE_VERSION=315 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 // #include "extension_handler.h"
@@ -51,6 +51,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -60,6 +62,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
+
+//go:generate $ASSERT_REMOVER $GOFILE
 
 /* --- IMPORTANT NOTE ---
 In below code lot of places we are doing this sort of conversions:
@@ -217,11 +221,27 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 		options += fmt.Sprintf(",umask=%04d", opts.umask)
 	}
 
+	// This should match the max_read value in libfuse_init().
 	options += ",max_read=1048576"
 
 	if !fuseFS.directIO {
 		options += ",kernel_cache"
 	}
+
+	//
+	// Large number of fuse threads play very inefficiently with cpu caches.
+	// We want to keep as few fuse threads as possible, just large enough to handle parallel requests
+	// fairly well. Fuse has a default of 10 which should be ok but we set it to 8 to be explicit about
+	// our intent to use a small number of threads.
+	// Commenting out max_threads for now as some systems still has older libfuse which does not support
+	// this option.
+	// TODO: Make it conditional based on libfuse version.
+	//
+	//options += ",max_threads=8"
+	options += ",max_idle_threads=100000"
+
+	// clone_fd should generally we good, let's keep a watch on this.
+	options += ",clone_fd"
 
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
@@ -254,9 +274,196 @@ func (lf *Libfuse) destroyFuse() error {
 	return nil
 }
 
+// Helper functions to invalidate all the necessary attribute caches when a file/dir is created, modified
+// or deleted. Usually we shouldn't need to invalidate the attribute cache for a file/dir as kernel can do
+// it based on the operation, but there are few special/non-standard things that dcache does/supports because
+// of which we need to explicitly ask kernel to invalidate the attribute cache in some cases.
+//
+// 1. When a O_WRONLY file is close()d we finalize the file which changes the size of the file (from -1 to the
+//    actual size). This not a standard operation and kernel does not know that close() may change file size
+//    hence we need to explicitly invalidate the attribute cache for the file.
+// 2. The other case arises due to the fact that different paths (qualified and unqualified)  can refer to the
+//    same file which kernel doesn't know about and hence we need to explicitly invalidate the caches, e.g.,
+//    The unqualified path /mnt/blobfuse/dir1/file1.txt may refer to either /mnt/blobfuse/fs=dcache/dir1/file1.txt
+//    or /mnt/blobfuse/fs=azure/dir1/file1.txt (depending on which of them is present), so we need to perform the
+//    following cache invalidations:
+//    1. When /mnt/blobfuse/dir1/file1.txt is UPDATED, invalidate attribute cache for
+//       /mnt/blobfuse/fs=dcache/dir1/file1.txt,
+//       /mnt/blobfuse/fs=azure/dir1/file1.txt.
+//    2. When /mnt/blobfuse/fs=dcache/dir1/file1.txt is UPDATED, invalidate attribute cache for
+//       /mnt/blobfuse/dir1/file1.txt
+//    3. When /mnt/blobfuse/fs=azure/dir1/file1.txt is UPDATED, invalidate attribute cache for
+//       /mnt/blobfuse/dir1/file1.txt
+//
+//    4. When /mnt/blobfuse/dir1/file1.txt is CREATED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/fs=dcache/dir1,
+//       /mnt/blobfuse/fs=azure/dir1,
+//       and invalidate (negative) entry cache for,
+//       /mnt/blobfuse/fs=dcache/dir1/file1.txt,
+//       /mnt/blobfuse/fs=azure/dir1/file1.txt
+//    5. When /mnt/blobfuse/fs=dcache/dir1/file1.txt is CREATED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/dir1.
+//       and invalidate (negative) entry cache for,
+//       /mnt/blobfuse/dir1/file1.txt
+//    6. When /mnt/blobfuse/fs=azure/dir1/file1.txt is CREATED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/dir1.
+//       and invalidate (negative) entry cache for,
+//       /mnt/blobfuse/dir1/file1.txt
+//
+//    7. When /mnt/blobfuse/dir1/file1.txt is DELETED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/fs=dcache/dir1,
+//       /mnt/blobfuse/fs=azure/dir1,
+//       and invalidate attribute and entry cache for,
+//       /mnt/blobfuse/fs=dcache/dir1/file1.txt,
+//       /mnt/blobfuse/fs=azure/dir1/file1.txt
+//    8. When /mnt/blobfuse/fs=dcache/dir1/file1.txt is DELETED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/dir1,
+//       and invalidate attribute and entry cache for,
+//       /mnt/blobfuse/dir1/file1.txt
+//    9. When /mnt/blobfuse/fs=azure/dir1/file1.txt is DELETED, invalidate attribute cache for parent directory,
+//       /mnt/blobfuse/dir1,
+//       and invalidate attribute and entry cache for,
+//       /mnt/blobfuse/dir1/file1.txt
+//
+// Note: Currently we have commented all the invalidations for parent directories as we don't really maintain
+//       stats for directories. We leave them there to show the complete picture and in case we decide to update
+//       in future.
+// Note: Also note that we cannot invalidate negative entries using fuse_invalidate_path() as it internally
+//       calls fuse_lowlevel_notify_inval_inode() which needs an inode number and for negative entries we
+//       don't have inode numbers. We leave them commented to show what we wish to do.
+//       Additionally, fuse_invalidate_path() can only invalidate a path that has been previously looked up
+//       and thus is present in libfuse path->inode cache, hence fuse_invalidate_path() may fail even if you
+//       expect the file to be present. This is safe since if libfuse doesn't have the path cached it means
+//       kernel can't have it cached either.
+
+func InvalidateAttrCacheOnFileUpdate(path string) {
+	// We should always be passed a path relative to the mount point.
+	common.Assert(len(path) > 0)
+	common.Assert(path[0] != '/', path)
+
+	//
+	// On file update we only invalidate attribute cache (and not entry cache), hence if attr_timeout
+	// is 0 then there is no need to invalidate anything as kernel won't cache anything.
+	//
+	if fuseFS.attributeExpiration == 0 {
+		return
+	}
+
+	//
+	// This is needed only for the case when file size changes on close() for O_WRONLY file, for other
+	// cases kernel knows about it and can duly invalidate the cache on its own.
+	//
+	// Note: This can fail with -ENOENT when it's called from libfuse_flush() and other places where
+	//       the file path is always unqualified, even when file was accessed using a qualified path.
+	//
+	ret := C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(path))
+	_ = ret
+	common.Assert(ret == 0 || ret == -C.ENOENT, ret, path)
+
+	if !strings.HasPrefix(path, "fs=") {
+		// 2.1 - File is updated using unqualified path.
+
+		//
+		// Note that this fuse_invalidate_path() may fail with -ENOENT if we haven't accessed this file
+		// using qualified path and hence libfuse doesn't have it cached. This is safe to ignore.
+		//
+		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, filepath.Join("fs=dcache", path))
+		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, filepath.Join("fs=azure", path))
+	} else if strings.HasPrefix(path, "fs=dcache/") {
+		// 2.2 - File is updated using dcache qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
+		common.Assert(unqualifiedPath != path, path)
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
+		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
+	} else if strings.HasPrefix(path, "fs=azure/") {
+		// 2.3 - File is updated using azure qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
+		common.Assert(unqualifiedPath != path, path)
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
+		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
+	} else {
+		common.Assert(false, path)
+	}
+}
+
+func InvalidateAttrCacheOnFileCreate(path string) {
+	// We should always be passed a path relative to the mount point.
+	common.Assert(len(path) > 0)
+	common.Assert(path[0] != '/', path)
+
+	//
+	// On create we only need to invalidate negative entry cache and attribute cache, but since
+	// fuse_invalidate_path() cannot invalidate negative entry cache we don't need to do anything.
+	// See comments 2.4,2.5,2.6 above for what we would have liked to do.
+	//
+	return
+}
+
+func InvalidateAttrCacheOnFileDelete(path string) {
+	// We should always be passed a path relative to the mount point.
+	common.Assert(len(path) > 0)
+	common.Assert(path[0] != '/', path)
+
+	//
+	// On file/dir deletion we invalidate attribute cache and positive entry cache.
+	//
+	if fuseFS.attributeExpiration == 0 && fuseFS.entryExpiration == 0 {
+		return
+	}
+
+	var ret C.int
+	_ = ret
+
+	if !strings.HasPrefix(path, "fs=") {
+		// 2.7 - File is deleted using unqualified path.
+		parentDir := filepath.Dir(path)
+		common.Assert(len(parentDir) > 0)
+		if parentDir == "." {
+			parentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", parentDir)))
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", parentDir)))
+		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=dcache", path)))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, filepath.Join("fs=dcache", path))
+		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(filepath.Join("fs=azure", path)))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, filepath.Join("fs=azure", path))
+	} else if strings.HasPrefix(path, "fs=dcache/") {
+		// 2.8 - File is deleted using dcache qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=dcache/")
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
+		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
+		// fuse_invalidate_path() treats empty string as mount root.
+		if unqualifiedParentDir == "." {
+			unqualifiedParentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
+	} else if strings.HasPrefix(path, "fs=azure") {
+		// 2.9 - File is deleted using azure qualified path.
+		unqualifiedPath := strings.TrimPrefix(path, "fs=azure/")
+		common.Assert(unqualifiedPath[0] != '/', unqualifiedPath)
+		unqualifiedParentDir := filepath.Dir(unqualifiedPath)
+		// fuse_invalidate_path() treats empty string as mount root.
+		if unqualifiedParentDir == "." {
+			unqualifiedParentDir = ""
+		}
+		//C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedParentDir))
+		ret = C.fuse_invalidate_path(C.fuse_get_context().fuse, C.CString(unqualifiedPath))
+		common.Assert(ret == 0 || ret == -C.ENOENT, ret, unqualifiedPath)
+	} else {
+		common.Assert(false, path)
+	}
+}
+
 //export libfuse_init
 func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Pointer) {
-	log.Trace("Libfuse::libfuse_init : init (read : %v, write %v, read-ahead %v)", conn.max_read, conn.max_write, conn.max_readahead)
+	log.Trace("Libfuse::libfuse_init : init (max_read: %v, max_write: %d, max_readahead: %d)",
+		conn.max_read, conn.max_write, conn.max_readahead)
 
 	log.Info("Libfuse::NotifyMountToParent : Notifying parent for successful mount")
 	if err := common.NotifyMountToParent(); err != nil {
@@ -265,7 +472,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	C.populate_uid_gid()
 
-	log.Info("Libfuse::libfuse_init : Kernel Caps : %d", conn.capable)
+	log.Info("Libfuse::libfuse_init : Kernel Caps : 0x%x", conn.capable)
 
 	// Populate connection information
 	// conn.want |= C.FUSE_CAP_NO_OPENDIR_SUPPORT
@@ -289,7 +496,23 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		conn.want |= C.FUSE_CAP_READDIRPLUS
 	}
 
-	// Allow fuse to read a file in parallel on different offsets
+	// General async dio support (affects both read and write).
+	//
+	// TODO: There is work needed in dcache layer to handle parallel reads/writes correctly.
+	if (conn.capable & C.FUSE_CAP_ASYNC_DIO) != 0 {
+		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_DIO")
+		conn.want |= C.FUSE_CAP_ASYNC_DIO
+	}
+
+	// Async read allows fuse kernel modules to send multiple read requests in parallel to blobfuse.
+	// This is good for performance as user can issue large reads (greater than 1MB) and fuse will issue
+	// multiple 1MB reads in parallel to blobfuse, which can process all of them in parallel through its
+	// multiple threads. This helps performance by preventing kernel->user request latency for every read
+	// request but instead those can be issued in parallel to blobfuse and processed in parallel.
+	//
+	// Note: This does not work when direct_io is enabled on the filesystem. See comment below.
+	//
+	// TODO: There is work needed in dcache layer to handle this correctly.
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
 		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_READ")
 		conn.want |= C.FUSE_CAP_ASYNC_READ
@@ -316,9 +539,11 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
-	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (4 * 1024 * 1024)
+	// We love large IOs.
 	conn.max_read = (1 * 1024 * 1024)
+
+	// While reading a file let kernel do readahed for better perf.
+	conn.max_readahead = (16 * 1024 * 1024)
 
 	// RHEL still has 3.3 fuse version and it does not allow max_write beyond 128K
 	// Setting this value to 1 MB will fail the mount.
@@ -333,9 +558,19 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
 	// page cache (file content cache) in the kernel for the filesystem.
+	// Unfortunately, this also forces the kernel to issue only one read request at a time
+	// even though we have enabled FUSE_CAP_ASYNC_READ. This hurts performance as we have to
+	// incur the kernel->user request latency for every read request.
+	// What works best is to not set the direct_io option and let the application use O_DIRECT
+	// flag on open(). This gets us the benefit of bypassing the kernel cache and also allows
+	// kernel to issue multiple read (and write) requests in parallel to blobfuse.
 	if fuseFS.directIO {
+		log.Warn("Libfuse::libfuse_init : Forcing direct_io, kernel page cache will be bypassed for all files on the filesystem, regardless of the O_DIRECT open flag. An unwanted side effect of this is that kernel will issue only one read/write request at a time to blobfuse2. This hurts performance as we have to incur the kernel->user request latency for every max_read/max_write sized read/write request. Consider using O_DIRECT open flag instead of direct_io mount option.")
 		cfg.direct_io = C.int(1)
 	}
+
+	log.Info("Libfuse::libfuse_init : want: 0x%x, max_read: %d, max_write: %d, max_readahead: %d",
+		conn.want, conn.max_read, conn.max_write, conn.max_readahead)
 
 	return nil
 }
@@ -423,6 +658,7 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 
 	// Populate stat
 	fuseFS.fillStat(attr, stbuf)
+	//log.Trace("Libfuse::libfuse_getattr : %s, stbuf.st_size=%d", name, stbuf.st_size)
 	return 0
 }
 
@@ -448,6 +684,10 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		}
 	}
 
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileCreate(name)
+	}
+
 	libfuseStatsCollector.PushEvents(createDir, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
 
@@ -471,11 +711,13 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// For each handle created using opendir we create
 	// this structure here to hold current block of children to serve readdir
 	handle.SetValue("cache", &dirChildCache{
-		sIndex:   0,
-		eIndex:   0,
-		token:    "",
-		length:   0,
-		children: make([]*internal.ObjAttr, 0),
+		sIndex:        0,
+		eIndex:        0,
+		token:         "",
+		length:        0,
+		children:      make([]*internal.ObjAttr, 0),
+		isFsDcache:    true,
+		dcacheEntries: make(map[string]struct{}),
 	})
 
 	handlemap.Add(handle)
@@ -516,10 +758,12 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 	if off_64 == 0 ||
 		(off_64 >= cacheInfo.eIndex && cacheInfo.token != "") {
 		attrs, token, err := fuseFS.NextComponent().StreamDir(internal.StreamDirOptions{
-			Name:   handle.Path,
-			Offset: off_64,
-			Token:  cacheInfo.token,
-			Count:  common.MaxDirListCount,
+			Name:          handle.Path,
+			Offset:        off_64,
+			Token:         cacheInfo.token,
+			Count:         common.MaxDirListCount,
+			IsFsDcache:    &cacheInfo.isFsDcache,
+			DcacheEntries: cacheInfo.dcacheEntries,
 		})
 
 		if err != nil {
@@ -594,6 +838,10 @@ func libfuse_rmdir(path *C.char) C.int {
 		}
 	}
 
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileDelete(name)
+	}
+
 	libfuseStatsCollector.PushEvents(deleteDir, name, nil)
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, deleteDir, (int64)(1))
 
@@ -647,9 +895,15 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 			return -C.EEXIST
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if err == syscall.EROFS {
+			return -C.EROFS
 		} else {
 			return -C.EIO
 		}
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileCreate(name)
 	}
 
 	handlemap.Add(handle)
@@ -687,6 +941,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		fi.flags = fi.flags &^ C.O_SYNC
 		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
+
 	if !fuseFS.disableWritebackCache {
 		if fi.flags&C.O_ACCMODE == C.O_WRONLY || fi.flags&C.O_APPEND != 0 {
 			if fuseFS.ignoreOpenFlags {
@@ -701,6 +956,13 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
+	//
+	// We overload O_DIRECTORY flag to convey to dcache that the open is being done by fuse and it must fail
+	// open for non-finalized files (which are currently being uploaded). We want those files to be readable
+	// only internally by dcache (for serving data from cache) and not by fuse.
+	//
+	fi.flags = fi.flags | C.O_DIRECTORY
+
 	handle, err := fuseFS.NextComponent().OpenFile(
 		internal.OpenFileOptions{
 			Name:  name,
@@ -714,6 +976,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		} else {
 			return -C.EIO
 		}
@@ -727,6 +991,16 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+
+	if handle.IsFsDebug() {
+		// This is not an actual file i.e., present in the filesystem but a file which was implemented by respective component
+		// to emit metrics/state of the filesystem. Hence the size of the file is not known at the stat and also the stat
+		// must receive the file size to be zero for such files. But If page-cache is enabled, the file size is checked before
+		// making a read call. As we're returning the file size to be zero, we don't get the read calls if the page cache is
+		// turned on for the mount point. Hence we make the handle to be direct-io, so that we get read calls regardless of
+		// its size.
+		C.make_file_handle_direct_io(fi)
+	}
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -742,20 +1016,21 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
 	offset := uint64(off)
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
+	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
+	common.Assert(len(data) == int(size), len(data), size, handle.Path, handle.ID)
 
 	var err error
 	var bytesRead int
 
 	if handle.Cached() {
-		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
+		bytesRead, err = syscall.Pread(handle.FD(), data, int64(offset))
 		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			&internal.ReadInBufferOptions{
 				Handle: handle,
 				Offset: int64(offset),
-				Data:   data[:size],
+				Data:   data,
 			})
 	}
 
@@ -767,6 +1042,8 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		return -C.EIO
 	}
 
+	common.Assert(bytesRead >= 0 && bytesRead <= int(size), bytesRead, size, handle.Path, handle.ID)
+	//log.Err("Libfuse::libfuse_read : file %s, offset %d, size %d, read %d", handle.Path, offset, size, bytesRead)
 	return C.int(bytesRead)
 }
 
@@ -778,13 +1055,15 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
 	offset := uint64(off)
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
+	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
+	common.Assert(len(data) == int(size), len(data), size, handle.Path, handle.ID)
+
 	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		&internal.WriteFileOptions{
 			Handle:   handle,
 			Offset:   int64(offset),
-			Data:     data[:size],
+			Data:     data,
 			Metadata: nil,
 		})
 
@@ -792,6 +1071,25 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
+
+	common.Assert(bytesWritten >= 0 && bytesWritten <= int(size), bytesWritten, size, handle.Path, handle.ID)
+
+	/*
+		// DO NOT CALL INVALIDATE FROM WRITE HANDLER AS IT CAN CAUSE DEADLOCK.
+		// INODE INVALIDATE MAY CAUSE KERNEL TO WRITE PAGES TO THE FILESYSTEM,
+		// IF THAT CALLS INVALIDATE, INVALIDATE IS WAITING FOR THE WRITE TO COMPLETE
+		// WHILE WRITE IS WAITING FOR THE INVALIDATE TO COMPLETE.
+		// Anyways, we don't need to invalidate on every write as we don't support
+		// overwriting files, we can call invalidate from libfuse_release() which is
+		// more important as that is when the file is finalized and its size updated.
+		//
+		// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+		//       qualified or unqualified path.
+		//
+		if common.IsDistributedCacheEnabled {
+			InvalidateAttrCacheOnFileUpdate(handle.Path)
+		}
+	*/
 
 	return C.int(bytesWritten)
 }
@@ -802,7 +1100,11 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
+	// FlushFile() will clear the "DcacheAllowWrites" flag so check before calling it.
+	closingDCacheWriteHandle := handle.IsDcacheAllowWrites()
+
+	log.Trace("Libfuse::libfuse_flush : %s, handle: %d, dcache write: %v",
+		handle.Path, handle.ID, closingDCacheWriteHandle)
 
 	// If the file handle is not dirty, there is no need to flush
 	if fileHandle.dirty != 0 {
@@ -823,6 +1125,16 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 		} else {
 			return -C.EIO
 		}
+	}
+
+	//
+	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+	//       qualified or unqualified path.
+	//
+	// Also see libfuse_release().
+	//
+	if closingDCacheWriteHandle {
+		InvalidateAttrCacheOnFileUpdate(handle.Path)
 	}
 
 	return 0
@@ -866,6 +1178,10 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 		return -C.EIO
 	}
 
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileUpdate(name)
+	}
+
 	libfuseStatsCollector.PushEvents(truncateFile, name, map[string]interface{}{size: int64(off)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
 
@@ -878,8 +1194,11 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	// CloseFile()->FlushFile() will clear the "DcacheAllowWrites" flag so check before calling it.
+	closingDCacheWriteHandle := handle.IsDcacheAllowWrites()
 
-	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
+	log.Trace("Libfuse::libfuse_release : %s, handle: %d, dcache write: %v",
+		handle.Path, handle.ID, closingDCacheWriteHandle)
 
 	// If the file handle is dirty then file-cache needs to flush this file
 	if fileHandle.dirty != 0 {
@@ -887,6 +1206,19 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
+
+	//
+	// If it's a write handle to a dcache file, close will finalize the file which updates the size,
+	// hence we need to invalidate the kernel attr/dentry cache.
+	// Also see libfuse_flush().
+	//
+	// Note: Here handle.Path is the unqualified path regardless of whether the file was opened with
+	//       qualified or unqualified path.
+	//
+	if closingDCacheWriteHandle {
+		InvalidateAttrCacheOnFileUpdate(handle.Path)
+	}
+
 	if err != nil {
 		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		if err == syscall.ENOENT {
@@ -922,8 +1254,14 @@ func libfuse_unlink(path *C.char) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		}
 		return -C.EIO
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileDelete(name)
 	}
 
 	libfuseStatsCollector.PushEvents(deleteFile, name, nil)
@@ -1012,12 +1350,25 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		})
 		if err != nil {
 			log.Err("Libfuse::libfuse_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
+			if os.IsNotExist(err) {
+				return -C.ENOENT
+			} else if os.IsPermission(err) {
+				return -C.EACCES
+			} else if errors.Is(err, syscall.EBUSY) {
+				return -C.EBUSY
+			}
+
 			return -C.EIO
 		}
 
 		libfuseStatsCollector.PushEvents(renameFile, srcPath, map[string]interface{}{source: srcPath, dest: dstPath})
 		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameFile, (int64)(1))
 
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileDelete(srcPath)
+		InvalidateAttrCacheOnFileCreate(dstPath)
 	}
 
 	return 0
@@ -1039,6 +1390,10 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 	if err != nil {
 		log.Err("Libfuse::libfuse_symlink : error linking file %s -> %s [%s]", name, targetPath, err.Error())
 		return -C.EIO
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileCreate(name)
 	}
 
 	libfuseStatsCollector.PushEvents(createLink, name, map[string]interface{}{trgt: targetPath})
@@ -1152,6 +1507,10 @@ func libfuse_chmod(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 			return -C.EACCES
 		}
 		return -C.EIO
+	}
+
+	if common.IsDistributedCacheEnabled {
+		InvalidateAttrCacheOnFileUpdate(name)
 	}
 
 	libfuseStatsCollector.PushEvents(chmod, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
