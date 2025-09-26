@@ -1705,14 +1705,15 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	common.Assert(cp.isNodeLocked(ncPool.nodeID), ncPool.nodeID)
 
 	//
-	// With maxPerNode==64, we get 16 regular and 48 high priority clients.
+	// With maxPerNode==96, we get 32 regular and 64 high priority clients.
 	// All other requests, other than PutChunkDC use the regular priority clients.
-	// 16 connections should be enough for PutChunk/PutChunkDC/GetChunk requests to saturate the network.
+	// 32 connections should be enough for PutChunk/PutChunkDC/GetChunk requests to saturate the network,
+	// also leaving some connections free in case some commands take longer time to complete.
 	//
-	// TODO: Make sure 16 clients per node are enough for extra large clusters for various workflows
-	//       like fixMV, resync, and other heavy data movement operations like GetChunk.
+	// TODO: Make sure this works well for extra large clusters for various workflows like fixMV, resync,
+	//       and other heavy data movement operations like GetChunk.
 	//
-	numReservedHighPrio := int64(numClients - (numClients / 4))
+	numReservedHighPrio := int64(numClients - (numClients / 3))
 	common.Assert(numReservedHighPrio > 0 && numReservedHighPrio < int64(numClients),
 		numReservedHighPrio, numClients)
 

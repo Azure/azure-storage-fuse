@@ -72,7 +72,7 @@ const (
 	//       and would like to get limited only by resources like n/w and disk throughput. We are
 	//       having to do this because Thrift does not support asynchronous calls (where multiple RPC
 	//       calls can be in-flight on the same connection and the responses are matched using a unique
-	//       RPC Id that each request/response carries), so if do not limit the number of concurrent calls,
+	//       RPC Id that each request/response carries), so if we do not limit the number of concurrent calls,
 	//       it puts a lot of pressure on the RPC connection pool and under load it takes multiple seconds
 	//       to get a connection from the pool, which results in timeouts and failures and hurts performance.
 	//
@@ -82,6 +82,8 @@ const (
 	// TODO: Consider gRPC which supports async calls.
 	//
 	// Note: These values need to be set in close coordination with defaultMaxPerNode.
+	//       These must be set as low as possible, just enough to saturate the n/w and disk throughput from
+	//       a single node.
 	//
 	PutChunkDCIODepthTotal   = 32
 	PutChunkDCIODepthPerNode = 8
@@ -133,6 +135,7 @@ func (s PutChunkStyleEnum) String() string {
 	}
 }
 
+// Acquire the semaphores for sending PutChunkDC to the given target node.
 func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 	var startTime time.Time
 	_ = startTime
@@ -140,9 +143,6 @@ func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 	if common.IsDebugBuild() {
 		startTime = time.Now()
 	}
-
-	// Grab global semaphore.
-	putChunkDCTotalSem <- struct{}{}
 
 	// Grab per-node semaphore.
 	putChunkDCPerNodeSemMapLock.Lock()
@@ -156,6 +156,14 @@ func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 
 	(*putChunkDCSemNode) <- struct{}{}
 
+	//
+	// Grab global semaphore.
+	// We do it after grabbing the per-node semaphore as this is a more sacred resource, since
+	// PutChunkDC calls to *any* node will be limited by this. We do not want to grab this and then
+	// wait for the per-node semaphore.
+	//
+	putChunkDCTotalSem <- struct{}{}
+
 	log.Debug("getPutChunkDCSem: Acquired semaphore for node %s, took %s, now available: {global: %d/%d, node: %d/%d}",
 		targetNodeID, time.Since(startTime),
 		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
@@ -164,13 +172,14 @@ func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 	return putChunkDCSemNode
 }
 
+// Release the semaphore acquired by getPutChunkDCSem() for the given target node.
 func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string) {
 	// We must be releasing a semaphore that we have acquired.
 	common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))
 	common.Assert(len(putChunkDCTotalSem) > 0, len(putChunkDCTotalSem))
 
-	<-*putChunkDCSemNode
 	<-putChunkDCTotalSem
+	<-*putChunkDCSemNode
 
 	log.Debug("getPutChunkDCSem: Released semaphore for node %s, now available: {global: %d/%d, node: %d/%d}",
 		targetNodeID,

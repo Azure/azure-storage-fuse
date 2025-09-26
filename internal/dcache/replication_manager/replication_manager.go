@@ -701,10 +701,10 @@ retry:
 		// Acquire a semaphore slot to limit PutChunkDC concurrency.
 		// Note that PutChunkDC has a snowballing effect on the number of RPC clients needed as higher
 		// number of calls means higher number of daisy chain calls, and there's no gain in throughput
-		// beyond a point, infact it's detrimental as it causes higher/uselss load on the nodes.
+		// beyond a point, infact it's detrimental as it causes higher/useless load on the nodes.
 		// We have a global limit (how many PutChunkDC calls can one node send to all other nodes put
 		// together) and a per-node limit (how many PutChunkDC calls can one node send to a particular
-		// target node).
+		// target node). Only if both the limits are satisfied, we allow the PutChunkDC call to proceed.
 		//
 		putChunkSem := getPutChunkDCSem(targetNodeID)
 
