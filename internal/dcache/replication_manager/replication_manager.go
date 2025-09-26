@@ -151,6 +151,19 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 	var err error
 	var lastClusterMapEpoch int64
 
+	if common.IsDebugBuild() {
+		startTime := time.Now()
+		defer func() {
+			if err != nil {
+				log.Err("[TIMING] ReplicationManager::ReadMV: ReadMV failed after %s: %v: %v",
+					time.Since(startTime), req.toString(), err)
+			} else {
+				log.Debug("[TIMING] ReplicationManager::ReadMV: ReadMV request took %s: %v",
+					time.Since(startTime), req.toString())
+			}
+		}()
+	}
+
 	clusterMapRefreshed := false
 	retryCnt := 0
 
@@ -335,8 +348,6 @@ retry:
 			// Only expected for metadata chunks.
 			common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, rpc.GetChunkRequestToString(rpcReq))
 			common.Assert(rpcReq.Length == dcache.MDChunkSize, rpc.GetChunkRequestToString(rpcReq))
-			// Now we create metadata chunk on file create, so this should also not happen.
-			common.Assert(false, rpc.GetChunkRequestToString(rpcReq))
 			return nil, err
 		}
 
@@ -687,6 +698,17 @@ retry:
 		var putChunkDCResp *models.PutChunkDCResponse
 
 		//
+		// Acquire a semaphore slot to limit PutChunkDC concurrency.
+		// Note that PutChunkDC has a snowballing effect on the number of RPC clients needed as higher
+		// number of calls means higher number of daisy chain calls, and there's no gain in throughput
+		// beyond a point, infact it's detrimental as it causes higher/useless load on the nodes.
+		// We have a global limit (how many PutChunkDC calls can one node send to all other nodes put
+		// together) and a per-node limit (how many PutChunkDC calls can one node send to a particular
+		// target node). Only if both the limits are satisfied, we allow the PutChunkDC call to proceed.
+		//
+		putChunkSem := getPutChunkDCSem(targetNodeID)
+
+		//
 		// If the node to which the PutChunkDC() RPC call must be made is local,
 		// then we directly call the PutChunkDC() method using the local server's handler.
 		// Else we call the PutChunkDC() RPC via the Thrift RPC client.
@@ -696,6 +718,9 @@ retry:
 		} else {
 			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}
+
+		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
+		releasePutChunkDCSem(putChunkSem, targetNodeID)
 
 		if err != nil {
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",

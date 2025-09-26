@@ -223,6 +223,10 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	// Contiguity tracker is used to track contiguous chunks written to the file.
 	// Useful for reading partially written files.
 	//
+	// Note: CreateFileInit() above would create the file metadata and hence the file will start
+	//       showing up in listings, so it's possible that some reader may open the file and query
+	//       metadata chunk even before we create it below.
+	//
 	dcacheFile.CT = NewContiguityTracker(dcacheFile)
 
 	// freeChunks semaphore is used to limit StagedChunks map to numStagingChunks.
@@ -286,7 +290,8 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	if fileMetadata.Size == -1 {
 		fileMetadata.PartialSize, fileMetadata.PartialSizeAt = GetHighestUploadedByte(&fileMetadata)
 		common.Assert(fileMetadata.PartialSize >= 0, fileName, fileMetadata.PartialSize, fileMetadata)
-		common.Assert(!fileMetadata.PartialSizeAt.After(time.Now()),
+		// 5 sec to account for clock skews.
+		common.Assert(!fileMetadata.PartialSizeAt.After(time.Now().Add(5*time.Second)),
 			fileName, fileMetadata.PartialSizeAt, time.Now(), fileMetadata)
 	}
 
