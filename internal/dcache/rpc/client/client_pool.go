@@ -136,6 +136,9 @@ type clientPool struct {
 	maxPerNode uint32 // Maximum number of open RPC clients per node
 	maxNodes   uint32 // Maximum number of nodes for which RPC clients are open
 	timeout    uint32 // Duration in seconds after which a RPC client is closed
+
+	numExtraClients    atomic.Int64 // Number of extra clients created for high priority requests
+	numExtraClientsCum atomic.Int64 // Cumulative number of extra clients created for high priority requests
 }
 
 // newClientPool creates a new client pool with the specified parameters
@@ -456,6 +459,37 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	}
 
 	//
+	// High priority client requests must always be honoured, if there are any free clients in the pool,
+	// allocate extra client.
+	//
+	if highPrio && len(ncPool.clientChan) == 0 {
+		var client *rpcClient
+		client, err = newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
+		if err == nil {
+			cp.releaseNodeLock(nodeLock, nodeID)
+
+			cp.numExtraClients.Add(1)
+			cp.numExtraClientsCum.Add(1)
+
+			log.Debug("clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d)",
+				ncPool.nodeID, cp.numExtraClients.Load(), cp.numExtraClientsCum.Load())
+
+			client.highPrio = true
+			client.isExtra = true
+			return client, nil
+		}
+
+		// Else fall through to the normal path of waiting for a client to become free.
+
+		log.Err("clientPool::getRPCClient: Failed to create extra RPC client for node %s [%v]",
+			ncPool.nodeID, err)
+		common.Assert(rpc.IsConnectionRefused(err) ||
+			rpc.IsTimedOut(err) ||
+			rpc.IsNoRouteToHost(err) ||
+			errors.Is(err, NegativeNodeError), err)
+	}
+
+	//
 	// Track number of threads waiting for a client from the pool.
 	// This is only for debugging purposes, to understand the contention on the pool (both regular and high priority).
 	//
@@ -672,6 +706,26 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	log.Debug("clientPool::releaseRPCClient: releaseRPCClient(client: %p, nodeID: %s, highPrio: %v)",
 		client, client.nodeID, client.highPrio)
+
+	//
+	// Extra clients are not part of the pool, so we close them instead of releasing them back to the pool.
+	//
+	if client.isExtra {
+		common.Assert(cp.numExtraClients.Load() > 0, cp.numExtraClients.Load(), client.nodeID)
+		cp.numExtraClients.Add(-1)
+
+		log.Debug("clientPool::releaseRPCClient: closing extra client, client: %p, nodeID: %s (cur: %d, cum: %d)",
+			client, client.nodeID, cp.numExtraClients.Load(), cp.numExtraClientsCum.Load())
+
+		err := cp.closeRPCClient(client)
+		if err != nil {
+			// Closing the socket should not fail, so we assert.
+			common.Assert(false, err, client.nodeAddress, client.nodeID)
+			return err
+		}
+
+		return nil
+	}
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -1072,6 +1126,13 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		// Closing the socket should not fail, so we assert.
 		common.Assert(false, err, client.nodeAddress, client.nodeID)
 		return err
+	}
+
+	//
+	// Extra clients are not part of the pool, so we close them instead of resetting them.
+	//
+	if client.isExtra {
+		return nil
 	}
 
 	log.Info("clientPool::resetRPCClientInternal: Creating new RPC client to %s node %s",
@@ -1677,6 +1738,8 @@ type nodeClientPool struct {
 	numWaiting          atomic.Int64 // number of users waiting for a free client in getRPCClient().
 	numWaitingHighPrio  atomic.Int64 // number of high priority callers waiting for a free client in getRPCClient().
 	numActiveHighPrio   atomic.Int64 // number of high priority clients currently active.
+	numExtraClients     atomic.Int64 // number of extra clients created beyond the initial pool size.
+	numExtraClientsCum  atomic.Int64 // cumulative number of extra clients created beyond the initial pool size.
 	numReservedHighPrio int64        // number of high priority clients reserved for this node.
 	deleting            atomic.Bool  // true when the nodeClientPool is being deleted.
 	deletingAt          time.Time    // time when deleting was set to true, used for debugging.

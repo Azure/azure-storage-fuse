@@ -94,6 +94,13 @@ type rpcClient struct {
 	// highPrio indicates if this client is used for high priority requests (case 2 above).
 	//
 	highPrio bool
+
+	//
+	// isExtra indicates if this client is an extra client created beyond the pool size.
+	// Extra clients are created to handle sudden burst of requests, they are not part of the static pool,
+	// and are not returned to the pool, they are closed and discarded when freed.
+	//
+	isExtra bool
 }
 
 var protocolFactory thrift.TProtocolFactory
