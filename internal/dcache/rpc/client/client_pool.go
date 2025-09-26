@@ -1729,15 +1729,12 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	ncPool.numReservedHighPrio = numReservedHighPrio
 	ncPool.cond = sync.NewCond(&ncPool.mu)
 
-	var err error
-
 	var wg sync.WaitGroup
 
 	createOneClient := func() {
 		defer wg.Done()
 
-		var client *rpcClient
-		client, err = newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
+		client, err := newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
 		if err != nil {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]",
 				ncPool.nodeID, err)
@@ -1760,7 +1757,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	_ = startTime
 
 	// Create RPC clients and add them to the channel.
-	for i := 0; i < int(numClients); i++ {
+	for range int(numClients) {
 		wg.Add(1)
 		go createOneClient()
 	}
@@ -1780,7 +1777,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	// to that node, createRPCClients() will be called which will fail to create any connection.
 	//
 	if len(ncPool.clientChan) == 0 {
-		return fmt.Errorf("could not create any client for node %s: %v", ncPool.nodeID, err)
+		return fmt.Errorf("could not create any client for node %s", ncPool.nodeID)
 	} else if len(ncPool.clientChan) != int(numClients) {
 		log.Err("nodeClientPool::createRPCClients: Created %d of %d clients for node %s, cleaning up",
 			len(ncPool.clientChan), numClients, ncPool.nodeID)
@@ -1794,7 +1791,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 		}
 		// All error paths must ensure this.
 		common.Assert(len(ncPool.clientChan) == 0, len(ncPool.clientChan))
-		return fmt.Errorf("could not create all requested clients for node %s: %v", ncPool.nodeID, err)
+		return fmt.Errorf("could not create all requested clients for node %s", ncPool.nodeID)
 	}
 
 	// We just got started, cannot have active clients.
