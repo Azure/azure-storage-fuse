@@ -93,7 +93,7 @@ const (
 	// Note that one worker is used for one replica IO (read or write), so we need these to be accordingly
 	// higher than the fileIOManager workers setting.
 	//
-	MAX_WORKER_COUNT = 2000
+	MAX_WORKER_COUNT = 512
 
 	// Maximum number of sync jobs (running syncComponentRV()) that can be running at any time.
 	// This should be smaller than cm.MAX_SIMUL_RV_STATE_UPDATES.
