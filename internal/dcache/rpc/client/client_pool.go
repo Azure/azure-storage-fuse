@@ -567,6 +567,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			// request and let the caller handle it as it sees fit.
 			//
 			common.Assert(rpc.IsConnectionRefused(err) ||
+				rpc.IsConnectionReset(err) ||
 				rpc.IsTimedOut(err) ||
 				rpc.IsNoRouteToHost(err) ||
 				errors.Is(err, NegativeNodeError), err)
@@ -1833,21 +1834,23 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	createOneClient := func() {
 		defer wg.Done()
 
-		var client *rpcClient
-		client, err = newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
-		if err != nil {
+		client, err1 := newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
+		if err1 != nil {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]",
-				ncPool.nodeID, err)
+				ncPool.nodeID, err1)
 			//
 			// Only valid reason could be connection refused as the blobfuse process is not running on
 			// the remote node, a timeout if the node is down, no route to host error in some specific
 			// unreachability conditions, or NegativeNodeError if the node is marked negative and newRPCClient()
 			// proactively failed the request. There is no point in retrying in that case.
 			//
-			common.Assert(rpc.IsConnectionRefused(err) ||
-				rpc.IsTimedOut(err) ||
-				rpc.IsNoRouteToHost(err) ||
-				errors.Is(err, NegativeNodeError), err)
+			common.Assert(rpc.IsConnectionRefused(err1) ||
+				rpc.IsConnectionReset(err1) ||
+				rpc.IsTimedOut(err1) ||
+				rpc.IsNoRouteToHost(err1) ||
+				errors.Is(err1, NegativeNodeError), err1)
+			// Save the last error seen in err, to return if we could not create any client.
+			err = err1
 			return
 		}
 		// Set nodeClientPool back pointer.
