@@ -97,7 +97,7 @@ const (
 
 	// Maximum number of sync jobs (running syncComponentRV()) that can be running at any time.
 	// This should be smaller than cm.MAX_SIMUL_RV_STATE_UPDATES.
-	MAX_SIMUL_SYNC_JOBS = 1000
+	MAX_SIMUL_SYNC_JOBS = 100
 )
 
 type PutChunkStyleEnum int

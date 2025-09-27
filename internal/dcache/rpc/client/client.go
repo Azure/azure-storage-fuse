@@ -63,6 +63,7 @@ const (
 type rpcClient struct {
 	nodeID      string                      // Node ID of the node this client is for, can be used for debug logs
 	nodeAddress string                      // Address of the node this client is for
+	ncPool      *nodeClientPool             // Pointer to the nodeClientPool this client belongs to
 	transport   thrift.TTransport           // Transport is the Thrift transport layer
 	svcClient   *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
 	allocatedAt time.Time                   // Time when this client was allocated from the pool, used for debug logs
@@ -94,6 +95,19 @@ type rpcClient struct {
 	// highPrio indicates if this client is used for high priority requests (case 2 above).
 	//
 	highPrio bool
+
+	//
+	// isExtra indicates if this client is an extra client created beyond the pool size.
+	// Extra clients are created to handle sudden burst of requests, they are not part of the static pool,
+	// and are not returned to the pool, they are closed and discarded when freed.
+	//
+	// Note: We would want to avoid creating too many extra clients, as that would defeat the purpose of
+	//       having a pool, each client creation takes time, so it'll hurt performance. Use it only for
+	//       handling sudden bursts of requests (most commonly due to PutChunkDC calls).
+	//       Note that this is a temporary workaround, we should use gRPC that allows multiplexing multiple
+	//       requests over a single connection, which would eliminate the need for having too many clients.
+	//
+	isExtra bool
 }
 
 var protocolFactory thrift.TProtocolFactory
