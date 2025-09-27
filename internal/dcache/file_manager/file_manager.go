@@ -72,6 +72,11 @@ type fileIOManager struct {
 	// may take time, so having more staged chunks allows application writes to proceed while staged
 	// chunks are being written.
 	numStagingChunks int
+
+	// Difference between the highest successfully uploaded chunk index and the lowest issued but
+	// not yet completed chunk index that we allow. Beyond this we slow down the writer as there's not
+	// much gain by writing new chunks if some old chunks are not completing.
+	maxUnackedWindow int64
 	wp               *workerPool
 }
 
@@ -120,10 +125,15 @@ func NewFileIOManager() error {
 	// NewFileIOManager() must be called only once, during startup.
 	common.Assert(fileIOMgr.wp == nil)
 
+	//
+	// We set maxUnackedWindow to twice the stripe width in order to allow good parallelism while at
+	// the same time being mindful of some slow/unresponsive RVs.
+	//
 	fileIOMgr = fileIOManager{
 		safeDeletes:        cm.GetCacheConfig().SafeDeletes,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
+		maxUnackedWindow:   int64(cm.GetCacheConfig().StripeWidth) * 4,
 	}
 
 	fileIOMgr.wp = NewWorkerPool(workers)

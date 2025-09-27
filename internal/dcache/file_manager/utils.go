@@ -462,6 +462,13 @@ loop:
 	for {
 		select {
 		case <-file.freeChunks:
+			//
+			// Writable files will have file.CT set.
+			//
+			if file.CT != nil && file.CT.GetUnackedWindow() > fileIOMgr.maxUnackedWindow {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
 			break loop
 		case <-time.After(10 * time.Millisecond):
 			//
