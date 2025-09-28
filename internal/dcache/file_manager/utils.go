@@ -458,10 +458,45 @@ func NewStagedChunk(idx, offset, length int64, file *DcacheFile, allocateBuf boo
 
 	startTime := time.Now()
 	count := 0
+	ucount := 0
 loop:
 	for {
 		select {
 		case <-file.freeChunks:
+			if file.CT == nil {
+				// Read file, no need to check unacked window.
+				break loop
+			}
+			//
+			// Writable files will have file.CT set, for them we need to ensure that we don't exceed
+			// maxUnackedWindow else the contiguity_tracker needs to track too many chunks. Also it
+			// indicates some issue with some RV(s) (node or network) so let's not add fuel to the fire.
+			// Anyways, it's not much performance benefit in keeping too many chunks outstanding.
+			//
+			uw := file.CT.GetUnackedWindow()
+			if uw > fileIOMgr.maxUnackedWindow {
+				file.freeChunks <- struct{}{}
+
+				time.Sleep(10 * time.Millisecond)
+				ucount++
+				if (ucount % 100) != 0 {
+					continue
+				}
+
+				// Log every 1 second.
+
+				log.Debug("DistributedCache[FM]::NewStagedChunk: chunkIdx: %d, file: %+v, unacked window %d exceeds max %d, waiting...",
+					idx, *file.FileMetadata, uw, fileIOMgr.maxUnackedWindow)
+
+				continue
+			}
+
+			// TODO: Log only if wait was more than 1 second.
+			if ucount > 0 {
+				log.Debug("DistributedCache[FM]::NewStagedChunk: chunkIdx: %d, file: %+v, unacked window %d now ok, after %s",
+					idx, *file.FileMetadata, uw, time.Since(startTime))
+			}
+
 			break loop
 		case <-time.After(10 * time.Millisecond):
 			//
@@ -473,14 +508,12 @@ loop:
 			//   read fully or partially. Note that read chunks will always have Len==chunkSize.
 			//
 			count++
-			if count < 100 {
+			if (count % 100) != 0 {
 				continue
 			}
 
-			count = 0
-
 			//
-			// Every 2 seconds check if all chunks in StagedChunks map are "aged".
+			// Every 1 second check if all chunks in StagedChunks map are "aged".
 			//
 			file.chunkLock.RLock()
 			dirty := 0
@@ -516,8 +549,8 @@ loop:
 			_ = partial
 			_ = young
 
-			log.Debug("DistributedCache[FM]::NewStagedChunk: Reclaiming %d of %d chunks in StagedChunks map (%d, %d, %d)",
-				len(chunks), len(file.StagedChunks), dirty, partial, young)
+			log.Debug("DistributedCache[FM]::NewStagedChunk: chunkIdx: %d, file: %+v, reclaiming %d of %d chunks in StagedChunks map (%d, %d, %d)",
+				idx, *file.FileMetadata, len(chunks), len(file.StagedChunks), dirty, partial, young)
 
 			file.chunkLock.RUnlock()
 
@@ -526,8 +559,8 @@ loop:
 			}
 
 			if time.Since(startTime) > maxWaitTime {
-				err := fmt.Errorf("DistributedCache[FM]::NewStagedChunk: Could not reclaim any chunk after %v",
-					time.Since(startTime))
+				err := fmt.Errorf("DistributedCache[FM]::NewStagedChunk: Could not reclaim any chunk after %v, while waiting for chunkIdx: %d, file: %+v",
+					time.Since(startTime), idx, *file.FileMetadata)
 				log.Err("%v", err)
 				return nil, err
 			}
