@@ -1798,14 +1798,15 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	_ = n
 	var hashPathPtr *string
 
-	if performDummyReadWrite() {
-		goto dummy_read
-	}
-
 	// Metadata chunk IOs are serialized as it's mutable unlike other data chunks.
 	if req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
 		mvInfo.mdChunkMutex.Lock()
 		defer mvInfo.mdChunkMutex.Unlock()
+	} else {
+		// No dummy read for metadata chunk.
+		if performDummyReadWrite() {
+			goto dummy_read
+		}
 	}
 
 	// Avoid the stats() call for release builds.
@@ -2322,10 +2323,6 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	var availableSpace int64
 
-	if performDummyReadWrite() {
-		goto dummy_write
-	}
-
 	//
 	// If the PutChunk is for the special metadata chunk, remove existing metadata chunk file if any, to
 	// be able to write the new metadata chunk.
@@ -2366,6 +2363,11 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 			common.Assert(info.Size() > 0 && info.Size() < dcache.MDChunkSize,
 				info.Size(), dcache.MDChunkSize, chunkPath)
 			mvInfo.decTotalChunkBytes(info.Size())
+		}
+	} else {
+		// No dummy write for metadata chunk.
+		if performDummyReadWrite() {
+			goto dummy_write
 		}
 	}
 

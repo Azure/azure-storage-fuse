@@ -126,6 +126,16 @@ func NewFileIOManager() error {
 	common.Assert(fileIOMgr.wp == nil)
 
 	//
+	// maxUnackedWindow is how much we want to allow writing to the fastest MV before we pause to let the
+	// slowest MV catch up. We want to allow at least one stripe width of chunks to be unacked so that we
+	// allow one write to each MV, but not more than four stripe widths or 4GB worth of chunks.
+	// These limits have been chosen based on some experiments, to minimize wait under normal conditions.
+	//
+	maxUnackedWindow := int(4096 / cm.GetCacheConfig().ChunkSizeMB)
+	maxUnackedWindow = max(maxUnackedWindow, int(cm.GetCacheConfig().StripeWidth)*1)
+	maxUnackedWindow = min(maxUnackedWindow, int(cm.GetCacheConfig().StripeWidth)*4)
+
+	//
 	// We set maxUnackedWindow to twice the stripe width in order to allow good parallelism while at
 	// the same time being mindful of some slow/unresponsive RVs.
 	//
@@ -133,8 +143,11 @@ func NewFileIOManager() error {
 		safeDeletes:        cm.GetCacheConfig().SafeDeletes,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
-		maxUnackedWindow:   int64(cm.GetCacheConfig().StripeWidth) * 4,
+		maxUnackedWindow:   int64(maxUnackedWindow),
 	}
+
+	log.Debug("DistributedCache::NewFileIOManager: workers: %d, numReadAheadChunks: %d, numStagingChunks: %d, maxUnackedWindow: %d",
+		workers, numReadAheadChunks, numStagingChunks, maxUnackedWindow)
 
 	fileIOMgr.wp = NewWorkerPool(workers)
 

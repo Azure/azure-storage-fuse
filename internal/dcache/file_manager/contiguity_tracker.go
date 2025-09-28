@@ -169,7 +169,7 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	common.Assert(chunkIdx >= t.lastContiguous.Load(),
 		chunkIdx, t.lastContiguous.Load(), t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 	// maxUploadedIdx must always be >= lastContiguous-1.
-	common.Assert(t.maxUploadedIdx.Load() >= (t.lastContiguous.Load() - 1),
+	common.Assert(t.maxUploadedIdx.Load() >= (t.lastContiguous.Load()-1),
 		t.maxUploadedIdx.Load(), t.lastContiguous.Load(),
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 
@@ -196,9 +196,12 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	// TODO: Make this tighter once we sort out the RPC client availability issue.
 	//       We should set this back to 16GB.
 	// Update: Now we should not have RPC client availability issue, so let's set it back to 16GB.
-	//       If this assertion fails, it indicates issue with RPC client availability, check that up.
+	//         If this assertion fails, it indicates issue with RPC client availability, check that up.
+	// Update: Now we ensure we don't write too far ahead of lastContiguous in WriteMV() itself.
+	//         See NewFileIOManager() and NewStagedChunk() how we do not allow new writes if the gap
+	//         exceeds 4GB
 	//
-	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (16*common.GbToBytes),
+	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (5*common.GbToBytes),
 		bitOffset, chunkIdx, t.lastContiguous.Load(), t.file.FileMetadata.FileLayout.ChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 
