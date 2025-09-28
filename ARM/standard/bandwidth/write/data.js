@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1758448555148,
+  "lastUpdate": 1759053774608,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -974,6 +974,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 2525.7265625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "9bada825b18507d8648fb3d5a4271e8374f57978",
+          "message": "Updating go dependencies (#1972)",
+          "timestamp": "2025-09-26T09:30:51Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/9bada825b18507d8648fb3d5a4271e8374f57978"
+        },
+        "date": 1759053774340,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "test",
+            "value": 14441.204752604166,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write",
+            "value": 2689.1956380208335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 2259.3743489583335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 2735.625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 2539.166015625,
             "unit": "MiB/s"
           }
         ]
