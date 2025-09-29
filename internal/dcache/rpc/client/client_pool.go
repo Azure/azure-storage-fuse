@@ -598,7 +598,6 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		case client := <-ncPool.clientChan:
 			ncPool.lastUsed.Store(time.Now().Unix())
 			common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
-			common.Assert(client.ncPool == ncPool, client.ncPool, ncPool, nodeID)
 			// Nothing queued in the pool should be high priority, we set highPrio flag after client is dequeued.
 			common.Assert(!client.highPrio, nodeID)
 			// Extra clients are not queued in the pool.
@@ -606,6 +605,9 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 
 			// Take the node lock as we access the various nodeClientPool atomic counters.
 			nodeLock = cp.acquireNodeLock(nodeID)
+
+			// This assert must be with the node lock held.
+			common.Assert(client.ncPool == ncPool, client.ncPool, ncPool, nodeID)
 
 			//
 			// If the node is marked negative, it means that the last RPC call to it failed with
