@@ -1923,6 +1923,17 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	return nil
 }
 
+// ------------------------- Factory -------------------------------------------
+// Pipeline will call this method to create your object, initialize your variables here
+// << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
+func NewBlockCacheComponent() internal.Component {
+	comp := &BlockCache{
+		fileLocks: common.NewLockMap(),
+	}
+	comp.SetName(compName)
+	return comp
+}
+
 func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	var maxCacheSize uint64
 	if bc.diskSize > 0 {
@@ -1951,17 +1962,6 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	statfs.Bfree = statfs.Bavail
 
 	return statfs, true, nil
-}
-
-// ------------------------- Factory -------------------------------------------
-// Pipeline will call this method to create your object, initialize your variables here
-// << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
-func NewBlockCacheComponent() internal.Component {
-	comp := &BlockCache{
-		fileLocks: common.NewLockMap(),
-	}
-	comp.SetName(compName)
-	return comp
 }
 
 // On init register this component to pipeline and supply your constructor
