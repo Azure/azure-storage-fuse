@@ -59,8 +59,10 @@ func (mv MirroredVolume) Equals(rhs *MirroredVolume) bool {
 
 type RawVolume struct {
 	NodeId         string    `json:"node_id"`
+	NodeIdInt      int       `json:"-"`
 	IPAddress      string    `json:"ipaddr"`
 	RvId           string    `json:"rvid"`
+	RvIdInt        int       `json:"-"`
 	FDId           int       `json:"fdid"`
 	UDId           int       `json:"udid"`
 	State          StateEnum `json:"state"`

@@ -38,7 +38,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	//"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
@@ -2368,9 +2368,16 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		_ = numAvailableFDs
 		_ = numAvailableUDs
 
-		// Sort the RVs by the number of slots available, in descending order.
+		// Sort the RVs by rvName.
 		sort.Slice(availableRVsList, func(i, j int) bool {
-			return availableRVsList[i].slots > availableRVsList[j].slots
+			var rvi, rvj int
+
+			_, err1 := fmt.Sscanf(availableRVsList[i].rvName, "rv%d", &rvi)
+			common.Assert(err1 == nil, err1, availableRVsList[i].rvName)
+			_, err1 = fmt.Sscanf(availableRVsList[j].rvName, "rv%d", &rvj)
+			common.Assert(err1 == nil, err1, availableRVsList[j].rvName)
+
+			return rvi < rvj
 		})
 
 		log.Debug("ClusterManager::getAvailableRVsList: Available RVs: %d, nodes: %d, FD: %d, UD: %d",
@@ -2463,6 +2470,10 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	// duly updated.
 	//
 	fixMV := func(mvName string, mv dcache.MirroredVolume) {
+		var mvSuffix int
+		_, err := fmt.Sscanf(mvName, "mv%d", &mvSuffix)
+		common.Assert(err == nil, mvName, err)
+
 		//
 		// Fix-mv must be run only for degraded MVs.
 		// A degraded MV has one or more (but not all) component RVs as offline (which need to be replaced by
@@ -2706,7 +2717,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			//       should run very very fast, as we need to fix all the degraded MVs in a short time.
 			//       Avoid any string key'ed map lookups, as they are slow, and any thing else that's slow.
 			//
-			for _, rv := range availableRVsList {
+			startIdx := mvSuffix % len(availableRVsList)
+			for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
+				rv := availableRVsList[idx%len(availableRVsList)]
 				// Max slots for an RV is MVsPerRVForFixMV.
 				common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()), *rv, cm.MVsPerRVForFixMV.Load())
 				common.Assert(rv.slots >= 0, *rv)
@@ -3232,17 +3245,26 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		numNewRVs, len(availableRVsList), len(rvMap), len(existingMVMap))
 
 	for {
-		//
-		// We need at least NumReplicas RVs with free slots to create a new MV.
-		//
-		if len(availableRVsList) < NumReplicas {
-			log.Debug("ClusterManager::updateMVList: len(availableRVsList) [%d] < NumReplicas [%d]",
-				len(availableRVsList), NumReplicas)
+		/*
+			//
+			// We need at least NumReplicas RVs with free slots to create a new MV.
+			//
+			if len(availableRVsList) < NumReplicas {
+				log.Debug("ClusterManager::updateMVList: len(availableRVsList) [%d] < NumReplicas [%d]",
+					len(availableRVsList), NumReplicas)
+				break
+			}
+		*/
+
+		if len(existingMVMap) >= len(availableRVsList) {
+			log.Debug("ClusterManager::updateMVList: len(existingMVMap) [%d] >= len(availableRVsList) [%d]",
+				len(existingMVMap), len(availableRVsList))
 			break
 		}
 
 		// New MV's name, starting from index 0.
-		mvName := fmt.Sprintf("mv%d", len(existingMVMap))
+		mvSuffix := len(existingMVMap)
+		mvName := fmt.Sprintf("mv%d", mvSuffix)
 
 		excludeNodes := make(map[int]struct{})
 		excludeFaultDomains := make(map[int]struct{})
@@ -3250,9 +3272,6 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 		//
 		// Iterate over the availableRVsList and pick the first suitable RV.
-		// For each MV we start from a random index in availableRVsList (and choose next NumReplicas suitable RVs).
-		// This ensures that we use RVs uniformly instead of exhausting RVs from the beginning and leaving upto
-		// NumReplicas-1 unused RVs at the end which cannot be used to create a new MV.
 		//
 		// Note: Since number of RVs can be very large (100K+) we need to be careful that this loop is very
 		//       efficient, avoid any string key'ed map lookups, as they are slow, and any thing else that's slow.
@@ -3260,10 +3279,15 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//       sending JoinMV RPC to all component RVs (in parallel), which will be hard to get below 1ms, so for
 		//       20K MVs, it'll take ~20s to create all MVs, which should be fine.
 		//
-		startIdx := rand.Intn(len(availableRVsList))
-		if numNewRVs > 0 {
-			startIdx = rand.Intn(numNewRVs)
-		}
+		startIdx := mvSuffix % len(availableRVsList)
+		/*
+			if numNewRVs > 0 {
+				startIdx = rand.Intn(numNewRVs)
+			}
+		*/
+
+		log.Debug("ClusterManager::updateMVList: Placing new MV %s, startIdx: %d, numNewRVs: %d, availableRVs: %d",
+			mvName, startIdx, numNewRVs, len(availableRVsList))
 
 		for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
 			rv := availableRVsList[idx%len(availableRVsList)]
@@ -3343,18 +3367,20 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			}
 		}
 
-		//
-		// If we could not find enough component RVs for this MV, we won't find for any other MV, so stop
-		// attempting to create more new MVs.
-		//
-		if len(existingMVMap[mvName].RVs) != NumReplicas {
-			log.Debug("ClusterManager::updateMVList: Could not place %s, numUsableMVs: %d",
-				mvName, numUsableMVs)
+		/*
+			//
+			// If we could not find enough component RVs for this MV, we won't find for any other MV, so stop
+			// attempting to create more new MVs.
+			//
+			if len(existingMVMap[mvName].RVs) != NumReplicas {
+				log.Debug("ClusterManager::updateMVList: Could not place %s, numUsableMVs: %d",
+					mvName, numUsableMVs)
 
-			// Delete the incomplete MV from the existingMVMap.
-			delete(existingMVMap, mvName)
-			break
-		}
+				// Delete the incomplete MV from the existingMVMap.
+				delete(existingMVMap, mvName)
+				break
+			}
+		*/
 
 		common.Assert(len(existingMVMap[mvName].RVs) == NumReplicas,
 			mvName, len(existingMVMap[mvName].RVs), NumReplicas)
@@ -4146,6 +4172,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 		//
 		nextFreeIdx = getNextFreeRVIdx(nextFreeIdx)
 		rvName := fmt.Sprintf("rv%d", nextFreeIdx)
+		rv.RvIdInt = int(nextFreeIdx)
 		existingRVMap[rvName] = rv
 		changed = true
 		log.Info("ClusterManager::updateRVList: Adding new RV %s to cluster map: %+v", rvName, rv)
