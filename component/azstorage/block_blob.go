@@ -320,13 +320,14 @@ func (bb *BlockBlob) DeleteFile(name string) (err error) {
 	})
 	if err != nil {
 		serr := storeBlobErrToErr(err)
-		if serr == ErrFileNotFound {
+		switch serr {
+		case ErrFileNotFound:
 			log.Err("BlockBlob::DeleteFile : %s does not exist", name)
 			return syscall.ENOENT
-		} else if serr == BlobIsUnderLease {
+		case BlobIsUnderLease:
 			log.Err("BlockBlob::DeleteFile : %s is under lease [%s]", name, err.Error())
 			return syscall.EIO
-		} else {
+		default:
 			log.Err("BlockBlob::DeleteFile : Failed to delete blob %s [%s]", name, err.Error())
 			return err
 		}
@@ -378,8 +379,8 @@ func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.
 		return err
 	}
 
-	var dstLMT *time.Time = copyResponse.LastModified
-	var dstETag string = sanitizeEtag(copyResponse.ETag)
+	var dstLMT = copyResponse.LastModified
+	var dstETag = sanitizeEtag(copyResponse.ETag)
 
 	copyStatus := copyResponse.CopyStatus
 	var prop blob.GetPropertiesResponse
@@ -485,12 +486,13 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
-		if serr == ErrFileNotFound {
+		switch serr {
+		case ErrFileNotFound:
 			return attr, syscall.ENOENT
-		} else if serr == InvalidPermission {
+		case InvalidPermission:
 			log.Err("BlockBlob::getAttrUsingRest : Insufficient permissions for %s [%s]", name, err.Error())
 			return attr, syscall.EACCES
-		} else {
+		default:
 			log.Err("BlockBlob::getAttrUsingRest : Failed to get blob properties for %s [%s]", name, err.Error())
 			return attr, err
 		}
@@ -531,12 +533,13 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 		blobs, new_marker, err = bb.List(name, marker, bb.Config.maxResultsForList)
 		if err != nil {
 			e := storeBlobErrToErr(err)
-			if e == ErrFileNotFound {
+			switch e {
+			case ErrFileNotFound:
 				return attr, syscall.ENOENT
-			} else if e == InvalidPermission {
+			case InvalidPermission:
 				log.Err("BlockBlob::getAttrUsingList : Insufficient permissions for %s [%s]", name, err.Error())
 				return attr, syscall.EACCES
-			} else {
+			default:
 				log.Warn("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
 			}
 		}
@@ -907,33 +910,34 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 }
 
 // ReadBuffer : Download a specific range from a blob to a buffer
-func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
-	log.Trace("BlockBlob::ReadBuffer : name %s, offset %v, len %v", name, offset, len)
+func (bb *BlockBlob) ReadBuffer(name string, offset int64, length int64) ([]byte, error) {
+	log.Trace("BlockBlob::ReadBuffer : name %s, offset %v, len %v", name, offset, length)
 	var buff []byte
-	if len == 0 {
+	if length == 0 {
 		attr, err := bb.GetAttr(name)
 		if err != nil {
 			return buff, err
 		}
-		len = attr.Size - offset
+		length = attr.Size - offset
 	}
 
-	buff = make([]byte, len)
+	buff = make([]byte, length)
 	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	dlOpts := (blob.DownloadBufferOptions)(*bb.downloadOptions)
 	dlOpts.Range = blob.HTTPRange{
 		Offset: offset,
-		Count:  len,
+		Count:  length,
 	}
 
 	_, err := blobClient.DownloadBuffer(context.Background(), buff, &dlOpts)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
-		if e == ErrFileNotFound {
+		switch e {
+		case ErrFileNotFound:
 			return buff, syscall.ENOENT
-		} else if e == InvalidRange {
+		case InvalidRange:
 			return buff, syscall.ERANGE
 		}
 
@@ -945,7 +949,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
+func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	if etag != nil {
 		*etag = ""
@@ -959,7 +963,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	opt := &blob.DownloadStreamOptions{
 		Range: blob.HTTPRange{
 			Offset: offset,
-			Count:  len,
+			Count:  length,
 		},
 		CPKInfo: bb.blobCPKOpt,
 	}
@@ -968,9 +972,10 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
-		if e == ErrFileNotFound {
+		switch e {
+		case ErrFileNotFound:
 			return syscall.ENOENT
-		} else if e == InvalidRange {
+		case InvalidRange:
 			return syscall.ERANGE
 		}
 
@@ -1114,13 +1119,14 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
-		if serr == BlobIsUnderLease {
+		switch serr {
+		case BlobIsUnderLease:
 			log.Err("BlockBlob::WriteFromFile : %s is under a lease, can not update file [%s]", name, err.Error())
 			return syscall.EIO
-		} else if serr == InvalidPermission {
+		case InvalidPermission:
 			log.Err("BlockBlob::WriteFromFile : Insufficient permissions for %s [%s]", name, err.Error())
 			return syscall.EACCES
-		} else {
+		default:
 			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s [%s]", name, err.Error())
 		}
 		return err
