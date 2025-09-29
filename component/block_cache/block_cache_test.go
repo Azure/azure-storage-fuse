@@ -175,6 +175,12 @@ func (suite *blockCacheTestSuite) TestEmpty() {
 	tobj, err := setupPipeline(emptyConfig)
 	defer tobj.cleanupPipeline()
 
+	if err != nil {
+		// On some distros due to low memory, block cache init fails.
+		suite.assert.Contains(err.Error(), "memory limit too low for configured prefetch")
+		return
+	}
+
 	suite.assert.NoError(err)
 	suite.assert.Equal("block_cache", tobj.blockCache.Name())
 	suite.assert.EqualValues(16*_1MB, tobj.blockCache.blockSize)
@@ -198,6 +204,12 @@ func (suite *blockCacheTestSuite) TestMemory() {
 	emptyConfig := "read-only: true\n\nblock_cache:\n  block-size-mb: 16\n"
 	tobj, err := setupPipeline(emptyConfig)
 	defer tobj.cleanupPipeline()
+
+	if err != nil {
+		// On some distros due to low memory, block cache init fails.
+		suite.assert.Contains(err.Error(), "memory limit too low for configured prefetch")
+		return
+	}
 
 	suite.assert.NoError(err)
 	suite.assert.Equal("block_cache", tobj.blockCache.Name())
