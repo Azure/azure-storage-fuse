@@ -607,7 +607,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			nodeLock = cp.acquireNodeLock(nodeID)
 
 			// This assert must be with the node lock held.
-			common.Assert(client.ncPool == ncPool, client.ncPool, ncPool, nodeID)
+			common.Assert(client.ncPool == ncPool, client, client.ncPool, ncPool, nodeID)
 
 			//
 			// If the node is marked negative, it means that the last RPC call to it failed with
@@ -713,7 +713,7 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 	case client := <-ncPool.clientChan:
 		ncPool.lastUsed.Store(time.Now().Unix())
 		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
-		common.Assert(client.ncPool == ncPool, client.ncPool, ncPool, nodeID)
+		common.Assert(client.ncPool == ncPool, client, client.ncPool, ncPool, nodeID)
 		// Nothing queued in the pool should be high priority.
 		common.Assert(!client.highPrio, nodeID)
 		// Extra clients are not queued in the pool.
@@ -786,7 +786,7 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 
 	if common.IsDebugBuild() {
 		ncPool1 := cp.getNodeClientPoolFromMap(client.nodeID)
-		common.Assert(ncPool == ncPool1, client.nodeID, ncPool.nodeID, ncPool1.nodeID)
+		common.Assert(ncPool == ncPool1, client, client.nodeID, ncPool.nodeID, ncPool1.nodeID)
 	}
 
 	//
@@ -882,6 +882,13 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) {
 		// We don't expect connection close to fail, let's know if it happens.
 		common.Assert(false, err)
 		// TODO: This will cause a socket fd leak.
+	}
+
+	//
+	// Extra clients are not part of the pool, so we don't need to do anything more.
+	//
+	if client.isExtra {
+		return
 	}
 
 	ncPool := cp.getNodeClientPoolFromMap(client.nodeID)
@@ -1790,6 +1797,9 @@ func (ncPool *nodeClientPool) returnClientToPoolAndSignalWaiters(client *rpcClie
 	// First add to the channel and then signal waiter(s).
 	if client != nil {
 		common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), len(ncPool.clientChan), cp.maxPerNode)
+		// An extra client is not part of the pool, so we don't add it back to the pool.
+		common.Assert(!client.isExtra, client, ncPool.nodeID)
+		common.Assert(client.ncPool == ncPool, client, client.ncPool, ncPool, ncPool.nodeID)
 		ncPool.clientChan <- client
 	}
 	if signalAll {
