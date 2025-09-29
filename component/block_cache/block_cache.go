@@ -1923,7 +1923,7 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	return nil
 }
 
-func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
+func (bc *BlockCache) StatFsDisk() (*syscall.Statfs_t, bool, error) {
 	var maxCacheSize uint64
 	if bc.diskSize > 0 {
 		maxCacheSize = bc.diskSize
