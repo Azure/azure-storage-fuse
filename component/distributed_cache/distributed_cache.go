@@ -570,6 +570,9 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 			uint64(math.Ceil(float64(numMVs*int64(distributedCache.cfg.Replicas)) /
 				float64(distributedCache.cfg.MaxRVs)))
 
+		// For ring based MV placement, we don't want to limit MVsPerRV, set it very high.
+		distributedCache.cfg.MVsPerRV = 10000
+
 		log.Info("DistributedCache::Configure : cfg.MVsPerRV: %d, minMVs: %d, maxMVs: %d, replicas: %d, maxRVs: %d",
 			distributedCache.cfg.MVsPerRV, minMVs, maxMVs, distributedCache.cfg.Replicas, distributedCache.cfg.MaxRVs)
 
