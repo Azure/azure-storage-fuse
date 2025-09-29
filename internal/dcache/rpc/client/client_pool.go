@@ -1248,6 +1248,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 		cp.deleteNodeClientPoolIfInactive(client.nodeID)
 		return err
 	}
+	newClient.ncPool = ncPool
 
 	//
 	// Reset was successful, so we have at least one good connection to the target node.
