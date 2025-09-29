@@ -185,7 +185,7 @@ func (xl *Xload) Configure(_ bool) error {
 		}
 	}
 
-	var mode Mode = EMode.PRELOAD() // using preload as the default mode
+	var mode = EMode.PRELOAD() // using preload as the default mode
 	if len(conf.Mode) > 0 {
 		err = mode.Parse(conf.Mode)
 		if err != nil {

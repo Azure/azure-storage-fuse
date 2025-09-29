@@ -68,7 +68,7 @@ func createSingleFile(size float32, path string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return float64(time.Now().Sub(start)), nil
+	return float64(time.Since(start)), nil
 }
 
 func (suite *benchmarkSuite) TestCreateSingleFiles() {

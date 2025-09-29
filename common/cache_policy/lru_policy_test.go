@@ -56,12 +56,12 @@ func assertBlockCached(suite *typesTestSuite, key, endIndex int64, cache *LRUCac
 	blk := &common.Block{StartIndex: key, EndIndex: endIndex}
 	block, found := cache.Get(key)
 	suite.assert.Equal(blk, block)
-	suite.assert.Equal(true, found)
+	suite.assert.True(found)
 }
 
 func assertBlockNotCached(suite *typesTestSuite, key int64, cache *LRUCache) {
 	_, found := cache.Get(key)
-	suite.assert.Equal(false, found)
+	suite.assert.False(found)
 }
 
 func TestGenerateConfig(t *testing.T) {
@@ -92,7 +92,7 @@ func (suite *typesTestSuite) TestCachePurge() {
 	assertBlockCached(suite, int64(0), int64(1), lruCache)
 
 	lruCache.Purge()
-	suite.assert.Equal(0, len(lruCache.Keys()))
+	suite.assert.Empty(lruCache.Keys())
 	suite.assert.Equal(int64(0), lruCache.Capacity)
 	suite.assert.Equal(map[int64]*list.Element(map[int64]*list.Element(nil)), lruCache.Elements)
 }
@@ -113,17 +113,17 @@ func (suite *typesTestSuite) TestResizeBlock() {
 
 	suite.assert.Equal(int64(5), lruCache.Capacity)
 	suite.assert.Equal(int64(3), lruCache.Occupied)
-	suite.assert.Equal(2, len(lruCache.Keys()))
+	suite.assert.Len(lruCache.Keys(), 2)
 
 	//resize to larger
 	lruCache.Resize(1, 4)
 	suite.assert.Equal(int64(4), lruCache.Occupied)
-	suite.assert.Equal(2, len(lruCache.Keys()))
+	suite.assert.Len(lruCache.Keys(), 2)
 
 	// resize to smaller
 	lruCache.Resize(1, 2)
 	suite.assert.Equal(int64(2), lruCache.Occupied)
-	suite.assert.Equal(2, len(lruCache.Keys()))
+	suite.assert.Len(lruCache.Keys(), 2)
 }
 
 func (suite *typesTestSuite) TestLRUPolicy() {
@@ -143,7 +143,7 @@ func (suite *typesTestSuite) TestLRUPolicy() {
 
 	suite.assert.Equal(blk1, lruCache.RecentlyUsed())
 	suite.assert.Equal(blk3, lruCache.LeastRecentlyUsed())
-	suite.assert.Equal(3, len(lruCache.Keys()))
+	suite.assert.Len(lruCache.Keys(), 3)
 }
 
 func (suite *typesTestSuite) TestEvictionSingleBlock() {
@@ -181,7 +181,7 @@ func (suite *typesTestSuite) TestEviction() {
 	suite.assert.Equal(blk4, lruCache.RecentlyUsed())
 	suite.assert.Equal(blk2, lruCache.LeastRecentlyUsed())
 	assertBlockNotCached(suite, blk3.StartIndex, lruCache)
-	suite.assert.Equal(3, len(lruCache.Keys()))
+	suite.assert.Len(lruCache.Keys(), 3)
 	suite.assert.Equal(int64(7), lruCache.Occupied)
 }
 
@@ -207,37 +207,37 @@ func (suite *typesTestSuite) TestDirtyBlockEviction() {
 
 	success := lruCache.Put(3, blk3)
 
-	suite.assert.Equal(false, success)
+	suite.assert.False(success)
 	// assert operation was not successful since all blocks are dirty
 	suite.assert.Equal(blk0, lruCache.RecentlyUsed())
 	suite.assert.Equal(blk2, lruCache.LeastRecentlyUsed())
 
 	assertBlockNotCached(suite, blk3.StartIndex, lruCache)
-	suite.assert.Equal(3, len(lruCache.Keys()))
+	suite.assert.Len(lruCache.Keys(), 3)
 	suite.assert.Equal(int64(3), lruCache.Occupied)
 
 	// clear the recently used block and ensure that it ends up evicting it over others
 	blk0.Flags.Clear(common.DirtyBlock)
 	success = lruCache.Put(3, blk3)
 
-	suite.assert.Equal(true, success)
+	suite.assert.True(success)
 	suite.assert.Equal(blk3, lruCache.RecentlyUsed())
 	suite.assert.Equal(blk2, lruCache.LeastRecentlyUsed())
 
 	assertBlockNotCached(suite, blk0.StartIndex, lruCache)
-	suite.assert.Equal(3, len(lruCache.Keys()))
+	suite.assert.Len(lruCache.Keys(), 3)
 	suite.assert.Equal(int64(7), lruCache.Occupied)
 
 	blk4 := &common.Block{StartIndex: 8, EndIndex: 9}
 	blk1.Flags.Clear(common.DirtyBlock)
 	success = lruCache.Put(8, blk4)
 
-	suite.assert.Equal(true, success)
+	suite.assert.True(success)
 	suite.assert.Equal(blk4, lruCache.RecentlyUsed())
 	suite.assert.Equal(blk2, lruCache.LeastRecentlyUsed())
 
 	assertBlockNotCached(suite, blk1.StartIndex, lruCache)
-	suite.assert.Equal(3, len(lruCache.Keys()))
+	suite.assert.Len(lruCache.Keys(), 3)
 	suite.assert.Equal(int64(7), lruCache.Occupied)
 
 }

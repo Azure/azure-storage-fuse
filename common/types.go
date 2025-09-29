@@ -310,8 +310,8 @@ func NewUUID() (u uuid) {
 }
 
 // returns block id of given length
-func GetBlockID(len int64) string {
-	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(len))
+func GetBlockID(length int64) string {
+	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(length))
 }
 
 func GetIdLength(id string) int64 {
