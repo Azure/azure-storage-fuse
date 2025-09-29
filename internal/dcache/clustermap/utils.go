@@ -92,7 +92,9 @@ var (
 	PreferredMVs int64 = 1000
 
 	MinMVsPerRV int64 = 1
-	MaxMVsPerRV int64 = 100
+
+	// XXX: Setting this very high for ring based MV placement.
+	MaxMVsPerRV int64 = 100000
 
 	MVsPerRVLocked bool = false
 
