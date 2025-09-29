@@ -1810,6 +1810,36 @@ func (bc *BlockCache) checkDiskUsage() bool {
 	return false
 }
 
+func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
+	var maxCacheSize uint64
+	if bc.diskSize > 0 {
+		maxCacheSize = bc.diskSize
+	} else {
+		maxCacheSize = bc.memSize
+	}
+
+	if maxCacheSize == 0 {
+		return nil, false, nil
+	}
+
+	usage, _ := common.GetUsage(bc.tmpPath)
+	usage = usage * float64(_1MB)
+
+	available := (float64)(maxCacheSize) - usage
+	statfs := &syscall.Statfs_t{}
+	err := syscall.Statfs("/", statfs)
+	if err != nil {
+		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
+		return nil, false, err
+	}
+	statfs.Frsize = int64(bc.blockSize)
+	statfs.Blocks = uint64(maxCacheSize) / uint64(bc.blockSize)
+	statfs.Bavail = uint64(math.Max(0, available)) / uint64(bc.blockSize)
+	statfs.Bfree = statfs.Bavail
+
+	return statfs, true, nil
+}
+
 // invalidateDirectory: Recursively invalidates a directory in the file cache.
 func (bc *BlockCache) invalidateDirectory(name string) {
 	log.Trace("BlockCache::invalidateDirectory : %s", name)
@@ -1932,36 +1962,6 @@ func NewBlockCacheComponent() internal.Component {
 	}
 	comp.SetName(compName)
 	return comp
-}
-
-func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
-	var maxCacheSize uint64
-	if bc.diskSize > 0 {
-		maxCacheSize = bc.diskSize
-	} else {
-		maxCacheSize = bc.memSize
-	}
-
-	if maxCacheSize == 0 {
-		return nil, false, nil
-	}
-
-	usage, _ := common.GetUsage(bc.tmpPath)
-	usage = usage * float64(_1MB)
-
-	available := (float64)(maxCacheSize) - usage
-	statfs := &syscall.Statfs_t{}
-	err := syscall.Statfs("/", statfs)
-	if err != nil {
-		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
-		return nil, false, err
-	}
-	statfs.Frsize = int64(bc.blockSize)
-	statfs.Blocks = uint64(maxCacheSize) / uint64(bc.blockSize)
-	statfs.Bavail = uint64(math.Max(0, available)) / uint64(bc.blockSize)
-	statfs.Bfree = statfs.Bavail
-
-	return statfs, true, nil
 }
 
 // On init register this component to pipeline and supply your constructor
