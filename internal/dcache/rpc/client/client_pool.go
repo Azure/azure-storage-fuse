@@ -677,8 +677,16 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 				ncPool.numActiveHighPrio.Load(), ncPool.numActive.Load(), client.nodeID, highPrio)
 			common.Assert(ncPool.numActive.Load() <= int64(cp.maxPerNode),
 				ncPool.numActive.Load(), cp.maxPerNode, client.nodeID, highPrio)
-			common.Assert((ncPool.numWaitingHighPrio.Load() <= ncPool.numWaiting.Load()),
-				ncPool.numWaitingHighPrio.Load(), ncPool.numWaiting.Load(), client.nodeID, highPrio)
+
+			//
+			// This assert cannot be safely made without holding the node lock while updating
+			// numWaiting and numWaitingHighPrio atomics. Since those are used only for logging,
+			// we don't want to hold the lock.
+			//
+			/*
+				common.Assert((ncPool.numWaitingHighPrio.Load() <= ncPool.numWaiting.Load()),
+					ncPool.numWaitingHighPrio.Load(), ncPool.numWaiting.Load(), client.nodeID, highPrio)
+			*/
 
 			cp.releaseNodeLock(nodeLock, nodeID)
 			client.allocatedAt = time.Now()
