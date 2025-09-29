@@ -249,9 +249,9 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // Return list of component RVs (name and state) for the given MV, and its state, and also the clustermap Epoch.
 // The epoch should be used by the caller to correctly refresh the clustermap on receiving a NeedToRefreshClusterMap
 // error.
-func getComponentRVsForMV(mvName string) (dcache.StateEnum, []*models.RVNameAndState, int64) {
+func getComponentRVsForMV(mvName string, randomize bool) (dcache.StateEnum, []*models.RVNameAndState, int64) {
 	mvState, rvMap, epoch := cm.GetRVsEx(mvName)
-	return mvState, cm.RVMapToList(mvName, rvMap), epoch
+	return mvState, cm.RVMapToList(mvName, rvMap, randomize), epoch
 }
 
 // return the number of replicas

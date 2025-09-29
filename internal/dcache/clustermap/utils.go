@@ -556,7 +556,7 @@ func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 
 // Convert an RVMap returned by clustermap APIs like GetRVs()/GetRVsEx() to a list of RVNameAndState
 // needed by rvInfo and others.
-func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {
+func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum, randomize bool) []*models.RVNameAndState {
 	componentRVs := make([]*models.RVNameAndState, 0, int(GetCacheConfig().NumReplicas))
 
 	for rvName, rvState := range rvMap {
@@ -574,9 +574,11 @@ func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVN
 	// Take this opportunity to randomize the order of RVs in the list, this is usually desirable
 	// to distribute load evenly across RVs.
 	//
-	rand.Shuffle(len(componentRVs), func(i, j int) {
-		componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
-	})
+	if randomize {
+		rand.Shuffle(len(componentRVs), func(i, j int) {
+			componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
+		})
+	}
 
 	return componentRVs
 }
