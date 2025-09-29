@@ -95,7 +95,7 @@ func (suite *xloadTestSuite) SetupTest() {
 	os.RemoveAll(suite.local_path)
 	os.RemoveAll(suite.fake_storage_path)
 	err = suite.setupTestHelper(defaultConfig, false)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *xloadTestSuite) setupTestHelper(configuration string, startComponents bool) error {
@@ -126,7 +126,7 @@ func (suite *xloadTestSuite) cleanupTest(stopComp bool) {
 		suite.loopback.Stop()
 		err := suite.xload.Stop()
 		if err != nil {
-			suite.assert.Nil(err)
+			suite.assert.NoError(err)
 		}
 	}
 
@@ -140,19 +140,19 @@ func (suite *xloadTestSuite) TestConfigEmpty() {
 	suite.cleanupTest(false) // teardown the default xload generated
 	emptyConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, suite.fake_storage_path)
 	err := suite.setupTestHelper(emptyConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
-	suite.assert.Equal(suite.xload.Name(), compName)
+	suite.assert.Equal(compName, suite.xload.Name())
 	suite.assert.Equal(suite.xload.path, suite.local_path)
 	suite.assert.Equal(suite.xload.blockSize, uint64(defaultBlockSize*float64(MB)))
 	suite.assert.Equal(suite.xload.mode, EMode.PRELOAD())
-	suite.assert.Equal(suite.xload.exportProgress, false)
-	suite.assert.Equal(suite.xload.defaultPermission, common.DefaultFilePermissionBits)
-	suite.assert.NotEqual(suite.xload.workerCount, uint32(0))
+	suite.assert.False(suite.xload.exportProgress)
+	suite.assert.Equal(common.DefaultFilePermissionBits, suite.xload.defaultPermission)
+	suite.assert.NotEqual(uint32(0), suite.xload.workerCount)
 	suite.assert.Nil(suite.xload.blockPool)
 	suite.assert.Nil(suite.xload.statsMgr)
 	suite.assert.NotNil(suite.xload.fileLocks)
-	suite.assert.Len(suite.xload.comps, 0)
+	suite.assert.Empty(suite.xload.comps)
 }
 
 func (suite *xloadTestSuite) TestConfigNotReadOnly() {
@@ -160,7 +160,7 @@ func (suite *xloadTestSuite) TestConfigNotReadOnly() {
 	suite.cleanupTest(false) // teardown the default xload generated
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s", suite.local_path, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "should be used in only in read-only mode")
 }
 
@@ -171,7 +171,7 @@ func (suite *xloadTestSuite) TestConfigBlockSize() {
 	blockSize := (float64)(5.5)
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(suite.xload.path, suite.local_path)
 	suite.assert.Equal(suite.xload.blockSize, uint64(blockSize*float64(MB)))
 }
@@ -183,13 +183,13 @@ func (suite *xloadTestSuite) TestConfigBlockSizeInCLI() {
 	blockSize := 4.8
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, suite.fake_storage_path)
 	err := config.ReadConfigFromReader(strings.NewReader(testConfig))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	config.Set("stream.block-size-mb", fmt.Sprintf("%v", blockSize))
 
 	xload := (NewXloadComponent()).(*Xload)
 	err = xload.Configure(true)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(xload.path, suite.local_path)
 	suite.assert.Equal(xload.blockSize, uint64(blockSize*float64(MB)))
 }
@@ -201,7 +201,7 @@ func (suite *xloadTestSuite) TestConfigNoPath() {
 	blockSize := (float64)(5.5)
 	testConfig := fmt.Sprintf("xload:\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", blockSize, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "path not given")
 }
 
@@ -212,13 +212,13 @@ func (suite *xloadTestSuite) TestConfigPathInCLI() {
 	blockSize := (float64)(4)
 	testConfig := fmt.Sprintf("xload:\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", blockSize, suite.fake_storage_path)
 	err := config.ReadConfigFromReader(strings.NewReader(testConfig))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	config.Set("file_cache.path", suite.local_path)
 
 	xload := (NewXloadComponent()).(*Xload)
 	err = xload.Configure(true)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(xload.path, suite.local_path)
 	suite.assert.Equal(xload.blockSize, uint64(blockSize*float64(MB)))
 }
@@ -229,13 +229,13 @@ func (suite *xloadTestSuite) TestConfigPathSameAsMountPath() {
 
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, suite.fake_storage_path)
 	err := config.ReadConfigFromReader(strings.NewReader(testConfig))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	config.Set("mount-path", suite.local_path)
 
 	xload := (NewXloadComponent()).(*Xload)
 	err = xload.Configure(true)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "xload path is same as mount path")
 }
 
@@ -245,13 +245,13 @@ func (suite *xloadTestSuite) TestConfigPathNotEmpty() {
 
 	// create file in local path
 	err := os.Mkdir(suite.local_path, 0755)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	_, err = os.Create(filepath.Join(suite.local_path, "testFile"))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, suite.fake_storage_path)
 	err = suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "temp directory not empty")
 }
 
@@ -279,11 +279,11 @@ func (suite *xloadTestSuite) TestConfigMode() {
 		testConfig := fmt.Sprintf("xload:\n  path: %s\n  mode: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, m.val, suite.fake_storage_path)
 		err := suite.setupTestHelper(testConfig, false)
 		if i < len(modes)-4 {
-			suite.assert.Nil(err)
+			suite.assert.NoError(err)
 			suite.assert.Equal(suite.xload.path, suite.local_path)
 			suite.assert.Equal(suite.xload.mode, m.mode)
 		} else {
-			suite.assert.NotNil(err)
+			suite.assert.Error(err)
 		}
 	}
 }
@@ -294,8 +294,8 @@ func (suite *xloadTestSuite) TestConfigAllowOther() {
 
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true\n\nallow-other: true", suite.local_path, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.Nil(err)
-	suite.assert.Equal(suite.xload.defaultPermission, common.DefaultAllowOtherPermissionBits)
+	suite.assert.NoError(err)
+	suite.assert.Equal(common.DefaultAllowOtherPermissionBits, suite.xload.defaultPermission)
 }
 
 func (suite *xloadTestSuite) TestUnsupportedModes() {
@@ -307,16 +307,16 @@ func (suite *xloadTestSuite) TestUnsupportedModes() {
 	for _, m := range modes {
 		testConfig := fmt.Sprintf("xload:\n  path: %s\n  mode: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, m, blockSize, suite.fake_storage_path)
 		err := suite.setupTestHelper(testConfig, true)
-		suite.assert.NotNil(err)
+		suite.assert.Error(err)
 	}
 
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, false)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	suite.xload.mode = EMode.INVALID_MODE()
 	err = suite.xload.Start(context.Background())
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *xloadTestSuite) TestPriority() {
@@ -333,7 +333,7 @@ func (suite *xloadTestSuite) TestBlockPoolError() {
 
 	xl := &Xload{}
 	err := xl.Start(context.Background())
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *xloadTestSuite) TestXComponentDefault() {
@@ -349,8 +349,8 @@ func (suite *xloadTestSuite) TestXComponentDefault() {
 	t.Schedule(nil)
 
 	n, err := t.Process(nil)
-	suite.assert.Nil(err)
-	suite.assert.Equal(n, 0)
+	suite.assert.NoError(err)
+	suite.assert.Equal(0, n)
 }
 
 func (suite *xloadTestSuite) TestCreateDownloader() {
@@ -359,23 +359,23 @@ func (suite *xloadTestSuite) TestCreateDownloader() {
 
 	xl := &Xload{}
 	err := xl.createDownloader()
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
-	suite.assert.Len(xl.comps, 0)
+	suite.assert.Empty(xl.comps)
 
 	xl.path = suite.local_path
 	xl.workerCount = 4
 	xl.SetNextComponent(xl)
 	xl.statsMgr = &StatsManager{}
 	err = xl.createDownloader()
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
-	suite.assert.Len(xl.comps, 0)
+	suite.assert.Empty(xl.comps)
 
 	xl.blockPool = &BlockPool{}
 	xl.fileLocks = common.NewLockMap()
 	err = xl.createDownloader()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Len(xl.comps, 3)
 }
 
@@ -393,17 +393,17 @@ func (suite *xloadTestSuite) TestCreateChain() {
 	xl.SetNextComponent(xl)
 
 	err := xl.createChain()
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 
 	err = xl.startComponents()
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 
 	err = xl.createDownloader()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Len(xl.comps, 3)
 
 	err = xl.createChain()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(xl.comps[0].GetNext())
 	suite.assert.NotNil(xl.comps[1].GetNext())
 	suite.assert.Nil(xl.comps[2].GetNext())
@@ -415,7 +415,7 @@ func (suite *xloadTestSuite) TestDownloadFileError() {
 
 	xl := &Xload{}
 	err := xl.downloadFile("file0")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *xloadTestSuite) TestDownloadFileGetAttrError() {
@@ -437,14 +437,14 @@ func (suite *xloadTestSuite) TestDownloadFileGetAttrError() {
 	xl.SetNextComponent(loopback)
 
 	err := xl.createDownloader()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Len(xl.comps, 3)
 
 	err = xl.createChain()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	err = xl.downloadFile("file0")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *xloadTestSuite) TestXloadStartStop() {
@@ -456,7 +456,7 @@ func (suite *xloadTestSuite) TestXloadStartStop() {
 	blockSize := (float64)(0.00001)
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, true) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(suite.xload.path, suite.local_path)
 	suite.assert.Equal(suite.xload.blockSize, uint64(blockSize*float64(MB)))
 
@@ -474,27 +474,27 @@ func (suite *xloadTestSuite) TestOpenFileAlreadyDownloaded() {
 	blockSize := (float64)(0.00001)
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, true) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(suite.xload.path, suite.local_path)
 	suite.assert.Equal(suite.xload.blockSize, uint64(blockSize*float64(MB)))
 
 	time.Sleep(5 * time.Second)
 
 	fh, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "file_4"})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(fh)
-	suite.assert.Equal(fh.Size, (int64)(36))
+	suite.assert.Equal((int64)(36), fh.Size)
 
 	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3"})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(fh2)
-	suite.assert.Equal(fh2.Size, (int64)(27))
+	suite.assert.Equal((int64)(27), fh2.Size)
 
 	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh2})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	validateMD5(suite.local_path, suite.fake_storage_path, suite.assert)
 }
@@ -506,7 +506,7 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	blockSize := (float64)(0.00001)
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, true) // setup a new xload with a custom config (teardown will occur after the test as usual)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(suite.xload.path, suite.local_path)
 	suite.assert.Equal(suite.xload.blockSize, uint64(blockSize*float64(MB)))
 
@@ -516,35 +516,35 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 
 	// open file error
 	fh, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_1/file_0"})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(fh)
-	suite.assert.Equal(fh.Size, (int64)(0))
+	suite.assert.Equal((int64)(0), fh.Size)
 
 	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	fh1, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "file_4", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(fh1)
-	suite.assert.Equal(fh1.Size, (int64)(36))
+	suite.assert.Equal((int64)(36), fh1.Size)
 
 	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh1})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(fh2)
-	suite.assert.Equal(fh2.Size, (int64)(27))
+	suite.assert.Equal((int64)(27), fh2.Size)
 
 	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh2})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	suite.validateMD5WithOpenFile(suite.local_path, suite.fake_storage_path)
 }
 
 func (suite *xloadTestSuite) validateMD5WithOpenFile(localPath string, remotePath string) {
 	entries, err := os.ReadDir(remotePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	for _, entry := range entries {
 		localFilePath := filepath.Join(localPath, entry.Name())
@@ -555,19 +555,19 @@ func (suite *xloadTestSuite) validateMD5WithOpenFile(localPath string, remotePat
 		} else {
 			relPath := strings.TrimPrefix(localFilePath, suite.local_path+"/")
 			fh, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: relPath, Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
-			suite.assert.Nil(err)
+			suite.assert.NoError(err)
 			suite.assert.NotNil(fh)
 
 			localMD5, err := computeMD5(localFilePath)
-			suite.assert.Nil(err)
+			suite.assert.NoError(err)
 
 			remoteMD5, err := computeMD5(remoteFilePath)
-			suite.assert.Nil(err)
+			suite.assert.NoError(err)
 
 			suite.assert.Equal(localMD5, remoteMD5)
 
 			err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
-			suite.assert.Nil(err)
+			suite.assert.NoError(err)
 		}
 	}
 }

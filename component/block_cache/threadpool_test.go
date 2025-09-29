@@ -67,19 +67,19 @@ func (suite *threadPoolTestSuite) TestCreate() {
 
 	tp = newThreadPool(1, func(*workItem) {}, nil)
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(1))
+	suite.assert.Equal(uint32(1), tp.worker)
 }
 
 func (suite *threadPoolTestSuite) TestStartStop() {
 	suite.assert = assert.New(suite.T())
 
 	r := func(i *workItem) {
-		suite.assert.Equal(i.failCnt, int32(1))
+		suite.assert.Equal(int32(1), i.failCnt)
 	}
 
 	tp := newThreadPool(2, r, nil)
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(2))
+	suite.assert.Equal(uint32(2), tp.worker)
 
 	tp.Start()
 	suite.assert.NotNil(tp.priorityCh)
@@ -92,12 +92,12 @@ func (suite *threadPoolTestSuite) TestSchedule() {
 	suite.assert = assert.New(suite.T())
 
 	r := func(i *workItem) {
-		suite.assert.Equal(i.failCnt, int32(1))
+		suite.assert.Equal(int32(1), i.failCnt)
 	}
 
 	tp := newThreadPool(2, r, nil)
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(2))
+	suite.assert.Equal(uint32(2), tp.worker)
 
 	tp.Start()
 	suite.assert.NotNil(tp.priorityCh)
@@ -115,13 +115,13 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 
 	callbackCnt := int32(0)
 	r := func(i *workItem) {
-		suite.assert.Equal(i.failCnt, int32(5))
+		suite.assert.Equal(int32(5), i.failCnt)
 		atomic.AddInt32(&callbackCnt, 1)
 	}
 
 	tp := newThreadPool(10, r, nil)
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(10))
+	suite.assert.Equal(uint32(10), tp.worker)
 
 	tp.Start()
 	suite.assert.NotNil(tp.priorityCh)
@@ -132,7 +132,7 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 	}
 
 	time.Sleep(1 * time.Second)
-	suite.assert.Equal(callbackCnt, int32(100))
+	suite.assert.Equal(int32(100), callbackCnt)
 	tp.Stop()
 }
 
@@ -142,18 +142,18 @@ func (suite *threadPoolTestSuite) TestPriorityScheduleWithWriter() {
 	callbackRCnt := int32(0)
 	callbackWCnt := int32(0)
 	r := func(i *workItem) {
-		suite.assert.Equal(i.failCnt, int32(5))
+		suite.assert.Equal(int32(5), i.failCnt)
 		atomic.AddInt32(&callbackRCnt, 1)
 	}
 
 	w := func(i *workItem) {
-		suite.assert.Equal(i.failCnt, int32(5))
+		suite.assert.Equal(int32(5), i.failCnt)
 		atomic.AddInt32(&callbackWCnt, 1)
 	}
 
 	tp := newThreadPool(10, r, w)
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(10))
+	suite.assert.Equal(uint32(10), tp.worker)
 
 	tp.Start()
 	suite.assert.NotNil(tp.priorityCh)
@@ -164,8 +164,8 @@ func (suite *threadPoolTestSuite) TestPriorityScheduleWithWriter() {
 	}
 
 	time.Sleep(1 * time.Second)
-	suite.assert.Equal(callbackWCnt, int32(100))
-	suite.assert.Equal(callbackRCnt, int32(0))
+	suite.assert.Equal(int32(100), callbackWCnt)
+	suite.assert.Equal(int32(0), callbackRCnt)
 	tp.Stop()
 }
 

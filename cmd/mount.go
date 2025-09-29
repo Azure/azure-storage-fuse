@@ -75,22 +75,21 @@ type mountOptions struct {
 	inputMountPath string
 	ConfigFile     string
 
-	Logging            LogOptions     `config:"logging"`
-	Components         []string       `config:"components"`
-	Foreground         bool           `config:"foreground"`
-	NonEmpty           bool           `config:"nonempty"`
-	DefaultWorkingDir  string         `config:"default-working-dir"`
-	CPUProfile         string         `config:"cpu-profile"`
-	MemProfile         string         `config:"mem-profile"`
-	PassPhrase         string         `config:"passphrase"`
-	SecureConfig       bool           `config:"secure-config"`
-	DynamicProfiler    bool           `config:"dynamic-profile"`
-	ProfilerPort       int            `config:"profiler-port"`
-	ProfilerIP         string         `config:"profiler-ip"`
-	MonitorOpt         monitorOptions `config:"health_monitor"`
-	WaitForMount       time.Duration  `config:"wait-for-mount"`
-	LazyWrite          bool           `config:"lazy-write"`
-	disableKernelCache bool           `config:"disable-kernel-cache"`
+	Logging           LogOptions     `config:"logging"`
+	Components        []string       `config:"components"`
+	Foreground        bool           `config:"foreground"`
+	NonEmpty          bool           `config:"nonempty"`
+	DefaultWorkingDir string         `config:"default-working-dir"`
+	CPUProfile        string         `config:"cpu-profile"`
+	MemProfile        string         `config:"mem-profile"`
+	PassPhrase        string         `config:"passphrase"`
+	SecureConfig      bool           `config:"secure-config"`
+	DynamicProfiler   bool           `config:"dynamic-profile"`
+	ProfilerPort      int            `config:"profiler-port"`
+	ProfilerIP        string         `config:"profiler-ip"`
+	MonitorOpt        monitorOptions `config:"health_monitor"`
+	WaitForMount      time.Duration  `config:"wait-for-mount"`
+	LazyWrite         bool           `config:"lazy-write"`
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
@@ -491,7 +490,7 @@ var mountCmd = &cobra.Command{
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
-			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
+			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
 			// Save the stack trace of the mount process in case of any panic

@@ -122,7 +122,7 @@ func (suite *generateConfigTestSuite) TestConfigFileInvalid() {
 	v1ConfigFile.WriteString("accountName myAccountName myOtherAccountName")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileKey() {
@@ -135,7 +135,7 @@ func (suite *generateConfigTestSuite) TestConfigFileKey() {
 	v1ConfigFile.WriteString("accountName myAccountName\naccountKey myAccountKey\nauthType Key\ncontainerName myContainerName\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -144,11 +144,11 @@ func (suite *generateConfigTestSuite) TestConfigFileKey() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("myAccountName", options.AccountName)
-	suite.assert.EqualValues("myAccountKey", options.AccountKey)
-	suite.assert.EqualValues("key", options.AuthMode)
-	suite.assert.EqualValues("myContainerName", options.Container)
-	suite.assert.EqualValues("https://myAccountName.blob.core.windows.net", options.Endpoint)
+	suite.assert.Equal("myAccountName", options.AccountName)
+	suite.assert.Equal("myAccountKey", options.AccountKey)
+	suite.assert.Equal("key", options.AuthMode)
+	suite.assert.Equal("myContainerName", options.Container)
+	suite.assert.Equal("https://myAccountName.blob.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileSas() {
@@ -161,7 +161,7 @@ func (suite *generateConfigTestSuite) TestConfigFileSas() {
 	v1ConfigFile.WriteString("accountName myAccountName\nsasToken mySasToken\nauthType SAS\ncontainerName myContainerName\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -170,11 +170,11 @@ func (suite *generateConfigTestSuite) TestConfigFileSas() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("myAccountName", options.AccountName)
-	suite.assert.EqualValues("mySasToken", options.SaSKey)
-	suite.assert.EqualValues("sas", options.AuthMode)
-	suite.assert.EqualValues("myContainerName", options.Container)
-	suite.assert.EqualValues("https://myAccountName.blob.core.windows.net", options.Endpoint)
+	suite.assert.Equal("myAccountName", options.AccountName)
+	suite.assert.Equal("mySasToken", options.SaSKey)
+	suite.assert.Equal("sas", options.AuthMode)
+	suite.assert.Equal("myContainerName", options.Container)
+	suite.assert.Equal("https://myAccountName.blob.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileSPN() {
@@ -187,7 +187,7 @@ func (suite *generateConfigTestSuite) TestConfigFileSPN() {
 	v1ConfigFile.WriteString("accountName myAccountName\nservicePrincipalClientId clientId\nservicePrincipalTenantId tenantId\nservicePrincipalClientSecret clientSecret\naadEndpoint aadEndpoint\nauthType SPN\ncontainerName myContainerName\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -196,14 +196,14 @@ func (suite *generateConfigTestSuite) TestConfigFileSPN() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("myAccountName", options.AccountName)
-	suite.assert.EqualValues("clientId", options.ClientID)
-	suite.assert.EqualValues("tenantId", options.TenantID)
-	suite.assert.EqualValues("clientSecret", options.ClientSecret)
-	suite.assert.EqualValues("aadEndpoint", options.ActiveDirectoryEndpoint)
-	suite.assert.EqualValues("spn", options.AuthMode)
-	suite.assert.EqualValues("myContainerName", options.Container)
-	suite.assert.EqualValues("https://myAccountName.blob.core.windows.net", options.Endpoint)
+	suite.assert.Equal("myAccountName", options.AccountName)
+	suite.assert.Equal("clientId", options.ClientID)
+	suite.assert.Equal("tenantId", options.TenantID)
+	suite.assert.Equal("clientSecret", options.ClientSecret)
+	suite.assert.Equal("aadEndpoint", options.ActiveDirectoryEndpoint)
+	suite.assert.Equal("spn", options.AuthMode)
+	suite.assert.Equal("myContainerName", options.Container)
+	suite.assert.Equal("https://myAccountName.blob.core.windows.net", options.Endpoint)
 }
 func (suite *generateConfigTestSuite) TestConfigFileMSI() {
 	defer suite.cleanupTest()
@@ -215,7 +215,7 @@ func (suite *generateConfigTestSuite) TestConfigFileMSI() {
 	v1ConfigFile.WriteString("accountName myAccountName\nidentityClientId clientId\nidentityObjectId objectId\nidentityResourceId resourceId\nauthType MSI\ncontainerName myContainerName\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -224,13 +224,13 @@ func (suite *generateConfigTestSuite) TestConfigFileMSI() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("myAccountName", options.AccountName)
-	suite.assert.EqualValues("clientId", options.ApplicationID)
-	suite.assert.EqualValues("objectId", options.ObjectID)
-	suite.assert.EqualValues("resourceId", options.ResourceID)
-	suite.assert.EqualValues("msi", options.AuthMode)
-	suite.assert.EqualValues("myContainerName", options.Container)
-	suite.assert.EqualValues("https://myAccountName.blob.core.windows.net", options.Endpoint)
+	suite.assert.Equal("myAccountName", options.AccountName)
+	suite.assert.Equal("clientId", options.ApplicationID)
+	suite.assert.Equal("objectId", options.ObjectID)
+	suite.assert.Equal("resourceId", options.ResourceID)
+	suite.assert.Equal("msi", options.AuthMode)
+	suite.assert.Equal("myContainerName", options.Container)
+	suite.assert.Equal("https://myAccountName.blob.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileProxy() {
@@ -243,7 +243,7 @@ func (suite *generateConfigTestSuite) TestConfigFileProxy() {
 	v1ConfigFile.WriteString("accountName myAccountName\nhttpProxy httpProxy\nhttpsProxy httpsProxy\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -252,8 +252,8 @@ func (suite *generateConfigTestSuite) TestConfigFileProxy() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("httpProxy", options.HttpProxyAddress)
-	suite.assert.EqualValues("httpsProxy", options.HttpsProxyAddress)
+	suite.assert.Equal("httpProxy", options.HttpProxyAddress)
+	suite.assert.Equal("httpsProxy", options.HttpsProxyAddress)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileBlobEndpoint() {
@@ -266,7 +266,7 @@ func (suite *generateConfigTestSuite) TestConfigFileBlobEndpoint() {
 	v1ConfigFile.WriteString("accountName myAccountName\nblobEndpoint blobEndpoint\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -275,7 +275,7 @@ func (suite *generateConfigTestSuite) TestConfigFileBlobEndpoint() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("blobEndpoint", options.Endpoint)
+	suite.assert.Equal("blobEndpoint", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileAccountType() {
@@ -288,7 +288,7 @@ func (suite *generateConfigTestSuite) TestConfigFileAccountType() {
 	v1ConfigFile.WriteString("accountName myAccountName\naccountType adls\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -297,8 +297,8 @@ func (suite *generateConfigTestSuite) TestConfigFileAccountType() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("adls", options.AccountType)
-	suite.assert.EqualValues("https://myAccountName.dfs.core.windows.net", options.Endpoint)
+	suite.assert.Equal("adls", options.AccountType)
+	suite.assert.Equal("https://myAccountName.dfs.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileAuthMode() {
@@ -311,7 +311,7 @@ func (suite *generateConfigTestSuite) TestConfigFileAuthMode() {
 	v1ConfigFile.WriteString("accountName myAccountName\nauthType Key\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -320,7 +320,7 @@ func (suite *generateConfigTestSuite) TestConfigFileAuthMode() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("key", options.AuthMode)
+	suite.assert.Equal("key", options.AuthMode)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileLogLevel() {
@@ -333,7 +333,7 @@ func (suite *generateConfigTestSuite) TestConfigFileLogLevel() {
 	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
@@ -342,7 +342,7 @@ func (suite *generateConfigTestSuite) TestConfigFileLogLevel() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("logging", &options)
 
-	suite.assert.EqualValues("LOG_ERROR", options.LogLevel)
+	suite.assert.Equal("LOG_ERROR", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsNewLine() {
@@ -355,7 +355,7 @@ func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsNewLine() {
 	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n# accountName myAccountName\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
@@ -364,7 +364,7 @@ func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsNewLine() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("logging", &options)
 
-	suite.assert.EqualValues("LOG_ERROR", options.LogLevel)
+	suite.assert.Equal("LOG_ERROR", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsSameLine() {
@@ -377,7 +377,7 @@ func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsSameLine() {
 	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR #LOG_DEBUG\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
@@ -386,7 +386,7 @@ func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsSameLine() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("logging", &options)
 
-	suite.assert.EqualValues("LOG_ERROR", options.LogLevel)
+	suite.assert.Equal("LOG_ERROR", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileCaCertFileError() {
@@ -399,7 +399,7 @@ func (suite *generateConfigTestSuite) TestConfigFileCaCertFileError() {
 	v1ConfigFile.WriteString("accountName myAccountName\ncaCertFile caCertFile\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileDnsTypeError() {
@@ -412,7 +412,7 @@ func (suite *generateConfigTestSuite) TestConfigFileDnsTypeError() {
 	v1ConfigFile.WriteString("accountName myAccountName\ndnsType dnsType\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *generateConfigTestSuite) TestConfigCLILogLevel() {
@@ -425,7 +425,7 @@ func (suite *generateConfigTestSuite) TestConfigCLILogLevel() {
 	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n")
 	logLevel := "--log-level=LOG_DEBUG"
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", logLevel, fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
@@ -434,7 +434,7 @@ func (suite *generateConfigTestSuite) TestConfigCLILogLevel() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("logging", &options)
 
-	suite.assert.EqualValues("LOG_DEBUG", options.LogLevel)
+	suite.assert.Equal("LOG_DEBUG", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamLogging() {
@@ -451,7 +451,7 @@ func (suite *generateConfigTestSuite) TestCLIParamLogging() {
 	logLevel := "--log-level=LOG_DEBUG"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, logLevel, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
@@ -460,7 +460,7 @@ func (suite *generateConfigTestSuite) TestCLIParamLogging() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("logging", &options)
 
-	suite.assert.EqualValues("LOG_DEBUG", options.LogLevel)
+	suite.assert.Equal("LOG_DEBUG", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
@@ -483,7 +483,7 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 	emptyDirCheck := "--empty-dir-check=false"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, maxEviction, high, low, emptyDirCheck, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := file_cache.FileCacheOptions{}
@@ -492,7 +492,7 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("file_cache", &options)
 
-	suite.assert.EqualValues("fileCachePath", options.TmpPath)
+	suite.assert.Equal("fileCachePath", options.TmpPath)
 	suite.assert.EqualValues(15, options.MaxSizeMB)
 	suite.assert.EqualValues(60, options.Timeout)
 	suite.assert.EqualValues(7, options.MaxEviction)
@@ -517,7 +517,7 @@ func (suite *generateConfigTestSuite) TestAddStreamAndFileCache() {
 	useStreaming := "--streaming=true"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useStreaming, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := mountOptions{}
@@ -525,7 +525,7 @@ func (suite *generateConfigTestSuite) TestAddStreamAndFileCache() {
 	viper.SetConfigType("yaml")
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.Unmarshal(&options)
-	suite.assert.EqualValues([]string{"libfuse", "stream", "azstorage"}, options.Components)
+	suite.assert.Equal([]string{"libfuse", "stream", "azstorage"}, options.Components)
 
 }
 
@@ -546,7 +546,7 @@ func (suite *generateConfigTestSuite) TestComponentCorrectOrder() {
 	streaming := "--streaming=false"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useAttrCache, streaming, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := mountOptions{}
@@ -554,7 +554,7 @@ func (suite *generateConfigTestSuite) TestComponentCorrectOrder() {
 	viper.SetConfigType("yaml")
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.Unmarshal(&options)
-	suite.assert.EqualValues([]string{"libfuse", "file_cache", "attr_cache", "azstorage"}, options.Components)
+	suite.assert.Equal([]string{"libfuse", "file_cache", "attr_cache", "azstorage"}, options.Components)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamFileCacheUploadModifiedOnlyError() {
@@ -570,7 +570,7 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCacheUploadModifiedOnlyErr
 	modifiedOnly := "--upload-modified-only=true"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamFileCachePollTimeoutError() {
@@ -586,7 +586,7 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCachePollTimeoutError() {
 	modifiedOnly := "--cache-poll-timeout-msec=60"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
@@ -605,7 +605,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	cacheSize := "--stream-cache-mb=40"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, streaming, blockSize, blocksPerFile, cacheSize, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := block_cache.StreamOptions{}
@@ -614,8 +614,8 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("stream", &options)
 
-	suite.assert.EqualValues(1, int(options.CachedObjLimit))
-	suite.assert.EqualValues(50, int(options.BufferSize))
+	suite.assert.Equal(1, int(options.CachedObjLimit))
+	suite.assert.Equal(50, int(options.BufferSize))
 	suite.assert.EqualValues(5, options.BlockSize)
 }
 
@@ -634,7 +634,7 @@ func (suite *generateConfigTestSuite) TestCLIParamAttrCache() {
 	noSymlinks := "--no-symlinks=true"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, attrCache, cacheOnList, noSymlinks, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := attr_cache.AttrCacheOptions{}
@@ -669,7 +669,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStorage() {
 	httpsProxy := "--https-proxy=httpsProxy"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, adls, https, container, concurrency, cancelListOnMount, maxRetry, maxRetryTimeout, retryDelayFactor, httpProxy, httpsProxy, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
@@ -678,16 +678,16 @@ func (suite *generateConfigTestSuite) TestCLIParamStorage() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("azstorage", &options)
 
-	suite.assert.EqualValues("adls", options.AccountType)
+	suite.assert.Equal("adls", options.AccountType)
 	suite.assert.True(options.UseHTTP)
-	suite.assert.EqualValues("myContainerName", options.Container)
+	suite.assert.Equal("myContainerName", options.Container)
 	suite.assert.EqualValues(3, options.MaxConcurrency)
 	suite.assert.EqualValues(60, options.CancelListForSeconds)
 	suite.assert.EqualValues(5, options.MaxRetries)
 	suite.assert.EqualValues(10, options.MaxTimeout)
 	suite.assert.EqualValues(8, options.BackoffTime)
-	suite.assert.EqualValues("httpProxy", options.HttpProxyAddress)
-	suite.assert.EqualValues("httpsProxy", options.HttpsProxyAddress)
+	suite.assert.Equal("httpProxy", options.HttpProxyAddress)
+	suite.assert.Equal("httpsProxy", options.HttpsProxyAddress)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageCaCertFileError() {
@@ -703,7 +703,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStorageCaCertFileError() {
 	caCertFile := "--ca-cert-file=path"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, caCertFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageContentTypeError() {
@@ -719,7 +719,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStorageContentTypeError() {
 	contentType := "--set-content-type=true"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, contentType, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageBackgroundDownloadError() {
@@ -735,7 +735,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStorageBackgroundDownloadError
 	download := "--background-download=true"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageInvalidateOnSyncNoError() {
@@ -751,7 +751,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStorageInvalidateOnSyncNoError
 	download := "--invalidate-on-sync=true"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamPreMountValidateNoError() {
@@ -767,7 +767,7 @@ func (suite *generateConfigTestSuite) TestCLIParamPreMountValidateNoError() {
 	download := "--pre-mount-validate=true"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 // mountv1 failure test where a libfuse option is incorrect
@@ -786,7 +786,7 @@ func (suite *generateConfigTestSuite) TestInvalidLibfuseOption() {
 	op, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o default_permissions", "-o umask=755", "-o a=b=c")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "invalid FUSE options")
 }
 
@@ -806,7 +806,7 @@ func (suite *generateConfigTestSuite) TestUndefinedLibfuseOption() {
 	op, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o allow_root", "-o umask=755", "-o random_option")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "invalid FUSE options")
 }
 
@@ -826,7 +826,7 @@ func (suite *generateConfigTestSuite) TestInvalidUmaskValue() {
 	op, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=abcd")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse umask")
 }
 
@@ -847,7 +847,7 @@ func (suite *generateConfigTestSuite) TestInvalidAttrTimeout() {
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other=false", "-o entry_timeout=120", "-o negative_timeout=120", "-o ro",
 		"-o allow_root", "-o default_permissions", "-o umask=755", "-o attr_timeout=abcd")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse attr_timeout")
 }
 
@@ -868,7 +868,7 @@ func (suite *generateConfigTestSuite) TestInvalidEntryTimeout() {
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other=false", "-o attr_timeout=120", "-o negative_timeout=120", "-o ro",
 		"-o allow_root", "-o default_permissions", "-o umask=755", "-o entry_timeout=abcd")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse entry_timeout")
 }
 
@@ -889,7 +889,7 @@ func (suite *generateConfigTestSuite) TestInvalidNegativeTimeout() {
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other=false", "-o entry_timeout=120", "-o attr_timeout=120", "-o ro",
 		"-o allow_root", "-o default_permissions", "-o umask=755", "-o negative_timeout=abcd")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse negative_timeout")
 }
 
@@ -905,7 +905,7 @@ func (suite *generateConfigTestSuite) TestEnvVarAccountName() {
 	defer os.Unsetenv("AZURE_STORAGE_ACCOUNT")
 
 	_, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestEnvVarAccountNameError() {
@@ -918,7 +918,7 @@ func (suite *generateConfigTestSuite) TestEnvVarAccountNameError() {
 	tempDir := randomString(6)
 
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "invalid account name")
 }
 
@@ -935,6 +935,6 @@ func (suite *generateConfigTestSuite) TestInvalidAccountType() {
 	tempDir := randomString(6)
 
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "invalid account type")
 }

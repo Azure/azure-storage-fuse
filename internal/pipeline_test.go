@@ -115,36 +115,36 @@ func (suite *pipelineTestSuite) SetupTest() {
 
 func (s *pipelineTestSuite) TestCreatePipeline() {
 	_, err := NewPipeline([]string{"ComponentA", "ComponentB"}, false)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *pipelineTestSuite) TestCreateInvalidPipeline() {
 	_, err := NewPipeline([]string{"ComponentC", "ComponentA"}, false)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.Contains(err.Error(), "is out of order")
 
 }
 
 func (s *pipelineTestSuite) TestInvalidComponent() {
 	_, err := NewPipeline([]string{"ComponentD"}, false)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *pipelineTestSuite) TestStartStopCreateNewPipeline() {
 	p, err := NewPipeline([]string{"ComponentA", "ComponentB"}, false)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	print(p.components[0].Name())
 	err = p.Start(nil)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	err = p.Stop()
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *pipelineTestSuite) TestStreamToBlockCacheConfig() {
 	p, err := NewPipeline([]string{"stream"}, false)
-	s.assert.Nil(err)
-	s.assert.Equal(p.components[0].Name(), "block_cache")
+	s.assert.NoError(err)
+	s.assert.Equal("block_cache", p.components[0].Name())
 }
 
 func TestPipelineTestSuite(t *testing.T) {

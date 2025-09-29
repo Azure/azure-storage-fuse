@@ -84,7 +84,7 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 				return nil, err
 			}
 
-			if !(comp.Priority() <= lastPriority) {
+			if comp.Priority() > lastPriority {
 				log.Err("Pipeline::NewPipeline : Invalid Component order [priority of %s higher than above components]", comp.Name())
 				return nil, fmt.Errorf("config error in Pipeline [component %s is out of order]", name)
 			} else {
