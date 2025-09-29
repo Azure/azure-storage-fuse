@@ -184,7 +184,7 @@ retry:
 	}
 
 	// Get component RVs for MV, from clustermap.
-	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName, true /* randomize */)
 
 	log.Debug("ReplicationManager::ReadMV: Component RVs for %s (%s) are %s (retryCnt: %d, clusterMapRefreshed: %v)",
 		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs), retryCnt, clusterMapRefreshed)
@@ -440,7 +440,7 @@ retry:
 	//       load in case of daisy chain writes as daisy chain writes utilize ingress and egress n/w b/w
 	//       for all but the last RV in the chain and for the last RV only ingress n/w b/w is used.
 	//
-	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName, false /* randomize */)
 
 	log.Debug("ReplicationManager::writeMVInternal: %s (%s), componentRVs: %v, chunkIdx: %d, cepoch: %d",
 		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs), req.ChunkIndex, lastClusterMapEpoch)
@@ -1149,7 +1149,7 @@ func RemoveMV(req *RemoveMvRequest) (*RemoveMvResponse, error) {
 	// Deleting file chunks from an MV amounts to deleting chunks for that file from all component RVs.
 	// Get the list of component RVs and send a RemoveChunk RPC to each.
 	//
-	mvState, rvs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+	mvState, rvs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName, true /* randomize */)
 	_ = mvState
 	retryNeeded := false
 
@@ -1402,7 +1402,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume, lastClusterMapEpoch int
 	}
 
 	// componentRVs is derived from mvInfo.RVs which corresponds to lastClusterMapEpoch.
-	componentRVs := cm.RVMapToList(mvName, mvInfo.RVs)
+	componentRVs := cm.RVMapToList(mvName, mvInfo.RVs, true /* randomize */)
 
 	log.Debug("ReplicationManager::syncMV: Component RVs for MV %s are %v",
 		mvName, rpc.ComponentRVsToString(componentRVs))
@@ -1814,7 +1814,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 
 					if srcRVok && dstRVok && srcRVState == dcache.StateOnline &&
 						dstRVState == dcache.StateSyncing {
-						job.componentRVs = cm.RVMapToList(job.mvName, rvs)
+						job.componentRVs = cm.RVMapToList(job.mvName, rvs, true /* randomize */)
 						job.clustermapEpoch = epoch
 
 						putChunkReq.ComponentRV = job.componentRVs

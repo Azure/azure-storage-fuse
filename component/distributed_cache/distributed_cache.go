@@ -130,7 +130,7 @@ const (
 	defaultChunkSizeMB               = 16 // 16 MB
 	defaultMinNodes                  = 1
 	defaultMaxRVs                    = 100
-	defaultStripeWidth               = 16 // defaultStripeSize = 16 * 16 = 256 MiB
+	defaultStripeWidth               = 64 // defaultStripeSize = 16 * 64 = 1 GiB
 	defaultMVsPerRV                  = 10
 	defaultRvFullThreshold           = 95
 	defaultRvNearfullThreshold       = 80

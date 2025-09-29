@@ -327,7 +327,7 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 			// We should only have MV dirs for active MVs for the RV.
 			common.Assert(ok, rvName, mvName, componentRVMap)
 
-			componentRVs := cm.RVMapToList(mvName, componentRVMap)
+			componentRVs := cm.RVMapToList(mvName, componentRVMap, false /* randomize */)
 			sortComponentRVs(componentRVs)
 
 			log.Debug("NewChunkServiceHandler: %s/%s has componentRVs: %v, at epoch: %d",
