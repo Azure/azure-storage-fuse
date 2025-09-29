@@ -1,0 +1,18 @@
+[global]
+name=blobfuse_file_integrity
+bs=1M
+filename=hole_inside_blocks_fio.data
+verify=crc32c
+verify_fatal=1
+verify_dump=1
+group_reporting
+
+[hole]
+size=10G
+# Create 3M Hole after each write call.
+# This will create the holes inside the blocks(assuming block size of 8M)
+rw=write:3M
+number_ios=2560
+ioengine=sync
+fallocate=none
+unlink=1
