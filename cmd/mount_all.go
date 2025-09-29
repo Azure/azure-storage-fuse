@@ -220,10 +220,7 @@ func getContainerList() ([]string, error) {
 
 // FiterAllowedContainer : Filter which containers are allowed to be mounted
 func filterAllowedContainerList(containers []string) []string {
-	allowListing := false
-	if len(mountAllOpts.AllowList) > 0 {
-		allowListing = true
-	}
+	allowListing := len(mountAllOpts.AllowList) > 0
 
 	// Convert the entire container list into a map
 	var filterContainer = make(map[string]bool)

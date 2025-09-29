@@ -71,9 +71,9 @@ func (suite *utilsTestSuite) TestModeParse() {
 		var mode Mode
 		err := mode.Parse(m.val)
 		if i < len(modes)-2 {
-			suite.assert.Nil(err)
+			suite.assert.NoError(err)
 		} else {
-			suite.assert.NotNil(err)
+			suite.assert.Error(err)
 		}
 
 		suite.assert.Equal(mode, m.mode)
@@ -118,35 +118,35 @@ func (suite *utilsTestSuite) TestRoundFloat() {
 func (suite *utilsTestSuite) TestIsFilePresent() {
 	path := "/home/randomFile1234"
 	isPresent, isDir, size := isFilePresent(path)
-	suite.assert.Equal(isPresent, false)
-	suite.assert.Equal(isDir, false)
-	suite.assert.EqualValues(size, 0)
+	suite.assert.False(isPresent)
+	suite.assert.False(isDir)
+	suite.assert.EqualValues(0, size)
 
 	currDir, err := os.Getwd()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	isPresent, isDir, size = isFilePresent(currDir)
-	suite.assert.Equal(isPresent, true)
-	suite.assert.Equal(isDir, true)
-	suite.assert.Greater(size, int64(0))
+	suite.assert.True(isPresent)
+	suite.assert.True(isDir)
+	suite.assert.Positive(size)
 
 	path = filepath.Join(currDir, "testFile1234")
 	_, err = os.Create(path)
 	defer os.Remove(path)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	isPresent, isDir, size = isFilePresent(path)
-	suite.assert.Equal(isPresent, true)
-	suite.assert.Equal(isDir, false)
-	suite.assert.EqualValues(size, 0)
+	suite.assert.True(isPresent)
+	suite.assert.False(isDir)
+	suite.assert.EqualValues(0, size)
 
 	err = os.Truncate(path, 10)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	isPresent, isDir, size = isFilePresent(path)
-	suite.assert.Equal(isPresent, true)
-	suite.assert.Equal(isDir, false)
-	suite.assert.EqualValues(size, 10)
+	suite.assert.True(isPresent)
+	suite.assert.False(isDir)
+	suite.assert.EqualValues(10, size)
 }
 
 func TestUtilsSuite(t *testing.T) {

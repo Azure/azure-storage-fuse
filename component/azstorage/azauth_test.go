@@ -397,11 +397,12 @@ func (suite *authTestSuite) TestBlockSasKey() {
 func (suite *authTestSuite) TestBlockContSasKey() {
 	defer suite.cleanupTest()
 	sas := ""
-	if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-18" {
+	switch storageTestConfigurationParameters.BlockContainer {
+	case "test-cnt-ubn-18":
 		sas = storageTestConfigurationParameters.BlockContSasUbn18
-	} else if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-20" {
+	case "test-cnt-ubn-20":
 		sas = storageTestConfigurationParameters.BlockContSasUbn20
-	} else {
+	default:
 		return
 	}
 
@@ -421,11 +422,12 @@ func (suite *authTestSuite) TestBlockContSasKey() {
 func (suite *authTestSuite) TestHttpBlockContSasKey() {
 	defer suite.cleanupTest()
 	sas := ""
-	if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-18" {
+	switch storageTestConfigurationParameters.BlockContainer {
+	case "test-cnt-ubn-18":
 		sas = storageTestConfigurationParameters.BlockContSasUbn18
-	} else if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-20" {
+	case "test-cnt-ubn-20":
 		sas = storageTestConfigurationParameters.BlockContSasUbn20
-	} else {
+	default:
 		return
 	}
 	stgConfig := AzStorageConfig{
@@ -705,14 +707,14 @@ func (suite *authTestSuite) TestBlockAzCLI() {
 	assert.NotNil(stg)
 
 	err := stg.SetupPipeline()
-	assert.Nil(err)
+	assert.NoError(err)
 
 	err = stg.TestPipeline()
 	if storageTestConfigurationParameters.SkipAzCLI {
 		// error is returned when azcli is not installed or logged out
-		assert.NotNil(err)
+		assert.Error(err)
 	} else {
-		assert.Nil(err)
+		assert.NoError(err)
 	}
 }
 
@@ -733,14 +735,14 @@ func (suite *authTestSuite) TestAdlsAzCLI() {
 	assert.NotNil(stg)
 
 	err := stg.SetupPipeline()
-	assert.Nil(err)
+	assert.NoError(err)
 
 	err = stg.TestPipeline()
 	if storageTestConfigurationParameters.SkipAzCLI {
 		// error is returned when azcli is not installed or logged out
-		assert.NotNil(err)
+		assert.Error(err)
 	} else {
-		assert.Nil(err)
+		assert.NoError(err)
 	}
 }
 

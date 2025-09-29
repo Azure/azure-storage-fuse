@@ -229,11 +229,12 @@ var generateConfigCmd = &cobra.Command{
 			}
 
 			accountType := ""
-			if bfv2StorageConfigOptions.AccountType == "" || bfv2StorageConfigOptions.AccountType == "blob" {
+			switch bfv2StorageConfigOptions.AccountType {
+			case "", "blob":
 				accountType = "blob"
-			} else if bfv2StorageConfigOptions.AccountType == "adls" {
+			case "adls":
 				accountType = "dfs"
-			} else {
+			default:
 				return fmt.Errorf("invalid account type")
 			}
 			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf("%s://%s.%s.core.windows.net", http, accountName, accountType)

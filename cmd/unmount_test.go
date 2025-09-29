@@ -97,12 +97,12 @@ func (suite *unmountTestSuite) TestUnmountCmd() {
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory1, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory1)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *unmountTestSuite) TestUnmountCmdFail() {
@@ -114,19 +114,19 @@ func (suite *unmountTestSuite) TestUnmountCmdFail() {
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory2, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 	err = os.Chdir(mountDirectory2)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory2)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 
 	err = os.Chdir(currentDir)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory2)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *unmountTestSuite) TestUnmountCmdWildcard() {
@@ -138,11 +138,11 @@ func (suite *unmountTestSuite) TestUnmountCmdWildcard() {
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory3, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory3+"*")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *unmountTestSuite) TestUnmountCmdWildcardFail() {
@@ -154,23 +154,23 @@ func (suite *unmountTestSuite) TestUnmountCmdWildcardFail() {
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory4, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 	err = os.Chdir(mountDirectory4)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory4+"*")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	if err != nil {
 		suite.assert.Contains(err.Error(), "failed to unmount")
 	}
 
 	err = os.Chdir(currentDir)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory4+"*")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *unmountTestSuite) TestUnmountCmdValidArg() {
@@ -182,14 +182,14 @@ func (suite *unmountTestSuite) TestUnmountCmdValidArg() {
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory5, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 	lst, _ := unmountCmd.ValidArgsFunction(nil, nil, "")
 	suite.assert.NotEmpty(lst)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory5+"*")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	lst, _ = unmountCmd.ValidArgsFunction(nil, nil, "abcd")
 	suite.assert.Empty(lst)
