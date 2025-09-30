@@ -85,7 +85,7 @@ const (
 	//       These must be set as low as possible, just enough to saturate the n/w and disk throughput from
 	//       a single node.
 	//
-	PutChunkDCIODepthTotal   = 32
+	PutChunkDCIODepthTotal   = 64
 	PutChunkDCIODepthPerNode = 8
 
 	//
