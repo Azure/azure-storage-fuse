@@ -1849,7 +1849,6 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	ncPool.cond = sync.NewCond(&ncPool.mu)
 
 	var err error
-
 	var wg sync.WaitGroup
 
 	createOneClient := func() {
@@ -1883,7 +1882,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	_ = startTime
 
 	// Create RPC clients and add them to the channel.
-	for i := 0; i < int(numClients); i++ {
+	for range int(numClients) {
 		wg.Add(1)
 		go createOneClient()
 	}
