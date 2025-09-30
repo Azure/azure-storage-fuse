@@ -270,7 +270,7 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::GetChunk: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
