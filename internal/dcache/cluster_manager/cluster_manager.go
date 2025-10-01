@@ -3272,6 +3272,15 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 	for {
 		//
+		// If we don't have enough RVs to get NumReplicas unique RVs for a new MV, we cannot create any new MV.
+		//
+		if len(availableRVsList) < NumReplicas {
+			log.Debug("ClusterManager::updateMVList: len(availableRVsList) [%d] < NumReplicas [%d]",
+				len(availableRVsList), NumReplicas)
+			break
+		}
+
+		//
 		// We can have at most as many MVs as number of RVs since we make one MV for each RV.
 		//
 		// TODO: Add more MVs to ensure that each MV has reasonable data and thus replication can
