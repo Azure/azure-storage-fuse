@@ -13,7 +13,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.6.0
-	github.com/mitchellh/mapstructure v1.5.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/montanaflynn/stats v0.7.0
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/prometheus/procfs v0.16.1
@@ -26,6 +26,7 @@ require (
 	github.com/vibhansa-msft/blobfilter v0.0.0-20250115104552-d9d40722be3e
 	github.com/vibhansa-msft/tlru v0.0.0-20240410102558-9e708419e21f
 	go.uber.org/atomic v1.11.0
+	golang.org/x/sys v0.34.0
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -37,7 +38,6 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.3 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -53,7 +53,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 )
 
