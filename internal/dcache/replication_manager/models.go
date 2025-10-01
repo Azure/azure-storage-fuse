@@ -35,6 +35,7 @@ package replication_manager
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -256,11 +257,10 @@ type RemoveMvResponse struct {
 
 // syncJob tracks resync of one MV replica, srcRVName/mvName -> destRVName/mvName.
 type syncJob struct {
-	mvName       string                   // name of the MV to be synced
-	srcRVName    string                   // name of the source RV
-	destRVName   string                   // name of the destination RV
-	syncSize     int64                    // total number of bytes to be synced
-	componentRVs []*models.RVNameAndState // list of component RVs for the MV
+	mvName     string // name of the MV to be synced
+	srcRVName  string // name of the source RV
+	destRVName string // name of the destination RV
+	syncSize   int64  // total number of bytes to be synced
 
 	// Time when the target RV's state is updated to syncing state from outofsync.
 	// This is used to determine which chunks need to be synced/copied to the target RV.
@@ -269,10 +269,17 @@ type syncJob struct {
 	// already been written to the target RV by the client PutChunk RPC calls.
 	syncStartTime int64
 
-	startedAt       time.Time // time when this sync job was started.
-	copyStartedAt   time.Time // time when the actual chunk copy was started.
-	clustermapEpoch int64     // cluster map epoch when this sync job was started.
-	syncID          string    // unique ID for this sync job, mainly for logging purposes.
+	startedAt     time.Time // time when this sync job was started.
+	copyStartedAt time.Time // time when the actual chunk copy was started.
+	syncID        string    // unique ID for this sync job, mainly for logging purposes.
+
+	// Only the following two fields can be updated after the sync job is created.
+	// That can happen if any PutChunk(sync) RPC call fails with NeedToRefreshClusterMap, and clustermap
+	// refresh yields a new cluster map epoch and/or component RVs for the MV.
+	// Since multiple threads running the syncJob can update these fields, we need to protect them with a mutex.
+	componentRVs    []*models.RVNameAndState // list of component RVs for the MV
+	clustermapEpoch int64                    // cluster map epoch corresponding to the componentRVs.
+	mu              sync.Mutex
 }
 
 // Helper method which can be used for logging the syncJob.
