@@ -3396,6 +3396,21 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			}
 		}
 
+		//
+		// If we could not find enough component RVs for this MV, we won't find for any other MV, so stop
+		// attempting to create more new MVs.
+		//
+		// XXX this is not true for he new placer
+		//
+		if len(existingMVMap[mvName].RVs) != NumReplicas {
+			log.Debug("ClusterManager::updateMVList: Could not place %s, numUsableMVs: %d",
+				mvName, numUsableMVs)
+
+			// Delete the incomplete MV from the existingMVMap.
+			delete(existingMVMap, mvName)
+			break
+		}
+
 		common.Assert(len(existingMVMap[mvName].RVs) == NumReplicas,
 			mvName, len(existingMVMap[mvName].RVs), NumReplicas)
 
