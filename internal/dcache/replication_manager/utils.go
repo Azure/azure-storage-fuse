@@ -43,7 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
+	//"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -204,7 +204,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 
 	var readerRV *models.RVNameAndState
 
-	myNodeID := rpc.GetMyNodeUUID()
+	//myNodeID := rpc.GetMyNodeUUID()
 	for _, rv := range componentRVs {
 		if rv.State != string(dcache.StateOnline) || slices.Contains(excludeRVs, rv.Name) {
 			// Not an online RV or present in the exclude list, skip.
@@ -212,6 +212,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 			continue
 		}
 
+		/*
 		nodeIDForRV := getNodeIDFromRVName(rv.Name)
 		common.Assert(common.IsValidUUID(nodeIDForRV))
 		if nodeIDForRV == myNodeID {
@@ -221,6 +222,8 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 			//
 			return rv
 		}
+		*/
+		return rv
 
 		//
 		// getComponentRVsForMV() already returns a shuffled list of RVs, so we can pick the last one
