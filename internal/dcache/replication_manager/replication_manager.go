@@ -1628,9 +1628,11 @@ func copyOutOfSyncChunks(job *syncJob) error {
 	common.Assert(common.DirectoryExists(sourceMVPath), sourceMVPath)
 
 	destRvID := getRvIDFromRvName(job.destRVName)
+	_ = destRvID
 	common.Assert(common.IsValidUUID(destRvID))
 
 	destNodeID := getNodeIDFromRVName(job.destRVName)
+	_ = destNodeID
 	common.Assert(common.IsValidUUID(destNodeID))
 
 	//
@@ -1728,7 +1730,10 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			sourceMVPath, entry.Name(), info.Size(), info.ModTime().UnixMicro(), job.syncStartTime,
 			job.syncStartTime-info.ModTime().UnixMicro())
 
+		//
 		// Get a token (out of max parallelSyncThreads) to start a chunk copy.
+		// Issue upto parallelSyncThreads copy goroutines in parallel.
+		//
 		syncChunkSema <- struct{}{}
 
 		go func(chunkName string, info os.FileInfo) {
@@ -1751,7 +1756,10 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				errCount.Add(1)
 				return
 			}
+
+			// Must copy the entire chunk.
 			common.Assert(chunkSize == info.Size(), chunkSize, info.Size(), entry.Name())
+
 			bytesCopied.Add(chunkSize)
 			chunksCopied.Add(1)
 		}(entry.Name(), info)
@@ -1766,8 +1774,30 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		}
 	}
 
+	// Wait for all ongoing chunk copies to complete, before returning.
+	if len(syncChunkSema) > 0 {
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Waiting for %d sync threads to complete: %s",
+			len(syncChunkSema), job.toString())
+
+		startWait := time.Now()
+		_ = startWait
+
+		for len(syncChunkSema) > 0 {
+			time.Sleep(1 * time.Second)
+
+			if time.Since(startWait) > 60*time.Second {
+				common.Assert(false, time.Since(startWait), len(syncChunkSema), job.toString())
+				log.Err("ReplicationManager::copyOutOfSyncChunks: %d sync threads didn't complete in %s: %s",
+					len(syncChunkSema), time.Since(startWait), job.toString())
+				break
+			}
+		}
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: all sync threads done!")
+	}
+
 	log.Debug("ReplicationManager::copyOutOfSyncChunks: Copied %d chunks totalling %d bytes, Sync job: %s",
-		chunksCopied, bytesCopied, job.toString())
+		chunksCopied.Load(), bytesCopied.Load(), job.toString())
+
 	return nil
 }
 
