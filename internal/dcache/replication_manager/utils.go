@@ -43,7 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
-	//"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -365,4 +365,5 @@ func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 	log.Info("")
 	fmt.Printf("")
+	rpc.GetMyNodeUUID()
 }
