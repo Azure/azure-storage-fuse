@@ -1704,11 +1704,11 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		//       so if ReadDir() above finds a chunk and it's removed by the time we come here, the
 		//       assert below will fail. Let's leave it for some time and later we can remove it.
 		//
-		info, err := entry.Info()
-		if err != nil {
+		info, err1 := entry.Info()
+		if err1 != nil {
 			log.Err("ReplicationManager::copyOutOfSyncChunks: entry.Info() failed for %s/%s: %v",
-				sourceMVPath, entry.Name(), err)
-			common.Assert(false, err, sourceMVPath, entry.Name())
+				sourceMVPath, entry.Name(), err1)
+			common.Assert(false, err1, sourceMVPath, entry.Name())
 			continue
 		}
 
@@ -1749,10 +1749,10 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				<-syncChunkSema
 			}()
 
-			err, chunkSize := copySingleChunk(job, chunkName)
-			if err != nil {
+			err1, chunkSize := copySingleChunk(job, chunkName)
+			if err1 != nil {
 				log.Err("ReplicationManager::copyOutOfSyncChunks: copySingleChunk(%s) failed: %v",
-					chunkName, err)
+					chunkName, err1)
 				errCount.Add(1)
 				return
 			}
@@ -1768,8 +1768,9 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		// Bail out on first error.
 		//
 		if errCount.Load() > 0 {
-			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to copy one or more chunks (%d), aborting: %s",
+			err = fmt.Errorf("ReplicationManager::copyOutOfSyncChunks: Failed to copy one or more chunks (%d), aborting: %s",
 				errCount.Load(), job.toString())
+			log.Err("%v", err)
 			break
 		}
 	}
@@ -1795,10 +1796,12 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		log.Debug("ReplicationManager::copyOutOfSyncChunks: all sync threads done!")
 	}
 
-	log.Debug("ReplicationManager::copyOutOfSyncChunks: Copied %d chunks totalling %d bytes, Sync job: %s",
-		chunksCopied.Load(), bytesCopied.Load(), job.toString())
+	if err == nil {
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copied %d chunks totalling %d bytes, Sync job: %s",
+			chunksCopied.Load(), bytesCopied.Load(), job.toString())
+	}
 
-	return nil
+	return err
 }
 
 func copySingleChunk(job *syncJob, chunkName string) (error, int64) {

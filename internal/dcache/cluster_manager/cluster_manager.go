@@ -4540,17 +4540,23 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				// but in the meantime it was found to be offline and was removed from the MV by some other
 				// node (and we processed this message only after the clusterMap update by that node).
 				//
-				if rvNewState == dcache.StateInbandOffline || rvNewState == dcache.StateSyncing {
-					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s (%s -> %s) RV no longer present in MV: %+v",
-						rvName, mvName, currentState, rvNewState, clusterMapMV.RVs)
+				if rvNewState == dcache.StateInbandOffline {
+					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s (-> %s) RV no longer present in MV: %+v",
+						rvName, mvName, rvNewState, clusterMapMV.RVs)
 					msg.Err <- nil
 					close(msg.Err)
 					msg.Err = nil
 					ignoredCount++
 					continue
+				} else if rvNewState == dcache.StateSyncing {
+					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s (-> %s) RV no longer present in MV: %+v",
+						rvName, mvName, rvNewState, clusterMapMV.RVs)
+					// Log and proceed.
 				}
 
-				common.Assert(false, *msg, clusterMapMV)
+				// OutOfSync->Syncing case mentioned above is valid.
+				common.Assert(rvNewState == dcache.StateSyncing, *msg, clusterMapMV)
+
 				msg.Err <- fmt.Errorf("RV %s/%s not present in clustermap MV %+v", rvName, mvName, clusterMapMV)
 				close(msg.Err)
 				msg.Err = nil
