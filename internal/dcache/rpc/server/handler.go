@@ -726,7 +726,13 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clus
 	common.Assert(len(componentRVs) == int(cm.GetCacheConfig().NumReplicas),
 		len(componentRVs), cm.GetCacheConfig().NumReplicas)
 	common.Assert(clustermapEpoch > 0, mv.mvName, clustermapEpoch)
-	common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch, mv.mvName)
+
+	//
+	// A refreshFromClustermap() call can start before another one (and gets an older epoch) but the first one
+	// may reach here after the second call (which may have updated mvInfo) so we may come here with a
+	// clustermapEpoch which is less than mv.clustermapEpoch. In that case we simply skip the update.
+	//
+	//common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch, mv.rv.rvName, mv.mvName)
 
 	mv.rwMutex.Lock()
 	defer mv.rwMutex.Unlock()

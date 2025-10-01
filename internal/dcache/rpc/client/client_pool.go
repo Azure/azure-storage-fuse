@@ -625,7 +625,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			//
 			if err := cp.checkNegativeNode(nodeID); err != nil || ncPool.deleting.Load() {
 				if err == nil {
-						err = fmt.Errorf("node %s marked deleting: %w", nodeID, NegativeNodeError)
+					err = fmt.Errorf("node %s marked deleting: %w", nodeID, NegativeNodeError)
 				}
 				//
 				// Release the client back to the channel.
