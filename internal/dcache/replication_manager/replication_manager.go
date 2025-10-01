@@ -1786,9 +1786,9 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			time.Sleep(1 * time.Second)
 
 			if time.Since(startWait) > 60*time.Second {
-				common.Assert(false, time.Since(startWait), len(syncChunkSema), job.toString())
 				log.Err("ReplicationManager::copyOutOfSyncChunks: %d sync threads didn't complete in %s: %s",
 					len(syncChunkSema), time.Since(startWait), job.toString())
+				common.Assert(false, time.Since(startWait), len(syncChunkSema), job.toString())
 				break
 			}
 		}

@@ -657,7 +657,13 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 					cp.releaseNodeLock(nodeLock, nodeID)
 
 					ncPool.clientChan <- client
-					ncPool.cond.Wait()
+
+					if ncPool.numActiveHighPrio.Load()+int64(len(ncPool.clientChan)) <= ncPool.numReservedHighPrio {
+						ncPool.cond.Wait()
+					} else {
+						ncPool.cond.Broadcast()
+					}
+
 					ncPool.mu.Unlock()
 					continue
 				}
