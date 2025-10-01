@@ -37,7 +37,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -179,17 +178,19 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	//
 	// TODO: For very large number of MVs, we can avoid shuffling all and just picking numMVs randomly.
 	//
-	rand.Shuffle(len(activeMVs), func(i, j int) {
-		activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
-	})
+	// rand.Shuffle(len(activeMVs), func(i, j int) {
+	// 	activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
+	// })
 
 	//
 	// Pick starting numMVs from the active MVs.
 	// If not enough MVs are active, repeat from the start of the list.
 	// It's ok to pick same MV multiple times.
 	//
+	j := 0
 	for i := range stripeWidth {
-		fileMetadata.FileLayout.MVList[i] = activeMVs[int(i)%len(activeMVs)]
+		fileMetadata.FileLayout.MVList[i] = activeMVs[int(j)%len(activeMVs)]
+		j += 2
 	}
 
 	log.Debug("DistributedCache[FM]::NewDcacheFile: Initial metadata for file %s %+v",
