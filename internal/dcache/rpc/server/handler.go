@@ -56,9 +56,23 @@ import (
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
+
+	// TODO: This is released under MPL 2.0 license, need to include the license text.
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
+
+var (
+	//
+	// In case of multiple readers reading the same file, we may saturate the disk b/w, so we use an LRU cache
+	// to cache recently served chunks. When multiple readers are reading the same file, they would do so usually
+	// simultaneously, so the cache would help reduce the disk IO.
+	// Note that this is the max number of chunks, not the size in bytes. Also, this may be reduced later depending
+	// on the available memory.
+	//
+	ChunkCacheSize = 1024
+)
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
 var _ service.ChunkService = &ChunkServiceHandler{}
@@ -82,6 +96,15 @@ type ChunkServiceHandler struct {
 	// some of the fields of those entries may change.
 	//
 	rvIDMap map[string]*rvInfo
+
+	//
+	// LRU cache for chunks.
+	// Helps scenarios when many nodes read the same file simultaneously.
+	// Indexed by local chunk path.
+	//
+	chunkCache       *lru.Cache[string, []byte]
+	chunkCacheLookup atomic.Int64
+	chunkCacheHit    atomic.Int64
 }
 
 // This holds information on one of our local RV.
@@ -221,6 +244,33 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 	handler = &ChunkServiceHandler{
 		rvIDMap: getRvIDMap(rvMap),
 	}
+
+	//
+	// Initialize chunk cache, 1024 chunks or 10% of available memory, whichever is lower.
+	//
+	const usablePercentSystemRAM = 10
+
+	ramMB, err := common.GetAvailableMemoryInMB()
+	if err != nil {
+		return fmt.Errorf("NewChunkServiceHandler: %v", err)
+	}
+
+	usableMemoryMB := (ramMB * uint64(usablePercentSystemRAM)) / 100
+	ChunkCacheSize = min(ChunkCacheSize, int(usableMemoryMB/cm.GetCacheConfig().ChunkSizeMB))
+	ChunkCacheSize = max(ChunkCacheSize, 64) // at least 64 chunks.
+
+	chunkCache, err := lru.New[string, []byte](ChunkCacheSize)
+	if err != nil {
+		err = fmt.Errorf("NewChunkServiceHandler: Failed to create chunk cache of size: %d chunks: %v",
+			ChunkCacheSize, err)
+		common.Assert(false, err)
+		return err
+	}
+
+	handler.chunkCache = chunkCache
+
+	log.Info("NewChunkServiceHandler: Created chunk cache, size: %d chunks (ramMB: %d)",
+		ChunkCacheSize, ramMB)
 
 	// If no RVs are hosted by this node, we should not create the chunk service handler.
 	common.Assert(len(handler.rvIDMap) > 0)
@@ -1760,6 +1810,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// TODO: Need to ensure this is FS_BLOCK_SIZE aligned.
 	//
 	var data []byte
+	var lmt string
+	var n int
+	_ = n
+	var hashPathPtr *string
 
 	if req.IsLocalRV {
 		//
@@ -1787,16 +1841,41 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		}()
 	} else {
 		//
+		// local reader expects the buffer to be allocated from the pool, and it'll release the buffer
+		// back to the pool. We cannot safely return cached chunk buffer in that case. Moreover, we don't
+		// cache local RV reads, as they are less indicative of the chunk being hot (read by multiple nodes).
+		//
+		// TODO: If we use pooled allocation for non-local reads too, we will need a way to indicate that
+		//       this buffer is from the cache and must not be released.
+		//
+		var ok bool
+		if common.IsDebugBuild() {
+			h.chunkCacheLookup.Add(1)
+		}
+		data, ok = h.chunkCache.Get(chunkPath)
+		if ok {
+			// We don't add metadata chunk to the cache, so we must not get it from the cache.
+			common.Assert(req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB, chunkPath, req.Address.OffsetInMiB)
+
+			if common.IsDebugBuild() {
+				h.chunkCacheHit.Add(1)
+
+				log.Debug("ChunkServiceHandler::GetChunk: Cache hit for chunk %s on %s [ %d/%d (hit rate: %.2f%%)]",
+					chunkPath, rvInfo.rvName, h.chunkCacheHit.Load(), h.chunkCacheLookup.Load(),
+					(float64(h.chunkCacheHit.Load())/float64(h.chunkCacheLookup.Load()))*100)
+			}
+			n = len(data)
+			// Must be the entire exact chunk.
+			common.Assert(n == int(req.Length), n, req.Length, chunkPath)
+			goto cached_chunk_read
+		}
+
+		//
 		// We cannot make pool allocation here, as this call has come as part of handling the RPC request.
 		// TODO: Convert this to pooled allocation.
 		//
 		data = make([]byte, req.Length)
 	}
-
-	var lmt string
-	var n int
-	_ = n
-	var hashPathPtr *string
 
 	// Metadata chunk IOs are serialized as it's mutable unlike other data chunks.
 	if req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
@@ -1860,7 +1939,19 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	log.Info("ChunkServiceHandler::GetChunk: [STATS] chunk path %s, %s, totalBytesRead: %d ",
 		chunkPath, rvInfo.rvName, rvInfo.totalBytesRead.Load())
 
+	//
+	// Don't cache local RV reads, as they are less indicative of the chunk being hot (read by multiple nodes).
+	// Also don't cache metadata chunk, as it's mutable.
+	//
+	if !req.IsLocalRV && (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) {
+		common.Assert(len(data) == int(req.Length), len(data), req.Length, chunkPath)
+		h.chunkCache.Add(chunkPath, data)
+		// Make sure LRU cache honors the size limit.
+		common.Assert(h.chunkCache.Len() <= ChunkCacheSize, h.chunkCache.Len(), ChunkCacheSize, chunkPath)
+	}
+
 dummy_read:
+cached_chunk_read:
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
