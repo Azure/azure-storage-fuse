@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -85,7 +86,7 @@ const (
 	//       These must be set as low as possible, just enough to saturate the n/w and disk throughput from
 	//       a single node.
 	//
-	PutChunkDCIODepthTotal   = 32
+	PutChunkDCIODepthTotal   = 64
 	PutChunkDCIODepthPerNode = 8
 
 	//
@@ -118,6 +119,26 @@ const (
 	DaisyChain
 )
 
+var (
+	//
+	// These stats are used to find slowness in one of the following legs:
+	// - Time taken to schedule the WriteMV call (i.e. time spent waiting to acquire the PutChunkDC semaphores).
+	// - Time taken to complete the WriteMV call (i.e. time taken by the RV to write the chunk locally and
+	//   send PutChunkDC calls to other RVs and get response from all).
+	//
+	// Also see getRPCClient() for stats related to acquiring the RPC client connection.
+	//
+	// If the throughput is low, then we can look at these stats to find out which leg is slow.
+	//
+	aggrWriteMVCalls      atomic.Int64 // aggregate number of WriteMV calls.
+	aggrWriteMVTime       atomic.Int64 // aggregate time for completing all WriteMV calls (in nanoseconds).
+	aggrWriteMVWait       atomic.Int64 // aggregate time spent waiting to schedule WriteMV calls (in nanoseconds).
+	aggrPutChunkDCSemWait atomic.Int64 // aggregate time spent waiting to acquire PutChunkDC semaphore (in nanoseconds).
+	aggrPutChunkDCSemHold atomic.Int64 // aggregate time spent holding PutChunkDC semaphore (in nanoseconds).
+	aggrPutChunkDCCalls   atomic.Int64 // aggregate number of PutChunkDC calls.
+	putChunkDCSemWaiting  atomic.Int64 // number of PutChunkDC calls currently waiting to acquire semaphore.
+)
+
 // Semaphores to limit the number of concurrent PutChunkDC calls across all nodes and to a specific node.
 var putChunkDCTotalSem = make(chan struct{}, PutChunkDCIODepthTotal)
 var putChunkDCPerNodeSemMap = make(map[string]*chan struct{})
@@ -136,13 +157,12 @@ func (s PutChunkStyleEnum) String() string {
 }
 
 // Acquire the semaphores for sending PutChunkDC to the given target node.
-func getPutChunkDCSem(targetNodeID string) *chan struct{} {
-	var startTime time.Time
-	_ = startTime
+func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
+	// Anything above this threshold is considered a large/unusual wait and is logged as a warning.
+	const largeWaitThreshold = 2 * time.Second
 
-	if common.IsDebugBuild() {
-		startTime = time.Now()
-	}
+	putChunkDCSemWaiting.Add(1)
+	startTime := time.Now()
 
 	// Grab per-node semaphore.
 	putChunkDCPerNodeSemMapLock.Lock()
@@ -164,27 +184,70 @@ func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 	//
 	putChunkDCTotalSem <- struct{}{}
 
-	log.Debug("getPutChunkDCSem: Acquired semaphore for node %s, took %s, now available: {global: %d/%d, node: %d/%d}",
-		targetNodeID, time.Since(startTime),
+	common.Assert(putChunkDCSemWaiting.Load() > 0, putChunkDCSemWaiting.Load())
+	putChunkDCSemWaiting.Add(-1)
+
+	//
+	// Update aggregate wait time for acquiring the semaphore. To reflect the current situation more accurately,
+	// we reset the aggregate stats after every 200 calls, roughly ~3GB of data written (with 16MB chunks).
+	// If the avg wait time is very high, then we should consider increasing the semaphore depth, or
+	// find out why the PutChunkDC calls are taking too long.
+	//
+	if aggrPutChunkDCCalls.Add(1) == 200 {
+		// Since it's not protected by a lock, we don't set it to zero, but to 1, to avoid division by zero.
+		aggrPutChunkDCCalls.Store(1)
+		aggrPutChunkDCSemWait.Store(time.Since(startTime).Nanoseconds())
+		aggrPutChunkDCSemHold.Store(1)
+	} else {
+		aggrPutChunkDCSemWait.Add(time.Since(startTime).Nanoseconds())
+	}
+
+	log.Debug("getPutChunkDCSem: Acquired semaphore for node: %s, chunkIdx: %d, took %s, now available: {global: %d/%d, node: %d/%d}, waiting: %d, avg wait: %s",
+		targetNodeID, chunkIdx, time.Since(startTime),
 		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
-		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode)
+		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+		putChunkDCSemWaiting.Load(),
+		time.Duration(aggrPutChunkDCSemWait.Load()/aggrPutChunkDCCalls.Load()))
+
+	if time.Since(startTime) > largeWaitThreshold {
+		log.Warn("[SLOW] getPutChunkDCSem: Acquired semaphore for node: %s, chunkIdx: %d, took %s (> %s), now available: {global: %d/%d, node: %d/%d}, waiting: %d, avg wait: %s",
+			targetNodeID, chunkIdx, time.Since(startTime), largeWaitThreshold,
+			PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+			PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+			putChunkDCSemWaiting.Load(),
+			time.Duration(aggrPutChunkDCSemWait.Load()/aggrPutChunkDCCalls.Load()))
+	}
 
 	return putChunkDCSemNode
 }
 
 // Release the semaphore acquired by getPutChunkDCSem() for the given target node.
-func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string) {
+func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string, chunkIdx int64, dur time.Duration) {
+	const largeHoldThreshold = 1 * time.Second
+
 	// We must be releasing a semaphore that we have acquired.
 	common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))
 	common.Assert(len(putChunkDCTotalSem) > 0, len(putChunkDCTotalSem))
 
+	// Duration is the time the semaphore was held, which is the time taken for the PutChunkDC call to complete.
+	aggrPutChunkDCSemHold.Add(dur.Nanoseconds())
+
 	<-putChunkDCTotalSem
 	<-*putChunkDCSemNode
 
-	log.Debug("getPutChunkDCSem: Released semaphore for node %s, now available: {global: %d/%d, node: %d/%d}",
-		targetNodeID,
+	log.Debug("releasePutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}, held for: %s, avg hold: %s",
+		targetNodeID, chunkIdx,
 		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
-		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode)
+		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+		dur, time.Duration(aggrPutChunkDCSemHold.Load()/aggrPutChunkDCCalls.Load()))
+
+	if dur > largeHoldThreshold {
+		log.Warn("[SLOW] releasePutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}, held for: %s (> %s), avg hold: %s",
+			targetNodeID, chunkIdx,
+			PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+			PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+			dur, largeHoldThreshold, time.Duration(aggrPutChunkDCSemHold.Load()/aggrPutChunkDCCalls.Load()))
+	}
 }
 
 // Return the most suitable online RV from the list of component RVs to which we should send the RPC call.
@@ -249,9 +312,9 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // Return list of component RVs (name and state) for the given MV, and its state, and also the clustermap Epoch.
 // The epoch should be used by the caller to correctly refresh the clustermap on receiving a NeedToRefreshClusterMap
 // error.
-func getComponentRVsForMV(mvName string) (dcache.StateEnum, []*models.RVNameAndState, int64) {
+func getComponentRVsForMV(mvName string, randomize bool) (dcache.StateEnum, []*models.RVNameAndState, int64) {
 	mvState, rvMap, epoch := cm.GetRVsEx(mvName)
-	return mvState, cm.RVMapToList(mvName, rvMap), epoch
+	return mvState, cm.RVMapToList(mvName, rvMap, randomize), epoch
 }
 
 // return the number of replicas
@@ -362,4 +425,5 @@ func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 	log.Info("")
 	fmt.Printf("")
+	rpc.GetMyNodeUUID()
 }

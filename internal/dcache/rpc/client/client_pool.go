@@ -414,6 +414,21 @@ func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) 
 // NOTE: Caller MUST NOT hold the clientPool or node level lock.
 
 func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, error) {
+	const slowRPCThreshold = 1 * time.Second
+
+	startTime := time.Now()
+	defer func() {
+		//
+		// Let us know if RPC client allocation is slow.
+		// We will decide if it's a problem or not based on how often we see this in the logs and what
+		// operations are being performed.
+		//
+		if time.Since(startTime) > slowRPCThreshold {
+			log.Warn("[SLOW] clientPool::getRPCClient: Slow getRPCClient(nodeID: %s, highPrio: %v) took %s",
+				nodeID, highPrio, time.Since(startTime))
+		}
+	}()
+
 	log.Debug("clientPool::getRPCClient: getRPCClient(nodeID: %s, highPrio: %v)", nodeID, highPrio)
 
 	waitTime := 2 * time.Second
@@ -490,8 +505,6 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	//
 	maxWaitTime := 60 * time.Second // in seconds
 
-	startTime := time.Now()
-
 	for {
 		//
 		// There can be a case when client pool for the node is deleted (or being deleted).
@@ -555,6 +568,15 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 
 				log.Debug("clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d)",
 					ncPool.nodeID, ncPool.numExtraClients.Load(), ncPool.numExtraClientsCum.Load())
+
+				//
+				// We should not need too many extra clients, so let us log to know if we are creating.
+				// Tag it as [SLOW] for easy searching along with other slow logs.
+				//
+				if ncPool.numExtraClients.Load() > 64 {
+					log.Warn("[SLOW] clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d)",
+						ncPool.nodeID, ncPool.numExtraClients.Load(), ncPool.numExtraClientsCum.Load())
+				}
 
 				client.highPrio = true
 				client.isExtra = true
@@ -712,8 +734,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			client.allocatedAt = time.Now()
 			return client, nil
 		case <-time.After(waitTime): // Timeout after waitTime
-			log.Debug("clientPool::getRPCClient: No free (highPrio: %v) RPC client for node %s (active: %d, hactive:%d, waiting: %d, hwaiting: %d), for %s",
-				highPrio, nodeID, ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
+			log.Debug("clientPool::getRPCClient: No free (highPrio: %v) RPC client for node %s (free: %d, active: %d, hactive:%d, waiting: %d, hwaiting: %d), for %s",
+				highPrio, nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
 				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load(), time.Since(startTime))
 			// Continue the for loop, various exit checks will be done there.
 		}

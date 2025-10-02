@@ -2209,8 +2209,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	common.Assert(cm.IsValidRVMap(rvMap))
 	common.Assert(cm.IsValidMvMap(existingMVMap, NumReplicas))
 
-	log.Debug("ClusterManager::updateMVList: TotalRVs: %d, NumReplicas: %d, MVsPerRVForNewMV: %d, MVsPerRVForFixMV: %d, ExistingMVs: %d",
-		len(rvMap), NumReplicas, cm.MVsPerRVForNewMV, cm.MVsPerRVForFixMV.Load(), len(existingMVMap))
+	log.Debug("ClusterManager::updateMVList: RingBasedMVPlacement: %v, TotalRVs: %d, NumReplicas: %d, MVsPerRVForNewMV: %d, MVsPerRVForFixMV: %d, ExistingMVs: %d",
+		cm.RingBasedMVPlacement, len(rvMap), NumReplicas, cm.MVsPerRVForNewMV,
+		cm.MVsPerRVForFixMV.Load(), len(existingMVMap))
 
 	//
 	//
@@ -2237,6 +2238,18 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	// NumReplicas for each MV.
 	// This continues till we do not have enough RVs (from distinct nodes) for creating
 	// a new MV. This is the new-mv workflow.
+	//
+	// Update: With the new ring based sliding window placement algorithm, the placement
+	//         DOES NOT consider the slot count, instead it uses the ring position of the RVs
+	//         for the placement, e.g., mv0 will be placed on rv0, rv1, rv2 (assuming NumReplicas=3),
+	//         and mv1 will be placed on rv1, rv2, rv3 and so on. This placement prevents
+	//         deeply connected network between various nodes, infact each RV is connected to only
+	//         one upstream RV. This is particularly important for PutChunkDC where heavily
+	//         connected network can cause too many connections to/from each node. With ring based
+	//         placement, each RV must have connections to only its upstream RV(s).
+	// TODO:   With the ring based placement, we don't need to maintain slots count, but that helps
+	//         to know how many MVs and RV is part of, so we keep it for now. Later we can remove it
+	//         if we make ring based placement the only placement algorithm.
 	//
 
 	log.Debug("ClusterManager::updateMVList: Updating current MV list according to the latest RV list (%d RVs, %d MVs) [%s to run]",
@@ -2308,7 +2321,15 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 	//
 	// From availableRVsMap, this will create equivalent availableRVsList, list of RVs that are available for
-	// placing MVs. The RVs are sorted by the number of slots available, so that the RVs with more slots are at
+	// placing MVs.
+	// The RVs are sorted according to the placement algorithm used.
+	//
+	// For RingBasedMVPlacement,
+	// The RVs are sorted by their rv names in numeric sort order (rv2 < rv10). This is needed
+	// by the ring based sliding window placement algorithm.
+	//
+	// For non-RingBasedMVPlacement,
+	// The RVs are sorted by the number of slots available, so that the RVs with more slots are at
 	// the front so they are picked first for placing MVs, thus resulting in a more balanced distribution of MVs
 	// across the RVs over time as nodes go down and come up.
 	//
@@ -2340,6 +2361,11 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			//
 			usedSlots := uint32(cm.MVsPerRVForFixMV.Load()) - uint32(rv.slots)
 
+			//
+			// With the new ring based placement algorithm, we do not need to check for slots, but
+			// see deleteRVsFromAvailableMap() how it uses slots=0 to mark an RV as deleted and not
+			// available for placement.
+			//
 			if rv.slots == 0 || (newMV && usedSlots >= uint32(cm.MVsPerRVForNewMV)) {
 				continue
 			}
@@ -2368,10 +2394,24 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		_ = numAvailableFDs
 		_ = numAvailableUDs
 
-		// Sort the RVs by the number of slots available, in descending order.
-		sort.Slice(availableRVsList, func(i, j int) bool {
-			return availableRVsList[i].slots > availableRVsList[j].slots
-		})
+		// Sort the RVs by rvName in numeric sort order, so that rv2 comes before rv10.
+		if cm.RingBasedMVPlacement {
+			sort.Slice(availableRVsList, func(i, j int) bool {
+				var rvi, rvj int
+
+				_, err1 := fmt.Sscanf(availableRVsList[i].rvName, "rv%d", &rvi)
+				_ = err1
+				common.Assert(err1 == nil, err1, availableRVsList[i].rvName)
+				_, err1 = fmt.Sscanf(availableRVsList[j].rvName, "rv%d", &rvj)
+				common.Assert(err1 == nil, err1, availableRVsList[j].rvName)
+
+				return rvi < rvj
+			})
+		} else {
+			sort.Slice(availableRVsList, func(i, j int) bool {
+				return availableRVsList[i].slots > availableRVsList[j].slots
+			})
+		}
 
 		log.Debug("ClusterManager::getAvailableRVsList: Available RVs: %d, nodes: %d, FD: %d, UD: %d",
 			len(availableRVsList), numAvailableNodes, numAvailableFDs, numAvailableUDs)
@@ -2414,6 +2454,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			rv.slots--
 			log.Debug("ClusterManager::consumeRVSlot: Consumed slot for %s/%s, (used: %d, remaining: %d)",
 				rvName, mvName, int(cm.MVsPerRVForFixMV.Load())-rv.slots, rv.slots)
+			// With the ring based placement, we should never exhaust slots for an RV.
+			common.Assert(!cm.RingBasedMVPlacement || rv.slots > 0, rvName, mvName, nodeId, availableRVsMap)
 		} else {
 			log.Warn("ClusterManager::consumeRVSlot: %s/%s has more than %d MV replicas placed!",
 				rvName, mvName, cm.MVsPerRVForFixMV.Load())
@@ -2463,6 +2505,11 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	// duly updated.
 	//
 	fixMV := func(mvName string, mv dcache.MirroredVolume) {
+		var mvSuffix int
+
+		_, err := fmt.Sscanf(mvName, "mv%d", &mvSuffix)
+		common.Assert(err == nil, mvName, err)
+
 		//
 		// Fix-mv must be run only for degraded MVs.
 		// A degraded MV has one or more (but not all) component RVs as offline (which need to be replaced by
@@ -2594,11 +2641,11 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//         - Does not come from any fault domain in excludeFaultDomains list.
 		//         - Does not come from any update domain in excludeUpdateDomains list.
 		//         - Has same or higher availableSpace.
+		//         - Is the first suitable RV in the ring (for ring based sliding window placement).
 		//
 		// Caller creates availableRVsList which is a list of available RVs that can be used to replace the
-		// offline component RVs. This is a sorted list with more suitable RVs at the front, so that we are
-		// more likely to pick more suitable RVs first, thus resulting in a balanced distribution of MVs across
-		// the RVs. We then iterate over the availableRVsList list and pick the 1st suitable RV.
+		// offline component RVs.
+		// This is a sorted differently based on RingBasedMVPlacement, see getAvailableRVsList() for details.
 		// As we pick RVs we update availableRVsMap which also updates availableRVsList as it is a slice of
 		// those pointers that availableRVsMap refers to.
 		//
@@ -2698,6 +2745,15 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 			//
 			// Iterate over the availableRVsList and pick the first suitable RV.
+			//
+			// If RingBasedMVPlacement is true:
+			// availableRVsList is sorted by rv names in ascending order, simulating a ring of RVs in
+			// numeric order. We always pick the component RVs from this ring in ascending order, the goal
+			// is to minimize RV<->RV connections, i.e., an RV need to connect to only few other RVs for
+			// PutChunkDC daisy chaining. We pick the starting index in the ring based on mvSuffix, as
+			// that's what new-mv workflow does.
+			//
+			// If RingBasedMVPlacement is false:
 			// availableRVsList is sorted by the number of slots available, so that the RVs with more slots
 			// are at the front so they are picked first for placing MVs, thus resulting in a more balanced
 			// distribution of MVs across the RVs over time as nodes go down and come up.
@@ -2706,7 +2762,13 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			//       should run very very fast, as we need to fix all the degraded MVs in a short time.
 			//       Avoid any string key'ed map lookups, as they are slow, and any thing else that's slow.
 			//
-			for _, rv := range availableRVsList {
+			startIdx := mvSuffix % len(availableRVsList)
+			if !cm.RingBasedMVPlacement {
+				startIdx = 0
+			}
+
+			for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
+				rv := availableRVsList[idx%len(availableRVsList)]
 				// Max slots for an RV is MVsPerRVForFixMV.
 				common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()), *rv, cm.MVsPerRVForFixMV.Load())
 				common.Assert(rv.slots >= 0, *rv)
@@ -2939,6 +3001,13 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 				udId:      rvInfo.UDId,
 				slots:     int(cm.MVsPerRVForFixMV.Load()),
 			}
+
+			//
+			// Note: With the new sliding window based placement, slots must be set very high so that they
+			//       never exhaust.
+			//
+			common.Assert(!cm.RingBasedMVPlacement || availableRVsMap[rvName].slots >= 1000,
+				rvName, availableRVsMap[rvName].slots)
 		}
 
 		// Cannot have more available RVs than total RVs.
@@ -3233,7 +3302,7 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 	for {
 		//
-		// We need at least NumReplicas RVs with free slots to create a new MV.
+		// If we don't have enough RVs to get NumReplicas unique RVs for a new MV, we cannot create any new MV.
 		//
 		if len(availableRVsList) < NumReplicas {
 			log.Debug("ClusterManager::updateMVList: len(availableRVsList) [%d] < NumReplicas [%d]",
@@ -3241,8 +3310,23 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			break
 		}
 
+		//
+		// For RingBasedMVPlacement we can have at most as many MVs as number of RVs since we make one
+		// MV for each RV.
+		//
+		// TODO: Add more MVs to ensure that each MV has reasonable data and thus replication can
+		//       finish fast. Many small MVs being replicated in parallel is better than one large
+		//       MV.
+		//
+		if cm.RingBasedMVPlacement && len(existingMVMap) >= len(availableRVsList) {
+			log.Debug("ClusterManager::updateMVList: len(existingMVMap) [%d] >= len(availableRVsList) [%d]",
+				len(existingMVMap), len(availableRVsList))
+			break
+		}
+
 		// New MV's name, starting from index 0.
-		mvName := fmt.Sprintf("mv%d", len(existingMVMap))
+		mvSuffix := len(existingMVMap)
+		mvName := fmt.Sprintf("mv%d", mvSuffix)
 
 		excludeNodes := make(map[int]struct{})
 		excludeFaultDomains := make(map[int]struct{})
@@ -3250,9 +3334,14 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 		//
 		// Iterate over the availableRVsList and pick the first suitable RV.
+		//
+		// For non-RingBasedMVPlacement:
 		// For each MV we start from a random index in availableRVsList (and choose next NumReplicas suitable RVs).
 		// This ensures that we use RVs uniformly instead of exhausting RVs from the beginning and leaving upto
 		// NumReplicas-1 unused RVs at the end which cannot be used to create a new MV.
+		//
+		// For RingBasedMVPlacement:
+		// We start from a fixed RV corresponding to the MV suffix.
 		//
 		// Note: Since number of RVs can be very large (100K+) we need to be careful that this loop is very
 		//       efficient, avoid any string key'ed map lookups, as they are slow, and any thing else that's slow.
@@ -3260,10 +3349,18 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//       sending JoinMV RPC to all component RVs (in parallel), which will be hard to get below 1ms, so for
 		//       20K MVs, it'll take ~20s to create all MVs, which should be fine.
 		//
+
 		startIdx := rand.Intn(len(availableRVsList))
 		if numNewRVs > 0 {
 			startIdx = rand.Intn(numNewRVs)
 		}
+
+		if cm.RingBasedMVPlacement {
+			startIdx = mvSuffix % len(availableRVsList)
+		}
+
+		log.Debug("ClusterManager::updateMVList: Placing new MV %s, startIdx: %d, numNewRVs: %d, availableRVs: %d",
+			mvName, startIdx, numNewRVs, len(availableRVsList))
 
 		for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
 			rv := availableRVsList[idx%len(availableRVsList)]
@@ -3280,6 +3377,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 				//
 				// TODO: See if removing "full" RVs from availableRVsList is good for performance with lot of RVs.
 				//
+
+				// With the ring based placement, we should never exclude an RV due to slot exhaustion.
+				common.Assert(!cm.RingBasedMVPlacement, *rv, cm.MVsPerRVForNewMV, usedSlots)
 				continue
 			}
 
@@ -4629,6 +4729,28 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s, state change (%s -> %s)",
 					rvName, mvName, currentState, rvNewState)
 				successCount++
+			} else if currentState == dcache.StateInbandOffline && rvNewState == dcache.StateSyncing ||
+				currentState == dcache.StateInbandOffline && rvNewState == dcache.StateOnline {
+				//
+				// An RV can move to inband-offline from technically any state, so the following requested
+				// transitions decompose to:
+				// {StateOutOfSync -> StateSyncing} -> {StateInbandOffline -> StateSyncing}
+				// {StateSyncing   -> StateOnline } -> {StateInbandOffline -> StateOnline}
+				//
+				// This happens when some thread has submitted these transitions but due to some IO error
+				// when accessing those RVs some other thread marked those RVs as inband-offline and that
+				// transition got processed before this one.
+				// Since we cannot perform originally requested transitions anymore, fail those requests.
+				//
+				// Note that currentState->rvNewState was not the originally requested transition, but we
+				// don't have the original request here, so we just log currentState.
+				//
+				msg.Err <- fmt.Errorf("%s/%s state change (<%s> -> %s) no longer valid",
+					rvName, mvName, currentState, rvNewState)
+				close(msg.Err)
+				msg.Err = nil
+				failureCount++
+				continue
 			} else {
 				//
 				// Following transitions are reported when an inband PutChunk failure suggests an RV as offline.
