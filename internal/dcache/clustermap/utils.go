@@ -93,8 +93,8 @@ var (
 
 	MinMVsPerRV int64 = 1
 
-	// XXX: Setting this very high for ring based MV placement.
-	MaxMVsPerRV int64 = 100000
+	// This will be bumped up if RingBasedMVPlacement is enabled.
+	MaxMVsPerRV int64 = 100
 
 	MVsPerRVLocked bool = false
 
@@ -133,6 +133,8 @@ var (
 
 	rvNameRegex = regexp.MustCompile("^rv[0-9]+$")
 	mvNameRegex = regexp.MustCompile("^mv[0-9]+$")
+
+	RingBasedMVPlacement bool
 )
 
 // Valid RV name is of the form "rv0", "rv99", etc.

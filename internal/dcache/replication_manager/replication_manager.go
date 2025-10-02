@@ -1922,7 +1922,7 @@ func copySingleChunk(job *syncJob, chunkName string) (error, int64) {
 					common.Assert(epoch >= job.clustermapEpoch,
 						epoch, job.clustermapEpoch, putChunkReq.ClustermapEpoch, job.toString())
 
-					job.componentRVs = cm.RVMapToList(job.mvName, rvs)
+					job.componentRVs = cm.RVMapToList(job.mvName, rvs, false /* randomize */)
 					job.clustermapEpoch = epoch
 
 					putChunkReq.ComponentRV = job.componentRVs

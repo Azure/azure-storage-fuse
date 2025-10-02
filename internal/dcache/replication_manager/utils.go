@@ -213,15 +213,15 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 		}
 
 		/*
-		nodeIDForRV := getNodeIDFromRVName(rv.Name)
-		common.Assert(common.IsValidUUID(nodeIDForRV))
-		if nodeIDForRV == myNodeID {
-			//
-			// Prefer local RV.
-			// TODO: We can further optimize this by checking the local RV's load and avoid skewed load.
-			//
-			return rv
-		}
+			nodeIDForRV := getNodeIDFromRVName(rv.Name)
+			common.Assert(common.IsValidUUID(nodeIDForRV))
+			if nodeIDForRV == myNodeID {
+				//
+				// Prefer local RV.
+				// TODO: We can further optimize this by checking the local RV's load and avoid skewed load.
+				//
+				return rv
+			}
 		*/
 		return rv
 

@@ -141,6 +141,7 @@ type DCacheConfig struct {
 	CacheAccess            string `json:"cache-access"`
 	IgnoreFD               bool   `json:"ignore-fd"`
 	IgnoreUD               bool   `json:"ignore-ud"`
+	RingBasedMVPlacement   bool   `json:"ring-based-mv-placement"`
 }
 
 type FileState string
