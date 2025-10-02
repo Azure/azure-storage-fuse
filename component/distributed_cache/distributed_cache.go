@@ -109,17 +109,18 @@ type DistributedCacheOptions struct {
 	RVNearfullThreshold uint64 `config:"rv-nearfull-threshold" yaml:"rv-nearfull-threshold,omitempty"`
 	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"max-cache-size,omitempty"`
 
-	MinNodes            uint32 `config:"min-nodes" yaml:"min-nodes,omitempty"`
-	MaxRVs              uint32 `config:"max-rvs" yaml:"max-rvs,omitempty"`
-	MVsPerRV            uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
-	RebalancePercentage uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
-	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
-	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
-	IgnoreFD            bool   `config:"ignore-fd" yaml:"ignore-fd,omitempty"`
-	IgnoreUD            bool   `config:"ignore-ud" yaml:"ignore-ud,omitempty"`
-	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
-	ReadIOMode          string `config:"read-io-mode" yaml:"read-io-mode,omitempty"`
-	WriteIOMode         string `config:"write-io-mode" yaml:"write-io-mode,omitempty"`
+	MinNodes             uint32 `config:"min-nodes" yaml:"min-nodes,omitempty"`
+	MaxRVs               uint32 `config:"max-rvs" yaml:"max-rvs,omitempty"`
+	MVsPerRV             uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
+	RebalancePercentage  uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
+	SafeDeletes          bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
+	CacheAccess          string `config:"cache-access" yaml:"cache-access,omitempty"`
+	IgnoreFD             bool   `config:"ignore-fd" yaml:"ignore-fd,omitempty"`
+	IgnoreUD             bool   `config:"ignore-ud" yaml:"ignore-ud,omitempty"`
+	RingBasedMVPlacement bool   `config:"ring-based-mv-placement" yaml:"ring-based-mv-placement,omitempty"`
+	ClustermapEpoch      uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
+	ReadIOMode           string `config:"read-io-mode" yaml:"read-io-mode,omitempty"`
+	WriteIOMode          string `config:"write-io-mode" yaml:"write-io-mode,omitempty"`
 }
 
 const (
@@ -240,6 +241,7 @@ func (dc *DistributedCache) startClusterManager() string {
 		CacheAccess:            dc.cfg.CacheAccess,
 		IgnoreFD:               dc.cfg.IgnoreFD,
 		IgnoreUD:               dc.cfg.IgnoreUD,
+		RingBasedMVPlacement:   dc.cfg.RingBasedMVPlacement,
 		RvFullThreshold:        dc.cfg.RVFullThreshold,
 		RvNearfullThreshold:    dc.cfg.RVNearfullThreshold,
 	}
@@ -405,13 +407,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s: [cache-dirs not set]", distributedCache.Name())
 	}
 
-	cm.RingBasedMVPlacement = defaultRingBasedMVPlacement
-
-	if cm.RingBasedMVPlacement {
-		// Set this very high for ring based MV placement.
-		cm.MaxMVsPerRV = 100000
-	}
-
 	// Ensure the cache directories exist (create if missing) and are usable.
 	for _, dir := range distributedCache.cfg.CacheDirs {
 		absDir, absErr := filepath.Abs(dir)
@@ -501,6 +496,16 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		//
 		return fmt.Errorf("config error in %s: [replicas (%d) invalid, valid range is [%d, %d]]",
 			distributedCache.Name(), distributedCache.cfg.Replicas, cm.MinNumReplicas, cm.MaxNumReplicas)
+	}
+
+	if !config.IsSet(compName + ".ring-based-mv-placement") {
+		distributedCache.cfg.RingBasedMVPlacement = defaultRingBasedMVPlacement
+	}
+	cm.RingBasedMVPlacement = distributedCache.cfg.RingBasedMVPlacement
+
+	if cm.RingBasedMVPlacement {
+		// Set this very high for ring based MV placement.
+		cm.MaxMVsPerRV = 100000
 	}
 
 	if !config.IsSet(compName + ".heartbeat-duration") {
@@ -1691,6 +1696,9 @@ func init() {
 
 	ignoreUD := config.AddBoolFlag("ignore-ud", defaultIgnoreUD, "Ignore VM update domain for MV placement decisions")
 	config.BindPFlag(compName+".ignore-ud", ignoreUD)
+
+	ringBasedMVPlacement := config.AddBoolFlag("ring-based-mv-placement", defaultRingBasedMVPlacement, "Use ring based MV placement algorithm")
+	config.BindPFlag(compName+".ring-based-mv-placement", ringBasedMVPlacement)
 
 	readIOMode := config.AddStringFlag("read-io-mode", rpc.DirectIO, "IO mode for reading chunk files (direct/buffered)")
 	config.BindPFlag(compName+".read-io-mode", readIOMode)
