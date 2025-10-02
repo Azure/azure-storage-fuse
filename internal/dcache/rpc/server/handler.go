@@ -79,7 +79,7 @@ var (
 	NumChunkReads          atomic.Int64
 	AggrChunkReadsDuration atomic.Int64 // time in nanoseconds for NumChunkReads.
 
-	SlowReadWriteThreshold = 500 * time.Millisecond // anything more than this is considered a slow chunk read/write
+	SlowReadWriteThreshold = 1 * time.Second // anything more than this is considered a slow chunk read/write
 )
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
@@ -1829,6 +1829,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	_ = n
 	var hashPathPtr *string
 	var thisDuration time.Duration
+	var readStartTime time.Time
 
 	if req.IsLocalRV {
 		//
@@ -1941,18 +1942,19 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//	hashPathPtr := &hashPath
 	//}
 
-	// Consider recent reads for calculating avg read duration.
+	readStartTime = time.Now()
+	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
+	thisDuration = time.Since(readStartTime)
+
+	// Consider only recent reads for calculating avg read duration.
 	if NumChunkReads.Add(1) == 1000 {
 		NumChunkReads.Store(1)
 		AggrChunkReadsDuration.Store(1)
+	} else {
+		AggrChunkReadsDuration.Add(thisDuration.Nanoseconds())
 	}
 
-	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
-
-	thisDuration = time.Since(startTime)
-	AggrChunkReadsDuration.Add(thisDuration.Nanoseconds())
-
-	if thisDuration > SlowReadWriteThreshold {
+	if NumChunkReads.Load() > 100 && thisDuration > SlowReadWriteThreshold {
 		log.Warn("[SLOW] readChunkAndHash: Slow read for %s, chunkIdx: %d, took %s (>%s), avg: %s",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Address),
 			thisDuration, SlowReadWriteThreshold,
@@ -2447,6 +2449,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	var availableSpace int64
 	var thisDuration time.Duration
+	var writeStartTime time.Time
 
 	//
 	// If the PutChunk is for the special metadata chunk, remove existing metadata chunk file if any, to
@@ -2496,20 +2499,21 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		}
 	}
 
-	// Consider recent writes for calculating avg write duration.
+	// TODO: hash validation will be done later
+	writeStartTime = time.Now()
+	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
+	thisDuration = time.Since(writeStartTime)
+
+	// Consider only recent writes for calculating avg write duration.
 	if NumChunkWrites.Add(1) == 1000 {
 		NumChunkWrites.Store(1)
 		AggrChunkWritesDuration.Store(1)
+	} else {
+		AggrChunkWritesDuration.Add(thisDuration.Nanoseconds())
 	}
 
-	// TODO: hash validation will be done later
-	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
-
-	thisDuration = time.Since(startTime)
-	AggrChunkWritesDuration.Add(thisDuration.Nanoseconds())
-
 	// Too many outstanding writes to a disk can make the writes very slow, alert to know that.
-	if thisDuration > SlowReadWriteThreshold {
+	if NumChunkWrites.Load() > 100 && thisDuration > SlowReadWriteThreshold {
 		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 			thisDuration, SlowReadWriteThreshold,
