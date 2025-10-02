@@ -1083,14 +1083,13 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 		//
 		// Avg WriteMV time is useful only for recent requests.
 		//
-		if aggrWriteMVCalls.Load() == 200 {
+		if aggrWriteMVCalls.Add(1) == 200 {
 			// Since it's not protected by a lock, we don't set it to zero, but to 1, to avoid division by zero.
 			aggrWriteMVCalls.Store(1)
-			aggrWriteMVTime.Store(1)
+			aggrWriteMVTime.Store(time.Since(startTime).Nanoseconds())
+		} else {
+			aggrWriteMVTime.Add(time.Since(startTime).Nanoseconds())
 		}
-
-		aggrWriteMVCalls.Add(1)
-		aggrWriteMVTime.Add(time.Since(startTime).Nanoseconds())
 
 		if err != nil {
 			log.Err("[TIMING] ReplicationManager::WriteMV: WriteMV failed after %s: %v: %v",

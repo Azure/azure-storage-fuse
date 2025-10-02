@@ -1949,12 +1949,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// Consider only recent reads for calculating avg read duration.
 	if NumChunkReads.Add(1) == 1000 {
 		NumChunkReads.Store(1)
-		AggrChunkReadsDuration.Store(1)
+		AggrChunkReadsDuration.Store(thisDuration.Nanoseconds())
 	} else {
 		AggrChunkReadsDuration.Add(thisDuration.Nanoseconds())
 	}
 
-	if NumChunkReads.Load() > 100 && thisDuration > SlowReadWriteThreshold {
+	if thisDuration > SlowReadWriteThreshold {
 		log.Warn("[SLOW] readChunkAndHash: Slow read for %s, chunkIdx: %d, took %s (>%s), avg: %s",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Address),
 			thisDuration, SlowReadWriteThreshold,
@@ -2507,13 +2507,13 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// Consider only recent writes for calculating avg write duration.
 	if NumChunkWrites.Add(1) == 1000 {
 		NumChunkWrites.Store(1)
-		AggrChunkWritesDuration.Store(1)
+		AggrChunkWritesDuration.Store(thisDuration.Nanoseconds())
 	} else {
 		AggrChunkWritesDuration.Add(thisDuration.Nanoseconds())
 	}
 
 	// Too many outstanding writes to a disk can make the writes very slow, alert to know that.
-	if NumChunkWrites.Load() > 100 && thisDuration > SlowReadWriteThreshold {
+	if thisDuration > SlowReadWriteThreshold {
 		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 			thisDuration, SlowReadWriteThreshold,

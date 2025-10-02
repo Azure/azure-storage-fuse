@@ -535,6 +535,12 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if config.IsSet(compName + ".mvs-per-rv") {
 		// If user sets mvs-per-rv in the config then that value MUST be honoured.
 		cm.MVsPerRVLocked = true
+
+		// For now we don't allow mvs-per-rv config with ring-based-mv-placement.
+		if cm.RingBasedMVPlacement {
+			return fmt.Errorf("config error in %s: [cannot set mvs-per-rv when ring-based-mv-placement is true]",
+				distributedCache.Name())
+		}
 	} else {
 		common.Assert(distributedCache.cfg.MaxRVs > 0, distributedCache.cfg)
 		common.Assert(distributedCache.cfg.Replicas > 0, distributedCache.cfg)

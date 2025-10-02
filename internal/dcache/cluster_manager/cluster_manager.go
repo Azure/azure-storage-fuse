@@ -2209,8 +2209,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	common.Assert(cm.IsValidRVMap(rvMap))
 	common.Assert(cm.IsValidMvMap(existingMVMap, NumReplicas))
 
-	log.Debug("ClusterManager::updateMVList: TotalRVs: %d, NumReplicas: %d, MVsPerRVForNewMV: %d, MVsPerRVForFixMV: %d, ExistingMVs: %d",
-		len(rvMap), NumReplicas, cm.MVsPerRVForNewMV, cm.MVsPerRVForFixMV.Load(), len(existingMVMap))
+	log.Debug("ClusterManager::updateMVList: RingBasedMVPlacement: %v, TotalRVs: %d, NumReplicas: %d, MVsPerRVForNewMV: %d, MVsPerRVForFixMV: %d, ExistingMVs: %d",
+		cm.RingBasedMVPlacement, len(rvMap), NumReplicas, cm.MVsPerRVForNewMV,
+		cm.MVsPerRVForFixMV.Load(), len(existingMVMap))
 
 	//
 	//
@@ -3358,8 +3359,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			startIdx = mvSuffix % len(availableRVsList)
 		}
 
-		log.Debug("ClusterManager::updateMVList: [%v] Placing new MV %s, startIdx: %d, numNewRVs: %d, availableRVs: %d",
-			cm.RingBasedMVPlacement, mvName, startIdx, numNewRVs, len(availableRVsList))
+		log.Debug("ClusterManager::updateMVList: Placing new MV %s, startIdx: %d, numNewRVs: %d, availableRVs: %d",
+			mvName, startIdx, numNewRVs, len(availableRVsList))
 
 		for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
 			rv := availableRVsList[idx%len(availableRVsList)]
@@ -4736,7 +4737,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				// {StateOutOfSync -> StateSyncing} -> {StateInbandOffline -> StateSyncing}
 				// {StateSyncing   -> StateOnline } -> {StateInbandOffline -> StateOnline}
 				//
-				// This happend when some thread has submitted these transitions but due to some IO error
+				// This happens when some thread has submitted these transitions but due to some IO error
 				// when accessing those RVs some other thread marked those RVs as inband-offline and that
 				// transition got processed before this one.
 				// Since we cannot perform originally requested transitions anymore, fail those requests.

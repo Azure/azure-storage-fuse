@@ -188,15 +188,14 @@ func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
 	// If the avg wait time is very high, then we should consider increasing the semaphore depth, or
 	// find out why the PutChunkDC calls are taking too long.
 	//
-	if aggrPutChunkDCCalls.Load() == 200 {
+	if aggrPutChunkDCCalls.Add(1) == 200 {
 		// Since it's not protected by a lock, we don't set it to zero, but to 1, to avoid division by zero.
 		aggrPutChunkDCCalls.Store(1)
-		aggrPutChunkDCSemWait.Store(1)
+		aggrPutChunkDCSemWait.Store(time.Since(startTime).Nanoseconds())
 		aggrPutChunkDCSemHold.Store(1)
+	} else {
+		aggrPutChunkDCSemWait.Add(time.Since(startTime).Nanoseconds())
 	}
-
-	aggrPutChunkDCCalls.Add(1)
-	aggrPutChunkDCSemWait.Add(time.Since(startTime).Nanoseconds())
 
 	log.Debug("getPutChunkDCSem: Acquired semaphore for node: %s, chunkIdx: %d, took %s, now available: {global: %d/%d, node: %d/%d}, avg wait: %s",
 		targetNodeID, chunkIdx, time.Since(startTime),
