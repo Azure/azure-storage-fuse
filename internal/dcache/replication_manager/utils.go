@@ -155,7 +155,7 @@ func (s PutChunkStyleEnum) String() string {
 }
 
 // Acquire the semaphores for sending PutChunkDC to the given target node.
-func getPutChunkDCSem(targetNodeID string) *chan struct{} {
+func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
 	// Anything above this threshold is considered a large/unusual wait and is logged as a warning.
 	const largeWaitThreshold = 2 * time.Second
 
@@ -196,15 +196,15 @@ func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 	aggrPutChunkDCCalls.Add(1)
 	aggrPutChunkDCSemWait.Add(time.Since(startTime).Nanoseconds())
 
-	log.Debug("getPutChunkDCSem: Acquired semaphore for node %s, took %s, now available: {global: %d/%d, node: %d/%d}, avg wait: %s",
-		targetNodeID, time.Since(startTime),
+	log.Debug("getPutChunkDCSem: Acquired semaphore for node: %s, chunkIdx: %d, took %s, now available: {global: %d/%d, node: %d/%d}, avg wait: %s",
+		targetNodeID, chunkIdx, time.Since(startTime),
 		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
 		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
 		time.Duration(aggrPutChunkDCSemWait.Load()/aggrPutChunkDCCalls.Load()))
 
 	if time.Since(startTime) > largeWaitThreshold {
-		log.Warn("[SLOW] getPutChunkDCSem: Acquired semaphore for node %s, took %s, now available: {global: %d/%d, node: %d/%d}, avg wait: %s",
-			targetNodeID, time.Since(startTime),
+		log.Warn("[SLOW] getPutChunkDCSem: Acquired semaphore for node: %s, chunkIdx: %d, took %s, now available: {global: %d/%d, node: %d/%d}, avg wait: %s",
+			targetNodeID, chunkIdx, time.Since(startTime),
 			PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
 			PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
 			time.Duration(aggrPutChunkDCSemWait.Load()/aggrPutChunkDCCalls.Load()))
@@ -214,7 +214,7 @@ func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 }
 
 // Release the semaphore acquired by getPutChunkDCSem() for the given target node.
-func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string) {
+func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string, chunkIdx int64) {
 	// We must be releasing a semaphore that we have acquired.
 	common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))
 	common.Assert(len(putChunkDCTotalSem) > 0, len(putChunkDCTotalSem))
@@ -222,8 +222,8 @@ func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string)
 	<-putChunkDCTotalSem
 	<-*putChunkDCSemNode
 
-	log.Debug("getPutChunkDCSem: Released semaphore for node %s, now available: {global: %d/%d, node: %d/%d}",
-		targetNodeID,
+	log.Debug("getPutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}",
+		targetNodeID, chunkIdx,
 		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
 		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode)
 }

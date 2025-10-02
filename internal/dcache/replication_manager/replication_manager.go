@@ -706,7 +706,7 @@ retry:
 		// together) and a per-node limit (how many PutChunkDC calls can one node send to a particular
 		// target node). Only if both the limits are satisfied, we allow the PutChunkDC call to proceed.
 		//
-		putChunkSem := getPutChunkDCSem(targetNodeID)
+		putChunkSem := getPutChunkDCSem(targetNodeID, req.ChunkIndex)
 
 		//
 		// If the node to which the PutChunkDC() RPC call must be made is local,
@@ -720,7 +720,7 @@ retry:
 		}
 
 		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
-		releasePutChunkDCSem(putChunkSem, targetNodeID)
+		releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex)
 
 		if err != nil {
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",
