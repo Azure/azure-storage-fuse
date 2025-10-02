@@ -4728,6 +4728,28 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s, state change (%s -> %s)",
 					rvName, mvName, currentState, rvNewState)
 				successCount++
+			} else if currentState == dcache.StateInbandOffline && rvNewState == dcache.StateSyncing ||
+				currentState == dcache.StateInbandOffline && rvNewState == dcache.StateOnline {
+				//
+				// An RV can move to inband-offline from technically any state, so the following requested
+				// transitions decompose to:
+				// {StateOutOfSync -> StateSyncing} -> {StateInbandOffline -> StateSyncing}
+				// {StateSyncing   -> StateOnline } -> {StateInbandOffline -> StateOnline}
+				//
+				// This happend when some thread has submitted these transitions but due to some IO error
+				// when accessing those RVs some other thread marked those RVs as inband-offline and that
+				// transition got processed before this one.
+				// Since we cannot perform originally requested transitions anymore, fail those requests.
+				//
+				// Note that currentState->rvNewState was not the originally requested transition, but we
+				// don't have the original request here, so we just log currentState.
+				//
+				msg.Err <- fmt.Errorf("%s/%s state change (<%s> -> %s) no longer valid",
+					rvName, mvName, currentState, rvNewState)
+				close(msg.Err)
+				msg.Err = nil
+				failureCount++
+				continue
 			} else {
 				//
 				// Following transitions are reported when an inband PutChunk failure suggests an RV as offline.
