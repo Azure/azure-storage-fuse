@@ -134,6 +134,7 @@ var (
 	aggrWriteMVTime       atomic.Int64 // aggregate time for completing all WriteMV calls (in nanoseconds).
 	aggrWriteMVWait       atomic.Int64 // aggregate time spent waiting to schedule WriteMV calls (in nanoseconds).
 	aggrPutChunkDCSemWait atomic.Int64 // aggregate time spent waiting to acquire PutChunkDC semaphore (in nanoseconds).
+	aggrPutChunkDCSemHold atomic.Int64 // aggregate time spent holding PutChunkDC semaphore (in nanoseconds).
 	aggrPutChunkDCCalls   atomic.Int64 // aggregate number of PutChunkDC calls.
 )
 
@@ -191,6 +192,7 @@ func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
 		// Since it's not protected by a lock, we don't set it to zero, but to 1, to avoid division by zero.
 		aggrPutChunkDCCalls.Store(1)
 		aggrPutChunkDCSemWait.Store(1)
+		aggrPutChunkDCSemHold.Store(1)
 	}
 
 	aggrPutChunkDCCalls.Add(1)
@@ -214,18 +216,32 @@ func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
 }
 
 // Release the semaphore acquired by getPutChunkDCSem() for the given target node.
-func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string, chunkIdx int64) {
+func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string, chunkIdx int64, dur time.Duration) {
+	const largeHoldThreshold = 500 * time.Millisecond
+
 	// We must be releasing a semaphore that we have acquired.
 	common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))
 	common.Assert(len(putChunkDCTotalSem) > 0, len(putChunkDCTotalSem))
 
+	// Duration is the time the semaphore was held, which is the time taken for the PutChunkDC call to complete.
+	aggrPutChunkDCSemHold.Add(dur.Nanoseconds())
+
 	<-putChunkDCTotalSem
 	<-*putChunkDCSemNode
 
-	log.Debug("getPutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}",
+	log.Debug("releasePutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}, held for: %s, avg hold: %s",
 		targetNodeID, chunkIdx,
 		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
-		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode)
+		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+		dur, time.Duration(aggrPutChunkDCSemHold.Load()/aggrPutChunkDCCalls.Load()))
+
+	if dur > largeHoldThreshold {
+		log.Warn("[SLOW] releasePutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}, held for: %s, avg hold: %s",
+			targetNodeID, chunkIdx,
+			PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+			PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+			dur, time.Duration(aggrPutChunkDCSemHold.Load()/aggrPutChunkDCCalls.Load()))
+	}
 }
 
 // Return the most suitable online RV from the list of component RVs to which we should send the RPC call.

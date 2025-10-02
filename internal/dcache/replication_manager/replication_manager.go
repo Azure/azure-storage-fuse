@@ -708,6 +708,7 @@ retry:
 		//
 		putChunkSem := getPutChunkDCSem(targetNodeID, req.ChunkIndex)
 
+		putChunkDCstartTime := time.Now()
 		//
 		// If the node to which the PutChunkDC() RPC call must be made is local,
 		// then we directly call the PutChunkDC() method using the local server's handler.
@@ -720,7 +721,7 @@ retry:
 		}
 
 		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
-		releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex)
+		releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex, time.Since(putChunkDCstartTime))
 
 		if err != nil {
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",
@@ -1072,9 +1073,10 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	//
 	// With 4GBps n/w and disk speeds, and with daisy chain with NumReplicas=3, 16MiB chunk write
 	// should take 4*4=16ms. Add some margin for random overheads and we should be well below 100ms
-	// for most writes.
+	// for most writes, but it could take long time waiting for he PutChunkDC semaphore, so we set
+	// the threshold to 2 seconds.
 	//
-	const slowWriteThreshold = 500 * time.Millisecond
+	const slowWriteThreshold = 2 * time.Second
 
 	startTime := time.Now()
 	defer func() {
