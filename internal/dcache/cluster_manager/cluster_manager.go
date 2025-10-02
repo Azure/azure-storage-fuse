@@ -133,8 +133,6 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	cm.MVsPerRVForNewMV = int(dCacheConfig.MVsPerRV)
 	cm.MVsPerRVForFixMV.Store(int32(cm.MVsPerRVForNewMV * int(cm.MVsPerRVScaleFactor)))
 
-	cm.RingBasedMVPlacement = dCacheConfig.RingBasedMVPlacement
-
 	// All RVs exported by a node have the same NodeId and IPAddress, use from the first RV.
 	// These will be used as the current node's id and IP address.
 	cmi.myNodeId = rvs[0].NodeId
@@ -2248,8 +2246,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	//         one upstream RV. This is particularly important for PutChunkDC where heavily
 	//         connected network can cause too many connections to/from each node. With ring based
 	//         placement, each RV must have connections to only its upstream RV(s).
-	// TODO:   With the ring based placement, we don't need to maintain slots count, but tha helps
-	//         to know how many MVs and RV is part of, so we keep it for now. Later we can remove it.
+	// TODO:   With the ring based placement, we don't need to maintain slots count, but that helps
+	//         to know how many MVs and RV is part of, so we keep it for now. Later we can remove it
+	//         if we make ring based placement the only placement algorithm.
 	//
 
 	log.Debug("ClusterManager::updateMVList: Updating current MV list according to the latest RV list (%d RVs, %d MVs) [%s to run]",
@@ -2321,8 +2320,17 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 	//
 	// From availableRVsMap, this will create equivalent availableRVsList, list of RVs that are available for
-	// placing MVs. The RVs are sorted by their rv names in numeric sort order (rv2 < rv10). This is needed
+	// placing MVs.
+	// The RVs are sorted according to the placement algorithm used.
+	//
+	// For RingBasedMVPlacement,
+	// The RVs are sorted by their rv names in numeric sort order (rv2 < rv10). This is needed
 	// by the ring based sliding window placement algorithm.
+	//
+	// For non-RingBasedMVPlacement,
+	// The RVs are sorted by the number of slots available, so that the RVs with more slots are at
+	// the front so they are picked first for placing MVs, thus resulting in a more balanced distribution of MVs
+	// across the RVs over time as nodes go down and come up.
 	//
 	// Note: This is costly, call it less often, judiciously.
 	// TODO: Sort also based on free space available on the RVs, so that MV placer favors RVs with more free space.
@@ -2632,11 +2640,11 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//         - Does not come from any fault domain in excludeFaultDomains list.
 		//         - Does not come from any update domain in excludeUpdateDomains list.
 		//         - Has same or higher availableSpace.
-		//         - Is the first suitable RV in the ring (ring based sliding window placement).
+		//         - Is the first suitable RV in the ring (for ring based sliding window placement).
 		//
 		// Caller creates availableRVsList which is a list of available RVs that can be used to replace the
-		// offline component RVs. This is a sorted list in increasing order of RV names (rv2 < rv10), to
-		// facilitate ring based placement.
+		// offline component RVs.
+		// This is a sorted differently based on RingBasedMVPlacement, see getAvailableRVsList() for details.
 		// As we pick RVs we update availableRVsMap which also updates availableRVsList as it is a slice of
 		// those pointers that availableRVsMap refers to.
 		//
@@ -2754,9 +2762,10 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			//       Avoid any string key'ed map lookups, as they are slow, and any thing else that's slow.
 			//
 			startIdx := mvSuffix % len(availableRVsList)
-			if cm.RingBasedMVPlacement {
+			if !cm.RingBasedMVPlacement {
 				startIdx = 0
 			}
+
 			for idx := startIdx; idx < len(availableRVsList)+startIdx; idx++ {
 				rv := availableRVsList[idx%len(availableRVsList)]
 				// Max slots for an RV is MVsPerRVForFixMV.

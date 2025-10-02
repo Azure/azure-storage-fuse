@@ -204,7 +204,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 
 	var readerRV *models.RVNameAndState
 
-	//myNodeID := rpc.GetMyNodeUUID()
+	myNodeID := rpc.GetMyNodeUUID()
 	for _, rv := range componentRVs {
 		if rv.State != string(dcache.StateOnline) || slices.Contains(excludeRVs, rv.Name) {
 			// Not an online RV or present in the exclude list, skip.
@@ -212,18 +212,15 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 			continue
 		}
 
-		/*
-			nodeIDForRV := getNodeIDFromRVName(rv.Name)
-			common.Assert(common.IsValidUUID(nodeIDForRV))
-			if nodeIDForRV == myNodeID {
-				//
-				// Prefer local RV.
-				// TODO: We can further optimize this by checking the local RV's load and avoid skewed load.
-				//
-				return rv
-			}
-		*/
-		return rv
+		nodeIDForRV := getNodeIDFromRVName(rv.Name)
+		common.Assert(common.IsValidUUID(nodeIDForRV))
+		if nodeIDForRV == myNodeID {
+			//
+			// Prefer local RV.
+			// TODO: We can further optimize this by checking the local RV's load and avoid skewed load.
+			//
+			return rv
+		}
 
 		//
 		// getComponentRVsForMV() already returns a shuffled list of RVs, so we can pick the last one
