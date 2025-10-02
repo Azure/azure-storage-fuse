@@ -1628,9 +1628,11 @@ func copyOutOfSyncChunks(job *syncJob) error {
 	common.Assert(common.DirectoryExists(sourceMVPath), sourceMVPath)
 
 	destRvID := getRvIDFromRvName(job.destRVName)
+	_ = destRvID
 	common.Assert(common.IsValidUUID(destRvID))
 
 	destNodeID := getNodeIDFromRVName(job.destRVName)
+	_ = destNodeID
 	common.Assert(common.IsValidUUID(destNodeID))
 
 	//
@@ -1645,10 +1647,17 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		return err
 	}
 
-	chunksCopied := 0
-	bytesCopied := int64(0)
+	var chunksCopied atomic.Int64
+	var bytesCopied atomic.Int64
+	const parallelSyncThreads = 16
+	// Upto parallelSyncThreads concurrent chunk copy operations.
+	var syncChunkSema = make(chan struct{}, parallelSyncThreads)
+	var errCount atomic.Int32
 
-	// TODO: make this parallel
+	//
+	// Go over each chunk and copy the out of sync chunks to the target MV replica,
+	// max parallelSyncThreads outstanding.
+	//
 	for _, entry := range entries {
 		if entry.IsDir() {
 			log.Warn("ReplicationManager::copyOutOfSyncChunks: Skipping directory %s/%s",
@@ -1695,11 +1704,11 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		//       so if ReadDir() above finds a chunk and it's removed by the time we come here, the
 		//       assert below will fail. Let's leave it for some time and later we can remove it.
 		//
-		info, err := entry.Info()
-		if err != nil {
+		info, err1 := entry.Info()
+		if err1 != nil {
 			log.Err("ReplicationManager::copyOutOfSyncChunks: entry.Info() failed for %s/%s: %v",
-				sourceMVPath, entry.Name(), err)
-			common.Assert(false, err, sourceMVPath, entry.Name())
+				sourceMVPath, entry.Name(), err1)
+			common.Assert(false, err1, sourceMVPath, entry.Name())
 			continue
 		}
 
@@ -1717,147 +1726,247 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			continue
 		}
 
-		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, Mtime (%d) <= syncStartTime (%d) [%d usecs before sync start]",
-			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, size: %d, Mtime (%d) <= syncStartTime (%d) [%d usecs before sync start]",
+			sourceMVPath, entry.Name(), info.Size(), info.ModTime().UnixMicro(), job.syncStartTime,
 			job.syncStartTime-info.ModTime().UnixMicro())
 
-		fileID := chunkParts[0]
-		common.Assert(common.IsValidUUID(fileID))
+		//
+		// Get a token (out of max parallelSyncThreads) to start a chunk copy.
+		// Issue upto parallelSyncThreads copy goroutines in parallel.
+		//
+		syncChunkSema <- struct{}{}
 
-		// convert string to int64
-		offsetInMiB, err := strconv.ParseInt(chunkParts[1], 10, 64)
-		if err != nil {
-			// TODO: should we return error in this case?
-			errStr := fmt.Sprintf("Invalid offset for chunk %s [%v]", entry.Name(), err)
-			log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-			common.Assert(false, errStr)
-			continue
-		}
+		go func(chunkName string, info os.FileInfo) {
+			//
+			// One token must have been acquired before starting this sync thread, and cannot start
+			// more than parallelSyncThreads sync threads.
+			//
+			common.Assert(len(syncChunkSema) > 0 && len(syncChunkSema) <= parallelSyncThreads,
+				len(syncChunkSema), job.toString())
 
-		srcChunkPath := filepath.Join(sourceMVPath, entry.Name())
-		srcData, err := os.ReadFile(srcChunkPath)
-		if err != nil {
-			// TODO: should we return error in this case?
-			errStr := fmt.Sprintf("os.ReadFile(%s) failed [%v]", srcChunkPath, err.Error())
-			log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-			common.Assert(false, errStr)
-			continue
-		}
+			// Release the token once this chunk copy is done (success or failure).
+			defer func() {
+				<-syncChunkSema
+			}()
 
-		putChunkReq := &models.PutChunkRequest{
-			Chunk: &models.Chunk{
-				Address: &models.Address{
-					FileID:      fileID,
-					RvID:        destRvID,
-					MvName:      job.mvName,
-					OffsetInMiB: offsetInMiB,
-				},
-				Data: srcData,
-				Hash: "", // TODO: hash validation will be done later
-			},
-			Length: int64(len(srcData)),
-			// SyncID is used for logging and debugging, to easily match client and server side logs.
-			SyncID:          job.syncID,
-			SourceRVName:    job.srcRVName,
-			ComponentRV:     job.componentRVs,
-			ClustermapEpoch: job.clustermapEpoch,
-		}
-
-		retryCnt := 0
-		for {
-			log.Debug("ReplicationManager::copyOutOfSyncChunks: [%d] Copying chunk %s (%s/%s -> %s/%s): %v",
-				retryCnt, srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName,
-				rpc.PutChunkRequestToString(putChunkReq))
-
-			ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
-			defer cancel()
-
-			putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq, false /* fromFwder */)
-			_ = putChunkResp
-
-			// Common case.
-			if err == nil {
-				common.Assert(putChunkResp != nil)
-				log.Debug("ReplicationManager::copyOutOfSyncChunks: Copied chunk %s (%s/%s -> %s/%s): %v",
-					srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName,
-					rpc.PutChunkResponseToString(putChunkResp))
-				break
+			err1, chunkSize := copySingleChunk(job, chunkName)
+			if err1 != nil {
+				log.Err("ReplicationManager::copyOutOfSyncChunks: copySingleChunk(%s) failed: %v",
+					chunkName, err1)
+				errCount.Add(1)
+				return
 			}
 
-			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to copy chunk %s (%s/%s -> %s/%s) %v: %v",
-				srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName,
-				rpc.PutChunkRequestToString(putChunkReq), err)
+			// Must copy the entire chunk.
+			common.Assert(chunkSize == info.Size(), chunkSize, info.Size(), entry.Name())
 
-			rpcErr := rpc.GetRPCResponseError(err)
-			if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
-				//
-				// This error means that the node is not reachable.
-				// Mark the destination RV as inband-offline, so that the fix-mv workflow can select a new RV
-				// and the resync can be reattempted.
-				//
-				log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to reach node %s [%v]",
-					destNodeID, err)
+			bytesCopied.Add(chunkSize)
+			chunksCopied.Add(1)
+		}(entry.Name(), info)
 
-				// Fall through and return error, caller will mark job.destRVName as inband-offline.
-			} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-				//
-				// NeedToRefreshClusterMap is the only error on which we retry the PutChunk, but only if
-				// the new clustermap still has the same source and destination RVs, in online and syncing
-				// state respectively. Note that the sync job is responsible for sync'ing one MV replica,
-				// so all we care about is that the source and destination RVs have not changed.
-				//
-				errCM := cm.RefreshClusterMap(-putChunkReq.ClustermapEpoch)
-				if errCM == nil {
-					mvState, rvs, epoch := cm.GetRVsEx(job.mvName)
-					srcRVState, srcRVok := rvs[job.srcRVName]
-					dstRVState, dstRVok := rvs[job.destRVName]
-
-					if srcRVok && dstRVok && srcRVState == dcache.StateOnline &&
-						dstRVState == dcache.StateSyncing {
-						job.componentRVs = cm.RVMapToList(job.mvName, rvs)
-						job.clustermapEpoch = epoch
-
-						putChunkReq.ComponentRV = job.componentRVs
-						putChunkReq.ClustermapEpoch = job.clustermapEpoch
-
-						retryCnt++
-
-						if retryCnt < 5 {
-							log.Debug("ReplicationManager::copyOutOfSyncChunks: Retrying copy of chunk %s (%s/%s -> %s/%s), retryCnt: %d, mvState: %s, epoch: %d",
-								srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName,
-								retryCnt, mvState, epoch)
-							continue
-						}
-
-						log.Err("ReplicationManager::copyOutOfSyncChunks: Exceeded %d retries while copying chunk %s (%s/%s -> %s/%s), epoch: %d",
-							retryCnt, srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName, epoch)
-					} else {
-						// Clustermap changed in a way that makes it unsafe to continue the sync job.
-						errStr := fmt.Sprintf("Aborting sync, Clustermap changed, srcRVok: %s, srcRVState: %s, dstRVok: %s, dstRVState: %s, mvState: %s, epoch: %d",
-							srcRVok, srcRVState, dstRVok, dstRVState, mvState, epoch)
-						log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
-					}
-				} else {
-					log.Err("ReplicationManager::copyOutOfSyncChunks: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
-						rpc.PutChunkRequestToString(putChunkReq), retryCnt, errCM)
-				}
-			} else {
-				//
-				// Non-retriable error in syncing.
-				// Fall through and return error, caller will mark job.destRVName as inband-offline.
-				//
-			}
-
-			return err
+		//
+		// Bail out on first error.
+		//
+		if errCount.Load() > 0 {
+			err = fmt.Errorf("ReplicationManager::copyOutOfSyncChunks: Failed to copy one or more chunks (%d), aborting: %s",
+				errCount.Load(), job.toString())
+			log.Err("%v", err)
+			break
 		}
-
-		chunksCopied++
-		bytesCopied += int64(len(srcData))
 	}
 
-	log.Debug("ReplicationManager::copyOutOfSyncChunks: Copied %d chunks totalling %d bytes, Sync job: %s",
-		chunksCopied, bytesCopied, job.toString())
-	return nil
+	// Wait for all ongoing chunk copies to complete, before returning.
+	if len(syncChunkSema) > 0 {
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Waiting for %d sync threads to complete: %s",
+			len(syncChunkSema), job.toString())
+
+		startWait := time.Now()
+		_ = startWait
+
+		for len(syncChunkSema) > 0 {
+			time.Sleep(1 * time.Second)
+
+			if time.Since(startWait) > 60*time.Second {
+				log.Err("ReplicationManager::copyOutOfSyncChunks: %d sync threads didn't complete in %s: %s",
+					len(syncChunkSema), time.Since(startWait), job.toString())
+				common.Assert(false, time.Since(startWait), len(syncChunkSema), job.toString())
+				break
+			}
+		}
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: all sync threads done!")
+	}
+
+	if err == nil {
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copied %d chunks totalling %d bytes, Sync job: %s",
+			chunksCopied.Load(), bytesCopied.Load(), job.toString())
+	}
+
+	return err
+}
+
+func copySingleChunk(job *syncJob, chunkName string) (error, int64) {
+	log.Debug("ReplicationManager::copySingleChunk: chunk: %s, sync job: %s", chunkName, job.toString())
+
+	sourceMVPath := filepath.Join(getCachePathForRVName(job.srcRVName), job.mvName)
+	common.Assert(common.DirectoryExists(sourceMVPath), sourceMVPath)
+
+	destRvID := getRvIDFromRvName(job.destRVName)
+	common.Assert(common.IsValidUUID(destRvID))
+
+	destNodeID := getNodeIDFromRVName(job.destRVName)
+	common.Assert(common.IsValidUUID(destNodeID))
+
+	chunkParts := strings.Split(chunkName, ".")
+	// We should be called only for valid data chunks.
+	common.Assert(len(chunkParts) == 3, chunkName)
+
+	fileID := chunkParts[0]
+	common.Assert(common.IsValidUUID(fileID))
+
+	// Convert string to int64.
+	offsetInMiB, err := strconv.ParseInt(chunkParts[1], 10, 64)
+	if err != nil {
+		// We don't expect invalid chunk names lying around.
+		err = fmt.Errorf("Invalid offset for chunk %s: %v", chunkName, err)
+		log.Err("ReplicationManager::copySingleChunk: %v", err)
+		common.Assert(false, err)
+		return err, -1
+	}
+
+	srcChunkPath := filepath.Join(sourceMVPath, chunkName)
+	srcData, err := os.ReadFile(srcChunkPath)
+	if err != nil {
+		err = fmt.Errorf("os.ReadFile(%s) failed: %v", srcChunkPath, err)
+		log.Err("ReplicationManager::copySingleChunk: %v", err)
+		common.Assert(false, err)
+		return err, -1
+	}
+
+	job.mu.Lock()
+	putChunkReq := &models.PutChunkRequest{
+		Chunk: &models.Chunk{
+			Address: &models.Address{
+				FileID:      fileID,
+				RvID:        destRvID,
+				MvName:      job.mvName,
+				OffsetInMiB: offsetInMiB,
+			},
+			Data: srcData,
+			Hash: "", // TODO: hash validation will be done later
+		},
+		Length: int64(len(srcData)),
+		// SyncID is used for logging and debugging, to easily match client and server side logs.
+		SyncID:          job.syncID,
+		SourceRVName:    job.srcRVName,
+		ComponentRV:     job.componentRVs,
+		ClustermapEpoch: job.clustermapEpoch,
+	}
+	job.mu.Unlock()
+
+	retryCnt := 0
+	for {
+		log.Debug("ReplicationManager::copySingleChunk: [%d] Copying chunk %s (%s/%s -> %s/%s): %v",
+			retryCnt, srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName,
+			rpc.PutChunkRequestToString(putChunkReq))
+
+		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
+		defer cancel()
+
+		// In case of retry, clear SenderNodeID, else PutChunk() will complain.
+		putChunkReq.SenderNodeID = ""
+		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq, false /* fromFwder */)
+		_ = putChunkResp
+
+		// Common case.
+		if err == nil {
+			common.Assert(putChunkResp != nil)
+			log.Debug("ReplicationManager::copySingleChunk: Copied chunk %s (%s/%s -> %s/%s): %v",
+				srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName,
+				rpc.PutChunkResponseToString(putChunkResp))
+			break
+		}
+
+		log.Err("ReplicationManager::copySingleChunk: Failed to copy chunk %s (%s/%s -> %s/%s) %v: %v",
+			srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName,
+			rpc.PutChunkRequestToString(putChunkReq), err)
+
+		rpcErr := rpc.GetRPCResponseError(err)
+		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
+			//
+			// This error means that the node is not reachable.
+			// Mark the destination RV as inband-offline, so that the fix-mv workflow can select a new RV
+			// and the resync can be reattempted.
+			//
+			log.Err("ReplicationManager::copySingleChunk: Failed to reach node %s [%v]",
+				destNodeID, err)
+
+			// Fall through and return error, caller will mark job.destRVName as inband-offline.
+		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+			//
+			// NeedToRefreshClusterMap is the only error on which we retry the PutChunk, but only if
+			// the new clustermap still has the same source and destination RVs, in online and syncing
+			// state respectively. Note that the sync job is responsible for sync'ing one MV replica,
+			// so all we care about is that the source and destination RVs have not changed.
+			//
+			errCM := cm.RefreshClusterMap(-putChunkReq.ClustermapEpoch)
+			if errCM == nil {
+				mvState, rvs, epoch := cm.GetRVsEx(job.mvName)
+				srcRVState, srcRVok := rvs[job.srcRVName]
+				dstRVState, dstRVok := rvs[job.destRVName]
+
+				if srcRVok && dstRVok && srcRVState == dcache.StateOnline &&
+					dstRVState == dcache.StateSyncing {
+
+					job.mu.Lock()
+					// Clustermap epoch can only increase.
+					common.Assert(epoch >= job.clustermapEpoch,
+						epoch, job.clustermapEpoch, putChunkReq.ClustermapEpoch, job.toString())
+
+					job.componentRVs = cm.RVMapToList(job.mvName, rvs)
+					job.clustermapEpoch = epoch
+
+					putChunkReq.ComponentRV = job.componentRVs
+					putChunkReq.ClustermapEpoch = job.clustermapEpoch
+					job.mu.Unlock()
+
+					retryCnt++
+
+					if retryCnt < 5 {
+						log.Debug("ReplicationManager::copySingleChunk: Retrying copy of chunk %s (%s/%s -> %s/%s), retryCnt: %d, mvState: %s, epoch: %d",
+							srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName,
+							retryCnt, mvState, epoch)
+						continue
+					}
+
+					log.Err("ReplicationManager::copySingleChunk: Exceeded %d retries while copying chunk %s (%s/%s -> %s/%s), epoch: %d",
+						retryCnt, srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName, epoch)
+				} else {
+					// Clustermap changed in a way that makes it unsafe to continue the sync job.
+					errStr := fmt.Sprintf("Aborting sync, Clustermap changed, srcRVok: %s, srcRVState: %s, dstRVok: %s, dstRVState: %s, mvState: %s, epoch: %d",
+						srcRVok, srcRVState, dstRVok, dstRVState, mvState, epoch)
+					log.Err("ReplicationManager::copySingleChunk: %s", errStr)
+				}
+			} else {
+				log.Err("ReplicationManager::copySingleChunk: RefreshClusterMap() failed for %s (retryCnt: %d): %v",
+					rpc.PutChunkRequestToString(putChunkReq), retryCnt, errCM)
+			}
+		} else {
+			//
+			// Non-retriable error in syncing.
+			// Fall through and return error, caller will mark job.destRVName as inband-offline.
+			//
+		}
+
+		return err, -1
+	}
+
+	bytesCopied := int64(len(srcData))
+	common.Assert(bytesCopied > 0, bytesCopied, chunkName, job.toString())
+
+	log.Debug("ReplicationManager::copySingleChunk: Copied chunk %s, bytes: %d, Sync job: %s",
+		chunkName, bytesCopied, job.toString())
+
+	return nil, bytesCopied
 }
 
 // GetMVSize() is called from fixMV workflow, by the cluster manager or from syncMV() by replication manager.

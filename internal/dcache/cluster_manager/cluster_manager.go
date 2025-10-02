@@ -468,6 +468,9 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 // If it's able to successfully fetch the global clustermap, it returns a pointer to the unmarshalled ClusterMap
 // and the Blob etag corresponding to that.
 //
+// If multiple fetchAndUpdateLocalClusterMap() calls race, a call that completes later may get an older clustermap
+// with lower epoch, in that case it doesn't update the local copy and returns the current clustermap and etag.
+//
 // Note: Use this instead of directly calling getClusterMap() as it ensures that once it returns we can safely
 //       call various clustermap functions and they will return information as per the latest downloaded clustermap.
 //       This is important, f.e., updateMVList() may be working on the latest clustermap copy and in the process
@@ -565,6 +568,27 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		common.Assert(cm.IsValidDcacheConfig(cmi.config))
 		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.Unchanged, 1)
 		return &storageClusterMap, etag, nil
+	}
+
+	//
+	// Sometimes a fetchAndUpdateLocalClusterMap() that started later may be able to update the local
+	// clustermap earlier than one that started earlier, due to various delays in the execution path.
+	// Avoid out-of-order updates by checking the epoch.
+	//
+	if cmi.localMapETag != nil && storageClusterMap.Epoch < cm.GetEpoch() {
+		log.Debug("ClusterManager::fetchAndUpdateLocalClusterMap: Ignoring backward epoch change (%d -> %d) etag: (%s -> %s)",
+			cm.GetEpoch(), storageClusterMap.Epoch, *cmi.localMapETag, *etag)
+
+		localClusterMap := cm.GetClusterMap()
+
+		// Cache config must have been saved when we saved the clustermap.
+		common.Assert(cmi.config != nil)
+		common.Assert(cm.IsValidDcacheConfig(cmi.config))
+		// If epoch is different, etag must be different.
+		common.Assert(*etag != *cmi.localMapETag, *etag, *cmi.localMapETag)
+		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.Unchanged, 1)
+
+		return &localClusterMap, cmi.localMapETag, nil
 	}
 
 	//
@@ -4540,17 +4564,23 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				// but in the meantime it was found to be offline and was removed from the MV by some other
 				// node (and we processed this message only after the clusterMap update by that node).
 				//
-				if rvNewState == dcache.StateInbandOffline || rvNewState == dcache.StateSyncing {
-					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s (%s -> %s) RV no longer present in MV: %+v",
-						rvName, mvName, currentState, rvNewState, clusterMapMV.RVs)
+				if rvNewState == dcache.StateInbandOffline {
+					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s (-> %s) RV no longer present in MV: %+v",
+						rvName, mvName, rvNewState, clusterMapMV.RVs)
 					msg.Err <- nil
 					close(msg.Err)
 					msg.Err = nil
 					ignoredCount++
 					continue
+				} else if rvNewState == dcache.StateSyncing {
+					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s (-> %s) RV no longer present in MV: %+v",
+						rvName, mvName, rvNewState, clusterMapMV.RVs)
+					// Log and proceed.
 				}
 
-				common.Assert(false, *msg, clusterMapMV)
+				// OutOfSync->Syncing case mentioned above is valid.
+				common.Assert(rvNewState == dcache.StateSyncing, *msg, clusterMapMV)
+
 				msg.Err <- fmt.Errorf("RV %s/%s not present in clustermap MV %+v", rvName, mvName, clusterMapMV)
 				close(msg.Err)
 				msg.Err = nil

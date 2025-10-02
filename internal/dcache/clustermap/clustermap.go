@@ -407,6 +407,10 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	// We would like to know why updates are taking so long, as updates blocked for long can cause other
 	// issues.
 	//
+	// One scenario where this can happen is when some node dies while it was updating the clustermap, so
+	// the clustermap is marked "being updated" and hence it'll remain in that state till the timeout expires
+	// and some other node assumes the leader role. This can easily be more than a minute.
+	//
 	// TODO: We may want to relax this later but for now we want to catch any long updates.
 	//
 	common.Assert(time.Since(updateRVMessage.QueuedAt) < 30*time.Second,

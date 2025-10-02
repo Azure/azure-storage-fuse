@@ -619,7 +619,14 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			// node negative. Others who get a client after that must benefit from the negative node
 			// information and avoid unnecessary timeouts.
 			//
-			if err := cp.checkNegativeNode(nodeID); err != nil {
+			// Also need to check if the nodeClientPool is marked deleting, after we acquire the node lock
+			// above, as deleteAllRPCClients() may have set deleting to true while we were waiting for the
+			// node lock. We will also miss that wakeup if we start waiting on the cond variable below.
+			//
+			if err := cp.checkNegativeNode(nodeID); err != nil || ncPool.deleting.Load() {
+				if err == nil {
+					err = fmt.Errorf("node %s marked deleting: %w", nodeID, NegativeNodeError)
+				}
 				//
 				// Release the client back to the channel.
 				// Even though this node is negative, we need to signal *all* waiters on the channel as
@@ -657,7 +664,20 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 					cp.releaseNodeLock(nodeLock, nodeID)
 
 					ncPool.clientChan <- client
-					ncPool.cond.Wait()
+
+					//
+					// Perform this check once more with mu lock held.
+					// It may so happen that mulitple threads requesting non-high-priority clients call getRPCClient()
+					// simultaneously and all of them reach the above check after dequeuing a client from the channel.
+					// In this case the above check may pass even though there are not enough (or no) high-priority
+					// clients active.
+					//
+					if ncPool.numActiveHighPrio.Load()+int64(len(ncPool.clientChan)) <= ncPool.numReservedHighPrio {
+						ncPool.cond.Wait()
+					} else {
+						ncPool.cond.Broadcast()
+					}
+
 					ncPool.mu.Unlock()
 					continue
 				}
