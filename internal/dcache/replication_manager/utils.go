@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -118,6 +119,24 @@ const (
 	DaisyChain
 )
 
+var (
+	//
+	// These stats are used to find slowness in one of the following legs:
+	// - Time taken to schedule the WriteMV call (i.e. time spent waiting to acquire the PutChunkDC semaphores).
+	// - Time taken to complete the WriteMV call (i.e. time taken by the RV to write the chunk locally and
+	//   send PutChunkDC calls to other RVs and get response from all).
+	//
+	// Also see getRPCClient() for stats related to acquiring the RPC client connection.
+	//
+	// If the throughput is low, then we can look at these stats to find out which leg is slow.
+	//
+	aggrWriteMVCalls      atomic.Int64 // aggregate number of WriteMV calls.
+	aggrWriteMVTime       atomic.Int64 // aggregate time for completing all WriteMV calls (in nanoseconds).
+	aggrWriteMVWait       atomic.Int64 // aggregate time spent waiting to schedule WriteMV calls (in nanoseconds).
+	aggrPutChunkDCSemWait atomic.Int64 // aggregate time spent waiting to acquire PutChunkDC semaphore (in nanoseconds).
+	aggrPutChunkDCCalls   atomic.Int64 // aggregate number of PutChunkDC calls.
+)
+
 // Semaphores to limit the number of concurrent PutChunkDC calls across all nodes and to a specific node.
 var putChunkDCTotalSem = make(chan struct{}, PutChunkDCIODepthTotal)
 var putChunkDCPerNodeSemMap = make(map[string]*chan struct{})
@@ -137,12 +156,10 @@ func (s PutChunkStyleEnum) String() string {
 
 // Acquire the semaphores for sending PutChunkDC to the given target node.
 func getPutChunkDCSem(targetNodeID string) *chan struct{} {
-	var startTime time.Time
-	_ = startTime
+	// Anything above this threshold is considered a large/unusual wait and is logged as a warning.
+	const largeWaitThreshold = 2 * time.Second
 
-	if common.IsDebugBuild() {
-		startTime = time.Now()
-	}
+	startTime := time.Now()
 
 	// Grab per-node semaphore.
 	putChunkDCPerNodeSemMapLock.Lock()
@@ -164,10 +181,34 @@ func getPutChunkDCSem(targetNodeID string) *chan struct{} {
 	//
 	putChunkDCTotalSem <- struct{}{}
 
-	log.Debug("getPutChunkDCSem: Acquired semaphore for node %s, took %s, now available: {global: %d/%d, node: %d/%d}",
+	//
+	// Update aggregate wait time for acquiring the semaphore. To reflect the current situation more accurately,
+	// we reset the aggregate stats after every 200 calls, roughly ~3GB of data written (with 16MB chunks).
+	// If the avg wait time is very high, then we should consider increasing the semaphore depth, or
+	// find out why the PutChunkDC calls are taking too long.
+	//
+	if aggrPutChunkDCCalls.Load() == 200 {
+		// Since it's not protected by a lock, we don't set it to zero, but to 1, to avoid division by zero.
+		aggrPutChunkDCCalls.Store(1)
+		aggrPutChunkDCSemWait.Store(1)
+	}
+
+	aggrPutChunkDCCalls.Add(1)
+	aggrPutChunkDCSemWait.Add(time.Since(startTime).Nanoseconds())
+
+	log.Debug("getPutChunkDCSem: Acquired semaphore for node %s, took %s, now available: {global: %d/%d, node: %d/%d}, avg wait: %s",
 		targetNodeID, time.Since(startTime),
 		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
-		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode)
+		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+		time.Duration(aggrPutChunkDCSemWait.Load()/aggrPutChunkDCCalls.Load()))
+
+	if time.Since(startTime) > largeWaitThreshold {
+		log.Warn("[SLOW] getPutChunkDCSem: Acquired semaphore for node %s, took %s, now available: {global: %d/%d, node: %d/%d}, avg wait: %s",
+			targetNodeID, time.Since(startTime),
+			PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+			PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+			time.Duration(aggrPutChunkDCSemWait.Load()/aggrPutChunkDCCalls.Load()))
+	}
 
 	return putChunkDCSemNode
 }

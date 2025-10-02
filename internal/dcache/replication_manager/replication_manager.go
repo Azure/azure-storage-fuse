@@ -1069,18 +1069,42 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	var err error
 	var resp *WriteMvResponse
 
-	if common.IsDebugBuild() {
-		startTime := time.Now()
-		defer func() {
-			if err != nil {
-				log.Err("[TIMING] ReplicationManager::WriteMV: WriteMV failed after %s: %v: %v",
-					time.Since(startTime), req.toString(), err)
-			} else {
-				log.Debug("[TIMING] ReplicationManager::WriteMV: WriteMV request took %s: %v",
-					time.Since(startTime), req.toString())
+	//
+	// With 4GBps n/w and disk speeds, and with daisy chain with NumReplicas=3, 16MiB chunk write
+	// should take 4*4=16ms. Add some margin for random overheads and we should be well below 100ms
+	// for most writes.
+	//
+	const slowWriteThreshold = 500 * time.Millisecond
+
+	startTime := time.Now()
+	defer func() {
+		//
+		// Avg WriteMV time is useful only for recent requests.
+		//
+		if aggrWriteMVCalls.Load() == 200 {
+			// Since it's not protected by a lock, we don't set it to zero, but to 1, to avoid division by zero.
+			aggrWriteMVCalls.Store(1)
+			aggrWriteMVTime.Store(1)
+		}
+
+		aggrWriteMVCalls.Add(1)
+		aggrWriteMVTime.Add(time.Since(startTime).Nanoseconds())
+
+		if err != nil {
+			log.Err("[TIMING] ReplicationManager::WriteMV: WriteMV failed after %s: %v: %v",
+				time.Since(startTime), req.toString(), err)
+		} else {
+			log.Debug("[TIMING] ReplicationManager::WriteMV: WriteMV request took %s: %v",
+				time.Since(startTime), req.toString())
+
+			if time.Since(startTime) > slowWriteThreshold {
+				log.Warn("[SLOW] ReplicationManager::WriteMV: Slow WriteMV took %s (> %s), avg: %s: %v",
+					time.Since(startTime), slowWriteThreshold,
+					time.Duration(aggrWriteMVTime.Load()/aggrWriteMVCalls.Load()),
+					req.toString())
 			}
-		}()
-	}
+		}
+	}()
 
 	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: %v", req.toString())
 
