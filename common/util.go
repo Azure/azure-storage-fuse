@@ -707,6 +707,8 @@ func GetNodeUUIDFilePath() string {
 }
 
 func GetNodeUUID() (string, error) {
+	fmt.Printf("GetNodeUUID: MyNodeUUID %s\n", MyNodeUUID)
+
 	if MyNodeUUID != "" {
 		return MyNodeUUID, nil
 	}
