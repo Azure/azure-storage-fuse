@@ -566,12 +566,12 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		if highPrio && len(ncPool.clientChan) == 0 {
 			var client *rpcClient
 
-			lockStartTime = time.Now()
-			nodeLock = cp.acquireNodeLock(nodeID)
-			nodeLockTimePriority = time.Since(lockStartTime)
+			// lockStartTime = time.Now()
+			// nodeLock = cp.acquireNodeLock(nodeID)
+			// nodeLockTimePriority = time.Since(lockStartTime)
 
 			client, err = newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
-			cp.releaseNodeLock(nodeLock, nodeID)
+			// cp.releaseNodeLock(nodeLock, nodeID)
 
 			if err == nil {
 				ncPool.numExtraClients.Add(1)
