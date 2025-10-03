@@ -57,7 +57,6 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	gouuid "github.com/google/uuid"
 	"github.com/prometheus/procfs"
 	"golang.org/x/sys/unix"
@@ -735,7 +734,7 @@ func GetNodeUUID() (string, error) {
 			return "", err
 		}
 
-		log.Debug("GetNodeUUID: Generated new node UUID %s and stored in file at %s", newUuid, uuidFilePath)
+		fmt.Printf("GetNodeUUID: Generated new node UUID %s and stored in file at %s\n", newUuid, uuidFilePath)
 
 		MyNodeUUID = newUuid
 		return newUuid, nil
