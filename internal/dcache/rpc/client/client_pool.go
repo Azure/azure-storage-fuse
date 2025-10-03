@@ -501,7 +501,6 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	var t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12 time.Duration
 
 	startTime := time.Now()
-
 	defer func() {
 		//
 		// Let us know if RPC client allocation is slow.
