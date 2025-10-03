@@ -668,7 +668,6 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 				log.Debug("clientPool::getRPCClient: Created extra RPC client for node %s (%d) (cur: %d, cum: %d, retryCnt: %d)",
 					ncPool.nodeID, ncPool.nodeIDInt, ncPool.numExtraClients.Load(),
 					ncPool.numExtraClientsCum.Load(), retryCnt)
-
 				//
 				// We should not need too many extra clients, so let us log to know if we are creating.
 				// Tag it as [SLOW] for easy searching along with other slow logs.
