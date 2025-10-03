@@ -44,6 +44,8 @@ import (
 	"github.com/apache/thrift/lib/go/thrift"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 const (
 	//
 	// defaultConnectionTimeout is the default timeout for establishing a new connection to the node.
