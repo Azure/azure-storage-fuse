@@ -418,7 +418,7 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 
 	startTime := time.Now()
 	var retryCnt int64
-	var nodeLockTime, nodeLockTimePriority, happyNodeLockWaitTime, selectWaitTimeChannel, selectWaitTimeAfter time.Duration
+	var nodeLockTime, ncPoolAcquireTime, nodeLockTimePriority, happyNodeLockWaitTime, selectWaitTimeChannel, selectWaitTimeAfter time.Duration
 
 	defer func() {
 		//
@@ -427,8 +427,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		// operations are being performed.
 		//
 		if time.Since(startTime) > slowRPCThreshold {
-			log.Warn("[SLOW] clientPool::getRPCClient: Slow getRPCClient(nodeID: %s, highPrio: %v, retryCnt: %d, nodeLockTime %v, nodeLockTimePriority %v, happyNodeLockWaitTime %v, selectWaitTimeChannel %v, selectWaitTimeAfter %v) took %s",
-				nodeID, highPrio, retryCnt, nodeLockTime, nodeLockTimePriority, happyNodeLockWaitTime,
+			log.Warn("[SLOW] clientPool::getRPCClient: Slow getRPCClient(nodeID: %s, highPrio: %v, retryCnt: %d, nodeLockTime %v, ncPoolAcquireTime %v, nodeLockTimePriority %v, happyNodeLockWaitTime %v, selectWaitTimeChannel %v, selectWaitTimeAfter %v) took %s",
+				nodeID, highPrio, retryCnt, nodeLockTime, ncPoolAcquireTime, nodeLockTimePriority, happyNodeLockWaitTime,
 				selectWaitTimeChannel, selectWaitTimeAfter, time.Since(startTime))
 		}
 	}()
@@ -474,7 +474,9 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	// Though we must use the node lock for accessing the various num* atomics to ensure proper visibility
 	// order needed by various assertions.
 	//
+	lockStartTime = time.Now()
 	ncPool, err := cp.getNodeClientPool(nodeID)
+	ncPoolAcquireTime = time.Since(lockStartTime)
 
 	if err != nil {
 		cp.releaseNodeLock(nodeLock, nodeID)
@@ -583,9 +585,9 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 				// Tag it as [SLOW] for easy searching along with other slow logs.
 				//
 				if ncPool.numExtraClients.Load() > 64 {
-					log.Warn("[SLOW] clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d, retryCnt: %d, nodeLockTime %v, nodeLockTimePriority %v, happyNodeLockWaitTime %v, selectWaitTimeChannel %v, selectWaitTimeAfter %v)",
+					log.Warn("[SLOW] clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d, retryCnt: %d, nodeLockTime %v, ncPoolAcquireTime %v, nodeLockTimePriority %v, happyNodeLockWaitTime %v, selectWaitTimeChannel %v, selectWaitTimeAfter %v)",
 						ncPool.nodeID, ncPool.numExtraClients.Load(), ncPool.numExtraClientsCum.Load(), retryCnt,
-						nodeLockTime, nodeLockTimePriority, happyNodeLockWaitTime, selectWaitTimeChannel, selectWaitTimeAfter)
+						nodeLockTime, ncPoolAcquireTime, nodeLockTimePriority, happyNodeLockWaitTime, selectWaitTimeChannel, selectWaitTimeAfter)
 				}
 
 				client.highPrio = true
