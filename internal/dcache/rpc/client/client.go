@@ -212,4 +212,5 @@ func init() {
 // Silence unused import errors for release builds.
 func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	_ = rpc.WriteIOMode
 }
