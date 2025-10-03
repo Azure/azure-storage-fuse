@@ -99,7 +99,7 @@ func NewFileIOManager() error {
 	// PutChunkDCIODepthTotal workers, but we need workers for reading chunks too, so let's set aside
 	// few more.
 	//
-	workers := 128
+	workers := 256
 
 	//
 	// How many chunks will we readahead per file.
