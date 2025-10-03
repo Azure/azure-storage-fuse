@@ -703,14 +703,11 @@ func UpdatePipeline(pipeline []string, component string) []string {
 }
 
 func GetNodeUUID() (string, error) {
-	fmt.Printf("GetNodeUUID: MyNodeUUID %s\n", MyNodeUUID)
-
 	if MyNodeUUID != "" {
 		return MyNodeUUID, nil
 	}
 
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
-	fmt.Printf("GetNodeUUID: Using node UUID file at %s\n", uuidFilePath)
 
 	// Read the UUID file.
 	data, err := os.ReadFile(uuidFilePath)
@@ -732,8 +729,6 @@ func GetNodeUUID() (string, error) {
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 			return "", err
 		}
-
-		fmt.Printf("GetNodeUUID: Generated new node UUID %s and stored in file at %s\n", newUuid, uuidFilePath)
 
 		MyNodeUUID = newUuid
 		return newUuid, nil
