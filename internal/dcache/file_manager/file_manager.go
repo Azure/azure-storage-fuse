@@ -1338,11 +1338,11 @@ func (file *DcacheFile) waitForChunkDownload(chunk *StagedChunk) (*StagedChunk, 
 	// Block here till the chunk download is done.
 	err := <-chunk.Err
 	if err != nil {
-		log.Err("DistributedCache::waitForChunkDownload: Failed, file: %s, chunkIdx: %d",
-			file.FileMetadata.Filename, chunk.Idx)
-
 		// Requeue the error for whoever reads this chunk next.
 		chunk.Err <- err
+
+		log.Err("DistributedCache::waitForChunkDownload: Failed, file: %s, chunkIdx: %d",
+			file.FileMetadata.Filename, chunk.Idx)
 	}
 
 	//
@@ -1372,6 +1372,9 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 
 	//
 	// Schedule download now (before the readahead chunks), we wait for it to complete before returning.
+	// By queueing this download before the readahead chunks, makes it more likely that this chunk download
+	// completes before the readahead chunks thus saving us any unnecessary wait time.
+	//
 	chunk, err := file.readChunk(offset, 0 /* length */, false /* sync */, true /* doNotRelease */)
 	if err != nil {
 		return nil, err
@@ -1423,7 +1426,7 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 
 		//
 		// We have to readahead chunks [readAheadStartChunkIdx, readAheadEndChunkIdx).
-		// Instead of going in order, we start at a random index in that range to avoid hotspots when
+		// Instead of going in order, we start at a random index in that range to avoid node/rv hotspots when
 		// mulitple nodes read the same file.
 		//
 		if readAheadEndChunkIdx > readAheadStartChunkIdx {
