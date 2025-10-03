@@ -1267,7 +1267,7 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 // Sync true: Schedules and waits for the download to complete.
 // Sync false: Schedules the read but doesn't wait for download to complete. This is the readahead case.
 
-func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk, error) {
+func (file *DcacheFile) readChunk(offset, length int64, sync, doNotRelease bool) (*StagedChunk, error) {
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	chunkOffset := int64(0)
@@ -1293,7 +1293,7 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	// So drop the refcount here. When reader thread reads from this readahead chunk, it'll get a brand new
 	// refcount at that time.
 	//
-	if !sync {
+	if !sync && !doNotRelease {
 		file.releaseChunk(chunk)
 	}
 
@@ -1324,6 +1324,27 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	return chunk, err
 }
 
+// Wait for download of the given chunk to complete and return the chunk and error status.
+// The chunk must have been scheduled for download already using readChunk()->scheduleDownload().
+func (file *DcacheFile) waitForChunkDownload(chunk *StagedChunk) (*StagedChunk, error) {
+	log.Debug("DistributedCache::waitForChunkDownload: chunkIdx: %d", chunk.Idx)
+
+	// Block here till the chunk download is done.
+	err := <-chunk.Err
+	if err != nil {
+		log.Err("DistributedCache::waitForChunkDownload: Failed, chunkIdx: %d", chunk.Idx)
+
+		// Requeue the error for whoever reads this chunk next.
+		chunk.Err <- err
+	}
+
+	//
+	// The only case where we fail with an error but still return a valid chunk is when chunk download
+	// fails. Caller must release the chunk refcount.
+	//
+	return chunk, err
+}
+
 // Reads the chunk and also schedules downloads for the necessary readahead chunks.
 // Returns the StagedChunk containing data at 'offset' in the file.
 // Readahead is done only when reading the start of a chunk and when caller is sure of the sequential
@@ -1341,6 +1362,12 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 
 	log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, offset: %d, chunkIdx: %d, unsure: %v",
 		file.FileMetadata.Filename, offset, chunkIdx, unsure)
+
+	// Schedule download now (before the readahead chunks), and wait for it to complete before returning.
+	chunk, err := file.readChunk(offset, 0 /* length */, false /* sync */, true /* doNotRelease */)
+	if err != nil {
+		return nil, err
+	}
 
 	//
 	// Schedule downloads for the readahead chunks. The chunk at chunkIdx is to be read synchronously,
@@ -1387,7 +1414,8 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		file.chunkLock.Unlock()
 
 		for i := readAheadStartChunkIdx; i < readAheadEndChunkIdx; i++ {
-			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0, false /* sync */)
+			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0,
+				false /* sync */, false /* doNotRelease */)
 
 			common.Assert(file.readaheadToBeIssued.Load() > 0,
 				file.readaheadToBeIssued.Load(), file.FileMetadata.Filename)
@@ -1401,9 +1429,8 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		}
 	}
 
-	// Now the actual chunk, unlike readahead chunks we wait for this one to download.
-	chunk, err := file.readChunk(offset, 0 /* length */, true /* sync */)
-	return chunk, err
+	// Wait for the requested chunk download to complete and return.
+	return file.waitForChunkDownload(chunk)
 }
 
 // Reads 'length' bytes from file at 'offset' and returns the StagedChunk containing the requested data.
@@ -1432,7 +1459,7 @@ func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk
 		length, chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
 
 	// Read the chunk, wait for it to download.
-	chunk, err := file.readChunk(offset, length, true /* sync */)
+	chunk, err := file.readChunk(offset, length, true /* sync */, true /* doNotRelease */)
 	return chunk, err
 }
 
