@@ -417,6 +417,9 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	const slowRPCThreshold = 1 * time.Second
 
 	startTime := time.Now()
+	var retryCnt int64
+	var nodeLockTime, nodeLockTimePriority time.Duration
+
 	defer func() {
 		//
 		// Let us know if RPC client allocation is slow.
@@ -424,8 +427,8 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		// operations are being performed.
 		//
 		if time.Since(startTime) > slowRPCThreshold {
-			log.Warn("[SLOW] clientPool::getRPCClient: Slow getRPCClient(nodeID: %s, highPrio: %v) took %s",
-				nodeID, highPrio, time.Since(startTime))
+			log.Warn("[SLOW] clientPool::getRPCClient: Slow getRPCClient(nodeID: %s, highPrio: %v, retryCnt: %d, nodeLockTime %v, nodeLockTimePriority %v) took %s",
+				nodeID, highPrio, retryCnt, nodeLockTime, nodeLockTimePriority, time.Since(startTime))
 		}
 	}()
 
@@ -451,7 +454,9 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 	// clients for the different node IDs concurrently, whereas only one thread can create RPC
 	// clients for a given node ID at a time.
 	//
+	lockStartTime := time.Now()
 	nodeLock := cp.acquireNodeLock(nodeID)
+	nodeLockTime = time.Since(lockStartTime)
 
 	//
 	// Get the nodeClientPool for this node.
@@ -558,7 +563,10 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 		if highPrio && len(ncPool.clientChan) == 0 {
 			var client *rpcClient
 
+			lockStartTime = time.Now()
 			nodeLock = cp.acquireNodeLock(nodeID)
+			nodeLockTimePriority = time.Since(lockStartTime)
+
 			client, err = newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
 			cp.releaseNodeLock(nodeLock, nodeID)
 
@@ -566,16 +574,16 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 				ncPool.numExtraClients.Add(1)
 				ncPool.numExtraClientsCum.Add(1)
 
-				log.Debug("clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d)",
-					ncPool.nodeID, ncPool.numExtraClients.Load(), ncPool.numExtraClientsCum.Load())
+				log.Debug("clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d, retryCnt: %d)",
+					ncPool.nodeID, ncPool.numExtraClients.Load(), ncPool.numExtraClientsCum.Load(), retryCnt)
 
 				//
 				// We should not need too many extra clients, so let us log to know if we are creating.
 				// Tag it as [SLOW] for easy searching along with other slow logs.
 				//
 				if ncPool.numExtraClients.Load() > 64 {
-					log.Warn("[SLOW] clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d)",
-						ncPool.nodeID, ncPool.numExtraClients.Load(), ncPool.numExtraClientsCum.Load())
+					log.Warn("[SLOW] clientPool::getRPCClient: Created extra RPC client for node %s (cur: %d, cum: %d, retryCnt: %d, nodeLockTime %v, nodeLockTimePriority %v)",
+						ncPool.nodeID, ncPool.numExtraClients.Load(), ncPool.numExtraClientsCum.Load(), retryCnt, nodeLockTime, nodeLockTimePriority)
 				}
 
 				client.highPrio = true
@@ -734,9 +742,10 @@ func (cp *clientPool) getRPCClient(nodeID string, highPrio bool) (*rpcClient, er
 			client.allocatedAt = time.Now()
 			return client, nil
 		case <-time.After(waitTime): // Timeout after waitTime
-			log.Debug("clientPool::getRPCClient: No free (highPrio: %v) RPC client for node %s (free: %d, active: %d, hactive:%d, waiting: %d, hwaiting: %d), for %s",
+			log.Warn("clientPool::getRPCClient: No free (highPrio: %v) RPC client for node %s (free: %d, active: %d, hactive:%d, waiting: %d, hwaiting: %d, retryCnt: %d), for %s",
 				highPrio, nodeID, len(ncPool.clientChan), ncPool.numActive.Load(), ncPool.numActiveHighPrio.Load(),
-				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load(), time.Since(startTime))
+				ncPool.numWaiting.Load(), ncPool.numWaitingHighPrio.Load(), time.Since(startTime), retryCnt)
+			retryCnt++
 			// Continue the for loop, various exit checks will be done there.
 		}
 	}
