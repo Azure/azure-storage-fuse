@@ -707,8 +707,6 @@ func GetNodeUUIDFilePath() string {
 }
 
 func GetNodeUUID() (string, error) {
-	fmt.Printf("GetNodeUUID: MyNodeUUID %s\n", MyNodeUUID)
-
 	if MyNodeUUID != "" {
 		return MyNodeUUID, nil
 	}
@@ -735,8 +733,6 @@ func GetNodeUUID() (string, error) {
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 			return "", err
 		}
-
-		fmt.Printf("GetNodeUUID: Generated new node UUID %s and stored in file at %s\n", newUuid, uuidFilePath)
 
 		MyNodeUUID = newUuid
 		return newUuid, nil
