@@ -107,7 +107,7 @@ func NewFileIOManager() error {
 	//
 	// TODO: 1GiB readahead performs better, let's see if we want to reduce it.
 	//
-	numReadAheadChunks := int(2048 / cm.GetCacheConfig().ChunkSizeMB)
+	numReadAheadChunks := int(1024 / cm.GetCacheConfig().ChunkSizeMB)
 
 	//
 	// How many writeback chunks per file.
@@ -1433,7 +1433,6 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 			numChunksToReadahead := int(readAheadEndChunkIdx - readAheadStartChunkIdx)
 
 			startIdx := rand.Intn(numChunksToReadahead)
-			startIdx = 0 // testing
 			for idx := startIdx; idx < numChunksToReadahead+startIdx; idx++ {
 				i := int64(idx%numChunksToReadahead) + readAheadStartChunkIdx
 

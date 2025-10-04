@@ -848,7 +848,9 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	// Whereas only one thread can release RPC client for the same node ID at a time.
 	//
 	nodeLock := cp.acquireNodeLock(client.nodeID)
-	defer cp.releaseNodeLock(nodeLock, client.nodeID)
+	defer func() {
+		cp.releaseNodeLock(nodeLock, client.nodeID)
+	}()
 
 	// We don't delete a nodeClientPool with active connections, so client.ncPool will be valid.
 	ncPool := client.ncPool
@@ -1867,6 +1869,8 @@ func (ncPool *nodeClientPool) returnClientToPoolAndSignalWaiters(client *rpcClie
 	// First add to the channel and then signal waiter(s).
 	if client != nil {
 		common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), len(ncPool.clientChan), cp.maxPerNode)
+		common.Assert(len(ncPool.clientChan) < cap(ncPool.clientChan), len(ncPool.clientChan), cap(ncPool.clientChan))
+
 		// An extra client is not part of the pool, so we don't add it back to the pool.
 		common.Assert(!client.isExtra, client, ncPool.nodeID)
 		common.Assert(client.ncPool == ncPool, client, client.ncPool, ncPool, ncPool.nodeID)
