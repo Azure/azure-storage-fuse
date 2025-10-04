@@ -425,5 +425,4 @@ func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 	log.Info("")
 	fmt.Printf("")
-	rpc.GetMyNodeUUID()
 }

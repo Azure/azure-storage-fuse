@@ -135,6 +135,7 @@ var (
 	mvNameRegex = regexp.MustCompile("^mv[0-9]+$")
 
 	RingBasedMVPlacement bool
+	ThriftServerType     string
 )
 
 // Valid RV name is of the form "rv0", "rv99", etc.
@@ -609,6 +610,21 @@ func UUIDToUniqueInt(uuid string) int {
 	uniqueInt++
 	uuidToUniqueInt[uuid] = uniqueInt
 	return uniqueInt
+}
+
+// Use this when you are sure that the UUID has already been converted to an integer, and you
+// just want to retrieve it.
+func UUIDToInt(uuid string) int {
+	common.Assert(common.IsValidUUID(uuid), uuid)
+
+	uuidToUniqueIntMapMutex.RLock()
+	uuidInt, exists := uuidToUniqueInt[uuid]
+	_ = exists
+	uuidToUniqueIntMapMutex.RUnlock()
+
+	common.Assert(exists, uuid)
+
+	return uuidInt
 }
 
 // Silence unused import errors for release builds.
