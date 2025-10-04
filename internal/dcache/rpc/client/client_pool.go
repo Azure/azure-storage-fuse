@@ -1291,7 +1291,7 @@ func (cp *clientPool) closeLRUNodeClientPool() error {
 searchLRUClientPool:
 	for _, ncPool := range cp.clients {
 		if !ncPool.isActive.Load() {
-				continue
+			continue
 		}
 		nodeID := ncPool.nodeID
 
@@ -1386,7 +1386,7 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 	var err error
 	for _, ncPool := range cp.clients {
 		if !ncPool.isActive.Load() {
-				continue
+			continue
 		}
 
 		nodeID := ncPool.nodeID

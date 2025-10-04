@@ -101,7 +101,7 @@ type ClusterManager struct {
 	localMapLock sync.Mutex
 	// RPC server running on this node.
 	// It'll respond to RPC queries made from other nodes.
-	rpcServer *rpc_server.NodeServer
+	rpcServer *rpc_server.ThreadedNodeServer
 
 	// Wait group to wait for the goroutines spawned, before stopping the cluster manager.
 	wg sync.WaitGroup
@@ -238,7 +238,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		log.Info("ClusterManager::start: ==> Starting RPC server")
 
 		common.Assert(cmi.rpcServer == nil)
-		cmi.rpcServer, err = rpc_server.NewNodeServer(rvsMap)
+		cmi.rpcServer, err = rpc_server.NewThreadedNodeServer(rvsMap)
 		if err != nil {
 			log.Err("ClusterManager::start: Failed to create RPC server")
 			common.Assert(false, err)
