@@ -145,10 +145,8 @@ func (ns *NodeServer) Stop() error {
 	return nil
 }
 
-//
 // Thrift server that uses one go routine per connection.
 // TODO: Make it use a pool of goroutines instead of one per connection.
-//
 type ThreadedNodeServer struct {
 	address          string
 	transport        thrift.TServerTransport
@@ -267,9 +265,17 @@ func (ns *ThreadedNodeServer) processConn(client thrift.TTransport, processor th
 	defer client.Close()
 
 	inputTransport, err := transportFactory.GetTransport(client)
-	common.Assert(err == nil, "failed to get input transport [%v]", err)
+	if err != nil {
+			log.Err("ThreadedNodeServer::processConn: Failed to get input transport [%v]", err)
+			return
+	}
+
 	outputTransport, err := transportFactory.GetTransport(client)
-	common.Assert(err == nil, "failed to get output transport [%v]", err)
+	if err != nil {
+			log.Err("ThreadedNodeServer::processConn: Failed to get output transport [%v]", err)
+			return
+	}
+
 	inputProtocol := protocolFactory.GetProtocol(inputTransport)
 	outputProtocol := protocolFactory.GetProtocol(outputTransport)
 
