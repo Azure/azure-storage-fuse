@@ -64,6 +64,7 @@ const (
 // This is used to make RPC calls to the node
 type rpcClient struct {
 	nodeID      string                      // Node ID of the node this client is for, can be used for debug logs
+	nodeIDInt   int                         // Integral node ID
 	nodeAddress string                      // Address of the node this client is for
 	ncPool      *nodeClientPool             // Pointer to the nodeClientPool this client belongs to
 	transport   thrift.TTransport           // Transport is the Thrift transport layer
@@ -96,7 +97,7 @@ type rpcClient struct {
 	//
 	// highPrio indicates if this client is used for high priority requests (case 2 above).
 	//
-	highPrio bool
+	//highPrio bool
 
 	//
 	// isExtra indicates if this client is an extra client created beyond the pool size.
@@ -117,11 +118,9 @@ var transportFactory thrift.TTransportFactory
 var thriftCfg *thrift.TConfiguration
 
 // newRPCClient creates a new Thrift RPC client for the node
-func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
-	// Caller must call with node lock held.
-	common.Assert(cp.isNodeLocked(nodeID), nodeID, nodeAddress)
-
-	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s at %s", nodeID, nodeAddress)
+func newRPCClient(nodeID string, nodeIDInt int, nodeAddress string) (*rpcClient, error) {
+	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s (%d) at %s",
+		nodeID, nodeIDInt, nodeAddress)
 
 	//
 	// If the node is present in the negativeNodes map, it means we have recently experienced timeout
@@ -129,7 +128,8 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	//
 	err := cp.checkNegativeNode(nodeID)
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: not creating RPC client to negative node %s: %v", nodeID, err)
+		log.Err("rpcClient::newRPCClient: not creating RPC client to negative node %s (%d): %v",
+			nodeID, nodeIDInt, err)
 		return nil, err
 	}
 
@@ -152,6 +152,7 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 
 	client := &rpcClient{
 		nodeID:      nodeID,
+		nodeIDInt:   nodeIDInt,
 		nodeAddress: nodeAddress,
 		transport:   transport,
 		svcClient:   svcClient,

@@ -107,6 +107,7 @@ func NewNodeServer(rvMap map[string]dcache.RawVolume) (*NodeServer, error) {
 	common.Assert(handler != nil)
 
 	processor := service.NewChunkServiceProcessor(handler)
+	// Replace with TThreadPoolServer
 	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
 
 	return &NodeServer{

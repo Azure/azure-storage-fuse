@@ -611,6 +611,21 @@ func UUIDToUniqueInt(uuid string) int {
 	return uniqueInt
 }
 
+// Use this when you are sure that the UUID has already been converted to an integer, and you
+// just want to retrieve it.
+func UUIDToInt(uuid string) int {
+	common.Assert(common.IsValidUUID(uuid), uuid)
+
+	uuidToUniqueIntMapMutex.RLock()
+	uuidInt, exists := uuidToUniqueInt[uuid]
+	_ = exists
+	uuidToUniqueIntMapMutex.RUnlock()
+
+	common.Assert(exists, uuid)
+
+	return uuidInt
+}
+
 // Silence unused import errors for release builds.
 func init() {
 	os.Stat("/tmp")
