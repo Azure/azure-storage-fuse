@@ -547,6 +547,8 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	//    and it'll have no active and free clients and hence the getRPCClient() call will fail.
 	//
 	for {
+		b1 = cp.isNodeWriteLocked(nodeIDInt)
+		b1 = false
 		cp.acquireNodeReadLock(nodeIDInt)
 		t2 = time.Since(startTime)
 		ncPool = cp.getNodeClientPoolForNodeIdInt(nodeIDInt, nodeID)
@@ -628,6 +630,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			cp.releaseNodeReadLock(nodeIDInt)
 			return nil, err
 		}
+		t7 = time.Since(startTime)
 
 		//
 		// If node is marked negative, no point in waiting for a client to become available.

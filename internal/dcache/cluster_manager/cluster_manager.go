@@ -247,28 +247,28 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		if cm.ThriftServerType == "simple" {
 			cmi.rpcServerSimple, err = rpc_server.NewNodeServer(rvsMap)
 			if err != nil {
-				log.Err("ClusterManager::start: Failed to create RPC server")
+				log.Err("ClusterManager::start: Failed to create [%s] RPC server", cm.ThriftServerType)
 				common.Assert(false, err)
 				return err
 			}
 
 			err = cmi.rpcServerSimple.Start()
 			if err != nil {
-				log.Err("ClusterManager::start: Failed to start RPC server")
+				log.Err("ClusterManager::start: Failed to start [%s] RPC server", cm.ThriftServerType)
 				common.Assert(false, err)
 				return err
 			}
 		} else if cm.ThriftServerType == "threaded" {
 			cmi.rpcServerThreaded, err = rpc_server.NewThreadedNodeServer(rvsMap)
 			if err != nil {
-				log.Err("ClusterManager::start: Failed to create RPC server")
+				log.Err("ClusterManager::start: Failed to create [%s] RPC server", cm.ThriftServerType)
 				common.Assert(false, err)
 				return err
 			}
 
 			err = cmi.rpcServerThreaded.Start()
 			if err != nil {
-				log.Err("ClusterManager::start: Failed to start RPC server")
+				log.Err("ClusterManager::start: Failed to start [%s] RPC server", cm.ThriftServerType)
 				common.Assert(false, err)
 				return err
 			}

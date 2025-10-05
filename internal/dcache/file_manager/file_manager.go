@@ -1433,6 +1433,8 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 			numChunksToReadahead := int(readAheadEndChunkIdx - readAheadStartChunkIdx)
 
 			startIdx := rand.Intn(numChunksToReadahead)
+			// test
+			//startIdx = 0
 			for idx := startIdx; idx < numChunksToReadahead+startIdx; idx++ {
 				i := int64(idx%numChunksToReadahead) + readAheadStartChunkIdx
 
