@@ -159,6 +159,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 	chunkSize := cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes
 	stripeWidth := cm.GetCacheConfig().StripeWidth
+	numReplicas := cm.GetCacheConfig().NumReplicas
 
 	fileMetadata.FileLayout = dcache.FileLayout{
 		ChunkSize:   int64(chunkSize),
@@ -174,22 +175,38 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	//
 	activeMVs := cm.GetActiveMVNames()
 
-	//
-	// Shuffle the slice and pick starting numMVs.
-	//
-	// TODO: For very large number of MVs, we can avoid shuffling all and just picking numMVs randomly.
-	//
-	rand.Shuffle(len(activeMVs), func(i, j int) {
-		activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
-	})
+	/*
+		//
+		// Shuffle the slice and pick starting numMVs.
+		//
+		// TODO: For very large number of MVs, we can avoid shuffling all and just picking numMVs randomly.
+		//
+		rand.Shuffle(len(activeMVs), func(i, j int) {
+			activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
+		})
 
-	//
-	// Pick starting numMVs from the active MVs.
-	// If not enough MVs are active, repeat from the start of the list.
-	// It's ok to pick same MV multiple times.
-	//
-	for i := range stripeWidth {
-		fileMetadata.FileLayout.MVList[i] = activeMVs[int(i)%len(activeMVs)]
+		//
+		// Pick starting numMVs from the active MVs.
+		// If not enough MVs are active, repeat from the start of the list.
+		// It's ok to pick same MV multiple times.
+		//
+		for i := range stripeWidth {
+			fileMetadata.FileLayout.MVList[i] = activeMVs[int(i)%len(activeMVs)]
+		}
+	*/
+
+	startMVIdx := rand.Intn(len(activeMVs))
+	mvIdx := 0
+mvLoop:
+	for {
+		for i := startMVIdx; i < len(activeMVs)+startMVIdx; i += int(numReplicas) {
+			fileMetadata.FileLayout.MVList[mvIdx] = activeMVs[int(i)%len(activeMVs)]
+			mvIdx++
+			if mvIdx == int(stripeWidth) {
+				break mvLoop
+			}
+		}
+		startMVIdx++
 	}
 
 	log.Debug("DistributedCache[FM]::NewDcacheFile: Initial metadata for file %s %+v",

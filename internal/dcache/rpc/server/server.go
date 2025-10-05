@@ -266,14 +266,14 @@ func (ns *ThreadedNodeServer) processConn(client thrift.TTransport, processor th
 
 	inputTransport, err := transportFactory.GetTransport(client)
 	if err != nil {
-			log.Err("ThreadedNodeServer::processConn: Failed to get input transport [%v]", err)
-			return
+		log.Err("ThreadedNodeServer::processConn: Failed to get input transport [%v]", err)
+		return
 	}
 
 	outputTransport, err := transportFactory.GetTransport(client)
 	if err != nil {
-			log.Err("ThreadedNodeServer::processConn: Failed to get output transport [%v]", err)
-			return
+		log.Err("ThreadedNodeServer::processConn: Failed to get output transport [%v]", err)
+		return
 	}
 
 	inputProtocol := protocolFactory.GetProtocol(inputTransport)
