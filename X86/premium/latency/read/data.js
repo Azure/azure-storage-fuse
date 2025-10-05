@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1759033596278,
+  "lastUpdate": 1759638508864,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2707,6 +2707,73 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 60.365502517007,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "43314da664fe649d926fa148b6253ae28dff8d3f",
+          "message": "Add FIO tests to check the data integrity (#1893)",
+          "timestamp": "2025-09-29T10:20:04Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/43314da664fe649d926fa148b6253ae28dff8d3f"
+        },
+        "date": 1759638508561,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.09683728588033332,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 56.94232990764467,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.08117527595633334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.13990208190466666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09275463133133333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 52.583697080897,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.15793555784100002,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 0.8699655172026667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 58.807460088732,
             "unit": "milliseconds"
           }
         ]
