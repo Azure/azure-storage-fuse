@@ -145,7 +145,12 @@ func (ns *NodeServer) Stop() error {
 }
 
 // Thrift server that uses one go routine per connection.
+//
 // TODO: Make it use a pool of goroutines instead of one per connection.
+//
+// Note: For IO intensive workloads, simple NodeServer is better than ThreadedNodeServer as too many
+//       go routines can cause excessive context switching and CPU thrashing, reducing overall throughput.
+
 type ThreadedNodeServer struct {
 	address          string
 	transport        thrift.TServerTransport

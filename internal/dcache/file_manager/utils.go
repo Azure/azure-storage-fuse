@@ -174,6 +174,11 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	// TODO: See if we can use some heuristics to pick MVs, instead of random.
 	//
 	activeMVs := cm.GetActiveMVNames()
+	if len(activeMVs) == 0 {
+		err := fmt.Errorf("Cannot create file %s, no active MVs!", fileName)
+		log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
+		return nil, syscall.EROFS
+	}
 
 	/*
 		//
