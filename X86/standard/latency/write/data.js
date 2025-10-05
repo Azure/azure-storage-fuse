@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1759041104839,
+  "lastUpdate": 1759646052006,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1346,6 +1346,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.12513936819666668,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "43314da664fe649d926fa148b6253ae28dff8d3f",
+          "message": "Add FIO tests to check the data integrity (#1893)",
+          "timestamp": "2025-09-29T10:20:04Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/43314da664fe649d926fa148b6253ae28dff8d3f"
+        },
+        "date": 1759646051721,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "test",
+            "value": 3.5449192666666662,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write",
+            "value": 0.11855271885100001,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.12082122617566667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.13995461694266664,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.12964327681666668,
             "unit": "milliseconds"
           }
         ]
