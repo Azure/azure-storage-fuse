@@ -1921,8 +1921,7 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 }
 
 func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
-	log.Trace("BlockCache::TruncateFile : handle=%d, path=%s, size=%d", options.Handle.ID,
-		options.Handle.Path, options.NewSize)
+	log.Trace("BlockCache::TruncateFile : path=%s, size=%d", options.Name, options.NewSize)
 
 	// Set the block size that need to used by the next component
 	options.BlockSize = int64(bc.blockSize)
