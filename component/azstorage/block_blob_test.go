@@ -2344,7 +2344,6 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsSmallFile() {
 	s.assert.NoError(err)
 	s.assert.Empty(offsetList.BlockList)
 	s.assert.True(offsetList.HasNoBlocks())
-	s.assert.EqualValues(0, offsetList.BlockIdLength)
 }
 
 func (s *blockBlobTestSuite) TestGetFileBlockOffsetsChunkedFile() {

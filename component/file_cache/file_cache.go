@@ -1503,7 +1503,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	}
 
 	if options.Handle != nil {
-		// The call is coming from an open handle, so we can just truncate the local file, and the chanage will be
+		// The call is coming from an open handle, so we can just truncate the local file, and the change will be
 		// flushed to storage on close.
 		f := options.Handle.GetFileObject()
 		if f == nil {
