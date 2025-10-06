@@ -471,7 +471,7 @@ func (p *lruPolicy) printNodes() {
 
 	node := p.head
 
-	var count int = 0
+	var count = 0
 	log.Debug("lruPolicy::printNodes : Starts")
 
 	for ; node != nil; node = node.next {
