@@ -143,17 +143,17 @@ func (g *grpcChunkService) PutChunkDC(ctx context.Context, req *grpcmodels.PutCh
 	for k, v := range tResp.Responses {
 		entry := &grpcmodels.PutChunkResponseOrError{}
 		if v.Response != nil {
-			entry.Result = &grpcmodels.PutChunkResponseOrError_Response{Response: &grpcmodels.PutChunkResponse{
+			entry.Response = &grpcmodels.PutChunkResponse{
 				TimeTaken:       v.Response.TimeTaken,
 				AvailableSpace:  v.Response.AvailableSpace,
 				ComponentRV:     convertRVListThriftToPb(v.Response.ComponentRV),
 				ClustermapEpoch: v.Response.ClustermapEpoch,
-			}}
+			}
 		} else if v.Error != nil {
-			entry.Result = &grpcmodels.PutChunkResponseOrError_Error{Error: &grpcmodels.ResponseError{
+			entry.Error = &grpcmodels.ResponseError{
 				Code:    grpcmodels.ErrorCode(v.Error.Code),
 				Message: v.Error.Message,
-			}}
+			}
 		}
 		respMap[k] = entry
 	}

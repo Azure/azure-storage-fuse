@@ -58,43 +58,43 @@ const (
 type ErrorCode int32
 
 const (
-	ErrorCode_INVALID_REQUEST             ErrorCode = 0
-	ErrorCode_INVALID_RVID                ErrorCode = 1
-	ErrorCode_INVALID_RV                  ErrorCode = 2
-	ErrorCode_INTERNAL_SERVER_ERROR       ErrorCode = 3
-	ErrorCode_CHUNK_NOT_FOUND             ErrorCode = 4
-	ErrorCode_CHUNK_ALREADY_EXISTS        ErrorCode = 5
-	ErrorCode_MAX_MVS_EXCEEDED            ErrorCode = 6
-	ErrorCode_NEED_TO_REFRESH_CLUSTER_MAP ErrorCode = 7
-	ErrorCode_THRIFT_ERROR                ErrorCode = 8
-	ErrorCode_BROKEN_CHAIN                ErrorCode = 9
+	ErrorCode_InvalidRequest          ErrorCode = 0
+	ErrorCode_InvalidRVID             ErrorCode = 1
+	ErrorCode_InvalidRV               ErrorCode = 2
+	ErrorCode_InternalServerError     ErrorCode = 3
+	ErrorCode_ChunkNotFound           ErrorCode = 4
+	ErrorCode_ChunkAlreadyExists      ErrorCode = 5
+	ErrorCode_MaxMVsExceeded          ErrorCode = 6
+	ErrorCode_NeedToRefreshClusterMap ErrorCode = 7
+	ErrorCode_ThriftError             ErrorCode = 8
+	ErrorCode_BrokenChain             ErrorCode = 9
 )
 
 // Enum value maps for ErrorCode.
 var (
 	ErrorCode_name = map[int32]string{
-		0: "INVALID_REQUEST",
-		1: "INVALID_RVID",
-		2: "INVALID_RV",
-		3: "INTERNAL_SERVER_ERROR",
-		4: "CHUNK_NOT_FOUND",
-		5: "CHUNK_ALREADY_EXISTS",
-		6: "MAX_MVS_EXCEEDED",
-		7: "NEED_TO_REFRESH_CLUSTER_MAP",
-		8: "THRIFT_ERROR",
-		9: "BROKEN_CHAIN",
+		0: "InvalidRequest",
+		1: "InvalidRVID",
+		2: "InvalidRV",
+		3: "InternalServerError",
+		4: "ChunkNotFound",
+		5: "ChunkAlreadyExists",
+		6: "MaxMVsExceeded",
+		7: "NeedToRefreshClusterMap",
+		8: "ThriftError",
+		9: "BrokenChain",
 	}
 	ErrorCode_value = map[string]int32{
-		"INVALID_REQUEST":             0,
-		"INVALID_RVID":                1,
-		"INVALID_RV":                  2,
-		"INTERNAL_SERVER_ERROR":       3,
-		"CHUNK_NOT_FOUND":             4,
-		"CHUNK_ALREADY_EXISTS":        5,
-		"MAX_MVS_EXCEEDED":            6,
-		"NEED_TO_REFRESH_CLUSTER_MAP": 7,
-		"THRIFT_ERROR":                8,
-		"BROKEN_CHAIN":                9,
+		"InvalidRequest":          0,
+		"InvalidRVID":             1,
+		"InvalidRV":               2,
+		"InternalServerError":     3,
+		"ChunkNotFound":           4,
+		"ChunkAlreadyExists":      5,
+		"MaxMVsExceeded":          6,
+		"NeedToRefreshClusterMap": 7,
+		"ThriftError":             8,
+		"BrokenChain":             9,
 	}
 )
 
@@ -856,12 +856,9 @@ func (x *PutChunkDCRequest) GetNextRVs() []string {
 
 // Type for the individual PutChunkResponse or error.
 type PutChunkResponseOrError struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Result:
-	//
-	//	*PutChunkResponseOrError_Response
-	//	*PutChunkResponseOrError_Error
-	Result        isPutChunkResponseOrError_Result `protobuf_oneof:"result"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Response      *PutChunkResponse      `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"`
+	Error         *ResponseError         `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -896,46 +893,19 @@ func (*PutChunkResponseOrError) Descriptor() ([]byte, []int) {
 	return file_models_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *PutChunkResponseOrError) GetResult() isPutChunkResponseOrError_Result {
-	if x != nil {
-		return x.Result
-	}
-	return nil
-}
-
 func (x *PutChunkResponseOrError) GetResponse() *PutChunkResponse {
 	if x != nil {
-		if x, ok := x.Result.(*PutChunkResponseOrError_Response); ok {
-			return x.Response
-		}
+		return x.Response
 	}
 	return nil
 }
 
 func (x *PutChunkResponseOrError) GetError() *ResponseError {
 	if x != nil {
-		if x, ok := x.Result.(*PutChunkResponseOrError_Error); ok {
-			return x.Error
-		}
+		return x.Error
 	}
 	return nil
 }
-
-type isPutChunkResponseOrError_Result interface {
-	isPutChunkResponseOrError_Result()
-}
-
-type PutChunkResponseOrError_Response struct {
-	Response *PutChunkResponse `protobuf:"bytes,1,opt,name=response,proto3,oneof"`
-}
-
-type PutChunkResponseOrError_Error struct {
-	Error *ResponseError `protobuf:"bytes,2,opt,name=error,proto3,oneof"`
-}
-
-func (*PutChunkResponseOrError_Response) isPutChunkResponseOrError_Result() {}
-
-func (*PutChunkResponseOrError_Error) isPutChunkResponseOrError_Result() {}
 
 type PutChunkDCResponse struct {
 	state           protoimpl.MessageState              `protogen:"open.v1"`
@@ -1672,7 +1642,7 @@ func (x *ResponseError) GetCode() ErrorCode {
 	if x != nil {
 		return x.Code
 	}
-	return ErrorCode_INVALID_REQUEST
+	return ErrorCode_InvalidRequest
 }
 
 func (x *ResponseError) GetMessage() string {
@@ -1742,11 +1712,10 @@ const file_models_proto_rawDesc = "" +
 	"\x0fclustermapEpoch\x18\x04 \x01(\x03R\x0fclustermapEpoch\"g\n" +
 	"\x11PutChunkDCRequest\x128\n" +
 	"\arequest\x18\x01 \x01(\v2\x1e.dcache.models.PutChunkRequestR\arequest\x12\x18\n" +
-	"\anextRVs\x18\x02 \x03(\tR\anextRVs\"\x98\x01\n" +
-	"\x17PutChunkResponseOrError\x12=\n" +
-	"\bresponse\x18\x01 \x01(\v2\x1f.dcache.models.PutChunkResponseH\x00R\bresponse\x124\n" +
-	"\x05error\x18\x02 \x01(\v2\x1c.dcache.models.ResponseErrorH\x00R\x05errorB\b\n" +
-	"\x06result\"\xf4\x01\n" +
+	"\anextRVs\x18\x02 \x03(\tR\anextRVs\"\x8a\x01\n" +
+	"\x17PutChunkResponseOrError\x12;\n" +
+	"\bresponse\x18\x01 \x01(\v2\x1f.dcache.models.PutChunkResponseR\bresponse\x122\n" +
+	"\x05error\x18\x02 \x01(\v2\x1c.dcache.models.ResponseErrorR\x05error\"\xf4\x01\n" +
 	"\x12PutChunkDCResponse\x12N\n" +
 	"\tresponses\x18\x01 \x03(\v20.dcache.models.PutChunkDCResponse.ResponsesEntryR\tresponses\x12(\n" +
 	"\x0fclustermapEpoch\x18\x02 \x01(\x03R\x0fclustermapEpoch\x1ad\n" +
@@ -1799,19 +1768,18 @@ const file_models_proto_rawDesc = "" +
 	"\x0fclustermapEpoch\x18\x02 \x01(\x03R\x0fclustermapEpoch\"W\n" +
 	"\rResponseError\x12,\n" +
 	"\x04code\x18\x01 \x01(\x0e2\x18.dcache.models.ErrorCodeR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage*\xe7\x01\n" +
-	"\tErrorCode\x12\x13\n" +
-	"\x0fINVALID_REQUEST\x10\x00\x12\x10\n" +
-	"\fINVALID_RVID\x10\x01\x12\x0e\n" +
-	"\n" +
-	"INVALID_RV\x10\x02\x12\x19\n" +
-	"\x15INTERNAL_SERVER_ERROR\x10\x03\x12\x13\n" +
-	"\x0fCHUNK_NOT_FOUND\x10\x04\x12\x18\n" +
-	"\x14CHUNK_ALREADY_EXISTS\x10\x05\x12\x14\n" +
-	"\x10MAX_MVS_EXCEEDED\x10\x06\x12\x1f\n" +
-	"\x1bNEED_TO_REFRESH_CLUSTER_MAP\x10\a\x12\x10\n" +
-	"\fTHRIFT_ERROR\x10\b\x12\x10\n" +
-	"\fBROKEN_CHAIN\x10\tBOZMgithub.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go-grpc/modelsb\x06proto3"
+	"\amessage\x18\x02 \x01(\tR\amessage*\xd6\x01\n" +
+	"\tErrorCode\x12\x12\n" +
+	"\x0eInvalidRequest\x10\x00\x12\x0f\n" +
+	"\vInvalidRVID\x10\x01\x12\r\n" +
+	"\tInvalidRV\x10\x02\x12\x17\n" +
+	"\x13InternalServerError\x10\x03\x12\x11\n" +
+	"\rChunkNotFound\x10\x04\x12\x16\n" +
+	"\x12ChunkAlreadyExists\x10\x05\x12\x12\n" +
+	"\x0eMaxMVsExceeded\x10\x06\x12\x1b\n" +
+	"\x17NeedToRefreshClusterMap\x10\a\x12\x0f\n" +
+	"\vThriftError\x10\b\x12\x0f\n" +
+	"\vBrokenChain\x10\tBOZMgithub.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go-grpc/modelsb\x06proto3"
 
 var (
 	file_models_proto_rawDescOnce sync.Once
@@ -1886,10 +1854,6 @@ func init() { file_models_proto_init() }
 func file_models_proto_init() {
 	if File_models_proto != nil {
 		return
-	}
-	file_models_proto_msgTypes[10].OneofWrappers = []any{
-		(*PutChunkResponseOrError_Response)(nil),
-		(*PutChunkResponseOrError_Error)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

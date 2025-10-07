@@ -84,10 +84,8 @@ message PutChunkDCRequest {
 
 // Type for the individual PutChunkResponse or error.
 message PutChunkResponseOrError {
-  oneof result {
-    PutChunkResponse response = 1;
-    ResponseError error = 2;
-  }
+  PutChunkResponse response = 1;
+  ResponseError error = 2;
 }
 
 message PutChunkDCResponse {
@@ -171,16 +169,16 @@ message GetMVSizeResponse {
 
 // Custom error codes returned by the ChunkServiceHandler
 enum ErrorCode {
-  INVALID_REQUEST = 0;
-  INVALID_RVID = 1;
-  INVALID_RV = 2;
-  INTERNAL_SERVER_ERROR = 3;
-  CHUNK_NOT_FOUND = 4;
-  CHUNK_ALREADY_EXISTS = 5;
-  MAX_MVS_EXCEEDED = 6;
-  NEED_TO_REFRESH_CLUSTER_MAP = 7;
-  THRIFT_ERROR = 8;
-  BROKEN_CHAIN = 9;
+  InvalidRequest = 0;
+  InvalidRVID = 1;
+  InvalidRV = 2;
+  InternalServerError = 3;
+  ChunkNotFound = 4;
+  ChunkAlreadyExists = 5;
+  MaxMVsExceeded = 6;
+  NeedToRefreshClusterMap = 7;
+  ThriftError = 8;
+  BrokenChain = 9;
 }
 
 // Custom error returned by the RPC APIs
