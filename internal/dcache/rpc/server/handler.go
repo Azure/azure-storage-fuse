@@ -2649,6 +2649,9 @@ func (h *ChunkServiceHandler) PutChunkDC(ctx context.Context, req *models.PutChu
 	log.Debug("ChunkServiceHandler::PutChunkDC: Received PutChunkDC request: %v",
 		rpc.PutChunkDCRequestToString(req))
 
+	log.Debug("ChunkServiceHandler::PutChunkDC: Sleeping for %s to simulate slow write", time.Duration(1*time.Second))
+	time.Sleep(1 * time.Second)
+
 	// Client must send a valid clustermap epoch.
 	common.Assert(req.Request.ClustermapEpoch > 0, req.Request.ClustermapEpoch)
 
