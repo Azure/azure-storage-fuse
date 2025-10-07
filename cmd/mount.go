@@ -495,7 +495,7 @@ var mountCmd = &cobra.Command{
 
 			// Save the stack trace of the mount process in case of any panic
 			pid := os.Getpid()
-			traceFile := fmt.Sprintf("%s.%d.trace", strings.Replace(options.MountPath, "/", "_", -1), pid)
+			traceFile := fmt.Sprintf("%s.%d.trace", strings.ReplaceAll(options.MountPath, "/", "_"), pid)
 			// we link this file to stderr of child process in daemon mode
 			traceFilePath := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
 
@@ -542,7 +542,7 @@ var mountCmd = &cobra.Command{
 				// gracefully unmounted. In case of any panic caused by go runtime/ by our application. This file
 				// would have the essential stack trace to debug the issue.
 				ppid := os.Getppid()
-				traceFile = fmt.Sprintf("%s.%d.trace", strings.Replace(options.MountPath, "/", "_", -1), ppid)
+				traceFile = fmt.Sprintf("%s.%d.trace", strings.ReplaceAll(options.MountPath, "/", "_"), ppid)
 				// we link this file to stderr of child process in daemon mode
 				traceFilePath = filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
 
@@ -584,7 +584,7 @@ var mountCmd = &cobra.Command{
 						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
 						err = fmt.Errorf("failed to mount, please check logs [%s]", err.Error())
 					} else {
-						err = fmt.Errorf(string(buff))
+						err = fmt.Errorf("%s", string(buff))
 					}
 
 					// Safe to delete the temp file.
