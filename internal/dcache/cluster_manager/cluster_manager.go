@@ -100,12 +100,9 @@ type ClusterManager struct {
 	// Mutex for synchronizing updates to localClusterMapPath, localMapETag and the cached copy in clustermap package.
 	localMapLock sync.Mutex
 
-	//
 	// RPC server running on this node.
 	// It'll respond to RPC queries made from other nodes.
-	//
-	rpcServerSimple   *rpc_server.NodeServer
-	rpcServerThreaded *rpc_server.ThreadedNodeServer
+	rpcServer *rpc_server.NodeServer
 
 	// Wait group to wait for the goroutines spawned, before stopping the cluster manager.
 	wg sync.WaitGroup
@@ -239,46 +236,25 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//       Ref functions.go:JoinMV() for more details.
 	//
 	if len(rvsMap) > 0 {
-		log.Info("ClusterManager::start: ==> Starting [%s] RPC server", cm.ThriftServerType)
+		log.Info("ClusterManager::start: ==> Starting RPC server")
 
-		common.Assert(cmi.rpcServerSimple == nil)
-		common.Assert(cmi.rpcServerThreaded == nil)
+		common.Assert(cmi.rpcServer == nil)
 
-		if cm.ThriftServerType == "simple" {
-			cmi.rpcServerSimple, err = rpc_server.NewNodeServer(rvsMap)
-			if err != nil {
-				log.Err("ClusterManager::start: Failed to create [%s] RPC server", cm.ThriftServerType)
-				common.Assert(false, err)
-				return err
-			}
-
-			err = cmi.rpcServerSimple.Start()
-			if err != nil {
-				log.Err("ClusterManager::start: Failed to start [%s] RPC server", cm.ThriftServerType)
-				common.Assert(false, err)
-				return err
-			}
-		} else if cm.ThriftServerType == "threaded" {
-			cmi.rpcServerThreaded, err = rpc_server.NewThreadedNodeServer(rvsMap)
-			if err != nil {
-				log.Err("ClusterManager::start: Failed to create [%s] RPC server", cm.ThriftServerType)
-				common.Assert(false, err)
-				return err
-			}
-
-			err = cmi.rpcServerThreaded.Start()
-			if err != nil {
-				log.Err("ClusterManager::start: Failed to start [%s] RPC server", cm.ThriftServerType)
-				common.Assert(false, err)
-				return err
-			}
-		} else {
-			log.GetLoggerObj().Panicf("[PANIC] ClusterManager::start: Invalid ThriftServerType: %s",
-				cm.ThriftServerType)
+		cmi.rpcServer, err = rpc_server.NewNodeServer(rvsMap)
+		if err != nil {
+			log.Err("ClusterManager::start: Failed to create RPC server")
+			common.Assert(false, err)
+			return err
 		}
 
-		log.Info("ClusterManager::start: ==> Started [%s] RPC server on node %s IP %s",
-			cm.ThriftServerType, cmi.myNodeId, cmi.myIPAddress)
+		err = cmi.rpcServer.Start()
+		if err != nil {
+			log.Err("ClusterManager::start: Failed to start RPC server")
+			common.Assert(false, err)
+			return err
+		}
+
+		log.Info("ClusterManager::start: ==> Started RPC server on node %s IP %s", cmi.myNodeId, cmi.myIPAddress)
 	} else {
 		// No RVs, no RPC server.
 		log.Warn("ClusterManager::start: ==> No RVs exported, not starting RPC server")

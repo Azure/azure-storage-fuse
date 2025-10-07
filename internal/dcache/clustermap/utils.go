@@ -136,7 +136,6 @@ var (
 	mvNameRegex = regexp.MustCompile("^mv[0-9]+$")
 
 	RingBasedMVPlacement bool
-	ThriftServerType     string
 )
 
 // Valid RV name is of the form "rv0", "rv99", etc.
