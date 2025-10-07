@@ -43,16 +43,18 @@ protoc \
     --go-grpc_out=. \
     internal/dcache/rpc/models.proto \
     internal/dcache/rpc/service.proto
-    
+
 echo "protoc completed"
 
-# Fix formatting if generation succeeded
-if [ -d internal/dcache/rpc/gen-go-grpc ]; then
-    gofmt -w internal/dcache/rpc/gen-go-grpc/
-fi
+# Move generated code to the desired directory
+mkdir -p internal/dcache/rpc/gen-go-grpc
+mv github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go-grpc/* internal/dcache/rpc/gen-go-grpc/
+rm -rf github.com
+
+# Fix formatting
+gofmt -w internal/dcache/rpc/gen-go-grpc/
 
 echo "gRPC code generation completed successfully!"
 
-# Note: We'll add copyright fixing later, similar to the Thrift generation
-# cd ../../..
-# ./copyright_fix.sh
+# add copyright to generated files
+./copyright_fix.sh
