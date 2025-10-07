@@ -1928,7 +1928,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 
 	err := bc.NextComponent().TruncateFile(options)
 	if err != nil {
-		log.Err("BlockCache::TruncateFile : failed to truncate file %s", options.Handle.Path)
+		log.Err("BlockCache::TruncateFile : Failed to truncate file %s: %v", options.Name, err)
 		return err
 	}
 
