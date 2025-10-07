@@ -2,7 +2,7 @@
 **Bug Fixes**
 - Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
 - Mount will fail if FNS account is mounted as HNS account.
-- Redirect Stack trace to log file (WORK_DIR/mntpath.pid.trace>/) instead of console in case of panic for better debuggability.
+- Redirect Stack trace to log file (WORK_DIR/mount_path.pid.trace) instead of console in case of panic for better debuggability.
 
 ## 2.5.0 (2025-07-17)
 **Bug Fixes**
