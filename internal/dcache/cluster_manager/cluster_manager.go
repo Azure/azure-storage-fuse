@@ -103,6 +103,7 @@ type ClusterManager struct {
 	//
 	// RPC server running on this node.
 	// It'll respond to RPC queries made from other nodes.
+	// Depending on cm.ThriftServerType, only one of these will be non-nil.
 	//
 	rpcServerSimple   *rpc_server.NodeServer
 	rpcServerThreaded *rpc_server.ThreadedNodeServer

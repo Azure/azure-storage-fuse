@@ -64,20 +64,20 @@ func NewNodeServer(rvMap map[string]dcache.RawVolume) (*NodeServer, error) {
 
 	nodeID, err := common.GetNodeUUID()
 	if err != nil {
-		common.Assert(false, "failed to get node ID [%v]", err.Error())
-		log.Err("NodeServer::NewNodeServer: Failed to get node ID [%v]", err.Error())
+		log.Err("NodeServer::NewNodeServer: Failed to get node ID [%v]", err)
+		common.Assert(false, err)
 		return nil, err
 	}
 
 	address := rpc.GetNodeAddressFromID(nodeID)
 
 	if !common.IsValidHostPort(address) {
-		common.Assert(false, "invalid node address %s", address)
 		log.Err("NodeServer::NewNodeServer: Invalid node address %s", address)
+		common.Assert(false, address)
 		return nil, fmt.Errorf("invalid node address %s", address)
 	}
 
-	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s, RVs %+v", address, rvMap)
+	log.Debug("NodeServer::NewNodeServer: Creating server with address: %s, RVs %+v", address, rvMap)
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
 	transportFactory := thrift.NewTTransportFactory()
@@ -97,6 +97,7 @@ func NewNodeServer(rvMap map[string]dcache.RawVolume) (*NodeServer, error) {
 	transport, err = thrift.NewTServerSocket(address)
 	if err != nil {
 		log.Err("NodeServer::NewNodeServer: Failed to create server socket [%v]", err)
+		common.Assert(false, err)
 		return nil, err
 	}
 
@@ -106,6 +107,7 @@ func NewNodeServer(rvMap map[string]dcache.RawVolume) (*NodeServer, error) {
 	//
 	err = NewChunkServiceHandler(rvMap)
 	if err != nil {
+		common.Assert(false, err)
 		return nil, err
 	}
 	common.Assert(handler != nil)
@@ -138,6 +140,7 @@ func (ns *NodeServer) Stop() error {
 	err := ns.server.Stop()
 	if err != nil {
 		log.Err("NodeServer::Stop: Failed to stop server [%v]", err.Error())
+		common.Assert(false, err)
 		return err
 	}
 
@@ -168,20 +171,20 @@ func NewThreadedNodeServer(rvMap map[string]dcache.RawVolume) (*ThreadedNodeServ
 
 	nodeID, err := common.GetNodeUUID()
 	if err != nil {
-		common.Assert(false, "failed to get node ID [%v]", err.Error())
 		log.Err("NodeServer::NewThreadedNodeServer: Failed to get node ID [%v]", err.Error())
+		common.Assert(false, err)
 		return nil, err
 	}
 
 	address := rpc.GetNodeAddressFromID(nodeID)
 
 	if !common.IsValidHostPort(address) {
-		common.Assert(false, "invalid node address %s", address)
 		log.Err("NodeServer::NewThreadedNodeServer: Invalid node address %s", address)
+		common.Assert(false, address)
 		return nil, fmt.Errorf("invalid node address %s", address)
 	}
 
-	log.Debug("NodeServer::NewThreadedNodeServer: Creating NodeServer with address: %s, RVs %+v", address, rvMap)
+	log.Debug("NodeServer::NewThreadedNodeServer: Creating server with address: %s, RVs %+v", address, rvMap)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
@@ -191,12 +194,14 @@ func NewThreadedNodeServer(rvMap map[string]dcache.RawVolume) (*ThreadedNodeServ
 	transport, err = thrift.NewTServerSocket(address)
 	if err != nil {
 		log.Err("NodeServer::NewThreadedNodeServer: Failed to create server socket [%v]", err)
+		common.Assert(false, err)
 		return nil, err
 	}
 
 	err = transport.Listen()
 	if err != nil {
 		log.Err("NodeServer::NewThreadedNodeServer: Failed to listen on server socket [%v]", err)
+		common.Assert(false, err)
 		return nil, err
 	}
 
@@ -206,6 +211,7 @@ func NewThreadedNodeServer(rvMap map[string]dcache.RawVolume) (*ThreadedNodeServ
 	//
 	err = NewChunkServiceHandler(rvMap)
 	if err != nil {
+		common.Assert(false, err)
 		return nil, err
 	}
 	common.Assert(handler != nil)
@@ -226,7 +232,7 @@ func NewThreadedNodeServer(rvMap map[string]dcache.RawVolume) (*ThreadedNodeServ
 func (ns *ThreadedNodeServer) Start() error {
 	log.Debug("ThreadedNodeServer::Start: Starting ThreadedNodeServer on address: %s", ns.address)
 
-	// Graceful shutdown
+	// Graceful shutdown.
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
