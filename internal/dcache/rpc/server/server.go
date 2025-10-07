@@ -34,7 +34,11 @@
 package rpc_server
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -92,7 +96,7 @@ func NewNodeServer(rvMap map[string]dcache.RawVolume) (*NodeServer, error) {
 
 	transport, err = thrift.NewTServerSocket(address)
 	if err != nil {
-		log.Err("NodeServer::NewNodeServer: Failed to create server socket [%v]", err.Error())
+		log.Err("NodeServer::NewNodeServer: Failed to create server socket [%v]", err)
 		return nil, err
 	}
 
@@ -138,6 +142,157 @@ func (ns *NodeServer) Stop() error {
 	}
 
 	return nil
+}
+
+// Thrift server that uses one go routine per connection.
+//
+// TODO: Make it use a pool of goroutines instead of one per connection.
+//
+// Note: For IO intensive workloads, simple NodeServer is better than ThreadedNodeServer as too many
+//       go routines can cause excessive context switching and CPU thrashing, reducing overall throughput.
+
+type ThreadedNodeServer struct {
+	address          string
+	transport        thrift.TServerTransport
+	transportFactory thrift.TTransportFactory
+	protocolFactory  thrift.TProtocolFactory
+	processor        *service.ChunkServiceProcessor
+	context          context.Context
+	cancel           context.CancelFunc
+}
+
+// NewThreadedNodeServer creates a threadded Thrift server that uses one go rouitne per connection.
+// rvMap is a map of raw volumes that the node will serve.
+func NewThreadedNodeServer(rvMap map[string]dcache.RawVolume) (*ThreadedNodeServer, error) {
+	common.Assert(cm.IsValidRVMap(rvMap))
+
+	nodeID, err := common.GetNodeUUID()
+	if err != nil {
+		common.Assert(false, "failed to get node ID [%v]", err.Error())
+		log.Err("NodeServer::NewThreadedNodeServer: Failed to get node ID [%v]", err.Error())
+		return nil, err
+	}
+
+	address := rpc.GetNodeAddressFromID(nodeID)
+
+	if !common.IsValidHostPort(address) {
+		common.Assert(false, "invalid node address %s", address)
+		log.Err("NodeServer::NewThreadedNodeServer: Invalid node address %s", address)
+		return nil, fmt.Errorf("invalid node address %s", address)
+	}
+
+	log.Debug("NodeServer::NewThreadedNodeServer: Creating NodeServer with address: %s, RVs %+v", address, rvMap)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
+	transportFactory := thrift.NewTTransportFactory()
+
+	var transport thrift.TServerTransport
+	transport, err = thrift.NewTServerSocket(address)
+	if err != nil {
+		log.Err("NodeServer::NewThreadedNodeServer: Failed to create server socket [%v]", err)
+		return nil, err
+	}
+
+	err = transport.Listen()
+	if err != nil {
+		log.Err("NodeServer::NewThreadedNodeServer: Failed to listen on server socket [%v]", err)
+		return nil, err
+	}
+
+	//
+	// Create the chunk service handler.
+	// This must set the global var handler.
+	//
+	err = NewChunkServiceHandler(rvMap)
+	if err != nil {
+		return nil, err
+	}
+	common.Assert(handler != nil)
+
+	processor := service.NewChunkServiceProcessor(handler)
+
+	return &ThreadedNodeServer{
+		address:          address,
+		transport:        transport,
+		transportFactory: transportFactory,
+		protocolFactory:  protocolFactory,
+		processor:        processor,
+		context:          ctx,
+		cancel:           cancel,
+	}, nil
+}
+
+func (ns *ThreadedNodeServer) Start() error {
+	log.Debug("ThreadedNodeServer::Start: Starting ThreadedNodeServer on address: %s", ns.address)
+
+	// Graceful shutdown
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		log.Warn("ThreadedNodeServer::Start: Shutting down...")
+		ns.cancel()
+		ns.transport.Interrupt()
+	}()
+
+	go func() {
+		log.Info("ThreadedNodeServer::Start: Accepting client connections on: %s", ns.address)
+
+		for {
+			client, err := ns.transport.Accept()
+			if err != nil {
+				log.Err("ThreadedNodeServer::Start: PANIC: thrift accept error [%v]", err)
+				log.GetLoggerObj().Panicf("ThreadedNodeServer::Start: PANIC: thrift accept error [%v]", err)
+				break
+			}
+
+			log.Debug("ThreadedNodeServer::Start: Accepted new client connection!")
+			go ns.processConn(client, ns.processor, ns.transportFactory, ns.protocolFactory)
+		}
+	}()
+
+	return nil
+}
+
+func (ns *ThreadedNodeServer) Stop() error {
+	log.Debug("ThreadedNodeServer::Stop: Stopping ThreadedNodeServer on address: %s", ns.address)
+	ns.cancel()
+	ns.transport.Interrupt()
+
+	return nil
+}
+
+func (ns *ThreadedNodeServer) processConn(client thrift.TTransport, processor thrift.TProcessor,
+	transportFactory thrift.TTransportFactory, protocolFactory thrift.TProtocolFactory) {
+
+	defer client.Close()
+
+	inputTransport, err := transportFactory.GetTransport(client)
+	if err != nil {
+		log.Err("ThreadedNodeServer::processConn: Failed to get input transport [%v]", err)
+		return
+	}
+
+	outputTransport, err := transportFactory.GetTransport(client)
+	if err != nil {
+		log.Err("ThreadedNodeServer::processConn: Failed to get output transport [%v]", err)
+		return
+	}
+
+	inputProtocol := protocolFactory.GetProtocol(inputTransport)
+	outputProtocol := protocolFactory.GetProtocol(outputTransport)
+
+	for {
+		ok, err := processor.Process(ns.context, inputProtocol, outputProtocol)
+		if err != nil {
+			log.Err("ThreadedNodeServer::processConn: Client disconnected or error [%v]", err)
+			break
+		}
+		if !ok {
+			log.Debug("ThreadedNodeServer::processConn: no more work...")
+		}
+	}
 }
 
 // Silence unused import errors for release builds.

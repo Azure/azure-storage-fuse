@@ -121,6 +121,7 @@ type DistributedCacheOptions struct {
 	ClustermapEpoch      uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
 	ReadIOMode           string `config:"read-io-mode" yaml:"read-io-mode,omitempty"`
 	WriteIOMode          string `config:"write-io-mode" yaml:"write-io-mode,omitempty"`
+	ThriftServerType     string `config:"thrift-server-type" yaml:"thrift-server-type,omitempty"`
 }
 
 const (
@@ -140,9 +141,10 @@ const (
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
 	dcacheDirContToken               = "__DCDIRENT__"
-	defaultIgnoreFD                  = true // By default ignore VM Fault Domain for MV placement decisions.
-	defaultIgnoreUD                  = true // By default ignore VM Update Domain for MV placement decisions.
-	defaultRingBasedMVPlacement      = true // By default use ring based MV placement (vs random).
+	defaultIgnoreFD                  = true     // By default ignore VM Fault Domain for MV placement decisions.
+	defaultIgnoreUD                  = true     // By default ignore VM Update Domain for MV placement decisions.
+	defaultRingBasedMVPlacement      = true     // By default use ring based MV placement (vs random).
+	defaultThriftServerType          = "simple" // "simple", "threaded".
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -646,6 +648,16 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if err != nil {
 		return fmt.Errorf("config error in %s: [cannot set write-io-mode (%s)]: %v",
 			distributedCache.Name(), distributedCache.cfg.WriteIOMode, err)
+	}
+
+	if !config.IsSet(compName + ".thrift-server-type") {
+		distributedCache.cfg.ThriftServerType = defaultThriftServerType
+	}
+	cm.ThriftServerType = distributedCache.cfg.ThriftServerType
+
+	if cm.ThriftServerType != "simple" && cm.ThriftServerType != "threaded" {
+		return fmt.Errorf("config error in %s: [invalid thrift-server-type (%s), valid values are 'simple' and 'threaded']",
+			distributedCache.Name(), distributedCache.cfg.ThriftServerType)
 	}
 
 	return nil
@@ -1621,6 +1633,9 @@ func ensureUUID() {
 	if err != nil {
 		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(1) failed: %v", err)
 	}
+
+	log.Info("DistributedCache::ensureUUID: Node UUID is %s, saved in file %s",
+		uuid1, common.GetNodeUUIDFilePath())
 
 	// This one (and all subsequent calls) should return the cached UUID.
 	uuid2, err := common.GetNodeUUID()

@@ -702,12 +702,16 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	return pipeline
 }
 
+func GetNodeUUIDFilePath() string {
+	return filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+}
+
 func GetNodeUUID() (string, error) {
 	if MyNodeUUID != "" {
 		return MyNodeUUID, nil
 	}
 
-	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+	uuidFilePath := GetNodeUUIDFilePath()
 
 	// Read the UUID file.
 	data, err := os.ReadFile(uuidFilePath)
