@@ -1,0 +1,190 @@
+syntax = "proto3";
+
+package dcache.models;
+
+// Place generated gRPC models under gen-go-grpc/dcache/models to avoid package collisions.
+option go_package = "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go-grpc/models";
+
+message HelloRequest {
+  string senderNodeID = 1;
+  string receiverNodeID = 2;
+  int64 time = 3;  // current time in usec in sender
+  repeated string RVName = 4;
+  repeated string MV = 5;
+  int64 clustermapEpoch = 6;  // Sender's clustermap epoch when the request is sent
+}
+
+message HelloResponse {
+  string receiverNodeID = 1;
+  int64 time = 2;  // current time in usec in receiver
+  repeated string RVName = 3;
+  repeated string MV = 4;
+  int64 clustermapEpoch = 5;  // Receiver's clustermap epoch when the response is sent
+}
+
+message Address {
+  string fileID = 1;
+  string rvID = 2;
+  string mvName = 3;
+  int64 offsetInMiB = 4;
+}
+
+message Chunk {
+  Address address = 1;
+  bytes data = 2;
+  string hash = 3;
+}
+
+message RVNameAndState {
+  string name = 1;
+  string state = 2;
+}
+
+message GetChunkRequest {
+  string senderNodeID = 1;
+  Address address = 2;
+  int64 offsetInChunk = 3;
+  int64 length = 4;
+  bool isLocalRV = 5;  // true, if both server and client are on the same node
+  repeated RVNameAndState componentRV = 6;  // used to validate the component RV for the MV
+  int64 clustermapEpoch = 7;  // Sender's clustermap epoch when the request is sent
+}
+
+message GetChunkResponse {
+  Chunk chunk = 1;
+  string chunkWriteTime = 2;
+  int64 timeTaken = 3;
+  repeated RVNameAndState componentRV = 4;
+  int64 clustermapEpoch = 5;  // Receiver's clustermap epoch when the response is sent
+}
+
+message PutChunkRequest {
+  string senderNodeID = 1;
+  Chunk chunk = 2;
+  int64 length = 3;
+  string syncID = 4;  // only valid for PutChunk(sync) calls, syncID of the ongoing sync operation
+  string sourceRVName = 5;  // only valid for PutChunk(sync) calls, source RV from which data is being synced
+  repeated RVNameAndState componentRV = 6;  // used to validate the component RV for the MV
+  bool maybeOverwrite = 7;
+  int64 clustermapEpoch = 8;  // Sender's clustermap epoch when the request is sent
+}
+
+message PutChunkResponse {
+  // status will be returned in the error
+  int64 timeTaken = 1;
+  int64 availableSpace = 2;
+  repeated RVNameAndState componentRV = 3;
+  int64 clustermapEpoch = 4;  // Receiver's clustermap epoch when the response is sent
+}
+
+message PutChunkDCRequest {
+  PutChunkRequest request = 1;
+  repeated string nextRVs = 2;
+}
+
+// Type for the individual PutChunkResponse or error.
+message PutChunkResponseOrError {
+  oneof result {
+    PutChunkResponse response = 1;
+    ResponseError error = 2;
+  }
+}
+
+message PutChunkDCResponse {
+  map<string, PutChunkResponseOrError> responses = 1;  // map of RV name to the PutChunk response or error to that RV
+  int64 clustermapEpoch = 2;  // Receiver's clustermap epoch when the response is sent
+}
+
+// Remove chunks belonging to a file.
+message RemoveChunkRequest {
+  string senderNodeID = 1;
+  Address address = 2;
+  repeated RVNameAndState componentRV = 3;  // used to validate the component RV for the MV
+  int64 clustermapEpoch = 4;  // Sender's clustermap epoch when the request is sent
+}
+
+message RemoveChunkResponse {
+  // status will be returned in the error
+  int64 timeTaken = 1;
+  int64 availableSpace = 2;
+  repeated RVNameAndState componentRV = 3;
+  //
+  // Total number of chunks deleted by this request.
+  // When a RemoveChunkResponse carries a status of success and numChunksDeleted==0, it would indicate
+  // to the caller that all chunks of the file are deleted from the specified rv/mv directory.
+  //
+  int64 numChunksDeleted = 4;
+  int64 clustermapEpoch = 5;  // Receiver's clustermap epoch when the response is sent
+}
+
+message JoinMVRequest {
+  string senderNodeID = 1;
+  string MV = 2;
+  string RVName = 3;
+  int64 reserveSpace = 4;
+  repeated RVNameAndState componentRV = 5;
+  int64 clustermapEpoch = 6;  // Sender's clustermap epoch when the request is sent
+}
+
+message JoinMVResponse {
+  // status will be returned in the error
+  int64 clustermapEpoch = 1;  // Receiver's clustermap epoch when the response is sent
+}
+
+message UpdateMVRequest {
+  string senderNodeID = 1;
+  string MV = 2;
+  string RVName = 3;
+  repeated RVNameAndState componentRV = 4;
+  int64 clustermapEpoch = 5;  // Sender's clustermap epoch when the request is sent
+}
+
+message UpdateMVResponse {
+  // status will be returned in the error
+  int64 clustermapEpoch = 1;  // Receiver's clustermap epoch when the response is sent
+}
+
+message LeaveMVRequest {
+  string senderNodeID = 1;
+  string MV = 2;
+  string RVName = 3;
+  repeated RVNameAndState componentRV = 4;
+  int64 clustermapEpoch = 5;  // Sender's clustermap epoch when the request is sent
+}
+
+message LeaveMVResponse {
+  // status will be returned in the error
+  int64 clustermapEpoch = 1;  // Receiver's clustermap epoch when the response is sent
+}
+
+message GetMVSizeRequest {
+  string senderNodeID = 1;
+  string MV = 2;
+  string RVName = 3;
+  int64 clustermapEpoch = 4;  // Sender's clustermap epoch when the request is sent
+}
+
+message GetMVSizeResponse {
+  int64 mvSize = 1;
+  int64 clustermapEpoch = 2;  // Receiver's clustermap epoch when the response is sent
+}
+
+// Custom error codes returned by the ChunkServiceHandler
+enum ErrorCode {
+  INVALID_REQUEST = 0;
+  INVALID_RVID = 1;
+  INVALID_RV = 2;
+  INTERNAL_SERVER_ERROR = 3;
+  CHUNK_NOT_FOUND = 4;
+  CHUNK_ALREADY_EXISTS = 5;
+  MAX_MVS_EXCEEDED = 6;
+  NEED_TO_REFRESH_CLUSTER_MAP = 7;
+  THRIFT_ERROR = 8;
+  BROKEN_CHAIN = 9;
+}
+
+// Custom error returned by the RPC APIs
+message ResponseError {
+  ErrorCode code = 1;
+  string message = 2;
+}

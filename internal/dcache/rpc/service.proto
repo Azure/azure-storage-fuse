@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package dcache.service;
+
+// Place generated gRPC service code under gen-go-grpc/dcache/service.
+option go_package = "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go-grpc/service";
+
+import "models.proto";
+
+// Define the service with RPC methods
+service ChunkService {
+    // check if the node is reachable
+    rpc Hello(models.HelloRequest) returns (models.HelloResponse);
+
+    // fetch the chunk from the node from the given rvID
+    rpc GetChunk(models.GetChunkRequest) returns (models.GetChunkResponse);
+
+    // store the chunk on the node on the given rvID
+    rpc PutChunk(models.PutChunkRequest) returns (models.PutChunkResponse);
+
+    rpc PutChunkDC(models.PutChunkDCRequest) returns (models.PutChunkDCResponse);
+
+    // delete the chunk from the node from the given rvID
+    rpc RemoveChunk(models.RemoveChunkRequest) returns (models.RemoveChunkResponse);
+
+    // add RV to the given MV
+    rpc JoinMV(models.JoinMVRequest) returns (models.JoinMVResponse);
+
+    // update the component RVs for the given MV
+    // this call is sent after the JoinMV call to the online RVs to update their component RVs list
+    rpc UpdateMV(models.UpdateMVRequest) returns (models.UpdateMVResponse);
+
+    // remove RV from the given MV
+    rpc LeaveMV(models.LeaveMVRequest) returns (models.LeaveMVResponse);
+
+    // retrieve the size of the specified MV
+    rpc GetMVSize(models.GetMVSizeRequest) returns (models.GetMVSizeResponse);
+}
