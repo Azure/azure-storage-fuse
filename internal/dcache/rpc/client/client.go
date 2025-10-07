@@ -44,6 +44,8 @@ import (
 	"github.com/apache/thrift/lib/go/thrift"
 )
 
+//go:generate $ASSERT_REMOVER $GOFILE
+
 const (
 	//
 	// defaultConnectionTimeout is the default timeout for establishing a new connection to the node.
@@ -62,6 +64,7 @@ const (
 // This is used to make RPC calls to the node
 type rpcClient struct {
 	nodeID      string                      // Node ID of the node this client is for, can be used for debug logs
+	nodeIDInt   int                         // Integral node ID, from UUIDToUniqueInt()
 	nodeAddress string                      // Address of the node this client is for
 	ncPool      *nodeClientPool             // Pointer to the nodeClientPool this client belongs to
 	transport   thrift.TTransport           // Transport is the Thrift transport layer
@@ -94,7 +97,13 @@ type rpcClient struct {
 	//
 	// highPrio indicates if this client is used for high priority requests (case 2 above).
 	//
-	highPrio bool
+	// Update: To keep things simple, we are not differentiating between high and low priority clients now,
+	//         we are just creating extra clients when needed (see isExtra below). This means we treat all
+	//         clients as high priority.
+	//         Once we move to gRPC, we can multiplex multiple requests over a single connection, and we
+	//         won't have to worry about running out of clients/connections.
+	//
+	//highPrio bool
 
 	//
 	// isExtra indicates if this client is an extra client created beyond the pool size.
@@ -114,12 +123,13 @@ var protocolFactory thrift.TProtocolFactory
 var transportFactory thrift.TTransportFactory
 var thriftCfg *thrift.TConfiguration
 
-// newRPCClient creates a new Thrift RPC client for the node
-func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
-	// Caller must call with node lock held.
-	common.Assert(cp.isNodeLocked(nodeID), nodeID, nodeAddress)
+// newRPCClient creates a new Thrift RPC client for the node.
+// To avoid lock contention, this function does not expect the caller to hold the nodeClientPool lock.
+func newRPCClient(nodeID string, nodeIDInt int, nodeAddress string) (*rpcClient, error) {
+	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s (%d) at %s",
+		nodeID, nodeIDInt, nodeAddress)
 
-	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s at %s", nodeID, nodeAddress)
+	common.Assert(nodeIDInt > 0, nodeIDInt, nodeID, nodeAddress)
 
 	//
 	// If the node is present in the negativeNodes map, it means we have recently experienced timeout
@@ -127,7 +137,8 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	//
 	err := cp.checkNegativeNode(nodeID)
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: not creating RPC client to negative node %s: %v", nodeID, err)
+		log.Err("rpcClient::newRPCClient: not creating RPC client to negative node %s (%d): %v",
+			nodeID, nodeIDInt, err)
 		return nil, err
 	}
 
@@ -140,7 +151,8 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	transport = thrift.NewTSocketConf(nodeAddress, thriftCfg)
 	transport, err = transportFactory.GetTransport(transport)
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: Failed to create transport for node %s at %s [%v]", nodeID, nodeAddress, err.Error())
+		log.Err("rpcClient::newRPCClient: Failed to create transport for node %s (%d) at %s [%v]",
+			nodeID, nodeIDInt, nodeAddress, err)
 		return nil, err
 	}
 
@@ -150,6 +162,7 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 
 	client := &rpcClient{
 		nodeID:      nodeID,
+		nodeIDInt:   nodeIDInt,
 		nodeAddress: nodeAddress,
 		transport:   transport,
 		svcClient:   svcClient,
@@ -157,8 +170,8 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 
 	err = client.transport.Open()
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: Failed to create connection to node %s at %s, adding to negative nodes map: %v",
-			nodeID, nodeAddress, err)
+		log.Err("rpcClient::newRPCClient: Failed to create connection to node %s (%d) at %s, adding to negative nodes map: %v",
+			nodeID, nodeIDInt, nodeAddress, err)
 
 		//
 		// TODO: We can also get other errors here like,
@@ -210,4 +223,5 @@ func init() {
 // Silence unused import errors for release builds.
 func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	_ = rpc.WriteIOMode
 }

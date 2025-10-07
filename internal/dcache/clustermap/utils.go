@@ -45,6 +45,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -74,7 +75,7 @@ var (
 
 	// StripeWidthMB = ChunkSizeMB * StripeWidth
 	MinStripeWidth int64 = 1
-	MaxStripeWidth int64 = 64
+	MaxStripeWidth int64 = 1024
 
 	MinNumReplicas int64 = 1
 	MaxNumReplicas int64 = 256
@@ -589,12 +590,14 @@ var uuidToUniqueInt = map[string]int{}
 var uuidToUniqueIntMapMutex sync.RWMutex
 var uniqueInt int
 
-// Return a unique integer for the given UUID.
+// Return a unique integer for the given UUID. The returned integer is guaranteed to be unique
+// for each unique UUID passed to this function and will be in the range [1, 2^31-1].
 // The uniqueness is in the scope of this blobfuse2 instance, so don't use it outside that.
 // Useful to convert UUIDs to integers once and then use for faster comparison in the fastpath.
 func UUIDToUniqueInt(uuid string) int {
 	common.Assert(common.IsValidUUID(uuid), uuid)
 
+	// Fastpath, UUID already exists in the map.
 	uuidToUniqueIntMapMutex.RLock()
 	uuidInt, exists := uuidToUniqueInt[uuid]
 	uuidToUniqueIntMapMutex.RUnlock()
@@ -608,7 +611,31 @@ func UUIDToUniqueInt(uuid string) int {
 
 	uniqueInt++
 	uuidToUniqueInt[uuid] = uniqueInt
+
+	if uniqueInt <= 0 {
+		log.GetLoggerObj().Panicf("UUIDToUniqueInt: uniqueInt (%d) overflowed while adding UUID %s",
+			uniqueInt, uuid)
+	}
+
 	return uniqueInt
+}
+
+// Use this when you are sure that the UUID has already been converted to an integer, and you
+// just want to retrieve it.
+// Unlike UUIDToUniqueInt() which adds a UUID if it doesn't exist, this helps to catch unexpected
+// bugs where a UUID is not already added to the map where it should have been.
+func UUIDToInt(uuid string) int {
+	common.Assert(common.IsValidUUID(uuid), uuid)
+
+	uuidToUniqueIntMapMutex.RLock()
+	uuidInt, exists := uuidToUniqueInt[uuid]
+	_ = exists
+	uuidToUniqueIntMapMutex.RUnlock()
+
+	common.Assert(exists, uuid)
+	common.Assert(uuidInt > 0, uuid)
+
+	return uuidInt
 }
 
 // Silence unused import errors for release builds.
