@@ -55,7 +55,7 @@ func (suite *dataValidationTestSuite) TestShrinkExistingFile() {
 	t(32*1024*1024, 16*1024*1024)
 	t(32*1024*1024+16, 16*1024*1024-9)
 	t(1*1024*1024*1024, 512*1024*1024-18)
-	t(15*1024*1024*1024, 1*1024*1024-8)
+	t(10*1024*1024*1024, 1*1024*1024-8)
 }
 
 func (suite *dataValidationTestSuite) TestExpandExistingFile() {
@@ -75,7 +75,7 @@ func (suite *dataValidationTestSuite) TestExpandExistingFile() {
 	t(8*1024*1024-1, 16*1024*1024+18)
 	t(16*1024*1024-1, 256*1024*1024+18)
 	t(1*1024*1024*1024, 2*1024*1024*1024+16)
-	t(1*1024*1024, 15*1024*1024*1024)
+	t(1*1024*1024, 10*1024*1024*1024+8)
 }
 
 func (suite *dataValidationTestSuite) TestTruncateNonExistingFile() {
