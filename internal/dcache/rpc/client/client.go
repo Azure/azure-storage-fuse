@@ -64,11 +64,7 @@ const (
 // This is used to make RPC calls to the node
 type rpcClient struct {
 	nodeID      string                      // Node ID of the node this client is for, can be used for debug logs
-<<<<<<< HEAD
 	nodeIDInt   int                         // Integral node ID, from UUIDToUniqueInt()
-=======
-	nodeIDInt   int                         // Integral node ID
->>>>>>> 3600ca86 (change locking in client pool)
 	nodeAddress string                      // Address of the node this client is for
 	ncPool      *nodeClientPool             // Pointer to the nodeClientPool this client belongs to
 	transport   thrift.TTransport           // Transport is the Thrift transport layer
@@ -101,15 +97,12 @@ type rpcClient struct {
 	//
 	// highPrio indicates if this client is used for high priority requests (case 2 above).
 	//
-<<<<<<< HEAD
 	// Update: To keep things simple, we are not differentiating between high and low priority clients now,
 	//         we are just creating extra clients when needed (see isExtra below). This means we treat all
 	//         clients as high priority.
 	//         Once we move to gRPC, we can multiplex multiple requests over a single connection, and we
 	//         won't have to worry about running out of clients/connections.
 	//
-=======
->>>>>>> 3600ca86 (change locking in client pool)
 	//highPrio bool
 
 	//
@@ -130,7 +123,6 @@ var protocolFactory thrift.TProtocolFactory
 var transportFactory thrift.TTransportFactory
 var thriftCfg *thrift.TConfiguration
 
-<<<<<<< HEAD
 // newRPCClient creates a new Thrift RPC client for the node.
 // To avoid lock contention, this function does not expect the caller to hold the nodeClientPool lock.
 func newRPCClient(nodeID string, nodeIDInt int, nodeAddress string) (*rpcClient, error) {
@@ -138,12 +130,6 @@ func newRPCClient(nodeID string, nodeIDInt int, nodeAddress string) (*rpcClient,
 		nodeID, nodeIDInt, nodeAddress)
 
 	common.Assert(nodeIDInt > 0, nodeIDInt, nodeID, nodeAddress)
-=======
-// newRPCClient creates a new Thrift RPC client for the node
-func newRPCClient(nodeID string, nodeIDInt int, nodeAddress string) (*rpcClient, error) {
-	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s (%d) at %s",
-		nodeID, nodeIDInt, nodeAddress)
->>>>>>> 3600ca86 (change locking in client pool)
 
 	//
 	// If the node is present in the negativeNodes map, it means we have recently experienced timeout

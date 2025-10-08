@@ -501,6 +501,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	var t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12 time.Duration
 
 	startTime := time.Now()
+
 	defer func() {
 		//
 		// Let us know if RPC client allocation is slow.
@@ -547,8 +548,6 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	//    and it'll have no active and free clients and hence the getRPCClient() call will fail.
 	//
 	for {
-		b1 = cp.isNodeWriteLocked(nodeIDInt)
-		b1 = false
 		cp.acquireNodeReadLock(nodeIDInt)
 		t2 = time.Since(startTime)
 		ncPool = cp.getNodeClientPoolForNodeIdInt(nodeIDInt, nodeID)
@@ -630,7 +629,6 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			cp.releaseNodeReadLock(nodeIDInt)
 			return nil, err
 		}
-		t7 = time.Since(startTime)
 
 		//
 		// If node is marked negative, no point in waiting for a client to become available.
@@ -670,6 +668,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 				log.Debug("clientPool::getRPCClient: Created extra RPC client for node %s (%d) (cur: %d, cum: %d, retryCnt: %d)",
 					ncPool.nodeID, ncPool.nodeIDInt, ncPool.numExtraClients.Load(),
 					ncPool.numExtraClientsCum.Load(), retryCnt)
+
 				//
 				// We should not need too many extra clients, so let us log to know if we are creating.
 				// Tag it as [SLOW] for easy searching along with other slow logs.

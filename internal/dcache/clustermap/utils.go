@@ -622,11 +622,8 @@ func UUIDToUniqueInt(uuid string) int {
 
 // Use this when you are sure that the UUID has already been converted to an integer, and you
 // just want to retrieve it.
-<<<<<<< HEAD
 // Unlike UUIDToUniqueInt() which adds a UUID if it doesn't exist, this helps to catch unexpected
 // bugs where a UUID is not already added to the map where it should have been.
-=======
->>>>>>> 3600ca86 (change locking in client pool)
 func UUIDToInt(uuid string) int {
 	common.Assert(common.IsValidUUID(uuid), uuid)
 
@@ -636,10 +633,7 @@ func UUIDToInt(uuid string) int {
 	uuidToUniqueIntMapMutex.RUnlock()
 
 	common.Assert(exists, uuid)
-<<<<<<< HEAD
 	common.Assert(uuidInt > 0, uuid)
-=======
->>>>>>> 3600ca86 (change locking in client pool)
 
 	return uuidInt
 }
