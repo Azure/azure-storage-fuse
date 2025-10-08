@@ -180,7 +180,30 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		return nil, syscall.EROFS
 	}
 
-	/*
+	//
+	// MV placement algorithm.
+	// If ring based placement is enabled, RVs are picked in a round-robin manner, so mv0 has
+	// component RVs [rv0, rv1, rv2], mv1 has [rv1, rv2, rv3] and so on, so we pick MVs in the
+	// order mvX, mv(X+numReplicas), mv(X+2*numReplicas)...till we have stripeWidth MVs.
+	// The idea is to ensure that the file is spread across as many RVs as possible.
+	// With random placement, we do not know any beter so we just pick random MVs.
+	//
+	if cm.RingBasedMVPlacement {
+		startMVIdx := rand.Intn(len(activeMVs))
+		mvIdx := 0
+	mvLoop:
+		for {
+			for i := startMVIdx; i < len(activeMVs)+startMVIdx; i += int(numReplicas) {
+				fileMetadata.FileLayout.MVList[mvIdx] = activeMVs[int(i)%len(activeMVs)]
+				mvIdx++
+				if mvIdx == int(stripeWidth) {
+					// Done picking all MVs.
+					break mvLoop
+				}
+			}
+			startMVIdx++
+		}
+	} else {
 		//
 		// Shuffle the slice and pick starting numMVs.
 		//
@@ -198,20 +221,6 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		for i := range stripeWidth {
 			fileMetadata.FileLayout.MVList[i] = activeMVs[int(i)%len(activeMVs)]
 		}
-	*/
-
-	startMVIdx := rand.Intn(len(activeMVs))
-	mvIdx := 0
-mvLoop:
-	for {
-		for i := startMVIdx; i < len(activeMVs)+startMVIdx; i += int(numReplicas) {
-			fileMetadata.FileLayout.MVList[mvIdx] = activeMVs[int(i)%len(activeMVs)]
-			mvIdx++
-			if mvIdx == int(stripeWidth) {
-				break mvLoop
-			}
-		}
-		startMVIdx++
 	}
 
 	log.Debug("DistributedCache[FM]::NewDcacheFile: Initial metadata for file %s %+v",

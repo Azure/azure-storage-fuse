@@ -1267,10 +1267,15 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 //
 // sync true: Schedules and waits for the download to complete.
 // sync false: Schedules the read but doesn't wait for download to complete. This is the readahead case.
+//             In this case readChunk() drops the refcount on the chunk before returning to the caller.
 // doNotRelease true: Caller doesn't want us to drop the refcount on the chunk. This is useful when
-//                    caller wants us to schedule the download but they will wait for the download to complete.
+//                    caller wants us to schedule the download but they will wait for the download to complete
+//                    and also drop the refcount when they are done with the chunk.
+//                    It makes sense only when sync is false, with sync true we would anyway not drop the refcount.
 
 func (file *DcacheFile) readChunk(offset, length int64, sync, doNotRelease bool) (*StagedChunk, error) {
+	common.Assert(!doNotRelease || !sync, doNotRelease, sync, file.FileMetadata.Filename)
+
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	chunkOffset := int64(0)
@@ -1295,8 +1300,8 @@ func (file *DcacheFile) readChunk(offset, length int64, sync, doNotRelease bool)
 	// For readahead chunks the caller doesn't wait for the download to complete, and doesn't drop the refcount.
 	// So drop the refcount here. When reader thread reads from this readahead chunk, it'll get a brand new
 	// refcount at that time.
-	// For read chunk the caller may want to schedule the download but not wait for it to complete, in that
-	// case also the caller doesn't want us to drop the refcount.
+	// For read chunk the caller may want to schedule the download but not wait for it to complete (it'll do the
+	// wait), in that case also the caller doesn't want us to drop the refcount.
 	//
 	if !sync && !doNotRelease {
 		file.releaseChunk(chunk)
@@ -1337,6 +1342,11 @@ func (file *DcacheFile) waitForChunkDownload(chunk *StagedChunk) (*StagedChunk, 
 
 	// Block here till the chunk download is done.
 	err := <-chunk.Err
+	//
+	// Err channel has length 1, so once we read from it, it must be empty.
+	// No other thread can add the error to the channel other than the thread that performed the download.
+	//
+	common.Assert(len(chunk.Err) == 0, len(chunk.Err), chunk.Idx, file.FileMetadata.Filename)
 	if err != nil {
 		// Requeue the error for whoever reads this chunk next.
 		chunk.Err <- err
@@ -1371,7 +1381,8 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		file.FileMetadata.Filename, offset, chunkIdx, unsure)
 
 	//
-	// Schedule download now (before the readahead chunks), we wait for it to complete before returning.
+	// Schedule download now (before the readahead chunks), we later wait for it to complete just before
+	// returning from this function.
 	// By queueing this download before the readahead chunks, makes it more likely that this chunk download
 	// completes before the readahead chunks thus saving us any unnecessary wait time.
 	//
@@ -1427,13 +1438,14 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		//
 		// We have to readahead chunks [readAheadStartChunkIdx, readAheadEndChunkIdx).
 		// Instead of going in order, we start at a random index in that range to avoid node/rv hotspots when
-		// mulitple nodes read the same file.
+		// mulitple nodes read the same file. Each node will start readahead at a different chunk in the
+		// readahead range, thus spreading the load across nodes/RVs.
 		//
 		if readAheadEndChunkIdx > readAheadStartChunkIdx {
 			numChunksToReadahead := int(readAheadEndChunkIdx - readAheadStartChunkIdx)
 
 			startIdx := rand.Intn(numChunksToReadahead)
-			// test
+			// To disable the randomization of readahead order, uncomment below line.
 			//startIdx = 0
 			for idx := startIdx; idx < numChunksToReadahead+startIdx; idx++ {
 				i := int64(idx%numChunksToReadahead) + readAheadStartChunkIdx
@@ -1455,7 +1467,10 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		}
 	}
 
-	// Wait for the requested chunk download to complete and return.
+	//
+	// Now wait for the requested chunk download to complete and return.
+	// We scheduled its download at the start of this function, before scheduling the readahead chunks
+	//
 	return file.waitForChunkDownload(chunk)
 }
 
@@ -1485,7 +1500,7 @@ func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk
 		length, chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
 
 	// Read the chunk, wait for it to download.
-	chunk, err := file.readChunk(offset, length, true /* sync */, true /* doNotRelease */)
+	chunk, err := file.readChunk(offset, length, true /* sync */, false /* doNotRelease */)
 	return chunk, err
 }
 
