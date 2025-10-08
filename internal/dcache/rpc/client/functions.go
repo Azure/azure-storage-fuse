@@ -39,8 +39,6 @@ import (
 	"fmt"
 	"os"
 
-	//"time"
-
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
@@ -109,6 +107,14 @@ const (
 	defaultMaxNodes = 1000
 
 	//
+	// We pre-initialize nodeClientPool for these many nodes.
+	// Must be more than the max nodes in the biggest cluster size we want to support.
+	//
+	// TODO: This is a temporary fix till we move to gRPC.
+	//
+	staticMaxNodes = 10000
+
+	//
 	// defaultTimeout is the default duration in seconds after which an idle RPC client is closed.
 	//
 	defaultTimeout = 60
@@ -160,7 +166,7 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 		// priority client quota as we want to keep clients available for forwardPutChunk() calls if
 		// needed to prevent delays in PutChunkDC completions that can potentially cause timeouts.
 		//
-		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::Hello: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -209,7 +215,7 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -270,7 +276,7 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::GetChunk: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -319,7 +325,7 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -387,8 +393,7 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		//client, err := cp.getRPCClient(targetNodeID, fromFwder /* highPrio */)
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::PutChunk: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -437,7 +442,7 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -532,8 +537,7 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 		// forwardPutChunk()->PutChunkDC()->getRPCClient() blocks waiting for a free RPC client and all
 		// the clients are busy waiting for forwardPutChunk() calls to complete.
 		//
-		//client, err := cp.getRPCClient(targetNodeID, fromFwder /* highPrio */)
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::PutChunkDC: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -607,7 +611,7 @@ func PutChunkDC(ctx context.Context, targetNodeID string, req *models.PutChunkDC
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -717,7 +721,7 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::RemoveChunk: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -766,7 +770,7 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -833,8 +837,7 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		//client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::JoinMV: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -906,7 +909,7 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest,
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -973,8 +976,7 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		//client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::UpdateMV: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -1023,7 +1025,7 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -1084,7 +1086,7 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::LeaveMV: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -1133,7 +1135,7 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -1201,8 +1203,7 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 	//
 	for i := 0; i < 2; i++ {
 		// Get RPC client from the client pool.
-		//client, err := cp.getRPCClient(targetNodeID, false /* highPrio */)
-		client, err := cp.getRPCClient(targetNodeID, true /* highPrio */)
+		client, err := cp.getRPCClient(targetNodeID)
 		if err != nil {
 			err = fmt.Errorf("rpc_client::GetMVSize: Failed to get RPC client for node %s %v: %v [%w]",
 				targetNodeID, reqStr, err, NoFreeRPCClient)
@@ -1251,7 +1252,7 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 				if i == 1 {
 					return nil, err
 				}
-				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID)
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
 				if err1 != nil {
 					return nil, err
 				}
@@ -1328,11 +1329,11 @@ func Start() {
 
 	common.Assert(common.IsValidUUID(myNodeId), myNodeId)
 
-	cp = newClientPool(defaultMaxPerNode, defaultMaxNodes, defaultTimeout)
+	cp = newClientPool(defaultMaxPerNode, defaultMaxNodes, staticMaxNodes, defaultTimeout)
 	common.Assert(cp != nil)
 
-	log.Info("rpc_client::init: myNodeId: %s, maxNodes: %d, maxPerNode: %d, timeout: %d",
-		myNodeId, defaultMaxNodes, defaultMaxPerNode, defaultTimeout)
+	log.Info("rpc_client::init: myNodeId: %s, maxNodes: %d, staticMaxNodes: %d, maxPerNode: %d, timeout: %d",
+		myNodeId, defaultMaxNodes, staticMaxNodes, defaultMaxPerNode, defaultTimeout)
 }
 
 // Silence unused import errors for release builds.
