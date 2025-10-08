@@ -139,7 +139,8 @@ type clientPool struct {
 //
 // TODO: Implement timeout support.
 func newClientPool(maxPerNode, maxNodes, staticMaxNodes, timeout uint32) *clientPool {
-	log.Debug("clientPool::newClientPool: Creating new RPC client pool with maxPerNode: %d, maxNodes: %d, staticMaxNodes: %d, timeout: %d", maxPerNode, maxNodes, staticMaxNodes, timeout)
+	log.Info("clientPool::newClientPool: Creating RPC client pool with maxPerNode: %d, maxNodes: %d, staticMaxNodes: %d, timeout: %d",
+		maxPerNode, maxNodes, staticMaxNodes, timeout)
 
 	common.Assert(staticMaxNodes >= maxNodes, staticMaxNodes, maxNodes)
 
@@ -351,6 +352,7 @@ func (cp *clientPool) getNodeClientPoolForNodeIdInt(nodeIDInt int, nodeID string
 		// clients and clientsCnt must agree.
 		common.Assert(cp.clientsCnt.Load() > 0, cp.clientsCnt.Load(), nodeID)
 	} else {
+		// If not active, nodeID must be empty and clientChan must be nil.
 		common.Assert(ncPool.nodeID == "", nodeIDInt, nodeID)
 		common.Assert(ncPool.clientChan == nil, nodeIDInt, nodeID)
 	}
@@ -367,7 +369,7 @@ func (cp *clientPool) activateNodeClientPool(nodeIDInt int, nodeID string) {
 	ncPool := cp.clients[nodeIDInt]
 	common.Assert(ncPool.nodeIDInt == nodeIDInt, ncPool.nodeIDInt, nodeIDInt, ncPool.nodeID)
 
-	// Mus not already be active.
+	// Must not already be active.
 	common.Assert(!ncPool.isActive.Load(), nodeIDInt, ncPool.nodeID)
 
 	ncPool.isActive.Store(true)
@@ -393,7 +395,7 @@ func (cp *clientPool) deactivateNodeClientPool(nodeIDInt int, nodeID string) {
 	common.Assert(ncPool.isActive.Load(), nodeIDInt, ncPool.nodeID)
 	common.Assert(ncPool.nodeID == nodeID, ncPool.nodeID, nodeID, nodeIDInt)
 
-	// Never delete a nodeClientPool with active connections or non-empty connection pool.
+	// We must never delete a nodeClientPool with active connections or non-empty connection pool.
 	common.Assert(ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0,
 		ncPool.numActive.Load(), len(ncPool.clientChan))
 
@@ -407,7 +409,7 @@ func (cp *clientPool) deactivateNodeClientPool(nodeIDInt int, nodeID string) {
 }
 
 // Initialize nodeClientPool for the given node.
-// Once nodeClientPool is initials, clients can be allocated from it.
+// Once nodeClientPool is initialized, clients can be allocated from it.
 // Any other thread wanting to get a RPC client for the node will wait for this function to return.
 //
 // NOTE: Caller MUST hold exclusive lock for the node and read lock on the rwMutex
@@ -428,7 +430,8 @@ func (cp *clientPool) newNodeClientPool(nodeID string, nodeIDInt int) (*nodeClie
 	// Check in the negative nodes map if we should attempt creating RPC clients for this node ID.
 	err := cp.checkNegativeNode(nodeID)
 	if err != nil {
-		log.Err("clientPool::newNodeClientPool: not creating RPC clients for negative node %s: %v", nodeID, err)
+		log.Err("clientPool::newNodeClientPool: not creating RPC clients for negative node %s (%d): %v",
+			nodeID, nodeIDInt, err)
 		// Caller should be able to identify this as a negative node error.
 		common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
 		return nil, err
@@ -453,7 +456,7 @@ func (cp *clientPool) newNodeClientPool(nodeID string, nodeIDInt int) (*nodeClie
 	//
 	err = ncPool.createRPCClients(nodeID, cp.maxPerNode)
 	if err != nil {
-		log.Err("clientPool::newNodeClientPool: createRPCClients(%s) failed: %v", nodeID, err)
+		log.Err("clientPool::newNodeClientPool: createRPCClients(%s (%d)) failed: %v", nodeID, nodeIDInt, err)
 		return nil, err
 	}
 
@@ -466,7 +469,7 @@ func (cp *clientPool) newNodeClientPool(nodeID string, nodeIDInt int) (*nodeClie
 	// Brand new nodeClientPool must not be marked deleting.
 	common.Assert(!ncPool.deleting.Load(), nodeID)
 
-	// Mus be active for sure.
+	// Must be active for sure.
 	common.Assert(ncPool.isActive.Load(), nodeID)
 
 	return ncPool, nil
@@ -493,7 +496,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	var ncPool *nodeClientPool
 	//
 	// TODO: Leaving timing measurement for some time in case we need it on larger clusters.
-	/        Remove later.
+	//       Remove later.
 	//
 	var t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12 time.Duration
 
@@ -562,6 +565,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 		ncPool = cp.getNodeClientPoolForNodeIdInt(nodeIDInt, nodeID)
 		t5 = time.Since(startTime)
 		if ncPool.isActive.Load() {
+			// Some other thread created the nodeClientPool while we were waiting for the write lock.
 			cp.releaseNodeWriteLock(nodeIDInt)
 			continue
 		}
@@ -612,8 +616,8 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			// If deleting is set deletingAt must also be set.
 			common.Assert(!ncPool.deletingAt.IsZero(), nodeID)
 			// Publish as NegativeNodeError as we cannot create a client because the node is probably down.
-			err := fmt.Errorf("client pool deleted for node %s (%s ago), no clients available, waited for %s: %w",
-				nodeID, time.Since(ncPool.deletingAt), time.Since(startTime), NegativeNodeError)
+			err := fmt.Errorf("client pool deleted for node %s (%d) (%s ago), no clients available, waited for %s: %w",
+				nodeID, nodeIDInt, time.Since(ncPool.deletingAt), time.Since(startTime), NegativeNodeError)
 			log.Err("clientPool::getRPCClient: %v", err)
 			//
 			// Once we mark a nodeClientPool as deleting, we don't allocate any new clients from it and we have
@@ -632,7 +636,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 		//
 		t7 = time.Since(startTime)
 		if err := cp.checkNegativeNode(nodeID); err != nil {
-			err = fmt.Errorf("failing getRPCClient for negative node %s: %w", nodeID, err)
+			err = fmt.Errorf("failing getRPCClient for negative node %s (%d): %w", nodeID, nodeIDInt, err)
 			log.Err("clientPool::getRPCClient: %v", err)
 			// Caller should be able to identify this as a negative node error.
 			common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
@@ -727,7 +731,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			return client, nil
 		default:
 			t12 = time.Since(startTime)
-			log.Warn("clientPool::getRPCClient: No free RPC client for node %s (%d) (free: %d, active: %d, waiting: %d, retryCnt: %d)",
+			log.Warn("clientPool::getRPCClient: No free RPC client for node %s (%d) (free: %d, active: %d, waiting: %s, retryCnt: %d)",
 				nodeID, nodeIDInt, len(ncPool.clientChan), ncPool.numActive.Load(), time.Since(startTime), retryCnt)
 			retryCnt++
 			// Continue the for loop, various exit checks will be done there.
@@ -746,19 +750,20 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 	nodeIDInt := cm.UUIDToInt(nodeID)
 	common.Assert(nodeIDInt > 0 && nodeIDInt < int(cp.staticMaxNodes), nodeID, nodeIDInt, cp.staticMaxNodes)
 
-	log.Debug("clientPool::getRPCClientNoWait: Retrieving RPC client for node %s", nodeID)
+	log.Debug("clientPool::getRPCClientNoWait: Retrieving RPC client for node %s (%d)", nodeID, nodeIDInt)
 
 	common.Assert(cp.isNodeWriteLocked(nodeIDInt), nodeIDInt, nodeID)
 	common.Assert(cp.isRWMutexReadLocked())
 
 	ncPool := cp.getNodeClientPoolForNodeIdInt(nodeIDInt, nodeID)
 	if !ncPool.isActive.Load() {
-		return nil, fmt.Errorf("clientPool::getRPCClientNoWait: no active client pool for node %s: %w",
-			nodeID, NoFreeRPCClient)
+		return nil, fmt.Errorf("clientPool::getRPCClientNoWait: no active client pool for node %s (%d): %w",
+			nodeID, nodeIDInt, NoFreeRPCClient)
 	}
 
 	select {
 	case client := <-ncPool.clientChan:
+		common.Assert(client.nodeIDInt == nodeIDInt, client.nodeIDInt, nodeIDInt, nodeID, client.nodeID)
 		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
 		common.Assert(client.ncPool == ncPool, client, client.ncPool, ncPool, nodeID)
 		// Extra clients are not queued in the pool.
@@ -784,6 +789,8 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	// ncPool must be set in all allocated clients.
 	common.Assert(client.ncPool != nil, client.nodeID)
 	common.Assert(client.nodeID == client.ncPool.nodeID, client.nodeID, client.ncPool.nodeID)
+	common.Assert(client.nodeIDInt == client.ncPool.nodeIDInt,
+		client.nodeIDInt, client.ncPool.nodeIDInt, client.nodeID, client.ncPool.nodeID)
 
 	//
 	// Extra clients are not part of the pool, so we close them instead of releasing them back to the pool.
@@ -846,7 +853,7 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	// continue with deleting the nodeClientPool.
 	//
 	if ncPool.deleting.Load() {
-		log.Debug("clientPool::releaseRPCClient: Successful RPC response being processed after nodeClientPool is marked deleting, continuing with deleteAllRPCClients, client: %p, nodeID: %s", client, client.nodeID)
+		log.Debug("clientPool::releaseRPCClient: Successful RPC response being processed after nodeClientPool is marked deleting, continuing with deleteAllRPCClients, client: %p, nodeID: %s (%d)", client, client.nodeID, client.nodeIDInt)
 
 		cp.releaseNodeReadLock(client.nodeIDInt)
 		cp.releaseRWMutexReadLock()
@@ -881,20 +888,20 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 // closeRPCClient closes an RPC client.
 // The client MUST have been removed from the pool using a prior getRPCClient() call.
 func (cp *clientPool) closeRPCClient(client *rpcClient) error {
-	log.Debug("clientPool::closeRPCClient: Closing RPC client (%p) to %s node %s",
-		client, client.nodeAddress, client.nodeID)
+	log.Debug("clientPool::closeRPCClient: Closing RPC client (%p) to %s node %s (%d)",
+		client, client.nodeAddress, client.nodeID, client.nodeIDInt)
 
 	err := client.close()
 	if err != nil {
-		err = fmt.Errorf("failed to close RPC client to %s node %s: %v",
-			client.nodeAddress, client.nodeID, err)
+		err = fmt.Errorf("failed to close RPC client to %s node %s (%d): %v",
+			client.nodeAddress, client.nodeID, client.nodeIDInt, err)
 		log.Err("nodeClientPool::closeRPCClient: %v", err)
 		common.Assert(false, err)
 		return err
 	}
 
-	log.Info("clientPool::closeRPCClient: Closed RPC client to %s node %s",
-		client.nodeAddress, client.nodeID)
+	log.Info("clientPool::closeRPCClient: Closed RPC client to %s node %s (%d)",
+		client.nodeAddress, client.nodeID, client.nodeIDInt)
 
 	return nil
 }
@@ -985,6 +992,8 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	//
 	// deleteAllRPCClients() will be called only when we know for sure that an RPC request made using 'client'
 	// failed with a "timeout" error, we delete that client and all others in the pool.
+	// Acquire exclusive lock for the node to prevent other threads from acquiring/releasing clients while we
+	// are deleting all clients.
 	//
 	cp.acquireNodeWriteLock(client.nodeIDInt)
 	defer cp.releaseNodeWriteLock(client.nodeIDInt)
@@ -1117,6 +1126,7 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 // waits till either of the following happens:
 // - getNodeClientPoolForNodeIdInt() return nil, which means the nodeClientPool is deleted.
 // - nodeClientPool.deleting is false, which means that the nodeClientPool is recreated after being deleted.
+
 func (cp *clientPool) waitForNodeClientPoolToDelete(nodeID string, nodeIDInt int) error {
 	log.Debug("clientPool::waitForNodeClientPoolToDelete: node %s", nodeID)
 
@@ -1274,7 +1284,7 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 	//
 	ncPool.deleting.Store(false)
 
-	// Add the new client to the client pool for this node and wakeup one waiter in getRPCClient().
+	// Add the new client to the client pool for this node.
 	ncPool.returnClientToPool(newClient)
 
 	return nil
@@ -1919,7 +1929,10 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 				rpc.IsTimedOut(err1) ||
 				rpc.IsNoRouteToHost(err1) ||
 				errors.Is(err1, NegativeNodeError), err1)
+			//
 			// Save the last error seen in err, to return if we could not create any client.
+			// XXX: Set error atomically.
+			//
 			err = err1
 			return
 		}
