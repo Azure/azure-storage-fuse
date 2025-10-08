@@ -1622,6 +1622,9 @@ func ensureUUID() {
 		log.GetLoggerObj().Panicf("DistributedCache::ensureUUID: GetNodeUUID(1) failed: %v", err)
 	}
 
+	log.Info("DistributedCache::ensureUUID: Node UUID is %s, saved in file %s",
+		uuid1, common.GetNodeUUIDFilePath())
+
 	// This one (and all subsequent calls) should return the cached UUID.
 	uuid2, err := common.GetNodeUUID()
 	if err != nil {
