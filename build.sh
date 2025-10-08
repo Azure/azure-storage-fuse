@@ -5,7 +5,7 @@ then
     # Build blobfuse2 with fuse2
     rm -rf blobfuse2
     rm -rf azure-storage-fuse
-    go build -tags fuse2 -o blobfuse2
+    go build -race -tags fuse2 -o blobfuse2
 elif [ "$1" == "health" ]
 then
     # Build Health Monitor binary
@@ -15,5 +15,5 @@ else
     # Build blobfuse2 with fuse3
     rm -rf blobfuse2
     rm -rf azure-storage-fuse
-    go build -o blobfuse2
+    go build -race -o blobfuse2
 fi
