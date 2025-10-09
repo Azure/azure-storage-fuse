@@ -73,12 +73,18 @@ var (
 	MinChunkSizeMB int64 = 1
 	MaxChunkSizeMB int64 = 1024
 
+	// Configured chunk size.
+	ChunkSizeMB int64
+
 	// StripeWidthMB = ChunkSizeMB * StripeWidth
 	MinStripeWidth int64 = 1
 	MaxStripeWidth int64 = 1024
 
 	MinNumReplicas int64 = 1
 	MaxNumReplicas int64 = 256
+
+	// Configured number of replicas.
+	NumReplicas int64
 
 	MinMaxRVs int64 = 100
 	MaxMaxRVs int64 = 100000
