@@ -37,7 +37,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1595,31 +1594,14 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 // It performs direct or buffered read as per the configured setting or may fallback to buffered read for
 // cases where direct read cannot be performed due to alignment restrictions.
 func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byte) (int /* read bytes */, string /* hash */, error) {
-	var fh *os.File
-	var n, fd int
-	var err error
 	var hash string
 
-	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
-	common.Assert(data != nil && len(*data) > 0)
-	common.Assert(readOffset >= 0)
-
-	readLength := len(*data)
-
-	//
-	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered read.
-	// Smaller buffers (less than 1MiB) have been seen to be not aligned to FS_BLOCK_SIZE, we exclude
-	// those from the assert since those are rare and do not affect performance.
-	//
-	dataAddr := unsafe.Pointer(&(*data)[0])
-	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
-	common.Assert((readLength < 1024*1024) || isDataBufferAligned,
-		uintptr(dataAddr), readLength, common.FS_BLOCK_SIZE)
+	n, err := SafeRead(chunkPath, readOffset, data, rpc.ReadIOMode == rpc.BufferedIO)
 
 	//
 	// Hash file is small, perform buffered read.
 	//
-	if hashPath != nil {
+	if err == nil && hashPath != nil {
 		// Caller must ask hash only for full chunk reads.
 		common.Assert(readOffset == 0)
 		common.Assert(len(*hashPath) > 0)
@@ -1635,88 +1617,7 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		hash = string(hashData)
 	}
 
-	//
-	// Read the chunk using buffered IO mode if,
-	//   - Read IO type is configured as BufferedIO, or
-	//   - The requested offset and length is not aligned to file system block size.
-	//   - The buffer is not aligned to file system block size.
-	//
-	if rpc.ReadIOMode == rpc.BufferedIO ||
-		readLength%common.FS_BLOCK_SIZE != 0 ||
-		readOffset%common.FS_BLOCK_SIZE != 0 ||
-		!isDataBufferAligned {
-		if rpc.ReadIOMode != rpc.BufferedIO {
-			log.Debug("readChunkAndHash: Performing buffered read for chunk %s, offset %d, readLength %d, isDataBufferAligned: %v",
-				*chunkPath, readOffset, readLength, isDataBufferAligned)
-		}
-		goto bufferedRead
-	}
-
-	//
-	// Direct IO read.
-	//
-	fd, err = syscall.Open(*chunkPath, syscall.O_RDONLY|syscall.O_DIRECT, 0)
-	if err != nil {
-		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
-	}
-	defer syscall.Close(fd)
-
-	if readOffset != 0 {
-		_, err = syscall.Seek(fd, readOffset, 0)
-		if err != nil {
-			return -1, "", fmt.Errorf("failed to seek in chunk file %s at offset %d [%v]",
-				*chunkPath, readOffset, err)
-		}
-	}
-
-	n, err = syscall.Read(fd, *data)
-	if err == nil {
-		//
-		// Partial reads should be rare, if it happens fallback to the buffered ReadAt() call which will
-		// try to read all the requested byted.
-		// TODO: Make sure this is not common path.
-		//
-		if n != readLength {
-			log.Debug("readChunkAndHash: Partial read (%d of %d), chunk file %s, offset %d, falling back to buffered read",
-				n, readLength, *chunkPath, readOffset)
-			common.Assert(false, n, readLength, *chunkPath)
-			goto bufferedRead
-		}
-		return n, hash, nil
-	}
-
-	// For EINVAL, fall through to buffered read.
-	if !errors.Is(err, syscall.EINVAL) {
-		return -1, "", fmt.Errorf("failed to read chunk file %s offset %d [%v]", *chunkPath, readOffset, err)
-	}
-
-	// TODO: Remove this once this is tested sufficiently.
-	log.Warn("Direct read failed with EINVAL, performing buffered read, file: %s, offset: %d, err: %v",
-		*chunkPath, readOffset, err)
-
-bufferedRead:
-	fh, err = os.Open(*chunkPath)
-	if err != nil {
-		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
-	}
-	defer fh.Close()
-
-	//
-	// When reading metadata chunk, we may read less than requested length and hence EOF will be returned
-	// but that's not an error.
-	//
-	n, err = fh.ReadAt(*data, readOffset)
-	if err != nil && err != io.EOF {
-		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d, readLength: %d [%v]",
-			*chunkPath, readOffset, readLength, err)
-	}
-
-	// See comment in readChunkAndHash() why metadata chunk read may return less data than requested.
-	common.Assert((n == readLength) ||
-		(n > 0 && n < readLength && readLength == dcache.MDChunkSize && err == io.EOF),
-		n, readLength, *chunkPath)
-
-	return n, hash, nil
+	return n, hash, err
 }
 
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {

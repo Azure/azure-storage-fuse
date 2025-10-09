@@ -1859,13 +1859,16 @@ func copySingleChunk(job *syncJob, chunkName string) (error, int64) {
 	}
 
 	srcChunkPath := filepath.Join(sourceMVPath, chunkName)
-	srcData, err := os.ReadFile(srcChunkPath)
+	// TODO: Fix chunk size
+	srcData := make([]byte, 16*1024*1024)
+	n, err := rpc_server.SafeRead(&srcChunkPath, 0 /* offset */, &srcData, false /* forceBufferedRead */)
 	if err != nil {
-		err = fmt.Errorf("os.ReadFile(%s) failed: %v", srcChunkPath, err)
+		err = fmt.Errorf("SafeRead(%s) failed: %v", srcChunkPath, err)
 		log.Err("ReplicationManager::copySingleChunk: %v", err)
 		common.Assert(false, err)
 		return err, -1
 	}
+	srcData = srcData[:n]
 
 	job.mu.Lock()
 	putChunkReq := &models.PutChunkRequest{

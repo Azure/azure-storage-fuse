@@ -35,9 +35,14 @@ package rpc_server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"sort"
+	"syscall"
+	"unsafe"
 
 	"maps"
 
@@ -257,6 +262,115 @@ func deepCopyRVMap(rvs map[string]dcache.StateEnum) map[string]dcache.StateEnum 
 	maps.Copy(newRVs, rvs)
 
 	return newRVs
+}
+
+// Perform direct IO read if possible, else fallback to buffered read.
+// Handle partial reads and any transient errors.
+func SafeRead(filePath *string, readOffset int64, data *[]byte, forceBufferedRead bool) (int /* read bytes */, error) {
+	var fh *os.File
+	var n, fd int
+	var err error
+
+	common.Assert(filePath != nil && len(*filePath) > 0)
+	common.Assert(data != nil && len(*data) > 0)
+	common.Assert(readOffset >= 0)
+
+	readLength := len(*data)
+
+	//
+	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered read.
+	// Smaller buffers (less than 1MiB) have been seen to be not aligned to FS_BLOCK_SIZE, we exclude
+	// those from the assert since those are rare and do not affect performance.
+	//
+	dataAddr := unsafe.Pointer(&(*data)[0])
+	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
+	common.Assert((readLength < 1024*1024) || isDataBufferAligned,
+		uintptr(dataAddr), readLength, common.FS_BLOCK_SIZE)
+
+	//
+	// Read the chunk using buffered IO mode if,
+	//   - Caller wans us to force buffered read,
+	//   - The requested offset and length is not aligned to file system block size.
+	//   - The buffer is not aligned to file system block size.
+	//
+	if forceBufferedRead ||
+		readLength%common.FS_BLOCK_SIZE != 0 ||
+		readOffset%common.FS_BLOCK_SIZE != 0 ||
+		!isDataBufferAligned {
+		// Log if we have to perform buffered read for large reads.
+		if !forceBufferedRead && (readLength >= (1024 * 1024)) {
+			log.Warn("readChunkAndHash: Performing buffered read for %s, offset: %d, length: %d, aligned: %v",
+				*filePath, readOffset, readLength, isDataBufferAligned)
+		}
+		goto bufferedRead
+	}
+
+	//
+	// Direct IO read.
+	//
+	fd, err = syscall.Open(*filePath, syscall.O_RDONLY|syscall.O_DIRECT, 0)
+	if err != nil {
+		return -1, fmt.Errorf("failed to open file %s [%v]", *filePath, err)
+	}
+	defer syscall.Close(fd)
+
+	if readOffset != 0 {
+		_, err = syscall.Seek(fd, readOffset, 0)
+		if err != nil {
+			return -1, fmt.Errorf("failed to seek in file %s at offset %d [%v]",
+				*filePath, readOffset, err)
+		}
+	}
+
+	n, err = syscall.Read(fd, *data)
+	if err == nil {
+		//
+		// Partial reads should be rare, if it happens fallback to the buffered ReadAt() call which will
+		// try to read all the requested bytes.
+		//
+		// TODO: Make sure this is not common path.
+		//
+		if n != readLength {
+			log.Warn("SafeRead: Partial read (%d of %d), file: %s, offset: %d, falling back to buffered read",
+				n, readLength, *filePath, readOffset)
+			common.Assert(false, n, readLength, *filePath)
+			goto bufferedRead
+		}
+		return n, nil
+	}
+
+	// For EINVAL, fall through to buffered read.
+	if !errors.Is(err, syscall.EINVAL) {
+		return -1, fmt.Errorf("failed to read file: %s offset: %d [%v]", *filePath, readOffset, err)
+	}
+
+	// TODO: Remove this once this is tested sufficiently.
+	log.Warn("Direct read failed with EINVAL, performing buffered read, file: %s, offset: %d, err: %v",
+		*filePath, readOffset, err)
+
+bufferedRead:
+	fh, err = os.Open(*filePath)
+	if err != nil {
+		return -1, fmt.Errorf("failed to open file %s [%v]", *filePath, err)
+	}
+	defer fh.Close()
+
+	//
+	// When reading metadata chunk, we may read less than requested length and hence EOF will be returned
+	// but that's not an error.
+	//
+	n, err = fh.ReadAt(*data, readOffset)
+	if err != nil && err != io.EOF {
+		return -1, fmt.Errorf("failed to read file %s at offset %d, readLength: %d [%v]",
+			*filePath, readOffset, readLength, err)
+	}
+
+	// See comment in readChunkAndHash() why metadata chunk read may return less data than requested.
+	common.Assert((n == readLength) ||
+		(n > 0 && n < readLength && readLength == dcache.MDChunkSize && err == io.EOF),
+		n, readLength, *filePath)
+
+	return n, nil
 }
 
 // Silence unused import errors for release builds.
