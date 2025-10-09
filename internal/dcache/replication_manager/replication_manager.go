@@ -87,6 +87,13 @@ type replicationMgr struct {
 
 	// Number of sync jobs currently running.
 	numSyncJobs atomic.Int64
+
+	// Nominal RTT to a healthy RV, used for congestion control.
+	nominalRTT time.Duration
+	// Time taken by disk to write a chunk, used for congestion control.
+	diskLatency time.Duration
+	// Time taken to send a chunk over the network across nodes, used for congestion control.
+	nwHopLatency time.Duration
 }
 
 var rm *replicationMgr
@@ -112,7 +119,28 @@ func Start() error {
 	// Start the thread pool for sending RPC requests.
 	rm.tp.start()
 
+	egressMBps := int64(4000)
+	diskMBps := int64(4000)
+	rm.nwHopLatency = time.Duration((cm.ChunkSizeMB*1000)/egressMBps) * time.Millisecond
+	rm.diskLatency = time.Duration((cm.ChunkSizeMB*1000)/diskMBps) * time.Millisecond
+
+	//
+	// One daisy chain chunk write involves NumReplicas n/w hops and one disk write.
+	// The disk write for the last hop is considered, rest of the disk writes hide in the
+	// n/w hop.
+	//
+	rm.nominalRTT = time.Duration(float64((time.Duration(cm.NumReplicas)*rm.nwHopLatency)+rm.diskLatency) * float64(1.2))
+	rm.nominalRTT = max(rm.nominalRTT, 1*time.Millisecond)
+
+	log.Debug("ReplicationManager::Start: nominalRTT %s, nwHopLatency %s, diskLatency %s",
+		rm.nominalRTT, rm.nwHopLatency, rm.diskLatency)
+
 	return nil
+}
+
+// Given an RTT, return estimated queue size in number of requests, at the target RV.
+func rttToQsize(rtt time.Duration) int64 {
+	return max(int64(((rtt-rm.nominalRTT)*2)/rm.diskLatency), 0)
 }
 
 // Stop the replication manager instance.
@@ -385,13 +413,41 @@ retry:
 	return resp, nil
 }
 
+// Congestion related information for MV writes.
+// We use the RTT of the last completed request to gauge the congestion in the target RV(s) and/or the
+// intervening network path. We use this to dynamically adjust the number of requests we dispatch to the
+// MV, thus making sure we don't overload an already congested MV replica or the network path to it, while
+// making better use of our egress n/w bandwidth to send writes to an MV replica that is not congested.
+type mvCongInfo struct {
+	mu        sync.RWMutex
+	inflight  atomic.Int64  // PutChunkDC requests in flight to this MV.
+	cwnd      atomic.Int64  // Congestion window size, i.e., total number of inflight requests allowed.
+	minRTT    time.Duration // Minimum RTT observed. Debug only.
+	maxRTT    time.Duration // Maximum RTT observed. Debug only.
+	lastRTT   time.Duration // RTT as per the last completed request. This conveys congestion info.
+	lastRTTAt time.Time     // Time when lastRTT was recorded.
+}
+
+// mvCnginfo stores congestion info for each MV that we have written to.
+// Indexed by mv idx.
+//
+// Note: We use a static array instead of a map to avoid global lock.
+//
+// TODO: Change the size according to the max number of MVs supported.
+var mvCnginfo [10000]mvCongInfo
+
 func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*WriteMvResponse, error) {
 	log.Debug("ReplicationManager::writeMVInternal: Received WriteMV request (%v): %v", putChunkStyle, req.toString())
 
 	var rvsWritten []string
 	retryCnt := 0
 
-	var err error
+	var mvIdx int
+	_, err := fmt.Sscanf(req.MvName, "mv%d", &mvIdx)
+	common.Assert(err == nil, req.MvName, err)
+	common.Assert(mvIdx >= 0 && mvIdx < len(mvCnginfo), req.MvName, mvIdx, len(mvCnginfo))
+
+	mvCnginfo := &(mvCnginfo[mvIdx])
 
 	//
 	// If PutChunk fails with NeedToRefreshClusterMap more than once, it most likely is due to clustermap
@@ -708,7 +764,9 @@ retry:
 		//
 		putChunkSem := getPutChunkDCSem(targetNodeID, req.ChunkIndex)
 
+		mvCnginfo.inflight.Add(1)
 		putChunkDCstartTime := time.Now()
+
 		//
 		// If the node to which the PutChunkDC() RPC call must be made is local,
 		// then we directly call the PutChunkDC() method using the local server's handler.
@@ -719,9 +777,37 @@ retry:
 		} else {
 			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}
+		rtt := time.Since(putChunkDCstartTime)
+
+		common.Assert(mvCnginfo.inflight.Load() > 0, mvCnginfo.inflight.Load(), rvName, req.MvName)
+		mvCnginfo.inflight.Add(-1)
+
+		// Update congestion info for this MV, only from successful requests.
+		if err == nil {
+			mvCnginfo.mu.Lock()
+			mvCnginfo.lastRTTAt = time.Now()
+			mvCnginfo.lastRTT = rtt
+
+			qsize := rttToQsize(rtt)
+			if qsize < 10 {
+				mvCnginfo.cwnd.Add(1) // increase cwnd if rtt is small
+			} else if qsize < 50 {
+				mvCnginfo.cwnd.Store(1) // decrease cwnd if rtt is large
+			} else {
+				time.Sleep(10 * time.Millisecond) // sleep if rtt is very large
+			}
+
+			if rtt > mvCnginfo.maxRTT {
+				mvCnginfo.maxRTT = rtt
+			}
+			if rtt < mvCnginfo.minRTT || mvCnginfo.minRTT == time.Duration(0) {
+				mvCnginfo.minRTT = rtt
+			}
+			mvCnginfo.mu.Unlock()
+		}
 
 		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
-		releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex, time.Since(putChunkDCstartTime))
+		releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex, rtt)
 
 		if err != nil {
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",
@@ -1067,8 +1153,13 @@ processResponses:
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
-	var err error
 	var resp *WriteMvResponse
+	var mvIdx int
+
+	_, err := fmt.Sscanf(req.MvName, "mv%d", &mvIdx)
+	common.Assert(err == nil, req.MvName, err)
+	common.Assert(mvIdx >= 0 && mvIdx < len(mvCnginfo), req.MvName, mvIdx, len(mvCnginfo))
+	mvCnginfo := &(mvCnginfo[mvIdx])
 
 	//
 	// With 4GBps n/w and disk speeds, and with daisy chain with NumReplicas=3, 16MiB chunk write
@@ -1120,6 +1211,32 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 			return nil, err
 		}
 	}
+
+	mvCnginfo.mu.RLock()
+	timeSinceLastRTT := time.Since(mvCnginfo.lastRTTAt)
+	lastRTT := mvCnginfo.lastRTT
+	minRTT := mvCnginfo.minRTT
+	maxRTT := mvCnginfo.maxRTT
+	mvCnginfo.mu.RUnlock()
+
+	if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
+		log.Warn("ReplicationManager::WriteMV: MV %s inflight(%d) > cwnd(%d), lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+			req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(), lastRTT, minRTT, maxRTT, timeSinceLastRTT)
+	}
+
+	for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	/*
+		if timeSinceLastRTT < lastRTT {
+			if lastRTT > 10*minRTT && mvCnginfo.inflight.Load() > 0 {
+				log.Warn("ReplicationManager::WriteMV: MV %s has high lastRTT (%s) > 10*minRTT (%s), inflight: %d, timeSinceLastRTT: %s",
+					req.MvName, lastRTT, minRTT, mvCnginfo.inflight.Load(), timeSinceLastRTT)
+				time.Sleep(lastRTT)
+			}
+		}
+	*/
 
 	//
 	// We first try to write the MV using the DaisyChain mode.
