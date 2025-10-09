@@ -76,6 +76,9 @@ var (
 	CumChunkWrites          atomic.Int64 // cumulative number of chunks written
 	CumBytesWritten         atomic.Int64 // cumulative number of bytes written
 	IODepth                 atomic.Int64 // number of parallel writes in progress
+	OpenDepth               atomic.Int64 // number of go routines inside syscall.Open() for to-be-written chunk files
+	WriteDepth              atomic.Int64 // number of go routines inside syscall.Write()
+	RenameDepth             atomic.Int64 // number of go routines inside common.RenameNoReplace()
 	AggrChunkWritesDuration atomic.Int64 // time in nanoseconds for NumChunkWrites.
 
 	NumChunkReads          atomic.Int64
@@ -1593,9 +1596,14 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 // Helper function to read given chunk and (optionally) the hash file.
 // It performs direct or buffered read as per the configured setting or may fallback to buffered read for
 // cases where direct read cannot be performed due to alignment restrictions.
-func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byte) (int /* read bytes */, string /* hash */, error) {
+func readChunkAndHash(chunkPath, hashPath *string,
+	readOffset int64, data *[]byte) (int /* read bytes */, string /* hash */, error) {
 	var hash string
 
+	//
+	// Unless o/w specified, we do direct IO for chunk reads falling to buffered IO in case of some issue,
+	// alignment issue being the most common one.
+	//
 	n, err := SafeRead(chunkPath, readOffset, data, rpc.ReadIOMode == rpc.BufferedIO)
 
 	//
@@ -1921,7 +1929,9 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	// Use O_EXCL flag just in case two writers are trying to write the same chunk simultaneously.
 	// Note that for actually protecting overwriting an existing chunk we rely on the atomic rename below.
 	//
+	OpenDepth.Add(1)
 	fd, err := syscall.Open(tmpChunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
+	OpenDepth.Add(-1)
 	if err != nil {
 		//
 		// This is most likely open failure due to the file already existing.
@@ -1952,7 +1962,9 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	}()
 
 	for {
+		WriteDepth.Add(1)
 		n, err := syscall.Write(fd, *data)
+		WriteDepth.Add(-1)
 		if err == nil {
 			// write should never succeed with 0 bytes written.
 			common.Assert(n > 0, n, len(*data), tmpChunkPath)
@@ -1962,7 +1974,9 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 				// Common case, written everything requested.
 				// Rename the tmp chunk file to the final chunk file name.
 				//
+				RenameDepth.Add(1)
 				renameErr := common.RenameNoReplace(tmpChunkPath, *chunkPath)
+				RenameDepth.Add(-1)
 				if renameErr != nil {
 					err := fmt.Errorf("safeWrite: failed to rename chunk file %s to %s: %w",
 						tmpChunkPath, *chunkPath, renameErr)
@@ -2066,6 +2080,12 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 		writeLength%common.FS_BLOCK_SIZE != 0 ||
 		!isDataBufferAligned {
 		bufferedWrite = true
+
+		// Warn if we are doing buffered write for a large chunk due to unaligned buffer.
+		if rpc.WriteIOMode != rpc.BufferedIO && (writeLength >= (1024 * 1024)) && !isDataBufferAligned {
+			log.Warn("writeChunkAndHash: Performing buffered write for chunk %s, length: %d, aligned: %v",
+				*chunkPath, writeLength, isDataBufferAligned)
+		}
 	}
 
 	if !bufferedWrite {
@@ -2423,11 +2443,12 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	// Too many outstanding writes to a disk can make the writes very slow, alert to know that.
 	if thisDuration > SlowReadWriteThreshold {
-		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, tot: {%d, %d}, iodepth: %d",
+		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, cum: {%d, %d}, iodepth: %d, openDepth: %d, writeDepth: %d, renameDepth: %d",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 			thisDuration, SlowReadWriteThreshold,
 			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()),
-			CumChunkWrites.Load(), CumBytesWritten.Load(), IODepth.Load())
+			CumChunkWrites.Load(), CumBytesWritten.Load(), IODepth.Load(),
+			OpenDepth.Load(), WriteDepth.Load(), RenameDepth.Load())
 	}
 
 	if err != nil {

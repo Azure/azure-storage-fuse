@@ -288,8 +288,8 @@ func SafeRead(filePath *string, readOffset int64, data *[]byte, forceBufferedRea
 		uintptr(dataAddr), readLength, common.FS_BLOCK_SIZE)
 
 	//
-	// Read the chunk using buffered IO mode if,
-	//   - Caller wans us to force buffered read,
+	// Read using buffered IO mode if,
+	//   - Caller wants us to force buffered read,
 	//   - The requested offset and length is not aligned to file system block size.
 	//   - The buffer is not aligned to file system block size.
 	//
@@ -297,9 +297,9 @@ func SafeRead(filePath *string, readOffset int64, data *[]byte, forceBufferedRea
 		readLength%common.FS_BLOCK_SIZE != 0 ||
 		readOffset%common.FS_BLOCK_SIZE != 0 ||
 		!isDataBufferAligned {
-		// Log if we have to perform buffered read for large reads.
-		if !forceBufferedRead && (readLength >= (1024 * 1024)) {
-			log.Warn("readChunkAndHash: Performing buffered read for %s, offset: %d, length: %d, aligned: %v",
+		// Log if we have to perform buffered read for large reads due to unaligned buffer.
+		if !forceBufferedRead && (readLength >= (1024*1024) && !isDataBufferAligned) {
+			log.Warn("SafeRead: Performing buffered read for %s, offset: %d, length: %d, aligned: %v",
 				*filePath, readOffset, readLength, isDataBufferAligned)
 		}
 		goto bufferedRead
@@ -331,6 +331,7 @@ func SafeRead(filePath *string, readOffset int64, data *[]byte, forceBufferedRea
 		// TODO: Make sure this is not common path.
 		//
 		if n != readLength {
+			common.Assert(n < readLength, n, readLength, *filePath)
 			log.Warn("SafeRead: Partial read (%d of %d), file: %s, offset: %d, falling back to buffered read",
 				n, readLength, *filePath, readOffset)
 			common.Assert(false, n, readLength, *filePath)
@@ -368,7 +369,7 @@ bufferedRead:
 	// See comment in readChunkAndHash() why metadata chunk read may return less data than requested.
 	common.Assert((n == readLength) ||
 		(n > 0 && n < readLength && readLength == dcache.MDChunkSize && err == io.EOF),
-		n, readLength, *filePath)
+		n, readLength, *filePath, err)
 
 	return n, nil
 }
