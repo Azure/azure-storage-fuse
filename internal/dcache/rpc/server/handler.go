@@ -74,6 +74,9 @@ var (
 	ChunkCacheSize = 1024
 
 	NumChunkWrites          atomic.Int64
+	CumChunkWrites          atomic.Int64 // cumulative number of chunks written
+	CumBytesWritten         atomic.Int64 // cumulative number of bytes written
+	IODepth                 atomic.Int64 // number of parallel writes in progress
 	AggrChunkWritesDuration atomic.Int64 // time in nanoseconds for NumChunkWrites.
 
 	NumChunkReads          atomic.Int64
@@ -2501,7 +2504,9 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	// TODO: hash validation will be done later
 	writeStartTime = time.Now()
+	IODepth.Add(1)
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
+	IODepth.Add(-1)
 	thisDuration = time.Since(writeStartTime)
 
 	// Consider only recent writes for calculating avg write duration.
@@ -2512,12 +2517,16 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		AggrChunkWritesDuration.Add(thisDuration.Nanoseconds())
 	}
 
+	CumChunkWrites.Add(1)
+	CumBytesWritten.Add(int64(len(req.Chunk.Data)))
+
 	// Too many outstanding writes to a disk can make the writes very slow, alert to know that.
 	if thisDuration > SlowReadWriteThreshold {
-		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s",
+		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, tot: {%d, %d}, iodepth: %d",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 			thisDuration, SlowReadWriteThreshold,
-			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()))
+			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()),
+			CumChunkWrites.Load(), CumBytesWritten.Load(), IODepth.Load())
 	}
 
 	if err != nil {

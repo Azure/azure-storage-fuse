@@ -99,6 +99,7 @@ type ClusterManager struct {
 	localMapETag *string
 	// Mutex for synchronizing updates to localClusterMapPath, localMapETag and the cached copy in clustermap package.
 	localMapLock sync.Mutex
+
 	// RPC server running on this node.
 	// It'll respond to RPC queries made from other nodes.
 	rpcServer *rpc_server.NodeServer
@@ -238,6 +239,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		log.Info("ClusterManager::start: ==> Starting RPC server")
 
 		common.Assert(cmi.rpcServer == nil)
+
 		cmi.rpcServer, err = rpc_server.NewNodeServer(rvsMap)
 		if err != nil {
 			log.Err("ClusterManager::start: Failed to create RPC server")
