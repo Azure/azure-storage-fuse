@@ -479,8 +479,8 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 		children: make([]*internal.ObjAttr, 0),
 	})
 
-	handlemap.Add(handle)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+	handleId := handlemap.Add(handle)
+	fi.fh = C.ulong(handleId)
 
 	return 0
 }
@@ -489,7 +489,11 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_releasedir
 func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	handle, ok := handlemap.Get(handlemap.HandleID(fi.fh))
+	if !ok {
+		log.Err("Libfuse::libfuse_releasedir : Invalid handle id %d", fi.fh)
+		return -C.EIO
+	}
 
 	log.Trace("Libfuse::libfuse_releasedir : %s, handle: %d", handle.Path, handle.ID)
 
@@ -502,7 +506,11 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_readdir
 func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t, flag C.fuse_readdir_flags_t) C.int {
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	handle, ok := handlemap.Get(handlemap.HandleID(fi.fh))
+	if !ok {
+		log.Err("Libfuse::libfuse_releasedir : Invalid handle id %d", fi.fh)
+		return -C.EIO
+	}
 
 	handle.RLock()
 	val, found := handle.GetValue("cache")
@@ -720,14 +728,10 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
-	handlemap.Add(handle)
-	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
-	if !handle.Cached() {
-		ret_val.fd = 0
-	}
+	handleID := handlemap.Add(handle)
+	fi.fh = C.ulong(handleID)
+
 	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -739,8 +743,11 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	handle, ok := handlemap.Get(handlemap.HandleID(fi.fh))
+	if !ok {
+		log.Err("Libfuse::libfuse_releasedir : Invalid handle id %d", fi.fh)
+		return -C.EIO
+	}
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
@@ -775,8 +782,11 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 //
 //export libfuse_write
 func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	handle, ok := handlemap.Get(handlemap.HandleID(fi.fh))
+	if !ok {
+		log.Err("Libfuse::libfuse_releasedir : Invalid handle id %d", fi.fh)
+		return -C.EIO
+	}
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
@@ -801,14 +811,13 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 //
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
-
-	// If the file handle is not dirty, there is no need to flush
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
+	handle, ok := handlemap.Get(handlemap.HandleID(fi.fh))
+	if !ok {
+		log.Err("Libfuse::libfuse_releasedir : Invalid handle id %d", fi.fh)
+		return -C.EIO
 	}
+
+	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
 
 	if !handle.Dirty() {
 		return 0
@@ -848,8 +857,11 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 		handle = nil
 		log.Trace("Libfuse::libfuse_truncate : %s, size: %d", name, off)
 	} else {
-		fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-		handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+		handle, ok := handlemap.Get(handlemap.HandleID(fi.fh))
+		if !ok {
+			log.Err("Libfuse::libfuse_releasedir : Invalid handle id %d", fi.fh)
+			return -C.EIO
+		}
 		log.Trace("Libfuse::libfuse_truncate : %s, handle: %d, size: %d", handle.Path, handle.ID, off)
 	}
 
@@ -878,15 +890,13 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_release
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	handle, ok := handlemap.Get(handlemap.HandleID(fi.fh))
+	if !ok {
+		log.Err("Libfuse::libfuse_releasedir : Invalid handle id %d", fi.fh)
+		return -C.EIO
+	}
 
 	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
-
-	// If the file handle is dirty then file-cache needs to flush this file
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
@@ -1086,12 +1096,12 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 //
 //export libfuse_fsync
 func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
+	handle, ok := handlemap.Get(handlemap.HandleID(fi.fh))
+	if !ok {
+		log.Err("Libfuse::libfuse_releasedir : Invalid handle id %d", fi.fh)
+		return -C.EIO
 	}
 
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
 
 	options := internal.SyncFileOptions{Handle: handle}

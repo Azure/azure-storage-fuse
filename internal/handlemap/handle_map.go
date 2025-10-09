@@ -171,6 +171,15 @@ func Add(handle *Handle) HandleID {
 	return key
 }
 
+func Get(handleID HandleID) (*Handle, bool) {
+	IHandle, ok := defaultHandleMap.Load(handleID)
+	if !ok {
+		return nil, false
+	}
+	handle := IHandle.(*Handle)
+	return handle, true
+}
+
 // Delete : Remove handle object from map
 func Delete(key HandleID) {
 	defaultHandleMap.Delete(key)
