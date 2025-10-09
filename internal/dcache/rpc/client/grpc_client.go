@@ -35,60 +35,107 @@ package rpc_client
 
 import (
 	"context"
-	"errors"
-	"sync/atomic"
-	"time"
+	"fmt"
 
-	grpcmodels "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go-grpc/models"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	grpcservice "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go-grpc/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// grpcRPCClient wraps a single gRPC connection & stub.
-type grpcRPCClient struct {
-	conn   *grpc.ClientConn
-	client grpcservice.ChunkServiceClient
-	// simple stats
-	lastUsed atomic.Int64 // unix nano
+//go:generate $ASSERT_REMOVER $GOFILE
+
+// grpcClient wraps a single gRPC connection & stub.
+type grpcClient struct {
+	nodeID      string                         // Node ID of the node this client is for, can be used for debug logs
+	nodeAddress string                         // Address of the node this client is for
+	conn        *grpc.ClientConn               // Underlying gRPC connection
+	client      grpcservice.ChunkServiceClient // gRPC client for the chunk service
 }
 
-func newGrpcRPCClient(address string) (*grpcRPCClient, error) {
-	conn, err := grpc.NewClient(address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+var opts []grpc.DialOption
+
+func newGRPCClient(nodeID string, nodeAddress string) (*grpcClient, error) {
+	common.Assert(common.IsValidUUID(nodeID), nodeID)
+
+	// TODO: check negative nodes map
+
+	conn, err := grpc.NewClient(nodeAddress, opts...)
 	if err != nil {
+		log.Err("grpcClient::newGRPCClient: Failed to create client to node %s at %s: %v",
+			nodeID, nodeAddress, err)
 		return nil, err
 	}
 
-	// Manual readiness wait (max 5s)
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		st := conn.GetState()
-		if st == connectivity.Ready {
-			break
-		}
-		if !conn.WaitForStateChange(context.Background(), st) { // context never cancels; use deadline check
-			// WaitForStateChange returns false if ctx expired; we only pass background so continue
-		}
-		if time.Now().After(deadline) && st != connectivity.Ready {
-			_ = conn.Close()
-			return nil, errors.New("grpc: connection not ready within timeout")
-		}
+	err = checkConnectionReady(conn)
+	if err != nil {
+		log.Err("grpcClient::newGRPCClient: Failed to create connection to node %s at %s: %v",
+			nodeID, nodeAddress, err)
+		// TODO: add to negative nodes map
+
+		return nil, err
 	}
 
-	c := grpcservice.NewChunkServiceClient(conn)
-	cli := &grpcRPCClient{conn: conn, client: c}
-	cli.touch()
-	return cli, nil
+	client := grpcservice.NewChunkServiceClient(conn)
+
+	grpcClient := &grpcClient{
+		nodeID:      nodeID,
+		nodeAddress: nodeAddress,
+		conn:        conn,
+		client:      client,
+	}
+
+	return grpcClient, nil
 }
 
-func (c *grpcRPCClient) touch() { c.lastUsed.Store(time.Now().UnixNano()) }
-func (c *grpcRPCClient) Close() { _ = c.conn.Close() }
+func (c *grpcClient) close() error {
+	err := c.conn.Close()
+	if err != nil {
+		log.Err("grpcClient::close: Failed to close connection for node %s at %s [%v]",
+			c.nodeID, c.nodeAddress, err)
+		return err
+	}
 
-// Example wrapper for Hello.
-func (c *grpcRPCClient) Hello(ctx context.Context, req *grpcmodels.HelloRequest) (*grpcmodels.HelloResponse, error) {
-	c.touch()
-	return c.client.Hello(ctx, req)
+	return nil
+}
+
+// Check if the connection is ready within defaultConnectionTimeout.
+func checkConnectionReady(conn *grpc.ClientConn) error {
+	conn.Connect()
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultConnectionTimeout)
+	defer cancel()
+
+	for {
+		state := conn.GetState()
+		if state == connectivity.Ready {
+			return nil
+		}
+
+		if !conn.WaitForStateChange(ctx, state) {
+			return fmt.Errorf("connection not ready within timeout %v, last state: %v",
+				defaultConnectionTimeout, state)
+		}
+	}
+}
+
+func init() {
+	log.Debug("rpcClient::init: Initializing protocol and transport factories")
+
+	// Use insecure connection for now
+	// TODO: add TLS support
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	// Update max message size to 64 MB, default being 4 MB
+	opts = append(opts, grpc.WithDefaultCallOptions(
+		grpc.MaxCallRecvMsgSize(64*1024*1024),
+		grpc.MaxCallSendMsgSize(64*1024*1024),
+	))
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
 }

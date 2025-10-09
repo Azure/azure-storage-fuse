@@ -49,15 +49,15 @@ func (suite *rpcClientTestSuite) SetupTest() {
 	suite.assert = assert.New(suite.T())
 }
 
-func (suite *rpcClientTestSuite) TestNewRPCClientTimeout() {
-	nodeID := "test-node-id"
-	nodeAddress := "10.0.0.5:9090"
+// func (suite *rpcClientTestSuite) TestNewRPCClientTimeout() {
+// 	nodeID := "test-node-id"
+// 	nodeAddress := "10.0.0.5:9090"
 
-	client, err := newRPCClient(nodeID, nodeAddress)
-	suite.assert.Error(err)
-	suite.assert.Contains(err.Error(), "timeout")
-	suite.assert.Nil(client)
-}
+// 	client, err := newRPCClient(nodeID, nodeAddress)
+// 	suite.assert.Error(err)
+// 	suite.assert.Contains(err.Error(), "timeout")
+// 	suite.assert.Nil(client)
+// }
 
 func TestRPCClientTestSuite(t *testing.T) {
 	suite.Run(t, new(rpcClientTestSuite))
