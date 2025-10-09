@@ -60,7 +60,16 @@ var opts []grpc.DialOption
 func newGRPCClient(nodeID string, nodeAddress string) (*grpcClient, error) {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
 
-	// TODO: check negative nodes map
+	//
+	// If the node is present in the negativeNodes map, it means we have recently experienced timeout
+	// when communicating with this node, learn from our recent experience and save a potential timeout.
+	//
+	err := gp.checkNegativeNode(nodeID)
+	if err != nil {
+		log.Err("rpcClient::newRPCClient: not creating RPC client to negative node %s (%s): %v",
+			nodeID, nodeAddress, err)
+		return nil, err
+	}
 
 	conn, err := grpc.NewClient(nodeAddress, opts...)
 	if err != nil {
@@ -73,7 +82,12 @@ func newGRPCClient(nodeID string, nodeAddress string) (*grpcClient, error) {
 	if err != nil {
 		log.Err("grpcClient::newGRPCClient: Failed to create connection to node %s at %s: %v",
 			nodeID, nodeAddress, err)
-		// TODO: add to negative nodes map
+
+		//
+		// Any error indicates a problem connecting to the node, so add to negative nodes map to quarantine
+		// the node for a short period, so that we don't keep trying to connect to it repeatedly.
+		//
+		gp.addNegativeNode(nodeID)
 
 		return nil, err
 	}

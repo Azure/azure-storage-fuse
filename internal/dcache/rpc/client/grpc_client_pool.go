@@ -34,6 +34,7 @@
 package rpc_client
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -41,6 +42,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 )
 
@@ -65,6 +67,52 @@ type grpcClientPool struct {
 	// Map of nodeID to *grpcNodeClientPool. Use the following helpers to manage the map:
 	clients map[string]*grpcNodeClientPool
 
+	//
+	// We maintain information on nodes to which we have problems communicating with recently.
+	// The idea is to save this information by the first thread which encounters connection
+	// error and then use that to fail fast for other threads trying to communicate with the
+	// same node, and save them from waiting for timeout and thus unnecessarily slowing error
+	// handling.
+	// The key is the node ID and the value is the time.Time when the timeout error was observed,
+	// either while creating the RPC client (connection timeout) or while making an RPC call
+	// (receive timeout).
+	//
+	// A node is removed from the negative nodes map if,
+	//   - The negative timeout has expired for the node.
+	//     This is done by a periodic goroutine which scans the map every few seconds.
+	//   - Any RPC call to the node succeeds indicating that the connection between the client and
+	//     the node is healthy.
+	//     Since we don't make any RPC calls to the negative nodes, this is only for rare cases
+	//     when the node was marked negative by one thread but another thread was able to get a
+	//     successful RPC call.
+	//
+	negativeNodes    sync.Map
+	negativeNodesCnt atomic.Int64
+
+	//
+	// Similar to negativeNodes map, iffyRvIdMap is another data structure that is (only) used by
+	// WriteMV() to avoid making a PutChunkDC call to any RV (nexthop or in the chain) which was
+	// present in the daisy	chain of RVs for a recent PutChunkDC call which failed with timeout
+	// error. iffyRvIdMap stores the RV id as key and value is the time when the error was observed.
+	// When we make PutChunkDC() call and one/more connections between the downstream nodes are bad,
+	// it will result in timeout error. We cannot know for sure which of the RVs in the chain had
+	// problem, so we mark all of them as iffy and make the PutChunk call instead of PutChunkDC.
+	// That helps us exactly know which RVs are bad and must be marked inband-offline.
+	// This way the RPC client can know if the RV is marked iffy. If yes, it will return error back
+	// to the caller (WriteMV) indicating it to retry the operation using OriginatorSendsToAll mode.
+	// Future calls can use this information to avoid making calls to the iffy RVs and save the timeouts.
+	//
+	// An RV is removed from the iffyRvIdMap if,
+	//   - The negative timeout has expired for the RV.
+	//   - Any RPC call to the RV succeeds indicating that the RV is reachable.
+	//
+	iffyRvIdMap    sync.Map
+	iffyRvIdMapCnt atomic.Int64
+
+	// Ticker / stop channel for periodic purge of expired negative/iffy entries.
+	negativeNodesTicker *time.Ticker
+	negativeNodesDone   chan bool
+
 	maxPerNode uint32 // Maximum number of open RPC clients per node
 	maxNodes   uint32 // Maximum number of nodes for which RPC clients are open
 }
@@ -73,11 +121,16 @@ func newGRPCClientPool(maxPerNode, maxNodes uint32) *grpcClientPool {
 	log.Info("grpcClientPool::newGRPCClientPool: Creating RPC client pool with maxPerNode: %d, maxNodes: %d",
 		maxPerNode, maxNodes)
 
-	return &grpcClientPool{
-		clients:    make(map[string]*grpcNodeClientPool),
-		maxPerNode: maxPerNode,
-		maxNodes:   maxNodes,
+	cp := &grpcClientPool{
+		clients:             make(map[string]*grpcNodeClientPool),
+		maxPerNode:          maxPerNode,
+		maxNodes:            maxNodes,
+		negativeNodesTicker: time.NewTicker(5 * time.Second),
+		negativeNodesDone:   make(chan bool),
 	}
+
+	go cp.periodicRemoveNegativeNodesAndIffyRVs()
+	return cp
 }
 
 func (cp *grpcClientPool) acquireRWMutexReadLock() {
@@ -133,6 +186,12 @@ func (cp *grpcClientPool) isRWMutexWriteLocked() bool {
 // getRPCClient returns a gRPC client for given nodeID in round-robin manner; creates pool if missing.
 func (cp *grpcClientPool) getRPCClient(nodeID string) (*grpcClient, error) {
 	common.Assert(common.IsValidUUID(nodeID), nodeID)
+
+	// Fast negative-node fail-fast path.
+	if err := cp.checkNegativeNode(nodeID); err != nil {
+		log.Err("grpcClientPool::getRPCClient: %v", err)
+		return nil, err
+	}
 
 	startTime := time.Now()
 	_ = startTime
@@ -267,6 +326,262 @@ func (cp *grpcClientPool) closeAllNodeClientPools() error {
 	return nil
 }
 
+// AddNegativeNode adds a node to the negative nodes map when,
+//   - The RPC client creation to the node failed due to timeout.
+//   - RPC call to the node failed due to timeout.
+//
+// To keep the caller simple, we don't take any lock here and do not expect caller to take any lock before calling
+// this method.
+// It increases the negativeNodesCnt counter only when a new entry is added to the map.
+func (cp *grpcClientPool) addNegativeNode(nodeID string) bool {
+	common.Assert(common.IsValidUUID(nodeID), nodeID)
+
+	for {
+		now := time.Now()
+		val, alreadyPresent := cp.negativeNodes.LoadOrStore(nodeID, now)
+		_ = val
+
+		if !alreadyPresent {
+			//
+			// New entry added.
+			//
+			// Note: Since we don't take any lock, it's possible that some thread may call removeNegativeNode()
+			//       after the LoadOrStore() above and before we do the Add(1) below, which will cause
+			//       removeNegativeNode() to not remove the node from negativeNodes map. This is not desireable
+			//       but not catastrophic either, as the node will be removed from negativeNodes map in the
+			//       next attempt.
+			//
+			cp.negativeNodesCnt.Add(1)
+
+			log.Debug("grpcClientPool::addNegativeNode: added (%s -> %s) to negativeNodes (total count: %d)",
+				nodeID, now, cp.negativeNodesCnt.Load())
+
+			return true
+		}
+
+		//
+		// CompareAndSwap() can fail if either the key is deleted or updated by another thread after the
+		// LoadOrStore() above. If it's updated and not deleted, CompareAndSwap() below will update it
+		// with the new timestamp. If it's deleted, we go back and try again to add the key.
+		//
+		oldTime := val.(time.Time)
+		if cp.negativeNodes.CompareAndSwap(nodeID, oldTime, now) {
+			log.Debug("grpcClientPool::addNegativeNode: updated (%s -> [%s -> %s]) in negativeNodes (total count: %d)",
+				nodeID, oldTime, now, cp.negativeNodesCnt.Load())
+			return false
+		}
+
+		// This is rare, so if it happens let's know about it.
+		log.Warn("grpcClientPool::addNegative CompareAndSwap(%d, %s, %s) failed, retrying",
+			nodeID, oldTime, now)
+	}
+}
+
+// RemoveNegativeNode removes a node from the negative nodes map when,
+//   - periodicRemoveNegativeNodesAndIffyRVs() goroutine which checks if the defaultNegativeTimeout
+//     has expired for the node.
+//   - successful RPC call to the node indicating that the connection between the client and the
+//     node is healthy.
+func (cp *grpcClientPool) removeNegativeNode(nodeID string) bool {
+	common.Assert(common.IsValidUUID(nodeID), nodeID)
+
+	// Fast path, keep it quick.
+	if cp.negativeNodesCnt.Load() == 0 {
+		return false
+	}
+
+	if val, ok := cp.negativeNodes.LoadAndDelete(nodeID); ok {
+		_ = val
+		common.Assert(cp.negativeNodesCnt.Load() > 0, cp.negativeNodesCnt.Load(), nodeID)
+		cp.negativeNodesCnt.Add(-1)
+
+		log.Debug("grpcClientPool::removeNegativeNode: removed (%s -> %s) from negativeNodes (total count: %d)",
+			nodeID, val.(time.Time), cp.negativeNodesCnt.Load())
+		return true
+	}
+
+	return false
+}
+
+// Check if the given node is marked negative.
+// This method returns an appropriately wrapped error which can be used by the callers to check
+// for negative node error.
+//
+// To allow multiple threads to check for negative node concurrently, we don't take any lock here
+// and do not expect caller to take any lock before calling this method.
+//
+// Note: A node may be marked negative by another thread anytime after this method is called, usually negative node
+//       is a soft/best-effort check and not finding a node negative while it's indeed negative should result in
+//       a connection or timeout error while trying to connect to the node.
+
+func (cp *grpcClientPool) checkNegativeNode(nodeID string) error {
+	// Fast path, keep it quick.
+	if cp.negativeNodesCnt.Load() > 0 {
+		if val, ok := cp.negativeNodes.Load(nodeID); ok {
+			err := fmt.Errorf("%w: %s (%s ago)", NegativeNodeError, nodeID, time.Since(val.(time.Time)))
+			log.Err("grpcClientPool::checkNegativeNode: %v", err)
+
+			// Caller should be able to identify this as a negative node error.
+			common.Assert(errors.Is(err, NegativeNodeError), err, nodeID)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Add RV id to the iffyRvIdMap.
+// When PutChunkDC() fails with timeout error, we add the next-hop RV and all the RVs in the chain
+// to the iffyRvIdMap.
+func (cp *grpcClientPool) addIffyRvId(rvID string) bool {
+	common.Assert(common.IsValidUUID(rvID), rvID)
+
+	now := time.Now()
+	val, alreadyPresent := cp.iffyRvIdMap.LoadOrStore(rvID, now)
+	_ = val
+
+	if !alreadyPresent {
+		// New entry added.
+		cp.iffyRvIdMapCnt.Add(1)
+
+		log.Debug("grpcClientPool::addIffyRvById: added (%s -> %s) to iffyRvIdMap (total count: %d)",
+			rvID, now, cp.iffyRvIdMapCnt.Load())
+		return true
+	}
+
+	// Existing entry, update the timestamp without increasing iffyRvIdMapCnt.
+	cp.iffyRvIdMap.Store(rvID, now)
+
+	log.Debug("grpcClientPool::addIffyRvById: updated (%s -> [%s -> %s]) in iffyRvIdMap (total count: %d)",
+		rvID, val.(time.Time), now, cp.iffyRvIdMapCnt.Load())
+
+	return false
+}
+
+// Add the RV name to the iffyRvIdMap.
+// This method internally calls the addIffyRvById method.
+func (cp *grpcClientPool) addIffyRvName(rvName string) bool {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+
+	if cp.addIffyRvId(cm.RvNameToId(rvName)) {
+		log.Debug("grpcClientPool::addIffyRvByName: added %s to iffyRvIdMap", rvName)
+		return true
+	} else {
+		log.Debug("grpcClientPool::addIffyRvByName: updated %s in iffyRvIdMap", rvName)
+		return false
+	}
+}
+
+// RemoveIffyRV removes an RV from the iffyRvIdMap.
+// An RV is removed from the map by,
+//   - periodicRemoveNegativeNodesAndIffyRVs() goroutine which checks if the defaultNegativeTimeout
+//     has expired for the RV.
+//   - successful RPC call to the RV indicating that the connection between the client and the
+//     RV is healthy.
+func (cp *grpcClientPool) removeIffyRvId(rvID string) bool {
+	common.Assert(common.IsValidUUID(rvID), rvID)
+
+	// Fast path, keep it quick.
+	if cp.iffyRvIdMapCnt.Load() == 0 {
+		return false
+	}
+
+	if val, ok := cp.iffyRvIdMap.LoadAndDelete(rvID); ok {
+		_ = val
+		common.Assert(cp.iffyRvIdMapCnt.Load() > 0, cp.iffyRvIdMapCnt.Load(), rvID, val.(time.Time))
+		cp.iffyRvIdMapCnt.Add(-1)
+
+		log.Debug("grpcClientPool::removeIffyRvById: removed (%s -> %s) from iffyRvIdMap (total count: %d)",
+			rvID, val.(time.Time), cp.iffyRvIdMapCnt.Load())
+		return true
+	}
+
+	return false
+}
+
+// Remove the RV name from the iffyRvIdMap.
+// This method internally calls the removeIffyRvById method.
+func (cp *grpcClientPool) removeIffyRvName(rvName string) bool {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+
+	// Fast path, keep it quick.
+	if cp.iffyRvIdMapCnt.Load() == 0 {
+		return false
+	}
+
+	if cp.removeIffyRvId(cm.RvNameToId(rvName)) {
+		log.Debug("grpcClientPool::removeIffyRvByName: removed %s from iffyRvIdMap", rvName)
+		return true
+	}
+
+	return false
+}
+
+// Check if an RV id is marked iffy.
+func (cp *grpcClientPool) isIffyRvId(rvID string) bool {
+	common.Assert(common.IsValidUUID(rvID), rvID)
+
+	// Fast path, avoid lock
+	if cp.iffyRvIdMapCnt.Load() == 0 {
+		return false
+	}
+
+	_, ok := cp.iffyRvIdMap.Load(rvID)
+	return ok
+}
+
+// Check if an RV name is marked iffy.
+func (cp *grpcClientPool) isIffyRvName(rvName string) bool {
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	return cp.isIffyRvId(cm.RvNameToId(rvName))
+}
+
+// Goroutine which runs every 5 seconds and removes expired nodes and RVs from the
+// negativeNodes and iffyRvIdMap.
+func (cp *grpcClientPool) periodicRemoveNegativeNodesAndIffyRVs() {
+	log.Info("grpcClientPool::periodicRemoveNegativeNodesAndIffyRVs: Starting")
+
+	for {
+		select {
+		case <-cp.negativeNodesDone:
+			log.Info("grpcClientPool::periodicRemoveNegativeNodesAndIffyRVs: Stopping")
+			return
+		case <-cp.negativeNodesTicker.C:
+			// remove entries from negativeNodes map based on timeout
+			cp.negativeNodes.Range(func(key, value any) bool {
+				nodeID := key.(string)
+				common.Assert(common.IsValidUUID(nodeID), nodeID)
+
+				addedTime := value.(time.Time)
+
+				if time.Since(addedTime) > defaultNegativeTimeout*time.Second {
+					log.Debug("grpcClientPool::periodicRemoveNegativeNodesAndIffyRVs: removing negative node %s (%s)",
+						nodeID, time.Since(addedTime))
+					cp.removeNegativeNode(nodeID)
+				}
+
+				return true
+			})
+
+			// remove entries from iffyRvIdMap based on timeout
+			cp.iffyRvIdMap.Range(func(key, value any) bool {
+				rvID := key.(string)
+				common.Assert(common.IsValidUUID(rvID), rvID)
+
+				addedTime := value.(time.Time)
+
+				if time.Since(addedTime) > defaultNegativeTimeout*time.Second {
+					log.Debug("clientPool::periodicRemoveNegativeNodesAndIffyRVs: removing iffy RV %s (%s)",
+						rvID, time.Since(addedTime))
+					cp.removeIffyRvId(rvID)
+				}
+
+				return true
+			})
+		}
+	}
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // grpcNodeClientPool holds fixed connections for one node.
@@ -351,6 +666,56 @@ func (ncPool *grpcNodeClientPool) closeRPCClients() error {
 
 	log.Debug("grpcNodeClientPool::closeRPCClients: Completed closing clients for node %s", ncPool.nodeID)
 	return nil
+}
+
+// ----------------------------------------------------------------------------------------------------------------
+
+// Called from fixMV() in cluster_manager to initialize the "excluded nodes" map from the known negative nodes.
+func getNegativeNodesGRPC() map[int]struct{} {
+	negativeNodes := make(map[int]struct{})
+
+	// Fast path, keep it quick.
+	if gp.negativeNodesCnt.Load() > 0 {
+		gp.negativeNodes.Range(func(key, value any) bool {
+			nodeID := key.(string)
+			common.Assert(common.IsValidUUID(nodeID), nodeID)
+
+			log.Debug("grpcClientPool::GetNegativeNodes: Negative node: %s (%s ago) excluded from fix MV",
+				nodeID, time.Since(value.(time.Time)))
+			negativeNodes[cm.UUIDToUniqueInt(nodeID)] = struct{}{}
+			return true
+		})
+	}
+
+	return negativeNodes
+}
+
+// Given the component RVs list, return the RVs which are marked iffy.
+func getIffyRVsGRPC(nextHopRV *string, nextRVs *[]string) *[]string {
+	common.Assert(nextHopRV != nil)
+	common.Assert(nextRVs != nil)
+
+	// Common case, keep it quick.
+	if gp.iffyRvIdMapCnt.Load() == 0 {
+		return nil
+	}
+
+	iffyRVs := make([]string, 0, len(*nextRVs)+1)
+
+	// Check the next-hop RV.
+	if gp.isIffyRvName(*nextHopRV) {
+		iffyRVs = append(iffyRVs, *nextHopRV)
+	}
+
+	// And all other RVs in the chain.
+	for _, rv := range *nextRVs {
+		common.Assert(rv != *nextHopRV, rv, *nextHopRV)
+		if gp.isIffyRvName(rv) {
+			iffyRVs = append(iffyRVs, rv)
+		}
+	}
+
+	return &iffyRVs
 }
 
 // Silence unused import errors for release builds.
