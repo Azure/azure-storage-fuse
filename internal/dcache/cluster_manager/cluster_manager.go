@@ -3321,7 +3321,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//       MV.
 		//
 		if cm.RingBasedMVPlacement {
-			numMVGoal := max(len(availableRVsList), 1000)
+			//numMVGoal := max(len(availableRVsList), 1000)
+			numMVGoal := len(availableRVsList)
 
 			if len(existingMVMap) >= numMVGoal {
 				log.Debug("ClusterManager::updateMVList: len(existingMVMap) [%d] >= numMVGoal [%d], availableRVs: %d",
