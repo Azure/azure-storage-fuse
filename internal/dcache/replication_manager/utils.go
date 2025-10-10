@@ -86,8 +86,8 @@ const (
 	//       These must be set as low as possible, just enough to saturate the n/w and disk throughput from
 	//       a single node.
 	//
-	PutChunkDCIODepthTotal   = 64
-	PutChunkDCIODepthPerNode = 8
+	PutChunkDCIODepthTotal   = 32
+	PutChunkDCIODepthPerNode = 16
 
 	//
 	// Number of workers in the thread pool for sending the RPC requests.
