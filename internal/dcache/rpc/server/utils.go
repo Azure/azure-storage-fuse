@@ -299,8 +299,8 @@ func SafeRead(filePath *string, readOffset int64, data *[]byte, forceBufferedRea
 		!isDataBufferAligned {
 		// Log if we have to perform buffered read for large reads due to unaligned buffer.
 		if !forceBufferedRead && (readLength >= (1024*1024) && !isDataBufferAligned) {
-			log.Warn("SafeRead: Performing buffered read for %s, offset: %d, length: %d, aligned: %v",
-				*filePath, readOffset, readLength, isDataBufferAligned)
+			log.Warn("SafeRead: Performing buffered read for %s, offset: %d, length: %d",
+				*filePath, readOffset, readLength)
 		}
 		goto bufferedRead
 	}

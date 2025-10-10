@@ -72,6 +72,7 @@ var (
 	//
 	ChunkCacheSize = 1024
 
+	// TODO: These are for debug purposes only, remove them later.
 	NumChunkWrites          atomic.Int64
 	CumChunkWrites          atomic.Int64 // cumulative number of chunks written
 	CumBytesWritten         atomic.Int64 // cumulative number of bytes written
@@ -2083,8 +2084,8 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 
 		// Warn if we are doing buffered write for a large chunk due to unaligned buffer.
 		if rpc.WriteIOMode != rpc.BufferedIO && (writeLength >= (1024 * 1024)) && !isDataBufferAligned {
-			log.Warn("writeChunkAndHash: Performing buffered write for chunk %s, length: %d, aligned: %v",
-				*chunkPath, writeLength, isDataBufferAligned)
+			log.Warn("writeChunkAndHash: Performing buffered write for chunk %s, length: %d",
+				*chunkPath, writeLength)
 		}
 	}
 
