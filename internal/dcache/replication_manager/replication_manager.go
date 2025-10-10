@@ -131,7 +131,7 @@ func Start() error {
 	// The disk write for the last hop is considered, rest of the disk writes hide in the
 	// n/w hop. Add 20% margin for good measure.
 	//
-	rm.nominalRTT = time.Duration(float64((time.Duration(cm.NumReplicas)*rm.nwHopLatency)+rm.diskLatency) * float64(1.2))
+	rm.nominalRTT = time.Duration(float64((time.Duration(cm.NumReplicas)*rm.nwHopLatency)+rm.diskLatency) * float64(2))
 	common.Assert(rm.nominalRTT > 0, rm.nominalRTT, cm.NumReplicas, rm.nwHopLatency, rm.diskLatency)
 	rm.nominalRTT = max(rm.nominalRTT, 1*time.Millisecond)
 
@@ -428,7 +428,7 @@ type mvCongInfo struct {
 	mu        sync.RWMutex
 	inflight  atomic.Int64  // PutChunkDC requests in flight to this MV.
 	cwnd      atomic.Int64  // Congestion window size, i.e., total number of inflight requests allowed.
-	estQSize  int64         // Estimated queue size at the target RV(s) in number of requests.
+	estQSize  int64         // Estimated queue size at the target RV(s) as number of chunksize writes.
 	minRTT    time.Duration // Minimum RTT observed. Debug only.
 	maxRTT    time.Duration // Maximum RTT observed. Debug only.
 	lastRTT   time.Duration // RTT as per the last completed request. This conveys congestion info.
@@ -790,12 +790,14 @@ retry:
 		mvCnginfo.inflight.Add(-1)
 
 		// Update congestion info for this MV, only from successful requests.
-		if err == nil {
+		if err == nil && putChunkDCReq.Request.Length == cm.ChunkSizeMB*common.MbToBytes {
 			mvCnginfo.mu.Lock()
-			mvCnginfo.lastRTTAt = time.Now()
-			mvCnginfo.lastRTT = rtt
 
-			// Get an estimate of the receive side queue size from the RTT.
+			mvCnginfo.lastRTT = rtt
+			mvCnginfo.lastRTTAt = time.Now()
+
+			// Get an estimate of the receiver RV's write queue size from the RTT.
+			// IOW, how many chunksize writes are queued up at the receiver RV.
 			mvCnginfo.estQSize = rttToQsize(rtt)
 			doSleep := false
 
@@ -1237,24 +1239,16 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	estQSize := mvCnginfo.estQSize
 	mvCnginfo.mu.RUnlock()
 
-	if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
-		log.Warn("ReplicationManager::WriteMV: MV %s inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
-			req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(), estQSize, lastRTT, minRTT, maxRTT, timeSinceLastRTT)
-	}
-
-	for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
-		time.Sleep(1 * time.Millisecond)
-	}
-
-	/*
-		if timeSinceLastRTT < lastRTT {
-			if lastRTT > 10*minRTT && mvCnginfo.inflight.Load() > 0 {
-				log.Warn("ReplicationManager::WriteMV: MV %s has high lastRTT (%s) > 10*minRTT (%s), inflight: %d, timeSinceLastRTT: %s",
-					req.MvName, lastRTT, minRTT, mvCnginfo.inflight.Load(), timeSinceLastRTT)
-				time.Sleep(lastRTT)
+	if timeSinceLastRTT < lastRTT {
+			if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
+					log.Warn("ReplicationManager::WriteMV: MV %s inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+					req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(), estQSize, lastRTT, minRTT, maxRTT, timeSinceLastRTT)
 			}
-		}
-	*/
+
+			for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
+					time.Sleep(1 * time.Millisecond)
+			}
+	}
 
 	//
 	// We first try to write the MV using the DaisyChain mode.

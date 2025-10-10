@@ -1929,6 +1929,7 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	//
 	// Use O_EXCL flag just in case two writers are trying to write the same chunk simultaneously.
 	// Note that for actually protecting overwriting an existing chunk we rely on the atomic rename below.
+	// Rename also helps in avoiding serving a partially written chunk file.
 	//
 	OpenDepth.Add(1)
 	fd, err := syscall.Open(tmpChunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
