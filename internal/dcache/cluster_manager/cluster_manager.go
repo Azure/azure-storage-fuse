@@ -3320,10 +3320,14 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//       finish fast. Many small MVs being replicated in parallel is better than one large
 		//       MV.
 		//
-		if cm.RingBasedMVPlacement && len(existingMVMap) >= len(availableRVsList) {
-			log.Debug("ClusterManager::updateMVList: len(existingMVMap) [%d] >= len(availableRVsList) [%d]",
-				len(existingMVMap), len(availableRVsList))
-			break
+		if cm.RingBasedMVPlacement {
+			numMVGoal := max(len(availableRVsList), 1000)
+
+			if len(existingMVMap) >= numMVGoal {
+				log.Debug("ClusterManager::updateMVList: len(existingMVMap) [%d] >= numMVGoal [%d], availableRVs: %d",
+					len(existingMVMap), numMVGoal, len(availableRVsList))
+				break
+			}
 		}
 
 		// New MV's name, starting from index 0.
