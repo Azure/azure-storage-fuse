@@ -88,7 +88,7 @@ type replicationMgr struct {
 	// Number of sync jobs currently running.
 	numSyncJobs atomic.Int64
 
-	// Nominal RTT to a healthy RV, used for congestion control.
+	// Nominal RTT to a healthy RV under no/minimal load, used for congestion control.
 	nominalRTT time.Duration
 	// Time taken by disk to write a chunk, used for congestion control.
 	diskLatency time.Duration
@@ -119,26 +119,32 @@ func Start() error {
 	// Start the thread pool for sending RPC requests.
 	rm.tp.start()
 
+	// 4GBps is a reasonable estimate of n/w and storage bandwidth available to a typical node.
 	egressMBps := int64(4000)
 	diskMBps := int64(4000)
+
 	rm.nwHopLatency = time.Duration((cm.ChunkSizeMB*1000)/egressMBps) * time.Millisecond
 	rm.diskLatency = time.Duration((cm.ChunkSizeMB*1000)/diskMBps) * time.Millisecond
 
 	//
 	// One daisy chain chunk write involves NumReplicas n/w hops and one disk write.
 	// The disk write for the last hop is considered, rest of the disk writes hide in the
-	// n/w hop.
+	// n/w hop. Add 20% margin for good measure.
 	//
 	rm.nominalRTT = time.Duration(float64((time.Duration(cm.NumReplicas)*rm.nwHopLatency)+rm.diskLatency) * float64(1.2))
+	common.Assert(rm.nominalRTT > 0, rm.nominalRTT, cm.NumReplicas, rm.nwHopLatency, rm.diskLatency)
 	rm.nominalRTT = max(rm.nominalRTT, 1*time.Millisecond)
 
-	log.Debug("ReplicationManager::Start: nominalRTT %s, nwHopLatency %s, diskLatency %s",
-		rm.nominalRTT, rm.nwHopLatency, rm.diskLatency)
+	log.Debug("ReplicationManager::Start: nominalRTT: %s, nwHopLatency: %s, diskLatency: %s, numReplicas: %d",
+		rm.nominalRTT, rm.nwHopLatency, rm.diskLatency, cm.NumReplicas)
 
 	return nil
 }
 
-// Given an RTT, return estimated queue size in number of requests, at the target RV.
+// Given an RTT for a daisy chain PutChunkDC request, return estimated queue size in number of requests, at the
+// target RV. This is used for congestion control.
+// The core idea is that if every request takes nominalRTT time, and on top of that it takes extra time, depending
+// on how many requests are queued up at the target RV ahead of it. We mulitply by 2 to get the max queue size.
 func rttToQsize(rtt time.Duration) int64 {
 	return max(int64(((rtt-rm.nominalRTT)*2)/rm.diskLatency), 0)
 }
@@ -422,6 +428,7 @@ type mvCongInfo struct {
 	mu        sync.RWMutex
 	inflight  atomic.Int64  // PutChunkDC requests in flight to this MV.
 	cwnd      atomic.Int64  // Congestion window size, i.e., total number of inflight requests allowed.
+	estQSize  int64         // Estimated queue size at the target RV(s) in number of requests.
 	minRTT    time.Duration // Minimum RTT observed. Debug only.
 	maxRTT    time.Duration // Maximum RTT observed. Debug only.
 	lastRTT   time.Duration // RTT as per the last completed request. This conveys congestion info.
@@ -788,13 +795,19 @@ retry:
 			mvCnginfo.lastRTTAt = time.Now()
 			mvCnginfo.lastRTT = rtt
 
-			qsize := rttToQsize(rtt)
-			if qsize < 10 {
-				mvCnginfo.cwnd.Add(1) // increase cwnd if rtt is small
-			} else if qsize < 50 {
-				mvCnginfo.cwnd.Store(1) // decrease cwnd if rtt is large
+			// Get an estimate of the receive side queue size from the RTT.
+			mvCnginfo.estQSize = rttToQsize(rtt)
+			doSleep := false
+
+			if mvCnginfo.estQSize < 10 {
+				// Feed more if RV is "free".
+				mvCnginfo.cwnd.Add(1)
+			} else if mvCnginfo.estQSize < 50 {
+				// Let requests trickle through if RV is "moderately loaded".
+				mvCnginfo.cwnd.Store(1)
 			} else {
-				time.Sleep(10 * time.Millisecond) // sleep if rtt is very large
+				// If heavily loaded, then slow down.
+				doSleep = true
 			}
 
 			if rtt > mvCnginfo.maxRTT {
@@ -804,6 +817,10 @@ retry:
 				mvCnginfo.minRTT = rtt
 			}
 			mvCnginfo.mu.Unlock()
+
+			if doSleep {
+				time.Sleep(5 * time.Millisecond)
+			}
 		}
 
 		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
@@ -1217,11 +1234,12 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	lastRTT := mvCnginfo.lastRTT
 	minRTT := mvCnginfo.minRTT
 	maxRTT := mvCnginfo.maxRTT
+	estQSize := mvCnginfo.estQSize
 	mvCnginfo.mu.RUnlock()
 
 	if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
-		log.Warn("ReplicationManager::WriteMV: MV %s inflight(%d) > cwnd(%d), lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
-			req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(), lastRTT, minRTT, maxRTT, timeSinceLastRTT)
+		log.Warn("ReplicationManager::WriteMV: MV %s inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+			req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(), estQSize, lastRTT, minRTT, maxRTT, timeSinceLastRTT)
 	}
 
 	for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
