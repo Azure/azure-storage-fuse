@@ -35,6 +35,7 @@ package attr_cache
 
 import (
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -50,6 +51,11 @@ const (
 
 // attrCacheItem : Structure of each item in attr cache
 type attrCacheItem struct {
+	// Please keep mutations routed through this per-entry lock.
+	// AttrCache relies on pointer-stable entries and upstream code
+	// may expect outer locks only for map access. If upstream replaces
+	// entries wholesale, re-evaluate this guard.
+	mu       sync.RWMutex
 	attr     *internal.ObjAttr
 	cachedAt time.Time
 	attrFlag common.BitMap16
@@ -71,14 +77,20 @@ func newAttrCacheItem(attr *internal.ObjAttr, exists bool, cachedAt time.Time) *
 }
 
 func (value *attrCacheItem) valid() bool {
+	value.mu.RLock()
+	defer value.mu.RUnlock()
 	return value.attrFlag.IsSet(AttrFlagValid)
 }
 
 func (value *attrCacheItem) exists() bool {
+	value.mu.RLock()
+	defer value.mu.RUnlock()
 	return value.attrFlag.IsSet(AttrFlagExists)
 }
 
 func (value *attrCacheItem) markDeleted(deletedTime time.Time) {
+	value.mu.Lock()
+	defer value.mu.Unlock()
 	value.attrFlag.Clear(AttrFlagExists)
 	value.attrFlag.Set(AttrFlagValid)
 	value.cachedAt = deletedTime
@@ -86,26 +98,54 @@ func (value *attrCacheItem) markDeleted(deletedTime time.Time) {
 }
 
 func (value *attrCacheItem) invalidate() {
+	value.mu.Lock()
+	defer value.mu.Unlock()
 	value.attrFlag.Clear(AttrFlagValid)
 	value.attr = &internal.ObjAttr{}
 }
 
 func (value *attrCacheItem) getAttr() *internal.ObjAttr {
+	value.mu.RLock()
+	defer value.mu.RUnlock()
 	return value.attr
 }
 
 func (value *attrCacheItem) isDeleted() bool {
-	return !value.exists()
+	value.mu.RLock()
+	defer value.mu.RUnlock()
+	return !value.attrFlag.IsSet(AttrFlagExists)
 }
 
 func (value *attrCacheItem) setSize(size int64) {
+	value.mu.Lock()
+	defer value.mu.Unlock()
 	value.attr.Mtime = time.Now()
 	value.attr.Size = size
 	value.cachedAt = time.Now()
 }
 
 func (value *attrCacheItem) setMode(mode os.FileMode) {
+	value.mu.Lock()
+	defer value.mu.Unlock()
 	value.attr.Mode = mode
 	value.attr.Ctime = time.Now()
 	value.cachedAt = time.Now()
+}
+
+func (value *attrCacheItem) isFresh(timeout uint32) bool {
+	value.mu.RLock()
+	defer value.mu.RUnlock()
+	if timeout == 0 {
+		return true
+	}
+	return time.Since(value.cachedAt).Seconds() < float64(timeout)
+}
+
+func (value *attrCacheItem) expired(timeout uint32) bool {
+	value.mu.RLock()
+	defer value.mu.RUnlock()
+	if timeout == 0 {
+		return false
+	}
+	return time.Since(value.cachedAt).Seconds() >= float64(timeout)
 }
