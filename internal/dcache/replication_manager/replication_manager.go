@@ -819,7 +819,7 @@ retry:
 				if mvCnginfo.estQSize < 10 {
 					// Feed more if RV is "free".
 					mvCnginfo.cwnd.Add(1)
-				} else if mvCnginfo.estQSize < 30 {
+				} else if mvCnginfo.estQSize < 20 {
 					// Let requests trickle through if RV is "moderately loaded".
 					mvCnginfo.cwnd.Store(1)
 				} else {

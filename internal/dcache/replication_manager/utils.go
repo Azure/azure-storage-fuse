@@ -87,7 +87,7 @@ const (
 	//       a single node.
 	//
 	PutChunkDCIODepthTotal   = 32
-	PutChunkDCIODepthPerNode = 16
+	PutChunkDCIODepthPerNode = 8
 
 	//
 	// Number of workers in the thread pool for sending the RPC requests.
