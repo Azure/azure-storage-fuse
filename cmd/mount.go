@@ -684,7 +684,10 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 
 	go startMonitor(os.Getpid())
 
-	err := pipeline.Start(ctx)
+    // Start background invalidate scanner to handle missed signals
+    startInvalidateScanner(pipeline)
+
+    err := pipeline.Start(ctx)
 	if err != nil {
 		log.Err("mount: error unable to start pipeline [%s]", err.Error())
 		return fmt.Errorf("unable to start pipeline [%s]", err.Error())
@@ -760,17 +763,21 @@ func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
 }
 
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
-	return func(sig os.Signal) error {
-		log.Crit("Mount::sigusrHandler : Signal %d received", sig)
+    return func(sig os.Signal) error {
+        log.Crit("Mount::sigusrHandler : Signal %d received", sig)
 
-		var err error
-		if sig == syscall.SIGUSR1 {
-			log.Crit("Mount::sigusrHandler : SIGUSR1 received")
-			config.OnConfigChange()
-		}
+        var err error
+        if sig == syscall.SIGUSR1 {
+            log.Crit("Mount::sigusrHandler : SIGUSR1 received")
+            config.OnConfigChange()
+            // Process any pending invalidate requests for this mount
+            if perr := processOutstandingInvalidateRequests(pipeline); perr != nil {
+                log.Warn("Mount::sigusrHandler : invalidate processing error: %v", perr)
+            }
+        }
 
-		return err
-	}
+        return err
+    }
 }
 
 func setGOConfig() {

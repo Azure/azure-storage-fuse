@@ -1950,6 +1950,27 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	return statfs, true, nil
 }
 
+// InvalidateFile provides external control to invalidate cached blocks for a single file
+// without mutating remote state.
+func (bc *BlockCache) InvalidateFile(name string) {
+    if bc.tmpPath == "" {
+        return
+    }
+    localPath := filepath.Join(bc.tmpPath, name)
+    files, err := filepath.Glob(localPath + "*")
+    if err == nil {
+        for _, f := range files {
+            _ = os.Remove(f)
+        }
+    }
+}
+
+// InvalidateDirExt provides external control to invalidate a directory tree of cached blocks
+// without mutating remote state.
+func (bc *BlockCache) InvalidateDirExt(name string) {
+    bc.invalidateDirectory(name)
+}
+
 // ------------------------- Factory -------------------------------------------
 // Pipeline will call this method to create your object, initialize your variables here
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>

@@ -2052,6 +2052,67 @@ func (suite *fileCacheTestSuite) TestHardLimit() {
 	suite.assert.Equal(syscall.ENOSPC, err)
 }
 
+func (suite *fileCacheTestSuite) TestInvalidateFileRemovesLocalCopy() {
+	defer suite.cleanupTest()
+
+	name := filepath.Join("lock", "file.dat")
+	localPath := filepath.Join(suite.fileCache.tmpPath, name)
+
+	suite.assert.NoError(os.MkdirAll(filepath.Dir(localPath), 0o755))
+	suite.assert.NoError(os.WriteFile(localPath, []byte("payload"), 0o644))
+
+	suite.fileCache.policy.CacheValid(localPath)
+	suite.assert.True(suite.fileCache.policy.IsCached(localPath))
+
+	suite.fileCache.InvalidateFile(name)
+
+	_, err := os.Stat(localPath)
+	suite.assert.Error(err)
+	suite.assert.True(os.IsNotExist(err))
+	suite.assert.False(suite.fileCache.policy.IsCached(localPath))
+}
+
+func (suite *fileCacheTestSuite) TestInvalidateDirectoryWaitsForLocks() {
+	defer suite.cleanupTest()
+
+	name := filepath.Join("locks", "hold.txt")
+	localPath := filepath.Join(suite.fileCache.tmpPath, name)
+	dirName := filepath.Dir(name)
+
+	suite.assert.NoError(os.MkdirAll(filepath.Dir(localPath), 0o755))
+	suite.assert.NoError(os.WriteFile(localPath, []byte("payload"), 0o644))
+
+	suite.fileCache.policy.CacheValid(localPath)
+	suite.assert.True(suite.fileCache.policy.IsCached(localPath))
+
+	flock := suite.fileCache.fileLocks.Get(name)
+	flock.Lock()
+
+	done := make(chan struct{})
+	go func() {
+		suite.fileCache.invalidateDirectory(dirName)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	_, err := os.Stat(localPath)
+	suite.assert.NoError(err)
+
+	flock.Unlock()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		suite.Fail("invalidateDirectory did not complete after lock release")
+	}
+
+	_, err = os.Stat(localPath)
+	suite.assert.Error(err)
+	suite.assert.True(os.IsNotExist(err))
+	suite.assert.False(suite.fileCache.policy.IsCached(localPath))
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestFileCacheTestSuite(t *testing.T) {

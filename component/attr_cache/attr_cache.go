@@ -260,6 +260,16 @@ func (ac *AttrCache) invalidatePath(path string) {
 	}
 }
 
+// InvalidatePathExt exposes path invalidation for external control flows (e.g., CLI invalidate).
+func (ac *AttrCache) InvalidatePathExt(path string) {
+	ac.invalidatePath(path)
+}
+
+// InvalidateDirExt exposes directory invalidation for external control flows (e.g., CLI invalidate).
+func (ac *AttrCache) InvalidateDirExt(path string) {
+	ac.invalidateDirectory(path)
+}
+
 // backgroundCleanup: runs in a separate goroutine to periodically clean up expired entries
 func (ac *AttrCache) backgroundCleanup() {
 	defer close(ac.cleanupDone)
@@ -294,7 +304,7 @@ func (ac *AttrCache) cleanupExpiredEntries() {
 	ac.cacheLock.RLock()
 	for path, item := range ac.cacheMap {
 		// Check if entry has exceeded the cache timeout
-		if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
+		if item.expired(ac.cacheTimeout) {
 			keysToDelete = append(keysToDelete, path)
 		}
 	}
@@ -306,7 +316,7 @@ func (ac *AttrCache) cleanupExpiredEntries() {
 		for _, path := range keysToDelete {
 			// Re-check if entry still exists and is still expired
 			if item, exists := ac.cacheMap[path]; exists {
-				if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
+				if item.expired(ac.cacheTimeout) {
 					delete(ac.cacheMap, path)
 				}
 			}
@@ -566,7 +576,7 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 	ac.cacheLock.RUnlock()
 
 	// Try to serve the request from the attribute cache
-	if found && value.valid() && time.Since(value.cachedAt).Seconds() < float64(ac.cacheTimeout) {
+	if found && value.valid() && value.isFresh(ac.cacheTimeout) {
 		if value.isDeleted() {
 			log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
 			// no entry if path does not exist
