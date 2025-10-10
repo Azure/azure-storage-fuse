@@ -824,6 +824,7 @@ retry:
 					mvCnginfo.cwnd.Store(1)
 				} else {
 					// If heavily loaded, then slow down.
+					mvCnginfo.cwnd.Store(1)
 					doSleep = true
 				}
 
@@ -836,7 +837,10 @@ retry:
 				mvCnginfo.mu.Unlock()
 
 				if doSleep {
-					time.Sleep(5 * time.Millisecond)
+					//time.Sleep(5 * time.Millisecond)
+					for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
+							time.Sleep(1 * time.Millisecond)
+					}
 				}
 			}
 		}
