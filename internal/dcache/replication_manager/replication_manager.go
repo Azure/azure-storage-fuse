@@ -791,37 +791,53 @@ retry:
 
 		// Update congestion info for this MV, only from successful requests.
 		if err == nil && putChunkDCReq.Request.Length == cm.ChunkSizeMB*common.MbToBytes {
-			mvCnginfo.mu.Lock()
-
-			mvCnginfo.lastRTT = rtt
-			mvCnginfo.lastRTTAt = time.Now()
-
-			// Get an estimate of the receiver RV's write queue size from the RTT.
-			// IOW, how many chunksize writes are queued up at the receiver RV.
-			mvCnginfo.estQSize = rttToQsize(rtt)
-			doSleep := false
-
-			if mvCnginfo.estQSize < 10 {
-				// Feed more if RV is "free".
-				mvCnginfo.cwnd.Add(1)
-			} else if mvCnginfo.estQSize < 50 {
-				// Let requests trickle through if RV is "moderately loaded".
-				mvCnginfo.cwnd.Store(1)
-			} else {
-				// If heavily loaded, then slow down.
-				doSleep = true
+			estQSize := -1
+			for rvName, putChunkResp := range putChunkDCResp.Responses {
+				_ = rvName
+				if putChunkResp.Error != nil {
+					estQSize = -1
+					break
+				}
+				log.Info("ReplicationManager::writeMVInternal: PutChunkDC response from %s/%s for chunkIdx: %d, cepoch: %d: %s has qsize %d",
+					rvName, req.MvName, req.ChunkIndex, lastClusterMapEpoch,
+					rvName, putChunkResp.Response.Qsize)
+				estQSize = max(estQSize, int(putChunkResp.Response.Qsize))
 			}
 
-			if rtt > mvCnginfo.maxRTT {
-				mvCnginfo.maxRTT = rtt
-			}
-			if rtt < mvCnginfo.minRTT || mvCnginfo.minRTT == time.Duration(0) {
-				mvCnginfo.minRTT = rtt
-			}
-			mvCnginfo.mu.Unlock()
+			if estQSize != -1 {
+				mvCnginfo.mu.Lock()
 
-			if doSleep {
-				time.Sleep(5 * time.Millisecond)
+				mvCnginfo.lastRTT = rtt
+				mvCnginfo.lastRTTAt = time.Now()
+
+				// Get an estimate of the receiver RV's write queue size from the RTT.
+				// IOW, how many chunksize writes are queued up at the receiver RV.
+				//mvCnginfo.estQSize = rttToQsize(rtt)
+				mvCnginfo.estQSize = int64(estQSize)
+				doSleep := false
+
+				if mvCnginfo.estQSize < 10 {
+					// Feed more if RV is "free".
+					mvCnginfo.cwnd.Add(1)
+				} else if mvCnginfo.estQSize < 30 {
+					// Let requests trickle through if RV is "moderately loaded".
+					mvCnginfo.cwnd.Store(1)
+				} else {
+					// If heavily loaded, then slow down.
+					doSleep = true
+				}
+
+				if rtt > mvCnginfo.maxRTT {
+					mvCnginfo.maxRTT = rtt
+				}
+				if rtt < mvCnginfo.minRTT || mvCnginfo.minRTT == time.Duration(0) {
+					mvCnginfo.minRTT = rtt
+				}
+				mvCnginfo.mu.Unlock()
+
+				if doSleep {
+					time.Sleep(5 * time.Millisecond)
+				}
 			}
 		}
 
@@ -1239,15 +1255,16 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	estQSize := mvCnginfo.estQSize
 	mvCnginfo.mu.RUnlock()
 
-	if timeSinceLastRTT < lastRTT {
-			if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
-					log.Warn("ReplicationManager::WriteMV: MV %s inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
-					req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(), estQSize, lastRTT, minRTT, maxRTT, timeSinceLastRTT)
-			}
+	//if timeSinceLastRTT < lastRTT {
+	if true {
+		if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
+			log.Warn("ReplicationManager::WriteMV: MV %s inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+				req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(), estQSize, lastRTT, minRTT, maxRTT, timeSinceLastRTT)
+		}
 
-			for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
-					time.Sleep(1 * time.Millisecond)
-			}
+		for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
+			time.Sleep(1 * time.Millisecond)
+		}
 	}
 
 	//
