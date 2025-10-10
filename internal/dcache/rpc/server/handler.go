@@ -76,7 +76,6 @@ var (
 	NumChunkWrites          atomic.Int64
 	CumChunkWrites          atomic.Int64 // cumulative number of chunks written
 	CumBytesWritten         atomic.Int64 // cumulative number of bytes written
-	IODepth                 atomic.Int64 // number of parallel writes in progress
 	OpenDepth               atomic.Int64 // number of go routines inside syscall.Open() for to-be-written chunk files
 	WriteDepth              atomic.Int64 // number of go routines inside syscall.Write()
 	RenameDepth             atomic.Int64 // number of go routines inside common.RenameNoReplace()
@@ -165,6 +164,9 @@ type rvInfo struct {
 	// Cumulative bytes read from this RV by GetChunk() requests.
 	// Mostly used for debugging distribution of reads across RVs.
 	totalBytesRead atomic.Int64
+
+	// Number of chunks being currently being written to this RV.
+	wqsize atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -2427,9 +2429,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	// TODO: hash validation will be done later
 	writeStartTime = time.Now()
-	IODepth.Add(1)
+	rvInfo.wqsize.Add(1)
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
-	IODepth.Add(-1)
+	common.Assert(rvInfo.wqsize.Load() >= 0, rvInfo.wqsize.Load())
+	rvInfo.wqsize.Add(-1)
 	thisDuration = time.Since(writeStartTime)
 
 	// Consider only recent writes for calculating avg write duration.
@@ -2449,7 +2452,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 			thisDuration, SlowReadWriteThreshold,
 			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()),
-			CumChunkWrites.Load(), CumBytesWritten.Load(), IODepth.Load(),
+			CumChunkWrites.Load(), CumBytesWritten.Load(), rvInfo.wqsize.Load(),
 			OpenDepth.Load(), WriteDepth.Load(), RenameDepth.Load())
 	}
 
@@ -2490,6 +2493,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 				return &models.PutChunkResponse{
 					TimeTaken:      time.Since(startTime).Microseconds(),
+					Qsize:          rvInfo.wqsize.Load(),
 					AvailableSpace: availableSpace,
 					ComponentRV:    mvInfo.getComponentRVs(),
 				}, nil
@@ -2547,6 +2551,7 @@ dummy_write:
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
+		Qsize:          rvInfo.wqsize.Load(),
 		AvailableSpace: availableSpace,
 		ComponentRV:    mvInfo.getComponentRVs(),
 	}
