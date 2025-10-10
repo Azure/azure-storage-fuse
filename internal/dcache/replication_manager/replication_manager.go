@@ -1740,6 +1740,8 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		// We don't expect any chunk to have mod time before 2025-01-01.
 		common.Assert(info.ModTime().Unix() > 1735689600, info.ModTime().Unix(), info.ModTime().String())
 		common.Assert(job.syncStartTime > 1735689600000000, job.syncStartTime)
+		// We don't expect 0 size chunks.
+		common.Assert(info.Size() > 0, info.Size(), entry.Name())
 
 		if info.ModTime().UnixMicro() > job.syncStartTime {
 			// This chunk is created after the sync start time, so it will be written to both source and target
@@ -1774,7 +1776,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				<-syncChunkSema
 			}()
 
-			err1, chunkSize := copySingleChunk(job, chunkName)
+			err1, chunkSize := copySingleChunk(job, chunkName, info.Size())
 			if err1 != nil {
 				log.Err("ReplicationManager::copyOutOfSyncChunks: copySingleChunk(%s) failed: %v",
 					chunkName, err1)
@@ -1829,8 +1831,12 @@ func copyOutOfSyncChunks(job *syncJob) error {
 	return err
 }
 
-func copySingleChunk(job *syncJob, chunkName string) (error, int64) {
-	log.Debug("ReplicationManager::copySingleChunk: chunk: %s, sync job: %s", chunkName, job.toString())
+func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, int64) {
+	log.Debug("ReplicationManager::copySingleChunk: chunk: %s (%d bytes), sync job: %s",
+		chunkName, chunkSize, job.toString())
+
+	// There are no 0 sized chunks.
+	common.Assert(chunkSize > 0, chunkSize, chunkName, job.toString())
 
 	sourceMVPath := filepath.Join(getCachePathForRVName(job.srcRVName), job.mvName)
 	common.Assert(common.DirectoryExists(sourceMVPath), sourceMVPath)
@@ -1859,13 +1865,16 @@ func copySingleChunk(job *syncJob, chunkName string) (error, int64) {
 	}
 
 	srcChunkPath := filepath.Join(sourceMVPath, chunkName)
-	srcData, err := os.ReadFile(srcChunkPath)
+	// TODO: Allocate from buffer pool.
+	srcData := make([]byte, chunkSize)
+	n, err := rpc_server.SafeRead(&srcChunkPath, 0 /* offset */, &srcData, false /* forceBufferedRead */)
 	if err != nil {
-		err = fmt.Errorf("os.ReadFile(%s) failed: %v", srcChunkPath, err)
+		err = fmt.Errorf("SafeRead(%s) failed: %v", srcChunkPath, err)
 		log.Err("ReplicationManager::copySingleChunk: %v", err)
 		common.Assert(false, err)
 		return err, -1
 	}
+	srcData = srcData[:n]
 
 	job.mu.Lock()
 	putChunkReq := &models.PutChunkRequest{
