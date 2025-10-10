@@ -215,7 +215,7 @@ func (bol *BlockOffsetList) ValidateBlockListAgainstFileSize(fileSize int64) boo
 }
 
 func (bol *BlockOffsetList) HasAllBlocksWithSameBlockSize() (blockSize int64, ok bool) {
-	if bol.HasNoBlocks() || len(bol.BlockList) == 0 {
+	if bol.HasNoBlocks() {
 		return 0, true
 	}
 	blockSize = bol.BlockList[0].EndIndex - bol.BlockList[0].StartIndex

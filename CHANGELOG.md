@@ -5,7 +5,7 @@
 - Redirect Stack trace to log file (WORK_DIR/mount_path.pid.trace) instead of console in case of panic for better debuggability.
 - Truncating the file in file_cache resulting in OOM panic by go-runtime in some scenarios.
 - Open file error(No BlockList error) in block_cache when file is truncated before to less than 256MiB.
-- Prevent reusing the same block ID in truncate operation which could lead to inconsistenties.
+- Prevent reusing the same block ID in truncate operation which could lead to issues.
 
 
 ## 2.5.0 (2025-07-17)
