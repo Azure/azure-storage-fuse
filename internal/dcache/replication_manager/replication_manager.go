@@ -781,6 +781,25 @@ retry:
 				mvCnginfo.lastRTT.Store(int64(rtt))
 				mvCnginfo.lastRTTAt.Store(time.Now().UnixNano())
 
+				if int64(rtt) > mvCnginfo.maxRTT.Load() {
+					mvCnginfo.maxRTT.Store(int64(rtt))
+				}
+
+				if int64(rtt) < mvCnginfo.minRTT.Load() || mvCnginfo.minRTT.Load() == int64(0) {
+					mvCnginfo.minRTT.Store(int64(rtt))
+				}
+
+				//
+				// minRTT is an estimate of the fastest path to the MV (network + storage).
+				// If current RTT is significantly higher than minRTT, it indicates n/w congestion
+				// which may not necessarily be indicated by the qsize value sent by the server.
+				// Set estQSize 10 so that the following code limits the cwnd to 1 and then as
+				// things improve we can increase the cwnd.
+				//
+				if int64(rtt) >= mvCnginfo.minRTT.Load()*5 {
+					estQSize = max(estQSize, 10)
+				}
+
 				mvCnginfo.estQSize.Store(int64(estQSize))
 				doSleep := false
 
@@ -807,14 +826,6 @@ retry:
 					//
 					mvCnginfo.cwnd.Store(0)
 					doSleep = true
-				}
-
-				if int64(rtt) > mvCnginfo.maxRTT.Load() {
-					mvCnginfo.maxRTT.Store(int64(rtt))
-				}
-
-				if int64(rtt) < mvCnginfo.minRTT.Load() || mvCnginfo.minRTT.Load() == int64(0) {
-					mvCnginfo.minRTT.Store(int64(rtt))
 				}
 
 				mvCnginfo.mu.Unlock()
@@ -1242,8 +1253,19 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 
 	//
 	// If inflight requests are more than cwnd, wait for enough inflight requests to complete.
+	// We grow the cwnd as more requests complete successfully, proving that the MV can handle
+	// more requests. If the MV is slow, the cwnd will cause us to exercise sender flow control.
+	// Note that this is the same idea as TCP cwnd used for sender side flow control, but unlike
+	// TCP where cwnd starts at a small +ve number, we start at 0, allowing just one request to
+	// be sent for an MV and only when that completes successfully (proving MV is not congested),
+	// we increase the cwnd and allow more requests to be sent to that MV.
 	//
 	if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
+		//
+		// TODO: This log will be emitted for first few requests to an MV after a new file is opened,
+		//       as cwnd starts at 0. We leave it around as it prints useful info about congested MVs.
+		//       Remove it once we have tested it enough.
+		//
 		log.Warn("ReplicationManager::WriteMV: %s inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
 			req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(),
 			mvCnginfo.estQSize.Load(), time.Duration(mvCnginfo.lastRTT.Load()),
