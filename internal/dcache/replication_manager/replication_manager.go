@@ -792,9 +792,9 @@ retry:
 				//
 				// minRTT is an estimate of the fastest path to the MV (network + storage).
 				// If current RTT is significantly higher than minRTT, it indicates n/w congestion
-				// which may not necessarily be indicated by the qsize value sent by the server.
-				// Set estQSize 10 so that the following code limits the cwnd to 1 and then as
-				// things improve we can increase the cwnd.
+				// which may not reflect in the qsize value returned by the server.
+				// Set estQSize to 10 so that the following code limits the cwnd to 1 and then as
+				// things improve we increase the cwnd.
 				//
 				if int64(rtt) >= mvCnginfo.minRTT.Load()*5 {
 					estQSize = max(estQSize, 10)
