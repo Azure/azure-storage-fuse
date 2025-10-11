@@ -1258,8 +1258,8 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	estQSize := mvCnginfo.estQSize
 	mvCnginfo.mu.RUnlock()
 
-	//if timeSinceLastRTT < lastRTT {
-	if true {
+	if timeSinceLastRTT < lastRTT {
+	//if true {
 		if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
 			log.Warn("ReplicationManager::WriteMV: MV %s inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
 				req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(), estQSize, lastRTT, minRTT, maxRTT, timeSinceLastRTT)
