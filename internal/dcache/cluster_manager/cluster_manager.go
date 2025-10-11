@@ -3042,6 +3042,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	// offline|inband-offline, outofsync, outofsync => offline
 	// offline|inband-offline, offline|inband-offline, offline|inband-offline => offline
 	//
+
+	numOfflineMVs := 0
+
 	for mvName, mv := range existingMVMap {
 		offlineRVs := 0
 		inbandOfflineRVs := 0
@@ -3111,6 +3114,7 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 				mvUpdated = true
 			}
 			mv.State = dcache.StateOffline
+			numOfflineMVs++
 		} else if onlineRVs == len(mv.RVs) {
 			if !mvUpdated && mv.State != dcache.StateOnline {
 				mvUpdated = true
@@ -3156,8 +3160,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
 	//       UpdateMV will fail.
 	//
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs), [%s to run] %+v",
-		runFixMvNewMv, len(rvMap), len(existingMVMap), completeBy.Sub(time.Now()), existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs (%d offline MVs)), [%s to run] %+v",
+		runFixMvNewMv, len(rvMap), len(existingMVMap), numOfflineMVs, completeBy.Sub(time.Now()), existingMVMap)
 
 	//
 	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be generated, so we run
@@ -3299,8 +3303,10 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		}
 	}
 
-	log.Debug("ClusterManager::updateMVList: Starting new-mv with %d new RVs (available: %d, total: %d), numMVs: %d",
-		numNewRVs, len(availableRVsList), len(rvMap), len(existingMVMap))
+	common.Assert(numOfflineMVs <= len(existingMVMap), numOfflineMVs, len(existingMVMap))
+
+	log.Debug("ClusterManager::updateMVList: Starting new-mv with %d new RVs (available: %d, total: %d), numMVs: %d, offlineMVs: %d",
+		numNewRVs, len(availableRVsList), len(rvMap), len(existingMVMap), numOfflineMVs)
 
 	for {
 		//
@@ -3320,9 +3326,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//       finish fast. Many small MVs being replicated in parallel is better than one large
 		//       MV.
 		//
-		if cm.RingBasedMVPlacement && len(existingMVMap) >= len(availableRVsList) {
-			log.Debug("ClusterManager::updateMVList: len(existingMVMap) [%d] >= len(availableRVsList) [%d]",
-				len(existingMVMap), len(availableRVsList))
+		if cm.RingBasedMVPlacement && (len(existingMVMap)-numOfflineMVs) >= len(availableRVsList) {
+			log.Debug("ClusterManager::updateMVList: current MVs [%d-%d] >= len(availableRVsList) [%d]",
+				len(existingMVMap), numOfflineMVs, len(availableRVsList))
 			break
 		}
 

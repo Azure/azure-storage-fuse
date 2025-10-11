@@ -386,8 +386,8 @@ retry:
 }
 
 // Congestion related information for MV.
-// Server sends the current qsize in the PutChunkDC response. We use it to control our congestion window,
-// i.e., the number of requests we can keep outstanding to the MV, before we wait for some of them to complete.
+// Server sends its current qsize in the PutChunkDC response. We use it to control our congestion window,
+// i.e., the number of requests we will keep outstanding to the MV before we wait for some of them to complete.
 // thus making sure we don't overload an already congested MV replica or the network path to it, while
 // making better use of our egress n/w bandwidth to send writes to MV replicas which are not/less congested.
 type mvCongInfo struct {
@@ -766,11 +766,16 @@ retry:
 				if putChunkResp.Error == nil {
 					log.Debug("ReplicationManager::writeMVInternal: PutChunkDC response from %s/%s, chunkIdx: %d, qsize: %d",
 						rvName, req.MvName, req.ChunkIndex, putChunkResp.Response.Qsize)
+
+					common.Assert(putChunkResp.Response.Qsize >= 0, putChunkResp.Response.Qsize, rvName, req.MvName)
 					estQSize = max(estQSize, int(putChunkResp.Response.Qsize))
 				}
 			}
 
-			if estQSize != -1 {
+			if estQSize >= 0 {
+				// 10K is an arbitrary large value, we shouldn't be seeing such high values due to client throttling.
+				common.Assert(estQSize < 10000, estQSize, putChunkDCResp)
+
 				mvCnginfo.mu.Lock()
 
 				mvCnginfo.lastRTT.Store(int64(rtt))
@@ -785,8 +790,7 @@ retry:
 					// Keeping more han 8 requests in flight to an MV doeesn't help, we'd rather send requests
 					// to other less loaded MVs and make better use of cluster n/w bandwidth.
 					//
-					mvCnginfo.cwnd.Add(1)
-					if mvCnginfo.cwnd.Load() > 8 {
+					if mvCnginfo.cwnd.Add(1) > 8 {
 						mvCnginfo.cwnd.Store(8)
 					}
 				} else if estQSize < 20 {
@@ -817,8 +821,11 @@ retry:
 
 				if doSleep {
 					// Wait for all inflight requests to complete.
+					waitLoop := int64(0)
 					for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
 						time.Sleep(1 * time.Millisecond)
+						waitLoop++
+						common.Assert(waitLoop < 30000, req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load())
 					}
 
 					// Now open up slowly.
