@@ -795,8 +795,7 @@ retry:
 			for rvName, putChunkResp := range putChunkDCResp.Responses {
 				_ = rvName
 				if putChunkResp.Error != nil {
-					estQSize = -1
-					break
+					continue
 				}
 				log.Info("ReplicationManager::writeMVInternal: PutChunkDC response from %s/%s for chunkIdx: %d, cepoch: %d: %s has qsize %d",
 					rvName, req.MvName, req.ChunkIndex, lastClusterMapEpoch,
