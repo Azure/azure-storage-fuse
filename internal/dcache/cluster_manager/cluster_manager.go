@@ -3160,7 +3160,7 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
 	//       UpdateMV will fail.
 	//
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs (%d offline MVs)), [%s to run] %+v",
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs [%d offline]), [%s to run] %+v",
 		runFixMvNewMv, len(rvMap), len(existingMVMap), numOfflineMVs, completeBy.Sub(time.Now()), existingMVMap)
 
 	//
