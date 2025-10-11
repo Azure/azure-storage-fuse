@@ -76,7 +76,6 @@ var (
 	NumChunkWrites          atomic.Int64
 	CumChunkWrites          atomic.Int64 // cumulative number of chunks written
 	CumBytesWritten         atomic.Int64 // cumulative number of bytes written
-	IODepth                 atomic.Int64 // number of parallel writes in progress
 	OpenDepth               atomic.Int64 // number of go routines inside syscall.Open() for to-be-written chunk files
 	WriteDepth              atomic.Int64 // number of go routines inside syscall.Write()
 	RenameDepth             atomic.Int64 // number of go routines inside common.RenameNoReplace()
@@ -165,6 +164,9 @@ type rvInfo struct {
 	// Cumulative bytes read from this RV by GetChunk() requests.
 	// Mostly used for debugging distribution of reads across RVs.
 	totalBytesRead atomic.Int64
+
+	// Number of chunks currently being written to this RV.
+	wqsize atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -1929,6 +1931,7 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	//
 	// Use O_EXCL flag just in case two writers are trying to write the same chunk simultaneously.
 	// Note that for actually protecting overwriting an existing chunk we rely on the atomic rename below.
+	// Rename also helps in avoiding serving a partially written chunk file.
 	//
 	OpenDepth.Add(1)
 	fd, err := syscall.Open(tmpChunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
@@ -2375,6 +2378,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	var availableSpace int64
 	var thisDuration time.Duration
 	var writeStartTime time.Time
+	var issueIODepth int64
+	var issueOpenDepth int64
+	var issueWriteDepth int64
+	var issueRenameDepth int64
 
 	//
 	// If the PutChunk is for the special metadata chunk, remove existing metadata chunk file if any, to
@@ -2425,10 +2432,20 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	}
 
 	// TODO: hash validation will be done later
+
 	writeStartTime = time.Now()
-	IODepth.Add(1)
+	rvInfo.wqsize.Add(1)
+
+	issueIODepth = rvInfo.wqsize.Load()
+	issueOpenDepth = OpenDepth.Load()
+	issueWriteDepth = WriteDepth.Load()
+	issueRenameDepth = RenameDepth.Load()
+
+	// 10k is arbitrary large number, we should never reach this due to the client side throttling.
+	common.Assert(rvInfo.wqsize.Load() < 10000, rvInfo.wqsize.Load())
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
-	IODepth.Add(-1)
+	common.Assert(rvInfo.wqsize.Load() > 0, rvInfo.wqsize.Load())
+	rvInfo.wqsize.Add(-1)
 	thisDuration = time.Since(writeStartTime)
 
 	// Consider only recent writes for calculating avg write duration.
@@ -2444,12 +2461,15 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	// Too many outstanding writes to a disk can make the writes very slow, alert to know that.
 	if thisDuration > SlowReadWriteThreshold {
-		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, cum: {%d, %d}, iodepth: %d, openDepth: %d, writeDepth: %d, renameDepth: %d",
+		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, cum: {%d, %d}, iodepth: %d (%d), openDepth: %d (%d), writeDepth: %d (%d), renameDepth: %d (%d)",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 			thisDuration, SlowReadWriteThreshold,
 			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()),
-			CumChunkWrites.Load(), CumBytesWritten.Load(), IODepth.Load(),
-			OpenDepth.Load(), WriteDepth.Load(), RenameDepth.Load())
+			CumChunkWrites.Load(), CumBytesWritten.Load(),
+			rvInfo.wqsize.Load(), issueIODepth,
+			OpenDepth.Load(), issueOpenDepth,
+			WriteDepth.Load(), issueWriteDepth,
+			RenameDepth.Load(), issueRenameDepth)
 	}
 
 	if err != nil {
@@ -2489,6 +2509,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 				return &models.PutChunkResponse{
 					TimeTaken:      time.Since(startTime).Microseconds(),
+					Qsize:          rvInfo.wqsize.Load(),
 					AvailableSpace: availableSpace,
 					ComponentRV:    mvInfo.getComponentRVs(),
 				}, nil
@@ -2546,6 +2567,7 @@ dummy_write:
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
+		Qsize:          rvInfo.wqsize.Load(),
 		AvailableSpace: availableSpace,
 		ComponentRV:    mvInfo.getComponentRVs(),
 	}

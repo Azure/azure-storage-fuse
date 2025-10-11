@@ -497,6 +497,7 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s: [replicas (%d) invalid, valid range is [%d, %d]]",
 			distributedCache.Name(), distributedCache.cfg.Replicas, cm.MinNumReplicas, cm.MaxNumReplicas)
 	}
+	cm.NumReplicas = int64(distributedCache.cfg.Replicas)
 
 	if !config.IsSet(compName + ".ring-based-mv-placement") {
 		distributedCache.cfg.RingBasedMVPlacement = defaultRingBasedMVPlacement
@@ -517,6 +518,8 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if !config.IsSet(compName + ".chunk-size-mb") {
 		distributedCache.cfg.ChunkSizeMB = defaultChunkSizeMB
 	}
+	cm.ChunkSizeMB = int64(distributedCache.cfg.ChunkSizeMB)
+
 	if !config.IsSet(compName + ".min-nodes") {
 		distributedCache.cfg.MinNodes = defaultMinNodes
 	}

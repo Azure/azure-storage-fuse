@@ -98,8 +98,10 @@ func NewFileIOManager() error {
 	// PutChunkDCIODepthTotal restricts the number of parallel chunk writes, so that won't use more than
 	// PutChunkDCIODepthTotal workers, but we need workers for reading chunks too, so let's set aside
 	// few more.
+	// Now with WriteMV() implementing qsize based flow control, we can have workers waiting for qsize
+	// to drop for some MVs, so we need even more workers.
 	//
-	workers := 256
+	workers := 1024
 
 	//
 	// How many chunks will we readahead per file.
