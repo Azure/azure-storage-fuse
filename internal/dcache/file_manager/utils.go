@@ -126,7 +126,7 @@ func isOffsetChunkStarting(offset, chunkSize int64) bool {
 func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string {
 	numMvs := int64(len(fileMetadata.FileLayout.MVList))
 
-	// Must have full strip worth of MVs.
+	// Must have full stripe worth of MVs.
 	common.Assert(numMvs == fileMetadata.FileLayout.StripeWidth,
 		numMvs, fileMetadata.FileLayout.StripeWidth, fileMetadata.FileLayout.ChunkSize)
 	common.Assert(numMvs > 0, numMvs)
@@ -158,6 +158,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
 
 	chunkSize := cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes
+	// TODO: Support auto detect stripe width depending on number of MVs.
 	stripeWidth := cm.GetCacheConfig().StripeWidth
 	numReplicas := cm.GetCacheConfig().NumReplicas
 
@@ -613,7 +614,6 @@ loop:
 	if length != 0 {
 		chunkSize := int64(cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes)
 		length = min(length, chunkSize-offset)
-
 	}
 
 	chunk := &StagedChunk{

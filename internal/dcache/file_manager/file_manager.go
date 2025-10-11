@@ -98,8 +98,10 @@ func NewFileIOManager() error {
 	// PutChunkDCIODepthTotal restricts the number of parallel chunk writes, so that won't use more than
 	// PutChunkDCIODepthTotal workers, but we need workers for reading chunks too, so let's set aside
 	// few more.
+	// Now with WriteMV() implementing qsize based flow control, we can have workers waiting for qsize
+	// to drop for some MVs, so we need even more workers.
 	//
-	workers := 512
+	workers := 1024
 
 	//
 	// How many chunks will we readahead per file.
@@ -117,7 +119,7 @@ func NewFileIOManager() error {
 	// Hopefully we won't be writing too many large files simultaneously, so we can keep this number
 	// high enough to give 1GiB writeback space per file.
 	//
-	numStagingChunks := int(1024*2 / cm.GetCacheConfig().ChunkSizeMB)
+	numStagingChunks := int(1024 / cm.GetCacheConfig().ChunkSizeMB)
 
 	common.Assert(workers > 0)
 	common.Assert(numReadAheadChunks > 0)
