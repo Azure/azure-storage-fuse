@@ -2378,6 +2378,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	var availableSpace int64
 	var thisDuration time.Duration
 	var writeStartTime time.Time
+	var issueIODepth int64
+	var issueOpenDepth int64
+	var issueWriteDepth int64
+	var issueRenameDepth int64
 
 	//
 	// If the PutChunk is for the special metadata chunk, remove existing metadata chunk file if any, to
@@ -2431,6 +2435,12 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	writeStartTime = time.Now()
 	rvInfo.wqsize.Add(1)
+
+	issueIODepth = rvInfo.wqsize.Load()
+	issueOpenDepth = OpenDepth.Load()
+	issueWriteDepth = WriteDepth.Load()
+	issueRenameDepth = RenameDepth.Load()
+
 	// 10k is arbitrary large number, we should never reach this due to the client side throttling.
 	common.Assert(rvInfo.wqsize.Load() < 10000, rvInfo.wqsize.Load())
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
@@ -2451,12 +2461,15 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	// Too many outstanding writes to a disk can make the writes very slow, alert to know that.
 	if thisDuration > SlowReadWriteThreshold {
-		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, cum: {%d, %d}, iodepth: %d, openDepth: %d, writeDepth: %d, renameDepth: %d",
+		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, cum: {%d, %d}, iodepth: %d (%d), openDepth: %d (%d), writeDepth: %d (%d), renameDepth: %d (%d)",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 			thisDuration, SlowReadWriteThreshold,
 			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()),
-			CumChunkWrites.Load(), CumBytesWritten.Load(), rvInfo.wqsize.Load(),
-			OpenDepth.Load(), WriteDepth.Load(), RenameDepth.Load())
+			CumChunkWrites.Load(), CumBytesWritten.Load(),
+			rvInfo.wqsize.Load(), issueIODepth,
+			OpenDepth.Load(), issueOpenDepth,
+			WriteDepth.Load(), issueWriteDepth,
+			RenameDepth.Load(), issueRenameDepth)
 	}
 
 	if err != nil {
