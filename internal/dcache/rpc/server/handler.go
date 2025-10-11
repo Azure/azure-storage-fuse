@@ -165,7 +165,7 @@ type rvInfo struct {
 	// Mostly used for debugging distribution of reads across RVs.
 	totalBytesRead atomic.Int64
 
-	// Number of chunks being currently being written to this RV.
+	// Number of chunks currently being written to this RV.
 	wqsize atomic.Int64
 }
 
@@ -2428,10 +2428,13 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	}
 
 	// TODO: hash validation will be done later
+
 	writeStartTime = time.Now()
 	rvInfo.wqsize.Add(1)
+	// 10k is arbitrary large number, we should never reach this due to the client side throttling.
+	common.Assert(rvInfo.wqsize.Load() < 10000, rvInfo.wqsize.Load())
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
-	common.Assert(rvInfo.wqsize.Load() >= 0, rvInfo.wqsize.Load())
+	common.Assert(rvInfo.wqsize.Load() > 0, rvInfo.wqsize.Load())
 	rvInfo.wqsize.Add(-1)
 	thisDuration = time.Since(writeStartTime)
 
