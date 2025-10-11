@@ -119,7 +119,7 @@ func NewFileIOManager() error {
 	// Hopefully we won't be writing too many large files simultaneously, so we can keep this number
 	// high enough to give 1GiB writeback space per file.
 	//
-	numStagingChunks := int(1024 / cm.GetCacheConfig().ChunkSizeMB)
+	numStagingChunks := int(1024*4 / cm.GetCacheConfig().ChunkSizeMB)
 
 	common.Assert(workers > 0)
 	common.Assert(numReadAheadChunks > 0)
