@@ -470,7 +470,7 @@ var (
 type ClusterMap struct {
 	localMap            *dcache.ClusterMap
 	mu                  sync.RWMutex // Synchronizes access to localMap.
-	LocalClusterMapPath string
+	localClusterMapPath string
 }
 
 func (c *ClusterMap) stop() {
@@ -494,16 +494,16 @@ func (c *ClusterMap) getLocalMap() *dcache.ClusterMap {
 }
 
 func (c *ClusterMap) loadLocalMap() {
-	data, err := os.ReadFile(c.LocalClusterMapPath)
+	data, err := os.ReadFile(c.localClusterMapPath)
 	if err != nil {
-		log.Err("ClusterMap::loadLocalMap: Failed to read %s: %v", c.LocalClusterMapPath, err)
+		log.Err("ClusterMap::loadLocalMap: Failed to read %s: %v", c.localClusterMapPath, err)
 		common.Assert(false, err)
 		return
 	}
 
 	var newClusterMap dcache.ClusterMap
 	if err := json.Unmarshal(data, &newClusterMap); err != nil {
-		log.Err("ClusterMap::loadLocalMap: Invalid JSON in %s: %v", c.LocalClusterMapPath, err)
+		log.Err("ClusterMap::loadLocalMap: Invalid JSON in %s: %v", c.localClusterMapPath, err)
 		common.Assert(false, err)
 		return
 	}
@@ -514,7 +514,7 @@ func (c *ClusterMap) loadLocalMap() {
 	c.localMap = &newClusterMap
 
 	log.Debug("ClusterMap::loadLocalMap: Updated local clustermap in %s, epoch: %d",
-		c.LocalClusterMapPath, newClusterMap.Epoch)
+		c.localClusterMapPath, newClusterMap.Epoch)
 }
 
 func (c *ClusterMap) getEpoch() int64 {

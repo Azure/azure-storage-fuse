@@ -84,7 +84,12 @@ var (
 	NumChunkReads          atomic.Int64
 	AggrChunkReadsDuration atomic.Int64 // time in nanoseconds for NumChunkReads.
 
-	SlowReadWriteThreshold = 2 * time.Second // anything more than this is considered a slow chunk read/write
+	//
+	// anything more than this is considered a slow chunk read/write.
+	// Under heavy IO load, we can have ~500-1000 IOs queued to an RV, for 4GBps disk throughput,
+	// and 16MB chunks, this comes to ~2-4 seconds.
+	//
+	SlowReadWriteThreshold = 2 * time.Second
 )
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
@@ -165,8 +170,8 @@ type rvInfo struct {
 	// Mostly used for debugging distribution of reads across RVs.
 	totalBytesRead atomic.Int64
 
-	// Number of chunks currently being written to this RV.
-	wqsize atomic.Int64
+	// Number of chunks queued to be read/written from/to this RV.
+	qsize atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -1861,7 +1866,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//}
 
 	readStartTime = time.Now()
+	rvInfo.qsize.Add(1)
 	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
+	rvInfo.qsize.Add(-1)
 	thisDuration = time.Since(readStartTime)
 
 	// Consider only recent reads for calculating avg read duration.
@@ -1873,10 +1880,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	}
 
 	if thisDuration > SlowReadWriteThreshold {
-		log.Warn("[SLOW] readChunkAndHash: Slow read for %s, chunkIdx: %d, took %s (>%s), avg: %s",
+		log.Warn("[SLOW] readChunkAndHash: Slow read for %s, chunkIdx: %d, took %s (>%s), avg: %s, iodepth: %d",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Address),
 			thisDuration, SlowReadWriteThreshold,
-			time.Duration(AggrChunkReadsDuration.Load()/NumChunkReads.Load()))
+			time.Duration(AggrChunkReadsDuration.Load()/NumChunkReads.Load()),
+			rvInfo.qsize.Load())
 	}
 
 	if err != nil {
@@ -2437,18 +2445,18 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// TODO: hash validation will be done later
 
 	writeStartTime = time.Now()
-	rvInfo.wqsize.Add(1)
+	rvInfo.qsize.Add(1)
 
-	issueIODepth = rvInfo.wqsize.Load()
+	issueIODepth = rvInfo.qsize.Load()
 	issueOpenDepth = OpenDepth.Load()
 	issueWriteDepth = WriteDepth.Load()
 	issueRenameDepth = RenameDepth.Load()
 
 	// 10k is arbitrary large number, we should never reach this due to the client side throttling.
-	common.Assert(rvInfo.wqsize.Load() < 10000, rvInfo.wqsize.Load())
+	common.Assert(rvInfo.qsize.Load() < 10000, rvInfo.qsize.Load())
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
-	common.Assert(rvInfo.wqsize.Load() > 0, rvInfo.wqsize.Load())
-	rvInfo.wqsize.Add(-1)
+	common.Assert(rvInfo.qsize.Load() > 0, rvInfo.qsize.Load())
+	rvInfo.qsize.Add(-1)
 	thisDuration = time.Since(writeStartTime)
 
 	// Consider only recent writes for calculating avg write duration.
@@ -2469,7 +2477,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 			thisDuration, SlowReadWriteThreshold,
 			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()),
 			CumChunkWrites.Load(), CumBytesWritten.Load(),
-			rvInfo.wqsize.Load(), issueIODepth,
+			rvInfo.qsize.Load(), issueIODepth,
 			OpenDepth.Load(), issueOpenDepth,
 			WriteDepth.Load(), issueWriteDepth,
 			RenameDepth.Load(), issueRenameDepth)
@@ -2512,7 +2520,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 				return &models.PutChunkResponse{
 					TimeTaken:      time.Since(startTime).Microseconds(),
-					Qsize:          rvInfo.wqsize.Load(),
+					Qsize:          rvInfo.qsize.Load(),
 					AvailableSpace: availableSpace,
 					ComponentRV:    mvInfo.getComponentRVs(),
 				}, nil
@@ -2570,7 +2578,7 @@ dummy_write:
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
-		Qsize:          rvInfo.wqsize.Load(),
+		Qsize:          rvInfo.qsize.Load(),
 		AvailableSpace: availableSpace,
 		ComponentRV:    mvInfo.getComponentRVs(),
 	}
