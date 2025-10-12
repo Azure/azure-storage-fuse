@@ -642,12 +642,15 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	//       GetMVSize() from JoinMV, there could have been more chunks being written to the source MV replica after
 	//       we read the mvInfo.totalChunkBytes. So we reserved less but actually sync'ed more. So, directly
 	//       decrementing the reserved space in PutChunk(sync) can lead to negative reserved space for both MV and RV.
+	//       For now ignore negative space.
 	//
 	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
-	common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
 	log.Debug("rvInfo::getAvailableSpace: RV: %s, availableSpace: %d, diskSpaceAvailable: %d, reservedSpace: %d",
 		rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
+
+	//common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
+	availableSpace = max(availableSpace, 0)
 
 	return availableSpace, err
 }
