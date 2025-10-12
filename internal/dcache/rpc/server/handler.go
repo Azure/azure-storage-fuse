@@ -84,7 +84,7 @@ var (
 	NumChunkReads          atomic.Int64
 	AggrChunkReadsDuration atomic.Int64 // time in nanoseconds for NumChunkReads.
 
-	SlowReadWriteThreshold = 1 * time.Second // anything more than this is considered a slow chunk read/write
+	SlowReadWriteThreshold = 2 * time.Second // anything more than this is considered a slow chunk read/write
 )
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
