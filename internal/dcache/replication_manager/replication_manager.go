@@ -959,8 +959,8 @@ processResponses:
 			continue
 		}
 
-		log.Err("ReplicationManager::writeMVInternal: [%v] PutChunk to %s/%s failed, chunkIdx: %d, cepoch: %d [%v]",
-			putChunkStyle, respItem.rvName, req.MvName, req.ChunkIndex, lastClusterMapEpoch, respItem.err)
+		log.Err("ReplicationManager::writeMVInternal: [%v] PutChunk to %s/%s failed, retryCnt: %d, chunkIdx: %d, cepoch: %d [%v]",
+			putChunkStyle, respItem.rvName, req.MvName, retryCnt, req.ChunkIndex, lastClusterMapEpoch, respItem.err)
 
 		common.Assert(putChunkResp == nil)
 
@@ -1064,12 +1064,18 @@ processResponses:
 				}
 
 				//
-				// We will be asked to refresh more than once only if the clustermap is being updated.
+				// We will be asked to refresh more than once only if the clustermap is being updated, i.e.,
+				// epoc is odd.
 				// In this state, refreshFromClustermap() cannot safely override mvInfo from the clustermap,
 				// so it keeps asking the client to retry.
 				//
-				common.Assert(retryCnt < 2 || lastClusterMapEpoch%2 == 1,
-					respItem.rvName, req.MvName, retryCnt, lastClusterMapEpoch)
+				// Update: Have seen incidents where we got NeedToRefreshClusterMap multiple times as clustermap
+				//         changed after the prev refresh and also first it was one RV and then another RV.
+				//
+				/*
+					common.Assert(retryCnt < 2 || lastClusterMapEpoch%2 == 1,
+						respItem.rvName, req.MvName, retryCnt, lastClusterMapEpoch)
+				*/
 				continue
 			}
 
