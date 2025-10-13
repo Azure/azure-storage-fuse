@@ -170,10 +170,9 @@ struct GetMVSizeResponse {
 //
 struct GetLogsRequest {
     1: string senderNodeID,
-    2: string receiverNodeID, // target node id for validation (optional)
-    3: i64 chunkIndex, // zero-based chunk index requested
-    4: i64 chunkSize, // desired chunk size in bytes
-    5: bool reset, // if true, force server to recreate tarball (ignored unless chunkIndex==0)
+    2: i64 chunkIndex, // zero-based chunk index requested
+    3: i64 chunkSize, // desired chunk size in bytes
+    4: bool reset, // if true, force server to recreate tarball (ignored unless chunkIndex==0)
 }
 
 struct GetLogsResponse {
@@ -181,7 +180,7 @@ struct GetLogsResponse {
     2: i64 chunkIndex,
     3: bool isLast, // true if this is the final chunk
     4: i64 totalSize, // total size of tarball in bytes
-    5: string tarName // name of tarball file on server (e.g., nodeid-logs-<timestamp>.tar.gz)
+    5: string tarName // name of tarball file on server (e.g., blobfuse2-logs.tar.gz)
 }
 
 // Custom error codes returned by the ChunkServiceHandler
