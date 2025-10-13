@@ -34,9 +34,12 @@
 package rpc_server
 
 import (
+	"archive/tar"   // for constructing tarball of log files
+	"compress/gzip" // gzip compression for tarball
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -48,6 +51,7 @@ import (
 	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
@@ -88,6 +92,11 @@ var (
 	SlowReadWriteThreshold = 1 * time.Second // anything more than this is considered a slow chunk read/write
 )
 
+const (
+	// Maximum chunk size for log transfer (16MB)
+	maxLogChunkSize int64 = 16 * 1024 * 1024
+)
+
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
 var _ service.ChunkService = &ChunkServiceHandler{}
 
@@ -119,6 +128,12 @@ type ChunkServiceHandler struct {
 	chunkCache       *lru.Cache[string, []byte]
 	chunkCacheLookup atomic.Int64
 	chunkCacheHit    atomic.Int64
+
+	// state for log collection tarball streaming
+	logStateMu sync.Mutex
+	logTarPath string
+	logTarSize int64
+	logTarName string
 }
 
 // This holds information on one of our local RV.
@@ -3417,6 +3432,246 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 		resp.MvSize, rvInfo.rvName, req.MV)
 
 	return resp, nil
+}
+
+// GetLogs streams the tar.gz of blobfuse2.log* files in 16MB chunks.
+func (h *ChunkServiceHandler) GetLogs(ctx context.Context, req *models.GetLogsRequest) (*models.GetLogsResponse, error) {
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	log.Debug("ChunkServiceHandler::GetLogs: Received GetLogs request: %v", req.String())
+
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		req.ChunkIndex < 0 ||
+		req.ChunkSize <= 0 ||
+		req.ChunkSize > maxLogChunkSize {
+		errStr := fmt.Sprintf("Invalid GetLogs request: %v", req.String())
+		log.Err("ChunkServiceHandler::GetLogs: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	//
+	// Take logStateMu lock to prevent multiple threads from creating the log tarball.
+	//
+	h.logStateMu.Lock()
+
+	//
+	// Create the tarball on first chunk or if the logTarPath is empty.
+	//
+	if req.ChunkIndex == 0 {
+		if err := h.createLogTarLocked(req.Reset); err != nil {
+			h.logStateMu.Unlock()
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, err.Error())
+		}
+	} else if h.logTarPath == "" { // client asked for non-zero without initiating
+		log.Warn("ChunkServiceHandler::GetLogs: Received chunkIndex=%d without prior initialization; creating tarball implicitly",
+			req.ChunkIndex)
+
+		if err := h.createLogTarLocked(true); err != nil {
+			h.logStateMu.Unlock()
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, err.Error())
+		}
+	}
+
+	tarPath := h.logTarPath
+	totalSize := h.logTarSize
+	tarName := h.logTarName
+
+	h.logStateMu.Unlock()
+
+	common.Assert(tarPath != "", req.ChunkIndex, tarName, totalSize)
+
+	offset := req.ChunkIndex * req.ChunkSize
+	if offset > totalSize {
+		errStr := fmt.Sprintf("chunk index out of range: %d", req.ChunkIndex)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	if common.IsDebugBuild() {
+		start := time.Now()
+		defer func() {
+			log.Debug("ChunkServiceHandler::GetLogs: request took %v: %v",
+				time.Since(start), req.String())
+		}()
+	}
+
+	fh, err := os.Open(tarPath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::GetLogs: failed to open tar file %s [%v]", tarPath, err)
+		common.Assert(false, err)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, err.Error())
+	}
+	defer fh.Close()
+
+	// Determine bytes to read for this chunk.
+	bufSize := req.ChunkSize
+	if remain := totalSize - offset; remain < bufSize {
+		bufSize = remain
+	}
+
+	buf := make([]byte, bufSize)
+
+	n, err := fh.ReadAt(buf, offset)
+	if err != nil && err != io.EOF {
+		log.Err("ChunkServiceHandler::GetLogs: failed to read tar file %s at offset %d [%v]",
+			tarPath, offset, err)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, err.Error())
+	}
+
+	if int64(n) < bufSize {
+		buf = buf[:n]
+	}
+
+	isLast := (offset + int64(len(buf))) >= totalSize
+
+	log.Debug("GetLogs: Served chunk %d (size=%d, offset=%d) last=%v tar=%s totalSize=%d",
+		req.ChunkIndex, len(buf), offset, isLast, tarName, totalSize)
+
+	return &models.GetLogsResponse{
+		Data:       buf,
+		ChunkIndex: req.ChunkIndex,
+		IsLast:     isLast,
+		TotalSize:  totalSize,
+		TarName:    tarName,
+	}, nil
+}
+
+// Create or recreate tarball of log files.
+// Caller must hold logStateMu lock.
+func (h *ChunkServiceHandler) createLogTarLocked(reset bool) error {
+	//
+	// If we already have a tarball and are not resetting it, reuse it. Client can set reset
+	// flag to true to create a new tarball from the log files. The first request for a chunk
+	// log must be made with reset flag set to true to prevent using the older tarball.
+	//
+	if h.logTarPath != "" && !reset {
+		if st, err := os.Stat(h.logTarPath); err == nil {
+			h.logTarSize = st.Size()
+			log.Debug("ChunkServiceHandler::createLogTarLocked: Reusing existing log tarball %s (size=%d)",
+				h.logTarPath, h.logTarSize)
+			return nil
+		} else {
+			log.Err("ChunkServiceHandler::createLogTarLocked: Existing tarball missing or inaccessible, recreating: %s [%v]",
+				h.logTarPath, err)
+		}
+	}
+
+	logFilePath := ""
+	err := config.UnmarshalKey("logging.file-path", logFilePath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::createLogTarLocked: Failed to get log file path [%v]", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	logDir := filepath.Dir(logFilePath)
+	pattern := filepath.Join(logDir, "blobfuse2.log*")
+	matches, _ := filepath.Glob(pattern)
+
+	if len(matches) == 0 {
+		err := fmt.Errorf("no log files matched pattern %s", pattern)
+		log.Err("ChunkServiceHandler::createLogTarLocked [%v]", err)
+		common.Assert(false, logDir, logFilePath, err)
+		return err
+	}
+
+	log.Debug("ChunkServiceHandler::createLogTarLocked: Found %d log files for pattern %s: %v",
+		len(matches), pattern, matches)
+
+	tarFilePath := filepath.Join(os.TempDir(), "blobfuse2-logs.tar.gz")
+	tarFile, err := os.Create(tarFilePath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::createLogTarLocked: create tar file failed [%v]", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	gz := gzip.NewWriter(tarFile)
+	tw := tar.NewWriter(gz)
+
+	for _, fileName := range matches {
+		fi, err := os.Stat(fileName)
+		if err != nil {
+			log.Err("ChunkServiceHandler::createLogTarLocked: stat failed for %s [%v]",
+				fileName, err)
+			common.Assert(false, fileName, err)
+			continue
+		}
+
+		if fi.IsDir() {
+			log.Warn("ChunkServiceHandler::createLogTarLocked: skipping directory %s", fileName)
+			// We don't expect directory here, so assert
+			common.Assert(false, fileName)
+			continue
+		}
+
+		hdr, err := tar.FileInfoHeader(fi, "")
+		if err != nil {
+			log.Err("ChunkServiceHandler::createLogTarLocked: failed to get FileInfoHeader for %s [%v]",
+				fileName, err)
+			common.Assert(false, fileName, err)
+			return err
+		}
+
+		if err = tw.WriteHeader(hdr); err != nil {
+			log.Err("GChunkServiceHandler::createLogTarLocked: WriteHeader failed for %s [%v]",
+				fileName, err)
+			common.Assert(false, fileName, err)
+			return err
+		}
+
+		fh, err := os.Open(fileName)
+		if err != nil {
+			log.Err("ChunkServiceHandler::createLogTarLocked: open failed for %s [%v]",
+				fileName, err)
+			common.Assert(false, fileName, err)
+			return err
+		}
+		defer fh.Close()
+
+		if _, err = io.Copy(tw, fh); err != nil {
+			log.Err("ChunkServiceHandler::createLogTarLocked: copy failed for %s [%v]",
+				fileName, err)
+			common.Assert(false, fileName, err)
+			return err
+		}
+	}
+
+	// Best effort close sequence; capture first error if any.
+	var cerr error
+	if err = tw.Close(); err != nil {
+		cerr = err
+	}
+
+	if err = gz.Close(); err != nil && cerr == nil {
+		cerr = err
+	}
+
+	if err = tarFile.Close(); err != nil && cerr == nil {
+		cerr = err
+	}
+
+	if cerr != nil {
+		err1 := fmt.Errorf("closing writers failed [%v]", cerr)
+		log.Err("ChunkServiceHandler::createLogTarLocked: %v", err1)
+		common.Assert(false, err1)
+		return err1
+	}
+
+	st, err := os.Stat(tarFilePath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::createLogTarLocked: failed to stat tar file [%v]", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	h.logTarPath = tarFilePath
+	h.logTarSize = st.Size()
+	h.logTarName = filepath.Base(tarFilePath)
+
+	log.Debug("GetLogs: Created log tarball %s size=%d", h.logTarPath, h.logTarSize)
+	return nil
 }
 
 // Silence unused import errors for release builds.
