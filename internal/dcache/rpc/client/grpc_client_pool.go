@@ -52,10 +52,6 @@ const (
 	defaultGRPCPerNodeConns = 16
 )
 
-var (
-	gp *grpcClientPool
-)
-
 // grpcClientPool manages per-node grpcClientPool.
 type grpcClientPool struct {
 	rwMutex sync.RWMutex

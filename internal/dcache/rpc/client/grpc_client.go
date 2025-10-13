@@ -52,7 +52,7 @@ type grpcClient struct {
 	nodeID      string                         // Node ID of the node this client is for, can be used for debug logs
 	nodeAddress string                         // Address of the node this client is for
 	conn        *grpc.ClientConn               // Underlying gRPC connection
-	client      grpcservice.ChunkServiceClient // gRPC client for the chunk service
+	svcClient   grpcservice.ChunkServiceClient // gRPC client for the chunk service
 }
 
 var opts []grpc.DialOption
@@ -98,7 +98,7 @@ func newGRPCClient(nodeID string, nodeAddress string) (*grpcClient, error) {
 		nodeID:      nodeID,
 		nodeAddress: nodeAddress,
 		conn:        conn,
-		client:      client,
+		svcClient:   client,
 	}
 
 	return grpcClient, nil
