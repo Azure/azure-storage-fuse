@@ -394,7 +394,7 @@ type mvCongInfo struct {
 	mu        sync.Mutex
 	inflight  atomic.Int64 // PutChunkDC requests in flight to this MV.
 	cwnd      atomic.Int64 // Congestion window size, i.e., total number of inflight requests allowed.
-	estQSize  atomic.Int64 // Estimated queue size at the target RV(s) as number of chunksize writes.
+	estQSize  atomic.Int64 // Estimated queue size (max of all component RVs). Debug only.
 	minRTT    atomic.Int64 // Minimum RTT observed (in nanoseconds). Debug only.
 	maxRTT    atomic.Int64 // Maximum RTT observed (in nanoseconds). Debug only.
 	lastRTT   atomic.Int64 // RTT as per the last completed request (in nanoseconds). Debug only.
@@ -802,6 +802,7 @@ retry:
 
 				mvCnginfo.estQSize.Store(int64(estQSize))
 				doSleep := false
+				waitMsec := int64(0)
 
 				if estQSize < 10 {
 					//
@@ -827,6 +828,10 @@ retry:
 					//
 					mvCnginfo.cwnd.Store(0)
 					doSleep = true
+
+					if estQSize > 200 {
+						waitMsec = int64((estQSize * 4) / 2)
+					}
 				}
 
 				mvCnginfo.mu.Unlock()
@@ -834,7 +839,6 @@ retry:
 				if doSleep {
 					// Wait for all inflight requests to complete.
 					waitLoop := int64(0)
-					waitMsec := int64((estQSize * 4) / 2) - time.Duration(mvCnginfo.lastRTT.Load()).Milliseconds()
 					for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
 						time.Sleep(1 * time.Millisecond)
 						waitMsec--
