@@ -385,42 +385,14 @@ retry:
 	return resp, nil
 }
 
-// Congestion related information for MV.
-// Server sends its current qsize in the PutChunkDC response. We use it to control our congestion window,
-// i.e., the number of requests we will keep outstanding to the MV before we wait for some of them to complete.
-// thus making sure we don't overload an already congested MV replica or the network path to it, while
-// making better use of our egress n/w bandwidth to send writes to MV replicas which are not/less congested.
-type mvCongInfo struct {
-	mu        sync.Mutex
-	inflight  atomic.Int64 // PutChunkDC requests in flight to this MV.
-	cwnd      atomic.Int64 // Congestion window size, i.e., total number of inflight requests allowed.
-	estQSize  atomic.Int64 // Estimated queue size (max of all component RVs). Debug only.
-	minRTT    atomic.Int64 // Minimum RTT observed (in nanoseconds). Debug only.
-	maxRTT    atomic.Int64 // Maximum RTT observed (in nanoseconds). Debug only.
-	lastRTT   atomic.Int64 // RTT as per the last completed request (in nanoseconds). Debug only.
-	lastRTTAt atomic.Int64 // Time when lastRTT was recorded (in nanoseconds since epoch). Debug only.
-}
-
-// mvCnginfo stores congestion info for each MV that we have written to.
-// Indexed by mv idx.
-//
-// Note: We use a static array instead of a map to avoid global lock.
-//
-// TODO: Change the size according to the max number of MVs supported.
-var mvCnginfo [10000]mvCongInfo
-
 func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*WriteMvResponse, error) {
 	log.Debug("ReplicationManager::writeMVInternal: Received WriteMV request (%v): %v", putChunkStyle, req.toString())
 
+	var err error
 	var rvsWritten []string
 	retryCnt := 0
 
-	var mvIdx int
-	_, err := fmt.Sscanf(req.MvName, "mv%d", &mvIdx)
-	common.Assert(err == nil, req.MvName, err)
-	common.Assert(mvIdx >= 0 && mvIdx < len(mvCnginfo), req.MvName, mvIdx, len(mvCnginfo))
-
-	mvCnginfo := &(mvCnginfo[mvIdx])
+	mvCnginfo := getMVCongInfo(req.MvName)
 
 	//
 	// If PutChunk fails with NeedToRefreshClusterMap more than once, it most likely is due to clustermap
@@ -737,7 +709,6 @@ retry:
 		//
 		putChunkSem := getPutChunkDCSem(targetNodeID, req.ChunkIndex)
 
-		mvCnginfo.inflight.Add(1)
 		putChunkDCstartTime := time.Now()
 
 		//
@@ -752,108 +723,9 @@ retry:
 		}
 		rtt := time.Since(putChunkDCstartTime)
 
-		common.Assert(mvCnginfo.inflight.Load() > 0, mvCnginfo.inflight.Load(), rvName, req.MvName)
-		mvCnginfo.inflight.Add(-1)
-
 		// Update congestion info for this MV, only from successful full sized chunk writes.
 		if err == nil && putChunkDCReq.Request.Length == cm.ChunkSizeMB*common.MbToBytes {
-			//
-			// Qsize of an MV is the largest qsize among all its component RVs.
-			//
-			estQSize := -1
-			for rvName, putChunkResp := range putChunkDCResp.Responses {
-				_ = rvName
-				if putChunkResp.Error == nil {
-					log.Debug("ReplicationManager::writeMVInternal: PutChunkDC response from %s/%s, chunkIdx: %d, qsize: %d",
-						rvName, req.MvName, req.ChunkIndex, putChunkResp.Response.Qsize)
-
-					common.Assert(putChunkResp.Response.Qsize >= 0, putChunkResp.Response.Qsize, rvName, req.MvName)
-					estQSize = max(estQSize, int(putChunkResp.Response.Qsize))
-				}
-			}
-
-			if estQSize >= 0 {
-				// 10K is an arbitrary large value, we shouldn't be seeing such high values due to client throttling.
-				common.Assert(estQSize < 10000, estQSize, putChunkDCResp)
-
-				mvCnginfo.mu.Lock()
-
-				mvCnginfo.lastRTT.Store(int64(rtt))
-				mvCnginfo.lastRTTAt.Store(time.Now().UnixNano())
-
-				if int64(rtt) > mvCnginfo.maxRTT.Load() {
-					mvCnginfo.maxRTT.Store(int64(rtt))
-				}
-
-				if int64(rtt) < mvCnginfo.minRTT.Load() || mvCnginfo.minRTT.Load() == int64(0) {
-					mvCnginfo.minRTT.Store(int64(rtt))
-				}
-
-				//
-				// minRTT is an estimate of the fastest path to the MV (network + storage).
-				// If current RTT is significantly higher than minRTT, it indicates n/w congestion
-				// which may not reflect in the qsize value returned by the server.
-				// Set estQSize to 10 so that the following code limits the cwnd to 1 and then as
-				// things improve we increase the cwnd.
-				//
-				if int64(rtt) >= mvCnginfo.minRTT.Load()*5 {
-					estQSize = max(estQSize, 10)
-				}
-
-				mvCnginfo.estQSize.Store(int64(estQSize))
-				doSleep := false
-				waitMsec := int64(0)
-
-				if estQSize < 10 {
-					//
-					// Feed more if RV is "free".
-					// Keeping more han 8 requests in flight to an MV doeesn't help, we'd rather send requests
-					// to other less loaded MVs and make better use of cluster n/w bandwidth.
-					//
-					if mvCnginfo.cwnd.Add(1) > 8 {
-						mvCnginfo.cwnd.Store(8)
-					}
-				} else if estQSize < 20 {
-					//
-					// Let requests trickle through if RV is "moderately loaded".
-					// We need to be conservative here as multiple nodes may be writing to the same MV/RV
-					// and that can cause the queue to build up quickly.
-					//
-					newCwnd := max(mvCnginfo.cwnd.Load()/2, 1)
-					mvCnginfo.cwnd.Store(newCwnd)
-				} else {
-					//
-					// If heavily loaded, then slow down, don't allow any more requests to this
-					// MV till all inflight requests are done.
-					//
-					mvCnginfo.cwnd.Store(0)
-					doSleep = true
-
-					if estQSize > 200 {
-						waitMsec = int64((estQSize * 4) / 2)
-					}
-				}
-
-				mvCnginfo.mu.Unlock()
-
-				if doSleep {
-					// Wait for all inflight requests to complete.
-					waitLoop := int64(0)
-					for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
-						time.Sleep(1 * time.Millisecond)
-						waitMsec--
-						waitLoop++
-						common.Assert(waitLoop < 30000, req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load())
-					}
-
-					if waitMsec > 0 {
-						time.Sleep(time.Duration(waitMsec) * time.Millisecond)
-					}
-
-					// Now open up slowly.
-					mvCnginfo.cwnd.Store(1)
-				}
-			}
+			mvCnginfo.onPutChunkDCSuccess(rtt, req, putChunkDCResp)
 		}
 
 		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
@@ -1210,12 +1082,9 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
 	var resp *WriteMvResponse
-	var mvIdx int
+	var err error
 
-	_, err := fmt.Sscanf(req.MvName, "mv%d", &mvIdx)
-	common.Assert(err == nil, req.MvName, err)
-	common.Assert(mvIdx >= 0 && mvIdx < len(mvCnginfo), req.MvName, mvIdx, len(mvCnginfo))
-	mvCnginfo := &(mvCnginfo[mvIdx])
+	mvCnginfo := getMVCongInfo(req.MvName)
 
 	//
 	// With 4GBps n/w and disk speeds, and with daisy chain with NumReplicas=3, 16MiB chunk write
@@ -1268,34 +1137,8 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 		}
 	}
 
-	//
-	// If inflight requests are more than cwnd, wait for enough inflight requests to complete.
-	// We grow the cwnd as more requests complete successfully, proving that the MV can handle
-	// more requests. If the MV is slow, the cwnd will cause us to exercise sender flow control.
-	// Note that this is the same idea as TCP cwnd used for sender side flow control, but unlike
-	// TCP where cwnd starts at a small +ve number, we start at 0, allowing just one request to
-	// be sent for an MV and only when that completes successfully (proving MV is not congested),
-	// we increase the cwnd and allow more requests to be sent to that MV.
-	//
-	if mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
-		//
-		// TODO: This log will be emitted for first few requests to an MV after a new file is opened,
-		//       as cwnd starts at 0. We leave it around as it prints useful info about congested MVs.
-		//       Remove it once we have tested it enough.
-		//
-		log.Warn("ReplicationManager::WriteMV: %s inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
-			req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load(),
-			mvCnginfo.estQSize.Load(), time.Duration(mvCnginfo.lastRTT.Load()),
-			time.Duration(mvCnginfo.minRTT.Load()), time.Duration(mvCnginfo.maxRTT.Load()),
-			time.Since(time.Unix(0, mvCnginfo.lastRTTAt.Load())))
-
-		waitLoop := int64(0)
-		for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
-			time.Sleep(1 * time.Millisecond)
-			waitLoop++
-			common.Assert(waitLoop < 30000, req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load())
-		}
-	}
+	mvCnginfo.admit()
+	defer mvCnginfo.done()
 
 	//
 	// We first try to write the MV using the DaisyChain mode.
