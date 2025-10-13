@@ -818,7 +818,8 @@ retry:
 					// We need to be conservative here as multiple nodes may be writing to the same MV/RV
 					// and that can cause the queue to build up quickly.
 					//
-					mvCnginfo.cwnd.Store(1)
+					newCwnd := max(mvCnginfo.cwnd.Load()/2, 1)
+					mvCnginfo.cwnd.Store(newCwnd)
 				} else {
 					//
 					// If heavily loaded, then slow down, don't allow any more requests to this
@@ -833,10 +834,16 @@ retry:
 				if doSleep {
 					// Wait for all inflight requests to complete.
 					waitLoop := int64(0)
+					waitMsec := int64((estQSize * 4) / 2) - time.Duration(mvCnginfo.lastRTT.Load()).Milliseconds()
 					for mvCnginfo.inflight.Load() > mvCnginfo.cwnd.Load() {
 						time.Sleep(1 * time.Millisecond)
+						waitMsec--
 						waitLoop++
 						common.Assert(waitLoop < 30000, req.MvName, mvCnginfo.inflight.Load(), mvCnginfo.cwnd.Load())
+					}
+
+					if waitMsec > 0 {
+						time.Sleep(time.Duration(waitMsec) * time.Millisecond)
 					}
 
 					// Now open up slowly.

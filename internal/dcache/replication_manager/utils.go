@@ -223,7 +223,7 @@ func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
 
 // Release the semaphore acquired by getPutChunkDCSem() for the given target node.
 func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string, chunkIdx int64, dur time.Duration) {
-	const largeHoldThreshold = 2 * time.Second
+	const largeHoldThreshold = 3 * time.Second
 
 	// We must be releasing a semaphore that we have acquired.
 	common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))

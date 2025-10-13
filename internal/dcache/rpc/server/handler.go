@@ -85,7 +85,7 @@ var (
 	AggrChunkReadsDuration atomic.Int64 // time in nanoseconds for NumChunkReads.
 
 	//
-	// anything more than this is considered a slow chunk read/write.
+	// Anything more than this is considered a slow chunk read/write.
 	// Under heavy IO load, we can have ~500-1000 IOs queued to an RV, for 4GBps disk throughput,
 	// and 16MB chunks, this comes to ~2-4 seconds.
 	//
@@ -1868,6 +1868,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	readStartTime = time.Now()
 	rvInfo.qsize.Add(1)
 	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
+	common.Assert(rvInfo.qsize.Load() > 0, rvInfo.qsize.Load(), chunkPath, rvInfo.rvName)
 	rvInfo.qsize.Add(-1)
 	thisDuration = time.Since(readStartTime)
 
@@ -1942,7 +1943,9 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	//
 	// Use O_EXCL flag just in case two writers are trying to write the same chunk simultaneously.
 	// Note that for actually protecting overwriting an existing chunk we rely on the atomic rename below.
-	// Rename also helps in avoiding serving a partially written chunk file.
+	// Note that rename (as opposed to directly writing the chunk) also helps in avoiding incorrectly
+	// serving a partially written chunk file, though this is not a real problem as clients should never
+	// ask for a chunk that's not written yet.
 	//
 	OpenDepth.Add(1)
 	fd, err := syscall.Open(tmpChunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
@@ -2447,6 +2450,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	writeStartTime = time.Now()
 	rvInfo.qsize.Add(1)
 
+	// Various qdepths at the time of issuing the write.
 	issueIODepth = rvInfo.qsize.Load()
 	issueOpenDepth = OpenDepth.Load()
 	issueWriteDepth = WriteDepth.Load()
@@ -2455,7 +2459,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// 10k is arbitrary large number, we should never reach this due to the client side throttling.
 	common.Assert(rvInfo.qsize.Load() < 10000, rvInfo.qsize.Load())
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
-	common.Assert(rvInfo.qsize.Load() > 0, rvInfo.qsize.Load())
+	common.Assert(rvInfo.qsize.Load() > 0, rvInfo.qsize.Load(), chunkPath, rvInfo.rvName)
 	rvInfo.qsize.Add(-1)
 	thisDuration = time.Since(writeStartTime)
 
