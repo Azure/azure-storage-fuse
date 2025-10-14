@@ -237,10 +237,10 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 			}
 			log.Info("TOMAR[1]: %s, chunkIdx: %d, stripe: %d, estQSize: %d, inflight: %d, cwnd: %d",
 				req.MvName, req.ChunkIndex, req.ChunkIndex%256, estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
-		} else if estQSize < 500 {
+		} else if estQSize < 200 {
 			log.Info("TOMAR[8]: %s, chunkIdx: %d, stripe: %d, estQSize: %d, inflight: %d, cwnd: %d",
 				req.MvName, req.ChunkIndex, req.ChunkIndex%256, estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
-		} else if estQSize < 800 {
+		} else if estQSize < 400 {
 			//
 			// Let requests trickle through if RV is "moderately loaded".
 			// We need to be conservative here as multiple nodes may be writing to the same MV/RV
