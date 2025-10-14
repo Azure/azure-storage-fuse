@@ -163,7 +163,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	stats.Stats.IPAddr = cmi.myIPAddress
 	stats.Stats.HostName = cmi.myHostName
 
-	cmi.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
+	cmi.localClusterMapPath = cm.GetLocalClusterMapPath()
 
 	// Note that all nodes in the cluster use consistent config. The node that uploads the initial
 	// clustermap gets to choose that config and all other nodes follow that.
@@ -600,6 +600,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	//
 	common.Assert(len(cmi.localClusterMapPath) > 0)
 	tmp := cmi.localClusterMapPath + ".tmp"
+	startWrite := time.Now()
 	if err := os.WriteFile(tmp, storageBytes, 0644); err != nil {
 		err = fmt.Errorf("WriteFile(%s) failed: %v %+v", tmp, err, storageClusterMap)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
@@ -634,8 +635,16 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		common.Assert(cm.IsValidDcacheConfig(cmi.config))
 	}
 
-	log.Info("ClusterManager::fetchAndUpdateLocalClusterMap: Local clustermap updated (bytes: %d, etag: %s, epoch: %d)",
-		len(storageBytes), *etag, storageClusterMap.Epoch)
+	log.Info("ClusterManager::fetchAndUpdateLocalClusterMap: Local clustermap updated (bytes: %d, etag: %s, epoch: %d), took %s",
+		len(storageBytes), *etag, storageClusterMap.Epoch, time.Since(startWrite))
+
+	//
+	// If local clustermap is stored on a shared NFS folder and there are heavy read/write IOs going on,
+	// sometimes the simple clustermap write takes a long time (10+ secs), more than the usual microseconds.
+	// Let's know if it happens.
+	//
+	common.Assert(time.Since(startWrite) <= 2*time.Second,
+		time.Since(startWrite), len(storageBytes), *etag, storageClusterMap.Epoch)
 
 	//
 	// 6. Notify clustermap package. It'll refresh its in-memory copy for serving its users.
@@ -3042,6 +3051,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	// offline|inband-offline, outofsync, outofsync => offline
 	// offline|inband-offline, offline|inband-offline, offline|inband-offline => offline
 	//
+
+	numOfflineMVs := 0
+
 	for mvName, mv := range existingMVMap {
 		offlineRVs := 0
 		inbandOfflineRVs := 0
@@ -3111,6 +3123,7 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 				mvUpdated = true
 			}
 			mv.State = dcache.StateOffline
+			numOfflineMVs++
 		} else if onlineRVs == len(mv.RVs) {
 			if !mvUpdated && mv.State != dcache.StateOnline {
 				mvUpdated = true
@@ -3156,8 +3169,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
 	//       UpdateMV will fail.
 	//
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs), [%s to run] %+v",
-		runFixMvNewMv, len(rvMap), len(existingMVMap), completeBy.Sub(time.Now()), existingMVMap)
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: (%d RVs, %d MVs [%d offline]), [%s to run] %+v",
+		runFixMvNewMv, len(rvMap), len(existingMVMap), numOfflineMVs, completeBy.Sub(time.Now()), existingMVMap)
 
 	//
 	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be generated, so we run
@@ -3299,8 +3312,10 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		}
 	}
 
-	log.Debug("ClusterManager::updateMVList: Starting new-mv with %d new RVs (available: %d, total: %d), numMVs: %d",
-		numNewRVs, len(availableRVsList), len(rvMap), len(existingMVMap))
+	common.Assert(numOfflineMVs <= len(existingMVMap), numOfflineMVs, len(existingMVMap))
+
+	log.Debug("ClusterManager::updateMVList: Starting new-mv with %d new RVs (available: %d, total: %d), numMVs: %d, offlineMVs: %d",
+		numNewRVs, len(availableRVsList), len(rvMap), len(existingMVMap), numOfflineMVs)
 
 	for {
 		//
@@ -3320,9 +3335,9 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		//       finish fast. Many small MVs being replicated in parallel is better than one large
 		//       MV.
 		//
-		if cm.RingBasedMVPlacement && len(existingMVMap) >= len(availableRVsList) {
-			log.Debug("ClusterManager::updateMVList: len(existingMVMap) [%d] >= len(availableRVsList) [%d]",
-				len(existingMVMap), len(availableRVsList))
+		if cm.RingBasedMVPlacement && (len(existingMVMap)-numOfflineMVs) >= len(availableRVsList) {
+			log.Debug("ClusterManager::updateMVList: current MVs [%d-%d] >= len(availableRVsList) [%d]",
+				len(existingMVMap), numOfflineMVs, len(availableRVsList))
 			break
 		}
 
@@ -3826,8 +3841,9 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, cepoc
 	//
 	// Sanity check, total JoinMV/UpdateMV must finish in reasonable time.
 	// See above comment for details.
+	// In case of timeout, it can take upto 20 seconds (RPC timeout), so exclude those from the assert.
 	//
-	common.Assert(time.Since(startTime) < 5*time.Second, time.Since(startTime),
+	common.Assert(time.Since(startTime) < 5*time.Second || (len(errCh) != 0), time.Since(startTime),
 		mvName, rpc.ComponentRVsToString(componentRVs))
 
 	var allErrs []string
