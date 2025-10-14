@@ -35,12 +35,14 @@ package debug
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -85,6 +87,53 @@ func readStatsCallback(pFile *procFile) error {
 	if err != nil {
 		log.Err("DebugFS::readStatsCallback, err: %v", err)
 		common.Assert(false, err)
+	}
+
+	return nil
+}
+
+// proc file: logs
+// On first open, it triggers collection of logs from all nodes via RPC and returns a JSON summary.
+// Large tarballs are stored on disk. This file only returns metadata mapping of node IDs to log tarball paths.
+func readLogsCallback(pFile *procFile) error {
+	// Use default work dir for storing collected logs.
+	outDir := filepath.Join(common.DefaultWorkDir, "cluster-logs")
+
+	// Chunk size fixed to 16MB.
+	const chunkSize = int64(16 * 1024 * 1024)
+
+	start := time.Now()
+
+	logFiles, err := rpc_client.CollectAllNodeLogs(outDir, chunkSize)
+	if err != nil {
+		log.Err("DebugFS::readLogsCallback: collection completed with errors: %v", err)
+	}
+
+	// Build response struct.
+	type logsResp struct {
+		OutputDir   string            `json:"output_dir"`
+		Files       map[string]string `json:"files"`
+		Collected   int               `json:"collected"`
+		DurationSec float64           `json:"duration_sec"`
+		Error       string            `json:"error,omitempty"`
+	}
+
+	lr := &logsResp{
+		OutputDir:   outDir,
+		Files:       logFiles,
+		Collected:   len(logFiles),
+		DurationSec: time.Since(start).Seconds(),
+	}
+
+	if err != nil {
+		lr.Error = err.Error()
+	}
+
+	var err1 error
+	pFile.buf, err1 = json.MarshalIndent(lr, "", "  ")
+	if err1 != nil {
+		log.Err("DebugFS::readLogsCallback: err: %v", err1)
+		common.Assert(false, err1)
 	}
 
 	return nil

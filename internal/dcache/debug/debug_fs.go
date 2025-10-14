@@ -79,6 +79,10 @@ func init() {
 		"stats": &procFile{
 			refreshBuffer: readStatsCallback,
 		}, // Show dcache stats.
+
+		"logs": &procFile{
+			refreshBuffer: readLogsCallback,
+		}, // Collect logs from all nodes (on-demand).
 	}
 
 	procDirList = make([]*internal.ObjAttr, 0, len(procFiles))
