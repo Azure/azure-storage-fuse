@@ -90,7 +90,7 @@ const (
 	//       all operations other than PutChunkDC from forwardPutChunk().
 	// Note: If you modify this, also modify PutChunkDCIODepthTotal and PutChunkDCIODepthPerNode.
 	//
-	defaultMaxPerNode = 96
+	defaultMaxPerNode = 64
 
 	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created

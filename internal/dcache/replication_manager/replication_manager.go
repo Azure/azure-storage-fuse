@@ -1883,6 +1883,11 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 	srcData := make([]byte, chunkSize)
 	n, err := rpc_server.SafeRead(&srcChunkPath, 0 /* offset */, &srcData, false /* forceBufferedRead */)
 	if err != nil {
+		//
+		// Note: This can fail for chunks which are being removed (corresponding to a deleted file),
+		//       so if ReadDir() in the caller finds a chunk and it's removed by the time we come here, the
+		//       assert below will fail. Let's leave it for some time and later we can remove it.
+		//
 		err = fmt.Errorf("SafeRead(%s) failed: %v", srcChunkPath, err)
 		log.Err("ReplicationManager::copySingleChunk: %v", err)
 		common.Assert(false, err)
