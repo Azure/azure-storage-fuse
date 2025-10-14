@@ -241,7 +241,7 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	options += ",max_idle_threads=100000"
 
 	// clone_fd should generally we good, let's keep a watch on this.
-	//options += ",clone_fd"
+	options += ",clone_fd"
 
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
