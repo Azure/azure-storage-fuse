@@ -117,7 +117,7 @@ func (mvci *mvCongInfo) decInflight() {
 // It waits if the number of inflight requests is more than the congestion window size.
 func (mvci *mvCongInfo) admit() {
 	if mvci.inflight.Add(1) <= mvci.cwnd.Load() {
-		log.Info("TOMAR[0]: %s, estQSize: %d, inflight: %d, cwnd: %d, need to wait!",
+		log.Info("TOMAR[0]: %s, estQSize: %d, inflight: %d, cwnd: %d, no wait!",
 			mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load())
 		return
 	}
