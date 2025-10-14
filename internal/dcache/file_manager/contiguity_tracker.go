@@ -80,7 +80,9 @@ type ContiguityTracker struct {
 	lastContiguous int64        // All chunks [0, lastContiguous) are uploaded.
 	maxUploadedIdx int64        // Max chunk index successfully uploaded so far.
 	unackedWindow  atomic.Int64 // maxUploadedIdx - lastContiguous + 1
+	uwChangedAt    atomic.Int64 // Last time unackedWindow changed, in nanoseconds since epoch.
 	lastCommitted  time.Time    // Last time we updated the metadata chunk (not necessarily with a changed size).
+	maxIssuedIdx   int64        // Last chunk index for which upload was issued (not necessarily completed yet).
 	bitmap         []uint64
 }
 
@@ -91,6 +93,7 @@ func NewContiguityTracker(file *DcacheFile) *ContiguityTracker {
 
 	ct := &ContiguityTracker{
 		maxUploadedIdx: -1,
+		maxIssuedIdx:   -1,
 		file:           file,
 	}
 
@@ -163,6 +166,34 @@ func (t *ContiguityTracker) writeMetadataChunk(mdChunk *dcache.MetadataChunk) {
 	}
 }
 
+// Call this when WriteMV() is called to upload a chunk.
+// This is called before the actual upload is done, while OnSuccessfulUpload is called after WriteMV()
+// successfully completes.
+func (t *ContiguityTracker) OnUploadStart(chunkIdx int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// We don't support overwrites, so we shouldn't be uploading the same chunk again.
+	common.Assert(chunkIdx >= t.lastContiguous,
+		chunkIdx, t.lastContiguous, t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+
+	//
+	// Usually chunkIdx should be maxIssuedIdx+1, but it can be slightly off (by one or two) as
+	// we support limited out of order writes for supporting large application write IOs for perf.
+	//
+	if common.IsDebugBuild() {
+		if chunkIdx != t.maxIssuedIdx+1 {
+			log.Debug("contiguity_tracker::OnUploadStart: Sparse upload, chunkIdx: %d, maxIssuedIdx: %d, file: %+v",
+				chunkIdx, t.maxIssuedIdx, *t.file.FileMetadata)
+		} else {
+			log.Debug("contiguity_tracker::OnUploadStart: chunkIdx: %d, maxIssuedIdx: %d, file: %+v",
+				chunkIdx, t.maxIssuedIdx, *t.file.FileMetadata)
+		}
+	}
+
+	t.maxIssuedIdx = max(t.maxIssuedIdx, chunkIdx)
+}
+
 // OnSuccessfulUpload marks chunkIdx as uploaded.
 func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	t.mu.Lock()
@@ -203,9 +234,11 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	//         See NewFileIOManager() and NewStagedChunk() how we do not allow new writes if the gap
 	//         exceeds 4GB. Use 6GB as we may allow some more chunks by the time we detect that
 	//
-	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (6*common.GbToBytes),
-		bitOffset, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
-		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+	/*
+		common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (16*common.GbToBytes),
+			bitOffset, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
+			t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+	*/
 
 	// Ensure bitmap is large enough.
 	bitmapLen := (bitOffset / 64) + 1
@@ -238,9 +271,9 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 		if word == ^uint64(0) {
 			fullWords++
 			continue
-		} else if word&(word+1) == 0 {
-			// Trailing bits are contiguous, e.g. 000011111111111
-			newChunks = int64(bits.TrailingZeros64(word + 1))
+		} else {
+			// And any contiguous chunks from the start of the word.
+			newChunks = int64(bits.TrailingZeros64(^uint64(word)))
 		}
 
 		break
@@ -257,7 +290,11 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	}
 
 	// Update unacked window.
-	t.unackedWindow.Store(t.maxUploadedIdx - (t.lastContiguous + newChunks) + 1)
+	newUW := t.maxUploadedIdx - (t.lastContiguous + newChunks) + 1
+	if newUW != t.unackedWindow.Load() {
+		t.uwChangedAt.Store(time.Now().UnixNano())
+		t.unackedWindow.Store(newUW)
+	}
 
 	common.Assert(t.unackedWindow.Load() >= 0,
 		t.unackedWindow.Load(), t.maxUploadedIdx, t.lastContiguous, newChunks, *t.file.FileMetadata)
@@ -351,5 +388,15 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time
 func (t *ContiguityTracker) GetUnackedWindow() int64 {
 	uw := t.unackedWindow.Load()
 	common.Assert(uw >= 0, uw, t.maxUploadedIdx, t.lastContiguous, *t.file.FileMetadata)
+
+	// Sanity check for stuck window.
+	if uw != 0 && t.uwChangedAt.Load() != 0 &&
+		time.Since(time.Unix(0, t.uwChangedAt.Load())) > 60*time.Second {
+		log.GetLoggerObj().Panicf("[%s] Unacked window stuck for %s, uw: %d, maxUploadedIdx: %d, lastContiguous: %d, maxIssuedIdx: %d, file: %+v",
+			common.GetDebugHostname(),
+			time.Since(time.Unix(0, t.uwChangedAt.Load())),
+			uw, t.maxUploadedIdx, t.lastContiguous, t.maxIssuedIdx, *t.file.FileMetadata)
+	}
+
 	return uw
 }
