@@ -375,7 +375,7 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		//              then a fix-mv workflow ran and removed the RV from the MV.
 		//
 		if rvNewState == dcache.StateOnline {
-			err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s (syncing -> online) for stake component RV, latest component RVs are %+v: %w (epoch: %d)",
+			err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s (syncing -> online) for stale component RV, latest component RVs are %+v: %w (epoch: %d)",
 				rvName, mvName, rvs, InvalidComponentRV, GetEpoch())
 			log.Err("%v", err)
 			return err
