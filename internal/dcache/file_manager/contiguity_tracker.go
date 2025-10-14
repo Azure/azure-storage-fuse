@@ -239,6 +239,7 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (17*common.GbToBytes),
 		bitOffset, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+		*/
 
 	// Ensure bitmap is large enough.
 	bitmapLen := (bitOffset / 64) + 1
