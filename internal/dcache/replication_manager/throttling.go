@@ -85,7 +85,7 @@ func initCongInfo() {
 
 	for i := range mvCnginfo {
 		// We need at least one PutChunkDC request to query/gauge the MV's congestion status.
-		mvCnginfo[i].cwnd.Store(1)
+		mvCnginfo[i].cwnd.Store(8)
 		mvCnginfo[i].mvName = fmt.Sprintf("mv%d", i)
 		mvCnginfo[i].minRTT.Store(int64(time.Hour)) // Large initial value.
 	}
@@ -122,6 +122,9 @@ func (mvci *mvCongInfo) admit() {
 
 	mvci.inflight.Add(-1)
 
+	log.Info("TOMAR[5]: %s, estQSize: %d, inflight: %d, cwnd: %d, need to wait!",
+		mvci.mvName, mvci.estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
+
 	//
 	// If inflight requests are more than cwnd, wait for enough inflight requests to complete.
 	// We grow the cwnd as more requests complete successfully, proving that the MV can handle
@@ -144,8 +147,22 @@ func (mvci *mvCongInfo) admit() {
 	waitLoop := int64(0)
 	for {
 		if mvci.inflight.Add(1) <= mvci.cwnd.Load() {
+			log.Info("TOMAR[6]: %s, estQSize: %d, inflight: %d, cwnd: %d, waited for waitLoop: %d!",
+				mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load(), waitLoop)
 			return
 		}
+		// No more than 5 secs.
+		if waitLoop > 5000 {
+			log.Warn("ReplicationManager::WriteMV: %s waited too long (%d), inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+				mvci.mvName, waitLoop, mvci.inflight.Load(), mvci.cwnd.Load(),
+				mvci.estQSize.Load(), time.Duration(mvci.lastRTT.Load()),
+				time.Duration(mvci.minRTT.Load()), time.Duration(mvci.maxRTT.Load()),
+				time.Since(time.Unix(0, mvci.lastRTTAt.Load())))
+			log.Info("TOMAR[7]: %s, estQSize: %d, inflight: %d, cwnd: %d, waited for waitLoop: %d!",
+				mvci.mvName, mvci.estQSize, mvci.inflight.Load(), mvci.cwnd.Load(), waitLoop)
+			return
+		}
+
 		mvci.inflight.Add(-1)
 		time.Sleep(1 * time.Millisecond)
 		waitLoop++
@@ -209,16 +226,21 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 		doSleep := false
 		waitMsec := int64(0)
 
-		if estQSize < 30 {
+		if estQSize < 100 {
 			//
 			// Feed more if RV is "free".
 			// Keeping more han 8 requests in flight to an MV doeesn't help, we'd rather send requests
 			// to other less loaded MVs and make better use of cluster n/w bandwidth.
 			//
-			if mvci.cwnd.Add(1) > 8 {
-				mvci.cwnd.Store(8)
+			if mvci.cwnd.Add(mvci.cwnd.Load()) > 16 {
+				mvci.cwnd.Store(16)
 			}
-		} else if estQSize < 100 {
+			log.Info("TOMAR[1]: %s, chunkIdx: %d, stripe: %d, estQSize: %d, inflight: %d, cwnd: %d",
+				req.MvName, req.ChunkIndex, req.ChunkIndex%256, estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
+		} else if estQSize < 500 {
+			log.Info("TOMAR[8]: %s, chunkIdx: %d, stripe: %d, estQSize: %d, inflight: %d, cwnd: %d",
+				req.MvName, req.ChunkIndex, req.ChunkIndex%256, estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
+		} else if estQSize < 800 {
 			//
 			// Let requests trickle through if RV is "moderately loaded".
 			// We need to be conservative here as multiple nodes may be writing to the same MV/RV
@@ -226,6 +248,8 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 			//
 			newCwnd := max(mvci.cwnd.Load()/2, 1)
 			mvci.cwnd.Store(newCwnd)
+			log.Info("TOMAR[2]: %s, chunkIdx: %d, stripe: %d, estQSize: %d, inflight: %d, cwnd: %d",
+				req.MvName, req.ChunkIndex, req.ChunkIndex%256, estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
 		} else {
 			//
 			// If heavily loaded, then slow down, don't allow any more requests to this
@@ -234,9 +258,11 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 			mvci.cwnd.Store(0)
 			doSleep = true
 
-			if estQSize > 200 {
+			if estQSize > 800 {
 				waitMsec = int64((estQSize * 4) / 2)
 			}
+			log.Info("TOMAR[3]: %s, chunkIdx: %d, stripe: %d, estQSize: %d, inflight: %d, cwnd: %d, doSleep, waitMsec: %d",
+				req.MvName, req.ChunkIndex, req.ChunkIndex%256, estQSize, mvci.inflight.Load(), mvci.cwnd.Load(), waitMsec)
 		}
 
 		mvci.mu.Unlock()
@@ -249,6 +275,16 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 				time.Sleep(1 * time.Millisecond)
 				waitMsec--
 				waitLoop++
+
+				// No more than 5 secs.
+				if waitLoop > 5000 {
+					log.Warn("ReplicationManager::writeMVInternal: %s waited too long (%d), inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s, waitMsec: %d",
+						mvci.mvName, waitLoop, mvci.inflight.Load(), mvci.cwnd.Load(),
+						mvci.estQSize.Load(), time.Duration(mvci.lastRTT.Load()),
+						time.Duration(mvci.minRTT.Load()), time.Duration(mvci.maxRTT.Load()),
+						time.Since(time.Unix(0, mvci.lastRTTAt.Load())), waitMsec)
+					break
+				}
 				common.Assert(waitLoop < 30000, req.MvName, mvci.inflight.Load(), mvci.cwnd.Load())
 			}
 
@@ -258,6 +294,9 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 
 			// Now open up slowly.
 			mvci.cwnd.Store(1)
+
+			log.Info("TOMAR[4]: %s, chunkIdx: %d, stripe: %d, estQSize: %d, inflight: %d, cwnd: %d",
+				req.MvName, req.ChunkIndex, req.ChunkIndex%256, estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
 		}
 	}
 }
