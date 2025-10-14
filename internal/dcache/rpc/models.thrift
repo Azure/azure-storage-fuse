@@ -180,7 +180,7 @@ struct GetLogsResponse {
     2: i64 chunkIndex,
     3: bool isLast, // true if this is the final chunk
     4: i64 totalSize, // total size of tarball in bytes
-    5: string tarName // name of tarball file on server (e.g., blobfuse2-logs.tar.gz)
+    5: string tarName // name of tarball file on server (e.g., <nodeID>-blobfuse2-logs-<unixTime>.tar.gz)
 }
 
 // Custom error codes returned by the ChunkServiceHandler

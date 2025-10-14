@@ -50,6 +50,9 @@ const (
 	defaultPort = 9090
 	BufferedIO  = "buffered"
 	DirectIO    = "direct"
+
+	// Maximum chunk size for log transfer (16MB)
+	MaxLogChunkSize int64 = 16 * 1024 * 1024
 )
 
 var ReadIOMode, WriteIOMode string

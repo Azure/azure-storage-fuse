@@ -92,11 +92,6 @@ var (
 	SlowReadWriteThreshold = 1 * time.Second // anything more than this is considered a slow chunk read/write
 )
 
-const (
-	// Maximum chunk size for log transfer (16MB)
-	maxLogChunkSize int64 = 16 * 1024 * 1024
-)
-
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
 var _ service.ChunkService = &ChunkServiceHandler{}
 
@@ -3444,7 +3439,7 @@ func (h *ChunkServiceHandler) GetLogs(ctx context.Context, req *models.GetLogsRe
 	if !common.IsValidUUID(req.SenderNodeID) ||
 		req.ChunkIndex < 0 ||
 		req.ChunkSize <= 0 ||
-		req.ChunkSize > maxLogChunkSize {
+		req.ChunkSize > rpc.MaxLogChunkSize {
 		errStr := fmt.Sprintf("Invalid GetLogs request: %v", req.String())
 		log.Err("ChunkServiceHandler::GetLogs: %s", errStr)
 		common.Assert(false, errStr)
@@ -3579,7 +3574,8 @@ func (h *ChunkServiceHandler) createLogTarLocked(reset bool) error {
 	log.Debug("ChunkServiceHandler::createLogTarLocked: Found %d log files for pattern %s: %v",
 		len(matches), pattern, matches)
 
-	tarFilePath := filepath.Join(os.TempDir(), "blobfuse2-logs.tar.gz")
+	tarFileName := fmt.Sprintf("%s-blobfuse2-logs-%d.tar.gz", rpc.GetMyNodeUUID(), time.Now().Unix())
+	tarFilePath := filepath.Join(os.TempDir(), tarFileName)
 	tarFile, err := os.Create(tarFilePath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::createLogTarLocked: create tar file failed [%v]", err)
@@ -3668,7 +3664,7 @@ func (h *ChunkServiceHandler) createLogTarLocked(reset bool) error {
 
 	h.logTarPath = tarFilePath
 	h.logTarSize = st.Size()
-	h.logTarName = filepath.Base(tarFilePath)
+	h.logTarName = tarFileName
 
 	log.Debug("GetLogs: Created log tarball %s size=%d", h.logTarPath, h.logTarSize)
 	return nil
