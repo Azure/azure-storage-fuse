@@ -237,7 +237,7 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	// this option.
 	// TODO: Make it conditional based on libfuse version.
 	//
-	options += ",max_threads=6"
+	//options += ",max_threads=8"
 	options += ",max_idle_threads=100000"
 
 	// clone_fd should generally we good, let's keep a watch on this.
