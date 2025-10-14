@@ -1296,9 +1296,9 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 		targetNodeID, reqStr)
 }
 
-// GetLogs fetches log tarball from target node and writes it to destDir/<tarName>.
+// GetLogs fetches log tarball from target node and writes it to <outDir>/<tarName>.
 // Returns full path to the written file.
-func GetLogs(ctx context.Context, targetNodeID, destDir string, chunkSize int64) (*string, error) {
+func GetLogs(ctx context.Context, targetNodeID, outDir string, chunkSize int64) (*string, error) {
 	common.Assert(chunkSize > 0 && chunkSize <= rpc.MaxLogChunkSize, chunkSize)
 
 	var outPath string
@@ -1426,6 +1426,7 @@ func GetLogs(ctx context.Context, targetNodeID, destDir string, chunkSize int64)
 
 				// Delete the output file.
 				err1 := os.Remove(outPath)
+				_ = err1
 				common.Assert(err1 == nil, err1, outPath, reqStr)
 			}
 
@@ -1435,14 +1436,32 @@ func GetLogs(ctx context.Context, targetNodeID, destDir string, chunkSize int64)
 		common.Assert(resp != nil, reqStr)
 		common.Assert(len(resp.Data) > 0, reqStr, resp.ChunkIndex, resp.IsLast, resp.TarName, resp.TotalSize)
 
+		//
+		// For local node, the first GetLogs RPC call for chunkIndex=0 will create the log tarball
+		// in /tmp/<tarName> path. So, we don't make RPC calls again for next chunks as we can directly
+		// copy the local file from /tmp/<tarName> to <outDir>/<tarName>.
+		//
+		if targetNodeID == rpc.GetMyNodeUUID() {
+			common.Assert(chunkIndex == 0, reqStr)
+
+			srcPath := filepath.Join(os.TempDir(), resp.TarName)
+			outPath = filepath.Join(outDir, resp.TarName)
+
+			err = copyFile(srcPath, outPath)
+			if err != nil {
+				log.Err("rpc_client::GetLogs: Failed to copy log tar file in local node %v [%v]", err)
+				return nil, err
+			}
+
+			break
+		}
+
 		if fh == nil {
 			// first chunk
 			common.Assert(chunkIndex == 0, reqStr)
 
-			err = os.MkdirAll(destDir, 0777)
-			common.Assert(err == nil, err)
-
-			outPath = filepath.Join(destDir, resp.TarName)
+			// Output directory is already created by the caller.
+			outPath = filepath.Join(outDir, resp.TarName)
 			fh, err = os.Create(outPath)
 			common.Assert(err == nil, err)
 
@@ -1451,6 +1470,7 @@ func GetLogs(ctx context.Context, targetNodeID, destDir string, chunkSize int64)
 		}
 
 		n, err := fh.Write(resp.Data)
+		_ = n
 		common.Assert(err == nil, err)
 		common.Assert(n == len(resp.Data), n, len(resp.Data))
 
