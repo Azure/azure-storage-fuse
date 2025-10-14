@@ -101,7 +101,7 @@ func NewFileIOManager() error {
 	// Now with WriteMV() implementing qsize based flow control, we can have workers waiting for qsize
 	// to drop for some MVs, so we need more workers.
 	//
-	workers := 1024
+	workers := 128
 
 	//
 	// How many chunks will we readahead per file.
