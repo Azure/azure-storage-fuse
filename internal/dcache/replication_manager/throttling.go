@@ -123,7 +123,7 @@ func (mvci *mvCongInfo) admit() {
 	mvci.inflight.Add(-1)
 
 	log.Info("TOMAR[5]: %s, estQSize: %d, inflight: %d, cwnd: %d, need to wait!",
-		mvci.mvName, mvci.estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
+		mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load())
 
 	//
 	// If inflight requests are more than cwnd, wait for enough inflight requests to complete.
@@ -159,7 +159,7 @@ func (mvci *mvCongInfo) admit() {
 				time.Duration(mvci.minRTT.Load()), time.Duration(mvci.maxRTT.Load()),
 				time.Since(time.Unix(0, mvci.lastRTTAt.Load())))
 			log.Info("TOMAR[7]: %s, estQSize: %d, inflight: %d, cwnd: %d, waited for waitLoop: %d!",
-				mvci.mvName, mvci.estQSize, mvci.inflight.Load(), mvci.cwnd.Load(), waitLoop)
+				mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load(), waitLoop)
 			return
 		}
 
