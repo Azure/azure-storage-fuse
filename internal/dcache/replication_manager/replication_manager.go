@@ -446,6 +446,13 @@ retry:
 	log.Debug("ReplicationManager::writeMVInternal: %s (%s), componentRVs: %v, chunkIdx: %d, cepoch: %d",
 		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs), req.ChunkIndex, lastClusterMapEpoch)
 
+	// Cannot write to offline MV.
+	if mvState == dcache.StateOffline {
+		err = fmt.Errorf("%s is offline", req.MvName)
+		log.Err("ReplicationManager::writeMVInternal: %v", err)
+		return nil, err
+	}
+
 	//
 	// Response channel to receive response for the PutChunk RPCs sent to each component RV.
 	//
@@ -530,8 +537,6 @@ retry:
 		} else if rv.State == string(dcache.StateOnline) ||
 			rv.State == string(dcache.StateSyncing) ||
 			rv.State == string(dcache.StateOutOfSync) {
-			// Offline MV has all replicas offline.
-			common.Assert(mvState != dcache.StateOffline, req.MvName)
 
 			rvID := getRvIDFromRvName(rv.Name)
 			common.Assert(common.IsValidUUID(rvID))
@@ -1048,22 +1053,12 @@ processResponses:
 	}
 
 	if clusterMapRefreshed {
-		// Offline MV has all replicas offline, so we cannot get a NeedToRefreshClusterMap error.
-		common.Assert(mvState != dcache.StateOffline, req.MvName)
-
 		//
 		// If we refreshed the clustermap, we need to retry the entire write MV with the updated clustermap.
 		// This might mean re-writing some of the replicas which were successfully written in this iteration.
 		//
 		retryCnt++
 		goto retry
-	}
-
-	// Fail write with a meaningful error.
-	if mvState == dcache.StateOffline {
-		err = fmt.Errorf("%s is offline", req.MvName)
-		log.Err("ReplicationManager::writeMVInternal: %v", err)
-		return nil, err
 	}
 
 	// For a non-offline MV, at least one replica write should succeed.
