@@ -494,6 +494,9 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	log.Debug("DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
+	log.Info("[TOMAR] DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
+		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
+		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
 	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
@@ -1572,6 +1575,8 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 
 	if !chunk.XferScheduled.Swap(true) {
 		log.Debug("DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
+			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
+		log.Info("[TOMAR] DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
 			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
 
 		// Only dirty staged chunk should be written to dcache.
