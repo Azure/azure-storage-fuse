@@ -34,6 +34,7 @@
 package filemanager
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -279,10 +280,74 @@ func (file *DcacheFile) initFreeChunks(maxChunks int) {
 	}
 }
 
+func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *[]byte, writeFile *DcacheFile) (bytesRead int, err error) {
+	log.Debug("DistributedCache::ReadPartialFile: file: %s, nextReadOffset: %d, offset: %d, length: %d, chunkIdx: %d",
+		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
+		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
+
+	// Check If we can find the requested range in the local WriteFile's memory buffers, If yes, then we copy directly
+	// from there instead of waiting for the data to be flushed to DCache and then reading it back.
+	common.Assert(writeFile != nil, file.FileMetadata.Filename)
+
+	// endOffset := offset + int64(len(*buf))
+
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
+
+	chunk, err := writeFile.getChunkFromStagedChunks(chunkIdx)
+	if err == nil {
+		// We found the chunk in the writeFile's staged chunks, copy data from there.
+		log.Info("DistributedCache::ReadPartialFile: Found chunkIdx: %d in write cache of file: %s, copying data directly from there, offset: %d, length: %d",
+			chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf))
+		common.Assert(chunk != nil, chunkIdx, writeFile.FileMetadata.Filename)
+		common.Assert(chunk.UpToDate.Load(), chunkIdx, writeFile.FileMetadata.Filename)
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
+		common.Assert((chunkOffset+int64(len(*buf))) <= (chunk.Offset+chunk.Len),
+			chunkOffset, len(*buf), chunk.Offset, chunk.Len, chunk.Idx, writeFile.FileMetadata.Filename)
+		copied := copy((*buf)[:], chunk.Buf[chunkOffset:chunkOffset+int64(len(*buf))])
+		common.Assert(copied == len(*buf), copied, len(*buf), chunkOffset, chunk.Offset, chunk.Len, chunk.Idx, writeFile.FileMetadata.Filename)
+
+		// Release our refcount on the chunk.
+		writeFile.releaseChunk(chunk)
+
+		return copied, nil
+	} else {
+		log.Info("DistributedCache::ReadPartialFile: Did not find chunkIdx: %d in write cache of file: %s, err: %v, maxOffsetWritten: %d, reading from DCache, offset: %d, length: %d",
+			chunkIdx, writeFile.FileMetadata.Filename, err, atomic.LoadInt64(&writeFile.maxWriteOffset), offset, len(*buf))
+	}
+
+	pTicker := time.NewTicker(1 * time.Second)
+
+	if writeFile.CT.IsChunkUploaded(chunkIdx) {
+		pTicker.Stop()
+		return file.ReadFile(offset, buf, false)
+	}
+
+	retryCnt := 1
+
+	for {
+		select {
+		case <-pTicker.C:
+			log.Info("DistributedCache::ReadPartialFile: Waiting for chunkIdx: %d to be uploaded by writer, file: %s, offset: %d, length: %d, retryCnt: %d, maxOffsetWritten: %d",
+				chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf), retryCnt, atomic.LoadInt64(&writeFile.maxWriteOffset))
+
+			if writeFile.CT.IsChunkUploaded(chunkIdx) {
+				pTicker.Stop()
+				return file.ReadFile(offset, buf, false)
+			}
+			retryCnt++
+
+		case <-ctx.Done():
+			log.Err("DistributedCache::ReadPartialFile: context done while reading file: %s, offset: %d, length: %d, err: %v",
+				file.FileMetadata.Filename, offset, len(*buf), ctx.Err())
+			return 0, ctx.Err()
+		}
+	}
+}
+
 // Reads the file data from the given offset and length to buf[].
 // It translates the requested offsets into chunks, reads those chunks from distributed cache and copies data from
 // those chunks into user buffer.
-func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err error) {
+func (file *DcacheFile) ReadFile(offset int64, buf *[]byte, fromFuse bool) (bytesRead int, err error) {
 	log.Debug("DistributedCache::ReadFile: file: %s, nextReadOffset: %d, offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
@@ -292,10 +357,11 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 
 	// fileSize is either Size or PartialSize.
 	common.Assert(fileSize >= 0)
-	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
+	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes i n future.
 	common.Assert(len(*buf) <= common.MbToBytes, len(*buf))
-	// Files opened for reading must have a valid read patterm tracker.
-	common.Assert(file.RPT != nil, file.FileMetadata.Filename)
+	// Files opened for reading must have a valid read patterm tracker
+	// TODO: Relaxing the following assert to allow reading files opened for writing especially for warmup.
+	// common.Assert(file.RPT != nil, file.FileMetadata.Filename)
 
 	if offset >= fileSize {
 		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d %+v",
@@ -360,6 +426,9 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		if isSequential || isStrictlySequential || (accessPattern == 0) {
 			// Perform readahead only if the read pattern has proven to be sequential.
 			unsure := (accessPattern == 0)
+			if !fromFuse {
+				unsure = true
+			}
 			chunk, err = file.readChunkWithReadAhead(offset, unsure)
 			if err != nil {
 				// Chunk != nil means we had allocated a new chunk, but failed to read into it.
@@ -486,9 +555,9 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
-	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
+	common.Assert(int64(file.FileMetadata.Size) == -1 || file.FileMetadata.State == dcache.Warming, file.FileMetadata.Size)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
-	common.Assert(len(buf) <= common.MbToBytes, len(buf))
+	// common.Assert(len(buf) <= common.MbToBytes, len(buf))
 	// Read patterm tracker must not be present for files opened for writing.
 	common.Assert(file.RPT == nil, file.FileMetadata.Filename)
 	// We should not be called for 0 byte writes.
@@ -885,11 +954,14 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 // Since files are immutable, no further writes will be allowed.
 func (file *DcacheFile) finalizeFile() error {
 	// State must be "writing", since we finalize a file only once.
-	common.Assert(file.FileMetadata.State == dcache.Writing)
-	file.FileMetadata.State = dcache.Ready
+	common.Assert(file.FileMetadata.State == dcache.Writing || file.FileMetadata.State == dcache.Warming)
 
 	// Till we finalize a file we don't know the size.
-	common.Assert(file.FileMetadata.Size == -1, file.FileMetadata.Filename, file.FileMetadata.Size)
+	common.Assert(file.FileMetadata.Size == -1 ||
+		(file.FileMetadata.State == dcache.Warming && file.FileMetadata.Size == file.maxWriteOffset),
+		file.FileMetadata.Filename, file.FileMetadata.Size, file.maxWriteOffset, file.FileMetadata.State)
+
+	file.FileMetadata.State = dcache.Ready
 	file.FileMetadata.Size = file.maxWriteOffset
 	common.Assert(file.FileMetadata.Size >= 0)
 
@@ -916,6 +988,28 @@ func (file *DcacheFile) finalizeFile() error {
 		file.FileMetadata.Filename, file.FileMetadata)
 
 	return nil
+}
+
+func (file *DcacheFile) getChunkFromStagedChunks(chunkIdx int64) (*StagedChunk, error) {
+	file.chunkLock.RLock()
+	defer file.chunkLock.RUnlock()
+	if chunk, ok := file.StagedChunks[chunkIdx]; ok {
+		//
+		// Increment chunk refcount before returning to the caller.
+		// Once caller is done with the chunk it must call file.releaseChunk().
+		//
+		chunk.RefCount.Add(1)
+		common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
+		common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
+		// One for the map and one for the caller.
+		common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load(), file.FileMetadata.Filename)
+		file.chunkLock.RUnlock()
+		return chunk, nil
+	}
+
+	return nil, fmt.Errorf("Chunk %d not found in StagedChunks for file %s",
+		chunkIdx, file.FileMetadata.Filename)
+
 }
 
 // noCache => Do not add newly allocated chunk to file.StagedChunks. This is for random reads where we read

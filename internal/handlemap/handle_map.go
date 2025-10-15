@@ -83,6 +83,10 @@ const (
 	// TODO: Remove this flag and related code, once testing is done.
 	//
 	HandleDummyWrite
+
+	// When the file having no namespace specified and opened in O_RDONlLY mode, if the file is not present in the
+	// dcache, then we start the warmup where we get the file from Azure to dcache in background.
+	HandleFlagDcacheWarmup
 )
 
 // Structure to hold in memory cache for streaming layer
@@ -241,11 +245,19 @@ func (handle *Handle) SetDcacheAllowReads() {
 	common.Assert(!handle.IsDcacheAllowReads())
 	// Read and write to dcache are not allowed from the same handle.
 	common.Assert(!handle.IsDcacheAllowWrites())
-	// Using a handle we can read from Azure or DCache but never both.
+
 	common.Assert(handle.IsFsAzure() || handle.IsFsDcache())
-	common.Assert(!(handle.IsFsAzure() && handle.IsFsDcache()))
 
 	handle.Flags.Set(HandleFlagDcacheAllowReads)
+}
+
+func (handle *Handle) SetDcacheWarmup() {
+	// Must be set only once.
+	common.Assert(!handle.Flags.IsSet(HandleFlagDcacheWarmup))
+
+	common.Assert(handle.IsFsAzure() && handle.IsFsDcache())
+
+	handle.Flags.Set(HandleFlagDcacheWarmup)
 }
 
 func (handle *Handle) IsDcacheAllowWrites() bool {
@@ -264,6 +276,10 @@ func (handle *Handle) IsDcacheAllowReads() bool {
 	// Read and write to dcache are not allowed from the same handle.
 	common.Assert(!(allowWrites && allowReads))
 	return allowReads
+}
+
+func (handle *Handle) IsDcacheWarmupScheduled() bool {
+	return handle.Flags.IsSet(HandleFlagDcacheWarmup)
 }
 
 func (handle *Handle) SetDcacheStopWrites() {

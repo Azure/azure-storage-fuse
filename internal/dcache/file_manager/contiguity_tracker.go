@@ -428,3 +428,22 @@ func (t *ContiguityTracker) GetUnackedWindow() int64 {
 
 	return uw
 }
+
+func (t *ContiguityTracker) IsChunkUploaded(chunkIdx int64) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if chunkIdx < t.lastContiguous {
+		return true
+	}
+
+	bitOffset := chunkIdx - t.lastContiguous
+	idx := bitOffset / 64
+	bit := bitOffset % 64
+
+	if int64(len(t.bitmap)) <= idx {
+		return false
+	}
+
+	return (t.bitmap[idx] & (1 << bit)) != 0
+}

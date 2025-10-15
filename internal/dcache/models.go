@@ -149,6 +149,7 @@ type FileState string
 const (
 	Ready   FileState = "ready"
 	Writing FileState = "writing"
+	Warming FileState = "warming"
 )
 
 const (
