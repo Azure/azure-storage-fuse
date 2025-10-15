@@ -101,7 +101,7 @@ func NewFileIOManager() error {
 	// Now with WriteMV() implementing qsize based flow control, we can have workers waiting for qsize
 	// to drop for some MVs, so we need more workers.
 	//
-	workers := 128
+	workers := 256
 
 	//
 	// How many chunks will we readahead per file.
@@ -492,9 +492,6 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 // It translates the requested offsets into chunks, and writes to those chunks in the distributed cache.
 func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	log.Debug("DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
-		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
-		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
-	log.Info("[TOMAR] DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
@@ -1575,8 +1572,6 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 
 	if !chunk.XferScheduled.Swap(true) {
 		log.Debug("DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
-			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
-		log.Info("[TOMAR] DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
 			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
 
 		// Only dirty staged chunk should be written to dcache.
