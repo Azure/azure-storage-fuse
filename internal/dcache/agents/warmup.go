@@ -2,6 +2,7 @@ package agents
 
 import (
 	"io"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -14,6 +15,20 @@ type WarmupHandle struct {
 	ReadFile  *fm.DcacheFile
 }
 
+var inProgressFiles sync.Map // map[string]WarmupHandle
+
+func GetSizeIfWarmupScheduled(filePath string) int64 {
+
+	IwarmupHandle, exists := inProgressFiles.Load(filePath)
+	if exists {
+		// Warmup is in progress for this file.
+		log.Info("DistributedCache::updateSizeIfWarmupScheduled : Warmup in progress for file : %s", filePath)
+		return IwarmupHandle.(WarmupHandle).WriteFile.FileMetadata.WarmupSize
+	}
+
+	return -1
+}
+
 func TryWarmup(handle *handlemap.Handle, chunkSize int64,
 	readFileFromAzure func(*handlemap.Handle, int64 /* offset */, int64 /* size */, []byte /* data */) (int, error)) (*WarmupHandle, error) {
 
@@ -23,7 +38,7 @@ func TryWarmup(handle *handlemap.Handle, chunkSize int64,
 		return nil, err
 	}
 
-	readDcFile, err := fm.OpenDcacheFile(handle.Path, false)
+	readDcFile, err := fm.OpenDcacheFile(handle.Path, false /* fromFuse */)
 	if err != nil {
 		log.Err("DistributedCache::CreateFile : Dcache File Open failed with err : %v, path : %s", err, handle.Path)
 		dcFile.CloseFile()
@@ -88,11 +103,13 @@ func TryWarmup(handle *handlemap.Handle, chunkSize int64,
 		}
 	}()
 
-	readDcFile.FileMetadata.Size = handle.Size
-
-	return &WarmupHandle{
+	wh := WarmupHandle{
 		WriteFile: dcFile,
 		ReadFile:  readDcFile,
-	}, nil
+	}
+
+	inProgressFiles.Store(handle.Path, wh)
+
+	return &wh, nil
 
 }
