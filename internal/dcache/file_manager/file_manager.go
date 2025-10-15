@@ -289,51 +289,49 @@ func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *
 	// from there instead of waiting for the data to be flushed to DCache and then reading it back.
 	common.Assert(writeFile != nil, file.FileMetadata.Filename)
 
-	// endOffset := offset + int64(len(*buf))
+	endOffset := offset + int64(len(*buf))
 
-	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-
-	chunk, err := writeFile.getChunkFromStagedChunks(chunkIdx)
-	if err == nil {
-		// We found the chunk in the writeFile's staged chunks, copy data from there.
-		log.Info("DistributedCache::ReadPartialFile: Found chunkIdx: %d in write cache of file: %s, copying data directly from there, offset: %d, length: %d",
-			chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf))
-		common.Assert(chunk != nil, chunkIdx, writeFile.FileMetadata.Filename)
-		common.Assert(chunk.UpToDate.Load(), chunkIdx, writeFile.FileMetadata.Filename)
-		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
-		common.Assert((chunkOffset+int64(len(*buf))) <= (chunk.Offset+chunk.Len),
-			chunkOffset, len(*buf), chunk.Offset, chunk.Len, chunk.Idx, writeFile.FileMetadata.Filename)
-		copied := copy((*buf)[:], chunk.Buf[chunkOffset:chunkOffset+int64(len(*buf))])
-		common.Assert(copied == len(*buf), copied, len(*buf), chunkOffset, chunk.Offset, chunk.Len, chunk.Idx, writeFile.FileMetadata.Filename)
-
-		// Release our refcount on the chunk.
-		writeFile.releaseChunk(chunk)
-
-		return copied, nil
-	} else {
-		log.Info("DistributedCache::ReadPartialFile: Did not find chunkIdx: %d in write cache of file: %s, err: %v, maxOffsetWritten: %d, reading from DCache, offset: %d, length: %d",
-			chunkIdx, writeFile.FileMetadata.Filename, err, atomic.LoadInt64(&writeFile.maxWriteOffset), offset, len(*buf))
-	}
+	chunkIdx := getChunkIdxFromFileOffset(endOffset, file.FileMetadata.FileLayout.ChunkSize)
 
 	pTicker := time.NewTicker(1 * time.Second)
 
-	if writeFile.CT.IsChunkUploaded(chunkIdx) {
-		pTicker.Stop()
-		return file.ReadFile(offset, buf, false)
+	checkFileSize := func() (partialFileSize int64, ok bool) {
+		partialFileSize = GetCurFileSizeForWarmup(writeFile)
+		if partialFileSize >= endOffset {
+			ok = true
+			return
+		}
+		return
 	}
 
-	retryCnt := 1
+	retryCnt := 0
+
+	if partialFileSize, ok := checkFileSize(); ok {
+		pTicker.Stop()
+		log.Info("DistributedCache::ReadPartialFile: Writer has uploaded chunkIdx: %d, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
+			chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
+		file.FileMetadata.PartialSize = partialFileSize
+		return file.ReadFile(offset, buf)
+	}
+
+	retryCnt++
 
 	for {
 		select {
 		case <-pTicker.C:
-			log.Info("DistributedCache::ReadPartialFile: Waiting for chunkIdx: %d to be uploaded by writer, file: %s, offset: %d, length: %d, retryCnt: %d, maxOffsetWritten: %d",
-				chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf), retryCnt, atomic.LoadInt64(&writeFile.maxWriteOffset))
 
-			if writeFile.CT.IsChunkUploaded(chunkIdx) {
+			partialFileSize, ok := checkFileSize()
+			if ok {
+				log.Info("DistributedCache::ReadPartialFile: Writer has uploaded chunkIdx: %d, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
+					chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
 				pTicker.Stop()
-				return file.ReadFile(offset, buf, false)
+				file.FileMetadata.PartialSize = partialFileSize
+				return file.ReadFile(offset, buf)
 			}
+
+			log.Info("DistributedCache::ReadPartialFile: Still waiting for chunkIdx: %d to be uploaded by writer, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
+				chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
+
 			retryCnt++
 
 		case <-ctx.Done():
@@ -347,7 +345,7 @@ func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *
 // Reads the file data from the given offset and length to buf[].
 // It translates the requested offsets into chunks, reads those chunks from distributed cache and copies data from
 // those chunks into user buffer.
-func (file *DcacheFile) ReadFile(offset int64, buf *[]byte, fromFuse bool) (bytesRead int, err error) {
+func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err error) {
 	log.Debug("DistributedCache::ReadFile: file: %s, nextReadOffset: %d, offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
@@ -426,9 +424,6 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte, fromFuse bool) (byte
 		if isSequential || isStrictlySequential || (accessPattern == 0) {
 			// Perform readahead only if the read pattern has proven to be sequential.
 			unsure := (accessPattern == 0)
-			if !fromFuse {
-				unsure = true
-			}
 			chunk, err = file.readChunkWithReadAhead(offset, unsure)
 			if err != nil {
 				// Chunk != nil means we had allocated a new chunk, but failed to read into it.
@@ -958,7 +953,7 @@ func (file *DcacheFile) finalizeFile() error {
 
 	// Till we finalize a file we don't know the size.
 	common.Assert(file.FileMetadata.Size == -1 ||
-		(file.FileMetadata.State == dcache.Warming && file.FileMetadata.Size == file.maxWriteOffset),
+		(file.FileMetadata.State == dcache.Warming && file.FileMetadata.WarmupSize == file.maxWriteOffset),
 		file.FileMetadata.Filename, file.FileMetadata.Size, file.maxWriteOffset, file.FileMetadata.State)
 
 	file.FileMetadata.State = dcache.Ready
@@ -1524,9 +1519,9 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		}
 
 		if common.IsDebugBuild() {
-			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, Readahead %d chunks [%d, %d), %d in cache",
+			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, Readahead %d chunks [%d, %d), %d in cache, fileSize: %d, partialSize: %d",
 				file.FileMetadata.Filename, (readAheadEndChunkIdx - readAheadStartChunkIdx),
-				readAheadStartChunkIdx, readAheadEndChunkIdx, len(file.StagedChunks))
+				readAheadStartChunkIdx, readAheadEndChunkIdx, len(file.StagedChunks), file.FileMetadata.Size, file.FileMetadata.PartialSize)
 		}
 
 		file.chunkLock.Unlock()

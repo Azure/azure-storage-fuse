@@ -158,8 +158,8 @@ func NewDcacheFile(fileName string, warmup bool, fileSize int64) (*DcacheFile, e
 	}
 
 	if warmup {
-		fileMetadata.Size = fileSize
 		fileMetadata.State = dcache.Warming
+		fileMetadata.WarmupSize = fileSize
 	}
 
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
@@ -257,7 +257,7 @@ func NewDcacheFile(fileName string, warmup bool, fileSize int64) (*DcacheFile, e
 		return nil, err
 	}
 
-	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes, fileSize)
+	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes, fileMetadata.State)
 	if err != nil {
 		log.Err("DistributedCache::NewDcacheFile: CreateFileInit failed for file %s: %v",
 			fileName, err)
@@ -334,7 +334,7 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	//
 	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
 		(fileMetadata.State == dcache.Ready && fileSize >= 0) ||
-		(fileMetadata.State == dcache.Warming && fileSize >= 0),
+		(fileMetadata.State == dcache.Warming && fileSize == -1 && fileMetadata.WarmupSize >= 0),
 		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
 
 	fileMetadata.Size = fileSize
@@ -376,7 +376,7 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	//
 	// This is to prevent files which are being created, from being opened.
 	//
-	if fileMetadata.State == dcache.Writing {
+	if fileMetadata.State == dcache.Writing || fileMetadata.State == dcache.Warming {
 		common.Assert(fileMetadata.Size == -1 && fileMetadata.PartialSize >= 0, fileMetadata.Size, *fileMetadata)
 		// We don't allow reading non-finalized files from fuse, but we do allow internal readers.
 		if fromFuse {
@@ -687,6 +687,16 @@ loop:
 	}
 
 	return chunk, nil
+}
+
+func GetCurFileSizeForWarmup(file *DcacheFile) int64 {
+
+	if file.FileMetadata.Size >= 0 {
+		// File is finalized, return actual size.
+		return file.FileMetadata.Size
+	}
+
+	return file.CT.GetPartialSizeOfFile()
 }
 
 // Silence unused import errors for release builds.

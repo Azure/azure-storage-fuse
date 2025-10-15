@@ -282,8 +282,8 @@ func GetMdRoot() string {
 	return metadataManagerInstance.mdRoot
 }
 
-func CreateFileInit(filePath string, fileMetadata []byte, fileSize int64) (string, error) {
-	return metadataManagerInstance.createFileInit(filePath, fileMetadata, fileSize)
+func CreateFileInit(filePath string, fileMetadata []byte, state dcache.FileState) (string, error) {
+	return metadataManagerInstance.createFileInit(filePath, fileMetadata, state)
 }
 
 func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
@@ -509,7 +509,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 // that started file creation, does the finalize. This can help prevent cases where the initial node went
 // quiet before finalizing and tries to finalize later when some other node created the same file.
 
-func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte, fileSize int64) (string, error) {
+func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte, state dcache.FileState) (string, error) {
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.InitCalls, 1)
 
 	common.Assert(len(filePath) > 0)
@@ -518,15 +518,13 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
 	// The size of the file is set to -1 to represent the file is not finalized.
-	sizeStr := strconv.FormatInt(fileSize, 10)
+	sizeStr := "-1"
 	openCount := "0"
-	state := string(dcache.Writing)
-	if fileSize >= 0 {
-		state = string(dcache.Warming)
-	}
+	stateStr := string(state)
+
 	metadata := map[string]*string{
 		"cache_object_length": &sizeStr,
-		"state":               &state,
+		"state":               &(stateStr),
 		"opencount":           &openCount,
 	}
 

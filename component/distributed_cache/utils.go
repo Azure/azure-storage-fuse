@@ -50,6 +50,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/agents"
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	gouuid "github.com/google/uuid"
 )
@@ -254,7 +255,8 @@ func parseDcacheMetadata(attr *internal.ObjAttr, dirName string) error {
 	}
 
 	// parse file state.
-	if state, ok := attr.Metadata["state"]; ok {
+	state, ok := attr.Metadata["state"]
+	if ok {
 		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready) || *state == string(dcache.Warming)) {
 			err = fmt.Errorf("File: %s, has invalid state: [%s]", attr.Name, *state)
 			log.Err("utils::parseDcacheMetadata: %v", err)
@@ -296,6 +298,16 @@ func parseDcacheMetadata(attr *internal.ObjAttr, dirName string) error {
 	if attr.Size == math.MaxInt64 {
 		if dirName == "." {
 			dirName = ""
+		}
+
+		// If this node scheduled the warmup, then get the size from the inProgressFiles map to get newest size.
+		if *state == string(dcache.Warming) {
+			if size := agents.GetSizeIfWarmupScheduled(filepath.Join(dirName, attr.Name)); size != -1 {
+				attr.Size = size
+				log.Debug("utils::parseDcacheMetadata: File %s is non-finalized and warming up, setting size to %d",
+					attr.Name, attr.Size)
+				return nil
+			}
 		}
 		fileMetadata, _, err := fm.GetDcacheFile(filepath.Join(dirName, attr.Name))
 		if err == nil {

@@ -277,9 +277,8 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 			// And any contiguous chunks from the start of the word.
 			newChunks = int64(bits.TrailingZeros64(^uint64(word)))
 			common.Assert(newChunks < 64, newChunks, word, fullWords, t.bitmap, *t.file.FileMetadata)
+			break
 		}
-
-		break
 	}
 
 	// One or more full words can be now removed from the bitmap?
@@ -429,21 +428,23 @@ func (t *ContiguityTracker) GetUnackedWindow() int64 {
 	return uw
 }
 
-func (t *ContiguityTracker) IsChunkUploaded(chunkIdx int64) bool {
+func (t *ContiguityTracker) GetPartialSizeOfFile() int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if chunkIdx < t.lastContiguous {
-		return true
+	fullWords := int64(0)
+	newChunks := int64(0)
+	for _, word := range t.bitmap {
+		if word == ^uint64(0) {
+			fullWords++
+			continue
+		} else {
+			// And any contiguous chunks from the start of the word.
+			newChunks = int64(bits.TrailingZeros64(^uint64(word)))
+			common.Assert(newChunks < 64, newChunks, word, fullWords, t.bitmap, *t.file.FileMetadata)
+			break
+		}
 	}
 
-	bitOffset := chunkIdx - t.lastContiguous
-	idx := bitOffset / 64
-	bit := bitOffset % 64
-
-	if int64(len(t.bitmap)) <= idx {
-		return false
-	}
-
-	return (t.bitmap[idx] & (1 << bit)) != 0
+	return t.file.FileMetadata.FileLayout.ChunkSize * (t.lastContiguous + fullWords*64 + newChunks)
 }
