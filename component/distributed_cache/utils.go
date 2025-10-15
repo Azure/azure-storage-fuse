@@ -255,7 +255,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr, dirName string) error {
 
 	// parse file state.
 	if state, ok := attr.Metadata["state"]; ok {
-		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
+		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready) || *state == string(dcache.Warming)) {
 			err = fmt.Errorf("File: %s, has invalid state: [%s]", attr.Name, *state)
 			log.Err("utils::parseDcacheMetadata: %v", err)
 			common.Assert(false, err)

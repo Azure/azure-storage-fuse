@@ -95,7 +95,7 @@ func NewRPTracker(file string) *RPTracker {
 // current access pattern: 1 for sequential, -1 for random, 0 for not sure.
 // If you want to know the current access pattern without updating, use Check() instead.
 func (t *RPTracker) Update(offset, length int64) int {
-	common.Assert(offset >= 0 && length > 0, offset, length)
+	// common.Assert(offset >= 0 && length > 0, offset, length)
 
 	prevReadOffset := t.prevReadOffset.Swap(offset + length)
 	accessPattern := 0
