@@ -34,6 +34,7 @@
 package filemanager
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -201,6 +202,9 @@ func (wp *workerPool) writeChunk(task *task) {
 		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),
 	}
 
+	// Notify contiguity tracker before we issue upload for this chunk.
+	task.file.CT.OnUploadStart(task.chunk.Idx)
+
 	// Call WriteMV method for writing the chunk.
 	_, err := rm.WriteMV(writeMVReq)
 	if err == nil {
@@ -225,8 +229,25 @@ func (wp *workerPool) writeChunk(task *task) {
 		return
 	}
 
-	log.Err("DistrubuteCache[FM]::WriteChunk: Writing chunk to DCache failed, chunkIdx: %d, file: %s: %v",
+	err = fmt.Errorf("DistrubuteCache[FM]::WriteChunk: Writing chunk to DCache failed, chunkIdx: %d, file: %s: %v",
 		task.chunk.Idx, task.file.FileMetadata.Filename, err)
+	log.Err("%v", err)
+
+	//
+	// Even though the upload failed, and thus the chunk is still dirty, we mark it not-dirty as removeChunk()
+	// asserts for that.
+	//
+	common.Assert(task.chunk.Dirty.Load())
+	task.chunk.Dirty.Store(false)
+
+	// This will drop the reference held for upload.
+	task.file.removeChunk(task.chunk.Idx)
+
+	//
+	// Set the write error on the file so that subsequent writes fail fast and also we want to convey the failure
+	// to the user on file close.
+	//
+	task.file.setWriteError(err)
 
 	task.chunk.Err <- err
 }

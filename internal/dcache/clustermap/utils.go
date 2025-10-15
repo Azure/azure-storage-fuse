@@ -73,12 +73,18 @@ var (
 	MinChunkSizeMB int64 = 1
 	MaxChunkSizeMB int64 = 1024
 
+	// Configured chunk size.
+	ChunkSizeMB int64
+
 	// StripeWidthMB = ChunkSizeMB * StripeWidth
 	MinStripeWidth int64 = 1
 	MaxStripeWidth int64 = 1024
 
 	MinNumReplicas int64 = 1
 	MaxNumReplicas int64 = 256
+
+	// Configured number of replicas.
+	NumReplicas int64
 
 	MinMaxRVs int64 = 100
 	MaxMaxRVs int64 = 100000
@@ -576,10 +582,27 @@ func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum, randomize boo
 	//
 	// Take this opportunity to randomize the order of RVs in the list, this is usually desirable
 	// to distribute load evenly across RVs.
+	// If randomize is false, sort the RVs by their RV number (rv0, rv1, etc.) to get a deterministic
+	// order. This is specially useful for RingBasedMVPlacement where RVs are alloted in order when
+	// placing MVs.
 	//
 	if randomize {
 		rand.Shuffle(len(componentRVs), func(i, j int) {
 			componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
+		})
+	} else {
+		sort.Slice(componentRVs, func(i, j int) bool {
+			var rvi, rvj int
+
+			_, err1 := fmt.Sscanf(componentRVs[i].Name, "rv%d", &rvi)
+			_ = err1
+			common.Assert(err1 == nil, err1, componentRVs[i].Name)
+			_, err1 = fmt.Sscanf(componentRVs[j].Name, "rv%d", &rvj)
+			common.Assert(err1 == nil, err1, componentRVs[j].Name)
+			common.Assert(rvi != rvj && rvi >= 0 && rvj >= 0,
+				rvi, rvj, componentRVs[i].Name, componentRVs[j].Name)
+
+			return rvi < rvj
 		})
 	}
 
