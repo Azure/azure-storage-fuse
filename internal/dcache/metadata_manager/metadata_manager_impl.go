@@ -598,12 +598,12 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		common.Assert(err == nil, err)
 
 		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
-		// size, ok := prop.Metadata["cache_object_length"]
-		// common.Assert(ok && *size == "-1", ok, *size)
+		size, ok := prop.Metadata["cache_object_length"]
+		common.Assert(ok && *size == "-1", ok, *size)
 
 		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
-		// state, ok := prop.Metadata["state"]
-		// common.Assert(ok && *state == string(dcache.Writing))
+		state, ok := prop.Metadata["state"]
+		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)))
 
 		// opencount must be 0 as a file not yet finalized cannot be opened.
 		openCount, ok := prop.Metadata["opencount"]

@@ -61,8 +61,8 @@ var (
 
 // Returns the actual file size if finalized else the partial size.
 func getFileSize(file *dcache.FileMetadata) int64 {
-	//	common.Assert((file.Size >= 0) == (file.State == dcache.Ready), *file)
-	//	common.Assert((file.Size == -1) == (file.State == dcache.Writing), *file)
+	common.Assert((file.Size >= 0) == (file.State == dcache.Ready), *file)
+	common.Assert((file.Size == -1) == ((file.State == dcache.Writing) || (file.State == dcache.Warming)), *file)
 	common.Assert(file.PartialSize >= 0, *file)
 
 	if file.Size > 0 {
@@ -140,7 +140,7 @@ func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string
 }
 
 // Does all file Init Process for creation of the file.
-func NewDcacheFile(fileName string, warmup bool, fileSize int64) (*DcacheFile, error) {
+func NewDcacheFile(fileName string, warmup bool, warmUpSize int64) (*DcacheFile, error) {
 	//
 	// Do not allow file creation in a readonly cluster.
 	//
@@ -151,15 +151,16 @@ func NewDcacheFile(fileName string, warmup bool, fileSize int64) (*DcacheFile, e
 	}
 
 	fileMetadata := &dcache.FileMetadata{
-		Filename: fileName,
-		State:    dcache.Writing,
-		Size:     -1,
-		FileID:   gouuid.New().String(),
+		Filename:   fileName,
+		State:      dcache.Writing,
+		Size:       -1,
+		WarmupSize: -1,
+		FileID:     gouuid.New().String(),
 	}
 
 	if warmup {
 		fileMetadata.State = dcache.Warming
-		fileMetadata.WarmupSize = fileSize
+		fileMetadata.WarmupSize = warmUpSize
 	}
 
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
@@ -365,7 +366,6 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 
 // Does all init process for opening the file.
 func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
-
 	fileMetadata, prop, err := GetDcacheFile(fileName)
 	if err != nil {
 		return nil, err

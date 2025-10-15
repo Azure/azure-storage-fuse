@@ -428,6 +428,9 @@ func (t *ContiguityTracker) GetUnackedWindow() int64 {
 	return uw
 }
 
+// GetPartialSizeOfFile returns the size upto which data has been uploaded to the file.
+// One can use GetHighestUploadedByte() to get the size upto which data can be read from the file but it works on RPC
+// and can be slow. This method is fast as it works on local state but may not be fully up to date.
 func (t *ContiguityTracker) GetPartialSizeOfFile() int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()

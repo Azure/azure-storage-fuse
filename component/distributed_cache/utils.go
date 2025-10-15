@@ -300,9 +300,11 @@ func parseDcacheMetadata(attr *internal.ObjAttr, dirName string) error {
 			dirName = ""
 		}
 
-		// If this node scheduled the warmup, then get the size from the inProgressFiles map to get newest size.
+		// don't update the size to partial size, if this file is warming up in this node to avoid surprise EOF in the
+		// middle of reads. observed kernel not sending the read requests after the partial size. So, if the file is
+		// warming up in this node, return the size as original warmup Size.
 		if *state == string(dcache.Warming) {
-			if size := agents.GetSizeIfWarmupScheduled(filepath.Join(dirName, attr.Name)); size != -1 {
+			if size := agents.GetSizeIfIScheduledWarmup(filepath.Join(dirName, attr.Name)); size != -1 {
 				attr.Size = size
 				log.Debug("utils::parseDcacheMetadata: File %s is non-finalized and warming up, setting size to %d",
 					attr.Name, attr.Size)

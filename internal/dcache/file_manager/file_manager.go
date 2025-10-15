@@ -242,6 +242,15 @@ type DcacheFile struct {
 
 	// Upload tracker.
 	ut uploadTracker
+
+	// If this file is being used for reading warmup data, this points to the corresponding file
+	// which is being used for writing the warmup data. This is only valid for the read handle which is
+	// reading warmup data, nil otherwise.
+	WarmupFile *DcacheFile
+
+	// The azure handle must be closed when the file is scheduled for warmup. If the user closes the file before
+	// warmup is complete, we must close the azure handle only after warmup is complete.
+	CloseOnWarmupComplete atomic.Bool
 }
 
 // Get the write error encountered during file writes, if any.
@@ -280,23 +289,21 @@ func (file *DcacheFile) initFreeChunks(maxChunks int) {
 	}
 }
 
-func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *[]byte, writeFile *DcacheFile) (bytesRead int, err error) {
+func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *[]byte) (bytesRead int, err error) {
+	warmupFile := file.WarmupFile
 	log.Debug("DistributedCache::ReadPartialFile: file: %s, nextReadOffset: %d, offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
-	// Check If we can find the requested range in the local WriteFile's memory buffers, If yes, then we copy directly
-	// from there instead of waiting for the data to be flushed to DCache and then reading it back.
-	common.Assert(writeFile != nil, file.FileMetadata.Filename)
+	common.Assert(warmupFile != nil, file.FileMetadata.Filename)
 
 	endOffset := offset + int64(len(*buf))
-
 	chunkIdx := getChunkIdxFromFileOffset(endOffset, file.FileMetadata.FileLayout.ChunkSize)
 
-	pTicker := time.NewTicker(1 * time.Second)
+	pTicker := time.NewTicker(500 * time.Millisecond)
 
-	checkFileSize := func() (partialFileSize int64, ok bool) {
-		partialFileSize = GetCurFileSizeForWarmup(writeFile)
+	isReadOk := func() (partialFileSize int64, ok bool) {
+		partialFileSize = GetCurFileSizeForWarmup(warmupFile)
 		if partialFileSize >= endOffset {
 			ok = true
 			return
@@ -306,10 +313,10 @@ func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *
 
 	retryCnt := 0
 
-	if partialFileSize, ok := checkFileSize(); ok {
+	if partialFileSize, ok := isReadOk(); ok {
 		pTicker.Stop()
 		log.Info("DistributedCache::ReadPartialFile: Writer has uploaded chunkIdx: %d, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-			chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
+			chunkIdx, warmupFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
 		file.FileMetadata.PartialSize = partialFileSize
 		return file.ReadFile(offset, buf)
 	}
@@ -320,17 +327,17 @@ func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *
 		select {
 		case <-pTicker.C:
 
-			partialFileSize, ok := checkFileSize()
+			partialFileSize, ok := isReadOk()
 			if ok {
 				log.Info("DistributedCache::ReadPartialFile: Writer has uploaded chunkIdx: %d, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-					chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
+					chunkIdx, warmupFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
 				pTicker.Stop()
 				file.FileMetadata.PartialSize = partialFileSize
 				return file.ReadFile(offset, buf)
 			}
 
 			log.Info("DistributedCache::ReadPartialFile: Still waiting for chunkIdx: %d to be uploaded by writer, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-				chunkIdx, writeFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
+				chunkIdx, warmupFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
 
 			retryCnt++
 
@@ -355,11 +362,10 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 
 	// fileSize is either Size or PartialSize.
 	common.Assert(fileSize >= 0)
-	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes i n future.
+	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
 	common.Assert(len(*buf) <= common.MbToBytes, len(*buf))
-	// Files opened for reading must have a valid read patterm tracker
-	// TODO: Relaxing the following assert to allow reading files opened for writing especially for warmup.
-	// common.Assert(file.RPT != nil, file.FileMetadata.Filename)
+	// Files opened for reading must have a valid read patterm tracker.
+	common.Assert(file.RPT != nil, file.FileMetadata.Filename)
 
 	if offset >= fileSize {
 		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d %+v",
@@ -544,15 +550,17 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 
 // Writes user data into file at given offset and length.
 // It translates the requested offsets into chunks, and writes to those chunks in the distributed cache.
-func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
+func (file *DcacheFile) WriteFile(offset int64, buf []byte, fromFuse bool) error {
 	log.Debug("DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
-	common.Assert(int64(file.FileMetadata.Size) == -1 || file.FileMetadata.State == dcache.Warming, file.FileMetadata.Size)
+	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
-	// common.Assert(len(buf) <= common.MbToBytes, len(buf))
+	if fromFuse {
+		common.Assert(len(buf) <= common.MbToBytes, len(buf))
+	}
 	// Read patterm tracker must not be present for files opened for writing.
 	common.Assert(file.RPT == nil, file.FileMetadata.Filename)
 	// We should not be called for 0 byte writes.
@@ -917,7 +925,7 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	// Decrement the file open count if safeDeletes is enabled and handle corresponds to a file opened for
 	// reading.
 	//
-	if fileIOMgr.safeDeletes && isReadOnlyHandle {
+	if fileIOMgr.safeDeletes && isReadOnlyHandle && file.WarmupFile == nil {
 		// attr must have been saved when file was opened for read.
 		common.Assert(file.attr != nil, file.FileMetadata)
 
@@ -952,9 +960,9 @@ func (file *DcacheFile) finalizeFile() error {
 	common.Assert(file.FileMetadata.State == dcache.Writing || file.FileMetadata.State == dcache.Warming)
 
 	// Till we finalize a file we don't know the size.
-	common.Assert(file.FileMetadata.Size == -1 ||
-		(file.FileMetadata.State == dcache.Warming && file.FileMetadata.WarmupSize == file.maxWriteOffset),
-		file.FileMetadata.Filename, file.FileMetadata.Size, file.maxWriteOffset, file.FileMetadata.State)
+	common.Assert(file.FileMetadata.Size == -1, file.FileMetadata.Filename, file.FileMetadata.Size)
+	common.Assert((file.FileMetadata.State == dcache.Warming) == (file.FileMetadata.WarmupSize == file.maxWriteOffset),
+		file.FileMetadata.Filename, file.FileMetadata.State, file.FileMetadata.WarmupSize, file.maxWriteOffset)
 
 	file.FileMetadata.State = dcache.Ready
 	file.FileMetadata.Size = file.maxWriteOffset
@@ -983,28 +991,6 @@ func (file *DcacheFile) finalizeFile() error {
 		file.FileMetadata.Filename, file.FileMetadata)
 
 	return nil
-}
-
-func (file *DcacheFile) getChunkFromStagedChunks(chunkIdx int64) (*StagedChunk, error) {
-	file.chunkLock.RLock()
-	defer file.chunkLock.RUnlock()
-	if chunk, ok := file.StagedChunks[chunkIdx]; ok {
-		//
-		// Increment chunk refcount before returning to the caller.
-		// Once caller is done with the chunk it must call file.releaseChunk().
-		//
-		chunk.RefCount.Add(1)
-		common.Assert(chunk.SavedInMap.Load() == true, chunk.Idx, file.FileMetadata.Filename)
-		common.Assert(chunk.Idx == chunkIdx, chunk.Idx, chunkIdx, file.FileMetadata.Filename)
-		// One for the map and one for the caller.
-		common.Assert(chunk.RefCount.Load() >= 2, chunk.Idx, chunk.RefCount.Load(), file.FileMetadata.Filename)
-		file.chunkLock.RUnlock()
-		return chunk, nil
-	}
-
-	return nil, fmt.Errorf("Chunk %d not found in StagedChunks for file %s",
-		chunkIdx, file.FileMetadata.Filename)
-
 }
 
 // noCache => Do not add newly allocated chunk to file.StagedChunks. This is for random reads where we read

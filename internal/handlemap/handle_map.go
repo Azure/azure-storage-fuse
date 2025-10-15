@@ -251,15 +251,6 @@ func (handle *Handle) SetDcacheAllowReads() {
 	handle.Flags.Set(HandleFlagDcacheAllowReads)
 }
 
-func (handle *Handle) SetDcacheWarmup() {
-	// Must be set only once.
-	common.Assert(!handle.Flags.IsSet(HandleFlagDcacheWarmup))
-
-	common.Assert(handle.IsFsAzure() && handle.IsFsDcache())
-
-	handle.Flags.Set(HandleFlagDcacheWarmup)
-}
-
 func (handle *Handle) IsDcacheAllowWrites() bool {
 	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
 	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
@@ -276,10 +267,6 @@ func (handle *Handle) IsDcacheAllowReads() bool {
 	// Read and write to dcache are not allowed from the same handle.
 	common.Assert(!(allowWrites && allowReads))
 	return allowReads
-}
-
-func (handle *Handle) IsDcacheWarmupScheduled() bool {
-	return handle.Flags.IsSet(HandleFlagDcacheWarmup)
 }
 
 func (handle *Handle) SetDcacheStopWrites() {

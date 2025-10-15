@@ -930,7 +930,7 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 	if isDcachePath {
 		log.Debug("DistributedCache::CreateFile : Path is having Dcache subcomponent, path : %s", options.Name)
 		options.Name = rawPath
-		dcFile, err = fm.NewDcacheFile(rawPath, false, -1)
+		dcFile, err = fm.NewDcacheFile(rawPath, false /* warmup */, -1 /* warmupSize */)
 		if err != nil {
 			log.Err("DistributedCache::CreateFile : Dcache File Creation failed with err : %s, path : %s", err.Error(), options.Name)
 			return nil, err
@@ -950,7 +950,7 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
 		// semantics for creating a file for write with out any explicit namespace
 		// Create in dcache and Azure, fail the call if any one of them fail.
-		dcFile, err = fm.NewDcacheFile(rawPath, false, -1)
+		dcFile, err = fm.NewDcacheFile(rawPath, false /* warmup */, -1 /* warmupSize */)
 		if err != nil {
 			log.Err("DistributedCache::CreateFile : Dcache File Creation failed with err : %s, path : %s", err.Error(), options.Name)
 			return nil, err
@@ -1086,7 +1086,6 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			return nil, syscall.EBUSY
 		} else {
 			// todo: make sure we come here when opening dcache file is returning ENOENT
-
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s, Trying to Open the file in Azure", err.Error(), options.Name)
 			handle, err = dc.NextComponent().OpenFile(options)
 			if err != nil {
@@ -1096,7 +1095,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 
 			log.Debug("DistributedCache::OpenFile : Opening the file from Azure, path : %s", options.Name)
 
-			warmupFile, err := agents.TryWarmup(handle, int64(dc.cfg.ChunkSizeMB)*common.MbToBytes,
+			dcFile, err = agents.TryWarmup(handle, int64(dc.cfg.ChunkSizeMB)*common.MbToBytes,
 				func(handle *handlemap.Handle, offset int64, size int64, data []byte) (int, error) {
 					return dc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 						Handle: handle,
@@ -1104,17 +1103,20 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 						Size:   size,
 						Data:   data,
 					})
-				})
+				},
+				func(handle *handlemap.Handle) error {
+					return dc.NextComponent().CloseFile(internal.CloseFileOptions{
+						Handle: handle,
+					})
+				},
+			)
 
 			if err != nil {
-				log.Err("DistributedCache::OpenFile : Warmup failed with err : %s, path : %s", err.Error(), options.Name)
+				log.Err("DistributedCache::OpenFile : Warmup failed with err : %v, path : %s", err, options.Name)
 			}
 
 			if err == nil {
 				handle.SetFsDefault()
-				handle.SetDcacheWarmup()
-				handle.IFObj = warmupFile
-				return handle, nil
 			} else {
 				handle.SetFsAzure()
 			}
@@ -1164,14 +1166,18 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		return bytesRead, err
 	}
 
-	if options.Handle.IsDcacheWarmupScheduled() {
+	if options.Handle.IsFsDcache() && options.Handle.IsFsAzure() {
+		// This is the scenario where the file is opened without any explicit namespace and
+		// we are in the warmup phase of reading the file from azure and writing to dcache.
 
+		// We try to read from dcache first, if that fails we read from azure.
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
 		common.Assert(options.Handle.IFObj != nil)
-		warmupFile := options.Handle.IFObj.(*agents.WarmupHandle)
-		bytesRead, err := warmupFile.ReadFile.ReadPartialFile(ctx, options.Offset, &options.Data, warmupFile.WriteFile)
+
+		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+		bytesRead, err := dcFile.ReadPartialFile(ctx, options.Offset, &options.Data)
 		if err == nil || err == io.EOF {
 			return bytesRead, err
 		}
@@ -1247,7 +1253,7 @@ func (dc *DistributedCache) WriteFile(options *internal.WriteFileOptions) (int, 
 			return syscall.EIO
 		}
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
-		dcacheErr = dcFile.WriteFile(options.Offset, options.Data)
+		dcacheErr = dcFile.WriteFile(options.Offset, options.Data, true /* fromFuse */)
 		if dcacheErr != nil {
 			// If write on one media fails, then return err instantly
 			log.Err("DistributedCache::WriteFile : Dcache File write Failed, offset : %d, file : %s",
@@ -1321,12 +1327,18 @@ func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
 
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
+		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+
+		if dcFile.WarmupFile != nil {
+			// Flush is a no-op for read handles for which warmup is scheduled/ongoing.
+			return nil
+		}
+
 		common.Assert(options.Handle.IsDcacheAllowWrites())
 		if !options.Handle.IsDcacheAllowWrites() {
 			return nil
 		}
 
-		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 		dcacheErr = dcFile.CloseFile()
 		if dcacheErr == nil {
 			// Clear this flag to signal no more writes on this handle.
@@ -1353,20 +1365,26 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	common.Assert(!options.Handle.IsFsDebug() || (!options.Handle.IsFsDcache() && !options.Handle.IsFsAzure()))
 
 	var dcacheErr, azureErr error
-
-	if options.Handle.IsDcacheWarmupScheduled() {
-		return nil
-	}
+	var closeAzureHandleOnWarmup bool = true
 
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
+
+		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+		if dcFile.WarmupFile != nil {
+			// See if warmup has not completed, then we can't close the Azure File handle here.
+			if ok := dcFile.CloseOnWarmupComplete.CompareAndSwap(false, true); ok {
+				log.Info("DistributedCache::CloseFile : Warmup is not yet complete, deferring Azure handle close, file : %s",
+					options.Handle.Path)
+				closeAzureHandleOnWarmup = false
+			}
+		}
+
 		//
 		// A dcache file handle can be either opened for read or write.
 		// Distributed cache doesn't support handles opened for readwrite.
 		//
 		common.Assert(!options.Handle.IsDcacheAllowReads() || !options.Handle.IsDcacheAllowWrites())
-
-		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 
 		//
 		// While creating the file and closing the file immediately w/o any intervening writes, we don't get
@@ -1389,7 +1407,7 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 		// open count must be reduced, let ReleaseFile() know that.
 		//
 		if dcacheErr == nil {
-			isReadOnlyHandle := options.Handle.IsDcacheAllowReads() && !options.Handle.IsDcacheWarmupScheduled()
+			isReadOnlyHandle := options.Handle.IsDcacheAllowReads()
 
 			dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
 			if dcacheErr != nil {
@@ -1398,7 +1416,7 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 		}
 	}
 
-	if options.Handle.IsFsAzure() {
+	if options.Handle.IsFsAzure() && closeAzureHandleOnWarmup {
 		azureErr = dc.NextComponent().CloseFile(options)
 		if azureErr != nil {
 			log.Err("DistributedCache::SyncFile : Failed to ReleaseFile for Azure file : %s", options.Handle.Path)
