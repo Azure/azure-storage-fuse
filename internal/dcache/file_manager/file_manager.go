@@ -99,9 +99,9 @@ func NewFileIOManager() error {
 	// PutChunkDCIODepthTotal workers, but we need workers for reading chunks too, so let's set aside
 	// few more.
 	// Now with WriteMV() implementing qsize based flow control, we can have workers waiting for qsize
-	// to drop for some MVs, so we need even more workers.
+	// to drop for some MVs, so we need more workers.
 	//
-	workers := 128
+	workers := 256
 
 	//
 	// How many chunks will we readahead per file.
@@ -265,10 +265,13 @@ func (file *DcacheFile) getWriteError() error {
 	return err
 }
 
-// Set the write error encountered during file writes, if any.
+// Set write error encountered during file writes, if any.
 func (file *DcacheFile) setWriteError(err error) {
+	// We must be called only with a valid error.
 	common.Assert(err != nil, file.FileMetadata.Filename)
-	file.writeErr.Store(err)
+
+	// Only the first error is recorded.
+	file.writeErr.CompareAndSwap(nil, err)
 }
 
 func (file *DcacheFile) initFreeChunks(maxChunks int) {
@@ -491,9 +494,6 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	log.Debug("DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
-	log.Info("[TOMAR] DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
-		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
-		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
 	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
@@ -596,7 +596,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 				file.FileMetadata.Filename,
 				getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize), err)
 			log.Err("DistributedCache[FM]::WriteFile: %v", err)
-			// No space left on device, is one possible error. NewStagedChunk() will set file error.
+			// No space left on device, is one possible error. NewStagedChunk() will set file error in that case.
 			common.Assert(file.getWriteError() != nil, file.getWriteError(), err)
 			file.setWriteError(err)
 			return err
@@ -1572,8 +1572,6 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 
 	if !chunk.XferScheduled.Swap(true) {
 		log.Debug("DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
-			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
-		log.Info("[TOMAR] DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, chunk.Len: %d, chunk.Offset: %d, refcount: %d",
 			file.FileMetadata.Filename, chunk.Idx, chunk.Len, chunk.Offset, chunk.RefCount.Load())
 
 		// Only dirty staged chunk should be written to dcache.

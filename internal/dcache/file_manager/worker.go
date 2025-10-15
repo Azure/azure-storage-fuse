@@ -185,8 +185,6 @@ func (wp *workerPool) readChunk(task *task) {
 func (wp *workerPool) writeChunk(task *task) {
 	log.Debug("DistributedCache::writeChunk: Writing chunk chunkIdx: %d, file: %s",
 		task.chunk.Idx, task.file.FileMetadata.Filename)
-	log.Info("[TOMAR] DistributedCache::writeChunk: Writing chunk chunkIdx: %d, file: %s",
-		task.chunk.Idx, task.file.FileMetadata.Filename)
 
 	// Only dirty StagedChunk must be written.
 	common.Assert(task.chunk.Dirty.Load())
@@ -204,7 +202,7 @@ func (wp *workerPool) writeChunk(task *task) {
 		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),
 	}
 
-	// Notify contiguity tracker as we issue upload for this chunk.
+	// Notify contiguity tracker before we issue upload for this chunk.
 	task.file.CT.OnUploadStart(task.chunk.Idx)
 
 	// Call WriteMV method for writing the chunk.
@@ -222,8 +220,6 @@ func (wp *workerPool) writeChunk(task *task) {
 
 		// The chunk is uploaded to DCache, we can release it now.
 		log.Debug("DistributedCache::writeChunk: completed for file: %s, chunkIdx: %d, chunk.Len: %d, refcount: %d",
-			task.file.FileMetadata.Filename, task.chunk.Idx, task.chunk.Len, task.chunk.RefCount.Load())
-		log.Info("[TOMAR] DistributedCache::writeChunk: completed for file: %s, chunkIdx: %d, chunk.Len: %d, refcount: %d",
 			task.file.FileMetadata.Filename, task.chunk.Idx, task.chunk.Len, task.chunk.RefCount.Load())
 
 		// Notify contiguity tracker of this chunk's successful upload.
