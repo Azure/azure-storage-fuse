@@ -3553,7 +3553,7 @@ func (h *ChunkServiceHandler) createLogTarLocked(reset bool) error {
 	}
 
 	logFilePath := ""
-	err := config.UnmarshalKey("logging.file-path", logFilePath)
+	err := config.UnmarshalKey("logging.file-path", &logFilePath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::createLogTarLocked: Failed to get log file path [%v]", err)
 		common.Assert(false, err)
@@ -3561,7 +3561,8 @@ func (h *ChunkServiceHandler) createLogTarLocked(reset bool) error {
 	}
 
 	logDir := filepath.Dir(logFilePath)
-	pattern := filepath.Join(logDir, "blobfuse2.log*")
+	logFileName := filepath.Base(logFilePath)
+	pattern := filepath.Join(logDir, fmt.Sprintf("%s*", logFileName))
 	matches, _ := filepath.Glob(pattern)
 
 	if len(matches) == 0 {
