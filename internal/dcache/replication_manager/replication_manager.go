@@ -112,6 +112,9 @@ func Start() error {
 	// Start the thread pool for sending RPC requests.
 	rm.tp.start()
 
+	// Initialize the MV congestion related stuff.
+	initCongInfo()
+
 	return nil
 }
 

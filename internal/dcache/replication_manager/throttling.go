@@ -41,6 +41,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -54,12 +55,6 @@ const (
 	// We should not keep more than this many requests in flight to an MV.
 	maxCwnd = 16
 
-	// Max qsize we want to see for an MV.
-	// Various throttling decisions are based on this value.
-	// Actual qsize can go little higher than this (but should not go much higher) as each sending node
-	// applies throttling independently and may take some time to react to a high qsize value.
-	maxQsizeGoal = 500
-
 	// Set to true to disable congestion control and send as many requests as needed to MVs.
 	// Sending uncontrolled requests to an MV can hurt cluster performance, to be used only for testing.
 	disableCongestionControl = false
@@ -69,6 +64,17 @@ const (
 	// Will generate a lot of logs, so should not be enabled in production.
 	// TODO: Remove this once we have tested enough with various cluster sizes and loads.
 	debugCongestionControl = false
+)
+
+var (
+	// Max qsize we want to see for an MV.
+	// Various throttling decisions are based on this value.
+	// Actual qsize can go little higher than this (but should not go much higher) as each sending node
+	// applies throttling independently and may take some time to react to a high qsize value.
+	maxQsizeGoal = 0
+
+	// Average time (in msec) to write a chunk at the RV.
+	chunkMSecAvg = 0
 )
 
 // Congestion related information for an MV.
@@ -95,7 +101,7 @@ type mvCongInfo struct {
 var mvCnginfo []mvCongInfo
 
 // Call once at startup.
-// Safe to call from init().
+// Do not call from init() as cm.ChunkSizeMB may not be initialized then.
 func initCongInfo() {
 	// Initialize only once.
 	common.Assert(mvCnginfo == nil)
@@ -112,6 +118,19 @@ func initCongInfo() {
 		mvCnginfo[i].mvName = fmt.Sprintf("mv%d", i)
 		mvCnginfo[i].minRTT.Store(int64(time.Hour)) // Large initial value.
 	}
+
+	//
+	// We set maxQsizeGoal based on the chunk size, with the following reasoning.
+	// Do not keep more than 2s worth of chunks queued up at an MV, assuming disk speed of 4GBps.
+	//
+	chunkMSecAvg = int(float64(cm.ChunkSizeMB) * float64(0.25))
+	chunkMSecAvg = max(chunkMSecAvg, 1) // At least 1 msec.
+	maxQsizeGoal = int(float64(2*1000) / float64(chunkMSecAvg))
+	maxQsizeGoal = max(maxQsizeGoal, 100) // At least 100.
+
+	log.Info("throttling::initCongInfo: cong_enable: %v, cong_debug: %v, maxQsizeGoal: %d, chunkMSecAvg: %d, chunkSizeMB: %d, maxCwnd: %d, staticMaxRVs: %d",
+		!disableCongestionControl, debugCongestionControl, maxQsizeGoal, chunkMSecAvg,
+		cm.ChunkSizeMB, maxCwnd, staticMaxRVs)
 }
 
 // Return mvCongInfo for the given MV name.
@@ -254,6 +273,8 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 				log.Info("CWND[4]: %s, estQSize: %d, inflight: %d, cwnd: %d",
 					mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load())
 			}
+
+			return
 		}
 
 		log.Debug("throttling::onPutChunkDCSuccess: PutChunkDC response for %s/%s, chunkIdx: %d, qsize: %d",
@@ -367,7 +388,7 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 			// Idea is to wait long enough for half the queue to drain, but not more than 5 secs.
 			// We assume each request takes about 4msec to complete.
 			//
-			waitMsec = min(int64((estQSize*4)/2), 5000)
+			waitMsec = min(int64((estQSize*chunkMSecAvg)/2), 5000)
 		}
 
 		if debugCongestionControl {
@@ -423,10 +444,6 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 				waitLoop, waitMsec)
 		}
 	}
-}
-
-func init() {
-	initCongInfo()
 }
 
 // Silence unused import errors for release builds.
