@@ -38,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -126,7 +127,7 @@ func isOffsetChunkStarting(offset, chunkSize int64) bool {
 func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string {
 	numMvs := int64(len(fileMetadata.FileLayout.MVList))
 
-	// Must have full strip worth of MVs.
+	// Must have full stripe worth of MVs.
 	common.Assert(numMvs == fileMetadata.FileLayout.StripeWidth,
 		numMvs, fileMetadata.FileLayout.StripeWidth, fileMetadata.FileLayout.ChunkSize)
 	common.Assert(numMvs > 0, numMvs)
@@ -158,6 +159,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
 
 	chunkSize := cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes
+	// TODO: Support auto detect stripe width depending on number of MVs.
 	stripeWidth := cm.GetCacheConfig().StripeWidth
 	numReplicas := cm.GetCacheConfig().NumReplicas
 
@@ -189,6 +191,22 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	// With random placement, we do not know any beter so we just pick random MVs.
 	//
 	if cm.RingBasedMVPlacement {
+		//
+		// GetActiveMVNames() returns MVs as stored in the map, may not be sorted by name.
+		//
+		sort.Slice(activeMVs, func(i, j int) bool {
+			var mvi, mvj int
+
+			_, err1 := fmt.Sscanf(activeMVs[i], "mv%d", &mvi)
+			_ = err1
+			common.Assert(err1 == nil, err1, activeMVs[i])
+			_, err1 = fmt.Sscanf(activeMVs[j], "mv%d", &mvj)
+			common.Assert(err1 == nil, err1, activeMVs[j])
+			common.Assert(mvi != mvj && mvi >= 0 && mvj >= 0, mvi, mvj, activeMVs[i], activeMVs[j])
+
+			return mvi < mvj
+		})
+
 		startMVIdx := rand.Intn(len(activeMVs))
 		mvIdx := 0
 	mvLoop:
@@ -498,6 +516,7 @@ loop:
 				// Read file, no need to check unacked window.
 				break loop
 			}
+
 			//
 			// Writable files will have file.CT set, for them we need to ensure that we don't exceed
 			// maxUnackedWindow else the contiguity_tracker needs to track too many chunks. Also it
@@ -518,6 +537,18 @@ loop:
 
 				log.Debug("DistributedCache[FM]::NewStagedChunk: chunkIdx: %d, file: %+v, unacked window %d exceeds max %d, waiting...",
 					idx, *file.FileMetadata, uw, fileIOMgr.maxUnackedWindow)
+
+				//
+				// If one or more chunk upload failed with some fatal error, no need to wait for this chunk.
+				// We will fail the file write anyway.
+				//
+				err = file.getWriteError()
+				if err != nil {
+					err := fmt.Errorf("DistributedCache[FM]::NewStagedChunk: file got write error while waiting for chunkIdx: %d, file: %+v: %v",
+						idx, *file.FileMetadata, err)
+					log.Err("%v", err)
+					return nil, err
+				}
 
 				continue
 			}
@@ -613,7 +644,6 @@ loop:
 	if length != 0 {
 		chunkSize := int64(cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes)
 		length = min(length, chunkSize-offset)
-
 	}
 
 	chunk := &StagedChunk{
