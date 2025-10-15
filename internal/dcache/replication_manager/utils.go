@@ -86,7 +86,9 @@ const (
 	//       These must be set as low as possible, just enough to saturate the n/w and disk throughput from
 	//       a single node.
 	//
-	PutChunkDCIODepthTotal   = 32
+	// TODO: Evaluate if PutChunkDCIODepthTotal is fine for very large clusters.
+	//
+	PutChunkDCIODepthTotal   = 64
 	PutChunkDCIODepthPerNode = 8
 
 	//
@@ -156,6 +158,8 @@ func (s PutChunkStyleEnum) String() string {
 	}
 }
 
+var putChunkDCSemNodeDummy = make(chan struct{}, PutChunkDCIODepthPerNode)
+
 // Acquire the semaphores for sending PutChunkDC to the given target node.
 func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
 	// Anything above this threshold is considered a large/unusual wait and is logged as a warning.
@@ -164,17 +168,24 @@ func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
 	putChunkDCSemWaiting.Add(1)
 	startTime := time.Now()
 
+	//
 	// Grab per-node semaphore.
-	putChunkDCPerNodeSemMapLock.Lock()
-	putChunkDCSemNode, ok := putChunkDCPerNodeSemMap[targetNodeID]
-	if !ok {
-		sem := make(chan struct{}, PutChunkDCIODepthPerNode)
-		putChunkDCSemNode = &sem
-		putChunkDCPerNodeSemMap[targetNodeID] = putChunkDCSemNode
-	}
-	putChunkDCPerNodeSemMapLock.Unlock()
+	//
+	// TODO: Disabling per-node semaphore for now, as we have the MV level throttling in place.
+	//
+	putChunkDCSemNode := &putChunkDCSemNodeDummy
+	/*
+		putChunkDCPerNodeSemMapLock.Lock()
+		putChunkDCSemNode, ok := putChunkDCPerNodeSemMap[targetNodeID]
+		if !ok {
+			sem := make(chan struct{}, PutChunkDCIODepthPerNode)
+			putChunkDCSemNode = &sem
+			putChunkDCPerNodeSemMap[targetNodeID] = putChunkDCSemNode
+		}
+		putChunkDCPerNodeSemMapLock.Unlock()
 
-	(*putChunkDCSemNode) <- struct{}{}
+		(*putChunkDCSemNode) <- struct{}{}
+	*/
 
 	//
 	// Grab global semaphore.
@@ -226,14 +237,14 @@ func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string,
 	const largeHoldThreshold = 3 * time.Second
 
 	// We must be releasing a semaphore that we have acquired.
-	common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))
+	//common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))
 	common.Assert(len(putChunkDCTotalSem) > 0, len(putChunkDCTotalSem))
 
 	// Duration is the time the semaphore was held, which is the time taken for the PutChunkDC call to complete.
 	aggrPutChunkDCSemHold.Add(dur.Nanoseconds())
 
 	<-putChunkDCTotalSem
-	<-*putChunkDCSemNode
+	//<-*putChunkDCSemNode
 
 	log.Debug("releasePutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}, held for: %s, avg hold: %s",
 		targetNodeID, chunkIdx,

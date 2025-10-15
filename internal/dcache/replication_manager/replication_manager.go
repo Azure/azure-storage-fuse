@@ -704,15 +704,16 @@ retry:
 		var putChunkDCResp *models.PutChunkDCResponse
 
 		//
-		// Acquire a semaphore slot to limit PutChunkDC concurrency.
-		// Note that PutChunkDC has a snowballing effect on the number of RPC clients needed as higher
-		// number of calls means higher number of daisy chain calls, and there's no gain in throughput
-		// beyond a point, infact it's detrimental as it causes higher/useless load on the nodes.
-		// We have a global limit (how many PutChunkDC calls can one node send to all other nodes put
-		// together) and a per-node limit (how many PutChunkDC calls can one node send to a particular
-		// target node). Only if both the limits are satisfied, we allow the PutChunkDC call to proceed.
+		// Limit number of outstanding PutChunkDC calls to the cluster.
+		// This is an additional safeguard apart from the per MV throttling done by cwnd to prevent
+		// overwhelming the cluster with too many PutChunkDC calls which use up lots of resources w/o
+		// making progress.
+		// Note that this thread has already acquired a cwnd slot for this MV write, so if it has to
+		// wait for the cluster-wide putChunkDC semaphore, it will also be holding up the cwnd slot,
+		// but that's ok as w/o the cluster-side putChunkDC semaphore no other MV write can make progress
+		// either.
 		//
-		//putChunkSem := getPutChunkDCSem(targetNodeID, req.ChunkIndex)
+		putChunkSem := getPutChunkDCSem(targetNodeID, req.ChunkIndex)
 
 		putChunkDCstartTime := time.Now()
 
@@ -734,7 +735,7 @@ retry:
 		}
 
 		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
-		//releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex, rtt)
+		releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex, rtt)
 
 		if err != nil {
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",

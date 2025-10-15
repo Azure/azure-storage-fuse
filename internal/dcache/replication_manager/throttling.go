@@ -382,7 +382,11 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 	if drainInflight {
 		waitLoop := int64(0)
 
+		//
 		// One inflight count is for this request which just completed.
+		// Note that we don't release it here, it will be released by the caller of this function
+		// when it calls mvci.done().
+		//
 		common.Assert(mvci.inflight.Load() > 0, mvci.mvName, mvci.inflight.Load(), mvci.cwnd.Load())
 
 		for mvci.inflight.Load()-1 > mvci.cwnd.Load() {
