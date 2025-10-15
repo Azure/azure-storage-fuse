@@ -35,6 +35,7 @@ package debug
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -97,7 +98,7 @@ func readStatsCallback(pFile *procFile) error {
 // Large tarballs are stored on disk. This file only returns metadata mapping of node IDs to log tarball paths.
 func readLogsCallback(pFile *procFile) error {
 	// Use default work dir for storing collected logs.
-	outDir := filepath.Join(common.DefaultWorkDir, "cluster-logs")
+	outDir := filepath.Join(common.DefaultWorkDir, fmt.Sprintf("cluster-logs-%d", time.Now().Unix()))
 
 	// Chunk size fixed to 16MB.
 	const chunkSize = int64(16 * 1024 * 1024)

@@ -1447,6 +1447,7 @@ func GetLogs(ctx context.Context, targetNodeID, outDir string, chunkSize int64) 
 			srcPath := filepath.Join(os.TempDir(), resp.TarName)
 			outPath = filepath.Join(outDir, resp.TarName)
 
+			log.Debug("rpc_client::GetLogs: Copying local log tar file from %s -> %s", srcPath, outPath)
 			err = copyFile(srcPath, outPath)
 			if err != nil {
 				log.Err("rpc_client::GetLogs: Failed to copy log tar file in local node %v [%v]", err)

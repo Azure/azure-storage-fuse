@@ -109,7 +109,7 @@ func CollectAllNodeLogs(outDir string, chunkSize int64) (map[string]string, erro
 		if allErr == nil {
 			allErr = e
 		} else {
-			allErr = fmt.Errorf("%v\n%v", allErr, e)
+			allErr = fmt.Errorf("%v; %v", allErr, e)
 		}
 	}
 
