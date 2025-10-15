@@ -3611,6 +3611,14 @@ func (h *ChunkServiceHandler) createLogTarLocked(reset bool) error {
 			return err
 		}
 
+		//
+		// The log file will be written continuously, so its size will keep changing. To avoid
+		// issues with that, we always use the size till this point and create the tarball with
+		// this size.
+		//
+		fileSize := fi.Size()
+		hdr.Size = fileSize
+
 		if err = tw.WriteHeader(hdr); err != nil {
 			log.Err("GChunkServiceHandler::createLogTarLocked: WriteHeader failed for %s [%v]",
 				fileName, err)
@@ -3627,7 +3635,12 @@ func (h *ChunkServiceHandler) createLogTarLocked(reset bool) error {
 		}
 		defer fh.Close()
 
-		if _, err = io.Copy(tw, fh); err != nil {
+		//
+		// As the log file is being written continuously, it is possible that the size changes
+		// between the time we did the stat and now. To avoid issues with that, we use io.CopyN
+		// to copy till the size we got earlier.
+		//
+		if _, err = io.CopyN(tw, fh, fileSize); err != nil {
 			log.Err("ChunkServiceHandler::createLogTarLocked: copy failed for %s [%v]",
 				fileName, err)
 			common.Assert(false, fileName, err)
