@@ -177,7 +177,7 @@ func (mvci *mvCongInfo) admit() {
 	//
 	// TODO: Make this debug log once we have tested enough with various cluster sizes and loads.
 	//
-	log.Warn("throttling::admit: %s, inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+	log.Warn("[SLOW] throttling::admit: %s, inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
 		mvci.mvName, mvci.inflight.Load(), mvci.cwnd.Load(),
 		mvci.estQSize.Load(), time.Duration(mvci.lastRTT.Load()),
 		time.Duration(mvci.minRTT.Load()), time.Duration(mvci.maxRTT.Load()),
@@ -194,7 +194,7 @@ func (mvci *mvCongInfo) admit() {
 
 		// No request should be waiting for more than 5 secs.
 		if waitLoop > 5000 {
-			log.Warn("throttling::admit: %s waited too long (%d ms), inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+			log.Warn("[SLOW] throttling::admit: %s waited too long (%d ms), inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
 				mvci.mvName, waitLoop, mvci.inflight.Load(), mvci.cwnd.Load(),
 				mvci.estQSize.Load(), time.Duration(mvci.lastRTT.Load()),
 				time.Duration(mvci.minRTT.Load()), time.Duration(mvci.maxRTT.Load()),
