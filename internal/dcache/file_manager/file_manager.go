@@ -130,7 +130,7 @@ func NewFileIOManager() error {
 	// maxUnackedWindow is how much we want to allow writing to the fastest MV before we pause to let the
 	// slowest MV catch up. We want to allow at least one stripe width of chunks to be unacked so that we
 	// allow one write to each MV, but not more than four stripe widths or 4GB worth of chunks.
-	// These limits have been chosen based on some experiments, to minimize wait under normal conditions.
+	// These limits have been chosen based on experiments, to minimize wait under normal conditions.
 	//
 	maxUnackedWindow := int(4096 / cm.GetCacheConfig().ChunkSizeMB)
 	maxUnackedWindow = max(maxUnackedWindow, int(cm.GetCacheConfig().StripeWidth)*1)
