@@ -98,6 +98,8 @@ func NewFileIOManager() error {
 	// PutChunkDCIODepthTotal restricts the number of parallel chunk writes, so that won't use more than
 	// PutChunkDCIODepthTotal workers, but we need workers for reading chunks too, so let's set aside
 	// few more.
+	// Now with WriteMV() implementing qsize based flow control, we can have workers waiting for qsize
+	// to drop for some MVs, so we need more workers.
 	//
 	workers := 256
 
@@ -261,6 +263,15 @@ func (file *DcacheFile) getWriteError() error {
 	_ = ok
 	common.Assert(ok, val)
 	return err
+}
+
+// Set write error encountered during file writes, if any.
+func (file *DcacheFile) setWriteError(err error) {
+	// We must be called only with a valid error.
+	common.Assert(err != nil, file.FileMetadata.Filename)
+
+	// Only the first error is recorded.
+	file.writeErr.CompareAndSwap(nil, err)
 }
 
 func (file *DcacheFile) initFreeChunks(maxChunks int) {
@@ -550,13 +561,13 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		err := fmt.Errorf("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, allowed: [%d, %d)",
 			file.FileMetadata.Filename, offset, allowableWriteOffsetStart, allowableWriteOffsetEnd)
 		log.Err("%v", err)
-		file.writeErr.Store(err)
+		file.setWriteError(err)
 		return syscall.ENOTSUP
 	} else if offset > allowableWriteOffsetEnd {
 		err := fmt.Errorf("DistributedCache[FM]::WriteFile: Random write unsupported, file: %s, offset: %d, allowed: [%d, %d)",
 			file.FileMetadata.Filename, offset, allowableWriteOffsetStart, allowableWriteOffsetEnd)
 		log.Err("%v", err)
-		file.writeErr.Store(err)
+		file.setWriteError(err)
 		return syscall.ENOTSUP
 	}
 
@@ -585,8 +596,9 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 				file.FileMetadata.Filename,
 				getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize), err)
 			log.Err("DistributedCache[FM]::WriteFile: %v", err)
-			common.Assert(false, err)
-			file.writeErr.Store(err)
+			// No space left on device, is one possible error. NewStagedChunk() will set file error in that case.
+			common.Assert(file.getWriteError() != nil, file.getWriteError(), err)
+			file.setWriteError(err)
 			return err
 		}
 
@@ -599,7 +611,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 				file.FileMetadata.Filename, offset, writeSize, chunkOffset, chunk.Idx)
 
 			log.Err("%v", err)
-			file.writeErr.Store(err)
+			file.setWriteError(err)
 			file.releaseChunk(chunk)
 			return syscall.ENOTSUP
 		}
