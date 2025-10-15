@@ -449,7 +449,7 @@ retry:
 	// Cannot write to offline MV.
 	if mvState == dcache.StateOffline {
 		err = fmt.Errorf("%s is offline", req.MvName)
-		log.Err("ReplicationManager::writeMVInternal: %v", err)
+		log.Err("ReplicationManager::writeMVInternal: %s: %v", req.toString(), err)
 		return nil, err
 	}
 
@@ -1132,6 +1132,9 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 		}
 	}
 
+	//
+	// Proceed only after getting permission from admission control for the MV.
+	//
 	mvCnginfo.admit()
 	defer mvCnginfo.done()
 

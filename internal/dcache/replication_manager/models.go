@@ -79,7 +79,7 @@ type ReadMvRequest struct {
 // helper method which can be used for logging the request contents except the data buffer
 // Use this instead of %+v to avoid printing the data buffer
 func (req *ReadMvRequest) toString() string {
-	return fmt.Sprintf("{FileID: %s, MvName: %s, ChunkIndex: %d, OffsetInChunk: %d, Length: %d, ChunkSizeInMiB: %d}",
+	return fmt.Sprintf("{FileID: %s, MvName: %s, chunkIdx: %d, OffsetInChunk: %d, Length: %d, ChunkSizeInMiB: %d}",
 		req.FileID, req.MvName, req.ChunkIndex, req.OffsetInChunk, req.Length, req.ChunkSizeInMiB)
 }
 
