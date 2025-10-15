@@ -788,7 +788,6 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 
 	// ncPool must be set in all allocated clients.
 	common.Assert(client.ncPool != nil, client.nodeID)
-	common.Assert(client.nodeID == client.ncPool.nodeID, client.nodeID, client.ncPool.nodeID)
 	common.Assert(client.nodeIDInt == client.ncPool.nodeIDInt,
 		client.nodeIDInt, client.ncPool.nodeIDInt, client.nodeID, client.ncPool.nodeID)
 
@@ -817,6 +816,12 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 
 		return nil
 	}
+
+	//
+	// This assert may not be valid for extra clients, as pool can be deleted while we are using the extra client,
+	// and that clears ncPool.nodeID.
+	//
+	common.Assert(client.nodeID == client.ncPool.nodeID, client.nodeID, client.ncPool.nodeID)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -977,8 +982,8 @@ func (cp *clientPool) deleteRPCClient(client *rpcClient) {
 // reset workflow. So, to prevent this, we use this flag.
 // The value of this flag is true only in case of PutChunkDC timeout error when the target node is confirmed bad.
 func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bool, isClientClosed bool) {
-	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p, confirmedBadNode: %v, isClientClosed: %v, adding to negative nodes map",
-		client.nodeAddress, client.nodeID, client, confirmedBadNode, isClientClosed)
+	log.Debug("clientPool::deleteAllRPCClients: Deleting all RPC clients for %s node %s, client: %p (extra: %v), confirmedBadNode: %v, isClientClosed: %v, adding to negative nodes map",
+		client.nodeAddress, client.nodeID, client, client.isExtra, confirmedBadNode, isClientClosed)
 
 	//
 	// Acquire read lock on the rwMutex. This ensures that operations like getRPCClient(),
@@ -1004,6 +1009,16 @@ func (cp *clientPool) deleteAllRPCClients(client *rpcClient, confirmedBadNode bo
 	//
 	if confirmedBadNode {
 		cp.addNegativeNode(client.nodeID)
+	}
+
+	//
+	// Clients not allocated from the pool need to just close the client and return.
+	//
+	if client.isExtra {
+		if !isClientClosed {
+			cp.deleteRPCClient(client)
+		}
+		return
 	}
 
 	numConnDeleted := 0

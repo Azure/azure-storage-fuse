@@ -51,13 +51,19 @@ const (
 	// defaultConnectionTimeout is the default timeout for establishing a new connection to the node.
 	// We don't want to keep this value very low to be resilient to occasional packet drops.
 	//
-	defaultConnectionTimeout = 10 * time.Second
+	// Update: Under heavy data traffic, connection establishment is seen to timeout, increasing the
+	//         timeout for now. We will move to gRPC soon, which should help with this. Also may need
+	//         to use tc to prioritize connection establishment packets.
+	//
+	//defaultConnectionTimeout = 10 * time.Second
+	defaultConnectionTimeout = 60 * time.Second
 
 	//
 	// defaultSocketTimeout is the default read/write timeout for the underlying socket.
 	// We don't want to keep this value very low to be resilient to occasional packet drops.
 	//
-	defaultSocketTimeout = 20 * time.Second
+	//defaultSocketTimeout = 20 * time.Second
+	defaultSocketTimeout = 60 * time.Second
 )
 
 // rpcClient struct holds the Thrift client to a node
