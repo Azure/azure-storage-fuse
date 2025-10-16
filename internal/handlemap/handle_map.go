@@ -241,9 +241,8 @@ func (handle *Handle) SetDcacheAllowReads() {
 	common.Assert(!handle.IsDcacheAllowReads())
 	// Read and write to dcache are not allowed from the same handle.
 	common.Assert(!handle.IsDcacheAllowWrites())
-	// Using a handle we can read from Azure or DCache but never both.
+
 	common.Assert(handle.IsFsAzure() || handle.IsFsDcache())
-	common.Assert(!(handle.IsFsAzure() && handle.IsFsDcache()))
 
 	handle.Flags.Set(HandleFlagDcacheAllowReads)
 }

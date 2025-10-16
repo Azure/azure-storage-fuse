@@ -282,8 +282,8 @@ func GetMdRoot() string {
 	return metadataManagerInstance.mdRoot
 }
 
-func CreateFileInit(filePath string, fileMetadata []byte) (string, error) {
-	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
+func CreateFileInit(filePath string, fileMetadata []byte, state dcache.FileState) (string, error) {
+	return metadataManagerInstance.createFileInit(filePath, fileMetadata, state)
 }
 
 func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
@@ -509,7 +509,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 // that started file creation, does the finalize. This can help prevent cases where the initial node went
 // quiet before finalizing and tries to finalize later when some other node created the same file.
 
-func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte) (string, error) {
+func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte, state dcache.FileState) (string, error) {
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.InitCalls, 1)
 
 	common.Assert(len(filePath) > 0)
@@ -520,10 +520,11 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 	// The size of the file is set to -1 to represent the file is not finalized.
 	sizeStr := "-1"
 	openCount := "0"
-	state := string(dcache.Writing)
+	stateStr := string(state)
+
 	metadata := map[string]*string{
 		"cache_object_length": &sizeStr,
-		"state":               &state,
+		"state":               &(stateStr),
 		"opencount":           &openCount,
 	}
 
@@ -602,7 +603,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
 		state, ok := prop.Metadata["state"]
-		common.Assert(ok && *state == string(dcache.Writing))
+		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)))
 
 		// opencount must be 0 as a file not yet finalized cannot be opened.
 		openCount, ok := prop.Metadata["opencount"]
@@ -735,7 +736,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 	}
 
 	var fileState dcache.FileState
-	if *state == string(dcache.Ready) || *state == string(dcache.Writing) {
+	if *state == string(dcache.Ready) || *state == string(dcache.Writing) || *state == string(dcache.Warming) {
 		fileState = dcache.FileState(*state)
 	} else {
 		err := fmt.Errorf("GetFile:: Invalid File state: [%s] found in metadata for path: %s", *state, path)
