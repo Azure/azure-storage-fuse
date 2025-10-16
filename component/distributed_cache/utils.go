@@ -343,6 +343,10 @@ func isDeletedDcacheFile(rawPath string) bool {
 	return strings.HasSuffix(rawPath, dcache.DcacheDeletingFileNameSuffix)
 }
 
+func isDummyWriteFile(rawPath string) bool {
+	return strings.HasSuffix(rawPath, dcache.DummyWriteFileName)
+}
+
 // Queries the Azure Instance Metadata Service to get the Fault Domain and Update Domain for this VM.
 // Returns -1 for Fault Domain or Update Domain if not available.
 func queryVMFaultAndUpdateDomain() (int /* faultDomain */, int /* updateDomain */, error) {

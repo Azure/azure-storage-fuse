@@ -67,9 +67,10 @@ struct PutChunkRequest {
 struct PutChunkResponse {
     // status will be returned in the error
     1: i64 timeTaken,
-    2: i64 availableSpace,
-    3: list<RVNameAndState> componentRV
-    4: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
+    2: i64 qsize, // request queue size at the RV server when this response is sent
+    3: i64 availableSpace,
+    4: list<RVNameAndState> componentRV
+    5: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
 struct PutChunkDCRequest {

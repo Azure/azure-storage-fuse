@@ -51,13 +51,29 @@ const (
 	// defaultConnectionTimeout is the default timeout for establishing a new connection to the node.
 	// We don't want to keep this value very low to be resilient to occasional packet drops.
 	//
-	defaultConnectionTimeout = 10 * time.Second
+	// Update: Under heavy data traffic, connection establishment is seen to timeout, increasing the
+	//         timeout for now. We will move to gRPC soon, which should help with this. Also may need
+	//         to use tc to prioritize connection establishment packets.
+	//
+	//defaultConnectionTimeout = 10 * time.Second
+	defaultConnectionTimeout = 60 * time.Second
 
 	//
 	// defaultSocketTimeout is the default read/write timeout for the underlying socket.
 	// We don't want to keep this value very low to be resilient to occasional packet drops.
 	//
-	defaultSocketTimeout = 20 * time.Second
+	// Note: If thrift client doesn't get any response from the server within this time, it considers
+	//       the server to be unresponsive/down and fails with a timeout error. If this happens for
+	//       a PutChunk/PutChunkDC call, it'll result in the target node being marked as down and the
+	//       component RV being marked as inband-offline. This can clearly impact availability of MVs
+	//       if we incorrectly mark nodes as down due to transient network issues or packet drops,
+	//       common during very heavy data traffic. So we need to be extremely careful and make sure
+	//       that a timeout only happens when the node is really down/unreachable.
+	//
+	// TODO: 60 secs looks fine for heavy tests that we have done so far, see if we need to increase it further.
+	//
+	//defaultSocketTimeout = 20 * time.Second
+	defaultSocketTimeout = 60 * time.Second
 )
 
 // rpcClient struct holds the Thrift client to a node

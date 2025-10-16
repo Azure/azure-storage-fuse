@@ -81,7 +81,6 @@ var (
 	NumChunkWrites          atomic.Int64
 	CumChunkWrites          atomic.Int64 // cumulative number of chunks written
 	CumBytesWritten         atomic.Int64 // cumulative number of bytes written
-	IODepth                 atomic.Int64 // number of parallel writes in progress
 	OpenDepth               atomic.Int64 // number of go routines inside syscall.Open() for to-be-written chunk files
 	WriteDepth              atomic.Int64 // number of go routines inside syscall.Write()
 	RenameDepth             atomic.Int64 // number of go routines inside common.RenameNoReplace()
@@ -90,7 +89,12 @@ var (
 	NumChunkReads          atomic.Int64
 	AggrChunkReadsDuration atomic.Int64 // time in nanoseconds for NumChunkReads.
 
-	SlowReadWriteThreshold = 1 * time.Second // anything more than this is considered a slow chunk read/write
+	//
+	// Anything more than this is considered a slow chunk read/write.
+	// Under heavy IO load, we can have ~500-1000 IOs queued to an RV, for 4GBps disk throughput,
+	// and 16MB chunks, this comes to ~2-4 seconds.
+	//
+	SlowReadWriteThreshold = 2 * time.Second
 )
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
@@ -176,6 +180,9 @@ type rvInfo struct {
 	// Cumulative bytes read from this RV by GetChunk() requests.
 	// Mostly used for debugging distribution of reads across RVs.
 	totalBytesRead atomic.Int64
+
+	// Number of chunks queued to be read/written from/to this RV.
+	qsize atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -651,12 +658,15 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	//       GetMVSize() from JoinMV, there could have been more chunks being written to the source MV replica after
 	//       we read the mvInfo.totalChunkBytes. So we reserved less but actually sync'ed more. So, directly
 	//       decrementing the reserved space in PutChunk(sync) can lead to negative reserved space for both MV and RV.
+	//       For now ignore negative space.
 	//
 	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
-	common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
 	log.Debug("rvInfo::getAvailableSpace: RV: %s, availableSpace: %d, diskSpaceAvailable: %d, reservedSpace: %d",
 		rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
+
+	//common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
+	availableSpace = max(availableSpace, 0)
 
 	return availableSpace, err
 }
@@ -1867,7 +1877,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//}
 
 	readStartTime = time.Now()
+	rvInfo.qsize.Add(1)
 	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
+	common.Assert(rvInfo.qsize.Load() > 0, rvInfo.qsize.Load(), chunkPath, rvInfo.rvName)
+	rvInfo.qsize.Add(-1)
 	thisDuration = time.Since(readStartTime)
 
 	// Consider only recent reads for calculating avg read duration.
@@ -1879,10 +1892,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	}
 
 	if thisDuration > SlowReadWriteThreshold {
-		log.Warn("[SLOW] readChunkAndHash: Slow read for %s, chunkIdx: %d, took %s (>%s), avg: %s",
+		log.Warn("[SLOW] readChunkAndHash: Slow read for %s, chunkIdx: %d, took %s (>%s), avg: %s, iodepth: %d",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Address),
 			thisDuration, SlowReadWriteThreshold,
-			time.Duration(AggrChunkReadsDuration.Load()/NumChunkReads.Load()))
+			time.Duration(AggrChunkReadsDuration.Load()/NumChunkReads.Load()),
+			rvInfo.qsize.Load())
 	}
 
 	if err != nil {
@@ -1940,6 +1954,9 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	//
 	// Use O_EXCL flag just in case two writers are trying to write the same chunk simultaneously.
 	// Note that for actually protecting overwriting an existing chunk we rely on the atomic rename below.
+	// Note that rename (as opposed to directly writing the chunk) also helps in avoiding incorrectly
+	// serving a partially written chunk file, though this is not a real problem as clients should never
+	// ask for a chunk that's not written yet.
 	//
 	OpenDepth.Add(1)
 	fd, err := syscall.Open(tmpChunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
@@ -2386,6 +2403,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	var availableSpace int64
 	var thisDuration time.Duration
 	var writeStartTime time.Time
+	var issueIODepth int64
+	var issueOpenDepth int64
+	var issueWriteDepth int64
+	var issueRenameDepth int64
 
 	//
 	// If the PutChunk is for the special metadata chunk, remove existing metadata chunk file if any, to
@@ -2436,10 +2457,21 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	}
 
 	// TODO: hash validation will be done later
+
 	writeStartTime = time.Now()
-	IODepth.Add(1)
+	rvInfo.qsize.Add(1)
+
+	// Various qdepths at the time of issuing the write.
+	issueIODepth = rvInfo.qsize.Load()
+	issueOpenDepth = OpenDepth.Load()
+	issueWriteDepth = WriteDepth.Load()
+	issueRenameDepth = RenameDepth.Load()
+
+	// 10k is arbitrary large number, we should never reach this due to the client side throttling.
+	common.Assert(rvInfo.qsize.Load() < 10000, rvInfo.qsize.Load())
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
-	IODepth.Add(-1)
+	common.Assert(rvInfo.qsize.Load() > 0, rvInfo.qsize.Load(), chunkPath, rvInfo.rvName)
+	rvInfo.qsize.Add(-1)
 	thisDuration = time.Since(writeStartTime)
 
 	// Consider only recent writes for calculating avg write duration.
@@ -2455,12 +2487,15 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	// Too many outstanding writes to a disk can make the writes very slow, alert to know that.
 	if thisDuration > SlowReadWriteThreshold {
-		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, cum: {%d, %d}, iodepth: %d, openDepth: %d, writeDepth: %d, renameDepth: %d",
+		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, cum: {%d, %d}, iodepth: %d (%d), openDepth: %d (%d), writeDepth: %d (%d), renameDepth: %d (%d)",
 			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
 			thisDuration, SlowReadWriteThreshold,
 			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()),
-			CumChunkWrites.Load(), CumBytesWritten.Load(), IODepth.Load(),
-			OpenDepth.Load(), WriteDepth.Load(), RenameDepth.Load())
+			CumChunkWrites.Load(), CumBytesWritten.Load(),
+			rvInfo.qsize.Load(), issueIODepth,
+			OpenDepth.Load(), issueOpenDepth,
+			WriteDepth.Load(), issueWriteDepth,
+			RenameDepth.Load(), issueRenameDepth)
 	}
 
 	if err != nil {
@@ -2500,6 +2535,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 				return &models.PutChunkResponse{
 					TimeTaken:      time.Since(startTime).Microseconds(),
+					Qsize:          rvInfo.qsize.Load(),
 					AvailableSpace: availableSpace,
 					ComponentRV:    mvInfo.getComponentRVs(),
 				}, nil
@@ -2557,6 +2593,7 @@ dummy_write:
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
+		Qsize:          rvInfo.qsize.Load(),
 		AvailableSpace: availableSpace,
 		ComponentRV:    mvInfo.getComponentRVs(),
 	}

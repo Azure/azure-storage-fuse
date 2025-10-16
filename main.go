@@ -36,18 +36,22 @@ package main
 import (
 	"github.com/Azure/azure-storage-fuse/v2/cmd"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	_ "github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 //go:generate ./cmd/componentGenerator.sh $NAME
 //  To use go:generate run command   "NAME="component" go generate"
 
 func main() {
-	_ = cmd.Execute()
+	defer log.Destroy() // nolint:errcheck
+	// This recovers the panics only for the functions that run within this context. all the go-routine
+	// spawned by this function need to handle their panics separately if required. Also the FUSE callbacks
+	// wouldn't run in this context, so the panics originated from the callbacks can't get recovered here.
 	defer func() {
 		if panicErr := recover(); panicErr != nil {
-			log.Err("PANIC: %v", panicErr)
+			log.Crit("PANIC: %v", panicErr)
 			panic(panicErr)
 		}
 	}()
+
+	_ = cmd.Execute()
 }

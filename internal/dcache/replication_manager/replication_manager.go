@@ -112,6 +112,9 @@ func Start() error {
 	// Start the thread pool for sending RPC requests.
 	rm.tp.start()
 
+	// Initialize the MV congestion related stuff.
+	initCongInfo()
+
 	return nil
 }
 
@@ -388,10 +391,11 @@ retry:
 func writeMVInternal(req *WriteMvRequest, putChunkStyle PutChunkStyleEnum) (*WriteMvResponse, error) {
 	log.Debug("ReplicationManager::writeMVInternal: Received WriteMV request (%v): %v", putChunkStyle, req.toString())
 
+	var err error
 	var rvsWritten []string
 	retryCnt := 0
 
-	var err error
+	mvCnginfo := getMVCongInfo(req.MvName)
 
 	//
 	// If PutChunk fails with NeedToRefreshClusterMap more than once, it most likely is due to clustermap
@@ -444,6 +448,13 @@ retry:
 
 	log.Debug("ReplicationManager::writeMVInternal: %s (%s), componentRVs: %v, chunkIdx: %d, cepoch: %d",
 		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs), req.ChunkIndex, lastClusterMapEpoch)
+
+	// Cannot write to offline MV.
+	if mvState == dcache.StateOffline {
+		err = fmt.Errorf("%s is offline", req.MvName)
+		log.Err("ReplicationManager::writeMVInternal: %s: %v", req.toString(), err)
+		return nil, err
+	}
 
 	//
 	// Response channel to receive response for the PutChunk RPCs sent to each component RV.
@@ -529,8 +540,6 @@ retry:
 		} else if rv.State == string(dcache.StateOnline) ||
 			rv.State == string(dcache.StateSyncing) ||
 			rv.State == string(dcache.StateOutOfSync) {
-			// Offline MV has all replicas offline.
-			common.Assert(mvState != dcache.StateOffline, req.MvName)
 
 			rvID := getRvIDFromRvName(rv.Name)
 			common.Assert(common.IsValidUUID(rvID))
@@ -698,17 +707,19 @@ retry:
 		var putChunkDCResp *models.PutChunkDCResponse
 
 		//
-		// Acquire a semaphore slot to limit PutChunkDC concurrency.
-		// Note that PutChunkDC has a snowballing effect on the number of RPC clients needed as higher
-		// number of calls means higher number of daisy chain calls, and there's no gain in throughput
-		// beyond a point, infact it's detrimental as it causes higher/useless load on the nodes.
-		// We have a global limit (how many PutChunkDC calls can one node send to all other nodes put
-		// together) and a per-node limit (how many PutChunkDC calls can one node send to a particular
-		// target node). Only if both the limits are satisfied, we allow the PutChunkDC call to proceed.
+		// Limit number of outstanding PutChunkDC calls to the cluster.
+		// This is an additional safeguard apart from the per MV throttling done by cwnd to prevent
+		// overwhelming the cluster with too many PutChunkDC calls which use up lots of resources w/o
+		// making progress.
+		// Note that this thread has already acquired a cwnd slot for this MV write, so if it has to
+		// wait for the cluster-wide putChunkDC semaphore, it will also be holding up the cwnd slot,
+		// but that's ok as w/o the cluster-side putChunkDC semaphore no other MV write can make progress
+		// either.
 		//
 		putChunkSem := getPutChunkDCSem(targetNodeID, req.ChunkIndex)
 
 		putChunkDCstartTime := time.Now()
+
 		//
 		// If the node to which the PutChunkDC() RPC call must be made is local,
 		// then we directly call the PutChunkDC() method using the local server's handler.
@@ -719,9 +730,15 @@ retry:
 		} else {
 			putChunkDCResp, err = rpc_client.PutChunkDC(ctx, targetNodeID, putChunkDCReq, false /* fromFwder */)
 		}
+		rtt := time.Since(putChunkDCstartTime)
+
+		// Update congestion info for this MV, only from successful full sized chunk writes.
+		if err == nil && putChunkDCReq.Request.Length == cm.ChunkSizeMB*common.MbToBytes {
+			mvCnginfo.onPutChunkDCSuccess(rtt, req, putChunkDCResp)
+		}
 
 		// Release the semaphore slot, now any other thread waiting for a free slot can proceed.
-		releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex, time.Since(putChunkDCstartTime))
+		releasePutChunkDCSem(putChunkSem, targetNodeID, req.ChunkIndex, rtt)
 
 		if err != nil {
 			log.Err("ReplicationManager::writeMVInternal: Failed to send PutChunkDC request for nexthop %s/%s to node %s, chunkIdx: %d, cepoch: %d: %v",
@@ -834,8 +851,8 @@ processResponses:
 			continue
 		}
 
-		log.Err("ReplicationManager::writeMVInternal: [%v] PutChunk to %s/%s failed, chunkIdx: %d, cepoch: %d [%v]",
-			putChunkStyle, respItem.rvName, req.MvName, req.ChunkIndex, lastClusterMapEpoch, respItem.err)
+		log.Err("ReplicationManager::writeMVInternal: [%v] PutChunk to %s/%s failed, retryCnt: %d, chunkIdx: %d, cepoch: %d [%v]",
+			putChunkStyle, respItem.rvName, req.MvName, retryCnt, req.ChunkIndex, lastClusterMapEpoch, respItem.err)
 
 		common.Assert(putChunkResp == nil)
 
@@ -939,12 +956,18 @@ processResponses:
 				}
 
 				//
-				// We will be asked to refresh more than once only if the clustermap is being updated.
+				// We will be asked to refresh more than once only if the clustermap is being updated, i.e.,
+				// epoc is odd.
 				// In this state, refreshFromClustermap() cannot safely override mvInfo from the clustermap,
 				// so it keeps asking the client to retry.
 				//
-				common.Assert(retryCnt < 2 || lastClusterMapEpoch%2 == 1,
-					respItem.rvName, req.MvName, retryCnt, lastClusterMapEpoch)
+				// Update: Have seen incidents where we got NeedToRefreshClusterMap multiple times as clustermap
+				//         changed after the prev refresh and also first it was one RV and then another RV.
+				//
+				/*
+					common.Assert(retryCnt < 2 || lastClusterMapEpoch%2 == 1,
+						respItem.rvName, req.MvName, retryCnt, lastClusterMapEpoch)
+				*/
 				continue
 			}
 
@@ -1034,22 +1057,12 @@ processResponses:
 	}
 
 	if clusterMapRefreshed {
-		// Offline MV has all replicas offline, so we cannot get a NeedToRefreshClusterMap error.
-		common.Assert(mvState != dcache.StateOffline, req.MvName)
-
 		//
 		// If we refreshed the clustermap, we need to retry the entire write MV with the updated clustermap.
 		// This might mean re-writing some of the replicas which were successfully written in this iteration.
 		//
 		retryCnt++
 		goto retry
-	}
-
-	// Fail write with a meaningful error.
-	if mvState == dcache.StateOffline {
-		err = fmt.Errorf("%s is offline", req.MvName)
-		log.Err("ReplicationManager::writeMVInternal: %v", err)
-		return nil, err
 	}
 
 	// For a non-offline MV, at least one replica write should succeed.
@@ -1067,8 +1080,10 @@ processResponses:
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
-	var err error
 	var resp *WriteMvResponse
+	var err error
+
+	mvCnginfo := getMVCongInfo(req.MvName)
 
 	//
 	// With 4GBps n/w and disk speeds, and with daisy chain with NumReplicas=3, 16MiB chunk write
@@ -1120,6 +1135,12 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 			return nil, err
 		}
 	}
+
+	//
+	// Proceed only after getting permission from admission control for the MV.
+	//
+	mvCnginfo.admit()
+	defer mvCnginfo.done()
 
 	//
 	// We first try to write the MV using the DaisyChain mode.
@@ -1869,6 +1890,11 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 	srcData := make([]byte, chunkSize)
 	n, err := rpc_server.SafeRead(&srcChunkPath, 0 /* offset */, &srcData, false /* forceBufferedRead */)
 	if err != nil {
+		//
+		// Note: This can fail for chunks which are being removed (corresponding to a deleted file),
+		//       so if ReadDir() in the caller finds a chunk and it's removed by the time we come here, the
+		//       assert below will fail. Let's leave it for some time and later we can remove it.
+		//
 		err = fmt.Errorf("SafeRead(%s) failed: %v", srcChunkPath, err)
 		log.Err("ReplicationManager::copySingleChunk: %v", err)
 		common.Assert(false, err)

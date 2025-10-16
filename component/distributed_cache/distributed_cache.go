@@ -992,6 +992,10 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 	// handle.IFObj must be set IFF DCache access is allowed through this handle.
 	common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
 
+	if isDummyWriteFile(rawPath) {
+		handle.SetDummyWrite()
+	}
+
 	return handle, nil
 }
 

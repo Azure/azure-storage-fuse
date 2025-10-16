@@ -96,7 +96,7 @@ func (suite *cachePolicyTestSuite) TestDeleteFile() {
 	defer suite.cleanupTest()
 	f, _ := os.Create(cache_path + "/test")
 	result := deleteFile(f.Name() + "not_exist")
-	suite.assert.Equal(nil, result)
+	suite.assert.NoError(result)
 	f.Close()
 }
 
