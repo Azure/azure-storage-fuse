@@ -43,6 +43,7 @@ import "C"
 import (
 	"errors"
 	"io/fs"
+	"runtime/cgo"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -565,8 +566,7 @@ func testFsync(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	handle, ok := handlemap.Get(handlemap.HandleID(info.fh))
-	suite.assert.True(ok)
+	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
 	suite.assert.NotNil(handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
@@ -603,8 +603,7 @@ func testFsyncError(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	handle, ok := handlemap.Get(handlemap.HandleID(info.fh))
-	suite.assert.True(ok)
+	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
 	suite.assert.NotNil(handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
