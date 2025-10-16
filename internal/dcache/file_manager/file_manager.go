@@ -42,6 +42,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -251,6 +252,9 @@ type DcacheFile struct {
 	// It is saved when the file is opened, if there are no more file opens done on that file, the same etag
 	// can be used to update the file open count on close.
 	attr *internal.ObjAttr
+
+	// Upload tracker.
+	ut uploadTracker
 }
 
 // Get the write error encountered during file writes, if any.
@@ -1578,6 +1582,24 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 		common.Assert(chunk.Dirty.Load())
 		// Up-to-date chunk should not be written.
 		common.Assert(!chunk.UpToDate.Load())
+
+		file.ut.scheduledUploads.Add(1)
+		if file.ut.cumScheduled.Add(1) == 1 {
+			file.ut.firstScheduledAt.Store(time.Now().UnixNano())
+		}
+		if file.ut.lastScheduledAt.Load() != 0 {
+			schedGap := time.Since(time.Unix(0, file.ut.lastScheduledAt.Load()))
+			if schedGap > file.ut.slowGapThresh {
+				file.ut.slowScheduled.Add(1)
+				if schedGap > file.ut.slowGapThresh*2 {
+					log.Warn("[SLOW] DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, schedGap: %s, slowScheduled: %d (of %d), cumScheduled: %d (in %s)",
+						file.FileMetadata.Filename, chunk.Idx, schedGap,
+						file.ut.slowScheduled.Load(), file.ut.cumScheduled.Load(),
+						file.ut.cumScheduled.Load(), time.Since(time.Unix(0, file.ut.firstScheduledAt.Load())))
+				}
+			}
+		}
+		file.ut.lastScheduledAt.Store(time.Now().UnixNano())
 
 		fileIOMgr.wp.queueWork(file, chunk, false /* get_chunk */)
 		return true

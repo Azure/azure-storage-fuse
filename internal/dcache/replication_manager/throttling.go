@@ -121,11 +121,13 @@ func initCongInfo() {
 
 	//
 	// We set maxQsizeGoal based on the chunk size, with the following reasoning.
-	// Do not keep more than 2s worth of chunks queued up at an MV, assuming disk speed of 4GBps.
+	// Do not keep more than 1s worth of chunks queued up at an MV, assuming disk speed of 4GBps.
+	// Note that since senders apply throttling independently, actual qsize can go slightly higher
+	// than this which is ok, and that's the reason we aim for only 1s worth of chunks and not more.
 	//
 	chunkMSecAvg = int(float64(cm.ChunkSizeMB) * float64(0.25))
 	chunkMSecAvg = max(chunkMSecAvg, 1) // At least 1 msec.
-	maxQsizeGoal = int(float64(2*1000) / float64(chunkMSecAvg))
+	maxQsizeGoal = int(float64(1*1000) / float64(chunkMSecAvg))
 	maxQsizeGoal = max(maxQsizeGoal, 100) // At least 100.
 
 	log.Info("throttling::initCongInfo: cong_enable: %v, cong_debug: %v, maxQsizeGoal: %d, chunkMSecAvg: %d, chunkSizeMB: %d, maxCwnd: %d, staticMaxRVs: %d",

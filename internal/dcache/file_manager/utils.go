@@ -281,6 +281,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	// freeChunks semaphore is used to limit StagedChunks map to numStagingChunks.
 	dcacheFile.initFreeChunks(fileIOMgr.numStagingChunks)
 
+	// Any gap amounting to a rate less than 1GBps/2 is considered slow.
+	dcacheFile.ut.slowGapThresh = time.Duration(cm.ChunkSizeMB*2) * time.Millisecond
+
 	return dcacheFile, nil
 }
 
@@ -664,6 +667,11 @@ loop:
 
 	// Take the refcount for the original creator of the chunk.
 	chunk.RefCount.Store(1)
+
+	if time.Since(startTime) > time.Second {
+		log.Warn("[SLOW] DistributedCache[FM]::NewStagedChunk: NewStagedChunk for chunkIdx: %d, file: %+v, took %s, count:%d, ucount:%d",
+			idx, file.FileMetadata.Filename, time.Since(startTime), count, ucount)
+	}
 
 	return chunk, nil
 }
