@@ -174,15 +174,16 @@ func (se *StatsExporter) StatsExporter() {
 }
 
 func (se *StatsExporter) addToList(st *ExportedStat, idx int) {
-	if st.MonitorName == hmcommon.BlobfuseStats {
+	switch st.MonitorName {
+	case hmcommon.BlobfuseStats:
 		se.outputList[idx].Bfs = append(se.outputList[idx].Bfs, st.Stat.(stats_manager.PipeMsg))
-	} else if st.MonitorName == hmcommon.FileCacheMon {
+	case hmcommon.FileCacheMon:
 		se.outputList[idx].FcEvent = append(se.outputList[idx].FcEvent, st.Stat.(*hmcommon.CacheEvent))
-	} else if st.MonitorName == hmcommon.CpuProfiler {
+	case hmcommon.CpuProfiler:
 		se.outputList[idx].Cpu = st.Stat.(string)
-	} else if st.MonitorName == hmcommon.MemoryProfiler {
+	case hmcommon.MemoryProfiler:
 		se.outputList[idx].Mem = st.Stat.(string)
-	} else if st.MonitorName == hmcommon.NetworkProfiler {
+	case hmcommon.NetworkProfiler:
 		se.outputList[idx].Net = st.Stat.(string)
 	}
 }

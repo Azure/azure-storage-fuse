@@ -270,7 +270,7 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 	}
 
 	path := formatListDirName(options.Name)
-	var iteration int = 0
+	var iteration = 0
 	var marker *string = nil
 	for {
 		new_list, new_marker, err := az.storage.List(path, marker, common.MaxDirListCount)
@@ -472,7 +472,7 @@ func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length
 		return 0, syscall.ERANGE
 	}
 
-	var dataLen int64 = int64(len(options.Data))
+	var dataLen = int64(len(options.Data))
 	if size < (options.Offset + int64(len(options.Data))) {
 		dataLen = size - options.Offset
 	}
@@ -502,11 +502,11 @@ func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOpt
 }
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
-	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.Size)
-	err := az.storage.TruncateFile(options.Name, options.Size)
+	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.NewSize)
+	err := az.storage.TruncateFile(options)
 
 	if err == nil {
-		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]any{size: options.Size})
+		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]any{size: options.NewSize})
 		azStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
 	}
 	return err

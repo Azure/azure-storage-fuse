@@ -54,29 +54,29 @@ func (suite *HandleMapSuite) SetupTest() {
 func (suite *HandleMapSuite) TestNewHandle() {
 	h := NewHandle("abc")
 	suite.assert.NotNil(h)
-	suite.assert.Equal(h.ID, InvalidHandleID)
-	suite.assert.Equal(h.Path, "abc")
+	suite.assert.Equal(InvalidHandleID, h.ID)
+	suite.assert.Equal("abc", h.Path)
 }
 
 func (suite *HandleMapSuite) TestHandleFlags() {
 	h := NewHandle("abc")
 	suite.assert.NotNil(h)
-	suite.assert.Equal(h.ID, InvalidHandleID)
-	suite.assert.Equal(h.Path, "abc")
+	suite.assert.Equal(InvalidHandleID, h.ID)
+	suite.assert.Equal("abc", h.Path)
 
-	suite.assert.Equal(h.Dirty(), false)
-	suite.assert.Equal(h.Fsynced(), false)
-	suite.assert.Equal(h.Cached(), false)
+	suite.assert.False(h.Dirty())
+	suite.assert.False(h.Fsynced())
+	suite.assert.False(h.Cached())
 	suite.assert.Nil(h.GetFileObject())
 
 	h.Flags.Set(HandleFlagDirty)
-	suite.assert.Equal(h.Dirty(), true)
+	suite.assert.True(h.Dirty())
 
 	h.Flags.Set(HandleFlagFSynced)
-	suite.assert.Equal(h.Fsynced(), true)
+	suite.assert.True(h.Fsynced())
 
 	h.Flags.Set(HandleFlagCached)
-	suite.assert.Equal(h.Cached(), true)
+	suite.assert.True(h.Cached())
 
 	var f os.File
 	h.SetFileObject(&f)
@@ -90,7 +90,7 @@ func (suite *HandleMapSuite) TestHandleFlags() {
 	h.SetValue("123", 1)
 	val, found = h.GetValue("123")
 	suite.assert.True(found)
-	suite.assert.Equal(val, 1)
+	suite.assert.Equal(1, val)
 
 	h.RemoveValue("123")
 	val, found = h.GetValue("123")
@@ -102,7 +102,7 @@ func (suite *HandleMapSuite) TestHandleFlags() {
 	h.SetValue("789", 1)
 	val, found = h.GetValue("123")
 	suite.assert.True(found)
-	suite.assert.Equal(val, 1)
+	suite.assert.Equal(1, val)
 	h.Cleanup()
 
 	val, found = h.GetValue("123")
@@ -113,8 +113,8 @@ func (suite *HandleMapSuite) TestHandleFlags() {
 func (suite *HandleMapSuite) TestHandleMap() {
 	h := NewHandle("abc")
 	suite.assert.NotNil(h)
-	suite.assert.Equal(h.ID, InvalidHandleID)
-	suite.assert.Equal(h.Path, "abc")
+	suite.assert.Equal(InvalidHandleID, h.ID)
+	suite.assert.Equal("abc", h.Path)
 
 	hmap := GetHandles()
 	suite.assert.NotNil(hmap)

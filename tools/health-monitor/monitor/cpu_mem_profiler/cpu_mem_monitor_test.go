@@ -67,7 +67,7 @@ func (suite *cpuMemMonitorTestSuite) TestGetCpuMemoryUsage() {
 
 	c, err := cm.getCpuMemoryUsage()
 	suite.assert.NotNil(c)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *cpuMemMonitorTestSuite) TestGetCpuMemoryUsageFailure() {
@@ -79,7 +79,7 @@ func (suite *cpuMemMonitorTestSuite) TestGetCpuMemoryUsageFailure() {
 
 	c, err := cm.getCpuMemoryUsage()
 	suite.assert.Nil(c)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func TestCpuMemMonitor(t *testing.T) {
