@@ -153,6 +153,7 @@ const (
 
 const (
 	DcacheDeletingFileNameSuffix = ".dcache.deleting"
+	DummyWriteFileName           = ".dummy.write"
 	//
 	// Chunk index used for the metadata chunk is the following special value.
 	// This value is chosen to be very large so that it does not conflict with an actual data chunk index.

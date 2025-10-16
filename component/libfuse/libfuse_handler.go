@@ -1047,6 +1047,42 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	return C.int(bytesRead)
 }
 
+// Dummy write generator for generating lots of writes for testing.
+// It must be triggered when a special file is written to.
+func dummyWriteGen(options *internal.WriteFileOptions) C.int {
+	// Write 100GB of data in 1MB chunks.
+	bytesToWrite := int64(100 * 1024 * 1024 * 1024)
+	handle := options.Handle
+	offset := int64(0)
+	size := 1048576
+	data := make([]byte, size) // 1MB buffer
+
+	log.Warn("dummyWriteGen: Writing %d bytes to dummy file %s in %d sized writes", bytesToWrite, handle.Path, size)
+
+	for bytesToWrite > 0 {
+		bytesWritten, err := fuseFS.NextComponent().WriteFile(
+			&internal.WriteFileOptions{
+				Handle:   handle,
+				Offset:   int64(offset),
+				Data:     data[:size],
+				Metadata: nil,
+			})
+
+		if err != nil {
+			log.Err("dummyWriteGen: error writing to dummy file %s, handle: %d [%s]",
+				handle.Path, handle.ID, err.Error())
+			return -C.EIO
+		}
+
+		offset += int64(bytesWritten)
+		bytesToWrite -= int64(bytesWritten)
+	}
+
+	log.Warn("dummyWriteGen: Successfully wrote %d bytes to dummy file %s", bytesToWrite, handle.Path)
+
+	return 0
+}
+
 // libfuse_write writes data to an open file
 //
 //export libfuse_write
@@ -1057,6 +1093,26 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	offset := uint64(off)
 	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
 	common.Assert(len(data) == int(size), len(data), size, handle.Path, handle.ID)
+
+	//
+	// TODO: Remove this code once tested on various sized clusters.
+	//
+	if handle.IsDummyWrite() {
+		ret := dummyWriteGen(
+			&internal.WriteFileOptions{
+				Handle:   handle,
+				Offset:   int64(offset),
+				Data:     data,
+				Metadata: nil,
+			})
+
+		if ret < 0 {
+			return ret
+		}
+
+		// Pretend we wrote all requested data.
+		return C.int(size)
+	}
 
 	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
