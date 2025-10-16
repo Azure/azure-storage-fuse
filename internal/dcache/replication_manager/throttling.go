@@ -52,8 +52,8 @@ const (
 	// Note: This is a static limit to avoid using a global lock.
 	staticMaxRVs = 10000
 
-	// We should not keep more than this many requests in flight to an MV.
-	maxCwnd = 16
+	// We should not keep more than these many chunks in flight to an MV.
+	maxCwnd = 8
 
 	// Set to true to disable congestion control and send as many requests as needed to MVs.
 	// Sending uncontrolled requests to an MV can hurt cluster performance, to be used only for testing.
@@ -114,7 +114,7 @@ func initCongInfo() {
 		// This cannot be 0, since we need at least one PutChunkDC request to query/gauge the MV's
 		// congestion status.
 		//
-		mvCnginfo[i].cwnd.Store(8)
+		mvCnginfo[i].cwnd.Store(2)
 		mvCnginfo[i].mvName = fmt.Sprintf("mv%d", i)
 		mvCnginfo[i].minRTT.Store(int64(time.Hour)) // Large initial value.
 	}

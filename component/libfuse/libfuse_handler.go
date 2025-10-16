@@ -1052,33 +1052,37 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 func dummyWriteGen(options *internal.WriteFileOptions) C.int {
 	// Write 100GB of data in 1MB chunks.
 	bytesToWrite := int64(100 * 1024 * 1024 * 1024)
+	totalBytesWritten := int64(0)
 	handle := options.Handle
 	offset := int64(0)
 	size := 1048576
 	data := make([]byte, size) // 1MB buffer
 
-	log.Warn("dummyWriteGen: Writing %d bytes to dummy file %s in %d sized writes", bytesToWrite, handle.Path, size)
+	log.Warn("dummyWriteGen: Writing %d bytes to dummy file %s in %d sized writes",
+		bytesToWrite, handle.Path, size)
 
 	for bytesToWrite > 0 {
 		bytesWritten, err := fuseFS.NextComponent().WriteFile(
 			&internal.WriteFileOptions{
 				Handle:   handle,
 				Offset:   int64(offset),
-				Data:     data[:size],
+				Data:     data,
 				Metadata: nil,
 			})
 
 		if err != nil {
-			log.Err("dummyWriteGen: error writing to dummy file %s, handle: %d [%s]",
-				handle.Path, handle.ID, err.Error())
+			log.Err("dummyWriteGen: error writing to dummy file %s, handle: %d [%v]",
+				handle.Path, handle.ID, err)
 			return -C.EIO
 		}
 
 		offset += int64(bytesWritten)
 		bytesToWrite -= int64(bytesWritten)
+		totalBytesWritten += int64(bytesWritten)
 	}
 
-	log.Warn("dummyWriteGen: Successfully wrote %d bytes to dummy file %s", bytesToWrite, handle.Path)
+	log.Warn("dummyWriteGen: Successfully wrote %d bytes to dummy file %s",
+		totalBytesWritten, handle.Path)
 
 	return 0
 }
