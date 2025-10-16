@@ -329,8 +329,10 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 		// Instead of wasting n/w resources for sending writes to an MV that's loaded, we'd rather
 		// send requests to other less loaded MVs and make better use of cluster n/w bandwidth.
 		//
-		if mvci.cwnd.Add(mvci.cwnd.Load()) > maxCwnd {
+		if mvci.cwnd.Load()*2 > maxCwnd {
 			mvci.cwnd.Store(maxCwnd)
+		} else {
+			mvci.cwnd.Store(mvci.cwnd.Load() * 2)
 		}
 
 		if debugCongestionControl {
@@ -365,8 +367,10 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 		// We need to be conservative here as multiple nodes may be writing to the same MV/RV
 		// and that can cause the queue to build up rapidly.
 		//
-		newCwnd := max(mvci.cwnd.Load()/2, 1)
-		mvci.cwnd.Store(newCwnd)
+		mvci.cwnd.Store(mvci.cwnd.Load() / 2)
+		if mvci.cwnd.Load() == 0 {
+			drainInflight = true
+		}
 
 		if debugCongestionControl {
 			log.Info("CWND[8]: %s, chunkIdx: %d, estQSize: %d, inflight: %d, cwnd: %d",
@@ -388,7 +392,7 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 			//
 			// Wait for an additional time proportional to the excess qsize.
 			// Idea is to wait long enough for half the queue to drain, but not more than 5 secs.
-			// We assume each request takes about 4msec to complete.
+			// We assume each request takes about chunkMSecAvg msec to complete.
 			//
 			waitMsec = min(int64((estQSize*chunkMSecAvg)/2), 5000)
 		}
