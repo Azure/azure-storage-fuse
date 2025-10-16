@@ -44,12 +44,18 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 )
 
 // CollectAllNodeLogs downloads log tarballs from every node in the current cluster into outDir.
 // Returns map[nodeID]pathToTar and errors aggregated if some nodes fail.
-func CollectAllNodeLogs(outDir string, chunkSize int64) (map[string]string, error) {
-	log.Debug("CollectAllNodeLogs: Starting logs download in %s with chunk size of %d", outDir, chunkSize)
+func CollectAllNodeLogs(outDir string, numLogs int64) (map[string]string, error) {
+	// Chunk size fixed to 16MB.
+	const chunkSize = rpc.MaxLogChunkSize
+	common.Assert(numLogs > 0, numLogs)
+
+	log.Debug("CollectAllNodeLogs: Starting %d logs per node download in %s with chunk size of %d",
+		numLogs, outDir, chunkSize)
 
 	// Create the output directory
 	err := os.MkdirAll(outDir, 0777)
@@ -73,7 +79,7 @@ func CollectAllNodeLogs(outDir string, chunkSize int64) (map[string]string, erro
 			defer wg.Done()
 			for nodeID := range jobs {
 				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				path, err := GetLogs(ctx, nodeID, outDir, chunkSize)
+				path, err := GetLogs(ctx, nodeID, outDir, numLogs, chunkSize)
 				cancel()
 
 				if err != nil {

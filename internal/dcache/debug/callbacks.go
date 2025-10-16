@@ -37,13 +37,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
-	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -95,49 +95,23 @@ func readStatsCallback(pFile *procFile) error {
 
 // proc file: logs
 // On first open, it triggers collection of logs from all nodes via RPC and returns a JSON summary.
-// Large tarballs are stored on disk. This file only returns metadata mapping of node IDs to log tarball paths.
+// Tarballs are stored on disk. This file only returns metadata mapping of node IDs to log tarball paths.
+//
+// By default, we use the default work dir for storing the collected logs and
+// we also collect only the most recent log file from each node by default.
+//
+// If users want to specify a different directory or number of logs, they can use the
+// fs=debug/logs file with a write call to specify those parameters.
+//
+// For example, to collect atmost 4 recent logs into /tmp/logs:
+//
+// echo '{"output_dir": "/tmp/logs", "number_of_logs": 4}' > /<mnt_path>/fs=debug/logs
+//
+// This will store the logs in /tmp/logs and will fetch 4 most recent logs from each node.
 func readLogsCallback(pFile *procFile) error {
-	// Use default work dir for storing collected logs.
-	outDir := filepath.Join(common.DefaultWorkDir, fmt.Sprintf("cluster-logs-%d", time.Now().Unix()))
-
-	// Chunk size fixed to 16MB.
-	const chunkSize = int64(16 * 1024 * 1024)
-
-	start := time.Now()
-
-	logFiles, err := rpc_client.CollectAllNodeLogs(outDir, chunkSize)
-	if err != nil {
-		log.Err("DebugFS::readLogsCallback: collection completed with errors: %v", err)
-	}
-
-	// Build response struct.
-	type logsResp struct {
-		OutputDir   string            `json:"output_dir"`
-		Files       map[string]string `json:"files"`
-		Collected   int               `json:"collected"`
-		DurationSec float64           `json:"duration_sec"`
-		Error       string            `json:"error,omitempty"`
-	}
-
-	lr := &logsResp{
-		OutputDir:   outDir,
-		Files:       logFiles,
-		Collected:   len(logFiles),
-		DurationSec: time.Since(start).Seconds(),
-	}
-
-	if err != nil {
-		lr.Error = err.Error()
-	}
-
-	var err1 error
-	pFile.buf, err1 = json.MarshalIndent(lr, "", "  ")
-	if err1 != nil {
-		log.Err("DebugFS::readLogsCallback: err: %v", err1)
-		common.Assert(false, err1)
-	}
-
-	return nil
+	timestamp := strings.Replace(time.Now().UTC().Format(time.RFC3339), ":", "-", -1)
+	outDir := filepath.Join(common.DefaultWorkDir, fmt.Sprintf("cluster-logs-%s", timestamp))
+	return collectLogs(pFile, outDir, 1 /* numLogs */)
 }
 
 // Silence unused import errors for release builds.

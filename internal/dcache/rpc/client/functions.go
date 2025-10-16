@@ -1298,8 +1298,9 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 
 // GetLogs fetches log tarball from target node and writes it to <outDir>/<tarName>.
 // Returns full path to the written file.
-func GetLogs(ctx context.Context, targetNodeID, outDir string, chunkSize int64) (*string, error) {
+func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSize int64) (*string, error) {
 	common.Assert(chunkSize > 0 && chunkSize <= rpc.MaxLogChunkSize, chunkSize)
+	common.Assert(numLogs > 0, numLogs, numLogs)
 
 	var outPath string
 	var fh *os.File
@@ -1309,13 +1310,15 @@ func GetLogs(ctx context.Context, targetNodeID, outDir string, chunkSize int64) 
 		}
 	}()
 
+	req := &models.GetLogsRequest{
+		SenderNodeID: myNodeId,
+		NumLogs:      numLogs,
+		ChunkSize:    chunkSize,
+	}
+
 	for chunkIndex := int64(0); ; chunkIndex++ {
-		req := &models.GetLogsRequest{
-			SenderNodeID: myNodeId,
-			ChunkIndex:   chunkIndex,
-			ChunkSize:    chunkSize,
-			Reset:        chunkIndex == 0, // Create new log tarball for first request
-		}
+		// Update chunk index in the request.
+		req.ChunkIndex = chunkIndex
 
 		reqStr := req.String()
 		log.Debug("rpc_client::GetLogs: Sending GetLogs request to node %s: %s", targetNodeID, reqStr)

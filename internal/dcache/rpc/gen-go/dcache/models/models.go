@@ -5880,13 +5880,13 @@ func (p *GetMVSizeResponse) Validate() error {
 // Attributes:
 //   - SenderNodeID
 //   - ChunkIndex
+//   - NumLogs
 //   - ChunkSize
-//   - Reset
 type GetLogsRequest struct {
 	SenderNodeID string `thrift:"senderNodeID,1" db:"senderNodeID" json:"senderNodeID"`
 	ChunkIndex   int64  `thrift:"chunkIndex,2" db:"chunkIndex" json:"chunkIndex"`
-	ChunkSize    int64  `thrift:"chunkSize,3" db:"chunkSize" json:"chunkSize"`
-	Reset        bool   `thrift:"reset,4" db:"reset" json:"reset"`
+	NumLogs      int64  `thrift:"numLogs,3" db:"numLogs" json:"numLogs"`
+	ChunkSize    int64  `thrift:"chunkSize,4" db:"chunkSize" json:"chunkSize"`
 }
 
 func NewGetLogsRequest() *GetLogsRequest {
@@ -5901,12 +5901,12 @@ func (p *GetLogsRequest) GetChunkIndex() int64 {
 	return p.ChunkIndex
 }
 
-func (p *GetLogsRequest) GetChunkSize() int64 {
-	return p.ChunkSize
+func (p *GetLogsRequest) GetNumLogs() int64 {
+	return p.NumLogs
 }
 
-func (p *GetLogsRequest) GetReset() bool {
-	return p.Reset
+func (p *GetLogsRequest) GetChunkSize() int64 {
+	return p.ChunkSize
 }
 func (p *GetLogsRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -5953,7 +5953,7 @@ func (p *GetLogsRequest) Read(ctx context.Context, iprot thrift.TProtocol) error
 				}
 			}
 		case 4:
-			if fieldTypeId == thrift.BOOL {
+			if fieldTypeId == thrift.I64 {
 				if err := p.ReadField4(ctx, iprot); err != nil {
 					return err
 				}
@@ -5999,16 +5999,16 @@ func (p *GetLogsRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol)
 	if v, err := iprot.ReadI64(ctx); err != nil {
 		return thrift.PrependError("error reading field 3: ", err)
 	} else {
-		p.ChunkSize = v
+		p.NumLogs = v
 	}
 	return nil
 }
 
 func (p *GetLogsRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
-	if v, err := iprot.ReadBool(ctx); err != nil {
+	if v, err := iprot.ReadI64(ctx); err != nil {
 		return thrift.PrependError("error reading field 4: ", err)
 	} else {
-		p.Reset = v
+		p.ChunkSize = v
 	}
 	return nil
 }
@@ -6067,27 +6067,27 @@ func (p *GetLogsRequest) writeField2(ctx context.Context, oprot thrift.TProtocol
 }
 
 func (p *GetLogsRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "chunkSize", thrift.I64, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:chunkSize: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "numLogs", thrift.I64, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:numLogs: ", p), err)
 	}
-	if err := oprot.WriteI64(ctx, int64(p.ChunkSize)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.chunkSize (3) field write error: ", p), err)
+	if err := oprot.WriteI64(ctx, int64(p.NumLogs)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.numLogs (3) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:chunkSize: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:numLogs: ", p), err)
 	}
 	return err
 }
 
 func (p *GetLogsRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "reset", thrift.BOOL, 4); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:reset: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "chunkSize", thrift.I64, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:chunkSize: ", p), err)
 	}
-	if err := oprot.WriteBool(ctx, bool(p.Reset)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.reset (4) field write error: ", p), err)
+	if err := oprot.WriteI64(ctx, int64(p.ChunkSize)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.chunkSize (4) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:reset: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:chunkSize: ", p), err)
 	}
 	return err
 }
@@ -6104,10 +6104,10 @@ func (p *GetLogsRequest) Equals(other *GetLogsRequest) bool {
 	if p.ChunkIndex != other.ChunkIndex {
 		return false
 	}
-	if p.ChunkSize != other.ChunkSize {
+	if p.NumLogs != other.NumLogs {
 		return false
 	}
-	if p.Reset != other.Reset {
+	if p.ChunkSize != other.ChunkSize {
 		return false
 	}
 	return true

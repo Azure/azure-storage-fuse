@@ -53,10 +53,11 @@ func (suite *handlerTestSuite) SetupTest() {
 
 func (suite *handlerTestSuite) TestCreateLogTar() {
 	logFilePath := common.ExpandPath("$HOME/.blobfuse2/blobfuse2.log") // update this path to where log file is located
+	logFilePath = "/home/sourav/go/src/azure-storage-fuse/blobfuse2.log"
 	config.Set("logging.file-path", logFilePath)
 
 	h := &ChunkServiceHandler{}
-	err := h.createLogTarLocked(true)
+	err := h.createLogTarLocked(4)
 	suite.assert.Nil(err)
 }
 
