@@ -225,9 +225,6 @@ func WriteFile(options *internal.WriteFileOptions) (int, error) {
 
 	pFile := options.Handle.IFObj.(*procFile)
 	common.Assert(atomic.LoadInt32(&pFile.openCnt) > 0)
-	if options.Offset >= int64(len(pFile.buf)) {
-		return 0, io.EOF
-	}
 
 	err := collectLogs(pFile, req.OutputDir, req.NumLogs)
 	if err != nil {
