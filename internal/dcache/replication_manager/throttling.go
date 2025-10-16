@@ -53,7 +53,7 @@ const (
 	staticMaxRVs = 10000
 
 	// We should not keep more than these many chunks in flight to an MV.
-	maxCwnd = 8
+	maxCwnd = 16
 
 	// Set to true to disable congestion control and send as many requests as needed to MVs.
 	// Sending uncontrolled requests to an MV can hurt cluster performance, to be used only for testing.
