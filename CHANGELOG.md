@@ -1,4 +1,7 @@
-## 2.5.1 (Unreleased)
+## 2.5.2 (Unreleased)
+**Bug Fixes**
+
+## 2.5.1 (2025-10-15)
 **Bug Fixes**
 - Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call. ([PR #1870](https://github.com/Azure/azure-storage-fuse/pull/1870))
 - Mount will fail if FNS account is mounted as HNS account. ([PR #1925](https://github.com/Azure/azure-storage-fuse/pull/1925))
