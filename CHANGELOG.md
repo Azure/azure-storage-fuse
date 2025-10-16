@@ -1,8 +1,15 @@
-## 2.5.1 (Unreleased)
+## 2.5.2 (Unreleased)
 **Bug Fixes**
-- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
-- Mount will fail if FNS account is mounted as HNS account.
-- Redirect Stack trace to log file (WORK_DIR/mount_path.pid.trace) instead of console in case of panic for better debuggability.
+
+## 2.5.1 (2025-10-15)
+**Bug Fixes**
+- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call. ([PR #1870](https://github.com/Azure/azure-storage-fuse/pull/1870))
+- Mount will fail if FNS account is mounted as HNS account. ([PR #1925](https://github.com/Azure/azure-storage-fuse/pull/1925))
+- Redirect Stack trace to log file (WORK_DIR/mount_path.pid.trace) instead of console in case of panic for better debuggability. ([PR #1939](https://github.com/Azure/azure-storage-fuse/pull/1939))
+- Truncating the file in file_cache resulting in OOM panic by go-runtime in some scenarios. ([PR #2003](https://github.com/Azure/azure-storage-fuse/pull/2003))
+- Open file error(No BlockList error) in block_cache when file is truncated before to less than 256MiB. ([PR #2003](https://github.com/Azure/azure-storage-fuse/pull/2003)) ([GH Issue #1951](https://github.com/Azure/azure-storage-fuse/issues/1951))
+- Prevent reusing the same block ID in truncate operation which could lead to issues. ([PR #2003](https://github.com/Azure/azure-storage-fuse/pull/2003))
+
 
 ## 2.5.0 (2025-07-17)
 **Bug Fixes**
