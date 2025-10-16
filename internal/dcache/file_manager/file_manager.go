@@ -138,7 +138,7 @@ func NewFileIOManager() error {
 	maxUnackedWindow := int(16384 / cm.GetCacheConfig().ChunkSizeMB)
 	maxUnackedWindow = max(maxUnackedWindow, int(cm.GetCacheConfig().StripeWidth)*1)
 	maxUnackedWindow = min(maxUnackedWindow, int(cm.GetCacheConfig().StripeWidth)*4)
-	maxUnackedWindow = 2048
+	maxUnackedWindow = 4096
 
 	//
 	// We set maxUnackedWindow to twice the stripe width in order to allow good parallelism while at
