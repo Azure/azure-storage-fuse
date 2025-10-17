@@ -669,7 +669,7 @@ loop:
 	chunk.RefCount.Store(1)
 
 	if time.Since(startTime) > time.Second {
-		log.Warn("[SLOW] DistributedCache[FM]::NewStagedChunk: NewStagedChunk for chunkIdx: %d, file: %+v, took %s, count:%d, ucount:%d",
+		log.Warn("[SLOW] DistributedCache[FM]::NewStagedChunk: NewStagedChunk for chunkIdx: %d, file: %s, took %s, count:%d, ucount:%d",
 			idx, file.FileMetadata.Filename, time.Since(startTime), count, ucount)
 	}
 

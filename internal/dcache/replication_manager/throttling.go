@@ -230,6 +230,7 @@ func (mvci *mvCongInfo) admit() {
 			log.Info("CWND[2]: %s, estQSize: %d, inflight: %d, cwnd: %d, admitting: %d, waited for %d ms!",
 				mvci.mvName, mvci.estQSize.Load(), inflightCount, mvci.cwnd.Load(),
 				mvci.admitting.Load(), waitLoop)
+
 			mvci.admitting.Add(-1)
 			return
 		}
@@ -391,6 +392,7 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 		// 60% to 80% of maxQsizeGoal, RV is getting "hot", start slowing down more aggressively.
 		// We need to be conservative here as multiple nodes may be writing to the same MV/RV
 		// and that can cause the queue to build up rapidly.
+		// cwnd can become 0 here.
 		//
 		mvci.cwnd.Store(mvci.cwnd.Load() / 2)
 

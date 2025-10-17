@@ -404,14 +404,13 @@ func (t *ContiguityTracker) GetUnackedWindow() int64 {
 		time.Since(time.Unix(0, t.uwChangedAt.Load())) > 30*time.Second {
 		// If not changed for 30s, log a slow warning, and if not changed for 5min, panic and restart
 		err := fmt.Errorf("Unacked window stuck for %s, uw: %d, maxUploadedIdx: %d, lastContiguous: %d, maxIssuedIdx: %d, file: %+v",
-			common.GetDebugHostname(),
 			time.Since(time.Unix(0, t.uwChangedAt.Load())),
 			uw, t.maxUploadedIdx, t.lastContiguous, t.maxIssuedIdx, *t.file.FileMetadata)
 
 		log.Warn("[SLOW] %v", err)
 
 		if time.Since(time.Unix(0, t.uwChangedAt.Load())) > 300*time.Second {
-			log.GetLoggerObj().Panicf("[%s][BUG] %v", err)
+			log.GetLoggerObj().Panicf("[%s][BUG] %v", common.GetDebugHostname(), err)
 		}
 	}
 

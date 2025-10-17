@@ -1578,10 +1578,10 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 			if schedGap > file.ut.slowGapThresh {
 				file.ut.slowScheduled.Add(1)
 				if schedGap > file.ut.slowGapThresh*2 {
-					log.Warn("[SLOW] DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, schedGap: %s, slowScheduled: %d (of %d), cumScheduled: %d (in %s)",
+					log.Warn("[SLOW] DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, schedGap: %s, slowScheduled: %d (of %d in total %s)",
 						file.FileMetadata.Filename, chunk.Idx, schedGap,
 						file.ut.slowScheduled.Load(), file.ut.cumScheduled.Load(),
-						file.ut.cumScheduled.Load(), time.Since(time.Unix(0, file.ut.firstScheduledAt.Load())))
+						time.Since(time.Unix(0, file.ut.firstScheduledAt.Load())))
 				}
 			}
 		}

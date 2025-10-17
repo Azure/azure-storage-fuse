@@ -64,6 +64,9 @@ type workerPool struct {
 // Used for debugging slow throughput issues which could be due to:
 // - Application not writing fast enough (lastScheduledAt is old).
 // - Uploads not completing fast enough (lastCompletedAt is old).
+//
+// TODO: This can be removed once we are satisfied that upload performance is good.
+
 type uploadTracker struct {
 	slowGapThresh     time.Duration // Gap more than this between schedule/uploads is considered slow.
 	scheduledUploads  atomic.Int64  // Number of uploads scheduled but not yet started.
@@ -232,6 +235,7 @@ func (wp *workerPool) writeChunk(task *task) {
 	common.Assert(task.chunk.Len > 0 && task.chunk.Len <= int64(len(task.chunk.Buf)),
 		task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Len, len(task.chunk.Buf))
 
+	// writeChunk() is called only after scheduling the chunk for upload.
 	common.Assert(task.file.ut.scheduledUploads.Load() > 0)
 	task.file.ut.scheduledUploads.Add(-1)
 	task.file.ut.uploadsInProgress.Add(1)
@@ -254,15 +258,15 @@ func (wp *workerPool) writeChunk(task *task) {
 	common.Assert(task.file.ut.uploadsInProgress.Load() > 0)
 	task.file.ut.uploadsInProgress.Add(-1)
 	task.file.ut.cumCompleted.Add(1)
+
 	if task.file.ut.lastCompletedAt.Load() != 0 {
 		compGap := time.Since(time.Unix(0, task.file.ut.lastCompletedAt.Load()))
 		if compGap > task.file.ut.slowGapThresh {
 			task.file.ut.slowCompleted.Add(1)
 			if compGap > task.file.ut.slowGapThresh*2 {
-				log.Warn("[SLOW] DistributedCache::writeChunk: task.file: %s, chunkIdx: %d, compGap: %s, slowCompleted: %d (of %d), cumCompleted: %d (in %s)",
+				log.Warn("[SLOW] DistributedCache::writeChunk: task.file: %s, chunkIdx: %d, compGap: %s, slowCompleted: %d (of %d in total %s)",
 					task.file.FileMetadata.Filename, task.chunk.Idx, compGap,
 					task.file.ut.slowCompleted.Load(), task.file.ut.cumCompleted.Load(),
-					task.file.ut.cumCompleted.Load(),
 					time.Since(time.Unix(0, task.file.ut.firstScheduledAt.Load())))
 			}
 		}
