@@ -254,14 +254,7 @@ type DcacheFile struct {
 	// can be used to update the file open count on close.
 	attr *internal.ObjAttr
 
-	// If this file is being used for reading warmup data, this points to the corresponding file
-	// which is being used for writing the warmup data. This is only valid for the read handle which is
-	// reading warmup data, nil otherwise.
-	WarmupFile *DcacheFile
-
-	// The azure handle must be closed when the file is scheduled for warmup. If the user closes the file before
-	// warmup is complete, we must close the azure handle only after warmup is complete.
-	CloseOnWarmupComplete atomic.Bool
+	WarmupFileInfo *WarmupFileInfo
 }
 
 // Get the write error encountered during file writes, if any.
@@ -301,7 +294,10 @@ func (file *DcacheFile) initFreeChunks(maxChunks int) {
 }
 
 func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *[]byte) (bytesRead int, err error) {
-	warmupFile := file.WarmupFile
+	var warmupFile *DcacheFile
+	if file.WarmupFileInfo != nil {
+		warmupFile = file.WarmupFileInfo.WarmupFile
+	}
 	log.Debug("DistributedCache::ReadPartialFile: file: %s, nextReadOffset: %d, offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
@@ -940,7 +936,7 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	// Decrement the file open count if safeDeletes is enabled and handle corresponds to a file opened for
 	// reading.
 	//
-	if fileIOMgr.safeDeletes && isReadOnlyHandle && file.WarmupFile == nil {
+	if fileIOMgr.safeDeletes && isReadOnlyHandle && file.WarmupFileInfo == nil {
 		// attr must have been saved when file was opened for read.
 		common.Assert(file.attr != nil, file.FileMetadata)
 

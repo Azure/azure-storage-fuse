@@ -73,3 +73,34 @@ type StagedChunk struct {
 	//
 	AllocatedAt time.Time
 }
+
+// This struct is used by the read handle to get the current warmed up chunk info in manual warmup mode.
+type CurWarmChunkReadReq struct {
+	ChunkIdx      int64  // Index of the chunk.
+	OffsetInChunk int64  // Offset within the chunk where user is interested.
+	LenInterested int64  // Length of data that user is interested in within this chunk.
+	Buf           []byte // Buffer to receive the chunk data.
+
+	BytesReadResp int64      // Number of bytes read in this chunk.
+	ErrorResp     chan error // Error channel to receive any error occurred during chunk read.
+}
+
+type WarmupFileInfo struct {
+	// If this file is being used for reading warmup data, this points to the corresponding file
+	// which is being used for writing the warmup data. This is only valid for the read handle which is
+	// reading warmup data, nil otherwise.
+	WarmupFile *DcacheFile
+
+	// The azure handle must be closed when the file is scheduled for warmup. If the user closes the file before
+	// warmup is complete, we must close the azure handle only after warmup is complete.
+	CloseOnWarmupComplete atomic.Bool
+
+	// To prevent Read throughput of the read handle who triggerd the warmup from being affected due to the warmup Reads,
+	// We kind of put a ratelimiting where user application read will trigger the warmup to read and write the data.
+	// If the application doesn't start read or not reading sequentially, we will fall back to automatic mode where we
+	// will read and write the data as fast as possible.
+	CurWarmChunkIdx atomic.Int64
+
+	// User Application Read Requests that are waiting for the warmed up chunk data in manual warmup mode.
+	CurWarmChunkReadRequests chan *CurWarmChunkReadReq
+}
