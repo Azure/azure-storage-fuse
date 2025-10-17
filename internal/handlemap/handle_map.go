@@ -211,3 +211,12 @@ func Store(key HandleID, path string, _ uintptr) *Handle {
 	defaultHandleMap.Store(key, handle)
 	return handle
 }
+
+// LoadAndDelete : Remove handle object from map, and return the entry (if any)
+func LoadAndDelete(key HandleID) (*Handle, bool) {
+	val, found := defaultHandleMap.LoadAndDelete(key)
+	if !found {
+		return nil, false
+	}
+	return val.(*Handle), true
+}
