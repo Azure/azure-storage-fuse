@@ -59,6 +59,7 @@ func TryWarmup(handle *handlemap.Handle,
 	readDcFile.WarmupFileInfo = &fm.WarmupFileInfo{
 		WarmupFile:               warmDcFile,
 		CurWarmChunkReadRequests: make(chan *fm.CurWarmChunkReadReq, 100),
+		DoneCh:                   make(chan struct{}),
 	}
 
 	// Start a go routine to warmup the file from Azure to Dcache.
@@ -78,11 +79,7 @@ func TryWarmup(handle *handlemap.Handle,
 			}
 
 			if !chanClosed {
-				close(readDcFile.WarmupFileInfo.CurWarmChunkReadRequests)
-				// Empty the channel for the ones who are waiting for their responses.
-				for req := range readDcFile.WarmupFileInfo.CurWarmChunkReadRequests {
-					req.ErrorResp <- ErrWarmupNotInManualMode
-				}
+				close(readDcFile.WarmupFileInfo.DoneCh)
 			}
 
 			inProgressWarmUpFilesMap.Delete(handle.Path)
@@ -104,20 +101,30 @@ func TryWarmup(handle *handlemap.Handle,
 				log.Info("DistributedCache::TryWarmup : Warmup read %d bytes for file : %s, offset : %d", bytesRead, handle.Path, i)
 			}
 
-			// Write the chunk to Dcache.
-			dcacheErr = warmDcFile.WriteFile(i, data[:bytesRead], false /* fromFuse */)
-			if dcacheErr != nil {
-				// If write on one media fails, then return err instantly
-				log.Err("DistributedCache::TryWarmup : Dcache File write Failed, offset : %d, file : %s",
-					i, handle.Path)
-				break
-			} else {
-				log.Info("DistributedCache::TryWarmup : Warmup wrote %d bytes for file : %s, offset : %d", bytesRead, handle.Path, i)
+			dcacheWrite := func() error {
+				// Write the chunk to Dcache.
+				err := warmDcFile.WriteFile(i, data[:bytesRead], false /* fromFuse */)
+				if err != nil {
+					// If write on one media fails, then return err instantly
+					log.Err("DistributedCache::TryWarmup : Dcache File write Failed, offset : %d, file : %s",
+						i, handle.Path)
+				} else {
+					log.Info("DistributedCache::TryWarmup : Warmup wrote %d bytes for file : %s, offset : %d", bytesRead, handle.Path, i)
+				}
+				return err
 			}
+
+			// Write to Dcache using parallel writer.
+			writeErrChan := pw.EnqueuDcacheWrite(dcacheWrite)
 
 			// We start the with manual warmup mode. So, we wait for the chunk to be consumed before reading next chunk.
 			// else we just continue reading next chunk. and fall back to slow path.
 			if atomaticWarmup {
+				// In atomatic warmup mode, we don't wait for the chunk to be consumed.
+				dcacheErr = <-writeErrChan
+				if dcacheErr != nil {
+					break
+				}
 				continue
 			}
 
@@ -151,16 +158,18 @@ func TryWarmup(handle *handlemap.Handle,
 
 				case <-clientChunkReadTimeout:
 					log.Info("DistributedCache::TryWarmup : Changing mode from MANUAL->ATOMATIC, file : %s", handle.Path)
-					close(readDcFile.WarmupFileInfo.CurWarmChunkReadRequests)
-					// Empty the channel for the ones who are waiting for their responses.
-					for req := range readDcFile.WarmupFileInfo.CurWarmChunkReadRequests {
-						req.ErrorResp <- ErrWarmupNotInManualMode
-					}
+					close(readDcFile.WarmupFileInfo.DoneCh)
 					atomaticWarmup = true
 					chanClosed = true
 					break loop
 				}
 
+			}
+
+			// Get the status of Dcache write.
+			dcacheErr = <-writeErrChan
+			if dcacheErr != nil {
+				break
 			}
 
 		}
@@ -231,14 +240,20 @@ func TryReadFromCurWarmedUpChunk(dcFile *fm.DcacheFile, offset int64, buf []byte
 		log.Info("DistributedCache::TryReadFromCurWarmedUpChunk : Sent request to read from warmup chunkIdx : %d, offset : %d, lenInterested : %d",
 			req.ChunkIdx, offset, req.LenInterested)
 		// Request sent successfully.
-		err := <-req.ErrorResp
-		if err != nil {
-			log.Err("DistributedCache::TryReadFromCurWarmedUpChunk : Failed to read from warmup chunk, err : %v", err)
+		select {
+		case err := <-req.ErrorResp:
+			if err != nil {
+				log.Err("DistributedCache::TryReadFromCurWarmedUpChunk : Failed to read from warmup chunk, err : %v", err)
+				return false, 0
+			}
+			return true, req.BytesReadResp
+		case <-dcFile.WarmupFileInfo.DoneCh:
+			// Warmup is in atomatic mode.
 			return false, 0
+
 		}
-		return true, req.BytesReadResp
-	default:
-		// Warmup is in atomatic mode or we are unable to send request, that is fine move it to slow path.
+	case <-dcFile.WarmupFileInfo.DoneCh:
+		// Warmup is in atomatic mode.
 		return false, 0
 	}
 

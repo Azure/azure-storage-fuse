@@ -212,6 +212,8 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 
 	dc.pw = newParallelWriter()
 
+	agents.StartParallelWriter()
+
 	err = fm.NewFileIOManager()
 	if err != nil {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start fileio manager : %v]", err))
@@ -380,6 +382,7 @@ func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
 
 	dc.pw.destroyParallelWriter()
+	agents.DestroyParallelWriter()
 	fm.EndFileIOManager()
 	gc.End()
 	rm.Stop()
