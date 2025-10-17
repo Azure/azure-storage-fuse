@@ -450,6 +450,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 							if !msg.Closed {
 								msg.Err <- err
 								close(msg.Err)
+								msg.Closed = true
 							}
 						}
 					} else {
@@ -4785,7 +4786,10 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				msg.Err <- fmt.Errorf("%s/%s state change (<%s> -> %s) no longer valid",
 					rvName, mvName, currentState, rvNewState)
 				close(msg.Err)
-				msg.Err = nil
+
+				common.Assert(!msg.Closed, rvName, mvName, rvNewState)
+				msg.Closed = true
+
 				failureCount++
 				continue
 			} else {
