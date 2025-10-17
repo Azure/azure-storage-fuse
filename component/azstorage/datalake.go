@@ -409,17 +409,10 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		}
 	}
 
-	mode, err := getFileMode(*prop.Permissions)
-	if err != nil {
-		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
-		return blobAttr, err
-	}
-
 	blobAttr = &internal.ObjAttr{
 		Path:   name,
 		Name:   filepath.Base(name),
 		Size:   *prop.ContentLength,
-		Mode:   mode,
 		Mtime:  *prop.LastModified,
 		Atime:  *prop.LastModified,
 		Ctime:  *prop.LastModified,
@@ -427,6 +420,9 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		Flags:  internal.NewFileBitMap(),
 		ETag:   sanitizeEtag(prop.ETag),
 	}
+
+	// If user/group/mode are available in metadata than parse them after posix info so that they have higher precedence
+	parsePosixInfo(blobAttr, prop.Owner, prop.Group, prop.Permissions)
 	parseMetadata(blobAttr, prop.Metadata)
 
 	if *prop.ResourceType == "directory" {
@@ -550,25 +546,12 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("Datalake::ChangeMod : Change mode of file %s to %s", name, mode)
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 
-	/*
-		// If we need to call the ACL set api then we need to get older acl string here
-		// and create new string with the username included in the string
-		// Keeping this code here so in future if its required we can get the string and manipulate
-
-		currPerm, err := fileURL.getACL(context.Background())
-		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound {
-			return syscall.ENOENT
-		} else if err != nil {
-			log.Err("Datalake::ChangeMod : Failed to get mode of file %s [%s]", name, err.Error())
-			return err
-		}
-	*/
-
 	newPerm := getACLPermissions(mode)
-	_, err := fileClient.SetAccessControl(context.Background(), &file.SetAccessControlOptions{
+	opts := &file.SetAccessControlOptions{
 		Permissions: &newPerm,
-	})
+	}
+
+	_, err := fileClient.SetAccessControl(context.Background(), opts)
 	if err != nil {
 		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
 		e := storeDatalakeErrToErr(err)
@@ -586,28 +569,8 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 }
 
 // ChangeOwner : Change owner of a path
-func (dl *Datalake) ChangeOwner(name string, _ int, _ int) error {
-	log.Trace("Datalake::ChangeOwner : name %s", name)
-
-	if dl.Config.ignoreAccessModifiers {
-		// for operations like git clone where transaction fails if chown is not successful
-		// return success instead of ENOSYS
-		return nil
-	}
-
-	// TODO: This is not supported for now.
-	// fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
-	// group := strconv.Itoa(gid)
-	// owner := strconv.Itoa(uid)
-	// _, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{Group: group, Owner: owner})
-	// e := storeDatalakeErrToErr(err)
-	// if e == ErrFileNotFound {
-	// 	return syscall.ENOENT
-	// } else if err != nil {
-	// 	log.Err("Datalake::ChangeOwner : Failed to change ownership of file %s to %s [%s]", name, mode, err.Error())
-	// 	return err
-	// }
-	return syscall.ENOTSUP
+func (dl *Datalake) ChangeOwner(name string, uid int, gid int) error {
+	return dl.BlockBlob.ChangeOwner(name, uid, gid)
 }
 
 // GetCommittedBlockList : Get the list of committed blocks

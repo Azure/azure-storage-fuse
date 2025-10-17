@@ -512,6 +512,30 @@ func (suite *utilsTestSuite) TestRemovePrefixPath() {
 	}
 }
 
+func (s *utilsTestSuite) TestAddMetadata() {
+	assert := assert.New(s.T())
+
+	tests := []struct {
+		metadata map[string]*string
+		key      string
+		value    string
+		expected bool
+	}{
+		{metadata: map[string]*string{}, key: "key1", value: "value1", expected: true},
+		{metadata: map[string]*string{"key1": to.Ptr("value1")}, key: "key1", value: "value2", expected: true},
+		{metadata: map[string]*string{"Key1": to.Ptr("value1")}, key: "key1", value: "value1", expected: false},
+		{metadata: map[string]*string{}, key: "", value: "value1", expected: true},
+	}
+
+	for _, test := range tests {
+		result := AddMetadata(test.metadata, test.key, test.value)
+		assert.Equal(test.expected, result)
+		if test.expected {
+			assert.Equal(test.value, *test.metadata[test.key])
+		}
+	}
+}
+
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }

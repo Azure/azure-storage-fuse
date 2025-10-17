@@ -64,7 +64,9 @@ const (
 	PropFlagIsDir
 	PropFlagEmptyDir
 	PropFlagSymlink
-	PropFlagModeDefault // TODO: Does this sound better as ModeDefault or DefaultMode? The getter would be IsModeDefault or IsDefaultMode
+	PropFlagModeDefault
+	PropFlagOwnerInfoFound
+	PropFlagGroupInfoFound
 )
 
 // ObjAttr : Attributes of any file/directory
@@ -80,6 +82,8 @@ type ObjAttr struct {
 	Name     string             // base name of the path
 	MD5      []byte             // MD5 of the blob as per last GetAttr
 	ETag     string             // ETag of the blob as per last GetAttr
+	Owner    int                // Owner of the file
+	Group    int                // Group of the file
 	Metadata map[string]*string // extra information to preserve
 }
 
@@ -97,4 +101,14 @@ func (attr *ObjAttr) IsSymlink() bool {
 // This is set in any storage service that does not support chmod/chown.
 func (attr *ObjAttr) IsModeDefault() bool {
 	return attr.Flags.IsSet(PropFlagModeDefault)
+}
+
+// OwnerDetected :
+func (attr *ObjAttr) OwnerInfoFound() bool {
+	return attr.Flags.IsSet(PropFlagOwnerInfoFound)
+}
+
+// GroupDetected :
+func (attr *ObjAttr) GroupInfoFound() bool {
+	return attr.Flags.IsSet(PropFlagGroupInfoFound)
 }

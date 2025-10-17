@@ -47,6 +47,8 @@ const (
 	PropFlagSymlink
 	PropFlagMetadataRetrieved
 	PropFlagModeDefault
+	PropFlagOwnerInfoFound
+	PropFlagGroupInfoFound
 )
 
 // Type aliases for base component

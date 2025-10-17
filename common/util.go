@@ -523,6 +523,18 @@ func GetCRC64(data []byte, length int) []byte {
 	return checksumBytes
 }
 
+// ParseInt converts a *string to uint32
+func ParseInt(s string) int {
+	if s == "" {
+		return 0
+	}
+	val, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return int(val)
+}
+
 func GetMD5(fi *os.File) ([]byte, error) {
 	hasher := md5.New()
 	_, err := io.Copy(hasher, fi)

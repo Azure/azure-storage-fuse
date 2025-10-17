@@ -1,4 +1,7 @@
 ## 2.5.2 (Unreleased)
+**Features**
+- Added support for `chmod` and `chown` file system capabilities for FNS accounts, and `chown` capability for HNS accounts.
+
 **Bug Fixes**
 
 ## 2.5.1 (2025-10-15)
