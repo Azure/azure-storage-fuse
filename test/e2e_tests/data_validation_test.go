@@ -142,10 +142,88 @@ func (suite *dataValidationTestSuite) computeMD5(filePath string) []byte {
 	return hash.Sum(nil)
 }
 
-func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteFilePath string) {
+func (suite *dataValidationTestSuite) helperValidateFileContent(localFilePath string, remoteFilePath string) {
+	// check if file sizes are same
+	localFileInfo, err := os.Stat(localFilePath)
+	suite.NoError(err)
+	remoteFileInfo, err := os.Stat(remoteFilePath)
+	suite.NoError(err)
+	suite.Equal(localFileInfo.Size(), remoteFileInfo.Size())
+
 	localMD5sum := suite.computeMD5(localFilePath)
 	remoteMD5sum := suite.computeMD5(remoteFilePath)
 	suite.Equal(localMD5sum, remoteMD5sum)
+}
+
+func (suite *dataValidationTestSuite) helperCreateFile(localFilePath string, remoteFilePath string, size int64) {
+	buffer := make([]byte, 1*1024*1024)
+	rand.Read(buffer)
+
+	writeFile := func(file *os.File) {
+		originalSize := size
+		for originalSize > 0 {
+			bytesToWrite := min(int64(len(buffer)), originalSize)
+			n, err := file.Write(buffer[0:bytesToWrite])
+			suite.Equal(int(bytesToWrite), n)
+			ok := suite.NoError(err)
+			if !ok {
+				break
+			}
+			originalSize -= int64(n)
+		}
+	}
+
+	localFile, err := os.Create(localFilePath)
+	suite.NoError(err)
+	writeFile(localFile)
+	err = localFile.Close()
+	suite.NoError(err)
+
+	remoteFile, err := os.Create(remoteFilePath)
+	suite.NoError(err)
+	writeFile(remoteFile)
+	err = remoteFile.Close()
+	suite.NoError(err)
+}
+
+func (suite *dataValidationTestSuite) helperTruncateFile(localFilePath string, remoteFilePath string, size int64) {
+	srcFile, err := os.OpenFile(localFilePath, os.O_RDWR, 0666)
+	suite.NoError(err)
+	err = srcFile.Truncate(size)
+	suite.NoError(err)
+
+	dstFile, err := os.OpenFile(remoteFilePath, os.O_RDWR, 0666)
+	suite.NoError(err)
+	err = dstFile.Truncate(size)
+	suite.NoError(err)
+
+	err = srcFile.Close()
+	suite.NoError(err)
+	err = dstFile.Close()
+	suite.NoError(err)
+}
+
+func (suite *dataValidationTestSuite) helperWriteToFile(localFilePath string, remoteFilePath string, offset int64, size int) {
+	buffer := make([]byte, 1*1024*1024)
+
+	localFile, err := os.OpenFile(localFilePath, os.O_RDWR, 0666)
+	suite.NoError(err)
+
+	remoteFile, err := os.OpenFile(remoteFilePath, os.O_RDWR, 0666)
+	suite.NoError(err)
+
+	n, err := localFile.WriteAt(buffer[0:size], offset)
+	suite.Equal(size, n)
+	suite.NoError(err)
+
+	n, err = remoteFile.WriteAt(buffer[0:size], offset)
+	suite.Equal(size, n)
+	suite.NoError(err)
+
+	err = localFile.Close()
+	suite.NoError(err)
+	err = remoteFile.Close()
+	suite.NoError(err)
 }
 
 //----------------Utility Functions-----------------------
@@ -198,13 +276,6 @@ func writeSparseData(suite *dataValidationTestSuite, fh *os.File, offsets []int6
 
 		ind = (ind + 1) % 10
 	}
-}
-
-func min(x, y int) int {
-	if x < y {
-		return x
-	}
-	return y
 }
 
 // Creates the file with filePath and puts random data of size bytes
@@ -293,7 +364,7 @@ func (suite *dataValidationTestSuite) TestSmallFileData() {
 	// delete the cache directory
 	suite.dataValidationTestCleanup([]string{tObj.testCachePath})
 
-	suite.validateData(localFilePath, remoteFilePath)
+	suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -322,7 +393,7 @@ func (suite *dataValidationTestSuite) TestMediumFileData() {
 	// delete the cache directory
 	suite.dataValidationTestCleanup([]string{tObj.testCachePath})
 
-	suite.validateData(localFilePath, remoteFilePath)
+	suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -351,7 +422,7 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 	// delete the cache directory
 	suite.dataValidationTestCleanup([]string{tObj.testCachePath})
 
-	suite.validateData(localFilePath, remoteFilePath)
+	suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -426,7 +497,7 @@ func validateMultipleFilesData(jobs <-chan int, results chan<- string, fileSize 
 
 		suite.copyToMountDir(localFilePath, remoteFilePath)
 		suite.dataValidationTestCleanup([]string{tObj.testCachePath + "/" + fileName})
-		suite.validateData(localFilePath, remoteFilePath)
+		suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 		suite.dataValidationTestCleanup([]string{localFilePath, tObj.testCachePath + "/" + fileName})
 
@@ -516,7 +587,7 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
 	suite.NoError(err)
 	suite.Equal(165*int64(_1MB), fi.Size())
 
-	suite.validateData(localFilePath, remoteFilePath)
+	suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -539,7 +610,7 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
 	suite.NoError(err)
 	suite.Equal(171*int64(_1MB), fi.Size())
 
-	suite.validateData(localFilePath, remoteFilePath)
+	suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -594,7 +665,7 @@ func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 
 	closeFileHandles(suite, fh)
 
-	suite.validateData(localFilePath, remoteFilePath)
+	suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -639,7 +710,7 @@ func (suite *dataValidationTestSuite) TestFileReadBytesOneBlock() {
 
 	closeFileHandles(suite, fh)
 
-	suite.validateData(localFilePath, remoteFilePath)
+	suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -669,7 +740,7 @@ func (suite *dataValidationTestSuite) TestRandomWriteRaceCondition() {
 	suite.NoError(err)
 	suite.Equal(145*int64(_1MB), fi.Size())
 
-	suite.validateData(localFilePath, remoteFilePath)
+	suite.helperValidateFileContent(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }

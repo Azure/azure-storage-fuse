@@ -1233,7 +1233,7 @@ func (s *datalakeTestSuite) TestOpenFileSize() {
 	name := generateFileName()
 	size := 10
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(size)})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(size)})
 
 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
 	s.assert.NoError(err)
@@ -1590,7 +1590,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileSmaller() {
 	truncatedLength := 5
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.NoError(err)
 
 	// Blob should have updated data
@@ -1620,7 +1620,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileSmaller() {
 		})
 	s.assert.NoError(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.NoError(err)
 
 	// Blob should have updated data
@@ -1644,7 +1644,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileEqual() {
 	truncatedLength := 9
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.NoError(err)
 
 	// Blob should have updated data
@@ -1673,7 +1673,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileEqual() {
 		})
 	s.assert.NoError(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.NoError(err)
 
 	// Blob should have updated data
@@ -1697,7 +1697,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileBigger() {
 	truncatedLength := 15
 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.NoError(err)
 
 	// Blob should have updated data
@@ -1726,7 +1726,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileBigger() {
 		})
 	s.assert.NoError(err)
 
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
 	s.assert.NoError(err)
 
 	// Blob should have updated data
@@ -1745,7 +1745,7 @@ func (s *datalakeTestSuite) TestTruncateFileError() {
 	// Setup
 	name := generateFileName()
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name})
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1})
 	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
@@ -2018,10 +2018,9 @@ func (s *datalakeTestSuite) TestGetFileBlockOffsetsSmallFile() {
 
 	// GetFileBlockOffsets
 	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
-	s.assert.NoError(err)
-	s.assert.Empty(offsetList.BlockList)
-	s.assert.True(offsetList.SmallFile())
-	s.assert.EqualValues(0, offsetList.BlockIdLength)
+	s.assert.Nil(err)
+	s.assert.Len(offsetList.BlockList, 0)
+	s.assert.True(offsetList.HasNoBlocks())
 }
 
 func (s *datalakeTestSuite) TestGetFileBlockOffsetsChunkedFile() {
@@ -2233,8 +2232,8 @@ func (s *datalakeTestSuite) TestFlushFileAppendBlocksEmptyFile() {
 		Data:       data3,
 	}
 	blk3.Flags.Set(common.DirtyBlock)
-	h.CacheObj.BlockList = append(h.CacheObj.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.NoError(err)
@@ -2297,8 +2296,8 @@ func (s *datalakeTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 		Data:       data3,
 	}
 	blk3.Flags.Set(common.DirtyBlock)
-	h.CacheObj.BlockList = append(h.CacheObj.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.NoError(err)
@@ -2347,8 +2346,8 @@ func (s *datalakeTestSuite) TestFlushFileTruncateBlocksEmptyFile() {
 	}
 	blk3.Flags.Set(common.TruncatedBlock)
 	blk3.Flags.Set(common.DirtyBlock)
-	h.CacheObj.BlockList = append(h.CacheObj.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.NoError(err)
@@ -2404,8 +2403,8 @@ func (s *datalakeTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
 	}
 	blk3.Flags.Set(common.TruncatedBlock)
 	blk3.Flags.Set(common.DirtyBlock)
-	h.CacheObj.BlockList = append(h.CacheObj.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.NoError(err)
@@ -2455,8 +2454,8 @@ func (s *datalakeTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
 	}
 	blk3.Flags.Set(common.DirtyBlock)
 	blk3.Flags.Set(common.TruncatedBlock)
-	h.CacheObj.BlockList = append(h.CacheObj.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.NoError(err)
@@ -2516,8 +2515,8 @@ func (s *datalakeTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	}
 	blk3.Flags.Set(common.DirtyBlock)
 	blk3.Flags.Set(common.TruncatedBlock)
-	h.CacheObj.BlockList = append(h.CacheObj.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.NoError(err)

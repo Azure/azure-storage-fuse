@@ -262,7 +262,7 @@ func (suite *LoopbackFSTestSuite) TestTruncateFile() {
 	assert.NoError(err, "TruncateFile: failed to open file")
 	assert.NotNil(handle)
 
-	err = suite.lfs.TruncateFile(internal.TruncateFileOptions{Name: fileLorem, Size: 0})
+	err = suite.lfs.TruncateFile(internal.TruncateFileOptions{Name: fileLorem, NewSize: 0})
 	assert.NoError(err)
 	info, err := os.Stat(filepath.Join(testPath, fileLorem))
 	assert.NoError(err, "TruncateFile: cannot stat file")
