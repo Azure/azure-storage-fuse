@@ -206,7 +206,7 @@ func (bc *BlockCache) GenConfig() string {
 	sb.WriteString(fmt.Sprintf("\n  prefetch: %v", prefetch))
 	sb.WriteString(fmt.Sprintf("\n  parallelism: %v", uint32(3*runtime.NumCPU())))
 
-	var tmpPath string = ""
+	var tmpPath = ""
 	_ = config.UnmarshalKey("tmp-path", &tmpPath)
 	if tmpPath != "" {
 		sb.WriteString(fmt.Sprintf("\n  path: %v", tmpPath))
@@ -721,7 +721,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		node, found = handle.GetValue(fmt.Sprintf("%v", index))
 		if !found {
 			log.Err("BlockCache::getBlock : Failed to get the required block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
-			return nil, fmt.Errorf("not able to find block immediately after scheudling")
+			return nil, fmt.Errorf("not able to find block immediately after scheduling")
 		}
 	}
 
@@ -1018,7 +1018,7 @@ func (bc *BlockCache) download(item *workItem) {
 				log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
 				_ = os.Remove(localPath)
 			} else {
-				var successfulRead bool = true
+				var successfulRead = true
 				numberOfBytes, err := f.Read(item.block.data)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
@@ -1149,7 +1149,7 @@ func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes
 }
 
 // WriteFile: Write to the local file
-func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	// log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
 
 	options.Handle.Lock()
@@ -1436,10 +1436,7 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 	node := nodeList.Front()
 	nextNode := node
 
-	wipeoutBlock := false
-	if cnt == 1 {
-		wipeoutBlock = true
-	}
+	wipeoutBlock := cnt == 1
 
 	for nextNode != nil && cnt > 0 {
 		node = nextNode
@@ -1599,7 +1596,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
 
 	// Commit the block list now
-	var newEtag string = ""
+	var newEtag = ""
 	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIDList, BlockSize: bc.blockSize, NewETag: &newEtag})
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
@@ -1917,6 +1914,21 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 	if err != nil {
 		log.Err("BlockCache::SyncFile : failed to flush file %s", options.Handle.Path)
+		return err
+	}
+
+	return nil
+}
+
+func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
+	log.Trace("BlockCache::TruncateFile : path=%s, size=%d", options.Name, options.NewSize)
+
+	// Set the block size that need to used by the next component
+	options.BlockSize = int64(bc.blockSize)
+
+	err := bc.NextComponent().TruncateFile(options)
+	if err != nil {
+		log.Err("BlockCache::TruncateFile : Failed to truncate file %s: %v", options.Name, err)
 		return err
 	}
 

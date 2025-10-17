@@ -65,12 +65,12 @@ func (suite *typesTestSuite) TestBinarySearch() {
 		BlockList: blocksList,
 	}
 	found, startingIndex := bol.BinarySearch(5)
-	suite.assert.Equal(found, true)
-	suite.assert.Equal(startingIndex, 1)
+	suite.assert.True(found)
+	suite.assert.Equal(1, startingIndex)
 
 	found, startingIndex = bol.BinarySearch(20)
-	suite.assert.Equal(found, false)
-	suite.assert.Equal(startingIndex, 3)
+	suite.assert.False(found)
+	suite.assert.Equal(3, startingIndex)
 }
 
 func (suite *typesTestSuite) TestFindBlocksToModify() {
@@ -83,24 +83,24 @@ func (suite *typesTestSuite) TestFindBlocksToModify() {
 		BlockList: blocksList,
 	}
 	index, size, largerThanFile, _ := bol.FindBlocksToModify(3, 7)
-	suite.assert.Equal(index, 0)
-	suite.assert.Equal(size, int64(12))
-	suite.assert.Equal(largerThanFile, false)
+	suite.assert.Equal(0, index)
+	suite.assert.Equal(int64(12), size)
+	suite.assert.False(largerThanFile)
 
 	index, size, largerThanFile, _ = bol.FindBlocksToModify(8, 10)
-	suite.assert.Equal(index, 2)
-	suite.assert.Equal(size, int64(5))
-	suite.assert.Equal(largerThanFile, true)
+	suite.assert.Equal(2, index)
+	suite.assert.Equal(int64(5), size)
+	suite.assert.True(largerThanFile)
 
 	index, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
-	suite.assert.Equal(size, int64(0))
-	suite.assert.Equal(largerThanFile, true)
-	suite.assert.Equal(appendOnly, true)
+	suite.assert.Equal(int64(0), size)
+	suite.assert.True(largerThanFile)
+	suite.assert.True(appendOnly)
 }
 
 func (suite *typesTestSuite) TestDefaultWorkDir() {
 	val, err := os.UserHomeDir()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(DefaultWorkDir, filepath.Join(val, ".blobfuse2"))
 	suite.assert.Equal(DefaultLogFilePath, filepath.Join(val, ".blobfuse2/blobfuse2.log"))
 	suite.assert.Equal(StatsConfigFilePath, filepath.Join(val, ".blobfuse2/stats_monitor.cfg"))

@@ -426,11 +426,12 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
 		// log.Err("Libfuse::libfuse_getattr : Failed to get attributes of %s [%s]", name, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}
@@ -573,7 +574,7 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 		fuseFS.fillStat(cacheInfo.children[segmentIdx], &stbuf)
 
 		name := C.CString(cacheInfo.children[segmentIdx].Name)
-		if 0 != C.fill_dir_entry(filler, buf, name, &stbuf, C.off_t(idx+1)) {
+		if ret := C.fill_dir_entry(filler, buf, name, &stbuf, idx+1); ret != 0 {
 			C.free(unsafe.Pointer(name))
 			break
 		}
@@ -795,7 +796,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
-		internal.WriteFileOptions{
+		&internal.WriteFileOptions{
 			Handle:   handle,
 			Offset:   int64(offset),
 			Data:     data[:size],
@@ -830,11 +831,12 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}
@@ -867,9 +869,10 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().TruncateFile(
 		internal.TruncateFileOptions{
-			Handle: handle,
-			Name:   name,
-			Size:   int64(off),
+			Handle:  handle,
+			Name:    name,
+			OldSize: -1, // upstream components will get the actual size of the file.
+			NewSize: int64(off),
 		})
 
 	if err != nil {
@@ -903,11 +906,12 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}
