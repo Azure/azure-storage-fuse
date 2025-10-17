@@ -62,7 +62,7 @@ func calculateMD5(t *testing.T, filePath string) (string, error) {
 	}
 	defer func() {
 		err := file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}()
 
 	hash := md5.New()
@@ -80,9 +80,9 @@ func checkFileIntegrity(t *testing.T, filename string) {
 		for i, mnt := range mountpoints {
 			filePath := filepath.Join(mnt, filename)
 			fi, err := os.Stat(filePath)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			md5sum, err := calculateMD5(t, filePath)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
 			if i == 0 {
 				referenceMD5 = md5sum
@@ -99,7 +99,7 @@ func removeFiles(t *testing.T, filename string) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		err := os.Remove(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 }
 
@@ -109,14 +109,14 @@ func TestFileOpen(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		file, err = os.Open(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -130,10 +130,10 @@ func TestFileRead(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		err := os.WriteFile(filePath, content, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		file, err := os.Open(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		readContent := make([]byte, len(content))
 		_, err = file.Read(readContent)
@@ -142,7 +142,7 @@ func TestFileRead(t *testing.T) {
 		assert.Equal(t, string(content), string(readContent))
 
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -156,16 +156,16 @@ func TestFileWrite(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		_, err = file.Write(content)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		readContent, err := os.ReadFile(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		assert.Equal(t, string(content), string(readContent))
 	}
@@ -181,21 +181,21 @@ func TestFsync(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		_, err = file.Write(content)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		err = file.Sync()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		readContent, err := os.ReadFile(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		assert.Equal(t, string(content), string(readContent))
 
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -209,42 +209,42 @@ func TestFsyncWhileWriting(t *testing.T) {
 	readBufSize := 4 * 1024
 	content := make([]byte, readBufSize)
 	_, err = io.ReadFull(rand.Reader, content)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	expectedContent := make([]byte, 4*1024, 10*1024*1024)
 	copy(expectedContent, content)
 	actualContent := make([]byte, 10*1024*1024)
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		// Write 9MB data, for each 4K buffer do an fsync for each 4K buffer. do read the data after fsync with other handle.
 		for i := 0; i*readBufSize < 9*1024*1024; i += 4 * 1024 {
 			bytesWritten, err := file.Write(content)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, len(content), bytesWritten)
 
 			// We cannot do fsync for every 4K write, as the test takes long time to finish
 			// do it for every 512K
 			if i%(512*1024) == 0 {
 				err = file.Sync()
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 			}
 
 			file1, err := os.Open(filePath)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			bytesRead, err := file1.Read(actualContent)
 			assert.Equal(t, (i+1)*readBufSize, bytesRead)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			err = file1.Close()
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
 			assert.Equal(t, expectedContent[:(i+1)*readBufSize], actualContent[:(i+1)*readBufSize])
 			expectedContent = append(expectedContent, content...)
 		}
 
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -261,27 +261,28 @@ const (
 func FileTruncate(t *testing.T, filename string, initialSize int, finalSize int, call int) {
 	content := make([]byte, initialSize)
 	_, err := io.ReadFull(rand.Reader, content)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		err := os.WriteFile(filePath, content, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
-		if call == truncate {
+		switch call {
+		case truncate:
 			err = os.Truncate(filePath, int64(finalSize))
-			assert.Nil(t, err)
-		} else if call == ftruncate {
+			assert.NoError(t, err)
+		case ftruncate:
 			file, _ := os.OpenFile(filePath, os.O_RDWR, 0644)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			err = file.Truncate(int64(finalSize))
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			err = file.Close()
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		}
 
 		readContent, err := os.ReadFile(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		expectedContent := make([]byte, initialSize)
 		copy(expectedContent, content)
@@ -398,7 +399,7 @@ func TestTruncateNoFile(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		err := os.Truncate(filePath, 5)
-		assert.NotNil(t, err)
+		assert.Error(t, err)
 		assert.ErrorContains(t, err, "no such file or directory")
 	}
 }
@@ -406,24 +407,24 @@ func TestTruncateNoFile(t *testing.T) {
 func WriteTruncateClose(t *testing.T, filename string, writeSize int, truncSize int, call int) {
 	content := make([]byte, writeSize)
 	_, err := io.ReadFull(rand.Reader, content)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		written, err := file.Write(content)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, writeSize, written)
 		if call == truncate {
 			err := os.Truncate(filePath, int64(truncSize))
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		} else {
 			err := file.Truncate(int64(truncSize))
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		}
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -481,17 +482,17 @@ func TestWrite10MB(t *testing.T) {
 	filename := "testfile_write_10mb.txt"
 	content := make([]byte, 10*1024*1024) // 10MB of data
 	_, err := io.ReadFull(rand.Reader, content)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		err := os.WriteFile(filePath, content, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		readContent, err := os.ReadFile(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, content, readContent)
-		assert.Equal(t, len(content), len(readContent))
+		assert.Len(t, readContent, len(content))
 	}
 
 	checkFileIntegrity(t, filename)
@@ -505,20 +506,20 @@ func TestOpenWriteRead(t *testing.T) {
 	tempbuffer := make([]byte, 4*1024)
 	databuffer := make([]byte, 4*1024) // 4KB buffer
 	_, err := io.ReadFull(rand.Reader, databuffer)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		written, err := file.WriteAt(databuffer, 200)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, 4096, written)
 		read, err := file.Read(tempbuffer)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, 4096, read)
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -533,30 +534,30 @@ func TestOpenWriteReadMultipleHandles(t *testing.T) {
 	tempbuffer := make([]byte, 4*1024)
 	databuffer := make([]byte, 4*1024) // 4KB buffer
 	_, err := io.ReadFull(rand.Reader, databuffer)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		file2, err := os.OpenFile(filePath, os.O_RDWR, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		for range 10 { // Write the buffer 10 times from file
 			written, err := file.Write(databuffer)
-			assert.Nil(t, err)
-			assert.Equal(t, written, 4*1024)
+			assert.NoError(t, err)
+			assert.Equal(t, 4*1024, written)
 		}
 		for range 10 { // Read the buffer 10 times
 			read, err := file2.Read(tempbuffer)
-			assert.Nil(t, err)
-			assert.Equal(t, read, 4*1024)
+			assert.NoError(t, err)
+			assert.Equal(t, 4*1024, read)
 			assert.Equal(t, databuffer, tempbuffer)
 		}
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file2.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -570,22 +571,22 @@ func TestRandSparseWriting(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		written, err := file.WriteAt([]byte("Hello"), 1024*1024) // Write at 1MB offset, 1st block
-		assert.Nil(t, err)
-		assert.Equal(t, written, 5)
+		assert.NoError(t, err)
+		assert.Equal(t, 5, written)
 
 		written, err = file.WriteAt([]byte("World"), 12*1024*1024) // Write at 12MB offset, 2nd block
-		assert.Nil(t, err)
-		assert.Equal(t, written, 5)
+		assert.NoError(t, err)
+		assert.Equal(t, 5, written)
 
 		written, err = file.WriteAt([]byte("Cosmos"), 30*1024*1024) // Write at 30MB offset, 4th block
-		assert.Nil(t, err)
-		assert.Equal(t, written, 6)
+		assert.NoError(t, err)
+		assert.Equal(t, 6, written)
 
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -601,22 +602,22 @@ func TestSparseWritingBlockOverlap(t *testing.T) {
 	bufferSize := 4 * 1024       // 4KB
 	databuf := make([]byte, bufferSize)
 	_, err := io.ReadFull(rand.Reader, databuf)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		for i := 1; i <= 2; i++ {
 			offset := i * blockSize
 			offset -= 2 * 1024
 			_, err = file.WriteAt(databuf, int64(offset))
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		}
 
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -639,28 +640,28 @@ func TestStripeWriting(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file0, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		file1, err := os.OpenFile(filePath, os.O_RDWR, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		file2, err := os.OpenFile(filePath, os.O_RDWR, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		written, err := file0.WriteAt(content, int64(0)) //write at 0MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(content), written)
 		written, err = file1.WriteAt(content, int64(8*1024*1024)) //write at 8MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(content), written)
 		written, err = file2.WriteAt(content, int64(16*1024*1024)) //write at 16MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(content), written)
 
 		err = file0.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file1.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file2.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -675,31 +676,31 @@ func TestStripeWritingWithDup(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		fd1, err := syscall.Dup(int(file.Fd()))
 		assert.NotEqual(t, int(file.Fd()), fd1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		fd2, err := syscall.Dup(int(file.Fd()))
 		assert.NotEqual(t, int(file.Fd()), fd1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		written, err := file.WriteAt(content, int64(0))
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(content), written)
 		written, err = syscall.Pwrite(fd1, content, int64(8*1024*1024))
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(content), written)
 		written, err = syscall.Pwrite(fd1, content, int64(16*1024*1024))
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(content), written)
 
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = syscall.Close(fd1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = syscall.Close(fd2)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -716,42 +717,42 @@ func TestStripeReading(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		// Write to the file.
 		for _, off := range offsets {
 			written, err := file.WriteAt(content, int64(off))
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, len(content), written)
 		}
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		// Read from the different offsets using different file descriptions
 		file0, err := os.OpenFile(filePath, os.O_RDWR, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		file1, err := os.OpenFile(filePath, os.O_RDWR, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		file2, err := os.OpenFile(filePath, os.O_RDWR, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		bytesread, err := file0.ReadAt(tempbuf, offsets[0]) //read at 0MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
 		bytesread, err = file1.ReadAt(tempbuf, offsets[1]) //read at 8MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
 		bytesread, err = file2.ReadAt(tempbuf, offsets[2]) //read at 16MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
 
 		err = file0.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file1.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file2.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -768,44 +769,44 @@ func TestStripeReadingWithDup(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		// Write to the file.
 		for _, off := range offsets {
 			written, err := file.WriteAt(content, int64(off))
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, len(content), written)
 		}
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		// Read from the different offsets using different file descriptions
 		file0, err := os.OpenFile(filePath, os.O_RDWR, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		fd1, err := syscall.Dup(int(file0.Fd()))
 		assert.NotEqual(t, int(file.Fd()), fd1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		fd2, err := syscall.Dup(int(file0.Fd()))
 		assert.NotEqual(t, int(file.Fd()), fd1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		bytesread, err := file0.ReadAt(tempbuf, offsets[0]) //read at 0MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
 		bytesread, err = syscall.Pread(fd1, tempbuf, offsets[1]) //write at 8MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
 		bytesread, err = syscall.Pread(fd2, tempbuf, offsets[2]) //write at 16MB
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, len(tempbuf), bytesread)
 		assert.Equal(t, content, tempbuf)
 
 		err = file0.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = syscall.Close(fd1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = syscall.Close(fd2)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -820,16 +821,16 @@ func TestOTruncFlag(t *testing.T) {
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		err := os.WriteFile(filePath, content, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_TRUNC, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		readContent, err := os.ReadFile(filePath)
-		assert.Nil(t, err)
-		assert.Equal(t, 0, len(readContent))
+		assert.NoError(t, err)
+		assert.Empty(t, readContent)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -847,31 +848,31 @@ func OTruncWhileWritingHelper(t *testing.T, size int) {
 	filename := "testfile_O_trunc_while_writing.txt"
 	databuf := make([]byte, 4096)
 	_, err := io.ReadFull(rand.Reader, databuf)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 
 		file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		for i := 0; i < size; i += 4096 {
 			bytesWritten, err := file.Write(databuf)
 			assert.Equal(t, 4096, bytesWritten)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		}
 		// lets open file with O_TRUNC
 		file2, err := os.OpenFile(filePath, os.O_TRUNC, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		// Continue the write on first fd.
 		bytesWritten, err := file.Write(databuf)
 		assert.Equal(t, 4096, bytesWritten)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		// Now a big hole is formed at the starting of the file
 		err = file2.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -888,31 +889,31 @@ func OTruncWhileReadingHelper(t *testing.T, size int) {
 	filename := "testfile_O_trunc_while_reading.txt"
 	databuf := make([]byte, 4096)
 	_, err := io.ReadFull(rand.Reader, databuf)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		// Create the file with desired size before starting the test
 		file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		for i := 0; i < size; i += 4096 {
 			bytesWritten, err := file.Write(databuf)
 			assert.Equal(t, 4096, bytesWritten)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		}
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		//------------------------------------------------------
 		// Start reading the file
 		file, err = os.OpenFile(filePath, os.O_RDONLY, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		bytesread, err := file.Read(databuf)
 		assert.Equal(t, 4096, bytesread)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		// lets open file with O_TRUNC
 		file2, err := os.OpenFile(filePath, os.O_TRUNC, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		// Continue the reading on first fd.
 		bytesWritten, err := file.Read(databuf)
@@ -920,9 +921,9 @@ func OTruncWhileReadingHelper(t *testing.T, size int) {
 		assert.Equal(t, io.EOF, err)
 
 		err = file2.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -939,40 +940,40 @@ func TestUnlinkOnOpen(t *testing.T) {
 		filePath := filepath.Join(mnt, filename)
 		//Open the file
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		written, err := file.Write(content)
-		assert.Equal(t, written, 13)
-		assert.Nil(t, err)
+		assert.Equal(t, 13, written)
+		assert.NoError(t, err)
 
 		// Delete the file
 		err = os.Remove(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		// Read the content of the file after deleting the file.
 		readContent := make([]byte, len(content))
 		_, err = file.ReadAt(readContent, 0)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, string(content), string(readContent))
 
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		// Open the file again
 		_, err = os.Open(filePath)
-		assert.NotNil(t, err)
+		assert.Error(t, err)
 		if err != nil {
 			assert.Contains(t, err.Error(), "no such file or directory")
 		}
 
 		// Write to the file
 		err = os.WriteFile(filePath, content2, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		file2, err := os.Open(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		// This read should be served from the newly created file
 		_, err = file2.Read(readContent)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, string(content2), string(readContent))
 	}
 	checkFileIntegrity(t, filename)
@@ -986,14 +987,14 @@ func TestParllelFlushCalls(t *testing.T) {
 	filename := "testfile_parallel_flush_calls.txt"
 	databuffer := make([]byte, 4*1024) // 4KB buffer
 	_, err := io.ReadFull(rand.Reader, databuffer)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file0, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		file1, err := os.OpenFile(filePath, os.O_RDWR, 0644)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		// for each 1MB writes trigger a flush call from another go routine.
 		trigger_flush := make(chan struct{}, 1)
@@ -1007,7 +1008,7 @@ func TestParllelFlushCalls(t *testing.T) {
 					break
 				}
 				err := file1.Sync()
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 				if err != nil {
 					fmt.Printf("%s", err.Error())
 				}
@@ -1020,14 +1021,14 @@ func TestParllelFlushCalls(t *testing.T) {
 			}
 			byteswritten, err := file0.Write(databuffer)
 			assert.Equal(t, 4*1024, byteswritten)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		}
 		close(trigger_flush)
 		wg.Wait()
 		err = file0.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = file1.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)
@@ -1039,16 +1040,16 @@ func TestParllelFlushCallsByDuping(t *testing.T) {
 	filename := "testfile_parallel_flush_calls_using_dup.txt"
 	databuffer := make([]byte, 4*1024) // 4KB buffer
 	_, err := io.ReadFull(rand.Reader, databuffer)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for _, mnt := range mountpoints {
 		filePath := filepath.Join(mnt, filename)
 		file, err := os.Create(filePath)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		fd1, err := syscall.Dup(int(file.Fd()))
 		assert.NotEqual(t, int(file.Fd()), fd1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		// for each 1MB writes trigger a flush call from another go routine.
 		trigger_flush := make(chan struct{}, 1)
@@ -1062,7 +1063,7 @@ func TestParllelFlushCallsByDuping(t *testing.T) {
 					break
 				}
 				err := syscall.Fdatasync(fd1)
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 			}
 		}()
 		// Write 40M data
@@ -1072,14 +1073,14 @@ func TestParllelFlushCallsByDuping(t *testing.T) {
 			}
 			byteswritten, err := file.Write(databuffer)
 			assert.Equal(t, 4*1024, byteswritten)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		}
 		close(trigger_flush)
 		wg.Wait()
 		err = file.Close()
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		err = syscall.Close(fd1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	checkFileIntegrity(t, filename)

@@ -96,7 +96,7 @@ func getTestDirName(n int) string {
 func (suite *dirTestSuite) dirTestCleanup(toRemove []string) {
 	for _, path := range toRemove {
 		err := os.RemoveAll(path)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 	}
 }
 
@@ -106,7 +106,7 @@ func (suite *dirTestSuite) dirTestCleanup(toRemove []string) {
 func (suite *dirTestSuite) TestDirCreateSimple() {
 	dirName := suite.testPath + "/test1"
 	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	// cleanup
 	suite.dirTestCleanup([]string{dirName})
@@ -116,7 +116,7 @@ func (suite *dirTestSuite) TestDirCreateSimple() {
 func (suite *dirTestSuite) TestDirCreateDuplicate() {
 	dirName := suite.testPath + "/test1"
 	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 	// duplicate dir - we expect to throw
 	err = os.Mkdir(dirName, 0777)
 	suite.Contains(err.Error(), "file exists")
@@ -129,7 +129,7 @@ func (suite *dirTestSuite) TestDirCreateDuplicate() {
 func (suite *dirTestSuite) TestDirCreateSplChar() {
 	dirName := suite.testPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
 	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	// cleanup
 	suite.dirTestCleanup([]string{dirName})
@@ -139,7 +139,7 @@ func (suite *dirTestSuite) TestDirCreateSplChar() {
 func (suite *dirTestSuite) TestDirCreateSlashChar() {
 	dirName := suite.testPath + "/" + "PRQ\\STUV"
 	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	// cleanup
 	suite.dirTestCleanup([]string{dirName})
@@ -149,14 +149,14 @@ func (suite *dirTestSuite) TestDirCreateSlashChar() {
 func (suite *dirTestSuite) TestDirRename() {
 	dirName := suite.testPath + "/test1"
 	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	newName := suite.testPath + "/test1_new"
 	err = os.Rename(dirName, newName)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	_, err = os.Stat(dirName)
-	suite.Equal(true, os.IsNotExist(err))
+	suite.True(os.IsNotExist(err))
 
 	// cleanup
 	suite.dirTestCleanup([]string{newName})
@@ -166,15 +166,15 @@ func (suite *dirTestSuite) TestDirRename() {
 func (suite *dirTestSuite) TestDirMoveEmpty() {
 	dir2Name := suite.testPath + "/test2"
 	err := os.Mkdir(dir2Name, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	dir3Name := suite.testPath + "/test3"
 	err = os.Mkdir(dir3Name, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.Rename(dir2Name, dir3Name+"/test2")
 	time.Sleep(1 * time.Second)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	// cleanup
 	suite.dirTestCleanup([]string{dir3Name})
@@ -184,23 +184,23 @@ func (suite *dirTestSuite) TestDirMoveEmpty() {
 func (suite *dirTestSuite) TestDirMoveNonEmpty() {
 	dir2Name := suite.testPath + "/test2NE"
 	err := os.Mkdir(dir2Name, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	file1Name := dir2Name + "/test.txt"
 	f, err := os.Create(file1Name)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 	f.Close()
 
 	dir3Name := suite.testPath + "/test3NE"
 	err = os.Mkdir(dir3Name, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.Mkdir(dir3Name+"/abcdTest", 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.Rename(dir2Name, dir3Name+"/test2")
 	time.Sleep(1 * time.Second)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	// cleanup
 	suite.dirTestCleanup([]string{dir3Name})
@@ -210,7 +210,7 @@ func (suite *dirTestSuite) TestDirMoveNonEmpty() {
 func (suite *dirTestSuite) TestDirDeleteEmpty() {
 	dirName := suite.testPath + "/test1_new"
 	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	suite.dirTestCleanup([]string{dirName})
 }
@@ -219,13 +219,13 @@ func (suite *dirTestSuite) TestDirDeleteEmpty() {
 func (suite *dirTestSuite) TestDirDeleteNonEmpty() {
 	dir3Name := suite.testPath + "/test3NE"
 	err := os.Mkdir(dir3Name, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.Mkdir(dir3Name+"/abcdTest", 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.Remove(dir3Name)
-	suite.NotNil(err)
+	suite.Error(err)
 	suite.Contains(err.Error(), "directory not empty")
 
 	// cleanup
@@ -259,17 +259,17 @@ func (suite *dirTestSuite) TestDirDeleteNonEmpty() {
 func (suite *dirTestSuite) TestDirGetStats() {
 	dirName := suite.testPath + "/test3"
 	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 	// time.Sleep(2 * time.Second)
 
 	stat, err := os.Stat(dirName)
-	suite.Equal(nil, err)
-	modTineDiff := time.Now().Sub(stat.ModTime())
+	suite.NoError(err)
+	modTineDiff := time.Since(stat.ModTime())
 
 	// for directory block blob may still return timestamp as 0
 	// So compare the time only if epoch is non-zero
 	if stat.ModTime().Unix() != 0 {
-		suite.Equal(true, stat.IsDir())
+		suite.True(stat.IsDir())
 		suite.Equal("test3", stat.Name())
 		suite.GreaterOrEqual(float64(1), modTineDiff.Hours())
 	}
@@ -282,13 +282,13 @@ func (suite *dirTestSuite) TestDirChmod() {
 	if suite.adlsTest == true {
 		dirName := suite.testPath + "/testchmod"
 		err := os.Mkdir(dirName, 0777)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 
 		err = os.Chmod(dirName, 0744)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 
 		stat, err := os.Stat(dirName)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		suite.Equal("-rwxr--r--", stat.Mode().Perm().String())
 
 		suite.dirTestCleanup([]string{dirName})
@@ -299,25 +299,25 @@ func (suite *dirTestSuite) TestDirChmod() {
 func (suite *dirTestSuite) TestDirList() {
 	testDir := suite.testPath + "/bigTestDir"
 	err := os.Mkdir(testDir, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	dir := filepath.Join(testDir + "/Dir1")
 	err = os.Mkdir(dir, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 	dir = filepath.Join(testDir + "/Dir2")
 	err = os.Mkdir(dir, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 	dir = filepath.Join(testDir + "/Dir3")
 	err = os.Mkdir(dir, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	srcFile, err := os.OpenFile(testDir+"/abc.txt", os.O_CREATE, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 	srcFile.Close()
 
 	files, err := os.ReadDir(testDir)
-	suite.Equal(nil, err)
-	suite.Equal(4, len(files))
+	suite.NoError(err)
+	suite.Len(files, 4)
 
 	// Cleanup
 	suite.dirTestCleanup([]string{testDir})
@@ -371,30 +371,30 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 	fileName := dirName + "/test_file_"
 
 	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.Mkdir(dirName+"/tmp", 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	for i := range 10 {
 		newFile := fileName + strconv.Itoa(i)
 		err := os.WriteFile(newFile, suite.medBuff, 0777)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 	}
 
 	err = os.Rename(dirName, newName)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	//  Deleted directory shall not be present in the container now
 	_, err = os.Stat(dirName)
-	suite.Equal(true, os.IsNotExist(err))
+	suite.True(os.IsNotExist(err))
 
 	_, err = os.Stat(newName)
-	suite.Equal(false, os.IsNotExist(err))
+	suite.False(os.IsNotExist(err))
 
 	// this should fail as the new dir should be filled
 	err = os.Remove(newName)
-	suite.NotEqual(nil, err)
+	suite.Error(err)
 
 	// cleanup
 	suite.dirTestCleanup([]string{newName})
@@ -412,63 +412,65 @@ func (suite *dirTestSuite) TestGitStash() {
 
 		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 		_, err := cmd.Output()
-		suite.Equal(nil, err)
+		suite.NoError(err)
 
 		_, err = os.Stat(dirName)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 
 		err = os.Chdir(dirName)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 
 		cmd = exec.Command("git", "status")
 		cliOut, err := cmd.Output()
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		if len(cliOut) > 0 {
 			suite.Contains(string(cliOut), "nothing to commit, working")
 		}
 
 		f, err := os.OpenFile("README.md", os.O_WRONLY, 0644)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		suite.NotZero(f)
 		info, err := f.Stat()
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		_, err = f.WriteAt([]byte("TestString"), info.Size())
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		_ = f.Close()
 
 		f, err = os.OpenFile("README.md", os.O_RDONLY, 0644)
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		suite.NotZero(f)
 		new_info, err := f.Stat()
-		suite.Equal(nil, err)
-		suite.EqualValues(info.Size()+10, new_info.Size())
+		suite.NoError(err)
+		suite.Equal(info.Size()+10, new_info.Size())
 		data := make([]byte, 10)
 		n, err := f.ReadAt(data, info.Size())
-		suite.Equal(nil, err)
-		suite.EqualValues(10, n)
-		suite.EqualValues("TestString", string(data))
+		suite.NoError(err)
+		suite.Equal(10, n)
+		suite.Equal("TestString", string(data))
+		err = f.Close()
+		suite.NoError(err)
 
 		cmd = exec.Command("git", "status")
 		cliOut, err = cmd.Output()
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		if len(cliOut) > 0 {
 			suite.Contains(string(cliOut), "Changes not staged for commit")
 		}
 
 		cmd = exec.Command("git", "stash")
 		cliOut, err = cmd.Output()
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		if len(cliOut) > 0 {
 			suite.Contains(string(cliOut), "Saved working directory and index state WIP")
 		}
 
 		cmd = exec.Command("git", "stash", "list")
 		_, err = cmd.Output()
-		suite.Equal(nil, err)
+		suite.NoError(err)
 
 		cmd = exec.Command("git", "stash", "pop")
 		cliOut, err = cmd.Output()
-		suite.Equal(nil, err)
+		suite.NoError(err)
 		if len(cliOut) > 0 {
 			suite.Contains(string(cliOut), "Changes not staged for commit")
 		}
@@ -498,34 +500,34 @@ func (suite *dirTestSuite) TestReadDirLink() {
 
 	dirName := suite.testPath + "/test_hns"
 	err := os.Mkdir(dirName, 0777)
-	suite.Nil(err)
+	suite.NoError(err)
 
 	fileName := dirName + "/small_file.txt"
 	f, err := os.Create(fileName)
-	suite.Nil(err)
+	suite.NoError(err)
 	f.Close()
 
 	err = os.WriteFile(fileName, suite.minBuff, 0777)
-	suite.Nil(err)
+	suite.NoError(err)
 
 	symName := suite.testPath + "/dirlink.lnk"
 	err = os.Symlink(dirName, symName)
-	suite.Nil(err)
+	suite.NoError(err)
 
 	dl, err := os.ReadDir(suite.testPath)
-	suite.Nil(err)
-	suite.Greater(len(dl), 0)
+	suite.NoError(err)
+	suite.NotEmpty(dl)
 
 	// list operation on symlink
 	dirLinkList, err := os.ReadDir(symName)
-	suite.Nil(err)
-	suite.Greater(len(dirLinkList), 0)
+	suite.NoError(err)
+	suite.NotEmpty(dirLinkList)
 
 	dirList, err := os.ReadDir(dirName)
-	suite.Nil(err)
-	suite.Greater(len(dirList), 0)
+	suite.NoError(err)
+	suite.NotEmpty(dirList)
 
-	suite.Equal(len(dirLinkList), len(dirList))
+	suite.Len(dirList, len(dirLinkList))
 
 	// comparing list values since they are sorted by file name
 	for i := range dirLinkList {
@@ -536,22 +538,22 @@ func (suite *dirTestSuite) TestReadDirLink() {
 	suite.dirTestCleanup([]string{suite.testCachePath + "/test_hns/small_file.txt", suite.testCachePath + "/dirlink.lnk"})
 
 	data1, err := os.ReadFile(symName + "/small_file.txt")
-	suite.Nil(err)
-	suite.Equal(len(data1), len(suite.minBuff))
+	suite.NoError(err)
+	suite.Len(suite.minBuff, len(data1))
 
 	// temp cache cleanup
 	suite.dirTestCleanup([]string{suite.testCachePath + "/test_hns/small_file.txt", suite.testCachePath + "/dirlink.lnk"})
 
 	data2, err := os.ReadFile(fileName)
-	suite.Nil(err)
-	suite.Equal(len(data2), len(suite.minBuff))
+	suite.NoError(err)
+	suite.Len(suite.minBuff, len(data2))
 
 	// validating data
 	suite.Equal(data1, data2)
 
 	suite.dirTestCleanup([]string{dirName})
 	err = os.Remove(symName)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 }
 
 // -------------- Main Method -------------------

@@ -241,9 +241,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
 	}
 
-	lf.overrideUser = true
-	if !(config.IsSet(compName+".uid") || config.IsSet(compName+".gid") ||
-		config.IsSet("lfuse.uid") || config.IsSet("lfuse.gid")) {
+	if !config.IsSet(compName+".uid") && !config.IsSet(compName+".gid") && !config.IsSet("lfuse.uid") && !config.IsSet("lfuse.gid") {
 		var err error
 		lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
 		if err != nil {
