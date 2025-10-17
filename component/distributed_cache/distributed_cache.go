@@ -1118,7 +1118,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 
 			log.Debug("DistributedCache::OpenFile : Opening the file from Azure, path : %s", options.Name)
 
-			dcFile, err = agents.TryWarmup(handle, int64(dc.cfg.ChunkSizeMB)*common.MbToBytes,
+			dcFile, err = agents.TryWarmup(handle,
 				func(handle *handlemap.Handle, offset int64, size int64, data []byte) (int, error) {
 					return dc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 						Handle: handle,
@@ -1200,6 +1200,11 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		common.Assert(options.Handle.IFObj != nil)
 
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+
+		if ok, bytesRead := agents.TryReadFromCurWarmedUpChunk(dcFile, options.Offset, options.Data); ok {
+			return int(bytesRead), nil
+		}
+
 		bytesRead, err := dcFile.ReadPartialFile(ctx, options.Offset, &options.Data)
 		if err == nil || err == io.EOF {
 			return bytesRead, err
@@ -1352,7 +1357,7 @@ func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
 		common.Assert(options.Handle.IFObj != nil)
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 
-		if dcFile.WarmupFile != nil {
+		if dcFile.WarmupFileInfo != nil {
 			// Flush is a no-op for read handles for which warmup is scheduled/ongoing.
 			return nil
 		}
@@ -1394,9 +1399,9 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 		common.Assert(options.Handle.IFObj != nil)
 
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
-		if dcFile.WarmupFile != nil {
+		if dcFile.WarmupFileInfo != nil {
 			// See if warmup has not completed, then we can't close the Azure File handle here.
-			if ok := dcFile.CloseOnWarmupComplete.CompareAndSwap(false, true); ok {
+			if ok := dcFile.WarmupFileInfo.CloseOnWarmupComplete.CompareAndSwap(false, true); ok {
 				log.Info("DistributedCache::CloseFile : Warmup is not yet complete, deferring Azure handle close, file : %s",
 					options.Handle.Path)
 				closeAzureHandleOnWarmup = false
