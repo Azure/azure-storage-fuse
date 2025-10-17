@@ -348,6 +348,8 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		}()
 	}
 
+	var err error
+
 	//
 	// Check if RV is a valid component RV for the given MV.
 	// It's not that we don't trust the caller, but we need this to safely handle dup updates which get processed
@@ -371,29 +373,28 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 			log.Debug("ClusterMap::UpdateComponentRVState: %s/%s -> %s, old duplicate udpate, ignoring, rvs: %+v",
 				rvName, mvName, rvNewState, rvs)
 			return nil, nil
-		}
-
-		//
-		// Exception 2: If the new state is online and RV is not found in the clustermap, it mostly means
-		//              that the RV was part of the MV earlier and it was outofsync, so a sync job was started
-		//              but by the time the sync job completed and it tried to update the RV to online (from syncing)
-		//              some other node found the component RV to be unreachable and marked in inband-offline and
-		//              then a fix-mv workflow ran and removed the RV from the MV.
-		//
-		if rvNewState == dcache.StateOnline {
-			err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s (syncing -> online) for stale component RV, latest component RVs are %+v: %w (epoch: %d)",
+		} else if rvNewState == dcache.StateOnline {
+			//
+			// Exception 2: If the new state is online and RV is not found in the clustermap, it mostly means
+			//              that the RV was part of the MV earlier and it was outofsync, so a sync job was started
+			//              but by the time the sync job completed and it tried to update the RV to online (from syncing)
+			//              some other node found the component RV to be unreachable and marked in inband-offline and
+			//              then a fix-mv workflow ran and removed the RV from the MV.
+			//
+			err = fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s (syncing -> online) for stale component RV, latest component RVs are %+v: %w (epoch: %d)",
 				rvName, mvName, rvs, InvalidComponentRV, GetEpoch())
 			log.Err("%v", err)
-			return err
+		} else {
+			//
+			// Unexpected RV updates, log and assert to find out if we must add more legitimate exceptions.
+			//
+			err = fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v: %w (epoch: %d)",
+				rvName, mvName, rvNewState, rvs, InvalidComponentRV, GetEpoch())
+			log.Err("%v", err)
+			common.Assert(false, err)
 		}
 
-		//
-		// Unexpected RV updates, log and assert to find out if we must add more legitimate exceptions.
-		//
-		err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v: %w (epoch: %d)",
-			rvName, mvName, rvNewState, rvs, InvalidComponentRV, GetEpoch())
-		log.Err("%v", err)
-		common.Assert(false, err)
+		common.Assert(err != nil)
 
 		//
 		// If the UpdateComponentRVState() call is blocking, we return the error.
@@ -442,7 +443,7 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		return nil, updateRVMessage.Err
 	}
 
-	err := <-updateRVMessage.Err
+	err = <-updateRVMessage.Err
 
 	if err != nil {
 		log.Err("ClusterMap::UpdateComponentRVState: %s/%s (%s -> %s) failed after %s: %v",
