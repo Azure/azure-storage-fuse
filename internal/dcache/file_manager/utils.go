@@ -376,7 +376,7 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	//
 	// This is to prevent files which are being created, from being opened.
 	//
-	if fileMetadata.State == dcache.Writing || fileMetadata.State == dcache.Warming {
+	if fileMetadata.State == dcache.Writing {
 		common.Assert(fileMetadata.Size == -1 && fileMetadata.PartialSize >= 0, fileMetadata.Size, *fileMetadata)
 		// We don't allow reading non-finalized files from fuse, but we do allow internal readers.
 		if fromFuse {
@@ -389,7 +389,7 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 		}
 	} else {
 		// Finalized files must have size >= 0.
-		common.Assert(fileMetadata.Size >= 0, fileMetadata.Size, *fileMetadata)
+		common.Assert(fileMetadata.Size >= 0 || fileMetadata.State == dcache.Warming, fileMetadata.Size, *fileMetadata)
 	}
 
 	//
@@ -401,7 +401,7 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	//
 	// TODO: Shall we support safe deletes for partial files too?
 	//
-	if fileIOMgr.safeDeletes && (fileMetadata.State == dcache.Ready) {
+	if fileIOMgr.safeDeletes && (fileMetadata.State == dcache.Ready || fileMetadata.State == dcache.Warming) {
 		newOpenCount, err := mm.OpenFile(fileName, prop)
 		_ = newOpenCount
 		if err != nil {
@@ -430,6 +430,10 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	//
 	dcacheFile.initFreeChunks(fileIOMgr.numReadAheadChunks + 300)
 	dcacheFile.lastReadaheadChunkIdx.Store(-1)
+
+	if fileMetadata.State == dcache.Warming {
+		return dcacheFile, ErrFileNotReady
+	}
 
 	return dcacheFile, nil
 }

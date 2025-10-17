@@ -295,15 +295,19 @@ func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *
 		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
-	common.Assert(warmupFile != nil, file.FileMetadata.Filename)
-
 	endOffset := offset + int64(len(*buf))
 	chunkIdx := getChunkIdxFromFileOffset(endOffset, file.FileMetadata.FileLayout.ChunkSize)
 
 	pTicker := time.NewTicker(500 * time.Millisecond)
 
 	isReadOk := func() (partialFileSize int64, ok bool) {
-		partialFileSize = GetCurFileSizeForWarmup(warmupFile)
+		if warmupFile != nil {
+			// we are the read handle who triggered the warmup.
+			partialFileSize = GetCurFileSizeForWarmup(warmupFile)
+		} else {
+			// we are the read handle who wants to read the warmup data.
+			partialFileSize, _ = GetHighestUploadedByte(file.FileMetadata)
+		}
 		if partialFileSize >= endOffset {
 			ok = true
 			return
@@ -316,7 +320,7 @@ func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *
 	if partialFileSize, ok := isReadOk(); ok {
 		pTicker.Stop()
 		log.Info("DistributedCache::ReadPartialFile: Writer has uploaded chunkIdx: %d, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-			chunkIdx, warmupFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
+			chunkIdx, file.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
 		file.FileMetadata.PartialSize = partialFileSize
 		return file.ReadFile(offset, buf)
 	}
@@ -330,14 +334,14 @@ func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *
 			partialFileSize, ok := isReadOk()
 			if ok {
 				log.Info("DistributedCache::ReadPartialFile: Writer has uploaded chunkIdx: %d, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-					chunkIdx, warmupFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
+					chunkIdx, file.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
 				pTicker.Stop()
 				file.FileMetadata.PartialSize = partialFileSize
 				return file.ReadFile(offset, buf)
 			}
 
 			log.Info("DistributedCache::ReadPartialFile: Still waiting for chunkIdx: %d to be uploaded by writer, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-				chunkIdx, warmupFile.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
+				chunkIdx, file.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
 
 			retryCnt++
 
@@ -964,9 +968,14 @@ func (file *DcacheFile) finalizeFile() error {
 	common.Assert((file.FileMetadata.State == dcache.Warming) == (file.FileMetadata.WarmupSize == file.maxWriteOffset),
 		file.FileMetadata.Filename, file.FileMetadata.State, file.FileMetadata.WarmupSize, file.maxWriteOffset)
 
+	state := file.FileMetadata.State
+
 	file.FileMetadata.State = dcache.Ready
 	file.FileMetadata.Size = file.maxWriteOffset
 	common.Assert(file.FileMetadata.Size >= 0)
+
+	// let all readers know the final file size.
+	file.CT.finalizeMDChunk()
 
 	fileMetadataBytes, err := json.Marshal(file.FileMetadata)
 	if err != nil {
@@ -976,7 +985,7 @@ func (file *DcacheFile) finalizeFile() error {
 	}
 
 	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size,
-		file.finalizeEtag)
+		state, file.finalizeEtag)
 	if err != nil {
 		//
 		// Finalize file  should not fail unless the metadata file is deleted/modified out-of-band.

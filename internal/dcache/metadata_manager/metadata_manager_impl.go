@@ -286,8 +286,8 @@ func CreateFileInit(filePath string, fileMetadata []byte, state dcache.FileState
 	return metadataManagerInstance.createFileInit(filePath, fileMetadata, state)
 }
 
-func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
-	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize, eTag)
+func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error {
+	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize, fileState, eTag)
 }
 
 // Get metadata for the given file.
@@ -575,7 +575,7 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 // CreateFileFinalize() finalizes the metadata for a file.
 // Must be called only after prior call to CreateFileInit() succeeded.
-func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
+func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error {
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.FinalizeCalls, 1)
 
 	common.Assert(len(filePath) > 0)
@@ -605,13 +605,39 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		state, ok := prop.Metadata["state"]
 		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)))
 
-		// opencount must be 0 as a file not yet finalized cannot be opened.
+		// opencount must be 0 as a file not yet finalized cannot be opened, warmup files can be read while
+		// they were being warmeup so there can be some open count for them.
 		openCount, ok := prop.Metadata["opencount"]
-		common.Assert(ok && *openCount == "0", ok, *openCount)
+		common.Assert(ok && (*openCount == "0" || *state == string(dcache.Warming)), ok, *openCount)
 	}
 
 	// Store the open-count and file size in the metadata blob property.
 	openCount := "0"
+
+	// If file is getting warmed up, there may be some read handles opened to it. So better get the read count before
+	// finalizing.
+	if fileState == dcache.Warming {
+		prop, err := GetPropertiesFromStorageWithStats(&m.storageCallback,
+			internal.GetAttrOptions{Name: path})
+		common.Assert(err == nil, err)
+
+		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
+		size, ok := prop.Metadata["cache_object_length"]
+		common.Assert(ok && *size == "-1", ok, *size)
+
+		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
+		state, ok := prop.Metadata["state"]
+		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)))
+
+		// opencount must be 0 as a file not yet finalized cannot be opened, warmup files can be read while
+		// they were being warmeup so there can be some open count for them.
+		openCountPtr, ok := prop.Metadata["opencount"]
+		common.Assert(ok, ok)
+
+		openCount = *openCountPtr
+		eTag = prop.ETag
+	}
+
 	sizeStr := strconv.FormatInt(fileSize, 10)
 	state := string(dcache.Ready)
 	metadata := map[string]*string{

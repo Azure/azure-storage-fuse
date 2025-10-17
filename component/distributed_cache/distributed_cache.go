@@ -1082,8 +1082,31 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			// dcache file state changes to ready, even if that file is already present in azure. User must use explicit
 			// namespace of fs=azure to access such files.
 			//
-			log.Err("DistributedCache::OpenFile : Failed Opening the file from Dcache, path: %s: %v", options.Name, err)
-			return nil, syscall.EBUSY
+			// But if file is getting warmed up in dcache, we can read from the partial dcache file to meet the general
+			// expectation of user.
+			//
+			if dcFile != nil {
+				log.Debug("DistributedCache::OpenFile : Opening the file from Dcache (not ready state) state: %s, path: %s",
+					dcFile.FileMetadata.State, options.Name)
+				common.Assert(dcFile.FileMetadata.State == dcache.Warming, dcFile.FileMetadata)
+
+				// We should be cautious while reading from a not-ready file that is getting warmed up. We should always
+				// resort to reading from the Azure file if some error stops the warmup process.
+
+				log.Debug("DistributedCache::OpenFile : Trying to open Warmup file from Azure, path : %s", options.Name)
+				handle, err = dc.NextComponent().OpenFile(options)
+				if err != nil {
+					log.Err("DistributedCache::OpenFile : Azure File Open failed with err : %s, path : %s", err.Error(), options.Name)
+					return nil, err
+				}
+
+				handle.SetFsDefault()
+
+			} else {
+				log.Err("DistributedCache::OpenFile : Failed Opening the file from Dcache, path: %s: %v",
+					options.Name, err)
+				return nil, syscall.EBUSY
+			}
 		} else {
 			// todo: make sure we come here when opening dcache file is returning ENOENT
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s, Trying to Open the file in Azure", err.Error(), options.Name)

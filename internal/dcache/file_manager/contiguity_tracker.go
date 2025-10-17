@@ -332,6 +332,21 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	t.writeMetadataChunk(mdChunk)
 }
 
+func (t *ContiguityTracker) finalizeMDChunk() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	//
+	// Now update the metadata chunk with the final size.
+	//
+	mdChunk := &dcache.MetadataChunk{
+		Size:          t.file.FileMetadata.Size,
+		LastUpdatedAt: time.Now(),
+	}
+
+	t.writeMetadataChunk(mdChunk)
+}
+
 // Read the metadata chunk for the given file, to get the highest uploaded byte for the file.
 func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time) {
 	readMVReq := &rm.ReadMvRequest{
