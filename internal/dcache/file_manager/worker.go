@@ -36,6 +36,8 @@ package filemanager
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -55,6 +57,27 @@ type workerPool struct {
 	wg      sync.WaitGroup
 	close   chan struct{}
 	tasks   chan *task
+	busyCnt atomic.Int64
+}
+
+// uploadTracker keeps track of the uploads scheduled, in-progress and last completed time.
+// Used for debugging slow throughput issues which could be due to:
+// - Application not writing fast enough (lastScheduledAt is old).
+// - Uploads not completing fast enough (lastCompletedAt is old).
+//
+// TODO: This can be removed once we are satisfied that upload performance is good.
+
+type uploadTracker struct {
+	slowGapThresh     time.Duration // Gap more than this between schedule/uploads is considered slow.
+	scheduledUploads  atomic.Int64  // Number of uploads scheduled but not yet started.
+	uploadsInProgress atomic.Int64  // Number of uploads in progress.
+	cumScheduled      atomic.Int64  // Cumulative number of uploads scheduled.
+	cumCompleted      atomic.Int64  // Cumulative number of uploads completed.
+	slowScheduled     atomic.Int64  // Number of uploads which were scheduled slow (after more gap than usual).
+	slowCompleted     atomic.Int64  // Number of uploads which completed slow (after more gap than usual).
+	firstScheduledAt  atomic.Int64  // Timestamp (in unix nano seconds) when the first upload to this file was scheduled.
+	lastScheduledAt   atomic.Int64  // Timestamp (in unix nano seconds) when last upload was scheduled.
+	lastCompletedAt   atomic.Int64  // Timestamp (in unix nano seconds) when last upload completed.
 }
 
 func NewWorkerPool(workers int) *workerPool {
@@ -87,10 +110,28 @@ func (wp *workerPool) worker() {
 	for {
 		select {
 		case task := <-wp.tasks:
+			busyCnt := wp.busyCnt.Add(1)
+			common.Assert(busyCnt <= int64(wp.workers), busyCnt, wp.workers)
+			if busyCnt == int64(wp.workers) {
+				//
+				// If this log shows up often, it means we need to increase the number of workers.
+				// See workers in NewFileIOManager().
+				//
+				log.Warn("[SLOW] DistributedCache[FM]::worker: All %d workers are busy", wp.workers)
+			}
+
 			if task.get_chunk {
 				wp.readChunk(task)
 			} else {
 				wp.writeChunk(task)
+			}
+			busyCnt = wp.busyCnt.Add(-1)
+			common.Assert(busyCnt >= 0, busyCnt)
+			if busyCnt == 0 {
+				//
+				// If this log shows up often, it means application is not writing or reading fast enough.
+				//
+				log.Warn("[SLOW] DistributedCache[FM]::worker: All %d workers are idle now", wp.workers)
 			}
 		case <-wp.close:
 			return
@@ -111,8 +152,9 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 }
 
 func (wp *workerPool) readChunk(task *task) {
-	log.Debug("DistributedCache::readChunk: Reading chunkIdx: %d, chunk Offset: %d, chunk Len: %d, refcount: %d, file: %s",
-		task.chunk.Idx, task.chunk.Offset, task.chunk.Len, task.chunk.RefCount.Load(), task.file.FileMetadata.Filename)
+	log.Debug("DistributedCache::readChunk: [busyCnt: %d] Reading chunkIdx: %d, chunk Offset: %d, chunk Len: %d, refcount: %d, file: %s",
+		wp.busyCnt.Load(), task.chunk.Idx, task.chunk.Offset, task.chunk.Len,
+		task.chunk.RefCount.Load(), task.file.FileMetadata.Filename)
 
 	// For read chunk, buffer must not be pre-allocated, ReadMV() returns the buffer.
 	// buffer is pre-allocated only when reading the chunk from the Local RV which would be decided after the ReadMV
@@ -183,8 +225,8 @@ func (wp *workerPool) readChunk(task *task) {
 }
 
 func (wp *workerPool) writeChunk(task *task) {
-	log.Debug("DistributedCache::writeChunk: Writing chunk chunkIdx: %d, file: %s",
-		task.chunk.Idx, task.file.FileMetadata.Filename)
+	log.Debug("DistributedCache::writeChunk: [busyCnt: %d] Writing chunk chunkIdx: %d, file: %s",
+		wp.busyCnt.Load(), task.chunk.Idx, task.file.FileMetadata.Filename)
 
 	// Only dirty StagedChunk must be written.
 	common.Assert(task.chunk.Dirty.Load())
@@ -192,6 +234,11 @@ func (wp *workerPool) writeChunk(task *task) {
 	common.Assert(task.chunk.Offset == 0, task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Offset)
 	common.Assert(task.chunk.Len > 0 && task.chunk.Len <= int64(len(task.chunk.Buf)),
 		task.chunk.Idx, task.file.FileMetadata.Filename, task.chunk.Len, len(task.chunk.Buf))
+
+	// writeChunk() is called only after scheduling the chunk for upload.
+	common.Assert(task.file.ut.scheduledUploads.Load() > 0)
+	task.file.ut.scheduledUploads.Add(-1)
+	task.file.ut.uploadsInProgress.Add(1)
 
 	writeMVReq := &rm.WriteMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
@@ -207,6 +254,25 @@ func (wp *workerPool) writeChunk(task *task) {
 
 	// Call WriteMV method for writing the chunk.
 	_, err := rm.WriteMV(writeMVReq)
+
+	common.Assert(task.file.ut.uploadsInProgress.Load() > 0)
+	task.file.ut.uploadsInProgress.Add(-1)
+	task.file.ut.cumCompleted.Add(1)
+
+	if task.file.ut.lastCompletedAt.Load() != 0 {
+		compGap := time.Since(time.Unix(0, task.file.ut.lastCompletedAt.Load()))
+		if compGap > task.file.ut.slowGapThresh {
+			task.file.ut.slowCompleted.Add(1)
+			if compGap > task.file.ut.slowGapThresh*2 {
+				log.Warn("[SLOW] DistributedCache::writeChunk: task.file: %s, chunkIdx: %d, compGap: %s, slowCompleted: %d (of %d in total %s)",
+					task.file.FileMetadata.Filename, task.chunk.Idx, compGap,
+					task.file.ut.slowCompleted.Load(), task.file.ut.cumCompleted.Load(),
+					time.Since(time.Unix(0, task.file.ut.firstScheduledAt.Load())))
+			}
+		}
+	}
+	task.file.ut.lastCompletedAt.Store(time.Now().UnixNano())
+
 	if err == nil {
 		// We must come here only for chunks scheduled for transfer (upload).
 		common.Assert(task.chunk.XferScheduled.Load() == true, task.chunk.Idx, task.file.FileMetadata.Filename)

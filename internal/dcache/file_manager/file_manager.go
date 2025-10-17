@@ -42,6 +42,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -128,29 +129,15 @@ func NewFileIOManager() error {
 	// NewFileIOManager() must be called only once, during startup.
 	common.Assert(fileIOMgr.wp == nil)
 
-	//
-	// maxUnackedWindow is how much we want to allow writing to the fastest MV before we pause to let the
-	// slowest MV catch up. We want to allow at least one stripe width of chunks to be unacked so that we
-	// allow one write to each MV, but not more than four stripe widths or 4GB worth of chunks.
-	// These limits have been chosen based on some experiments, to minimize wait under normal conditions.
-	//
-	maxUnackedWindow := int(4096 / cm.GetCacheConfig().ChunkSizeMB)
-	maxUnackedWindow = max(maxUnackedWindow, int(cm.GetCacheConfig().StripeWidth)*1)
-	maxUnackedWindow = min(maxUnackedWindow, int(cm.GetCacheConfig().StripeWidth)*4)
-
-	//
-	// We set maxUnackedWindow to twice the stripe width in order to allow good parallelism while at
-	// the same time being mindful of some slow/unresponsive RVs.
-	//
 	fileIOMgr = fileIOManager{
 		safeDeletes:        cm.GetCacheConfig().SafeDeletes,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
-		maxUnackedWindow:   int64(maxUnackedWindow),
+		maxUnackedWindow:   int64(maxUnackedChunks),
 	}
 
 	log.Debug("DistributedCache::NewFileIOManager: workers: %d, numReadAheadChunks: %d, numStagingChunks: %d, maxUnackedWindow: %d",
-		workers, numReadAheadChunks, numStagingChunks, maxUnackedWindow)
+		workers, fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks, fileIOMgr.maxUnackedWindow)
 
 	fileIOMgr.wp = NewWorkerPool(workers)
 
@@ -251,6 +238,9 @@ type DcacheFile struct {
 	// It is saved when the file is opened, if there are no more file opens done on that file, the same etag
 	// can be used to update the file open count on close.
 	attr *internal.ObjAttr
+
+	// Upload tracker.
+	ut uploadTracker
 }
 
 // Get the write error encountered during file writes, if any.
@@ -1578,6 +1568,24 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 		common.Assert(chunk.Dirty.Load())
 		// Up-to-date chunk should not be written.
 		common.Assert(!chunk.UpToDate.Load())
+
+		file.ut.scheduledUploads.Add(1)
+		if file.ut.cumScheduled.Add(1) == 1 {
+			file.ut.firstScheduledAt.Store(time.Now().UnixNano())
+		}
+		if file.ut.lastScheduledAt.Load() != 0 {
+			schedGap := time.Since(time.Unix(0, file.ut.lastScheduledAt.Load()))
+			if schedGap > file.ut.slowGapThresh {
+				file.ut.slowScheduled.Add(1)
+				if schedGap > file.ut.slowGapThresh*2 {
+					log.Warn("[SLOW] DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, schedGap: %s, slowScheduled: %d (of %d in total %s)",
+						file.FileMetadata.Filename, chunk.Idx, schedGap,
+						file.ut.slowScheduled.Load(), file.ut.cumScheduled.Load(),
+						time.Since(time.Unix(0, file.ut.firstScheduledAt.Load())))
+				}
+			}
+		}
+		file.ut.lastScheduledAt.Store(time.Now().UnixNano())
 
 		fileIOMgr.wp.queueWork(file, chunk, false /* get_chunk */)
 		return true

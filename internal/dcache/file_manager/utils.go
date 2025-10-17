@@ -281,6 +281,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	// freeChunks semaphore is used to limit StagedChunks map to numStagingChunks.
 	dcacheFile.initFreeChunks(fileIOMgr.numStagingChunks)
 
+	// Any gap amounting to a rate less than 1GBps/2 is considered slow.
+	dcacheFile.ut.slowGapThresh = time.Duration(cm.ChunkSizeMB*2) * time.Millisecond
+
 	return dcacheFile, nil
 }
 
@@ -523,6 +526,11 @@ loop:
 			// indicates some issue with some RV(s) (node or network) so let's not add fuel to the fire.
 			// Anyways, it's not much performance benefit in keeping too many chunks outstanding.
 			//
+			// Note that this check below cannot guarantee that we never exceed maxUnackedWindow, as we
+			// don't check the unacked window including this new chunk, we only check for the existing
+			// unacked window. This means once this new chunk is uploaded the unacked window can grow by
+			// as much as the numStagingChunks. But this is good enough to prevent excessive unacked windows.
+			//
 			uw := file.CT.GetUnackedWindow()
 			if uw > fileIOMgr.maxUnackedWindow {
 				file.freeChunks <- struct{}{}
@@ -664,6 +672,11 @@ loop:
 
 	// Take the refcount for the original creator of the chunk.
 	chunk.RefCount.Store(1)
+
+	if time.Since(startTime) > time.Second {
+		log.Warn("[SLOW] DistributedCache[FM]::NewStagedChunk: NewStagedChunk for chunkIdx: %d, file: %s, took %s, count:%d, ucount:%d",
+			idx, file.FileMetadata.Filename, time.Since(startTime), count, ucount)
+	}
 
 	return chunk, nil
 }

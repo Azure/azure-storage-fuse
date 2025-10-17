@@ -35,6 +35,7 @@ package filemanager
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/bits"
 	"sync"
 	"sync/atomic"
@@ -58,6 +59,20 @@ import (
 //
 
 const (
+	//
+	// At the max we will need these many bits in the bitmap to track uploaded chunks.
+	// See fileIOManager.maxUnackedWindow and NewStagedChunk(), how this is honoured not allowing new
+	// chunk writes to be issued if the unacked window exceeds this.
+	// We want this to be high for getting good performance under load where some PutChunkDC calls may
+	// take longer than others, but not too high as that would need too much memory for the bitmap.
+	// Note that numStagingChunks limits how many chunks can be in-flight for upload at any time, but
+	// if chunks complete out of order, the unacked window can be much higher than numStagingChunks.
+	//
+	// Note: If the write performance is very variable under load, see if increasing this helps to make
+	//       it more stable.
+	//
+	maxUnackedChunks = 4096
+
 	//
 	// Commit partial size no later than this interval (even if it has not changed).
 	// This acts as a liveness indicator for DeleteDcacheFile() which uses this to determine if
@@ -220,24 +235,11 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	bitOffset := chunkIdx - t.lastContiguous
 
 	//
-	// We support only limited deviation from sequential writes.
-	// With numStagingChunks=256 and chunk size=64MiB, this can be upto 16GiB of out of order writes,
-	// set slightly higher value to account for higher chunk sizes.
+	// NewStagedChunk() must not allow writes that are too far ahead of lastContiguous.
+	// See comment in NewStagedChunk() why we need to relax this check.
 	//
-	// Update: The deviation can be much higher because though the PutChunk calls are mostly issued in
-	//         order, due to the (un)availability of RPC clients to different RVs, they complete wildly
-	//         out of order. So we have to support much higher deviation.
-	//
-	// TODO: Make this tighter once we sort out the RPC client availability issue.
-	//       We should set this back to 16GB.
-	// Update: Now we should not have RPC client availability issue, so let's set it back to 16GB.
-	//         If this assertion fails, it indicates issue with RPC client availability, check that up.
-	// Update: Now we ensure we don't write too far ahead of lastContiguous in WriteMV() itself.
-	//         See NewFileIOManager() and NewStagedChunk() how we do not allow new writes if the gap
-	//         exceeds 4GB. Use 6GB as we may allow some more chunks by the time we detect that
-	//
-	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (17*common.GbToBytes),
-		bitOffset, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
+	common.Assert(bitOffset <= (maxUnackedChunks+256),
+		bitOffset, maxUnackedChunks, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 
 	// Ensure bitmap is large enough.
@@ -393,16 +395,35 @@ func (t *ContiguityTracker) GetUnackedWindow() int64 {
 
 	//
 	// Sanity check for stuck window.
+	// If the window has not changed for 5 minutes, i.e., none of our PutChunkDC requests have got a successful
+	// response, something is wrong. Restart blobfuse in this case to recover.
 	//
 	// Note: maxUploadedIdx and maxIssuedIdx are non-atomic and hence accessing them outside lock is racy,
 	//       but they are just being logged.
 	//
 	if uw != 0 && t.uwChangedAt.Load() != 0 &&
-		time.Since(time.Unix(0, t.uwChangedAt.Load())) > 120*time.Second {
-		log.GetLoggerObj().Panicf("[%s] Unacked window stuck for %s, uw: %d, maxUploadedIdx: %d, lastContiguous: %d, maxIssuedIdx: %d, file: %+v",
-			common.GetDebugHostname(),
+		time.Since(time.Unix(0, t.uwChangedAt.Load())) > 30*time.Second {
+		// If not changed for 30s, log a slow warning, and if not changed for 5min, panic and restart
+		err := fmt.Errorf("Unacked window stuck for %s, uw: %d, maxUploadedIdx: %d, lastContiguous: %d, maxIssuedIdx: %d, file: %+v",
 			time.Since(time.Unix(0, t.uwChangedAt.Load())),
 			uw, t.maxUploadedIdx, t.lastContiguous, t.maxIssuedIdx, *t.file.FileMetadata)
+
+		log.Warn("[SLOW] %v", err)
+
+		if time.Since(time.Unix(0, t.uwChangedAt.Load())) > 300*time.Second {
+			log.GetLoggerObj().Panicf("[%s][BUG] %v", common.GetDebugHostname(), err)
+		}
+	}
+
+	if uw > maxUnackedChunks/4 {
+		//
+		// Slow warning log if unacked window is high.
+		// This indicates that some RVs are slow/unresponsive or there are packet drops in he network, and
+		// hence some PutChunkDC requests are taking much longer than others.
+		//
+		log.Warn("[SLOW] Unacked window high, uw: %d, maxUploadedIdx: %d, lastContiguous: %d, maxIssuedIdx: %d, file: %s, fileID: %s",
+			uw, t.maxUploadedIdx, t.lastContiguous, t.maxIssuedIdx, t.file.FileMetadata.Filename,
+			t.file.FileMetadata.FileID)
 	}
 
 	return uw
