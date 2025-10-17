@@ -447,9 +447,10 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 						// be already completed individually, skip those.
 						//
 						for _, msg := range msgBatch {
-							if msg.Err != nil {
+							if !msg.Closed {
 								msg.Err <- err
 								close(msg.Err)
+								msg.Closed = true
 							}
 						}
 					} else {
@@ -2367,7 +2368,7 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			common.Assert(rvMap[rv.rvName].State == dcache.StateOnline, rv.rvName, rvMap[rv.rvName].State)
 
 			// Max slots for an RV is MVsPerRVForFixMV.
-			common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()), *rv, cm.MVsPerRVForFixMV)
+			common.Assert(rv.slots <= int(cm.MVsPerRVForFixMV.Load()), *rv, cm.MVsPerRVForFixMV.Load())
 			common.Assert(rv.slots >= 0, *rv)
 
 			// Must have a valid nodeIdInt assigned.
@@ -4671,7 +4672,10 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				common.Assert(false, *msg)
 				msg.Err <- fmt.Errorf("MV %s not found in clusterMap, mvList %+v", mvName, clusterMap.MVMap)
 				close(msg.Err)
-				msg.Err = nil
+
+				common.Assert(!msg.Closed, rvName, mvName, rvNewState)
+				msg.Closed = true
+
 				failureCount++
 				continue
 			}
@@ -4697,7 +4701,10 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 						rvName, mvName, rvNewState, clusterMapMV.RVs)
 					msg.Err <- nil
 					close(msg.Err)
-					msg.Err = nil
+
+					common.Assert(!msg.Closed, rvName, mvName, rvNewState)
+					msg.Closed = true
+
 					ignoredCount++
 					continue
 				} else if rvNewState == dcache.StateSyncing {
@@ -4711,7 +4718,10 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 
 				msg.Err <- fmt.Errorf("RV %s/%s not present in clustermap MV %+v", rvName, mvName, clusterMapMV)
 				close(msg.Err)
-				msg.Err = nil
+
+				common.Assert(!msg.Closed, rvName, mvName, rvNewState)
+				msg.Closed = true
+
 				failureCount++
 				continue
 			}
@@ -4776,7 +4786,10 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				msg.Err <- fmt.Errorf("%s/%s state change (<%s> -> %s) no longer valid",
 					rvName, mvName, currentState, rvNewState)
 				close(msg.Err)
-				msg.Err = nil
+
+				common.Assert(!msg.Closed, rvName, mvName, rvNewState)
+				msg.Closed = true
+
 				failureCount++
 				continue
 			} else {
@@ -4809,7 +4822,10 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 
 					msg.Err <- nil
 					close(msg.Err)
-					msg.Err = nil
+
+					common.Assert(!msg.Closed, rvName, mvName, rvNewState)
+					msg.Closed = true
+
 					ignoredCount++
 					continue
 				}
@@ -4819,7 +4835,10 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 				msg.Err <- fmt.Errorf("%s/%s invalid state change request (%s -> %s)",
 					rvName, mvName, currentState, rvNewState)
 				close(msg.Err)
-				msg.Err = nil
+
+				common.Assert(!msg.Closed, rvName, mvName, rvNewState)
+				msg.Closed = true
+
 				failureCount++
 				continue
 			}

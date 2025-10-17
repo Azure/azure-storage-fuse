@@ -296,3 +296,11 @@ func (job *syncJob) toString() string {
 		job.syncSize, rpc.ComponentRVsToString(job.componentRVs), job.clustermapEpoch,
 		time.Since(job.startedAt), copyRunningFor)
 }
+
+// Used for non-blocking UpdateComponentRVState() calls, where UpdateComponentRVState() returns
+// the error channel on which the caller can wait for the response of the individual call.
+type updateRVStateResponse struct {
+	mvName  string
+	rvName  string
+	errChan <-chan error
+}
