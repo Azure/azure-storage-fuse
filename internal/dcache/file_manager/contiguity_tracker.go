@@ -35,6 +35,7 @@ package filemanager
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/bits"
 	"sync"
 	"sync/atomic"
@@ -59,6 +60,20 @@ import (
 
 const (
 	//
+	// At the max we will need these many bits in the bitmap to track uploaded chunks.
+	// See fileIOManager.maxUnackedWindow and NewStagedChunk(), how this is honoured not allowing new
+	// chunk writes to be issued if the unacked window exceeds this.
+	// We want this to be high for getting good performance under load where some PutChunkDC calls may
+	// take longer than others, but not too high as that would need too much memory for the bitmap.
+	// Note that numStagingChunks limits how many chunks can be in-flight for upload at any time, but
+	// if chunks complete out of order, the unacked window can be much higher than numStagingChunks.
+	//
+	// Note: If the write performance is very variable under load, see if increasing this helps to make
+	//       it more stable.
+	//
+	maxUnackedChunks = 4096
+
+	//
 	// Commit partial size no later than this interval (even if it has not changed).
 	// This acts as a liveness indicator for DeleteDcacheFile() which uses this to determine if
 	// a file with a non-Ready state is stale and can be deleted, or is it still being written to.
@@ -80,7 +95,9 @@ type ContiguityTracker struct {
 	lastContiguous int64        // All chunks [0, lastContiguous) are uploaded.
 	maxUploadedIdx int64        // Max chunk index successfully uploaded so far.
 	unackedWindow  atomic.Int64 // maxUploadedIdx - lastContiguous + 1
+	uwChangedAt    atomic.Int64 // Last time unackedWindow changed, in nanoseconds since epoch. To detect stuck window.
 	lastCommitted  time.Time    // Last time we updated the metadata chunk (not necessarily with a changed size).
+	maxIssuedIdx   int64        // Last chunk index for which upload was issued (not necessarily completed yet).
 	bitmap         []uint64
 }
 
@@ -91,6 +108,7 @@ func NewContiguityTracker(file *DcacheFile) *ContiguityTracker {
 
 	ct := &ContiguityTracker{
 		maxUploadedIdx: -1,
+		maxIssuedIdx:   -1,
 		file:           file,
 	}
 
@@ -163,6 +181,36 @@ func (t *ContiguityTracker) writeMetadataChunk(mdChunk *dcache.MetadataChunk) {
 	}
 }
 
+// Call this just before WriteMV() is called to upload a chunk.
+// This is called before the actual upload is done, while OnSuccessfulUpload is called after WriteMV()
+// successfully completes.
+func (t *ContiguityTracker) OnUploadStart(chunkIdx int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// We don't support overwrites, so we shouldn't be uploading the same chunk again.
+	common.Assert(chunkIdx >= t.lastContiguous,
+		chunkIdx, t.lastContiguous, t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
+
+	//
+	// Usually chunkIdx should be maxIssuedIdx+1, but it can be slightly off (by one or two) as
+	// we support limited out of order writes for supporting large application write IOs for perf.
+	//
+	if common.IsDebugBuild() {
+		if chunkIdx != t.maxIssuedIdx+1 {
+			// Unexpected, but allowed.
+			log.Debug("contiguity_tracker::OnUploadStart: Sparse upload, chunkIdx: %d, maxIssuedIdx: %d, file: %+v",
+				chunkIdx, t.maxIssuedIdx, *t.file.FileMetadata)
+		} else {
+			// Expected.
+			log.Debug("contiguity_tracker::OnUploadStart: chunkIdx: %d, maxIssuedIdx: %d, file: %+v",
+				chunkIdx, t.maxIssuedIdx, *t.file.FileMetadata)
+		}
+	}
+
+	t.maxIssuedIdx = max(t.maxIssuedIdx, chunkIdx)
+}
+
 // OnSuccessfulUpload marks chunkIdx as uploaded.
 func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	t.mu.Lock()
@@ -187,24 +235,11 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	bitOffset := chunkIdx - t.lastContiguous
 
 	//
-	// We support only limited deviation from sequential writes.
-	// With numStagingChunks=256 and chunk size=16MiB, this can be upto 4GiB of out of order writes,
-	// set slightly higher value to account for higher chunk sizes.
+	// NewStagedChunk() must not allow writes that are too far ahead of lastContiguous.
+	// See comment in NewStagedChunk() why we need to relax this check.
 	//
-	// Update: The deviation can be much higher because though the PutChunk calls are mostly issued in
-	//         order, due to the (un)availability of RPC clients to different RVs, they complete wildly
-	//         out of order. So we have to support much higher deviation.
-	//
-	// TODO: Make this tighter once we sort out the RPC client availability issue.
-	//       We should set this back to 16GB.
-	// Update: Now we should not have RPC client availability issue, so let's set it back to 16GB.
-	//         If this assertion fails, it indicates issue with RPC client availability, check that up.
-	// Update: Now we ensure we don't write too far ahead of lastContiguous in WriteMV() itself.
-	//         See NewFileIOManager() and NewStagedChunk() how we do not allow new writes if the gap
-	//         exceeds 4GB. Use 6GB as we may allow some more chunks by the time we detect that
-	//
-	common.Assert(bitOffset*t.file.FileMetadata.FileLayout.ChunkSize < (6*common.GbToBytes),
-		bitOffset, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
+	common.Assert(bitOffset <= (maxUnackedChunks+256),
+		bitOffset, maxUnackedChunks, chunkIdx, t.lastContiguous, t.file.FileMetadata.FileLayout.ChunkSize,
 		t.file.FileMetadata.Filename, t.file.FileMetadata.FileID)
 
 	// Ensure bitmap is large enough.
@@ -238,9 +273,10 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 		if word == ^uint64(0) {
 			fullWords++
 			continue
-		} else if word&(word+1) == 0 {
-			// Trailing bits are contiguous, e.g. 000011111111111
-			newChunks = int64(bits.TrailingZeros64(word + 1))
+		} else {
+			// And any contiguous chunks from the start of the word.
+			newChunks = int64(bits.TrailingZeros64(^uint64(word)))
+			common.Assert(newChunks < 64, newChunks, word, fullWords, t.bitmap, *t.file.FileMetadata)
 		}
 
 		break
@@ -257,7 +293,12 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 	}
 
 	// Update unacked window.
-	t.unackedWindow.Store(t.maxUploadedIdx - (t.lastContiguous + newChunks) + 1)
+	newUW := t.maxUploadedIdx - (t.lastContiguous + newChunks) + 1
+	if newUW != t.unackedWindow.Load() {
+		// Unacked window changed.
+		t.uwChangedAt.Store(time.Now().UnixNano())
+		t.unackedWindow.Store(newUW)
+	}
 
 	common.Assert(t.unackedWindow.Load() >= 0,
 		t.unackedWindow.Load(), t.maxUploadedIdx, t.lastContiguous, newChunks, *t.file.FileMetadata)
@@ -351,5 +392,39 @@ func GetHighestUploadedByte(fileMetadata *dcache.FileMetadata) (int64, time.Time
 func (t *ContiguityTracker) GetUnackedWindow() int64 {
 	uw := t.unackedWindow.Load()
 	common.Assert(uw >= 0, uw, t.maxUploadedIdx, t.lastContiguous, *t.file.FileMetadata)
+
+	//
+	// Sanity check for stuck window.
+	// If the window has not changed for 5 minutes, i.e., none of our PutChunkDC requests have got a successful
+	// response, something is wrong. Restart blobfuse in this case to recover.
+	//
+	// Note: maxUploadedIdx and maxIssuedIdx are non-atomic and hence accessing them outside lock is racy,
+	//       but they are just being logged.
+	//
+	if uw != 0 && t.uwChangedAt.Load() != 0 &&
+		time.Since(time.Unix(0, t.uwChangedAt.Load())) > 30*time.Second {
+		// If not changed for 30s, log a slow warning, and if not changed for 5min, panic and restart
+		err := fmt.Errorf("Unacked window stuck for %s, uw: %d, maxUploadedIdx: %d, lastContiguous: %d, maxIssuedIdx: %d, file: %+v",
+			time.Since(time.Unix(0, t.uwChangedAt.Load())),
+			uw, t.maxUploadedIdx, t.lastContiguous, t.maxIssuedIdx, *t.file.FileMetadata)
+
+		log.Warn("[SLOW] %v", err)
+
+		if time.Since(time.Unix(0, t.uwChangedAt.Load())) > 300*time.Second {
+			log.GetLoggerObj().Panicf("[%s][BUG] %v", common.GetDebugHostname(), err)
+		}
+	}
+
+	if uw > maxUnackedChunks/4 {
+		//
+		// Slow warning log if unacked window is high.
+		// This indicates that some RVs are slow/unresponsive or there are packet drops in he network, and
+		// hence some PutChunkDC requests are taking much longer than others.
+		//
+		log.Warn("[SLOW] Unacked window high, uw: %d, maxUploadedIdx: %d, lastContiguous: %d, maxIssuedIdx: %d, file: %s, fileID: %s",
+			uw, t.maxUploadedIdx, t.lastContiguous, t.maxIssuedIdx, t.file.FileMetadata.Filename,
+			t.file.FileMetadata.FileID)
+	}
+
 	return uw
 }

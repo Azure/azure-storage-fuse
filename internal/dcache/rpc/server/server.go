@@ -92,7 +92,7 @@ func NewNodeServer(rvMap map[string]dcache.RawVolume) (*NodeServer, error) {
 
 	transport, err = thrift.NewTServerSocket(address)
 	if err != nil {
-		log.Err("NodeServer::NewNodeServer: Failed to create server socket [%v]", err.Error())
+		log.Err("NodeServer::NewNodeServer: Failed to create server socket [%v]", err)
 		return nil, err
 	}
 

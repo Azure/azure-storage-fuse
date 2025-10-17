@@ -38,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -126,7 +127,7 @@ func isOffsetChunkStarting(offset, chunkSize int64) bool {
 func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string {
 	numMvs := int64(len(fileMetadata.FileLayout.MVList))
 
-	// Must have full strip worth of MVs.
+	// Must have full stripe worth of MVs.
 	common.Assert(numMvs == fileMetadata.FileLayout.StripeWidth,
 		numMvs, fileMetadata.FileLayout.StripeWidth, fileMetadata.FileLayout.ChunkSize)
 	common.Assert(numMvs > 0, numMvs)
@@ -158,7 +159,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
 
 	chunkSize := cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes
+	// TODO: Support auto detect stripe width depending on number of MVs.
 	stripeWidth := cm.GetCacheConfig().StripeWidth
+	numReplicas := cm.GetCacheConfig().NumReplicas
 
 	fileMetadata.FileLayout = dcache.FileLayout{
 		ChunkSize:   int64(chunkSize),
@@ -173,23 +176,69 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	// TODO: See if we can use some heuristics to pick MVs, instead of random.
 	//
 	activeMVs := cm.GetActiveMVNames()
+	if len(activeMVs) == 0 {
+		err := fmt.Errorf("Cannot create file %s, no active MVs!", fileName)
+		log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
+		return nil, syscall.EROFS
+	}
 
 	//
-	// Shuffle the slice and pick starting numMVs.
+	// MV placement algorithm.
+	// If ring based placement is enabled, RVs are picked in a round-robin manner, so mv0 has
+	// component RVs [rv0, rv1, rv2], mv1 has [rv1, rv2, rv3] and so on, so we pick MVs in the
+	// order mvX, mv(X+numReplicas), mv(X+2*numReplicas)...till we have stripeWidth MVs.
+	// The idea is to ensure that the file is spread across as many RVs as possible.
+	// With random placement, we do not know any beter so we just pick random MVs.
 	//
-	// TODO: For very large number of MVs, we can avoid shuffling all and just picking numMVs randomly.
-	//
-	rand.Shuffle(len(activeMVs), func(i, j int) {
-		activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
-	})
+	if cm.RingBasedMVPlacement {
+		//
+		// GetActiveMVNames() returns MVs as stored in the map, may not be sorted by name.
+		//
+		sort.Slice(activeMVs, func(i, j int) bool {
+			var mvi, mvj int
 
-	//
-	// Pick starting numMVs from the active MVs.
-	// If not enough MVs are active, repeat from the start of the list.
-	// It's ok to pick same MV multiple times.
-	//
-	for i := range stripeWidth {
-		fileMetadata.FileLayout.MVList[i] = activeMVs[int(i)%len(activeMVs)]
+			_, err1 := fmt.Sscanf(activeMVs[i], "mv%d", &mvi)
+			_ = err1
+			common.Assert(err1 == nil, err1, activeMVs[i])
+			_, err1 = fmt.Sscanf(activeMVs[j], "mv%d", &mvj)
+			common.Assert(err1 == nil, err1, activeMVs[j])
+			common.Assert(mvi != mvj && mvi >= 0 && mvj >= 0, mvi, mvj, activeMVs[i], activeMVs[j])
+
+			return mvi < mvj
+		})
+
+		startMVIdx := rand.Intn(len(activeMVs))
+		mvIdx := 0
+	mvLoop:
+		for {
+			for i := startMVIdx; i < len(activeMVs)+startMVIdx; i += int(numReplicas) {
+				fileMetadata.FileLayout.MVList[mvIdx] = activeMVs[int(i)%len(activeMVs)]
+				mvIdx++
+				if mvIdx == int(stripeWidth) {
+					// Done picking all MVs.
+					break mvLoop
+				}
+			}
+			startMVIdx++
+		}
+	} else {
+		//
+		// Shuffle the slice and pick starting numMVs.
+		//
+		// TODO: For very large number of MVs, we can avoid shuffling all and just picking numMVs randomly.
+		//
+		rand.Shuffle(len(activeMVs), func(i, j int) {
+			activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
+		})
+
+		//
+		// Pick starting numMVs from the active MVs.
+		// If not enough MVs are active, repeat from the start of the list.
+		// It's ok to pick same MV multiple times.
+		//
+		for i := range stripeWidth {
+			fileMetadata.FileLayout.MVList[i] = activeMVs[int(i)%len(activeMVs)]
+		}
 	}
 
 	log.Debug("DistributedCache[FM]::NewDcacheFile: Initial metadata for file %s %+v",
@@ -231,6 +280,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 	// freeChunks semaphore is used to limit StagedChunks map to numStagingChunks.
 	dcacheFile.initFreeChunks(fileIOMgr.numStagingChunks)
+
+	// Any gap amounting to a rate less than 1GBps/2 is considered slow.
+	dcacheFile.ut.slowGapThresh = time.Duration(cm.ChunkSizeMB*2) * time.Millisecond
 
 	return dcacheFile, nil
 }
@@ -467,11 +519,17 @@ loop:
 				// Read file, no need to check unacked window.
 				break loop
 			}
+
 			//
 			// Writable files will have file.CT set, for them we need to ensure that we don't exceed
 			// maxUnackedWindow else the contiguity_tracker needs to track too many chunks. Also it
 			// indicates some issue with some RV(s) (node or network) so let's not add fuel to the fire.
 			// Anyways, it's not much performance benefit in keeping too many chunks outstanding.
+			//
+			// Note that this check below cannot guarantee that we never exceed maxUnackedWindow, as we
+			// don't check the unacked window including this new chunk, we only check for the existing
+			// unacked window. This means once this new chunk is uploaded the unacked window can grow by
+			// as much as the numStagingChunks. But this is good enough to prevent excessive unacked windows.
 			//
 			uw := file.CT.GetUnackedWindow()
 			if uw > fileIOMgr.maxUnackedWindow {
@@ -487,6 +545,18 @@ loop:
 
 				log.Debug("DistributedCache[FM]::NewStagedChunk: chunkIdx: %d, file: %+v, unacked window %d exceeds max %d, waiting...",
 					idx, *file.FileMetadata, uw, fileIOMgr.maxUnackedWindow)
+
+				//
+				// If one or more chunk upload failed with some fatal error, no need to wait for this chunk.
+				// We will fail the file write anyway.
+				//
+				err = file.getWriteError()
+				if err != nil {
+					err := fmt.Errorf("DistributedCache[FM]::NewStagedChunk: file got write error while waiting for chunkIdx: %d, file: %+v: %v",
+						idx, *file.FileMetadata, err)
+					log.Err("%v", err)
+					return nil, err
+				}
 
 				continue
 			}
@@ -582,7 +652,6 @@ loop:
 	if length != 0 {
 		chunkSize := int64(cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes)
 		length = min(length, chunkSize-offset)
-
 	}
 
 	chunk := &StagedChunk{
@@ -603,6 +672,11 @@ loop:
 
 	// Take the refcount for the original creator of the chunk.
 	chunk.RefCount.Store(1)
+
+	if time.Since(startTime) > time.Second {
+		log.Warn("[SLOW] DistributedCache[FM]::NewStagedChunk: NewStagedChunk for chunkIdx: %d, file: %s, took %s, count:%d, ucount:%d",
+			idx, file.FileMetadata.Filename, time.Since(startTime), count, ucount)
+	}
 
 	return chunk, nil
 }

@@ -72,13 +72,13 @@ func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	cmd := exec.Command("../blobfuse2", "unmount", "all")
 	cmd.Stdout = &out
 	err := cmd.Run()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	cmd = exec.Command("pidof", "blobfuse2")
 	cmd.Stdout = &out
 	err = cmd.Run()
 	suite.assert.Equal("exit status 1", err.Error())
 	res, err := IsMountActive("/mnt/blobfuse")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.False(res)
 }
 
@@ -103,40 +103,40 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	defer os.RemoveAll(mntdir)
 
 	dir, err := os.Getwd()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	configFile := filepath.Join(dir, "config.yaml")
 	// Create or open the file. If it doesn't exist, it will be created.
 	file, err := os.Create(fileName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	defer file.Close() // Ensure the file is closed after we're done
 
 	// Write the content to the file
 	_, err = file.WriteString(content)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	err = os.Chdir("..")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	dir, err = os.Getwd()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	binary := filepath.Join(dir, "blobfuse2")
 	cmd := exec.Command(binary, mntdir, "--config-file", configFile)
 	cmd.Stdout = &out
 	err = cmd.Run()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	res, err := IsMountActive(mntdir)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.True(res)
 
 	res, err = IsMountActive("/mnt/blobfuse")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.False(res)
 
 	cmd = exec.Command(binary, "unmount", mntdir)
 	cmd.Stdout = &out
 	err = cmd.Run()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *typesTestSuite) TestDirectoryExists() {
@@ -166,7 +166,7 @@ func (suite *typesTestSuite) TestEncryptBadKey() {
 	rand.Read(data)
 
 	_, err := EncryptData(data, key)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *typesTestSuite) TestDecryptBadKey() {
@@ -178,7 +178,7 @@ func (suite *typesTestSuite) TestDecryptBadKey() {
 	rand.Read(data)
 
 	_, err := DecryptData(data, key)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *typesTestSuite) TestEncryptDecrypt() {
@@ -190,11 +190,11 @@ func (suite *typesTestSuite) TestEncryptDecrypt() {
 	rand.Read(data)
 
 	cipher, err := EncryptData(data, key)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	d, err := DecryptData(cipher, key)
-	suite.assert.Nil(err)
-	suite.assert.EqualValues(data, d)
+	suite.assert.NoError(err)
+	suite.assert.Equal(data, d)
 }
 
 func (suite *utilTestSuite) TestMonitorBfs() {
@@ -277,17 +277,17 @@ func (suite *utilTestSuite) TestGetUSage() {
 
 	dirName := filepath.Join(pwd, "util_test")
 	err = os.Mkdir(dirName, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	data := make([]byte, 1024*1024)
 	err = os.WriteFile(dirName+"/1.txt", data, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	err = os.WriteFile(dirName+"/2.txt", data, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	usage, err := GetUsage(dirName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.GreaterOrEqual(int(usage), 2)
 	suite.assert.LessOrEqual(int(usage), 4)
 
@@ -302,13 +302,13 @@ func (suite *utilTestSuite) TestGetDiskUsage() {
 
 	dirName := filepath.Join(pwd, "util_test", "a", "b", "c")
 	err = os.MkdirAll(dirName, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	usage, usagePercent, err := GetDiskUsageFromStatfs(dirName)
-	suite.assert.Nil(err)
-	suite.assert.NotEqual(usage, 0)
-	suite.assert.NotEqual(usagePercent, 0)
-	suite.assert.NotEqual(usagePercent, 100)
+	suite.assert.NoError(err)
+	suite.assert.NotEqual(0, usage)
+	suite.assert.NotEqual(0, usagePercent)
+	suite.assert.NotEqual(100, usagePercent)
 	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
 }
 
@@ -320,7 +320,7 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 	suite.assert.False(exists)
 
 	err := TempCacheCleanup(dirName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Directory exists but is empty
 	_ = os.MkdirAll(dirName, 0777)
@@ -331,7 +331,7 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 	suite.assert.True(empty)
 
 	err = TempCacheCleanup(dirName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Directory exists and is not empty
 	_ = os.MkdirAll(dirName+"/A", 0777)
@@ -342,7 +342,7 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 	suite.assert.False(empty)
 
 	err = TempCacheCleanup(dirName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_ = os.RemoveAll(dirName)
 
@@ -361,14 +361,14 @@ func (suite *utilTestSuite) TestWriteToFile() {
 	defer os.Remove(filePath)
 
 	err = WriteToFile(filePath, content, WriteToFileOptions{})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Check if file exists
 	suite.assert.FileExists(filePath)
 
 	// Check the content of the file
 	data, err := os.ReadFile(filePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(content, string(data))
 
 }
@@ -392,18 +392,18 @@ func (s *utilTestSuite) TestGetMD5() {
 	assert := assert.New(s.T())
 
 	f, err := os.Create("abc.txt")
-	assert.Nil(err)
+	assert.NoError(err)
 
 	_, err = f.Write([]byte(randomString(50)))
-	assert.Nil(err)
+	assert.NoError(err)
 
 	f.Close()
 
 	f, err = os.Open("abc.txt")
-	assert.Nil(err)
+	assert.NoError(err)
 
 	md5Sum, err := GetMD5(f)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.NotZero(md5Sum)
 
 	f.Close()
@@ -418,58 +418,58 @@ func (s *utilTestSuite) TestComponentExists() {
 	}
 
 	exists := ComponentInPipeline(components, "component1")
-	s.Assert().True(exists)
+	s.True(exists)
 
 	exists = ComponentInPipeline(components, "component4")
-	s.Assert().False(exists)
+	s.False(exists)
 
 }
 
 func (s *utilTestSuite) TestValidatePipeline() {
 	err := ValidatePipeline([]string{"libfuse", "file_cache", "block_cache", "azstorage"})
-	s.Assert().NotNil(err)
+	s.Assert().Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "xload", "azstorage"})
-	s.Assert().NotNil(err)
+	s.Assert().Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "block_cache", "xload", "azstorage"})
-	s.Assert().NotNil(err)
+	s.Assert().Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "block_cache", "xload", "azstorage"})
-	s.Assert().NotNil(err)
+	s.Assert().Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "azstorage"})
-	s.Assert().Nil(err)
+	s.Assert().NoError(err)
 
 	err = ValidatePipeline([]string{"libfuse", "block_cache", "azstorage"})
-	s.Assert().Nil(err)
+	s.Assert().NoError(err)
 
 	err = ValidatePipeline([]string{"libfuse", "xload", "attr_cache", "azstorage"})
-	s.Assert().Nil(err)
+	s.Assert().NoError(err)
 }
 
 func (s *utilTestSuite) TestUpdatePipeline() {
 	pipeline := UpdatePipeline([]string{"libfuse", "file_cache", "azstorage"}, "xload")
-	s.Assert().NotNil(pipeline)
-	s.Assert().False(ComponentInPipeline(pipeline, "file_cache"))
-	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+	s.NotNil(pipeline)
+	s.False(ComponentInPipeline(pipeline, "file_cache"))
+	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "block_cache", "azstorage"}, "xload")
-	s.Assert().NotNil(pipeline)
-	s.Assert().False(ComponentInPipeline(pipeline, "block_cache"))
-	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+	s.NotNil(pipeline)
+	s.False(ComponentInPipeline(pipeline, "block_cache"))
+	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "file_cache", "azstorage"}, "block_cache")
-	s.Assert().NotNil(pipeline)
-	s.Assert().False(ComponentInPipeline(pipeline, "file_cache"))
-	s.Assert().Equal(pipeline, []string{"libfuse", "block_cache", "azstorage"})
+	s.NotNil(pipeline)
+	s.False(ComponentInPipeline(pipeline, "file_cache"))
+	s.Assert().Equal([]string{"libfuse", "block_cache", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "block_cache")
-	s.Assert().NotNil(pipeline)
-	s.Assert().False(ComponentInPipeline(pipeline, "xload"))
-	s.Assert().Equal(pipeline, []string{"libfuse", "block_cache", "azstorage"})
+	s.NotNil(pipeline)
+	s.False(ComponentInPipeline(pipeline, "xload"))
+	s.Assert().Equal([]string{"libfuse", "block_cache", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "xload")
-	s.Assert().NotNil(pipeline)
-	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+	s.NotNil(pipeline)
+	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 }

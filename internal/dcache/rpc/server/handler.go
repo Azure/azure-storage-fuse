@@ -37,7 +37,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -56,9 +55,42 @@ import (
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
+
+	// TODO: This is released under MPL 2.0 license, need to include the license text.
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
+
+var (
+	//
+	// In case of multiple readers reading the same file, we may saturate the disk b/w, so we use an LRU cache
+	// to cache recently served chunks. When multiple readers are reading the same file, they would do so usually
+	// simultaneously, so the cache would help reduce the disk IO.
+	// Note that this is the max number of chunks, not the size in bytes. Also, this may be reduced later depending
+	// on the available memory.
+	//
+	ChunkCacheSize = 1024
+
+	// TODO: These are for debug purposes only, remove them later.
+	NumChunkWrites          atomic.Int64
+	CumChunkWrites          atomic.Int64 // cumulative number of chunks written
+	CumBytesWritten         atomic.Int64 // cumulative number of bytes written
+	OpenDepth               atomic.Int64 // number of go routines inside syscall.Open() for to-be-written chunk files
+	WriteDepth              atomic.Int64 // number of go routines inside syscall.Write()
+	RenameDepth             atomic.Int64 // number of go routines inside common.RenameNoReplace()
+	AggrChunkWritesDuration atomic.Int64 // time in nanoseconds for NumChunkWrites.
+
+	NumChunkReads          atomic.Int64
+	AggrChunkReadsDuration atomic.Int64 // time in nanoseconds for NumChunkReads.
+
+	//
+	// Anything more than this is considered a slow chunk read/write.
+	// Under heavy IO load, we can have ~500-1000 IOs queued to an RV, for 4GBps disk throughput,
+	// and 16MB chunks, this comes to ~2-4 seconds.
+	//
+	SlowReadWriteThreshold = 2 * time.Second
+)
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
 var _ service.ChunkService = &ChunkServiceHandler{}
@@ -82,6 +114,15 @@ type ChunkServiceHandler struct {
 	// some of the fields of those entries may change.
 	//
 	rvIDMap map[string]*rvInfo
+
+	//
+	// LRU cache for chunks.
+	// Helps scenarios when many nodes read the same file simultaneously.
+	// Indexed by local chunk path.
+	//
+	chunkCache       *lru.Cache[string, []byte]
+	chunkCacheLookup atomic.Int64
+	chunkCacheHit    atomic.Int64
 }
 
 // This holds information on one of our local RV.
@@ -128,6 +169,9 @@ type rvInfo struct {
 	// Cumulative bytes read from this RV by GetChunk() requests.
 	// Mostly used for debugging distribution of reads across RVs.
 	totalBytesRead atomic.Int64
+
+	// Number of chunks queued to be read/written from/to this RV.
+	qsize atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -248,6 +292,33 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 		rvIDMap: getRvIDMap(rvMap),
 	}
 
+	//
+	// Initialize chunk cache, 1024 chunks or 10% of available memory, whichever is lower.
+	//
+	const usablePercentSystemRAM = 10
+
+	ramMB, err := common.GetAvailableMemoryInMB()
+	if err != nil {
+		return fmt.Errorf("NewChunkServiceHandler: %v", err)
+	}
+
+	usableMemoryMB := (ramMB * uint64(usablePercentSystemRAM)) / 100
+	ChunkCacheSize = min(ChunkCacheSize, int(usableMemoryMB/cm.GetCacheConfig().ChunkSizeMB))
+	ChunkCacheSize = max(ChunkCacheSize, 64) // at least 64 chunks.
+
+	chunkCache, err := lru.New[string, []byte](ChunkCacheSize)
+	if err != nil {
+		err = fmt.Errorf("NewChunkServiceHandler: Failed to create chunk cache of size: %d chunks: %v",
+			ChunkCacheSize, err)
+		common.Assert(false, err)
+		return err
+	}
+
+	handler.chunkCache = chunkCache
+
+	log.Info("NewChunkServiceHandler: Created chunk cache, size: %d chunks (ramMB: %d)",
+		ChunkCacheSize, ramMB)
+
 	// If no RVs are hosted by this node, we should not create the chunk service handler.
 	common.Assert(len(handler.rvIDMap) > 0)
 
@@ -303,7 +374,7 @@ func NewChunkServiceHandler(rvMap map[string]dcache.RawVolume) error {
 			// We should only have MV dirs for active MVs for the RV.
 			common.Assert(ok, rvName, mvName, componentRVMap)
 
-			componentRVs := cm.RVMapToList(mvName, componentRVMap)
+			componentRVs := cm.RVMapToList(mvName, componentRVMap, false /* randomize */)
 			sortComponentRVs(componentRVs)
 
 			log.Debug("NewChunkServiceHandler: %s/%s has componentRVs: %v, at epoch: %d",
@@ -603,12 +674,15 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	//       GetMVSize() from JoinMV, there could have been more chunks being written to the source MV replica after
 	//       we read the mvInfo.totalChunkBytes. So we reserved less but actually sync'ed more. So, directly
 	//       decrementing the reserved space in PutChunk(sync) can lead to negative reserved space for both MV and RV.
+	//       For now ignore negative space.
 	//
 	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
-	common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
 	log.Debug("rvInfo::getAvailableSpace: RV: %s, availableSpace: %d, diskSpaceAvailable: %d, reservedSpace: %d",
 		rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
+
+	//common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
+	availableSpace = max(availableSpace, 0)
 
 	return availableSpace, err
 }
@@ -703,7 +777,13 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clus
 	common.Assert(len(componentRVs) == int(cm.GetCacheConfig().NumReplicas),
 		len(componentRVs), cm.GetCacheConfig().NumReplicas)
 	common.Assert(clustermapEpoch > 0, mv.mvName, clustermapEpoch)
-	common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch, mv.mvName)
+
+	//
+	// A refreshFromClustermap() call can start before another one (and gets an older epoch) but the first one
+	// may reach here after the second call (which may have updated mvInfo) so we may come here with a
+	// clustermapEpoch which is less than mv.clustermapEpoch. In that case we simply skip the update.
+	//
+	//common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch, mv.rv.rvName, mv.mvName)
 
 	mv.rwMutex.Lock()
 	defer mv.rwMutex.Unlock()
@@ -1558,32 +1638,20 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 // Helper function to read given chunk and (optionally) the hash file.
 // It performs direct or buffered read as per the configured setting or may fallback to buffered read for
 // cases where direct read cannot be performed due to alignment restrictions.
-func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byte) (int /* read bytes */, string /* hash */, error) {
-	var fh *os.File
-	var n, fd int
-	var err error
+func readChunkAndHash(chunkPath, hashPath *string,
+	readOffset int64, data *[]byte) (int /* read bytes */, string /* hash */, error) {
 	var hash string
 
-	common.Assert(chunkPath != nil && len(*chunkPath) > 0)
-	common.Assert(data != nil && len(*data) > 0)
-	common.Assert(readOffset >= 0)
-
-	readLength := len(*data)
-
 	//
-	// Caller must pass data buffer aligned on FS_BLOCK_SIZE, else we have to unnecessarily perform buffered read.
-	// Smaller buffers (less than 1MiB) have been seen to be not aligned to FS_BLOCK_SIZE, we exclude
-	// those from the assert since those are rare and do not affect performance.
+	// Unless o/w specified, we do direct IO for chunk reads falling to buffered IO in case of some issue,
+	// alignment issue being the most common one.
 	//
-	dataAddr := unsafe.Pointer(&(*data)[0])
-	isDataBufferAligned := ((uintptr(dataAddr) % common.FS_BLOCK_SIZE) == 0)
-	common.Assert((readLength < 1024*1024) || isDataBufferAligned,
-		uintptr(dataAddr), readLength, common.FS_BLOCK_SIZE)
+	n, err := SafeRead(chunkPath, readOffset, data, rpc.ReadIOMode == rpc.BufferedIO)
 
 	//
 	// Hash file is small, perform buffered read.
 	//
-	if hashPath != nil {
+	if err == nil && hashPath != nil {
 		// Caller must ask hash only for full chunk reads.
 		common.Assert(readOffset == 0)
 		common.Assert(len(*hashPath) > 0)
@@ -1599,88 +1667,7 @@ func readChunkAndHash(chunkPath, hashPath *string, readOffset int64, data *[]byt
 		hash = string(hashData)
 	}
 
-	//
-	// Read the chunk using buffered IO mode if,
-	//   - Read IO type is configured as BufferedIO, or
-	//   - The requested offset and length is not aligned to file system block size.
-	//   - The buffer is not aligned to file system block size.
-	//
-	if rpc.ReadIOMode == rpc.BufferedIO ||
-		readLength%common.FS_BLOCK_SIZE != 0 ||
-		readOffset%common.FS_BLOCK_SIZE != 0 ||
-		!isDataBufferAligned {
-		if rpc.ReadIOMode != rpc.BufferedIO {
-			log.Debug("readChunkAndHash: Performing buffered read for chunk %s, offset %d, readLength %d, isDataBufferAligned: %v",
-				*chunkPath, readOffset, readLength, isDataBufferAligned)
-		}
-		goto bufferedRead
-	}
-
-	//
-	// Direct IO read.
-	//
-	fd, err = syscall.Open(*chunkPath, syscall.O_RDONLY|syscall.O_DIRECT, 0)
-	if err != nil {
-		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
-	}
-	defer syscall.Close(fd)
-
-	if readOffset != 0 {
-		_, err = syscall.Seek(fd, readOffset, 0)
-		if err != nil {
-			return -1, "", fmt.Errorf("failed to seek in chunk file %s at offset %d [%v]",
-				*chunkPath, readOffset, err)
-		}
-	}
-
-	n, err = syscall.Read(fd, *data)
-	if err == nil {
-		//
-		// Partial reads should be rare, if it happens fallback to the buffered ReadAt() call which will
-		// try to read all the requested byted.
-		// TODO: Make sure this is not common path.
-		//
-		if n != readLength {
-			log.Debug("readChunkAndHash: Partial read (%d of %d), chunk file %s, offset %d, falling back to buffered read",
-				n, readLength, *chunkPath, readOffset)
-			common.Assert(false, n, readLength, *chunkPath)
-			goto bufferedRead
-		}
-		return n, hash, nil
-	}
-
-	// For EINVAL, fall through to buffered read.
-	if !errors.Is(err, syscall.EINVAL) {
-		return -1, "", fmt.Errorf("failed to read chunk file %s offset %d [%v]", *chunkPath, readOffset, err)
-	}
-
-	// TODO: Remove this once this is tested sufficiently.
-	log.Warn("Direct read failed with EINVAL, performing buffered read, file: %s, offset: %d, err: %v",
-		*chunkPath, readOffset, err)
-
-bufferedRead:
-	fh, err = os.Open(*chunkPath)
-	if err != nil {
-		return -1, "", fmt.Errorf("failed to open chunk file %s [%v]", *chunkPath, err)
-	}
-	defer fh.Close()
-
-	//
-	// When reading metadata chunk, we may read less than requested length and hence EOF will be returned
-	// but that's not an error.
-	//
-	n, err = fh.ReadAt(*data, readOffset)
-	if err != nil && err != io.EOF {
-		return -1, "", fmt.Errorf("failed to read chunk file %s at offset %d, readLength: %d [%v]",
-			*chunkPath, readOffset, readLength, err)
-	}
-
-	// See comment in readChunkAndHash() why metadata chunk read may return less data than requested.
-	common.Assert((n == readLength) ||
-		(n > 0 && n < readLength && readLength == dcache.MDChunkSize && err == io.EOF),
-		n, readLength, *chunkPath)
-
-	return n, hash, nil
+	return n, hash, err
 }
 
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
@@ -1791,6 +1778,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// TODO: Need to ensure this is FS_BLOCK_SIZE aligned.
 	//
 	var data []byte
+	var lmt string
+	var n int
+	_ = n
+	var hashPathPtr *string
+	var thisDuration time.Duration
+	var readStartTime time.Time
 
 	if req.IsLocalRV {
 		//
@@ -1818,16 +1811,41 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		}()
 	} else {
 		//
+		// local reader expects the buffer to be allocated from the pool, and it'll release the buffer
+		// back to the pool. We cannot safely return cached chunk buffer in that case. Moreover, we don't
+		// cache local RV reads, as they are less indicative of the chunk being hot (read by multiple nodes).
+		//
+		// TODO: If we use pooled allocation for non-local reads too, we will need a way to indicate that
+		//       this buffer is from the cache and must not be released.
+		//
+		var ok bool
+		if common.IsDebugBuild() {
+			h.chunkCacheLookup.Add(1)
+		}
+		data, ok = h.chunkCache.Get(chunkPath)
+		if ok {
+			// We don't add metadata chunk to the cache, so we must not get it from the cache.
+			common.Assert(req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB, chunkPath, req.Address.OffsetInMiB)
+
+			if common.IsDebugBuild() {
+				h.chunkCacheHit.Add(1)
+
+				log.Debug("ChunkServiceHandler::GetChunk: Cache hit for chunk %s on %s [ %d/%d (hit rate: %.2f%%)]",
+					chunkPath, rvInfo.rvName, h.chunkCacheHit.Load(), h.chunkCacheLookup.Load(),
+					(float64(h.chunkCacheHit.Load())/float64(h.chunkCacheLookup.Load()))*100)
+			}
+			n = len(data)
+			// Must be the entire exact chunk.
+			common.Assert(n == int(req.Length), n, req.Length, chunkPath)
+			goto cached_chunk_read
+		}
+
+		//
 		// We cannot make pool allocation here, as this call has come as part of handling the RPC request.
 		// TODO: Convert this to pooled allocation.
 		//
 		data = make([]byte, req.Length)
 	}
-
-	var lmt string
-	var n int
-	_ = n
-	var hashPathPtr *string
 
 	// Metadata chunk IOs are serialized as it's mutable unlike other data chunks.
 	if req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB {
@@ -1877,7 +1895,30 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//if req.OffsetInChunk == 0 && req.Length == chunkSize {
 	//	hashPathPtr := &hashPath
 	//}
+
+	readStartTime = time.Now()
+	rvInfo.qsize.Add(1)
 	n, _, err = readChunkAndHash(&chunkPath, hashPathPtr, req.OffsetInChunk, &data)
+	common.Assert(rvInfo.qsize.Load() > 0, rvInfo.qsize.Load(), chunkPath, rvInfo.rvName)
+	rvInfo.qsize.Add(-1)
+	thisDuration = time.Since(readStartTime)
+
+	// Consider only recent reads for calculating avg read duration.
+	if NumChunkReads.Add(1) == 1000 {
+		NumChunkReads.Store(1)
+		AggrChunkReadsDuration.Store(thisDuration.Nanoseconds())
+	} else {
+		AggrChunkReadsDuration.Add(thisDuration.Nanoseconds())
+	}
+
+	if thisDuration > SlowReadWriteThreshold {
+		log.Warn("[SLOW] readChunkAndHash: Slow read for %s, chunkIdx: %d, took %s (>%s), avg: %s, iodepth: %d",
+			chunkPath, rpc.ChunkAddressToChunkIdx(req.Address),
+			thisDuration, SlowReadWriteThreshold,
+			time.Duration(AggrChunkReadsDuration.Load()/NumChunkReads.Load()),
+			rvInfo.qsize.Load())
+	}
+
 	if err != nil {
 		errStr := fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
@@ -1891,7 +1932,19 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	log.Info("ChunkServiceHandler::GetChunk: [STATS] chunk path %s, %s, totalBytesRead: %d ",
 		chunkPath, rvInfo.rvName, rvInfo.totalBytesRead.Load())
 
+	//
+	// Don't cache local RV reads, as they are less indicative of the chunk being hot (read by multiple nodes).
+	// Also don't cache metadata chunk, as it's mutable.
+	//
+	if !req.IsLocalRV && (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) {
+		common.Assert(len(data) == int(req.Length), len(data), req.Length, chunkPath)
+		h.chunkCache.Add(chunkPath, data)
+		// Make sure LRU cache honors the size limit.
+		common.Assert(h.chunkCache.Len() <= ChunkCacheSize, h.chunkCache.Len(), ChunkCacheSize, chunkPath)
+	}
+
 dummy_read:
+cached_chunk_read:
 	resp := &models.GetChunkResponse{
 		Chunk: &models.Chunk{
 			Address: req.Address,
@@ -1921,8 +1974,13 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	//
 	// Use O_EXCL flag just in case two writers are trying to write the same chunk simultaneously.
 	// Note that for actually protecting overwriting an existing chunk we rely on the atomic rename below.
+	// Note that rename (as opposed to directly writing the chunk) also helps in avoiding incorrectly
+	// serving a partially written chunk file, though this is not a real problem as clients should never
+	// ask for a chunk that's not written yet.
 	//
+	OpenDepth.Add(1)
 	fd, err := syscall.Open(tmpChunkPath, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|flag, 0400)
+	OpenDepth.Add(-1)
 	if err != nil {
 		//
 		// This is most likely open failure due to the file already existing.
@@ -1953,7 +2011,9 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 	}()
 
 	for {
+		WriteDepth.Add(1)
 		n, err := syscall.Write(fd, *data)
+		WriteDepth.Add(-1)
 		if err == nil {
 			// write should never succeed with 0 bytes written.
 			common.Assert(n > 0, n, len(*data), tmpChunkPath)
@@ -1963,7 +2023,9 @@ func safeWrite(chunkPath *string, data *[]byte, flag int) error {
 				// Common case, written everything requested.
 				// Rename the tmp chunk file to the final chunk file name.
 				//
+				RenameDepth.Add(1)
 				renameErr := common.RenameNoReplace(tmpChunkPath, *chunkPath)
+				RenameDepth.Add(-1)
 				if renameErr != nil {
 					err := fmt.Errorf("safeWrite: failed to rename chunk file %s to %s: %w",
 						tmpChunkPath, *chunkPath, renameErr)
@@ -2067,6 +2129,12 @@ func writeChunkAndHash(chunkPath, hashPath *string, data *[]byte, hash *string) 
 		writeLength%common.FS_BLOCK_SIZE != 0 ||
 		!isDataBufferAligned {
 		bufferedWrite = true
+
+		// Warn if we are doing buffered write for a large chunk due to unaligned buffer.
+		if rpc.WriteIOMode != rpc.BufferedIO && (writeLength >= (1024 * 1024)) && !isDataBufferAligned {
+			log.Warn("writeChunkAndHash: Performing buffered write for chunk %s, length: %d",
+				*chunkPath, writeLength)
+		}
 	}
 
 	if !bufferedWrite {
@@ -2353,6 +2421,12 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
 	var availableSpace int64
+	var thisDuration time.Duration
+	var writeStartTime time.Time
+	var issueIODepth int64
+	var issueOpenDepth int64
+	var issueWriteDepth int64
+	var issueRenameDepth int64
 
 	//
 	// If the PutChunk is for the special metadata chunk, remove existing metadata chunk file if any, to
@@ -2403,7 +2477,47 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	}
 
 	// TODO: hash validation will be done later
+
+	writeStartTime = time.Now()
+	rvInfo.qsize.Add(1)
+
+	// Various qdepths at the time of issuing the write.
+	issueIODepth = rvInfo.qsize.Load()
+	issueOpenDepth = OpenDepth.Load()
+	issueWriteDepth = WriteDepth.Load()
+	issueRenameDepth = RenameDepth.Load()
+
+	// 10k is arbitrary large number, we should never reach this due to the client side throttling.
+	common.Assert(rvInfo.qsize.Load() < 10000, rvInfo.qsize.Load())
 	err = writeChunkAndHash(&chunkPath, nil /* &hashPath */, &req.Chunk.Data, &req.Chunk.Hash)
+	common.Assert(rvInfo.qsize.Load() > 0, rvInfo.qsize.Load(), chunkPath, rvInfo.rvName)
+	rvInfo.qsize.Add(-1)
+	thisDuration = time.Since(writeStartTime)
+
+	// Consider only recent writes for calculating avg write duration.
+	if NumChunkWrites.Add(1) == 1000 {
+		NumChunkWrites.Store(1)
+		AggrChunkWritesDuration.Store(thisDuration.Nanoseconds())
+	} else {
+		AggrChunkWritesDuration.Add(thisDuration.Nanoseconds())
+	}
+
+	CumChunkWrites.Add(1)
+	CumBytesWritten.Add(int64(len(req.Chunk.Data)))
+
+	// Too many outstanding writes to a disk can make the writes very slow, alert to know that.
+	if thisDuration > SlowReadWriteThreshold {
+		log.Warn("[SLOW] writeChunkAndHash: Slow write for %s, chunkIdx: %d, took %s (>%s), avg: %s, cum: {%d, %d}, iodepth: %d (%d), openDepth: %d (%d), writeDepth: %d (%d), renameDepth: %d (%d)",
+			chunkPath, rpc.ChunkAddressToChunkIdx(req.Chunk.Address),
+			thisDuration, SlowReadWriteThreshold,
+			time.Duration(AggrChunkWritesDuration.Load()/NumChunkWrites.Load()),
+			CumChunkWrites.Load(), CumBytesWritten.Load(),
+			rvInfo.qsize.Load(), issueIODepth,
+			OpenDepth.Load(), issueOpenDepth,
+			WriteDepth.Load(), issueWriteDepth,
+			RenameDepth.Load(), issueRenameDepth)
+	}
+
 	if err != nil {
 		//
 		// Chunk file must not be present, unless it is either a sync write or client has retried the write
@@ -2441,6 +2555,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 				return &models.PutChunkResponse{
 					TimeTaken:      time.Since(startTime).Microseconds(),
+					Qsize:          rvInfo.qsize.Load(),
 					AvailableSpace: availableSpace,
 					ComponentRV:    mvInfo.getComponentRVs(),
 				}, nil
@@ -2510,6 +2625,7 @@ dummy_write:
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
+		Qsize:          rvInfo.qsize.Load(),
 		AvailableSpace: availableSpace,
 		ComponentRV:    mvInfo.getComponentRVs(),
 	}

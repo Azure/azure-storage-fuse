@@ -45,6 +45,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -72,12 +73,18 @@ const (
 	MinChunkSizeMB int64 = 1
 	MaxChunkSizeMB int64 = 1024
 
+	// Configured chunk size.
+	ChunkSizeMB int64
+
 	// StripeWidthMB = ChunkSizeMB * StripeWidth
 	MinStripeWidth int64 = 1
-	MaxStripeWidth int64 = 64
+	MaxStripeWidth int64 = 1024
 
 	MinNumReplicas int64 = 1
 	MaxNumReplicas int64 = 256
+
+	// Configured number of replicas.
+	NumReplicas int64
 
 	MinMaxRVs int64 = 100
 	MaxMaxRVs int64 = 100000
@@ -92,6 +99,8 @@ const (
 	PreferredMVs int64 = 1000
 
 	MinMVsPerRV int64 = 1
+
+	// This will be bumped up if RingBasedMVPlacement is enabled.
 	MaxMVsPerRV int64 = 100
 
 	//
@@ -133,6 +142,8 @@ var (
 
 	rvNameRegex = regexp.MustCompile("^rv[0-9]+$")
 	mvNameRegex = regexp.MustCompile("^mv[0-9]+$")
+
+	RingBasedMVPlacement bool
 )
 
 // Valid RV name is of the form "rv0", "rv99", etc.
@@ -556,7 +567,7 @@ func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 
 // Convert an RVMap returned by clustermap APIs like GetRVs()/GetRVsEx() to a list of RVNameAndState
 // needed by rvInfo and others.
-func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {
+func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum, randomize bool) []*models.RVNameAndState {
 	componentRVs := make([]*models.RVNameAndState, 0, int(GetCacheConfig().NumReplicas))
 
 	for rvName, rvState := range rvMap {
@@ -573,10 +584,29 @@ func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVN
 	//
 	// Take this opportunity to randomize the order of RVs in the list, this is usually desirable
 	// to distribute load evenly across RVs.
+	// If randomize is false, sort the RVs by their RV number (rv0, rv1, etc.) to get a deterministic
+	// order. This is specially useful for RingBasedMVPlacement where RVs are alloted in order when
+	// placing MVs.
 	//
-	rand.Shuffle(len(componentRVs), func(i, j int) {
-		componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
-	})
+	if randomize {
+		rand.Shuffle(len(componentRVs), func(i, j int) {
+			componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
+		})
+	} else {
+		sort.Slice(componentRVs, func(i, j int) bool {
+			var rvi, rvj int
+
+			_, err1 := fmt.Sscanf(componentRVs[i].Name, "rv%d", &rvi)
+			_ = err1
+			common.Assert(err1 == nil, err1, componentRVs[i].Name)
+			_, err1 = fmt.Sscanf(componentRVs[j].Name, "rv%d", &rvj)
+			common.Assert(err1 == nil, err1, componentRVs[j].Name)
+			common.Assert(rvi != rvj && rvi >= 0 && rvj >= 0,
+				rvi, rvj, componentRVs[i].Name, componentRVs[j].Name)
+
+			return rvi < rvj
+		})
+	}
 
 	return componentRVs
 }
@@ -585,12 +615,14 @@ var uuidToUniqueInt = map[string]int{}
 var uuidToUniqueIntMapMutex sync.RWMutex
 var uniqueInt int
 
-// Return a unique integer for the given UUID.
+// Return a unique integer for the given UUID. The returned integer is guaranteed to be unique
+// for each unique UUID passed to this function and will be in the range [1, 2^31-1].
 // The uniqueness is in the scope of this blobfuse2 instance, so don't use it outside that.
 // Useful to convert UUIDs to integers once and then use for faster comparison in the fastpath.
 func UUIDToUniqueInt(uuid string) int {
 	common.Assert(common.IsValidUUID(uuid), uuid)
 
+	// Fastpath, UUID already exists in the map.
 	uuidToUniqueIntMapMutex.RLock()
 	uuidInt, exists := uuidToUniqueInt[uuid]
 	uuidToUniqueIntMapMutex.RUnlock()
@@ -604,7 +636,31 @@ func UUIDToUniqueInt(uuid string) int {
 
 	uniqueInt++
 	uuidToUniqueInt[uuid] = uniqueInt
+
+	if uniqueInt <= 0 {
+		log.GetLoggerObj().Panicf("UUIDToUniqueInt: uniqueInt (%d) overflowed while adding UUID %s",
+			uniqueInt, uuid)
+	}
+
 	return uniqueInt
+}
+
+// Use this when you are sure that the UUID has already been converted to an integer, and you
+// just want to retrieve it.
+// Unlike UUIDToUniqueInt() which adds a UUID if it doesn't exist, this helps to catch unexpected
+// bugs where a UUID is not already added to the map where it should have been.
+func UUIDToInt(uuid string) int {
+	common.Assert(common.IsValidUUID(uuid), uuid)
+
+	uuidToUniqueIntMapMutex.RLock()
+	uuidInt, exists := uuidToUniqueInt[uuid]
+	_ = exists
+	uuidToUniqueIntMapMutex.RUnlock()
+
+	common.Assert(exists, uuid)
+	common.Assert(uuidInt > 0, uuid)
+
+	return uuidInt
 }
 
 // Silence unused import errors for release builds.

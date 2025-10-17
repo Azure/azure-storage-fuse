@@ -56,12 +56,18 @@ var (
 )
 
 func Start() {
-	// This MUST match localClusterMapPath in clustermanager.
+	// clustermanager must use cm.GetLocalClusterMapPath() to set this as localClusterMapPath.
 	clusterMap.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
 }
 
 func Stop() {
 	clusterMap.stop()
+}
+
+func GetLocalClusterMapPath() string {
+	// Must be called only after clustermap Start() is called.
+	common.Assert(clusterMap.localClusterMapPath != "")
+	return clusterMap.localClusterMapPath
 }
 
 // Update will load the local clustermap.
@@ -368,10 +374,24 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		}
 
 		//
+		// Exception 2: If the new state is online and RV is not found in the clustermap, it mostly means
+		//              that the RV was part of the MV earlier and it was outofsync, so a sync job was started
+		//              but by the time the sync job completed and it tried to update the RV to online (from syncing)
+		//              some other node found the component RV to be unreachable and marked in inband-offline and
+		//              then a fix-mv workflow ran and removed the RV from the MV.
+		//
+		if rvNewState == dcache.StateOnline {
+			err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s (syncing -> online) for stale component RV, latest component RVs are %+v: %w (epoch: %d)",
+				rvName, mvName, rvs, InvalidComponentRV, GetEpoch())
+			log.Err("%v", err)
+			return err
+		}
+
+		//
 		// Unexpected RV updates, log and assert to find out if we must add more legitimate exceptions.
 		//
-		err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v: %w",
-			rvName, mvName, rvNewState, rvs, InvalidComponentRV)
+		err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v: %w (epoch: %d)",
+			rvName, mvName, rvNewState, rvs, InvalidComponentRV, GetEpoch())
 		log.Err("%v", err)
 		common.Assert(false, err)
 
@@ -436,6 +456,10 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	// Let's catch updates that take more than 30 seconds to complete.
 	// We would like to know why updates are taking so long, as updates blocked for long can cause other
 	// issues.
+	//
+	// One scenario where this can happen is when some node dies while it was updating the clustermap, so
+	// the clustermap is marked "being updated" and hence it'll remain in that state till the timeout expires
+	// and some other node assumes the leader role. This can easily be more than a minute.
 	//
 	// TODO: We may want to relax this later but for now we want to catch any long updates.
 	//

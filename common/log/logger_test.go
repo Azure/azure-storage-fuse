@@ -96,7 +96,7 @@ func (lts *LoggerTestSuite) TestBaseLogger() {
 		Level:       common.ELogLevel.LOG_DEBUG(),
 	}
 	err := SetDefaultLogger("base", cfg)
-	assert.Nil(err, "Failed to set base logger")
+	assert.NoError(err, "Failed to set base logger")
 
 	simpleTest(lts)
 
@@ -107,7 +107,7 @@ func (lts *LoggerTestSuite) TestBaseLogger() {
 	fastTestCrit(lts)
 
 	err = Destroy()
-	assert.Nil(err, "Failed to release base logger")
+	assert.NoError(err, "Failed to release base logger")
 }
 
 func (lts *LoggerTestSuite) TestSilentLogger() {
@@ -116,7 +116,7 @@ func (lts *LoggerTestSuite) TestSilentLogger() {
 	cfg := common.LogConfig{}
 
 	err := SetDefaultLogger("silent", cfg)
-	assert.Nil(err, "Failed to set silent logger")
+	assert.NoError(err, "Failed to set silent logger")
 
 	simpleTest(lts)
 }
@@ -129,7 +129,7 @@ func (lts *LoggerTestSuite) TestSysLogger() {
 	}
 
 	err := SetDefaultLogger("syslog", cfg)
-	assert.Nil(err, "Failed to set silent logger")
+	assert.NoError(err, "Failed to set silent logger")
 
 	simpleTest(lts)
 }
@@ -141,7 +141,7 @@ func (lts *LoggerTestSuite) TestNegative() {
 	}
 
 	err := SetDefaultLogger("negative", cfg)
-	assert.NotNil(err, "Negative : did not get logger object")
+	assert.Error(err, "Negative : did not get logger object")
 }
 
 func TestLoggerTestSuite(t *testing.T) {

@@ -71,6 +71,18 @@ const (
 	// to file paths without an explicit fs=azure/fs=dcache namespace specified.
 	HandleFlagDcacheAllowWrites // Write to Distributed Cache through this handle is only allowed if this flag is set
 	HandleFlagDcacheAllowReads  // Read from Distributed Cache through this handle is only allowed if this flag is set
+	//
+	// Dummy write, any file write through this handle generates lot of dummy write to dcache
+	// Useful for testing performance of dcache writes.
+	//
+	// To test run:
+	// echo hi > /mnt/blobfuse/fs=dcache/file.dummy.write
+	//
+	// This 2 character file write will generate 100GB of write to dcache w/o involving application and fuse.
+	//
+	// TODO: Remove this flag and related code, once testing is done.
+	//
+	HandleDummyWrite
 )
 
 // Structure to hold in memory cache for streaming layer
@@ -260,6 +272,16 @@ func (handle *Handle) SetDcacheStopWrites() {
 	handle.Flags.Clear(HandleFlagDcacheAllowWrites)
 	// From this point there cannot be any IO on this handle.
 	common.Assert(!handle.IsDcacheAllowReads() && !handle.IsDcacheAllowWrites())
+}
+
+func (handle *Handle) SetDummyWrite() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsDummyWrite())
+	handle.Flags.Set(HandleDummyWrite)
+}
+
+func (handle *Handle) IsDummyWrite() bool {
+	return handle.Flags.IsSet(HandleDummyWrite)
 }
 
 // **********************Dcache Related Methods End******************************

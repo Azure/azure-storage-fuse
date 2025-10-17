@@ -53,18 +53,18 @@ func (suite *dataManagerTestSuite) SetupSuite() {
 
 func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
 	rdm, err := newRemoteDataManager(nil)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(rdm)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote data manager")
 
 	rdm, err = newRemoteDataManager(&remoteDataManagerOptions{})
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(rdm)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote data manager")
 
 	remote := loopback.NewLoopbackFSComponent()
 	statsMgr, err := NewStatsManager(1, false, nil)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(statsMgr)
 
 	rdm, err = newRemoteDataManager(&remoteDataManagerOptions{
@@ -72,7 +72,7 @@ func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
 		remote:      remote,
 		statsMgr:    statsMgr,
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(rdm)
 }
 
@@ -89,15 +89,15 @@ func (suite *dataManagerTestSuite) TestProcessErrors() {
 	}
 
 	dataLength, err := rdm.Process(item)
-	suite.assert.NotNil(err)
-	suite.assert.Equal(dataLength, 0)
+	suite.assert.Error(err)
+	suite.assert.Equal(0, dataLength)
 
 	// cancel the context
 	cancel()
 
 	dataLength, err = rdm.Process(item)
-	suite.assert.NotNil(err)
-	suite.assert.Equal(dataLength, 0)
+	suite.assert.Error(err)
+	suite.assert.Equal(0, dataLength)
 }
 
 func TestDatamanagerSuite(t *testing.T) {

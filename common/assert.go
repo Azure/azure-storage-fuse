@@ -78,6 +78,13 @@ func IsDebugBuild() bool {
 	return isDebugBuild
 }
 
+// GetDebugHostname returns the hostname that can be used in logs, to identify the host when logs
+// from multiple hosts are dumped in the same output file or terminal, e.g., panic logs from multiple
+// blobfuse instances running on different hosts run from the same terminal using ssh.
+func GetDebugHostname() string {
+	return hostname
+}
+
 func init() {
 	var err error
 

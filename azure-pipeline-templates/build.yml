@@ -180,9 +180,9 @@ steps:
       echo "\"block-cont-sas-ubn-18\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_18)\"", >> $cnfFile
       echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
       echo "\"adls-sas\"": "\"$(BF2_ADLS_ACC_SAS)\"", >> $cnfFile
-      echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
-      echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
-      echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
+      echo "\"msi-appid\"": "\"$(BF2_MSI_APP_ID)\"", >> $cnfFile
+      echo "\"msi-resid\"": "\"$(BF2_MSI_CLIENT_ID)\"", >> $cnfFile
+      echo "\"msi-objid\"": "\"$(BF2_MSI_OBJECT_ID)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
       echo "\"skip-azcli\"": "true", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
