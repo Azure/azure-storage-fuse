@@ -96,22 +96,12 @@ func readStatsCallback(pFile *procFile) error {
 // proc file: logs
 // On first open, it triggers collection of logs from all nodes via RPC and returns a JSON summary.
 // Tarballs are stored on disk. This file only returns metadata mapping of node IDs to log tarball paths.
-//
-// By default, we use the default work dir for storing the collected logs and
-// we also collect only the most recent log file from each node by default.
-//
-// If users want to specify a different directory or number of logs, they can use the
-// fs=debug/logs file with a write call to specify those parameters.
-//
-// For example, to collect atmost 4 recent logs into /tmp/logs:
-//
-// echo '{"output_dir": "/tmp/logs", "number_of_logs": 4}' > /<mnt_path>/fs=debug/logs
-//
-// This will store the logs in /tmp/logs and will fetch 4 most recent logs from each node.
 func readLogsCallback(pFile *procFile) error {
+	common.Assert(logsReq != nil)
+
 	timestamp := strings.Replace(time.Now().UTC().Format(time.RFC3339), ":", "-", -1)
-	outDir := filepath.Join(common.DefaultWorkDir, fmt.Sprintf("cluster-logs-%s", timestamp))
-	return collectLogs(pFile, outDir, 1 /* numLogs */)
+	outDir := filepath.Join(logsReq.OutputDir, fmt.Sprintf("cluster-logs-%s", timestamp))
+	return collectLogs(pFile, outDir, logsReq.NumLogs)
 }
 
 // Silence unused import errors for release builds.

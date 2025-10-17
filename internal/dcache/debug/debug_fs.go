@@ -91,10 +91,13 @@ type logsWriteRequest struct {
 type logsResp struct {
 	OutputDir   string            `json:"output_dir"`
 	Files       map[string]string `json:"files"`
-	Collected   int               `json:"collected"`
+	NumNodes    int               `json:"number_of_nodes"`
+	NumLogs     int               `json:"number_of_logs_per_node"`
 	DurationSec float64           `json:"duration_sec"`
 	Error       string            `json:"error,omitempty"`
 }
+
+var logsReq *logsWriteRequest
 
 func init() {
 	// Register the callbacks for the procFiles.
@@ -125,6 +128,12 @@ func init() {
 			Size:  0,
 		}
 		procDirList = append(procDirList, pFile.attr)
+	}
+
+	// Initialize logsReq with default values.
+	logsReq = &logsWriteRequest{
+		OutputDir: common.DefaultWorkDir,
+		NumLogs:   1,
 	}
 }
 
@@ -201,35 +210,46 @@ func CloseFile(options internal.CloseFileOptions) error {
 	return nil
 }
 
+// WriteFile supports fs=debug/logs only.
+// It is used to update the directory where collected logs would be stored and also
+// the number of most recent logs to collect per node.
+//
+// By default, we use the default work dir for storing the collected logs and
+// we also collect only the most recent log file from each node by default.
+//
+// If users want to specify a different directory or number of logs, they can use the
+// fs=debug/logs file with a write call to configure these parameters.
+//
+// For example, to configure collecting atmost 4 recent logs per node into /tmp/logs:
+//
+// echo '{"output_dir": "/tmp/logs", "number_of_logs": 4}' > /<mnt_path>/fs=debug/logs
+//
+// This updates the parameters for logs collection and number of logs to collect per node.
+// After this, next read calls to fs=debug/logs will use these updated parameters.
 func WriteFile(options *internal.WriteFileOptions) (int, error) {
 	common.Assert(options.Handle.IFObj != nil)
 	common.Assert(options.Handle.IsFsDebug(), options.Handle.Path)
 	// Only fs=debug/logs supports write operation.
 	common.Assert(options.Handle.Path == "logs", options.Handle.Path)
+	common.Assert(logsReq != nil)
 
-	var req logsWriteRequest
-	if err := json.Unmarshal(options.Data, &req); err != nil {
+	if err := json.Unmarshal(options.Data, logsReq); err != nil {
 		common.Assert(false, err)
 		return 0, err
 	}
 
-	if len(req.OutputDir) == 0 || req.NumLogs <= 0 {
-		common.Assert(false, req.OutputDir, req.NumLogs)
-		return 0, fmt.Errorf("invalid input: output_dir=%s, number_of_logs=%d", req.OutputDir, req.NumLogs)
+	if len(logsReq.OutputDir) == 0 || logsReq.NumLogs <= 0 {
+		common.Assert(false, logsReq.OutputDir, logsReq.NumLogs)
+		return 0, fmt.Errorf("invalid input: output_dir=%s, number_of_logs=%d", logsReq.OutputDir, logsReq.NumLogs)
 	}
 
-	if !filepath.IsAbs(req.OutputDir) {
-		common.Assert(false, req.OutputDir)
-		return 0, fmt.Errorf("output_dir must be an absolute path: %s", req.OutputDir)
+	if !filepath.IsAbs(logsReq.OutputDir) {
+		common.Assert(false, logsReq.OutputDir)
+		return 0, fmt.Errorf("output_dir must be an absolute path: %s", logsReq.OutputDir)
 	}
 
-	pFile := options.Handle.IFObj.(*procFile)
-	common.Assert(atomic.LoadInt32(&pFile.openCnt) > 0)
-
-	err := collectLogs(pFile, req.OutputDir, req.NumLogs)
-	if err != nil {
-		return 0, err
-	}
+	log.Debug("DebugFS::WriteFile: Updated logs collection config, output_dir=%s, number_of_logs=%d",
+		logsReq.OutputDir, logsReq.NumLogs)
 
 	return len(options.Data), nil
 }
@@ -283,7 +303,8 @@ func collectLogs(pFile *procFile, outDir string, numLogs int64) error {
 	lr := &logsResp{
 		OutputDir:   outDir,
 		Files:       logFiles,
-		Collected:   len(logFiles),
+		NumNodes:    len(logFiles),
+		NumLogs:     int(numLogs),
 		DurationSec: time.Since(start).Seconds(),
 	}
 
