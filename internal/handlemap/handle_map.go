@@ -83,10 +83,6 @@ const (
 	// TODO: Remove this flag and related code, once testing is done.
 	//
 	HandleDummyWrite
-
-	// When the file having no namespace specified and opened in O_RDONlLY mode, if the file is not present in the
-	// dcache, then we start the warmup where we get the file from Azure to dcache in background.
-	HandleFlagDcacheWarmup
 )
 
 // Structure to hold in memory cache for streaming layer

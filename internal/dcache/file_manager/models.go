@@ -103,4 +103,6 @@ type WarmupFileInfo struct {
 
 	// User Application Read Requests that are waiting for the warmed up chunk data in manual warmup mode.
 	CurWarmChunkReadRequests chan *CurWarmChunkReadReq
+
+	DoneCh chan struct{} // Channel to signal stopping the CurWarmChunkReadRequests.
 }
