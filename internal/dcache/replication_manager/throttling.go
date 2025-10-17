@@ -53,7 +53,7 @@ const (
 	staticMaxRVs = 10000
 
 	// We should not keep more than these many chunks in flight to an MV.
-	maxCwnd = 8
+	maxCwnd = 16
 
 	// Set to true to disable congestion control and send as many requests as needed to MVs.
 	// Sending uncontrolled requests to an MV can hurt cluster performance, to be used only for testing.
@@ -87,6 +87,7 @@ type mvCongInfo struct {
 	mu        sync.Mutex
 	mvName    string       // Name of this MV, e.g., "mv0", "mv1", etc. Used for logging only.
 	inflight  atomic.Int64 // PutChunkDC requests in flight to this MV.
+	admitting atomic.Int64 // Requests currently in admit().
 	cwnd      atomic.Int64 // Congestion window size, i.e., total number of inflight requests allowed.
 	estQSize  atomic.Int64 // Maximum of the qsize of all component RVs. Debug only.
 	minRTT    atomic.Int64 // Minimum RTT observed (in nanoseconds). Debug only.
@@ -121,11 +122,13 @@ func initCongInfo() {
 
 	//
 	// We set maxQsizeGoal based on the chunk size, with the following reasoning.
-	// Do not keep more than 2s worth of chunks queued up at an MV, assuming disk speed of 4GBps.
+	// Do not keep more than 1s worth of chunks queued up at an MV, assuming disk speed of 4GBps.
+	// Note that since senders apply throttling independently, actual qsize can go slightly higher
+	// than this which is ok, and that's the reason we aim for only 1s worth of chunks and not more.
 	//
 	chunkMSecAvg = int(float64(cm.ChunkSizeMB) * float64(0.25))
 	chunkMSecAvg = max(chunkMSecAvg, 1) // At least 1 msec.
-	maxQsizeGoal = int(float64(2*1000) / float64(chunkMSecAvg))
+	maxQsizeGoal = int(float64(1*1000) / float64(chunkMSecAvg))
 	maxQsizeGoal = max(maxQsizeGoal, 100) // At least 100.
 
 	log.Info("throttling::initCongInfo: cong_enable: %v, cong_debug: %v, maxQsizeGoal: %d, chunkMSecAvg: %d, chunkSizeMB: %d, maxCwnd: %d, staticMaxRVs: %d",
@@ -166,24 +169,32 @@ func (mvci *mvCongInfo) admit() {
 		return
 	}
 
+	//
+	// What's the inflight count including this request, as seen by this request.
+	// Every request grabs an inflight count before comparing it with cwnd, and those who see
+	// and inflight count within cwnd are allowed to proceed, others wait.
+	// This way we guarantee that strictly no more than cwnd requests are allowed to proceed.
+	//
+	inflightCount := mvci.incInflight()
+
 	// Inflight request count including this one is within allowed cwnd, so allow.
-	if mvci.incInflight() <= mvci.cwnd.Load() {
+	if inflightCount <= mvci.cwnd.Load() {
 		if debugCongestionControl {
-			log.Info("CWND[0]: %s, estQSize: %d, inflight: %d, cwnd: %d, no wait!",
-				mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load())
+			log.Info("CWND[0]: %s, estQSize: %d, inflight: %d, cwnd: %d, admitting: %d, no wait!",
+				mvci.mvName, mvci.estQSize.Load(), inflightCount, mvci.cwnd.Load(),
+				mvci.admitting.Load())
 		}
 		return
 	}
 
-	//
-	// We incremented inflight above, but we are not going to send the request right now,
-	// so decrement it back. Later below this request will contest for its place in the cwnd.
-	//
-	mvci.decInflight()
+	mvci.admitting.Add(1)
+
+	// onPutChunkDCSuccess() may set cwnd to 0 to indicate that we should drain all inflight requests.
+	drainInflight := (mvci.cwnd.Load() == 0)
 
 	if debugCongestionControl {
-		log.Info("CWND[1]: %s, estQSize: %d, inflight: %d, cwnd: %d, need to wait!",
-			mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load())
+		log.Info("CWND[1]: %s, estQSize: %d, inflight: %d, cwnd: %d, admitting: %d, need to wait!",
+			mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load(), mvci.admitting.Load())
 	}
 
 	//
@@ -196,41 +207,61 @@ func (mvci *mvCongInfo) admit() {
 	//
 	// TODO: Make this debug log once we have tested enough with various cluster sizes and loads.
 	//
-	log.Warn("[SLOW] throttling::admit: %s, inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
-		mvci.mvName, mvci.inflight.Load(), mvci.cwnd.Load(),
+	log.Warn("[SLOW] throttling::admit: %s, inflight(%d) > cwnd(%d), admitting: %d, estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+		mvci.mvName, mvci.inflight.Load(), mvci.cwnd.Load(), mvci.admitting.Load(),
 		mvci.estQSize.Load(), time.Duration(mvci.lastRTT.Load()),
 		time.Duration(mvci.minRTT.Load()), time.Duration(mvci.maxRTT.Load()),
 		time.Since(time.Unix(0, mvci.lastRTTAt.Load())))
 
 	waitLoop := int64(0)
 	for {
+		//
+		// If cwnd was 0 and we are draining inflight requests, we need to set cwnd to 1
+		// once all "true" inflight requests are done to allow new requests to proceed.
+		// Since a request grabs an inflight count even before it's admitted, "true" inflight
+		// requests are (inflight - admitting).
+		//
+		if drainInflight && (mvci.inflight.Load()-mvci.admitting.Load() == 0) {
+			mvci.cwnd.Store(1)
+		}
+
 		// Grab our place in the cwnd.
-		if mvci.incInflight() <= mvci.cwnd.Load() {
-			log.Info("CWND[2]: %s, estQSize: %d, inflight: %d, cwnd: %d, waited for %d ms!",
-				mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load(), waitLoop)
+		if inflightCount <= mvci.cwnd.Load() {
+			log.Info("CWND[2]: %s, estQSize: %d, inflight: %d, cwnd: %d, admitting: %d, waited for %d ms!",
+				mvci.mvName, mvci.estQSize.Load(), inflightCount, mvci.cwnd.Load(),
+				mvci.admitting.Load(), waitLoop)
+
+			mvci.admitting.Add(-1)
 			return
 		}
 
 		// No request should be waiting for more than 5 secs.
 		if waitLoop > 5000 {
-			log.Warn("[SLOW] throttling::admit: %s waited too long (%d ms), inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
-				mvci.mvName, waitLoop, mvci.inflight.Load(), mvci.cwnd.Load(),
+			log.Warn("[SLOW] throttling::admit: %s waited too long (%d ms), inflight(%d) > cwnd(%d), admitting: %d, estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s",
+				mvci.mvName, waitLoop, mvci.inflight.Load(), mvci.cwnd.Load(), mvci.admitting.Load(),
 				mvci.estQSize.Load(), time.Duration(mvci.lastRTT.Load()),
 				time.Duration(mvci.minRTT.Load()), time.Duration(mvci.maxRTT.Load()),
 				time.Since(time.Unix(0, mvci.lastRTTAt.Load())))
 
 			if debugCongestionControl {
-				log.Info("CWND[3]: %s, estQSize: %d, inflight: %d, cwnd: %d, waited for waitLoop: %d!",
-					mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load(), waitLoop)
+				log.Info("CWND[3]: %s, estQSize: %d, inflight: %d, cwnd: %d, admitting: %d, waited for waitLoop: %d!",
+					mvci.mvName, mvci.estQSize.Load(), mvci.inflight.Load(), mvci.cwnd.Load(),
+					mvci.admitting.Load(), waitLoop)
 			}
 
+			mvci.admitting.Add(-1)
 			return
 		}
 
+		//
 		// No luck yet, drop the inflight count, wait for a msec and try again.
+		// Decrement admitting before inflight to correctly drain inflight requests in the above logic.
+		//
+		mvci.admitting.Add(-1)
 		mvci.decInflight()
-
 		time.Sleep(1 * time.Millisecond)
+		inflightCount = mvci.incInflight()
+		mvci.admitting.Add(1)
 		waitLoop++
 	}
 }
@@ -317,9 +348,6 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 
 	mvci.estQSize.Store(int64(estQSize))
 
-	drainInflight := false
-	waitMsec := int64(0)
-
 	// < 20% of maxQsizeGoal, so RV is "free".
 	if estQSize < maxQsizeGoal/5 {
 		//
@@ -327,8 +355,10 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 		// Instead of wasting n/w resources for sending writes to an MV that's loaded, we'd rather
 		// send requests to other less loaded MVs and make better use of cluster n/w bandwidth.
 		//
-		if mvci.cwnd.Add(mvci.cwnd.Load()) > maxCwnd {
+		if mvci.cwnd.Load()*2 > maxCwnd {
 			mvci.cwnd.Store(maxCwnd)
+		} else {
+			mvci.cwnd.Store(mvci.cwnd.Load() * 2)
 		}
 
 		if debugCongestionControl {
@@ -362,9 +392,9 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 		// 60% to 80% of maxQsizeGoal, RV is getting "hot", start slowing down more aggressively.
 		// We need to be conservative here as multiple nodes may be writing to the same MV/RV
 		// and that can cause the queue to build up rapidly.
+		// cwnd can become 0 here.
 		//
-		newCwnd := max(mvci.cwnd.Load()/2, 1)
-		mvci.cwnd.Store(newCwnd)
+		mvci.cwnd.Store(mvci.cwnd.Load() / 2)
 
 		if debugCongestionControl {
 			log.Info("CWND[8]: %s, chunkIdx: %d, estQSize: %d, inflight: %d, cwnd: %d",
@@ -376,74 +406,14 @@ func (mvci *mvCongInfo) onPutChunkDCSuccess(rtt time.Duration,
 		// before sending more.
 		//
 		mvci.cwnd.Store(0)
-		drainInflight = true
-
-		//
-		// > 120% of maxQsizeGoal, RV is "swamped", not only do we wait for out inflight to become 0,
-		// but introduce additional wait.
-		//
-		if estQSize > ((maxQsizeGoal * 6) / 5) {
-			//
-			// Wait for an additional time proportional to the excess qsize.
-			// Idea is to wait long enough for half the queue to drain, but not more than 5 secs.
-			// We assume each request takes about 4msec to complete.
-			//
-			waitMsec = min(int64((estQSize*chunkMSecAvg)/2), 5000)
-		}
 
 		if debugCongestionControl {
-			log.Info("CWND[9]: %s, chunkIdx: %d, estQSize: %d, inflight: %d, cwnd: %d, waitMsec: %d",
-				req.MvName, req.ChunkIndex, estQSize, mvci.inflight.Load(),
-				mvci.cwnd.Load(), waitMsec)
+			log.Info("CWND[9]: %s, chunkIdx: %d, estQSize: %d, inflight: %d, cwnd: %d",
+				req.MvName, req.ChunkIndex, estQSize, mvci.inflight.Load(), mvci.cwnd.Load())
 		}
 	}
 
 	mvci.mu.Unlock()
-
-	if drainInflight {
-		waitLoop := int64(0)
-
-		//
-		// One inflight count is for this request which just completed.
-		// Note that we don't release it here, it will be released by the caller of this function
-		// when it calls mvci.done().
-		//
-		common.Assert(mvci.inflight.Load() > 0, mvci.mvName, mvci.inflight.Load(), mvci.cwnd.Load())
-
-		for mvci.inflight.Load()-1 > mvci.cwnd.Load() {
-			time.Sleep(1 * time.Millisecond)
-			waitMsec--
-			waitLoop++
-
-			// No more than 5 secs.
-			if waitLoop > 5000 {
-				log.Warn("throttling::onPutChunkDCSuccess: %s waited too long (%d), inflight(%d) > cwnd(%d), estQSize: %d, lastRTT: %s, minRTT: %s, maxRTT: %s, timeSinceLastRTT: %s, waitMsec: %d",
-					mvci.mvName, waitLoop, mvci.inflight.Load(), mvci.cwnd.Load(),
-					mvci.estQSize.Load(), time.Duration(mvci.lastRTT.Load()),
-					time.Duration(mvci.minRTT.Load()), time.Duration(mvci.maxRTT.Load()),
-					time.Since(time.Unix(0, mvci.lastRTTAt.Load())), waitMsec)
-
-				if debugCongestionControl {
-					log.Info("CWND[10]: %s, chunkIdx: %d, estQSize: %d, inflight: %d, cwnd: %d, waitMsec: %d",
-						req.MvName, req.ChunkIndex, estQSize, mvci.inflight.Load(), mvci.cwnd.Load(), waitMsec)
-				}
-				break
-			}
-		}
-
-		if waitMsec > 0 {
-			time.Sleep(time.Duration(waitMsec) * time.Millisecond)
-		}
-
-		// Now open up slowly.
-		mvci.cwnd.Store(1)
-
-		if debugCongestionControl {
-			log.Info("CWND[11]: %s, chunkIdx: %d, estQSize: %d, inflight: %d, cwnd: %d, waitLoop: %d, waitMsec: %d",
-				req.MvName, req.ChunkIndex, estQSize, mvci.inflight.Load(), mvci.cwnd.Load(),
-				waitLoop, waitMsec)
-		}
-	}
 }
 
 // Silence unused import errors for release builds.

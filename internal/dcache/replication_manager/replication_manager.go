@@ -877,6 +877,14 @@ processResponses:
 			// which will mark the RV as inband-offline if the PutChunk to that RV fails again.
 			//
 			if putChunkStyle != DaisyChain {
+				//
+				// TODO: Under heavy load PutChunkDC requests are seen to timeout even when the node is
+				//       technically reachable/up. We don't want to mark the RV as inband-offline and
+				//       trigger a potentially unnecessary resync in this case. It can be fatal if more
+				//       than one RVs are marked inband-offline causing data unavailability.
+				//       So, if we get a timeout error, we should check the heartbeat status of the node
+				//       before marking the RV as inband-offline.
+				//
 				errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
 				if errRV != nil {
 					//
