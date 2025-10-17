@@ -35,7 +35,7 @@ func TryWarmup(handle *handlemap.Handle, chunkSize int64,
 	}
 
 	readDcFile, err := fm.OpenDcacheFile(handle.Path, false /* fromFuse */)
-	if err != nil {
+	if err != nil && err != fm.ErrFileNotReady {
 		log.Err("DistributedCache::CreateFile : Dcache File Open failed with err : %v, path : %s", err, handle.Path)
 		warmDcFile.CloseFile()
 		return nil, err
