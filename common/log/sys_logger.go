@@ -50,7 +50,7 @@ type SysLogger struct {
 	logger *log.Logger
 }
 
-var NoSyslogService = errors.New("failed to create syslog object")
+var ErrNoSyslogService = errors.New("failed to create syslog object")
 
 func newSysLogger(lvl common.LogLevel, tag string) (*SysLogger, error) {
 	l := &SysLogger{
@@ -87,7 +87,7 @@ func (l *SysLogger) init() error {
 	logwriter, e := syslog.New(getSyslogLevel(l.level), l.tag)
 
 	if e != nil {
-		return NoSyslogService
+		return ErrNoSyslogService
 	}
 
 	l.logger = log.New(logwriter, "", 0)

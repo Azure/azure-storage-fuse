@@ -50,16 +50,16 @@ func (suite *blockTestSuite) TestBlockAllocate() {
 
 	b, err := AllocateBlock(0)
 	suite.assert.Nil(b)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid size")
 
 	b, err = AllocateBlock(10)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(b.Data)
 
 	err = b.Delete()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *blockTestSuite) TestBlockAllocateBig() {
@@ -67,12 +67,12 @@ func (suite *blockTestSuite) TestBlockAllocateBig() {
 
 	b, err := AllocateBlock(100 * 1024 * 1024)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(b.Data)
-	suite.assert.Equal(cap(b.Data), 100*1024*1024)
+	suite.assert.Equal(100*1024*1024, cap(b.Data))
 
 	err = b.Delete()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *blockTestSuite) TestBlockAllocateHuge() {
@@ -80,7 +80,7 @@ func (suite *blockTestSuite) TestBlockAllocateHuge() {
 
 	b, err := AllocateBlock(50 * 1024 * 1024 * 1024)
 	suite.assert.Nil(b)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "mmap error")
 }
 
@@ -89,11 +89,11 @@ func (suite *blockTestSuite) TestBlockFreeNilData() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	b.Data = nil
 
 	err = b.Delete()
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid buffer")
 }
 
@@ -102,11 +102,11 @@ func (suite *blockTestSuite) TestBlockFreeInvalidData() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	b.Data = make([]byte, 1)
 
 	err = b.Delete()
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid argument")
 }
 
@@ -115,14 +115,14 @@ func (suite *blockTestSuite) TestBlockResuse() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	b.Index = 1
 
 	b.ReUse()
-	suite.assert.Equal(b.Index, 0)
+	suite.assert.Equal(0, b.Index)
 
 	err = b.Delete()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func TestBlockSuite(t *testing.T) {

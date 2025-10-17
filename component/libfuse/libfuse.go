@@ -43,6 +43,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+
+	"github.com/winfsp/cgofuse/fuse"
 )
 
 /* NOTES:
@@ -76,6 +78,9 @@ type Libfuse struct {
 	directIO              bool
 	umask                 uint32
 	disableKernelCache    bool
+
+	windowsHost         *fuse.FileSystemHost
+	windowsNetworkShare bool
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -240,8 +245,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
 	}
 
-	if !(config.IsSet(compName+".uid") || config.IsSet(compName+".gid") ||
-		config.IsSet("lfuse.uid") || config.IsSet("lfuse.gid")) {
+	if !config.IsSet(compName+".uid") && !config.IsSet(compName+".gid") && !config.IsSet("lfuse.uid") && !config.IsSet("lfuse.gid") {
 		var err error
 		lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
 		if err != nil {

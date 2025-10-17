@@ -73,37 +73,37 @@ func (suite *listTestSuite) SetupSuite() {
 	suite.assert = assert.New(suite.T())
 
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	lb_path = filepath.Join("/tmp/", "xload_"+randomString(8))
 	err = os.MkdirAll(lb_path, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", lb_path)
 	config.ReadConfigFromReader(strings.NewReader(cfg))
 
 	lb = loopback.NewLoopbackFSComponent()
 	err = lb.Configure(true)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	suite.createDirsAndFiles(lb_path)
 }
 
 func (suite *listTestSuite) TearDownSuite() {
 	err := os.RemoveAll(lb_path)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *listTestSuite) createFile(filePath string, size int64) {
 	f, err := os.Create(filePath)
 	defer func() {
 		err = f.Close()
-		suite.assert.Nil(err)
+		suite.assert.NoError(err)
 	}()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	err = os.Truncate(filePath, size)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *listTestSuite) createDirsAndFiles(path string) {
@@ -115,7 +115,7 @@ func (suite *listTestSuite) createDirsAndFiles(path string) {
 	for i := range 10 {
 		dirName := filepath.Join(path, fmt.Sprintf("dir_%v", i))
 		err := os.MkdirAll(dirName, 0777)
-		suite.assert.Nil(err)
+		suite.assert.NoError(err)
 
 		for j := range 5 {
 			filePath := filepath.Join(dirName, fmt.Sprintf("file_%v%v", i, j))
@@ -176,7 +176,7 @@ func (tl *testLister) cleanup() error {
 
 func (suite *listTestSuite) TestNewRemoteLister() {
 	rl, err := newRemoteLister(nil)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
@@ -187,7 +187,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 		remote:            nil,
 		statsMgr:          nil,
 	})
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
@@ -198,7 +198,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 		remote:            nil,
 		statsMgr:          nil,
 	})
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
@@ -209,12 +209,12 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 		remote:            lb,
 		statsMgr:          nil,
 	})
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
 	statsMgr, err := NewStatsManager(1, false, nil)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(statsMgr)
 
 	rl, err = newRemoteLister(&remoteListerOptions{
@@ -224,18 +224,18 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 		remote:            lb,
 		statsMgr:          statsMgr,
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(rl)
 }
 
 func (suite *listTestSuite) TestListerStartStop() {
 	tl, err := setupTestLister()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(tl)
 
 	defer func() {
 		err = tl.cleanup()
-		suite.assert.Nil(err)
+		suite.assert.NoError(err)
 	}()
 
 	rl, err := newRemoteLister(&remoteListerOptions{
@@ -245,7 +245,7 @@ func (suite *listTestSuite) TestListerStartStop() {
 		remote:            lb,
 		statsMgr:          tl.stMgr,
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(rl)
 
 	testComp := getTestcomponent()
@@ -255,21 +255,21 @@ func (suite *listTestSuite) TestListerStartStop() {
 	time.Sleep(5 * time.Second)
 	rl.Stop()
 
-	suite.assert.Equal(testComp.ctr.Load(), int64(60))
+	suite.assert.Equal(int64(60), testComp.ctr.Load())
 
 	entries, err := os.ReadDir(tl.path)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Len(entries, 10)
 }
 
 func (suite *listTestSuite) TestListerMkdir() {
 	tl, err := setupTestLister()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(tl)
 
 	defer func() {
 		err = tl.cleanup()
-		suite.assert.Nil(err)
+		suite.assert.NoError(err)
 	}()
 
 	rl, err := newRemoteLister(&remoteListerOptions{
@@ -279,17 +279,17 @@ func (suite *listTestSuite) TestListerMkdir() {
 		remote:            lb,
 		statsMgr:          tl.stMgr,
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(rl)
 
 	for i := range 5 {
 		dirPath := filepath.Join(tl.path, fmt.Sprintf("dir%v", i))
 		err = rl.mkdir(dirPath)
-		suite.assert.Nil(err)
+		suite.assert.NoError(err)
 	}
 
 	entries, err := os.ReadDir(tl.path)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Len(entries, 5)
 }
 

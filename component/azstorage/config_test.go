@@ -62,7 +62,7 @@ func (s *configTestSuite) TestEmptyAccountName() {
 	opt := AzStorageOptions{}
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Contains(err.Error(), "account name not provided")
 
 }
@@ -75,7 +75,7 @@ func (s *configTestSuite) TestEmptyAccountType() {
 	opt.AccountName = "abcd"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 }
 
 func (s *configTestSuite) TestInvalidAccountType() {
@@ -87,12 +87,12 @@ func (s *configTestSuite) TestInvalidAccountType() {
 	opt.AccountType = "abcd"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Contains(err.Error(), "invalid account type")
 
 	opt.AccountType = "INVALID_ACC"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Contains(err.Error(), "invalid account type")
 }
 
@@ -107,13 +107,13 @@ func (s *configTestSuite) TestUseADLSFlag() {
 	config.SetBool(compName+".use-adls", true)
 	opt.UseAdls = true
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Equal(az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AccountType.ADLS())
 
 	config.SetBool(compName+".use-adls", true)
 	opt.UseAdls = false
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Equal(az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AccountType.BLOCK())
 }
 
@@ -126,12 +126,12 @@ func (s *configTestSuite) TestBlockSize() {
 	opt.BlockSize = 10
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Equal(az.stConfig.blockSize, opt.BlockSize*1024*1024)
 
 	opt.BlockSize = blockblob.MaxStageBlockBytes + 1
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Contains(err.Error(), "block size is too large")
 }
 
@@ -146,15 +146,15 @@ func (s *configTestSuite) TestProtoType() {
 	config.SetBool(compName+".use-https", true)
 	opt.UseHTTPS = true
 	err := ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
-	assert.Equal(az.stConfig.authConfig.UseHTTP, false)
+	assert.NoError(err)
+	assert.False(az.stConfig.authConfig.UseHTTP)
 
 	config.SetBool(compName+".use-https", false)
 	opt.UseHTTPS = false
 	opt.AccountType = "adls"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
-	assert.Equal(az.stConfig.authConfig.UseHTTP, true)
+	assert.NoError(err)
+	assert.True(az.stConfig.authConfig.UseHTTP)
 }
 
 func (s *configTestSuite) TestProxyConfig() {
@@ -171,27 +171,27 @@ func (s *configTestSuite) TestProxyConfig() {
 
 	opt.HttpsProxyAddress = "127.0.0.1"
 	err := ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
 
 	opt.HttpsProxyAddress = "https://128.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
 
 	opt.HttpsProxyAddress = "http://129.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
 
 	opt.HttpProxyAddress = "130.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpProxyAddress, !opt.UseHTTPS))
 
 	opt.HttpProxyAddress = "http://131.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpProxyAddress, !opt.UseHTTPS))
 
 	config.SetBool(compName+".use-https", true)
@@ -200,22 +200,22 @@ func (s *configTestSuite) TestProxyConfig() {
 
 	opt.HttpProxyAddress = "132.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Contains(err.Error(), "`http-proxy` Invalid : must set `use-http: true`")
 
 	opt.HttpsProxyAddress = "133.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
 
 	opt.HttpsProxyAddress = "http://134.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
 
 	opt.HttpsProxyAddress = "https://135.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
 }
 
@@ -228,13 +228,13 @@ func (s *configTestSuite) TestMaxResultsForList() {
 	opt.Container = "abcd"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
-	assert.Equal(az.stConfig.maxResultsForList, DefaultMaxResultsForList)
+	assert.NoError(err)
+	assert.Equal(DefaultMaxResultsForList, az.stConfig.maxResultsForList)
 
 	config.Set(compName+".max-results-for-list", "10")
 	opt.MaxResultsForList = 10
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.maxResultsForList, opt.MaxResultsForList)
 }
 
@@ -247,7 +247,7 @@ func (s *configTestSuite) TestAuthModeNotSet() {
 	opt.Container = "abcd"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
 }
 
@@ -261,13 +261,13 @@ func (s *configTestSuite) TestAuthModeKey() {
 	opt.AuthMode = "key"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.KEY())
 	assert.Contains(err.Error(), "storage key not provided")
 
 	opt.AccountKey = "abc"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.AccountKey, opt.AccountKey)
 }
 
@@ -281,13 +281,13 @@ func (s *configTestSuite) TestAuthModeSAS() {
 	opt.AuthMode = "sas"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.SAS())
 	assert.Contains(err.Error(), "SAS key not provided")
 
 	opt.SaSKey = "abc"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 }
 
 func (s *configTestSuite) TestAuthModeMSI() {
@@ -300,31 +300,31 @@ func (s *configTestSuite) TestAuthModeMSI() {
 	opt.AuthMode = "msi"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
 
 	opt.ApplicationID = "abc"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
 	assert.Equal(az.stConfig.authConfig.ApplicationID, opt.ApplicationID)
-	assert.Equal(az.stConfig.authConfig.ResourceID, "")
+	assert.Equal("", az.stConfig.authConfig.ResourceID)
 
 	// test more than one credential passed for msi
 	opt.ResourceID = "123"
 	err = validateMsiConfig(opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	opt.ApplicationID = ""
 
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.ResourceID, opt.ResourceID)
 
 	opt.ResourceID = ""
 	opt.ObjectID = "1234obj"
 
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.ObjectID, opt.ObjectID)
 }
 
@@ -338,20 +338,20 @@ func (s *configTestSuite) TestAuthModeSPN() {
 	opt.AuthMode = "spn"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.SPN())
 	assert.Contains(err.Error(), "Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
 
 	opt.ClientID = "abc"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Error(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.SPN())
 	assert.Contains(err.Error(), "Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
 
 	opt.ClientSecret = "123"
 	opt.TenantID = "xyz"
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.ClientID, opt.ClientID)
 	assert.Equal(az.stConfig.authConfig.ClientSecret, opt.ClientSecret)
 	assert.Equal(az.stConfig.authConfig.TenantID, opt.TenantID)
@@ -380,8 +380,8 @@ func (s *configTestSuite) TestOtherFlags() {
 	config.SetBool(compName+".debug-libcurl", true)
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
-	assert.Equal(err.Error(), "SAS key not provided")
+	assert.Error(err)
+	assert.Equal("SAS key not provided", err.Error())
 }
 
 func (s *configTestSuite) TestCompressionType() {
@@ -393,20 +393,20 @@ func (s *configTestSuite) TestCompressionType() {
 	opt.Container = "abcd"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
-	assert.Equal(az.stConfig.disableCompression, false)
+	assert.NoError(err)
+	assert.False(az.stConfig.disableCompression)
 
 	opt.DisableCompression = true
 	config.SetBool(compName+".disable-compression", true)
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
-	assert.Equal(az.stConfig.disableCompression, true)
+	assert.NoError(err)
+	assert.True(az.stConfig.disableCompression)
 
 	opt.DisableCompression = false
 	config.SetBool(compName+".disable-compression", false)
 	err = ParseAndValidateConfig(az, opt)
-	assert.Nil(err)
-	assert.Equal(az.stConfig.disableCompression, false)
+	assert.NoError(err)
+	assert.False(az.stConfig.disableCompression)
 
 }
 
@@ -434,7 +434,7 @@ func (s *configTestSuite) TestSASRefresh() {
 
 	az.storage = &BlockBlob{Auth: &azAuthBlobSAS{azAuthSAS: azAuthSAS{azAuthBase: azAuthBase{config: azAuthConfig{Endpoint: "abcd:://qreq!@#$%^&*()_)(*&^%$#"}}}}}
 	err := ParseAndReadDynamicConfig(az, opt, true)
-	assert.Nil(err)
+	assert.NoError(err)
 }
 
 func TestConfigTestSuite(t *testing.T) {

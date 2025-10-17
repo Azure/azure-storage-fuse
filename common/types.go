@@ -47,7 +47,7 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.6.0~preview.1"
+	blobfuse2Version_ = "2.5.1"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
@@ -65,6 +65,7 @@ const (
 
 	MbToBytes     = 1024 * 1024
 	GbToBytes     = 1024 * MbToBytes
+	TbToBytes     = 1024 * GbToBytes
 	BfuseStats    = "blobfuse_stats"
 	BlockIDLength = 16
 
@@ -154,12 +155,25 @@ type LogConfig struct {
 	Tag         string // logging tag which can be either blobfuse2 or bfusemon
 }
 
-// Flags for blocks
+// Statfs type used by component in replace of syscall.Statfs_t
+// as defined by cgofuse https://pkg.go.dev/github.com/winfsp/cgofuse/fuse#Statfs_t
+type Statfs_t struct {
+	Bsize   int64
+	Blocks  uint64
+	Bfree   uint64
+	Bavail  uint64
+	Files   uint64
+	Ffree   uint64
+	Frsize  int64
+	Flags   int64
+	Namemax uint64
+}
+
+// Flags for block
 const (
 	BlockFlagUnknown uint16 = iota
 	DirtyBlock
 	TruncatedBlock
-	RemovedBlocks
 )
 
 type Block struct {
@@ -181,14 +195,11 @@ func (block *Block) Truncated() bool {
 	return block.Flags.IsSet(TruncatedBlock)
 }
 
-func (block *Block) Removed() bool {
-	return block.Flags.IsSet(RemovedBlocks)
-}
-
 // Flags for block offset list
 const (
-	BolFlagUnknown uint16 = iota
-	SmallFile
+	BlobFlagUnknown     uint16 = iota
+	BlobFlagHasNoBlocks        // set if the blob does not have any blocks
+	BlobFlagBlockListModified
 )
 
 // list that holds blocks containing ids and corresponding offsets
@@ -200,13 +211,39 @@ type BlockOffsetList struct {
 	Mtime         time.Time
 }
 
-// Dirty : Handle is dirty or not
-func (bol *BlockOffsetList) SmallFile() bool {
-	return bol.Flags.IsSet(SmallFile)
+func (bol *BlockOffsetList) HasNoBlocks() bool {
+	return len(bol.BlockList) == 0
+}
+
+func (bol *BlockOffsetList) IsBlockListModified() bool {
+	return bol.Flags.IsSet(BlobFlagBlockListModified)
+}
+
+func (bol *BlockOffsetList) ValidateBlockListAgainstFileSize(fileSize int64) bool {
+	if bol.HasNoBlocks() {
+		return fileSize == 0
+	}
+	if bol.BlockList[len(bol.BlockList)-1].EndIndex != fileSize {
+		return false
+	}
+	return true
+}
+
+func (bol *BlockOffsetList) HasAllBlocksWithSameBlockSize() (blockSize int64, ok bool) {
+	if bol.HasNoBlocks() {
+		return 0, true
+	}
+	blockSize = bol.BlockList[0].EndIndex - bol.BlockList[0].StartIndex
+	for _, blk := range bol.BlockList {
+		if blk.EndIndex-blk.StartIndex != blockSize {
+			return 0, false
+		}
+	}
+	return blockSize, true
 }
 
 // return true if item found and index of the item
-func (bol BlockOffsetList) BinarySearch(offset int64) (bool, int) {
+func (bol *BlockOffsetList) BinarySearch(offset int64) (bool, int) {
 	lowerBound := 0
 	size := len(bol.BlockList)
 	higherBound := size - 1
@@ -310,8 +347,8 @@ func NewUUID() (u uuid) {
 }
 
 // returns block id of given length
-func GetBlockID(len int64) string {
-	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(len))
+func GetBlockID(length int64) string {
+	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(length))
 }
 
 func GetIdLength(id string) int64 {

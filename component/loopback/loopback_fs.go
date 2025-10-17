@@ -386,7 +386,7 @@ func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error
 func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("LoopbackFS::TruncateFile : name=%s", options.Name)
 	fsPath := filepath.Join(lfs.path, options.Name)
-	return os.Truncate(fsPath, options.Size)
+	return os.Truncate(fsPath, options.NewSize)
 }
 
 func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
