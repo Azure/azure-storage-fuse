@@ -1757,12 +1757,15 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		// Note: This can fail for chunks which are being removed (corresponding to a deleted file),
 		//       so if ReadDir() above finds a chunk and it's removed by the time we come here, the
 		//       assert below will fail. Let's leave it for some time and later we can remove it.
+		// Update: Now we have seen this happen many times and everytime it's due to a recently deleted
+		//       chunk. Narrowing the assert to only unexpected errors.
 		//
 		info, err1 := entry.Info()
 		if err1 != nil {
 			log.Err("ReplicationManager::copyOutOfSyncChunks: entry.Info() failed for %s/%s: %v",
 				sourceMVPath, entry.Name(), err1)
-			common.Assert(false, err1, sourceMVPath, entry.Name())
+			//common.Assert(false, err1, sourceMVPath, entry.Name())
+			common.Assert(errors.Is(err1, os.ErrNotExist), err1, sourceMVPath, entry.Name())
 			continue
 		}
 
@@ -1902,10 +1905,13 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 		// Note: This can fail for chunks which are being removed (corresponding to a deleted file),
 		//       so if ReadDir() in the caller finds a chunk and it's removed by the time we come here, the
 		//       assert below will fail. Let's leave it for some time and later we can remove it.
+		// Update: Now we have seen this happen many times and everytime it's due to a recently deleted
+		//       chunk. Narrowing the assert to only unexpected errors.
 		//
+		common.Assert(errors.Is(err, os.ErrNotExist), err, srcChunkPath)
 		err = fmt.Errorf("SafeRead(%s) failed: %v", srcChunkPath, err)
 		log.Err("ReplicationManager::copySingleChunk: %v", err)
-		common.Assert(false, err)
+		//common.Assert(false, err)
 		return err, -1
 	}
 	srcData = srcData[:n]

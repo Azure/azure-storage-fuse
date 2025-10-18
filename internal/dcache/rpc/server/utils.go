@@ -310,7 +310,7 @@ func SafeRead(filePath *string, readOffset int64, data *[]byte, forceBufferedRea
 	//
 	fd, err = syscall.Open(*filePath, syscall.O_RDONLY|syscall.O_DIRECT, 0)
 	if err != nil {
-		return -1, fmt.Errorf("failed to open file %s [%v]", *filePath, err)
+		return -1, fmt.Errorf("failed to open file %s [%w]", *filePath, err)
 	}
 	defer syscall.Close(fd)
 
@@ -352,7 +352,7 @@ func SafeRead(filePath *string, readOffset int64, data *[]byte, forceBufferedRea
 bufferedRead:
 	fh, err = os.Open(*filePath)
 	if err != nil {
-		return -1, fmt.Errorf("failed to open file %s [%v]", *filePath, err)
+		return -1, fmt.Errorf("failed to open file %s [%w]", *filePath, err)
 	}
 	defer fh.Close()
 
