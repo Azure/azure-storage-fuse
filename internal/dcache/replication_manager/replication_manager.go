@@ -857,7 +857,15 @@ processResponses:
 		common.Assert(putChunkResp == nil)
 
 		rpcErr := rpc.GetRPCResponseError(respItem.err)
-		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
+		//
+		// If DoNotInbandOfflineOnIOTimeout is set, treat timeout specially/different from other transport
+		// errors like connection reset/refused/close, masking timeout errors as NeedToRefreshClusterMap,
+		// to trigger a cluster map refresh plus retry, instead of marking the RV inband-offline.
+		// We don't special case for DaisyChain mode as in that mode we don't mark RVs inband-offline anyway.
+		//
+		isTimeout := (putChunkStyle != DaisyChain) && rpc.IsTimedOut(respItem.err) && rpc.DoNotInbandOfflineOnIOTimeout
+
+		if (rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError) && !isTimeout {
 			//
 			// This error indicates some transport error, i.e., RPC request couldn't make it to the
 			// server and hence didn't solicit a response. It could be some n/w issue, blobfuse
@@ -877,14 +885,6 @@ processResponses:
 			// which will mark the RV as inband-offline if the PutChunk to that RV fails again.
 			//
 			if putChunkStyle != DaisyChain {
-				//
-				// TODO: Under heavy load PutChunkDC requests are seen to timeout even when the node is
-				//       technically reachable/up. We don't want to mark the RV as inband-offline and
-				//       trigger a potentially unnecessary resync in this case. It can be fatal if more
-				//       than one RVs are marked inband-offline causing data unavailability.
-				//       So, if we get a timeout error, we should check the heartbeat status of the node
-				//       before marking the RV as inband-offline.
-				//
 				errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
 				if errRV != nil {
 					//
@@ -937,7 +937,12 @@ processResponses:
 
 			log.Debug("ReplicationManager::writeMVInternal: PutChunkDC call not forwarded to %s/%s [%v]",
 				respItem.rvName, req.MvName, respItem.err)
-		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap || isTimeout {
+			if isTimeout {
+				log.Warn("[SLOW] ReplicationManager::writeMVInternal: Masking timeout error to %s/%s as NeedToRefreshClusterMap to trigger cluster map refresh plus retry: %v",
+					respItem.rvName, req.MvName, err)
+			}
+
 			//
 			// We allow 5 refreshes of the clustermap for resiliency, before we fail the write.
 			// This is to allow multiple changes to the MV during the course of a single write.
@@ -1965,7 +1970,13 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 			rpc.PutChunkRequestToString(putChunkReq), err)
 
 		rpcErr := rpc.GetRPCResponseError(err)
-		isTimeout := rpc.IsTimedOut(err)
+
+		//
+		// If DoNotInbandOfflineOnIOTimeout is set, treat timeout specially/different from other transport
+		// errors like connection reset/refused/close, masking timeout errors as NeedToRefreshClusterMap,
+		// to trigger a cluster map refresh plus retry, instead of marking the RV inband-offline.
+		//
+		isTimeout := rpc.IsTimedOut(err) && rpc.DoNotInbandOfflineOnIOTimeout
 		if (rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError) && !isTimeout {
 			//
 			// This error means that the node is not reachable.
@@ -1978,7 +1989,8 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 			// Fall through and return error, caller (runSyncJob()) will mark job.destRVName as inband-offline.
 		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap || isTimeout {
 			if isTimeout {
-				log.Warn("[SLOW] ReplicationManager::copySingleChunk: Masking timeout error as NeedToRefreshClusterMap to trigger cluster map refresh plus retry")
+				log.Warn("[SLOW] ReplicationManager::copySingleChunk: Masking timeout error while copying chunk %s (%s/%s -> %s/%s) as NeedToRefreshClusterMap to trigger cluster map refresh plus retry",
+					srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName)
 			}
 
 			//
