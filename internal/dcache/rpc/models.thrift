@@ -163,6 +163,27 @@ struct GetMVSizeResponse {
     2: i64 clustermapEpoch, // Receiver's clustermap epoch when the response is sent
 }
 
+//
+// Request to initiate or continue log collection transfer.
+// The client will call GetLogs RPC repeatedly with increasing chunkIndex starting at 0.
+// Server will create (on first chunkIndex==0) a tar.gz containing all blobfuse2.log* files
+// from its log directory and stream it back in 16MB chunks until isLast=true in response.
+//
+struct GetLogsRequest {
+    1: string senderNodeID,
+    2: i64 chunkIndex, // zero-based chunk index requested
+    3: i64 numLogs, // collect atmost this number of most recent logs from each node
+    4: i64 chunkSize, // desired chunk size in bytes
+}
+
+struct GetLogsResponse {
+    1: binary data, // log tarball chunk bytes
+    2: i64 chunkIndex,
+    3: bool isLast, // true if this is the final chunk
+    4: i64 totalSize, // total size of tarball in bytes
+    5: string tarName // name of tarball file on server (e.g., <nodeID>-blobfuse2-logs-<time_RFC3339>.tar.gz)
+}
+
 // Custom error codes returned by the ChunkServiceHandler
 enum ErrorCode {
     InvalidRequest = 1,

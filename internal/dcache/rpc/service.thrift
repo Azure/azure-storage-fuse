@@ -30,4 +30,7 @@ service ChunkService {
 
     // retrieve the size of the specified MV
     models.GetMVSizeResponse GetMVSize(1: models.GetMVSizeRequest request) throws (1:models.ResponseError err)
+
+    // retrieve logs tarball in chunks (16MB max). Client makes repeated calls with chunkIndex.
+    models.GetLogsResponse GetLogs(1: models.GetLogsRequest request) throws (1:models.ResponseError err)
 }

@@ -38,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -1293,6 +1294,196 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 	//
 	return nil, fmt.Errorf("rpc_client::GetMVSize: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
+}
+
+// GetLogs fetches log tarball from target node and writes it to <outDir>/<tarName>.
+// Returns full path to the written file.
+//
+// Note: Unlike other functions, GetLogs() makes multiple RPC calls, once for each chunk of the log tarball.
+
+func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSize int64) (string, error) {
+	common.Assert(chunkSize == rpc.LogChunkSize, chunkSize)
+	common.Assert(numLogs > 0, numLogs, numLogs)
+	common.Assert(len(outDir) > 0, outDir)
+
+	var outPath string
+	var fh *os.File
+	defer func() {
+		if fh != nil {
+			fh.Close()
+		}
+	}()
+
+	req := &models.GetLogsRequest{
+		SenderNodeID: myNodeId,
+		NumLogs:      numLogs,
+		ChunkSize:    chunkSize,
+	}
+
+	//
+	// Request entire log tarball in chunks.
+	// chunkIndex 0 will trigger creation of the log tarball on the server side.
+	//
+	for chunkIndex := int64(0); ; chunkIndex++ {
+		// Update chunk index in the request.
+		req.ChunkIndex = chunkIndex
+
+		reqStr := req.String()
+		log.Debug("rpc_client::GetLogs: Sending GetLogs request to node %s: %s", targetNodeID, reqStr)
+
+		var resp *models.GetLogsResponse
+		var err error
+
+		//
+		// We retry once after resetting bad connections.
+		//
+		for i := 0; i < 2; i++ {
+			// Get RPC client from the client pool.
+			var client *rpcClient
+			client, err = cp.getRPCClient(targetNodeID)
+			if err != nil {
+				err = fmt.Errorf("rpc_client::GetLogs: Failed to get RPC client for node %s %v: %v [%w]",
+					targetNodeID, reqStr, err, NoFreeRPCClient)
+				log.Err("%v", err)
+				break
+			}
+
+			// Call the rpc method.
+			resp, err = client.svcClient.GetLogs(ctx, req)
+			if err != nil {
+				log.Err("rpc_client::GetLogs: GetLogs failed to node %s %v: %v",
+					targetNodeID, reqStr, err)
+
+				//
+				// Only possible errors:
+				// - Actual RPC error returned by the server.
+				// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+				// - Connection closed by the server (maybe it restarted before it could respond).
+				//   In this case we could send the request before the blobfuse2 process stopped but it
+				//   stopped before it could respond.
+				// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+				//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+				// - TimedOut means the node is down or cannot be reached over the n/w.
+				//
+				// All other errors other than RPC error indicate some problem with the target node or the
+				// n/w, so we delete all existing connections to the node, prohibit new connections for a
+				// short period and then create new connections when needed.
+				//
+				// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+				//
+				common.Assert(rpc.IsRPCError(err) ||
+					rpc.IsBrokenPipe(err) ||
+					rpc.IsConnectionClosed(err) ||
+					rpc.IsConnectionReset(err) ||
+					rpc.IsTimedOut(err), err)
+
+				if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+					//
+					// Common reason for first time error could be that we have old connections and since
+					// then blobfuse2 process or the node has restarted causing those connections to fail
+					// with broken pipe or connection closed/reset errors, so first time around we don't
+					// mark the node as negative, but if retrying also fails with similar error, it means the
+					// blobfuse2 process is still down so we mark it as negative.
+					//
+					cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */, false /* isClientClosed */)
+					if i == 1 {
+						break
+					}
+					err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
+					if err1 != nil {
+						break
+					}
+					// Continue with newly created client.
+					continue
+				} else if rpc.IsTimedOut(err) {
+					//
+					// Note: Since GetLogs() can take a long time if the log size is big, and/or the local
+					//       disk on the server (where tarball is saved) is slow/busy, let's not use timeout
+					//       here as an indication of bad node. We don't want log collection to disrupt a
+					//       healthy cluster.
+					//
+					//cp.deleteAllRPCClients(client, true /* confirmedBadNode */, false /* isClientClosed */)
+					break
+				}
+
+				// Fall through to release the RPC client.
+				resp = nil
+			} else {
+				//
+				// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+				// clear it now.
+				//
+				cp.removeNegativeNode(targetNodeID)
+			}
+
+			// Release RPC client back to the pool.
+			err1 := cp.releaseRPCClient(client)
+			if err1 != nil {
+				log.Err("rpc_client::GetLogs: Failed to release RPC client for node %s %v: %v",
+					targetNodeID, reqStr, err1)
+				// Assert, but not fail the GetLogs call.
+				common.Assert(false, err1)
+			}
+
+			break
+		}
+
+		//
+		// If the GetLogs RPC failed, the log tar file was written partially.
+		// So, we delete this file.
+		//
+		if err != nil {
+			common.Assert(resp == nil)
+
+			// We create the output file when chunkIndex is 0.
+			if chunkIndex == 0 {
+				common.Assert(fh == nil, reqStr)
+				common.Assert(len(outPath) == 0, reqStr)
+			} else {
+				common.Assert(fh != nil, reqStr)
+				common.Assert(len(outPath) > 0, reqStr)
+
+				// Delete the output file.
+				err1 := os.Remove(outPath)
+				_ = err1
+				common.Assert(err1 == nil, err1, outPath, reqStr)
+			}
+
+			return "", err
+		}
+
+		common.Assert(resp != nil, reqStr)
+		common.Assert(len(resp.Data) > 0, reqStr, resp.ChunkIndex, resp.IsLast, resp.TarName, resp.TotalSize)
+
+		if fh == nil {
+			// first chunk
+			common.Assert(chunkIndex == 0, reqStr)
+
+			// Output directory is already created by the caller.
+			outPath = filepath.Join(outDir, resp.TarName)
+			fh, err = os.Create(outPath)
+			common.Assert(err == nil, err)
+
+			log.Info("rpc_client::GetLogs: Started receiving logs from node %s -> %s (totalSize=%d)",
+				targetNodeID, outPath, resp.TotalSize)
+		}
+
+		n, err := fh.Write(resp.Data)
+		_ = n
+		common.Assert(err == nil, err)
+		common.Assert(n == len(resp.Data), n, len(resp.Data))
+
+		log.Debug("rpc_client::GetLogs: Wrote %d bytes in %s, chunkIndex=%d, totalSize=%d, isLast=%v for node %s",
+			len(resp.Data), resp.TarName, resp.ChunkIndex, resp.TotalSize, resp.IsLast, targetNodeID)
+
+		if resp.IsLast {
+			break
+		}
+	}
+
+	log.Info("rpc_client::GetLogs: Completed log download from node %s -> %s", targetNodeID, outPath)
+
+	return outPath, nil
 }
 
 // cleanup closes all the RPC node client pools

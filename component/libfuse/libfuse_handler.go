@@ -1129,8 +1129,15 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		})
 
 	if err != nil {
-		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
+		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]",
+			handle.Path, handle.ID, err.Error())
+
+		switch err {
+		case syscall.EINVAL:
+			return -C.EINVAL
+		default:
+			return -C.EIO
+		}
 	}
 
 	common.Assert(bytesWritten >= 0 && bytesWritten <= int(size), bytesWritten, size, handle.Path, handle.ID)
