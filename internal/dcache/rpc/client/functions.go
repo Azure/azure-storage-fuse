@@ -1298,9 +1298,13 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 
 // GetLogs fetches log tarball from target node and writes it to <outDir>/<tarName>.
 // Returns full path to the written file.
-func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSize int64) (*string, error) {
-	common.Assert(chunkSize > 0 && chunkSize <= rpc.MaxLogChunkSize, chunkSize)
+//
+// Note: Unlike other functions, GetLogs() makes multiple RPC calls, once for each chunk of the log tarball.
+
+func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSize int64) (string, error) {
+	common.Assert(chunkSize == rpc.LogChunkSize, chunkSize)
 	common.Assert(numLogs > 0, numLogs, numLogs)
+	common.Assert(len(outDir) > 0, outDir)
 
 	var outPath string
 	var fh *os.File
@@ -1316,6 +1320,10 @@ func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSiz
 		ChunkSize:    chunkSize,
 	}
 
+	//
+	// Request entire log tarball in chunks.
+	// chunkIndex 0 will trigger creation of the log tarball on the server side.
+	//
 	for chunkIndex := int64(0); ; chunkIndex++ {
 		// Update chunk index in the request.
 		req.ChunkIndex = chunkIndex
@@ -1388,7 +1396,13 @@ func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSiz
 					// Continue with newly created client.
 					continue
 				} else if rpc.IsTimedOut(err) {
-					cp.deleteAllRPCClients(client, true /* confirmedBadNode */, false /* isClientClosed */)
+					//
+					// Note: Since GetLogs() can take a long time if the log size is big, and/or the local
+					//       disk on the server (where tarball is saved) is slow/busy, let's not use timeout
+					//       here as an indication of bad node. We don't want log collection to disrupt a
+					//       healthy cluster.
+					//
+					//cp.deleteAllRPCClients(client, true /* confirmedBadNode */, false /* isClientClosed */)
 					break
 				}
 
@@ -1410,6 +1424,8 @@ func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSiz
 				// Assert, but not fail the GetLogs call.
 				common.Assert(false, err1)
 			}
+
+			break
 		}
 
 		//
@@ -1433,32 +1449,11 @@ func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSiz
 				common.Assert(err1 == nil, err1, outPath, reqStr)
 			}
 
-			return nil, err
+			return "", err
 		}
 
 		common.Assert(resp != nil, reqStr)
 		common.Assert(len(resp.Data) > 0, reqStr, resp.ChunkIndex, resp.IsLast, resp.TarName, resp.TotalSize)
-
-		//
-		// For local node, the first GetLogs RPC call for chunkIndex=0 will create the log tarball
-		// in /tmp/<tarName> path. So, we don't make RPC calls again for next chunks as we can directly
-		// copy the local file from /tmp/<tarName> to <outDir>/<tarName>.
-		//
-		if targetNodeID == rpc.GetMyNodeUUID() {
-			common.Assert(chunkIndex == 0, reqStr)
-
-			srcPath := filepath.Join(os.TempDir(), resp.TarName)
-			outPath = filepath.Join(outDir, resp.TarName)
-
-			log.Debug("rpc_client::GetLogs: Copying local log tar file from %s -> %s", srcPath, outPath)
-			err = copyFile(srcPath, outPath)
-			if err != nil {
-				log.Err("rpc_client::GetLogs: Failed to copy log tar file in local node %v [%v]", err)
-				return nil, err
-			}
-
-			break
-		}
 
 		if fh == nil {
 			// first chunk
@@ -1487,7 +1482,8 @@ func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSiz
 	}
 
 	log.Info("rpc_client::GetLogs: Completed log download from node %s -> %s", targetNodeID, outPath)
-	return &outPath, nil
+
+	return outPath, nil
 }
 
 // cleanup closes all the RPC node client pools

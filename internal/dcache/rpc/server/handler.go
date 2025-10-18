@@ -129,7 +129,12 @@ type ChunkServiceHandler struct {
 	chunkCacheLookup atomic.Int64
 	chunkCacheHit    atomic.Int64
 
-	// state for log collection tarball streaming
+	//
+	// state for log collection tarball streaming.
+	// First GetLogs() request (with chunkIdx=0) creates the tarball in logTarPath and sets logTarSize
+	// and logTarName. Subsequent GetLogs() requests read from the tarball at the requested offset and
+	// stream to the caller. The tarball is deleted after the last chunk is read.
+	//
 	logStateMu sync.Mutex
 	logTarPath string
 	logTarSize int64
@@ -3475,19 +3480,18 @@ func (h *ChunkServiceHandler) GetLogs(ctx context.Context, req *models.GetLogsRe
 	if common.IsDebugBuild() {
 		start := time.Now()
 		defer func() {
-			log.Debug("ChunkServiceHandler::GetLogs: request took %v: %v",
+			log.Debug("ChunkServiceHandler::GetLogs: request took %s: %s",
 				time.Since(start), req.String())
 		}()
 	}
 
-	log.Debug("ChunkServiceHandler::GetLogs: Received GetLogs request: %v", req.String())
+	log.Debug("ChunkServiceHandler::GetLogs: Received GetLogs request: %s", req.String())
 
 	if !common.IsValidUUID(req.SenderNodeID) ||
 		req.ChunkIndex < 0 ||
 		req.NumLogs <= 0 ||
-		req.ChunkSize <= 0 ||
-		req.ChunkSize > rpc.MaxLogChunkSize {
-		errStr := fmt.Sprintf("Invalid GetLogs request: %v", req.String())
+		req.ChunkSize != rpc.LogChunkSize {
+		errStr := fmt.Sprintf("Invalid GetLogs request: %s", req.String())
 		log.Err("ChunkServiceHandler::GetLogs: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -3497,14 +3501,21 @@ func (h *ChunkServiceHandler) GetLogs(ctx context.Context, req *models.GetLogsRe
 	// Take logStateMu lock to prevent multiple threads from creating the log tarball.
 	//
 	h.logStateMu.Lock()
+	defer h.logStateMu.Unlock()
 
 	//
-	// Create the tarball on first chunk or,
-	// if the logTarPath is empty (client asked for non-zero chunk index without initiating)
+	// Create the tarball on first chunk request.
 	//
 	if req.ChunkIndex == 0 || h.logTarPath == "" {
+		if req.ChunkIndex != 0 {
+			errStr := fmt.Sprintf("Invalid GetLogs request [started at non-zero chunkIdx: %d]: %s",
+				req.ChunkIndex, req.String())
+			log.Err("ChunkServiceHandler::GetLogs: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+		}
+
 		if err := h.createLogTarLocked(req.NumLogs); err != nil {
-			h.logStateMu.Unlock()
 			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, err.Error())
 		}
 	}
@@ -3513,12 +3524,12 @@ func (h *ChunkServiceHandler) GetLogs(ctx context.Context, req *models.GetLogsRe
 	totalSize := h.logTarSize
 	tarName := h.logTarName
 
-	h.logStateMu.Unlock()
-
-	common.Assert(tarPath != "", req.ChunkIndex, tarName, totalSize)
+	common.Assert(tarPath != "" && totalSize > 0 && tarName != "",
+		req.ChunkIndex, tarName, tarPath, totalSize)
 
 	offset := req.ChunkIndex * req.ChunkSize
 	if offset > totalSize {
+		common.Assert(false, req.ChunkIndex, offset, totalSize)
 		errStr := fmt.Sprintf("chunk index out of range: %d", req.ChunkIndex)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
@@ -3547,10 +3558,26 @@ func (h *ChunkServiceHandler) GetLogs(ctx context.Context, req *models.GetLogsRe
 	}
 
 	if int64(n) < bufSize {
+		// We must be able to read all the required bytes.
+		common.Assert(false, n, bufSize, offset, totalSize, h.logTarPath)
 		buf = buf[:n]
 	}
 
-	isLast := (offset + int64(len(buf))) >= totalSize
+	common.Assert((offset+int64(len(buf))) <= totalSize, offset, len(buf), totalSize)
+
+	isLast := (offset + int64(len(buf))) == totalSize
+	if isLast {
+		err := os.Remove(h.logTarPath)
+		if err != nil {
+			log.Warn("ChunkServiceHandler::GetLogs: failed to remove tar file %s [%v]",
+				h.logTarPath, err)
+			common.Assert(false, h.logTarPath, err)
+		} else {
+			h.logTarPath = ""
+			h.logTarSize = 0
+			h.logTarName = ""
+		}
+	}
 
 	log.Debug("GetLogs: Served chunk %d (size=%d, offset=%d) last=%v tar=%s totalSize=%d",
 		req.ChunkIndex, len(buf), offset, isLast, tarName, totalSize)
@@ -3562,6 +3589,43 @@ func (h *ChunkServiceHandler) GetLogs(ctx context.Context, req *models.GetLogsRe
 		TotalSize:  totalSize,
 		TarName:    tarName,
 	}, nil
+}
+
+var logTarDir string
+
+// h.logStateMu.Lock must be held while calling this.
+func (h *ChunkServiceHandler) getLogtarDir() (string, error) {
+	if logTarDir == "" {
+		//
+		// TODO: Mayve rv dir is better place to put these? But then what if we are debugging why
+		//       rv dir is filling up?
+		//
+		logTarDir = filepath.Join(os.TempDir(), "logtars")
+		err := os.MkdirAll(logTarDir, 0755)
+		if err != nil {
+			log.Err("ChunkServiceHandler::getLogtarDir: Failed to create log tar directory %s [%v]",
+				logTarDir, err)
+			logTarDir = ""
+			return "", err
+		}
+	}
+
+	return logTarDir, nil
+}
+
+// h.logStateMu.Lock must be held while calling this.
+func (h *ChunkServiceHandler) purgeLogTarDir() {
+	if logTarDir != "" {
+		err := os.RemoveAll(logTarDir)
+		if err != nil {
+			log.Err("ChunkServiceHandler::purgeLogTarDir: Failed to remove log tar directory %s [%v]",
+				logTarDir, err)
+		} else {
+			log.Debug("ChunkServiceHandler::purgeLogTarDir: Removed log tar directory %s",
+				logTarDir)
+			logTarDir = ""
+		}
+	}
 }
 
 // Create tarball from atmost numLogs recent log files.
@@ -3576,6 +3640,17 @@ func (h *ChunkServiceHandler) createLogTarLocked(numLogs int64) error {
 		common.Assert(false, err)
 		return err
 	}
+
+	//
+	// If log file path is not set, use the default log file path.
+	//
+	if logFilePath == "" {
+		logFilePath = common.DefaultLogFilePath
+	}
+
+	common.Assert(logFilePath != "")
+
+	log.Debug("ChunkServiceHandler::createLogTarLocked: Using log file path: %s", logFilePath)
 
 	logDir := filepath.Dir(logFilePath)
 	logFileName := filepath.Base(logFilePath)
@@ -3599,10 +3674,22 @@ func (h *ChunkServiceHandler) createLogTarLocked(numLogs int64) error {
 	log.Debug("ChunkServiceHandler::createLogTarLocked: Found %d log files for pattern %s: %v",
 		len(matches), pattern, matches)
 
+	//
+	// Purge any existing tar files which might be lying around from previous incomplete runs.
+	// This is good to avoid filling up storage with old tar files.
+	//
+	h.purgeLogTarDir()
+	tarDir, err := h.getLogtarDir()
+	if err != nil {
+		log.Err("ChunkServiceHandler::createLogTarLocked: failed to create log tar dir [%v]", err)
+		common.Assert(false, err)
+		return err
+	}
+
 	// tar file name format: <node-uuid>-blobfuse2-logs-<timestamp>.tar.gz
 	timestamp := strings.Replace(time.Now().UTC().Format(time.RFC3339), ":", "-", -1)
 	tarFileName := fmt.Sprintf("%s-blobfuse2-logs-%s.tar.gz", rpc.GetMyNodeUUID(), timestamp)
-	tarFilePath := filepath.Join(os.TempDir(), tarFileName)
+	tarFilePath := filepath.Join(tarDir, tarFileName)
 	tarFile, err := os.Create(tarFilePath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::createLogTarLocked: create tar file failed [%v]", err)
@@ -3707,7 +3794,7 @@ func (h *ChunkServiceHandler) createLogTarLocked(numLogs int64) error {
 	h.logTarSize = st.Size()
 	h.logTarName = tarFileName
 
-	log.Debug("GetLogs: Created log tarball %s size=%d", h.logTarPath, h.logTarSize)
+	log.Info("GetLogs: Created log tarball %s (numLogs: %d) size=%d", h.logTarPath, numLogs, h.logTarSize)
 	return nil
 }
 

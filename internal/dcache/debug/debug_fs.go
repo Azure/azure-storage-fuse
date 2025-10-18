@@ -46,7 +46,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
@@ -72,7 +71,7 @@ type procFile struct {
 // Directory entries in "fs=debug" directory. This list don't change as the files we support were already known.
 var procDirList []*internal.ObjAttr
 
-// logsWriteRequest defines JSON schema getting logs via fs=debug/logs.
+// logsWriteRequest defines JSON schema for controlling how logs are bundled+fetched via fs=debug/logs.
 // Example:
 //
 //	{
@@ -80,8 +79,10 @@ var procDirList []*internal.ObjAttr
 //	  "number_of_logs": 4
 //	}
 //
-// output_dir: directory where collected logs would be stored.
-// number_of_logs: collect atmost this number of most recent log files per node.
+// output_dir: local directory on the node where fs=debug/logs is read, where logs fetched from all nodes would be stored.
+// number_of_logs: collect atmost this number of most recent blobfuse2.log* files per node.
+//
+// Note: Since logs could be large, make sure that the output_dir has enough space to store the collected logs.
 type logsWriteRequest struct {
 	OutputDir string `json:"output_dir"`
 	NumLogs   int64  `json:"number_of_logs"`
@@ -127,10 +128,19 @@ func init() {
 			Ctime: time.Now(),
 			Size:  0,
 		}
+
+		if path == "logs" {
+			// fs=debug/logs supports write operation.
+			pFile.attr.Mode = 0644
+		}
+
 		procDirList = append(procDirList, pFile.attr)
 	}
 
-	// Initialize logsReq with default values.
+	//
+	// Default log collection dir is common.DefaultWorkDir and default number of logs collected is 1.
+	// These values can be updated by writing an appropriate logsWriteRequest json to fs=debug/logs file.
+	//
 	logsReq = &logsWriteRequest{
 		OutputDir: common.DefaultWorkDir,
 		NumLogs:   1,
@@ -190,7 +200,7 @@ func OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 }
 
 // Read the buffer inside the procFile.
-// No need to acquire the lock before reading from the buffer. As the buffer for proc file  would only refreshed only
+// No need to acquire the lock before reading from the buffer. As the buffer for proc file would only be refreshed
 // once at the start of the openFile even there are multiple handles.
 func ReadFile(options *internal.ReadInBufferOptions) (int, error) {
 	common.Assert(options.Handle.IFObj != nil)
@@ -210,7 +220,7 @@ func CloseFile(options internal.CloseFileOptions) error {
 	return nil
 }
 
-// WriteFile supports fs=debug/logs only.
+// WriteFile, currently must only be called for fs=debug/logs.
 // It is used to update the directory where collected logs would be stored and also
 // the number of most recent logs to collect per node.
 //
@@ -226,6 +236,10 @@ func CloseFile(options internal.CloseFileOptions) error {
 //
 // This updates the parameters for logs collection and number of logs to collect per node.
 // After this, next read calls to fs=debug/logs will use these updated parameters.
+//
+// TODO: Later when we support write for more files in fs=debug, we can refactor this function
+//       and call the registered write callback for the specific procFile.
+
 func WriteFile(options *internal.WriteFileOptions) (int, error) {
 	common.Assert(options.Handle.IFObj != nil)
 	common.Assert(options.Handle.IsFsDebug(), options.Handle.Path)
@@ -233,22 +247,34 @@ func WriteFile(options *internal.WriteFileOptions) (int, error) {
 	common.Assert(options.Handle.Path == "logs", options.Handle.Path)
 	common.Assert(logsReq != nil)
 
+	//
+	// Max path length check for output_dir + few extra bytes for rest of json.
+	//
+	if len(options.Data) > 4200 {
+		log.Err("DebugFS::WriteFile: large logs write request of length %d",
+			len(options.Data))
+		return -1, syscall.EINVAL
+	}
+
 	if err := json.Unmarshal(options.Data, logsReq); err != nil {
-		common.Assert(false, err)
-		return 0, err
+		log.Err("DebugFS::WriteFile: failed to parse logs write request: %v [%s]",
+			err, string(options.Data))
+		return -1, syscall.EINVAL
 	}
 
 	if len(logsReq.OutputDir) == 0 || logsReq.NumLogs <= 0 {
-		common.Assert(false, logsReq.OutputDir, logsReq.NumLogs)
-		return 0, fmt.Errorf("invalid input: output_dir=%s, number_of_logs=%d", logsReq.OutputDir, logsReq.NumLogs)
+		log.Err("DebugFS::WriteFile: Invalid json data: output_dir=%s, number_of_logs=%d [%s]",
+			logsReq.OutputDir, logsReq.NumLogs, string(options.Data))
+		return -1, syscall.EINVAL
 	}
 
 	if !filepath.IsAbs(logsReq.OutputDir) {
-		common.Assert(false, logsReq.OutputDir)
-		return 0, fmt.Errorf("output_dir must be an absolute path: %s", logsReq.OutputDir)
+		log.Err("DebugFS::WriteFile: output_dir is not an absolute path: %s [%s]",
+			logsReq.OutputDir, string(options.Data))
+		return -1, syscall.EINVAL
 	}
 
-	log.Debug("DebugFS::WriteFile: Updated logs collection config, output_dir=%s, number_of_logs=%d",
+	log.Info("DebugFS::WriteFile: Updated logs collection config, output_dir=%s, number_of_logs=%d",
 		logsReq.OutputDir, logsReq.NumLogs)
 
 	return len(options.Data), nil
@@ -264,8 +290,8 @@ func openProcFile(path string, isWrite bool) (*procFile, error) {
 		common.Assert(pFile.openCnt >= 0, path, pFile.openCnt)
 
 		//
-		// If isWrite flag is true, then WriteFile() will take care of refreshing the buffer based
-		// on the write data sent to fs=debug/logs.
+		// isWrite is currently supported only for fs=debug/logs file and we should not
+		// call refreshBuffer on write opens.
 		//
 		if pFile.openCnt == 0 && !isWrite {
 			// This is the first handle to the proc File refresh the contents of the procFile.
@@ -278,7 +304,7 @@ func openProcFile(path string, isWrite bool) (*procFile, error) {
 
 		pFile.openCnt++
 		// Buffer must be allocated and must contain valid data.
-		common.Assert(len(pFile.buf) > 0, len(pFile.buf))
+		common.Assert(len(pFile.buf) > 0 || isWrite, len(pFile.buf))
 		return pFile, nil
 	}
 
@@ -290,37 +316,6 @@ func closeProcFile(pFile *procFile) {
 	defer pFile.mu.Unlock()
 	common.Assert(pFile.openCnt > 0)
 	pFile.openCnt--
-}
-
-func collectLogs(pFile *procFile, outDir string, numLogs int64) error {
-	start := time.Now()
-
-	logFiles, err := rpc_client.CollectAllNodeLogs(outDir, numLogs)
-	if err != nil {
-		log.Err("DebugFS::readLogsCallback: collection completed with errors: %v", err)
-	}
-
-	lr := &logsResp{
-		OutputDir:   outDir,
-		Files:       logFiles,
-		NumNodes:    len(logFiles),
-		NumLogs:     int(numLogs),
-		DurationSec: time.Since(start).Seconds(),
-	}
-
-	if err != nil {
-		lr.Error = err.Error()
-	}
-
-	var err1 error
-	pFile.buf, err1 = json.MarshalIndent(lr, "", "  ")
-	if err1 != nil {
-		log.Err("DebugFS::collectLogs: err: %v", err1)
-		common.Assert(false, err1)
-		return err1
-	}
-
-	return nil
 }
 
 // Silence unused import errors for release builds.

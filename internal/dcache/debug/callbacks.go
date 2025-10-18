@@ -44,6 +44,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -95,13 +96,56 @@ func readStatsCallback(pFile *procFile) error {
 
 // proc file: logs
 // On first open, it triggers collection of logs from all nodes via RPC and returns a JSON summary.
-// Tarballs are stored on disk. This file only returns metadata mapping of node IDs to log tarball paths.
+// Tarballs are stored on disk. This function only returns metadata mapping of node IDs to log tarball paths.
 func readLogsCallback(pFile *procFile) error {
 	common.Assert(logsReq != nil)
+	common.Assert(logsReq.OutputDir != "")
+	common.Assert(logsReq.NumLogs > 0)
 
 	timestamp := strings.Replace(time.Now().UTC().Format(time.RFC3339), ":", "-", -1)
+	// e.g., cluster-logs-2025-10-18T08-37-38Z
 	outDir := filepath.Join(logsReq.OutputDir, fmt.Sprintf("cluster-logs-%s", timestamp))
-	return collectLogs(pFile, outDir, logsReq.NumLogs)
+
+	//
+	// Make the GetLogs RPC request to each node requesting numLogs logs to be tar'ed and returned
+	// and save the returned tarballs to outDir.
+	//
+	start := time.Now()
+
+	logFiles, err := rpc_client.CollectAllNodeLogs(outDir, logsReq.NumLogs)
+	if err != nil {
+		log.Err("DebugFS::readLogsCallback: collection completed with errors: %v", err)
+	}
+
+	lr := &logsResp{
+		OutputDir:   outDir,
+		Files:       logFiles,
+		NumNodes:    len(logFiles),
+		NumLogs:     int(logsReq.NumLogs),
+		DurationSec: time.Since(start).Seconds(),
+	}
+
+	if err != nil {
+		lr.Error = err.Error()
+	} else {
+		common.Assert(lr.NumNodes > 0, lr.NumNodes)
+		common.Assert(lr.NumLogs <= lr.NumNodes, lr.NumLogs, lr.NumNodes)
+	}
+
+	//
+	// Log index file contains mapping of node IDs to tarball paths.
+	// This is returned as the proc file content.
+	//
+	var err1 error
+	pFile.buf, err1 = json.MarshalIndent(lr, "", "  ")
+	if err1 != nil {
+		log.Err("DebugFS::collectLogs: failed to marshal log index json %+v: %v",
+			*lr, err1)
+		common.Assert(false, err1)
+		return err1
+	}
+
+	return nil
 }
 
 // Silence unused import errors for release builds.

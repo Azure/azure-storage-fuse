@@ -36,7 +36,6 @@ package rpc_client
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"sync"
 	"time"
@@ -50,8 +49,7 @@ import (
 // CollectAllNodeLogs downloads log tarballs from every node in the current cluster into outDir.
 // Returns map[nodeID]pathToTar and errors aggregated if some nodes fail.
 func CollectAllNodeLogs(outDir string, numLogs int64) (map[string]string, error) {
-	// Chunk size fixed to 16MB.
-	const chunkSize = rpc.MaxLogChunkSize
+	const chunkSize = rpc.LogChunkSize
 	common.Assert(numLogs > 0, numLogs)
 
 	log.Debug("CollectAllNodeLogs: Starting %d logs per node download in %s with chunk size of %d",
@@ -59,15 +57,28 @@ func CollectAllNodeLogs(outDir string, numLogs int64) (map[string]string, error)
 
 	// Create the output directory
 	err := os.MkdirAll(outDir, 0777)
-	common.Assert(err == nil, err)
+	if err != nil {
+		err = fmt.Errorf("CollectAllNodeLogs: failed to create output dir %s: %v", outDir, err)
+		log.Err("%v", err)
+		return nil, err
+	}
 
 	nodeMap := cm.GetAllNodes()
 	results := make(map[string]string)
 
+	if len(nodeMap) == 0 {
+		common.Assert(false)
+		return results, fmt.Errorf("CollectAllNodeLogs: no nodes found in cluster")
+	}
+
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	const workerCount = 10
+	//
+	// We can start log collection in parallel on lot of nodes as it doesn't load any single
+	// node. It'll be limited by ingress network b/w and disk IO on the requesting node.
+	//
+	workerCount := min(1000, len(nodeMap))
 	jobs := make(chan string, workerCount)
 	errCh := make(chan error, len(nodeMap))
 
@@ -78,21 +89,25 @@ func CollectAllNodeLogs(outDir string, numLogs int64) (map[string]string, error)
 		go func() {
 			defer wg.Done()
 			for nodeID := range jobs {
-				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				//
+				// GetLogs() will hit RPC timeout before our context timeout of 300s, but
+				// we still want to keep this higher as RPC timeout an be increased in future.
+				//
+				ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 				path, err := GetLogs(ctx, nodeID, outDir, numLogs, chunkSize)
 				cancel()
 
 				if err != nil {
-					common.Assert(path == nil)
+					common.Assert(path == "", path)
 					err1 := fmt.Errorf("failed to get logs for node %s [%v]", nodeID, err)
 					log.Err("CollectAllNodeLogs: %v", err1)
 					errCh <- err1
 					continue
 				}
 
-				common.Assert(path != nil)
+				common.Assert(path != "")
 				mu.Lock()
-				results[nodeID] = *path
+				results[nodeID] = path
 				mu.Unlock()
 			}
 		}()
@@ -119,41 +134,8 @@ func CollectAllNodeLogs(outDir string, numLogs int64) (map[string]string, error)
 		}
 	}
 
-	log.Debug("CollectAllNodeLogs: downloaded logs for %d/%d nodes into %s", len(results), len(nodeMap), outDir)
+	log.Info("CollectAllNodeLogs: downloaded logs for %d/%d nodes into %s: [%v]",
+		len(results), len(nodeMap), outDir, allErr)
+
 	return results, allErr
-}
-
-// Helper method to copy a file from srcPath to dstPath.
-func copyFile(srcPath, dstPath string) error {
-	src, err := os.Open(srcPath)
-	defer src.Close()
-	if err != nil {
-		common.Assert(false, err)
-		return err
-	}
-
-	dst, err := os.Create(dstPath)
-	defer dst.Close()
-	if err != nil {
-		common.Assert(false, err)
-		return err
-	}
-
-	if _, err = io.Copy(dst, src); err != nil {
-		common.Assert(false, err)
-		return err
-	}
-
-	// Flush to disk
-	if err = dst.Sync(); err != nil {
-		common.Assert(false, err)
-		return err
-	}
-
-	// Preserve permissions
-	if info, err := os.Stat(srcPath); err == nil {
-		os.Chmod(dstPath, info.Mode())
-	}
-
-	return nil
 }
