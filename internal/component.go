@@ -107,6 +107,7 @@ type Component interface {
 	RenameFile(RenameFileOptions) error
 
 	ReadFile(ReadFileOptions) ([]byte, error)
+	ReadFileWithName(ReadFileWithNameOptions) ([]byte, error)
 	ReadInBuffer(*ReadInBufferOptions) (int, error)
 
 	WriteFile(*WriteFileOptions) (int, error)
@@ -130,7 +131,7 @@ type Component interface {
 	//1. must return ErrNotExist for absence of a file/directory/symlink
 	//2. must return valid nodeID that was passed with any create/update operations for eg: SetAttr, CreateFile, CreateDir etc
 	GetAttr(GetAttrOptions) (*ObjAttr, error)
-	SetAttr(SetAttrOptions) error
+	SetMetadata(SetMetadataOptions) error
 
 	Chmod(ChmodOptions) error
 	Chown(ChownOptions) error
@@ -142,4 +143,5 @@ type Component interface {
 	GetCommittedBlockList(string) (*CommittedBlockList, error)
 	StageData(StageDataOptions) error
 	CommitData(CommitDataOptions) error
+	WriteFromBuffer(WriteFromBufferOptions) (string, error)
 }

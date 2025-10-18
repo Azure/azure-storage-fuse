@@ -36,12 +36,14 @@ package internal
 import (
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 type CreateDirOptions struct {
-	Name string
-	Mode os.FileMode
+	Name                     string
+	Mode                     os.FileMode
+	ForceDirCreationDisabled bool
 }
 
 type DeleteDirOptions struct {
@@ -65,6 +67,12 @@ type StreamDirOptions struct {
 	Offset uint64
 	Token  string
 	Count  int32
+	// If IsFsDcache is true, we will  enumerate this streamdir call from dcache FS.
+	// else we enumerate from Azure FS. This is used when user enumerates through an unqualified path.
+	IsFsDcache *bool
+	// This is used when reading the directory for unqualified path. Initially all the entries from the dcache are put
+	// into the map to later compare them with the Azure entries to avoid double occurrence of the same entry.
+	DcacheEntries map[string]struct{}
 }
 
 type CloseDirOptions struct {
@@ -96,14 +104,21 @@ type CloseFileOptions struct {
 }
 
 type RenameFileOptions struct {
-	Src     string
-	Dst     string
-	SrcAttr *ObjAttr
-	DstAttr *ObjAttr
+	Src       string
+	Dst       string
+	SrcAttr   *ObjAttr
+	DstAttr   *ObjAttr
+	NoReplace bool // Don't  overwrite newpath of the rename.  Return an error if new‐path already exists.
+	// This option is similar to the RENAME_NOREPLACE flag supported by renameat2() function by the system.
 }
 
 type ReadFileOptions struct {
 	Handle *handlemap.Handle
+}
+
+type ReadFileWithNameOptions struct {
+	Path string
+	Size int64
 }
 
 type ReadInBufferOptions struct {
@@ -120,6 +135,14 @@ type WriteFileOptions struct {
 	Offset   int64
 	Data     []byte
 	Metadata map[string]*string
+}
+
+type WriteFromBufferOptions struct {
+	Name                   string
+	Metadata               map[string]*string
+	Data                   []byte
+	IsNoneMatchEtagEnabled bool
+	EtagMatchConditions    string
 }
 
 type GetFileBlockOffsetsOptions struct {
@@ -184,9 +207,11 @@ type GetAttrOptions struct {
 	RetrieveMetadata bool
 }
 
-type SetAttrOptions struct {
-	Name string
-	Attr *ObjAttr
+type SetMetadataOptions struct {
+	Path      string
+	Metadata  map[string]*string
+	Etag      *azcore.ETag
+	Overwrite bool
 }
 
 type ChmodOptions struct {

@@ -458,6 +458,21 @@ func (mr *MockComponentMockRecorder) ReadFile(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockComponent)(nil).ReadFile), arg0)
 }
 
+// ReadFile mocks base method.
+func (m *MockComponent) ReadFileWithName(arg0 ReadFileWithNameOptions) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadFileWithName", arg0)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadFile indicates an expected call of ReadFile.
+func (mr *MockComponentMockRecorder) ReadFileWithName(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFileWithName", reflect.TypeOf((*MockComponent)(nil).ReadFileWithName), arg0)
+}
+
 // ReadInBuffer mocks base method.
 func (m *MockComponent) ReadInBuffer(arg0 *ReadInBufferOptions) (int, error) {
 	m.ctrl.T.Helper()
@@ -535,18 +550,18 @@ func (mr *MockComponentMockRecorder) RenameFile(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameFile", reflect.TypeOf((*MockComponent)(nil).RenameFile), arg0)
 }
 
-// SetAttr mocks base method.
-func (m *MockComponent) SetAttr(arg0 SetAttrOptions) error {
+// SetMetadata mocks base method.
+func (m *MockComponent) SetMetadata(arg0 SetMetadataOptions) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetAttr", arg0)
+	ret := m.ctrl.Call(m, "SetMetadata", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetAttr indicates an expected call of SetAttr.
-func (mr *MockComponentMockRecorder) SetAttr(arg0 interface{}) *gomock.Call {
+// SetMetadata indicates an expected call of SetMetadata.
+func (mr *MockComponentMockRecorder) SetMetadata(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAttr", reflect.TypeOf((*MockComponent)(nil).SetAttr), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetMetadata", reflect.TypeOf((*MockComponent)(nil).SetMetadata), arg0)
 }
 
 // SetName mocks base method.
@@ -693,4 +708,17 @@ func (m *MockComponent) CommitData(arg0 CommitDataOptions) error {
 func (mr *MockComponentMockRecorder) CommitData(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitData", reflect.TypeOf((*MockComponent)(nil).TruncateFile), arg0)
+}
+
+func (m *MockComponent) WriteFromBuffer(arg0 WriteFromBufferOptions) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WriteFromBuffer", arg0)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (mr *MockComponentMockRecorder) WriteFromBuffer(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteFromBuffer", reflect.TypeOf((*MockComponent)(nil).WriteFromBuffer), arg0)
 }
