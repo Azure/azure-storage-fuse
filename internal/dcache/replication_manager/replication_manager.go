@@ -1965,7 +1965,8 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 			rpc.PutChunkRequestToString(putChunkReq), err)
 
 		rpcErr := rpc.GetRPCResponseError(err)
-		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
+		isTimeout := rpc.IsTimedOut(err)
+		if (rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError) && !isTimeout {
 			//
 			// This error means that the node is not reachable.
 			// Mark the destination RV as inband-offline, so that the fix-mv workflow can select a new RV
@@ -1974,8 +1975,12 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 			log.Err("ReplicationManager::copySingleChunk: Failed to reach node %s [%v]",
 				destNodeID, err)
 
-			// Fall through and return error, caller will mark job.destRVName as inband-offline.
-		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+			// Fall through and return error, caller (runSyncJob()) will mark job.destRVName as inband-offline.
+		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap || isTimeout {
+			if isTimeout {
+				log.Warn("[SLOW] ReplicationManager::copySingleChunk: Masking timeout error as NeedToRefreshClusterMap to trigger cluster map refresh plus retry")
+			}
+
 			//
 			// NeedToRefreshClusterMap is the only error on which we retry the PutChunk, but only if
 			// the new clustermap still has the same source and destination RVs, in online and syncing

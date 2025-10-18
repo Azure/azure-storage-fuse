@@ -274,7 +274,13 @@ func HandlePutChunkDCError(nexthopRV string, nextRVs []string, mvName string, ne
 		// We wrap this error in *models.ResponseError with code ThriftError.
 		// This is to ensure that the client can take appropriate action based on this error code.
 		//
-		rpcErr = NewResponseError(models.ErrorCode_ThriftError, nexthopErr.Error())
+		if IsTimedOut(nexthopErr) {
+			log.Warn("[SLOW] HandlePutChunkDCError: nexthop RV %s/%s returned timeout error: %s, masking it as NeedToRefreshClusterMap to trigger cluster map refresh plus retry",
+				nexthopRV, mvName, nexthopErr)
+			rpcErr = NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, nexthopErr.Error())
+		} else {
+			rpcErr = NewResponseError(models.ErrorCode_ThriftError, nexthopErr.Error())
+		}
 	}
 
 	dcResp := &models.PutChunkDCResponse{

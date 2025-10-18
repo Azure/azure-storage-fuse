@@ -2798,7 +2798,11 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 				// This is to ensure that the client can take appropriate action based on this error
 				// code.
 				//
-				rpcErr = rpc.NewResponseError(models.ErrorCode_ThriftError, err.Error())
+				if rpc.IsTimedOut(err) {
+					rpcErr = rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, err.Error())
+				} else {
+					rpcErr = rpc.NewResponseError(models.ErrorCode_ThriftError, err.Error())
+				}
 			}
 		} else {
 			common.Assert(putChunkResp != nil)
