@@ -179,7 +179,7 @@ retry:
 	//
 	// TODO: make it more resilient. We should never fail client IO.
 	//
-	if retryCnt > 5 {
+	if retryCnt > 15 {
 		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
 			req.MvName, retryCnt, lastClusterMapEpoch)
 		log.Err("ReplicationManager::ReadMV: %v", err)
@@ -319,11 +319,19 @@ retry:
 			break
 		}
 
+		//
+		// If DoNotInbandOfflineOnIOTimeout is set we don't want to treat IO timeouts as fatal errors,
+		// instead we want to refresh the clustermap and retry the read. If the target node is actually
+		// down/offline soon heartbeat mechanism will mark it offline and we will come to know about it via
+		// clustermap refresh.
+		//
+		isTimeout := rpc.IsTimedOut(err) && rpc.DoNotInbandOfflineOnIOTimeout
+
 		log.Warn("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %s: %v",
 			targetNodeID, rpc.GetChunkRequestToString(rpcReq), err)
 
 		rpcErr := rpc.GetRPCResponseError(err)
-		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+		if (rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap) || isTimeout {
 			//
 			// RPC server can return models.ErrorCode_NeedToRefreshClusterMap in two cases:
 			// 1. It genuinely wants the client to refresh the clustermap as it knows that
