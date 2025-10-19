@@ -61,8 +61,8 @@ var (
 
 // Returns the actual file size if finalized else the partial size.
 func getFileSize(file *dcache.FileMetadata) int64 {
-	common.Assert((file.Size >= 0) == (file.State == dcache.Ready), *file)
-	common.Assert((file.Size == -1) == ((file.State == dcache.Writing) || (file.State == dcache.Warming)), *file)
+	common.Assert((file.Size >= 0) == (file.State == dcache.Ready || file.State == dcache.Warming), *file)
+	common.Assert((file.Size == -1) == (file.State == dcache.Writing), *file)
 	common.Assert(file.PartialSize >= 0, *file)
 
 	if file.Size > 0 {
@@ -151,16 +151,16 @@ func NewDcacheFile(fileName string, warmup bool, warmUpSize int64) (*DcacheFile,
 	}
 
 	fileMetadata := &dcache.FileMetadata{
-		Filename:   fileName,
-		State:      dcache.Writing,
-		Size:       -1,
-		WarmupSize: -1,
-		FileID:     gouuid.New().String(),
+		Filename: fileName,
+		State:    dcache.Writing,
+		Size:     warmUpSize,
+		FileID:   gouuid.New().String(),
 	}
 
-	if warmup {
+	if warmUpSize >= 0 {
 		fileMetadata.State = dcache.Warming
-		fileMetadata.WarmupSize = warmUpSize
+	} else {
+		common.Assert(warmUpSize == -1, warmUpSize, fileName)
 	}
 
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
@@ -258,7 +258,7 @@ func NewDcacheFile(fileName string, warmup bool, warmUpSize int64) (*DcacheFile,
 		return nil, err
 	}
 
-	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes, fileMetadata.State)
+	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes, fileMetadata.State, fileMetadata.Size)
 	if err != nil {
 		log.Err("DistributedCache::NewDcacheFile: CreateFileInit failed for file %s: %v",
 			fileName, err)
@@ -335,7 +335,7 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	//
 	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
 		(fileMetadata.State == dcache.Ready && fileSize >= 0) ||
-		(fileMetadata.State == dcache.Warming && fileSize == -1 && fileMetadata.WarmupSize >= 0),
+		(fileMetadata.State == dcache.Warming && fileSize >= 0),
 		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
 
 	fileMetadata.Size = fileSize
@@ -388,8 +388,8 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 				fileName, fileMetadata)
 		}
 	} else {
-		// Finalized files must have size >= 0.
-		common.Assert(fileMetadata.Size >= 0 || fileMetadata.State == dcache.Warming, fileMetadata.Size, *fileMetadata)
+		// Ready and Warming files must have size >= 0.
+		common.Assert(fileMetadata.Size >= 0, fileMetadata.Size, *fileMetadata)
 	}
 
 	//
@@ -430,10 +430,6 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	//
 	dcacheFile.initFreeChunks(fileIOMgr.numReadAheadChunks + 300)
 	dcacheFile.lastReadaheadChunkIdx.Store(-1)
-
-	if fileMetadata.State == dcache.Warming {
-		return dcacheFile, ErrFileNotReady
-	}
 
 	return dcacheFile, nil
 }

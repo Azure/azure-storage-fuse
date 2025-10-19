@@ -182,7 +182,6 @@ type FileMetadata struct {
 	Size            int64      `json:"-"`
 	PartialSize     int64      `json:"-"`
 	PartialSizeAt   time.Time  `json:"-"`
-	WarmupSize      int64      `json:"warmup_size"`
 	OpenCount       int        `json:"-"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
 	FileLayout      FileLayout `json:"file_layout"`

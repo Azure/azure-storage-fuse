@@ -282,8 +282,8 @@ func GetMdRoot() string {
 	return metadataManagerInstance.mdRoot
 }
 
-func CreateFileInit(filePath string, fileMetadata []byte, state dcache.FileState) (string, error) {
-	return metadataManagerInstance.createFileInit(filePath, fileMetadata, state)
+func CreateFileInit(filePath string, fileMetadata []byte, state dcache.FileState, warmUpSize int64) (string, error) {
+	return metadataManagerInstance.createFileInit(filePath, fileMetadata, state, warmUpSize)
 }
 
 func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error {
@@ -507,18 +507,25 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 //
 // etag value returned must be passed to CreateFileFinalize() so that we can be assured that the same node
 // that started file creation, does the finalize. This can help prevent cases where the initial node went
-// quiet before finalizing and tries to finalize later when some other node created the same file.
+// quiet before finalizing and tries to finalize later while some other node created the same file in the
+// meantime.
 
-func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte, state dcache.FileState) (string, error) {
+func (m *BlobMetadataManager) createFileInit(filePath string,
+	fileMetadata []byte, state dcache.FileState, warmUpSize int64) (string, error) {
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.InitCalls, 1)
 
 	common.Assert(len(filePath) > 0)
-	common.Assert(len(fileMetadata) > 0)
+	common.Assert(len(fileMetadata) > 0, filePath)
+	// In Init, state can be only Writing or Warming.
+	common.Assert(state == dcache.Writing || state == dcache.Warming, state, warmUpSize, filePath)
+	// If state is Warming, warmUpSize must be >= 0, else it must be -1.
+	common.Assert((warmUpSize >= 0) == (state == dcache.Warming), warmUpSize, state, filePath)
+	common.Assert(warmUpSize >= -1, warmUpSize, state)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
 	// The size of the file is set to -1 to represent the file is not finalized.
-	sizeStr := "-1"
+	sizeStr := fmt.Sprintf("%d", warmUpSize)
 	openCount := "0"
 	stateStr := string(state)
 
@@ -575,7 +582,8 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 // CreateFileFinalize() finalizes the metadata for a file.
 // Must be called only after prior call to CreateFileInit() succeeded.
-func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error {
+func (m *BlobMetadataManager) createFileFinalize(filePath string,
+	fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error {
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.FinalizeCalls, 1)
 
 	common.Assert(len(filePath) > 0)
@@ -599,42 +607,51 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
 		size, ok := prop.Metadata["cache_object_length"]
-		common.Assert(ok && *size == "-1", ok, *size)
+		common.Assert(ok && ((*size == "-1") == (fileState == dcache.Writing)), ok, *size, filePath)
+		common.Assert((fileState == dcache.Writing) || (*size == fmt.Sprintf("%d", fileSize)),
+			ok, *size, filePath)
 
-		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
+		// Extract the state form the metadata properties, it must be "writing" or "warming" as set by
+		// createFileInit().
 		state, ok := prop.Metadata["state"]
-		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)))
+		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)), filePath)
 
 		// opencount must be 0 as a file not yet finalized cannot be opened, warmup files can be read while
 		// they were being warmeup so there can be some open count for them.
 		openCount, ok := prop.Metadata["opencount"]
-		common.Assert(ok && (*openCount == "0" || *state == string(dcache.Warming)), ok, *openCount)
+		common.Assert(ok && (*openCount == "0" || *state == string(dcache.Warming)), ok, *openCount, filePath)
 	}
 
 	// Store the open-count and file size in the metadata blob property.
 	openCount := "0"
 
-	// If file is getting warmed up, there may be some read handles opened to it. So better get the read count before
-	// finalizing.
+	// If file is getting warmed up, there may be some open read handles, set OpenCount to the same value.
 	if fileState == dcache.Warming {
 		prop, err := GetPropertiesFromStorageWithStats(&m.storageCallback,
 			internal.GetAttrOptions{Name: path})
-		common.Assert(err == nil, err)
+		_ = err
+		common.Assert(err == nil, err, filePath)
 
-		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
+		// Extract the size from the metadata properties, createFileInit()  must have set it >= 0.
 		size, ok := prop.Metadata["cache_object_length"]
-		common.Assert(ok && *size == "-1", ok, *size)
+		_ = size
+		_ = ok
+		common.Assert(ok && *size == fmt.Sprintf("%d", fileSize), ok, *size, filePath)
 
-		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
+		// Extract the state form the metadata properties, it must be "warming" as set by createFileInit().
 		state, ok := prop.Metadata["state"]
-		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)))
+		_ = state
+		common.Assert(ok && (*state == string(dcache.Warming)), filePath)
 
-		// opencount must be 0 as a file not yet finalized cannot be opened, warmup files can be read while
-		// they were being warmeup so there can be some open count for them.
+		// We do not allow open of files being written, but warmup files are allowed to be opened (and read)
+		// so there can be non-zero open count for them.
 		openCountPtr, ok := prop.Metadata["opencount"]
-		common.Assert(ok, ok)
+		common.Assert(ok, prop.Metadata, filePath)
 
 		openCount = *openCountPtr
+		//
+		// Note: While opening etag would change so it won't be same as the etag returned by createFileInit(),
+		//
 		eTag = prop.ETag
 	}
 

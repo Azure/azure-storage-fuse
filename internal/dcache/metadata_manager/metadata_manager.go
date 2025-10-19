@@ -51,9 +51,16 @@ type MetadataManager interface {
 	// CreateFileInit creates the initial metadata for a file.
 	// Succeeds only when the file metadata is not already present.
 	// Returns an etag value that must be passed to the corresponding createFileFinalize().
-	// This will be called by the File Manager to create a non-existing file in response to a create call from fuse.
+	// This will be called by the File Manager to create a non-existing file in following cases:
+	// 1. In response to a create call from fuse.
+	//    This is the common case for file creation. In this case we don't know the file size and
+	//    warmupSize should be passed as -1 to convey that.
+	// 2. In response to a "read from Azure with warmup dcache".
+	//    In this case we know the final size of the dcache file to be created (it's the size of the
+	//    file in Azure) and warmupSize must be passed as the Azure file size.
+	//
 	// TODO :: Handle the case where the node fails before CreateFileFinalize is called.
-	createFileInit(filePath string, fileMetadata []byte) (string, error)
+	createFileInit(filePath string, fileMetadata []byte, warmupSize int64) (string, error)
 
 	// CreateFileFinalize finalizes the metadata for a file updating size, sha256, and other properties.
 	// For properties which were not available at the time of CreateFileInit.

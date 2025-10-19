@@ -20,6 +20,7 @@ var (
 	ErrWarmupChunkNotAvailable error = errors.New("Warmup chunk not available")
 )
 
+/*
 func GetSizeIfIScheduledWarmup(filePath string) int64 {
 
 	IwarmupHandle, exists := inProgressWarmUpFilesMap.Load(filePath)
@@ -31,6 +32,7 @@ func GetSizeIfIScheduledWarmup(filePath string) int64 {
 
 	return -1
 }
+*/
 
 func TryWarmup(handle *handlemap.Handle,
 	readFileFromAzure func(*handlemap.Handle, int64 /* offset */, int64 /* size */, []byte /* data */) (int, error),
