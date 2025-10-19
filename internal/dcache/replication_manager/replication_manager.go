@@ -179,7 +179,7 @@ retry:
 	//
 	// TODO: make it more resilient. We should never fail client IO.
 	//
-	if retryCnt > 5 {
+	if retryCnt > 15 {
 		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
 			req.MvName, retryCnt, lastClusterMapEpoch)
 		log.Err("ReplicationManager::ReadMV: %v", err)
@@ -319,11 +319,19 @@ retry:
 			break
 		}
 
+		//
+		// If DoNotInbandOfflineOnIOTimeout is set we don't want to treat IO timeouts as fatal errors,
+		// instead we want to refresh the clustermap and retry the read. If the target node is actually
+		// down/offline soon heartbeat mechanism will mark it offline and we will come to know about it via
+		// clustermap refresh.
+		//
+		isTimeout := rpc.IsTimedOut(err) && rpc.DoNotInbandOfflineOnIOTimeout
+
 		log.Warn("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %s: %v",
 			targetNodeID, rpc.GetChunkRequestToString(rpcReq), err)
 
 		rpcErr := rpc.GetRPCResponseError(err)
-		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+		if (rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap) || isTimeout {
 			//
 			// RPC server can return models.ErrorCode_NeedToRefreshClusterMap in two cases:
 			// 1. It genuinely wants the client to refresh the clustermap as it knows that
@@ -857,7 +865,15 @@ processResponses:
 		common.Assert(putChunkResp == nil)
 
 		rpcErr := rpc.GetRPCResponseError(respItem.err)
-		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
+		//
+		// If DoNotInbandOfflineOnIOTimeout is set, treat timeout specially/different from other transport
+		// errors like connection reset/refused/close, masking timeout errors as NeedToRefreshClusterMap,
+		// to trigger a cluster map refresh plus retry, instead of marking the RV inband-offline.
+		// We don't special case for DaisyChain mode as in that mode we don't mark RVs inband-offline anyway.
+		//
+		isTimeout := (putChunkStyle != DaisyChain) && rpc.IsTimedOut(respItem.err) && rpc.DoNotInbandOfflineOnIOTimeout
+
+		if (rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError) && !isTimeout {
 			//
 			// This error indicates some transport error, i.e., RPC request couldn't make it to the
 			// server and hence didn't solicit a response. It could be some n/w issue, blobfuse
@@ -877,14 +893,6 @@ processResponses:
 			// which will mark the RV as inband-offline if the PutChunk to that RV fails again.
 			//
 			if putChunkStyle != DaisyChain {
-				//
-				// TODO: Under heavy load PutChunkDC requests are seen to timeout even when the node is
-				//       technically reachable/up. We don't want to mark the RV as inband-offline and
-				//       trigger a potentially unnecessary resync in this case. It can be fatal if more
-				//       than one RVs are marked inband-offline causing data unavailability.
-				//       So, if we get a timeout error, we should check the heartbeat status of the node
-				//       before marking the RV as inband-offline.
-				//
 				errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline)
 				if errRV != nil {
 					//
@@ -923,7 +931,7 @@ processResponses:
 		//
 		// The error is RPC error of type *rpc.ResponseError.
 		//
-		if rpcErr.GetCode() == models.ErrorCode_BrokenChain {
+		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_BrokenChain {
 			// BrokenChain error can only be returned for PutChunkStyle DaisyChain.
 			common.Assert(putChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
 				putChunkStyle, len(putChunkDCReq.NextRVs))
@@ -937,7 +945,12 @@ processResponses:
 
 			log.Debug("ReplicationManager::writeMVInternal: PutChunkDC call not forwarded to %s/%s [%v]",
 				respItem.rvName, req.MvName, respItem.err)
-		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+		} else if (rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap) || isTimeout {
+			if isTimeout {
+				log.Warn("[SLOW] ReplicationManager::writeMVInternal: Masking timeout error to %s/%s as NeedToRefreshClusterMap to trigger cluster map refresh plus retry: %v",
+					respItem.rvName, req.MvName, respItem.err)
+			}
+
 			//
 			// We allow 5 refreshes of the clustermap for resiliency, before we fail the write.
 			// This is to allow multiple changes to the MV during the course of a single write.
@@ -1965,7 +1978,14 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 			rpc.PutChunkRequestToString(putChunkReq), err)
 
 		rpcErr := rpc.GetRPCResponseError(err)
-		if rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError {
+
+		//
+		// If DoNotInbandOfflineOnIOTimeout is set, treat timeout specially/different from other transport
+		// errors like connection reset/refused/close, masking timeout errors as NeedToRefreshClusterMap,
+		// to trigger a cluster map refresh plus retry, instead of marking the RV inband-offline.
+		//
+		isTimeout := rpc.IsTimedOut(err) && rpc.DoNotInbandOfflineOnIOTimeout
+		if (rpcErr == nil || rpcErr.GetCode() == models.ErrorCode_ThriftError) && !isTimeout {
 			//
 			// This error means that the node is not reachable.
 			// Mark the destination RV as inband-offline, so that the fix-mv workflow can select a new RV
@@ -1974,8 +1994,13 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 			log.Err("ReplicationManager::copySingleChunk: Failed to reach node %s [%v]",
 				destNodeID, err)
 
-			// Fall through and return error, caller will mark job.destRVName as inband-offline.
-		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+			// Fall through and return error, caller (runSyncJob()) will mark job.destRVName as inband-offline.
+		} else if (rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap) || isTimeout {
+			if isTimeout {
+				log.Warn("[SLOW] ReplicationManager::copySingleChunk: Masking timeout error while copying chunk %s (%s/%s -> %s/%s) as NeedToRefreshClusterMap to trigger cluster map refresh plus retry",
+					srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName)
+			}
+
 			//
 			// NeedToRefreshClusterMap is the only error on which we retry the PutChunk, but only if
 			// the new clustermap still has the same source and destination RVs, in online and syncing

@@ -333,7 +333,32 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 				// Continue with newly created client.
 				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* confirmedBadNode */, false /* isClientClosed */)
+				//
+				// If DoNotInbandOfflineOnIOTimeout is set, we don't treat timeout errors as indication
+				// of node down, hence we don't close all connections and mark the node as negative.
+				// See comments in PutChunkDC() why we need to reset this client though.
+				//
+				// Note: For all other RPCs other than PutChunk and GetChunk, we treat timeout as node
+				//       down irrespective of DoNotInbandOfflineOnIOTimeout setting, as for those RPCs
+				//       treating node down is not fatal and are usually handled well by the caller,
+				//       e.g., if we get a timeout in JoinMV/UpdateMV we will simply skip that RV and
+				//       use a different RV.
+				//
+				if rpc.DoNotInbandOfflineOnIOTimeout {
+					err1 := cp.resetRPCClient(client)
+					if err1 != nil {
+						log.Err("rpc_client::GetChunk: resetRPCClient failed for node %s: %v",
+							targetNodeID, err1)
+						//
+						// The client has already been closed in resetRPCClient().
+						// So, we pass true for isClientClosed flag.
+						//
+						cp.deleteAllRPCClients(client, true /* confirmedBadNode */, true /* isClientClosed */)
+					}
+				} else {
+					cp.deleteAllRPCClients(client, true /* confirmedBadNode */, false /* isClientClosed */)
+				}
+
 				return nil, err
 			}
 
@@ -450,7 +475,26 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 				// Continue with newly created client.
 				continue
 			} else if rpc.IsTimedOut(err) {
-				cp.deleteAllRPCClients(client, true /* confirmedBadNode */, false /* isClientClosed */)
+				//
+				// If DoNotInbandOfflineOnIOTimeout is set, we don't treat timeout errors as indication
+				// of node down, hence we don't close all connections and mark the node as negative.
+				// See comments in PutChunkDC() why we need to reset this client though.
+				//
+				if rpc.DoNotInbandOfflineOnIOTimeout {
+					err1 := cp.resetRPCClient(client)
+					if err1 != nil {
+						log.Err("rpc_client::PutChunk: resetRPCClient failed for node %s: %v",
+							targetNodeID, err1)
+						//
+						// The client has already been closed in resetRPCClient().
+						// So, we pass true for isClientClosed flag.
+						//
+						cp.deleteAllRPCClients(client, true /* confirmedBadNode */, true /* isClientClosed */)
+					}
+				} else {
+					cp.deleteAllRPCClients(client, true /* confirmedBadNode */, false /* isClientClosed */)
+				}
+
 				return nil, err
 			}
 

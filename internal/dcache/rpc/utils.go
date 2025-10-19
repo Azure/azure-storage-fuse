@@ -53,6 +53,24 @@ const (
 
 	// Chunk size for log transfer (16MB)
 	LogChunkSize int64 = 16 * 1024 * 1024
+
+	//
+	// Other than a actual failure returned by the RPC server, an RPC call can also fail due to
+	// transport level errors like connection error (connection reset, connection reset, connection closed
+	// resulting in eof, etc), and timeout.
+	// For connection errors, we are certain that the RPC server is not reachable, but for timeout errors,
+	// it is possible that the server is reachable but is just slow in responding, infact under heavy load
+	// and network congestion, resulting in excessive TCP retransmits, we have seen that even if we set the
+	// timeout to a high value like 60 seconds, we still see occasional timeouts, where retrying the RPC call
+	// results in a success. In a huge cluster with hundreds of nodes, it is likely, and thus marking an RV
+	// as inband-offline on timeout can lead to unecessary resync and data unavailability under more extreme
+	// scenarios. It's ok to not rush to mark an RV as inband-offline on timeout, and let the heartbeat mechanism
+	// detect and mark an RV as offline if it is indeed offline. WriteMV() will mask timeout errors as
+	// NeedToRefreshClusterMap errors to trigger cluster map refresh plus retry, which should take care of
+	// transient timeouts and if the node is indeed offline, the heartbeat mechanism will mark it as offline
+	// and we will learn about it during the next cluster map refresh.
+	//
+	DoNotInbandOfflineOnIOTimeout = true
 )
 
 var ReadIOMode, WriteIOMode string
