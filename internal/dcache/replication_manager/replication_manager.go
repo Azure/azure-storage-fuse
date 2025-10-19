@@ -931,7 +931,7 @@ processResponses:
 		//
 		// The error is RPC error of type *rpc.ResponseError.
 		//
-		if rpcErr.GetCode() == models.ErrorCode_BrokenChain {
+		if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_BrokenChain {
 			// BrokenChain error can only be returned for PutChunkStyle DaisyChain.
 			common.Assert(putChunkStyle == DaisyChain && len(putChunkDCReq.NextRVs) > 0,
 				putChunkStyle, len(putChunkDCReq.NextRVs))
@@ -945,10 +945,10 @@ processResponses:
 
 			log.Debug("ReplicationManager::writeMVInternal: PutChunkDC call not forwarded to %s/%s [%v]",
 				respItem.rvName, req.MvName, respItem.err)
-		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap || isTimeout {
+		} else if (rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap) || isTimeout {
 			if isTimeout {
 				log.Warn("[SLOW] ReplicationManager::writeMVInternal: Masking timeout error to %s/%s as NeedToRefreshClusterMap to trigger cluster map refresh plus retry: %v",
-					respItem.rvName, req.MvName, err)
+					respItem.rvName, req.MvName, respItem.err)
 			}
 
 			//
@@ -1995,7 +1995,7 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 				destNodeID, err)
 
 			// Fall through and return error, caller (runSyncJob()) will mark job.destRVName as inband-offline.
-		} else if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap || isTimeout {
+		} else if (rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap) || isTimeout {
 			if isTimeout {
 				log.Warn("[SLOW] ReplicationManager::copySingleChunk: Masking timeout error while copying chunk %s (%s/%s -> %s/%s) as NeedToRefreshClusterMap to trigger cluster map refresh plus retry",
 					srcChunkPath, job.srcRVName, job.mvName, job.destRVName, job.mvName)
