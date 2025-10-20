@@ -908,6 +908,7 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 	return nil
 }
 
+// Will be called to create a new file.
 func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	var dcFile *fm.DcacheFile
 	var handle *handlemap.Handle
@@ -927,11 +928,19 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 	}
 
 	if isDcachePath {
+		//
+		// Qualified open using fs=dcache.
+		//
+		// It'll create the file in dcache, which will be later written to using WriteFile() calls.
+		//
+		// Used for files being created exclusively in dcache through a fs=dcache qualified path.
+		//
 		log.Debug("DistributedCache::CreateFile : Path is having Dcache subcomponent, path : %s", options.Name)
 		options.Name = rawPath
-		dcFile, err = fm.NewDcacheFile(rawPath, false /* warmup */, -1 /* warmupSize */)
+		dcFile, err = fm.NewDcacheFile(rawPath, -1 /* warmupSize */)
 		if err != nil {
-			log.Err("DistributedCache::CreateFile : Dcache File Creation failed with err : %s, path : %s", err.Error(), options.Name)
+			log.Err("DistributedCache::CreateFile : Dcache File Creation failed with err : %v, path : %s",
+				err, options.Name)
 			return nil, err
 		}
 
@@ -939,9 +948,16 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 		handle = handlemap.NewHandle(options.Name)
 		// Mark it as a Dcache only filesystem handle.
 		handle.SetFsDcache()
-		// Set Dcache file inside the handle for WriteFile calls.
+		// Set Dcache file inside the handle for WriteFile() calls.
 		handle.IFObj = dcFile
 	} else if isAzurePath {
+		//
+		// Qualified open using fs=azure.
+		//
+		// It'll create the file in Azure, which will be later written to using WriteFile() calls.
+		//
+		// Used for files being created exclusively in dcache through a fs=azure qualified path.
+		//
 		log.Debug("DistributedCache::CreateFile : Path is having Azure subcomponent, path : %s", options.Name)
 		options.Name = rawPath
 		handle, err = dc.NextComponent().CreateFile(options)
@@ -950,25 +966,32 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 			return nil, err
 		}
 
-		// Mark it as a Azure filesystem handle.
+		// Mark it as an Azure filesystem handle.
 		// Since handle.IFObj is nil, it's strictly an Azure handle.
 		handle.SetFsAzure()
+		common.Assert(handle.IFObj == nil, options.Name)
 	} else if isDebugPath {
 		// Don't permit to create files inside the debug directory.
 		return nil, syscall.EACCES
 	} else {
+		//
+		// Unqualified open w/o using any fs= qualification, create in both dcache and azure.
+		// Fail the call if any one of them fail.
+		// WriteFile() calls on the returned handle will write to both dcache and azure.
+		//
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
-		// semantics for creating a file for write with out any explicit namespace
-		// Create in dcache and Azure, fail the call if any one of them fail.
-		dcFile, err = fm.NewDcacheFile(rawPath, false /* warmup */, -1 /* warmupSize */)
+
+		dcFile, err = fm.NewDcacheFile(rawPath, -1 /* warmupSize */)
 		if err != nil {
-			log.Err("DistributedCache::CreateFile : Dcache File Creation failed with err : %s, path : %s", err.Error(), options.Name)
+			log.Err("DistributedCache::CreateFile : Dcache File Creation failed with err : %s, path : %v",
+				err, options.Name)
 			return nil, err
 		}
 
 		handle, err = dc.NextComponent().CreateFile(options)
 		if err != nil {
-			log.Err("DistributedCache::CreateFile : Azure File Creation failed with err : %s, path : %s", err.Error(), options.Name)
+			log.Err("DistributedCache::CreateFile : Azure File Creation failed with err : %s, path : %s",
+				err, options.Name)
 			return nil, err
 		}
 		// todo : if one is success and other is failure, get to the previous state by removing the
@@ -1033,13 +1056,19 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	}
 
 	//
-	// TODO: We should support write for files which are only in Azure.
-	//
 	// Currently we support write only for fs=debug/logs.
+	//
+	// Note that we don't allow writes even if a file is opened with fs=azure qualified path or
+	// it's opened using an unqualified path and the file exists only in azure, this is to prevent
+	// unintended cache inconsistencies. If user really wants to write to such files, they should
+	// first invalidate the cache by deleting the file and creating a brand new file.
+	//
+	// TODO: See if we have usecases for allowing writes to fs=azure files.
 	//
 	if (options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0) &&
 		!(isDebugPath && rawPath == "logs") {
-		log.Err("DistributedCache::OpenFile: Dcache file cannot open with flags: %X, file : %s", options.Flags, options.Name)
+		log.Err("DistributedCache::OpenFile: Dcache file cannot open file: %s, with flags: %X",
+			options.Name, options.Flags)
 		return nil, syscall.EACCES
 	}
 
@@ -1179,7 +1208,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			// Read from azure and warm up dcache for future reads.
 			// We need to create the warmup dcache file handle for this and associate it with the azure handle.
 			//
-			dcFile, err = fm.NewDcacheFile(handle.Path, true, handle.Size)
+			dcFile, err = fm.NewDcacheFile(handle.Path, handle.Size)
 			if err != nil {
 				log.Err("DistributedCache::OpenFile: Failed to create warmup dcache file for azure file %s: %v",
 					handle.Path, err)

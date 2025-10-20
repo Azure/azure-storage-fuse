@@ -74,6 +74,7 @@ type StagedChunk struct {
 	AllocatedAt time.Time
 }
 
+/*
 // This struct is used by the read handle to get the current warmed up chunk info in manual warmup mode.
 type CurWarmChunkReadReq struct {
 	ChunkIdx      int64  // Index of the chunk.
@@ -106,3 +107,4 @@ type WarmupFileInfo struct {
 
 	DoneCh chan struct{} // Channel to signal stopping the CurWarmChunkReadRequests.
 }
+*/

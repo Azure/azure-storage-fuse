@@ -140,7 +140,11 @@ func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string
 }
 
 // Does all file Init Process for creation of the file.
-func NewDcacheFile(fileName string, warmup bool, warmUpSize int64) (*DcacheFile, error) {
+// If the dcache file is being created for being warmed up from Azure, pass warmUpSize as the size of the
+// file in Azure. It'll be >=0, and in this case the file will be created in Warming state and reads will be
+// allowed from such a file even while it's still being written.
+// If the dcache file is being created for write by an application, pass warmUpSize as -1.
+func NewDcacheFile(fileName string, warmUpSize int64) (*DcacheFile, error) {
 	//
 	// Do not allow file creation in a readonly cluster.
 	//
