@@ -1655,6 +1655,8 @@ func readChunkAndHash(chunkPath, hashPath *string,
 	return n, hash, err
 }
 
+var GetChunkCounter uint64 = 0
+
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
@@ -1681,6 +1683,21 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		log.Err("ChunkServiceHandler::GetChunk: Invalid chunk address %v [%s]",
 			req.Address.String(), err.Error())
 		return nil, err
+	}
+
+	if common.IsDebugBuild() {
+		GetChunkCounter++
+		//if (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) && (GetChunkCounter%100 == 0) {
+		if true {
+			//
+			// For every 100th GetChunk request, force fail to test handling of Azure fallback for
+			// non-existent chunks.
+			// Since MD chunks are not present in Azure, skip forcing failure for them.
+			//
+			errStr := "Force failing GetChunk request to test Azure fallback handling"
+			log.Err("ChunkServiceHandler::GetChunk: %s, request: %s", errStr, req.String())
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+		}
 	}
 
 	rvInfo := h.rvIDMap[req.Address.RvID]
@@ -1914,8 +1931,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		fmt.Sprintf("bytes read %d is less than expected buffer size %d", n, len(data)))
 
 	rvInfo.totalBytesRead.Add(int64(n))
-	log.Info("ChunkServiceHandler::GetChunk: [STATS] chunk path %s, %s, totalBytesRead: %d ",
-		chunkPath, rvInfo.rvName, rvInfo.totalBytesRead.Load())
+
+	log.Info("ChunkServiceHandler::GetChunk: [STATS] chunk path %s, %s, n: %d, totalBytesRead: %d ",
+		chunkPath, rvInfo.rvName, n, rvInfo.totalBytesRead.Load())
 
 	//
 	// Don't cache local RV reads, as they are less indicative of the chunk being hot (read by multiple nodes).

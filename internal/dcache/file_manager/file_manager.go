@@ -455,9 +455,13 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 				if errors.Is(err, syscall.ENOENT) {
 					// Try reading directly from Azure for unqualified opens.
 					var bytesRead int64
-					bytesRead, err = file.readChunkFromAzure(offset, chunk)
-					if err == nil && bytesRead != readSize {
-						err = fmt.Errorf("DistributedCache::ReadFile: Azure read size mismatch, file: %s, expected: %d, got: %d",
+					bytesRead, err = file.readChunkFromAzure(offset, readSize, chunk)
+
+					common.Assert((err != nil) || (len(chunk.Buf) == int(bytesRead)),
+						len(chunk.Buf), bytesRead)
+
+					if err == nil && bytesRead < readSize {
+						err = fmt.Errorf("DistributedCache::ReadFile: Azure read size less than requested, file: %s, expected: %d, got: %d",
 							file.FileMetadata.Filename, readSize, bytesRead)
 						common.Assert(false, err)
 					}
@@ -493,9 +497,13 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 				if errors.Is(err, syscall.ENOENT) {
 					// Try reading directly from Azure for unqualified opens.
 					var bytesRead int64
-					bytesRead, err = file.readChunkFromAzure(offset, chunk)
-					if err == nil && bytesRead != readSize {
-						err = fmt.Errorf("DistributedCache::ReadFile: Azure read size mismatch, file: %s, expected: %d, got: %d",
+					bytesRead, err = file.readChunkFromAzure(offset, readSize, chunk)
+
+					common.Assert((err != nil) || (len(chunk.Buf) == int(bytesRead)),
+						len(chunk.Buf), bytesRead)
+
+					if err == nil && bytesRead < readSize {
+						err = fmt.Errorf("DistributedCache::ReadFile: Azure read size less than requested, file: %s, expected: %d, got: %d",
 							file.FileMetadata.Filename, readSize, bytesRead)
 						common.Assert(false, err)
 					}
@@ -1485,8 +1493,8 @@ func (file *DcacheFile) waitForChunkDownload(chunk *StagedChunk) (*StagedChunk, 
 		// Requeue the error for whoever reads this chunk next.
 		chunk.Err <- err
 
-		log.Err("DistributedCache::waitForChunkDownload: Failed, file: %s, chunkIdx: %d",
-			file.FileMetadata.Filename, chunk.Idx)
+		log.Err("DistributedCache::waitForChunkDownload: Failed, file: %s, chunkIdx: %d: %v",
+			file.FileMetadata.Filename, chunk.Idx, err)
 	}
 
 	//
@@ -1608,14 +1616,19 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 	return file.waitForChunkDownload(chunk)
 }
 
-func (file *DcacheFile) readChunkFromAzure(offset int64, chunk *StagedChunk) (int64, error) {
+func (file *DcacheFile) readChunkFromAzure(offset, length int64, chunk *StagedChunk) (int64, error) {
 	if file.AzureHandle == nil {
+		//
+		// file.AzureHandle will be nil for qualified path open.
+		//
 		err := fmt.Errorf("AzureHandle is nil, cannot read from azure, file: %s, offset: %d, chunkIdx: %d",
 			file.FileMetadata.Filename, offset, chunk.Idx)
 		log.Err("DistributedCache::readChunkFromAzure: %v", err)
-		common.Assert(false, err)
 		return -1, err
 	}
+
+	common.Assert(offset >= 0 && length > 0, offset, length, chunk.Idx, file.FileMetadata.Filename)
+	common.Assert(length <= chunk.Len, length, chunk.Len, offset, chunk.Idx, file.FileMetadata.Filename)
 
 	data, err := dcache.GetBuffer()
 	if err != nil {
@@ -1651,6 +1664,9 @@ func (file *DcacheFile) readChunkFromAzure(offset int64, chunk *StagedChunk) (in
 		log.Debug("DistributedCache::readChunkFromAzure: failed for file: %s, offset: %d, chunkIdx: %d: %v",
 			file.FileMetadata.Filename, offset, chunk.Idx, err)
 	} else {
+		common.Assert(bytesRead > 0, bytesRead, offset, chunk.Idx, file.FileMetadata.Filename)
+		chunk.Buf = data[:bytesRead]
+		chunk.UpToDate.Store(true)
 		log.Debug("DistributedCache::readChunkFromAzure: read %d bytes for file: %s, offset: %d, chunkIdx: %d",
 			bytesRead, file.FileMetadata.Filename, offset, chunk.Idx)
 	}

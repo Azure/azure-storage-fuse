@@ -363,8 +363,10 @@ retry:
 			// Wrap syscall.ENOENT to indicate chunk not found.
 			// Caller may use it to fallback to reading from Azure Storage.
 			//
-			log.Err("ReplicationManager::ReadMV: Chunk not found on node %s for request %s: %v [%w]",
+			err = fmt.Errorf("ReplicationManager::ReadMV: Chunk not found on node %s for request %s: %v [%w]",
 				targetNodeID, rpc.GetChunkRequestToString(rpcReq), err, syscall.ENOENT)
+			log.Err("%v", err)
+
 			// Only expected for metadata chunks.
 			/*
 				common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, rpc.GetChunkRequestToString(rpcReq))
