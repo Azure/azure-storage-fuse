@@ -50,7 +50,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	//"github.com/Azure/azure-storage-fuse/v2/internal/dcache/agents"
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	gouuid "github.com/google/uuid"
 )
