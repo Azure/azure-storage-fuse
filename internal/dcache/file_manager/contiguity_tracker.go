@@ -442,27 +442,3 @@ func (t *ContiguityTracker) GetUnackedWindow() int64 {
 
 	return uw
 }
-
-// GetPartialSizeOfFile returns the size upto which data has been uploaded to the file.
-// One can use GetHighestUploadedByte() to get the size upto which data can be read from the file but it works on RPC
-// and can be slow. This method is fast as it works on local state but may not be fully up to date.
-func (t *ContiguityTracker) GetPartialSizeOfFile() int64 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	fullWords := int64(0)
-	newChunks := int64(0)
-	for _, word := range t.bitmap {
-		if word == ^uint64(0) {
-			fullWords++
-			continue
-		} else {
-			// And any contiguous chunks from the start of the word.
-			newChunks = int64(bits.TrailingZeros64(^uint64(word)))
-			common.Assert(newChunks < 64, newChunks, word, fullWords, t.bitmap, *t.file.FileMetadata)
-			break
-		}
-	}
-
-	return t.file.FileMetadata.FileLayout.ChunkSize * (t.lastContiguous + fullWords*64 + newChunks)
-}

@@ -700,16 +700,6 @@ loop:
 	return chunk, nil
 }
 
-func GetCurFileSizeForWarmup(file *DcacheFile) int64 {
-
-	if file.FileMetadata.Size >= 0 {
-		// File is finalized, return actual size.
-		return file.FileMetadata.Size
-	}
-
-	return file.CT.GetPartialSizeOfFile()
-}
-
 // Silence unused import errors for release builds.
 func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")

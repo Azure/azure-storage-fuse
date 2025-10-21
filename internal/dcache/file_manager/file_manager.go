@@ -248,18 +248,6 @@ type DcacheFile struct {
 
 	// Reader function to read data from Azure directly, used for unqualified opens.
 	AzureReader func(options *internal.ReadInBufferOptions) (int, error)
-	/*
-
-		// If this file is being used for reading warmup data, this points to the corresponding file
-		// which is being used for writing the warmup data. This is only valid for the read handle which is
-		// reading warmup data, nil otherwise.
-		WarmupFile *DcacheFile
-
-		// The azure handle must be closed when the file is scheduled for warmup. If the user closes the file before
-		// warmup is complete, we must close the azure handle only after warmup is complete.
-		CloseOnWarmupComplete atomic.Bool
-		WarmupFileInfo        *WarmupFileInfo
-	*/
 }
 
 // Get the write error encountered during file writes, if any.
@@ -297,75 +285,6 @@ func (file *DcacheFile) initFreeChunks(maxChunks int) {
 		file.freeChunks <- struct{}{}
 	}
 }
-
-/*
-func (file *DcacheFile) ReadPartialFile(ctx context.Context, offset int64, buf *[]byte) (bytesRead int, err error) {
-	var warmupFile *DcacheFile
-	if file.WarmupFileInfo != nil {
-		warmupFile = file.WarmupFileInfo.WarmupFile
-	}
-	log.Debug("DistributedCache::ReadPartialFile: file: %s, nextReadOffset: %d, offset: %d, length: %d, chunkIdx: %d",
-		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
-		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
-
-	endOffset := offset + int64(len(*buf))
-	chunkIdx := getChunkIdxFromFileOffset(endOffset, file.FileMetadata.FileLayout.ChunkSize)
-
-	pTicker := time.NewTicker(500 * time.Millisecond)
-
-	isReadOk := func() (partialFileSize int64, ok bool) {
-		if warmupFile != nil {
-			// we are the read handle who triggered the warmup.
-			partialFileSize = GetCurFileSizeForWarmup(warmupFile)
-		} else {
-			// we are the read handle who wants to read the warmup data.
-			partialFileSize, _ = GetHighestUploadedByte(file.FileMetadata)
-		}
-		if partialFileSize >= endOffset {
-			ok = true
-			return
-		}
-		return
-	}
-
-	retryCnt := 0
-
-	if partialFileSize, ok := isReadOk(); ok {
-		pTicker.Stop()
-		log.Info("DistributedCache::ReadPartialFile: Writer has uploaded chunkIdx: %d, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-			chunkIdx, file.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
-		file.FileMetadata.PartialSize = partialFileSize
-		return file.ReadFile(offset, buf)
-	}
-
-	retryCnt++
-
-	for {
-		select {
-		case <-pTicker.C:
-
-			partialFileSize, ok := isReadOk()
-			if ok {
-				log.Info("DistributedCache::ReadPartialFile: Writer has uploaded chunkIdx: %d, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-					chunkIdx, file.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
-				pTicker.Stop()
-				file.FileMetadata.PartialSize = partialFileSize
-				return file.ReadFile(offset, buf)
-			}
-
-			log.Info("DistributedCache::ReadPartialFile: Still waiting for chunkIdx: %d to be uploaded by writer, file: %s, offset: %d, length: %d, retryCnt: %d, partialFileSize: %d",
-				chunkIdx, file.FileMetadata.Filename, offset, len(*buf), retryCnt, partialFileSize)
-
-			retryCnt++
-
-		case <-ctx.Done():
-			log.Err("DistributedCache::ReadPartialFile: context done while reading file: %s, offset: %d, length: %d, err: %v",
-				file.FileMetadata.Filename, offset, len(*buf), ctx.Err())
-			return 0, ctx.Err()
-		}
-	}
-}
-*/
 
 // Reads the file data from the given offset and length to buf[].
 // It translates the requested offsets into chunks, reads those chunks from distributed cache and copies data from
