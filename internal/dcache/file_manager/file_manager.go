@@ -853,11 +853,22 @@ func (file *DcacheFile) SyncFile() error {
 
 		//
 		// Uploading partial chunks in the middle of the file is recipe for data corruption.
+		// For warmup files we skip upload of partial non-last chunks while for non-warmup files
+		// we fail the SyncFile() and thus file close().
+		// Note that for warm up files it's ok to drop some data written by the application as
+		// we can fall back to reading from the original source (Azure).
 		//
 		if !isLastChunk && chunk.Len < file.FileMetadata.FileLayout.ChunkSize {
-			err := fmt.Errorf("DistributedCache[FM]::SyncFile: Partial non-last chunk. file: %s, chunkIdx: %d, chunkLen: %d, file size: %d",
-				file.FileMetadata.Filename, chunk.Idx, chunk.Len, file.maxWriteOffset)
+			warmupFile := file.FileMetadata.State == dcache.Warming
+
+			err := fmt.Errorf("DistributedCache[FM]::SyncFile: Partial non-last chunk. file: %s, chunkIdx: %d, chunkLen: %d, file size: %d, warmupFile: %v",
+				file.FileMetadata.Filename, chunk.Idx, chunk.Len, file.maxWriteOffset, warmupFile)
 			log.Err("%v", err)
+
+			if warmupFile {
+				continue
+			}
+
 			return err
 		}
 
