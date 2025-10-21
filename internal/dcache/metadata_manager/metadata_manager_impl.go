@@ -563,11 +563,11 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) ||
 			bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			err1 := fmt.Errorf("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
-				path, err)
+			err1 := fmt.Errorf("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v [%w]",
+				path, err, syscall.EEXIST)
 			log.Err("%v", err1)
 			stats.Stats.MM.CreateFile.LastErrorInit = err1.Error()
-			return "", err
+			return "", err1
 		}
 
 		err1 := fmt.Errorf("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)

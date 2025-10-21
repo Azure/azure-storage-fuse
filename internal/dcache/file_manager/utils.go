@@ -266,6 +266,8 @@ func NewDcacheFile(fileName string, warmUpSize int64) (*DcacheFile, error) {
 	if err != nil {
 		log.Err("DistributedCache::NewDcacheFile: CreateFileInit failed for file %s: %v",
 			fileName, err)
+		// This is the only expected error here.
+		common.Assert(errors.Is(err, syscall.EEXIST), fileName, err)
 		return nil, err
 	}
 

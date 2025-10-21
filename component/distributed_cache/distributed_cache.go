@@ -1127,6 +1127,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 		options.Name = rawPath
 		return debug.OpenFile(options)
 	} else {
+	retry:
 		//
 		// Unqualified open w/o using any fs= qualification, with the following semantics:
 		// If the file is only present in dcache, it behaves like a fs=dcache open.
@@ -1215,7 +1216,25 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			if err != nil {
 				log.Err("DistributedCache::OpenFile: Failed to create warmup dcache file for azure file %s: %v",
 					handle.Path, err)
-				dc.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
+				err1 := dc.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
+				if err1 != nil {
+					log.Err("DistributedCache::OpenFile: Failed to close azure handle for file %s after dcache warmup file creation failure: %v",
+						handle.Path, err1)
+					common.Assert(false, err1)
+					return nil, err
+				}
+
+				//
+				// If the dcache file got created in the interim by some other node, we should retry the
+				// open operation to open it from dcache. This way if multiple nodes race to create the
+				// warmup dcache file, one of them succeeds and rest can open the dcache file created by
+				// that node and proceed to read from dcache while it's being warmed up.
+				//
+				if errors.Is(err, syscall.EEXIST) {
+					log.Warn("DistributedCache::OpenFile: warmup dcache file created by some other node for azure file %s, re-trying to open the newly created dcache file",
+						handle.Path)
+					goto retry
+				}
 				return nil, err
 			}
 			log.Debug("DistributedCache::OpenFile: Created warmup dcache file for azure file %s", handle.Path)
@@ -1269,8 +1288,8 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 
 		err := dcFile.WriteFile(offset, data, false /* fromFuse */)
 		if err != nil {
-			log.Err("DistributedCache::ReadInBuffer: Dcache File write Failed, offset: %d, file: %s",
-				offset, dcFile.FileMetadata.Filename)
+			log.Err("DistributedCache::ReadInBuffer: Dcache File write Failed, offset: %d, file: %s: %v",
+				offset, dcFile.FileMetadata.Filename, err)
 			return err
 		}
 		return nil
@@ -1281,8 +1300,11 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		azOffset := options.Offset
 		bytesRead, err = dc.NextComponent().ReadInBuffer(options)
 		if err == nil || err == io.EOF {
-			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+			//
+			// On successful read from Azure, write to dcache for warming up.
 			// Ignore errors in warming up.
+			//
+			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 			dcacheWarmup(dcFile, azOffset, options.Data[:bytesRead])
 			return bytesRead, err
 		}
