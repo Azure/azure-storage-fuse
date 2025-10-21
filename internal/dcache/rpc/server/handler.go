@@ -1687,8 +1687,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	if common.IsDebugBuild() {
 		GetChunkCounter++
-		//if (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) && (GetChunkCounter%100 == 0) {
-		if true {
+		if (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) && (GetChunkCounter%100 == 0) {
 			//
 			// For every 100th GetChunk request, force fail to test handling of Azure fallback for
 			// non-existent chunks.

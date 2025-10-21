@@ -34,9 +34,11 @@
 package filemanager
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -213,6 +215,34 @@ func (wp *workerPool) readChunk(task *task) {
 		task.file.releaseChunk(task.chunk)
 
 		return
+	}
+
+	//
+	// If the chunk is not found in DCache (ENOENT), and we have the backing Azure handle, try reading it
+	// from Azure.
+	//
+	if errors.Is(err, syscall.ENOENT) && task.file.AzureHandle != nil {
+		// Try reading directly from Azure for unqualified opens.
+		fileOffset := (task.chunk.Idx * task.file.FileMetadata.FileLayout.ChunkSize) + task.chunk.Offset
+		bytesRead, err1 := task.file.readChunkFromAzure(fileOffset, task.chunk)
+
+		common.Assert((err1 != nil) || (len(task.chunk.Buf) == int(bytesRead)),
+			len(task.chunk.Buf), bytesRead)
+
+		if err1 == nil && bytesRead != task.chunk.Len {
+			err1 = fmt.Errorf("DistributedCache::ReadFile: Azure read size mismatch, file: %s, expected: %d, got: %d",
+				task.file.FileMetadata.Filename, task.chunk.Len, bytesRead)
+			common.Assert(false, err1)
+		}
+
+		if err1 == nil {
+			task.chunk.UpToDate.Store(true)
+			// Close the Err channel to indicate "no error".
+			close(task.chunk.Err)
+
+			task.file.releaseChunk(task.chunk)
+			return
+		}
 	}
 
 	// Drop the download reference.
