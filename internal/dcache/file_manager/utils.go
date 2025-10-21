@@ -404,8 +404,15 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	// increments the opencount.
 	//
 	// TODO: Shall we support safe deletes for partial files too?
+	// TODO: Shall we support safe deletes for warming files too?
+	//       If we support that we lose the safety check that etag returned by CreateFileInit() is same as
+	//       the one used while finalizing the file, since updating open count will change the etag.
+	//       Till we support, let's have the assert below.
 	//
-	if fileIOMgr.safeDeletes && (fileMetadata.State == dcache.Ready || fileMetadata.State == dcache.Warming) {
+	common.Assert(!(fileIOMgr.safeDeletes && fileMetadata.State == dcache.Warming),
+		fileName, *fileMetadata)
+
+	if fileIOMgr.safeDeletes && (fileMetadata.State == dcache.Ready) {
 		newOpenCount, err := mm.OpenFile(fileName, prop)
 		_ = newOpenCount
 		if err != nil {

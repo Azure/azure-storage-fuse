@@ -592,6 +592,8 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string,
 	common.Assert(fileSize >= 0)
 	common.Assert(fileSize < (1000 * 1000 * 1000 * common.GbToBytes)) // Sanity check.
 	common.Assert(len(eTag) > 0)
+	// Finalize can be called only for files in Writing or Warming state.
+	common.Assert(fileState == dcache.Writing || fileState == dcache.Warming, fileState, filePath)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
@@ -617,45 +619,20 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string,
 		state, ok := prop.Metadata["state"]
 		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)), filePath)
 
+		//
 		// opencount must be 0 as a file not yet finalized cannot be opened, warmup files can be read while
-		// they were being warmeup so there can be some open count for them.
+		// they were being warmed up but see comment in OpenDcacheFile(), we don't currently suppor safeDeletes
+		// for warmup files so openCount must be 0.
+		//
+		// TODO: If we support safeDeletes for warmup files in future, we need to change this check and set
+		//       openCount correctly in the metadata.
+		//
 		openCount, ok := prop.Metadata["opencount"]
-		common.Assert(ok && (*openCount == "0" || *state == string(dcache.Warming)), ok, *openCount, filePath)
+		common.Assert(ok && (*openCount == "0"), ok, *openCount, filePath)
 	}
 
 	// Store the open-count and file size in the metadata blob property.
 	openCount := "0"
-
-	// If file is getting warmed up, there may be some open read handles, set OpenCount to the same value.
-	if fileState == dcache.Warming {
-		prop, err := GetPropertiesFromStorageWithStats(&m.storageCallback,
-			internal.GetAttrOptions{Name: path})
-		_ = err
-		common.Assert(err == nil, err, filePath)
-
-		// Extract the size from the metadata properties, createFileInit()  must have set it >= 0.
-		size, ok := prop.Metadata["cache_object_length"]
-		_ = size
-		_ = ok
-		common.Assert(ok && *size == fmt.Sprintf("%d", fileSize), ok, *size, filePath)
-
-		// Extract the state form the metadata properties, it must be "warming" as set by createFileInit().
-		state, ok := prop.Metadata["state"]
-		_ = state
-		common.Assert(ok && (*state == string(dcache.Warming)), filePath)
-
-		// We do not allow open of files being written, but warmup files are allowed to be opened (and read)
-		// so there can be non-zero open count for them.
-		openCountPtr, ok := prop.Metadata["opencount"]
-		common.Assert(ok, prop.Metadata, filePath)
-
-		openCount = *openCountPtr
-		//
-		// Note: While opening etag would change so it won't be same as the etag returned by createFileInit(),
-		//
-		eTag = prop.ETag
-	}
-
 	sizeStr := strconv.FormatInt(fileSize, 10)
 	state := string(dcache.Ready)
 	metadata := map[string]*string{

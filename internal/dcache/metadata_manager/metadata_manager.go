@@ -66,7 +66,7 @@ type MetadataManager interface {
 	// For properties which were not available at the time of CreateFileInit.
 	// Called by the File Manager in response to a close call from fuse.
 	// The eTag parameter must be passed the etag returned by the corresponding createFileInit() call.
-	createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error
+	createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error
 
 	// GetFile reads and returns the content of metadata for a file.
 	// A deleted file is addressed by its fileId while a regular file is addressed by its path.
