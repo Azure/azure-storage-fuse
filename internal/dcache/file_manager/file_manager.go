@@ -795,6 +795,19 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte, fromFuse bool) error
 	// Next write expected at offset maxWriteOffset.
 	common.AtomicMaxInt64(&file.maxWriteOffset, offset)
 
+	//
+	// Warmup files MUST NOT exceed the original file size.
+	//
+	if (int64(file.FileMetadata.Size) != -1) && (file.maxWriteOffset > int64(file.FileMetadata.Size)) {
+		err := fmt.Errorf("Warmup file extended beyong original size, file: %s, original size: %d, maxWriteOffset: %d",
+			file.FileMetadata.Filename, file.FileMetadata.Size, file.maxWriteOffset)
+
+		log.Err("DistributedCache[FM]::WriteFile: %v", err)
+		file.setWriteError(err)
+
+		return syscall.ENOTSUP
+	}
+
 	return nil
 }
 
@@ -991,7 +1004,10 @@ func (file *DcacheFile) finalizeFile() error {
 	state := file.FileMetadata.State
 
 	file.FileMetadata.State = dcache.Ready
-	file.FileMetadata.Size = file.maxWriteOffset
+
+	if file.FileMetadata.Size == -1 {
+		file.FileMetadata.Size = file.maxWriteOffset
+	}
 	common.Assert(file.FileMetadata.Size >= 0)
 
 	// let all readers know the final file size.

@@ -1136,6 +1136,8 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		switch err {
 		case syscall.EINVAL:
 			return -C.EINVAL
+		case syscall.ENOTSUP:
+			return -C.ENOTSUP
 		default:
 			return -C.EIO
 		}

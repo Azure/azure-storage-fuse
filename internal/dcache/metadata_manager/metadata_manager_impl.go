@@ -525,7 +525,11 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
+	//
 	// The size of the file is set to -1 to represent the file is not finalized.
+	// Warming file have size >= 0, so they can be opened and read while being warmed up.
+	// The reads will fallback to Azure for chunks which are not yet warmed up.
+	//
 	sizeStr := fmt.Sprintf("%d", warmUpSize)
 	openCount := "0"
 	stateStr := string(state)
@@ -611,10 +615,15 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string,
 		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
 		size, ok := prop.Metadata["cache_object_length"]
 		common.Assert(ok && ((*size == "-1") == (fileState == dcache.Writing)), ok, *size, filePath)
+
+		//
+		// Finalize MUST NOT set a size different than what was set by createFileInit() for files in Warming state.
+		// TODO: Check this and fail CreateFileFinalize() if not matched.
+		//
 		common.Assert((fileState == dcache.Writing) || (*size == fmt.Sprintf("%d", fileSize)),
 			ok, *size, filePath)
 
-		// Extract the state form the metadata properties, it must be "writing" or "warming" as set by
+		// Extract the state from the metadata properties, it must be "writing" or "warming" as set by
 		// createFileInit().
 		state, ok := prop.Metadata["state"]
 		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)), filePath)
