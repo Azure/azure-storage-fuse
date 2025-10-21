@@ -371,15 +371,23 @@ retry:
 				targetNodeID, rpc.GetChunkRequestToString(rpcReq), err, syscall.ENOENT)
 			log.Err("%v", err)
 
+			//
 			// Only expected for metadata chunks, unless we are simulating GetChunk failures.
-			if common.IsDebugBuild() {
-				if !rpc_server.SimulateGetChunkFailure {
-					common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB,
-						rpc.GetChunkRequestToString(rpcReq))
-					common.Assert(rpcReq.Length == dcache.MDChunkSize,
-						rpc.GetChunkRequestToString(rpcReq))
+			//
+			// Update: Since we support reading of warmup files, it's possible that application
+			//         may read some non-existent data chunk. We should fallback to reading from
+			//         Azure but the assert below is not valid for those cases.
+			//
+			/*
+				if common.IsDebugBuild() {
+					if !rpc_server.SimulateGetChunkFailure {
+						common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB,
+							rpc.GetChunkRequestToString(rpcReq))
+						common.Assert(rpcReq.Length == dcache.MDChunkSize,
+							rpc.GetChunkRequestToString(rpcReq))
+					}
 				}
-			}
+			*/
 
 			return nil, err
 		}

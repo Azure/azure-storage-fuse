@@ -1879,8 +1879,14 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 			// there's a small window between file create and metadata chunk create which can cause this.
 			// See NewDcacheFile().
 			//
-			common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
-			common.Assert(req.Length == dcache.MDChunkSize, errStr)
+			// Update: Since we support reading of warmup files, it's possible that application
+			//         may read some non-existent data chunk. We should fallback to reading from
+			//         Azure but the assert below is not valid for those cases.
+			//
+			/*
+				common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
+				common.Assert(req.Length == dcache.MDChunkSize, errStr)
+			*/
 
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 		}
@@ -1929,7 +1935,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	if err != nil {
 		errStr := fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+		} else {
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
 	}
 
 	common.Assert((n == len(data)) || (n > 0 && n < len(data) && len(data) == dcache.MDChunkSize),

@@ -1175,6 +1175,9 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 					return nil, syscall.EBUSY
 				}
 
+				// Warming files will always have the backing Azure file.
+				common.Assert(dcFile.FileMetadata.State != dcache.Warming, rawPath, options.Name)
+
 				// Read strictly from dcache. Missing chunks will result in read failure.
 				common.Assert(dcFile.AzureHandle == nil, rawPath, options.Name)
 			} else if err != nil {
