@@ -447,14 +447,35 @@ func (fc *FileCache) invalidateDirectory(name string) {
 	}
 	// TODO : wouldn't this cause a race condition? a thread might get the lock before we purge - and the file would be non-existent
 	err = filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
-		if err == nil && d != nil {
-			log.Debug("FileCache::invalidateDirectory : %s (%d) getting removed from cache", path, d.IsDir())
-			if !d.IsDir() {
-				fc.policy.CachePurge(path)
-			} else {
-				_ = deleteFile(path)
-			}
+		if err != nil || d == nil {
+			return nil
 		}
+
+		log.Debug("FileCache::invalidateDirectory : %s (%d) getting removed from cache", path, d.IsDir())
+
+		if d.IsDir() {
+			if derr := deleteFile(path); derr != nil && !os.IsNotExist(derr) {
+				log.Debug("FileCache::invalidateDirectory : failed to delete directory %s [%s]", path, derr.Error())
+			}
+			return nil
+		}
+
+		relPath, relErr := filepath.Rel(fc.tmpPath, path)
+		if relErr != nil {
+			log.Debug("FileCache::invalidateDirectory : failed to resolve relative path for %s [%s]", path, relErr.Error())
+			relPath = path
+		}
+
+		flock := fc.fileLocks.Get(relPath)
+		flock.Lock()
+
+		fc.policy.CachePurge(path)
+		if derr := deleteFile(path); derr != nil && !os.IsNotExist(derr) {
+			log.Debug("FileCache::invalidateDirectory : failed to delete %s [%s]", path, derr.Error())
+		}
+
+		flock.Unlock()
+
 		return nil
 	})
 
@@ -1484,6 +1505,24 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	}
 
 	return nil
+}
+
+// InvalidateFile provides external control to invalidate a single file from the local file cache without
+// mutating remote state. It removes the cached file and purges the policy entry.
+func (fc *FileCache) InvalidateFile(name string) {
+	flock := fc.fileLocks.Get(name)
+	flock.Lock()
+	defer flock.Unlock()
+
+	localPath := filepath.Join(fc.tmpPath, name)
+	_ = deleteFile(localPath)
+	fc.policy.CachePurge(localPath)
+}
+
+// InvalidateDirExt provides external control to invalidate a directory tree from the local file cache without
+// mutating remote state.
+func (fc *FileCache) InvalidateDirExt(name string) {
+	go fc.invalidateDirectory(name)
 }
 
 // TruncateFile: Update the file with its new size.
