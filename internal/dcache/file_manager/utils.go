@@ -447,8 +447,8 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	return dcacheFile, nil
 }
 
-func DeleteDcacheFile(fileName string) error {
-	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
+func DeleteDcacheFile(fileName string, force bool) error {
+	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s [force: %v]", fileName, force)
 
 	fileMetadata, _, err := GetDcacheFile(fileName)
 	if err != nil {
@@ -460,8 +460,9 @@ func DeleteDcacheFile(fileName string) error {
 
 	//
 	// Prevent deletion of files which are being created.
+	// These could be in Writing and Warmup state.
 	//
-	if fileMetadata.State != dcache.Ready {
+	if !force && fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::DeleteDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
 		//

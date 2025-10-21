@@ -1302,12 +1302,21 @@ func (dc *DistributedCache) ReadInBuffer(options *internal.ReadInBufferOptions) 
 		if err == nil || err == io.EOF {
 			//
 			// On successful read from Azure, write to dcache for warming up.
-			// Ignore errors in warming up.
+			// Ignore errors while writing to warmup dcache file.
 			//
-			dcFile := options.Handle.IFObj.(*fm.DcacheFile)
-			dcacheWarmup(dcFile, azOffset, options.Data[:bytesRead])
+			// TODO: It's better to do this after the prefetch where we have control over the block
+			//       size. Here we are at the mercy of the application reading. It may send small
+			//       reads (32K/64K) but worse still I've seen applications doing arbitrary sized
+			//       and arbitrary aligned reads. If these do not meet the "pseudo sequential" criteria
+			//       of dcache, it'll fail the write and we lose the warmup opportunity.
+			//
+			if bytesRead > 0 {
+				dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+				dcacheWarmup(dcFile, azOffset, options.Data[:bytesRead])
+			}
 			return bytesRead, err
 		}
+
 		common.Assert(bytesRead == 0)
 		log.Err("DistributedCache::ReadInBuffer : Failed to read file from Azure, file: %s, offset: %d, length: %d",
 			options.Handle.Path, azOffset, len(options.Data))
@@ -1520,7 +1529,23 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 				Handle: options.Handle,
 			})
 			if dcacheErr != nil {
-				log.Err("DistributedCache::CloseFile : Failed to FlushFile for Dcache file : %s", options.Handle.Path)
+				log.Err("DistributedCache::CloseFile : Failed to FlushFile for Dcache file : %s",
+					options.Handle.Path)
+				//
+				// If it's a warmup dcache file, we should delete the incomplete dcache file.
+				// Force delete it.
+				//
+				if options.Handle.IsWarmingUpDcache() {
+					log.Err("DistributedCache::CloseFile : Deleting incomplete dcache warmup file : %s",
+						options.Handle.Path)
+
+					// TODO: For now we treat delete failure as a fatal error. It can be changed.
+					dcacheErr = fm.DeleteDcacheFile(options.Handle.Path, true /* force */)
+					if dcacheErr != nil {
+						log.Err("DistributedCache::CloseFile : Delete dcache warmup file: %s, failed: %v",
+							options.Handle.Path, dcacheErr)
+					}
+				}
 			}
 		}
 
@@ -1582,7 +1607,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 
 	if isDcachePath {
 		log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", rawPath)
-		err := fm.DeleteDcacheFile(rawPath)
+		err := fm.DeleteDcacheFile(rawPath, false /* force */)
 		if err != nil {
 			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file %s: %v", options.Name, err)
 			return err
@@ -1604,7 +1629,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 
 		// Delete file from dcache.
-		dcacheErr = fm.DeleteDcacheFile(rawPath)
+		dcacheErr = fm.DeleteDcacheFile(rawPath, false /* force */)
 		if dcacheErr != nil {
 			if dcacheErr != syscall.ENOENT {
 				log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
