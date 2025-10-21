@@ -181,6 +181,10 @@ retry:
 	// TODO: make it more resilient. We should never fail client IO.
 	//
 	if retryCnt > 15 {
+		//
+		// Note: Chunk not found responses must be wrapped with syscall.ENOENT so that caller can handle it,
+		//       by reading from Azure Storage.
+		//
 		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d [%w]",
 			req.MvName, retryCnt, lastClusterMapEpoch, syscall.ENOENT)
 		log.Err("ReplicationManager::ReadMV: %v", err)
@@ -367,11 +371,16 @@ retry:
 				targetNodeID, rpc.GetChunkRequestToString(rpcReq), err, syscall.ENOENT)
 			log.Err("%v", err)
 
-			// Only expected for metadata chunks.
-			/*
-				common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, rpc.GetChunkRequestToString(rpcReq))
-				common.Assert(rpcReq.Length == dcache.MDChunkSize, rpc.GetChunkRequestToString(rpcReq))
-			*/
+			// Only expected for metadata chunks, unless we are simulating GetChunk failures.
+			if common.IsDebugBuild() {
+				if !rpc_server.SimulateGetChunkFailure {
+					common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB,
+						rpc.GetChunkRequestToString(rpcReq))
+					common.Assert(rpcReq.Length == dcache.MDChunkSize,
+						rpc.GetChunkRequestToString(rpcReq))
+				}
+			}
+
 			return nil, err
 		}
 

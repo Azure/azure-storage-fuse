@@ -262,7 +262,7 @@ func NewDcacheFile(fileName string, warmUpSize int64) (*DcacheFile, error) {
 		return nil, err
 	}
 
-	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes, fileMetadata.State, fileMetadata.Size)
+	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes, fileMetadata.Size)
 	if err != nil {
 		log.Err("DistributedCache::NewDcacheFile: CreateFileInit failed for file %s: %v",
 			fileName, err)

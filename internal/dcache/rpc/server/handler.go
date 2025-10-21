@@ -1657,6 +1657,9 @@ func readChunkAndHash(chunkPath, hashPath *string,
 
 var GetChunkCounter uint64 = 0
 
+// Set this to true to force fail some GetChunk requests to test Azure fallback handling.
+const SimulateGetChunkFailure = false
+
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
@@ -1686,16 +1689,18 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	}
 
 	if common.IsDebugBuild() {
-		GetChunkCounter++
-		if (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) && (GetChunkCounter%100 == 0) {
-			//
-			// For every 100th GetChunk request, force fail to test handling of Azure fallback for
-			// non-existent chunks.
-			// Since MD chunks are not present in Azure, skip forcing failure for them.
-			//
-			errStr := "Force failing GetChunk request to test Azure fallback handling"
-			log.Err("ChunkServiceHandler::GetChunk: %s, request: %s", errStr, req.String())
-			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+		if SimulateGetChunkFailure {
+			GetChunkCounter++
+			if (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) && (GetChunkCounter%100 == 0) {
+				//
+				// For every 100th GetChunk request, force fail to test handling of Azure fallback for
+				// non-existent chunks.
+				// Since MD chunks are not present in Azure, skip forcing failure for them.
+				//
+				errStr := "Force failing GetChunk request to test Azure fallback handling"
+				log.Err("ChunkServiceHandler::GetChunk: %s, request: %s", errStr, req.String())
+				return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+			}
 		}
 	}
 
@@ -1835,8 +1840,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 					chunkPath, rvInfo.rvName, h.chunkCacheHit.Load(), h.chunkCacheLookup.Load(),
 					(float64(h.chunkCacheHit.Load())/float64(h.chunkCacheLookup.Load()))*100)
 			}
+
 			n = len(data)
-			// Must be the entire exact chunk.
+			// Since chunks are immutable, if we get a cache hit the stored chunk must be the entire exact chunk.
 			common.Assert(n == int(req.Length), n, req.Length, chunkPath)
 			goto cached_chunk_read
 		}

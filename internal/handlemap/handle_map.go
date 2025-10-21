@@ -202,7 +202,7 @@ func (handle *Handle) IsFsDebug() bool {
 // **********************Dcache Related Methods Start******************************
 
 // Call this if the handle is used for accessing a file primarily in Azure.
-// IO on this handle will result in an IO on Azure only in the case where the handle
+// IO on this handle will result in an IO on dcache only in the case where the handle
 // is opened for reading from an unqualified path (no fs=azure/fs=dcache specified)
 // and the file is not present in Dcache. In such case we will warm up Dcache as data
 // is read from Azure. In this case handle.IFObj will be set to the DcacheFile being
@@ -317,7 +317,13 @@ func (handle *Handle) IsDcacheAllowReads() bool {
 }
 
 func (handle *Handle) IsWarmingUpDcache() bool {
-	return handle.Flags.IsSet(HandleFlagWarmingUpDcache)
+	flag := handle.Flags.IsSet(HandleFlagWarmingUpDcache)
+
+	// HandleFlagWarmingUpDcache flag can be set only for Azure handles.
+	common.Assert(!flag || handle.IsFsAzure(), handle.Path)
+	common.Assert(!flag || !handle.IsFsDcache(), handle.Path)
+
+	return flag
 }
 
 // Write to dcache is allowed through this handle.

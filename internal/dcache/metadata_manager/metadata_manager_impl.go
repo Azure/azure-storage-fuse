@@ -282,8 +282,8 @@ func GetMdRoot() string {
 	return metadataManagerInstance.mdRoot
 }
 
-func CreateFileInit(filePath string, fileMetadata []byte, state dcache.FileState, warmUpSize int64) (string, error) {
-	return metadataManagerInstance.createFileInit(filePath, fileMetadata, state, warmUpSize)
+func CreateFileInit(filePath string, fileMetadata []byte, warmUpSize int64) (string, error) {
+	return metadataManagerInstance.createFileInit(filePath, fileMetadata, warmUpSize)
 }
 
 func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error {
@@ -510,17 +510,18 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 // quiet before finalizing and tries to finalize later while some other node created the same file in the
 // meantime.
 
-func (m *BlobMetadataManager) createFileInit(filePath string,
-	fileMetadata []byte, state dcache.FileState, warmUpSize int64) (string, error) {
+func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte, warmUpSize int64) (string, error) {
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.InitCalls, 1)
 
 	common.Assert(len(filePath) > 0)
 	common.Assert(len(fileMetadata) > 0, filePath)
-	// In Init, state can be only Writing or Warming.
-	common.Assert(state == dcache.Writing || state == dcache.Warming, state, warmUpSize, filePath)
-	// If state is Warming, warmUpSize must be >= 0, else it must be -1.
-	common.Assert((warmUpSize >= 0) == (state == dcache.Warming), warmUpSize, state, filePath)
-	common.Assert(warmUpSize >= -1, warmUpSize, state)
+	common.Assert(warmUpSize >= -1, warmUpSize, filePath)
+
+	// State is "Warming" if warmUpSize >= 0 else "Writing".
+	state := dcache.Writing
+	if warmUpSize >= 0 {
+		state = dcache.Warming
+	}
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
