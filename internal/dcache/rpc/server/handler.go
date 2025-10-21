@@ -1704,6 +1704,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		}
 	}
 
+	//
+	// Only full chunk reads are added and looked up in the chunk cache.
+	// TODO: We can relax this in future if needed.
+	//
+	isFullChunkRead := (req.Length == (cm.ChunkSizeMB * common.MbToBytes)) && (req.OffsetInChunk == 0)
+
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
@@ -1828,7 +1834,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		if common.IsDebugBuild() {
 			h.chunkCacheLookup.Add(1)
 		}
-		data, ok = h.chunkCache.Get(chunkPath)
+
+		if isFullChunkRead {
+			data, ok = h.chunkCache.Get(chunkPath)
+		}
+
 		if ok {
 			// We don't add metadata chunk to the cache, so we must not get it from the cache.
 			common.Assert(req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB, chunkPath, req.Address.OffsetInMiB)
@@ -1954,8 +1964,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//
 	// Don't cache local RV reads, as they are less indicative of the chunk being hot (read by multiple nodes).
 	// Also don't cache metadata chunk, as it's mutable.
+	// We also cache only full-size chunks. This is to avoid caching partial chunks that may be issued by
+	// the client as a result of random reads. Later if the client wants to read the file sequentially, it'll
+	// issue full chunk requests and we won't find them in the cache.
 	//
-	if !req.IsLocalRV && (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) {
+	if !req.IsLocalRV && isFullChunkRead && (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) {
 		common.Assert(len(data) == int(req.Length), len(data), req.Length, chunkPath)
 		h.chunkCache.Add(chunkPath, data)
 		// Make sure LRU cache honors the size limit.
