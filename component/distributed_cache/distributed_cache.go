@@ -1422,7 +1422,7 @@ func (dc *DistributedCache) WriteFile(options *internal.WriteFileOptions) (int, 
 
 		// Parallelly write to azure and dcache.
 		// Enqueue the work of azure to the parallel writers and continue writing to the dcache from here.
-		azureErrChan := dc.pw.EnqueuAzureWrite(azureWrite)
+		azureErrChan := dc.pw.EnqueueAzureWrite(azureWrite)
 		dcacheErr = dcacheWrite()
 
 		// Wait for the azure write response.
