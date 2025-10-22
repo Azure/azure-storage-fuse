@@ -262,30 +262,33 @@ type mvInfo struct {
 	// is corrected once sync completes.
 	reservedSpace atomic.Int64
 
-	// Time when the RV joined this MV.
-	// We use this time to determine if the sync operation is stuck or not.
-	// There can be a case when the source RV updates the state of the target RV to syncing in the clustermap,
-	// but before it sends the PutChunk(sync) calls to the target RV, it goes offline.
+	// Time (in secs since epoch) when the RV joined this MV.
+	// This is used to determine if a sync job is stuck due to source RV going offline.
+	// There can be a case when the node hosting the source RV (and hence running the sync job) updates the
+	// state of the target RV to syncing in the clustermap, but before it sends any PutChunk(sync) calls to
+	// the target RV, it goes offline.
 	// In this case, the target RV will remain in syncing state forever, as the syncMV workflow only picks
 	// up outofsync RVs for new sync operations.
 	//
 	// To detect this, the target RV uses the time it joined the MV (not the lastSyncWriteTime as it is 0
 	// since there are no PutChunk(sync) calls to the target RV). If this time is older than
 	// a threshold (say 300 seconds), and the RV/MV replica is still in syncing state, it marks itself
-	// as inband-offline. This will trigger the fix-mv workflow to select a new RV.
+	// as inband-offline. This will trigger the fix-mv workflow to select a new RV (could be this RV too
+	// since it's not actually offline) and start a new sync job.
 	joinTime atomic.Int64
 
-	// Time of last write to this RV/MV replica by a sync PutChunk request.
-	// This is used to determine if a sync operation is stuck due to source RV going offline.
-	// When we start the sync operation, we mark the target RV from outofsync to syncing state.
-	// If the source RV, running the sync job goes offline while the sync is in progress, the sync
-	// will get stuck and the target RV will remain in syncing state forever, as the syncMV workflow
+	// Time (in secs since epoch) of last write to this RV/MV replica by a PutChunk(sync) request.
+	// This is used to determine if a sync job is stuck due to source RV going offline.
+	// When we start the sync job, the very first thing it does is to mark the target RV state as syncing
+	// (from outofsync).
+	// If the node hosting the source RV (running the sync job) goes offline while the sync is in progress,
+	// the sync will get stuck and the target RV will remain in syncing state forever, as the syncMV workflow
 	// only picks up the outofsync RVs for new sync operations.
 	//
-	// To detect such stuck sync operations, we keep updating this timestamp whenever a sync PutChunk
-	// writes a chunk to this MV replica. If this timestamp does not change for a long time (say 180 seconds),
-	// we can assume that the sync operation is stuck, and mark the target RV as inband-offline, which triggers
-	// the fix-mv workflow to select a new RV.
+	// To detect such stuck sync jobs, we keep updating this timestamp whenever PutChunk(sync) writes a chunk
+	// to this MV replica. If this timestamp does not change for a long time (say 180 seconds), we can safely
+	// assume that the sync operation is stuck, and mark the target RV as inband-offline, which triggers the
+	// fix-mv workflow to select a new RV and start a new sync job.
 	lastSyncWriteTime atomic.Int64
 }
 
@@ -1237,7 +1240,12 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 		// perform some rollback/update actions, depending on the state transition.
 		//
 		if myRvInfo.State == string(dcache.StateOutOfSync) {
+			//
 			// If component RV is in OutOfSync state, it must have been added by a JoinMV call.
+			// Note that time.Now().Unix() is not guaranteed to return monotonically increasing
+			// time (NTP or manual adjustments can cause time to go backwards), so the following
+			// assert can fail, but it's rare enough and hence still useful.
+			//
 			common.Assert(mv.joinTime.Load() > 0 && mv.joinTime.Load() <= time.Now().Unix(),
 				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap)
 
@@ -2665,8 +2673,12 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load(), rvInfo.rvName, mvInfo.mvName, req.SyncID)
 
+		//
 		// We must get PutChunk(sync) only for MV replicas which are syncing, and those must have joined the MV,
 		// in the past.
+		//
+		// Note: Since time.Now().Unix() is not guaranteed to be monotonic, the following assert may fail.
+		//
 		common.Assert(mvInfo.joinTime.Load() > 0 && mvInfo.joinTime.Load() <= time.Now().Unix(),
 			mvInfo.rv.rvName, mvInfo.mvName, mvInfo.joinTime.Load(), req.SyncID)
 
@@ -2677,6 +2689,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		// stuck sync jobs caused due to source RV going offline.
 		// For more details see the comments in mvInfo.lastSyncWriteTime.
 		//
+		// Note: Since time.Now().Unix() is not guaranteed to be monotonic, the following assert may fail.
+		//
+		common.Assert(mvInfo.lastSyncWriteTime.Load() <= time.Now().Unix(),
+			mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lastSyncWriteTime.Load(), time.Now().Unix(), req.SyncID)
 		mvInfo.lastSyncWriteTime.Store(time.Now().Unix())
 	}
 

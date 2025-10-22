@@ -1955,7 +1955,7 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 	}
 
 	// Create RPC clients and add them to the channel.
-	for range int(numClients) {
+	for i := 0; i < int(numClients); i++ {
 		wg.Add(1)
 		go createOneClient()
 	}

@@ -925,6 +925,7 @@ processResponses:
 			if putChunkStyle != DaisyChain {
 				errRV, errChan := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateInbandOffline, true /* isBlocking */)
 				_ = errChan
+				// Blocking update, so errChan must be nil.
 				common.Assert(errChan == nil)
 
 				if errRV != nil {
@@ -1457,7 +1458,8 @@ func resyncSyncableMVs() {
 // We need to mark it offline again to restart the sync process for it.
 // This function goes over all RVs hosted by this node, which are in syncing state and are not making
 // progress, based on the mvInfo's lastSyncWriteTime. If the lastSyncWriteTime is older than a threshold
-// it'll mark the RV as inband-offline, which will trigger the fix-mv workflow to select a new RV.
+// it'll mark the RV as inband-offline, which will trigger the fix-mv workflow to select a new RV (could
+// be this RV too since it's not offline, it's the source RC that went down), and start a new sync job.
 func abortStuckSyncJobs() {
 	myRVs := cm.GetMyRVs()
 	common.Assert(len(myRVs) > 0, myRVs)
@@ -1498,6 +1500,9 @@ func abortStuckSyncJobs() {
 		}
 	}
 
+	log.Debug("ReplicationManager::abortStuckSyncJobs: Attempted to abort sync jobs for %d RV/MVs",
+		len(updateResponses))
+
 	//
 	// Wait for all the UpdateComponentRVState() calls to complete and log the result.
 	//
@@ -1513,6 +1518,7 @@ func abortStuckSyncJobs() {
 	}
 }
 
+// Check if the sync job with the given RV/MV as target, needs to be aborted due to being stuck in syncing state.
 func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 	common.Assert(cm.IsValidRVName(rvName), rvName)
 	common.Assert(cm.IsValidMVName(mvName), mvName)
@@ -1526,7 +1532,7 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 	_ = ok
 
 	//
-	// This unlikely but can happen if the local clustermap changes after the call to cm.GetActiveMVsForRV()
+	// This is unlikely but can happen if the local clustermap changes after the call to cm.GetActiveMVsForRV()
 	// by the caller and before this call to GetRVsEx() and rvName is no longer a componentRV for the MV.
 	// In this case we simply return.
 	//
@@ -1543,11 +1549,27 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 		return nil
 	}
 
-	log.Debug("ReplicationManager::checkAndAbortSyncJob: Checking if sync job for %s/%s needs to be aborted, state: %s",
+	log.Debug("ReplicationManager::checkAndAbortSyncJob: Checking if sync job to %s/%s needs to be aborted, state: %s",
 		rvName, mvName, rvState)
 
-	// Get the joinMV and last sync write time for this RV/MV.
+	//
+	// Get the joinMV and last sync write time for this RV/MV and compare against thresholds.
+	// Note that we host rvName/mvName so the following is a local call to our RPC server.
+	//
 	joinMVTime, lastSyncWriteTime := rpc_server.GetMVJoinAndLastSyncWriteTime(rvName, mvName)
+
+	// Both or none of joinMVTime and lastSyncWriteTime must be -1.
+	common.Assert((joinMVTime == -1) == (lastSyncWriteTime == -1), rvName, mvName, joinMVTime, lastSyncWriteTime)
+
+	if joinMVTime == -1 {
+		//
+		// If joinMVTime is -1, it means that as per our local info this RV/MV is not valid.
+		// Local clustermap is probably stale, nothing to do here.
+		//
+		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s is invalid as per rvInfo",
+			rvName, mvName)
+		return nil
+	}
 
 	// If RV state is syncing, joinMVTime must be > 0.
 	common.Assert(joinMVTime > 0, rvName, mvName, joinMVTime)
@@ -1559,7 +1581,7 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 	common.Assert(lastSyncWriteTime > 0 || time.Now().Unix()-joinMVTime < 2*AbortSyncAfterJoinMVThresholdSecs,
 		rvName, mvName, joinMVTime)
 	// lastSyncWriteTime can be 0 if the sync job hasn't yet written any chunks to the target RV.
-	common.Assert(lastSyncWriteTime >= 0, rvName, mvName, lastSyncWriteTime)
+	common.Assert(lastSyncWriteTime >= 0, rvName, mvName, lastSyncWriteTime, joinMVTime)
 	// If lastSyncWriteTime is non-zero, it must not be less than joinMVTime.
 	common.Assert(lastSyncWriteTime == 0 || lastSyncWriteTime >= joinMVTime,
 		rvName, mvName, joinMVTime, lastSyncWriteTime)
@@ -1579,7 +1601,7 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 	// fix-mv workflow to select a new RV.
 	//
 	if lastSyncWriteTime == 0 && time.Now().Unix()-joinMVTime > AbortSyncAfterJoinMVThresholdSecs {
-		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s stuck in syncing state since %d secs after JoinMV, marking it inband-offline",
+		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s stuck in syncing state for %d secs after JoinMV with no PutChunk(sync) calls received, marking it inband-offline",
 			rvName, mvName, time.Now().Unix()-joinMVTime)
 
 		err, errChan := cm.UpdateComponentRVState(mvName, rvName, dcache.StateInbandOffline, false /* isBlocking */)
@@ -1596,7 +1618,7 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 	// be synced next time around by resyncSyncableMVs().
 	//
 	if lastSyncWriteTime != 0 && time.Now().Unix()-lastSyncWriteTime > AbortOngoingSyncThresholdSecs {
-		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s stuck in syncing state since %d secs, marking it inband-offline",
+		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s stuck in syncing state for %d secs since the last PutChunk(sync) call, marking it inband-offline",
 			rvName, mvName, time.Now().Unix()-lastSyncWriteTime)
 
 		err, errChan := cm.UpdateComponentRVState(mvName, rvName, dcache.StateInbandOffline, false /* isBlocking */)

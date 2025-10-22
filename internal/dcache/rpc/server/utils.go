@@ -249,7 +249,7 @@ func GetMVSizeLocal(ctx context.Context, req *models.GetMVSizeRequest) (*models.
 	return handler.GetMVSize(ctx, req)
 }
 
-// Get the time when the RV joined this MV and the last write to this RV/MV replica by a sync PutChunk request.
+// Get the time when the RV joined this MV and the last write to this RV/MV replica by a PutChunk(sync) request.
 // This will be used to determine if there are any stuck sync jobs caused due to source RV going offline.
 // For more details see the comments in mvInfo.joinTime and mvInfo.lastSyncWriteTime.
 func GetMVJoinAndLastSyncWriteTime(rvName string, mvName string) (int64, int64) {
@@ -260,10 +260,20 @@ func GetMVJoinAndLastSyncWriteTime(rvName string, mvName string) (int64, int64) 
 	rvInfo := handler.getRVInfoFromRVName(rvName)
 	common.Assert(rvInfo != nil, rvName)
 
+	//
+	// It's possible that caller's clustermap is stale and RV is not part of the MV anymore.
+	//
 	mvInfo := rvInfo.getMVInfo(mvName)
-	common.Assert(mvInfo != nil, rvName, mvName)
+	if mvInfo == nil {
+		// Special values to convey rvName/mvName is non-existent.
+		return -1, -1
+	}
 
+	//
 	// Since the RV has joined the MV, the joinTime must be set.
+	// Note: time.Now().Unix() is not guaranteed to be monotonic, so following asserts may fail, but
+	//       it's rare, so still useful.
+	//
 	common.Assert(mvInfo.joinTime.Load() > 0 && mvInfo.joinTime.Load() <= time.Now().Unix(),
 		rvName, mvName, mvInfo.joinTime.Load(), time.Now().Unix())
 	// lastSyncWriteTime can be 0 if there has not been any sync write to this RV/MV replica.
