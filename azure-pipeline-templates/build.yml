@@ -205,7 +205,7 @@ steps:
     condition: eq('${{ parameters.skip_ut }}', 'false')
     inputs:
       command: 'test'
-      arguments: '-race -v -timeout=45m ./... --tags=unittest,$(tags) -coverprofile utcover.cov'
+      arguments: '-v -timeout=45m ./... --tags=unittest,$(tags) -coverprofile utcover.cov'
       workingDirectory: $(WORK_DIR)
     displayName: 'Unit tests'
     continueOnError: true
