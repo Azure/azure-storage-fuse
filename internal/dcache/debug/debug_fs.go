@@ -115,6 +115,10 @@ func init() {
 		"logs": &procFile{
 			refreshBuffer: readLogsCallback,
 		}, // Collect logs from all nodes (on-demand).
+
+		"cluster-summary": &procFile{
+			refreshBuffer: readClusterSummaryCallback,
+		}, // Cluster summary (nodes/RVs/MVs).
 	}
 
 	procDirList = make([]*internal.ObjAttr, 0, len(procFiles))

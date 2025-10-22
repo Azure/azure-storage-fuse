@@ -213,3 +213,38 @@ type ComponentRVUpdateMessage struct {
 	Err        chan error
 	Closed     bool // true if Err channel is closed after adding an error, and no new error must be added.
 }
+
+type ClusterSummary struct {
+	Timestamp    string       `json:"timestamp"`
+	NodesSummary NodesSummary `json:"nodes_summary"`
+	RVsSummary   RVsSummary   `json:"rvs_summary"`
+	MVsSummary   MVsSummary   `json:"mvs_summary"`
+}
+
+type NodesSummary struct {
+	Count   int64      `json:"count"`
+	Offline int64      `json:"offline"`
+	Nodes   []NodeInfo `json:"nodes"`
+}
+
+type NodeInfo struct {
+	NodeID        string `json:"node_id"`
+	IPAddr        string `json:"ip_addr"`
+	Hostname      string `json:"hostname"`
+	Status        string `json:"status"`
+	LastHeartbeat string `json:"last_heartbeat"`
+}
+
+type RVsSummary struct {
+	Count   int64 `json:"count"`
+	Online  int64 `json:"online"`
+	Offline int64 `json:"offline"`
+}
+
+type MVsSummary struct {
+	Count    int64 `json:"count"`
+	Online   int64 `json:"online"`
+	Offline  int64 `json:"offline"`
+	Degraded int64 `json:"degraded"`
+	Syncing  int64 `json:"syncing"`
+}
