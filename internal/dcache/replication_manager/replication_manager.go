@@ -1539,6 +1539,8 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 	if !ok {
 		// Assert, since it's uncommon.
 		common.Assert(false, rvName, mvName, componentRVs, epoch)
+		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s is no longer a valid replica",
+			rvName, mvName)
 		return nil
 	}
 
@@ -1563,7 +1565,7 @@ func checkAndAbortSyncJob(rvName, mvName string) <-chan error {
 
 	if joinMVTime == -1 {
 		//
-		// If joinMVTime is -1, it means that as per our local info this RV/MV is not valid.
+		// If joinMVTime is -1, it means that as per our local rvInfo/mvInfo this RV/MV is not valid.
 		// Local clustermap is probably stale, nothing to do here.
 		//
 		log.Warn("ReplicationManager::checkAndAbortSyncJob: %s/%s is invalid as per rvInfo",

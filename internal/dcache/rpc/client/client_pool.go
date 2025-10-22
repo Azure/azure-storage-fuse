@@ -1922,6 +1922,7 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 	ncPool.clientChan = make(chan *rpcClient, numClients)
 	ncPool.lastUsed.Store(time.Now().Unix())
 
+	var err error
 	var wg sync.WaitGroup
 
 	createOneClient := func() {
