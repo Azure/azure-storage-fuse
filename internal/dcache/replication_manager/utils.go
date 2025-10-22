@@ -139,6 +139,25 @@ var (
 	aggrPutChunkDCSemHold atomic.Int64 // aggregate time spent holding PutChunkDC semaphore (in nanoseconds).
 	aggrPutChunkDCCalls   atomic.Int64 // aggregate number of PutChunkDC calls.
 	putChunkDCSemWaiting  atomic.Int64 // number of PutChunkDC calls currently waiting to acquire semaphore.
+
+	// Timeout to check if a sync job is stuck or not.
+	// If a sync job is running for more than this time, and there is no progress (no further sync writes),
+	// it means that the source RV has gone offline. So, we mark the target RV as inband-offline to trigger
+	// the fix-mv workflow to select a new RV.
+	AbortOngoingSyncThresholdSecs int64 = 60 // in seconds
+
+	// Timeout to check if a sync job is stuck or not (after the JoinMV operation).
+	// This can happen when the source RV updates the state of target RV to syncing in the clustermap.
+	// But before it sends the PutChunk(sync) calls to the target RV, it goes down. In this case, the
+	// mvInfo.lastSyncWriteTime will be 0, as the sync job hasn't yet started writing any chunks.
+	// So, we use the time at which the target RV joined the MV and use this threshold to detect if the
+	// sync job is stuck or not. If the sync job is stuck, we mark the target RV as inband-offline
+	// to trigger the fix-mv workflow to select a new RV.
+	// Note: This threshold should be significantly higher than AbortOngoingSyncThresholdSecs, as
+	//       the target RV waits for clustermap epoch time to update its local clustermap as well as the
+	//       replication manager ticker time to run the abortStuckSyncJobs() thread.
+	//       So, we use cm.MaxClusterMapEpoch + some margin for replication manager ticker to run.
+	AbortSyncAfterJoinMVThresholdSecs = cm.MaxClusterMapEpoch + 60 // in seconds
 )
 
 // Semaphores to limit the number of concurrent PutChunkDC calls across all nodes and to a specific node.

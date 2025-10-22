@@ -107,7 +107,7 @@ func GetOfflineMVs() map[string]dcache.MirroredVolume {
 // It will return a set of active MVs hosted by the given RV.
 // An MV is termed active for an RV if, as per the clusterMap:
 // 1. The RV is a component of the MV, and
-// 2. The component RV has state online.
+// 2. The component RV is not offline.
 //
 // Any other MV is stale and can be safely deleted from the RV's directory.
 func GetActiveMVsForRV(rvName string) map[string]struct{} {
@@ -333,7 +333,14 @@ func ReportRVOffline(rvName string) error {
 // concurrent update, it batches updates received till the next update window and then makes a single update
 // to the clustermap. The success or failure of this batched update will decide the success/failure of each
 // of the individual updates.
-func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
+//
+// This method also takes isBlocking argument which specifies if the caller wants to wait for the update to
+// complete or wants to get an error channel on which it can wait for the update result later.
+//   - If isBlocking is true, the method returns (error, nil) where error is the result of the update operation.
+//   - If isBlocking is false, the method returns (nil, errChan) where errChan is a channel on which the caller
+//     can wait for the result of the update operation later.
+
+func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum, isBlocking bool) (error, <-chan error) {
 	if common.IsDebugBuild() {
 		startTime := time.Now()
 		defer func() {
@@ -342,11 +349,13 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		}()
 	}
 
+	var err error
+
 	//
 	// Check if RV is a valid component RV for the given MV.
 	// It's not that we don't trust the caller, but we need this to safely handle dup updates which get processed
-	// some time apart and the MV component RVs change between updates, e.g., if the update marks an RV as inband-offline
-	// and the fix-mv workflow runs before the second update, it will remove the RV from the MV.
+	// some time apart and the MV component RVs change between updates, e.g., if the update marks an RV as
+	// inband-offline and the fix-mv workflow runs before the second update, it will remove the RV from the MV.
 	// We should not fail the second update.
 	//
 	rvs := GetRVs(mvName)
@@ -359,36 +368,47 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		//              means that the RV was part of the MV earlier but has been removed by a fix-mv workflow
 		//              that ran after the first update of the RV to inband-offline.
 		//              We should not fail the update in this case as what is intended by the user is already
-		//              achieved.
+		//              achieved. Nothing more to do.
 		//
 		if rvNewState == dcache.StateInbandOffline {
 			log.Debug("ClusterMap::UpdateComponentRVState: %s/%s -> %s, old duplicate udpate, ignoring, rvs: %+v",
 				rvName, mvName, rvNewState, rvs)
-			return nil
-		}
-
-		//
-		// Exception 2: If the new state is online and RV is not found in the clustermap, it mostly means
-		//              that the RV was part of the MV earlier and it was outofsync, so a sync job was started
-		//              but by the time the sync job completed and it tried to update the RV to online (from syncing)
-		//              some other node found the component RV to be unreachable and marked in inband-offline and
-		//              then a fix-mv workflow ran and removed the RV from the MV.
-		//
-		if rvNewState == dcache.StateOnline {
-			err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s (syncing -> online) for stale component RV, latest component RVs are %+v: %w (epoch: %d)",
+			return nil, nil
+		} else if rvNewState == dcache.StateOnline {
+			//
+			// Exception 2: If the new state is online and RV is not found in the clustermap, it mostly means
+			//              that the RV was part of the MV earlier and it was outofsync, so a sync job was started
+			//              but by the time the sync job completed and it tried to update the RV to online (from
+			//              syncing) some other node found the component RV to be unreachable and marked in
+			//              inband-offline and then a fix-mv workflow ran and removed the RV from the MV.
+			//
+			err = fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s (syncing -> online) for stale component RV, latest component RVs are %+v: %w (epoch: %d)",
 				rvName, mvName, rvs, InvalidComponentRV, GetEpoch())
 			log.Err("%v", err)
-			return err
+		} else {
+			//
+			// Unexpected RV updates, log and assert to find out if we must add more legitimate exceptions.
+			//
+			err = fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v: %w (epoch: %d)",
+				rvName, mvName, rvNewState, rvs, InvalidComponentRV, GetEpoch())
+			log.Err("%v", err)
+			common.Assert(false, err)
 		}
 
+		common.Assert(err != nil)
+
 		//
-		// Unexpected RV updates, log and assert to find out if we must add more legitimate exceptions.
+		// If the UpdateComponentRVState() call is blocking, we return the error.
+		// Else we return the error on a channel.
 		//
-		err := fmt.Errorf("ClusterMap::UpdateComponentRVState: %s/%s -> %s, invalid component RV, component RVs are %+v: %w (epoch: %d)",
-			rvName, mvName, rvNewState, rvs, InvalidComponentRV, GetEpoch())
-		log.Err("%v", err)
-		common.Assert(false, err)
-		return err
+		if isBlocking {
+			return err, nil
+		} else {
+			errChan := make(chan error, 1)
+			errChan <- err
+			close(errChan)
+			return nil, errChan
+		}
 	}
 
 	log.Debug("ClusterMap::UpdateComponentRVState: %s/%s (%s -> %s)", rvName, mvName, rvCurState, rvNewState)
@@ -398,7 +418,11 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 		RvName:     rvName,
 		RvNewState: rvNewState,
 		QueuedAt:   time.Now(),
-		Err:        make(chan error),
+
+		// Create buffered channel so that the batch updater thread is not blocked if the caller is not
+		// listening on the channel yet. This can happen in case of non-blocking UpdateComponentRVState() calls,
+		// where we send all the update messages and then at last we listen on the error channel of each update.
+		Err: make(chan error, 1),
 	}
 	common.Assert(updateComponentRVStateChannel != nil)
 
@@ -412,7 +436,16 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 
 	common.Assert(updateRVMessage.Err != nil)
 
-	err := <-updateRVMessage.Err
+	//
+	// For non-blocking update calls, return the error channel on which
+	// the caller can wait for the result later.
+	//
+	if !isBlocking {
+		return nil, updateRVMessage.Err
+	}
+
+	// Else, wait for the update to complete and return the result.
+	err = <-updateRVMessage.Err
 
 	if err != nil {
 		log.Err("ClusterMap::UpdateComponentRVState: %s/%s (%s -> %s) failed after %s: %v",
@@ -436,7 +469,7 @@ func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.Stat
 	common.Assert(time.Since(updateRVMessage.QueuedAt) < 30*time.Second,
 		updateRVMessage, time.Since(updateRVMessage.QueuedAt))
 
-	return err
+	return err, nil
 }
 
 func GetComponentRVStateChannel() chan dcache.ComponentRVUpdateMessage {
