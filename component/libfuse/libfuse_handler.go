@@ -889,7 +889,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse_create : %s", name)
 
-	handle, err := fuseFS.NextComponent().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
+	handle, err := fuseFS.NextComponent().CreateFile(
+		internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
 		log.Err("Libfuse::libfuse_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
@@ -1135,6 +1136,8 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		switch err {
 		case syscall.EINVAL:
 			return -C.EINVAL
+		case syscall.ENOTSUP:
+			return -C.ENOTSUP
 		default:
 			return -C.EIO
 		}

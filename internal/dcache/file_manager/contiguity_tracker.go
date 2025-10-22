@@ -277,9 +277,8 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 			// And any contiguous chunks from the start of the word.
 			newChunks = int64(bits.TrailingZeros64(^uint64(word)))
 			common.Assert(newChunks < 64, newChunks, word, fullWords, t.bitmap, *t.file.FileMetadata)
+			break
 		}
-
-		break
 	}
 
 	// One or more full words can be now removed from the bitmap?
@@ -329,6 +328,21 @@ func (t *ContiguityTracker) OnSuccessfulUpload(chunkIdx int64) {
 
 	t.lastCommitted = mdChunk.LastUpdatedAt
 	t.mu.Unlock()
+
+	t.writeMetadataChunk(mdChunk)
+}
+
+func (t *ContiguityTracker) finalizeMDChunk() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	//
+	// Now update the metadata chunk with the final size.
+	//
+	mdChunk := &dcache.MetadataChunk{
+		Size:          t.file.FileMetadata.Size,
+		LastUpdatedAt: time.Now(),
+	}
 
 	t.writeMetadataChunk(mdChunk)
 }

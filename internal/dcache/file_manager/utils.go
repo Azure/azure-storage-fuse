@@ -61,7 +61,7 @@ var (
 
 // Returns the actual file size if finalized else the partial size.
 func getFileSize(file *dcache.FileMetadata) int64 {
-	common.Assert((file.Size >= 0) == (file.State == dcache.Ready), *file)
+	common.Assert((file.Size >= 0) == (file.State == dcache.Ready || file.State == dcache.Warming), *file)
 	common.Assert((file.Size == -1) == (file.State == dcache.Writing), *file)
 	common.Assert(file.PartialSize >= 0, *file)
 
@@ -140,7 +140,11 @@ func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string
 }
 
 // Does all file Init Process for creation of the file.
-func NewDcacheFile(fileName string) (*DcacheFile, error) {
+// If the dcache file is being created for being warmed up from Azure, pass warmUpSize as the size of the
+// file in Azure. It'll be >=0, and in this case the file will be created in Warming state and reads will be
+// allowed from such a file even while it's still being written.
+// If the dcache file is being created for write by an application, pass warmUpSize as -1.
+func NewDcacheFile(fileName string, warmUpSize int64) (*DcacheFile, error) {
 	//
 	// Do not allow file creation in a readonly cluster.
 	//
@@ -153,9 +157,16 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	fileMetadata := &dcache.FileMetadata{
 		Filename: fileName,
 		State:    dcache.Writing,
-		Size:     -1,
+		Size:     warmUpSize,
 		FileID:   gouuid.New().String(),
 	}
+
+	if warmUpSize >= 0 {
+		fileMetadata.State = dcache.Warming
+	} else {
+		common.Assert(warmUpSize == -1, warmUpSize, fileName)
+	}
+
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
 
 	chunkSize := cm.GetCacheConfig().ChunkSizeMB * common.MbToBytes
@@ -251,10 +262,12 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		return nil, err
 	}
 
-	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes)
+	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes, fileMetadata.Size)
 	if err != nil {
 		log.Err("DistributedCache::NewDcacheFile: CreateFileInit failed for file %s: %v",
 			fileName, err)
+		// This is the only expected error here.
+		common.Assert(errors.Is(err, syscall.EEXIST), fileName, err)
 		return nil, err
 	}
 
@@ -327,7 +340,8 @@ func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, er
 	// - When file is ready, it must be >= 0.
 	//
 	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
-		(fileMetadata.State == dcache.Ready && fileSize >= 0),
+		(fileMetadata.State == dcache.Ready && fileSize >= 0) ||
+		(fileMetadata.State == dcache.Warming && fileSize >= 0),
 		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
 
 	fileMetadata.Size = fileSize
@@ -368,7 +382,7 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	//
 	// This is to prevent files which are being created, from being opened.
 	//
-	if fileMetadata.State != dcache.Ready {
+	if fileMetadata.State == dcache.Writing {
 		common.Assert(fileMetadata.Size == -1 && fileMetadata.PartialSize >= 0, fileMetadata.Size, *fileMetadata)
 		// We don't allow reading non-finalized files from fuse, but we do allow internal readers.
 		if fromFuse {
@@ -380,7 +394,7 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 				fileName, fileMetadata)
 		}
 	} else {
-		// Finalized files must have size >= 0.
+		// Ready and Warming files must have size >= 0.
 		common.Assert(fileMetadata.Size >= 0, fileMetadata.Size, *fileMetadata)
 	}
 
@@ -392,7 +406,14 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	// increments the opencount.
 	//
 	// TODO: Shall we support safe deletes for partial files too?
+	// TODO: Shall we support safe deletes for warming files too?
+	//       If we support that we lose the safety check that etag returned by CreateFileInit() is same as
+	//       the one used while finalizing the file, since updating open count will change the etag.
+	//       Till we support, let's have the assert below.
 	//
+	common.Assert(!(fileIOMgr.safeDeletes && fileMetadata.State == dcache.Warming),
+		fileName, *fileMetadata)
+
 	if fileIOMgr.safeDeletes && (fileMetadata.State == dcache.Ready) {
 		newOpenCount, err := mm.OpenFile(fileName, prop)
 		_ = newOpenCount
@@ -426,8 +447,8 @@ func OpenDcacheFile(fileName string, fromFuse bool) (*DcacheFile, error) {
 	return dcacheFile, nil
 }
 
-func DeleteDcacheFile(fileName string) error {
-	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
+func DeleteDcacheFile(fileName string, force bool) error {
+	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s [force: %v]", fileName, force)
 
 	fileMetadata, _, err := GetDcacheFile(fileName)
 	if err != nil {
@@ -439,8 +460,9 @@ func DeleteDcacheFile(fileName string) error {
 
 	//
 	// Prevent deletion of files which are being created.
+	// These could be in Writing and Warmup state.
 	//
-	if fileMetadata.State != dcache.Ready {
+	if !force && fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::DeleteDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
 		//

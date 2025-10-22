@@ -44,6 +44,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -180,8 +181,12 @@ retry:
 	// TODO: make it more resilient. We should never fail client IO.
 	//
 	if retryCnt > 15 {
-		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d",
-			req.MvName, retryCnt, lastClusterMapEpoch)
+		//
+		// Note: Chunk not found responses must be wrapped with syscall.ENOENT so that caller can handle it,
+		//       by reading from Azure Storage.
+		//
+		err = fmt.Errorf("no suitable RV found for MV %s even after %d clustermap refresh retries, last epoch %d [%w]",
+			req.MvName, retryCnt, lastClusterMapEpoch, syscall.ENOENT)
 		log.Err("ReplicationManager::ReadMV: %v", err)
 		return nil, err
 	}
@@ -219,7 +224,11 @@ retry:
 			//       such RVs. But, note that we cannot allow writing to such MVs.
 			//
 			if mvState == dcache.StateOffline {
-				err = fmt.Errorf("%s is offline", req.MvName)
+				//
+				// Wrap syscall.ENOENT to indicate chunk not found.
+				// Caller may use it to fallback to reading from Azure Storage.
+				//
+				err = fmt.Errorf("%s is offline [%w]", req.MvName, syscall.ENOENT)
 				log.Err("ReplicationManager::ReadMV: %v", err)
 				return nil, err
 			}
@@ -236,8 +245,8 @@ retry:
 			// TODO: See if refreshing clustermap really gets us some benefit.
 			//
 			if clusterMapRefreshed {
-				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d",
-					req.MvName, lastClusterMapEpoch)
+				err = fmt.Errorf("no suitable RV found for MV %s even after clustermap refresh to epoch %d [%w]",
+					req.MvName, lastClusterMapEpoch, syscall.ENOENT)
 				log.Err("ReplicationManager::ReadMV: %v", err)
 				return nil, err
 			}
@@ -354,11 +363,32 @@ retry:
 			retryCnt++
 			goto retry
 		} else if rpcErr != nil && rpcErr.GetCode() == models.ErrorCode_ChunkNotFound {
-			log.Err("ReplicationManager::ReadMV: Chunk not found on node %s for request %s: %v",
-				targetNodeID, rpc.GetChunkRequestToString(rpcReq), err)
-			// Only expected for metadata chunks.
-			common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, rpc.GetChunkRequestToString(rpcReq))
-			common.Assert(rpcReq.Length == dcache.MDChunkSize, rpc.GetChunkRequestToString(rpcReq))
+			//
+			// Wrap syscall.ENOENT to indicate chunk not found.
+			// Caller may use it to fallback to reading from Azure Storage.
+			//
+			err = fmt.Errorf("ReplicationManager::ReadMV: Chunk not found on node %s for request %s: %v [%w]",
+				targetNodeID, rpc.GetChunkRequestToString(rpcReq), err, syscall.ENOENT)
+			log.Err("%v", err)
+
+			//
+			// Only expected for metadata chunks, unless we are simulating GetChunk failures.
+			//
+			// Update: Since we support reading of warmup files, it's possible that application
+			//         may read some non-existent data chunk. We should fallback to reading from
+			//         Azure but the assert below is not valid for those cases.
+			//
+			/*
+				if common.IsDebugBuild() {
+					if !rpc_server.SimulateGetChunkFailure {
+						common.Assert(rpcReq.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB,
+							rpc.GetChunkRequestToString(rpcReq))
+						common.Assert(rpcReq.Length == dcache.MDChunkSize,
+							rpc.GetChunkRequestToString(rpcReq))
+					}
+				}
+			*/
+
 			return nil, err
 		}
 

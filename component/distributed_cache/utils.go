@@ -254,8 +254,9 @@ func parseDcacheMetadata(attr *internal.ObjAttr, dirName string) error {
 	}
 
 	// parse file state.
-	if state, ok := attr.Metadata["state"]; ok {
-		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
+	state, ok := attr.Metadata["state"]
+	if ok {
+		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready) || *state == string(dcache.Warming)) {
 			err = fmt.Errorf("File: %s, has invalid state: [%s]", attr.Name, *state)
 			log.Err("utils::parseDcacheMetadata: %v", err)
 			common.Assert(false, err)
@@ -294,9 +295,11 @@ func parseDcacheMetadata(attr *internal.ObjAttr, dirName string) error {
 
 	// For non-finalized files, set size to PartialSize.
 	if attr.Size == math.MaxInt64 {
+		common.Assert(*state == string(dcache.Writing), *state, *attr)
 		if dirName == "." {
 			dirName = ""
 		}
+
 		fileMetadata, _, err := fm.GetDcacheFile(filepath.Join(dirName, attr.Name))
 		if err == nil {
 			attr.Size = fileMetadata.PartialSize

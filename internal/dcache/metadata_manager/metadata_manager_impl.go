@@ -282,12 +282,12 @@ func GetMdRoot() string {
 	return metadataManagerInstance.mdRoot
 }
 
-func CreateFileInit(filePath string, fileMetadata []byte) (string, error) {
-	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
+func CreateFileInit(filePath string, fileMetadata []byte, warmUpSize int64) (string, error) {
+	return metadataManagerInstance.createFileInit(filePath, fileMetadata, warmUpSize)
 }
 
-func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
-	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize, eTag)
+func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error {
+	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize, fileState, eTag)
 }
 
 // Get metadata for the given file.
@@ -507,23 +507,36 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 //
 // etag value returned must be passed to CreateFileFinalize() so that we can be assured that the same node
 // that started file creation, does the finalize. This can help prevent cases where the initial node went
-// quiet before finalizing and tries to finalize later when some other node created the same file.
+// quiet before finalizing and tries to finalize later while some other node created the same file in the
+// meantime.
 
-func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte) (string, error) {
+func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte, warmUpSize int64) (string, error) {
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.InitCalls, 1)
 
 	common.Assert(len(filePath) > 0)
-	common.Assert(len(fileMetadata) > 0)
+	common.Assert(len(fileMetadata) > 0, filePath)
+	common.Assert(warmUpSize >= -1, warmUpSize, filePath)
+
+	// State is "Warming" if warmUpSize >= 0 else "Writing".
+	state := dcache.Writing
+	if warmUpSize >= 0 {
+		state = dcache.Warming
+	}
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
+	//
 	// The size of the file is set to -1 to represent the file is not finalized.
-	sizeStr := "-1"
+	// Warming file have size >= 0, so they can be opened and read while being warmed up.
+	// The reads will fallback to Azure for chunks which are not yet warmed up.
+	//
+	sizeStr := fmt.Sprintf("%d", warmUpSize)
 	openCount := "0"
-	state := string(dcache.Writing)
+	stateStr := string(state)
+
 	metadata := map[string]*string{
 		"cache_object_length": &sizeStr,
-		"state":               &state,
+		"state":               &(stateStr),
 		"opencount":           &openCount,
 	}
 
@@ -550,11 +563,11 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 		if bloberror.HasCode(err, bloberror.BlobAlreadyExists) ||
 			bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			err1 := fmt.Errorf("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
-				path, err)
+			err1 := fmt.Errorf("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v [%w]",
+				path, err, syscall.EEXIST)
 			log.Err("%v", err1)
 			stats.Stats.MM.CreateFile.LastErrorInit = err1.Error()
-			return "", err
+			return "", err1
 		}
 
 		err1 := fmt.Errorf("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)
@@ -574,7 +587,8 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 // CreateFileFinalize() finalizes the metadata for a file.
 // Must be called only after prior call to CreateFileInit() succeeded.
-func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
+func (m *BlobMetadataManager) createFileFinalize(filePath string,
+	fileMetadata []byte, fileSize int64, fileState dcache.FileState, eTag string) error {
 	atomic.AddInt64(&stats.Stats.MM.CreateFile.FinalizeCalls, 1)
 
 	common.Assert(len(filePath) > 0)
@@ -582,6 +596,8 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	common.Assert(fileSize >= 0)
 	common.Assert(fileSize < (1000 * 1000 * 1000 * common.GbToBytes)) // Sanity check.
 	common.Assert(len(eTag) > 0)
+	// Finalize can be called only for files in Writing or Warming state.
+	common.Assert(fileState == dcache.Writing || fileState == dcache.Warming, fileState, filePath)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
@@ -598,15 +614,30 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
 		size, ok := prop.Metadata["cache_object_length"]
-		common.Assert(ok && *size == "-1", ok, *size)
+		common.Assert(ok && ((*size == "-1") == (fileState == dcache.Writing)), ok, *size, filePath)
 
-		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
+		//
+		// Finalize MUST NOT set a size different than what was set by createFileInit() for files in Warming state.
+		// TODO: Check this and fail CreateFileFinalize() if not matched.
+		//
+		common.Assert((fileState == dcache.Writing) || (*size == fmt.Sprintf("%d", fileSize)),
+			ok, *size, filePath)
+
+		// Extract the state from the metadata properties, it must be "writing" or "warming" as set by
+		// createFileInit().
 		state, ok := prop.Metadata["state"]
-		common.Assert(ok && *state == string(dcache.Writing))
+		common.Assert(ok && (*state == string(dcache.Writing) || *state == string(dcache.Warming)), filePath)
 
-		// opencount must be 0 as a file not yet finalized cannot be opened.
+		//
+		// opencount must be 0 as a file not yet finalized cannot be opened, warmup files can be read while
+		// they were being warmed up but see comment in OpenDcacheFile(), we don't currently suppor safeDeletes
+		// for warmup files so openCount must be 0.
+		//
+		// TODO: If we support safeDeletes for warmup files in future, we need to change this check and set
+		//       openCount correctly in the metadata.
+		//
 		openCount, ok := prop.Metadata["opencount"]
-		common.Assert(ok && *openCount == "0", ok, *openCount)
+		common.Assert(ok && (*openCount == "0"), ok, *openCount, filePath)
 	}
 
 	// Store the open-count and file size in the metadata blob property.
@@ -735,7 +766,7 @@ func (m *BlobMetadataManager) getFile(filePathOrId string, isDeleted bool) ([]by
 	}
 
 	var fileState dcache.FileState
-	if *state == string(dcache.Ready) || *state == string(dcache.Writing) {
+	if *state == string(dcache.Ready) || *state == string(dcache.Writing) || *state == string(dcache.Warming) {
 		fileState = dcache.FileState(*state)
 	} else {
 		err := fmt.Errorf("GetFile:: Invalid File state: [%s] found in metadata for path: %s", *state, path)

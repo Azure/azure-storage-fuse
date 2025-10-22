@@ -1655,6 +1655,11 @@ func readChunkAndHash(chunkPath, hashPath *string,
 	return n, hash, err
 }
 
+var GetChunkCounter uint64 = 0
+
+// Set this to true to force fail some GetChunk requests to test Azure fallback handling.
+const SimulateGetChunkFailure = false
+
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
@@ -1682,6 +1687,28 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 			req.Address.String(), err.Error())
 		return nil, err
 	}
+
+	if common.IsDebugBuild() {
+		if SimulateGetChunkFailure {
+			GetChunkCounter++
+			if (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) && (GetChunkCounter%100 == 0) {
+				//
+				// For every 100th GetChunk request, force fail to test handling of Azure fallback for
+				// non-existent chunks.
+				// Since MD chunks are not present in Azure, skip forcing failure for them.
+				//
+				errStr := "Force failing GetChunk request to test Azure fallback handling"
+				log.Err("ChunkServiceHandler::GetChunk: %s, request: %s", errStr, req.String())
+				return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+			}
+		}
+	}
+
+	//
+	// Only full chunk reads are added and looked up in the chunk cache.
+	// TODO: We can relax this in future if needed.
+	//
+	isFullChunkRead := (req.Length == (cm.ChunkSizeMB * common.MbToBytes)) && (req.OffsetInChunk == 0)
 
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
@@ -1807,7 +1834,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		if common.IsDebugBuild() {
 			h.chunkCacheLookup.Add(1)
 		}
-		data, ok = h.chunkCache.Get(chunkPath)
+
+		if isFullChunkRead {
+			data, ok = h.chunkCache.Get(chunkPath)
+		}
+
 		if ok {
 			// We don't add metadata chunk to the cache, so we must not get it from the cache.
 			common.Assert(req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB, chunkPath, req.Address.OffsetInMiB)
@@ -1819,8 +1850,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 					chunkPath, rvInfo.rvName, h.chunkCacheHit.Load(), h.chunkCacheLookup.Load(),
 					(float64(h.chunkCacheHit.Load())/float64(h.chunkCacheLookup.Load()))*100)
 			}
+
 			n = len(data)
-			// Must be the entire exact chunk.
+			// Since chunks are immutable, if we get a cache hit the stored chunk must be the entire exact chunk.
 			common.Assert(n == int(req.Length), n, req.Length, chunkPath)
 			goto cached_chunk_read
 		}
@@ -1857,8 +1889,14 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 			// there's a small window between file create and metadata chunk create which can cause this.
 			// See NewDcacheFile().
 			//
-			common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
-			common.Assert(req.Length == dcache.MDChunkSize, errStr)
+			// Update: Since we support reading of warmup files, it's possible that application
+			//         may read some non-existent data chunk. We should fallback to reading from
+			//         Azure but the assert below is not valid for those cases.
+			//
+			/*
+				common.Assert(req.Address.OffsetInMiB == dcache.MDChunkOffsetInMiB, errStr)
+				common.Assert(req.Length == dcache.MDChunkSize, errStr)
+			*/
 
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
 		}
@@ -1907,21 +1945,30 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	if err != nil {
 		errStr := fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, errStr)
+		} else {
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+		}
 	}
 
 	common.Assert((n == len(data)) || (n > 0 && n < len(data) && len(data) == dcache.MDChunkSize),
 		fmt.Sprintf("bytes read %d is less than expected buffer size %d", n, len(data)))
 
 	rvInfo.totalBytesRead.Add(int64(n))
-	log.Info("ChunkServiceHandler::GetChunk: [STATS] chunk path %s, %s, totalBytesRead: %d ",
-		chunkPath, rvInfo.rvName, rvInfo.totalBytesRead.Load())
+
+	log.Info("ChunkServiceHandler::GetChunk: [STATS] chunk path %s, %s, n: %d, totalBytesRead: %d ",
+		chunkPath, rvInfo.rvName, n, rvInfo.totalBytesRead.Load())
 
 	//
 	// Don't cache local RV reads, as they are less indicative of the chunk being hot (read by multiple nodes).
 	// Also don't cache metadata chunk, as it's mutable.
+	// We also cache only full-size chunks. This is to avoid caching partial chunks that may be issued by
+	// the client as a result of random reads. Later if the client wants to read the file sequentially, it'll
+	// issue full chunk requests and we won't find them in the cache.
 	//
-	if !req.IsLocalRV && (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) {
+	if !req.IsLocalRV && isFullChunkRead && (req.Address.OffsetInMiB != dcache.MDChunkOffsetInMiB) {
 		common.Assert(len(data) == int(req.Length), len(data), req.Length, chunkPath)
 		h.chunkCache.Add(chunkPath, data)
 		// Make sure LRU cache honors the size limit.
