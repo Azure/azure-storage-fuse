@@ -213,3 +213,26 @@ type ComponentRVUpdateMessage struct {
 	Err        chan error
 	Closed     bool // true if Err channel is closed after adding an error, and no new error must be added.
 }
+
+// Stats for all nodes in the cluster.
+type ClusterStats struct {
+	Timestamp string            `json:"timestamp"`
+	Nodes     []*NodeStats      `json:"nodes"`
+	Totals    *ClusterTotals    `json:"totals"`           // Aggregated totals across all nodes.
+	Errors    map[string]string `json:"errors,omitempty"` // nodeID -> error string
+}
+
+// Stats for a single node in the cluster.
+type NodeStats struct {
+	NodeID        string `json:"node_id"`
+	HostName      string `json:"hostname"`
+	MemUsedBytes  int64  `json:"mem_used_bytes"`
+	MemTotalBytes int64  `json:"mem_total_bytes"`
+	Timestamp     string `json:"timestamp"`
+}
+
+// Aggregated totals across all nodes in the cluster.
+type ClusterTotals struct {
+	MemUsedBytes  int64 `json:"mem_used_bytes"`
+	MemTotalBytes int64 `json:"mem_total_bytes"`
+}

@@ -61,6 +61,13 @@ func (suite *handlerTestSuite) TestCreateLogTar() {
 	suite.assert.Nil(err)
 }
 
+func (suite *handlerTestSuite) TestGetMemoryInfo() {
+	total, used, err := getMemoryInfo()
+	suite.assert.NoError(err)
+	suite.assert.Greater(total, int64(0))
+	suite.assert.Greater(used, int64(0))
+}
+
 func TestHandlerTestSuite(t *testing.T) {
 	suite.Run(t, new(handlerTestSuite))
 }

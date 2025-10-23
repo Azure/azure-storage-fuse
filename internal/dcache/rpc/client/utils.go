@@ -42,8 +42,10 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
 // CollectAllNodeLogs downloads log tarballs from every node in the current cluster into outDir.
@@ -138,4 +140,78 @@ func CollectAllNodeLogs(outDir string, numLogs int64) (map[string]string, error)
 		len(results), len(nodeMap), outDir, allErr)
 
 	return results, allErr
+}
+
+// GetClusterStats collects stats from all nodes in the cluster via RPCs and
+// aggregates them into a ClusterStats structure.
+func GetClusterStats() (*dcache.ClusterStats, error) {
+	log.Debug("GetClusterStats: Starting cluster stats collection")
+
+	nodeMap := cm.GetAllNodes()
+	if len(nodeMap) == 0 {
+		common.Assert(false)
+		return nil, fmt.Errorf("GetClusterStats: no nodes found in cluster")
+	}
+
+	clusterStats := &dcache.ClusterStats{
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Totals:    &dcache.ClusterTotals{},
+	}
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	//
+	// We can start stats collection in parallel on lot of nodes as it doesn't load any single
+	// node. It'll be limited by ingress network b/w and disk IO on the requesting node.
+	//
+	workerCount := min(1000, len(nodeMap))
+	jobs := make(chan string, workerCount)
+
+	// Workers
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for nodeID := range jobs {
+				nodeStats := &dcache.NodeStats{
+					NodeID: nodeID,
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				resp, err := GetNodeStats(ctx, nodeID, &models.GetNodeStatsRequest{})
+				cancel()
+
+				if err != nil {
+					mu.Lock()
+					clusterStats.Errors[nodeID] = err.Error()
+					mu.Unlock()
+					continue
+				}
+
+				nodeStats.HostName = resp.HostName
+				nodeStats.MemUsedBytes = resp.MemUsedBytes
+				nodeStats.MemTotalBytes = resp.MemTotalBytes
+				nodeStats.Timestamp = resp.Timestamp
+
+				mu.Lock()
+				clusterStats.Totals.MemUsedBytes += nodeStats.MemUsedBytes
+				clusterStats.Totals.MemTotalBytes += nodeStats.MemTotalBytes
+				clusterStats.Nodes = append(clusterStats.Nodes, nodeStats)
+				mu.Unlock()
+			}
+		}()
+	}
+
+	// Feed jobs
+	for nodeID, _ := range nodeMap {
+		jobs <- nodeID
+	}
+	close(jobs)
+
+	// Wait for workers to finish
+	wg.Wait()
+
+	return clusterStats, nil
 }

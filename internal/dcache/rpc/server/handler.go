@@ -3904,6 +3904,43 @@ func (h *ChunkServiceHandler) createLogTarLocked(numLogs int64) error {
 	return nil
 }
 
+// GetNodeStats returns node's memory stats.
+// TODO: this will be extended later to include other stats like CPU usage, network bandwidth, etc.
+func (h *ChunkServiceHandler) GetNodeStats(ctx context.Context, req *models.GetNodeStatsRequest) (*models.GetNodeStatsResponse, error) {
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	log.Debug("ChunkServiceHandler::GetNodeStats: Received GetNodeStats request: %s", req.String())
+
+	if !common.IsValidUUID(req.SenderNodeID) {
+		errStr := fmt.Sprintf("Invalid GetNodeStats request: %v", req.String())
+		log.Err("ChunkServiceHandler::GetNodeStats: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	hostname, err := os.Hostname()
+	_ = err
+	common.Assert(err == nil, err)
+
+	memTotal, memUsed, err := getMemoryInfo()
+	if err != nil {
+		errStr := fmt.Sprintf("Failed to get memory info: %v", err)
+		log.Err("ChunkServiceHandler::GetNodeStats: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+	}
+
+	resp := &models.GetNodeStatsResponse{
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		NodeID:        rpc.GetMyNodeUUID(),
+		HostName:      hostname,
+		MemTotalBytes: int64(memTotal),
+		MemUsedBytes:  int64(memUsed),
+	}
+
+	return resp, nil
+}
+
 // Silence unused import errors for release builds.
 func init() {
 	slices.Contains([]int{0}, 0)
