@@ -3923,6 +3923,17 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, cepoc
 //       call to UpdateClusterMapStart().
 
 func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB bool) (bool, error) {
+	const slowUpdateThreshold = 5 * time.Second
+	var t1, t2, t3, t4 time.Duration
+	startTime := time.Now()
+
+	defer func() {
+		if time.Since(startTime) > slowUpdateThreshold {
+			log.Warn("[SLOW] ClusterManager::updateRVList: Slow updateRVList, took %s [t1: %s, t2: %s, t3: %s, t4: %s]",
+				time.Since(startTime), t1, t2, t3, t4)
+		}
+	}()
+
 	existingRVMap := clusterMap.RVMap
 
 	//
@@ -3941,6 +3952,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 
 	// Get all nodes by enumerating all the HBs from Nodes/ folder.
 	nodeIds, err := getAllNodes()
+	t1 = time.Since(startTime)
 	if err != nil {
 		err1 := fmt.Errorf("ClusterManager::updateRVList: getAllNodes() failed: %v", err)
 		common.Assert(false, err1)
@@ -3984,6 +3996,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 
 	rVsByRvIdFromHB, rvLastHB, nodes, failedToReadNodes, err := collectHBForGivenNodeIds(nodeIds, initialHB)
 	_ = nodes
+	t2 = time.Since(startTime)
 	if err != nil {
 		atomic.AddInt64(&stats.Stats.CM.Heartbeats.CollectHB.Failures, 1)
 		stats.Stats.CM.Heartbeats.CollectHB.LastError = err.Error()
@@ -4112,6 +4125,8 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 		return changed, nil
 	}
 
+	t3 = time.Since(startTime)
+
 	//
 	// initialHB=true
 	//
@@ -4230,6 +4245,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 
 		atomic.AddInt64(&stats.Stats.CM.Heartbeats.InitialHB.StaleRVsRemoved, 1)
 	}
+	t4 = time.Since(startTime)
 
 	// Now add all the new RVs from initial heartbeats seen from all nodes.
 	log.Info("ClusterManager::updateRVList: %d new RV(s) to add to clusterMap: %+v",
