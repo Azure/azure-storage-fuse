@@ -2137,6 +2137,7 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 		log.Err("ReplicationManager::copySingleChunk: %v", err)
 		return err, -1
 	}
+	srcData = srcData[:chunkSize]
 	defer dcache.PutBuffer(srcData)
 
 	n, err := rpc_server.SafeRead(&srcChunkPath, 0 /* offset */, &srcData, false /* forceBufferedRead */)
