@@ -1727,8 +1727,13 @@ func (cmi *ClusterManager) computeMVsPerRV(cfg *dcache.DCacheConfig, numRVs, num
 // Publishes the heartbeat for this node.
 // initialHB indicates if this is the initial heartbeat for this node.
 func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bool) error {
+	const slowPunchHBThreshold = 2 * time.Second
+	var t1, t2, t3 time.Duration
+	startTime := time.Now()
+
 	// Refresh AvailableSpace for my RVs, before publishing in the heartbeat.
 	refreshMyRVs(myRVs)
+	t1 = time.Since(startTime)
 
 	hbData := dcache.HeartbeatData{
 		InitialHB:     initialHB,
@@ -1739,6 +1744,13 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bo
 		RVList:        myRVs,
 	}
 
+	defer func() {
+		if time.Since(startTime) > slowPunchHBThreshold {
+			log.Warn("[SLOW] ClusterManager::punchHeartBeat: Slow punchHeartBeat, took %s [t1: %s, t2: %s, t3: %s] %+v",
+				time.Since(startTime), t1, t2, t3, hbData)
+		}
+	}()
+
 	// Marshal the data into JSON
 	data, err := json.Marshal(hbData)
 	if err != nil {
@@ -1747,9 +1759,11 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bo
 		common.Assert(false, err)
 		return err
 	}
+	t2 = time.Since(startTime)
 
 	// Create/update heartbeat file in metadata store with name <nodeId>.hb
 	err = mm.UpdateHeartbeat(cmi.myNodeId, data)
+	t3 = time.Since(startTime)
 	if err != nil {
 		err = fmt.Errorf("UpdateHeartbeat() failed for node %s: %v %+v", cmi.myNodeId, err, hbData)
 		log.Err("ClusterManager::punchHeartBeat: %v", err)
