@@ -485,6 +485,14 @@ type CMStats struct {
 	// TODO: Add more stats.
 }
 
+type BufferPoolStats struct {
+	BufferSize    int64 `json:"buffer_size_mb,omitempty"`
+	TotalBuffers  int64 `json:"total_buffers,omitempty"`
+	TotalAllocs   int64 `json:"total_allocs"`
+	TotalDeallocs int64 `json:"total_deallocs"`
+	BuffersInUse  int64 `json:"buffers_in_use"`
+}
+
 // Replication manager stats.
 type RMStats struct {
 	// TBD.
@@ -508,6 +516,7 @@ type DCacheStats struct {
 	HostName  string    `json:"hostname"`
 	NodeStart time.Time `json:"starttime"`
 
+	BufPool BufferPoolStats `json:"buffer_pool_stats"`
 	// Component stats.
 	MM  MMStats  `json:"metadata_manager_stats"`
 	CM  CMStats  `json:"cluster_manager_stats"`
@@ -658,6 +667,11 @@ func (s *DCacheStats) Preprocess() {
 	if s.CM.FixMV.UpdateMV.CallsCumulative > 0 {
 		s.CM.FixMV.UpdateMV.AvgTime =
 			Duration(float64(s.CM.FixMV.UpdateMV.TotalTime) / float64(s.CM.FixMV.UpdateMV.CallsCumulative))
+	}
+
+	if s.BufPool.TotalAllocs > 0 {
+		s.BufPool.BuffersInUse = s.BufPool.TotalAllocs - s.BufPool.TotalDeallocs
+		common.Assert(s.BufPool.BuffersInUse >= 0)
 	}
 }
 
