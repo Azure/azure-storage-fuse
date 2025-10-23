@@ -449,7 +449,8 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 						for _, msg := range msgBatch {
 							if msg.Closed {
 								// Error channel must be closed only after adding an error.
-								common.Assert(len(msg.Err) == 1, len(msg.Err))
+								// XXX We cannot assert this as caller may have read the error already.
+								//common.Assert(len(msg.Err) == 1, len(msg.Err))
 								continue
 							}
 
