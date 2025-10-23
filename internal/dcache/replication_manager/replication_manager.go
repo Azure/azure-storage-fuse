@@ -2022,7 +2022,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		//
 		syncChunkSema <- struct{}{}
 
-		go func(chunkName string, info os.FileInfo) {
+		syncChunkFn := func(chunkName string, info os.FileInfo) {
 			//
 			// One token must have been acquired before starting this sync thread, and cannot start
 			// more than parallelSyncThreads sync threads.
@@ -2048,7 +2048,13 @@ func copyOutOfSyncChunks(job *syncJob) error {
 
 			bytesCopied.Add(chunkSize)
 			chunksCopied.Add(1)
-		}(entry.Name(), info)
+		}
+
+		rm.tp.scheduleSyncChunk(&syncChunkReq{
+			chunkName: entry.Name(),
+			fileInfo:  info,
+			fn:        syncChunkFn,
+		})
 
 		//
 		// Bail out on first error.
@@ -2124,8 +2130,15 @@ func copySingleChunk(job *syncJob, chunkName string, chunkSize int64) (error, in
 	}
 
 	srcChunkPath := filepath.Join(sourceMVPath, chunkName)
-	// TODO: Allocate from buffer pool.
-	srcData := make([]byte, chunkSize)
+
+	srcData, err := dcache.GetBuffer()
+	if err != nil {
+		err = fmt.Errorf("Unable to allocate buffer for chunk %s: %v", chunkName, err)
+		log.Err("ReplicationManager::copySingleChunk: %v", err)
+		return err, -1
+	}
+	defer dcache.PutBuffer(srcData)
+
 	n, err := rpc_server.SafeRead(&srcChunkPath, 0 /* offset */, &srcData, false /* forceBufferedRead */)
 	if err != nil {
 		//

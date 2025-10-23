@@ -36,6 +36,7 @@ package replication_manager
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"sync"
 	"time"
@@ -68,6 +69,14 @@ type threadpool struct {
 
 	// Channel to hold pending RPC requests.
 	items chan *workitem
+
+	syncChunks chan *syncChunkReq
+}
+
+type syncChunkReq struct {
+	fn        func(string, os.FileInfo)
+	chunkName string
+	fileInfo  os.FileInfo
 }
 
 type workitem struct {
@@ -111,8 +120,9 @@ func newThreadPool(count uint32) *threadpool {
 	// for workitems.
 	//
 	return &threadpool{
-		worker: count,
-		items:  make(chan *workitem, count*2),
+		worker:     count,
+		items:      make(chan *workitem, count*2),
+		syncChunks: make(chan *syncChunkReq, count*2),
 	}
 }
 
@@ -120,8 +130,9 @@ func (tp *threadpool) start() {
 	log.Info("threadpool[RM]::start: Starting thread pool with %d workers", tp.worker)
 
 	for i := uint32(0); i < tp.worker; i++ {
-		tp.wg.Add(1)
+		tp.wg.Add(2)
 		go tp.do()
+		go tp.doSyncChunk()
 	}
 }
 
@@ -129,6 +140,7 @@ func (tp *threadpool) stop() {
 	log.Info("threadpool[RM]::stop: Stopping thread pool with %d workers", tp.worker)
 
 	close(tp.items)
+	close(tp.syncChunks)
 	tp.wg.Wait()
 }
 
@@ -145,6 +157,11 @@ func (tp *threadpool) schedule(item *workitem, runInline bool) {
 	} else {
 		tp.items <- item
 	}
+}
+
+func (tp *threadpool) scheduleSyncChunk(req *syncChunkReq) {
+	common.Assert(req != nil)
+	tp.syncChunks <- req
 }
 
 // Run one threadpool item.
@@ -183,6 +200,15 @@ func (tp *threadpool) do() {
 	//
 	for item := range tp.items {
 		tp.runItem(item)
+	}
+}
+
+func (tp *threadpool) doSyncChunk() {
+	defer tp.wg.Done()
+	//
+	// As long as the syncChunks channel is not closed, keep dequeueing functions and execute them.
+	for req := range tp.syncChunks {
+		req.fn(req.chunkName, req.fileInfo)
 	}
 }
 
