@@ -148,20 +148,20 @@ func readLogsCallback(pFile *procFile) error {
 	return nil
 }
 
-// proc file: cluster-stats
-// Get stats from all nodes in the cluster via RPCs and aggregate them into a ClusterStats structure.
-func readClusterStatsCallback(pFile *procFile) error {
-	clusterStats, err := rpc_client.GetClusterStats()
+// proc file: nodes-stats
+// Get stats from all nodes in the cluster via RPCs and aggregate them into a NodesStats structure.
+func readNodesStatsCallback(pFile *procFile) error {
+	nodesStats, err := rpc_client.GetNodesStats()
 	if err != nil {
-		log.Err("DebugFS::readClusterStatsCallback: failed to get cluster stats: %v", err)
+		log.Err("DebugFS::readNodesStatsCallback: failed to get cluster stats: %v", err)
 		return err
 	}
 
-	common.Assert(clusterStats != nil)
+	common.Assert(nodesStats != nil)
 
-	pFile.buf, err = json.MarshalIndent(clusterStats, "", "  ")
+	pFile.buf, err = json.MarshalIndent(nodesStats, "", "  ")
 	if err != nil {
-		log.Err("DebugFS::readClusterStatsCallback: marshal failed: %v", err)
+		log.Err("DebugFS::readNodesStatsCallback: marshal failed: %v", err)
 		common.Assert(false, err)
 		return err
 	}

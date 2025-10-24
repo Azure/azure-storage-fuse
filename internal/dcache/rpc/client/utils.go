@@ -142,20 +142,21 @@ func CollectAllNodeLogs(outDir string, numLogs int64) (map[string]string, error)
 	return results, allErr
 }
 
-// GetClusterStats collects stats from all nodes in the cluster via RPCs and
-// aggregates them into a ClusterStats structure.
-func GetClusterStats() (*dcache.ClusterStats, error) {
-	log.Debug("GetClusterStats: Starting cluster stats collection")
+// GetNodesStats collects stats from all nodes in the cluster via RPCs and
+// aggregates them into a NodesStats structure.
+func GetNodesStats() (*dcache.NodesStats, error) {
+	log.Debug("GetNodesStats: Starting nodes stats collection")
 
 	nodeMap := cm.GetAllNodes()
 	if len(nodeMap) == 0 {
 		common.Assert(false)
-		return nil, fmt.Errorf("GetClusterStats: no nodes found in cluster")
+		return nil, fmt.Errorf("GetNodesStats: no nodes found in cluster")
 	}
 
-	clusterStats := &dcache.ClusterStats{
+	nodesStats := &dcache.NodesStats{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Aggregate: &dcache.ClusterAggregate{},
+		Count:     int64(len(nodeMap)),
+		Aggregate: &dcache.NodesAggregate{},
 		Errors:    make(map[string]string),
 	}
 
@@ -176,7 +177,7 @@ func GetClusterStats() (*dcache.ClusterStats, error) {
 		go func() {
 			defer wg.Done()
 			for nodeID := range jobs {
-				nodeStats := &dcache.NodeStats{
+				nodeInfo := &dcache.NodeInfo{
 					NodeID: nodeID,
 				}
 
@@ -186,20 +187,20 @@ func GetClusterStats() (*dcache.ClusterStats, error) {
 
 				if err != nil {
 					mu.Lock()
-					clusterStats.Errors[nodeID] = err.Error()
+					nodesStats.Errors[nodeID] = err.Error()
 					mu.Unlock()
 					continue
 				}
 
-				nodeStats.HostName = resp.HostName
-				nodeStats.MemUsedBytes = resp.MemUsedBytes
-				nodeStats.MemTotalBytes = resp.MemTotalBytes
-				nodeStats.Timestamp = resp.Timestamp
+				nodeInfo.HostName = resp.HostName
+				nodeInfo.MemUsedBytes = resp.MemUsedBytes
+				nodeInfo.MemTotalBytes = resp.MemTotalBytes
+				nodeInfo.Timestamp = resp.Timestamp
 
 				mu.Lock()
-				clusterStats.Aggregate.MemUsedBytes += nodeStats.MemUsedBytes
-				clusterStats.Aggregate.MemTotalBytes += nodeStats.MemTotalBytes
-				clusterStats.Nodes = append(clusterStats.Nodes, nodeStats)
+				nodesStats.Aggregate.MemUsedBytes += nodeInfo.MemUsedBytes
+				nodesStats.Aggregate.MemTotalBytes += nodeInfo.MemTotalBytes
+				nodesStats.Nodes = append(nodesStats.Nodes, nodeInfo)
 				mu.Unlock()
 			}
 		}()
@@ -214,5 +215,5 @@ func GetClusterStats() (*dcache.ClusterStats, error) {
 	// Wait for workers to finish
 	wg.Wait()
 
-	return clusterStats, nil
+	return nodesStats, nil
 }

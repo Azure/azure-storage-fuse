@@ -215,15 +215,16 @@ type ComponentRVUpdateMessage struct {
 }
 
 // Stats for all nodes in the cluster.
-type ClusterStats struct {
+type NodesStats struct {
 	Timestamp string            `json:"timestamp"`
-	Nodes     []*NodeStats      `json:"nodes"`
-	Aggregate *ClusterAggregate `json:"aggregate"`        // Aggregated stats across all nodes.
+	Count     int64             `json:"count"`
+	Nodes     []*NodeInfo       `json:"nodes"`
+	Aggregate *NodesAggregate   `json:"aggregate"`        // Aggregated stats across all nodes.
 	Errors    map[string]string `json:"errors,omitempty"` // nodeID -> error string
 }
 
 // Stats for a single node in the cluster.
-type NodeStats struct {
+type NodeInfo struct {
 	NodeID        string `json:"node_id"`
 	HostName      string `json:"hostname"`
 	MemUsedBytes  int64  `json:"mem_used_bytes"`
@@ -232,7 +233,7 @@ type NodeStats struct {
 }
 
 // Aggregated stats across all nodes in the cluster.
-type ClusterAggregate struct {
+type NodesAggregate struct {
 	MemUsedBytes  int64 `json:"mem_used_bytes"`
 	MemTotalBytes int64 `json:"mem_total_bytes"`
 }

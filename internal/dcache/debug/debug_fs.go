@@ -116,8 +116,8 @@ func init() {
 			refreshBuffer: readLogsCallback,
 		}, // Collect logs from all nodes (on-demand).
 
-		"cluster-stats": &procFile{
-			refreshBuffer: readClusterStatsCallback,
+		"nodes-stats": &procFile{
+			refreshBuffer: readNodesStatsCallback,
 		}, // Get node level stats via RPC.
 	}
 
