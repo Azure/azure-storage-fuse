@@ -45,7 +45,6 @@ import (
 	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
-	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 )
 
@@ -150,100 +149,78 @@ func readLogsCallback(pFile *procFile) error {
 	return nil
 }
 
+// proc file: logs.help
+func readLogsHelpCallback(pFile *procFile) error {
+	help := `{
+	"output_dir": "/local/dir/where/log/bundles/should/be/saved",
+	"number_of_logs": 4
+}
+`
+	pFile.buf = []byte(help)
+	return nil
+}
+
 // proc file: cluster-summary
 // Provides a high-level summary of cluster state: nodes (online/offline), RVs and MVs state counts.
 func readClusterSummaryCallback(pFile *procFile) error {
+	//
+	// If user wants to view the latest cluster map, refresh it first.
+	//
+	if clusterSummaryReq.RefreshClusterMap {
+		cm.RefreshClusterMap(0)
+	}
+
 	// Get current clustermap copy (local view).
 	clusterMap := cm.GetClusterMap()
 
 	summary := dcache.ClusterSummary{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		NodesSummary: dcache.NodesSummary{
-			Nodes: make([]dcache.NodeInfo, 0, len(clusterMap.RVMap)),
+		Clustermap: dcache.ClustermapSummary{
+			Readonly:        clusterMap.Readonly,
+			Epoch:           clusterMap.Epoch,
+			CreatedAt:       time.Unix(int64(clusterMap.CreatedAt), 0).UTC().Format(time.RFC3339),
+			LastUpdatedAt:   time.Unix(int64(clusterMap.LastUpdatedAt), 0).UTC().Format(time.RFC3339),
+			LastUpdatedBy:   clusterMap.LastUpdatedBy,
+			Config:          clusterMap.Config,
+			LastRefreshedAt: cm.GetClusterMapLastRefreshTime().UTC().Format(time.RFC3339),
 		},
-		RVsSummary: dcache.RVsSummary{
+		Nodes: dcache.NodesSummary{
+			Count:   int64(len(cm.GetAllNodes())),
+			Offline: int64(len(cm.GetAllNodes()) - len(cm.GetOnlineNodes())),
+		},
+		RVs: dcache.RVsSummary{
 			Count: int64(len(clusterMap.RVMap)),
 		},
-		MVsSummary: dcache.MVsSummary{
+		MVs: dcache.MVsSummary{
 			Count: int64(len(clusterMap.MVMap)),
 		},
 	}
-
-	// Offline nodes as per RV map
-	offlineNodes := make(map[string]struct{})
 
 	// RV summary
 	for _, rv := range clusterMap.RVMap {
 		switch rv.State {
 		case dcache.StateOffline:
-			summary.RVsSummary.Offline++
-			offlineNodes[rv.NodeId] = struct{}{}
+			summary.RVs.Offline++
 		default:
-			summary.RVsSummary.Online++
+			summary.RVs.Online++
 		}
 	}
-
-	// Node list via metadata manager (heartbeats)
-	nodeIDs, err := mm.GetAllNodes()
-	if err != nil {
-		log.Err("DebugFS::readClusterSummaryCallback: GetAllNodes failed: %v", err)
-		return err
-	}
-
-	for _, nodeID := range nodeIDs {
-		ni := dcache.NodeInfo{NodeID: nodeID}
-
-		if _, ok := offlineNodes[nodeID]; ok {
-			ni.Status = string(dcache.StateOffline)
-			summary.NodesSummary.Offline++
-		} else {
-			ni.Status = string(dcache.StateOnline)
-		}
-
-		// Get heartbeat file for the given node.
-		hbBytes, err := mm.GetHeartbeat(nodeID)
-		if err != nil {
-			log.Err("DebugFS::readClusterSummaryCallback: GetHeartbeat failed for %s: %v", nodeID, err)
-			summary.NodesSummary.Nodes = append(summary.NodesSummary.Nodes, ni)
-			continue
-		}
-
-		var hb dcache.HeartbeatData
-		if err := json.Unmarshal(hbBytes, &hb); err != nil {
-			log.Err("DebugFS::readClusterSummaryCallback: Unmarshal heartbeat failed for %s: %v", nodeID, err)
-			summary.NodesSummary.Nodes = append(summary.NodesSummary.Nodes, ni)
-			continue
-		}
-
-		if _, err := cm.IsValidHeartbeat(&hb); err != nil {
-			log.Err("DebugFS::readClusterSummaryCallback: Invalid heartbeat for %v [%+v]: %v", nodeID, hb, err)
-			summary.NodesSummary.Nodes = append(summary.NodesSummary.Nodes, ni)
-			continue
-		}
-
-		ni.IPAddr = hb.IPAddr
-		ni.Hostname = hb.Hostname
-		ni.LastHeartbeat = time.Unix(int64(hb.LastHeartbeat), 0).UTC().Format(time.RFC3339)
-
-		summary.NodesSummary.Nodes = append(summary.NodesSummary.Nodes, ni)
-	}
-
-	summary.NodesSummary.Count = int64(len(nodeIDs))
 
 	// MV summary
 	for _, mv := range clusterMap.MVMap {
 		switch mv.State {
 		case dcache.StateOffline:
-			summary.MVsSummary.Offline++
+			summary.MVs.Offline++
 		case dcache.StateDegraded:
-			summary.MVsSummary.Degraded++
+			summary.MVs.Degraded++
 		case dcache.StateSyncing:
-			summary.MVsSummary.Syncing++
+			summary.MVs.Syncing++
 		default:
-			summary.MVsSummary.Online++
+			summary.MVs.Online++
 		}
 	}
 
+	var err error
 	pFile.buf, err = json.MarshalIndent(summary, "", "  ")
 	if err != nil {
 		log.Err("DebugFS::readClusterSummaryCallback: marshal failed: %v", err)
@@ -251,6 +228,17 @@ func readClusterSummaryCallback(pFile *procFile) error {
 		return err
 	}
 
+	return nil
+}
+
+// proc file: cluster-summary.help
+func readClusterSummaryHelpCallback(pFile *procFile) error {
+	help := `{
+	"refresh_clustermap": true|false
+}
+`
+
+	pFile.buf = []byte(help)
 	return nil
 }
 

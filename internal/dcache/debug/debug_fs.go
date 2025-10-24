@@ -79,8 +79,11 @@ var procDirList []*internal.ObjAttr
 //	  "number_of_logs": 4
 //	}
 //
-// output_dir: local directory on the node where fs=debug/logs is read, where logs fetched from all nodes would be stored.
-// number_of_logs: collect atmost this number of most recent blobfuse2.log* files per node.
+// output_dir: local directory on the node where fs=debug/logs is read, where log bundles fetched from all nodes
+//
+//	would be stored.
+//
+// number_of_logs: collect atmost this many most recent blobfuse2.log* files per node.
 //
 // Note: Since logs could be large, make sure that the output_dir has enough space to store the collected logs.
 type logsWriteRequest struct {
@@ -98,7 +101,21 @@ type logsResp struct {
 	Error       string            `json:"error,omitempty"`
 }
 
+// clusterSummaryWriteRequest defines JSON schema for controlling the generation of cluster summary
+// via fs=debug/cluster-summary.
+//
+//	{
+//	  "refresh_clustermap": true
+//	}
+//
+// refresh_clustermap: if true, forces a refresh of the cluster map before generating the summary.
+
+type clusterSummaryWriteRequest struct {
+	RefreshClusterMap bool `json:"refresh_clustermap"`
+}
+
 var logsReq *logsWriteRequest
+var clusterSummaryReq *clusterSummaryWriteRequest
 
 func init() {
 	// Register the callbacks for the procFiles.
@@ -116,9 +133,17 @@ func init() {
 			refreshBuffer: readLogsCallback,
 		}, // Collect logs from all nodes (on-demand).
 
+		"logs.help": &procFile{
+			refreshBuffer: readLogsHelpCallback,
+		}, // Help summary about fs=debug/logs.
+
 		"cluster-summary": &procFile{
 			refreshBuffer: readClusterSummaryCallback,
 		}, // Cluster summary (nodes/RVs/MVs).
+
+		"cluster-summary.help": &procFile{
+			refreshBuffer: readClusterSummaryHelpCallback,
+		}, // Help summary about fs=debug/cluster-summary.
 	}
 
 	procDirList = make([]*internal.ObjAttr, 0, len(procFiles))
@@ -133,7 +158,7 @@ func init() {
 			Size:  0,
 		}
 
-		if path == "logs" {
+		if IsWriteable(path) {
 			// fs=debug/logs supports write operation.
 			pFile.attr.Mode = 0644
 		}
@@ -149,6 +174,19 @@ func init() {
 		OutputDir: common.DefaultWorkDir,
 		NumLogs:   1,
 	}
+
+	// Defaul cluster-summary is printed with the local cluster map (without refreshing it).
+	clusterSummaryReq = &clusterSummaryWriteRequest{
+		RefreshClusterMap: false,
+	}
+}
+
+func IsWriteable(name string) bool {
+	if name == "logs" ||
+		name == "cluster-summary" {
+		return true
+	}
+	return false
 }
 
 // Return the size of the file as zero, as we don't know the size at this point.
@@ -181,15 +219,12 @@ func OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	isWrite := false
 
 	if options.Flags&syscall.O_RDWR != 0 || options.Flags&syscall.O_WRONLY != 0 {
-		if options.Name != "logs" {
-			// Only fs=debug/logs supports write operation.
+		if IsWriteable(options.Name) {
 			return nil, syscall.EACCES
 		}
 
 		isWrite = true
 	}
-
-	common.Assert(!isWrite || options.Name == "logs", isWrite, options.Name)
 
 	handle := handlemap.NewHandle(options.Name)
 	handle.SetFsDebug()
@@ -247,46 +282,64 @@ func CloseFile(options internal.CloseFileOptions) error {
 func WriteFile(options *internal.WriteFileOptions) (int, error) {
 	common.Assert(options.Handle.IFObj != nil)
 	common.Assert(options.Handle.IsFsDebug(), options.Handle.Path)
-	// Only fs=debug/logs supports write operation.
-	common.Assert(options.Handle.Path == "logs", options.Handle.Path)
+	// We should only get write calls for debug files which are writeable.
+	common.Assert(IsWriteable(options.Handle.Path), options.Handle.Path)
 	common.Assert(logsReq != nil)
 
-	//
-	// Max path length check for output_dir + few extra bytes for rest of json.
-	//
-	if len(options.Data) > 4200 {
-		log.Err("DebugFS::WriteFile: large logs write request of length %d",
-			len(options.Data))
-		return -1, syscall.EINVAL
-	}
+	if options.Handle.Path == "logs" {
+		//
+		// Max path length check for output_dir + few extra bytes for rest of json.
+		//
+		if len(options.Data) > 4200 {
+			log.Err("DebugFS::WriteFile: large logs write request of length %d",
+				len(options.Data))
+			return -1, syscall.EINVAL
+		}
 
-	if err := json.Unmarshal(options.Data, logsReq); err != nil {
-		log.Err("DebugFS::WriteFile: failed to parse logs write request: %v [%s]",
-			err, string(options.Data))
-		return -1, syscall.EINVAL
-	}
+		if err := json.Unmarshal(options.Data, logsReq); err != nil {
+			log.Err("DebugFS::WriteFile: failed to parse logs write request: %v [%s]",
+				err, string(options.Data))
+			return -1, syscall.EINVAL
+		}
 
-	if len(logsReq.OutputDir) == 0 || logsReq.NumLogs <= 0 {
-		log.Err("DebugFS::WriteFile: Invalid json data: output_dir=%s, number_of_logs=%d [%s]",
-			logsReq.OutputDir, logsReq.NumLogs, string(options.Data))
-		return -1, syscall.EINVAL
-	}
+		if len(logsReq.OutputDir) == 0 || logsReq.NumLogs <= 0 {
+			log.Err("DebugFS::WriteFile: Invalid json data: output_dir=%s, number_of_logs=%d [%s]",
+				logsReq.OutputDir, logsReq.NumLogs, string(options.Data))
+			return -1, syscall.EINVAL
+		}
 
-	if !filepath.IsAbs(logsReq.OutputDir) {
-		log.Err("DebugFS::WriteFile: output_dir is not an absolute path: %s [%s]",
-			logsReq.OutputDir, string(options.Data))
-		return -1, syscall.EINVAL
-	}
+		if !filepath.IsAbs(logsReq.OutputDir) {
+			log.Err("DebugFS::WriteFile: output_dir is not an absolute path: %s [%s]",
+				logsReq.OutputDir, string(options.Data))
+			return -1, syscall.EINVAL
+		}
 
-	log.Info("DebugFS::WriteFile: Updated logs collection config, output_dir=%s, number_of_logs=%d",
-		logsReq.OutputDir, logsReq.NumLogs)
+		log.Info("DebugFS::WriteFile: Updated logs collection config, output_dir=%s, number_of_logs=%d",
+			logsReq.OutputDir, logsReq.NumLogs)
+	} else if options.Handle.Path == "cluster-summary" {
+		if len(options.Data) > 100 {
+			log.Err("DebugFS::WriteFile: large cluster-summary write request of length %d",
+				len(options.Data))
+			return -1, syscall.EINVAL
+		}
+
+		if err := json.Unmarshal(options.Data, clusterSummaryReq); err != nil {
+			log.Err("DebugFS::WriteFile: failed to parse cluster-summary write request: %v [%s]",
+				err, string(options.Data))
+			return -1, syscall.EINVAL
+		}
+
+		log.Info("DebugFS::WriteFile: Updated cluster-summary config, refresh_clustermap=%v",
+			clusterSummaryReq.RefreshClusterMap)
+
+	}
 
 	return len(options.Data), nil
 }
 
 // Refresh the contents of the proc File on first open and if isWrite flag is false.
 func openProcFile(path string, isWrite bool) (*procFile, error) {
-	common.Assert(!isWrite || path == "logs", isWrite, path)
+	common.Assert(!isWrite || IsWriteable(path), isWrite, path)
 
 	if pFile, ok := procFiles[path]; ok {
 		pFile.mu.Lock()

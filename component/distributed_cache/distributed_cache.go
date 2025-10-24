@@ -1056,7 +1056,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	}
 
 	//
-	// Currently we support write only for fs=debug/logs.
+	// Currently we support write only for select fs=debug/ files.
 	//
 	// Note that we don't allow writes even if a file is opened with fs=azure qualified path or
 	// it's opened using an unqualified path and the file exists only in azure, this is to prevent
@@ -1066,7 +1066,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	// TODO: See if we have usecases for allowing writes to fs=azure files.
 	//
 	if (options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0) &&
-		!(isDebugPath && rawPath == "logs") {
+		!(isDebugPath && debug.IsWriteable(rawPath)) {
 		log.Err("DistributedCache::OpenFile: Dcache file cannot open file: %s, with flags: %X",
 			options.Name, options.Flags)
 		return nil, syscall.EACCES
@@ -1357,9 +1357,9 @@ func (dc *DistributedCache) WriteFile(options *internal.WriteFileOptions) (int, 
 		options.Offset, len(options.Data), options.Handle.Path)
 	common.Assert(len(options.Data) != 0)
 
-	// Allow writes only to fs=debug/logs; other debug proc files remain read-only.
+	// Allow writes only to writeable fs=debug/ files; other debug proc files remain read-only.
 	if options.Handle.IsFsDebug() {
-		if options.Handle.Path == "logs" {
+		if debug.IsWriteable(options.Handle.Path) {
 			return debug.WriteFile(options)
 		}
 		common.Assert(false, options.Handle.Path)

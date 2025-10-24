@@ -215,24 +215,26 @@ type ComponentRVUpdateMessage struct {
 }
 
 type ClusterSummary struct {
-	Timestamp    string       `json:"timestamp"`
-	NodesSummary NodesSummary `json:"nodes_summary"`
-	RVsSummary   RVsSummary   `json:"rvs_summary"`
-	MVsSummary   MVsSummary   `json:"mvs_summary"`
+	Timestamp  string            `json:"timestamp"`
+	Clustermap ClustermapSummary `json:"clustermap"`
+	Nodes      NodesSummary      `json:"nodes"`
+	RVs        RVsSummary        `json:"rvs"`
+	MVs        MVsSummary        `json:"mvs"`
+}
+
+type ClustermapSummary struct {
+	Readonly        bool         `json:"readonly"`
+	Epoch           int64        `json:"epoch"`
+	CreatedAt       string       `json:"created-at"`
+	LastUpdatedAt   string       `json:"last_updated_at"`
+	LastUpdatedBy   string       `json:"last_updated_by"`
+	Config          DCacheConfig `json:"config"`
+	LastRefreshedAt string       `json:"last_refreshed_at"`
 }
 
 type NodesSummary struct {
-	Count   int64      `json:"count"`
-	Offline int64      `json:"offline"`
-	Nodes   []NodeInfo `json:"nodes"`
-}
-
-type NodeInfo struct {
-	NodeID        string `json:"node_id"`
-	IPAddr        string `json:"ip_addr"`
-	Hostname      string `json:"hostname"`
-	Status        string `json:"status"`
-	LastHeartbeat string `json:"last_heartbeat"`
+	Count   int64 `json:"count"`
+	Offline int64 `json:"offline"`
 }
 
 type RVsSummary struct {
@@ -244,7 +246,7 @@ type RVsSummary struct {
 type MVsSummary struct {
 	Count    int64 `json:"count"`
 	Online   int64 `json:"online"`
-	Offline  int64 `json:"offline"`
 	Degraded int64 `json:"degraded"`
 	Syncing  int64 `json:"syncing"`
+	Offline  int64 `json:"offline"`
 }
