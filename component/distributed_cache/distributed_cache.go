@@ -125,9 +125,9 @@ type DistributedCacheOptions struct {
 
 const (
 	compName                         = "distributed_cache"
-	defaultHeartBeatDurationInSecond = 10
+	defaultHeartBeatDurationInSecond = 5
 	defaultReplicas                  = 3
-	defaultMaxMissedHBs              = 3
+	defaultMaxMissedHBs              = 5
 	defaultChunkSizeMB               = 16 // 16 MB
 	defaultMinNodes                  = 1
 	defaultMaxRVs                    = 100
