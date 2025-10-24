@@ -156,6 +156,7 @@ func GetClusterStats() (*dcache.ClusterStats, error) {
 	clusterStats := &dcache.ClusterStats{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Aggregate: &dcache.ClusterAggregate{},
+		Errors:    make(map[string]string),
 	}
 
 	var wg sync.WaitGroup
