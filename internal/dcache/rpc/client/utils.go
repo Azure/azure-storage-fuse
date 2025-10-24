@@ -155,7 +155,7 @@ func GetClusterStats() (*dcache.ClusterStats, error) {
 
 	clusterStats := &dcache.ClusterStats{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Totals:    &dcache.ClusterTotals{},
+		Aggregate: &dcache.ClusterAggregate{},
 	}
 
 	var wg sync.WaitGroup
@@ -196,8 +196,8 @@ func GetClusterStats() (*dcache.ClusterStats, error) {
 				nodeStats.Timestamp = resp.Timestamp
 
 				mu.Lock()
-				clusterStats.Totals.MemUsedBytes += nodeStats.MemUsedBytes
-				clusterStats.Totals.MemTotalBytes += nodeStats.MemTotalBytes
+				clusterStats.Aggregate.MemUsedBytes += nodeStats.MemUsedBytes
+				clusterStats.Aggregate.MemTotalBytes += nodeStats.MemTotalBytes
 				clusterStats.Nodes = append(clusterStats.Nodes, nodeStats)
 				mu.Unlock()
 			}
