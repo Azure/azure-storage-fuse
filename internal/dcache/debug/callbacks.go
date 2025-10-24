@@ -153,7 +153,7 @@ func readLogsCallback(pFile *procFile) error {
 func readNodesStatsCallback(pFile *procFile) error {
 	nodesStats, err := rpc_client.GetNodesStats()
 	if err != nil {
-		log.Err("DebugFS::readNodesStatsCallback: failed to get cluster stats: %v", err)
+		log.Err("DebugFS::readNodesStatsCallback: failed to get nodes stats: %v", err)
 		return err
 	}
 
