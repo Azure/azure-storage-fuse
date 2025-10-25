@@ -178,8 +178,27 @@ func readClusterSummaryCallback(pFile *procFile) error {
 		clusterMap.Config.MaxRVs = 0
 	}
 
+	myRVs := cm.GetMyRVs()
+	myNodeId, err := common.GetNodeUUID()
+	_ = err
+	common.Assert(err == nil, err)
+
+	var myIP string
+	myRVNames := []string{}
+
+	if len(myRVs) > 0 {
+		for rvName, rv := range myRVs {
+			common.Assert(myNodeId == rv.NodeId, myNodeId, rv.NodeId, rvName)
+			myRVNames = append(myRVNames, rvName)
+			myIP = rv.IPAddress
+		}
+	}
+
 	summary := dcache.ClusterSummary{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		MyNodeId:  myNodeId,
+		MyIPAddr:  myIP,
+		MyRVs:     myRVNames,
 		Clustermap: dcache.ClustermapSummary{
 			Readonly:        clusterMap.Readonly,
 			Epoch:           clusterMap.Epoch,
@@ -203,11 +222,8 @@ func readClusterSummaryCallback(pFile *procFile) error {
 
 	// RV summary
 	for _, rv := range clusterMap.RVMap {
-		switch rv.State {
-		case dcache.StateOffline:
+		if rv.State == dcache.StateOffline {
 			summary.RVs.Offline++
-		default:
-			summary.RVs.Online++
 		}
 	}
 
@@ -225,7 +241,6 @@ func readClusterSummaryCallback(pFile *procFile) error {
 		}
 	}
 
-	var err error
 	pFile.buf, err = json.MarshalIndent(summary, "", "  ")
 	if err != nil {
 		log.Err("DebugFS::readClusterSummaryCallback: marshal failed: %v", err)

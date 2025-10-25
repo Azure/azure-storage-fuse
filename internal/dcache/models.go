@@ -216,6 +216,9 @@ type ComponentRVUpdateMessage struct {
 
 type ClusterSummary struct {
 	Timestamp  string            `json:"timestamp"`
+	MyNodeId   string            `json:"my_node_id"`
+	MyIPAddr   string            `json:"my_ipaddr"`
+	MyRVs      []string          `json:"my_rvs"`
 	Clustermap ClustermapSummary `json:"clustermap"`
 	Nodes      NodesSummary      `json:"nodes"`
 	RVs        RVsSummary        `json:"rvs"`
@@ -239,7 +242,6 @@ type NodesSummary struct {
 
 type RVsSummary struct {
 	Count   int64 `json:"count"`
-	Online  int64 `json:"online"`
 	Offline int64 `json:"offline"`
 }
 
