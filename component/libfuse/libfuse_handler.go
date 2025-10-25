@@ -889,7 +889,6 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Delete(handle.ID)
-	C.release_native_file_object(fi)
 
 	// decrement open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
