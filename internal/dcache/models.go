@@ -129,8 +129,8 @@ type DCacheConfig struct {
 	ChunkSizeMB            uint64 `json:"chunk-size-mb"`
 	StripeWidth            uint64 `json:"stripe-width"`
 	NumReplicas            uint32 `json:"num-replicas"`
-	MaxRVs                 uint32 `json:"max-rvs"`
-	MVsPerRV               uint64 `json:"mvs-per-rv"`
+	MaxRVs                 uint32 `json:"max-rvs,omitzero"`
+	MVsPerRV               uint64 `json:"mvs-per-rv,omitzero"`
 	RvFullThreshold        uint64 `json:"rv-full-threshold"`
 	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold"`
 	HeartbeatSeconds       uint16 `json:"heartbeat-seconds"`

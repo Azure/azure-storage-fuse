@@ -173,6 +173,11 @@ func readClusterSummaryCallback(pFile *procFile) error {
 	// Get current clustermap copy (local view).
 	clusterMap := cm.GetClusterMap()
 
+	if cm.RingBasedMVPlacement {
+		clusterMap.Config.MVsPerRV = 0
+		clusterMap.Config.MaxRVs = 0
+	}
+
 	summary := dcache.ClusterSummary{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Clustermap: dcache.ClustermapSummary{

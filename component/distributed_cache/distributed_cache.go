@@ -505,8 +505,24 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	cm.RingBasedMVPlacement = distributedCache.cfg.RingBasedMVPlacement
 
 	if cm.RingBasedMVPlacement {
-		// Set this very high for ring based MV placement.
+		if config.IsSet(compName + ".max-rvs") {
+			return fmt.Errorf("config error in %s: [max-rvs and ring-based-mv-placement cannot be set together]",
+				distributedCache.Name())
+		}
+		if config.IsSet(compName + ".mvs-per-rv") {
+			return fmt.Errorf("config error in %s: [mvs-per-rv and ring-based-mv-placement cannot be set together]",
+				distributedCache.Name())
+		}
+
+		//
+		// Set these very high for ring based MV placement, as they don't make sense in that mode and
+		// we don't want them to limit anything.
+		//
 		cm.MaxMVsPerRV = 100000
+		distributedCache.cfg.MVsPerRV = 10000
+
+		log.Info("DistributedCache::Configure : Forcing very high MVsPerRV (%d) for RingBasedMVPlacement",
+			distributedCache.cfg.MVsPerRV)
 	}
 
 	if !config.IsSet(compName + ".heartbeat-duration") {
@@ -538,13 +554,7 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if config.IsSet(compName + ".mvs-per-rv") {
 		// If user sets mvs-per-rv in the config then that value MUST be honoured.
 		cm.MVsPerRVLocked = true
-
-		// For now we don't allow mvs-per-rv config with ring-based-mv-placement.
-		if cm.RingBasedMVPlacement {
-			return fmt.Errorf("config error in %s: [cannot set mvs-per-rv when ring-based-mv-placement is true]",
-				distributedCache.Name())
-		}
-	} else {
+	} else if !cm.RingBasedMVPlacement {
 		common.Assert(distributedCache.cfg.MaxRVs > 0, distributedCache.cfg)
 		common.Assert(distributedCache.cfg.Replicas > 0, distributedCache.cfg)
 		common.Assert(cm.MinMVsPerRV < cm.MaxMVsPerRV, cm.MinMVsPerRV, cm.MaxMVsPerRV)
@@ -591,12 +601,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		distributedCache.cfg.MVsPerRV =
 			uint64(math.Ceil(float64(numMVs*int64(distributedCache.cfg.Replicas)) /
 				float64(distributedCache.cfg.MaxRVs)))
-
-		// For ring based MV placement, we don't want to limit MVsPerRV, set it very high.
-		if cm.RingBasedMVPlacement {
-			log.Info("DistributedCache::Configure : Forcing high MVsPerRV for RingBasedMVPlacement")
-			distributedCache.cfg.MVsPerRV = 10000
-		}
 
 		log.Info("DistributedCache::Configure : cfg.MVsPerRV: %d, minMVs: %d, maxMVs: %d, replicas: %d, maxRVs: %d",
 			distributedCache.cfg.MVsPerRV, minMVs, maxMVs, distributedCache.cfg.Replicas, distributedCache.cfg.MaxRVs)
