@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1760858842174,
+  "lastUpdate": 1761464137400,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1234,6 +1234,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 8819.920461335547,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4b679ae9a43c3d6ff4aa5d744280dc5ef3aa5849",
+          "message": "Updating release date (#2032)",
+          "timestamp": "2025-10-16T04:32:59Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4b679ae9a43c3d6ff4aa5d744280dc5ef3aa5849"
+        },
+        "date": 1761464137106,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 451.72553687920896,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 341.2326055506837,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 9010.07816397441,
             "unit": "milliseconds"
           }
         ]
