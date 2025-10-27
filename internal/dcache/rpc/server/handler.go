@@ -98,7 +98,7 @@ var (
 )
 
 // This will limit the number of concurrent PutChunkDC requests which are forwarding chunks.
-var maxPutChunkDCForwardReqs = make(chan struct{}, 256)
+var maxPutChunkDCForwardReqs = make(chan struct{}, 1024)
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
 var _ service.ChunkService = &ChunkServiceHandler{}
@@ -2865,18 +2865,31 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 	select {
 	case <-maxPutChunkDCForwardReqs:
 	case <-time.After(10 * time.Second):
-		return &models.PutChunkDCResponse{
-			Responses: map[string]*models.PutChunkResponseOrError{
-				nexthopRV: {
-					Response: nil,
-					Error: &models.ResponseError{
-						// todo: create new error code for throttle
-						Code: models.ErrorCode_ThriftError,
-						Message: fmt.Sprintf("ChunkServiceHandler::forwardPutChunk: throttle request, Timed out waiting to forward PutChunk to nexthop RV %s/%s on node %s",
-							nexthopRV, req.Chunk.Address.MvName, nexthopNodeId),
-					},
+		rpcResponses := map[string]*models.PutChunkResponseOrError{
+			nexthopRV: {
+				Response: nil,
+				Error: &models.ResponseError{
+					// todo: create new error code for throttle
+					Code: models.ErrorCode_ThriftError,
+					Message: fmt.Sprintf("ChunkServiceHandler::forwardPutChunk: throttle request, Timed out waiting to forward PutChunk to nexthop RV %s/%s on node %s",
+						nexthopRV, req.Chunk.Address.MvName, nexthopNodeId),
 				},
 			},
+		}
+
+		for _, rv := range nextRVs {
+			rpcResponses[rv] = &models.PutChunkResponseOrError{
+				Response: nil,
+				Error: &models.ResponseError{
+					Code: models.ErrorCode_ThriftError,
+					Message: fmt.Sprintf("ChunkServiceHandler::forwardPutChunk: throttle request, Timed out waiting to forward PutChunk to nexthop RV %s/%s on node %s",
+						nexthopRV, req.Chunk.Address.MvName, nexthopNodeId),
+				},
+			}
+		}
+
+		return &models.PutChunkDCResponse{
+			Responses: rpcResponses,
 		}
 	}
 
