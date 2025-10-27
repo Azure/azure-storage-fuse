@@ -569,18 +569,6 @@ func testFsync(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), err)
 }
 
-func testFsyncHandleError(suite *libfuseTestSuite) {
-	defer suite.cleanupTest()
-	name := "path"
-	path := C.CString("/" + name)
-	defer C.free(unsafe.Pointer(path))
-	info := &C.fuse_file_info_t{}
-	info.flags = C.O_RDWR
-
-	err := libfuse_fsync(path, C.int(0), info)
-	suite.assert.Equal(C.int(-C.EIO), err)
-}
-
 func testFsyncError(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"

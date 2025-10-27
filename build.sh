@@ -37,6 +37,6 @@ else
         ./tools/assert-remover/undo.sh
     else
         echo "Building blobfuse2 debug build"
-        go build -o blobfuse2
+        go build -race -o blobfuse2
     fi
 fi

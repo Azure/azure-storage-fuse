@@ -54,7 +54,6 @@
 #endif
 
 #include "libfuse_defs.h"
-#include "native_file_io.h"
 
 // Method to populate the fuse structure with our callback methods
 static int populate_callbacks(fuse_operations_t *opt)
@@ -73,7 +72,7 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->open       = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_open;
 
     // These are methods declared in C to do read/write operation directly on file for better performance
-    #if 1
+    #if 0
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read_file;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write_file;
     opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
@@ -174,6 +173,7 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
     #endif
     );
 }
+
 
 static void make_file_handle_direct_io(fuse_file_info_t *fi) {
   fi->direct_io = 1;
