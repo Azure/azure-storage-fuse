@@ -187,7 +187,17 @@ type rvInfo struct {
 	totalBytesRead atomic.Int64
 
 	// Number of chunks queued to be read/written from/to this RV.
+	// These are counted right around the place the actual read/write syscall is made, hence it's
+	// a measure of load on the disk corresponding to this RV.
 	qsize atomic.Int64
+
+	// Active chunks currently allocated for this RV.
+	// This counts how many chunks are currently allocated for IOs to this RV.
+	// Note that for a PutChunkDC a chunk is allocated as soon as the RPC is received, and remains
+	// allocated until the RPC completes with all downstream RVs completing their writes.
+	// For a PutChunk, the chunk is allocated as soon as the RPC is received, and remains allocated
+	// till the write to the local disk completes.
+	asize atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -2626,7 +2636,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 				return &models.PutChunkResponse{
 					TimeTaken:      time.Since(startTime).Microseconds(),
-					Qsize:          rvInfo.qsize.Load(),
+					Qsize:          rvInfo.asize.Load(),
 					AvailableSpace: availableSpace,
 					ComponentRV:    mvInfo.getComponentRVs(),
 				}, nil
@@ -2704,7 +2714,7 @@ dummy_write:
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
-		Qsize:          rvInfo.qsize.Load(),
+		Qsize:          rvInfo.asize.Load(),
 		AvailableSpace: availableSpace,
 		ComponentRV:    mvInfo.getComponentRVs(),
 	}
@@ -2756,6 +2766,13 @@ func (h *ChunkServiceHandler) PutChunkDC(ctx context.Context, req *models.PutChu
 
 	// Nexthop RV must not be repeated in NextRVs.
 	common.Assert(!slices.Contains(req.NextRVs, rvInfo.rvName), rvInfo.rvName, req.NextRVs)
+
+	rvInfo.asize.Add(1)
+
+	defer func() {
+		common.Assert(rvInfo.asize.Load() > 0, rvInfo.asize.Load(), rvInfo.rvName)
+		rvInfo.asize.Add(-1)
+	}()
 
 	var rpcResp *models.PutChunkDCResponse
 	var err error
