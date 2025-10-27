@@ -153,7 +153,7 @@ func readLogsCallback(pFile *procFile) error {
 func readLogsHelpCallback(pFile *procFile) error {
 	help := `{
 	"output_dir": "/local/dir/where/log/bundles/should/be/saved",
-	"number_of_logs": 4
+	"number_of_logs": [1-10]
 }
 `
 	pFile.buf = []byte(help)
@@ -163,9 +163,7 @@ func readLogsHelpCallback(pFile *procFile) error {
 // proc file: cluster-summary
 // Provides a high-level summary of cluster state: nodes (online/offline), RVs and MVs state counts.
 func readClusterSummaryCallback(pFile *procFile) error {
-	//
 	// If user wants to view the latest cluster map, refresh it first.
-	//
 	if clusterSummaryReq.RefreshClusterMap {
 		cm.RefreshClusterMap(0)
 	}
@@ -173,6 +171,7 @@ func readClusterSummaryCallback(pFile *procFile) error {
 	// Get current clustermap copy (local view).
 	clusterMap := cm.GetClusterMap()
 
+	// For ring-based MV placement, hide RV/MV counts in the summary since they are not applicable.
 	if cm.RingBasedMVPlacement {
 		clusterMap.Config.MVsPerRV = 0
 		clusterMap.Config.MaxRVs = 0
@@ -190,6 +189,7 @@ func readClusterSummaryCallback(pFile *procFile) error {
 		for rvName, rv := range myRVs {
 			common.Assert(myNodeId == rv.NodeId, myNodeId, rv.NodeId, rvName)
 			myRVNames = append(myRVNames, rvName)
+			common.Assert(myIP == "" || myIP == rv.IPAddress, myIP, rv.IPAddress)
 			myIP = rv.IPAddress
 		}
 	}

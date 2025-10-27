@@ -80,12 +80,11 @@ var procDirList []*internal.ObjAttr
 //	}
 //
 // output_dir: local directory on the node where fs=debug/logs is read, where log bundles fetched from all nodes
-//
-//	would be stored.
-//
+//             would be stored.
 // number_of_logs: collect atmost this many most recent blobfuse2.log* files per node.
 //
 // Note: Since logs could be large, make sure that the output_dir has enough space to store the collected logs.
+
 type logsWriteRequest struct {
 	OutputDir string `json:"output_dir"`
 	NumLogs   int64  `json:"number_of_logs"`
@@ -175,7 +174,7 @@ func init() {
 		NumLogs:   1,
 	}
 
-	// Defaul cluster-summary is printed with the local cluster map (without refreshing it).
+	// Default cluster-summary is printed with the local cluster map (without refreshing it).
 	clusterSummaryReq = &clusterSummaryWriteRequest{
 		RefreshClusterMap: false,
 	}
@@ -219,7 +218,7 @@ func OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	isWrite := false
 
 	if options.Flags&syscall.O_RDWR != 0 || options.Flags&syscall.O_WRONLY != 0 {
-		if IsWriteable(options.Name) {
+		if !IsWriteable(options.Name) {
 			return nil, syscall.EACCES
 		}
 
@@ -331,7 +330,8 @@ func WriteFile(options *internal.WriteFileOptions) (int, error) {
 
 		log.Info("DebugFS::WriteFile: Updated cluster-summary config, refresh_clustermap=%v",
 			clusterSummaryReq.RefreshClusterMap)
-
+	} else {
+		common.Assert(false, options.Handle.Path)
 	}
 
 	return len(options.Data), nil
