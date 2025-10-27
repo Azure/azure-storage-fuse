@@ -3947,4 +3947,8 @@ func (h *ChunkServiceHandler) createLogTarLocked(numLogs int64) error {
 // Silence unused import errors for release builds.
 func init() {
 	slices.Contains([]int{0}, 0)
+	n := cap(maxPutChunkDCForwardReqs)
+	for _ = range n {
+		maxPutChunkDCForwardReqs <- struct{}{}
+	}
 }
