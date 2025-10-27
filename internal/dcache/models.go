@@ -129,8 +129,8 @@ type DCacheConfig struct {
 	ChunkSizeMB            uint64 `json:"chunk-size-mb"`
 	StripeWidth            uint64 `json:"stripe-width"`
 	NumReplicas            uint32 `json:"num-replicas"`
-	MaxRVs                 uint32 `json:"max-rvs"`
-	MVsPerRV               uint64 `json:"mvs-per-rv"`
+	MaxRVs                 uint32 `json:"max-rvs,omitzero"`
+	MVsPerRV               uint64 `json:"mvs-per-rv,omitzero"`
 	RvFullThreshold        uint64 `json:"rv-full-threshold"`
 	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold"`
 	HeartbeatSeconds       uint16 `json:"heartbeat-seconds"`
@@ -212,6 +212,45 @@ type ComponentRVUpdateMessage struct {
 	QueuedAt   time.Time
 	Err        chan error
 	Closed     bool // true if Err channel is closed after adding an error, and no new error must be added.
+}
+
+type ClusterSummary struct {
+	Timestamp  string            `json:"timestamp"`
+	MyNodeId   string            `json:"my_node_id"`
+	MyIPAddr   string            `json:"my_ipaddr"`
+	MyRVs      []string          `json:"my_rvs"`
+	Clustermap ClustermapSummary `json:"clustermap"`
+	Nodes      NodesSummary      `json:"nodes"`
+	RVs        RVsSummary        `json:"rvs"`
+	MVs        MVsSummary        `json:"mvs"`
+}
+
+type ClustermapSummary struct {
+	Readonly        bool         `json:"readonly"`
+	Epoch           int64        `json:"epoch"`
+	CreatedAt       string       `json:"created-at"`
+	LastUpdatedAt   string       `json:"last_updated_at"`
+	LastUpdatedBy   string       `json:"last_updated_by"`
+	Config          DCacheConfig `json:"config"`
+	LastRefreshedAt string       `json:"last_refreshed_at"`
+}
+
+type NodesSummary struct {
+	Count   int64 `json:"count"`
+	Offline int64 `json:"offline"`
+}
+
+type RVsSummary struct {
+	Count   int64 `json:"count"`
+	Offline int64 `json:"offline"`
+}
+
+type MVsSummary struct {
+	Count    int64 `json:"count"`
+	Online   int64 `json:"online"`
+	Degraded int64 `json:"degraded"`
+	Syncing  int64 `json:"syncing"`
+	Offline  int64 `json:"offline"`
 }
 
 // Stats for all nodes in the cluster.
