@@ -193,13 +193,14 @@ func GetNodesStats() (*dcache.NodesStats, error) {
 				}
 
 				nodeInfo.HostName = resp.HostName
-				nodeInfo.MemUsedBytes = resp.MemUsedBytes
-				nodeInfo.MemTotalBytes = resp.MemTotalBytes
-				nodeInfo.Timestamp = resp.Timestamp
+				nodeInfo.IPAddress = resp.IpAddress
+				nodeInfo.MemUsed = bytesToReadable(resp.MemUsedBytes)
+				nodeInfo.MemTotal = bytesToReadable(resp.MemTotalBytes)
+				nodeInfo.PercentMemUsed = resp.PercentMemUsed
 
 				mu.Lock()
-				nodesStats.Aggregate.MemUsedBytes += nodeInfo.MemUsedBytes
-				nodesStats.Aggregate.MemTotalBytes += nodeInfo.MemTotalBytes
+				nodesStats.Aggregate.MemUsedBytes += resp.MemUsedBytes
+				nodesStats.Aggregate.MemTotalBytes += resp.MemTotalBytes
 				nodesStats.Nodes = append(nodesStats.Nodes, nodeInfo)
 				mu.Unlock()
 			}
@@ -215,5 +216,30 @@ func GetNodesStats() (*dcache.NodesStats, error) {
 	// Wait for workers to finish
 	wg.Wait()
 
+	// Prepare aggregate stats
+	nodesStats.Aggregate.MemUsed = bytesToReadable(nodesStats.Aggregate.MemUsedBytes)
+	nodesStats.Aggregate.MemTotal = bytesToReadable(nodesStats.Aggregate.MemTotalBytes)
+	if nodesStats.Aggregate.MemTotalBytes > 0 {
+		percentUsed := (float64(nodesStats.Aggregate.MemUsedBytes) /
+			float64(nodesStats.Aggregate.MemTotalBytes)) * 100.0
+		nodesStats.Aggregate.PercentMemUsed = fmt.Sprintf("%.2f%%", percentUsed)
+	}
+
 	return nodesStats, nil
+}
+
+// Convert uint64 value in bytes to readable format
+func bytesToReadable(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

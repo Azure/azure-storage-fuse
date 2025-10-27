@@ -414,13 +414,14 @@ bufferedRead:
 	return n, nil
 }
 
-func getMemoryInfo() (uint64, uint64, error) {
+func getMemoryInfo() (uint64, uint64, string, error) {
 	memStat, err := mem.VirtualMemory()
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 
-	return memStat.Total, memStat.Used, nil
+	percentMemUsed := fmt.Sprintf("%.2f%%", memStat.UsedPercent)
+	return memStat.Total, memStat.Used, percentMemUsed, nil
 }
 
 // Silence unused import errors for release builds.

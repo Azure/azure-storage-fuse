@@ -62,10 +62,11 @@ func (suite *handlerTestSuite) TestCreateLogTar() {
 }
 
 func (suite *handlerTestSuite) TestGetMemoryInfo() {
-	total, used, err := getMemoryInfo()
+	total, used, usedPercent, err := getMemoryInfo()
 	suite.assert.NoError(err)
 	suite.assert.Greater(total, int64(0))
 	suite.assert.Greater(used, int64(0))
+	suite.assert.NotEmpty(usedPercent)
 }
 
 func TestHandlerTestSuite(t *testing.T) {

@@ -225,15 +225,19 @@ type NodesStats struct {
 
 // Stats for a single node in the cluster.
 type NodeInfo struct {
-	NodeID        string `json:"node_id"`
-	HostName      string `json:"hostname"`
-	MemUsedBytes  int64  `json:"mem_used_bytes"`
-	MemTotalBytes int64  `json:"mem_total_bytes"`
-	Timestamp     string `json:"timestamp"`
+	NodeID         string `json:"node_id"`
+	HostName       string `json:"hostname"`
+	IPAddress      string `json:"ip_address"`
+	MemUsed        string `json:"mem_used"`
+	MemTotal       string `json:"mem_total"`
+	PercentMemUsed string `json:"percent_mem_used"`
 }
 
 // Aggregated stats across all nodes in the cluster.
 type NodesAggregate struct {
-	MemUsedBytes  int64 `json:"mem_used_bytes"`
-	MemTotalBytes int64 `json:"mem_total_bytes"`
+	MemUsedBytes   int64  `json:"-"`
+	MemTotalBytes  int64  `json:"-"`
+	MemUsed        string `json:"mem_used"`
+	MemTotal       string `json:"mem_total"`
+	PercentMemUsed string `json:"percent_mem_used"`
 }

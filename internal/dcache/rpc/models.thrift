@@ -189,11 +189,12 @@ struct GetNodeStatsRequest {
 }
 
 struct GetNodeStatsResponse {
-    1: string timestamp,
-    2: string nodeID,
-    3: string hostName,
+    1: string nodeID,
+    2: string hostName,
+    3: string ipAddress,
     4: i64 memUsedBytes,
     5: i64 memTotalBytes,
+    6: string percentMemUsed,
 }
 
 // Custom error codes returned by the ChunkServiceHandler

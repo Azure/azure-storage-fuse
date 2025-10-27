@@ -6575,25 +6575,23 @@ func (p *GetNodeStatsRequest) Validate() error {
 }
 
 // Attributes:
-//   - Timestamp
 //   - NodeID
 //   - HostName
+//   - IpAddress
 //   - MemUsedBytes
 //   - MemTotalBytes
+//   - PercentMemUsed
 type GetNodeStatsResponse struct {
-	Timestamp     string `thrift:"timestamp,1" db:"timestamp" json:"timestamp"`
-	NodeID        string `thrift:"nodeID,2" db:"nodeID" json:"nodeID"`
-	HostName      string `thrift:"hostName,3" db:"hostName" json:"hostName"`
-	MemUsedBytes  int64  `thrift:"memUsedBytes,4" db:"memUsedBytes" json:"memUsedBytes"`
-	MemTotalBytes int64  `thrift:"memTotalBytes,5" db:"memTotalBytes" json:"memTotalBytes"`
+	NodeID         string `thrift:"nodeID,1" db:"nodeID" json:"nodeID"`
+	HostName       string `thrift:"hostName,2" db:"hostName" json:"hostName"`
+	IpAddress      string `thrift:"ipAddress,3" db:"ipAddress" json:"ipAddress"`
+	MemUsedBytes   int64  `thrift:"memUsedBytes,4" db:"memUsedBytes" json:"memUsedBytes"`
+	MemTotalBytes  int64  `thrift:"memTotalBytes,5" db:"memTotalBytes" json:"memTotalBytes"`
+	PercentMemUsed string `thrift:"percentMemUsed,6" db:"percentMemUsed" json:"percentMemUsed"`
 }
 
 func NewGetNodeStatsResponse() *GetNodeStatsResponse {
 	return &GetNodeStatsResponse{}
-}
-
-func (p *GetNodeStatsResponse) GetTimestamp() string {
-	return p.Timestamp
 }
 
 func (p *GetNodeStatsResponse) GetNodeID() string {
@@ -6604,12 +6602,20 @@ func (p *GetNodeStatsResponse) GetHostName() string {
 	return p.HostName
 }
 
+func (p *GetNodeStatsResponse) GetIpAddress() string {
+	return p.IpAddress
+}
+
 func (p *GetNodeStatsResponse) GetMemUsedBytes() int64 {
 	return p.MemUsedBytes
 }
 
 func (p *GetNodeStatsResponse) GetMemTotalBytes() int64 {
 	return p.MemTotalBytes
+}
+
+func (p *GetNodeStatsResponse) GetPercentMemUsed() string {
+	return p.PercentMemUsed
 }
 func (p *GetNodeStatsResponse) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -6675,6 +6681,16 @@ func (p *GetNodeStatsResponse) Read(ctx context.Context, iprot thrift.TProtocol)
 					return err
 				}
 			}
+		case 6:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField6(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
 		default:
 			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
 				return err
@@ -6694,7 +6710,7 @@ func (p *GetNodeStatsResponse) ReadField1(ctx context.Context, iprot thrift.TPro
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 1: ", err)
 	} else {
-		p.Timestamp = v
+		p.NodeID = v
 	}
 	return nil
 }
@@ -6703,7 +6719,7 @@ func (p *GetNodeStatsResponse) ReadField2(ctx context.Context, iprot thrift.TPro
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 2: ", err)
 	} else {
-		p.NodeID = v
+		p.HostName = v
 	}
 	return nil
 }
@@ -6712,7 +6728,7 @@ func (p *GetNodeStatsResponse) ReadField3(ctx context.Context, iprot thrift.TPro
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 3: ", err)
 	} else {
-		p.HostName = v
+		p.IpAddress = v
 	}
 	return nil
 }
@@ -6731,6 +6747,15 @@ func (p *GetNodeStatsResponse) ReadField5(ctx context.Context, iprot thrift.TPro
 		return thrift.PrependError("error reading field 5: ", err)
 	} else {
 		p.MemTotalBytes = v
+	}
+	return nil
+}
+
+func (p *GetNodeStatsResponse) ReadField6(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 6: ", err)
+	} else {
+		p.PercentMemUsed = v
 	}
 	return nil
 }
@@ -6755,6 +6780,9 @@ func (p *GetNodeStatsResponse) Write(ctx context.Context, oprot thrift.TProtocol
 		if err := p.writeField5(ctx, oprot); err != nil {
 			return err
 		}
+		if err := p.writeField6(ctx, oprot); err != nil {
+			return err
+		}
 	}
 	if err := oprot.WriteFieldStop(ctx); err != nil {
 		return thrift.PrependError("write field stop error: ", err)
@@ -6766,40 +6794,40 @@ func (p *GetNodeStatsResponse) Write(ctx context.Context, oprot thrift.TProtocol
 }
 
 func (p *GetNodeStatsResponse) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "timestamp", thrift.STRING, 1); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:timestamp: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "nodeID", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:nodeID: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.Timestamp)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.timestamp (1) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.NodeID)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.nodeID (1) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:timestamp: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:nodeID: ", p), err)
 	}
 	return err
 }
 
 func (p *GetNodeStatsResponse) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "nodeID", thrift.STRING, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:nodeID: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "hostName", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:hostName: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.NodeID)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.nodeID (2) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.HostName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.hostName (2) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:nodeID: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:hostName: ", p), err)
 	}
 	return err
 }
 
 func (p *GetNodeStatsResponse) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "hostName", thrift.STRING, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:hostName: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "ipAddress", thrift.STRING, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:ipAddress: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.HostName)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.hostName (3) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.IpAddress)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.ipAddress (3) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:hostName: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:ipAddress: ", p), err)
 	}
 	return err
 }
@@ -6830,13 +6858,23 @@ func (p *GetNodeStatsResponse) writeField5(ctx context.Context, oprot thrift.TPr
 	return err
 }
 
+func (p *GetNodeStatsResponse) writeField6(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "percentMemUsed", thrift.STRING, 6); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:percentMemUsed: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.PercentMemUsed)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.percentMemUsed (6) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 6:percentMemUsed: ", p), err)
+	}
+	return err
+}
+
 func (p *GetNodeStatsResponse) Equals(other *GetNodeStatsResponse) bool {
 	if p == other {
 		return true
 	} else if p == nil || other == nil {
-		return false
-	}
-	if p.Timestamp != other.Timestamp {
 		return false
 	}
 	if p.NodeID != other.NodeID {
@@ -6845,10 +6883,16 @@ func (p *GetNodeStatsResponse) Equals(other *GetNodeStatsResponse) bool {
 	if p.HostName != other.HostName {
 		return false
 	}
+	if p.IpAddress != other.IpAddress {
+		return false
+	}
 	if p.MemUsedBytes != other.MemUsedBytes {
 		return false
 	}
 	if p.MemTotalBytes != other.MemTotalBytes {
+		return false
+	}
+	if p.PercentMemUsed != other.PercentMemUsed {
 		return false
 	}
 	return true

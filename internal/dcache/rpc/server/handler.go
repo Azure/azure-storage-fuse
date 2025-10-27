@@ -3923,7 +3923,7 @@ func (h *ChunkServiceHandler) GetNodeStats(ctx context.Context, req *models.GetN
 	_ = err
 	common.Assert(err == nil, err)
 
-	memTotal, memUsed, err := getMemoryInfo()
+	memTotal, memUsed, percentMemUsed, err := getMemoryInfo()
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to get memory info: %v", err)
 		log.Err("ChunkServiceHandler::GetNodeStats: %s", errStr)
@@ -3931,11 +3931,12 @@ func (h *ChunkServiceHandler) GetNodeStats(ctx context.Context, req *models.GetN
 	}
 
 	resp := &models.GetNodeStatsResponse{
-		Timestamp:     time.Now().UTC().Format(time.RFC3339),
-		NodeID:        rpc.GetMyNodeUUID(),
-		HostName:      hostname,
-		MemTotalBytes: int64(memTotal),
-		MemUsedBytes:  int64(memUsed),
+		NodeID:         rpc.GetMyNodeUUID(),
+		HostName:       hostname,
+		IpAddress:      cm.NodeIdToIP(rpc.GetMyNodeUUID()),
+		MemTotalBytes:  int64(memTotal),
+		MemUsedBytes:   int64(memUsed),
+		PercentMemUsed: percentMemUsed,
 	}
 
 	return resp, nil
