@@ -97,6 +97,9 @@ var (
 	SlowReadWriteThreshold = 2 * time.Second
 )
 
+// This will limit the number of concurrent PutChunkDC requests which are forwarding chunks.
+var maxPutChunkDCForwardReqs = make(chan struct{}, 256)
+
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
 var _ service.ChunkService = &ChunkServiceHandler{}
 
@@ -2856,6 +2859,30 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 
 	log.Debug("ChunkServiceHandler::forwardPutChunk: Writing to nexthop RV %s/%s (RVId: %s) on node %s",
 		nexthopRV, req.Chunk.Address.MvName, nexthopRVId, nexthopNodeId)
+
+	// throttle the request, if there are enough forwardPutChunk requests already in the system.
+	// This will gracefully eliminate the process using so much memory and getting killed by OOM killer.
+	select {
+	case <-maxPutChunkDCForwardReqs:
+	case <-time.After(10 * time.Second):
+		return &models.PutChunkDCResponse{
+			Responses: map[string]*models.PutChunkResponseOrError{
+				nexthopRV: {
+					Response: nil,
+					Error: &models.ResponseError{
+						// todo: create new error code for throttle
+						Code: models.ErrorCode_ThriftError,
+						Message: fmt.Sprintf("ChunkServiceHandler::forwardPutChunk: throttle request, Timed out waiting to forward PutChunk to nexthop RV %s/%s on node %s",
+							nexthopRV, req.Chunk.Address.MvName, nexthopNodeId),
+					},
+				},
+			},
+		}
+	}
+
+	defer func() {
+		maxPutChunkDCForwardReqs <- struct{}{}
+	}()
 
 	//
 	// Create PutChunkRequest for the nexthop RV.
