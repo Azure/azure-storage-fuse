@@ -124,6 +124,11 @@ func GetClusterMap() dcache.ClusterMap {
 	return clusterMap.getClusterMap()
 }
 
+// When was the local clustermap copy last refreshed (from the metadata store).
+func GetClusterMapLastRefreshTime() time.Time {
+	return clusterMap.lastRefreshTime
+}
+
 // It will return all the RVs Map <rvName, RV> for this particular node as per local cache copy of cluster map.
 func GetMyRVs() map[string]dcache.RawVolume {
 	return clusterMap.getMyRVs()
@@ -224,6 +229,10 @@ func GetActiveMVNames() []string {
 
 func GetAllNodes() map[string]struct{} {
 	return clusterMap.getAllNodes()
+}
+
+func GetOnlineNodes() map[string]struct{} {
+	return clusterMap.getOnlineNodes()
 }
 
 func IsClusterReadonly() bool {
@@ -502,6 +511,7 @@ var (
 // methods for querying clustermap.
 type ClusterMap struct {
 	localMap            *dcache.ClusterMap
+	lastRefreshTime     time.Time
 	mu                  sync.RWMutex // Synchronizes access to localMap.
 	localClusterMapPath string
 }
@@ -545,6 +555,7 @@ func (c *ClusterMap) loadLocalMap() {
 	defer c.mu.Unlock()
 
 	c.localMap = &newClusterMap
+	c.lastRefreshTime = time.Now()
 
 	log.Debug("ClusterMap::loadLocalMap: Updated local clustermap in %s, epoch: %d",
 		c.localClusterMapPath, newClusterMap.Epoch)
@@ -672,6 +683,20 @@ func (c *ClusterMap) getAllNodes() map[string]struct{} {
 
 	for _, rv := range c.getLocalMap().RVMap {
 		nodesMap[rv.NodeId] = struct{}{}
+	}
+
+	return nodesMap
+}
+
+// Scan through the RV list and return the set of online nodes.
+// An online node is one which has at least one RV in online state.
+func (c *ClusterMap) getOnlineNodes() map[string]struct{} {
+	nodesMap := make(map[string]struct{})
+
+	for _, rv := range c.getLocalMap().RVMap {
+		if rv.State == dcache.StateOnline {
+			nodesMap[rv.NodeId] = struct{}{}
+		}
 	}
 
 	return nodesMap
