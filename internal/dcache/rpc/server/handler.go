@@ -197,6 +197,10 @@ type rvInfo struct {
 	// allocated until the RPC completes with all downstream RVs completing their writes.
 	// For a PutChunk, the chunk is allocated as soon as the RPC is received, and remains allocated
 	// till the write to the local disk completes.
+	// This is different from qsize which counts only the chunks which are performing actual disk IO.
+	// Using asize as a measure of load on the RV helps to keep not only the disk load but also memory
+	// usage in check, as it counts total chunks which are currently active for this RV (PutChunkDC
+	// received but not yet completed).
 	asize atomic.Int64
 }
 
@@ -2634,8 +2638,12 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 					availableSpace = 0
 				}
 
+				//
+				// Using qsize for Qsize only accounts for disk load while asize accounts for memory + disk load.
+				//
 				return &models.PutChunkResponse{
-					TimeTaken:      time.Since(startTime).Microseconds(),
+					TimeTaken: time.Since(startTime).Microseconds(),
+					//Qsize:          rvInfo.qsize.Load(),
 					Qsize:          rvInfo.asize.Load(),
 					AvailableSpace: availableSpace,
 					ComponentRV:    mvInfo.getComponentRVs(),
@@ -2712,8 +2720,12 @@ dummy_write:
 		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
 	}
 
+	//
+	// Using qsize for Qsize only accounts for disk load while asize accounts for memory + disk load.
+	//
 	resp := &models.PutChunkResponse{
-		TimeTaken:      time.Since(startTime).Microseconds(),
+		TimeTaken: time.Since(startTime).Microseconds(),
+		//Qsize:          rvInfo.qsize.Load(),
 		Qsize:          rvInfo.asize.Load(),
 		AvailableSpace: availableSpace,
 		ComponentRV:    mvInfo.getComponentRVs(),
@@ -2767,7 +2779,18 @@ func (h *ChunkServiceHandler) PutChunkDC(ctx context.Context, req *models.PutChu
 	// Nexthop RV must not be repeated in NextRVs.
 	common.Assert(!slices.Contains(req.NextRVs, rvInfo.rvName), rvInfo.rvName, req.NextRVs)
 
+	//
+	// One more chunk active for his RV.
+	// This takes memory, so we track it as "RV load" conveying it as the RV queue size to the client
+	// which will then use it for throttling, to avoid overwhelming already loaded RVs.
+	//
+	// TODO: See if we should increment asize for reads too. Since read buffers are allocated for a very
+	//       short time, it may not be needed.
+	//
 	rvInfo.asize.Add(1)
+
+	// Due to client side throttling, we should never have a very high asize.
+	common.Assert(rvInfo.asize.Load() < 10000, rvInfo.asize.Load(), rvInfo.rvName)
 
 	defer func() {
 		common.Assert(rvInfo.asize.Load() > 0, rvInfo.asize.Load(), rvInfo.rvName)
