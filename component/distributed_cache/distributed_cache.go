@@ -125,8 +125,8 @@ type DistributedCacheOptions struct {
 
 const (
 	compName                         = "distributed_cache"
-	defaultHeartBeatDurationInSecond = 5
 	defaultReplicas                  = 3
+	defaultHeartBeatDurationInSecond = 5
 	defaultMaxMissedHBs              = 5
 	defaultChunkSizeMB               = 16 // 16 MB
 	defaultMinNodes                  = 1
@@ -135,7 +135,7 @@ const (
 	defaultMVsPerRV                  = 10
 	defaultRvFullThreshold           = 95
 	defaultRvNearfullThreshold       = 80
-	defaultClustermapEpoch           = 300
+	defaultClustermapEpoch           = 40 // May need to increase for large clusters.
 	defaultRebalancePercentage       = 80
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
