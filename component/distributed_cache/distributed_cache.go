@@ -135,7 +135,7 @@ const (
 	defaultMVsPerRV                  = 10
 	defaultRvFullThreshold           = 95
 	defaultRvNearfullThreshold       = 80
-	defaultClustermapEpoch           = 40 // May need to increase for large clusters.
+	defaultClustermapEpoch           = 40 // All testing done with 40 secs, may need to increase for large clusters.
 	defaultRebalancePercentage       = 80
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"

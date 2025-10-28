@@ -232,6 +232,7 @@ type ClustermapSummary struct {
 	LastUpdatedAt   string       `json:"last_updated_at"`
 	LastUpdatedBy   string       `json:"last_updated_by"`
 	Config          DCacheConfig `json:"config"`
+	LastFetchedAt   string       `json:"last_fetched_at"`
 	LastRefreshedAt string       `json:"last_refreshed_at"`
 }
 

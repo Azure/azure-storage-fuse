@@ -653,7 +653,8 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	// If local clustermap is stored on a shared NFS folder and there are heavy read/write IOs going on,
 	// and NFS traffic shares the network interface with the chunk IO traffic, sometimes the simple file
 	// write above takes a long time (10+ secs), more than the usual microseconds, or the local disk may
-	// be unusuallly slow or busy. In any case this may cause unexpected issues.
+	// be unusuallly slow or busy or more likely we have lot of RAM which needs to be purged. In any case
+	// this may cause unexpected issues.
 	// Let the user know if it happens.
 	//
 	if time.Since(startWrite) > 2*time.Second {
@@ -1398,11 +1399,17 @@ const thresholdClusterMapEpochTime = 60
 func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcache.ClusterMap, etag *string) (bool, error) {
 	// Seconds elapsed since last clustermap update.
 	age := time.Since(time.Unix(clusterMap.LastUpdatedAt, 0))
-	// Age older than this indicates stale/stuck clustermap update, likely a node started update but died.
-	staleThreshold := time.Duration(int(cmi.config.ClustermapEpoch)+thresholdClusterMapEpochTime) * time.Second
-	// By this time we expect the clustermap update to be done by the leader node.
-	// If not done, we check heartbeats to see if the node is alive.
+
+	// By this time we normally expect the clustermap update to be done by the leader node.
+	// If not done, we check heartbeats to see if the leader node is alive, if dead we preempt ownership claim,
+	// else we give it some more time before preempting ownership (see staleThreshold below).
 	updateThreshold := time.Duration(int(cmi.config.ClustermapEpoch)+5) * time.Second
+
+	// If leader node is alive, it gets more time to finish the update, but if it doesn't finish then after
+	// staleThreshold we preempt ownership.
+	staleThreshold := time.Duration(int(cmi.config.ClustermapEpoch)+thresholdClusterMapEpochTime) * time.Second
+	common.Assert(staleThreshold > updateThreshold, staleThreshold, updateThreshold)
+
 	iAmLeaderNode := (clusterMap.LastUpdatedBy == cmi.myNodeId)
 	isLeaderAlive := true
 
@@ -1474,7 +1481,7 @@ preemptStuckUpdate:
 			clusterMap.LastUpdatedBy, clusterMap.LastUpdatedAt, age, cmi.myNodeId)
 	}
 
-	err := cmi.startClusterMapUpdate(clusterMap, etag, true /* isStuck */)
+	err := cmi.startClusterMapUpdate(clusterMap, etag, (clusterMap.Epoch%2 == 1) /* isStuck */)
 	if err != nil {
 		//
 		// We may race with some other node (or less likely, another thread in this node) trying to break the
@@ -1959,7 +1966,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 			return err
 		}
 
-		// clusterMapBeingUpdatedByAnotherNode() may have updated clusterMap.
+		// clusterMapBeingUpdatedByAnotherNode() may have updated clusterMap, reevaluate leader info.
 		leaderNode = clusterMap.LastUpdatedBy
 		leader = (leaderNode == cmi.myNodeId)
 
@@ -4548,24 +4555,26 @@ func collectHBForGivenNodeIds(nodeIds []string, initialHB bool) (map[string]dcac
 // Fetch the latest heartbeat epoch for the given nodeId.
 func getLatestHBForNode(nodeId string) (int64, error) {
 	nodeIds := []string{nodeId}
-	_, rvLastHB, nodes, _, err := collectHBForGivenNodeIds(nodeIds, false /* initialHB */)
-	_ = nodes
+	_, rvLastHB, _, _, err := collectHBForGivenNodeIds(nodeIds, false /* initialHB */)
 	if err != nil {
 		err = fmt.Errorf("collectHBForGivenNodeIds() failed for node %s: %v", nodeId, err)
 		log.Err("ClusterManager::getLatestHBForNode: %v", err)
+		common.Assert(false, err)
 		return -1, err
 	}
 
-	// Only one heartbeat requested, so a successful call must return heartbeat for that node.
-	common.Assert(len(nodes) == 1 && nodes[0] == nodeId, nodes, nodeId)
+	// Only one heartbeat requested, so a successful call must return heartbeat for that node,
+	// may have one or more RVs.
 	common.Assert(len(rvLastHB) > 0, rvLastHB, nodeId)
 
+	// Heartbeat is same for all RVs of a node, so return the first one.
 	for _, lastHB := range rvLastHB {
 		return int64(lastHB), nil
 	}
 
 	err = fmt.Errorf("ClusterManager::getLatestHBForNode: No heartbeat found for node %s", nodeId)
 	log.Err("%v", err)
+	common.Assert(false, err)
 	return -1, err
 }
 
@@ -5015,6 +5024,12 @@ var (
 	// leader (clusterMap.LastUpdatedBy), hence it's reset if/when leader change is detected.
 	latestHBFromClustermapLeader int64
 )
+
+// GetClusterMapLastFetchTime returns the time when the clustermap was last fetched from the metadata store.
+// Must be used only for printing cluster summary.
+func GetClusterMapLastFetchTime() time.Time {
+	return time.Unix(atomic.LoadInt64(&clustermapLastFetchedAt), 0)
+}
 
 // This must be called from DistributedCache component's Start() method.
 // dCacheConfig is the config as read from the config yaml.
