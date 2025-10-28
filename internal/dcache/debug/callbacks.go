@@ -43,6 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
@@ -206,6 +207,7 @@ func readClusterSummaryCallback(pFile *procFile) error {
 			LastUpdatedAt:   time.Unix(int64(clusterMap.LastUpdatedAt), 0).UTC().Format(time.RFC3339),
 			LastUpdatedBy:   clusterMap.LastUpdatedBy,
 			Config:          clusterMap.Config,
+			LastFetchedAt:   clustermanager.GetClusterMapLastFetchTime().UTC().Format(time.RFC3339),
 			LastRefreshedAt: cm.GetClusterMapLastRefreshTime().UTC().Format(time.RFC3339),
 		},
 		Nodes: dcache.NodesSummary{
