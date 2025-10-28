@@ -1398,6 +1398,7 @@ const thresholdClusterMapEpochTime = 60
 
 func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcache.ClusterMap, etag *string) (bool, error) {
 	// Seconds elapsed since last clustermap update.
+	common.Assert(clusterMap.LastUpdatedAt != 0, *clusterMap)
 	age := time.Since(time.Unix(clusterMap.LastUpdatedAt, 0))
 
 	// By this time we normally expect the clustermap update to be done by the leader node.
@@ -1426,8 +1427,8 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 				hbExpired := (time.Now().Unix() - atomic.LoadInt64(&latestHBFromClustermapLeader)) > hbExpirySeconds
 				isLeaderAlive = !hbExpired
 				//
-				// If leader is stuck we do not wait for staleThreshold to claim ownership, we do it after
-				// clusterMap epoch.
+				// If leader is dead/stuck we do not wait for staleThreshold to claim ownership, we do it more
+				// promptly, after clusterMap epoch.
 				//
 				if !isLeaderAlive {
 					goto preemptStuckUpdate
@@ -1946,9 +1947,6 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 		// Staleness check for non-leader.
 		stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
-		// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
-		leaderNode := clusterMap.LastUpdatedBy
-		leader := (leaderNode == cmi.myNodeId)
 
 		//
 		// If some other node/context is currently updating the clustermap, skip updating in this iteration, as
@@ -1966,9 +1964,12 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 			return err
 		}
 
-		// clusterMapBeingUpdatedByAnotherNode() may have updated clusterMap, reevaluate leader info.
-		leaderNode = clusterMap.LastUpdatedBy
-		leader = (leaderNode == cmi.myNodeId)
+		//
+		// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
+		// This must be done after  clusterMapBeingUpdatedByAnotherNode() as that may update clusterMap.
+		//
+		leaderNode := clusterMap.LastUpdatedBy
+		leader := (leaderNode == cmi.myNodeId)
 
 		if isClusterMapUpdateBlocked {
 			log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s), epoch %d, update started %d secs ago",
@@ -4569,6 +4570,8 @@ func getLatestHBForNode(nodeId string) (int64, error) {
 
 	// Heartbeat is same for all RVs of a node, so return the first one.
 	for _, lastHB := range rvLastHB {
+		log.Debug("ClusterManager::getLatestHBForNode: Latest heartbeat for node %s is %s (%s ago)",
+			nodeId, time.Unix(int64(lastHB), 0).Format(time.RFC3339), time.Since(time.Unix(int64(lastHB), 0)))
 		return int64(lastHB), nil
 	}
 
