@@ -1134,6 +1134,7 @@ processResponses:
 
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
+	return &WriteMvResponse{}, nil
 
 	var resp *WriteMvResponse
 	var err error
