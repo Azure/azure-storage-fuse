@@ -3927,6 +3927,7 @@ func (h *ChunkServiceHandler) GetNodeStats(ctx context.Context, req *models.GetN
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to get memory info: %v", err)
 		log.Err("ChunkServiceHandler::GetNodeStats: %s", errStr)
+		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 

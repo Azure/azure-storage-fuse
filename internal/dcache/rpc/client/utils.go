@@ -165,7 +165,7 @@ func GetNodesStats() (*dcache.NodesStats, error) {
 
 	//
 	// We can start stats collection in parallel on lot of nodes as it doesn't load any single
-	// node. It'll be limited by ingress network b/w and disk IO on the requesting node.
+	// node. Also, there's not a lof of incoming data on the calling node.
 	//
 	workerCount := min(1000, len(nodeMap))
 	jobs := make(chan string, workerCount)
