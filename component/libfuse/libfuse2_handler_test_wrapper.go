@@ -43,6 +43,7 @@ import "C"
 import (
 	"errors"
 	"io/fs"
+	"runtime/cgo"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -557,10 +558,8 @@ func testFsync(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	// libfuse component will return back handle in form of an integer value
-	// that needs to be converted back to a pointer to a handle object
-	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
+	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
+	suite.assert.NotNil(handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(nil)
@@ -585,10 +584,8 @@ func testFsyncError(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	// libfuse component will return back handle in form of an integer value
-	// that needs to be converted back to a pointer to a handle object
-	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
+	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
+	suite.assert.NotNil(handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(errors.New("failed to sync file"))
