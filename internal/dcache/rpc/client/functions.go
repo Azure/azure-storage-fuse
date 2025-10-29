@@ -1530,6 +1530,114 @@ func GetLogs(ctx context.Context, targetNodeID, outDir string, numLogs, chunkSiz
 	return outPath, nil
 }
 
+// GetNodeStats gets stats from target node.
+func GetNodeStats(ctx context.Context, targetNodeID string, req *models.GetNodeStatsRequest) (*models.GetNodeStatsResponse, error) {
+	common.Assert(req != nil)
+	common.Assert(common.IsValidUUID(targetNodeID), targetNodeID)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
+
+	reqStr := req.String()
+	log.Debug("rpc_client::GetNodeStats: Sending GetNodeStats request to node %s: %s", targetNodeID, reqStr)
+
+	//
+	// We retry once after resetting bad connections.
+	//
+	for i := 0; i < 2; i++ {
+		// Get RPC client from the client pool.
+		client, err := cp.getRPCClient(targetNodeID)
+		if err != nil {
+			err = fmt.Errorf("rpc_client::GetNodeStats: Failed to get RPC client for node %s %s: %v [%w]",
+				targetNodeID, reqStr, err, NoFreeRPCClient)
+			log.Err("%v", err)
+			return nil, err
+		}
+
+		// Call the rpc method.
+		resp, err := client.svcClient.GetNodeStats(ctx, req)
+		if err != nil {
+			log.Err("rpc_client::GetNodeStats: GetNodeStats failed to node %s %s: %v",
+				targetNodeID, reqStr, err)
+
+			//
+			// Only possible errors:
+			// - Actual RPC error returned by the server.
+			// - Broken pipe means we attempted to write the RPC request after the blobfuse2 process stopped.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			//   In this case we could send the request before the blobfuse2 process stopped but it
+			//   stopped before it could respond.
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
+			// - TimedOut means the node is down or cannot be reached over the n/w.
+			//
+			// All other errors other than RPC error indicate some problem with the target node or the
+			// n/w, so we delete all existing connections to the node, prohibit new connections for a
+			// short period and then create new connections when needed.
+			//
+			// TODO: See if we need to optimize any of these cases, i.e., don't delete all connections.
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsBrokenPipe(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
+
+			if rpc.IsBrokenPipe(err) || rpc.IsConnectionClosed(err) || rpc.IsConnectionReset(err) {
+				//
+				// Common reason for first time error could be that we have old connections and since
+				// then blobfuse2 process or the node has restarted causing those connections to fail
+				// with broken pipe or connection closed/reset errors, so first time around we don't
+				// mark the node as negative, but if retrying also fails with similar error, it means the
+				// blobfuse2 process is still down so we mark it as negative.
+				//
+				cp.deleteAllRPCClients(client, i == 1 /* confirmedBadNode */, false /* isClientClosed */)
+				if i == 1 {
+					return nil, err
+				}
+				err1 := cp.waitForNodeClientPoolToDelete(client.nodeID, client.nodeIDInt)
+				if err1 != nil {
+					return nil, err
+				}
+				// Continue with newly created client.
+				continue
+			} else if rpc.IsTimedOut(err) {
+				cp.deleteAllRPCClients(client, true /* confirmedBadNode */, false /* isClientClosed */)
+				return nil, err
+			}
+
+			// Fall through to release the RPC client.
+			resp = nil
+		} else {
+			//
+			// The RPC call to the target node succeeded. If the node or the RV is marked negative or iffy,
+			// clear it now.
+			//
+			cp.removeNegativeNode(targetNodeID)
+		}
+
+		// Release RPC client back to the pool.
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
+			log.Err("rpc_client::GetNodeStats: Failed to release RPC client for node %s %v: %v",
+				targetNodeID, reqStr, err1)
+			// Assert, but not fail the GetNodeStats call.
+			common.Assert(false, err1)
+		}
+
+		return resp, err
+	}
+
+	//
+	// We come here when we could not succeed even after resetting stale connections and retrying.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
+	//
+	return nil, fmt.Errorf("rpc_client::GetNodeStats: Could not find a valid RPC client for node %s %s",
+		targetNodeID, reqStr)
+}
+
 // cleanup closes all the RPC node client pools
 func Cleanup() error {
 	log.Info("rpc_client::Cleanup: Closing all node client pools")

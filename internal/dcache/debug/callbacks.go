@@ -264,6 +264,27 @@ func readClusterSummaryHelpCallback(pFile *procFile) error {
 	return nil
 }
 
+// proc file: nodes-stats
+// Get stats from all nodes in the cluster via RPCs and aggregate them into a NodesStats structure.
+func readNodesStatsCallback(pFile *procFile) error {
+	nodesStats, err := rpc_client.GetNodesStats()
+	if err != nil {
+		log.Err("DebugFS::readNodesStatsCallback: failed to get nodes stats: %v", err)
+		return err
+	}
+
+	common.Assert(nodesStats != nil)
+
+	pFile.buf, err = json.MarshalIndent(nodesStats, "", "  ")
+	if err != nil {
+		log.Err("DebugFS::readNodesStatsCallback: marshal failed: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	return nil
+}
+
 // Silence unused import errors for release builds.
 func init() {
 	common.IsValidUUID("00000000-0000-0000-0000-000000000000")

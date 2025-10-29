@@ -184,6 +184,19 @@ struct GetLogsResponse {
     5: string tarName // name of tarball file on server (e.g., <nodeID>-blobfuse2-logs-<time_RFC3339>.tar.gz)
 }
 
+struct GetNodeStatsRequest {
+    1: string senderNodeID,
+}
+
+struct GetNodeStatsResponse {
+    1: string nodeID,
+    2: string hostName,
+    3: string ipAddress,
+    4: i64 memUsedBytes,
+    5: i64 memTotalBytes,
+    6: string percentMemUsed,
+}
+
 // Custom error codes returned by the ChunkServiceHandler
 enum ErrorCode {
     InvalidRequest = 1,

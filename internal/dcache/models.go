@@ -253,3 +253,31 @@ type MVsSummary struct {
 	Syncing  int64 `json:"syncing"`
 	Offline  int64 `json:"offline"`
 }
+
+// Stats for all nodes in the cluster.
+type NodesStats struct {
+	Timestamp string            `json:"timestamp"`
+	Count     int64             `json:"count"`
+	Nodes     []*NodeInfo       `json:"nodes"`
+	Aggregate *NodesAggregate   `json:"aggregate"`        // Aggregated stats across all nodes.
+	Errors    map[string]string `json:"errors,omitempty"` // nodeID -> error string
+}
+
+// Stats for a single node in the cluster.
+type NodeInfo struct {
+	NodeID         string `json:"node_id"`
+	HostName       string `json:"hostname"`
+	IPAddress      string `json:"ip_address"`
+	MemUsed        string `json:"mem_used"`
+	MemTotal       string `json:"mem_total"`
+	PercentMemUsed string `json:"percent_mem_used"`
+}
+
+// Aggregated stats across all nodes in the cluster.
+type NodesAggregate struct {
+	MemUsedBytes   int64  `json:"-"`
+	MemTotalBytes  int64  `json:"-"`
+	MemUsed        string `json:"mem_used"`
+	MemTotal       string `json:"mem_total"`
+	PercentMemUsed string `json:"percent_mem_used"`
+}

@@ -143,6 +143,10 @@ func init() {
 		"cluster-summary.help": &procFile{
 			refreshBuffer: readClusterSummaryHelpCallback,
 		}, // Help summary about fs=debug/cluster-summary.
+
+		"nodes-stats": &procFile{
+			refreshBuffer: readNodesStatsCallback,
+		}, // Get node level stats via RPC.
 	}
 
 	procDirList = make([]*internal.ObjAttr, 0, len(procFiles))
