@@ -89,7 +89,7 @@ extends:
 
           - script: |
               go mod tidy
-              go vet ./...
+              go vet -tags=$(tags) ./...
             displayName: 'Run go vet'
 
           # Code lint checks (Static-analysis)
