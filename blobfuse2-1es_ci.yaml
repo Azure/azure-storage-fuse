@@ -80,6 +80,11 @@ extends:
             value: '$(Agent.TempDirectory)/go'
 
         steps:
+          - script: |
+              go mod tidy
+              go vet ./...
+            displayName: 'Run go vet'
+
           # Pull and build the code, Run the Unit Tests
           - template: 'azure-pipeline-templates/build.yml@self'
             parameters:

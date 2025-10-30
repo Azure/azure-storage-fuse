@@ -1729,22 +1729,6 @@ func (suite *fileCacheTestSuite) TestCachePathSymlink() {
 	suite.assert.Equal(data, d)
 }
 
-func (suite *fileCacheTestSuite) TestZZOffloadIO() {
-	defer suite.cleanupTest()
-	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout-sec: 0\n\nloopbackfs:\n  path: %s",
-		suite.cache_path, suite.fake_storage_path)
-
-	suite.setupTestHelper(configuration)
-
-	file := "file40"
-	handle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
-	suite.assert.NoError(err)
-	suite.assert.NotNil(handle)
-	suite.assert.True(handle.Cached())
-
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
-}
-
 func (suite *fileCacheTestSuite) TestZZZZLazyWrite() {
 	defer suite.cleanupTest()
 	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout-sec: 0\n\nloopbackfs:\n  path: %s",

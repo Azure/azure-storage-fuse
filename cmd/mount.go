@@ -506,7 +506,7 @@ var mountCmd = &cobra.Command{
 				LogFileName: traceFilePath, // this will redirect stderr of child to given file
 			}
 
-			ctx, _ := context.WithCancel(context.Background()) //nolint
+			ctx := context.Background()
 
 			// Signal handlers for parent and child to communicate success or failures in mount
 			var sigusr2 chan os.Signal
