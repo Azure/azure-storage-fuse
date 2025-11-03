@@ -40,6 +40,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,6 +66,53 @@ func (suite *utilTestSuite) SetupTest() {
 
 func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
+}
+
+func (suite *utilTestSuite) TestThreadSafeBitmap() {
+	var bitmap BitMap64
+
+	start := make(chan bool)
+	var wg sync.WaitGroup
+
+	set := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.Set(uint64(i % 64))
+		}
+	}
+
+	access := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.IsSet(uint64(i % 64))
+		}
+	}
+
+	clear := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.Clear(uint64(i % 64))
+		}
+	}
+
+	resetBitmap := func() {
+		defer wg.Done()
+		<-start
+		for _ = range 100000 {
+			bitmap.Reset()
+		}
+	}
+
+	wg.Add(4)
+	go set()
+	go access()
+	go clear()
+	go resetBitmap()
+	close(start)
+	wg.Wait()
 }
 
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {

@@ -156,7 +156,7 @@ type LogConfig struct {
 
 // Flags for block
 const (
-	BlockFlagUnknown uint16 = iota
+	BlockFlagUnknown uint64 = iota
 	DirtyBlock
 	TruncatedBlock
 )
@@ -165,7 +165,7 @@ type Block struct {
 	sync.RWMutex
 	StartIndex int64
 	EndIndex   int64
-	Flags      BitMap16
+	Flags      BitMap64
 	Id         string
 	Data       []byte
 }
@@ -182,7 +182,7 @@ func (block *Block) Truncated() bool {
 
 // Flags for block offset list
 const (
-	BlobFlagUnknown     uint16 = iota
+	BlobFlagUnknown     uint64 = iota
 	BlobFlagHasNoBlocks        // set if the blob does not have any blocks
 	BlobFlagBlockListModified
 )
@@ -190,7 +190,7 @@ const (
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList struct {
 	BlockList     []*Block //blockId to offset mapping
-	Flags         BitMap16
+	Flags         BitMap64
 	BlockIdLength int64
 	Size          int64
 	Mtime         time.Time
