@@ -73,7 +73,7 @@ type Libfuse struct {
 	disableWritebackCache bool
 	ignoreOpenFlags       bool
 	nonEmptyMount         bool
-	lsFlags               common.BitMap16
+	lsFlags               common.BitMap64
 	maxFuseThreads        uint32
 	directIO              bool
 	umask                 uint32
