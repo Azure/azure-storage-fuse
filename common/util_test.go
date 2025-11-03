@@ -101,7 +101,7 @@ func (suite *utilTestSuite) TestThreadSafeBitmap() {
 	resetBitmap := func() {
 		defer wg.Done()
 		<-start
-		for _ = range 100000 {
+		for range 100000 {
 			bitmap.Reset()
 		}
 	}
