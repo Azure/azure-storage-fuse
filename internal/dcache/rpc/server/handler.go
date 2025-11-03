@@ -187,7 +187,21 @@ type rvInfo struct {
 	totalBytesRead atomic.Int64
 
 	// Number of chunks queued to be read/written from/to this RV.
+	// These are counted right around the place the actual read/write syscall is made, hence it's
+	// a measure of load on the disk corresponding to this RV.
 	qsize atomic.Int64
+
+	// Active chunks currently allocated for this RV.
+	// This counts how many chunks are currently allocated for IOs to this RV.
+	// Note that for a PutChunkDC a chunk is allocated as soon as the RPC is received, and remains
+	// allocated until the RPC completes with all downstream RVs completing their writes.
+	// For a PutChunk, the chunk is allocated as soon as the RPC is received, and remains allocated
+	// till the write to the local disk completes.
+	// This is different from qsize which counts only the chunks which are performing actual disk IO.
+	// Using asize as a measure of load on the RV helps to keep not only the disk load but also memory
+	// usage in check, as it counts total chunks which are currently active for this RV (PutChunkDC
+	// received but not yet completed).
+	asize atomic.Int64
 }
 
 // This holds information about one MV hosted by our local RV. This is known as "MV Replica".
@@ -2624,9 +2638,13 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 					availableSpace = 0
 				}
 
+				//
+				// Using qsize for Qsize only accounts for disk load while asize accounts for memory + disk load.
+				//
 				return &models.PutChunkResponse{
-					TimeTaken:      time.Since(startTime).Microseconds(),
-					Qsize:          rvInfo.qsize.Load(),
+					TimeTaken: time.Since(startTime).Microseconds(),
+					//Qsize:          rvInfo.qsize.Load(),
+					Qsize:          rvInfo.asize.Load(),
 					AvailableSpace: availableSpace,
 					ComponentRV:    mvInfo.getComponentRVs(),
 				}, nil
@@ -2702,9 +2720,13 @@ dummy_write:
 		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
 	}
 
+	//
+	// Using qsize for Qsize only accounts for disk load while asize accounts for memory + disk load.
+	//
 	resp := &models.PutChunkResponse{
-		TimeTaken:      time.Since(startTime).Microseconds(),
-		Qsize:          rvInfo.qsize.Load(),
+		TimeTaken: time.Since(startTime).Microseconds(),
+		//Qsize:          rvInfo.qsize.Load(),
+		Qsize:          rvInfo.asize.Load(),
 		AvailableSpace: availableSpace,
 		ComponentRV:    mvInfo.getComponentRVs(),
 	}
@@ -2756,6 +2778,24 @@ func (h *ChunkServiceHandler) PutChunkDC(ctx context.Context, req *models.PutChu
 
 	// Nexthop RV must not be repeated in NextRVs.
 	common.Assert(!slices.Contains(req.NextRVs, rvInfo.rvName), rvInfo.rvName, req.NextRVs)
+
+	//
+	// One more chunk active for his RV.
+	// This takes memory, so we track it as "RV load" conveying it as the RV queue size to the client
+	// which will then use it for throttling, to avoid overwhelming already loaded RVs.
+	//
+	// TODO: See if we should increment asize for reads too. Since read buffers are allocated for a very
+	//       short time, it may not be needed.
+	//
+	rvInfo.asize.Add(1)
+
+	// Due to client side throttling, we should never have a very high asize.
+	common.Assert(rvInfo.asize.Load() < 10000, rvInfo.asize.Load(), rvInfo.rvName)
+
+	defer func() {
+		common.Assert(rvInfo.asize.Load() > 0, rvInfo.asize.Load(), rvInfo.rvName)
+		rvInfo.asize.Add(-1)
+	}()
 
 	var rpcResp *models.PutChunkDCResponse
 	var err error
@@ -3902,6 +3942,45 @@ func (h *ChunkServiceHandler) createLogTarLocked(numLogs int64) error {
 
 	log.Info("GetLogs: Created log tarball %s (numLogs: %d) size=%d", h.logTarPath, numLogs, h.logTarSize)
 	return nil
+}
+
+// GetNodeStats returns node's memory stats.
+// TODO: this will be extended later to include other stats like CPU usage, network bandwidth, etc.
+func (h *ChunkServiceHandler) GetNodeStats(ctx context.Context, req *models.GetNodeStatsRequest) (*models.GetNodeStatsResponse, error) {
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	log.Debug("ChunkServiceHandler::GetNodeStats: Received GetNodeStats request: %s", req.String())
+
+	if !common.IsValidUUID(req.SenderNodeID) {
+		errStr := fmt.Sprintf("Invalid GetNodeStats request: %v", req.String())
+		log.Err("ChunkServiceHandler::GetNodeStats: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	hostname, err := os.Hostname()
+	_ = err
+	common.Assert(err == nil, err)
+
+	memTotal, memUsed, percentMemUsed, err := getMemoryInfo()
+	if err != nil {
+		errStr := fmt.Sprintf("Failed to get memory info: %v", err)
+		log.Err("ChunkServiceHandler::GetNodeStats: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+	}
+
+	resp := &models.GetNodeStatsResponse{
+		NodeID:         rpc.GetMyNodeUUID(),
+		HostName:       hostname,
+		IpAddress:      cm.NodeIdToIP(rpc.GetMyNodeUUID()),
+		MemTotalBytes:  int64(memTotal),
+		MemUsedBytes:   int64(memUsed),
+		PercentMemUsed: percentMemUsed,
+	}
+
+	return resp, nil
 }
 
 // Silence unused import errors for release builds.

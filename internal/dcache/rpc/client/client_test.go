@@ -53,10 +53,20 @@ func (suite *rpcClientTestSuite) TestNewRPCClientTimeout() {
 	nodeID := "test-node-id"
 	nodeAddress := "10.0.0.5:9090"
 
-	client, err := newRPCClient(nodeID, nodeAddress)
+	client, err := newRPCClient(nodeID, 0, nodeAddress)
 	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "timeout")
 	suite.assert.Nil(client)
+}
+
+func (suite *rpcClientTestSuite) TestConvertBytesToReadable() {
+	suite.assert.Equal("512 B", bytesToReadable(512))
+	suite.assert.Equal("1.00 KB", bytesToReadable(1024))
+	suite.assert.Equal("1.00 MB", bytesToReadable(1048576))
+	suite.assert.Equal("1.00 GB", bytesToReadable(1073741824))
+	suite.assert.Equal("12.02 GB", bytesToReadable(12911104000))
+	suite.assert.Equal("1.00 TB", bytesToReadable(1099511627776))
+	suite.assert.Equal("1.00 PB", bytesToReadable(1125899906842624))
 }
 
 func TestRPCClientTestSuite(t *testing.T) {

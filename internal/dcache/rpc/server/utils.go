@@ -45,6 +45,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/shirou/gopsutil/mem"
+
 	"maps"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -410,6 +412,16 @@ bufferedRead:
 		n, readLength, *filePath, err)
 
 	return n, nil
+}
+
+func getMemoryInfo() (uint64, uint64, string, error) {
+	memStat, err := mem.VirtualMemory()
+	if err != nil {
+		return 0, 0, "", err
+	}
+
+	percentMemUsed := fmt.Sprintf("%.2f%%", memStat.UsedPercent)
+	return memStat.Total, memStat.Used, percentMemUsed, nil
 }
 
 // Silence unused import errors for release builds.

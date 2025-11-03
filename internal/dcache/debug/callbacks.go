@@ -43,6 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug/stats"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
@@ -206,6 +207,7 @@ func readClusterSummaryCallback(pFile *procFile) error {
 			LastUpdatedAt:   time.Unix(int64(clusterMap.LastUpdatedAt), 0).UTC().Format(time.RFC3339),
 			LastUpdatedBy:   clusterMap.LastUpdatedBy,
 			Config:          clusterMap.Config,
+			LastFetchedAt:   clustermanager.GetClusterMapLastFetchTime().UTC().Format(time.RFC3339),
 			LastRefreshedAt: cm.GetClusterMapLastRefreshTime().UTC().Format(time.RFC3339),
 		},
 		Nodes: dcache.NodesSummary{
@@ -259,6 +261,27 @@ func readClusterSummaryHelpCallback(pFile *procFile) error {
 `
 
 	pFile.buf = []byte(help)
+	return nil
+}
+
+// proc file: nodes-stats
+// Get stats from all nodes in the cluster via RPCs and aggregate them into a NodesStats structure.
+func readNodesStatsCallback(pFile *procFile) error {
+	nodesStats, err := rpc_client.GetNodesStats()
+	if err != nil {
+		log.Err("DebugFS::readNodesStatsCallback: failed to get nodes stats: %v", err)
+		return err
+	}
+
+	common.Assert(nodesStats != nil)
+
+	pFile.buf, err = json.MarshalIndent(nodesStats, "", "  ")
+	if err != nil {
+		log.Err("DebugFS::readNodesStatsCallback: marshal failed: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
 	return nil
 }
 

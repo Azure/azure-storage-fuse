@@ -33,4 +33,7 @@ service ChunkService {
 
     // retrieve logs tarball in chunks (16MB max). Client makes repeated calls with chunkIndex.
     models.GetLogsResponse GetLogs(1: models.GetLogsRequest request) throws (1:models.ResponseError err)
+
+    // retrieve per-node debug stats (memory etc.) from a node
+    models.GetNodeStatsResponse GetNodeStats(1: models.GetNodeStatsRequest request) throws (1:models.ResponseError err)
 }
