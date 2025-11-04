@@ -33,7 +33,7 @@ else
         echo "Building blobfuse2 release build"
         (cd ./tools/assert-remover; go build remove_asserts.go)
         ./tools/assert-remover/do.sh
-        go build -o blobfuse2
+        go build -race -o blobfuse2
         ./tools/assert-remover/undo.sh
     else
         echo "Building blobfuse2 debug build"
