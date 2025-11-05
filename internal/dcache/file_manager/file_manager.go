@@ -552,6 +552,15 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte, fromFuse bool) error
 	}
 
 	//
+	// If we know the file size (cache warmup case), then allow writes to the entire file.
+	//
+	if file.FileMetadata.State == dcache.Warming {
+		common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Filename, file.FileMetadata.Size)
+		allowableWriteOffsetStart = 0
+		allowableWriteOffsetEnd = file.FileMetadata.Size
+	}
+
+	//
 	// We only support append writes.
 	// 'cp' utility uses sparse writes to avoid writing zeroes from the source file to target file, we support
 	// that too, hence offset can be greater than maxWriteOffset.

@@ -63,9 +63,11 @@ const (
 	// 2. Reads smaller than this cannot be served from cache, as we cannot track them and hence cannot
 	//    be sure if/when the chunk is fully read and thus safe to evict.
 	//
-	// TODO: Make this configurable. Also default to a smaller value like 4KB or 8KB.
+	// Some applications do small writes, be more accommodating by setting this to 4KB.
+	// Obviously, we cannot get the best performance with such small IO sizes, but we hope that we don't
+	// snap an application which does it momentarily and then goes back to larger IO sizes.
 	//
-	MinTrackableIOSize = 64 * 1024 // 64KB
+	MinTrackableIOSize = 4 * 1024 // 4KB
 )
 
 var (
