@@ -78,6 +78,10 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(time.Duration(atomic.LoadInt64((*int64)(&d))).String())
 }
 
+func (d *Duration) Load() Duration {
+	return Duration(atomic.LoadInt64((*int64)(d)))
+}
+
 var ZeroDuration Duration = Duration(0)
 
 func StoreMinTime(currentMin *Duration, newTime Duration) {
