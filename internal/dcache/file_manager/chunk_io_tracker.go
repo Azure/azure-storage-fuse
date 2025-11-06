@@ -67,6 +67,9 @@ const (
 	// Obviously, we cannot get the best performance with such small IO sizes, but we hope that we don't
 	// snap an application which does it momentarily and then goes back to larger IO sizes.
 	//
+	// Note: If we know for sure that IO size cannot be less than a certain size (e.g. 64KB), setting
+	//       MinTrackableIOSize to that size helps reduce memory utilization and improve performance.
+	//
 	MinTrackableIOSize = 4 * 1024 // 4KB
 )
 
