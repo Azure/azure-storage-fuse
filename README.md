@@ -367,7 +367,7 @@ If this is sensitive information, turn off logging or set log-level to LOG_ERR.
 
 ## Distributed Cache Preview:
 
-- [Distributed Cache & Cluster Mode Setup Guide](component/distributed_cache/README.md)
+- [Distributed Cache & Cluster Mode Setup Guide](doc/blobfuse2_distributed_cache.md)
 
 ## License
 This project is licensed under MIT.

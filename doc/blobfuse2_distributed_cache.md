@@ -59,11 +59,16 @@ blobfuse2 mount <mount_path> --config-file=<path_to_config.yaml>
 
 ### 3. Cluster Health & Validation
 
-- To check cluster state, you can inspect the debug filesystem:
+- To check cluster state, you can inspect using the debug namespace. 
   ```bash
   cat <mount_path>/fs=debug/clustermap
   ```
   This will show the current cluster map, node states, and health.
+
+- To check the various stats on the dcache.
+  ```bash
+  cat <mount_path>/fs=debug/stats
+  ```
 
 ---
 
