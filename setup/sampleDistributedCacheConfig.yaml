@@ -9,9 +9,12 @@ components:
   - distributed_cache
   - azstorage
 
-# Libfuse configuration
+# By default Distribute Cache uses the following values for libfuse config, These values are carefully chosen to keep the node up-to-date in
+# the cluster.
 libfuse:
-  direct-io: true
+  attribute-expiration-secq: 3
+  entry-expiration-sec: 3
+  negative-entry-expiration-sec: 0
 
 
 distributed_cache:

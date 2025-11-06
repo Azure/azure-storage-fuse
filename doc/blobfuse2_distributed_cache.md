@@ -31,7 +31,7 @@ apt-get install -y fuse3 blobfuse2-preview
 
 A sample configuration for distributed cache (YAML):
 
-- [config.yaml](../../sampleDistributedCacheConfig.yaml)
+- [config.yaml](../setup/sampleDistributedCacheConfig.yaml)
 
 **Key Parameters:**
 - `cache-id`: Unique identifier for your cache cluster.
@@ -423,9 +423,8 @@ Notes:
 
 ## References
 
-- [Sample Distributed Cache Config](../../sampleDistributedCacheConfig.yaml)
-- [Cluster Test script](../../test/distributed_cache/test-cluster.sh)
-- [Main Blobfuse2 README](../../README.md)
+- [Sample Distributed Cache Config](../setup/sampleDistributedCacheConfig.yaml)
+- [Cluster Test script](../test/distributed_cache/test-cluster.sh)
 - [Blob CSI Driver Documentation](https://github.com/kubernetes-sigs/blob-csi-driver)
 
 ---

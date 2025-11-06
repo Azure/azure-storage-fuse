@@ -365,6 +365,9 @@ If your use-case involves updating/uploading file(s) through other means and you
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 
 If this is sensitive information, turn off logging or set log-level to LOG_ERR.  
 
+## Distributed Cache Preview:
+
+- [Distributed Cache & Cluster Mode Setup Guide](component/distributed_cache/README.md)
 
 ## License
 This project is licensed under MIT.
@@ -383,9 +386,3 @@ bot. You will only need to do this once across all repos using our CLA.
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
-## Documentation & Advanced Guides
-
-- [Distributed Cache & Cluster Mode Setup Guide](component/distributed_cache/README.md)
-
-
