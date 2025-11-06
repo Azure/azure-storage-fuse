@@ -50,6 +50,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	gouuid "github.com/google/uuid"
 )
 
@@ -207,12 +208,12 @@ func isMountPointRoot(path string) bool {
 }
 
 // Get Dcache File size from the blob metadata property.
-func parseDcacheMetadata(attr *internal.ObjAttr) error {
+func parseDcacheMetadata(attr *internal.ObjAttr, dirName string) error {
 	// No need to parse the metadata for directories.
 	if attr.IsDir() {
 		return nil
 	}
-	log.Debug("utils::parseDcacheMetadata: file: %s", attr.Name)
+	log.Debug("utils::parseDcacheMetadata: file: %s/%s", dirName, attr.Name)
 
 	var fileSize int64
 	var err error
@@ -253,8 +254,9 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 	}
 
 	// parse file state.
-	if state, ok := attr.Metadata["state"]; ok {
-		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
+	state, ok := attr.Metadata["state"]
+	if ok {
+		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready) || *state == string(dcache.Warming)) {
 			err = fmt.Errorf("File: %s, has invalid state: [%s]", attr.Name, *state)
 			log.Err("utils::parseDcacheMetadata: %v", err)
 			common.Assert(false, err)
@@ -291,11 +293,30 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 		return err
 	}
 
+	// For non-finalized files, set size to PartialSize.
+	if attr.Size == math.MaxInt64 {
+		common.Assert(*state == string(dcache.Writing), *state, *attr)
+		if dirName == "." {
+			dirName = ""
+		}
+
+		fileMetadata, _, err := fm.GetDcacheFile(filepath.Join(dirName, attr.Name))
+		if err == nil {
+			attr.Size = fileMetadata.PartialSize
+		} else {
+			common.Assert(false, *attr, err)
+			attr.Size = 0
+		}
+
+		log.Debug("utils::parseDcacheMetadata: File %s is non-finalized, setting size to %d",
+			attr.Name, attr.Size)
+	}
+
 	return nil
 }
 
 // Hide the files which are set to deleting. Such files are named with suffix ".dcache.deleting"
-func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.ObjAttr {
+func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr, dirName string) []*internal.ObjAttr {
 	newDirList := make([]*internal.ObjAttr, len(dirList))
 	i := 0
 
@@ -307,7 +328,7 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 			continue
 		}
 
-		err := parseDcacheMetadata(attr)
+		err := parseDcacheMetadata(attr, dirName)
 		if err == nil {
 			newDirList[i] = attr
 			i++
@@ -323,6 +344,10 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 // Check if the file name refers to a deleted dcache file (waiting to be GC'ed).
 func isDeletedDcacheFile(rawPath string) bool {
 	return strings.HasSuffix(rawPath, dcache.DcacheDeletingFileNameSuffix)
+}
+
+func isDummyWriteFile(rawPath string) bool {
+	return strings.HasSuffix(rawPath, dcache.DummyWriteFileName)
 }
 
 // Queries the Azure Instance Metadata Service to get the Fault Domain and Update Domain for this VM.

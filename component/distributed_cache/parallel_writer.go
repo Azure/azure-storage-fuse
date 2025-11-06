@@ -90,7 +90,7 @@ func (pw *parallelWriter) azureWriter() {
 }
 
 // caller should wait on the returned error for the status of the call.
-func (pw *parallelWriter) EnqueuAzureWrite(azureWrite func() error) <-chan error {
+func (pw *parallelWriter) EnqueueAzureWrite(azureWrite func() error) <-chan error {
 	common.Assert(azureWrite != nil)
 
 	azureWriteWorkItem := &writeReq{

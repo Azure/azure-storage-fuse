@@ -180,7 +180,7 @@ func beginDetectNewVersion() chan any {
 		}
 
 		if local.OlderThan(*remote) {
-			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
+			executablePathSegments := strings.Split(strings.ReplaceAll(os.Args[0], "\\", "/"), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
 			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
 			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)

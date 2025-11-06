@@ -76,10 +76,10 @@ var defaultSize = int64(0)
 var defaultMode = 0777
 
 func newTestLibfuse(next internal.Component, configuration string) *Libfuse {
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	libfuse := NewLibfuseComponent()
 	libfuse.SetNextComponent(next)
-	libfuse.Configure(true)
+	_ = libfuse.Configure(true)
 
 	return libfuse.(*Libfuse)
 }
@@ -373,7 +373,7 @@ func testTruncate(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
-	options := internal.TruncateFileOptions{Name: name, Size: size}
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
 	err := libfuse_truncate(path, C.long(size), nil)
@@ -386,7 +386,7 @@ func testTruncateError(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
-	options := internal.TruncateFileOptions{Name: name, Size: size}
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
 	err := libfuse_truncate(path, C.long(size), nil)
@@ -405,7 +405,7 @@ func testFTruncate(suite *libfuseTestSuite) {
 	fi := C.fuse_file_info_t{}
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
-	options := internal.TruncateFileOptions{Handle: handle, Name: name, Size: size}
+	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
 	err := libfuse_truncate(path, C.long(size), &fi)
@@ -424,7 +424,7 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	fi := C.fuse_file_info_t{}
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
-	options := internal.TruncateFileOptions{Handle: handle, Name: name, Size: size}
+	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
 	err := libfuse_truncate(path, C.long(size), &fi)
@@ -675,10 +675,10 @@ func testStatFs(suite *libfuseTestSuite) {
 	buf := &C.statvfs_t{}
 	libfuse_statfs(path, buf)
 
-	suite.assert.Equal(int(buf.f_frsize), 1)
-	suite.assert.Equal(int(buf.f_blocks), 2)
-	suite.assert.Equal(int(buf.f_bavail), 3)
-	suite.assert.Equal(int(buf.f_bfree), 4)
+	suite.assert.Equal(1, int(buf.f_frsize))
+	suite.assert.Equal(2, int(buf.f_blocks))
+	suite.assert.Equal(3, int(buf.f_bavail))
+	suite.assert.Equal(4, int(buf.f_bfree))
 }
 
 func testChmodError(suite *libfuseTestSuite) {

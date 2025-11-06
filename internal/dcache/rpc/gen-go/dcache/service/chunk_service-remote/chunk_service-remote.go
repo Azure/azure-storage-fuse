@@ -65,9 +65,9 @@ func Usage() {
 	fmt.Fprintln(os.Stderr, "  JoinMVResponse JoinMV(JoinMVRequest request)")
 	fmt.Fprintln(os.Stderr, "  UpdateMVResponse UpdateMV(UpdateMVRequest request)")
 	fmt.Fprintln(os.Stderr, "  LeaveMVResponse LeaveMV(LeaveMVRequest request)")
-	fmt.Fprintln(os.Stderr, "  StartSyncResponse StartSync(StartSyncRequest request)")
-	fmt.Fprintln(os.Stderr, "  EndSyncResponse EndSync(EndSyncRequest request)")
 	fmt.Fprintln(os.Stderr, "  GetMVSizeResponse GetMVSize(GetMVSizeRequest request)")
+	fmt.Fprintln(os.Stderr, "  GetLogsResponse GetLogs(GetLogsRequest request)")
+	fmt.Fprintln(os.Stderr, "  GetNodeStatsResponse GetNodeStats(GetNodeStatsRequest request)")
 	fmt.Fprintln(os.Stderr)
 	os.Exit(0)
 }
@@ -390,9 +390,9 @@ func main() {
 		fmt.Print(client.LeaveMV(context.Background(), value0))
 		fmt.Print("\n")
 		break
-	case "StartSync":
+	case "GetMVSize":
 		if flag.NArg()-1 != 1 {
-			fmt.Fprintln(os.Stderr, "StartSync requires 1 args")
+			fmt.Fprintln(os.Stderr, "GetMVSize requires 1 args")
 			flag.Usage()
 		}
 		arg116 := flag.Arg(1)
@@ -405,19 +405,19 @@ func main() {
 		}
 		factory119 := thrift.NewTJSONProtocolFactory()
 		jsProt120 := factory119.GetProtocol(mbTrans117)
-		argvalue0 := models.NewStartSyncRequest()
+		argvalue0 := models.NewGetMVSizeRequest()
 		err121 := argvalue0.Read(context.Background(), jsProt120)
 		if err121 != nil {
 			Usage()
 			return
 		}
 		value0 := argvalue0
-		fmt.Print(client.StartSync(context.Background(), value0))
+		fmt.Print(client.GetMVSize(context.Background(), value0))
 		fmt.Print("\n")
 		break
-	case "EndSync":
+	case "GetLogs":
 		if flag.NArg()-1 != 1 {
-			fmt.Fprintln(os.Stderr, "EndSync requires 1 args")
+			fmt.Fprintln(os.Stderr, "GetLogs requires 1 args")
 			flag.Usage()
 		}
 		arg122 := flag.Arg(1)
@@ -430,19 +430,19 @@ func main() {
 		}
 		factory125 := thrift.NewTJSONProtocolFactory()
 		jsProt126 := factory125.GetProtocol(mbTrans123)
-		argvalue0 := models.NewEndSyncRequest()
+		argvalue0 := models.NewGetLogsRequest()
 		err127 := argvalue0.Read(context.Background(), jsProt126)
 		if err127 != nil {
 			Usage()
 			return
 		}
 		value0 := argvalue0
-		fmt.Print(client.EndSync(context.Background(), value0))
+		fmt.Print(client.GetLogs(context.Background(), value0))
 		fmt.Print("\n")
 		break
-	case "GetMVSize":
+	case "GetNodeStats":
 		if flag.NArg()-1 != 1 {
-			fmt.Fprintln(os.Stderr, "GetMVSize requires 1 args")
+			fmt.Fprintln(os.Stderr, "GetNodeStats requires 1 args")
 			flag.Usage()
 		}
 		arg128 := flag.Arg(1)
@@ -455,14 +455,14 @@ func main() {
 		}
 		factory131 := thrift.NewTJSONProtocolFactory()
 		jsProt132 := factory131.GetProtocol(mbTrans129)
-		argvalue0 := models.NewGetMVSizeRequest()
+		argvalue0 := models.NewGetNodeStatsRequest()
 		err133 := argvalue0.Read(context.Background(), jsProt132)
 		if err133 != nil {
 			Usage()
 			return
 		}
 		value0 := argvalue0
-		fmt.Print(client.GetMVSize(context.Background(), value0))
+		fmt.Print(client.GetNodeStats(context.Background(), value0))
 		fmt.Print("\n")
 		break
 	case "":

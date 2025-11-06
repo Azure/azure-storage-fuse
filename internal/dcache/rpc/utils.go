@@ -39,7 +39,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -50,6 +50,27 @@ const (
 	defaultPort = 9090
 	BufferedIO  = "buffered"
 	DirectIO    = "direct"
+
+	// Chunk size for log transfer (16MB)
+	LogChunkSize int64 = 16 * 1024 * 1024
+
+	//
+	// Other than a actual failure returned by the RPC server, an RPC call can also fail due to
+	// transport level errors like connection error (connection reset, connection reset, connection closed
+	// resulting in eof, etc), and timeout.
+	// For connection errors, we are certain that the RPC server is not reachable, but for timeout errors,
+	// it is possible that the server is reachable but is just slow in responding, infact under heavy load
+	// and network congestion, resulting in excessive TCP retransmits, we have seen that even if we set the
+	// timeout to a high value like 60 seconds, we still see occasional timeouts, where retrying the RPC call
+	// results in a success. In a huge cluster with hundreds of nodes, it is likely, and thus marking an RV
+	// as inband-offline on timeout can lead to unecessary resync and data unavailability under more extreme
+	// scenarios. It's ok to not rush to mark an RV as inband-offline on timeout, and let the heartbeat mechanism
+	// detect and mark an RV as offline if it is indeed offline. WriteMV() will mask timeout errors as
+	// NeedToRefreshClusterMap errors to trigger cluster map refresh plus retry, which should take care of
+	// transient timeouts and if the node is indeed offline, the heartbeat mechanism will mark it as offline
+	// and we will learn about it during the next cluster map refresh.
+	//
+	DoNotInbandOfflineOnIOTimeout = true
 )
 
 var ReadIOMode, WriteIOMode string
@@ -87,7 +108,7 @@ func SetWriteIOMode(mode string) error {
 // Return the node address for the given node ID.
 // The returned node address is of the form <ip>:<port>
 func GetNodeAddressFromID(nodeID string) string {
-	nodeAddress := fmt.Sprintf("%s:%d", clustermap.NodeIdToIP(nodeID), defaultPort)
+	nodeAddress := fmt.Sprintf("%s:%d", cm.NodeIdToIP(nodeID), defaultPort)
 	common.Assert(common.IsValidHostPort(nodeAddress), fmt.Sprintf("node address is not valid: %s", nodeAddress))
 	return nodeAddress
 }
@@ -142,6 +163,10 @@ func ComponentRVsMapToList(m map[string]string) []*models.RVNameAndState {
 	return l
 }
 
+func ChunkAddressToChunkIdx(addr *models.Address) int64 {
+	return addr.OffsetInMiB / int64(cm.GetCacheConfig().ChunkSizeMB)
+}
+
 // convert *models.HelloRequest to string
 // used for logging
 func HelloRequestToString(req *models.HelloRequest) string {
@@ -157,22 +182,22 @@ func HelloResponseToString(resp *models.HelloResponse) string {
 // convert *models.GetChunkRequest to string
 // used for logging
 func GetChunkRequestToString(req *models.GetChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, OffsetInChunk %v, Length %v, IsLocalRV %v, ComponentRV %v, ClustermapEpoch %d}",
-		req.SenderNodeID, *req.Address, req.OffsetInChunk, req.Length,
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, chunkIdx: %d, OffsetInChunk %v, Length %v, IsLocalRV %v, ComponentRV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, *req.Address, ChunkAddressToChunkIdx(req.Address), req.OffsetInChunk, req.Length,
 		req.IsLocalRV, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 func GetChunkResponseToString(resp *models.GetChunkResponse) string {
-	return fmt.Sprintf("{Address %+v, DataLength: %v, ChunkWriteTime %v, TimeTaken %v, ComponentRV %v, ClustermapEpoch %d}",
-		*resp.Chunk.Address, len(resp.Chunk.Data), resp.ChunkWriteTime, resp.TimeTaken,
-		ComponentRVsToString(resp.ComponentRV), resp.ClustermapEpoch)
+	return fmt.Sprintf("{Address %+v, chunkIdx: %d, DataLength: %v, ChunkWriteTime %v, TimeTaken %v, ComponentRV %v, ClustermapEpoch %d}",
+		*resp.Chunk.Address, ChunkAddressToChunkIdx(resp.Chunk.Address), len(resp.Chunk.Data), resp.ChunkWriteTime,
+		resp.TimeTaken, ComponentRVsToString(resp.ComponentRV), resp.ClustermapEpoch)
 }
 
 // convert *models.PutChunkRequest to string
 // exclude data and hash from the string to prevent it from being logged
 func PutChunkRequestToString(req *models.PutChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, Length %v, SyncID %v, ComponentRV %v, MaybeOverwrite %v, ClustermapEpoch %d}",
-		req.SenderNodeID, *req.Chunk.Address, req.Length, req.SyncID,
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, chunkIdx: %d, Length %v, SyncID %v, ComponentRV %v, MaybeOverwrite %v, ClustermapEpoch %d}",
+		req.SenderNodeID, *req.Chunk.Address, ChunkAddressToChunkIdx(req.Chunk.Address), req.Length, req.SyncID,
 		ComponentRVsToString(req.ComponentRV), req.MaybeOverwrite, req.ClustermapEpoch)
 }
 
@@ -218,8 +243,9 @@ func PutChunkDCResponseToString(response *models.PutChunkDCResponse) string {
 // convert *models.RemoveChunkRequest to string
 // used for logging
 func RemoveChunkRequestToString(req *models.RemoveChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, ComponentRV %v, ClustermapEpoch %d}",
-		req.SenderNodeID, *req.Address, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, chunkIdx: %d, ComponentRV %v, ClustermapEpoch %d}",
+		req.SenderNodeID, *req.Address, ChunkAddressToChunkIdx(req.Address),
+		ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
 }
 
 // convert *models.JoinMVRequest to string
@@ -241,24 +267,6 @@ func UpdateMVRequestToString(req *models.UpdateMVRequest) string {
 func LeaveMVRequestToString(req *models.LeaveMVRequest) string {
 	return fmt.Sprintf("{SenderNodeID %v, MV %v, RVName %v, ComponentRV %v, ClustermapEpoch %d}",
 		req.SenderNodeID, req.MV, req.RVName, ComponentRVsToString(req.ComponentRV), req.ClustermapEpoch)
-}
-
-// convert *models.StartSyncRequest to string
-// used for logging
-func StartSyncRequestToString(req *models.StartSyncRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, MV %v, SourceRVName %v, TargetRVName %v, "+
-		"ComponentRV %v, SyncSize %v, ClustermapEpoch %d}",
-		req.SenderNodeID, req.MV, req.SourceRVName, req.TargetRVName,
-		ComponentRVsToString(req.ComponentRV), req.SyncSize, req.ClustermapEpoch)
-}
-
-// convert *models.EndSyncRequest to string
-// used for logging
-func EndSyncRequestToString(req *models.EndSyncRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, SyncID %v, MV %v, SourceRVName %v, "+
-		"TargetRVName %v, ComponentRV %v, SyncSize %v, ClustermapEpoch %d}",
-		req.SenderNodeID, req.SyncID, req.MV, req.SourceRVName,
-		req.TargetRVName, ComponentRVsToString(req.ComponentRV), req.SyncSize, req.ClustermapEpoch)
 }
 
 // convert *models.GetMVSizeRequest to string

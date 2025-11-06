@@ -115,17 +115,17 @@ func (suite *genOneConfigTestSuite) TestConfigCreation() {
 	outFile, _ := os.CreateTemp("", "adlsgen1fuse*.json")
 	mntDir, err := os.MkdirTemp("", "mntdir")
 
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
 	defer os.Remove(mntDir)
 
 	_, err = confFile.WriteString(configGenOne)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "mountgen1", mntDir, "--generate-json-only=true", "--required-free-space-mb=500", fmt.Sprintf("--config-file=%s", confFile.Name()), fmt.Sprintf("--output-file=%s", outFile.Name()))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	viper.SetConfigFile("json")
 	config.ReadFromConfigFile(outFile.Name())
@@ -136,10 +136,10 @@ func (suite *genOneConfigTestSuite) TestConfigCreation() {
 	config.UnmarshalKey("cachedir", &cacheDir)
 	config.UnmarshalKey("mountdir", &mountDirTest)
 
-	suite.assert.EqualValues("myClientId", clientId)
-	suite.assert.EqualValues("myTenantId", tenantId)
+	suite.assert.Equal("myClientId", clientId)
+	suite.assert.Equal("myTenantId", tenantId)
 	suite.assert.Contains(cacheDir, "fileCachePath")
-	suite.assert.EqualValues(mntDir, mountDirTest)
+	suite.assert.Equal(mntDir, mountDirTest)
 }
 
 func (suite *genOneConfigTestSuite) TestInvalidConfig() {
@@ -148,17 +148,17 @@ func (suite *genOneConfigTestSuite) TestInvalidConfig() {
 	outFile, _ := os.CreateTemp("", "adlsgen1fuse*.json")
 	mntDir, err := os.MkdirTemp("", "mntdir")
 
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
 	defer os.Remove(mntDir)
 
 	_, err = confFile.WriteString(invalidConfig)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "mountgen1", mntDir, "--generate-json-only=true", fmt.Sprintf("--config-file=%s", confFile.Name()), fmt.Sprintf("--output-file=%s", outFile.Name()))
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *genOneConfigTestSuite) TestInvalidAuthMode() {
@@ -167,17 +167,17 @@ func (suite *genOneConfigTestSuite) TestInvalidAuthMode() {
 	outFile, _ := os.CreateTemp("", "adlsgen1fuse*.json")
 	mntDir, err := os.MkdirTemp("", "mntdir")
 
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
 	defer os.Remove(mntDir)
 
 	_, err = confFile.WriteString(invalidAuthMode)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "mountgen1", mntDir, "--generate-json-only=true", fmt.Sprintf("--config-file=%s", confFile.Name()), fmt.Sprintf("--output-file=%s", outFile.Name()))
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *genOneConfigTestSuite) TestGen1FuseMount() {
@@ -186,15 +186,15 @@ func (suite *genOneConfigTestSuite) TestGen1FuseMount() {
 	outFile, _ := os.CreateTemp("", "adlsgen1fuse*.json")
 	mntDir, err := os.MkdirTemp("", "mntdir")
 
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
 	defer os.Remove(mntDir)
 
 	_, err = confFile.WriteString(configGenOne)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "mountgen1", mntDir, "--required-free-space-mb=500", fmt.Sprintf("--config-file=%s", confFile.Name()), fmt.Sprintf("--output-file=%s", outFile.Name()))
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }

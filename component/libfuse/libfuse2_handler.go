@@ -375,11 +375,12 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
 		//log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s [%s]", name, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}
@@ -551,7 +552,7 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 		fuseFS.fillStat(cacheInfo.children[segmentIdx], &stbuf)
 
 		name := C.CString(cacheInfo.children[segmentIdx].Name)
-		if 0 != C.fill_dir_entry(filler, buf, name, &stbuf, idx+1) {
+		if ret := C.fill_dir_entry(filler, buf, name, &stbuf, idx+1); ret != 0 {
 			C.free(unsafe.Pointer(name))
 			break
 		}
@@ -649,6 +650,13 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
 
+	//
+	// We overload O_DIRECTORY flag to convey to dcache that the open is being done by fuse and it must fail
+	// open for non-finalized files (which are currently being uploaded). We want those files to be readable
+	// only internally by dcache (for serving data from cache) and not by fuse.
+	//
+	fi.flags = fi.flags | C.O_DIRECTORY
+
 	handle, err := fuseFS.NextComponent().OpenFile(
 		internal.OpenFileOptions{
 			Name:  name,
@@ -662,6 +670,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		} else {
 			return -C.EIO
 		}
@@ -763,11 +773,12 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}
@@ -792,7 +803,12 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 
 	log.Trace("Libfuse::libfuse2_truncate : %s size %d", name, off)
 
-	err := fuseFS.NextComponent().TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(off)})
+	err := fuseFS.NextComponent().TruncateFile(
+		internal.TruncateFileOptions{
+			Name:    name,
+			OldSize: -1,
+			NewSize: int64(off),
+		})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_truncate : error truncating file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
@@ -823,11 +839,12 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}

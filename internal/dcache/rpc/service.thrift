@@ -28,10 +28,12 @@ service ChunkService {
     // remove RV from the given MV
     models.LeaveMVResponse LeaveMV(1: models.LeaveMVRequest request) throws (1:models.ResponseError err)
 
-    models.StartSyncResponse StartSync(1: models.StartSyncRequest request) throws (1:models.ResponseError err)
-
-    models.EndSyncResponse EndSync(1: models.EndSyncRequest request) throws (1:models.ResponseError err)
-
     // retrieve the size of the specified MV
     models.GetMVSizeResponse GetMVSize(1: models.GetMVSizeRequest request) throws (1:models.ResponseError err)
+
+    // retrieve logs tarball in chunks (16MB max). Client makes repeated calls with chunkIndex.
+    models.GetLogsResponse GetLogs(1: models.GetLogsRequest request) throws (1:models.ResponseError err)
+
+    // retrieve per-node debug stats (memory etc.) from a node
+    models.GetNodeStatsResponse GetNodeStats(1: models.GetNodeStatsRequest request) throws (1:models.ResponseError err)
 }

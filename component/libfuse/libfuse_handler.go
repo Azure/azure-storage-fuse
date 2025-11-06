@@ -647,17 +647,19 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
 		// log.Err("Libfuse::libfuse_getattr : Failed to get attributes of %s [%s]", name, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}
 
 	// Populate stat
 	fuseFS.fillStat(attr, stbuf)
+	//log.Trace("Libfuse::libfuse_getattr : %s, stbuf.st_size=%d", name, stbuf.st_size)
 	return 0
 }
 
@@ -802,7 +804,7 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 		fuseFS.fillStat(cacheInfo.children[segmentIdx], &stbuf)
 
 		name := C.CString(cacheInfo.children[segmentIdx].Name)
-		if 0 != C.fill_dir_entry(filler, buf, name, &stbuf, idx+1) {
+		if ret := C.fill_dir_entry(filler, buf, name, &stbuf, idx+1); ret != 0 {
 			C.free(unsafe.Pointer(name))
 			break
 		}
@@ -887,7 +889,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse_create : %s", name)
 
-	handle, err := fuseFS.NextComponent().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
+	handle, err := fuseFS.NextComponent().CreateFile(
+		internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
 		log.Err("Libfuse::libfuse_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
@@ -955,6 +958,13 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
+	//
+	// We overload O_DIRECTORY flag to convey to dcache that the open is being done by fuse and it must fail
+	// open for non-finalized files (which are currently being uploaded). We want those files to be readable
+	// only internally by dcache (for serving data from cache) and not by fuse.
+	//
+	fi.flags = fi.flags | C.O_DIRECTORY
+
 	handle, err := fuseFS.NextComponent().OpenFile(
 		internal.OpenFileOptions{
 			Name:  name,
@@ -968,6 +978,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EBUSY) {
+			return -C.EBUSY
 		} else {
 			return -C.EIO
 		}
@@ -1033,7 +1045,48 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	}
 
 	common.Assert(bytesRead >= 0 && bytesRead <= int(size), bytesRead, size, handle.Path, handle.ID)
+	//log.Err("Libfuse::libfuse_read : file %s, offset %d, size %d, read %d", handle.Path, offset, size, bytesRead)
 	return C.int(bytesRead)
+}
+
+// Dummy write generator for generating lots of writes for testing.
+// It must be triggered when a special file is written to.
+func dummyWriteGen(options *internal.WriteFileOptions) C.int {
+	// Write 100GB of data in 1MB chunks.
+	bytesToWrite := int64(100 * 1024 * 1024 * 1024)
+	totalBytesWritten := int64(0)
+	handle := options.Handle
+	offset := int64(0)
+	size := 1048576
+	data := make([]byte, size) // 1MB buffer
+
+	log.Warn("dummyWriteGen: Writing %d bytes to dummy file %s in %d sized writes",
+		bytesToWrite, handle.Path, size)
+
+	for bytesToWrite > 0 {
+		bytesWritten, err := fuseFS.NextComponent().WriteFile(
+			&internal.WriteFileOptions{
+				Handle:   handle,
+				Offset:   int64(offset),
+				Data:     data,
+				Metadata: nil,
+			})
+
+		if err != nil {
+			log.Err("dummyWriteGen: error writing to dummy file %s, handle: %d [%v]",
+				handle.Path, handle.ID, err)
+			return -C.EIO
+		}
+
+		offset += int64(bytesWritten)
+		bytesToWrite -= int64(bytesWritten)
+		totalBytesWritten += int64(bytesWritten)
+	}
+
+	log.Warn("dummyWriteGen: Successfully wrote %d bytes to dummy file %s",
+		totalBytesWritten, handle.Path)
+
+	return 0
 }
 
 // libfuse_write writes data to an open file
@@ -1047,6 +1100,26 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
 	common.Assert(len(data) == int(size), len(data), size, handle.Path, handle.ID)
 
+	//
+	// TODO: Remove this code once tested on various sized clusters.
+	//
+	if handle.IsDummyWrite() {
+		ret := dummyWriteGen(
+			&internal.WriteFileOptions{
+				Handle:   handle,
+				Offset:   int64(offset),
+				Data:     data,
+				Metadata: nil,
+			})
+
+		if ret < 0 {
+			return ret
+		}
+
+		// Pretend we wrote all requested data.
+		return C.int(size)
+	}
+
 	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		&internal.WriteFileOptions{
@@ -1057,8 +1130,17 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		})
 
 	if err != nil {
-		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
+		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]",
+			handle.Path, handle.ID, err.Error())
+
+		switch err {
+		case syscall.EINVAL:
+			return -C.EINVAL
+		case syscall.ENOTSUP:
+			return -C.ENOTSUP
+		default:
+			return -C.EIO
+		}
 	}
 
 	common.Assert(bytesWritten >= 0 && bytesWritten <= int(size), bytesWritten, size, handle.Path, handle.ID)
@@ -1107,11 +1189,12 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}
@@ -1154,9 +1237,10 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().TruncateFile(
 		internal.TruncateFileOptions{
-			Handle: handle,
-			Name:   name,
-			Size:   int64(off),
+			Handle:  handle,
+			Name:    name,
+			OldSize: -1, // upstream components will get the actual size of the file.
+			NewSize: int64(off),
 		})
 
 	if err != nil {
@@ -1210,11 +1294,12 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	if err != nil {
 		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		if err == syscall.ENOENT {
+		switch err {
+		case syscall.ENOENT:
 			return -C.ENOENT
-		} else if err == syscall.EACCES {
+		case syscall.EACCES:
 			return -C.EACCES
-		} else {
+		default:
 			return -C.EIO
 		}
 	}

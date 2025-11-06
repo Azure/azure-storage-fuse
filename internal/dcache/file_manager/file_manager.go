@@ -37,10 +37,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -48,6 +50,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -72,6 +75,11 @@ type fileIOManager struct {
 	// may take time, so having more staged chunks allows application writes to proceed while staged
 	// chunks are being written.
 	numStagingChunks int
+
+	// Difference between the highest successfully uploaded chunk index and the lowest issued but
+	// not yet completed chunk index that we allow. Beyond this we slow down the writer as there's not
+	// much gain by writing new chunks if some old chunks are not completing.
+	maxUnackedWindow int64
 	wp               *workerPool
 }
 
@@ -80,26 +88,30 @@ var fileIOMgr fileIOManager
 func NewFileIOManager() error {
 	//
 	// A worker runs either readChunk() or writeChunk(), so this is the number of chunks we can be
-	// reading/writing in parallel. fileIOManager is one for the entire blobfuse process so these
-	// chunks can be spread across multiple files and served from multiple nodes/RVs.
+	// reading/writing in parallel from any node in the cluster (including the local node). fileIOManager
+	// is one for the entire blobfuse process so these chunks can be spread across multiple files and
+	// served from multiple nodes/RVs.
 	// Note that for writeChunk one worker is used up regardless of the NumReplicas setting. Each
 	// replica write uses just one ReplicationManager worker but only one fileIOManager worker per
 	// MV write (not replica write).
 	// Since all these reads/writes may be served from different nodes/RVs, the limiting factor would
 	// be the n/w b/w of this node. We need enough parallel readChunk/writeChunk for maxing out the
-	// n/w b/w of the node. Keeping small files in mind, and given that go routines are not very
-	// expensive, we keep 1000 workers.
+	// n/w b/w of the node.
+	// PutChunkDCIODepthTotal restricts the number of parallel chunk writes, so that won't use more than
+	// PutChunkDCIODepthTotal workers, but we need workers for reading chunks too, so let's set aside
+	// few more.
+	// Now with WriteMV() implementing qsize based flow control, we can have workers waiting for qsize
+	// to drop for some MVs, so we need more workers.
 	//
-	workers := 1000
+	workers := 256
 
 	//
 	// How many chunks will we readahead per file.
 	// To achieve high sequential read throughput, this number should be kept reasonably high.
-	// With 4MiB chunk size, 64 readahead chunks will use up 256MiB of memory per file.
 	//
-	// TODO: 256 readahead chunks perform better, let's see if we want to reduce it.
+	// TODO: 1GiB readahead performs better, let's see if we want to reduce it.
 	//
-	numReadAheadChunks := 256
+	numReadAheadChunks := int(1024 / cm.GetCacheConfig().ChunkSizeMB)
 
 	//
 	// How many writeback chunks per file.
@@ -109,7 +121,7 @@ func NewFileIOManager() error {
 	// Hopefully we won't be writing too many large files simultaneously, so we can keep this number
 	// high enough to give 1GiB writeback space per file.
 	//
-	numStagingChunks := 256
+	numStagingChunks := int(2 * 1024 / cm.GetCacheConfig().ChunkSizeMB)
 
 	common.Assert(workers > 0)
 	common.Assert(numReadAheadChunks > 0)
@@ -122,7 +134,11 @@ func NewFileIOManager() error {
 		safeDeletes:        cm.GetCacheConfig().SafeDeletes,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
+		maxUnackedWindow:   int64(maxUnackedChunks),
 	}
+
+	log.Debug("DistributedCache::NewFileIOManager: workers: %d, numReadAheadChunks: %d, numStagingChunks: %d, maxUnackedWindow: %d",
+		workers, fileIOMgr.numReadAheadChunks, fileIOMgr.numStagingChunks, fileIOMgr.maxUnackedWindow)
 
 	fileIOMgr.wp = NewWorkerPool(workers)
 
@@ -148,6 +164,10 @@ type DcacheFile struct {
 	// Read pattern tracker for detecting read pattern (sequential/random).
 	// Only valid for files opened for reading, nil for files opened for writing.
 	RPT *RPTracker
+
+	// Contiguity tracker for finding last valid byte in partially written files.
+	// Only valid for files opened for writing, nil for files opened for reading.
+	CT *ContiguityTracker
 
 	// Last byte written + 1, also the next write offset we expect in case of sequential writes.
 	// We don't support overwrites but we support slightly out-of-order writes to enable parallel
@@ -219,6 +239,15 @@ type DcacheFile struct {
 	// It is saved when the file is opened, if there are no more file opens done on that file, the same etag
 	// can be used to update the file open count on close.
 	attr *internal.ObjAttr
+
+	// Upload tracker.
+	ut uploadTracker
+
+	// Handle to the Azure blob corresponding to this file (in case of unqualified open).
+	AzureHandle *handlemap.Handle
+
+	// Reader function to read data from Azure directly, used for unqualified opens.
+	AzureReader func(options *internal.ReadInBufferOptions) (int, error)
 }
 
 // Get the write error encountered during file writes, if any.
@@ -231,6 +260,15 @@ func (file *DcacheFile) getWriteError() error {
 	_ = ok
 	common.Assert(ok, val)
 	return err
+}
+
+// Set write error encountered during file writes, if any.
+func (file *DcacheFile) setWriteError(err error) {
+	// We must be called only with a valid error.
+	common.Assert(err != nil, file.FileMetadata.Filename)
+
+	// Only the first error is recorded.
+	file.writeErr.CompareAndSwap(nil, err)
 }
 
 func (file *DcacheFile) initFreeChunks(maxChunks int) {
@@ -256,21 +294,24 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 		file.FileMetadata.Filename, file.nextReadOffset.Load(), offset, len(*buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
-	// Read must only be allowed on a properly finalized file, for which size must not be -1.
-	common.Assert(int64(file.FileMetadata.Size) >= 0)
+	// For finalized files FileMetadata.Size must be valid, else use the PartialSize for files still being written.
+	fileSize := getFileSize(file.FileMetadata)
+
+	// fileSize is either Size or PartialSize.
+	common.Assert(fileSize >= 0)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
 	common.Assert(len(*buf) <= common.MbToBytes, len(*buf))
 	// Files opened for reading must have a valid read patterm tracker.
 	common.Assert(file.RPT != nil, file.FileMetadata.Filename)
 
-	if offset >= file.FileMetadata.Size {
-		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d",
-			file.FileMetadata.Filename, offset, len(*buf), file.FileMetadata.Size)
+	if offset >= fileSize {
+		log.Warn("DistributedCache::ReadFile: Read beyond eof. file: %s, offset: %d, length: %d, file size: %d %+v",
+			file.FileMetadata.Filename, offset, len(*buf), fileSize, *file.FileMetadata)
 		return 0, io.EOF
 	}
 
 	// endOffset is 1 + offset of the last byte to be read, but not more than file size.
-	endOffset := min(offset+int64(len(*buf)), file.FileMetadata.Size)
+	endOffset := min(offset+int64(len(*buf)), fileSize)
 	// Catch wraparound.
 	common.Assert(endOffset >= offset, endOffset, offset)
 
@@ -434,24 +475,29 @@ func (file *DcacheFile) ReadFile(offset int64, buf *[]byte) (bytesRead int, err 
 	// Must exactly read what's determined above (what user asks, capped by file size).
 	common.Assert(offset == endOffset, offset, endOffset)
 	// Must not read beyond eof.
-	common.Assert(offset <= file.FileMetadata.Size, offset, file.FileMetadata.Size)
+	common.Assert(offset <= fileSize, offset, fileSize)
 	// Must never read more than the length asked.
 	common.Assert(bufOffset <= len(*buf), bufOffset, len(*buf))
+
+	log.Debug("DistributedCache::ReadFile: file: %s, bytesRead: %d",
+		file.FileMetadata.Filename, bufOffset)
 
 	return bufOffset, nil
 }
 
 // Writes user data into file at given offset and length.
 // It translates the requested offsets into chunks, and writes to those chunks in the distributed cache.
-func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
+func (file *DcacheFile) WriteFile(offset int64, buf []byte, fromFuse bool) error {
 	log.Debug("DistributedCache[FM]::WriteFile: file: %s, maxWriteOffset: %d [%v], offset: %d, length: %d, chunkIdx: %d",
 		file.FileMetadata.Filename, file.maxWriteOffset, file.strictSeqWrites, offset, len(buf),
 		getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize))
 
 	// DCache files are immutable, all writes must be before first close, by which time file size is not known.
-	common.Assert(int64(file.FileMetadata.Size) == -1, file.FileMetadata.Size)
+	common.Assert(int64(file.FileMetadata.Size) == -1 || file.FileMetadata.State == dcache.Warming,
+		file.FileMetadata.Size, file.FileMetadata.State, file.FileMetadata.Filename)
 	// FUSE sends requests not exceeding 1MiB, put this assert to know if that changes in future.
-	common.Assert(len(buf) <= common.MbToBytes, len(buf))
+	// Other than fuse, cache warmup path can call WriteFile and it can use larger buffers.
+	common.Assert(len(buf) <= common.MbToBytes || !fromFuse, len(buf))
 	// Read patterm tracker must not be present for files opened for writing.
 	common.Assert(file.RPT == nil, file.FileMetadata.Filename)
 	// We should not be called for 0 byte writes.
@@ -514,13 +560,13 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		err := fmt.Errorf("DistributedCache[FM]::WriteFile: Overwrite unsupported, file: %s, offset: %d, allowed: [%d, %d)",
 			file.FileMetadata.Filename, offset, allowableWriteOffsetStart, allowableWriteOffsetEnd)
 		log.Err("%v", err)
-		file.writeErr.Store(err)
+		file.setWriteError(err)
 		return syscall.ENOTSUP
 	} else if offset > allowableWriteOffsetEnd {
 		err := fmt.Errorf("DistributedCache[FM]::WriteFile: Random write unsupported, file: %s, offset: %d, allowed: [%d, %d)",
 			file.FileMetadata.Filename, offset, allowableWriteOffsetStart, allowableWriteOffsetEnd)
 		log.Err("%v", err)
-		file.writeErr.Store(err)
+		file.setWriteError(err)
 		return syscall.ENOTSUP
 	}
 
@@ -549,8 +595,9 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 				file.FileMetadata.Filename,
 				getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize), err)
 			log.Err("DistributedCache[FM]::WriteFile: %v", err)
-			common.Assert(false, err)
-			file.writeErr.Store(err)
+			// No space left on device, is one possible error. NewStagedChunk() will set file error in that case.
+			common.Assert(file.getWriteError() != nil, file.getWriteError(), err)
+			file.setWriteError(err)
 			return err
 		}
 
@@ -563,7 +610,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 				file.FileMetadata.Filename, offset, writeSize, chunkOffset, chunk.Idx)
 
 			log.Err("%v", err)
-			file.writeErr.Store(err)
+			file.setWriteError(err)
 			file.releaseChunk(chunk)
 			return syscall.ENOTSUP
 		}
@@ -667,6 +714,19 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	// Next write expected at offset maxWriteOffset.
 	common.AtomicMaxInt64(&file.maxWriteOffset, offset)
 
+	//
+	// Warmup files MUST NOT exceed the original file size.
+	//
+	if (int64(file.FileMetadata.Size) != -1) && (file.maxWriteOffset > int64(file.FileMetadata.Size)) {
+		err := fmt.Errorf("Warmup file extended beyong original size, file: %s, original size: %d, maxWriteOffset: %d",
+			file.FileMetadata.Filename, file.FileMetadata.Size, file.maxWriteOffset)
+
+		log.Err("DistributedCache[FM]::WriteFile: %v", err)
+		file.setWriteError(err)
+
+		return syscall.ENOTSUP
+	}
+
 	return nil
 }
 
@@ -712,11 +772,22 @@ func (file *DcacheFile) SyncFile() error {
 
 		//
 		// Uploading partial chunks in the middle of the file is recipe for data corruption.
+		// For warmup files we skip upload of partial non-last chunks while for non-warmup files
+		// we fail the SyncFile() and thus file close().
+		// Note that for warm up files it's ok to drop some data written by the application as
+		// we can fall back to reading from the original source (Azure).
 		//
 		if !isLastChunk && chunk.Len < file.FileMetadata.FileLayout.ChunkSize {
-			err := fmt.Errorf("DistributedCache[FM]::SyncFile: Partial non-last chunk. file: %s, chunkIdx: %d, chunkLen: %d, file size: %d",
-				file.FileMetadata.Filename, chunk.Idx, chunk.Len, file.maxWriteOffset)
+			warmupFile := file.FileMetadata.State == dcache.Warming
+
+			err := fmt.Errorf("DistributedCache[FM]::SyncFile: Partial non-last chunk. file: %s, chunkIdx: %d, chunkLen: %d, file size: %d, warmupFile: %v",
+				file.FileMetadata.Filename, chunk.Idx, chunk.Len, file.maxWriteOffset, warmupFile)
 			log.Err("%v", err)
+
+			if warmupFile {
+				continue
+			}
+
 			return err
 		}
 
@@ -815,6 +886,7 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	// Decrement the file open count if safeDeletes is enabled and handle corresponds to a file opened for
 	// reading.
 	//
+	//if fileIOMgr.safeDeletes && isReadOnlyHandle && file.WarmupFileInfo == nil {
 	if fileIOMgr.safeDeletes && isReadOnlyHandle {
 		// attr must have been saved when file was opened for read.
 		common.Assert(file.attr != nil, file.FileMetadata)
@@ -846,14 +918,30 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 // This method is called when all the File IO operations are successful and the file is closed.
 // Since files are immutable, no further writes will be allowed.
 func (file *DcacheFile) finalizeFile() error {
-	// State must be "writing", since we finalize a file only once.
-	common.Assert(file.FileMetadata.State == dcache.Writing)
+	// State must be "writing" or "warmup", since we finalize a file only once.
+	common.Assert(file.FileMetadata.State == dcache.Writing || file.FileMetadata.State == dcache.Warming)
+
+	//
+	// Till we finalize a file we don't know the size.
+	// This is not true for files opened for warmup, where size is known upfront.
+	//
+	common.Assert(file.FileMetadata.Size >= -1, file.FileMetadata.Filename, file.FileMetadata.Size)
+	common.Assert((file.FileMetadata.Size >= 0) == (file.FileMetadata.State == dcache.Warming),
+		file.FileMetadata.Filename, file.FileMetadata.Size, file.FileMetadata.State, file.maxWriteOffset)
+	common.Assert((file.FileMetadata.State != dcache.Warming) || (file.maxWriteOffset <= file.FileMetadata.Size),
+		file.FileMetadata.Filename, file.FileMetadata.Size, file.FileMetadata.State, file.maxWriteOffset)
+
+	state := file.FileMetadata.State
+
 	file.FileMetadata.State = dcache.Ready
 
-	// Till we finalize a file we don't know the size.
-	common.Assert(file.FileMetadata.Size == -1, file.FileMetadata.Filename, file.FileMetadata.Size)
-	file.FileMetadata.Size = file.maxWriteOffset
+	if file.FileMetadata.Size == -1 {
+		file.FileMetadata.Size = file.maxWriteOffset
+	}
 	common.Assert(file.FileMetadata.Size >= 0)
+
+	// let all readers know the final file size.
+	file.CT.finalizeMDChunk()
 
 	fileMetadataBytes, err := json.Marshal(file.FileMetadata)
 	if err != nil {
@@ -863,7 +951,7 @@ func (file *DcacheFile) finalizeFile() error {
 	}
 
 	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size,
-		file.finalizeEtag)
+		state, file.finalizeEtag)
 	if err != nil {
 		//
 		// Finalize file  should not fail unless the metadata file is deleted/modified out-of-band.
@@ -1229,10 +1317,17 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) bool {
 // If the chunk is already in file.StagedChunks, it is returned else a new chunk is created, and data is read
 // from the file into that chunk.
 //
-// Sync true: Schedules and waits for the download to complete.
-// Sync false: Schedules the read but doesn't wait for download to complete. This is the readahead case.
+// sync true: Schedules and waits for the download to complete.
+// sync false: Schedules the read but doesn't wait for download to complete. This is the readahead case.
+//             In this case readChunk() drops the refcount on the chunk before returning to the caller.
+// doNotRelease true: Caller doesn't want us to drop the refcount on the chunk. This is useful when
+//                    caller wants us to schedule the download but they will wait for the download to complete
+//                    and also drop the refcount when they are done with the chunk.
+//                    It makes sense only when sync is false, with sync true we would anyway not drop the refcount.
 
-func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk, error) {
+func (file *DcacheFile) readChunk(offset, length int64, sync, doNotRelease bool) (*StagedChunk, error) {
+	common.Assert(!doNotRelease || !sync, doNotRelease, sync, file.FileMetadata.Filename)
+
 	// Given the file layout, get the index of chunk that contains data at 'offset'.
 	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout.ChunkSize)
 	chunkOffset := int64(0)
@@ -1257,8 +1352,10 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	// For readahead chunks the caller doesn't wait for the download to complete, and doesn't drop the refcount.
 	// So drop the refcount here. When reader thread reads from this readahead chunk, it'll get a brand new
 	// refcount at that time.
+	// For read chunk the caller may want to schedule the download but not wait for it to complete (it'll do the
+	// wait), in that case also the caller doesn't want us to drop the refcount.
 	//
-	if !sync {
+	if !sync && !doNotRelease {
 		file.releaseChunk(chunk)
 	}
 
@@ -1289,6 +1386,34 @@ func (file *DcacheFile) readChunk(offset, length int64, sync bool) (*StagedChunk
 	return chunk, err
 }
 
+// Wait for download of the given chunk to complete and return the chunk and error status.
+// The chunk must have been scheduled for download already using readChunk()->scheduleDownload().
+func (file *DcacheFile) waitForChunkDownload(chunk *StagedChunk) (*StagedChunk, error) {
+	log.Debug("DistributedCache::waitForChunkDownload: file: %s, chunkIdx: %d",
+		file.FileMetadata.Filename, chunk.Idx)
+
+	// Block here till the chunk download is done.
+	err := <-chunk.Err
+	//
+	// Err channel has length 1, so once we read from it, it must be empty.
+	// No other thread can add the error to the channel other than the thread that performed the download.
+	//
+	common.Assert(len(chunk.Err) == 0, len(chunk.Err), chunk.Idx, file.FileMetadata.Filename)
+	if err != nil {
+		// Requeue the error for whoever reads this chunk next.
+		chunk.Err <- err
+
+		log.Err("DistributedCache::waitForChunkDownload: Failed, file: %s, chunkIdx: %d: %v",
+			file.FileMetadata.Filename, chunk.Idx, err)
+	}
+
+	//
+	// The only case where we fail with an error but still return a valid chunk is when chunk download
+	// fails. Caller must release the chunk refcount.
+	//
+	return chunk, err
+}
+
 // Reads the chunk and also schedules downloads for the necessary readahead chunks.
 // Returns the StagedChunk containing data at 'offset' in the file.
 // Readahead is done only when reading the start of a chunk and when caller is sure of the sequential
@@ -1306,6 +1431,17 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 
 	log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, offset: %d, chunkIdx: %d, unsure: %v",
 		file.FileMetadata.Filename, offset, chunkIdx, unsure)
+
+	//
+	// Schedule download now (before the readahead chunks), we later wait for it to complete just before
+	// returning from this function.
+	// By queueing this download before the readahead chunks, makes it more likely that this chunk download
+	// completes before the readahead chunks thus saving us any unnecessary wait time.
+	//
+	chunk, err := file.readChunk(offset, 0 /* length */, false /* sync */, true /* doNotRelease */)
+	if err != nil {
+		return nil, err
+	}
 
 	//
 	// Schedule downloads for the readahead chunks. The chunk at chunkIdx is to be read synchronously,
@@ -1329,7 +1465,8 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		// Start readahead after the last chunk readahead by prev read calls or after this chunk.
 		readAheadStartChunkIdx := max(file.lastReadaheadChunkIdx.Load()+1, chunkIdx+1)
 		readAheadEndChunkIdx := min(readAheadStartChunkIdx+readAheadCount,
-			getChunkIdxFromFileOffset(file.FileMetadata.Size-1, file.FileMetadata.FileLayout.ChunkSize))
+			getMaxChunkIdxForFile(file.FileMetadata))
+
 		common.Assert(readAheadEndChunkIdx >= chunkIdx, readAheadEndChunkIdx, chunkIdx)
 
 		//
@@ -1343,31 +1480,117 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64, unsure bool) (*Stag
 		}
 
 		if common.IsDebugBuild() {
-			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, Readahead %d chunks [%d, %d), %d in cache",
+			log.Debug("DistributedCache::readChunkWithReadAhead: file: %s, Readahead %d chunks [%d, %d), %d in cache, fileSize: %d, partialSize: %d",
 				file.FileMetadata.Filename, (readAheadEndChunkIdx - readAheadStartChunkIdx),
-				readAheadStartChunkIdx, readAheadEndChunkIdx, len(file.StagedChunks))
+				readAheadStartChunkIdx, readAheadEndChunkIdx, len(file.StagedChunks), file.FileMetadata.Size, file.FileMetadata.PartialSize)
 		}
 
 		file.chunkLock.Unlock()
 
-		for i := readAheadStartChunkIdx; i < readAheadEndChunkIdx; i++ {
-			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0, false /* sync */)
+		//
+		// We have to readahead chunks [readAheadStartChunkIdx, readAheadEndChunkIdx).
+		// Instead of going in order, we start at a random index in that range to avoid node/rv hotspots when
+		// mulitple nodes read the same file. Each node will start readahead at a different chunk in the
+		// readahead range, thus spreading the load across nodes/RVs.
+		//
+		if readAheadEndChunkIdx > readAheadStartChunkIdx {
+			numChunksToReadahead := int(readAheadEndChunkIdx - readAheadStartChunkIdx)
 
-			common.Assert(file.readaheadToBeIssued.Load() > 0,
-				file.readaheadToBeIssued.Load(), file.FileMetadata.Filename)
+			startIdx := rand.Intn(numChunksToReadahead)
+			// To disable the randomization of readahead order, uncomment below line.
+			//startIdx = 0
+			for idx := startIdx; idx < numChunksToReadahead+startIdx; idx++ {
+				i := int64(idx%numChunksToReadahead) + readAheadStartChunkIdx
 
-			file.readaheadToBeIssued.Add(-1)
-			if err != nil {
-				// Don't fail the read because readahead failed.
-				log.Warn("DistributedCache::readChunkWithReadAhead: file: %s, chunkIdx: %d, readahead failed: %v",
-					file.FileMetadata.Filename, i, err)
+				_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, 0,
+					false /* sync */, false /* doNotRelease */)
+
+				common.Assert(file.readaheadToBeIssued.Load() > 0,
+					file.readaheadToBeIssued.Load(), file.FileMetadata.Filename)
+
+				file.readaheadToBeIssued.Add(-1)
+
+				if err != nil {
+					// Don't fail the read because readahead failed.
+					log.Warn("DistributedCache::readChunkWithReadAhead: file: %s, chunkIdx: %d, readahead failed: %v",
+						file.FileMetadata.Filename, i, err)
+				}
 			}
 		}
 	}
 
-	// Now the actual chunk, unlike readahead chunks we wait for this one to download.
-	chunk, err := file.readChunk(offset, 0 /* length */, true /* sync */)
-	return chunk, err
+	//
+	// Now wait for the requested chunk download to complete and return.
+	// We scheduled its download at the start of this function, before scheduling the readahead chunks
+	//
+	return file.waitForChunkDownload(chunk)
+}
+
+// Read chunk data from Azure into the given StagedChunk.
+// offset: Offset within the file to read from.
+// chunk: StagedChunk to read data into.
+//        chunk.Len must be set to the size to read.
+//        chunk.Buf must not be preallocated.
+
+func (file *DcacheFile) readChunkFromAzure(offset int64, chunk *StagedChunk) (int64, error) {
+	// We should not be reading into an up-to-date chunk.
+	common.Assert(!chunk.UpToDate.Load(), chunk.Idx, file.FileMetadata.Filename)
+	// For read, chunk buffer is not preallocated.
+	common.Assert(chunk.Buf == nil, chunk.Idx, file.FileMetadata.Filename)
+	// chunk.Len must be set to the size to read.
+	common.Assert(chunk.Len > 0, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
+	// We must be called only when AzureHandle is valid.
+	common.Assert(file.AzureHandle != nil, file.FileMetadata.Filename, chunk.Idx, offset, chunk.Len)
+	common.Assert(file.AzureReader != nil, file.FileMetadata.Filename, chunk.Idx, offset, chunk.Len)
+
+	common.Assert(offset >= 0 && chunk.Len > 0, offset, chunk.Len, chunk.Idx, file.FileMetadata.Filename)
+
+	data, err := dcache.GetBuffer()
+	if err != nil {
+		err = fmt.Errorf("failed to allocate buffer for reading from Azure, file: %s [%v]",
+			file.FileMetadata.Filename, err)
+		log.Err("DistributedCache::readChunkFromAzure: %v", err)
+		common.Assert(false, err)
+		return -1, err
+	}
+
+	// Reslice the data buffer accordingly, length of the buffer that we get from the BufferPool is of
+	// maximum size(i.e., Chunk Size)
+	common.Assert(int64(cap(data)) >= chunk.Len, cap(data), chunk.Len, file.FileMetadata.Filename)
+	data = data[:chunk.Len]
+
+	defer func() {
+		// For any error that was caused from here, We must release the buffer that was taken from the buffer pool.
+		if err != nil {
+			dcache.PutBuffer(data)
+		}
+	}()
+
+	bytesRead, err := file.AzureReader(
+		&internal.ReadInBufferOptions{
+			Handle: file.AzureHandle,
+			Offset: int64(offset),
+			Data:   data,
+		})
+
+	if err == io.EOF {
+		err = nil
+	}
+
+	if err != nil {
+		log.Debug("DistributedCache::readChunkFromAzure: failed for file: %s, offset: %d, chunkIdx: %d: %v",
+			file.FileMetadata.Filename, offset, chunk.Idx, err)
+	} else {
+		common.Assert(bytesRead > 0, bytesRead, offset, chunk.Idx, file.FileMetadata.Filename)
+
+		chunk.Buf = data[:bytesRead]
+		chunk.IsBufExternal = false
+
+		log.Debug("DistributedCache::readChunkFromAzure: read %d bytes for file: %s, offset: %d, chunkIdx: %d",
+			bytesRead, file.FileMetadata.Filename, offset, chunk.Idx)
+	}
+
+	return int64(bytesRead), err
 }
 
 // Reads 'length' bytes from file at 'offset' and returns the StagedChunk containing the requested data.
@@ -1396,7 +1619,7 @@ func (file *DcacheFile) readChunkNoReadAhead(offset, length int64) (*StagedChunk
 		length, chunkOffset, file.FileMetadata.FileLayout.ChunkSize)
 
 	// Read the chunk, wait for it to download.
-	chunk, err := file.readChunk(offset, length, true /* sync */)
+	chunk, err := file.readChunk(offset, length, true /* sync */, false /* doNotRelease */)
 	return chunk, err
 }
 
@@ -1462,6 +1685,24 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) bool {
 		common.Assert(chunk.Dirty.Load())
 		// Up-to-date chunk should not be written.
 		common.Assert(!chunk.UpToDate.Load())
+
+		file.ut.scheduledUploads.Add(1)
+		if file.ut.cumScheduled.Add(1) == 1 {
+			file.ut.firstScheduledAt.Store(time.Now().UnixNano())
+		}
+		if file.ut.lastScheduledAt.Load() != 0 {
+			schedGap := time.Since(time.Unix(0, file.ut.lastScheduledAt.Load()))
+			if schedGap > file.ut.slowGapThresh {
+				file.ut.slowScheduled.Add(1)
+				if schedGap > file.ut.slowGapThresh*2 {
+					log.Warn("[SLOW] DistributedCache::scheduleUpload: file: %s, chunkIdx: %d, schedGap: %s, slowScheduled: %d (of %d in total %s)",
+						file.FileMetadata.Filename, chunk.Idx, schedGap,
+						file.ut.slowScheduled.Load(), file.ut.cumScheduled.Load(),
+						time.Since(time.Unix(0, file.ut.firstScheduledAt.Load())))
+				}
+			}
+		}
+		file.ut.lastScheduledAt.Store(time.Now().UnixNano())
 
 		fileIOMgr.wp.queueWork(file, chunk, false /* get_chunk */)
 		return true

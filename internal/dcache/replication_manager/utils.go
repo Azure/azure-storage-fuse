@@ -36,6 +36,9 @@ package replication_manager
 import (
 	"fmt"
 	"slices"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -62,15 +65,42 @@ const (
 	NTPClockSkewMargin = 5 * 1e6
 
 	//
+	// Max concurrent PutChunkDC calls across all nodes and to a specific node.
+	// Both of these (specially the global limit) need to be carefully tuned based on experiments
+	// on different size clusters.
+	//
+	// Note: This is not an ideal situation, ideally we would not like to limit ourselves artifically,
+	//       and would like to get limited only by resources like n/w and disk throughput. We are
+	//       having to do this because Thrift does not support asynchronous calls (where multiple RPC
+	//       calls can be in-flight on the same connection and the responses are matched using a unique
+	//       RPC Id that each request/response carries), so if we do not limit the number of concurrent calls,
+	//       it puts a lot of pressure on the RPC connection pool and under load it takes multiple seconds
+	//       to get a connection from the pool, which results in timeouts and failures and hurts performance.
+	//
+	//       If the outstanding PutChunkDC calls hang/get delayed for any reason, then we would not be
+	//       optimally utilizing the available n/w and disk throughput. Hopefully this will not happen often.
+	//
+	// TODO: Consider gRPC which supports async calls.
+	//
+	// Note: These values need to be set in close coordination with defaultMaxPerNode.
+	//       These must be set as low as possible, just enough to saturate the n/w and disk throughput from
+	//       a single node.
+	//
+	// TODO: Evaluate if PutChunkDCIODepthTotal is fine for very large clusters.
+	//
+	PutChunkDCIODepthTotal   = 64
+	PutChunkDCIODepthPerNode = 8
+
+	//
 	// Number of workers in the thread pool for sending the RPC requests.
 	// Note that one worker is used for one replica IO (read or write), so we need these to be accordingly
 	// higher than the fileIOManager workers setting.
 	//
-	MAX_WORKER_COUNT = 2000
+	MAX_WORKER_COUNT = 512
 
 	// Maximum number of sync jobs (running syncComponentRV()) that can be running at any time.
 	// This should be smaller than cm.MAX_SIMUL_RV_STATE_UPDATES.
-	MAX_SIMUL_SYNC_JOBS = 1000
+	MAX_SIMUL_SYNC_JOBS = 100
 )
 
 type PutChunkStyleEnum int
@@ -91,6 +121,50 @@ const (
 	DaisyChain
 )
 
+var (
+	//
+	// These stats are used to find slowness in one of the following legs:
+	// - Time taken to schedule the WriteMV call (i.e. time spent waiting to acquire the PutChunkDC semaphores).
+	// - Time taken to complete the WriteMV call (i.e. time taken by the RV to write the chunk locally and
+	//   send PutChunkDC calls to other RVs and get response from all).
+	//
+	// Also see getRPCClient() for stats related to acquiring the RPC client connection.
+	//
+	// If the throughput is low, then we can look at these stats to find out which leg is slow.
+	//
+	aggrWriteMVCalls      atomic.Int64 // aggregate number of WriteMV calls.
+	aggrWriteMVTime       atomic.Int64 // aggregate time for completing all WriteMV calls (in nanoseconds).
+	aggrWriteMVWait       atomic.Int64 // aggregate time spent waiting to schedule WriteMV calls (in nanoseconds).
+	aggrPutChunkDCSemWait atomic.Int64 // aggregate time spent waiting to acquire PutChunkDC semaphore (in nanoseconds).
+	aggrPutChunkDCSemHold atomic.Int64 // aggregate time spent holding PutChunkDC semaphore (in nanoseconds).
+	aggrPutChunkDCCalls   atomic.Int64 // aggregate number of PutChunkDC calls.
+	putChunkDCSemWaiting  atomic.Int64 // number of PutChunkDC calls currently waiting to acquire semaphore.
+
+	// Timeout to check if a sync job is stuck or not.
+	// If a sync job is running for more than this time, and there is no progress (no further sync writes),
+	// it means that the source RV has gone offline. So, we mark the target RV as inband-offline to trigger
+	// the fix-mv workflow to select a new RV.
+	AbortOngoingSyncThresholdSecs int64 = 60 // in seconds
+
+	// Timeout to check if a sync job is stuck or not (after the JoinMV operation).
+	// This can happen when the source RV updates the state of target RV to syncing in the clustermap.
+	// But before it sends the PutChunk(sync) calls to the target RV, it goes down. In this case, the
+	// mvInfo.lastSyncWriteTime will be 0, as the sync job hasn't yet started writing any chunks.
+	// So, we use the time at which the target RV joined the MV and use this threshold to detect if the
+	// sync job is stuck or not. If the sync job is stuck, we mark the target RV as inband-offline
+	// to trigger the fix-mv workflow to select a new RV.
+	// Note: This threshold should be significantly higher than AbortOngoingSyncThresholdSecs, as
+	//       the target RV waits for clustermap epoch time to update its local clustermap as well as the
+	//       replication manager ticker time to run the abortStuckSyncJobs() thread.
+	//       So, we use cm.MaxClusterMapEpoch + some margin for replication manager ticker to run.
+	AbortSyncAfterJoinMVThresholdSecs = cm.MaxClusterMapEpoch + 60 // in seconds
+)
+
+// Semaphores to limit the number of concurrent PutChunkDC calls across all nodes and to a specific node.
+var putChunkDCTotalSem = make(chan struct{}, PutChunkDCIODepthTotal)
+var putChunkDCPerNodeSemMap = make(map[string]*chan struct{})
+var putChunkDCPerNodeSemMapLock sync.Mutex
+
 func (s PutChunkStyleEnum) String() string {
 	switch s {
 	case OriginatorSendsToAll:
@@ -100,6 +174,109 @@ func (s PutChunkStyleEnum) String() string {
 	default:
 		common.Assert(false, s)
 		return "Unknown"
+	}
+}
+
+var putChunkDCSemNodeDummy = make(chan struct{}, PutChunkDCIODepthPerNode)
+
+// Acquire the semaphores for sending PutChunkDC to the given target node.
+func getPutChunkDCSem(targetNodeID string, chunkIdx int64) *chan struct{} {
+	// Anything above this threshold is considered a large/unusual wait and is logged as a warning.
+	const largeWaitThreshold = 2 * time.Second
+
+	putChunkDCSemWaiting.Add(1)
+	startTime := time.Now()
+
+	//
+	// Grab per-node semaphore.
+	//
+	// TODO: Disabling per-node semaphore for now, as we have the MV level throttling in place.
+	//
+	putChunkDCSemNode := &putChunkDCSemNodeDummy
+	/*
+		putChunkDCPerNodeSemMapLock.Lock()
+		putChunkDCSemNode, ok := putChunkDCPerNodeSemMap[targetNodeID]
+		if !ok {
+			sem := make(chan struct{}, PutChunkDCIODepthPerNode)
+			putChunkDCSemNode = &sem
+			putChunkDCPerNodeSemMap[targetNodeID] = putChunkDCSemNode
+		}
+		putChunkDCPerNodeSemMapLock.Unlock()
+
+		(*putChunkDCSemNode) <- struct{}{}
+	*/
+
+	//
+	// Grab global semaphore.
+	// We do it after grabbing the per-node semaphore as this is a more sacred resource, since
+	// PutChunkDC calls to *any* node will be limited by this. We do not want to grab this and then
+	// wait for the per-node semaphore.
+	//
+	putChunkDCTotalSem <- struct{}{}
+
+	common.Assert(putChunkDCSemWaiting.Load() > 0, putChunkDCSemWaiting.Load())
+	putChunkDCSemWaiting.Add(-1)
+
+	//
+	// Update aggregate wait time for acquiring the semaphore. To reflect the current situation more accurately,
+	// we reset the aggregate stats after every 200 calls, roughly ~3GB of data written (with 16MB chunks).
+	// If the avg wait time is very high, then we should consider increasing the semaphore depth, or
+	// find out why the PutChunkDC calls are taking too long.
+	//
+	if aggrPutChunkDCCalls.Add(1) == 200 {
+		// Since it's not protected by a lock, we don't set it to zero, but to 1, to avoid division by zero.
+		aggrPutChunkDCCalls.Store(1)
+		aggrPutChunkDCSemWait.Store(time.Since(startTime).Nanoseconds())
+		aggrPutChunkDCSemHold.Store(1)
+	} else {
+		aggrPutChunkDCSemWait.Add(time.Since(startTime).Nanoseconds())
+	}
+
+	log.Debug("getPutChunkDCSem: Acquired semaphore for node: %s, chunkIdx: %d, took %s, now available: {global: %d/%d, node: %d/%d}, waiting: %d, avg wait: %s",
+		targetNodeID, chunkIdx, time.Since(startTime),
+		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+		putChunkDCSemWaiting.Load(),
+		time.Duration(aggrPutChunkDCSemWait.Load()/aggrPutChunkDCCalls.Load()))
+
+	if time.Since(startTime) > largeWaitThreshold {
+		log.Warn("[SLOW] getPutChunkDCSem: Acquired semaphore for node: %s, chunkIdx: %d, took %s (> %s), now available: {global: %d/%d, node: %d/%d}, waiting: %d, avg wait: %s",
+			targetNodeID, chunkIdx, time.Since(startTime), largeWaitThreshold,
+			PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+			PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+			putChunkDCSemWaiting.Load(),
+			time.Duration(aggrPutChunkDCSemWait.Load()/aggrPutChunkDCCalls.Load()))
+	}
+
+	return putChunkDCSemNode
+}
+
+// Release the semaphore acquired by getPutChunkDCSem() for the given target node.
+func releasePutChunkDCSem(putChunkDCSemNode *chan struct{}, targetNodeID string, chunkIdx int64, dur time.Duration) {
+	const largeHoldThreshold = 3 * time.Second
+
+	// We must be releasing a semaphore that we have acquired.
+	//common.Assert(len(*putChunkDCSemNode) > 0, len(*putChunkDCSemNode))
+	common.Assert(len(putChunkDCTotalSem) > 0, len(putChunkDCTotalSem))
+
+	// Duration is the time the semaphore was held, which is the time taken for the PutChunkDC call to complete.
+	aggrPutChunkDCSemHold.Add(dur.Nanoseconds())
+
+	<-putChunkDCTotalSem
+	//<-*putChunkDCSemNode
+
+	log.Debug("releasePutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}, held for: %s, avg hold: %s",
+		targetNodeID, chunkIdx,
+		PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+		PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+		dur, time.Duration(aggrPutChunkDCSemHold.Load()/aggrPutChunkDCCalls.Load()))
+
+	if dur > largeHoldThreshold {
+		log.Warn("[SLOW] releasePutChunkDCSem: Released semaphore for node: %s, chunkIdx: %d, now available: {global: %d/%d, node: %d/%d}, held for: %s (> %s), avg hold: %s",
+			targetNodeID, chunkIdx,
+			PutChunkDCIODepthTotal-len(putChunkDCTotalSem), PutChunkDCIODepthTotal,
+			PutChunkDCIODepthPerNode-len(*putChunkDCSemNode), PutChunkDCIODepthPerNode,
+			dur, largeHoldThreshold, time.Duration(aggrPutChunkDCSemHold.Load()/aggrPutChunkDCCalls.Load()))
 	}
 }
 
@@ -165,9 +342,9 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // Return list of component RVs (name and state) for the given MV, and its state, and also the clustermap Epoch.
 // The epoch should be used by the caller to correctly refresh the clustermap on receiving a NeedToRefreshClusterMap
 // error.
-func getComponentRVsForMV(mvName string) (dcache.StateEnum, []*models.RVNameAndState, int64) {
+func getComponentRVsForMV(mvName string, randomize bool) (dcache.StateEnum, []*models.RVNameAndState, int64) {
 	mvState, rvMap, epoch := cm.GetRVsEx(mvName)
-	return mvState, cm.RVMapToList(mvName, rvMap), epoch
+	return mvState, cm.RVMapToList(mvName, rvMap, randomize), epoch
 }
 
 // return the number of replicas

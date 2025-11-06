@@ -79,10 +79,8 @@ const (
 	StateDegraded  StateEnum = "degraded"
 	StateDown      StateEnum = "down"
 	StateOutOfSync StateEnum = "outofsync"
-	StateReady     StateEnum = "ready"
 	StateSyncing   StateEnum = "syncing"
 	StateReadOnly  StateEnum = "readOnly"
-	StateChecking  StateEnum = "checking"
 	//
 	// Inband offline is a state for RVs that are not reachable from a given node,
 	// but are not marked offline yet by the heartbeat mechanism.
@@ -93,7 +91,6 @@ const (
 // Please change the ClusterMapExport struct if you change this struct.
 type ClusterMap struct {
 	Readonly      bool                      `json:"readonly"`
-	State         StateEnum                 `json:"state"`
 	Epoch         int64                     `json:"epoch"`
 	CreatedAt     int64                     `json:"created-at"`
 	LastUpdatedAt int64                     `json:"last_updated_at"`
@@ -108,7 +105,6 @@ type ClusterMap struct {
 // Refer to ClusterMap before making any changes to this struct.
 type ClusterMapExport struct {
 	Readonly      bool                        `json:"readonly"`
-	State         StateEnum                   `json:"state"`
 	Epoch         int64                       `json:"epoch"`
 	CreatedAt     int64                       `json:"created-at"`
 	LastUpdatedAt int64                       `json:"last_updated_at"`
@@ -133,8 +129,8 @@ type DCacheConfig struct {
 	ChunkSizeMB            uint64 `json:"chunk-size-mb"`
 	StripeWidth            uint64 `json:"stripe-width"`
 	NumReplicas            uint32 `json:"num-replicas"`
-	MaxRVs                 uint32 `json:"max-rvs"`
-	MVsPerRV               uint64 `json:"mvs-per-rv"`
+	MaxRVs                 uint32 `json:"max-rvs,omitzero"`
+	MVsPerRV               uint64 `json:"mvs-per-rv,omitzero"`
 	RvFullThreshold        uint64 `json:"rv-full-threshold"`
 	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold"`
 	HeartbeatSeconds       uint16 `json:"heartbeat-seconds"`
@@ -145,6 +141,7 @@ type DCacheConfig struct {
 	CacheAccess            string `json:"cache-access"`
 	IgnoreFD               bool   `json:"ignore-fd"`
 	IgnoreUD               bool   `json:"ignore-ud"`
+	RingBasedMVPlacement   bool   `json:"ring-based-mv-placement"`
 }
 
 type FileState string
@@ -152,10 +149,30 @@ type FileState string
 const (
 	Ready   FileState = "ready"
 	Writing FileState = "writing"
+	Warming FileState = "warming"
 )
 
 const (
 	DcacheDeletingFileNameSuffix = ".dcache.deleting"
+	DummyWriteFileName           = ".dummy.write"
+	//
+	// Chunk index used for the metadata chunk is the following special value.
+	// This value is chosen to be very large so that it does not conflict with an actual data chunk index.
+	// With 4MiB chunk size, this value allows for files up to 4 ZiB in size.
+	//
+	MDChunkIdx = (int64(1) << 50)
+
+	//
+	// When reading the metadata chunk, we do not know the size, so we read this much data.
+	// The metadata chunk is guaranteed to be smaller, so this should be sufficient.
+	// This is needed for better asserting in the RPC handler.
+	//
+	MDChunkSize = 101
+)
+
+var (
+	// This is MDChunkIdx*ChunkSizeInMiB, setup once we know the chunk size.
+	MDChunkOffsetInMiB int64
 )
 
 type FileMetadata struct {
@@ -163,10 +180,23 @@ type FileMetadata struct {
 	State           FileState  `json:"-"`
 	FileID          string     `json:"file_id"`
 	Size            int64      `json:"-"`
+	PartialSize     int64      `json:"-"`
+	PartialSizeAt   time.Time  `json:"-"`
 	OpenCount       int        `json:"-"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
 	FileLayout      FileLayout `json:"file_layout"`
 	Sha1hash        []byte     `json:"sha256"`
+}
+
+// This is the content of the metadata chunk used to store size for partially written files.
+// Note that the metadata file stores the file size as -1 until the file is closed after writing, so if a reader
+// wants to read a file that's currently being written it needs to read this metadata chunk to know the partial
+// size of the file. The partial size is updated in this chunk as the file is being written.
+//
+// Note: Update MDChunkSize if you change this struct. MDChunkSize must be > size of this struct.
+type MetadataChunk struct {
+	Size          int64     `json:"size"`
+	LastUpdatedAt time.Time `json:"last_updated_at,omitzero"`
 }
 
 type FileLayout struct {
@@ -181,4 +211,73 @@ type ComponentRVUpdateMessage struct {
 	RvNewState StateEnum
 	QueuedAt   time.Time
 	Err        chan error
+	Closed     bool // true if Err channel is closed after adding an error, and no new error must be added.
+}
+
+type ClusterSummary struct {
+	Timestamp  string            `json:"timestamp"`
+	MyNodeId   string            `json:"my_node_id"`
+	MyIPAddr   string            `json:"my_ipaddr"`
+	MyRVs      []string          `json:"my_rvs"`
+	Clustermap ClustermapSummary `json:"clustermap"`
+	Nodes      NodesSummary      `json:"nodes"`
+	RVs        RVsSummary        `json:"rvs"`
+	MVs        MVsSummary        `json:"mvs"`
+}
+
+type ClustermapSummary struct {
+	Readonly        bool         `json:"readonly"`
+	Epoch           int64        `json:"epoch"`
+	CreatedAt       string       `json:"created-at"`
+	LastUpdatedAt   string       `json:"last_updated_at"`
+	LastUpdatedBy   string       `json:"last_updated_by"`
+	Config          DCacheConfig `json:"config"`
+	LastFetchedAt   string       `json:"last_fetched_at"`
+	LastRefreshedAt string       `json:"last_refreshed_at"`
+}
+
+type NodesSummary struct {
+	Count   int64 `json:"count"`
+	Offline int64 `json:"offline"`
+}
+
+type RVsSummary struct {
+	Count   int64 `json:"count"`
+	Offline int64 `json:"offline"`
+}
+
+type MVsSummary struct {
+	Count    int64 `json:"count"`
+	Online   int64 `json:"online"`
+	Degraded int64 `json:"degraded"`
+	Syncing  int64 `json:"syncing"`
+	Offline  int64 `json:"offline"`
+}
+
+// Stats for all nodes in the cluster.
+type NodesStats struct {
+	Timestamp string            `json:"timestamp"`
+	Count     int64             `json:"count"`
+	Nodes     []*NodeInfo       `json:"nodes"`
+	Aggregate *NodesAggregate   `json:"aggregate"`        // Aggregated stats across all nodes.
+	Errors    map[string]string `json:"errors,omitempty"` // nodeID -> error string
+}
+
+// Stats for a single node in the cluster.
+type NodeInfo struct {
+	NodeID         string `json:"node_id"`
+	HostName       string `json:"hostname"`
+	IPAddress      string `json:"ip_address"`
+	MemUsed        string `json:"mem_used"`
+	MemTotal       string `json:"mem_total"`
+	PercentMemUsed string `json:"percent_mem_used"`
+}
+
+// Aggregated stats across all nodes in the cluster.
+type NodesAggregate struct {
+	MemUsedBytes   int64  `json:"-"`
+	MemTotalBytes  int64  `json:"-"`
+	MemUsed        string `json:"mem_used"`
+	MemTotal       string `json:"mem_total"`
+	PercentMemUsed string `json:"percent_mem_used"`
 }
