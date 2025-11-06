@@ -135,6 +135,28 @@ func (a *AtomicTime) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type AtomicString struct {
+	ptr atomic.Pointer[string]
+}
+
+func (a *AtomicString) Store(s string) {
+	copy := s
+	a.ptr.Store(&copy)
+}
+
+func (a *AtomicString) Load() string {
+	p := a.ptr.Load()
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func (a *AtomicString) MarshalJSON() ([]byte, error) {
+	s := a.Load()
+	return json.Marshal(s)
+}
+
 // Metadata manager stats.
 // These should help us understand the performance of the metadata manager and its interactions with Azure // storage.
 //
@@ -395,7 +417,7 @@ type CMStats struct {
 	// Global clustermap stats.
 	StorageClustermap struct {
 		// Node ID of the node that is the leader (as per the latest clustermap copy that we have).
-		Leader string `json:"leader,omitempty"`
+		Leader AtomicString `json:"leader,omitempty"`
 		// Is this node the current cluster_manager leader?
 		// Note that more than one node can claim to be the leader, but only one will be the actual leader.
 		// This can happen if some node has a stale clustermap and the leader has changed since then.
@@ -678,7 +700,7 @@ func (s *DCacheStats) Preprocess() {
 				float64(s.CM.NewMV.JoinMV.Calls.Value.Load()))
 	}
 
-	if s.NodeId == s.CM.StorageClustermap.Leader {
+	if s.NodeId == s.CM.StorageClustermap.Leader.Load() {
 		// BecameLeaderAt is set when updateClusterMapStart() marks the node as the leader.
 		common.Assert(!s.CM.StorageClustermap.BecameLeaderAt.IsZero(), s.NodeId, s.CM.StorageClustermap.Leader)
 

@@ -234,7 +234,7 @@ type mvInfo struct {
 	// exactly to the clustermap at epoch mvInfo.clustermapEpoch. This means for the above case, a clustermap
 	// with epoch X MUST NOT overwrite the componentRVs list of an mvInfo with clustermapEpoch X.
 	// See refreshFromClustermap() for more details.
-	clustermapEpoch int64
+	clustermapEpoch atomic.Int64
 
 	// When was this MV replica components/state last updated and by which node.
 	// An MV replica components/state is updated by the following RPCs:
@@ -455,11 +455,12 @@ func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState,
 		componentRVs:    componentRVs,
 		lmt:             time.Now(),
 		lmb:             joinedBy,
-		clustermapEpoch: clustermapEpoch,
+		clustermapEpoch: atomic.Int64{},
 	}
 
 	mv.joinTime.Store(time.Now().Unix())
 	mv.totalChunkBytes.Store(totalChunkBytes)
+	mv.clustermapEpoch.Store(clustermapEpoch)
 
 	log.Debug("newMVInfo: %s/%s, %+v", rv.rvName, mvName, *mv)
 
@@ -560,7 +561,7 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 			mvInfo.lmt)
 		// Must correspond to a valid clustermap epoch (client clustermap epoch when they sent the JoinMV, or
 		// clustermap epoch when NewChunkServiceHandler initialized the mvInfo from cache dir).
-		common.Assert(mvInfo.clustermapEpoch > 0, rv.rvName, mvInfo.mvName, mvInfo.clustermapEpoch,
+		common.Assert(mvInfo.clustermapEpoch.Load() > 0, rv.rvName, mvInfo.mvName, mvInfo.clustermapEpoch.Load(),
 			mvInfo.lmb, mvInfo.lmt)
 
 		return mvInfo
@@ -822,12 +823,12 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clus
 	defer mv.rwMutex.Unlock()
 
 	// We should only update mvInfo with newer content.
-	if clustermapEpoch <= mv.clustermapEpoch {
+	if clustermapEpoch <= mv.clustermapEpoch.Load() {
 		log.Debug("mvInfo::updateComponentRVs: %s/%s from %s -> %s [forceUpdate: %v, epoch: %d, cepoch: %d], skipping",
 			mv.rv.rvName, mv.mvName,
 			rpc.ComponentRVsToString(mv.componentRVs),
 			rpc.ComponentRVsToString(componentRVs),
-			forceUpdate, mv.clustermapEpoch, clustermapEpoch)
+			forceUpdate, mv.clustermapEpoch.Load(), clustermapEpoch)
 		return nil
 	}
 
@@ -846,7 +847,7 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clus
 		mv.rv.rvName, mv.mvName,
 		rpc.ComponentRVsToString(mv.componentRVs),
 		rpc.ComponentRVsToString(componentRVs),
-		forceUpdate, mv.clustermapEpoch, clustermapEpoch)
+		forceUpdate, mv.clustermapEpoch.Load(), clustermapEpoch)
 
 	//
 	// Catch invalid membership changes.
@@ -965,8 +966,8 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, clus
 	// Valid membership changes, update the saved componentRVs.
 	mv.componentRVs = componentRVs
 	// We shouldn't go backwards in clustermap epoch.
-	common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch, mv.rv.rvName, mv.mvName)
-	mv.clustermapEpoch = clustermapEpoch
+	common.Assert(clustermapEpoch >= mv.clustermapEpoch.Load(), clustermapEpoch, mv.clustermapEpoch.Load(), mv.rv.rvName, mv.mvName)
+	mv.clustermapEpoch.Store(clustermapEpoch)
 	mv.lmt = time.Now()
 	mv.lmb = senderNodeId
 
@@ -985,7 +986,7 @@ func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcach
 		newState != dcache.StateInbandOffline, rvName, oldState, newState)
 	common.Assert(clustermapEpoch > 0, rvName, mv.mvName, oldState, newState, clustermapEpoch)
 	// We shouldn't go backwards in clustermap epoch.
-	common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch,
+	common.Assert(clustermapEpoch >= mv.clustermapEpoch.Load(), clustermapEpoch, mv.clustermapEpoch.Load(),
 		rvName, mv.mvName, oldState, newState)
 
 	mv.rwMutex.Lock()
@@ -997,17 +998,17 @@ func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcach
 			common.Assert(rv.State == string(oldState), rvName, rv.State, oldState)
 			log.Debug("mvInfo::updateComponentRVState: [%s/%s] %s (%s -> %s) %s, changed by sender %s, epoch (%d -> %d)",
 				mv.rv.rvName, mv.mvName, rvName, rv.State, newState, rpc.ComponentRVsToString(mv.componentRVs),
-				senderNodeId, mv.clustermapEpoch, clustermapEpoch)
+				senderNodeId, mv.clustermapEpoch.Load(), clustermapEpoch)
 
 			rv.State = string(newState)
 			mv.lmt = time.Now()
 			mv.lmb = senderNodeId
 
 			// We shouldn't go backwards in clustermap epoch.
-			common.Assert(clustermapEpoch >= mv.clustermapEpoch, clustermapEpoch, mv.clustermapEpoch,
+			common.Assert(clustermapEpoch >= mv.clustermapEpoch.Load(), clustermapEpoch, mv.clustermapEpoch.Load(),
 				rvName, mv.mvName, oldState, newState)
 
-			mv.clustermapEpoch = clustermapEpoch
+			mv.clustermapEpoch.Store(clustermapEpoch)
 			common.Assert(common.IsValidUUID(mv.lmb), mv.lmb)
 			return
 		}
@@ -1087,10 +1088,10 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 	log.Debug("mvInfo::refreshFromClustermap: %s/%s mv.componentRVs: %s, epoch: %d, cepoch: %d, sepoch: %d",
 		mv.rv.rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs),
-		mv.clustermapEpoch, cepoch, cm.GetEpoch())
+		mv.clustermapEpoch.Load(), cepoch, cm.GetEpoch())
 
 	common.Assert(cepoch > 0, cepoch, mv.rv.rvName, mv.mvName)
-	common.Assert(mv.clustermapEpoch > 0, mv.clustermapEpoch, mv.rv.rvName, mv.mvName)
+	common.Assert(mv.clustermapEpoch.Load() > 0, mv.clustermapEpoch.Load(), mv.rv.rvName, mv.mvName)
 	//
 	// mvInfo is always updated from our local clustermap, so its epoch must be <= cm's epoch.
 	// XXX We cannot assert the following, as in JoinMV() we update mvInfo.clustermapEpoch to the epoch
@@ -1106,9 +1107,9 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 	// Client should refresh and retry and if it's already at mv.clustermapEpoch, then it will need to wait
 	// till the ongoing change completes and the clustermap epoch becomes even again.
 	//
-	if mv.clustermapEpoch >= cepoch {
+	if mv.clustermapEpoch.Load() >= cepoch {
 		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s, epoch (%d) >= cepoch (%d), client must refresh",
-			mv.rv.rvName, mv.mvName, mv.clustermapEpoch, cepoch)
+			mv.rv.rvName, mv.mvName, mv.clustermapEpoch.Load(), cepoch)
 		log.Debug("%s", errStr)
 		return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
@@ -1120,7 +1121,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 	err := cm.RefreshClusterMap(cepoch)
 	if err != nil {
 		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: %s/%s, failed, epoch: %d, cepoch: %d: %v",
-			mv.rv.rvName, mv.mvName, mv.clustermapEpoch, cepoch, err)
+			mv.rv.rvName, mv.mvName, mv.clustermapEpoch.Load(), cepoch, err)
 		log.Err("%s", errStr)
 		common.Assert(false, errStr)
 		//
@@ -1134,7 +1135,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 	_, cmRVs, cmEpoch := cm.GetRVsEx(mv.mvName)
 	if cmRVs == nil {
 		errStr := fmt.Sprintf("mvInfo::refreshFromClustermap: GetRVsEx(%s/%s) failed, no such MV! epoch: %d, cepoch: %d, sepoch: %d",
-			mv.rv.rvName, mv.mvName, mv.clustermapEpoch, cepoch, cm.GetEpoch())
+			mv.rv.rvName, mv.mvName, mv.clustermapEpoch.Load(), cepoch, cm.GetEpoch())
 		log.Err("%s", errStr)
 		common.Assert(false, errStr)
 		//
@@ -1185,7 +1186,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 			rvState == dcache.StateInbandOffline {
 			log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is %s, marking component RV state as offline, epoch: %d, cepoch: %d, sepoch: %d",
 				rvName, mv.mvName, rvState, cm.GetRVState(rvName),
-				mv.clustermapEpoch, cepoch, cmEpoch)
+				mv.clustermapEpoch.Load(), cepoch, cmEpoch)
 			rvState = dcache.StateOffline
 			//
 			// [BUG] This changes the state of the component RV in the local clustermap copy, obviously
@@ -1230,7 +1231,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 
 		log.Debug("mvInfo::refreshFromClustermap: %s/%s clustermap state (%s) != mvInfo state (%s), epoch: %d, cepoch: %d, sepoch: %d",
 			mv.rv.rvName, mv.mvName, stateAsPerClustermap, myRvInfo.State,
-			mv.clustermapEpoch, cepoch, cmEpoch)
+			mv.clustermapEpoch.Load(), cepoch, cmEpoch)
 	}
 
 	if clusterMapWantsToChangeMyRV {
@@ -1280,7 +1281,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 				log.Debug("mvInfo::refreshFromClustermap: Undoing space reserved by JoinMV, %s/%s (%s -> %s), %d bytes, epoch: %d, cepoch: %d, sepoch: %d",
 					mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap,
 					mv.reservedSpace.Load(),
-					mv.clustermapEpoch, cepoch, cmEpoch)
+					mv.clustermapEpoch.Load(), cepoch, cmEpoch)
 
 				mv.rv.decReservedSpace(mv.reservedSpace.Load())
 				mv.reservedSpace.Store(0)
@@ -1289,7 +1290,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 				log.Debug("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), reserved space is %d bytes, epoch: %d, cepoch: %d, sepoch: %d",
 					mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap,
 					mv.reservedSpace.Load(),
-					mv.clustermapEpoch, cepoch, cmEpoch)
+					mv.clustermapEpoch.Load(), cepoch, cmEpoch)
 			}
 		}
 
@@ -1335,7 +1336,7 @@ func (mv *mvInfo) refreshFromClustermap(cepoch int64) *models.ResponseError {
 			log.Debug("mvInfo::refreshFromClustermap: Undoing space reserved by JoinMV, %s/%s (%s -> %s), %d bytes, epoch: %d, cepoch: %d, sepoch: %d",
 				mv.rv.rvName, mv.mvName, myRvInfo.State, stateAsPerClustermap,
 				mv.reservedSpace.Load(),
-				mv.clustermapEpoch, cepoch, cmEpoch)
+				mv.clustermapEpoch.Load(), cepoch, cmEpoch)
 
 			mv.rv.decReservedSpace(mv.reservedSpace.Load())
 			mv.reservedSpace.Store(0)
@@ -1401,7 +1402,7 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 		mv := rv.getMVInfo(mvName)
 
 		// mvInfo is always updated from our local clustermap, so its epoch must be <= cm's epoch.
-		common.Assert(mv.clustermapEpoch <= cm.GetEpoch(), mv.clustermapEpoch, cm.GetEpoch())
+		common.Assert(mv.clustermapEpoch.Load() <= cm.GetEpoch(), mv.clustermapEpoch.Load(), cm.GetEpoch())
 
 		//
 		// Don't delete mvInfo entries added by this fix-mv run.
@@ -1409,9 +1410,9 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 		// this, in this same fix-mv run, will have the clustermapEpoch same as the current clustermap
 		// epoch, skip them.
 		//
-		if mv.clustermapEpoch == cm.GetEpoch() {
+		if mv.clustermapEpoch.Load() == cm.GetEpoch() {
 			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: %s/%s (%d MVs), time since lmt (%s), added in this epoch , skipping...",
-				rv.rvName, mvName, rv.mvCount.Load(), time.Since(mv.lmt), mv.clustermapEpoch)
+				rv.rvName, mvName, rv.mvCount.Load(), time.Since(mv.lmt), mv.clustermapEpoch.Load())
 			continue
 		}
 
@@ -1439,7 +1440,7 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 		if !ok {
 			_ = rvState
 			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: deleting stale mv replica %s/%s (state: %s), epoch: %d, sepoch: %d",
-				rv.rvName, mvName, rvState, mv.clustermapEpoch, cmEpoch)
+				rv.rvName, mvName, rvState, mv.clustermapEpoch.Load(), cmEpoch)
 			// Remove the stale MV replica.
 			rv.deleteFromMVMap(mvName)
 		}
@@ -1802,7 +1803,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		if rvNameAndState.State != string(dcache.StateOnline) {
 			errStr := fmt.Sprintf("GetChunk request for %s/%s cannot be satisfied in state %s [NeedToRefreshClusterMap], epoch: %d, cepoch:%d, sepoch: %d",
 				rvInfo.rvName, req.Address.MvName, rvNameAndState.State,
-				mvInfo.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch())
+				mvInfo.clustermapEpoch.Load(), req.ClustermapEpoch, cm.GetEpoch())
 			log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 
 			if !clustermapRefreshed {
@@ -2307,7 +2308,7 @@ cleanup_chunk_file_and_fail:
 func (mv *mvInfo) isClientPutChunkRequestCompatible(req *models.PutChunkRequest) error {
 	log.Debug("ChunkServiceHandler::isClientPutChunkRequestCompatible: Request: %v, mvInfo: {%s/%s, componentRVs: %s}, epoch: %d, cepoch: %d, sepoch: %d",
 		rpc.PutChunkRequestToString(req), mv.rv.rvName, mv.mvName, rpc.ComponentRVsToString(mv.componentRVs),
-		mv.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch())
+		mv.clustermapEpoch.Load(), req.ClustermapEpoch, cm.GetEpoch())
 
 	clustermapRefreshed := false
 
@@ -2343,7 +2344,7 @@ refreshFromClustermapAndRetry:
 				errStr = fmt.Sprintf("PutChunk(client) -> %s/%s, sender (%s) has a non-existent component RV %s/%s, epoch: %d, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]: %s",
 					mv.rv.rvName, req.Chunk.Address.MvName, req.SenderNodeID,
 					rv.Name, req.Chunk.Address.MvName,
-					mv.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch(),
+					mv.clustermapEpoch.Load(), req.ClustermapEpoch, cm.GetEpoch(),
 					rpc.PutChunkRequestToString(req))
 				log.Err("ChunkServiceHandler::isClientPutChunkRequestCompatible: %s", errStr)
 			} else {
@@ -2351,7 +2352,7 @@ refreshFromClustermapAndRetry:
 					mv.rv.rvName, req.Chunk.Address.MvName, req.SenderNodeID,
 					rv.Name, req.Chunk.Address.MvName,
 					rv.State, rvNameAndState.State,
-					mv.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch(),
+					mv.clustermapEpoch.Load(), req.ClustermapEpoch, cm.GetEpoch(),
 					rpc.PutChunkRequestToString(req))
 				log.Err("ChunkServiceHandler::isClientPutChunkRequestCompatible: %s", errStr)
 			}
@@ -2392,7 +2393,7 @@ refreshFromClustermapAndRetry:
 					errStr = fmt.Sprintf("PutChunk(sync) -> %s/%s, sender (%s) has a bad source RV %s/%s, epoch: %d, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]: %s vs %s",
 						mv.rv.rvName, req.Chunk.Address.MvName, req.SenderNodeID,
 						rv.Name, req.Chunk.Address.MvName,
-						mv.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch(),
+						mv.clustermapEpoch.Load(), req.ClustermapEpoch, cm.GetEpoch(),
 						rpc.PutChunkRequestToString(req),
 						rpc.ComponentRVsToString(mv.getComponentRVs()))
 					log.Err("ChunkServiceHandler::isClientPutChunkRequestCompatible: %s", errStr)
@@ -2408,7 +2409,7 @@ refreshFromClustermapAndRetry:
 					errStr = fmt.Sprintf("PutChunk(sync) -> %s/%s, sender (%s) has a bad target RV %s/%s, epoch: %d, cepoch: %d, sepoch: %d [NeedToRefreshClusterMap]: %s vs %s",
 						mv.rv.rvName, req.Chunk.Address.MvName, req.SenderNodeID,
 						rv.Name, req.Chunk.Address.MvName,
-						mv.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch(),
+						mv.clustermapEpoch.Load(), req.ClustermapEpoch, cm.GetEpoch(),
 						rpc.PutChunkRequestToString(req),
 						rpc.ComponentRVsToString(mv.getComponentRVs()))
 					log.Err("ChunkServiceHandler::isClientPutChunkRequestCompatible: %s", errStr)
@@ -3199,10 +3200,10 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		//       req.ClustermapEpoch will be equal to mvInfo.clustermapEpoch is when GetMVSize() (called right
 		//       before JoinMV in fixMV() refreshes mvInfo from clustermap.
 		//
-		if req.ClustermapEpoch < mvInfo.clustermapEpoch {
+		if req.ClustermapEpoch < mvInfo.clustermapEpoch.Load() {
 			errStr := fmt.Sprintf("[CLUSTERMAP EPOCH RENEGE] ChunkServiceHandler::JoinMV: for %s/%s, last updated at %s (%s ago), by %s, from (%d -> %d)",
 				mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
-				mvInfo.clustermapEpoch, req.ClustermapEpoch)
+				mvInfo.clustermapEpoch.Load(), req.ClustermapEpoch)
 			log.Err("%s", errStr)
 			common.Assert(false, errStr)
 			// TODO: Return mvInfo.clustermapEpoch in the RPC response asking client to refresh to at least that.
@@ -3222,7 +3223,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		//
 		errStr := fmt.Sprintf("JoinMV for existing MV replica %s/%s, mvInfo last updated at %s (%s ago), by %s, totalChunkBytes: %d, epoch (%d -> %d)",
 			req.RVName, req.MV, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
-			mvInfo.totalChunkBytes.Load(), mvInfo.clustermapEpoch, req.ClustermapEpoch)
+			mvInfo.totalChunkBytes.Load(), mvInfo.clustermapEpoch.Load(), req.ClustermapEpoch)
 
 		log.Warn("ChunkServiceHandler::JoinMV: %s", errStr)
 
@@ -3387,10 +3388,10 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 	//       req.ClustermapEpoch will be equal to mvInfo.clustermapEpoch is when GetMVSize() (called right
 	//       before JoinMV in fixMV() refreshes mvInfo from clustermap.
 	//
-	if req.ClustermapEpoch < mvInfo.clustermapEpoch {
+	if req.ClustermapEpoch < mvInfo.clustermapEpoch.Load() {
 		errStr := fmt.Sprintf("[CLUSTERMAP EPOCH RENEGE] ChunkServiceHandler::UpdateMV: for %s/%s, last updated at %s (%s ago), by %s, from (%d -> %d)",
 			mvInfo.rv.rvName, mvInfo.mvName, mvInfo.lmt, time.Since(mvInfo.lmt), mvInfo.lmb,
-			mvInfo.clustermapEpoch, req.ClustermapEpoch)
+			mvInfo.clustermapEpoch.Load(), req.ClustermapEpoch)
 		log.Err("%s", errStr)
 		common.Assert(false, errStr)
 		// TODO: Return mvInfo.clustermapEpoch in the RPC response asking client to refresh to at least that.
@@ -3587,7 +3588,7 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 		if clustermapRefreshed {
 			errStr := fmt.Sprintf("GetMVSize() called on component RV %s/%s which is not online (is %s), epoch: %d, cepoch: %d, sepoch: %d",
 				mvInfo.rv.rvName, mvInfo.mvName, myRvInfo.State,
-				mvInfo.clustermapEpoch, req.ClustermapEpoch, cm.GetEpoch())
+				mvInfo.clustermapEpoch.Load(), req.ClustermapEpoch, cm.GetEpoch())
 			log.Info("ChunkServiceHandler::GetMVSize: %s", errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 		}

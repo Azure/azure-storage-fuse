@@ -1922,7 +1922,7 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 	ncPool.clientChan = make(chan *rpcClient, numClients)
 	ncPool.lastUsed.Store(time.Now().Unix())
 
-	var err error
+	var err atomic.Value
 	var wg sync.WaitGroup
 
 	createOneClient := func() {
@@ -1947,7 +1947,7 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 			// Save the last error seen in err, to return if we could not create any client.
 			// XXX: Set error atomically.
 			//
-			err = err1
+			err.Store(err1)
 			return
 		}
 		// Set nodeClientPool back pointer.
@@ -1977,7 +1977,7 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 	//
 	if len(ncPool.clientChan) == 0 {
 		ncPool.clientChan = nil
-		return fmt.Errorf("could not create any client for node %s: %v", nodeID, err)
+		return fmt.Errorf("could not create any client for node %s: %v", nodeID, err.Load())
 	} else if len(ncPool.clientChan) != int(numClients) {
 		log.Err("nodeClientPool::createRPCClients: Created %d of %d clients for node %s, cleaning up",
 			len(ncPool.clientChan), numClients, nodeID)
@@ -1992,7 +1992,7 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 		// All error paths must ensure this.
 		common.Assert(len(ncPool.clientChan) == 0, len(ncPool.clientChan))
 		ncPool.clientChan = nil
-		return fmt.Errorf("could not create all requested clients for node %s: %v", nodeID, err)
+		return fmt.Errorf("could not create all requested clients for node %s: %v", nodeID, err.Load())
 	}
 
 	// We just got started, cannot have active clients.

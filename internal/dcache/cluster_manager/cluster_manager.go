@@ -554,7 +554,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 
 	stats.Stats.CM.LocalClustermap.SizeInBytes.Value.Add(int64(len(storageBytes)))
 	stats.Stats.CM.LocalClustermap.Epoch.Value.Add(int64(storageClusterMap.Epoch))
-	stats.Stats.CM.StorageClustermap.Leader = storageClusterMap.LastUpdatedBy
+	stats.Stats.CM.StorageClustermap.Leader.Store(storageClusterMap.LastUpdatedBy)
 
 	atomic.AddInt64((*int64)(&stats.Stats.CM.LocalClustermap.TotalTime), int64(updateDuration))
 
