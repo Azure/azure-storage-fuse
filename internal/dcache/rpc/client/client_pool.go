@@ -1947,7 +1947,7 @@ func (ncPool *nodeClientPool) createRPCClients(nodeID string, numClients uint32)
 			// Save the last error seen in err, to return if we could not create any client.
 			// XXX: Set error atomically.
 			//
-			err.Store(err1)
+			err.Store(err1.Error())
 			return
 		}
 		// Set nodeClientPool back pointer.
