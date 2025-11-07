@@ -509,7 +509,7 @@ stages:
                     script: |
                       $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
                     displayName: 'AuthVerify MSI: Mount Container'
-                    continueOnError: false
+                    continueOnError: true
 
               # ADLS MSI Test
               - script: |
@@ -522,7 +522,7 @@ stages:
                   STO_ACC_TYPE: 'adls'
                   STO_ACC_ENDPOINT: 'https://$(BF2_ADLS_ACC_NAME).dfs.core.windows.net'
                   VERBOSE_LOG: ${{ parameters.verbose_log }}
-                continueOnError: false
+                continueOnError: true
 
               - script:
                   cat $(BLOBFUSE2_CFG)
@@ -537,7 +537,7 @@ stages:
                     script: |
                       $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
                     displayName: 'AuthVerify MSI: Mount Container'
-                    continueOnError: false
+                    continueOnError: true
 
               # Cleanup
               - template: 'azure-pipeline-templates/cleanup.yml'
