@@ -136,7 +136,6 @@ type Component interface {
 	Chown(ChownOptions) error
 	GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error)
 
-	FileUsed(name string) error
 	StatFs() (*syscall.Statfs_t, bool, error)
 
 	GetCommittedBlockList(string) (*CommittedBlockList, error)

@@ -52,6 +52,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"gopkg.in/ini.v1"
@@ -294,19 +295,63 @@ func GetCurrentDistro() string {
 	return distro
 }
 
-type BitMap16 uint16
+// ThreadSafe Bitmap Implementation
+type BitMap64 uint64
 
 // IsSet : Check whether the given bit is set or not
-func (bm BitMap16) IsSet(bit uint16) bool { return (bm & (1 << bit)) != 0 }
+func (bm *BitMap64) IsSet(bit uint64) bool {
+	return (atomic.LoadUint64((*uint64)(bm)) & (1 << bit)) != 0
+}
 
 // Set : Set the given bit in bitmap
-func (bm *BitMap16) Set(bit uint16) { *bm |= (1 << bit) }
+// Return true if the bit was not set and was set by this call, false if the bit was already set.
+func (bm *BitMap64) Set(bit uint64) bool {
+	for {
+		loaded := atomic.LoadUint64((*uint64)(bm))
+		if (loaded & (1 << bit)) != 0 {
+			// Bit already set.
+			return false
+		}
+		newValue := loaded | (1 << bit)
+		if atomic.CompareAndSwapUint64((*uint64)(bm), loaded, newValue) {
+			// Bit was set successfully.
+			return true
+		}
+	}
+}
 
 // Clear : Clear the given bit from bitmap
-func (bm *BitMap16) Clear(bit uint16) { *bm &= ^(1 << bit) }
+// Return true if the bit is set and cleared by this call, false if the bit was already cleared.
+func (bm *BitMap64) Clear(bit uint64) bool {
+	for {
+		loaded := atomic.LoadUint64((*uint64)(bm))
+		if (loaded & (1 << bit)) == 0 {
+			// Bit already cleared.
+			return false
+		}
+		newValue := loaded & ^(1 << bit)
+		if atomic.CompareAndSwapUint64((*uint64)(bm), loaded, newValue) {
+			// Bit was cleared successfully.
+			return true
+		}
+	}
+}
 
 // Reset : Reset the whole bitmap by setting it to 0
-func (bm *BitMap16) Reset() { *bm = 0 }
+// Return true if the bitmap is cleared by this call, false if it was already cleared.
+func (bm *BitMap64) Reset() bool {
+	for {
+		loaded := atomic.LoadUint64((*uint64)(bm))
+		if loaded == 0 {
+			// Bitmap already cleared.
+			return false
+		}
+		if atomic.CompareAndSwapUint64((*uint64)(bm), loaded, 0) {
+			// Bitmap was cleared successfully.
+			return true
+		}
+	}
+}
 
 type KeyedMutex struct {
 	mutexes sync.Map // Zero value is empty and ready for use

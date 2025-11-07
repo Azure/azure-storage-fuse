@@ -71,7 +71,6 @@ type FileCache struct {
 	missedChmodList sync.Map
 	mountPath       string
 	allowOther      bool
-	offloadIO       bool
 	syncToFlush     bool
 	syncToDelete    bool
 	maxCacheSize    float64
@@ -246,7 +245,6 @@ func (fc *FileCache) Configure(_ bool) error {
 		fc.allowNonEmpty = conf.AllowNonEmpty
 	}
 	fc.policyTrace = conf.EnablePolicyTrace
-	fc.offloadIO = conf.OffloadIO
 	fc.syncToFlush = conf.SyncToFlush
 	fc.syncToDelete = !conf.SyncNoOp
 	fc.refreshSec = conf.RefreshSec
@@ -344,8 +342,8 @@ func (fc *FileCache) Configure(_ bool) error {
 		fc.diskHighWaterMark = (((fc.maxCacheSize * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
-	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
-		fc.createEmptyFile, int(fc.cacheTimeout), fc.tmpPath, int(fc.maxCacheSize), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), fc.refreshSec, cacheConfig.maxEviction, fc.hardLimit, conf.Policy, fc.allowNonEmpty, conf.CleanupOnStart, fc.policyTrace, fc.offloadIO, fc.syncToFlush, fc.syncToDelete, fc.defaultPermission, fc.diskHighWaterMark, fc.maxCacheSize, fc.mountPath)
+	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
+		fc.createEmptyFile, int(fc.cacheTimeout), fc.tmpPath, int(fc.maxCacheSize), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), fc.refreshSec, cacheConfig.maxEviction, fc.hardLimit, conf.Policy, fc.allowNonEmpty, conf.CleanupOnStart, fc.policyTrace, fc.syncToFlush, fc.syncToDelete, fc.defaultPermission, fc.diskHighWaterMark, fc.maxCacheSize, fc.mountPath)
 
 	return nil
 }
@@ -363,7 +361,6 @@ func (fc *FileCache) OnConfigChange() {
 	fc.createEmptyFile = conf.CreateEmptyFile
 	fc.cacheTimeout = float64(conf.Timeout)
 	fc.policyTrace = conf.EnablePolicyTrace
-	fc.offloadIO = conf.OffloadIO
 	fc.maxCacheSize = conf.MaxSizeMB
 	fc.syncToFlush = conf.SyncToFlush
 	fc.syncToDelete = !conf.SyncNoOp
@@ -739,9 +736,6 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	handle := handlemap.NewHandle(options.Name)
 	handle.UnixFD = uint64(f.Fd())
 
-	if !fc.offloadIO {
-		handle.Flags.Set(handlemap.HandleFlagCached)
-	}
 	log.Info("FileCache::CreateFile : file=%s, fd=%d", options.Name, f.Fd())
 
 	handle.SetFileObject(f)
@@ -1043,10 +1037,6 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	}
 
 	handle.UnixFD = uint64(f.Fd())
-	if !fc.offloadIO {
-		handle.Flags.Set(handlemap.HandleFlagCached)
-	}
-
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
 
@@ -1610,13 +1600,6 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 		}
 	}
 
-	return nil
-}
-
-func (fc *FileCache) FileUsed(name string) error {
-	// Update the owner and group of the file in the local cache
-	localPath := filepath.Join(fc.tmpPath, name)
-	fc.policy.CacheValid(localPath)
 	return nil
 }
 

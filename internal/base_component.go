@@ -314,13 +314,6 @@ func (base *BaseComponent) Chown(options ChownOptions) error {
 	return nil
 }
 
-func (base *BaseComponent) FileUsed(name string) error {
-	if base.next != nil {
-		return base.next.FileUsed(name)
-	}
-	return nil
-}
-
 func (base *BaseComponent) StatFs() (*syscall.Statfs_t, bool, error) {
 	if base.next != nil {
 		return base.next.StatFs()
