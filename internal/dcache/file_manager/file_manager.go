@@ -549,6 +549,11 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte, fromFuse bool) error
 	if file.strictSeqWrites {
 		allowableWriteOffsetStart = file.maxWriteOffset
 		allowableWriteOffsetEnd = file.maxWriteOffset
+	} else if file.FileMetadata.State == dcache.Warming {
+		// Else, if we know the file size (cache warmup case), then allow writes to the entire file.
+		common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Filename, file.FileMetadata.Size)
+		allowableWriteOffsetStart = 0
+		allowableWriteOffsetEnd = file.FileMetadata.Size
 	}
 
 	//
