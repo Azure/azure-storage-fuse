@@ -1,22 +1,23 @@
-# Distributed Cache Setup for Blobfuse2
+# Distributed Cache Setup for Blobfuse2 (Preview)
 
 ## Overview
 
-Blobfuse2 supports a distributed cache mode, enabling multiple nodes to share a cache and provide high availability and scalability for large-scale workloads. This is achieved by running Blobfuse2 in a cluster, where each node contributes local storage to a distributed cache pool.
+Blobfuse2 supports newly added distributed cache mode, enabling multiple nodes to share their local cache and provide high availability and scalability for large-scale workloads. This is achieved by running Blobfuse2 in cluster, where each node contributes their local storage towards the distributed cache pool.
 
 ---
 
 ## Prerequisites
 
-- **Blobfuse2** built and installed on all cluster nodes.
+- **Blobfuse2** built and installed on all nodes in the cluster.
 - Each node must have a dedicated local cache directory (preferably on fast SSD/NVMe).
-- All nodes must have access to the same Azure Storage account/container.
+- All nodes must have access to the same Azure Storage account and container.
+- All nodes should be present in the same vnet.
 
 ---
 
-## Install Blobfuse2 on All Cluster Nodes
+## Install Blobfuse2 on all nodes in cluster
 
-On each node (Ubuntu 22.04), run the following to install Blobfuse2 and dependencies:
+On each node (if running Ubuntu 22.04), run the following to install Blobfuse2-preview binary and its dependencies:
 
 ```bash
 wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
@@ -25,15 +26,17 @@ apt-get update
 apt-get install -y fuse3 blobfuse2-preview
 ```
 
+For other distros, please refer [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Installation) documentation for installing Blobfuse2.
+
 ---
 
 ## Distributed Cache Configuration
 
-A sample configuration for distributed cache (YAML):
+Sample configuration for distributed cache:
 
 - [config.yaml](../setup/sampleDistributedCacheConfig.yaml)
 
-**Key Parameters:**
+**Required Parameters:**
 - `cache-id`: Unique identifier for your cache cluster.
 - `cache-dirs`: List of local directories to use for cache storage (one or more per node).
 
@@ -44,6 +47,7 @@ A sample configuration for distributed cache (YAML):
 ### 1. Prepare Each Node
 
 - Place the config file (as above) on each node, defining `cache-dirs` as needed.
+- Make sure that the `cache-id` in the config file in each node is same.
 - Ensure the cache directory exists and is writable by the Blobfuse2 process.
 
 ### 2. Start Blobfuse2
@@ -68,6 +72,22 @@ blobfuse2 mount <mount_path> --config-file=<path_to_config.yaml>
 - To check the various stats on the dcache.
   ```bash
   cat <mount_path>/fs=debug/stats
+  ```
+
+- To collect logs from all nodes in the cluster.
+  ```bash
+  cat <mount_path>/fs=debug/logs
+  ```
+  By default the latest log file is fetched from all nodes and is stored in the default working directory ($HOME/.blobfuse2 by default).
+
+- To get the cluster-summary like the health of nodes, RVs, MVs, etc.
+  ```bash
+  cat <mount_path>/fs=debug/cluster-summary
+  ```
+
+- To get the stats of individual nodes.
+  ```bash
+  cat <mount_path>/fs=debug/nodes-stats
   ```
 
 ---
@@ -100,7 +120,7 @@ az aks create -g <rg-name> -n <cluster-name> --node-count 3 --generate-ssh-keys
 az aks get-credentials -g <rg-name> -n <cluster-name>
 ```
 
-#### 2) Install the blobfuse using daemonset
+#### 2) Install the blobfuse2 using daemonset
 
 Create a Daemonset (adjust parameters as needed):
 
