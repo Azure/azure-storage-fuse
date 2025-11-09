@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1762068955297,
+  "lastUpdate": 1762673948489,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1628,6 +1628,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 2009.1494140625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "421feb6dfe9ff7a89f7f224cb5af92f231539f18",
+          "message": "Bump github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake from 1.4.2 to 1.4.3 (#2057)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2025-11-07T08:58:35Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/421feb6dfe9ff7a89f7f224cb5af92f231539f18"
+        },
+        "date": 1762673948239,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "test",
+            "value": 7657.421875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write",
+            "value": 1924.1334635416667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 2061.880859375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 1978.8473307291667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 1926.9443359375,
             "unit": "MiB/s"
           }
         ]
