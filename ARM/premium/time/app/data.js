@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1762078879096,
+  "lastUpdate": 1762684198187,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2055,6 +2055,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 13.592687845230103,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "421feb6dfe9ff7a89f7f224cb5af92f231539f18",
+          "message": "Bump github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake from 1.4.2 to 1.4.3 (#2057)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2025-11-07T08:58:35Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/421feb6dfe9ff7a89f7f224cb5af92f231539f18"
+        },
+        "date": 1762684197951,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 0.850630521774292,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 4.393488645553589,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 37.614686012268066,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 15.050797700881958,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.5528099536895752,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 3.537125587463379,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 33.2661509513855,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 13.314855575561523,
             "unit": "seconds"
           }
         ]
