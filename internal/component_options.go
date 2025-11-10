@@ -180,11 +180,6 @@ type GetAttrOptions struct {
 	RetrieveMetadata bool
 }
 
-type SetAttrOptions struct {
-	Name string
-	Attr *ObjAttr
-}
-
 type ChmodOptions struct {
 	Name string
 	Mode os.FileMode

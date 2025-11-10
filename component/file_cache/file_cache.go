@@ -1064,18 +1064,18 @@ func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 
 	if !fc.lazyWrite {
 		// Sync close is called so wait till the upload completes
-		return fc.closeFileInternal(options, flock)
+		return fc.releaseFileInternal(options, flock)
 	}
 
-	go fc.closeFileInternal(options, flock) //nolint
+	go fc.releaseFileInternal(options, flock) //nolint
 	return nil
 }
 
-// closeFileInternal: Actual handling of the close file goes here
-func (fc *FileCache) closeFileInternal(options internal.ReleaseFileOptions, flock *common.LockMapItem) error {
-	log.Trace("FileCache::closeFileInternal : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+// releaseFileInternal: Actual handling of the close file goes here
+func (fc *FileCache) releaseFileInternal(options internal.ReleaseFileOptions, flock *common.LockMapItem) error {
+	log.Trace("FileCache::releaseFileInternal : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
-	// Lock is acquired by CloseFile, at end of this method we need to unlock
+	// Lock is acquired by ReleaseFile, at end of this method we need to unlock
 	// If its async call file shall be locked till the upload completes.
 	defer flock.Unlock()
 	defer fc.fileCloseOpt.Done()
@@ -1084,31 +1084,31 @@ func (fc *FileCache) closeFileInternal(options internal.ReleaseFileOptions, floc
 
 	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 	if err != nil {
-		log.Err("FileCache::closeFileInternal : failed to flush file %s", options.Handle.Path)
+		log.Err("FileCache::releaseFileInternal : failed to flush file %s", options.Handle.Path)
 		return err
 	}
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
-		log.Err("FileCache::closeFileInternal : error [missing fd in handle object] %s", options.Handle.Path)
+		log.Err("FileCache::releaseFileInternal : error [missing fd in handle object] %s", options.Handle.Path)
 		return syscall.EBADF
 	}
 
 	err = f.Close()
 	if err != nil {
-		log.Err("FileCache::closeFileInternal : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
+		log.Err("FileCache::releaseFileInternal : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
 		return err
 	}
 	flock.Dec()
 
 	// If it is an fsync op then purge the file
 	if options.Handle.Fsynced() {
-		log.Trace("FileCache::closeFileInternal : fsync/sync op, purging %s", options.Handle.Path)
+		log.Trace("FileCache::releaseFileInternal : fsync/sync op, purging %s", options.Handle.Path)
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
 		err = deleteFile(localPath)
 		if err != nil && !os.IsNotExist(err) {
-			log.Err("FileCache::closeFileInternal : failed to delete local file %s [%s]", localPath, err.Error())
+			log.Err("FileCache::releaseFileInternal : failed to delete local file %s [%s]", localPath, err.Error())
 		}
 
 		fc.policy.CachePurge(localPath)

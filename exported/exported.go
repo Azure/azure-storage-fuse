@@ -88,7 +88,6 @@ type UnlinkFileOptions = internal.UnlinkFileOptions
 type CreateLinkOptions = internal.CreateLinkOptions
 type ReadLinkOptions = internal.ReadLinkOptions
 type GetAttrOptions = internal.GetAttrOptions
-type SetAttrOptions = internal.SetAttrOptions
 type ChmodOptions = internal.ChmodOptions
 type ChownOptions = internal.ChownOptions
 type StageDataOptions = internal.StageDataOptions

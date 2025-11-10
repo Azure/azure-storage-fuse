@@ -512,25 +512,25 @@ func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	bc.fileCloseOpt.Add(1)
 	if !bc.lazyWrite {
 		// Sync close is called so wait till the upload completes
-		return bc.closeFileInternal(options)
+		return bc.releaseFileInternal(options)
 	}
 
 	// Async close is called so schedule the upload and return here
-	go bc.closeFileInternal(options) //nolint
+	go bc.releaseFileInternal(options) //nolint
 	return nil
 }
 
-// closeFileInternal: Actual handling of the close file goes here
-func (bc *BlockCache) closeFileInternal(options internal.ReleaseFileOptions) error {
-	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+// releaseFileInternal: Actual handling of the close file goes here
+func (bc *BlockCache) releaseFileInternal(options internal.ReleaseFileOptions) error {
+	log.Trace("BlockCache::ReleaseFileInternal : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
 	defer bc.fileCloseOpt.Done()
 
 	if options.Handle.Dirty() {
-		log.Info("BlockCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
+		log.Info("BlockCache::ReleaseFileInternal : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
 		err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 		if err != nil {
-			log.Err("BlockCache::CloseFile : failed to flush file %s", options.Handle.Path)
+			log.Err("BlockCache::ReleaseFileInternal : failed to flush file %s", options.Handle.Path)
 			return err
 		}
 	}
