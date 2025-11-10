@@ -115,8 +115,8 @@ func (mr *MockComponentMockRecorder) CloseDir(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseDir", reflect.TypeOf((*MockComponent)(nil).CloseDir), arg0)
 }
 
-// CloseFile mocks base method.
-func (m *MockComponent) CloseFile(arg0 CloseFileOptions) error {
+// ReleaseFile mocks base method.
+func (m *MockComponent) ReleaseFile(arg0 ReleaseFileOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CloseFile", arg0)
 	ret0, _ := ret[0].(error)
@@ -126,7 +126,7 @@ func (m *MockComponent) CloseFile(arg0 CloseFileOptions) error {
 // CloseFile indicates an expected call of CloseFile.
 func (mr *MockComponentMockRecorder) CloseFile(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseFile", reflect.TypeOf((*MockComponent)(nil).CloseFile), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseFile", reflect.TypeOf((*MockComponent)(nil).ReleaseFile), arg0)
 }
 
 // Configure mocks base method.
@@ -488,20 +488,6 @@ func (mr *MockComponentMockRecorder) ReadLink(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadLink", reflect.TypeOf((*MockComponent)(nil).ReadLink), arg0)
 }
 
-// ReleaseFile mocks base method.
-func (m *MockComponent) ReleaseFile(arg0 ReleaseFileOptions) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReleaseFile", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ReleaseFile indicates an expected call of ReleaseFile.
-func (mr *MockComponentMockRecorder) ReleaseFile(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseFile", reflect.TypeOf((*MockComponent)(nil).ReleaseFile), arg0)
-}
-
 // RenameDir mocks base method.
 func (m *MockComponent) RenameDir(arg0 RenameDirOptions) error {
 	m.ctrl.T.Helper()
@@ -541,12 +527,6 @@ func (m *MockComponent) SetAttr(arg0 SetAttrOptions) error {
 	ret := m.ctrl.Call(m, "SetAttr", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
-}
-
-// SetAttr indicates an expected call of SetAttr.
-func (mr *MockComponentMockRecorder) SetAttr(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAttr", reflect.TypeOf((*MockComponent)(nil).SetAttr), arg0)
 }
 
 // SetName mocks base method.

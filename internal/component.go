@@ -102,23 +102,20 @@ type Component interface {
 	DeleteFile(DeleteFileOptions) error
 
 	OpenFile(OpenFileOptions) (*handlemap.Handle, error)
-	CloseFile(CloseFileOptions) error
-
-	RenameFile(RenameFileOptions) error
-
 	ReadFile(ReadFileOptions) ([]byte, error)
 	ReadInBuffer(*ReadInBufferOptions) (int, error)
-
 	WriteFile(*WriteFileOptions) (int, error)
-	TruncateFile(TruncateFileOptions) error
+
+	FlushFile(FlushFileOptions) error
+	SyncFile(SyncFileOptions) error
+	ReleaseFile(ReleaseFileOptions) error
+
+	RenameFile(RenameFileOptions) error
 
 	CopyToFile(CopyToFileOptions) error
 	CopyFromFile(CopyFromFileOptions) error
 
 	SyncDir(SyncDirOptions) error
-	SyncFile(SyncFileOptions) error
-	FlushFile(FlushFileOptions) error
-	ReleaseFile(ReleaseFileOptions) error
 	UnlinkFile(UnlinkFileOptions) error // TODO: What does this do? Not used anywhere
 
 	// Symlink operations
@@ -130,10 +127,12 @@ type Component interface {
 	//1. must return ErrNotExist for absence of a file/directory/symlink
 	//2. must return valid nodeID that was passed with any create/update operations for eg: SetAttr, CreateFile, CreateDir etc
 	GetAttr(GetAttrOptions) (*ObjAttr, error)
-	SetAttr(SetAttrOptions) error
 
+	// SetAttr is implemented by the following functions in libfuse Higher level API.
 	Chmod(ChmodOptions) error
 	Chown(ChownOptions) error
+	TruncateFile(TruncateFileOptions) error
+
 	GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error)
 
 	FileUsed(name string) error

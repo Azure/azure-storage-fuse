@@ -278,7 +278,7 @@ func (lfs *LoopbackFS) OpenFile(options internal.OpenFileOptions) (*handlemap.Ha
 	return handle, nil
 }
 
-func (lfs *LoopbackFS) CloseFile(options internal.CloseFileOptions) error {
+func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
 	log.Trace("LoopbackFS::CloseFile : name=%s", options.Handle.Path)
 
 	f := options.Handle.GetFileObject()
@@ -400,15 +400,15 @@ func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
 	return nil
 }
 
-func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
-	log.Trace("LoopbackFS::ReleaseFile : name=%s", options.Handle.Path)
-	f := options.Handle.GetFileObject()
-	if f == nil {
-		log.Err("LoopbackFS::ReleaseFile : error [file not open]")
-		return fmt.Errorf("LoopbackFS::ReleaseFile : %s file not open", options.Handle.Path)
-	}
-	return nil
-}
+// func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
+// 	log.Trace("LoopbackFS::ReleaseFile : name=%s", options.Handle.Path)
+// 	f := options.Handle.GetFileObject()
+// 	if f == nil {
+// 		log.Err("LoopbackFS::ReleaseFile : error [file not open]")
+// 		return fmt.Errorf("LoopbackFS::ReleaseFile : %s file not open", options.Handle.Path)
+// 	}
+// 	return nil
+// }
 
 func (lfs *LoopbackFS) UnlinkFile(options internal.UnlinkFileOptions) error {
 	log.Trace("LoopbackFS::UnlinkFile : name=%s", options.Name)

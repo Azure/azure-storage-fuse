@@ -888,7 +888,7 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 		handle.Flags.Set(handlemap.HandleFlagDirty)
 	}
 
-	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
+	err := fuseFS.NextComponent().ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		switch err {

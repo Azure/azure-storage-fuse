@@ -408,7 +408,7 @@ func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	return handle, nil
 }
 
-func (az *AzStorage) CloseFile(options internal.CloseFileOptions) error {
+func (az *AzStorage) ReleaseFile(options internal.ReleaseFileOptions) error {
 	log.Trace("AzStorage::CloseFile : %s", options.Handle.Path)
 
 	// decrement open file handles count

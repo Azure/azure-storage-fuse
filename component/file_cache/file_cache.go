@@ -1053,8 +1053,8 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	return handle, nil
 }
 
-// CloseFile: Flush the file and invalidate it from the cache.
-func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
+// ReleaseFile: Flush the file and invalidate it from the cache.
+func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	// Lock the file so that while close is in progress no one can open the file again
 	flock := fc.fileLocks.Get(options.Handle.Path)
 	flock.Lock()
@@ -1072,7 +1072,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 // closeFileInternal: Actual handling of the close file goes here
-func (fc *FileCache) closeFileInternal(options internal.CloseFileOptions, flock *common.LockMapItem) error {
+func (fc *FileCache) closeFileInternal(options internal.ReleaseFileOptions, flock *common.LockMapItem) error {
 	log.Trace("FileCache::closeFileInternal : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
 	// Lock is acquired by CloseFile, at end of this method we need to unlock

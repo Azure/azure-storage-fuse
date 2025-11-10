@@ -490,7 +490,7 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 	return handle, nil
 }
 
-func (xl *Xload) CloseFile(options internal.CloseFileOptions) error {
+func (xl *Xload) ReleaseFile(options internal.ReleaseFileOptions) error {
 	// Lock the file so that while close is in progress no one can open the file again
 	flock := xl.fileLocks.Get(options.Handle.Path)
 	flock.Lock()

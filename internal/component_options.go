@@ -91,7 +91,7 @@ type OpenFileOptions struct {
 	Mode  os.FileMode
 }
 
-type CloseFileOptions struct {
+type ReleaseFileOptions struct {
 	Handle *handlemap.Handle
 }
 
@@ -159,10 +159,6 @@ type SyncFileOptions struct {
 
 type SyncDirOptions struct {
 	Name string
-}
-
-type ReleaseFileOptions struct {
-	Handle *handlemap.Handle
 }
 
 type UnlinkFileOptions struct {
