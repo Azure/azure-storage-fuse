@@ -66,55 +66,55 @@ func (suite *splitterTestSuite) SetupSuite() {
 	suite.assert = assert.New(suite.T())
 
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	remote_path = filepath.Join("/tmp/", "xload_"+randomString(8))
 	err = os.MkdirAll(remote_path, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", remote_path)
 	config.ReadConfigFromReader(strings.NewReader(cfg))
 
 	remote = loopback.NewLoopbackFSComponent()
 	err = remote.Configure(true)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	createTestDirsAndFiles(remote_path, suite.assert)
 }
 
 func (suite *splitterTestSuite) TearDownSuite() {
 	err := os.RemoveAll(remote_path)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func createTestDirsAndFiles(path string, assert *assert.Assertions) {
 	createTestFiles(path, assert)
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		dirName := filepath.Join(path, fmt.Sprintf("dir_%v", i))
 		err := os.MkdirAll(dirName, 0777)
-		assert.Nil(err)
+		assert.NoError(err)
 
 		createTestFiles(dirName, assert)
 	}
 }
 
 func createTestFiles(path string, assert *assert.Assertions) {
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		filePath := filepath.Join(path, fmt.Sprintf("file_%v", i))
 		f, err := os.Create(filePath)
 		defer func() {
 			err = f.Close()
-			assert.Nil(err)
+			assert.NoError(err)
 		}()
-		assert.Nil(err)
+		assert.NoError(err)
 
 		n, err := f.Write([]byte(randomString(9 * i)))
-		assert.Nil(err)
+		assert.NoError(err)
 		assert.Equal(n, 9*i)
 
 		err = os.Truncate(filePath, int64(9*i))
-		assert.Nil(err)
+		assert.NoError(err)
 	}
 }
 
@@ -157,17 +157,17 @@ func (ts *testSplitter) cleanup() error {
 
 func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	ds, err := newDownloadSplitter(nil)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(ds)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
 
 	ds, err = newDownloadSplitter(&downloadSplitterOptions{})
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(ds)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
 
 	statsMgr, err := NewStatsManager(1, false, nil)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(statsMgr)
 
 	ds, err = newDownloadSplitter(&downloadSplitterOptions{
@@ -178,47 +178,47 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 		statsMgr:    statsMgr,
 		fileLocks:   common.NewLockMap(),
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(ds)
 }
 
 func (suite *splitterTestSuite) TestProcessFilePresent() {
 	ts, err := setupTestSplitter()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(ts)
 
 	defer func() {
 		err = ts.cleanup()
-		suite.assert.Nil(err)
+		suite.assert.NoError(err)
 	}()
 
 	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, false})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(ds)
 
 	n, err := ds.Process(&WorkItem{})
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "is a directory")
-	suite.assert.Equal(n, -1)
+	suite.assert.Equal(-1, n)
 
 	fileName := "file_4"
 	cpCmd := exec.Command("cp", filepath.Join(remote_path, fileName), ts.path)
 	_, err = cpCmd.Output()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	n, err = ds.Process(&WorkItem{Path: fileName, DataLen: uint64(36)})
-	suite.assert.Nil(err)
-	suite.assert.Equal(n, 36)
+	suite.assert.NoError(err)
+	suite.assert.Equal(36, n)
 }
 
 func (suite *splitterTestSuite) TestSplitterStartStop() {
 	ts, err := setupTestSplitter()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(ts)
 
 	defer func() {
 		err = ts.cleanup()
-		suite.assert.Nil(err)
+		suite.assert.NoError(err)
 	}()
 
 	rl, err := newRemoteLister(&remoteListerOptions{
@@ -228,11 +228,11 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 		remote:            remote,
 		statsMgr:          ts.stMgr,
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(rl)
 
 	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, true})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(ds)
 
 	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
@@ -240,7 +240,7 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 		remote:      remote,
 		statsMgr:    ts.stMgr,
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(rdm)
 
 	// create chain
@@ -262,7 +262,7 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 
 func (suite *splitterTestSuite) TestSplitterConsistency() {
 	ts, err := setupTestSplitter()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(ts)
 
 	remote.(*loopback.LoopbackFS).SetConsistency(true)
@@ -270,7 +270,7 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 	defer func() {
 		remote.(*loopback.LoopbackFS).SetConsistency(false)
 		err = ts.cleanup()
-		suite.assert.Nil(err)
+		suite.assert.NoError(err)
 	}()
 
 	rl, err := newRemoteLister(&remoteListerOptions{
@@ -280,11 +280,11 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 		remote:            remote,
 		statsMgr:          ts.stMgr,
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(rl)
 
 	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, true})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(ds)
 
 	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
@@ -292,7 +292,7 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 		remote:      remote,
 		statsMgr:    ts.stMgr,
 	})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(rdm)
 
 	// create chain
@@ -314,7 +314,7 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 
 func validateMD5(localPath string, remotePath string, assert *assert.Assertions) {
 	entries, err := os.ReadDir(remotePath)
-	assert.Nil(err)
+	assert.NoError(err)
 
 	for _, entry := range entries {
 		localFile := filepath.Join(localPath, entry.Name())
@@ -322,16 +322,16 @@ func validateMD5(localPath string, remotePath string, assert *assert.Assertions)
 
 		if entry.IsDir() {
 			f, err := os.Stat(localFile)
-			assert.Nil(err)
+			assert.NoError(err)
 			assert.True(f.IsDir())
 
 			validateMD5(localFile, remoteFile, assert)
 		} else {
 			l, err := computeMD5(localFile)
-			assert.Nil(err)
+			assert.NoError(err)
 
 			r, err := computeMD5(remoteFile)
-			assert.Nil(err)
+			assert.NoError(err)
 
 			assert.Equal(l, r)
 		}

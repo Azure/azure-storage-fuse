@@ -458,13 +458,13 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 }
 
 // WriteFile : Mark the file invalid
-func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (ac *AttrCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})
 	if err != nil {
 		// Ignore not exists errors - this can happen if createEmptyFile is set to false
-		if !(os.IsNotExist(err) || err == syscall.ENOENT) {
+		if !os.IsNotExist(err) && err != syscall.ENOENT {
 			return 0, err
 		}
 	}
@@ -494,7 +494,7 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 		// no need to truncate the name of the file
 		value, found := ac.cacheMap[options.Name]
 		if found && value.valid() && value.exists() {
-			value.setSize(options.Size)
+			value.setSize(options.NewSize)
 		}
 		// todo: invalidating path here rather than updating with etag
 		// due to some changes that are required in az storage comp which
@@ -513,7 +513,7 @@ func (ac *AttrCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Name, RetrieveMetadata: true})
 	if err != nil {
 		// Ignore not exists errors - this can happen if createEmptyFile is set to false
-		if !(os.IsNotExist(err) || err == syscall.ENOENT) {
+		if !os.IsNotExist(err) && err != syscall.ENOENT {
 			return err
 		}
 	}
@@ -583,14 +583,15 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 	ac.cacheLock.Lock()
 	defer ac.cacheLock.Unlock()
 
-	if err == nil {
+	switch err {
+	case nil:
 		// Retrieved attributes so cache them
 		if len(ac.cacheMap) < ac.maxFiles {
 			ac.cacheMap[truncatedPath] = newAttrCacheItem(pathAttr, true, time.Now())
 		} else {
 			log.Debug("AttrCache::GetAttr : %s skipping adding to attribute cache because it is full", options.Name)
 		}
-	} else if err == syscall.ENOENT {
+	case syscall.ENOENT:
 		// Path does not exist so cache a no-entry item
 		ac.cacheMap[truncatedPath] = newAttrCacheItem(&internal.ObjAttr{}, false, time.Now())
 	}

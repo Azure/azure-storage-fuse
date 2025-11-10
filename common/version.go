@@ -96,7 +96,7 @@ func (v Version) compare(v2 Version) int {
 
 	// compare the major/minor/patch version
 	// if v has a bigger number, it is newer
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if v.segments[i] > v2.segments[i] {
 			return 1
 		} else if v.segments[i] < v2.segments[i] {

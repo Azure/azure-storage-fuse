@@ -105,7 +105,7 @@ type azAuthBlobSPN struct {
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azspn *azAuthBlobSPN) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azspn *azAuthBlobSPN) getServiceClient(stConfig *AzStorageConfig) (any, error) {
 	cred, err := azspn.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthBlobSPN::getServiceClient : Failed to get token credential from SPN [%s]", err.Error())
@@ -131,7 +131,7 @@ type azAuthDatalakeSPN struct {
 }
 
 // getServiceClient : returns SPN based service client for datalake
-func (azspn *azAuthDatalakeSPN) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azspn *azAuthDatalakeSPN) getServiceClient(stConfig *AzStorageConfig) (any, error) {
 	cred, err := azspn.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthDatalakeSPN::getServiceClient : Failed to get token credential from SPN [%s]", err.Error())

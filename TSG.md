@@ -112,6 +112,11 @@ Make sure to set the proxy URL in the environment variable `https_proxy` or `htt
 - It is pointing to the `endpoint` in `azstorage` section in config.
 - Or, have a DNS resolution where `account.blob.core.windows.net` can be resolved back to the private endpoint. In case of HNS account, make sure to have the private endpoint configured for both blob and dfs accounts.
 
+**13. Blobfuse establishes HTTPS communication with blobfuse2.z13.web.core.windows.net**
+
+On mount, Blobfuse tries to check if there is an upgrade available. This is done by making a connection to `blobfuse2.z13.web.core.windows.net` and fetching the latest version details. Due to a network policy or a firewall if this call fails, mount will continue. In case a new version is available, a message on shell will be printed calling for an upgrade. In case of failure only a log message will be dumped and it's totally harmless for any file-system operation or mount. If you do not want Blobfuse to make such check, add `--disable-version-check=true` CLI parameter in your mount command.
+
+
 # Blobfuse2 Health Monitor
 
 One of the Blobfuse2 features is health monitor. It allows customers gain more insight into how their Blobfuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up. Please note that this feature is currently in preview.

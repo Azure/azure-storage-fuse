@@ -76,7 +76,7 @@ func (bfs *BlobfuseStats) Monitor() error {
 	return bfs.statsReader()
 }
 
-func (bfs *BlobfuseStats) ExportStats(timestamp string, st interface{}) {
+func (bfs *BlobfuseStats) ExportStats(timestamp string, st any) {
 	se, err := hminternal.NewStatsExporter()
 	if err != nil || se == nil {
 		log.Err("StatsReader::ExportStats : Error in creating stats exporter instance [%v]", err)
@@ -156,7 +156,7 @@ func (bfs *BlobfuseStats) statsPoll() {
 	defer ticker.Stop()
 
 	for t := range ticker.C {
-		_, err = pf.WriteString(fmt.Sprintf("Poll at %v\n", t.Format(time.RFC3339)))
+		_, err = fmt.Fprintf(pf, "Poll at %v\n", t.Format(time.RFC3339))
 		if err != nil {
 			log.Err("StatsReader::statsPoll : [%v]", err)
 			break

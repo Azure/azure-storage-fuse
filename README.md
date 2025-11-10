@@ -127,6 +127,7 @@ To learn about a specific command, just include the name of the command (For exa
     * blobfuse2 unmount all 
 - Auto generate config file
     * blobfuse2 gen-config --tmp-path=\<local cache path\> --o \<path to save generated config\>
+    * blobfuse2 gen-config --block-cache --o \<path to save generated config\>
 
 <!---TODO Add Usage for mount, unmount, etc--->
 ## CLI parameters
@@ -382,4 +383,5 @@ bot. You will only need to do this once across all repos using our CLA.
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
 

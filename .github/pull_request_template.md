@@ -12,7 +12,7 @@ Please verify the following before submitting your PR, thank you!
 ## Description
 <!-- Provide a short summary of the changes in this PR. Explain the purpose, context, and any background information needed to understand the changes. -->
 
-- **Feature / Bug Fix**: (Brief description of the feature or issue being addressed)
+- **Feature / Bug Fix**:
 
 
 ## How Has This Been Tested?

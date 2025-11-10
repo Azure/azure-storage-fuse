@@ -305,14 +305,14 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 }
 
 // ReadInBuffer: Read the file into a buffer
-func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	log.Trace("BlockCache::ReadInBuffer : name: %s, buf size: %d, offset: %d",
 		options.Handle.Path, len(options.Data), options.Offset)
 	return 0, syscall.ENOTSUP
 }
 
 // WriteFile: Write to the local file
-func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	log.Debug("BlockCache::WriteFile : name: %s, buf size: %d, offset: %d",
 		options.Handle.Path, len(options.Data), options.Offset)
 

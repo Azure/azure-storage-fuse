@@ -48,6 +48,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,7 +72,7 @@ func IsDirectoryMounted(path string) bool {
 	// removing trailing / from the path
 	path = strings.TrimRight(path, "/")
 
-	for _, line := range strings.Split(string(mntList), "\n") {
+	for line := range strings.SplitSeq(string(mntList), "\n") {
 		if strings.TrimSpace(line) != "" {
 			mntPoint := strings.Split(line, " ")[1]
 			if path == mntPoint {
@@ -104,7 +105,7 @@ func IsMountActive(path string) (bool, error) {
 	}
 
 	// out contains the list of pids of the processes that are running
-	pidString := strings.Replace(out.String(), "\n", " ", -1)
+	pidString := strings.ReplaceAll(out.String(), "\n", " ")
 	pids := strings.Split(pidString, " ")
 	myPid := strconv.Itoa(os.Getpid())
 	for _, pid := range pids {
@@ -511,10 +512,10 @@ func WriteToFile(filename string, data string, options WriteToFileOptions) error
 	return nil
 }
 
-func GetCRC64(data []byte, len int) []byte {
+func GetCRC64(data []byte, length int) []byte {
 	// Create a CRC64 hash using the ECMA polynomial
 	crc64Table := crc64.MakeTable(crc64.ECMA)
-	checksum := crc64.Checksum(data[:len], crc64Table)
+	checksum := crc64.Checksum(data[:length], crc64Table)
 
 	checksumBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(checksumBytes, checksum)
@@ -534,13 +535,7 @@ func GetMD5(fi *os.File) ([]byte, error) {
 }
 
 func ComponentInPipeline(pipeline []string, component string) bool {
-	for _, comp := range pipeline {
-		if comp == component {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(pipeline, component)
 }
 
 func ValidatePipeline(pipeline []string) error {

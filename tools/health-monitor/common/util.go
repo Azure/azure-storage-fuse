@@ -50,8 +50,8 @@ func CheckProcessStatus(pid string) error {
 		return err
 	}
 
-	processes := strings.Split(string(cliOut), "\n")
-	for _, process := range processes {
+	processes := strings.SplitSeq(string(cliOut), "\n")
+	for process := range processes {
 		l := strings.Fields(process)
 		if len(l) >= 2 && l[1] == pid {
 			return nil

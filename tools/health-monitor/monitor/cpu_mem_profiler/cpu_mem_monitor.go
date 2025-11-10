@@ -88,7 +88,7 @@ func (cm *CpuMemProfiler) Monitor() error {
 	return nil
 }
 
-func (cm *CpuMemProfiler) ExportStats(timestamp string, st interface{}) {
+func (cm *CpuMemProfiler) ExportStats(timestamp string, st any) {
 	se, err := hminternal.NewStatsExporter()
 	if err != nil || se == nil {
 		log.Err("cpu_mem_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)
@@ -152,11 +152,12 @@ func (cm *CpuMemProfiler) getCpuMemoryUsage() (*hmcommon.CpuMemStat, error) {
 
 func getCpuMemIndex(process string) (int, int) {
 	cols := strings.Fields(process)
-	var cpuIndex, memIndex int = -1, -1
+	var cpuIndex, memIndex = -1, -1
 	for i, col := range cols {
-		if col == "%CPU" {
+		switch col {
+		case "%CPU":
 			cpuIndex = i
-		} else if col == "VIRT" {
+		case "VIRT":
 			memIndex = i
 		}
 	}
