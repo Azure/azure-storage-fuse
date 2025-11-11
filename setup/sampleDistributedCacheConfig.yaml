@@ -1,0 +1,29 @@
+# Refer ./setup/baseConfig.yaml for full set of config parameters
+
+logging:
+  type: base
+  level: log_debug
+
+components:
+  - libfuse
+  - distributed_cache
+  - azstorage
+
+# By default Distributed Cache uses the following values for libfuse config. These values are carefully chosen to keep the node up to date in the cluster.
+libfuse:
+  attribute-expiration-sec: 3
+  entry-expiration-sec: 3
+  negative-entry-expiration-sec: 0
+
+
+distributed_cache:
+  cache-id: my-dcache-cluster <Unique CacheID shared by all the nodes in the cluster>
+  cache-dirs:
+    - /mnt/cache1 <Local Cache directory path for distributed caching. Ensure that this directory exists on the node>
+
+azstorage:
+  type: block
+  account-name: <ACCOUNT_NAME>
+  account-key: <ACCOUNT_KEY>
+  mode: key
+  container: <CONTAINER_NAME>
