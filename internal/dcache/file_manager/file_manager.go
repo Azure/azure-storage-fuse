@@ -542,13 +542,14 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte, fromFuse bool) error
 	// TODO: Allowable write range should be a factor of fileIOMgr.numStagingChunks and how much is already
 	//       in the cache. Currently we are hardcoding +/- 100MiB range.
 	//
-	allowableWriteOffsetStart := max(0, file.maxWriteOffset-int64(100)*common.MbToBytes)
-	allowableWriteOffsetEnd := file.maxWriteOffset + int64(100)*common.MbToBytes
+	maxWriteOffset := atomic.LoadInt64(&file.maxWriteOffset)
+	allowableWriteOffsetStart := max(0, maxWriteOffset-int64(100)*common.MbToBytes)
+	allowableWriteOffsetEnd := maxWriteOffset + int64(100)*common.MbToBytes
 
 	// With strict sequential writes we don't allow any out-of-order writes.
 	if file.strictSeqWrites {
-		allowableWriteOffsetStart = file.maxWriteOffset
-		allowableWriteOffsetEnd = file.maxWriteOffset
+		allowableWriteOffsetStart = maxWriteOffset
+		allowableWriteOffsetEnd = maxWriteOffset
 	} else if file.FileMetadata.State == dcache.Warming {
 		// Else, if we know the file size (cache warmup case), then allow writes to the entire file.
 		common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Filename, file.FileMetadata.Size)
@@ -722,9 +723,10 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte, fromFuse bool) error
 	//
 	// Warmup files MUST NOT exceed the original file size.
 	//
-	if (int64(file.FileMetadata.Size) != -1) && (file.maxWriteOffset > int64(file.FileMetadata.Size)) {
+	maxWriteOffset = atomic.LoadInt64(&file.maxWriteOffset)
+	if (int64(file.FileMetadata.Size) != -1) && (maxWriteOffset > int64(file.FileMetadata.Size)) {
 		err := fmt.Errorf("Warmup file extended beyong original size, file: %s, original size: %d, maxWriteOffset: %d",
-			file.FileMetadata.Filename, file.FileMetadata.Size, file.maxWriteOffset)
+			file.FileMetadata.Filename, file.FileMetadata.Size, maxWriteOffset)
 
 		log.Err("DistributedCache[FM]::WriteFile: %v", err)
 		file.setWriteError(err)
@@ -773,7 +775,7 @@ func (file *DcacheFile) SyncFile() error {
 		chunkStartOffset := getChunkStartOffset(chunk.Idx, file.FileMetadata.FileLayout.ChunkSize)
 		chunkEndOffset := chunkStartOffset + chunk.Len
 		// if maxWriteOffset is at chunk end, this must be the last chunk.
-		isLastChunk := file.maxWriteOffset == chunkEndOffset
+		isLastChunk := atomic.LoadInt64(&file.maxWriteOffset) == chunkEndOffset
 
 		//
 		// Uploading partial chunks in the middle of the file is recipe for data corruption.
@@ -786,7 +788,7 @@ func (file *DcacheFile) SyncFile() error {
 			warmupFile := file.FileMetadata.State == dcache.Warming
 
 			err := fmt.Errorf("DistributedCache[FM]::SyncFile: Partial non-last chunk. file: %s, chunkIdx: %d, chunkLen: %d, file size: %d, warmupFile: %v",
-				file.FileMetadata.Filename, chunk.Idx, chunk.Len, file.maxWriteOffset, warmupFile)
+				file.FileMetadata.Filename, chunk.Idx, chunk.Len, atomic.LoadInt64(&file.maxWriteOffset), warmupFile)
 			log.Err("%v", err)
 
 			if warmupFile {
@@ -941,7 +943,7 @@ func (file *DcacheFile) finalizeFile() error {
 	file.FileMetadata.State = dcache.Ready
 
 	if file.FileMetadata.Size == -1 {
-		file.FileMetadata.Size = file.maxWriteOffset
+		file.FileMetadata.Size = atomic.LoadInt64(&file.maxWriteOffset)
 	}
 	common.Assert(file.FileMetadata.Size >= 0)
 

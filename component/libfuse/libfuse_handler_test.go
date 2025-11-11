@@ -309,10 +309,6 @@ func (suite *libfuseTestSuite) TestFsync() {
 	testFsync(suite)
 }
 
-func (suite *libfuseTestSuite) TestFsyncHandleError() {
-	testFsyncHandleError(suite)
-}
-
 func (suite *libfuseTestSuite) TestFsyncError() {
 	testFsyncError(suite)
 }

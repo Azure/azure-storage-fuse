@@ -53,7 +53,7 @@ const InvalidHandleID HandleID = 0
 
 // Flags represented in BitMap for various flags in the handle
 const (
-	HandleFlagUnknown uint16 = iota
+	HandleFlagUnknown uint64 = iota
 	HandleFlagDirty          // File has been modified with write operation or is a new file
 	HandleFlagFSynced        // User has called fsync on the file explicitly
 	HandleFlagCached         // File is cached in the local system by blobfuse2
@@ -114,7 +114,7 @@ type Handle struct {
 	Mtime    time.Time
 	UnixFD   uint64          // Unix FD created by create/open syscall
 	OptCnt   uint64          // Number of operations done on this file
-	Flags    common.BitMap16 // Various states of the file
+	Flags    common.BitMap64 // Various states of the file
 	Path     string          // Always holds path relative to mount dir
 	values   map[string]any  // Map to hold other info if application wants to store
 	IFObj    any             // Generic file Object that can be used by other components.

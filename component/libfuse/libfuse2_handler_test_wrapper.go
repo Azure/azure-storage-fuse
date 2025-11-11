@@ -1,5 +1,4 @@
 //go:build fuse2
-// +build fuse2
 
 /*
     _____           _____   _____   ____          ______  _____  ------
@@ -43,6 +42,7 @@ import "C"
 import (
 	"errors"
 	"io/fs"
+	"runtime/cgo"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -557,28 +557,14 @@ func testFsync(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	// libfuse component will return back handle in form of an integer value
-	// that needs to be converted back to a pointer to a handle object
-	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
+	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
+	suite.assert.NotNil(handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(nil)
 
 	err := libfuse_fsync(path, C.int(0), info)
 	suite.assert.Equal(C.int(0), err)
-}
-
-func testFsyncHandleError(suite *libfuseTestSuite) {
-	defer suite.cleanupTest()
-	name := "path"
-	path := C.CString("/" + name)
-	defer C.free(unsafe.Pointer(path))
-	info := &C.fuse_file_info_t{}
-	info.flags = C.O_RDWR
-
-	err := libfuse_fsync(path, C.int(0), info)
-	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
 func testFsyncError(suite *libfuseTestSuite) {
@@ -597,10 +583,8 @@ func testFsyncError(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	// libfuse component will return back handle in form of an integer value
-	// that needs to be converted back to a pointer to a handle object
-	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
+	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
+	suite.assert.NotNil(handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(errors.New("failed to sync file"))

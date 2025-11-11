@@ -495,7 +495,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 // TODO: Add stats for measuring time taken to download the clustermap, how many times it's downloaded, etc.
 
 func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, *string, error) {
-	atomic.AddInt64(&stats.Stats.CM.LocalClustermap.TimesUpdated, 1)
+	stats.Stats.CM.LocalClustermap.TimesUpdated.Value.Add(1)
 	//
 	// 1. Fetch the latest clustermap from metadata store.
 	//
@@ -515,7 +515,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		// ENOENT is the only viable error, for everything else we retry.
 		common.Assert(err == syscall.ENOENT, err)
 
-		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.UpdateFailures, 1)
+		stats.Stats.CM.LocalClustermap.UpdateFailures.Value.Add(1)
 		stats.Stats.CM.LocalClustermap.LastError = err1.Error()
 		return nil, nil, err
 	}
@@ -526,7 +526,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		err = fmt.Errorf("received empty clustermap on node %s", cmi.myNodeId)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
-		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.UpdateFailures, 1)
+		stats.Stats.CM.LocalClustermap.UpdateFailures.Value.Add(1)
 		stats.Stats.CM.LocalClustermap.LastError = err.Error()
 		return nil, nil, err
 	}
@@ -545,24 +545,21 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		err = fmt.Errorf("failed to unmarshal clustermap json on node %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
-		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.UpdateFailures, 1)
+		stats.Stats.CM.LocalClustermap.UpdateFailures.Value.Add(1)
 		stats.Stats.CM.LocalClustermap.LastError = err.Error()
 		return nil, nil, err
 	}
 
 	common.Assert(cm.IsValidClusterMap(&storageClusterMap))
 
-	atomic.StoreInt64(&stats.Stats.CM.LocalClustermap.SizeInBytes, int64(len(storageBytes)))
-	atomic.StoreInt64(&stats.Stats.CM.LocalClustermap.Epoch, int64(storageClusterMap.Epoch))
-	stats.Stats.CM.StorageClustermap.Leader = storageClusterMap.LastUpdatedBy
+	stats.Stats.CM.LocalClustermap.SizeInBytes.Value.Add(int64(len(storageBytes)))
+	stats.Stats.CM.LocalClustermap.Epoch.Value.Add(int64(storageClusterMap.Epoch))
+	stats.Stats.CM.StorageClustermap.Leader.Store(storageClusterMap.LastUpdatedBy)
 
 	atomic.AddInt64((*int64)(&stats.Stats.CM.LocalClustermap.TotalTime), int64(updateDuration))
-	if stats.Stats.CM.LocalClustermap.MinTime == nil ||
-		updateDuration < *stats.Stats.CM.LocalClustermap.MinTime {
-		stats.Stats.CM.LocalClustermap.MinTime = &updateDuration
-	}
-	stats.Stats.CM.LocalClustermap.MaxTime =
-		max(stats.Stats.CM.LocalClustermap.MaxTime, updateDuration)
+
+	stats.StoreMinTime(&stats.Stats.CM.LocalClustermap.MinTime, updateDuration)
+	stats.StoreMaxTime(&stats.Stats.CM.LocalClustermap.MaxTime, updateDuration)
 
 	cmi.localMapLock.Lock()
 	defer cmi.localMapLock.Unlock()
@@ -578,7 +575,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		// Cache config must have been saved when we saved the clustermap.
 		common.Assert(cmi.config != nil)
 		common.Assert(cm.IsValidDcacheConfig(cmi.config))
-		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.Unchanged, 1)
+		stats.Stats.CM.LocalClustermap.Unchanged.Value.Add(1)
 		return &storageClusterMap, etag, nil
 	}
 
@@ -598,7 +595,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		common.Assert(cm.IsValidDcacheConfig(cmi.config))
 		// If epoch is different, etag must be different.
 		common.Assert(*etag != *cmi.localMapETag, *etag, *cmi.localMapETag)
-		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.Unchanged, 1)
+		stats.Stats.CM.LocalClustermap.Unchanged.Value.Add(1)
 
 		return &localClusterMap, cmi.localMapETag, nil
 	}
@@ -616,7 +613,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 		err = fmt.Errorf("WriteFile(%s) failed: %v %+v", tmp, err, storageClusterMap)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
-		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.UpdateFailures, 1)
+		stats.Stats.CM.LocalClustermap.UpdateFailures.Value.Add(1)
 		stats.Stats.CM.LocalClustermap.LastError = err.Error()
 		return nil, nil, err
 	} else if err := os.Rename(tmp, cmi.localClusterMapPath); err != nil {
@@ -624,7 +621,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 			tmp, cmi.localClusterMapPath, err, storageClusterMap)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
-		atomic.AddInt64(&stats.Stats.CM.LocalClustermap.UpdateFailures, 1)
+		stats.Stats.CM.LocalClustermap.UpdateFailures.Value.Add(1)
 		stats.Stats.CM.LocalClustermap.LastError = err.Error()
 		return nil, nil, err
 	}
@@ -634,7 +631,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, 
 	//
 	cmi.localMapETag = etag
 
-	stats.Stats.CM.LocalClustermap.LastUpdated = time.Now()
+	stats.Stats.CM.LocalClustermap.LastUpdated.Store(time.Now())
 
 	// Once saved, config should not change.
 	if cmi.config != nil {
@@ -848,8 +845,8 @@ func cleanupRV(rv dcache.RawVolume, doNotDeleteMVs map[string]struct{}) error {
 			rv.LocalCachePath, deleteFailures.Load(), deleteSuccess.Load())
 	}
 
-	atomic.AddInt64(&stats.Stats.CM.Startup.MVsDeleted, deleteSuccess.Load())
-	atomic.AddInt64(&stats.Stats.CM.Startup.MVsDeleteFailed, deleteFailures.Load())
+	stats.Stats.CM.Startup.MVsDeleted.Value.Add(deleteSuccess.Load())
+	stats.Stats.CM.Startup.MVsDeleteFailed.Value.Add(deleteFailures.Load())
 
 	log.Info("ClusterManager::cleanupRV: Successfully cleaned up RV dir %s, deleted %d MV(s)",
 		rv.LocalCachePath, deleteSuccess.Load())
@@ -1644,8 +1641,8 @@ func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, 
 	// This node is the new leader.
 	//
 	if isLeaderChanged {
-		stats.Stats.CM.StorageClustermap.BecameLeaderAt = time.Now()
-		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitches), 1)
+		stats.Stats.CM.StorageClustermap.BecameLeaderAt.Store(time.Now())
+		stats.Stats.CM.StorageClustermap.LeaderSwitches.Value.Add(1)
 	}
 
 	// startClusterMapUpdate() MUST only succeed with odd epoch, indicating clustermap is being updated.
@@ -1836,7 +1833,7 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume, initialHB bo
 // This is no doubt the most important task done by clustermanager.
 // It queries all the heartbeats present and updates clustermap's RV list and MV list accordingly.
 func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
-	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Calls), 1)
+	stats.Stats.CM.StorageClustermap.Calls.Value.Add(1)
 
 	var clusterMap dcache.ClusterMap
 	skipUpdateRVList := false
@@ -1885,7 +1882,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 				err)
 			log.Err(err1.Error())
 			common.Assert(false, err1)
-			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.Failures.Value.Add(1)
 			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
 			return err1
 		}
@@ -1926,7 +1923,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 			// Else, let the caller know.
 			common.Assert(false, "cluster.LastUpdatedAt is too much in future", clusterMap.LastUpdatedAt, now)
-			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.Failures.Value.Add(1)
 			stats.Stats.CM.StorageClustermap.LastError = err.Error()
 			return err
 		}
@@ -1959,7 +1956,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		//
 		isClusterMapUpdateBlocked, err := cmi.clusterMapBeingUpdatedByAnotherNode(clusterMap, etag)
 		if err != nil {
-			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.Failures.Value.Add(1)
 			stats.Stats.CM.StorageClustermap.LastError = err.Error()
 			return err
 		}
@@ -2013,7 +2010,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %d secs, ownership being claimed by new leader %s, epoch: %d",
 				leaderNode, clusterMapAge, cmi.myNodeId, clusterMap.Epoch)
 			log.Warn("%v", err1)
-			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.LeaderSwitchesDueToTimeout), 1)
+			stats.Stats.CM.StorageClustermap.LeaderSwitchesDueToTimeout.Value.Add(1)
 			// This is not an error, but interesting event, so log it.
 			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
 		}
@@ -2036,7 +2033,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		if err != nil {
 			err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
 			log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.Failures.Value.Add(1)
 			stats.Stats.CM.StorageClustermap.LastError = err.Error()
 			return err
 		}
@@ -2066,7 +2063,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 				//
 				// TODO: We must reset the clusterMap state to ready.
 				//
-				atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+				stats.Stats.CM.StorageClustermap.Failures.Value.Add(1)
 				stats.Stats.CM.StorageClustermap.LastError = err.Error()
 				return err
 			}
@@ -2095,7 +2092,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 					err1 := fmt.Errorf("Failed to pre-commit clusterMap: %v", err)
 					log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err1)
 					common.Assert(false, err1)
-					atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+					stats.Stats.CM.StorageClustermap.Failures.Value.Add(1)
 					stats.Stats.CM.StorageClustermap.LastError = err1.Error()
 					return err
 				}
@@ -2169,7 +2166,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 				elapsed, maxTime)
 			log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 			common.Assert(false, err)
-			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.Failures.Value.Add(1)
 			stats.Stats.CM.StorageClustermap.LastError = err.Error()
 			return err
 		}
@@ -2183,7 +2180,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 			err1 := fmt.Errorf("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 			log.Err("%v", err1)
 			common.Assert(false, err1)
-			atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.Failures), 1)
+			stats.Stats.CM.StorageClustermap.Failures.Value.Add(1)
 			stats.Stats.CM.StorageClustermap.LastError = err1.Error()
 			return err
 		}
@@ -2195,39 +2192,32 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	duration := stats.Duration(time.Since(start))
 
 	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalTime), int64(duration))
-	if stats.Stats.CM.StorageClustermap.MinTime == nil ||
-		duration < *stats.Stats.CM.StorageClustermap.MinTime {
-		stats.Stats.CM.StorageClustermap.MinTime = &duration
-	}
-	stats.Stats.CM.StorageClustermap.MaxTime =
-		max(stats.Stats.CM.StorageClustermap.MaxTime, duration)
+
+	stats.StoreMinTime(&stats.Stats.CM.StorageClustermap.MinTime, duration)
+	stats.StoreMaxTime(&stats.Stats.CM.StorageClustermap.MaxTime, duration)
 
 	//
 	// If the last clusterMap update was done by the same node, calculate gap between updates.
 	//
-	if (stats.Stats.CM.StorageClustermap.LastUpdateEpoch == clusterMap.Epoch-1) &&
-		(stats.Stats.CM.StorageClustermap.LastUpdateEpoch != 0) {
+	if (stats.Stats.CM.StorageClustermap.LastUpdateEpoch.Value.Load() == clusterMap.Epoch-1) &&
+		(stats.Stats.CM.StorageClustermap.LastUpdateEpoch.Value.Load() != 0) {
 		common.Assert(!stats.Stats.CM.StorageClustermap.LastUpdatedAt.IsZero())
-		gap := stats.Duration(time.Since(stats.Stats.CM.StorageClustermap.LastUpdatedAt))
+		gap := stats.Duration(time.Since(stats.Stats.CM.StorageClustermap.LastUpdatedAt.Load()))
 
 		atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalGap), int64(gap))
-		if stats.Stats.CM.StorageClustermap.MinGap == nil ||
-			gap < *stats.Stats.CM.StorageClustermap.MinGap {
-			stats.Stats.CM.StorageClustermap.MinGap = &gap
-		}
-		stats.Stats.CM.StorageClustermap.MaxGap =
-			max(stats.Stats.CM.StorageClustermap.MaxGap, gap)
+		stats.StoreMinTime(&stats.Stats.CM.StorageClustermap.MinGap, gap)
+		stats.StoreMaxTime(&stats.Stats.CM.StorageClustermap.MaxGap, gap)
 	} else {
 		// If this is the first update or the first update after a leader switch, reset the gap stats.
-		stats.Stats.CM.StorageClustermap.MinGap = nil
+		atomic.StoreInt64((*int64)(&stats.Stats.CM.StorageClustermap.MinGap), 0)
 		atomic.StoreInt64((*int64)(&stats.Stats.CM.StorageClustermap.MaxGap), 0)
 		atomic.StoreInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalGap), 0)
-		atomic.StoreInt64(&stats.Stats.CM.StorageClustermap.TotalUpdates, 0)
+		stats.Stats.CM.StorageClustermap.TotalUpdates.Value.Store(0)
 	}
 
-	atomic.StoreInt64(&stats.Stats.CM.StorageClustermap.LastUpdateEpoch, clusterMap.Epoch)
-	stats.Stats.CM.StorageClustermap.LastUpdatedAt = time.Now()
-	atomic.AddInt64((*int64)(&stats.Stats.CM.StorageClustermap.TotalUpdates), 1)
+	stats.Stats.CM.StorageClustermap.LastUpdateEpoch.Value.Store(clusterMap.Epoch)
+	stats.Stats.CM.StorageClustermap.LastUpdatedAt.Store(time.Now())
+	stats.Stats.CM.StorageClustermap.TotalUpdates.Value.Add(1)
 
 	log.Info("[TIMING] ClusterManager::updateStorageClusterMapIfRequired: cluster map (%d nodes) updated by %s at %s: %+v (took %s)",
 		nodeCount, cmi.myNodeId, time.Now(), clusterMap, time.Since(start))
@@ -2999,8 +2989,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			if !foundReplacement {
 				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, available RVs: %d, excludeNodes: %+v, excludeFaultDomains: %+v, excludeUpdateDomains: %+v",
 					rvName, mvName, len(availableRVsList), excludeNodes, excludeFaultDomains, excludeUpdateDomains)
-				atomic.AddInt64(&stats.Stats.CM.FixMV.NoReplacementRVs, 1)
-				atomic.AddInt64(&stats.Stats.CM.FixMV.NoReplacementRVsCumulative, 1)
+				stats.Stats.CM.FixMV.NoReplacementRVs.Value.Add(1)
+				stats.Stats.CM.FixMV.NoReplacementRVsCumulative.Value.Add(1)
 			}
 		}
 
@@ -3010,8 +3000,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		// Skip joinMV() if nothing changed in clustermap.
 		if fixedRVs == 0 {
 			log.Warn("ClusterManager::fixMV: Could not fix any RV for MV %s", mvName)
-			atomic.AddInt64(&stats.Stats.CM.FixMV.MVsNotFixed, 1)
-			atomic.AddInt64(&stats.Stats.CM.FixMV.MVsNotFixedCumulative, 1)
+			stats.Stats.CM.FixMV.MVsNotFixed.Value.Add(1)
+			stats.Stats.CM.FixMV.MVsNotFixedCumulative.Value.Add(1)
 			return
 		}
 
@@ -3040,8 +3030,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 					_, exists := alreadyOutOfSync[rvName]
 					if !exists {
 						consumeRVSlot(mvName, rvName)
-						atomic.AddInt64(&stats.Stats.CM.FixMV.RVsReplaced, 1)
-						atomic.AddInt64(&stats.Stats.CM.FixMV.RVsReplacedCumulative, 1)
+						stats.Stats.CM.FixMV.RVsReplaced.Value.Add(1)
+						stats.Stats.CM.FixMV.RVsReplacedCumulative.Value.Add(1)
 					}
 				}
 			}
@@ -3049,11 +3039,11 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 			// An MV is fixed only if all offline component RVs are "fixed", i.e., replaced with good RVs.
 			if fixedRVs == offlineRVs {
-				atomic.AddInt64(&stats.Stats.CM.FixMV.MVsFixed, 1)
-				atomic.AddInt64(&stats.Stats.CM.FixMV.MVsFixedCumulative, 1)
+				stats.Stats.CM.FixMV.MVsFixed.Value.Add(1)
+				stats.Stats.CM.FixMV.MVsFixedCumulative.Value.Add(1)
 			} else {
-				atomic.AddInt64(&stats.Stats.CM.FixMV.MVsPartiallyFixed, 1)
-				atomic.AddInt64(&stats.Stats.CM.FixMV.MVsPartiallyFixedCumulative, 1)
+				stats.Stats.CM.FixMV.MVsPartiallyFixed.Value.Add(1)
+				stats.Stats.CM.FixMV.MVsPartiallyFixedCumulative.Value.Add(1)
 			}
 		} else {
 			//
@@ -3068,8 +3058,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 
 			mv.RVs = savedRVs
 			existingMVMap[mvName] = mv
-			atomic.AddInt64(&stats.Stats.CM.FixMV.MVsFixFailedDueToJoinMVOrUpdateMV, 1)
-			atomic.AddInt64(&stats.Stats.CM.FixMV.MVsFixFailedDueToJoinMVOrUpdateMVCumulative, 1)
+			stats.Stats.CM.FixMV.MVsFixFailedDueToJoinMVOrUpdateMV.Value.Add(1)
+			stats.Stats.CM.FixMV.MVsFixFailedDueToJoinMVOrUpdateMVCumulative.Value.Add(1)
 		}
 	}
 
@@ -3079,12 +3069,12 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	// When not running fix-mv/new-mv we don't need the availableRVsMap, so we skip this phase.
 	//
 	if runFixMvNewMv {
-		atomic.StoreInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 0)
+		stats.Stats.CM.NewMV.OfflineRVs.Value.Store(0)
 		for rvName, rvInfo := range rvMap {
 			common.Assert(cm.IsValidRV(&rvInfo))
 
 			if rvInfo.State == dcache.StateOffline {
-				atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OfflineRVs), 1)
+				stats.Stats.CM.NewMV.OfflineRVs.Value.Add(1)
 				// Skip RVs that are offline as they cannot contribute to any MV.
 				continue
 			}
@@ -3295,17 +3285,17 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	//
 
 	// Reset per-fix-mv stats.
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.Calls, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.MVsFixed, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.MVsPartiallyFixed, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.MVsNotFixed, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.MVsFixFailedDueToJoinMVOrUpdateMV, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.RVsReplaced, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.NoReplacementRVs, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.JoinMV.Calls, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.JoinMV.Failures, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.UpdateMV.Calls, 0)
-	atomic.StoreInt64(&stats.Stats.CM.FixMV.UpdateMV.Failures, 0)
+	stats.Stats.CM.FixMV.Calls.Value.Add(1)
+	stats.Stats.CM.FixMV.MVsFixed.Value.Add(1)
+	stats.Stats.CM.FixMV.MVsPartiallyFixed.Value.Add(1)
+	stats.Stats.CM.FixMV.MVsNotFixed.Value.Add(1)
+	stats.Stats.CM.FixMV.MVsFixFailedDueToJoinMVOrUpdateMV.Value.Add(1)
+	stats.Stats.CM.FixMV.RVsReplaced.Value.Add(1)
+	stats.Stats.CM.FixMV.NoReplacementRVs.Value.Add(1)
+	stats.Stats.CM.FixMV.JoinMV.Calls.Value.Add(1)
+	stats.Stats.CM.FixMV.JoinMV.Failures.Value.Add(1)
+	stats.Stats.CM.FixMV.UpdateMV.Calls.Value.Add(1)
+	stats.Stats.CM.FixMV.UpdateMV.Failures.Value.Add(1)
 
 	//
 	// Set availableRVsList from availableRVsMap.
@@ -3333,15 +3323,12 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 		mvsProcessed++
 
 		duration := stats.Duration(time.Since(fixMVStart))
-		atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.Calls), 1)
-		atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.CallsCumulative), 1)
+		stats.Stats.CM.FixMV.Calls.Value.Add(1)
+		stats.Stats.CM.FixMV.CallsCumulative.Value.Add(1)
 		atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.TotalTime), int64(duration))
-		if stats.Stats.CM.FixMV.MinTime == nil ||
-			duration < *stats.Stats.CM.FixMV.MinTime {
-			stats.Stats.CM.FixMV.MinTime = &duration
-		}
-		stats.Stats.CM.FixMV.MaxTime =
-			max(stats.Stats.CM.FixMV.MaxTime, duration)
+
+		stats.StoreMinTime(&stats.Stats.CM.FixMV.MinTime, duration)
+		stats.StoreMaxTime(&stats.Stats.CM.FixMV.MaxTime, duration)
 
 		//
 		// If we have processed more than 100 MVs, check if we are running out of time.
@@ -3385,8 +3372,8 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	//
 	getAvailableRVsList(true /* newMV */)
 
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.MVsPerRV, int64(cm.MVsPerRVForNewMV))
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.NumReplicas, int64(NumReplicas))
+	stats.Stats.CM.NewMV.MVsPerRV.Value.Store(int64(cm.MVsPerRVForNewMV))
+	stats.Stats.CM.NewMV.NumReplicas.Value.Store(int64(NumReplicas))
 
 	//
 	// All new RVs will be at the beginning of availableRVsList as they have all slots free, find how many
@@ -3591,10 +3578,10 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 			// One more usable MV added to existingMVMap.
 			numUsableMVs++
 			common.Assert(numUsableMVs <= len(existingMVMap), numUsableMVs, len(existingMVMap))
-			atomic.AddInt64(&stats.Stats.CM.NewMV.NewMVsAdded, 1)
+			stats.Stats.CM.NewMV.NewMVsAdded.Value.Add(1)
 			// New MV always starts as online.
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OnlineMVs), 1)
-			stats.Stats.CM.NewMV.LastMVAddedAt = time.Now()
+			stats.Stats.CM.NewMV.OnlineMVs.Value.Add(1)
+			stats.Stats.CM.NewMV.LastMVAddedAt.Store(time.Now())
 			// Time taken by new-mv workflow.
 			newMVDuration := stats.Duration(time.Since(startNewMV))
 			atomic.StoreInt64((*int64)(&stats.Stats.CM.NewMV.TimeTaken), int64(newMVDuration))
@@ -3618,39 +3605,36 @@ func (cmi *ClusterManager) updateMVList(clusterMap *dcache.ClusterMap, completeB
 	// Call getAvailableRVsList() to get numAvailableNodes for the stats.
 	getAvailableRVsList(true /* newMV */)
 
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.AvailableNodes, int64(numAvailableNodes))
+	stats.Stats.CM.NewMV.AvailableNodes.Value.Store(int64(numAvailableNodes))
 
 	// Total time taken by updateMVList().
 	duration := stats.Duration(time.Since(start))
 
-	atomic.AddInt64(&stats.Stats.CM.UpdateMVList.Calls, 1)
-	stats.Stats.CM.UpdateMVList.LastCallAt = time.Now()
+	stats.Stats.CM.UpdateMVList.Calls.Value.Add(1)
+	stats.Stats.CM.UpdateMVList.LastCallAt.Store(time.Now())
 	atomic.AddInt64((*int64)(&stats.Stats.CM.UpdateMVList.TotalTime), int64(duration))
-	if stats.Stats.CM.UpdateMVList.MinTime == nil ||
-		duration < *stats.Stats.CM.UpdateMVList.MinTime {
-		stats.Stats.CM.UpdateMVList.MinTime = &duration
-	}
-	stats.Stats.CM.UpdateMVList.MaxTime =
-		max(stats.Stats.CM.UpdateMVList.MaxTime, duration)
 
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.TotalRVs, int64(len(rvMap)))
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.TotalMVs, int64(len(existingMVMap)))
+	stats.StoreMinTime(&stats.Stats.CM.UpdateMVList.MinTime, duration)
+	stats.StoreMaxTime(&stats.Stats.CM.UpdateMVList.MaxTime, duration)
+
+	stats.Stats.CM.NewMV.TotalRVs.Value.Store(int64(len(rvMap)))
+	stats.Stats.CM.NewMV.TotalMVs.Value.Store(int64(len(existingMVMap)))
 
 	// Count MV state for stats.
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.OnlineMVs, 0)
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.OfflineMVs, 0)
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.DegradedMVs, 0)
-	atomic.StoreInt64(&stats.Stats.CM.NewMV.SyncingMVs, 0)
+	stats.Stats.CM.NewMV.OnlineMVs.Value.Store(0)
+	stats.Stats.CM.NewMV.OfflineMVs.Value.Store(0)
+	stats.Stats.CM.NewMV.DegradedMVs.Value.Store(0)
+	stats.Stats.CM.NewMV.SyncingMVs.Value.Store(0)
 	for mvName, mv := range existingMVMap {
 		switch mv.State {
 		case dcache.StateOnline:
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OnlineMVs), 1)
+			stats.Stats.CM.NewMV.OnlineMVs.Value.Add(1)
 		case dcache.StateOffline:
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.OfflineMVs), 1)
+			stats.Stats.CM.NewMV.OfflineMVs.Value.Add(1)
 		case dcache.StateDegraded:
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.DegradedMVs), 1)
+			stats.Stats.CM.NewMV.DegradedMVs.Value.Add(1)
 		case dcache.StateSyncing:
-			atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.SyncingMVs), 1)
+			stats.Stats.CM.NewMV.SyncingMVs.Value.Add(1)
 		default:
 			_ = mvName
 			common.Assert(false, mvName, mv.State)
@@ -3847,26 +3831,19 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, cepoc
 				duration = stats.Duration(time.Since(start))
 
 				if newMV {
-					atomic.AddInt64(&stats.Stats.CM.NewMV.JoinMV.Calls, 1)
+					stats.Stats.CM.NewMV.JoinMV.Calls.Value.Add(1)
 					atomic.AddInt64((*int64)(&stats.Stats.CM.NewMV.JoinMV.TotalTime),
 						int64(duration))
-					if stats.Stats.CM.NewMV.JoinMV.MinTime == nil ||
-						duration < *stats.Stats.CM.NewMV.JoinMV.MinTime {
-						stats.Stats.CM.NewMV.JoinMV.MinTime = &duration
-					}
-					stats.Stats.CM.NewMV.JoinMV.MaxTime =
-						max(stats.Stats.CM.NewMV.JoinMV.MaxTime, duration)
+					stats.StoreMinTime(&stats.Stats.CM.NewMV.JoinMV.MinTime, duration)
+					stats.StoreMaxTime(&stats.Stats.CM.NewMV.JoinMV.MaxTime, duration)
 				} else {
-					atomic.AddInt64(&stats.Stats.CM.FixMV.JoinMV.Calls, 1)
-					atomic.AddInt64(&stats.Stats.CM.FixMV.JoinMV.CallsCumulative, 1)
+					stats.Stats.CM.FixMV.JoinMV.Calls.Value.Add(1)
+					stats.Stats.CM.FixMV.JoinMV.CallsCumulative.Value.Add(1)
 					atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.JoinMV.TotalTime),
 						int64(duration))
-					if stats.Stats.CM.FixMV.JoinMV.MinTime == nil ||
-						duration < *stats.Stats.CM.FixMV.JoinMV.MinTime {
-						stats.Stats.CM.FixMV.JoinMV.MinTime = &duration
-					}
-					stats.Stats.CM.FixMV.JoinMV.MaxTime =
-						max(stats.Stats.CM.FixMV.JoinMV.MaxTime, duration)
+
+					stats.StoreMinTime(&stats.Stats.CM.FixMV.JoinMV.MinTime, duration)
+					stats.StoreMaxTime(&stats.Stats.CM.FixMV.JoinMV.MaxTime, duration)
 				}
 			} else {
 				//
@@ -3878,16 +3855,13 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, cepoc
 				action = "updating"
 				duration = stats.Duration(time.Since(start))
 
-				atomic.AddInt64(&stats.Stats.CM.FixMV.UpdateMV.Calls, 1)
-				atomic.AddInt64(&stats.Stats.CM.FixMV.UpdateMV.CallsCumulative, 1)
+				stats.Stats.CM.FixMV.UpdateMV.Calls.Value.Add(1)
+				stats.Stats.CM.FixMV.UpdateMV.CallsCumulative.Value.Add(1)
 				atomic.AddInt64((*int64)(&stats.Stats.CM.FixMV.UpdateMV.TotalTime),
 					int64(duration))
-				if stats.Stats.CM.FixMV.UpdateMV.MinTime == nil ||
-					duration < *stats.Stats.CM.FixMV.UpdateMV.MinTime {
-					stats.Stats.CM.FixMV.UpdateMV.MinTime = &duration
-				}
-				stats.Stats.CM.FixMV.UpdateMV.MaxTime =
-					max(stats.Stats.CM.FixMV.UpdateMV.MaxTime, duration)
+
+				stats.StoreMinTime(&stats.Stats.CM.FixMV.UpdateMV.MinTime, duration)
+				stats.StoreMaxTime(&stats.Stats.CM.FixMV.UpdateMV.MaxTime, duration)
 			}
 
 			if err != nil {
@@ -3900,15 +3874,15 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, cepoc
 				}
 
 				if newMV {
-					atomic.AddInt64(&stats.Stats.CM.NewMV.JoinMV.Failures, 1)
+					stats.Stats.CM.NewMV.JoinMV.Failures.Value.Add(1)
 					stats.Stats.CM.NewMV.JoinMV.LastError = err.Error()
 				} else if rvState == dcache.StateOutOfSync {
-					atomic.AddInt64(&stats.Stats.CM.FixMV.JoinMV.Failures, 1)
-					atomic.AddInt64(&stats.Stats.CM.FixMV.JoinMV.FailuresCumulative, 1)
+					stats.Stats.CM.FixMV.JoinMV.Failures.Value.Add(1)
+					stats.Stats.CM.FixMV.JoinMV.FailuresCumulative.Value.Add(1)
 					stats.Stats.CM.FixMV.JoinMV.LastError = err.Error()
 				} else {
-					atomic.AddInt64(&stats.Stats.CM.FixMV.UpdateMV.Failures, 1)
-					atomic.AddInt64(&stats.Stats.CM.FixMV.UpdateMV.FailuresCumulative, 1)
+					stats.Stats.CM.FixMV.UpdateMV.Failures.Value.Add(1)
+					stats.Stats.CM.FixMV.UpdateMV.FailuresCumulative.Value.Add(1)
 					stats.Stats.CM.FixMV.UpdateMV.LastError = err.Error()
 				}
 				return
@@ -4009,8 +3983,8 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 	hbSeconds := int64(cmi.config.HeartbeatSeconds)
 
 	start := time.Now()
-	stats.Stats.CM.Heartbeats.GetNodeList.LastCallAt = start
-	atomic.AddInt64(&stats.Stats.CM.Heartbeats.GetNodeList.Calls, 1)
+	stats.Stats.CM.Heartbeats.GetNodeList.LastCallAt.Store(start)
+	stats.Stats.CM.Heartbeats.GetNodeList.Calls.Value.Add(1)
 
 	// Get all nodes by enumerating all the HBs from Nodes/ folder.
 	nodeIds, err := getAllNodes()
@@ -4018,7 +3992,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 	if err != nil {
 		err1 := fmt.Errorf("ClusterManager::updateRVList: getAllNodes() failed: %v", err)
 		common.Assert(false, err1)
-		atomic.AddInt64(&stats.Stats.CM.Heartbeats.GetNodeList.Failures, 1)
+		stats.Stats.CM.Heartbeats.GetNodeList.Failures.Value.Add(1)
 		stats.Stats.CM.Heartbeats.GetNodeList.LastError = err1.Error()
 		return false, err1
 	}
@@ -4026,10 +4000,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 	duration := stats.Duration(time.Since(start))
 
 	atomic.AddInt64((*int64)(&stats.Stats.CM.Heartbeats.GetNodeList.TotalTime), int64(duration))
-	if stats.Stats.CM.Heartbeats.GetNodeList.MinTime == nil ||
-		duration < *stats.Stats.CM.Heartbeats.GetNodeList.MinTime {
-		stats.Stats.CM.Heartbeats.GetNodeList.MinTime = &duration
-	}
+	stats.StoreMinTime(&stats.Stats.CM.Heartbeats.GetNodeList.MinTime, duration)
 
 	// TODO: Later we can make this debug only.
 	if duration > stats.Stats.CM.Heartbeats.GetNodeList.MaxTime {
@@ -4037,10 +4008,9 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 			len(nodeIds), time.Since(start))
 	}
 
-	stats.Stats.CM.Heartbeats.GetNodeList.MaxTime =
-		max(stats.Stats.CM.Heartbeats.GetNodeList.MaxTime, duration)
+	stats.StoreMaxTime(&stats.Stats.CM.Heartbeats.GetNodeList.MaxTime, duration)
 
-	atomic.StoreInt64(&stats.Stats.CM.Heartbeats.GetNodeList.TotalNodes, int64(len(nodeIds)))
+	stats.Stats.CM.Heartbeats.GetNodeList.TotalNodes.Value.Store(int64(len(nodeIds)))
 
 	log.Debug("ClusterManager::updateRVList: Found %d nodes in cluster (initialHB=%v), now start collecting heartbeats: %+v, epoch: %d",
 		len(nodeIds), initialHB, nodeIds, clusterMap.Epoch)
@@ -4053,14 +4023,14 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 	// This will be nil for non-initialHB calls.
 	//
 	start = time.Now()
-	stats.Stats.CM.Heartbeats.CollectHB.LastCallAt = start
-	atomic.AddInt64(&stats.Stats.CM.Heartbeats.CollectHB.Calls, 1)
+	stats.Stats.CM.Heartbeats.CollectHB.LastCallAt.Store(start)
+	stats.Stats.CM.Heartbeats.CollectHB.Calls.Value.Add(1)
 
 	rVsByRvIdFromHB, rvLastHB, nodes, failedToReadNodes, err := collectHBForGivenNodeIds(nodeIds, initialHB)
 	_ = nodes
 	t2 = time.Since(startTime)
 	if err != nil {
-		atomic.AddInt64(&stats.Stats.CM.Heartbeats.CollectHB.Failures, 1)
+		stats.Stats.CM.Heartbeats.CollectHB.Failures.Value.Add(1)
 		stats.Stats.CM.Heartbeats.CollectHB.LastError = err.Error()
 		return false, err
 	}
@@ -4068,12 +4038,8 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 	duration = stats.Duration(time.Since(start))
 
 	atomic.AddInt64((*int64)(&stats.Stats.CM.Heartbeats.CollectHB.TotalTime), int64(duration))
-	if stats.Stats.CM.Heartbeats.CollectHB.MinTime == nil ||
-		duration < *stats.Stats.CM.Heartbeats.CollectHB.MinTime {
-		stats.Stats.CM.Heartbeats.CollectHB.MinTime = &duration
-	}
-	stats.Stats.CM.Heartbeats.CollectHB.MaxTime =
-		max(stats.Stats.CM.Heartbeats.CollectHB.MaxTime, duration)
+	stats.StoreMinTime(&stats.Stats.CM.Heartbeats.CollectHB.MinTime, duration)
+	stats.StoreMaxTime(&stats.Stats.CM.Heartbeats.CollectHB.MaxTime, duration)
 
 	if initialHB {
 		log.Debug("ClusterManager::updateRVList: Collected %d RVs from %d nodes (initialHB), failed to read HB for %d nodes: %+v",
@@ -4108,9 +4074,9 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 		now := uint64(time.Now().Unix())
 		hbExpiry := now - uint64(hbTillNodeDown*hbSeconds)
 
-		atomic.StoreInt64(&stats.Stats.CM.Heartbeats.CollectHB.NumNodes, int64(len(nodeIds)))
-		atomic.StoreInt64(&stats.Stats.CM.Heartbeats.CollectHB.NumRVs, int64(len(rVsByRvIdFromHB)))
-		atomic.StoreInt64(&stats.Stats.CM.Heartbeats.CollectHB.Expired, 0)
+		stats.Stats.CM.Heartbeats.CollectHB.NumNodes.Value.Store(int64(len(nodeIds)))
+		stats.Stats.CM.Heartbeats.CollectHB.NumRVs.Value.Store(int64(len(rVsByRvIdFromHB)))
+		stats.Stats.CM.Heartbeats.CollectHB.Expired.Value.Store(0)
 
 		// Update RVs present in existingRVMap and which have changed State or AvailableSpace.
 		for rvName, rvInClusterMap := range existingRVMap {
@@ -4122,8 +4088,8 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 				common.Assert(found)
 
 				if lastHB < hbExpiry {
-					atomic.AddInt64(&stats.Stats.CM.Heartbeats.CollectHB.Expired, 1)
-					atomic.AddInt64(&stats.Stats.CM.Heartbeats.CollectHB.ExpiredCumulative, 1)
+					stats.Stats.CM.Heartbeats.CollectHB.Expired.Value.Add(1)
+					stats.Stats.CM.Heartbeats.CollectHB.ExpiredCumulative.Value.Add(1)
 					if rvInClusterMap.State != dcache.StateOffline {
 						log.Warn("ClusterManager::updateRVList: Online RV %s %+v lastHeartbeat (%d) has expired, hbExpiry (%d), marking RV offline",
 							rvName, rvInClusterMap, lastHB, hbExpiry)
@@ -4211,10 +4177,10 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 	//
 
 	// We must process initial heartbeats only once.
-	common.Assert(stats.Stats.CM.Heartbeats.InitialHB.NumNodes == 0, stats.Stats.CM.Heartbeats.InitialHB.NumNodes)
-	atomic.StoreInt64(&stats.Stats.CM.Heartbeats.InitialHB.NumNodes, int64(len(nodes)))
-	atomic.StoreInt64(&stats.Stats.CM.Heartbeats.InitialHB.NumRVs, int64(len(rVsByRvIdFromHB)))
-	stats.Stats.CM.Heartbeats.InitialHB.LastCallAt = time.Now()
+	common.Assert(stats.Stats.CM.Heartbeats.InitialHB.NumNodes.Value.Load() == 0, stats.Stats.CM.Heartbeats.InitialHB.NumNodes.Value.Load())
+	stats.Stats.CM.Heartbeats.InitialHB.NumNodes.Value.Store(int64(len(nodes)))
+	stats.Stats.CM.Heartbeats.InitialHB.NumRVs.Value.Store(int64(len(rVsByRvIdFromHB)))
+	stats.Stats.CM.Heartbeats.InitialHB.LastCallAt.Store(time.Now())
 
 	//
 	// Nothing to add.
@@ -4305,7 +4271,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 		delete(existingRVMap, rvName)
 		changed = true
 
-		atomic.AddInt64(&stats.Stats.CM.Heartbeats.InitialHB.StaleRVsRemoved, 1)
+		stats.Stats.CM.Heartbeats.InitialHB.StaleRVsRemoved.Value.Add(1)
 	}
 	t4 = time.Since(startTime)
 
@@ -4351,7 +4317,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 				err1 := fmt.Errorf("ClusterManager::updateRVList: RVId %s from node %s conflicts with existing RV %s from node %s, skipping",
 					rv.RvId, rv.NodeId, namedRV.rvName, namedRV.rv.NodeId)
 				log.Warn("%v", err1)
-				atomic.AddInt64(&stats.Stats.CM.Heartbeats.InitialHB.DuplicateRVIds, 1)
+				stats.Stats.CM.Heartbeats.InitialHB.DuplicateRVIds.Value.Add(1)
 				stats.Stats.CM.Heartbeats.InitialHB.LastError = err1.Error()
 				continue
 			}
@@ -4378,7 +4344,7 @@ func (cmi *ClusterManager) updateRVList(clusterMap *dcache.ClusterMap, initialHB
 		changed = true
 		log.Info("ClusterManager::updateRVList: Adding new RV %s to cluster map: %+v", rvName, rv)
 
-		atomic.AddInt64(&stats.Stats.CM.Heartbeats.InitialHB.NewRVsAdded, 1)
+		stats.Stats.CM.Heartbeats.InitialHB.NewRVsAdded.Value.Add(1)
 	}
 
 	return changed, nil
