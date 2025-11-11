@@ -172,9 +172,9 @@ func (base *BaseComponent) OpenFile(options OpenFileOptions) (*handlemap.Handle,
 	return nil, nil
 }
 
-func (base *BaseComponent) CloseFile(options CloseFileOptions) error {
+func (base *BaseComponent) ReleaseFile(options ReleaseFileOptions) error {
 	if base.next != nil {
-		return base.next.CloseFile(options)
+		return base.next.ReleaseFile(options)
 	}
 	return nil
 }
@@ -249,13 +249,6 @@ func (base *BaseComponent) FlushFile(options FlushFileOptions) error {
 	return nil
 }
 
-func (base *BaseComponent) ReleaseFile(options ReleaseFileOptions) error {
-	if base.next != nil {
-		return base.next.ReleaseFile(options)
-	}
-	return nil
-}
-
 func (base *BaseComponent) UnlinkFile(options UnlinkFileOptions) error {
 	if base.next != nil {
 		return base.next.UnlinkFile(options)
@@ -291,13 +284,6 @@ func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOption
 		return base.next.GetFileBlockOffsets(options)
 	}
 	return &common.BlockOffsetList{}, nil
-}
-
-func (base *BaseComponent) SetAttr(options SetAttrOptions) error {
-	if base.next != nil {
-		return base.next.SetAttr(options)
-	}
-	return nil
 }
 
 func (base *BaseComponent) Chmod(options ChmodOptions) error {

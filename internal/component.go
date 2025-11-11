@@ -102,23 +102,29 @@ type Component interface {
 	DeleteFile(DeleteFileOptions) error
 
 	OpenFile(OpenFileOptions) (*handlemap.Handle, error)
-	CloseFile(CloseFileOptions) error
-
-	RenameFile(RenameFileOptions) error
-
 	ReadFile(ReadFileOptions) ([]byte, error)
 	ReadInBuffer(*ReadInBufferOptions) (int, error)
-
 	WriteFile(*WriteFileOptions) (int, error)
-	TruncateFile(TruncateFileOptions) error
+
+	SyncFile(SyncFileOptions) error
+	// Flush is called on each close() of a file descriptor, as opposed to release which is called on the close of the
+	// last file descriptor for a file.
+	//
+	// NOTE: The flush() method may be called more than once for each open().  This happens if more than one file
+	//       descriptor refers to an open file handle, e.g. due to dup(), dup2() or fork() calls.  It is not possible to
+	//       determine if a flush is final, so each flush should be treated equally. Multiple write-flush sequences are
+	//       relatively rare, so this shouldn't be a problem.
+	FlushFile(FlushFileOptions) error
+	// Release is called when there are no more references to an open file: all file descriptors are closed for this
+	// handle.
+	ReleaseFile(ReleaseFileOptions) error
+
+	RenameFile(RenameFileOptions) error
 
 	CopyToFile(CopyToFileOptions) error
 	CopyFromFile(CopyFromFileOptions) error
 
 	SyncDir(SyncDirOptions) error
-	SyncFile(SyncFileOptions) error
-	FlushFile(FlushFileOptions) error
-	ReleaseFile(ReleaseFileOptions) error
 	UnlinkFile(UnlinkFileOptions) error // TODO: What does this do? Not used anywhere
 
 	// Symlink operations
@@ -130,10 +136,12 @@ type Component interface {
 	//1. must return ErrNotExist for absence of a file/directory/symlink
 	//2. must return valid nodeID that was passed with any create/update operations for eg: SetAttr, CreateFile, CreateDir etc
 	GetAttr(GetAttrOptions) (*ObjAttr, error)
-	SetAttr(SetAttrOptions) error
 
+	// SetAttr is implemented by the following functions in libfuse High level API.
 	Chmod(ChmodOptions) error
 	Chown(ChownOptions) error
+	TruncateFile(TruncateFileOptions) error
+
 	GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error)
 
 	FileUsed(name string) error

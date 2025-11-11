@@ -797,6 +797,12 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 }
 
 // libfuse_flush possibly flushes cached data
+// Flush is called on each close() of a file descriptor, as opposed to release which is called on the close of the
+// last file descriptor for a file.
+//
+// NOTE: The flush() method may be called more than once for each open().  This happens if more than one file descriptor
+// refers to an open file handle, e.g. due to dup(), dup2() or fork() calls.  It is not possible to determine if a flush
+// is final, so each flush should be treated equally.
 //
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
@@ -825,6 +831,70 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 			return -C.EIO
 		}
 	}
+
+	return 0
+}
+
+// Release is called when there are no more references to an open file, all file descriptors are closed for this handle.
+//
+//export libfuse_release
+func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+
+	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
+
+	// If the file handle is dirty then file-cache needs to flush this file
+	if fileHandle.dirty != 0 {
+		handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
+
+	err := fuseFS.NextComponent().ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	if err != nil {
+		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		switch err {
+		case syscall.ENOENT:
+			return -C.ENOENT
+		case syscall.EACCES:
+			return -C.EACCES
+		default:
+			return -C.EIO
+		}
+	}
+
+	handlemap.Delete(handle.ID)
+	C.release_native_file_object(fi)
+
+	// decrement open file handles count
+	libfuseStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
+
+	return 0
+}
+
+// libfuse_fsync synchronizes file contents
+//
+//export libfuse_fsync
+func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
+	if fi.fh == 0 {
+		return C.int(-C.EIO)
+	}
+
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
+
+	options := internal.SyncFileOptions{Handle: handle}
+	// If the datasync parameter is non-zero, then only the user data should be flushed, not the metadata.
+	// TODO : Should we support this?
+
+	err := fuseFS.NextComponent().SyncFile(options)
+	if err != nil {
+		log.Err("Libfuse::libfuse_fsync : error syncing file %s [%s]", handle.Path, err.Error())
+		return -C.EIO
+	}
+
+	libfuseStatsCollector.PushEvents(syncFile, handle.Path, nil)
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, syncFile, (int64)(1))
 
 	return 0
 }
@@ -870,42 +940,6 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 
 	libfuseStatsCollector.PushEvents(truncateFile, name, map[string]interface{}{size: int64(off)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
-
-	return 0
-}
-
-// libfuse_release releases an open file
-//
-//export libfuse_release
-func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-
-	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
-
-	// If the file handle is dirty then file-cache needs to flush this file
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
-
-	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
-	if err != nil {
-		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		switch err {
-		case syscall.ENOENT:
-			return -C.ENOENT
-		case syscall.EACCES:
-			return -C.EACCES
-		default:
-			return -C.EIO
-		}
-	}
-
-	handlemap.Delete(handle.ID)
-	C.release_native_file_object(fi)
-
-	// decrement open file handles count
-	libfuseStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
 
 	return 0
 }
@@ -1078,34 +1112,6 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 
 	libfuseStatsCollector.PushEvents(readLink, name, map[string]interface{}{trgt: targetPath})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))
-
-	return 0
-}
-
-// libfuse_fsync synchronizes file contents
-//
-//export libfuse_fsync
-func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
-
-	options := internal.SyncFileOptions{Handle: handle}
-	// If the datasync parameter is non-zero, then only the user data should be flushed, not the metadata.
-	// TODO : Should we support this?
-
-	err := fuseFS.NextComponent().SyncFile(options)
-	if err != nil {
-		log.Err("Libfuse::libfuse_fsync : error syncing file %s [%s]", handle.Path, err.Error())
-		return -C.EIO
-	}
-
-	libfuseStatsCollector.PushEvents(syncFile, handle.Path, nil)
-	libfuseStatsCollector.UpdateStats(stats_manager.Increment, syncFile, (int64)(1))
 
 	return 0
 }

@@ -91,7 +91,7 @@ type OpenFileOptions struct {
 	Mode  os.FileMode
 }
 
-type CloseFileOptions struct {
+type ReleaseFileOptions struct {
 	Handle *handlemap.Handle
 }
 
@@ -161,10 +161,6 @@ type SyncDirOptions struct {
 	Name string
 }
 
-type ReleaseFileOptions struct {
-	Handle *handlemap.Handle
-}
-
 type UnlinkFileOptions struct {
 	Name string
 }
@@ -182,11 +178,6 @@ type ReadLinkOptions struct {
 type GetAttrOptions struct {
 	Name             string
 	RetrieveMetadata bool
-}
-
-type SetAttrOptions struct {
-	Name string
-	Attr *ObjAttr
 }
 
 type ChmodOptions struct {
