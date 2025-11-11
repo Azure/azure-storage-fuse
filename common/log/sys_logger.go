@@ -50,7 +50,7 @@ type SysLogger struct {
 	logger *log.Logger
 }
 
-var NoSyslogService = errors.New("failed to create syslog object")
+var ErrNoSyslogService = errors.New("failed to create syslog object")
 
 func newSysLogger(lvl common.LogLevel, tag string) (*SysLogger, error) {
 	l := &SysLogger{
@@ -87,7 +87,7 @@ func (l *SysLogger) init() error {
 	logwriter, e := syslog.New(getSyslogLevel(l.level), l.tag)
 
 	if e != nil {
-		return NoSyslogService
+		return ErrNoSyslogService
 	}
 
 	l.logger = log.New(logwriter, "", 0)
@@ -117,43 +117,43 @@ func getSyslogLevel(lvl common.LogLevel) syslog.Priority {
 	}
 }
 
-func (l *SysLogger) write(lvl string, format string, args ...interface{}) {
+func (l *SysLogger) write(lvl string, format string, args ...any) {
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
 	l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
 }
 
-func (l *SysLogger) Debug(format string, args ...interface{}) {
+func (l *SysLogger) Debug(format string, args ...any) {
 	if l.level >= common.ELogLevel.LOG_DEBUG() {
 		l.write(common.ELogLevel.LOG_DEBUG().String(), format, args...)
 	}
 }
 
-func (l *SysLogger) Trace(format string, args ...interface{}) {
+func (l *SysLogger) Trace(format string, args ...any) {
 	if l.level >= common.ELogLevel.LOG_TRACE() {
 		l.write(common.ELogLevel.LOG_TRACE().String(), format, args...)
 	}
 }
 
-func (l *SysLogger) Info(format string, args ...interface{}) {
+func (l *SysLogger) Info(format string, args ...any) {
 	if l.level >= common.ELogLevel.LOG_INFO() {
 		l.write(common.ELogLevel.LOG_INFO().String(), format, args...)
 	}
 }
 
-func (l *SysLogger) Warn(format string, args ...interface{}) {
+func (l *SysLogger) Warn(format string, args ...any) {
 	if l.level >= common.ELogLevel.LOG_WARNING() {
 		l.write(common.ELogLevel.LOG_WARNING().String(), format, args...)
 	}
 }
 
-func (l *SysLogger) Err(format string, args ...interface{}) {
+func (l *SysLogger) Err(format string, args ...any) {
 	if l.level >= common.ELogLevel.LOG_ERR() {
 		l.write(common.ELogLevel.LOG_ERR().String(), format, args...)
 	}
 }
 
-func (l *SysLogger) Crit(format string, args ...interface{}) {
+func (l *SysLogger) Crit(format string, args ...any) {
 	if l.level >= common.ELogLevel.LOG_CRIT() {
 		l.write(common.ELogLevel.LOG_CRIT().String(), format, args...)
 	}

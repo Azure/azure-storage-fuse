@@ -50,13 +50,16 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	gouuid "github.com/google/uuid"
 	"github.com/prometheus/procfs"
+	"golang.org/x/sys/unix"
 	"gopkg.in/ini.v1"
 )
 
@@ -67,6 +70,15 @@ var ForegroundMount bool
 var IsDistributedCacheEnabled bool
 var IsStream bool
 var MyNodeUUID string
+
+// Rename oldPath to newPath but do not overwrite newPath if it exists, instead fail with EEXIST error.
+// This uses the RENAME_NOREPLACE flag of the renameat2 syscall which is available since Linux kernel 4.0 for
+// xfs and 3.15 for ext4.
+//
+// TODO: This is Linux specific.
+func RenameNoReplace(oldPath, newPath string) error {
+	return unix.Renameat2(unix.AT_FDCWD, oldPath, unix.AT_FDCWD, newPath, unix.RENAME_NOREPLACE)
+}
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -79,7 +91,7 @@ func IsDirectoryMounted(path string) bool {
 	// removing trailing / from the path
 	path = strings.TrimRight(path, "/")
 
-	for _, line := range strings.Split(string(mntList), "\n") {
+	for line := range strings.SplitSeq(string(mntList), "\n") {
 		if strings.TrimSpace(line) != "" {
 			mntPoint := strings.Split(line, " ")[1]
 			if path == mntPoint {
@@ -112,7 +124,7 @@ func IsMountActive(path string) (bool, error) {
 	}
 
 	// out contains the list of pids of the processes that are running
-	pidString := strings.Replace(out.String(), "\n", " ", -1)
+	pidString := strings.ReplaceAll(out.String(), "\n", " ")
 	pids := strings.Split(pidString, " ")
 	myPid := strconv.Itoa(os.Getpid())
 	for _, pid := range pids {
@@ -314,6 +326,47 @@ func (bm *BitMap16) Clear(bit uint16) { *bm &= ^(1 << bit) }
 
 // Reset : Reset the whole bitmap by setting it to 0
 func (bm *BitMap16) Reset() { *bm = 0 }
+
+// In a given uint64, atomically check whether the given bit is set or not and if not set then set it.
+// Returns true if the bit was not set and was set by this call, false if the bit was already set.
+func AtomicTestAndSetBitUint64(addr *uint64, bit uint) bool {
+	Assert(bit < 64, bit)
+
+	var old, new uint64
+	for {
+		old = atomic.LoadUint64(addr)
+		if old&(1<<bit) != 0 {
+			// Bit already set.
+			return false
+		}
+
+		new = old | (1 << bit)
+		if atomic.CompareAndSwapUint64(addr, old, new) {
+			// Bit was set successfully.
+			return true
+		}
+		// Retry if CAS failed.
+	}
+}
+
+// Atomically update the target value to 'newValue' only if 'newValue' is greater.
+// This is the atomic max() operation.
+func AtomicMaxInt64(target *int64, newValue int64) {
+	for {
+		currentValue := atomic.LoadInt64(target)
+		if newValue <= currentValue {
+			// New value is not greater, no update needed.
+			return
+		}
+
+		// Attempt to swap if current value matches what we loaded.
+		if atomic.CompareAndSwapInt64(target, currentValue, newValue) {
+			// Successful swap.
+			return
+		}
+		// If CAS failed, another thread changed the value, loop and retry.
+	}
+}
 
 type KeyedMutex struct {
 	mutexes sync.Map // Zero value is empty and ready for use
@@ -565,10 +618,10 @@ func WriteToFile(filename string, data string, options WriteToFileOptions) error
 	return nil
 }
 
-func GetCRC64(data []byte, len int) []byte {
+func GetCRC64(data []byte, length int) []byte {
 	// Create a CRC64 hash using the ECMA polynomial
 	crc64Table := crc64.MakeTable(crc64.ECMA)
-	checksum := crc64.Checksum(data[:len], crc64Table)
+	checksum := crc64.Checksum(data[:length], crc64Table)
 
 	checksumBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(checksumBytes, checksum)
@@ -588,13 +641,7 @@ func GetMD5(fi *os.File) ([]byte, error) {
 }
 
 func ComponentInPipeline(pipeline []string, component string) bool {
-	for _, comp := range pipeline {
-		if comp == component {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(pipeline, component)
 }
 
 func ValidatePipeline(pipeline []string) error {
@@ -655,12 +702,16 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	return pipeline
 }
 
+func GetNodeUUIDFilePath() string {
+	return filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+}
+
 func GetNodeUUID() (string, error) {
 	if MyNodeUUID != "" {
 		return MyNodeUUID, nil
 	}
 
-	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+	uuidFilePath := GetNodeUUIDFilePath()
 
 	// Read the UUID file.
 	data, err := os.ReadFile(uuidFilePath)
@@ -753,6 +804,12 @@ func IsFuseHiddenFile(filePath string) bool {
 
 // Returns true if we are faking scale test.
 // This is used to test scale scenarios by allowing multiple RVs from the same local filesystem.
+var isFakeScaleTest bool
+
 func IsFakingScaleTest() bool {
-	return (os.Getenv("BLOBFUSE_FAKE_SCALE_TEST") == "1")
+	return isFakeScaleTest
+}
+
+func init() {
+	isFakeScaleTest = (os.Getenv("BLOBFUSE_FAKE_SCALE_TEST") == "1")
 }

@@ -35,13 +35,19 @@ package clustermap
 
 import (
 	"fmt"
+	"math/rand"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
@@ -56,16 +62,32 @@ var (
 	MinHeartbeatFrequency int64 = 5
 	MaxHeartbeatFrequency int64 = 60
 
-	// TODO: chunk and stripe sizes must be expressed in units of MiB, in the config.
-	MinChunkSize int64 = 4 * common.MbToBytes
-	MaxChunkSize int64 = 64 * common.MbToBytes
+	MinHeartbeatsTillNodeDown int64 = 2
+	MaxHeartbeatsTillNodeDown int64 = 5
 
-	// StripeSize = ChunkSize * StripeWidth
-	MinStripeWidth int64 = 4
-	MaxStripeWidth int64 = 256
+	//
+	// The range of chunk size and stripe width is deliberately kept large so that we can experiment with
+	// various values and find the optimal ones.
+	// TODO: Later we can reduce the range to a more reasonable one.
+	//
+	MinChunkSizeMB int64 = 1
+	MaxChunkSizeMB int64 = 1024
+
+	// Configured chunk size.
+	ChunkSizeMB int64
+
+	// StripeWidthMB = ChunkSizeMB * StripeWidth
+	MinStripeWidth int64 = 1
+	MaxStripeWidth int64 = 1024
 
 	MinNumReplicas int64 = 1
 	MaxNumReplicas int64 = 256
+
+	// Configured number of replicas.
+	NumReplicas int64
+
+	MinMaxRVs int64 = 100
+	MaxMaxRVs int64 = 100000
 
 	//
 	// Unless explicitly set, the system sets cfg.MVsPerRV in a way so as to get close to PreferredMVs
@@ -77,7 +99,38 @@ var (
 	PreferredMVs int64 = 1000
 
 	MinMVsPerRV int64 = 1
+
+	// This will be bumped up if RingBasedMVPlacement is enabled.
 	MaxMVsPerRV int64 = 100
+
+	MVsPerRVLocked bool = false
+
+	//
+	// When using an RV for placing a new MV, how many MV replicas are we allowed to place on an RV.
+	// See MVsPerRVForFixMV which is a higher value used when using an RV to place MV replicas for
+	// fixing degraded MVs.
+	// This is not a fixed value, instead it's updated dynamically based on the number of RVs and MVs.
+	// It starts with the value from config.MVsPerRV, so as to quickly get PreferredMVs and as the number
+	// of RVs grows, it's exponentially reduced to limit the total number of MVs in the cluster while
+	// still adding new MVs as we add more RVs. See ClusterManager.computeMVsPerRV().
+	// Our goal is to distribute MVs as evenly as possible across all RVs, while also making sure that we
+	// utilize new RVs for placing additional new MVs.
+	//
+	MVsPerRVForNewMV int
+
+	//
+	// When using an RV for placing MV replicas for fixing degraded MVs, how many MV replicas are we allowed
+	// to place on an RV. This is a higher value than MVsPerRVForNewMV as we technically we have fewer RVs
+	// to place the same number of MV replicas, so we need to allow more MV replicas per RV.
+	// See ClusterManager.computeMVsPerRV().
+	//
+	MVsPerRVForFixMV atomic.Int32
+
+	//
+	// MVsPerRVScaleFactor decides how many times more MVs can we allow in the FixMV workflow, than the NewMV
+	// workflow.
+	//
+	MVsPerRVScaleFactor int64 = 4
 
 	MinRvFullThreshold int64 = 80
 	MaxRvFullThreshold int64 = 100
@@ -87,6 +140,8 @@ var (
 
 	rvNameRegex = regexp.MustCompile("^rv[0-9]+$")
 	mvNameRegex = regexp.MustCompile("^mv[0-9]+$")
+
+	RingBasedMVPlacement bool
 )
 
 // Valid RV name is of the form "rv0", "rv99", etc.
@@ -117,11 +172,6 @@ func IsValidClusterMap(cm *dcache.ClusterMap) (bool, error) {
 	//
 	// Top level fields
 	//
-
-	// Only valid clustermap states are "ready" and "checking".
-	if cm.State != dcache.StateReady && cm.State != dcache.StateChecking {
-		return false, fmt.Errorf("ClusterMap: Invalid State: %s %+v", cm.State, *cm)
-	}
 
 	if cm.CreatedAt < MinUnixEpoch || cm.CreatedAt > MaxUnixEpoch {
 		return false, fmt.Errorf("ClusterMap: Invalid CreatedAt: %d %+v", cm.CreatedAt, *cm)
@@ -181,64 +231,86 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 	// MinNodes must be at least 1.
 	// We add an upper limit of 1000 as a sanity check.
 	if cfg.MinNodes < 1 || cfg.MinNodes > 1000 {
-		return false, fmt.Errorf("DCacheConfig: Invalid MinNodes: %d +%v", cfg.MinNodes, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid MinNodes: %d (valid range [%d, %d]) %+v",
+			cfg.MinNodes, 1, 1000, *cfg)
+	}
+
+	if int64(cfg.MaxRVs) < MinMaxRVs || int64(cfg.MaxRVs) > MaxMaxRVs {
+		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d (valid range [%d, %d]) %+v",
+			cfg.MaxRVs, MinMaxRVs, MaxMaxRVs, *cfg)
 	}
 
 	// Every node must contribute at least one RV.
+	if cfg.MaxRVs < cfg.MinNodes {
+		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d (cannot be less than min-nodes (%d)) %+v",
+			cfg.MaxRVs, cfg.MinNodes, *cfg)
+	}
+
 	// We must have RVs no less than NumReplicas.
-	// 100K is an arbitrary upper limit for the number of RVs in the cluster.
-	if cfg.MaxRVs < cfg.MinNodes || cfg.MaxRVs < cfg.NumReplicas || cfg.MaxRVs > 100000 {
-		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d +%v", cfg.MaxRVs, *cfg)
+	if cfg.MaxRVs < cfg.NumReplicas {
+		return false, fmt.Errorf("DCacheConfig: Invalid MaxRVs: %d (cannot be less than replicas (%d)) %+v",
+			cfg.MaxRVs, cfg.NumReplicas, *cfg)
 	}
 
 	if int64(cfg.HeartbeatSeconds) < MinHeartbeatFrequency ||
 		int64(cfg.HeartbeatSeconds) > MaxHeartbeatFrequency {
-		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatSeconds: %d %+v", cfg.HeartbeatSeconds, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatSeconds: %d (valid range [%d, %d]) %+v",
+			cfg.HeartbeatSeconds, MinHeartbeatFrequency, MaxHeartbeatFrequency, *cfg)
 	}
 
 	// At least two heartbeats till node down.
-	if cfg.HeartbeatsTillNodeDown < 2 {
-		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatsTillNodeDown: %d %+v",
-			cfg.HeartbeatsTillNodeDown, *cfg)
+	if int64(cfg.HeartbeatsTillNodeDown) < MinHeartbeatsTillNodeDown ||
+		int64(cfg.HeartbeatsTillNodeDown) > MaxHeartbeatsTillNodeDown {
+		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatsTillNodeDown: %d (valid range [%d, %d]) %+v",
+			cfg.HeartbeatsTillNodeDown, MinHeartbeatsTillNodeDown, MaxHeartbeatsTillNodeDown, *cfg)
 	}
 
-	if int64(cfg.ClustermapEpoch) < MinClusterMapEpoch || int64(cfg.ClustermapEpoch) > MaxClusterMapEpoch {
-		return false, fmt.Errorf("DCacheConfig: Invalid ClustermapEpoch: %d %+v", cfg.ClustermapEpoch, *cfg)
+	if int64(cfg.ClustermapEpoch) < MinClusterMapEpoch ||
+		int64(cfg.ClustermapEpoch) > MaxClusterMapEpoch {
+		return false, fmt.Errorf("DCacheConfig: Invalid ClustermapEpoch: %d (valid range [%d, %d]) %+v",
+			cfg.ClustermapEpoch, MinClusterMapEpoch, MaxClusterMapEpoch, *cfg)
 	}
 
 	// Updating clustermap sooner than one heartbeat is usually pointless.
 	if uint64(cfg.HeartbeatSeconds) > cfg.ClustermapEpoch {
-		return false, fmt.Errorf("DCacheConfig: HeartbeatSeconds (%d) > ClustermapEpoch (%d) %+v", cfg.HeartbeatSeconds, cfg.ClustermapEpoch, *cfg)
+		return false, fmt.Errorf("DCacheConfig: HeartbeatSeconds (%d) > ClustermapEpoch (%d) %+v",
+			cfg.HeartbeatSeconds, cfg.ClustermapEpoch, *cfg)
 	}
 
-	if int64(cfg.ChunkSize) < MinChunkSize || int64(cfg.ChunkSize) > MaxChunkSize {
-		return false, fmt.Errorf("DCacheConfig: Invalid ChunkSize: %d %+v", cfg.ChunkSize, *cfg)
+	if int64(cfg.ChunkSizeMB) < MinChunkSizeMB || int64(cfg.ChunkSizeMB) > MaxChunkSizeMB {
+		return false, fmt.Errorf("DCacheConfig: Invalid ChunkSizeMB: %d (valid range [%d, %d]) %+v",
+			cfg.ChunkSizeMB, MinChunkSizeMB, MaxChunkSizeMB, *cfg)
 	}
 
-	if int64(cfg.StripeSize) < (int64(cfg.ChunkSize)*MinStripeWidth) ||
-		int64(cfg.StripeSize) > (int64(cfg.ChunkSize)*MaxStripeWidth) {
-		return false, fmt.Errorf("DCacheConfig: Invalid StripeSize: %d %+v", cfg.StripeSize, *cfg)
+	if int64(cfg.StripeWidth) < MinStripeWidth || int64(cfg.StripeWidth) > MaxStripeWidth {
+		return false, fmt.Errorf("DCacheConfig: Invalid StripeWidth: %d (valid range [%d, %d]) %+v",
+			cfg.StripeWidth, MinStripeWidth, MaxStripeWidth, *cfg)
 	}
 
 	if int64(cfg.NumReplicas) < MinNumReplicas || int64(cfg.NumReplicas) > MaxNumReplicas {
-		return false, fmt.Errorf("DCacheConfig: Invalid NumReplicas: %d %+v", cfg.NumReplicas, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid NumReplicas: %d (valid range [%d, %d]) %+v",
+			cfg.NumReplicas, MinNumReplicas, MaxNumReplicas, *cfg)
 	}
 
 	if int64(cfg.MVsPerRV) < MinMVsPerRV || int64(cfg.MVsPerRV) > MaxMVsPerRV {
-		return false, fmt.Errorf("DCacheConfig: Invalid MVsPerRV: %d %+v", cfg.MVsPerRV, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid MVsPerRV: %d (valid range [%d, %d]) %+v",
+			cfg.MVsPerRV, MinMVsPerRV, MaxMVsPerRV, *cfg)
 	}
 
 	if int64(cfg.RvFullThreshold) < MinRvFullThreshold || int64(cfg.RvFullThreshold) > MaxRvFullThreshold {
-		return false, fmt.Errorf("DCacheConfig: Invalid RvFullThreshold: %d %+v", cfg.RvFullThreshold, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid RvFullThreshold: %d (valid range [%d, %d]) %+v",
+			cfg.RvFullThreshold, MinRvFullThreshold, MaxRvFullThreshold, *cfg)
 	}
 
 	if int64(cfg.RvNearfullThreshold) < MinRvNearFullThreshold ||
 		int64(cfg.RvNearfullThreshold) > MaxRvNearFullThreshold {
-		return false, fmt.Errorf("DCacheConfig: Invalid RvNearfullThreshold: %d %+v", cfg.RvFullThreshold, *cfg)
+		return false, fmt.Errorf("DCacheConfig: Invalid RvNearfullThreshold: %d (valid range [%d, %d]) %+v",
+			cfg.RvNearfullThreshold, MinRvNearFullThreshold, MaxRvNearFullThreshold, *cfg)
 	}
 
 	if cfg.RvFullThreshold < cfg.RvNearfullThreshold {
-		return false, fmt.Errorf("DCacheConfig: RvFullThreshold (%d) < RvNearfullThreshold (%d) %+v", cfg.RvFullThreshold, cfg.RvNearfullThreshold, *cfg)
+		return false, fmt.Errorf("DCacheConfig: RvFullThreshold (%d) < RvNearfullThreshold (%d) %+v",
+			cfg.RvFullThreshold, cfg.RvNearfullThreshold, *cfg)
 	}
 
 	return true, nil
@@ -251,7 +323,7 @@ func IsValidMvMap(mvMap map[string]dcache.MirroredVolume, expectedReplicasCount 
 	for mvName, mv := range mvMap {
 		isValid, err := IsValidMV(&mv, expectedReplicasCount)
 		if !isValid {
-			return false, fmt.Errorf("MVList: Invalid MV: %v +%v", mvName, err)
+			return false, fmt.Errorf("MVList: Invalid MV: %v %+v", mvName, err)
 		}
 
 	}
@@ -303,9 +375,7 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 		return false, fmt.Errorf("RawVolume: Invalid RvId: %s: %+v", rv.RvId, *rv)
 	}
 
-	if len(rv.FDID) == 0 {
-		return false, fmt.Errorf("RawVolume: Invalid empty FDID: %+v", *rv)
-	}
+	// TODO: Is there a validity check for FDId and UDId?
 
 	if rv.State != dcache.StateOnline && rv.State != dcache.StateOffline {
 		return false, fmt.Errorf("RawVolume: Invalid state: %s: %+v", rv.State, *rv)
@@ -322,6 +392,26 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 
 	// TODO: Check for some minimum amount of total/free space.
 
+	//
+	// LocalCachePath must exist and must be a directory.
+	// Avoid these for release builds to avoid unnecessary system calls.
+	//
+	if common.IsDebugBuild() {
+		info, err := os.Stat(rv.LocalCachePath)
+		if err != nil && os.IsNotExist(err) {
+			return false, fmt.Errorf("RawVolume: LocalCachePath %s does not exist: %+v",
+				rv.LocalCachePath, *rv)
+		} else if err != nil {
+			return false, fmt.Errorf("RawVolume: Cannot access LocalCachePath %s: %v: %+v",
+				rv.LocalCachePath, err, *rv)
+		}
+
+		if !info.IsDir() {
+			return false, fmt.Errorf("RawVolume: LocalCachePath %s is not a directory: %+v",
+				rv.LocalCachePath, *rv)
+		}
+	}
+
 	return true, nil
 }
 
@@ -337,12 +427,12 @@ func IsValidRVList(rvs []dcache.RawVolume, myRVs bool) (bool, error) {
 	for _, rv := range rvs {
 		if myRVs {
 			if rv.NodeId != myNodeID {
-				return false, fmt.Errorf("RVList: NodeId (%s) doesn't match my NodeId (%s) +%v",
+				return false, fmt.Errorf("RVList: NodeId (%s) doesn't match my NodeId (%s) %+v",
 					rv.NodeId, myNodeID, rv)
 			}
 
 			if rv.IPAddress != myIP {
-				return false, fmt.Errorf("RVList: IPAddress (%s) doesn't match my IPAddress (%s) +%v",
+				return false, fmt.Errorf("RVList: IPAddress (%s) doesn't match my IPAddress (%s) %+v",
 					rv.IPAddress, myIP, rv)
 			}
 		}
@@ -350,7 +440,7 @@ func IsValidRVList(rvs []dcache.RawVolume, myRVs bool) (bool, error) {
 		valid, err := IsValidRV(&rv)
 
 		if !valid {
-			return false, fmt.Errorf("RVList: Invalid RV: %v +%v", err, rv)
+			return false, fmt.Errorf("RVList: Invalid RV: %v %+v", err, rv)
 		}
 	}
 
@@ -463,7 +553,6 @@ func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 
 	return &dcache.ClusterMapExport{
 		Readonly:      cm.Readonly,
-		State:         cm.State,
 		Epoch:         cm.Epoch,
 		CreatedAt:     cm.CreatedAt,
 		LastUpdatedAt: cm.LastUpdatedAt,
@@ -472,4 +561,107 @@ func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 		RVList:        rvList,
 		MVList:        mvList,
 	}
+}
+
+// Convert an RVMap returned by clustermap APIs like GetRVs()/GetRVsEx() to a list of RVNameAndState
+// needed by rvInfo and others.
+func RVMapToList(mvName string, rvMap map[string]dcache.StateEnum, randomize bool) []*models.RVNameAndState {
+	componentRVs := make([]*models.RVNameAndState, 0, int(GetCacheConfig().NumReplicas))
+
+	for rvName, rvState := range rvMap {
+		common.Assert(IsValidRVName(rvName), rvName)
+		common.Assert(IsValidComponentRVState(rvState), rvName, rvState)
+
+		componentRVs = append(componentRVs,
+			&models.RVNameAndState{Name: rvName, State: string(rvState)})
+	}
+
+	common.Assert(len(componentRVs) == int(GetCacheConfig().NumReplicas),
+		mvName, len(componentRVs), GetCacheConfig().NumReplicas)
+
+	//
+	// Take this opportunity to randomize the order of RVs in the list, this is usually desirable
+	// to distribute load evenly across RVs.
+	// If randomize is false, sort the RVs by their RV number (rv0, rv1, etc.) to get a deterministic
+	// order. This is specially useful for RingBasedMVPlacement where RVs are alloted in order when
+	// placing MVs.
+	//
+	if randomize {
+		rand.Shuffle(len(componentRVs), func(i, j int) {
+			componentRVs[i], componentRVs[j] = componentRVs[j], componentRVs[i]
+		})
+	} else {
+		sort.Slice(componentRVs, func(i, j int) bool {
+			var rvi, rvj int
+
+			_, err1 := fmt.Sscanf(componentRVs[i].Name, "rv%d", &rvi)
+			_ = err1
+			common.Assert(err1 == nil, err1, componentRVs[i].Name)
+			_, err1 = fmt.Sscanf(componentRVs[j].Name, "rv%d", &rvj)
+			common.Assert(err1 == nil, err1, componentRVs[j].Name)
+			common.Assert(rvi != rvj && rvi >= 0 && rvj >= 0,
+				rvi, rvj, componentRVs[i].Name, componentRVs[j].Name)
+
+			return rvi < rvj
+		})
+	}
+
+	return componentRVs
+}
+
+var uuidToUniqueInt = map[string]int{}
+var uuidToUniqueIntMapMutex sync.RWMutex
+var uniqueInt int
+
+// Return a unique integer for the given UUID. The returned integer is guaranteed to be unique
+// for each unique UUID passed to this function and will be in the range [1, 2^31-1].
+// The uniqueness is in the scope of this blobfuse2 instance, so don't use it outside that.
+// Useful to convert UUIDs to integers once and then use for faster comparison in the fastpath.
+func UUIDToUniqueInt(uuid string) int {
+	common.Assert(common.IsValidUUID(uuid), uuid)
+
+	// Fastpath, UUID already exists in the map.
+	uuidToUniqueIntMapMutex.RLock()
+	uuidInt, exists := uuidToUniqueInt[uuid]
+	uuidToUniqueIntMapMutex.RUnlock()
+
+	if exists {
+		return uuidInt
+	}
+
+	uuidToUniqueIntMapMutex.Lock()
+	defer uuidToUniqueIntMapMutex.Unlock()
+
+	uniqueInt++
+	uuidToUniqueInt[uuid] = uniqueInt
+
+	if uniqueInt <= 0 {
+		log.GetLoggerObj().Panicf("UUIDToUniqueInt: uniqueInt (%d) overflowed while adding UUID %s",
+			uniqueInt, uuid)
+	}
+
+	return uniqueInt
+}
+
+// Use this when you are sure that the UUID has already been converted to an integer, and you
+// just want to retrieve it.
+// Unlike UUIDToUniqueInt() which adds a UUID if it doesn't exist, this helps to catch unexpected
+// bugs where a UUID is not already added to the map where it should have been.
+func UUIDToInt(uuid string) int {
+	common.Assert(common.IsValidUUID(uuid), uuid)
+
+	uuidToUniqueIntMapMutex.RLock()
+	uuidInt, exists := uuidToUniqueInt[uuid]
+	_ = exists
+	uuidToUniqueIntMapMutex.RUnlock()
+
+	common.Assert(exists, uuid)
+	common.Assert(uuidInt > 0, uuid)
+
+	return uuidInt
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	os.Stat("/tmp")
 }

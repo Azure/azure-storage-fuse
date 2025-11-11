@@ -161,13 +161,13 @@ func (s *datalakeTestSuite) TestDefault() {
 	s.assert.Empty(s.az.stConfig.authConfig.ClientSecret)
 	s.assert.Empty(s.az.stConfig.authConfig.TenantID)
 	s.assert.Empty(s.az.stConfig.authConfig.ClientID)
-	s.assert.EqualValues("https://"+s.az.stConfig.authConfig.AccountName+".dfs.core.windows.net/", s.az.stConfig.authConfig.Endpoint)
+	s.assert.Equal("https://"+s.az.stConfig.authConfig.AccountName+".dfs.core.windows.net/", s.az.stConfig.authConfig.Endpoint)
 	s.assert.Equal(EAuthType.KEY(), s.az.stConfig.authConfig.AuthMode)
 	s.assert.Equal(s.container, s.az.stConfig.container)
 	s.assert.Empty(s.az.stConfig.prefixPath)
 	s.assert.EqualValues(0, s.az.stConfig.blockSize)
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
-	s.assert.EqualValues((*blob.AccessTier)(nil), s.az.stConfig.defaultTier)
+	s.assert.Equal((*blob.AccessTier)(nil), s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
 
 	s.assert.EqualValues(5, s.az.stConfig.maxRetries)
@@ -187,7 +187,7 @@ func (s *datalakeTestSuite) TestModifyEndpoint() {
 	s.setupTestHelper(config, s.container, true)
 
 	err := s.az.storage.TestPipeline()
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestNoEndpoint() {
@@ -199,7 +199,7 @@ func (s *datalakeTestSuite) TestNoEndpoint() {
 	s.setupTestHelper(config, s.container, true)
 
 	err := s.az.storage.TestPipeline()
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestAccountType() {
@@ -223,7 +223,7 @@ func (s *datalakeTestSuite) TestFileSystemNotFound() {
 	s.setupTestHelper(config, "foo", false)
 
 	err := s.az.storage.TestPipeline()
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.Contains(err.Error(), "FilesystemNotFound")
 }
 
@@ -232,7 +232,7 @@ func (s *datalakeTestSuite) TestListContainers() {
 	// Setup
 	num := 10
 	prefix := generateContainerName()
-	for i := 0; i < num; i++ {
+	for i := range num {
 		f := s.serviceClient.NewFileSystemClient(prefix + fmt.Sprint(i))
 		f.Create(ctx, nil)
 		defer f.Delete(ctx, nil)
@@ -240,19 +240,46 @@ func (s *datalakeTestSuite) TestListContainers() {
 
 	containers, err := s.az.ListContainers()
 
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(containers)
-	s.assert.True(len(containers) >= num)
+	s.assert.GreaterOrEqual(len(containers), num)
 	count := 0
 	for _, c := range containers {
 		if strings.HasPrefix(c, prefix) {
 			count++
 		}
 	}
-	s.assert.EqualValues(num, count)
+	s.assert.Equal(num, count)
 }
 
 // TODO : ListContainersHuge: Maybe this is overkill?
+
+func (s *datalakeTestSuite) TestFNSOverHNS() {
+	defer s.cleanupTest()
+	// Testing dir and dir/
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n ",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	var paths = []string{generateDirectoryName(), generateDirectoryName() + "/"}
+	for _, path := range paths {
+		log.Debug(path)
+		s.Run(path, func() {
+			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
+
+			s.assert.NoError(err)
+			// Directory should be in the account
+			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
+			_, err = dir.GetProperties(ctx, nil)
+			s.assert.NoError(err)
+		})
+	}
+
+	err := s.az.storage.TestPipeline()
+	s.assert.Error(err)
+	s.assert.Contains(err.Error(), "Account is not HNS")
+}
 
 func (s *datalakeTestSuite) TestCreateDir() {
 	defer s.cleanupTest()
@@ -263,11 +290,11 @@ func (s *datalakeTestSuite) TestCreateDir() {
 		s.Run(path, func() {
 			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
 
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 			// Directory should be in the account
 			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
 			_, err = dir.GetProperties(ctx, nil)
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 		})
 	}
 }
@@ -293,18 +320,18 @@ func (s *datalakeTestSuite) TestCreateDirWithCPKEnabled() {
 		s.Run(path, func() {
 			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
 
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 			// Directory should not be accessible without CPK
 			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
 			_, err = dir.GetProperties(ctx, nil)
-			s.assert.NotNil(err)
+			s.assert.Error(err)
 
 			//Directory should exist
 			dir = s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
 			_, err = dir.GetProperties(ctx, &directory.GetPropertiesOptions{
 				CPKInfo: datalakeCPKOpt,
 			})
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 		})
 	}
 }
@@ -320,11 +347,11 @@ func (s *datalakeTestSuite) TestDeleteDir() {
 
 			err := s.az.DeleteDir(internal.DeleteDirOptions{Name: path})
 
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 			// Directory should not be in the account
 			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
 			_, err = dir.GetProperties(ctx, nil)
-			s.assert.NotNil(err)
+			s.assert.Error(err)
 		})
 	}
 }
@@ -366,15 +393,15 @@ func (s *datalakeTestSuite) setupHierarchy(base string) (*list.List, *list.List,
 	// Validate the paths were setup correctly and all paths exist
 	for p := a.Front(); p != nil; p = p.Next() {
 		_, err := s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 	}
 	for p := ab.Front(); p != nil; p = p.Next() {
 		_, err := s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 	}
 	for p := ac.Front(); p != nil; p = p.Next() {
 		_, err := s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 	}
 	return a, ab, ac
 }
@@ -387,17 +414,17 @@ func (s *datalakeTestSuite) TestDeleteDirHierarchy() {
 
 	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: base})
 
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// a paths should be deleted
 	for p := a.Front(); p != nil; p = p.Next() {
 		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.NotNil(err)
+		s.assert.Error(err)
 	}
 	ab.PushBackList(ac) // ab and ac paths should exist
 	for p := ab.Front(); p != nil; p = p.Next() {
 		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 	}
 }
 
@@ -410,22 +437,22 @@ func (s *datalakeTestSuite) TestDeleteSubDirPrefixPath() {
 	s.az.storage.SetPrefixPath(base)
 
 	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: "c1"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// a paths under c1 should be deleted
 	for p := a.Front(); p != nil; p = p.Next() {
 		path := p.Value.(string)
 		_, err = s.containerClient.NewDirectoryClient(path).GetProperties(ctx, nil)
 		if strings.HasPrefix(path, base+"/c1") {
-			s.assert.NotNil(err)
+			s.assert.Error(err)
 		} else {
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 		}
 	}
 	ab.PushBackList(ac) // ab and ac paths should exist
 	for p := ab.Front(); p != nil; p = p.Next() {
 		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 	}
 }
 
@@ -436,12 +463,12 @@ func (s *datalakeTestSuite) TestDeleteDirError() {
 
 	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: name})
 
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)
 	_, err = dir.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestIsDirEmpty() {
@@ -487,7 +514,7 @@ func (s *datalakeTestSuite) TestIsDirEmptyError() {
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)
 	_, err := dir.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestReadDir() {
@@ -505,8 +532,8 @@ func (s *datalakeTestSuite) TestReadDir() {
 		log.Debug(path)
 		s.Run(path, func() {
 			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
-			s.assert.Nil(err)
-			s.assert.EqualValues(1, len(entries))
+			s.assert.NoError(err)
+			s.assert.Len(entries, 1)
 		})
 	}
 }
@@ -520,16 +547,16 @@ func (s *datalakeTestSuite) TestReadDirHierarchy() {
 	// ReadDir only reads the first level of the hierarchy
 	//Using listblob api lists the files before directories so the order is reversed
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: base})
-	s.assert.Nil(err)
-	s.assert.EqualValues(2, len(entries))
+	s.assert.NoError(err)
+	s.assert.Len(entries, 2)
 	// Check the dir
-	s.assert.EqualValues(base+"/c1", entries[1].Path)
-	s.assert.EqualValues("c1", entries[1].Name)
+	s.assert.Equal(base+"/c1", entries[1].Path)
+	s.assert.Equal("c1", entries[1].Name)
 	s.assert.True(entries[1].IsDir())
 	s.assert.False(entries[1].IsModeDefault())
 	// Check the file
-	s.assert.EqualValues(base+"/c2", entries[0].Path)
-	s.assert.EqualValues("c2", entries[0].Name)
+	s.assert.Equal(base+"/c2", entries[0].Path)
+	s.assert.Equal("c2", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
 	s.assert.False(entries[0].IsModeDefault())
 }
@@ -547,22 +574,22 @@ func (s *datalakeTestSuite) TestReadDirRoot() {
 		s.Run(path, func() {
 			// ReadDir only reads the first level of the hierarchy
 			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
-			s.assert.Nil(err)
-			s.assert.EqualValues(3, len(entries))
+			s.assert.NoError(err)
+			s.assert.Len(entries, 3)
 			//Listblob api lists files before directories so the order is reversed
 			// Check the base dir
-			s.assert.EqualValues(base, entries[1].Path)
-			s.assert.EqualValues(base, entries[1].Name)
+			s.assert.Equal(base, entries[1].Path)
+			s.assert.Equal(base, entries[1].Name)
 			s.assert.True(entries[1].IsDir())
 			s.assert.False(entries[1].IsModeDefault())
 			// Check the baseb dir
-			s.assert.EqualValues(base+"b", entries[2].Path)
-			s.assert.EqualValues(base+"b", entries[2].Name)
+			s.assert.Equal(base+"b", entries[2].Path)
+			s.assert.Equal(base+"b", entries[2].Name)
 			s.assert.True(entries[2].IsDir())
 			s.assert.False(entries[2].IsModeDefault())
 			// Check the basec file
-			s.assert.EqualValues(base+"c", entries[0].Path)
-			s.assert.EqualValues(base+"c", entries[0].Name)
+			s.assert.Equal(base+"c", entries[0].Path)
+			s.assert.Equal(base+"c", entries[0].Name)
 			s.assert.False(entries[0].IsDir())
 			s.assert.False(entries[0].IsModeDefault())
 		})
@@ -577,11 +604,11 @@ func (s *datalakeTestSuite) TestReadDirSubDir() {
 
 	// ReadDir only reads the first level of the hierarchy
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: base + "/c1"})
-	s.assert.Nil(err)
-	s.assert.EqualValues(1, len(entries))
+	s.assert.NoError(err)
+	s.assert.Len(entries, 1)
 	// Check the dir
-	s.assert.EqualValues(base+"/c1"+"/gc1", entries[0].Path)
-	s.assert.EqualValues("gc1", entries[0].Name)
+	s.assert.Equal(base+"/c1"+"/gc1", entries[0].Path)
+	s.assert.Equal("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
 	s.assert.False(entries[0].IsModeDefault())
 }
@@ -596,11 +623,11 @@ func (s *datalakeTestSuite) TestReadDirSubDirPrefixPath() {
 
 	// ReadDir only reads the first level of the hierarchy
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: "/c1"})
-	s.assert.Nil(err)
-	s.assert.EqualValues(1, len(entries))
+	s.assert.NoError(err)
+	s.assert.Len(entries, 1)
 	// Check the dir
-	s.assert.EqualValues("c1"+"/gc1", entries[0].Path)
-	s.assert.EqualValues("gc1", entries[0].Name)
+	s.assert.Equal("c1"+"/gc1", entries[0].Path)
+	s.assert.Equal("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
 	s.assert.False(entries[0].IsModeDefault())
 }
@@ -612,12 +639,12 @@ func (s *datalakeTestSuite) TestReadDirError() {
 
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
 
-	s.assert.Nil(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
+	s.assert.NoError(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 	s.assert.Empty(entries)
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)
 	_, err = dir.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestReadDirListBlocked() {
@@ -636,8 +663,8 @@ func (s *datalakeTestSuite) TestReadDirListBlocked() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: childName})
 
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
-	s.assert.Nil(err)
-	s.assert.EqualValues(0, len(entries)) // Since we block the list, it will return an empty list.
+	s.assert.NoError(err)
+	s.assert.Empty(entries) // Since we block the list, it will return an empty list.
 }
 
 func (s *datalakeTestSuite) TestRenameDir() {
@@ -659,16 +686,16 @@ func (s *datalakeTestSuite) TestRenameDir() {
 			s.az.CreateDir(internal.CreateDirOptions{Name: input.src})
 
 			err := s.az.RenameDir(internal.RenameDirOptions{Src: input.src, Dst: input.dst})
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 			// Src should not be in the account
 			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.src))
 			_, err = dir.GetProperties(ctx, nil)
-			s.assert.NotNil(err)
+			s.assert.Error(err)
 
 			// Dst should be in the account
 			dir = s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.dst))
 			_, err = dir.GetProperties(ctx, nil)
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 		})
 	}
 
@@ -705,20 +732,20 @@ func (s *datalakeTestSuite) TestRenameDirWithCPKEnabled() {
 			s.az.CreateDir(internal.CreateDirOptions{Name: input.src})
 
 			err := s.az.RenameDir(internal.RenameDirOptions{Src: input.src, Dst: input.dst})
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 			// Src should not be in the account
 			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.src))
 			_, err = dir.GetProperties(ctx, &directory.GetPropertiesOptions{
 				CPKInfo: datalakeCPKOpt,
 			})
-			s.assert.NotNil(err)
+			s.assert.Error(err)
 
 			// Dst should be in the account
 			dir = s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.dst))
 			_, err = dir.GetProperties(ctx, &directory.GetPropertiesOptions{
 				CPKInfo: datalakeCPKOpt,
 			})
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 		})
 	}
 
@@ -733,29 +760,29 @@ func (s *datalakeTestSuite) TestRenameDirHierarchy() {
 	aDst, abDst, acDst := generateNestedDirectory(baseDst)
 
 	err := s.az.RenameDir(internal.RenameDirOptions{Src: baseSrc, Dst: baseDst})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// Source
 	// aSrc paths should be deleted
 	for p := aSrc.Front(); p != nil; p = p.Next() {
 		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.NotNil(err)
+		s.assert.Error(err)
 	}
 	abSrc.PushBackList(acSrc) // abSrc and acSrc paths should exist
 	for p := abSrc.Front(); p != nil; p = p.Next() {
 		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 	}
 	// Destination
 	// aDst paths should exist
 	for p := aDst.Front(); p != nil; p = p.Next() {
 		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 	}
 	abDst.PushBackList(acDst) // abDst and acDst paths should not exist
 	for p := abDst.Front(); p != nil; p = p.Next() {
 		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.NotNil(err)
+		s.assert.Error(err)
 	}
 }
 
@@ -769,7 +796,7 @@ func (s *datalakeTestSuite) TestRenameDirSubDirPrefixPath() {
 	s.az.storage.SetPrefixPath(baseSrc)
 
 	err := s.az.RenameDir(internal.RenameDirOptions{Src: "c1", Dst: baseDst})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// Source
 	// aSrc paths under c1 should be deleted
@@ -777,22 +804,22 @@ func (s *datalakeTestSuite) TestRenameDirSubDirPrefixPath() {
 		path := p.Value.(string)
 		_, err = s.containerClient.NewDirectoryClient(path).GetProperties(ctx, nil)
 		if strings.HasPrefix(path, baseSrc+"/c1") {
-			s.assert.NotNil(err)
+			s.assert.Error(err)
 		} else {
-			s.assert.Nil(err)
+			s.assert.NoError(err)
 		}
 	}
 	abSrc.PushBackList(acSrc) // abSrc and acSrc paths should exist
 	for p := abSrc.Front(); p != nil; p = p.Next() {
 		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 	}
 	// Destination
 	// aDst paths should exist -> aDst and aDst/gc1
 	_, err = s.containerClient.NewDirectoryClient(baseSrc+"/"+baseDst).GetProperties(ctx, nil)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, err = s.containerClient.NewDirectoryClient(baseSrc+"/"+baseDst+"/gc1").GetProperties(ctx, nil)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestRenameDirError() {
@@ -803,15 +830,15 @@ func (s *datalakeTestSuite) TestRenameDirError() {
 
 	err := s.az.RenameDir(internal.RenameDirOptions{Src: src, Dst: dst})
 
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 	// Neither directory should be in the account
 	dir := s.containerClient.NewDirectoryClient(src)
 	_, err = dir.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	dir = s.containerClient.NewDirectoryClient(dst)
 	_, err = dir.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestCreateFile() {
@@ -821,14 +848,14 @@ func (s *datalakeTestSuite) TestCreateFile() {
 
 	h, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(h)
-	s.assert.EqualValues(name, h.Path)
+	s.assert.Equal(name, h.Path)
 	s.assert.EqualValues(0, h.Size)
 	// File should be in the account
 	file := s.containerClient.NewDirectoryClient(name)
 	props, err := file.GetProperties(ctx, nil)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(props)
 	s.assert.Empty(props.Metadata)
 }
@@ -841,19 +868,19 @@ func (s *datalakeTestSuite) TestWriteSmallFile() {
 	testData := "test data"
 	data := []byte(testData)
 	dataLen := len(data)
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	s.assert.Nil(err)
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output := make([]byte, len(data))
 	f, _ = os.Open(f.Name())
 	len, err := f.Read(output)
-	s.assert.Nil(err)
-	s.assert.EqualValues(dataLen, len)
+	s.assert.NoError(err)
+	s.assert.Equal(dataLen, len)
 	s.assert.EqualValues(testData, output)
 	f.Close()
 }
@@ -866,25 +893,25 @@ func (s *datalakeTestSuite) TestOverwriteSmallFile() {
 	testData := "test-replace-data"
 	data := []byte(testData)
 	dataLen := len(data)
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	s.assert.Nil(err)
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("test-newdata-data")
 	output := make([]byte, len(currentData))
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, err := f.Read(output)
-	s.assert.Nil(err)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.NoError(err)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -896,26 +923,26 @@ func (s *datalakeTestSuite) TestOverwriteAndAppendToSmallFile() {
 	testData := "test-data"
 	data := []byte(testData)
 
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	s.assert.Nil(err)
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("test-newdata")
 	dataLen := len(currentData)
 	output := make([]byte, dataLen)
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, err := f.Read(output)
-	s.assert.Nil(err)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.NoError(err)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -927,26 +954,26 @@ func (s *datalakeTestSuite) TestAppendOffsetLargerThanSmallFile() {
 	testData := "test-data"
 	data := []byte(testData)
 
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	s.assert.Nil(err)
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 12, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 12, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("test-data\x00\x00\x00newdata")
 	dataLen := len(currentData)
 	output := make([]byte, dataLen)
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, err := f.Read(output)
-	s.assert.Nil(err)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.NoError(err)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -958,26 +985,26 @@ func (s *datalakeTestSuite) TestAppendToSmallFile() {
 	testData := "test-data"
 	data := []byte(testData)
 
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	s.assert.Nil(err)
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("-newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("test-data-newdata")
 	dataLen := len(currentData)
 	output := make([]byte, dataLen)
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, err := f.Read(output)
-	s.assert.Nil(err)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.NoError(err)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -999,25 +1026,25 @@ func (s *datalakeTestSuite) TestAppendBlocksToSmallFile() {
 		&blockblob.UploadBufferOptions{
 			BlockSize: 8,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("-newdata-newdata-newdata")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("test-data-newdata-newdata-newdata")
 	dataLen := len(currentData)
 	output := make([]byte, dataLen)
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, err := f.Read(output)
-	s.assert.Nil(err)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.NoError(err)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -1039,25 +1066,25 @@ func (s *datalakeTestSuite) TestOverwriteBlocks() {
 		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("cake")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 16, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 16, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("testdatates1dat1cakedat2tes3dat3tes4dat4")
 	dataLen := len(currentData)
 	output := make([]byte, dataLen)
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, err := f.Read(output)
-	s.assert.Nil(err)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.NoError(err)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -1079,24 +1106,24 @@ func (s *datalakeTestSuite) TestOverwriteAndAppendBlocks() {
 		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("43211234cake")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 32, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 32, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("testdatates1dat1tes2dat2tes3dat343211234cake")
 	dataLen := len(currentData)
 	output := make([]byte, dataLen)
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, _ := f.Read(output)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -1117,24 +1144,24 @@ func (s *datalakeTestSuite) TestAppendBlocks() {
 		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("43211234cake")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("43211234cakedat1tes2dat2tes3dat3tes4dat4")
 	dataLen := len(currentData)
 	output := make([]byte, dataLen)
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, _ := f.Read(output)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -1155,24 +1182,24 @@ func (s *datalakeTestSuite) TestAppendOffsetLargerThanSize() {
 		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 	newTestData := []byte("43211234cake")
-	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 45, Data: newTestData})
-	s.assert.Nil(err)
+	_, err = s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 45, Data: newTestData})
+	s.assert.NoError(err)
 
 	currentData := []byte("testdatates1dat1tes2dat2tes3dat3tes4dat4\x00\x00\x00\x00\x0043211234cake")
 	dataLen := len(currentData)
 	output := make([]byte, dataLen)
 
 	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, _ = os.Open(f.Name())
 	len, _ := f.Read(output)
-	s.assert.EqualValues(dataLen, len)
-	s.assert.EqualValues(currentData, output)
+	s.assert.Equal(dataLen, len)
+	s.assert.Equal(currentData, output)
 	f.Close()
 }
 
@@ -1183,9 +1210,9 @@ func (s *datalakeTestSuite) TestOpenFile() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(h)
-	s.assert.EqualValues(name, h.Path)
+	s.assert.Equal(name, h.Path)
 	s.assert.EqualValues(0, h.Size)
 }
 
@@ -1195,7 +1222,7 @@ func (s *datalakeTestSuite) TestOpenFileError() {
 	name := generateFileName()
 
 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 	s.assert.Nil(h)
 }
@@ -1206,12 +1233,12 @@ func (s *datalakeTestSuite) TestOpenFileSize() {
 	name := generateFileName()
 	size := 10
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(size)})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(size)})
 
 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(h)
-	s.assert.EqualValues(name, h.Path)
+	s.assert.Equal(name, h.Path)
 	s.assert.EqualValues(size, h.Size)
 }
 
@@ -1223,7 +1250,7 @@ func (s *datalakeTestSuite) TestCloseFile() {
 
 	// This method does nothing.
 	err := s.az.CloseFile(internal.CloseFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestCloseFileFakeHandle() {
@@ -1234,7 +1261,7 @@ func (s *datalakeTestSuite) TestCloseFileFakeHandle() {
 
 	// This method does nothing.
 	err := s.az.CloseFile(internal.CloseFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestDeleteFile() {
@@ -1244,12 +1271,12 @@ func (s *datalakeTestSuite) TestDeleteFile() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	err := s.az.DeleteFile(internal.DeleteFileOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// File should not be in the account
 	file := s.containerClient.NewDirectoryClient(name)
 	_, err = file.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestDeleteFileError() {
@@ -1258,13 +1285,13 @@ func (s *datalakeTestSuite) TestDeleteFileError() {
 	name := generateFileName()
 
 	err := s.az.DeleteFile(internal.DeleteFileOptions{Name: name})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 
 	// File should not be in the account
 	file := s.containerClient.NewDirectoryClient(name)
 	_, err = file.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestRenameFile() {
@@ -1275,16 +1302,16 @@ func (s *datalakeTestSuite) TestRenameFile() {
 	dst := generateFileName()
 
 	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// Src should not be in the account
 	source := s.containerClient.NewDirectoryClient(src)
 	_, err = source.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	// Dst should be in the account
 	destination := s.containerClient.NewDirectoryClient(dst)
 	_, err = destination.GetProperties(ctx, nil)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestRenameFileWithCPKenabled() {
@@ -1320,23 +1347,23 @@ func (s *datalakeTestSuite) TestRenameFileWithCPKenabled() {
 				EncryptionAlgorithm: to.Ptr(blob.EncryptionAlgorithmTypeAES256),
 			},
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	err = s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// Src should not be in the account
 	source := s.containerClient.NewDirectoryClient(src)
 	_, err = source.GetProperties(ctx, &file.GetPropertiesOptions{
 		CPKInfo: datalakeCPKOpt,
 	})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	// Dst should be in the account
 	destination := s.containerClient.NewDirectoryClient(dst)
 	_, err = destination.GetProperties(ctx, &file.GetPropertiesOptions{
 		CPKInfo: datalakeCPKOpt,
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestRenameFileMetadataConservation() {
@@ -1352,15 +1379,15 @@ func (s *datalakeTestSuite) TestRenameFileMetadataConservation() {
 	dst := generateFileName()
 
 	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// Src should not be in the account
 	_, err = source.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	// Dst should be in the account
 	destination := s.containerClient.NewFileClient(dst)
 	props, err := destination.GetProperties(ctx, nil)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	// Dst should have metadata
 	s.assert.True(checkMetadata(props.Metadata, "foo", "bar"))
 }
@@ -1372,16 +1399,16 @@ func (s *datalakeTestSuite) TestRenameFileError() {
 	dst := generateFileName()
 
 	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 
 	// Src and destination should not be in the account
 	source := s.containerClient.NewDirectoryClient(src)
 	_, err = source.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	destination := s.containerClient.NewDirectoryClient(dst)
 	_, err = destination.GetProperties(ctx, nil)
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestRenameFileNoReplace() {
@@ -1412,11 +1439,11 @@ func (s *datalakeTestSuite) TestReadFile() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.EqualValues(testData, output)
 }
 
@@ -1427,7 +1454,7 @@ func (s *datalakeTestSuite) TestReadFileError() {
 	h := handlemap.NewHandle(name)
 
 	_, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
@@ -1438,13 +1465,13 @@ func (s *datalakeTestSuite) TestReadInBuffer() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
-	s.assert.Nil(err)
-	s.assert.EqualValues(5, len)
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	s.assert.NoError(err)
+	s.assert.Equal(5, len)
 	s.assert.EqualValues(testData[:5], output)
 }
 
@@ -1453,19 +1480,19 @@ func (s *datalakeTestSuite) TestReadInBufferWithoutHandle() {
 	// Setup
 	name := generateFileName()
 	h, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(h)
 
 	testData := "test data"
 	data := []byte(testData)
-	n, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	s.assert.Nil(err)
-	s.assert.Equal(n, len(data))
+	n, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.NoError(err)
+	s.assert.Len(data, n)
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Path: name, Size: (int64)(len(data))})
-	s.assert.Nil(err)
-	s.assert.EqualValues(5, len)
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Offset: 0, Data: output, Path: name, Size: (int64)(len(data))})
+	s.assert.NoError(err)
+	s.assert.Equal(5, len)
 	s.assert.EqualValues(testData[:5], output)
 }
 
@@ -1473,10 +1500,10 @@ func (s *datalakeTestSuite) TestReadInBufferEmptyPath() {
 	defer s.cleanupTest()
 
 	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Size: 5})
-	s.assert.NotNil(err)
-	s.assert.EqualValues(0, len)
-	s.assert.Equal(err.Error(), "path not given for download")
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Offset: 0, Data: output, Size: 5})
+	s.assert.Error(err)
+	s.assert.Equal(0, len)
+	s.assert.Equal("path not given for download", err.Error())
 }
 
 func (suite *datalakeTestSuite) TestReadInBufferWithETAG() {
@@ -1486,15 +1513,15 @@ func (suite *datalakeTestSuite) TestReadInBufferWithETAG() {
 	fileHandle, _ := suite.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	suite.az.WriteFile(internal.WriteFileOptions{Handle: fileHandle, Offset: 0, Data: data})
+	suite.az.WriteFile(&internal.WriteFileOptions{Handle: fileHandle, Offset: 0, Data: data})
 	fileHandle, _ = suite.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
 	var etag string
-	len, err := suite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: fileHandle, Offset: 0, Data: output, Etag: &etag})
-	suite.assert.Nil(err)
-	suite.assert.NotEqual(etag, "")
-	suite.assert.EqualValues(5, len)
+	len, err := suite.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: fileHandle, Offset: 0, Data: output, Etag: &etag})
+	suite.assert.NoError(err)
+	suite.assert.NotEqual("", etag)
+	suite.assert.Equal(5, len)
 	suite.assert.EqualValues(testData[:5], output)
 	_ = suite.az.CloseFile(internal.CloseFileOptions{Handle: fileHandle})
 }
@@ -1506,12 +1533,12 @@ func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
-	s.assert.Nil(err)
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	s.assert.NoError(err)
 	s.assert.EqualValues(h.Size, len)
 	s.assert.EqualValues(testData, output[:h.Size])
 }
@@ -1523,9 +1550,9 @@ func (s *datalakeTestSuite) TestReadInBufferEmpty() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	output := make([]byte, 10)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
-	s.assert.Nil(err)
-	s.assert.EqualValues(0, len)
+	len, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	s.assert.NoError(err)
+	s.assert.Equal(0, len)
 }
 
 func (s *datalakeTestSuite) TestReadInBufferBadRange() {
@@ -1535,8 +1562,8 @@ func (s *datalakeTestSuite) TestReadInBufferBadRange() {
 	h := handlemap.NewHandle(name)
 	h.Size = 10
 
-	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 20, Data: make([]byte, 2)})
-	s.assert.NotNil(err)
+	_, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 20, Data: make([]byte, 2)})
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ERANGE, err)
 }
 
@@ -1547,8 +1574,8 @@ func (s *datalakeTestSuite) TestReadInBufferError() {
 	h := handlemap.NewHandle(name)
 	h.Size = 10
 
-	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 2)})
-	s.assert.NotNil(err)
+	_, err := s.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 2)})
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
@@ -1560,16 +1587,16 @@ func (s *datalakeTestSuite) TestWriteFile() {
 
 	testData := "test data"
 	data := []byte(testData)
-	count, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	s.assert.Nil(err)
-	s.assert.EqualValues(len(data), count)
+	count, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.NoError(err)
+	s.assert.Equal(len(data), count)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name)
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(len(data))},
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output)
 }
@@ -1582,10 +1609,10 @@ func (s *datalakeTestSuite) TestTruncateSmallFileSmaller() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 5
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
-	s.assert.Nil(err)
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
+	s.assert.NoError(err)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name)
@@ -1593,7 +1620,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileSmaller() {
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
 	// 0, int64(truncatedLength))
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData[:truncatedLength], output)
@@ -1612,17 +1639,17 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileSmaller() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
-	s.assert.Nil(err)
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
+	s.assert.NoError(err)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name)
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData[:truncatedLength], output)
@@ -1636,17 +1663,17 @@ func (s *datalakeTestSuite) TestTruncateSmallFileEqual() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 9
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
-	s.assert.Nil(err)
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
+	s.assert.NoError(err)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name)
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output)
@@ -1665,17 +1692,17 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileEqual() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
-	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
-	s.assert.Nil(err)
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
+	s.assert.NoError(err)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name)
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output)
@@ -1689,17 +1716,17 @@ func (s *datalakeTestSuite) TestTruncateSmallFileBigger() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 15
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
-	s.assert.Nil(err)
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
+	s.assert.NoError(err)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name)
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output[:len(data)])
@@ -1718,17 +1745,17 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileBigger() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
-	s.assert.Nil(err)
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: int64(truncatedLength)})
+	s.assert.NoError(err)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name)
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output[:len(data)])
@@ -1739,8 +1766,8 @@ func (s *datalakeTestSuite) TestTruncateFileError() {
 	// Setup
 	name := generateFileName()
 
-	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name})
-	s.assert.NotNil(err)
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, OldSize: -1})
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
@@ -1752,18 +1779,18 @@ func (s *datalakeTestSuite) TestCopyToFile() {
 	testData := "test data"
 	data := []byte(testData)
 	dataLen := len(data)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	f, _ := os.CreateTemp("", name+".tmp")
 	defer os.Remove(f.Name())
 
 	err := s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output := make([]byte, len(data))
 	f, _ = os.Open(f.Name())
 	len, err := f.Read(output)
-	s.assert.Nil(err)
-	s.assert.EqualValues(dataLen, len)
+	s.assert.NoError(err)
+	s.assert.Equal(dataLen, len)
 	s.assert.EqualValues(testData, output)
 	f.Close()
 }
@@ -1776,7 +1803,7 @@ func (s *datalakeTestSuite) TestCopyToFileError() {
 	defer os.Remove(f.Name())
 
 	err := s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestCopyFromFile() {
@@ -1793,14 +1820,14 @@ func (s *datalakeTestSuite) TestCopyFromFile() {
 
 	err := s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f})
 
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name)
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(len(data))},
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output)
 }
@@ -1813,19 +1840,19 @@ func (s *datalakeTestSuite) TestCreateLink() {
 	name := generateFileName()
 
 	err := s.az.CreateLink(internal.CreateLinkOptions{Name: name, Target: target})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// Link should be in the account
 	link := s.containerClient.NewFileClient(name)
 	props, err := link.GetProperties(ctx, nil)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(props)
 	s.assert.NotEmpty(props.Metadata)
 	s.assert.True(checkMetadata(props.Metadata, symlinkKey, "true"))
 	resp, err := link.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: *props.ContentLength},
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	data, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(target, data)
 }
@@ -1839,8 +1866,8 @@ func (s *datalakeTestSuite) TestReadLink() {
 	s.az.CreateLink(internal.CreateLinkOptions{Name: name, Target: target})
 
 	read, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name})
-	s.assert.Nil(err)
-	s.assert.EqualValues(target, read)
+	s.assert.NoError(err)
+	s.assert.Equal(target, read)
 }
 
 func (s *datalakeTestSuite) TestReadLinkError() {
@@ -1849,7 +1876,7 @@ func (s *datalakeTestSuite) TestReadLinkError() {
 	name := generateFileName()
 
 	_, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
@@ -1860,7 +1887,7 @@ func (s *datalakeTestSuite) TestGetAttrDir() {
 	s.az.CreateDir(internal.CreateDirOptions{Name: name})
 
 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(props)
 	s.assert.True(props.IsDir())
 }
@@ -1872,7 +1899,7 @@ func (s *datalakeTestSuite) TestGetAttrFile() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(props)
 	s.assert.False(props.IsDir())
 	s.assert.False(props.IsSymlink())
@@ -1887,7 +1914,7 @@ func (s *datalakeTestSuite) TestGetAttrLink() {
 	s.az.CreateLink(internal.CreateLinkOptions{Name: name, Target: target})
 
 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(props)
 	s.assert.True(props.IsSymlink())
 	s.assert.NotEmpty(props.Metadata)
@@ -1901,10 +1928,10 @@ func (s *datalakeTestSuite) TestGetAttrFileSize() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(props)
 	s.assert.False(props.IsDir())
 	s.assert.False(props.IsSymlink())
@@ -1918,19 +1945,19 @@ func (s *datalakeTestSuite) TestGetAttrFileTime() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	before, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(before.Mtime)
 
 	time.Sleep(time.Second * 3) // Wait 3 seconds and then modify the file again
 
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	time.Sleep(time.Second * 1)
 
 	after, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(after.Mtime)
 
 	s.assert.True(after.Mtime.After(before.Mtime))
@@ -1942,7 +1969,7 @@ func (s *datalakeTestSuite) TestGetAttrError() {
 	name := generateFileName()
 
 	_, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
@@ -1953,14 +1980,14 @@ func (s *datalakeTestSuite) TestChmod() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	err := s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// File's ACL info should have changed
 	file := s.containerClient.NewFileClient(name)
 	acl, err := file.GetAccessControl(ctx, nil)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(acl.ACL)
-	s.assert.EqualValues("user::rw-,group::rw-,other::rw-", *acl.ACL)
+	s.assert.Equal("user::rw-,group::rw-,other::rw-", *acl.ACL)
 }
 
 func (s *datalakeTestSuite) TestChmodError() {
@@ -1969,7 +1996,7 @@ func (s *datalakeTestSuite) TestChmodError() {
 	name := generateFileName()
 
 	err := s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
@@ -1981,7 +2008,7 @@ func (s *datalakeTestSuite) TestChown() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOTSUP, err)
 }
 
@@ -1997,7 +2024,7 @@ func (s *datalakeTestSuite) TestChownIgnore() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestGetFileBlockOffsetsSmallFile() {
@@ -2008,14 +2035,13 @@ func (s *datalakeTestSuite) TestGetFileBlockOffsetsSmallFile() {
 	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
 	data := []byte(testData)
 
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	// GetFileBlockOffsets
 	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.Len(offsetList.BlockList, 0)
-	s.assert.True(offsetList.SmallFile())
-	s.assert.EqualValues(0, offsetList.BlockIdLength)
+	s.assert.True(offsetList.HasNoBlocks())
 }
 
 func (s *datalakeTestSuite) TestGetFileBlockOffsetsChunkedFile() {
@@ -2035,11 +2061,11 @@ func (s *datalakeTestSuite) TestGetFileBlockOffsetsChunkedFile() {
 		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// GetFileBlockOffsets
 	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.Len(offsetList.BlockList, 10)
 	s.assert.Zero(offsetList.Flags)
 	s.assert.EqualValues(16, offsetList.BlockIdLength)
@@ -2052,7 +2078,7 @@ func (s *datalakeTestSuite) TestGetFileBlockOffsetsError() {
 
 	// GetFileBlockOffsets
 	_, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 }
 
 func (s *datalakeTestSuite) TestCustomEndpoint() {
@@ -2060,7 +2086,7 @@ func (s *datalakeTestSuite) TestCustomEndpoint() {
 	dfsEndpoint := "https://mycustom.endpoint"
 
 	blobEndpoint := transformAccountEndpoint(dfsEndpoint)
-	s.assert.EqualValues(dfsEndpoint, blobEndpoint)
+	s.assert.Equal(dfsEndpoint, blobEndpoint)
 }
 
 func (s *datalakeTestSuite) TestFlushFileEmptyFile() {
@@ -2075,11 +2101,11 @@ func (s *datalakeTestSuite) TestFlushFileEmptyFile() {
 	h.CacheObj.BlockOffsetList = bol
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.EqualValues("", output)
+	s.assert.NoError(err)
+	s.assert.Empty(output)
 }
 
 func (s *datalakeTestSuite) TestFlushFileChunkedFile() {
@@ -2096,17 +2122,17 @@ func (s *datalakeTestSuite) TestFlushFileChunkedFile() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: 4 * MB,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.EqualValues(data, output)
+	s.assert.NoError(err)
+	s.assert.Equal(data, output)
 }
 
 func (s *datalakeTestSuite) TestFlushFileUpdateChunkedFile() {
@@ -2124,7 +2150,7 @@ func (s *datalakeTestSuite) TestFlushFileUpdateChunkedFile() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
@@ -2134,17 +2160,17 @@ func (s *datalakeTestSuite) TestFlushFileUpdateChunkedFile() {
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize)
 	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	copy(h.CacheObj.BlockOffsetList.BlockList[1].Data[MB:2*MB+MB], updatedBlock)
-	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
+	h.CacheObj.BlockList[1].Flags.Set(common.DirtyBlock)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.NotEqualValues(data, output)
-	s.assert.EqualValues(data[:5*MB], output[:5*MB])
-	s.assert.EqualValues(updatedBlock, output[5*MB:5*MB+2*MB])
-	s.assert.EqualValues(data[7*MB:], output[7*MB:])
+	s.assert.NoError(err)
+	s.assert.NotEqual(data, output)
+	s.assert.Equal(data[:5*MB], output[:5*MB])
+	s.assert.Equal(updatedBlock, output[5*MB:5*MB+2*MB])
+	s.assert.Equal(data[7*MB:], output[7*MB:])
 }
 
 func (s *datalakeTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
@@ -2162,7 +2188,7 @@ func (s *datalakeTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
@@ -2171,18 +2197,18 @@ func (s *datalakeTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize/2)
 	h.CacheObj.BlockOffsetList.BlockList[1].EndIndex = int64(blockSize + blockSize/2)
 	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
-	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
+	h.CacheObj.BlockList[1].Flags.Set(common.DirtyBlock)
 
 	// remove 2 blocks
-	h.CacheObj.BlockOffsetList.BlockList = h.CacheObj.BlockOffsetList.BlockList[:2]
+	h.CacheObj.BlockList = h.CacheObj.BlockList[:2]
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.NotEqualValues(data, output)
-	s.assert.EqualValues(data[:6*MB], output[:6*MB])
+	s.assert.NoError(err)
+	s.assert.NotEqual(data, output)
+	s.assert.Equal(data[:6*MB], output[:6*MB])
 }
 
 func (s *datalakeTestSuite) TestFlushFileAppendBlocksEmptyFile() {
@@ -2228,16 +2254,16 @@ func (s *datalakeTestSuite) TestFlushFileAppendBlocksEmptyFile() {
 	}
 	blk3.Flags.Set(common.DirtyBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.EqualValues(blk1.Data, output[0:blockSize])
-	s.assert.EqualValues(blk2.Data, output[blockSize:2*blockSize])
-	s.assert.EqualValues(blk3.Data, output[2*blockSize:3*blockSize])
+	s.assert.NoError(err)
+	s.assert.Equal(blk1.Data, output[0:blockSize])
+	s.assert.Equal(blk2.Data, output[blockSize:2*blockSize])
+	s.assert.Equal(blk3.Data, output[2*blockSize:3*blockSize])
 }
 
 func (s *datalakeTestSuite) TestFlushFileAppendBlocksChunkedFile() {
@@ -2256,7 +2282,7 @@ func (s *datalakeTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
@@ -2292,17 +2318,17 @@ func (s *datalakeTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 	}
 	blk3.Flags.Set(common.DirtyBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.EqualValues(data, output[0:fileSize])
-	s.assert.EqualValues(blk1.Data, output[fileSize:fileSize+blockSize])
-	s.assert.EqualValues(blk2.Data, output[fileSize+blockSize:fileSize+2*blockSize])
-	s.assert.EqualValues(blk3.Data, output[fileSize+2*blockSize:fileSize+3*blockSize])
+	s.assert.NoError(err)
+	s.assert.Equal(data, output[0:fileSize])
+	s.assert.Equal(blk1.Data, output[fileSize:fileSize+blockSize])
+	s.assert.Equal(blk2.Data, output[fileSize+blockSize:fileSize+2*blockSize])
+	s.assert.Equal(blk3.Data, output[fileSize+2*blockSize:fileSize+3*blockSize])
 }
 
 func (s *datalakeTestSuite) TestFlushFileTruncateBlocksEmptyFile() {
@@ -2342,15 +2368,15 @@ func (s *datalakeTestSuite) TestFlushFileTruncateBlocksEmptyFile() {
 	blk3.Flags.Set(common.TruncatedBlock)
 	blk3.Flags.Set(common.DirtyBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	data := make([]byte, 3*blockSize)
-	s.assert.EqualValues(data, output)
+	s.assert.Equal(data, output)
 }
 
 func (s *datalakeTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
@@ -2369,7 +2395,7 @@ func (s *datalakeTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
@@ -2399,16 +2425,16 @@ func (s *datalakeTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
 	blk3.Flags.Set(common.TruncatedBlock)
 	blk3.Flags.Set(common.DirtyBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.EqualValues(data, output[:fileSize])
+	s.assert.NoError(err)
+	s.assert.Equal(data, output[:fileSize])
 	emptyData := make([]byte, 3*blockSize)
-	s.assert.EqualValues(emptyData, output[fileSize:])
+	s.assert.Equal(emptyData, output[fileSize:])
 }
 
 func (s *datalakeTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
@@ -2450,17 +2476,17 @@ func (s *datalakeTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
 	blk3.Flags.Set(common.DirtyBlock)
 	blk3.Flags.Set(common.TruncatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	data := make([]byte, blockSize)
-	s.assert.EqualValues(blk1.Data, output[0:blockSize])
-	s.assert.EqualValues(data, output[blockSize:2*blockSize])
-	s.assert.EqualValues(data, output[2*blockSize:3*blockSize])
+	s.assert.Equal(blk1.Data, output[0:blockSize])
+	s.assert.Equal(data, output[blockSize:2*blockSize])
+	s.assert.Equal(data, output[2*blockSize:3*blockSize])
 }
 
 func (s *datalakeTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
@@ -2479,7 +2505,7 @@ func (s *datalakeTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
@@ -2511,19 +2537,19 @@ func (s *datalakeTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	blk3.Flags.Set(common.DirtyBlock)
 	blk3.Flags.Set(common.TruncatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
-	bol.Flags.Clear(common.SmallFile)
+	bol.Flags.Clear(common.BlobFlagHasNoBlocks)
 
 	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// file should be empty
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.EqualValues(data, output[:fileSize])
+	s.assert.NoError(err)
+	s.assert.Equal(data, output[:fileSize])
 	emptyData := make([]byte, blockSize)
-	s.assert.EqualValues(blk1.Data, output[fileSize:fileSize+blockSize])
-	s.assert.EqualValues(emptyData, output[fileSize+blockSize:fileSize+2*blockSize])
-	s.assert.EqualValues(emptyData, output[fileSize+2*blockSize:fileSize+3*blockSize])
+	s.assert.Equal(blk1.Data, output[fileSize:fileSize+blockSize])
+	s.assert.Equal(emptyData, output[fileSize+blockSize:fileSize+2*blockSize])
+	s.assert.Equal(emptyData, output[fileSize+2*blockSize:fileSize+3*blockSize])
 }
 
 func (s *datalakeTestSuite) TestUpdateConfig() {
@@ -2538,12 +2564,12 @@ func (s *datalakeTestSuite) TestUpdateConfig() {
 
 	s.assert.EqualValues(7*MB, s.az.storage.(*Datalake).Config.blockSize)
 	s.assert.EqualValues(4, s.az.storage.(*Datalake).Config.maxConcurrency)
-	s.assert.EqualValues(blob.AccessTierArchive, *s.az.storage.(*Datalake).Config.defaultTier)
+	s.assert.Equal(blob.AccessTierArchive, *s.az.storage.(*Datalake).Config.defaultTier)
 	s.assert.True(s.az.storage.(*Datalake).Config.ignoreAccessModifiers)
 
 	s.assert.EqualValues(7*MB, s.az.storage.(*Datalake).BlockBlob.Config.blockSize)
 	s.assert.EqualValues(4, s.az.storage.(*Datalake).BlockBlob.Config.maxConcurrency)
-	s.assert.EqualValues(blob.AccessTierArchive, *s.az.storage.(*Datalake).BlockBlob.Config.defaultTier)
+	s.assert.Equal(blob.AccessTierArchive, *s.az.storage.(*Datalake).BlockBlob.Config.defaultTier)
 	s.assert.True(s.az.storage.(*Datalake).BlockBlob.Config.ignoreAccessModifiers)
 }
 
@@ -2574,26 +2600,26 @@ func (s *datalakeTestSuite) TestDownloadWithCPKEnabled() {
 		&blockblob.UploadBufferOptions{
 			CPKInfo: blobCPKOpt,
 		})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	f, err := os.Create(name)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(f)
 
 	err = s.az.storage.ReadToFile(name, 0, int64(len(data)), f)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	fileData, err := os.ReadFile(name)
-	s.assert.Nil(err)
-	s.assert.EqualValues(data, fileData)
+	s.assert.NoError(err)
+	s.assert.Equal(data, fileData)
 
 	buf := make([]byte, len(data))
 	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil)
-	s.assert.Nil(err)
-	s.assert.EqualValues(data, buf)
+	s.assert.NoError(err)
+	s.assert.Equal(data, buf)
 
 	rbuf, err := s.az.storage.ReadBuffer(name, 0, int64(len(data)))
-	s.assert.Nil(err)
-	s.assert.EqualValues(data, rbuf)
+	s.assert.NoError(err)
+	s.assert.Equal(data, rbuf)
 	_ = s.az.storage.DeleteFile(name)
 	_ = os.Remove(name)
 }
@@ -2615,55 +2641,55 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 
 	name1 := generateFileName()
 	f, err := os.Create(name1)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(f)
 
 	testData := "test data"
 	data := []byte(testData)
 	_, err = f.Write(data)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, _ = f.Seek(0, 0)
 
 	err = s.az.storage.WriteFromFile(name1, nil, f)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	// Blob should have updated data
 	fileClient := s.containerClient.NewFileClient(name1)
 	attr, err := s.az.storage.(*Datalake).GetAttr(name1)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(attr)
 
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(len(data))},
 	})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.Nil(resp.RequestID)
 
 	resp, err = fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range:   &file.HTTPRange{Offset: 0, Count: int64(len(data))},
 		CPKInfo: datalakeCPKOpt,
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(resp.RequestID)
 
 	name2 := generateFileName()
 	eTag, err := s.az.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name2,
 		Data: data})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotEqual(eTag, "")
 
 	fileClient = s.containerClient.NewFileClient(name2)
 	resp, err = fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(len(data))},
 	})
-	s.assert.NotNil(err)
+	s.assert.Error(err)
 	s.assert.Nil(resp.RequestID)
 
 	resp, err = fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range:   &file.HTTPRange{Offset: 0, Count: int64(len(data))},
 		CPKInfo: datalakeCPKOpt,
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(resp.RequestID)
 
 	_ = s.az.storage.DeleteFile(name1)
@@ -2684,14 +2710,14 @@ func getACL(dl *Datalake, name string) (string, error) {
 
 func (s *datalakeTestSuite) createFileWithData(name string, data []byte, mode os.FileMode) {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	s.assert.Nil(err)
+	_, err := s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.NoError(err)
 
 	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: mode})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
@@ -2704,17 +2730,17 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
 	// Simulate file copy and permission checks
 	_ = os.WriteFile(name+"_local", []byte("123123"), mode)
 	f, err := os.OpenFile(name+"_local", os.O_RDWR, mode)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	err = s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f, Metadata: nil})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(attr)
 	s.assert.NotEqual(os.FileMode(0764), attr.Mode)
 
 	acl, err := getACL(s.az.storage.(*Datalake), name)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.Contains(acl, "user::rw-")
 	s.assert.Contains(acl, "group::r--")
 	s.assert.Contains(acl, "other::---")
@@ -2736,18 +2762,18 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithFlag() {
 	// Simulate file copy and permission checks
 	_ = os.WriteFile(name+"_local", []byte("123123"), mode)
 	f, err := os.OpenFile(name+"_local", os.O_RDWR, mode)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	err = s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f, Metadata: nil})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(attr)
 	s.assert.Equal(os.FileMode(0764), attr.Mode)
 
 	acl, err := getACL(s.az.storage.(*Datalake), name)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.Contains(acl, "user::rwx")
 	s.assert.Contains(acl, "group::rw-")
 	s.assert.Contains(acl, "other::r--")
@@ -2770,7 +2796,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 		Data:   data,
 		Offset: 0,
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	ids := []string{}
 	ids = append(ids, id)
@@ -2779,15 +2805,15 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 		List:      ids,
 		BlockSize: 1,
 	})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(attr)
-	s.assert.EqualValues(os.FileMode(0767), attr.Mode)
+	s.assert.Equal(os.FileMode(0767), attr.Mode)
 
 	acl, err := getACL(s.az.storage.(*Datalake), name)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.Contains(acl, "user::rwx")
 	s.assert.Contains(acl, "group::rw-")
 	s.assert.Contains(acl, "other::rwx")
@@ -2799,31 +2825,31 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 	var err error
 	name := generateDirectoryName()
 	err = s.az.CreateDir(internal.CreateDirOptions{Name: name})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd1.txt"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd2.txt"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd3.txt"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd4.txt"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/bcd1.txt"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/cd1.txt"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	err = s.az.CreateDir(internal.CreateDirOptions{Name: name + "/subdir"})
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
-	var iteration int = 0
-	var marker string = ""
+	var iteration = 0
+	var marker = ""
 	blobList := make([]*internal.ObjAttr, 0)
 
 	for {
 		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 		blobList = append(blobList, new_list...)
 		marker = new_marker
 		iteration++
@@ -2833,14 +2859,14 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 			break
 		}
 	}
-	s.assert.EqualValues(8, len(blobList))
+	s.assert.Len(blobList, 8)
 	err = s.az.storage.(*Datalake).SetFilter("name=^abcd.*")
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
 		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 		blobList = append(blobList, new_list...)
 		marker = new_marker
 		iteration++
@@ -2851,14 +2877,14 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 		}
 	}
 
-	s.assert.EqualValues(5, len(blobList))
+	s.assert.Len(blobList, 5)
 	err = s.az.storage.(*Datalake).SetFilter("name=^bla.*")
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
 		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
-		s.assert.Nil(err)
+		s.assert.NoError(err)
 		blobList = append(blobList, new_list...)
 		marker = new_marker
 		iteration++
@@ -2869,9 +2895,9 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 		}
 	}
 
-	s.assert.EqualValues(1, len(blobList))
+	s.assert.Len(blobList, 1)
 	err = s.az.storage.(*Datalake).SetFilter("")
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 }
 
 func (s *datalakeTestSuite) TestList() {
@@ -2886,35 +2912,35 @@ func (s *datalakeTestSuite) TestList() {
 	s.setupHierarchy(base)
 
 	blobList, marker, err := s.az.storage.List(base, nil, 0)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	emptyString := ""
 	s.assert.Equal(&emptyString, marker)
 	s.assert.NotNil(blobList)
-	s.assert.EqualValues(3, len(blobList))
+	s.assert.Len(blobList, 3)
 	s.assert.NotEqual(0, blobList[0].Mode)
 
 	// Test listing with prefix
 	blobList, marker, err = s.az.storage.List(base+"b/", nil, 0)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.Equal(&emptyString, marker)
 	s.assert.NotNil(blobList)
-	s.assert.EqualValues(1, len(blobList))
-	s.assert.EqualValues("c1", blobList[0].Name)
+	s.assert.Len(blobList, 1)
+	s.assert.Equal("c1", blobList[0].Name)
 	s.assert.NotEqual(0, blobList[0].Mode)
 
 	// Test listing with marker
 	blobList, marker, err = s.az.storage.List(base, to.Ptr("invalid-marker"), 0)
-	s.assert.NotNil(err)
-	s.assert.Equal(0, len(blobList))
+	s.assert.Error(err)
+	s.assert.Empty(blobList)
 	s.assert.Nil(marker)
 
 	// Test listing with count
 	blobList, marker, err = s.az.storage.List("", nil, 1)
-	s.assert.Nil(err)
+	s.assert.NoError(err)
 	s.assert.NotNil(blobList)
 	s.assert.NotEmpty(marker)
-	s.assert.EqualValues(1, len(blobList))
-	s.assert.EqualValues(base, blobList[0].Path)
+	s.assert.Len(blobList, 1)
+	s.assert.Equal(base, blobList[0].Path)
 	s.assert.NotEqual(0, blobList[0].Mode)
 }
 
@@ -2925,7 +2951,7 @@ func (s *datalakeTestSuite) TestList() {
 // 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 // 	testData := "test data"
 // 	data := []byte(testData)
-// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+// 	s.az.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 // 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 // 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
 

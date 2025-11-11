@@ -34,11 +34,14 @@
 package distributed_cache
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net"
+	"net/http"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -47,48 +50,49 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
+	gouuid "github.com/google/uuid"
 )
 
 //go:generate $ASSERT_REMOVER $GOFILE
 
-func getBlockDeviceUUId(path string) (string, error) {
-	// TODO{Akku}: support non‐disk filesystems (e.g. NFS).
-	// For example, create/lookup a “.rvid” file inside the RV folder and use that UUID.
-	device, err := findMountDevice(path)
-	if err != nil {
-		return "", err
-	}
-	// Call: blkid -o value -s UUID  <path>
-	out, err := exec.Command("blkid", "-o", "value", "-s", "UUID", device).Output()
-	if err != nil {
-		return "", fmt.Errorf("error running blkid: %v", err)
-	}
-	blkId := strings.TrimSpace(string(out))
+func getRVUuid(nodeUUID string, path string) (string, error) {
+	// Create or read a deterministic UUID stamped in ".rvId" file inside the top level RV dir.
+	// Deterministic UUID is generated from the canonical absolute directory path, not randomly.
 
-	isValidUUID := common.IsValidUUID(blkId)
-	common.Assert((isValidUUID), fmt.Sprintf("Error in blkId evaluation   %s: %v", blkId, err))
-	if !isValidUUID {
-		return "", fmt.Errorf("not a valid blkid %s", blkId)
+	// Canonicalize the path to avoid duplicates due to different path representations.
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("filepath.Abs(%s) failed: %v", path, err)
 	}
-	return blkId, nil
-}
 
-func findMountDevice(path string) (string, error) {
-	// Call: findmnt -n -o SOURCE --target <path>
-	out, err := exec.Command("findmnt", "-n", "-o", "SOURCE", "--target", path).Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to run findmnt on %s: %v", path, err)
+	path = abs
+	uuidFilePath := filepath.Join(path, ".rvid")
+
+	// Try reading existing UUID from the file.
+	if data, err := os.ReadFile(uuidFilePath); err == nil {
+		rvId := strings.TrimSpace(string(data))
+		if common.IsValidUUID(rvId) {
+			return rvId, nil
+		}
+		return "", fmt.Errorf("RVId %s in RV UUID file %s is not valid", rvId, uuidFilePath)
+	} else if !os.IsNotExist(err) {
+		// Any read error other than 'file not found' is propagated.
+		return "", fmt.Errorf("failed to read RV UUID from file at %s: %v", uuidFilePath, err)
 	}
-	device := strings.TrimSpace(string(out))
-	if device == "" {
-		return "", fmt.Errorf("no device found in findmnt output for %s", path)
+
+	// File doesn't exist, generate a deterministic UUID using SHA1 of (nodeUUID + '|' + canonical path).
+	deterministicKey := nodeUUID + "|" + path
+	rvUUID := gouuid.NewSHA1(gouuid.NameSpaceDNS, []byte(deterministicKey)).String()
+	common.Assert(common.IsValidUUID(rvUUID), fmt.Sprintf("Generated deterministic UUID %s is not valid", rvUUID))
+
+	if err := os.WriteFile(uuidFilePath, []byte(rvUUID), 0400); err != nil {
+		return "", fmt.Errorf("failed to write RV UUID file at %s: %v", uuidFilePath, err)
 	}
-	err = common.IsValidBlkDevice(device)
-	common.Assert(err == nil, fmt.Sprintf("Device is not a valid Block device. Device Name %s path %s: %v", device, path, err))
-	if err != nil {
-		return "", err
-	}
-	return device, nil
+
+	log.Info("DistributedCache::getRVUuid: Saved RV UUID %s in %s", rvUUID, uuidFilePath)
+
+	return rvUUID, nil
 }
 
 // TODO{Akku}: Client can provide, which ethernet address we have to use. i.e. eth0, eth1
@@ -204,12 +208,12 @@ func isMountPointRoot(path string) bool {
 }
 
 // Get Dcache File size from the blob metadata property.
-func parseDcacheMetadata(attr *internal.ObjAttr) error {
+func parseDcacheMetadata(attr *internal.ObjAttr, dirName string) error {
 	// No need to parse the metadata for directories.
 	if attr.IsDir() {
 		return nil
 	}
-	log.Debug("utils::parseDcacheMetadata: file: %s", attr.Name)
+	log.Debug("utils::parseDcacheMetadata: file: %s/%s", dirName, attr.Name)
 
 	var fileSize int64
 	var err error
@@ -250,8 +254,9 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 	}
 
 	// parse file state.
-	if state, ok := attr.Metadata["state"]; ok {
-		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
+	state, ok := attr.Metadata["state"]
+	if ok {
+		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready) || *state == string(dcache.Warming)) {
 			err = fmt.Errorf("File: %s, has invalid state: [%s]", attr.Name, *state)
 			log.Err("utils::parseDcacheMetadata: %v", err)
 			common.Assert(false, err)
@@ -288,11 +293,30 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 		return err
 	}
 
+	// For non-finalized files, set size to PartialSize.
+	if attr.Size == math.MaxInt64 {
+		common.Assert(*state == string(dcache.Writing), *state, *attr)
+		if dirName == "." {
+			dirName = ""
+		}
+
+		fileMetadata, _, err := fm.GetDcacheFile(filepath.Join(dirName, attr.Name))
+		if err == nil {
+			attr.Size = fileMetadata.PartialSize
+		} else {
+			common.Assert(false, *attr, err)
+			attr.Size = 0
+		}
+
+		log.Debug("utils::parseDcacheMetadata: File %s is non-finalized, setting size to %d",
+			attr.Name, attr.Size)
+	}
+
 	return nil
 }
 
 // Hide the files which are set to deleting. Such files are named with suffix ".dcache.deleting"
-func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.ObjAttr {
+func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr, dirName string) []*internal.ObjAttr {
 	newDirList := make([]*internal.ObjAttr, len(dirList))
 	i := 0
 
@@ -304,7 +328,7 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 			continue
 		}
 
-		err := parseDcacheMetadata(attr)
+		err := parseDcacheMetadata(attr, dirName)
 		if err == nil {
 			newDirList[i] = attr
 			i++
@@ -320,4 +344,78 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 // Check if the file name refers to a deleted dcache file (waiting to be GC'ed).
 func isDeletedDcacheFile(rawPath string) bool {
 	return strings.HasSuffix(rawPath, dcache.DcacheDeletingFileNameSuffix)
+}
+
+func isDummyWriteFile(rawPath string) bool {
+	return strings.HasSuffix(rawPath, dcache.DummyWriteFileName)
+}
+
+// Queries the Azure Instance Metadata Service to get the Fault Domain and Update Domain for this VM.
+// Returns -1 for Fault Domain or Update Domain if not available.
+func queryVMFaultAndUpdateDomain() (int /* faultDomain */, int /* updateDomain */, error) {
+	const imdsURL = "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01"
+
+	//
+	// TODO: There's a "platformSubFaultDomain" also but from the documentation it seems to be not used.
+	//
+	type ComputeMetadata struct {
+		FaultDomain  string `json:"platformFaultDomain"`
+		UpdateDomain string `json:"platformUpdateDomain"`
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", imdsURL, nil)
+	if err != nil {
+		err = fmt.Errorf("error creating request to Azure Instance Metadata Service %s: %v",
+			imdsURL, err)
+		return -1, -1, err
+	}
+
+	// Required header for Azure Instance Metadata Service.
+	req.Header.Add("Metadata", "true")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		err = fmt.Errorf("error making request to Azure Instance Metadata Service %s: %v",
+			imdsURL, err)
+		return -1, -1, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		err = fmt.Errorf("error reading response from Azure Instance Metadata Service %s: %v",
+			imdsURL, err)
+		return -1, -1, err
+	}
+
+	var metadata ComputeMetadata
+	if err := json.Unmarshal(body, &metadata); err != nil {
+		err = fmt.Errorf("error unmarshalling JSON response from Azure Instance Metadata Service %s: %v [%v]",
+			imdsURL, err, body)
+		return -1, -1, err
+	}
+
+	//
+	// Not sure if FaultDomain and UpdateDomain are always returned by IMDS.
+	// Don't fail if they are empty, just return them as empty strings and let caller handle as per config setting.
+	//
+	fdId, udId := -1, -1
+	if metadata.FaultDomain != "" {
+		fdId, err = strconv.Atoi(metadata.FaultDomain)
+		if err != nil {
+			err = fmt.Errorf("error converting Fault Domain (%s) to integer: %v", metadata.FaultDomain, err)
+			return -1, -1, err
+		}
+	}
+
+	if metadata.UpdateDomain != "" {
+		udId, err = strconv.Atoi(metadata.UpdateDomain)
+		if err != nil {
+			err = fmt.Errorf("error converting Update Domain (%s) to integer: %v", metadata.UpdateDomain, err)
+			return -1, -1, err
+		}
+	}
+
+	return fdId, udId, nil
 }

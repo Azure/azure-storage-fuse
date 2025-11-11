@@ -69,8 +69,25 @@ const (
 	HandleFSDcache // Handle refers to a file in Distributed Cache.
 	// Both HandleFSAzure and HandleFSDcache will be set for handles corresponding
 	// to file paths without an explicit fs=azure/fs=dcache namespace specified.
+
 	HandleFlagDcacheAllowWrites // Write to Distributed Cache through this handle is only allowed if this flag is set
 	HandleFlagDcacheAllowReads  // Read from Distributed Cache through this handle is only allowed if this flag is set
+
+	// Following flag will be set for an Azure read handle which is warming up dcache with data read from Azure.
+	HandleFlagWarmingUpDcache
+
+	//
+	// Dummy write, any file write through this handle generates lot of dummy write to dcache
+	// Useful for testing performance of dcache writes.
+	//
+	// To test run:
+	// echo hi > /mnt/blobfuse/fs=dcache/file.dummy.write
+	//
+	// This 2 character file write will generate 100GB of write to dcache w/o involving application and fuse.
+	//
+	// TODO: Remove this flag and related code, once testing is done.
+	//
+	HandleDummyWrite
 )
 
 // Structure to hold in memory cache for streaming layer
@@ -95,12 +112,12 @@ type Handle struct {
 	ID       HandleID // Blobfuse assigned unique ID to this handle
 	Size     int64    // Size of the file being handled here
 	Mtime    time.Time
-	UnixFD   uint64                 // Unix FD created by create/open syscall
-	OptCnt   uint64                 // Number of operations done on this file
-	Flags    common.BitMap16        // Various states of the file
-	Path     string                 // Always holds path relative to mount dir
-	values   map[string]interface{} // Map to hold other info if application wants to store
-	IFObj    any                    // Generic file Object that can be used by other components.
+	UnixFD   uint64          // Unix FD created by create/open syscall
+	OptCnt   uint64          // Number of operations done on this file
+	Flags    common.BitMap16 // Various states of the file
+	Path     string          // Always holds path relative to mount dir
+	values   map[string]any  // Map to hold other info if application wants to store
+	IFObj    any             // Generic file Object that can be used by other components.
 }
 
 func NewHandle(path string) *Handle {
@@ -110,7 +127,7 @@ func NewHandle(path string) *Handle {
 		Size:     0,
 		Flags:    0,
 		OptCnt:   0,
-		values:   make(map[string]interface{}),
+		values:   make(map[string]any),
 		CacheObj: nil,
 		FObj:     nil,
 		Buffers:  nil,
@@ -148,18 +165,18 @@ func (handle *Handle) FD() int {
 }
 
 // SetValue : Store user defined parameter inside handle
-func (handle *Handle) SetValue(key string, value interface{}) {
+func (handle *Handle) SetValue(key string, value any) {
 	handle.values[key] = value
 }
 
 // GetValue : Retrieve user defined parameter from handle
-func (handle *Handle) GetValue(key string) (interface{}, bool) {
+func (handle *Handle) GetValue(key string) (any, bool) {
 	val, ok := handle.values[key]
 	return val, ok
 }
 
 // GetValue : Retrieve user defined parameter from handle
-func (handle *Handle) RemoveValue(key string) (interface{}, bool) {
+func (handle *Handle) RemoveValue(key string) (any, bool) {
 	val, ok := handle.values[key]
 	delete(handle.values, key)
 	return val, ok
@@ -183,6 +200,14 @@ func (handle *Handle) IsFsDebug() bool {
 }
 
 // **********************Dcache Related Methods Start******************************
+
+// Call this if the handle is used for accessing a file primarily in Azure.
+// IO on this handle will result in an IO on dcache only in the case where the handle
+// is opened for reading from an unqualified path (no fs=azure/fs=dcache specified)
+// and the file is not present in Dcache. In such case we will warm up Dcache as data
+// is read from Azure. In this case handle.IFObj will be set to the DcacheFile being
+// warmed up. In this case HandleFlagWarmingUpDcache will also be set on the handle.
+
 func (handle *Handle) SetFsAzure() {
 	// Must be set once and only once.
 	common.Assert(!handle.IsFsAzure())
@@ -190,12 +215,26 @@ func (handle *Handle) SetFsAzure() {
 	handle.Flags.Set(HandleFSAzure)
 }
 
+// Call this if the handle is used for accessing a file primarily in Dcache.
+// handle.IFObj will be set to the corresponding DcacheFile.
+// IO on this handle will result in an IO on Azure only in the case where the handle
+// is opened for reading from an unqualified path (no fs=azure/fs=dcache specified)
+// and the file is present in Dcache. In such case we will read non-existent chunks
+// from Azure. DcacheFile.AzureHandle will be set to the Azure handle in that case.
+
 func (handle *Handle) SetFsDcache() {
 	// Must be set once and only once.
 	common.Assert(!handle.IsFsAzure())
 	common.Assert(!handle.IsFsDcache())
 	handle.Flags.Set(HandleFSDcache)
 }
+
+// Call this if the handle is used for accessing a file in both Azure and Dcache.
+// The only scenario where this is used is when the handle is opened for writing to an
+// unqualified path	in which case a write to this handle should result in a write to both
+// Azure and Dcache. handle.IFObj will be set to the corresponding DcacheFile.
+// Note that since both Azure and Dcache writes are equal, none of them is "primary write"
+// and hence we set both HandleFSAzure and HandleFSDcache flags on the handle.
 
 func (handle *Handle) SetFsDefault() {
 	// Must be set once and only once.
@@ -218,24 +257,46 @@ func (handle *Handle) SetDcacheAllowWrites() {
 	common.Assert(!handle.IsDcacheAllowWrites())
 	// Read and write to dcache are not allowed from the same handle.
 	common.Assert(!handle.IsDcacheAllowReads())
-	// Using a handle we can write to Azure, DCache or both.
-	common.Assert(handle.IsFsAzure() || handle.IsFsDcache())
+	//
+	// We have the following cases where we allow writes to dcache:
+	// 1. Write handle to qualified fs=dcache path.
+	//    IsFsDcache() is true, IsFsAzure() is false.
+	// 2. Write handle to unqualified path (both fs=azure and fs=dcache set on handle).
+	//    Both IsFsDcache() and IsFsAzure() are true.
+	// 3. Handle is warming up dcache (in this case writes to dcache happen as data is read from Azure).
+	//    In this case the handle is primarily an Azure handle.
+	//    IsFsAzure() is true, IsFsDcache() is false, IsWarmingUpDcache() is true.
+	//
+	common.Assert(handle.IsFsDcache() || handle.IsFsAzure(), handle.Path)
 
 	handle.Flags.Set(HandleFlagDcacheAllowWrites)
 }
 
+// Read from dcache is allowed through this handle.
 func (handle *Handle) SetDcacheAllowReads() {
 	// Must be set only once.
 	common.Assert(!handle.IsDcacheAllowReads())
 	// Read and write to dcache are not allowed from the same handle.
 	common.Assert(!handle.IsDcacheAllowWrites())
-	// Using a handle we can read from Azure or DCache but never both.
-	common.Assert(handle.IsFsAzure() || handle.IsFsDcache())
-	common.Assert(!(handle.IsFsAzure() && handle.IsFsDcache()))
+	// Must be called only for dcache handles.
+	common.Assert(handle.IsFsDcache() && !handle.IsFsAzure(), handle.Path)
 
 	handle.Flags.Set(HandleFlagDcacheAllowReads)
 }
 
+// Call this for an Azure read handle to mark it as "data read from Azure via this handle will be used to warm
+// up dcache also".
+func (handle *Handle) SetWarmingUpDcache() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsWarmingUpDcache())
+	// Must be called only for Azure handles opened for unqualified paths.
+	common.Assert(handle.IsFsAzure())
+	common.Assert(!handle.IsFsDcache())
+
+	handle.Flags.Set(HandleFlagWarmingUpDcache)
+}
+
+// Is write to dcache allowed through this handle?
 func (handle *Handle) IsDcacheAllowWrites() bool {
 	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
 	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
@@ -245,6 +306,7 @@ func (handle *Handle) IsDcacheAllowWrites() bool {
 	return allowWrites
 }
 
+// Is read from dcache allowed through this handle?
 func (handle *Handle) IsDcacheAllowReads() bool {
 	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
 	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
@@ -254,12 +316,33 @@ func (handle *Handle) IsDcacheAllowReads() bool {
 	return allowReads
 }
 
+func (handle *Handle) IsWarmingUpDcache() bool {
+	flag := handle.Flags.IsSet(HandleFlagWarmingUpDcache)
+
+	// HandleFlagWarmingUpDcache flag can be set only for Azure handles.
+	common.Assert(!flag || handle.IsFsAzure(), handle.Path)
+	common.Assert(!flag || !handle.IsFsDcache(), handle.Path)
+
+	return flag
+}
+
+// Write to dcache is allowed through this handle.
 func (handle *Handle) SetDcacheStopWrites() {
 	// Close has come to the handle and success, no more writes to this handle
 	// from now.
 	handle.Flags.Clear(HandleFlagDcacheAllowWrites)
 	// From this point there cannot be any IO on this handle.
 	common.Assert(!handle.IsDcacheAllowReads() && !handle.IsDcacheAllowWrites())
+}
+
+func (handle *Handle) SetDummyWrite() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsDummyWrite())
+	handle.Flags.Set(HandleDummyWrite)
+}
+
+func (handle *Handle) IsDummyWrite() bool {
+	return handle.Flags.IsSet(HandleDummyWrite)
 }
 
 // **********************Dcache Related Methods End******************************

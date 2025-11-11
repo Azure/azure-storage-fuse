@@ -35,28 +35,128 @@ package rpc_client
 
 import (
 	"crypto/tls"
+	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
+)
+
+//go:generate $ASSERT_REMOVER $GOFILE
+
+const (
+	//
+	// defaultConnectionTimeout is the default timeout for establishing a new connection to the node.
+	// We don't want to keep this value very low to be resilient to occasional packet drops.
+	//
+	// Update: Under heavy data traffic, connection establishment is seen to timeout, increasing the
+	//         timeout for now. We will move to gRPC soon, which should help with this. Also may need
+	//         to use tc to prioritize connection establishment packets.
+	//
+	//defaultConnectionTimeout = 10 * time.Second
+	defaultConnectionTimeout = 60 * time.Second
+
+	//
+	// defaultSocketTimeout is the default read/write timeout for the underlying socket.
+	// We don't want to keep this value very low to be resilient to occasional packet drops.
+	//
+	// Note: If thrift client doesn't get any response from the server within this time, it considers
+	//       the server to be unresponsive/down and fails with a timeout error. If this happens for
+	//       a PutChunk/PutChunkDC call, it'll result in the target node being marked as down and the
+	//       component RV being marked as inband-offline. This can clearly impact availability of MVs
+	//       if we incorrectly mark nodes as down due to transient network issues or packet drops,
+	//       common during very heavy data traffic. So we need to be extremely careful and make sure
+	//       that a timeout only happens when the node is really down/unreachable.
+	//
+	// TODO: 60 secs looks fine for heavy tests that we have done so far, see if we need to increase it further.
+	//
+	//defaultSocketTimeout = 20 * time.Second
+	defaultSocketTimeout = 60 * time.Second
 )
 
 // rpcClient struct holds the Thrift client to a node
 // This is used to make RPC calls to the node
 type rpcClient struct {
 	nodeID      string                      // Node ID of the node this client is for, can be used for debug logs
+	nodeIDInt   int                         // Integral node ID, from UUIDToUniqueInt()
 	nodeAddress string                      // Address of the node this client is for
+	ncPool      *nodeClientPool             // Pointer to the nodeClientPool this client belongs to
 	transport   thrift.TTransport           // Transport is the Thrift transport layer
 	svcClient   *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
+	allocatedAt time.Time                   // Time when this client was allocated from the pool, used for debug logs
+	//
+	// PutChunkDC puts an interesting demand on the RPC client pool manager.
+	// PutChunkDC requires RPC clients for two distinct use cases:
+	// 1. RPC clients needed to make the PutChunkDC call to the first nexthop node.
+	//    This is called from WriteMV() invoked by file_manager when writing chunks from the writeback cache.
+	// 2. RPC clients needed to make the PutChunkDC/PutChunk call to subsequent nodes in the daisy chain
+	//    in response to a PutChunkDC call received from a previous node (or the local node).
+	//
+	// The important distinction to note here is that the RPC clients used by case (1) cannot be freed
+	// till (2) gets the required RPC clients and complete their respective requests. There could be writes
+	// going on any node which means (1) and (2) will contest for the same pool of RPC clients. If we issue
+	// all RPC clients to (1), then there won't be any left for (2) and hence daisy chain requests from other
+	// nodes will get stuck. The clients used by (1) may also be stuck due to the unavailability of clients
+	// for (2) on other nodes. This can lead to a deadlock situation, where all clients are used up by (1) and
+	// they cannot be freed as they need (2) to complete, but (2) doesn't have any clients to proceed.
+	// Also note that demand for RPC clients by (2) is proportial to the RPC clients used by (1), as each of
+	// those would result in a daisy chain of PutChunkDC/PutChunk calls to subsequent nodes.
+	//
+	// This brings us to two key observations:
+	// 1. We need to prioritize (and reserve) RPC clients needed for (2) over (1). This is because RPC clients
+	//    used by (1) will only be released when (2) completes.
+	//    See nodeClientPool.numReservedHighPrio.
+	// 2. We need to rate-limit the number of RPC clients used by (1) to a fraction of the total pool size.
+	//    See GetRPCClientDummy().
+	//
+	// highPrio indicates if this client is used for high priority requests (case 2 above).
+	//
+	// Update: To keep things simple, we are not differentiating between high and low priority clients now,
+	//         we are just creating extra clients when needed (see isExtra below). This means we treat all
+	//         clients as high priority.
+	//         Once we move to gRPC, we can multiplex multiple requests over a single connection, and we
+	//         won't have to worry about running out of clients/connections.
+	//
+	//highPrio bool
+
+	//
+	// isExtra indicates if this client is an extra client created beyond the pool size.
+	// Extra clients are created to handle sudden burst of requests, they are not part of the static pool,
+	// and are not returned to the pool, they are closed and discarded when freed.
+	//
+	// Note: We would want to avoid creating too many extra clients, as that would defeat the purpose of
+	//       having a pool, each client creation takes time, so it'll hurt performance. Use it only for
+	//       handling sudden bursts of requests (most commonly due to PutChunkDC calls).
+	//       Note that this is a temporary workaround, we should use gRPC that allows multiplexing multiple
+	//       requests over a single connection, which would eliminate the need for having too many clients.
+	//
+	isExtra bool
 }
 
 var protocolFactory thrift.TProtocolFactory
 var transportFactory thrift.TTransportFactory
 var thriftCfg *thrift.TConfiguration
 
-// newRPCClient creates a new Thrift RPC client for the node
-func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
-	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s at %s", nodeID, nodeAddress)
+// newRPCClient creates a new Thrift RPC client for the node.
+// To avoid lock contention, this function does not expect the caller to hold the nodeClientPool lock.
+func newRPCClient(nodeID string, nodeIDInt int, nodeAddress string) (*rpcClient, error) {
+	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s (%d) at %s",
+		nodeID, nodeIDInt, nodeAddress)
+
+	common.Assert(nodeIDInt > 0, nodeIDInt, nodeID, nodeAddress)
+
+	//
+	// If the node is present in the negativeNodes map, it means we have recently experienced timeout
+	// when communicating with this node, learn from our recent experience and save a potential timeout.
+	//
+	err := cp.checkNegativeNode(nodeID)
+	if err != nil {
+		log.Err("rpcClient::newRPCClient: not creating RPC client to negative node %s (%d): %v",
+			nodeID, nodeIDInt, err)
+		return nil, err
+	}
 
 	var transport thrift.TTransport
 
@@ -65,9 +165,10 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 	// }
 
 	transport = thrift.NewTSocketConf(nodeAddress, thriftCfg)
-	transport, err := transportFactory.GetTransport(transport)
+	transport, err = transportFactory.GetTransport(transport)
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: Failed to create transport for node %s at %s [%v]", nodeID, nodeAddress, err.Error())
+		log.Err("rpcClient::newRPCClient: Failed to create transport for node %s (%d) at %s [%v]",
+			nodeID, nodeIDInt, nodeAddress, err)
 		return nil, err
 	}
 
@@ -77,6 +178,7 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 
 	client := &rpcClient{
 		nodeID:      nodeID,
+		nodeIDInt:   nodeIDInt,
 		nodeAddress: nodeAddress,
 		transport:   transport,
 		svcClient:   svcClient,
@@ -84,7 +186,25 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 
 	err = client.transport.Open()
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: Failed to open transport node %s at %s [%v]", nodeID, nodeAddress, err.Error())
+		log.Err("rpcClient::newRPCClient: Failed to create connection to node %s (%d) at %s, adding to negative nodes map: %v",
+			nodeID, nodeIDInt, nodeAddress, err)
+
+		//
+		// TODO: We can also get other errors here like,
+		//   - "cannot assign requested address" - can be caused due to port exhaustion if we are
+		//     creating too many connections in a short period of time.
+		//
+		common.Assert(rpc.IsTimedOut(err) ||
+			rpc.IsConnectionRefused(err) ||
+			rpc.IsConnectionReset(err) ||
+			rpc.IsNoRouteToHost(err), err)
+
+		//
+		// Any error indicates a problem connecting to the node, so add to negative nodes map to quarantine
+		// the node for a short period, so that we don't keep trying to connect to it repeatedly.
+		//
+		cp.addNegativeNode(nodeID)
+
 		return nil, err
 	}
 
@@ -108,8 +228,16 @@ func init() {
 	transportFactory = thrift.NewTTransportFactory()
 
 	thriftCfg = &thrift.TConfiguration{
+		ConnectTimeout: defaultConnectionTimeout,
+		SocketTimeout:  defaultSocketTimeout,
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
 	}
+}
+
+// Silence unused import errors for release builds.
+func init() {
+	common.IsValidUUID("00000000-0000-0000-0000-000000000000")
+	_ = rpc.WriteIOMode
 }

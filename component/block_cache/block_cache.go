@@ -43,7 +43,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -206,7 +206,7 @@ func (bc *BlockCache) GenConfig() string {
 	sb.WriteString(fmt.Sprintf("\n  prefetch: %v", prefetch))
 	sb.WriteString(fmt.Sprintf("\n  parallelism: %v", uint32(3*runtime.NumCPU())))
 
-	var tmpPath string = ""
+	var tmpPath = ""
 	_ = config.UnmarshalKey("tmp-path", &tmpPath)
 	if tmpPath != "" {
 		sb.WriteString(fmt.Sprintf("\n  path: %v", tmpPath))
@@ -573,7 +573,7 @@ func (bc *BlockCache) getBlockSize(fileSize uint64, block *Block) uint64 {
 }
 
 // ReadInBuffer: Read the file into a buffer
-func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	if options.Offset >= options.Handle.Size {
 		// EOF reached so early exit
 		return 0, io.EOF
@@ -721,7 +721,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		node, found = handle.GetValue(fmt.Sprintf("%v", index))
 		if !found {
 			log.Err("BlockCache::getBlock : Failed to get the required block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
-			return nil, fmt.Errorf("not able to find block immediately after scheudling")
+			return nil, fmt.Errorf("not able to find block immediately after scheduling")
 		}
 	}
 
@@ -1018,7 +1018,7 @@ func (bc *BlockCache) download(item *workItem) {
 				log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
 				_ = os.Remove(localPath)
 			} else {
-				var successfulRead bool = true
+				var successfulRead = true
 				numberOfBytes, err := f.Read(item.block.data)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
@@ -1051,7 +1051,7 @@ func (bc *BlockCache) download(item *workItem) {
 
 	var etag string
 	// If file does not exists then download the block from the container
-	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
+	n, err := bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 		Handle: item.handle,
 		Offset: int64(item.block.offset),
 		Data:   item.block.data,
@@ -1149,7 +1149,7 @@ func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes
 }
 
 // WriteFile: Write to the local file
-func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	// log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
 
 	options.Handle.Lock()
@@ -1159,18 +1159,19 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 	// Keep getting next blocks until you read the request amount of data
 	dataWritten := int(0)
+	offset := options.Offset
 	for dataWritten < len(options.Data) {
-		block, err := bc.getOrCreateBlock(options.Handle, uint64(options.Offset))
+		block, err := bc.getOrCreateBlock(options.Handle, uint64(offset))
 		if err != nil {
 			// Failed to get block for writing
 			log.Err("BlockCache::WriteFile : Unable to allocate block for %s [%s]", options.Handle.Path, err.Error())
 			return dataWritten, err
 		}
 
-		// log.Debug("BlockCache::WriteFile : Writing to block %v, offset %v for handle %v=>%v", block.id, options.Offset, options.Handle.ID, options.Handle.Path)
+		// log.Debug("BlockCache::WriteFile : Writing to block %v, offset %v for handle %v=>%v", block.id, offset, options.Handle.ID, options.Handle.Path)
 
 		// Copy the incoming data to block
-		writeOffset := uint64(options.Offset) - block.offset
+		writeOffset := uint64(offset) - block.offset
 		bytesWritten := copy(block.data[writeOffset:], options.Data[dataWritten:])
 
 		// Mark this block has been updated
@@ -1178,11 +1179,11 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 
 		// Move offset forward in case we need to copy more data
-		options.Offset += int64(bytesWritten)
+		offset += int64(bytesWritten)
 		dataWritten += bytesWritten
 
-		if options.Handle.Size < options.Offset {
-			options.Handle.Size = options.Offset
+		if options.Handle.Size < offset {
+			options.Handle.Size = offset
 		}
 	}
 
@@ -1436,10 +1437,7 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 	node := nodeList.Front()
 	nextNode := node
 
-	wipeoutBlock := false
-	if cnt == 1 {
-		wipeoutBlock = true
-	}
+	wipeoutBlock := cnt == 1
 
 	for nextNode != nil && cnt > 0 {
 		node = nextNode
@@ -1599,7 +1597,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
 
 	// Commit the block list now
-	var newEtag string = ""
+	var newEtag = ""
 	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIDList, BlockSize: bc.blockSize, NewETag: &newEtag})
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
@@ -1663,7 +1661,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []stri
 	for k := range listMap {
 		offsets = append(offsets, k)
 	}
-	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+	slices.Sort(offsets)
 
 	zeroBlockStaged := false
 	zeroBlockID := ""
@@ -1917,6 +1915,21 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 	if err != nil {
 		log.Err("BlockCache::SyncFile : failed to flush file %s", options.Handle.Path)
+		return err
+	}
+
+	return nil
+}
+
+func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
+	log.Trace("BlockCache::TruncateFile : path=%s, size=%d", options.Name, options.NewSize)
+
+	// Set the block size that need to used by the next component
+	options.BlockSize = int64(bc.blockSize)
+
+	err := bc.NextComponent().TruncateFile(options)
+	if err != nil {
+		log.Err("BlockCache::TruncateFile : Failed to truncate file %s: %v", options.Name, err)
 		return err
 	}
 

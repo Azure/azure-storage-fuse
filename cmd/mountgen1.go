@@ -150,7 +150,7 @@ var gen1Cmd = &cobra.Command{
 
 // code to generate json file for rustfuse
 func generateAdlsGenOneJson() error {
-	rustFuseMap := make(map[string]interface{})
+	rustFuseMap := make(map[string]any)
 	if strings.ToLower(azStorageOpt.AuthMode) == "spn" {
 		// adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET) hence no reason to include this.
 		// rustFuseMap["clientsecret"] = azStorageOpt.ClientSecret

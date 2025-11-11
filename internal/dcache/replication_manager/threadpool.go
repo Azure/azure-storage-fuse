@@ -252,7 +252,7 @@ func processPutChunk(targetNodeID string, req *models.PutChunkRequest) (*models.
 	if targetNodeID == rpc.GetMyNodeUUID() {
 		return rpc_server.PutChunkLocal(ctx, req)
 	} else {
-		return rpc_client.PutChunk(ctx, targetNodeID, req)
+		return rpc_client.PutChunk(ctx, targetNodeID, req, false /* fromFwder */)
 	}
 }
 

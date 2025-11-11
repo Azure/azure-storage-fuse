@@ -121,17 +121,17 @@ type AzConnection interface {
 	List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error)
 
 	ReadToFile(name string, offset int64, count int64, fi *os.File) error
-	ReadBuffer(name string, offset int64, len int64) ([]byte, error)
-	ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error
+	ReadBuffer(name string, offset int64, length int64) ([]byte, error)
+	ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
 	WriteFromBuffer(options internal.WriteFromBufferOptions) (string, error)
-	Write(options internal.WriteFileOptions) error
+	Write(options *internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)
 
 	ChangeMod(string, os.FileMode) error
 	ChangeOwner(string, int, int) error
-	TruncateFile(string, int64) error
+	TruncateFile(options internal.TruncateFileOptions) error
 	StageAndCommit(name string, bol *common.BlockOffsetList) error
 
 	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)

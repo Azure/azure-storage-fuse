@@ -45,7 +45,7 @@ import (
 // Tests the default configuration of libfuse
 func (suite *libfuseTestSuite) TestDefault() {
 	defer suite.cleanupTest()
-	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
+	suite.assert.Equal("libfuse", suite.libfuse.Name())
 	suite.assert.Empty(suite.libfuse.mountPath)
 	suite.assert.False(suite.libfuse.readOnly)
 	suite.assert.False(suite.libfuse.traceEnable)
@@ -53,9 +53,9 @@ func (suite *libfuseTestSuite) TestDefault() {
 	suite.assert.False(suite.libfuse.allowRoot)
 	suite.assert.Equal(suite.libfuse.dirPermission, uint(common.DefaultDirectoryPermissionBits))
 	suite.assert.Equal(suite.libfuse.filePermission, uint(common.DefaultFilePermissionBits))
-	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(120))
-	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(120))
-	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(120))
+	suite.assert.Equal(uint32(120), suite.libfuse.entryExpiration)
+	suite.assert.Equal(uint32(120), suite.libfuse.attributeExpiration)
+	suite.assert.Equal(uint32(120), suite.libfuse.negativeTimeout)
 	suite.assert.False(suite.libfuse.disableWritebackCache)
 	suite.assert.True(suite.libfuse.ignoreOpenFlags)
 	suite.assert.False(suite.libfuse.directIO)
@@ -67,7 +67,7 @@ func (suite *libfuseTestSuite) TestConfig() {
 	config := "allow-other: true\nread-only: true\nlibfuse:\n  attribute-expiration-sec: 60\n  entry-expiration-sec: 60\n  negative-entry-expiration-sec: 60\n  fuse-trace: true\n  disable-writeback-cache: true\n  ignore-open-flags: false\n  direct-io: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 
-	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
+	suite.assert.Equal("libfuse", suite.libfuse.Name())
 	suite.assert.Empty(suite.libfuse.mountPath)
 	suite.assert.True(suite.libfuse.readOnly)
 	// trace should only be enabled when mounted in foreground otherwise we don't honor the option
@@ -78,9 +78,9 @@ func (suite *libfuseTestSuite) TestConfig() {
 	suite.assert.False(suite.libfuse.allowRoot)
 	suite.assert.Equal(suite.libfuse.dirPermission, uint(fs.FileMode(0777)))
 	suite.assert.Equal(suite.libfuse.filePermission, uint(fs.FileMode(0777)))
-	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(0))
-	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(0))
-	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(0))
+	suite.assert.Equal(uint32(0), suite.libfuse.entryExpiration)
+	suite.assert.Equal(uint32(0), suite.libfuse.attributeExpiration)
+	suite.assert.Equal(uint32(0), suite.libfuse.negativeTimeout)
 	suite.assert.True(suite.libfuse.directIO)
 }
 
@@ -90,7 +90,7 @@ func (suite *libfuseTestSuite) TestConfigZero() {
 	config := "read-only: true\nlibfuse:\n  attribute-expiration-sec: 0\n  entry-expiration-sec: 0\n  negative-entry-expiration-sec: 0\n  fuse-trace: true\n  direct-io: false\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 
-	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
+	suite.assert.Equal("libfuse", suite.libfuse.Name())
 	suite.assert.Empty(suite.libfuse.mountPath)
 	suite.assert.True(suite.libfuse.readOnly)
 	// trace should only be enabled when mounted in foreground otherwise we don't honor the option
@@ -99,9 +99,9 @@ func (suite *libfuseTestSuite) TestConfigZero() {
 	suite.assert.False(suite.libfuse.allowRoot)
 	suite.assert.Equal(suite.libfuse.dirPermission, uint(fs.FileMode(0775)))
 	suite.assert.Equal(suite.libfuse.filePermission, uint(fs.FileMode(0755)))
-	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(0))
-	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(0))
-	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(0))
+	suite.assert.Equal(uint32(0), suite.libfuse.entryExpiration)
+	suite.assert.Equal(uint32(0), suite.libfuse.attributeExpiration)
+	suite.assert.Equal(uint32(0), suite.libfuse.negativeTimeout)
 	suite.assert.False(suite.libfuse.directIO)
 }
 
@@ -111,7 +111,7 @@ func (suite *libfuseTestSuite) TestConfigDefaultPermission() {
 	config := "read-only: true\nlibfuse:\n  default-permission: 0555\n  attribute-expiration-sec: 0\n  entry-expiration-sec: 0\n  negative-entry-expiration-sec: 0\n  fuse-trace: true\n  direct-io: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 
-	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
+	suite.assert.Equal("libfuse", suite.libfuse.Name())
 	suite.assert.Empty(suite.libfuse.mountPath)
 	suite.assert.True(suite.libfuse.readOnly)
 	// trace should only be enabled when mounted in foreground otherwise we don't honor the option
@@ -120,9 +120,9 @@ func (suite *libfuseTestSuite) TestConfigDefaultPermission() {
 	suite.assert.False(suite.libfuse.allowRoot)
 	suite.assert.Equal(suite.libfuse.dirPermission, uint(fs.FileMode(0555)))
 	suite.assert.Equal(suite.libfuse.filePermission, uint(fs.FileMode(0555)))
-	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(0))
-	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(0))
-	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(0))
+	suite.assert.Equal(uint32(0), suite.libfuse.entryExpiration)
+	suite.assert.Equal(uint32(0), suite.libfuse.attributeExpiration)
+	suite.assert.Equal(uint32(0), suite.libfuse.negativeTimeout)
 	suite.assert.True(suite.libfuse.directIO)
 }
 
@@ -132,11 +132,11 @@ func (suite *libfuseTestSuite) TestConfigDisableKernelCache() {
 	config := "read-only: true\ndisable-kernel-cache: true\n\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 
-	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
+	suite.assert.Equal("libfuse", suite.libfuse.Name())
 	suite.assert.Empty(suite.libfuse.mountPath)
-	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(0))
-	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(0))
-	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(0))
+	suite.assert.Equal(uint32(0), suite.libfuse.entryExpiration)
+	suite.assert.Equal(uint32(0), suite.libfuse.attributeExpiration)
+	suite.assert.Equal(uint32(0), suite.libfuse.negativeTimeout)
 	suite.assert.True(suite.libfuse.directIO)
 }
 
@@ -150,9 +150,9 @@ func (suite *libfuseTestSuite) TestConfigFuseTraceEnable() {
 	common.ForegroundMount = true
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 
-	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
+	suite.assert.Equal("libfuse", suite.libfuse.Name())
 	suite.assert.Empty(suite.libfuse.mountPath)
-	// Fuse trace should work as we are mouting using foregroud option.
+	// Fuse trace should work as we are mouting using foreground option.
 	suite.assert.True(suite.libfuse.traceEnable)
 	common.ForegroundMount = false
 }
@@ -259,6 +259,14 @@ func (suite *libfuseTestSuite) TestTruncate() {
 
 func (suite *libfuseTestSuite) TestTruncateError() {
 	testTruncateError(suite)
+}
+
+func (suite *libfuseTestSuite) TestFTruncate() {
+	testFTruncate(suite)
+}
+
+func (suite *libfuseTestSuite) TestFTruncateError() {
+	testFTruncateError(suite)
 }
 
 // release

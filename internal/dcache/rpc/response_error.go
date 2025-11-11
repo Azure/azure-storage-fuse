@@ -210,12 +210,34 @@ func IsTimedOut(err error) bool {
 	// Timeout can happen at various points.
 	// connect()/write()/read() may time out.
 	// Try various errors for completeness.
+	// i/o timeout can happen when opening the connection to a node or reading/writing
+	// over the socket times out as per the timeouts set in the thrift.TConfiguration.
 	//
 	connectionTimedOut := "onnection timed out"
+	ioTimeout := "i/o timeout"
 	return transportEx.TypeId() == thrift.TIMED_OUT ||
 		errors.Is(err, syscall.ETIMEDOUT) ||
 		errors.Is(err, syscall.EAGAIN) ||
-		strings.Contains(err.Error(), connectionTimedOut)
+		strings.Contains(err.Error(), connectionTimedOut) ||
+		strings.Contains(err.Error(), ioTimeout)
+}
+
+// Check if the error returned by thrift indicates that there is no route to the host.
+// This can happen when we create RPC client to a node which is on a different subnet/vnet
+// or the node is deallocated.
+func IsNoRouteToHost(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a no route to host error.
+	if GetRPCResponseError(err) != nil {
+		log.Debug("IsNoRouteToHost: is RPC error: %v", err)
+		return false
+	}
+
+	log.Debug("IsNoRouteToHost: err: %v, type: %T", err, err)
+
+	noRouteToHost := "o route to host"
+	return strings.Contains(err.Error(), noRouteToHost)
 }
 
 // Silence unused import errors for release builds.

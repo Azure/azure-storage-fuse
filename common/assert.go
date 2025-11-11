@@ -38,6 +38,8 @@ import (
 	"os"
 )
 
+var hostname string
+
 // Assert can be used to assert any condition. It'll cause the program to terminate.
 // Apart from the assertion condition it takes a variable number of items to print, which would mostly be a
 // message and/or err variable and optionally one or more relevant variables.
@@ -48,15 +50,20 @@ import (
 //	Assert(err == nil, "Unexpected error return", err)
 //	Assert(isValid == true)
 //	Assert((value >= 0 && value <= 100), "Invalid percentage", value)
+
 func Assert(cond bool, msg ...interface{}) {
 	if !IsDebugBuild() {
 		return
 	}
 	if !cond {
+		//
+		// Logging hostname helps when running multiple instances of blobfuse on different hosts
+		// from one terminal.
+		//
 		if len(msg) != 0 {
-			log.Panicf("Assertion failed: %v", msg)
+			log.Panicf("[%s] Assertion failed: %v", hostname, msg)
 		} else {
-			log.Panicf("Assertion failed!")
+			log.Panicf("[%s] Assertion failed!", hostname)
 		}
 	}
 }
@@ -65,6 +72,26 @@ func Assert(cond bool, msg ...interface{}) {
 // Note: Use this sparingly only to do stuff that we know for sure doesn't change the behavior of the program.
 //
 //	We need to be very careful in making sure debug build behaves same as prod builds for reliable testing.
+var isDebugBuild bool
+
 func IsDebugBuild() bool {
-	return (os.Getenv("BLOBFUSE_DEBUG") == "1")
+	return isDebugBuild
+}
+
+// GetDebugHostname returns the hostname that can be used in logs, to identify the host when logs
+// from multiple hosts are dumped in the same output file or terminal, e.g., panic logs from multiple
+// blobfuse instances running on different hosts run from the same terminal using ssh.
+func GetDebugHostname() string {
+	return hostname
+}
+
+func init() {
+	var err error
+
+	hostname, err = os.Hostname()
+	if err != nil {
+		hostname = "unknown-host"
+	}
+
+	isDebugBuild = (os.Getenv("BLOBFUSE_DEBUG") == "1")
 }

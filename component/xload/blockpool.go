@@ -83,7 +83,7 @@ func NewBlockPool(blockSize uint64, blockCount uint32, ctx context.Context) *Blo
 	pool.waitLength.Store(0)
 
 	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
-	for i := (uint32)(0); i < blockCount; i++ {
+	for i := range blockCount {
 		block, err := AllocateBlock(blockSize)
 		if err != nil {
 			log.Err("BlockPool::NewBlockPool : unable to allocate block [%s]", err.Error())

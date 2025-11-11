@@ -120,7 +120,7 @@ func (rdm *remoteDataManager) Process(item *WorkItem) (int, error) {
 func (rdm *remoteDataManager) ReadData(item *WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.Path, item.Block.Offset)
 
-	bytesTransferred, err := rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
+	bytesTransferred, err := rdm.GetRemote().ReadInBuffer(&internal.ReadInBufferOptions{
 		Offset: item.Block.Offset,
 		Data:   item.Block.Data,
 		Path:   item.Path,

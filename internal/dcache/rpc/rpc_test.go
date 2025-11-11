@@ -49,27 +49,32 @@ func (suite *rpcTestSuite) SetupTest() {
 	suite.assert = assert.New(suite.T())
 }
 
-/*
-func (suite *rpcTestSuite) TestHelloRPC() {
-	// start server
-	server, err := rpc_server.NewNodeServer("localhost:9090", make(map[string]dcache.RawVolume), &dcache.DCacheConfig{})
-	suite.assert.NoError(err)
-	suite.assert.NotNil(server)
+// func (suite *rpcTestSuite) TestHelloRPC() {
+// 	// start server
+// 	server, err := rpc_server.NewNodeServer()
+// 	suite.assert.NoError(err)
+// 	suite.assert.NotNil(server)
 
-	err = server.Start()
-	suite.assert.NoError(err)
+// 	err = server.Start()
+// 	suite.assert.NoError(err)
+// 	time.Sleep(1 * time.Second)
 
-	resp, err := rpc_client.Hello(context.Background(), "nodeID", &models.HelloRequest{})
-	suite.assert.NoError(err)
-	suite.assert.NotNil(resp)
+// 	rpc_client.Start()
 
-	err = rpc_client.Cleanup()
-	suite.assert.NoError(err)
+// 	startTime := time.Now()
+// 	resp, err := rpc_client.Hello(context.Background(), "nodeID", &models.HelloRequest{})
+// 	fmt.Println("RPC call took:", time.Since(startTime))
+// 	suite.assert.NoError(err)
+// 	suite.assert.NotNil(resp)
 
-	err = server.Stop()
-	suite.assert.NoError(err)
-}
-*/
+// 	err = rpc_client.Cleanup()
+// 	fmt.Println("Cleanup:", time.Since(startTime))
+// 	suite.assert.NoError(err)
+
+// 	err = server.Stop()
+// 	fmt.Println("Server stop:", time.Since(startTime))
+// 	suite.assert.NoError(err)
+// }
 
 func TestRPCTestSuite(t *testing.T) {
 	suite.Run(t, new(rpcTestSuite))

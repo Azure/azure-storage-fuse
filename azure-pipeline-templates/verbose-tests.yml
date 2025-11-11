@@ -223,6 +223,20 @@ steps:
 
   - template: e2e-tests-spcl.yml
     parameters:
+      conf_template: azure_key_directio.yaml
+      config_file: ${{ parameters.config }}
+      adls: ${{ parameters.adls }}
+      account_name: ${{ parameters.account_name }}
+      account_key: ${{ parameters.account_key }}
+      account_type: ${{ parameters.account_type }}
+      idstring: "${{ parameters.service }} with File-cache"
+      distro_name: ${{ parameters.distro_name }}
+      quick_test: false
+      verbose_log: ${{ parameters.verbose_log }}
+      clone: false
+
+  - template: e2e-tests-spcl.yml
+    parameters:
       conf_template: azure_key_lru_purge.yaml
       config_file: ${{ parameters.config }}
       adls: ${{ parameters.adls }}

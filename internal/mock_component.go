@@ -474,7 +474,7 @@ func (mr *MockComponentMockRecorder) ReadFileWithName(arg0 interface{}) *gomock.
 }
 
 // ReadInBuffer mocks base method.
-func (m *MockComponent) ReadInBuffer(arg0 ReadInBufferOptions) (int, error) {
+func (m *MockComponent) ReadInBuffer(arg0 *ReadInBufferOptions) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadInBuffer", arg0)
 	ret0, _ := ret[0].(int)
@@ -645,7 +645,7 @@ func (mr *MockComponentMockRecorder) UnlinkFile(arg0 interface{}) *gomock.Call {
 }
 
 // WriteFile mocks base method.
-func (m *MockComponent) WriteFile(arg0 WriteFileOptions) (int, error) {
+func (m *MockComponent) WriteFile(arg0 *WriteFileOptions) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WriteFile", arg0)
 	ret0, _ := ret[0].(int)
