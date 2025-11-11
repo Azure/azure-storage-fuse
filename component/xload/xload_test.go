@@ -485,7 +485,7 @@ func (suite *xloadTestSuite) TestOpenFileAlreadyDownloaded() {
 	suite.assert.NotNil(fh)
 	suite.assert.Equal((int64)(36), fh.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh})
 	suite.assert.NoError(err)
 
 	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3"})
@@ -493,7 +493,7 @@ func (suite *xloadTestSuite) TestOpenFileAlreadyDownloaded() {
 	suite.assert.NotNil(fh2)
 	suite.assert.Equal((int64)(27), fh2.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh2})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh2})
 	suite.assert.NoError(err)
 
 	validateMD5(suite.local_path, suite.fake_storage_path, suite.assert)
@@ -520,7 +520,7 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	suite.assert.NotNil(fh)
 	suite.assert.Equal((int64)(0), fh.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh})
 	suite.assert.NoError(err)
 
 	fh1, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "file_4", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
@@ -528,7 +528,7 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	suite.assert.NotNil(fh1)
 	suite.assert.Equal((int64)(36), fh1.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh1})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh1})
 	suite.assert.NoError(err)
 
 	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
@@ -536,7 +536,7 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	suite.assert.NotNil(fh2)
 	suite.assert.Equal((int64)(27), fh2.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh2})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh2})
 	suite.assert.NoError(err)
 
 	suite.validateMD5WithOpenFile(suite.local_path, suite.fake_storage_path)
@@ -566,7 +566,7 @@ func (suite *xloadTestSuite) validateMD5WithOpenFile(localPath string, remotePat
 
 			suite.assert.Equal(localMD5, remoteMD5)
 
-			err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+			err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh})
 			suite.assert.NoError(err)
 		}
 	}

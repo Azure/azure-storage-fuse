@@ -195,7 +195,7 @@ func (suite *LoopbackFSTestSuite) TestOpenReadCloseFile() {
 	assert.NoError(err, "OpenReadCloseFile: Failed to read file")
 	assert.Equal(data, []byte(loremText))
 
-	err = suite.lfs.CloseFile(internal.CloseFileOptions{Handle: handle})
+	err = suite.lfs.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	assert.NoError(err, "OpenReadCloseFile: Failed to close file")
 }
 
@@ -230,7 +230,7 @@ func (suite *LoopbackFSTestSuite) TestReadInBuffer() {
 		assert.Equal(testCase.data, testCase.truth)
 	}
 
-	err = suite.lfs.CloseFile(internal.CloseFileOptions{Handle: handle})
+	err = suite.lfs.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 }
 
 func (suite *LoopbackFSTestSuite) TestWriteFile() {
@@ -249,7 +249,7 @@ func (suite *LoopbackFSTestSuite) TestWriteFile() {
 	assert.NoError(err)
 	assert.Len([]byte(quotesText)[5:], n, "WriteFile: failed to write specified number of bytes")
 
-	err = suite.lfs.CloseFile(internal.CloseFileOptions{Handle: handle})
+	err = suite.lfs.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	assert.NoError(err, "WriteFile: Failed to close file")
 
 }

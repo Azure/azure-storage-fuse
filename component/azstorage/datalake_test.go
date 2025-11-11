@@ -1249,7 +1249,7 @@ func (s *datalakeTestSuite) TestCloseFile() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	// This method does nothing.
-	err := s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	err := s.az.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	s.assert.NoError(err)
 }
 
@@ -1260,7 +1260,7 @@ func (s *datalakeTestSuite) TestCloseFileFakeHandle() {
 	h := handlemap.NewHandle(name)
 
 	// This method does nothing.
-	err := s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	err := s.az.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	s.assert.NoError(err)
 }
 
@@ -1502,7 +1502,7 @@ func (suite *datalakeTestSuite) TestReadInBufferWithETAG() {
 	suite.assert.NotEqual("", etag)
 	suite.assert.Equal(5, len)
 	suite.assert.EqualValues(testData[:5], output)
-	_ = suite.az.CloseFile(internal.CloseFileOptions{Handle: fileHandle})
+	_ = suite.az.ReleaseFile(internal.ReleaseFileOptions{Handle: fileHandle})
 }
 
 func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {
@@ -2693,7 +2693,7 @@ func (s *datalakeTestSuite) createFileWithData(name string, data []byte, mode os
 	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: mode})
 	s.assert.NoError(err)
 
-	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.az.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	s.assert.NoError(err)
 }
 

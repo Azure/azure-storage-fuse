@@ -331,8 +331,9 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	return syscall.ENOTSUP
 }
 
-// CloseFile: File is closed by application so release all the blocks and submit back to blockPool
-func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
+// ReleaseFile: all the FD's corresponding to this handle were closed by application so release all the blocks
+// and submit back to the pool.
+func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
 	return syscall.ENOTSUP
 }

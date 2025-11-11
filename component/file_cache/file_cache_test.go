@@ -647,7 +647,7 @@ func (suite *fileCacheTestSuite) TestCreateFileWithNoPerm() {
 	// Path should not be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(os.IsNotExist(err))
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
 	suite.assert.NoError(err)
 	info, err := os.Stat(suite.cache_path + "/" + path)
 	// Since the default config has timeout-sec as 0 there is a chance that the file gets evicted before we stat the file.
@@ -673,7 +673,7 @@ func (suite *fileCacheTestSuite) TestCreateFileWithWritePerm() {
 	// Path should not be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(os.IsNotExist(err))
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
 	suite.assert.NoError(err)
 	info, _ := os.Stat(suite.cache_path + "/" + path)
 	if info != nil {
@@ -755,7 +755,7 @@ func (suite *fileCacheTestSuite) TestSyncFile() {
 	path := "file3"
 
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	// On a sync we open, sync, flush and close
 	handle, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0777})
@@ -766,7 +766,7 @@ func (suite *fileCacheTestSuite) TestSyncFile() {
 	data := []byte(testData)
 	suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
 	suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	// Path should not be in file cache
 	_, err = os.Stat(suite.cache_path + "/" + path)
@@ -785,7 +785,7 @@ func (suite *fileCacheTestSuite) TestSyncFile() {
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(err == nil || os.IsExist(err))
 
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	suite.fileCache.syncToFlush = false
 }
 
@@ -794,7 +794,7 @@ func (suite *fileCacheTestSuite) TestDeleteFile() {
 	path := "file4"
 
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	err := suite.fileCache.DeleteFile(internal.DeleteFileOptions{Name: path})
 	suite.assert.NoError(err)
@@ -842,7 +842,7 @@ func (suite *fileCacheTestSuite) TestOpenFileNotInCache() {
 	testData := "test data"
 	data := []byte(testData)
 	suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	// loop until file does not exist - done due to async nature of eviction
 	_, err := os.Stat(suite.cache_path + "/" + path)
@@ -895,7 +895,7 @@ func (suite *fileCacheTestSuite) TestCloseFile() {
 	// The file is in the cache but not in storage (see TestCreateFileInDirCreateEmptyFile)
 
 	// CloseFile
-	err := suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	err := suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	suite.assert.NoError(err)
 
 	// loop until file does not exist - done due to async nature of eviction
@@ -929,7 +929,7 @@ func (suite *fileCacheTestSuite) TestCloseFileTimeout() {
 	// The file is in the cache but not in storage (see TestCreateFileInDirCreateEmptyFile)
 
 	// CloseFile
-	err := suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	err := suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	suite.assert.NoError(err)
 	suite.assert.False(suite.fileCache.policy.IsCached(path)) // File should be invalidated
 
@@ -1224,7 +1224,7 @@ func (suite *fileCacheTestSuite) TestGetAttrCase4() {
 	err = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: createHandle})
 	suite.assert.NoError(err)
 
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
 	suite.assert.NoError(err)
 
 	// Wait  file is evicted
@@ -1262,7 +1262,7 @@ func (suite *fileCacheTestSuite) TestRenameFileNotInCache() {
 	src := "source1"
 	dst := "destination1"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0777})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	_, err := os.Stat(suite.cache_path + "/" + src)
 	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
@@ -1292,7 +1292,7 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 	src := "source2"
 	dst := "destination2"
 	createHandle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0666})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
 	openHandle, _ := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: src, Mode: 0666})
 
 	// Path should be in the file cache
@@ -1315,7 +1315,7 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
 	suite.assert.True(err == nil || os.IsExist(err))
 
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: openHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 }
 
 func (suite *fileCacheTestSuite) TestRenameFileCase2() {
@@ -1351,7 +1351,7 @@ func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanup() {
 	src := "source4"
 	dst := "destination4"
 	createHandle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0666})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
 	openHandle, _ := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: src, Mode: 0666})
 
 	// Path should be in the file cache
@@ -1374,7 +1374,7 @@ func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanup() {
 	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
 	suite.assert.True(err == nil || os.IsExist(err))
 
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: openHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 
 	time.Sleep(5 * time.Second)                    // Check once before the cache cleanup that file exists
 	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall exists in cache
@@ -1396,7 +1396,7 @@ func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanupWithNoTimeout() {
 	src := "source5"
 	dst := "destination5"
 	createHandle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0666})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
 	openHandle, _ := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: src, Mode: 0666})
 
 	// Path should be in the file cache
@@ -1419,7 +1419,7 @@ func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanupWithNoTimeout() {
 	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
 	suite.assert.True(err == nil || os.IsExist(err))
 
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: openHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 
 	time.Sleep(1 * time.Second)                    // Wait for the cache cleanup to occur
 	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall not exists in cache
@@ -1431,7 +1431,7 @@ func (suite *fileCacheTestSuite) TestTruncateFileNotInCache() {
 	// Setup
 	path := "file30"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	_, err := os.Stat(suite.cache_path + "/" + path)
 	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
@@ -1459,7 +1459,7 @@ func (suite *fileCacheTestSuite) TestTruncateFileInCache() {
 	// Setup
 	path := "file31"
 	createHandle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0666})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
 	openHandle, _ := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0666})
 
 	// Path should be in the file cache
@@ -1479,7 +1479,7 @@ func (suite *fileCacheTestSuite) TestTruncateFileInCache() {
 	info, _ = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.EqualValues(info.Size(), size)
 
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: openHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 }
 
 func (suite *fileCacheTestSuite) TestTruncateFileCase2() {
@@ -1508,7 +1508,7 @@ func (suite *fileCacheTestSuite) TestChmodNotInCache() {
 	// Setup
 	path := "file33"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	_, err := os.Stat(suite.cache_path + "/" + path)
 	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
@@ -1535,7 +1535,7 @@ func (suite *fileCacheTestSuite) TestChmodInCache() {
 	// Setup
 	path := "file34"
 	createHandle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0666})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
 	openHandle, _ := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0666})
 
 	// Path should be in the file cache
@@ -1554,7 +1554,7 @@ func (suite *fileCacheTestSuite) TestChmodInCache() {
 	info, _ = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.EqualValues(0755, info.Mode())
 
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: openHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 }
 
 func (suite *fileCacheTestSuite) TestChmodCase2() {
@@ -1578,7 +1578,7 @@ func (suite *fileCacheTestSuite) TestChmodCase2() {
 	suite.assert.True(err == nil || os.IsExist(err))
 	suite.assert.Equal(info.Mode(), newMode)
 
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
 	suite.assert.NoError(err)
 
 	// loop until file does not exist - done due to async nature of eviction
@@ -1602,7 +1602,7 @@ func (suite *fileCacheTestSuite) TestChownNotInCache() {
 	// Setup
 	path := "file36"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	_, err := os.Stat(suite.cache_path + "/" + path)
 	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
@@ -1634,7 +1634,7 @@ func (suite *fileCacheTestSuite) TestChownInCache() {
 	// Setup
 	path := "file37"
 	createHandle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
 	openHandle, _ := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0777})
 
 	// Path should be in the file cache
@@ -1661,7 +1661,7 @@ func (suite *fileCacheTestSuite) TestChownInCache() {
 	suite.assert.EqualValues(owner, stat.Uid)
 	suite.assert.EqualValues(group, stat.Gid)
 
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: openHandle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 }
 
 func (suite *fileCacheTestSuite) TestChownCase2() {
@@ -1748,7 +1748,7 @@ func (suite *fileCacheTestSuite) TestZZOffloadIO() {
 	suite.assert.NotNil(handle)
 	suite.assert.True(handle.Cached())
 
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 }
 
 func (suite *fileCacheTestSuite) TestZZZZLazyWrite() {
@@ -1768,7 +1768,7 @@ func (suite *fileCacheTestSuite) TestZZZZLazyWrite() {
 	// As lazy write is enabled flush shall not upload the file
 	suite.assert.True(handle.Dirty())
 
-	_ = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	_ = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	time.Sleep(5 * time.Second)
 	suite.fileCache.lazyWrite = false
 
@@ -1818,7 +1818,7 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	n, err := suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.NoError(err)
 	suite.assert.Equal(9, n)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
 	suite.assert.NoError(err)
 
 	// Modify the fil ein background but we shall still get the old data
@@ -1830,7 +1830,7 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	n, err = suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.NoError(err)
 	suite.assert.Equal(9, n)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
 	suite.assert.NoError(err)
 
 	// Now wait for 5 seconds and we shall get the updated content on next read
@@ -1843,7 +1843,7 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	n, err = suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.NoError(err)
 	suite.assert.Equal(15, n)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
 	suite.assert.NoError(err)
 }
 
@@ -1869,7 +1869,7 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	f, err := suite.fileCache.OpenFile(options)
 	suite.assert.NoError(err)
 	suite.assert.False(f.Dirty())
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
 	suite.assert.NoError(err)
 
 	// try opening bigger file which shall fail due to hardlimit
@@ -1887,7 +1887,7 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	n, err := suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.NoError(err)
 	suite.assert.Equal(1*MB, n)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
 	suite.assert.NoError(err)
 
 	// try writing a bigger file
@@ -1898,7 +1898,7 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	n, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.Error(err)
 	suite.assert.Equal(0, n)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
 	suite.assert.NoError(err)
 
 	// try opening small file
@@ -1928,19 +1928,19 @@ func (suite *fileCacheTestSuite) TestDeleteDirectory() {
 	h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("a", "b", "c", "d", file), Mode: 0777})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	suite.assert.NoError(err)
 
 	h, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("a", "b", file), Mode: 0777})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	suite.assert.NoError(err)
 
 	h, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("h", "l", "m", file), Mode: 0777})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	suite.assert.NoError(err)
 
 	// Check directories are counted as non empty right now
@@ -1967,7 +1967,7 @@ func (suite *fileCacheTestSuite) TestDeleteDirectory() {
 	h, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("h", "l", "m", "n", file), Mode: 0777})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	suite.assert.NoError(err)
 	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("h", "l", "m", "n")})
 	suite.assert.False(empty)
@@ -1983,7 +1983,7 @@ func (suite *fileCacheTestSuite) TestDeleteDirectory() {
 	h, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("h", "l", "m", "n", file), Mode: 0777})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
-	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	suite.assert.NoError(err)
 	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("h", "l", "m", "n")})
 	suite.assert.False(empty)
@@ -2042,7 +2042,7 @@ func (suite *fileCacheTestSuite) TestHardLimit() {
 	for i := range int64(5) {
 		suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: i * 1024 * 1024, Data: data})
 	}
-	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	time.Sleep(1)
 
 	// Now try to open the file and validate we get an error due to hard limit

@@ -507,8 +507,8 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	return nil
 }
 
-// CloseFile: File is closed by application so release all the blocks and submit back to blockPool
-func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
+// ReleaseFile: File is closed by application so release all the blocks and submit back to blockPool
+func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	bc.fileCloseOpt.Add(1)
 	if !bc.lazyWrite {
 		// Sync close is called so wait till the upload completes
@@ -521,7 +521,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 // closeFileInternal: Actual handling of the close file goes here
-func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error {
+func (bc *BlockCache) closeFileInternal(options internal.ReleaseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
 	defer bc.fileCloseOpt.Done()

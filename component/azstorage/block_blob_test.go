@@ -1012,7 +1012,7 @@ func (s *blockBlobTestSuite) TestCloseFile() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	// This method does nothing.
-	err := s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	err := s.az.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	s.assert.NoError(err)
 }
 
@@ -1023,7 +1023,7 @@ func (s *blockBlobTestSuite) TestCloseFileFakeHandle() {
 	h := handlemap.NewHandle(name)
 
 	// This method does nothing.
-	err := s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	err := s.az.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	s.assert.NoError(err)
 }
 
@@ -1214,7 +1214,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAG() {
 	bbTestSuite.assert.NotEqual("", etag)
 	bbTestSuite.assert.Equal(5, len)
 	bbTestSuite.assert.EqualValues(testData[:5], output)
-	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
+	_ = bbTestSuite.az.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 }
 
 func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
@@ -1225,7 +1225,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
 	testData := "test data 12345678910"
 	data := []byte(testData)
 	bbTestSuite.az.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
-	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
+	_ = bbTestSuite.az.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 
 	attr, err := bbTestSuite.az.GetAttr(internal.GetAttrOptions{Name: name})
 	bbTestSuite.assert.NoError(err)
@@ -1249,7 +1249,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
 	testData = "test data 12345678910 123123123123123123123"
 	data = []byte(testData)
 	bbTestSuite.az.WriteFile(&internal.WriteFileOptions{Handle: handle1, Offset: 0, Data: data})
-	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle1})
+	_ = bbTestSuite.az.ReleaseFile(internal.ReleaseFileOptions{Handle: handle1})
 
 	// Read data back using older handle
 	_, err = bbTestSuite.az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 5, Data: output, Etag: &etag})
@@ -1258,7 +1258,7 @@ func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
 	etag = strings.Trim(etag, `"`)
 	bbTestSuite.assert.NotEqual(etag, attr.ETag)
 
-	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
+	_ = bbTestSuite.az.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 }
 
 func (s *blockBlobTestSuite) TestReadInBufferLargeBuffer() {
