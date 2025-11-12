@@ -30,5 +30,4 @@ mlpstorage checkpointing run \
     --model llama3-8b \
     --num-processes 8 \
     --checkpoint-folder $MOUNT_PATH/checkpoints \
-    --results-dir $BENCHMARK_RESULTS \
-    --num-checkpoints-write=0
+    --results-dir $BENCHMARK_RESULTS
