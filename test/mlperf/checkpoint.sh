@@ -9,6 +9,7 @@ BENCHMARK_RESULTS=~/mlperf/benchmark_results
 START_HOST_INDEX=1 # Starting index for hostnames, for ccw-hpc-21 to ccw-hpc-30, set this to 21
 COUNT=10 # count of number of hosts allocated
 EXCLUDE_LIST="" # e.g., "2,5" to exclude hosts 2 and 5
+NUM_HOSTS=0
 
 for i in $(seq $START_HOST_INDEX $COUNT); do
     if [[ $EXCLUDE_LIST =~ (^|,)$i(,|$) ]]; then

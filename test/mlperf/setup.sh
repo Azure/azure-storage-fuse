@@ -16,11 +16,12 @@ python3 -m pip install --upgrade pip
 # Repo should be cloned in $REPO_PATH
 if [ ! -d "$REPO_PATH" ]; then
     echo "Cloning mlperf storage repository"
-    cd $REPO_PATH/..
+    mkdir -p "$(dirname "$REPO_PATH")"
+    cd "$(dirname "$REPO_PATH")" || exit 1
     git clone -b v2.0 https://github.com/mlcommons/storage.git
 fi
 
-cd $REPO_PATH
+cd $REPO_PATH || exit 1
 
 # Install python dependencies
 pip3 install -e .
