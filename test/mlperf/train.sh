@@ -11,7 +11,7 @@ COUNT=10 # count of number of hosts allocated
 EXCLUDE_LIST="" # e.g., "2,5" to exclude hosts 2 and 5
 NUM_HOSTS=0
 
-for i in $(seq $START_HOST_INDEX $COUNT); do
+for i in $(seq $START_HOST_INDEX $((START_HOST_INDEX + COUNT - 1))); do
     if [[ $EXCLUDE_LIST =~ (^|,)$i(,|$) ]]; then
         continue
     fi
