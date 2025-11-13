@@ -1,0 +1,108 @@
+Recording all the results encountered in the dev.
+
+::main::
+
+prefetch: 32, memory: 4096M, parallelism: 64
+1) directIO
+|---------------+-----------------------|
+| BlockSize(MB) | Read Throughput(GBps) |
+|---------------+-----------------------|
+|             1 |                   2.9 |
+|             2 |                   3.3 |
+|             5 |                   3.4 |
+|            10 |                   3.3 |
+|---------------+-----------------------|
+
+2) With kernel cache.
+|---------------+-----------------------|
+| BlockSize(KB) | Read Throughput(GBps) |
+|---------------+-----------------------|
+|           128 |                   2.6 |
+|---------------+-----------------------|
+
+
+::New implementation::
+
+prefetch: 32, memory: 4096M, parallelism: 64
+
+1) directIO
+|---------------+-----------------------|
+| BlockSize(MB) | Read Throughput(GBps) |
+|---------------+-----------------------|
+|             1 |                   3.0 |
+|             2 |                   3.4 |
+|             5 |                   3.9 |
+|            10 |                   3.9 |
+|---------------+-----------------------|
+ 
+2) With kernel cache.
+|---------------+-----------------------|
+| BlockSize(KB) | Read Throughput(GBps) |
+|---------------+-----------------------|
+|           128 |                   2.6 |
+|---------------+-----------------------|
+
+
+::main::
+
+prefetch: 196, memory: 4096M, parallelism: 64
+1) directIO
+|---------------+-----------------------|
+| BlockSize(MB) | Read Throughput(GBps) |
+|---------------+-----------------------|
+|             1 |                   3.3 |
+|             2 |                   4.4 |
+|             5 |                   5.1 |
+|            10 |                   5.4 |
+|---------------+-----------------------|
+
+2) With kernel cache.
+|---------------+-----------------------|
+| BlockSize(KB) | Read Throughput(GBps) |
+|---------------+-----------------------|
+|           128 |                   2.8 |
+|---------------+-----------------------|
+   
+
+::New implementation::
+
+
+prefetch: 196, memory: 4096M, parallelism: 64
+
+1) directIO
+|---------------+-----------------------|
+| BlockSize(MB) | Read Throughput(GBps) |
+|---------------+-----------------------|
+|             1 |                   3.3 |
+|             2 |                   5.4 |
+|             5 |                   9.1 |
+|            10 |                   9.7 |
+|---------------+-----------------------|
+
+2) With kernel cache.
+|---------------+-----------------------|
+| BlockSize(KB) | Read Throughput(GBps) |
+|---------------+-----------------------|
+|           128 |                   2.6 |
+|---------------+-----------------------|
+
+
+Read scaling test by putting the calculated sleep of (10ms) for Download to see how far we go.
+bs=10MB, directIO
+|--------+------------------------|
+| branch | Read Throughput (GBps) |
+|--------+------------------------|
+| Main   |                      9 |
+| New    |                     25 |
+|--------+------------------------|
+
+
+
+
+fio:
+
+Read file using async io
+fio --name=read_existing     --filename=mnt/100G.ooo     --rw=read     --bs=1M     --ioengine=sync     --direct=1     --iodepth=16     --numjobs=1 --size=100G
+
+Read independent sections of file from different threads
+fio --name=parallel_parts     --filename=mnt/100G.ooo     --rw=read     --bs=1M     --ioengine=libaio     --direct=1     --iodepth=16     --numjobs=10     --size=10G     --offset_increment=10G     --group_reporting
