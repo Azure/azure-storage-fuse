@@ -1,0 +1,152 @@
+Recording all the results encountered in the dev.
+
+::main::
+
+prefetch: 32, memory: 4096M
+
+dd of=/dev/null if=~/mnt/100G.ooo bs=1M iflag=direct status=progress
+--------1---------
+104670953472 bytes (105 GB, 97 GiB) copied, 35 s, 3.0 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 35.8731 s, 3.0 GB/s
+--------2---------
+104687730688 bytes (105 GB, 97 GiB) copied, 36 s, 2.9 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 36.9151 s, 2.9 GB/s
+--------3---------
+106807951360 bytes (107 GB, 99 GiB) copied, 37 s, 2.9 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 37.1984 s, 2.9 GB/s
+
+dd of=/dev/null if=~/mnt/100G.ooo bs=10M iflag=direct status=progress;
+--------1---------
+103955824640 bytes (104 GB, 97 GiB) copied, 31 s, 3.4 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 31.9622 s, 3.4 GB/s
+--------2---------
+104511569920 bytes (105 GB, 97 GiB) copied, 31 s, 3.4 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 31.7274 s, 3.4 GB/s
+--------3---------
+106776494080 bytes (107 GB, 99 GiB) copied, 32 s, 3.3 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 32.1641 s, 3.3 GB/s
+
+prefetch: 192, memory: 4096M
+
+dd of=/dev/null if=~/mnt/100G.ooo bs=1M iflag=direct status=progress;
+--------1---------
+104107868160 bytes (104 GB, 97 GiB) copied, 31 s, 3.4 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 31.9422 s, 3.4 GB/s
+--------2---------
+107284004864 bytes (107 GB, 100 GiB) copied, 31 s, 3.5 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 31.0249 s, 3.5 GB/s
+--------3---------
+105802366976 bytes (106 GB, 99 GiB) copied, 31 s, 3.4 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 31.438 s, 3.4 GB/s
+
+dd of=/dev/null if=~/mnt/100G.ooo bs=10M iflag=direct status=progress;
+--------1---------
+102508789760 bytes (103 GB, 95 GiB) copied, 19 s, 5.4 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 19.8481 s, 5.4 GB/s
+--------2---------
+102351503360 bytes (102 GB, 95 GiB) copied, 19 s, 5.4 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 19.8948 s, 5.4 GB/s
+--------3---------
+105025372160 bytes (105 GB, 98 GiB) copied, 19 s, 5.5 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 19.4061 s, 5.5 GB/s
+
+
+::Current implementation::
+
+prefetch: 32, memory: 1024M
+
+dd of=/dev/null if=~/mnt/100G.ooo bs=1M iflag=direct status=progress;
+--------1---------
+107027103744 bytes (107 GB, 100 GiB) copied, 35 s, 3.1 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 35.1041 s, 3.1 GB/s
+--------2---------
+105064169472 bytes (105 GB, 98 GiB) copied, 34 s, 3.1 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 34.77 s, 3.1 GB/s
+--------3---------
+105101918208 bytes (105 GB, 98 GiB) copied, 35 s, 3.0 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 35.7177 s, 3.0 GB/s
+
+
+dd of=/dev/null if=~/mnt/100G.ooo bs=10M iflag=direct status=progress;
+--------1---------
+105381888000 bytes (105 GB, 98 GiB) copied, 30 s, 3.5 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 30.5166 s, 3.5 GB/s
+--------2---------
+105035857920 bytes (105 GB, 98 GiB) copied, 29 s, 3.6 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 29.5998 s, 3.6 GB/s
+--------3---------
+99719577600 bytes (100 GB, 93 GiB) copied, 28 s, 3.6 GB/s^C
+9572+0 records in
+9571+0 records out
+100359208960 bytes (100 GB, 93 GiB) copied, 28.1861 s, 3.6 GB/s
+
+prefetch: 196, memory: 4096M
+
+dd of=/dev/null if=~/mnt/100G.ooo bs=1M iflag=direct status=progress;
+--------1---------
+104293466112 bytes (104 GB, 97 GiB) copied, 37 s, 2.8 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 37.9422 s, 2.8 GB/s
+--------2---------
+105919807488 bytes (106 GB, 99 GiB) copied, 33 s, 3.2 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 33.4259 s, 3.2 GB/s
+--------3---------
+104322826240 bytes (104 GB, 97 GiB) copied, 33 s, 3.2 GB/s
+102400+0 records in
+102400+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 33.9112 s, 3.2 GB/s
+
+
+dd of=/dev/null if=~/mnt/100G.ooo bs=10M iflag=direct status=progress;
+--------1---------
+107185438720 bytes (107 GB, 100 GiB) copied, 11 s, 9.7 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 11.0167 s, 9.7 GB/s
+--------2---------
+103672709120 bytes (104 GB, 97 GiB) copied, 17 s, 6.1 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 17.3538 s, 6.2 GB/s
+--------3---------
+100768153600 bytes (101 GB, 94 GiB) copied, 12 s, 8.4 GB/s
+10240+0 records in
+10240+0 records out
+107374182400 bytes (107 GB, 100 GiB) copied, 12.5957 s, 8.5 GB/s

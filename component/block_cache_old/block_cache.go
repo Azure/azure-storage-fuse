@@ -1996,5 +1996,5 @@ func initCLIflags() {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
-	internal.AddComponent(compName, NewBlockCacheComponent)
+	// internal.AddComponent(compName, NewBlockCacheComponent)
 }
