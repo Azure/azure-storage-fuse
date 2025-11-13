@@ -120,7 +120,13 @@ func getSyslogLevel(lvl common.LogLevel) syslog.Priority {
 func (l *SysLogger) write(lvl string, format string, args ...any) {
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+
+	// If log level is debug in config, add goroutine id in the log
+	if l.level >= common.ELogLevel.LOG_DEBUG() {
+		l.logger.Print("[", common.GetGID(), "][", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+	} else {
+		l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+	}
 }
 
 func (l *SysLogger) Debug(format string, args ...any) {
