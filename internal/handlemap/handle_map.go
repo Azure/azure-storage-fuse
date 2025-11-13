@@ -84,6 +84,7 @@ type Handle struct {
 	Flags    common.BitMap64 // Various states of the file
 	Path     string          // Always holds path relative to mount dir
 	values   map[string]any  // Map to hold other info if application wants to store
+	IFObj    any             // Interface object to hold any additional info
 }
 
 func NewHandle(path string) *Handle {
