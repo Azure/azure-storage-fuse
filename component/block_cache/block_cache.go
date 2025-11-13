@@ -40,6 +40,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -108,6 +109,7 @@ const (
 
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &BlockCache{}
+var bc *BlockCache
 
 func (bc *BlockCache) Name() string {
 	return compName
@@ -127,21 +129,21 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
 
-	// // If disk caching is enabled then start the disk eviction policy
-	// if bc.tmpPath != "" {
-	// 	err := bc.diskPolicy.Start()
-	// 	if err != nil {
-	// 		log.Err("BlockCache::Start : failed to start diskpolicy [%s]", err.Error())
-	// 		return fmt.Errorf("failed to start  disk-policy for block-cache")
-	// 	}
-	// }
+	if err := createFreeList(bc.blockSize, bc.memSize); err != nil {
+		log.Err("BlockCache::Start : fail to initialize buffer pool [%v]", err)
+		return fmt.Errorf("failed to start %s [%v]", bc.Name(), err)
+	}
 
+	NewWorkerPool(int(bc.workers))
+	NewBufferTableMgr()
 	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
+
+	destroyFreeList()
 
 	// Clear the disk cache on exit
 	// if bc.tmpPath != "" {
@@ -265,11 +267,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
-		log.Err("BlockCache::Configure : config error [memory limit: %d bytes too low for configured prefetch: %d]", bc.memSize, bc.prefetch)
-		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
-	}
-
 	if bc.tmpPath != "" {
 		// bc.diskPolicy, err = tlru.New(uint32((bc.diskSize)/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
 		// if err != nil {
@@ -285,34 +282,129 @@ func (bc *BlockCache) Configure(_ bool) error {
 }
 
 func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	log.Trace("BlockCache::GetAttr : %s", options.Name)
+	log.Trace("BlockCache::GetAttr : file: %s", options.Name)
 
-	return nil, syscall.ENOTSUP
+	attr, err := bc.NextComponent().GetAttr(options)
+	if err != nil {
+		return attr, err
+	}
+	// file stucture has more updated info than attribute cache/Azure storage, if the file is open
+	file, ok := checkFileExistsInOpen(options.Name)
+	if ok {
+		fileSize := atomic.LoadInt64(&file.size)
+		if fileSize != attr.Size {
+			// There has been a modification done on the file.
+			// Return new attribute with new file size.
+			// We dont want to update the value inside the attribute itself, as it changes the state of the attribute inside the attribute cache
+			newattr := *attr
+			newattr.Size = fileSize
+			return &newattr, nil
+		}
+	}
+
+	return attr, nil
 }
 
 // CreateFile: Create a new file
 func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
-	log.Trace("BlockCache::CreateFile : name: %s, mode: %d", options.Name, options.Mode)
+	log.Trace("BlockCache::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
+	_, err := bc.NextComponent().CreateFile(options)
+	if err != nil {
+		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
+		return nil, err
+	}
 
-	return nil, syscall.ENOTSUP
+	return bc.OpenFile(internal.OpenFileOptions{
+		Name:  options.Name,
+		Flags: os.O_RDWR | os.O_TRUNC, //TODO: Standard says to open in O_WRONLY|O_TRUNC due to the writeback cache I defaulted it, it shoudl be change in future
+		Mode:  options.Mode,
+	})
 }
 
 // OpenFile: Create a handle for the file user has requested to open
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("BlockCache::OpenFile : name: %s, flags: %X, mode: %s", options.Name, options.Flags, options.Mode)
+	log.Trace("BlockCache::OpenFile : name=%s, flags=%X, mode=%s", options.Name, options.Flags, options.Mode)
+	attr, err := bc.GetAttr(internal.GetAttrOptions{Name: options.Name})
+	if err != nil {
+		log.Err("BlockCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
+		return nil, err
+	}
 
-	return nil, syscall.ENOTSUP
+	f, firstOpen := getFileFromPath(options.Name)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.size == -1 {
+		f.size = attr.Size
+	}
+
+	if options.Flags&os.O_TRUNC != 0 {
+		f.size = 0
+		// TODO: Release all existing buffers to this file
+		f.blockList = newBlockList()
+	}
+
+	if f.size == 0 {
+		// This check would be helpful for newly created files
+		f.blockList.state = blockListValid
+	}
+
+	if f.size > 0 {
+		if (f.blockList.state == blockListNotRetrieved) && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
+			blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
+			if err != nil {
+				log.Err("BlockCache::OpenFile : Failed to get block list of %s, first_open: %v, curOpenHandles: %d, [%v]",
+					options.Name, firstOpen, len(f.handles), err)
+				return nil, err
+			}
+
+			err = validateBlockList(blkList, f)
+			if err != nil {
+				log.Err("BlockCache::OpenFile : Invalid block list for file: %s, first_open: %v, curOpenHandles: %d,  [%v]",
+					options.Name, firstOpen, len(f.handles), err)
+				f.blockList.state = blockListInvalid
+				deleteFileIfNoOpenHandles(options.Name)
+				return nil, err
+			} else {
+				f.blockList.state = blockListValid
+			}
+
+		} else {
+			updateBlockListForReadOnlyFile(f)
+		}
+	}
+
+	handle := createFreshHandleForFile(f.Name, f.size, attr.Mtime, options.Flags)
+	f.handles[handle] = struct{}{}
+	handle.IFObj = &blockCacheHandle{
+		file:            f,
+		patternDetector: newPatternDetector(),
+	}
+
+	return handle, nil
 }
 
 // ReadInBuffer: Read the file into a buffer
-func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	log.Trace("BlockCache::ReadInBuffer : name: %s, buf size: %d, offset: %d",
-		options.Handle.Path, len(options.Data), options.Offset)
-	return 0, syscall.ENOTSUP
+func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
+	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
+
+	log.Trace("BlockCache::ReadInBuffer : name: %s, buf size: %d, offset: %d, handle: %d",
+		options.Handle.Path, len(options.Data), options.Offset, options.Handle.ID)
+
+	// we schedule read-ahead per handle, rather than per file, to support multiple handles reading concurrently
+	// on the same file with different access patterns.
+	bcHandle.file.scheduleReadAhead(bcHandle.patternDetector, options.Offset)
+
+	n, err := bcHandle.file.read(options)
+	if err != nil {
+		log.Err("BlockCache::ReadInBuffer : Failed to read file %s at offset %d, size %d [%v]",
+			options.Handle.Path, options.Offset, len(options.Data), err)
+	}
+
+	return n, err
 }
 
 // WriteFile: Write to the local file
-func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	log.Debug("BlockCache::WriteFile : name: %s, buf size: %d, offset: %d",
 		options.Handle.Path, len(options.Data), options.Offset)
 
@@ -328,13 +420,17 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 // FlushFile: Flush the local file to storage
 func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("BlockCache::FlushFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
-	return syscall.ENOTSUP
+	deleteOpenHandleForFile(options.Handle)
+	freeList.debugListMustBeFull()
+
+	return nil
 }
 
-// CloseFile: File is closed by application so release all the blocks and submit back to blockPool
-func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("BlockCache::CloseFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
-	return syscall.ENOTSUP
+// ReleaseFile: all the FD's corresponding to this handle were closed by application so release all the blocks
+// and submit back to the pool.
+func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
+	log.Trace("BlockCache::ReleaseFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
+	return nil
 }
 
 // DeleteFile: Invalidate the file in local cache.
@@ -376,6 +472,7 @@ func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{
 		fileLocks: common.NewLockMap(),
 	}
+	bc = comp
 	comp.SetName(compName)
 	return comp
 }
