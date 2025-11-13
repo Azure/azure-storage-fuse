@@ -48,6 +48,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -582,4 +583,33 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	}
 
 	return pipeline
+}
+
+// Return the goroutine id of the current goroutine.
+// Example, goroutine 17 [running]: => return 17
+func GetGID() uint64 {
+	// Grab up to 64 bytes of the current goroutine’s stack
+	b := make([]byte, 64)
+
+	// Write the current goroutine’s stack trace into the byte buffer.
+	// Reslices bytes to only those n bytes (b = b[:n]), so you drop any unused capacity at the end of the buffer
+	// and work only with the real stack‐trace bytes.
+	b = b[:runtime.Stack(b, false)]
+
+	// Strip the literal “goroutine ” prefix
+	b = bytes.TrimPrefix(b, []byte("goroutine "))
+
+	// Find the first space (everything before it is the ID)
+	i := bytes.IndexByte(b, ' ')
+	if i < 0 {
+		return 0
+	}
+
+	// Parse those digits into a number
+	gid, err := strconv.ParseUint(string(b[:i]), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return gid
 }

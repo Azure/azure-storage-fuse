@@ -40,6 +40,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -472,4 +473,40 @@ func (s *utilTestSuite) TestUpdatePipeline() {
 	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "xload")
 	s.NotNil(pipeline)
 	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
+}
+
+// TestGetGIDBasic validates that GetGID returns a non-zero, stable goroutine id within
+// the same goroutine.
+func (s *utilTestSuite) TestGetGIDBasic() {
+	gid1 := GetGID()
+	s.Assert().Greater(gid1, uint64(0))
+	gid2 := GetGID()
+	s.Assert().Equal(gid1, gid2, "goroutine id should be stable within same goroutine")
+}
+
+// TestGetGIDConcurrency validates that concurrently obtained goroutine IDs are unique
+// for live goroutines.
+func (s *utilTestSuite) TestGetGIDConcurrency() {
+	const workers = 10
+	idsCh := make(chan uint64, workers)
+	var wg sync.WaitGroup
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			idsCh <- GetGID()
+		}()
+	}
+
+	wg.Wait()
+	close(idsCh)
+
+	idMap := make(map[uint64]struct{}, workers)
+	for id := range idsCh {
+		s.Assert().Greater(id, uint64(0))
+		idMap[id] = struct{}{}
+	}
+
+	s.Assert().Equal(workers, len(idMap), "expected unique goroutine ids equal to workers")
 }

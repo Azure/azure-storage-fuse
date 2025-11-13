@@ -219,14 +219,24 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...any) {
 	// Only log if the log level matches the log request
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	msg = fmt.Sprintf("%s : %s[%d] : [%s] %s [%s (%d)]: %s",
+
+	base := fmt.Sprintf("%s : %s[%d] : ",
 		time.Now().Format(time.UnixDate),
 		l.fileConfig.LogTag,
-		l.procPID,
+		l.procPID)
+
+	remaining := fmt.Sprintf("[%s] %s [%s (%d)]: %s",
 		common.MountPath,
 		lvl,
 		filepath.Base(fn), ln,
 		msg)
+
+	// If log level is debug in config, add goroutine id in the log
+	if l.fileConfig.LogLevel >= common.ELogLevel.LOG_DEBUG() {
+		msg = fmt.Sprintf("%s[%d]%s", base, common.GetGID(), remaining)
+	} else {
+		msg = fmt.Sprintf("%s%s", base, remaining)
+	}
 
 	l.channel <- msg
 }
