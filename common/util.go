@@ -585,9 +585,9 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	return pipeline
 }
 
-// Return the goroutine id of the current goroutine.
-// Example, goroutine 17 [running]: => return 17
-func GetGID() uint64 {
+// GetGoroutineID returns the goroutine id of the current goroutine.
+// Example: if the stack trace starts with "goroutine 17 [running]:", GetGoroutineID returns 17.
+func GetGoroutineID() uint64 {
 	// Grab up to 64 bytes of the current goroutine’s stack
 	b := make([]byte, 64)
 

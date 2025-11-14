@@ -475,18 +475,18 @@ func (s *utilTestSuite) TestUpdatePipeline() {
 	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 }
 
-// TestGetGIDBasic validates that GetGID returns a non-zero, stable goroutine id within
+// TestGetGoroutineIDBasic validates that GetGoroutineID returns a non-zero, stable goroutine id within
 // the same goroutine.
-func (s *utilTestSuite) TestGetGIDBasic() {
-	gid1 := GetGID()
+func (s *utilTestSuite) TestGetGoroutineIDBasic() {
+	gid1 := GetGoroutineID()
 	s.Assert().Greater(gid1, uint64(0))
-	gid2 := GetGID()
+	gid2 := GetGoroutineID()
 	s.Assert().Equal(gid1, gid2, "goroutine id should be stable within same goroutine")
 }
 
-// TestGetGIDConcurrency validates that concurrently obtained goroutine IDs are unique
+// TestGetGoroutineIDConcurrency validates that concurrently obtained goroutine IDs are unique
 // for live goroutines.
-func (s *utilTestSuite) TestGetGIDConcurrency() {
+func (s *utilTestSuite) TestGetGoroutineIDConcurrency() {
 	const workers = 10
 	idsCh := make(chan uint64, workers)
 	var wg sync.WaitGroup
@@ -495,7 +495,7 @@ func (s *utilTestSuite) TestGetGIDConcurrency() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			idsCh <- GetGID()
+			idsCh <- GetGoroutineID()
 		}()
 	}
 

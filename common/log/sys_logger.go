@@ -123,7 +123,7 @@ func (l *SysLogger) write(lvl string, format string, args ...any) {
 
 	// If log level is debug in config, add goroutine id in the log
 	if l.level >= common.ELogLevel.LOG_DEBUG() {
-		l.logger.Print("[", common.GetGID(), "][", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+		l.logger.Print("[", common.GetGoroutineID(), "][", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
 	} else {
 		l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
 	}
