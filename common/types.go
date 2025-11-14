@@ -53,6 +53,8 @@ const (
 	DefaultLogFileCount   = 10
 	FileSystemName        = "blobfuse2"
 
+	UnixDateMillis = "Mon Jan _2 15:04:05.000 MST 2006"
+
 	DefaultConfigFilePath = "config.yaml"
 
 	MaxConcurrency     = 40
