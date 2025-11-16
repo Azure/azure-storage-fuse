@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1762689770729,
+  "lastUpdate": 1763295564808,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1350,6 +1350,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.09540734954366666,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d2e3c8a69629afeda7e9b0d63074460fddbf8ca0",
+          "message": "Adding mlperf scripts (#2061)",
+          "timestamp": "2025-11-12T12:22:03Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d2e3c8a69629afeda7e9b0d63074460fddbf8ca0"
+        },
+        "date": 1763295564573,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "test",
+            "value": 3.5618784666666663,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write",
+            "value": 0.09180522874699999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.11447449653866666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.11255631449199999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.10807071232066667,
             "unit": "milliseconds"
           }
         ]
