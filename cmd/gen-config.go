@@ -170,6 +170,6 @@ func init() {
 		cmd.Println(err)
 		cmd.Println()
 		cmd.Help()
-		return err
+		return nil
 	})
 }
