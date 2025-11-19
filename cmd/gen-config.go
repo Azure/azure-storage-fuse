@@ -58,7 +58,7 @@ var optsGenCfg genConfigParams
 var generatedConfig = &cobra.Command{
 	Use:               "gen-config",
 	Short:             "Generate default config file.",
-	Long:              "Generate default config file with the values pre-caculated by blobfuse2.",
+	Long:              "Generate default config file with the values pre-calculated by blobfuse2.",
 	SuggestFor:        []string{"generate default config", "generate config"},
 	Hidden:            false,
 	Args:              cobra.ExactArgs(0),
@@ -66,7 +66,7 @@ var generatedConfig = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		// Show help if no flags are provided
-		if !cmd.Flags().Changed("tmp-path") && !cmd.Flags().Changed("block-cache") && !cmd.Flags().Changed("o") && !cmd.Flags().Changed("direct-io") && !cmd.Flags().Changed("ro") {
+		if cmd.Flags().NFlag() == 0 {
 			return cmd.Help()
 		}
 
