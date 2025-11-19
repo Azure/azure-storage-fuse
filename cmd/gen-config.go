@@ -36,6 +36,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -59,10 +60,15 @@ var generatedConfig = &cobra.Command{
 	Short:             "Generate default config file.",
 	Long:              "Generate default config file with the values pre-caculated by blobfuse2.",
 	SuggestFor:        []string{"generate default config", "generate config"},
-	Hidden:            true,
+	Hidden:            false,
 	Args:              cobra.ExactArgs(0),
-	FlagErrorHandling: cobra.ExitOnError,
+	FlagErrorHandling: cobra.ContinueOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
+
+		// Show help if no flags are provided
+		if !cmd.Flags().Changed("tmp-path") && !cmd.Flags().Changed("block-cache") && !cmd.Flags().Changed("o") && !cmd.Flags().Changed("direct-io") && !cmd.Flags().Changed("ro") {
+			return cmd.Help()
+		}
 
 		// Check if configTmp is not provided when component is fc
 		if (!optsGenCfg.blockCache) && optsGenCfg.tmpPath == "" {
@@ -135,6 +141,15 @@ var generatedConfig = &cobra.Command{
 			fmt.Println(sb.String())
 		} else {
 			err = common.WriteToFile(filePath, sb.String(), common.WriteToFileOptions{Flags: os.O_TRUNC, Permission: 0644})
+			if err == nil {
+				// Get absolute path to avoid showing ./
+				absPath, pathErr := filepath.Abs(filePath)
+				if pathErr != nil {
+					absPath = filePath
+				}
+
+				fmt.Printf("Generated config file: %s\n", absPath)
+			}
 		}
 
 		return err
@@ -149,4 +164,12 @@ func init() {
 	generatedConfig.Flags().BoolVar(&optsGenCfg.readOnly, "ro", false, "Mount in read-only mode")
 	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Temp cache path to be used")
 	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Output file location")
+
+	// Override the default error handler to show help on unknown flags
+	generatedConfig.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		cmd.Println(err)
+		cmd.Println()
+		cmd.Help()
+		return err
+	})
 }
