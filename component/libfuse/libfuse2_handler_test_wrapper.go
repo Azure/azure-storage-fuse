@@ -397,7 +397,7 @@ func testTruncate(suite *libfuseTestSuite) {
 	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
-	err := libfuse2_truncate(path, C.long(size))
+	err := libfuse2_truncate(path, C.off_t(size))
 	suite.assert.Equal(C.int(0), err)
 }
 
@@ -410,7 +410,7 @@ func testTruncateError(suite *libfuseTestSuite) {
 	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
-	err := libfuse2_truncate(path, C.long(size))
+	err := libfuse2_truncate(path, C.off_t(size))
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
