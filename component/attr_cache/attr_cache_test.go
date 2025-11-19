@@ -1292,6 +1292,57 @@ func (suite *attrCacheTestSuite) TestChown() {
 	}
 }
 
+func (suite *attrCacheTestSuite) TestInvalidatePathExt() {
+	defer suite.cleanupTest()
+
+	target := "foo/bar.txt"
+	addPathToCache(suite.assert, suite.attrCache, target, false)
+
+	suite.attrCache.InvalidatePathExt(target)
+
+	assertInvalid(suite, internal.TruncateDirName(target))
+}
+
+func (suite *attrCacheTestSuite) TestInvalidateDirExt() {
+	defer suite.cleanupTest()
+
+	root := "nested"
+	aPaths, abPaths, acPaths := addDirectoryToCache(suite.assert, suite.attrCache, root, false)
+
+	suite.attrCache.InvalidateDirExt(root)
+
+	for p := aPaths.Front(); p != nil; p = p.Next() {
+		assertInvalid(suite, p.Value.(string))
+	}
+	for p := abPaths.Front(); p != nil; p = p.Next() {
+		assertUntouched(suite, p.Value.(string))
+	}
+	for p := acPaths.Front(); p != nil; p = p.Next() {
+		assertUntouched(suite, p.Value.(string))
+	}
+}
+
+func TestAttrCacheItemFreshness(t *testing.T) {
+	item := newAttrCacheItem(&internal.ObjAttr{}, true, time.Now())
+
+	item.mu.Lock()
+	item.cachedAt = time.Now().Add(-2 * time.Second)
+	item.mu.Unlock()
+
+	if item.isFresh(1) {
+		t.Fatalf("expected stale item when cached beyond timeout")
+	}
+	if !item.expired(1) {
+		t.Fatalf("expected item to be expired when aged past timeout")
+	}
+	if !item.isFresh(0) {
+		t.Fatalf("timeout of zero should treat cache entry as always fresh")
+	}
+	if item.expired(0) {
+		t.Fatalf("timeout of zero should disable expiry checks")
+	}
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestAttrCacheTestSuite(t *testing.T) {
