@@ -46,6 +46,7 @@ const (
 	syncFile     = "SyncFile"
 	syncDir      = "SyncDir"
 	chmod        = "Chmod"
+	chown        = "Chown"
 
 	openHandles = "OpenFileHandles"
 	md          = "Mode"

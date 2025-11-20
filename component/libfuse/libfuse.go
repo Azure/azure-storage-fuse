@@ -66,6 +66,7 @@ type Libfuse struct {
 	allowRoot             bool
 	ownerUID              uint32
 	ownerGID              uint32
+	overrideUser          bool
 	traceEnable           bool
 	extensionPath         string
 	disableWritebackCache bool
@@ -247,6 +248,9 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 			log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
 			return nil
 		}
+
+		// User has not explicitly set any user/group in config
+		lf.overrideUser = false
 	}
 
 	if config.IsSet(compName + ".max-fuse-threads") {

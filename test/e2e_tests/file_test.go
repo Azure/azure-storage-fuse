@@ -44,6 +44,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -404,7 +405,7 @@ func (suite *fileTestSuite) TestFileGetStat() {
 }
 
 // # Change mod of file
-func (suite *fileTestSuite) TestFileChmod() {
+func (suite *fileTestSuite) TestFileChmodADLS() {
 	if suite.adlsTest {
 		fileName := suite.testPath + "/test"
 		f, err := os.Create(fileName)
@@ -419,6 +420,21 @@ func (suite *fileTestSuite) TestFileChmod() {
 
 		suite.fileTestCleanup([]string{fileName})
 	}
+}
+
+func (suite *fileTestSuite) TestFileChmod() {
+	fileName := suite.testPath + "/test"
+	f, err := os.Create(fileName)
+	suite.Equal(nil, err)
+	f.Close()
+
+	err = os.Chmod(fileName, 0744)
+	suite.Equal(nil, err)
+	stat, err := os.Stat(fileName)
+	suite.Equal(nil, err)
+	suite.Equal("-rwxr--r--", stat.Mode().Perm().String())
+
+	suite.fileTestCleanup([]string{fileName})
 }
 
 // # Create multiple med files
@@ -671,6 +687,44 @@ func (suite *fileTestSuite) TestRenameSpecial() {
 
 	err = os.RemoveAll(newDirName)
 	suite.NoError(err)
+}
+
+func (suite *fileTestSuite) TestFileChown() {
+	if suite.adlsTest {
+		fileName := suite.testPath + "/test"
+		f, err := os.Create(fileName)
+		suite.Equal(nil, err)
+		f.Close()
+
+		err = os.Chown(fileName, 1000, 1000)
+		suite.Equal(nil, err)
+		info, err := os.Stat(fileName)
+		stat := info.Sys().(*syscall.Stat_t)
+		suite.Equal(nil, err)
+		suite.Equal(1000, stat.Uid)
+		suite.Equal(1000, stat.Gid)
+
+		suite.fileTestCleanup([]string{fileName})
+	}
+}
+
+func (suite *fileTestSuite) TestFileChownADLS() {
+	if suite.adlsTest {
+		fileName := suite.testPath + "/test"
+		f, err := os.Create(fileName)
+		suite.Equal(nil, err)
+		f.Close()
+
+		err = os.Chown(fileName, 1000, 1000)
+		suite.Equal(nil, err)
+		info, err := os.Stat(fileName)
+		stat := info.Sys().(*syscall.Stat_t)
+		suite.Equal(nil, err)
+		suite.Equal(1000, stat.Uid)
+		suite.Equal(1000, stat.Gid)
+
+		suite.fileTestCleanup([]string{fileName})
+	}
 }
 
 // -------------- Main Method -------------------

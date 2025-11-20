@@ -195,6 +195,7 @@ type AzStorageOptions struct {
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
 	Filter                  string `config:"filter" yaml:"filter"`
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
+	posixCompliance         bool   `config:"posix" yaml:"posix-compliance"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -313,6 +314,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	if opt.AccountType == "" {
 		opt.AccountType = "block"
 	}
+
+	_ = config.UnmarshalKey("posix", &az.stConfig.posixCompliance)
 
 	if config.IsSet(compName + ".use-adls") {
 		if opt.UseAdls {
