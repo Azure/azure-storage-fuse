@@ -42,7 +42,10 @@ package libfuse
 // #cgo LDFLAGS: -lfuse -ldl
 // #include "libfuse_wrapper.h"
 // #include "extension_handler.h"
+// #include <stdint.h>
+// #include <sys/types.h>
 import "C"
+
 import (
 	"errors"
 	"fmt"
@@ -311,7 +314,7 @@ func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
 	(*stbuf).st_uid = C.uint(lf.ownerUID)
 	(*stbuf).st_gid = C.uint(lf.ownerGID)
 	(*stbuf).st_nlink = 1
-	(*stbuf).st_size = C.long(attr.Size)
+	(*stbuf).st_size = C.off_t(attr.Size)
 
 	// Populate mode
 	// Backing storage implementation has support for mode.
@@ -407,11 +410,11 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 	if populated {
 		(*buf).f_bsize = C.ulong(attr.Bsize)
 		(*buf).f_frsize = C.ulong(attr.Frsize)
-		(*buf).f_blocks = C.ulong(attr.Blocks)
-		(*buf).f_bavail = C.ulong(attr.Bavail)
-		(*buf).f_bfree = C.ulong(attr.Bfree)
-		(*buf).f_files = C.ulong(attr.Files)
-		(*buf).f_ffree = C.ulong(attr.Ffree)
+		(*buf).f_blocks = C.__fsblkcnt64_t(attr.Blocks)
+		(*buf).f_bavail = C.__fsblkcnt64_t(attr.Bavail)
+		(*buf).f_bfree = C.__fsblkcnt64_t(attr.Bfree)
+		(*buf).f_files = C.__fsblkcnt64_t(attr.Files)
+		(*buf).f_ffree = C.__fsblkcnt64_t(attr.Ffree)
 		(*buf).f_flag = C.ulong(attr.Flags)
 		return 0
 	}
@@ -474,7 +477,7 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	})
 
 	handlemap.Add(handle)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(handle)))
 	return 0
 }
 
@@ -544,7 +547,7 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 	}
 
 	stbuf := C.stat_t{}
-	idx := C.long(off)
+	idx := C.off_t(off)
 
 	// Populate the stat by calling filler
 	for segmentIdx := off_64 - cacheInfo.sIndex; segmentIdx < cacheInfo.length; segmentIdx++ {
@@ -615,12 +618,12 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), 0)
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), 0)
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
 	log.Trace("Libfuse::libfuse2_create : %s, handle %d", name, handle.ID)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	libfuseStatsCollector.PushEvents(createFile, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
 
@@ -652,7 +655,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	handle, err := fuseFS.NextComponent().OpenFile(
 		internal.OpenFileOptions{
 			Name:  name,
-			Flags: int(int(fi.flags) & 0xffffffff),
+			Flags: int(fi.flags),
 			Mode:  fs.FileMode(fuseFS.filePermission),
 		})
 
@@ -668,12 +671,12 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
 	log.Trace("Libfuse::libfuse2_open : %s, handle %d", name, handle.ID)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
