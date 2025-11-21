@@ -159,11 +159,14 @@ var generatedConfig = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(generatedConfig)
 
-	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Block-Cache shall be used as caching strategy")
-	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Direct-io mode shall be used")
-	generatedConfig.Flags().BoolVar(&optsGenCfg.readOnly, "ro", false, "Mount in read-only mode")
-	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Temp cache path to be used")
-	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Output file location")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Generate config file for streaming with block-cache mode")
+	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Generate config file for file-cache mode, string specifies temp cache path")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Generate config file for direct-io mode without any caching")
+	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Specifies location for generated config file, default is current directory")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.readOnly, "ro", false, "Mount in read-only mode; can be used along with block-cache, file-cache and direct-io")
+
+	// Disable flag sorting to preserve the order defined above
+	generatedConfig.Flags().SortFlags = false
 
 	// Override the default error handler to show help on unknown flags
 	generatedConfig.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
