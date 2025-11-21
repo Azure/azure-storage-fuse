@@ -6,22 +6,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ "main" ]
-    paths-ignore:
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'MIGRATION.md'
-      - 'SECURITY.md'
-      - 'NOTICE'
-      - 'setup/readme.md'
   pull_request:
     branches: [ "main" ]
-    paths-ignore:
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'MIGRATION.md'
-      - 'SECURITY.md'
-      - 'NOTICE'
-      - 'setup/readme.md'
 
 permissions:
   contents: read

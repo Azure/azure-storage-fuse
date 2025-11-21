@@ -14,22 +14,8 @@ name: "CodeQL"
 on:
   pull_request:
     branches: [ main ]
-    paths-ignore:
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'MIGRATION.md'
-      - 'SECURITY.md'
-      - 'NOTICE'
-      - 'setup/readme.md'
   push:
     branches: [ main ]
-    paths-ignore:
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'MIGRATION.md'
-      - 'SECURITY.md'
-      - 'NOTICE'
-      - 'setup/readme.md'
 
 jobs:
   analyze:
