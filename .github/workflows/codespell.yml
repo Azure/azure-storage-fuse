@@ -7,10 +7,24 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'MIGRATION.md'
+      - 'SECURITY.md'
+      - 'NOTICE'
+      - 'setup/readme.md'
   pull_request:
     branches:
       - main
       - blobfuse/2.*
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'MIGRATION.md'
+      - 'SECURITY.md'
+      - 'NOTICE'
+      - 'setup/readme.md'
 jobs:
   codespell:
     name: Check for spelling errors
