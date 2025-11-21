@@ -338,7 +338,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	if opt.BlockSize != 0 {
 		if opt.BlockSize > blockblob.MaxStageBlockBytes {
-			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes", blockblob.MaxStageBlockBytes)
+			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %d Bytes",
+				int64(blockblob.MaxStageBlockBytes))
 			return errors.New("block size is too large")
 		}
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
