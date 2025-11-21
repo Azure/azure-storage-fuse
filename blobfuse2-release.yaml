@@ -604,9 +604,11 @@ stages:
                 ls -l $(Build.ArtifactStagingDirectory)
                 rm -rf ./blobfuse2*Debian-*.deb
               else
-                echo "Generating for Debian 11"
+                echo "Generating for Debian 11/12/13"
                 f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Ubuntu-20.04:Debian-11.0:' <<< "$f")
+                cp "$f" $(sed 's:Ubuntu-20.04:Debian-12.0:' <<< "$f")
+                cp "$f" $(sed 's:Ubuntu-20.04:Debian-13.0:' <<< "$f")
                 cp ./blobfuse2*Debian-*.deb $(Build.ArtifactStagingDirectory)
                 ls -l $(Build.ArtifactStagingDirectory)
                 rm -rf ./blobfuse2*Debian-*.deb
