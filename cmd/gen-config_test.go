@@ -63,7 +63,7 @@ func (suite *genConfig) getDefaultLogLocation() string {
 func (suite *genConfig) TestNoTempPath() {
 	defer suite.cleanupTest()
 
-	_, err := executeCommandC(rootCmd, "gen-config")
+	_, err := executeCommandC(rootCmd, "gen-config", "-o", "./blobfuse2.yaml")
 	suite.assert.Error(err)
 }
 
