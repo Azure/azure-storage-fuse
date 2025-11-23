@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1763297511982,
+  "lastUpdate": 1763902246521,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1117,6 +1117,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_1l_files_in_20_threads",
             "value": 0.064453125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f17c24583d29f72cf67eb652d27f482f87ecdc9f",
+          "message": "Build support for arm32 (#2068)",
+          "timestamp": "2025-11-21T09:53:19Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/f17c24583d29f72cf67eb652d27f482f87ecdc9f"
+        },
+        "date": 1763902246274,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 83.998046875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 95.0927734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0.0712890625,
             "unit": "MiB/s"
           }
         ]
