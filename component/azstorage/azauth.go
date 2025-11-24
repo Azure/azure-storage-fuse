@@ -233,3 +233,28 @@ func (base *azOAuthBase) getAzIdentityClientOptions(config *azAuthConfig) azcore
 
 	return opts
 }
+
+// shouldDisableInstanceDiscovery determines if instance discovery should be disabled.
+// Instance discovery should be disabled for non-public clouds (e.g., China, Government)
+// or when a custom Active Directory endpoint is specified to prevent the SDK from
+// querying the public cloud metadata endpoint.
+func (base *azOAuthBase) shouldDisableInstanceDiscovery(config *azAuthConfig) bool {
+	if config == nil {
+		return false
+	}
+
+	// Disable instance discovery for non-public clouds
+	cloudConfig := getCloudConfiguration(config.Endpoint)
+	if cloudConfig.ActiveDirectoryAuthorityHost != cloud.AzurePublic.ActiveDirectoryAuthorityHost {
+		log.Debug("azAuthBase::shouldDisableInstanceDiscovery : Disabling instance discovery for non-public cloud")
+		return true
+	}
+
+	// Disable instance discovery if custom Active Directory endpoint is specified
+	if config.ActiveDirectoryEndpoint != "" && config.ActiveDirectoryEndpoint != cloud.AzurePublic.ActiveDirectoryAuthorityHost {
+		log.Debug("azAuthBase::shouldDisableInstanceDiscovery : Disabling instance discovery for custom AD endpoint")
+		return true
+	}
+
+	return false
+}
