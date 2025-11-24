@@ -34,6 +34,8 @@
 package azstorage
 
 import (
+	"strings"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -251,9 +253,14 @@ func (base *azOAuthBase) shouldDisableInstanceDiscovery(config *azAuthConfig) bo
 	}
 
 	// Disable instance discovery if custom Active Directory endpoint is specified
-	if config.ActiveDirectoryEndpoint != "" && config.ActiveDirectoryEndpoint != cloud.AzurePublic.ActiveDirectoryAuthorityHost {
-		log.Debug("azAuthBase::shouldDisableInstanceDiscovery : Disabling instance discovery for custom AD endpoint")
-		return true
+	// Normalize by removing trailing slashes for comparison
+	if config.ActiveDirectoryEndpoint != "" {
+		normalizedCustomEndpoint := strings.TrimSuffix(config.ActiveDirectoryEndpoint, "/")
+		normalizedPublicEndpoint := strings.TrimSuffix(cloud.AzurePublic.ActiveDirectoryAuthorityHost, "/")
+		if normalizedCustomEndpoint != normalizedPublicEndpoint {
+			log.Debug("azAuthBase::shouldDisableInstanceDiscovery : Disabling instance discovery for custom AD endpoint")
+			return true
+		}
 	}
 
 	return false

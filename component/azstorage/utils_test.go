@@ -574,6 +574,13 @@ func (suite *utilsTestSuite) TestShouldDisableInstanceDiscovery() {
 			activeDirectoryEndpoint:  "https://login.microsoftonline.com/",
 			expectedDisableDiscovery: false,
 		},
+		// Public cloud with public AD endpoint without trailing slash - should NOT disable
+		{
+			name:                     "Public cloud with public AD endpoint no trailing slash",
+			endpoint:                 "https://account.blob.core.windows.net",
+			activeDirectoryEndpoint:  "https://login.microsoftonline.com",
+			expectedDisableDiscovery: false,
+		},
 	}
 
 	base := azOAuthBase{}
