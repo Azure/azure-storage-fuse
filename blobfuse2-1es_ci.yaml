@@ -13,7 +13,12 @@ pr:
     - MIGRATION.md
     - SECURITY.md
     - NOTICE
+    - LICENSE
+    - CODE_OF_CONDUCT.md
+    - TSG.md
     - setup/readme.md
+    - doc/**
+    - guide/**
 
 resources:
   repositories:
