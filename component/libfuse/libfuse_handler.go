@@ -681,7 +681,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
 	// Mask out SYNC and DIRECT flags since write operation will fail
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
-		log.Info("Libfuse::libfuse_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
+		log.Info("Libfuse::libfuse_open : Reset flags for open %s, fi.flags: (%X)%s",
+			name, fi.flags, common.PrettyOpenFlags(int(fi.flags)))
 		// Blobfuse2 does not support the SYNC or DIRECT flag. If a user application passes this flag on to blobfuse2
 		// and we open the file with this flag, subsequent write operations will fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.
@@ -692,12 +693,14 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	if !fuseFS.disableWritebackCache {
 		if fi.flags&C.O_ACCMODE == C.O_WRONLY || fi.flags&C.O_APPEND != 0 {
 			if fuseFS.ignoreOpenFlags {
-				log.Warn("Libfuse::libfuse_open : Flags (%X) not supported to open %s when write back cache is on. Ignoring unsupported flags.", fi.flags, name)
+				log.Warn("Libfuse::libfuse_open : Flags: (%X)%s not supported to open %s when write back cache is on. Ignoring unsupported flags.",
+					fi.flags, common.PrettyOpenFlags(int(fi.flags)), name)
 				// O_ACCMODE disables both RDONLY, WRONLY and RDWR flags
 				fi.flags = fi.flags &^ (C.O_APPEND | C.O_ACCMODE)
 				fi.flags = fi.flags | C.O_RDWR
 			} else {
-				log.Err("Libfuse::libfuse_open : Flag (%X) not supported to open %s when write back cache is on. Pass --disable-writeback-cache=true or --ignore-open-flags=true via CLI", fi.flags, name)
+				log.Err("Libfuse::libfuse_open : Flags: (%X)%s not supported to open %s when write back cache is on. Pass --disable-writeback-cache=true or --ignore-open-flags=true via CLI",
+					fi.flags, common.PrettyOpenFlags(int(fi.flags)), name)
 				return -C.EINVAL
 			}
 		}
