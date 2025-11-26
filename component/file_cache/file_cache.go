@@ -344,8 +344,14 @@ func (fc *FileCache) Configure(_ bool) error {
 		fc.diskHighWaterMark = (((fc.maxCacheSize * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
-	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
-		fc.createEmptyFile, int(fc.cacheTimeout), fc.tmpPath, int(fc.maxCacheSize), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), fc.refreshSec, cacheConfig.maxEviction, fc.hardLimit, conf.Policy, fc.allowNonEmpty, conf.CleanupOnStart, fc.policyTrace, fc.offloadIO, fc.syncToFlush, fc.syncToDelete, fc.defaultPermission, fc.diskHighWaterMark, fc.maxCacheSize, fc.mountPath)
+	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, "+
+		"low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, "+
+		"cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, "+
+		"diskHighWaterMark %v, maxCacheSize %v, lazy-write %v, mountPath %v",
+		fc.createEmptyFile, int(fc.cacheTimeout), fc.tmpPath, int(fc.maxCacheSize), int(cacheConfig.highThreshold),
+		int(cacheConfig.lowThreshold), fc.refreshSec, cacheConfig.maxEviction, fc.hardLimit, conf.Policy, fc.allowNonEmpty,
+		conf.CleanupOnStart, fc.policyTrace, fc.offloadIO, fc.syncToFlush, fc.syncToDelete, fc.defaultPermission,
+		fc.diskHighWaterMark, fc.maxCacheSize, fc.lazyWrite, fc.mountPath)
 
 	return nil
 }
