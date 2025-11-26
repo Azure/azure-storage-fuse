@@ -172,7 +172,9 @@ func init() {
 	generatedConfig.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		cmd.Println(err)
 		cmd.Println()
-		cmd.Help()
+		if helpErr := cmd.Help(); helpErr != nil {
+			cmd.PrintErrln("Failed to display help:", helpErr)
+		}
 		return nil
 	})
 }
