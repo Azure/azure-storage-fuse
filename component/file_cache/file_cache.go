@@ -899,7 +899,8 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 
 // OpenFile: Makes the file available in the local cache for further file operations.
 func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("FileCache::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
+	log.Trace("FileCache::OpenFile : name=%s, flags=%s, mode=%s",
+		options.Name, common.PrettyOpenFlags(options.Flags), options.Mode)
 
 	localPath := filepath.Join(fc.tmpPath, options.Name)
 	var f *os.File
