@@ -388,7 +388,8 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 
 // OpenFile: Create a handle for the file user has requested to open
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("BlockCache::OpenFile : name=%s, flags=%X, mode=%s", options.Name, options.Flags, options.Mode)
+	log.Trace("BlockCache::OpenFile : name=%s, flags=%s, mode=%s",
+		options.Name, common.PrettyOpenFlags(options.Flags), options.Mode)
 
 	attr, err := bc.NextComponent().GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
@@ -1957,7 +1958,7 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
-	statfs.Frsize = int64(bc.blockSize)
+	common.SetFrsize(statfs, bc.blockSize)
 	statfs.Blocks = uint64(maxCacheSize) / uint64(bc.blockSize)
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(bc.blockSize)
 	statfs.Bfree = statfs.Bavail

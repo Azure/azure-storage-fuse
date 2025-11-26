@@ -1,0 +1,75 @@
+# Compile blobfuse2 binary for ARM32 and test it using qemu-userpace.
+# TODO: Integrate go unit tests, skipping this for now.
+name: ARM32 Build & Test (with libfuse armhf)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  armhf:
+    name: Build & Test (armhf + libfuse)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup apt (install prerequisites)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-user qemu-user-static \
+            gcc-arm-linux-gnueabihf \
+            g++-arm-linux-gnueabihf \
+            libc6-dev-armhf-cross \
+            wget \
+            dpkg \
+            ca-certificates
+
+      - name: Download libfuse3 armhf runtime + dev packages
+        run: |
+          mkdir -p deps/stage
+          mkdir -p deps/tmpfuse
+          cd deps
+          # Install dev version for headers to link with blobfuse2
+          wget https://old-releases.ubuntu.com/ubuntu/pool/main/f/fuse3/libfuse3-dev_3.14.0-4_armhf.deb
+          dpkg-deb -x libfuse3-dev_3.14.0-4_armhf.deb ./stage
+
+          # libfuse3 downlaod
+          wget -c https://old-releases.ubuntu.com/ubuntu/pool/main/f/fuse3/libfuse3-3_3.14.0-4_armhf.deb
+          dpkg-deb -x libfuse3-3_3.14.0-4_armhf.deb tmpfuse
+          ls -la
+          find .
+
+      - name: Setup Go (cache modules)
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.1'
+
+      - name: Build ARM binary (cross-compile with sysroot includes)
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: 7
+          CGO_ENABLED: 1
+          CC: arm-linux-gnueabihf-gcc
+          CGO_CFLAGS: "-I${{ github.workspace }}/deps/stage/usr/include"
+          CGO_LDFLAGS: '-L${{ github.workspace }}/deps/stage/usr/lib/arm-linux-gnueabihf -lfuse3'
+        run: |
+          # build the main binary (adjust output/name/path as needed)
+          echo "Building ARM binary..."
+          go build -v -o blobfuse2-arm
+          file blobfuse2-arm
+
+      - name: Run the blobfuse-arm binary
+        run: |
+          # ensure qemu uses the sysroot that contains ld-linux-armhf.so.3
+          LD_LIBRARY_PATH=${{ github.workspace }}/deps/stage/usr/lib/arm-linux-gnueabihf qemu-arm -L /usr/arm-linux-gnueabihf/ ./blobfuse2-arm --version
