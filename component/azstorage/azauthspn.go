@@ -57,18 +57,15 @@ func (azspn *azAuthSPN) getTokenCredential() (azcore.TokenCredential, error) {
 	var err error
 
 	clOpts := azspn.getAzIdentityClientOptions(&azspn.config)
-	disableInstanceDiscovery := azspn.shouldDisableInstanceDiscovery(&azspn.config)
-
 	if azspn.config.OAuthTokenFilePath != "" {
 		log.Trace("AzAuthSPN::getTokenCredential : Going for fedrated token flow")
 
 		// TODO:: track2 : test this in Azure Kubernetes setup
 		cred, err = azidentity.NewWorkloadIdentityCredential(&azidentity.WorkloadIdentityCredentialOptions{
-			ClientOptions:            clOpts,
-			ClientID:                 azspn.config.ClientID,
-			TenantID:                 azspn.config.TenantID,
-			TokenFilePath:            azspn.config.OAuthTokenFilePath,
-			DisableInstanceDiscovery: disableInstanceDiscovery,
+			ClientOptions: clOpts,
+			ClientID:      azspn.config.ClientID,
+			TenantID:      azspn.config.TenantID,
+			TokenFilePath: azspn.config.OAuthTokenFilePath,
 		})
 		if err != nil {
 			log.Err("AzAuthSPN::getTokenCredential : Failed to generate token for SPN [%s]", err.Error())
@@ -83,10 +80,7 @@ func (azspn *azAuthSPN) getTokenCredential() (azcore.TokenCredential, error) {
 			func(ctx context.Context) (string, error) {
 				return azspn.config.WorkloadIdentityToken, nil
 			},
-			&azidentity.ClientAssertionCredentialOptions{
-				ClientOptions:            clOpts,
-				DisableInstanceDiscovery: disableInstanceDiscovery,
-			})
+			&azidentity.ClientAssertionCredentialOptions{})
 		if err != nil {
 			log.Err("AzAuthSPN::getTokenCredential : Failed to generate token for SPN [%s]", err.Error())
 			return nil, err
@@ -95,8 +89,7 @@ func (azspn *azAuthSPN) getTokenCredential() (azcore.TokenCredential, error) {
 		log.Trace("AzAuthSPN::getTokenCredential : Using client secret for fetching token")
 
 		cred, err = azidentity.NewClientSecretCredential(azspn.config.TenantID, azspn.config.ClientID, azspn.config.ClientSecret, &azidentity.ClientSecretCredentialOptions{
-			ClientOptions:            clOpts,
-			DisableInstanceDiscovery: disableInstanceDiscovery,
+			ClientOptions: clOpts,
 		})
 		if err != nil {
 			log.Err("AzAuthSPN::getTokenCredential : Failed to generate token for SPN [%s]", err.Error())

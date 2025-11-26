@@ -55,7 +55,6 @@ type azAuthWorkloadIdentity struct {
 
 func (azWorkloadIdentity *azAuthWorkloadIdentity) getTokenCredential() (azcore.TokenCredential, error) {
 	opts := azWorkloadIdentity.getAzIdentityClientOptions(&azWorkloadIdentity.config)
-	disableInstanceDiscovery := azWorkloadIdentity.shouldDisableInstanceDiscovery(&azWorkloadIdentity.config)
 
 	// Create MSI cred to fetch token
 	msiOpts := &azidentity.ManagedIdentityCredentialOptions{
@@ -88,8 +87,7 @@ func (azWorkloadIdentity *azAuthWorkloadIdentity) getTokenCredential() (azcore.T
 
 	if azWorkloadIdentity.config.UserAssertion == "" {
 		assertOpts := &azidentity.ClientAssertionCredentialOptions{
-			ClientOptions:            opts,
-			DisableInstanceDiscovery: disableInstanceDiscovery,
+			ClientOptions: opts,
 		}
 
 		return azidentity.NewClientAssertionCredential(
@@ -99,8 +97,7 @@ func (azWorkloadIdentity *azAuthWorkloadIdentity) getTokenCredential() (azcore.T
 			assertOpts)
 	} else {
 		assertOpts := &azidentity.OnBehalfOfCredentialOptions{
-			ClientOptions:            opts,
-			DisableInstanceDiscovery: disableInstanceDiscovery,
+			ClientOptions: opts,
 		}
 
 		return azidentity.NewOnBehalfOfCredentialWithClientAssertions(
