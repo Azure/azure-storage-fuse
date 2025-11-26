@@ -3,7 +3,22 @@ trigger: none
 
 # Execute this for every PR on main
 pr:
-- main
+  branches:
+    include:
+    - main
+  paths:
+    exclude:
+    - README.md
+    - CHANGELOG.md
+    - MIGRATION.md
+    - SECURITY.md
+    - NOTICE
+    - LICENSE
+    - CODE_OF_CONDUCT.md
+    - TSG.md
+    - setup/readme.md
+    - doc/**
+    - guide/**
 
 resources:
   repositories:
