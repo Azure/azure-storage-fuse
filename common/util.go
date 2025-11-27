@@ -583,3 +583,44 @@ func UpdatePipeline(pipeline []string, component string) []string {
 
 	return pipeline
 }
+
+var openFlagNames = []struct {
+	flag int
+	name string
+}{
+	{os.O_RDONLY, "O_RDONLY"},
+	{os.O_WRONLY, "O_WRONLY"},
+	{os.O_RDWR, "O_RDWR"},
+	{os.O_APPEND, "O_APPEND"},
+	{os.O_CREATE, "O_CREATE"},
+	{os.O_EXCL, "O_EXCL"},
+	{os.O_SYNC, "O_SYNC"},
+	{os.O_TRUNC, "O_TRUNC"},
+}
+
+func PrettyOpenFlags(f int) string {
+	// Access mode is mutually exclusive, so handle separately
+	access := f & (os.O_RDONLY | os.O_WRONLY | os.O_RDWR)
+
+	out := []string{}
+	switch access {
+	case os.O_RDONLY:
+		out = append(out, "O_RDONLY")
+	case os.O_WRONLY:
+		out = append(out, "O_WRONLY")
+	case os.O_RDWR:
+		out = append(out, "O_RDWR")
+	}
+
+	// Check remaining flags
+	for _, item := range openFlagNames {
+		if item.flag == os.O_RDONLY || item.flag == os.O_WRONLY || item.flag == os.O_RDWR {
+			continue // skip access flags already handled
+		}
+		if f&item.flag != 0 {
+			out = append(out, item.name)
+		}
+	}
+
+	return fmt.Sprintf("[%s]", strings.Join(out, " | "))
+}
