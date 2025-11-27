@@ -1,6 +1,7 @@
 ## 2.5.2 (Unreleased)
 **Features**
 - Add Build Support for arm 32bit.([PR #2068](https://github.com/Azure/azure-storage-fuse/pull/2068))
+- Added Debian 13 (trixie) support for package installation.([#2064](https://github.com/Azure/azure-storage-fuse/issues/2064))
 
 **Bug Fixes**
 
