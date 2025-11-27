@@ -445,7 +445,9 @@ func (xl *Xload) downloadFile(fileName string) error {
 
 // OpenFile: Download the file if not already downloaded and return the file handle
 func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("Xload::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
+	log.Trace("Xload::OpenFile : name=%s, flags=%s, mode=%s",
+		options.Name, common.PrettyOpenFlags(options.Flags), options.Mode)
+
 	localPath := filepath.Join(xl.path, options.Name)
 
 	flock := xl.fileLocks.Get(options.Name)
