@@ -380,7 +380,7 @@ func init() {
 	allowOther := config.AddBoolFlag("allow-other", false, "Allow other users to access this mount point.")
 	config.BindPFlag("allow-other", allowOther)
 
-	disableWritebackCache := config.AddBoolFlag("disable-writeback-cache", false, "Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.")
+	disableWritebackCache := config.AddBoolFlag("disable-writeback-cache", true, "Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.")
 	config.BindPFlag(compName+".disable-writeback-cache", disableWritebackCache)
 
 	debug := config.AddBoolPFlag("d", false, "Mount with foreground and FUSE logs on.")
