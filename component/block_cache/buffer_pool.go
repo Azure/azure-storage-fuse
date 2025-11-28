@@ -14,6 +14,7 @@ import (
 // length bufSize.
 type BufferPool struct {
 	pool       sync.Pool    // sync.Pool to relieve GC
+	zeroBuf    []byte       // read only, zero buffer of size bufSize
 	bufSize    int          // size of buffers in this pool
 	maxBuffers int64        // max allocated buffers allowed
 	curBuffers atomic.Int64 // buffers currently allocated
@@ -31,6 +32,7 @@ func initBufferPool(bufSize uint64, maxBuffers uint64) *BufferPool {
 				return make([]byte, bufSize)
 			},
 		},
+		zeroBuf:    make([]byte, bufSize),
 		bufSize:    int(bufSize),
 		maxBuffers: int64(maxBuffers),
 	}
@@ -70,4 +72,8 @@ func (bufPool *BufferPool) PutBuffer(buf []byte) {
 	buf = buf[:bufPool.bufSize]
 
 	bufPool.pool.Put(buf)
+}
+
+func (bufPool *BufferPool) GetZeroBuffer() []byte {
+	return bufPool.zeroBuf
 }
