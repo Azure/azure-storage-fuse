@@ -15,6 +15,29 @@ parameters:
     default: false
 
 steps:
+  # fsx is a stress testing utility for filesystem, which will perform many filesystem operations and report any error if file is getting corrupted.
+  # This utility is present in xfstests repo.
+  - script: |
+      sudo apt update -y
+      sudo apt-get install -y --no-install-recommends \
+        acl attr automake bc dbench dump e2fsprogs fio gawk \
+        gcc git indent libacl1-dev libaio-dev libcap-dev \
+        libgdbm-dev libgdbm-compat-dev libtool libtool-bin \
+        liburing-dev libuuid-dev lvm2 make psmisc python3 \
+        quota sed xfsprogs sqlite3 pkg-config \
+        exfatprogs f2fs-tools ocfs2-tools udftools xfsdump \
+        xfslibs-dev perl dmsetup jq
+
+      echo "Cloning xfstests repository..."
+      git clone https://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git
+      cd xfstests-dev
+      echo "Building xfstests..."
+      make
+      sudo make install
+      echo "Copying fsx to /bin"
+      sudo cp ltp/fsx /usr/local/bin/
+    displayName: 'Install xfstests'
+
     # Generate config file for file cache
   - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
     - script: |
@@ -55,7 +78,7 @@ steps:
 
   - script:
       go test -v ./test/scenarios -mountpoints="$(MOUNT_DIR),$(WORK_DIR)/t1"
-    displayName: 'Run Scenarios'
+    displayName: 'Run custom Scenarios'
 
   - template: 'mount.yml'
     parameters:
@@ -67,6 +90,22 @@ steps:
   - script:
       go test -v ./test/scenarios -mountpoints="$(MOUNT_DIR),$(WORK_DIR)/t1" -mount-point-direct-io=true
     displayName: 'Run Scenarios'
+
+  - script:
+       ./fsx -R -W -N 1000 ~/mnt/fsx.test.file
+    displayName: 'fsx-fileSize:256K-ops:1000'
+
+  - script:
+       ./fsx -R -W -N 10000  -l $((1024*1024*16)) ~/mnt/fsx.test.file
+    displayName: 'fsx-fileSize:16M-ops:10000'
+
+  - script:
+       ./fsx -R -W -N 10000  -l $((1024*1024*100)) ~/mnt/fsx.test.file
+    displayName: 'fsx-fileSize:100M-ops:10000'
+
+  - script:
+       ./fsx -R -W -N 10000  -l $((1024*1024*1024)) ~/mnt/fsx.test.file
+    displayName: 'fsx-fileSize:1G-ops:10000'
     
   # -----------------------------------------------------------------------------
   - task: PublishBuildArtifacts@1
@@ -78,5 +117,10 @@ steps:
   - script: |
       tail -n 5000 blobfuse2-logs.txt
     displayName: 'View Logs'
+    condition: failed()
+
+  - script: |
+      cat $(WORK_DIR)/*.trace
+    displayName: 'View stack trace'
     condition: failed()
 
