@@ -55,6 +55,10 @@ steps:
       sudo apt-get install fio -y
     displayName: 'Install Utils'
 
+  - script:
+      $(WORK_DIR)/test/fio/fio_fuse_integrity.sh $(MOUNT_DIR)
+    displayName: 'Basic fio tests'
+
 # Run fio on 1 file 10G size SEQ read,write
   - script: |
       ls -lrt
@@ -117,3 +121,14 @@ steps:
       fio $(WORK_DIR)/test/fio/hole_over_blocks.fio
     displayName: 'SEQ-HOLE16M-10G-1F-1T'
     workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      tail -n 5000 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
+
+  - script: |
+      cat $(WORK_DIR)/*.trace
+    displayName: 'View stack trace'
+    condition: failed()
+

@@ -26,15 +26,37 @@ steps:
         generate_random_file() {
           local bs=$1
 
+          # Generate files with random content using dd
           for count in "${file_counts[@]}"; do
             file_name="$(DATA_DIR)/random_file_${size}_${bs}_${count}.txt"
 
             echo "Generating file: $file_name"
-
             # Use dd to create a file with random content
             dd if=/dev/urandom of="$file_name" bs="$bs" count="$count" status=progress
-
             echo "File $file_name generated successfully!"
+          done
+
+          # Generate files with holes (sparse files)
+          for count in "${file_counts[@]}"; do
+            file_name="$(DATA_DIR)/sparse_file_${size}_${bs}_${count}.txt"
+
+            echo "Generating sparse file: $file_name"
+            # Create a sparse file using dd with seek
+            dd if=/dev/urandom of="$file_name" bs="$bs" seek=$count count=1 status=progress
+            dd if=/dev/urandom of="$file_name" bs="$bs" seek=$((count+4)) count=1 status=progress
+            dd if=/dev/urandom of="$file_name" bs="$bs" seek=$((count+8)) count=1 status=progress
+            echo "Sparse file $file_name generated successfully!"
+          done
+
+          # Generate files with hole in the end.
+          for count in "${file_counts[@]}"; do
+            file_name="$(DATA_DIR)/file_with_hole_end_${size}_${bs}_${count}.txt"
+
+            echo "Generating file with hole at the end: $file_name"
+            # Create a file with data followed by a hole using dd with seek
+            dd if=/dev/urandom of="$file_name" bs="$bs" count=$count status=progress
+            dd if=/dev/zero of="$file_name" bs="$bs" seek=$((count + 10)) count=0 status=progress
+            echo "File with hole at the end $file_name generated successfully!"
           done
         }
 
@@ -45,6 +67,7 @@ steps:
         generate_random_file "1K"
         echo "*************************Generating medium files********************************"
         generate_random_file "1M"
+
       displayName: "Generate files with random data using dd command"
 
     - bash: |

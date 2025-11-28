@@ -15,6 +15,47 @@ parameters:
     default: false
 
 steps:
+  # fsx is a stress testing utility for filesystem, which will perform many filesystem operations and report any error if file is getting corrupted.
+  # This utility is present in xfstests repo.
+  # TODO: Add support for ubuntu 20, currently getting some errors while compiling.
+  - script: |
+      # Install only if xfstests-dev folder is not present
+      if [ -d "xfstests-dev" ]; then
+        echo "xfstests-dev already present, skipping installation."
+        exit 0
+      fi
+      sudo apt update -y
+      set -euxo pipefail
+
+      sudo apt-get update -y
+      sudo apt-get install -y software-properties-common
+      sudo add-apt-repository universe
+      sudo add-apt-repository multiverse
+      sudo apt-get update -y
+
+      sudo apt-get install -y --no-install-recommends \
+        acl attr automake bc dbench dump e2fsprogs fio gawk \
+        gcc git indent libacl1-dev libaio-dev libcap-dev \
+        libgdbm-dev libgdbm-compat-dev \
+        libtool libtool-bin \
+        liburing-dev \
+        lvm2 make psmisc python3 quota sed \
+        uuid-dev xfsprogs sqlite3 pkg-config \
+        exfatprogs f2fs-tools ocfs2-tools udftools xfsdump \
+        xfslibs-dev perl dmsetup jq
+
+      echo "Cloning xfstests repository..."
+      git clone https://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git
+      cd xfstests-dev
+      echo "Building xfstests..."
+      make
+      sudo make install
+      file ltp/fsx
+      echo "Copying fsx to /bin"
+      sudo cp ltp/fsx /usr/local/bin/
+    displayName: 'Install xfstests'
+    condition: eq(variables['distro_version'], 'ubuntu_22_x86')
+
     # Generate config file for file cache
   - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
     - script: |
@@ -54,8 +95,10 @@ steps:
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
 
   - script:
-      go test -v ./test/scenarios -mountpoints="$(MOUNT_DIR),$(WORK_DIR)/t1"
-    displayName: 'Run Scenarios'
+      # specify mountpoints in order of test dirs, t1 is local filesystem, MOUNT_DIR is blobfuse2 mount
+      # for i in $(seq 1 10); do echo "Iteration $i"; go test -v ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" || { echo "Test failed on iteration $i"; exit 1; }; done
+      # go test -v ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)"
+    displayName: 'Run custom Scenarios'
 
   - template: 'mount.yml'
     parameters:
@@ -65,8 +108,30 @@ steps:
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 -o direct_io
 
   - script:
-      go test -v ./test/scenarios -mountpoints="$(MOUNT_DIR),$(WORK_DIR)/t1" -mount-point-direct-io=true
+      # specify mountpoints in order of test dirs, t1 is local filesystem, MOUNT_DIR is blobfuse2 mount
+      # for i in $(seq 1 10); do echo "Iteration $i"; go test -v ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" -mount-point-direct-io=true || { echo "Test failed on iteration $i"; exit 1; }; done
+      # go test -v ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" -mount-point-direct-io=true
     displayName: 'Run Scenarios'
+
+  - script:
+       fsx -R -W -N 100000 $(MOUNT_DIR)/fsx.test.file
+    displayName: 'fsx-stress-fileSize:256K-ops:100000'
+    condition: eq(variables['distro_version'], 'ubuntu_22_x86')
+
+  - script:
+       fsx -R -W -N 100000  -l $((1024*1024*16)) $(MOUNT_DIR)/fsx.test.file
+    displayName: 'fsx-stress-fileSize:16M-ops:100000'
+    condition: eq(variables['distro_version'], 'ubuntu_22_x86')
+
+  - script:
+       fsx -R -W -N 100000  -l $((1024*1024*100)) $(MOUNT_DIR)/fsx.test.file
+    displayName: 'fsx-stress-fileSize:100M-ops:100000'
+    condition: eq(variables['distro_version'], 'ubuntu_22_x86')
+
+  - script:
+       fsx -R -W -N 100000  -l $((1024*1024*1024)) $(MOUNT_DIR)/fsx.test.file
+    displayName: 'fsx-stress-fileSize:1G-ops:100000'
+    condition: eq(variables['distro_version'], 'ubuntu_22_x86')
     
   # -----------------------------------------------------------------------------
   - task: PublishBuildArtifacts@1
@@ -80,3 +145,7 @@ steps:
     displayName: 'View Logs'
     condition: failed()
 
+  - script: |
+      cat $(WORK_DIR)/*.trace
+    displayName: 'View stack trace'
+    condition: failed()

@@ -3,6 +3,7 @@ package block_cache
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -13,7 +14,7 @@ const StdBlockIdLength int = 24 // We use base64 encoded strings of length 24 in
 var ErrInvalidBlockList = errors.New("Invalid Block List, not compatible with Block Cache for write operations")
 
 // Represents the Block State
-type blockState int
+type blockState int32
 
 const (
 	localBlock      blockState = iota //Block is in local memory and is outofsync with Azure Storage.
@@ -22,11 +23,12 @@ const (
 )
 
 type block struct {
-	mu    sync.RWMutex
-	file  *File      // Pointer to the parent file.
-	idx   int        // Block Index
-	id    string     // Block Id
-	state blockState // It tells about the state of the block.
+	mu        sync.RWMutex
+	file      *File        // Pointer to the parent file.
+	idx       int          // Block Index
+	id        string       // Block Id
+	state     blockState   // It tells about the state of the block.
+	numWrites atomic.Int32 // Number of writes happened to this block.
 }
 
 func createBlock(idx int, id string, state blockState, f *File) *block {
@@ -118,4 +120,50 @@ func getBlockSize(size int64, idx int) int {
 
 func getNoOfBlocksInFile(size int64) int {
 	return int((size + int64(bc.blockSize) - 1) / int64(bc.blockSize))
+}
+
+func (blk *block) scheduleUpload(bufDesc *bufferDescriptor, sync bool) {
+	// This buffer descriptor has reached its maximum usage count, schedule upload.
+	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, sync: %v, usageCnt: %d, refCnt: %d",
+		blk.idx, bufDesc.bufIdx, sync, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
+
+	wait := make(chan struct{}, 1)
+	//
+	// Take the exclusive lock on buffer content to prevent further writes while upload is in progress.
+	// This will be released after upload is complete.
+	if sync {
+		bufDesc.contentLock.Lock()
+	}
+	// Increment refCnt for upload
+	bufDesc.refCnt.Add(1)
+
+	// Schedule upload
+	wp.queueWork(blk, bufDesc, false /*download*/, wait, sync /*sync*/)
+
+	if sync {
+		// Wait for upload to complete.
+		<-wait
+		if ok := bufDesc.release(); ok {
+			log.Debug("BlockCache::scheduleUpload: Released bufferIdx: %d for blockIdx: %d back to free list after sync upload",
+				bufDesc.bufIdx, blk.idx)
+		}
+	}
+}
+
+func (blk *block) scheduleDownload(bufDesc *bufferDescriptor, sync bool) {
+	wait := make(chan struct{}, 1)
+	// Increment refCnt for download
+	bufDesc.refCnt.Add(1)
+
+	// Schedule download
+	wp.queueWork(blk, bufDesc, true, wait, sync)
+
+	if sync {
+		// Wait for download to complete.
+		<-wait
+		if ok := bufDesc.release(); ok {
+			log.Debug("BlockCache::scheduleDownload: Released bufferIdx: %d for blockIdx: %d back to free list after sync download",
+				bufDesc.bufIdx, blk.idx)
+		}
+	}
 }
