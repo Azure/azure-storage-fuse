@@ -2,6 +2,7 @@
 **Features**
 - Add Build Support for arm 32bit.([PR #2068](https://github.com/Azure/azure-storage-fuse/pull/2068))
 - Added Debian 13 (trixie) support for package installation.([#2064](https://github.com/Azure/azure-storage-fuse/issues/2064))
+- Added RHEL 10.0 package distribution support for x86_64 and aarch64 architectures. ([PR #2066](https://github.com/Azure/azure-storage-fuse/pull/2066))
 
 **Bug Fixes**
 
