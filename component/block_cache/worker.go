@@ -1,9 +1,11 @@
 package block_cache
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
@@ -85,7 +87,6 @@ func (wp *workerPool) downloadBlock(task *task) {
 		Data:   task.bufDesc.buf,
 		Size:   atomic.LoadInt64(&task.block.file.size),
 	})
-	// time.Sleep(2 * time.Millisecond) // Simulate download time
 	if err != nil {
 		log.Err("BlockCache::downloadBlock: ReadInBuffer failed for file %s block idx %d: %v",
 			task.block.file.Name, task.block.idx, err)
@@ -93,7 +94,7 @@ func (wp *workerPool) downloadBlock(task *task) {
 		task.bufDesc.downloadErr = err
 
 		// Remove it from buffer table manager, so that it accepts no more new readers.
-		btm.removeBufferDescriptor(task.bufDesc)
+		btm.removeBufferDescriptor(task.bufDesc, false /*strict*/)
 	} else {
 		log.Debug("BlockCache::downloadBlock: Successfully downloaded block idx %d into buffer idx %d",
 			task.block.idx, task.bufDesc.bufIdx)
@@ -116,4 +117,46 @@ func (wp *workerPool) downloadBlock(task *task) {
 }
 
 func (wp *workerPool) uploadBlock(task *task) {
+	task.block.id = common.GetBlockID(common.BlockIDLength)
+
+	err := bc.NextComponent().StageData(internal.StageDataOptions{
+		Name: task.block.file.Name,
+		Data: task.bufDesc.buf[:getBlockSize(atomic.LoadInt64(&task.block.file.size), task.block.idx)],
+		Id:   task.block.id,
+	})
+
+	if err != nil {
+		log.Err("BlockCache::getBlockIDList : Failed to write block for %v, ID: %v [%v]",
+			task.block.file.Name, task.block.id, err)
+		task.bufDesc.uploadErr = err
+		task.block.file.err.Store(err.Error())
+	} else {
+		log.Debug("BlockCache::uploadBlock: Successfully uploaded block idx %d from buffer idx %d",
+			task.block.idx, task.bufDesc.bufIdx)
+		task.bufDesc.dirty.Store(false)
+	}
+
+	// Change the state of the block to uncommited, to reflect that it is uploaded but not yet committed.
+	atomic.StoreInt32((*int32)(&task.block.state), int32(uncommitedBlock))
+	// Reset the numWrites.
+	task.block.numWrites.Store(0)
+
+	if !task.sync {
+		if ok := task.bufDesc.release(); ok {
+			// This should not be released as we did not removed it from buffer table manager yet.
+			err := fmt.Sprintf("BlockCache::uploadBlock: Released bufferIdx: %d for blockIdx: %d back to free list after async upload",
+				task.bufDesc.bufIdx, task.block.idx)
+			panic(err)
+		}
+		log.Debug("BlockCache::uploadBlock: Async upload completed for buffer idx %d for block idx %d, refCnt: %d",
+			task.bufDesc.bufIdx, task.block.idx, task.bufDesc.refCnt.Load())
+
+		ok1, ok2 := btm.removeBufferDescriptor(task.bufDesc, true /*strict*/)
+		log.Debug("BlockCache::uploadBlock: Removed bufferIdx: %d for blockIdx: %d from buffer table manager after async upload, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
+			task.bufDesc.bufIdx, task.block.idx, ok1, ok2)
+	}
+
+	task.bufDesc.contentLock.Unlock()
+
+	close(task.signalOnCompletion)
 }
