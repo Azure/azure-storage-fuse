@@ -144,9 +144,9 @@ To learn about a specific command, just include the name of the command (For exa
     * `--passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
     * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
     * `--block-cache` : To enable block-cache instead of file-cache. This works only when mounted without any config file.
-    * `--lazy-write` : To enable async close file handle call and schedule the upload in background.
     * `--filter=<STRING>`: Enable blob filters for read-only mount to restrict the view on what all blobs user can see or read.
     * `--preload`: Enable preload for read-only mount to start downloading all blobs from container when mount succeeds.
+<!--  * `--lazy-write` : To enable async close file handle call and schedule the upload in background. (hidden flag) -->
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=false`: By default symlinks will be supported and the performance overhead, that earlier existed, has been resolved.
