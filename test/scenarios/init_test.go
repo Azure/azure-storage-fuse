@@ -85,8 +85,8 @@ func checkFileIntegrity(t *testing.T, filename string) {
 				referenceMD5 = md5sum
 				referenceSize = fi.Size()
 			} else {
-				assert.Equal(t, referenceMD5, md5sum, "File content mismatch between mountpoints")
-				assert.Equal(t, referenceSize, fi.Size(), "File Size mismatch between mountpoints")
+				assert.Equal(t, referenceMD5, md5sum, "File content mismatch between mountpoints", mnt, filename)
+				assert.Equal(t, referenceSize, fi.Size(), "File Size mismatch between mountpoints", mnt, filename)
 			}
 		}
 	}

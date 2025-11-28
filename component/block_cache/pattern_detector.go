@@ -54,7 +54,7 @@ func newPatternDetector() *patternDetector {
 	}
 
 	//We start with sequential access pattern
-	pd.streak.Store(int32(patternSequential))
+	pd.streak.Store(int32(3))
 
 	return pd
 }
@@ -62,35 +62,33 @@ func newPatternDetector() *patternDetector {
 // updateAccessPattern updates the access pattern based on the current offset.
 func (pd *patternDetector) updateAccessPattern(currentOffset int64) patternType {
 	prevOffset := pd.prevOffset.Swap(currentOffset)
-	// TODO: Use more sophisticated logic to detect access patterns.
 	windowSize := int64(bc.blockSize) * 2 // 2 blocks window
 
 	absDiff := int64(math.Abs(float64(currentOffset - prevOffset)))
 
 	if absDiff <= windowSize {
 		// Sequential access
-
-		if pd.streak.Add(1) > 0 {
+		newStreak := pd.streak.Add(1)
+		if newStreak >= 3 {
 			return patternSequential
-		} else {
+		} else if newStreak < 0 {
 			// Reset streak
 			log.Debug("PatternDetector::updateAccessPattern: Access pattern changed from Random to Sequential for file %s",
 				pd.fileName)
 			pd.streak.Store(0)
-
-			return patternUnknown
 		}
 	} else {
 		// Random access
-
-		if pd.streak.Add(-1) < 0 {
+		newStreak := pd.streak.Add(-1)
+		if newStreak <= -3 {
 			return patternRandom
-		} else {
+		} else if newStreak > 0 {
 			// Reset streak
 			log.Debug("PatternDetector::updateAccessPattern: Access pattern changed from Sequential to Random for file %s",
 				pd.fileName)
 			pd.streak.Store(0)
-			return patternUnknown
 		}
 	}
+
+	return patternUnknown
 }
