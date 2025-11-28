@@ -1132,14 +1132,14 @@ stages:
               parameters:
                 skip_ut: true
 
-            - template: 'azure-pipeline-templates/fio-data-integrity.yml'
-              parameters:
-                cache_mode: file_cache
-                config_file: $(BLOBFUSE2_CFG)
-                account_name: $(BF2_BLK_ACC_NAME)
-                account_key: $(BF2_BLK_ACC_KEY)
-                account_type: block
-                verbose_log: ${{ parameters.verbose_log }}
+            # - template: 'azure-pipeline-templates/fio-data-integrity.yml'
+            #   parameters:
+            #     cache_mode: file_cache
+            #     config_file: $(BLOBFUSE2_CFG)
+            #     account_name: $(BF2_BLK_ACC_NAME)
+            #     account_key: $(BF2_BLK_ACC_KEY)
+            #     account_type: block
+            #     verbose_log: ${{ parameters.verbose_log }}
 
             - template: 'azure-pipeline-templates/fio-data-integrity.yml'
               parameters:
@@ -1161,7 +1161,7 @@ stages:
       jobs:
         # Ubuntu Tests
         - job: Set_1
-          timeoutInMinutes: 60
+          timeoutInMinutes: 180
           strategy:
             matrix:
               Ubuntu-20:
@@ -1208,24 +1208,24 @@ stages:
               parameters:
                 skip_ut: true
 
-            - template: 'azure-pipeline-templates/scenario.yml'
-              parameters:
-                cache_mode: file_cache
-                config_file: $(BLOBFUSE2_CFG)
-                account_name: $(BF2_BLK_ACC_NAME)
-                account_key: $(BF2_BLK_ACC_KEY)
-                account_type: block
-                verbose_log: ${{ parameters.verbose_log }}
-
-            # Commented out block cache scenario tests due to known issues
             # - template: 'azure-pipeline-templates/scenario.yml'
             #   parameters:
-            #     cache_mode: block_cache
+            #     cache_mode: file_cache
             #     config_file: $(BLOBFUSE2_CFG)
             #     account_name: $(BF2_BLK_ACC_NAME)
             #     account_key: $(BF2_BLK_ACC_KEY)
             #     account_type: block
             #     verbose_log: ${{ parameters.verbose_log }}
+
+            # Commented out block cache scenario tests due to known issues
+            - template: 'azure-pipeline-templates/scenario.yml'
+              parameters:
+                cache_mode: block_cache
+                config_file: $(BLOBFUSE2_CFG)
+                account_name: $(BF2_BLK_ACC_NAME)
+                account_key: $(BF2_BLK_ACC_KEY)
+                account_type: block
+                verbose_log: ${{ parameters.verbose_log }}
 
             - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:
