@@ -19,6 +19,8 @@ type freeListType struct {
 	lastFreeBuffer  int
 	nxtVictimBuffer int
 	bufDescriptors  []*bufferDescriptor
+	resetBufferDesc chan *bufferDescriptor
+	wg              sync.WaitGroup
 	mutex           sync.Mutex
 }
 
@@ -41,7 +43,7 @@ func createFreeList(bufSize uint64, memSize uint64) error {
 		//
 		ramMB, err := common.GetAvailableMemoryInMB()
 		if err != nil {
-			return fmt.Errorf("NewFileIOManager: %v", err)
+			return fmt.Errorf("createFreeList: %v", err)
 		}
 
 		// usableMemory in bytes capped by usablePercentSystemRAM.
@@ -54,6 +56,7 @@ func createFreeList(bufSize uint64, memSize uint64) error {
 		lastFreeBuffer:  maxBuffers - 1,
 		nxtVictimBuffer: 0,
 		bufDescriptors:  make([]*bufferDescriptor, maxBuffers),
+		resetBufferDesc: make(chan *bufferDescriptor, maxBuffers/2),
 	}
 
 	freeList.bufPool = initBufferPool(bufSize, uint64(maxBuffers))
@@ -78,6 +81,10 @@ func createFreeList(bufSize uint64, memSize uint64) error {
 	// Last buffer's next free buffer should be -1.
 	freeList.bufDescriptors[maxBuffers-1].nxtFreeBuffer = -1
 
+	// This is long running goroutine to reset the buffer descriptors released back to free list.
+	freeList.wg.Add(1)
+	go freeList.resetBufferDescriptors()
+
 	log.Info("Buffer Pool: Free list created with buffer size: %d bytes, max buffers: %d, total size: %.2f MB",
 		bufSize, maxBuffers, float64(uint64(maxBuffers)*bufSize)/(1024.0*1024.0))
 
@@ -88,6 +95,9 @@ func destroyFreeList() {
 	if freeList == nil {
 		return
 	}
+
+	close(freeList.resetBufferDesc)
+	freeList.wg.Wait()
 
 	freeList.mutex.Lock()
 	defer freeList.mutex.Unlock()
@@ -102,6 +112,35 @@ func destroyFreeList() {
 	freeList = nil
 
 	log.Info("Buffer Pool: Free list destroyed")
+}
+
+func (fl *freeListType) resetBufferDescriptors() {
+	defer fl.wg.Done()
+	for {
+		bufDesc, ok := <-fl.resetBufferDesc
+		if !ok {
+			// Channel closed, exit the goroutine.
+			return
+		}
+
+		fl.mutex.Lock()
+
+		log.Debug("releaseBuffer: Released bufferIdx: %d for blockIdx: %d", bufDesc.bufIdx, bufDesc.block.idx)
+
+		// Reset the buffer descriptor.
+		bufDesc.reset()
+
+		if fl.lastFreeBuffer == -1 {
+			// Free list is empty.
+			fl.firstFreeBuffer = bufDesc.bufIdx
+			fl.lastFreeBuffer = bufDesc.bufIdx
+		} else {
+			// Append to the end of free list.
+			fl.bufDescriptors[fl.lastFreeBuffer].nxtFreeBuffer = bufDesc.bufIdx
+			fl.lastFreeBuffer = bufDesc.bufIdx
+		}
+		fl.mutex.Unlock()
+	}
 }
 
 func (fl *freeListType) allocateBuffer(blk *block) (*bufferDescriptor, error) {
@@ -129,28 +168,14 @@ func (fl *freeListType) allocateBuffer(blk *block) (*bufferDescriptor, error) {
 }
 
 func (fl *freeListType) releaseBuffer(bufDesc *bufferDescriptor) {
-	fl.mutex.Lock()
-	defer fl.mutex.Unlock()
-
-	log.Debug("releaseBuffer: Released bufferIdx: %d for blockIdx: %d", bufDesc.bufIdx, bufDesc.block.idx)
-
-	// Reset the buffer descriptor.
-	bufDesc.reset()
-
-	if fl.lastFreeBuffer == -1 {
-		// Free list is empty.
-		fl.firstFreeBuffer = bufDesc.bufIdx
-		fl.lastFreeBuffer = bufDesc.bufIdx
-	} else {
-		// Append to the end of free list.
-		fl.bufDescriptors[fl.lastFreeBuffer].nxtFreeBuffer = bufDesc.bufIdx
-		fl.lastFreeBuffer = bufDesc.bufIdx
-	}
+	fl.resetBufferDesc <- bufDesc
 }
 
 func (fl *freeListType) debugListMustBeFull() {
 	fl.mutex.Lock()
 	defer fl.mutex.Unlock()
+
+	log.Debug("debugListMustBeFull: Checking if free list is full")
 
 	count := 0
 	next := fl.firstFreeBuffer
@@ -166,6 +191,8 @@ func (fl *freeListType) debugListMustBeFull() {
 		panic(err)
 	}
 
+	log.Debug("debugListMustBeFull:  free list is indeed full!")
+
 }
 
 func (fl *freeListType) getVictimBuffer() *bufferDescriptor {
@@ -175,26 +202,32 @@ func (fl *freeListType) getVictimBuffer() *bufferDescriptor {
 	numTries := 0
 
 	// This loop should always find a victim buffer, as at any time the assumption is there can only be 10 FUSE threads
-	// working on 10 different bufferes in the worst case.
+	// working on 10 different buffers in the worst case.
 	for {
-
 		log.Debug("getVictimBuffer: Trying to find victim buffer, try number: %d", numTries+1)
-		fl.mutex.Lock()
 
+		fl.mutex.Lock()
 		bufDesc := fl.bufDescriptors[fl.nxtVictimBuffer]
 		fl.nxtVictimBuffer = (fl.nxtVictimBuffer + 1) % numBuffers
-
 		fl.mutex.Unlock()
 
 		numTries++
 
 		if bufDesc.refCnt.Load() == 0 {
-			if bufDesc.usageCount.Load() == int32(bc.blockSize) || bufDesc.numEvictionCyclesPassed.Load() > 0 {
+			if bufDesc.bytesRead.Load() == int32(bc.blockSize) || bufDesc.numEvictionCyclesPassed.Load() > 0 {
 				// Found a victim buffer. pin the buffer by increasing refCnt.
 				log.Debug("getVictimBuffer: Selected victim bufferIdx: %d, blockIdx: %d after %d tries",
 					bufDesc.bufIdx, bufDesc.block.idx, numTries)
 
 				bufDesc.refCnt.Add(1)
+
+				// If the block is dirty, we should need to upload it before reusing it.
+				if bufDesc.dirty.Load() {
+					log.Debug("getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
+						bufDesc.bufIdx, bufDesc.block.idx)
+					bufDesc.block.scheduleUpload(bufDesc, true /* sync */)
+				}
+
 				return bufDesc
 			} else {
 				// Give one more chance to this buffer to be used.
@@ -202,8 +235,8 @@ func (fl *freeListType) getVictimBuffer() *bufferDescriptor {
 			}
 		}
 
-		log.Debug("getVictimBuffer: bufferIdx: %d for blockIdx: %d is in use, refCnt: %d, usageCount: %d",
-			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt, bufDesc.usageCount)
+		log.Debug("getVictimBuffer: bufferIdx: %d for blockIdx: %d is in use, refCnt: %d, bytesRead: %d, bytesWritten: %d",
+			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt, bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
 	}
 
 	return nil
