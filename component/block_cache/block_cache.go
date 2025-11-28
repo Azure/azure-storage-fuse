@@ -78,6 +78,7 @@ type BlockCache struct {
 	//	stream          *Stream
 	lazyWrite    bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt sync.WaitGroup // Wait group to wait for all async close operations to complete
+	maxFileSize  uint64         // Max file size supported by block cache
 }
 
 // Structure defining your config parameters
@@ -186,6 +187,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.blockSize = uint64(conf.BlockSize * float64(common.MbToBytes))
 	}
 
+	bc.maxFileSize = bc.blockSize * MAX_BLOCKS
+
 	if config.IsSet(compName + ".mem-size-mb") {
 		bc.memSize = conf.MemSize * common.MbToBytes
 	} else {
@@ -217,10 +220,10 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.prefetch = conf.PrefetchCount
 		if bc.prefetch == 0 {
 			bc.noPrefetch = true
-		} else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
-			log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MIN_PREFETCH*2)+1)
-			return fmt.Errorf("config error in %s [invalid prefetch count]", bc.Name())
-		}
+		} // else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
+		// 	log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MIN_PREFETCH*2)+1)
+		// 	return fmt.Errorf("config error in %s [invalid prefetch count]", bc.Name())
+		// }
 	}
 
 	bc.maxDiskUsageHit = false
@@ -316,14 +319,15 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 
 	return bc.OpenFile(internal.OpenFileOptions{
 		Name:  options.Name,
-		Flags: os.O_RDWR | os.O_TRUNC, //TODO: Standard says to open in O_WRONLY|O_TRUNC due to the writeback cache I defaulted it, it shoudl be change in future
+		Flags: os.O_RDWR | os.O_TRUNC | os.O_CREATE,
 		Mode:  options.Mode,
 	})
 }
 
 // OpenFile: Create a handle for the file user has requested to open
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("BlockCache::OpenFile : name=%s, flags=%X, mode=%s", options.Name, options.Flags, options.Mode)
+	log.Trace("BlockCache::OpenFile : name=%s, flags=%s, mode=%s", options.Name, common.PrettyOpenFlags(options.Flags), options.Mode)
+
 	attr, err := bc.GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
 		log.Err("BlockCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
@@ -333,6 +337,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	f, firstOpen := getFileFromPath(options.Name)
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	if f.size == -1 {
 		f.size = attr.Size
 	}
@@ -349,25 +354,30 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	}
 
 	if f.size > 0 {
-		if (f.blockList.state == blockListNotRetrieved) && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
-			blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
-			if err != nil {
-				log.Err("BlockCache::OpenFile : Failed to get block list of %s, first_open: %v, curOpenHandles: %d, [%v]",
-					options.Name, firstOpen, len(f.handles), err)
-				return nil, err
-			}
+		if (options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0) {
+			if f.blockList.state == blockListNotRetrieved {
+				blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
+				if err != nil {
+					log.Err("BlockCache::OpenFile : Failed to get block list of %s, first_open: %v, curOpenHandles: %d, [%v]",
+						options.Name, firstOpen, len(f.handles), err)
+					return nil, err
+				}
 
-			err = validateBlockList(blkList, f)
-			if err != nil {
-				log.Err("BlockCache::OpenFile : Invalid block list for file: %s, first_open: %v, curOpenHandles: %d,  [%v]",
-					options.Name, firstOpen, len(f.handles), err)
-				f.blockList.state = blockListInvalid
-				deleteFileIfNoOpenHandles(options.Name)
-				return nil, err
-			} else {
-				f.blockList.state = blockListValid
+				err = validateBlockList(blkList, f)
+				if err != nil {
+					log.Err("BlockCache::OpenFile : Invalid block list for file: %s, first_open: %v, curOpenHandles: %d,  [%v]",
+						options.Name, firstOpen, len(f.handles), err)
+					f.blockList.state = blockListInvalid
+					deleteFileIfNoOpenHandles(options.Name)
+					return nil, err
+				} else {
+					f.blockList.state = blockListValid
+				}
+			} else if f.blockList.state == blockListInvalid {
+				log.Err("BlockCache::OpenFile : Invalid block list for file: %s, first_open: %v, curOpenHandles: %d",
+					options.Name, firstOpen, len(f.handles))
+				return nil, fmt.Errorf("invalid block list for file: %s", options.Name)
 			}
-
 		} else {
 			updateBlockListForReadOnlyFile(f)
 		}
@@ -380,6 +390,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		patternDetector: newPatternDetector(),
 	}
 
+	// libfuse handler, is not sending the flush call if this is not set. So setting it by default.
+	// TODO: no need for this
+	handle.Flags.Set(handlemap.HandleFlagDirty)
+
 	return handle, nil
 }
 
@@ -387,7 +401,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
 
-	log.Trace("BlockCache::ReadInBuffer : name: %s, buf size: %d, offset: %d, handle: %d",
+	log.Debug("BlockCache::ReadInBuffer : name: %s, buf size: %d, offset: %d, handle: %d",
 		options.Handle.Path, len(options.Data), options.Offset, options.Handle.ID)
 
 	// we schedule read-ahead per handle, rather than per file, to support multiple handles reading concurrently
@@ -405,23 +419,70 @@ func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, 
 
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
-	log.Debug("BlockCache::WriteFile : name: %s, buf size: %d, offset: %d",
-		options.Handle.Path, len(options.Data), options.Offset)
+	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
 
-	return 0, syscall.ENOTSUP
+	log.Debug("BlockCache::WriteFile : name: %s, buf size: %d, offset: %d, handle: %d",
+		options.Handle.Path, len(options.Data), options.Offset, options.Handle.ID)
+
+	err := bcHandle.file.write(options)
+	if err != nil {
+		log.Err("BlockCache::WriteFile : Failed to write file %s at offset %d, size %d [%v]",
+			options.Handle.Path, options.Offset, len(options.Data), err)
+	}
+
+	return len(options.Data), err
 }
 
+// TruncateFile: Truncate the file to specified size
+func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
+	if options.Handle == nil {
+		// TODO: support truncate without handle
+		log.Err("BlockCache::TruncateFile : Handle is nil for file %s", options.Name)
+		return syscall.ENOTSUP
+	}
+	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
+
+	log.Debug("BlockCache::TruncateFile : name: %s, size: %d, handle: %d",
+		options.Handle.Path, options.NewSize, options.Handle.ID)
+
+	err := bcHandle.file.truncate(&options)
+	if err != nil {
+		log.Err("BlockCache::TruncateFile : Failed to truncate file %s to size %d [%v]",
+			options.Handle.Path, options.NewSize, err)
+		return err
+	}
+
+	return nil
+}
+
+// SyncFile: Sync the file to remote storage
+// Call comes when user-application calls fsync on the file descriptor
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
-	log.Trace("BlockCache::SyncFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
+	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
 
-	return syscall.ENOTSUP
+	log.Debug("BlockCache::SyncFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
+
+	err := bcHandle.file.flush(&internal.FlushFileOptions{Handle: options.Handle}, true /* takefilelock */)
+	if err != nil {
+		log.Err("BlockCache::SyncFile : Failed to sync file %s [%v]", options.Handle.Path, err)
+		return err
+	}
+
+	return nil
 }
 
-// FlushFile: Flush the local file to storage
+// FlushFile: Call comes when user-application is closing the file descriptor.
+// There is a possibility that we get multiple flush calls for the same handle if user used dup2 or fork.
 func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
-	log.Trace("BlockCache::FlushFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
-	deleteOpenHandleForFile(options.Handle)
-	freeList.debugListMustBeFull()
+	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
+
+	log.Debug("BlockCache::FlushFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
+
+	err := bcHandle.file.flush(&options, true /* takefilelock */)
+	if err != nil {
+		log.Err("BlockCache::FlushFile : Failed to flush file %s [%v]", options.Handle.Path, err)
+		return err
+	}
 
 	return nil
 }
@@ -430,39 +491,67 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 // and submit back to the pool.
 func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	log.Trace("BlockCache::ReleaseFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
+	deleteOpenHandleForFile(options.Handle)
+	// freeList.debugListMustBeFull()
+	log.Debug("BlockCache::ReleaseFile : Released handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
 	return nil
 }
 
 // DeleteFile: Invalidate the file in local cache.
 func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("BlockCache::DeleteFile : name: %s", options.Name)
-	return syscall.ENOTSUP
+
+	err := bc.NextComponent().DeleteFile(options)
+	if err != nil {
+		log.Err("BlockCache::DeleteFile : error  %s [%s]", options.Name, err.Error())
+		return err
+	}
+
+	return nil
 }
 
 // RenameFile: Invalidate the file in local cache.
 func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("BlockCache::RenameFile : src: %s -> dst: %s", options.Src, options.Dst)
 
-	return syscall.ENOTSUP
+	err := bc.NextComponent().RenameFile(options)
+	if err != nil {
+		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
+		return err
+	}
+
+	return nil
 }
 
 // DeleteDir: Recursively invalidate the directory and its children
 func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("BlockCache::DeleteDir : name: %s", options.Name)
 
-	return syscall.ENOTSUP
+	err := bc.NextComponent().DeleteDir(options)
+	if err != nil {
+		log.Err("BlockCache::DeleteDir : %s failed", options.Name)
+		return err
+	}
+
+	return nil
 }
 
 // RenameDir: Recursively invalidate the source directory and its children
 func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("BlockCache::RenameDir : src: %s -> dst: %s", options.Src, options.Dst)
 
-	return syscall.ENOTSUP
+	err := bc.NextComponent().RenameDir(options)
+	if err != nil {
+		log.Err("BlockCache::RenameDir : error %s [%s]", options.Src, err.Error())
+		return err
+	}
+
+	return nil
 }
 
 func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	log.Trace("BlockCache::StatFS")
-	return nil, false, syscall.ENOTSUP
+	return &syscall.Statfs_t{}, true, nil
 }
 
 // ------------------------- Factory -------------------------------------------

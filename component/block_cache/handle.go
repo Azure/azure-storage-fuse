@@ -86,7 +86,7 @@ func releaseAllBuffersForFile(file *File) {
 	log.Debug("releaseAllBuffersForFile: Releasing all buffers for file %s", file.Name)
 	// Release all buffers held by this file
 	for _, blk := range file.blockList.list {
-		bufDesc, _ := btm.LookUpBufferDescriptor(blk, 0 /*bytesInterested*/)
+		bufDesc, _ := btm.LookUpBufferDescriptor(blk)
 		if bufDesc == nil {
 			continue
 		}
@@ -98,11 +98,11 @@ func releaseAllBuffersForFile(file *File) {
 				bufDesc.bufIdx, blk.idx, file.Name))
 		}
 
-		if ok := btm.removeBufferDescriptor(bufDesc); !ok {
+		if ok1, ok2 := btm.removeBufferDescriptor(bufDesc, false /*strict*/); !ok1 || !ok2 {
 			// There should be no more readers for this buffer descriptor, that mean it should always release the buffer
 			// descriptor successfully here.
-			panic(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove bufferIdx: %d for blockIdx: %d of file %s from buffer table manager",
-				bufDesc.bufIdx, blk.idx, file.Name))
+			panic(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove bufferIdx: %d, refCnt: %d, for blockIdx: %d of file %s from buffer table manager",
+				bufDesc.bufIdx, bufDesc.refCnt.Load(), blk.idx, file.Name))
 		}
 
 		log.Debug("releaseAllBuffersForFile: Released bufferIdx: %d for blockIdx: %d of file %s",

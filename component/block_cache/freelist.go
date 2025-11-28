@@ -152,6 +152,8 @@ func (fl *freeListType) debugListMustBeFull() {
 	fl.mutex.Lock()
 	defer fl.mutex.Unlock()
 
+	log.Debug("debugListMustBeFull: Checking if free list is full")
+
 	count := 0
 	next := fl.firstFreeBuffer
 	for next != -1 {
@@ -165,6 +167,8 @@ func (fl *freeListType) debugListMustBeFull() {
 		log.Err(err)
 		panic(err)
 	}
+
+	log.Debug("debugListMustBeFull:  free list is indeed full!")
 
 }
 
@@ -195,6 +199,14 @@ func (fl *freeListType) getVictimBuffer() *bufferDescriptor {
 					bufDesc.bufIdx, bufDesc.block.idx, numTries)
 
 				bufDesc.refCnt.Add(1)
+
+				// If the block is dirty, we should need to upload it before reusing it.
+				if bufDesc.dirty.Load() {
+					log.Debug("getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
+						bufDesc.bufIdx, bufDesc.block.idx)
+					bufDesc.block.scheduleUpload(bufDesc, true /* sync */)
+				}
+
 				return bufDesc
 			} else {
 				// Give one more chance to this buffer to be used.

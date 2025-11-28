@@ -23,8 +23,8 @@ type bufferDescriptor struct {
 	numEvictionCyclesPassed atomic.Int32
 
 	// TODO: use atomic int for these bools.
-	evicted atomic.Bool
-	dirty   atomic.Bool
+	evicted          atomic.Bool
+	uploadInProgress atomic.Bool
 
 	// This lock must be held while reading/writing the content of the buffer.
 	// While downloading the buffer content, this lock must be held in exclusively, while reading the data from the buffer,
@@ -32,11 +32,17 @@ type bufferDescriptor struct {
 	contentLock sync.RWMutex
 	buf         []byte
 	valid       atomic.Bool
+	dirty       atomic.Bool
 	downloadErr error
+	uploadErr   error
 }
 
 // ensureBufferValidForRead: ensures that the buffer is valid, i.e., no download error, if there is download error,
 func (bd *bufferDescriptor) ensureBufferValidForRead() error {
+	if bd.valid.Load() {
+		// Buffer is valid, safe to read.
+		return nil
+	}
 	// Wait for the Download to happen. if there was an error during download, it will be set in downloadErr.
 	bd.contentLock.RLock()
 	bd.contentLock.RUnlock()
@@ -88,4 +94,6 @@ func (bd *bufferDescriptor) reset() {
 	bd.evicted.Store(false)
 	bd.dirty.Store(false)
 	bd.downloadErr = nil
+	bd.uploadErr = nil
+	bd.uploadInProgress.Store(false)
 }

@@ -13,7 +13,7 @@ const StdBlockIdLength int = 24 // We use base64 encoded strings of length 24 in
 var ErrInvalidBlockList = errors.New("Invalid Block List, not compatible with Block Cache for write operations")
 
 // Represents the Block State
-type blockState int
+type blockState int32
 
 const (
 	localBlock      blockState = iota //Block is in local memory and is outofsync with Azure Storage.
@@ -118,4 +118,39 @@ func getBlockSize(size int64, idx int) int {
 
 func getNoOfBlocksInFile(size int64) int {
 	return int((size + int64(bc.blockSize) - 1) / int64(bc.blockSize))
+}
+
+func (blk *block) scheduleUpload(bufDesc *bufferDescriptor, sync bool) {
+	// This buffer descriptor has reached its maximum usage count, schedule upload.
+	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, sync: %v, usageCnt: %d, refCnt: %d",
+		blk.idx, bufDesc.bufIdx, sync, bufDesc.usageCount.Load(), bufDesc.refCnt.Load())
+
+	wait := make(chan struct{}, 1)
+	//
+	// Take the exclusive lock on buffer content to prevent further writes while upload is in progress.
+	// This will be released after upload is complete.
+	bufDesc.contentLock.Lock()
+	// Increment refCnt for upload
+	bufDesc.refCnt.Add(1)
+
+	// Schedule upload
+	wp.queueWork(blk, bufDesc, false /*download*/, wait, sync /*sync*/)
+
+	if sync {
+		// Wait for upload to complete.
+		<-wait
+		if ok := bufDesc.release(); ok {
+			log.Debug("BlockCache::scheduleUpload: Released bufferIdx: %d for blockIdx: %d back to free list after async upload",
+				bufDesc.bufIdx, blk.idx)
+		}
+	}
+}
+
+func (blk *block) scheduleDownload(bufDesc *bufferDescriptor, sync bool) {
+	wait := make(chan struct{}, 1)
+	wp.queueWork(blk, bufDesc, true, wait, sync)
+	if sync {
+		// Wait for download to complete.
+		<-wait
+	}
 }
