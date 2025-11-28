@@ -1218,14 +1218,14 @@ stages:
                 verbose_log: ${{ parameters.verbose_log }}
 
             # Commented out block cache scenario tests due to known issues
-            # - template: 'azure-pipeline-templates/scenario.yml'
-            #   parameters:
-            #     cache_mode: block_cache
-            #     config_file: $(BLOBFUSE2_CFG)
-            #     account_name: $(BF2_BLK_ACC_NAME)
-            #     account_key: $(BF2_BLK_ACC_KEY)
-            #     account_type: block
-            #     verbose_log: ${{ parameters.verbose_log }}
+            - template: 'azure-pipeline-templates/scenario.yml'
+              parameters:
+                cache_mode: block_cache
+                config_file: $(BLOBFUSE2_CFG)
+                account_name: $(BF2_BLK_ACC_NAME)
+                account_key: $(BF2_BLK_ACC_KEY)
+                account_type: block
+                verbose_log: ${{ parameters.verbose_log }}
 
             - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:

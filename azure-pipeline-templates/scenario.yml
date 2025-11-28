@@ -80,3 +80,8 @@ steps:
     displayName: 'View Logs'
     condition: failed()
 
+  - script: |
+      cat $(WORK_DIR)/*.trace
+    displayName: 'View stack trace'
+    condition: failed()
+

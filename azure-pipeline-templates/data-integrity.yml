@@ -161,11 +161,11 @@ steps:
         check_consistency: true
 
   # -----------------------------------------------------------------------------
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathToPublish: blobfuse2-logs.txt
-      artifactName: 'blobfuse_block_cache.txt'
-    condition: failed()
+  # - task: PublishBuildArtifacts@1
+  #   inputs:
+  #     pathToPublish: blobfuse2-logs.txt
+  #     artifactName: 'blobfuse_block_cache.txt'
+  #   condition: failed()
 
   - script: |
       tail -n 5000 blobfuse2-logs.txt

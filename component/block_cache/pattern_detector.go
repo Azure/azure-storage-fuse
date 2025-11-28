@@ -62,15 +62,13 @@ func newPatternDetector() *patternDetector {
 // updateAccessPattern updates the access pattern based on the current offset.
 func (pd *patternDetector) updateAccessPattern(currentOffset int64) patternType {
 	prevOffset := pd.prevOffset.Swap(currentOffset)
-	// TODO: Use more sophisticated logic to detect access patterns.
 	windowSize := int64(bc.blockSize) * 2 // 2 blocks window
 
 	absDiff := int64(math.Abs(float64(currentOffset - prevOffset)))
 
 	if absDiff <= windowSize {
 		// Sequential access
-
-		if pd.streak.Add(1) > 0 {
+		if pd.streak.Add(1) >= 3 {
 			return patternSequential
 		} else {
 			// Reset streak
@@ -82,8 +80,7 @@ func (pd *patternDetector) updateAccessPattern(currentOffset int64) patternType 
 		}
 	} else {
 		// Random access
-
-		if pd.streak.Add(-1) < 0 {
+		if pd.streak.Add(-1) <= -3 {
 			return patternRandom
 		} else {
 			// Reset streak
