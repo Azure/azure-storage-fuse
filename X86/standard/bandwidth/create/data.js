@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1763885777103,
+  "lastUpdate": 1764490709244,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1414,6 +1414,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_1000_files_in_100_threads",
             "value": 94.849609375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0.0673828125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "ashruti-msft",
+            "username": "ashruti-msft",
+            "email": "137055338+ashruti-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a0590abf380af29afc9f050df470afb0f8b0a251",
+          "message": "Gen-config command improvement (#2067)",
+          "timestamp": "2025-11-28T11:25:13Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a0590abf380af29afc9f050df470afb0f8b0a251"
+        },
+        "date": 1764490708965,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 95.337890625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 88.7783203125,
             "unit": "MiB/s"
           },
           {
