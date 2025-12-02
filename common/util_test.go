@@ -475,6 +475,55 @@ func (s *utilTestSuite) TestUpdatePipeline() {
 	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 }
 
+func TestPrettyOpenFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		flag int
+		want string
+	}{
+		{
+			name: "read only",
+			flag: os.O_RDONLY,
+			want: "[O_RDONLY]",
+		},
+		{
+			name: "write only",
+			flag: os.O_WRONLY,
+			want: "[O_WRONLY]",
+		},
+		{
+			name: "read write",
+			flag: os.O_RDWR,
+			want: "[O_RDWR]",
+		},
+		{
+			name: "rdwr create trunc",
+			flag: os.O_RDWR | os.O_CREATE | os.O_TRUNC,
+			// access first, then flags in flagNames order
+			want: "[O_RDWR | O_CREATE | O_TRUNC]",
+		},
+		{
+			name: "wronly append",
+			flag: os.O_WRONLY | os.O_APPEND,
+			want: "[O_WRONLY | O_APPEND]",
+		},
+		{
+			name: "rdwr append create excl sync trunc",
+			flag: os.O_RDWR | os.O_APPEND | os.O_CREATE | os.O_EXCL | os.O_SYNC | os.O_TRUNC,
+			want: "[O_RDWR | O_APPEND | O_CREATE | O_EXCL | O_SYNC | O_TRUNC]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PrettyOpenFlags(tt.flag)
+			if got != tt.want {
+				t.Fatalf("PrettyOpenFlags(%#x) = %q, want %q", tt.flag, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestGetGoroutineIDBasic validates that GetGoroutineID returns a non-zero, stable goroutine id within
 // the same goroutine.
 func (s *utilTestSuite) TestGetGoroutineIDBasic() {
