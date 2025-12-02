@@ -244,6 +244,32 @@ func (suite *unmountTestSuite) TestUnmountCmdLazy() {
 	}
 }
 
+func (suite *unmountTestSuite) TestInvalidFlagWithValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect flag
+	out, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--invalid-flag=test")
+	suite.assert.Error(err)
+	suite.assert.Contains(out, "unknown flag: --invalid-flag")
+}
+
+func (suite *unmountTestSuite) TestInvalidFlagWithOutValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect flag
+	out, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--invalid-flag")
+	suite.assert.Error(err)
+	suite.assert.Contains(out, "unknown flag: --invalid-flag")
+}
+
 func TestUnMountCommand(t *testing.T) {
 	confFile, err := os.CreateTemp("", "conf*.yaml")
 	if err != nil {

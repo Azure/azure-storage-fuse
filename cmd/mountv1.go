@@ -143,12 +143,11 @@ func resetOptions() {
 }
 
 var generateConfigCmd = &cobra.Command{
-	Use:               "mountv1",
-	Short:             "Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags",
-	Long:              "Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags",
-	SuggestFor:        []string{"conv config", "convert config"},
-	Args:              cobra.MaximumNArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "mountv1",
+	Short:      "Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags",
+	Long:       "Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags",
+	SuggestFor: []string{"conv config", "convert config"},
+	Args:       cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !disableVersionCheck {
 			err := VersionCheck()

@@ -63,13 +63,12 @@ func resetMonitorOptions() {
 }
 
 var healthMonCmd = &cobra.Command{
-	Use:               "health-monitor",
-	Short:             "Monitor blobfuse2 mount",
-	Long:              "Monitor blobfuse2 mount",
-	SuggestFor:        []string{"bfusemon", "monitor health"},
-	Args:              cobra.ExactArgs(0),
-	Hidden:            true,
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "health-monitor",
+	Short:      "Monitor blobfuse2 mount",
+	Long:       "Monitor blobfuse2 mount",
+	SuggestFor: []string{"bfusemon", "monitor health"},
+	Args:       cobra.ExactArgs(0),
+	Hidden:     true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		resetMonitorOptions()
 

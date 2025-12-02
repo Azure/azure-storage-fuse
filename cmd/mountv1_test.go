@@ -787,7 +787,7 @@ func (suite *generateConfigTestSuite) TestInvalidLibfuseOption() {
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o default_permissions", "-o umask=755", "-o a=b=c")
 	suite.assert.Error(err)
-	suite.assert.Contains(op, "invalid FUSE options")
+	suite.assert.Contains(op, "Invalid FUSE options")
 }
 
 // mountv1 failure test where a libfuse option is undefined
@@ -807,7 +807,7 @@ func (suite *generateConfigTestSuite) TestUndefinedLibfuseOption() {
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o allow_root", "-o umask=755", "-o random_option")
 	suite.assert.Error(err)
-	suite.assert.Contains(op, "invalid FUSE options")
+	suite.assert.Contains(op, "Invalid FUSE options")
 }
 
 // mountv1 failure test where umask value is invalid
