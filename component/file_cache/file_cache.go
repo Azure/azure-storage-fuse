@@ -1163,7 +1163,8 @@ func (fc *FileCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
-		log.Err("FileCache::ReadInBuffer : error [couldn't find fd in handle] %s", options.Handle.Path)
+		log.Err("FileCache::ReadInBuffer : error [couldn't find fd in handle] %s, ID: %d",
+			options.Handle.Path, options.Handle.ID)
 		return 0, syscall.EBADF
 	}
 
@@ -1188,17 +1189,20 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
-		log.Err("FileCache::WriteFile : error [couldn't find fd in handle] %s", options.Handle.Path)
+		log.Err("FileCache::WriteFile : error [couldn't find fd in handle] %s, ID: %d",
+			options.Handle.Path, options.Handle.ID)
 		return 0, syscall.EBADF
 	}
 
 	if fc.diskHighWaterMark != 0 {
 		currSize, err := common.GetUsage(fc.tmpPath)
 		if err != nil {
-			log.Err("FileCache::WriteFile : error getting current usage of cache [%s]", err.Error())
+			log.Err("FileCache::WriteFile : file: %s, ID: %d, error getting current usage of cache [%s]",
+				options.Handle.Path, options.Handle.ID, err.Error())
 		} else {
 			if (currSize + float64(len(options.Data))) > fc.diskHighWaterMark {
-				log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Handle.Path)
+				log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s",
+					fc.maxCacheSize, options.Handle.Path)
 				return 0, syscall.ENOSPC
 			}
 		}
@@ -1220,7 +1224,8 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 	} else {
-		log.Err("FileCache::WriteFile : failed to write %s [%s]", options.Handle.Path, err.Error())
+		log.Err("FileCache::WriteFile : failed to write %s, ID: %d [%s]",
+			options.Handle.Path, options.Handle.ID, err.Error())
 	}
 
 	return bytesWritten, err
