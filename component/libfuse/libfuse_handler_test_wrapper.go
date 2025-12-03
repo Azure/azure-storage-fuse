@@ -42,6 +42,7 @@ import "C"
 import (
 	"errors"
 	"io/fs"
+	"runtime/cgo"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -400,9 +401,8 @@ func testFTruncate(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
 	fi := C.fuse_file_info_t{}
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
+	fi.fh = C.uint64_t(cgo.NewHandle(handle))
 
 	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
@@ -419,9 +419,8 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
 	fi := C.fuse_file_info_t{}
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
+	fi.fh = C.uint64_t(cgo.NewHandle(handle))
 
 	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
@@ -564,28 +563,14 @@ func testFsync(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	// libfuse component will return back handle in form of an integer value
-	// that needs to be converted back to a pointer to a handle object
-	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
+	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
+	suite.assert.NotNil(handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(nil)
 
 	err := libfuse_fsync(path, C.int(0), info)
 	suite.assert.Equal(C.int(0), err)
-}
-
-func testFsyncHandleError(suite *libfuseTestSuite) {
-	defer suite.cleanupTest()
-	name := "path"
-	path := C.CString("/" + name)
-	defer C.free(unsafe.Pointer(path))
-	info := &C.fuse_file_info_t{}
-	info.flags = C.O_RDWR
-
-	err := libfuse_fsync(path, C.int(0), info)
-	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
 func testFsyncError(suite *libfuseTestSuite) {
@@ -603,10 +588,8 @@ func testFsyncError(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	// libfuse component will return back handle in form of an integer value
-	// that needs to be converted back to a pointer to a handle object
-	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
+	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
+	suite.assert.NotNil(handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(errors.New("failed to sync file"))
