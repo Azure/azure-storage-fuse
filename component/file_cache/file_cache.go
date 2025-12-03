@@ -1201,8 +1201,8 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 				options.Handle.Path, options.Handle.ID, err.Error())
 		} else {
 			if (currSize + float64(len(options.Data))) > fc.diskHighWaterMark {
-				log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s",
-					fc.maxCacheSize, options.Handle.Path)
+				log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s, ID: %d",
+					fc.maxCacheSize, options.Handle.Path, options.Handle.ID)
 				return 0, syscall.ENOSPC
 			}
 		}
