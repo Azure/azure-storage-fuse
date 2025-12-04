@@ -53,13 +53,12 @@ var opts configGenOptions
 var templatesDir = "testdata/config/"
 
 var generateTestConfig = &cobra.Command{
-	Use:               "gen-test-config",
-	Short:             "Generate config file for testing given an output path.",
-	Long:              "Generate config file for testing given an output path.",
-	SuggestFor:        []string{"conv test config", "convert test config"},
-	Hidden:            true,
-	Args:              cobra.ExactArgs(0),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "gen-test-config",
+	Short:      "Generate config file for testing given an output path.",
+	Long:       "Generate config file for testing given an output path.",
+	SuggestFor: []string{"conv test config", "convert test config"},
+	Hidden:     true,
+	Args:       cobra.ExactArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var templateConfig []byte
 		var err error

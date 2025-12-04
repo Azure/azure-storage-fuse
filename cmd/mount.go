@@ -246,12 +246,11 @@ func parseConfig() error {
 }
 
 var mountCmd = &cobra.Command{
-	Use:               "mount [path]",
-	Short:             "Mounts the azure container as a filesystem",
-	Long:              "Mounts the azure container as a filesystem",
-	SuggestFor:        []string{"mnt", "mout"},
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "mount [path]",
+	Short:      "Mounts the azure container as a filesystem",
+	Long:       "Mounts the azure container as a filesystem",
+	SuggestFor: []string{"mnt", "mout"},
+	Args:       cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])

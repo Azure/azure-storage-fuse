@@ -47,12 +47,11 @@ import (
 )
 
 var unmountCmd = &cobra.Command{
-	Use:               "unmount <mount path>",
-	Short:             "Unmount Blobfuse2",
-	Long:              "Unmount Blobfuse2",
-	SuggestFor:        []string{"unmount", "unmnt"},
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "unmount <mount path>",
+	Short:      "Unmount Blobfuse2",
+	Long:       "Unmount Blobfuse2",
+	SuggestFor: []string{"unmount", "unmnt"},
+	Args:       cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		lazy, _ := cmd.Flags().GetBool("lazy")
 		if strings.Contains(args[0], "*") {
