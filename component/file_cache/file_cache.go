@@ -74,7 +74,7 @@ type FileCache struct {
 	offloadIO       bool
 	syncToFlush     bool
 	syncToDelete    bool
-	maxCacheSize    float64
+	maxCacheSizeMB  float64
 
 	defaultPermission os.FileMode
 
@@ -289,13 +289,18 @@ func (fc *FileCache) Configure(_ bool) error {
 	err = syscall.Statfs(fc.tmpPath, &stat)
 	if err != nil {
 		log.Err("FileCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", fc.Name(), err.Error())
-		fc.maxCacheSize = 4192
+		fc.maxCacheSizeMB = 4192
 	} else {
-		fc.maxCacheSize = (0.8 * float64(stat.Bavail) * float64(stat.Bsize)) / (MB)
+		fc.maxCacheSizeMB = (0.8 * float64(stat.Bavail) * float64(stat.Bsize)) / (MB)
 	}
 
 	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB != 0 {
-		fc.maxCacheSize = conf.MaxSizeMB
+		fc.maxCacheSizeMB = conf.MaxSizeMB
+	}
+
+	if fc.maxCacheSizeMB <= 0 {
+		log.Err("FileCache: config error [max-size-mb must be greater than 0]")
+		return fmt.Errorf("config error in %s error [max-size-mb: %f must be greater than 0]", fc.Name(), fc.maxCacheSizeMB)
 	}
 
 	if !isLocalDirEmpty(fc.tmpPath) && !fc.allowNonEmpty {
@@ -337,18 +342,18 @@ func (fc *FileCache) Configure(_ bool) error {
 	}
 
 	fc.diskHighWaterMark = 0
-	if fc.hardLimit && fc.maxCacheSize != 0 {
-		fc.diskHighWaterMark = (((fc.maxCacheSize * MB) * float64(cacheConfig.highThreshold)) / 100)
+	if fc.hardLimit && fc.maxCacheSizeMB != 0 {
+		fc.diskHighWaterMark = (((fc.maxCacheSizeMB * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
 	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, "+
 		"low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, "+
 		"cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, "+
 		"diskHighWaterMark %v, maxCacheSize %v, lazy-write %v, mountPath %v",
-		fc.createEmptyFile, int(fc.cacheTimeout), fc.tmpPath, int(fc.maxCacheSize), int(cacheConfig.highThreshold),
+		fc.createEmptyFile, int(fc.cacheTimeout), fc.tmpPath, int(fc.maxCacheSizeMB), int(cacheConfig.highThreshold),
 		int(cacheConfig.lowThreshold), fc.refreshSec, cacheConfig.maxEviction, fc.hardLimit, conf.Policy, fc.allowNonEmpty,
 		conf.CleanupOnStart, fc.policyTrace, fc.offloadIO, fc.syncToFlush, fc.syncToDelete, fc.defaultPermission,
-		fc.diskHighWaterMark, fc.maxCacheSize, fc.lazyWrite, fc.mountPath)
+		fc.diskHighWaterMark, fc.maxCacheSizeMB, fc.lazyWrite, fc.mountPath)
 
 	return nil
 }
@@ -368,7 +373,7 @@ func (fc *FileCache) OnConfigChange() {
 	fc.policyTrace = conf.EnablePolicyTrace
 	fc.offloadIO = conf.OffloadIO
 	if conf.MaxSizeMB > 0 {
-		fc.maxCacheSize = conf.MaxSizeMB
+		fc.maxCacheSizeMB = conf.MaxSizeMB
 	}
 	fc.syncToFlush = conf.SyncToFlush
 	fc.syncToDelete = !conf.SyncNoOp
@@ -380,7 +385,7 @@ func (fc *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	// cache_size - used = f_frsize * f_bavail/1024
 	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
 	// if cache size is set to 0 then we have the root mount usage
-	maxCacheSize := fc.maxCacheSize * MB
+	maxCacheSize := fc.maxCacheSizeMB * MB
 	if maxCacheSize == 0 {
 		return nil, false, nil
 	}
@@ -420,7 +425,7 @@ func (fc *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 		highThreshold: float64(conf.HighThreshold),
 		lowThreshold:  float64(conf.LowThreshold),
 		cacheTimeout:  uint32(fc.cacheTimeout),
-		maxSizeMB:     fc.maxCacheSize,
+		maxSizeMB:     fc.maxCacheSizeMB,
 		fileLocks:     fc.fileLocks,
 		policyTrace:   conf.EnablePolicyTrace,
 	}
@@ -1197,7 +1202,7 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 			log.Err("FileCache::WriteFile : error getting current usage of cache [%s]", err.Error())
 		} else {
 			if (currSize + float64(len(options.Data))) > fc.diskHighWaterMark {
-				log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Handle.Path)
+				log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSizeMB, options.Handle.Path)
 				return 0, syscall.ENOSPC
 			}
 		}
@@ -1502,7 +1507,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 			log.Err("FileCache::TruncateFile : error getting current usage of cache [%s]", err.Error())
 		} else {
 			if (currSize + float64(options.NewSize)) > fc.diskHighWaterMark {
-				log.Err("FileCache::TruncateFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Name)
+				log.Err("FileCache::TruncateFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSizeMB, options.Name)
 				return syscall.ENOSPC
 			}
 		}

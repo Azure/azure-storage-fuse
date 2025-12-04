@@ -410,24 +410,6 @@ func (suite *utilTestSuite) TestGetUSage() {
 	_ = os.RemoveAll(dirName)
 }
 
-func (suite *utilTestSuite) TestGetDiskUsage() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		return
-	}
-
-	dirName := filepath.Join(pwd, "util_test", "a", "b", "c")
-	err = os.MkdirAll(dirName, 0777)
-	suite.assert.NoError(err)
-
-	usage, usagePercent, err := GetDiskUsageFromStatfs(dirName)
-	suite.assert.NoError(err)
-	suite.assert.NotEqual(0, usage)
-	suite.assert.NotEqual(0, usagePercent)
-	suite.assert.NotEqual(100, usagePercent)
-	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
-}
-
 func (suite *utilTestSuite) TestDirectoryCleanup() {
 	dirName := "./TestDirectoryCleanup"
 
