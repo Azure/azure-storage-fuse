@@ -43,7 +43,7 @@ import (
 
 // Flags represented in BitMap for various flags in the attr cache item
 const (
-	AttrFlagUnknown uint16 = iota
+	AttrFlagUnknown uint64 = iota
 	AttrFlagExists
 	AttrFlagValid
 )
@@ -52,7 +52,7 @@ const (
 type attrCacheItem struct {
 	attr     *internal.ObjAttr
 	cachedAt time.Time
-	attrFlag common.BitMap16
+	attrFlag common.BitMap64
 }
 
 func newAttrCacheItem(attr *internal.ObjAttr, exists bool, cachedAt time.Time) *attrCacheItem {

@@ -40,6 +40,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,6 +66,109 @@ func (suite *utilTestSuite) SetupTest() {
 
 func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
+}
+
+func (suite *utilTestSuite) TestThreadSafeBitmap() {
+	var bitmap BitMap64
+
+	start := make(chan bool)
+	var wg sync.WaitGroup
+
+	set := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.Set(uint64(i % 64))
+		}
+	}
+
+	access := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.IsSet(uint64(i % 64))
+		}
+	}
+
+	clear := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.Clear(uint64(i % 64))
+		}
+	}
+
+	resetBitmap := func() {
+		defer wg.Done()
+		<-start
+		for range 100000 {
+			bitmap.Reset()
+		}
+	}
+
+	wg.Add(4)
+	go set()
+	go access()
+	go clear()
+	go resetBitmap()
+	close(start)
+	wg.Wait()
+}
+
+func (suite *utilTestSuite) TestBitmapSetIsSetClear() {
+	var bitmap BitMap64
+
+	for i := uint64(0); i < 1000; i++ {
+		j := i % 64
+		ok := bitmap.Set(j)
+		// first time setting the bit should return true
+		suite.assert.True(ok)
+		for k := uint64(0); k < 64; k++ {
+			if k == j {
+				suite.assert.True(bitmap.IsSet(k))
+			} else {
+				suite.assert.False(bitmap.IsSet(k))
+			}
+		}
+
+		ok = bitmap.Set(j)
+		// Second time setting the bit should return true
+		suite.assert.False(ok)
+
+		ok = bitmap.Clear(j)
+		// first time clearing the bit should return true
+		suite.assert.True(ok)
+		suite.assert.False(bitmap.IsSet(j))
+
+		ok = bitmap.Clear(j)
+		// second time clearing the bit should return false
+		suite.assert.False(ok)
+		suite.assert.False(bitmap.IsSet(j))
+
+		for k := uint64(0); k < 64; k++ {
+			suite.assert.False(bitmap.IsSet(k))
+		}
+	}
+}
+
+func (suite *utilTestSuite) TestBitmapReset() {
+	var bitmap BitMap64
+
+	for i := uint64(0); i < 64; i++ {
+		bitmap.Set(i)
+	}
+
+	ok := bitmap.Reset()
+	// Reset should return true if any bit was set
+	suite.assert.True(ok)
+
+	for i := uint64(0); i < 64; i++ {
+		suite.assert.False(bitmap.IsSet(i))
+	}
+
+	ok = bitmap.Reset()
+	// Reset should return false if no bit was set
+	suite.assert.False(ok)
 }
 
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
