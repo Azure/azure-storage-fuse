@@ -48,13 +48,13 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 
+	"github.com/petermattis/goid"
 	"gopkg.in/ini.v1"
 )
 
@@ -629,28 +629,5 @@ func PrettyOpenFlags(f int) string {
 // GetGoroutineID returns the goroutine id of the current goroutine.
 // Example: if the stack trace starts with "goroutine 17 [running]:", GetGoroutineID returns 17.
 func GetGoroutineID() uint64 {
-	// Grab up to 64 bytes of the current goroutine’s stack
-	b := make([]byte, 64)
-
-	// Write the current goroutine’s stack trace into the byte buffer.
-	// Reslices bytes to only those n bytes (b = b[:n]), so you drop any unused capacity at the end of the buffer
-	// and work only with the real stack‐trace bytes.
-	b = b[:runtime.Stack(b, false)]
-
-	// Strip the literal “goroutine ” prefix
-	b = bytes.TrimPrefix(b, []byte("goroutine "))
-
-	// Find the first space (everything before it is the ID)
-	i := bytes.IndexByte(b, ' ')
-	if i < 0 {
-		return 0
-	}
-
-	// Parse those digits into a number
-	gid, err := strconv.ParseUint(string(b[:i]), 10, 64)
-	if err != nil {
-		return 0
-	}
-
-	return gid
+	return (uint64)(goid.Get())
 }
