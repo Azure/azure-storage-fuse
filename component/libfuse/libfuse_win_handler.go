@@ -158,7 +158,7 @@ func (lf *Libfuse) initFuse() error {
 			err := config.UnmarshalKey("azstorage.container", &nameStorage)
 			if err != nil {
 				nameStorage = "azure"
-				log.Err("initFuse : Failed to unmarshal s3storage.bucket-name")
+				log.Err("initFuse : Failed to unmarshal azstorage.container")
 			}
 		}
 
