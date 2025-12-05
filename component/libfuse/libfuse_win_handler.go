@@ -586,7 +586,7 @@ func (cf *CgofuseFS) Open(path string, flags int) (int, uint64) {
 	if flags&O_SYNC != 0 || flags&__O_DIRECT != 0 {
 		log.Info("Libfuse::Open : Reset flags for open %s, fi.flags %X", name, flags)
 		// Blobfuse2 does not support the SYNC or DIRECT flag. If a user application passes this flag on to blobfuse2
-		// and we open the file with this flag, subsequent write operations wlil fail with "Invalid argument" error.
+		// and we open the file with this flag, subsequent write operations will fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.
 		// Oracle RMAN is one such application that sends these flags during backup
 		flags = flags &^ O_SYNC
