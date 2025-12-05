@@ -45,17 +45,19 @@ import (
 )
 
 type SysLogger struct {
-	level  common.LogLevel
-	tag    string
-	logger *log.Logger
+	level          common.LogLevel
+	tag            string
+	logGoroutineID bool
+	logger         *log.Logger
 }
 
 var ErrNoSyslogService = errors.New("failed to create syslog object")
 
-func newSysLogger(lvl common.LogLevel, tag string) (*SysLogger, error) {
+func newSysLogger(lvl common.LogLevel, tag string, logGoroutineID bool) (*SysLogger, error) {
 	l := &SysLogger{
-		level: lvl,
-		tag:   tag,
+		level:          lvl,
+		tag:            tag,
+		logGoroutineID: logGoroutineID,
 	}
 	err := l.init()
 	if err != nil {
@@ -121,8 +123,7 @@ func (l *SysLogger) write(lvl string, format string, args ...any) {
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
 
-	// If log level is debug in config, add goroutine id in the log
-	if l.level >= common.ELogLevel.LOG_DEBUG() {
+	if l.logGoroutineID {
 		l.logger.Print("[", common.GetGoroutineID(), "][", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
 	} else {
 		l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)

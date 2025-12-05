@@ -48,11 +48,12 @@ import (
 
 // LogConfig : Configuration to be provided to logging infra
 type LogFileConfig struct {
-	LogFile      string
-	LogSize      uint64
-	LogFileCount int
-	LogLevel     common.LogLevel
-	LogTag       string
+	LogFile        string
+	LogSize        uint64
+	LogFileCount   int
+	LogLevel       common.LogLevel
+	LogTag         string
+	LogGoroutineID bool
 
 	currentLogSize uint64
 }
@@ -231,8 +232,7 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...any) {
 		filepath.Base(fn), ln,
 		msg)
 
-	// If log level is debug in config, add goroutine id in the log
-	if l.fileConfig.LogLevel >= common.ELogLevel.LOG_DEBUG() {
+	if l.fileConfig.LogGoroutineID {
 		msg = fmt.Sprintf("%s[%d]%s", base, common.GetGoroutineID(), remaining)
 	} else {
 		msg = fmt.Sprintf("%s%s", base, remaining)

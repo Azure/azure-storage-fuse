@@ -672,7 +672,9 @@ func PrettyOpenFlags(f int) string {
 }
 
 // GetGoroutineID returns the goroutine id of the current goroutine.
-// Example: if the stack trace starts with "goroutine 17 [running]:", GetGoroutineID returns 17.
+// It uses the goid package to retrieve the goroutine id which fetches it
+// from the GO internal runtime data structures, instead of making expensive
+// runtime.Stack calls.
 func GetGoroutineID() uint64 {
 	return (uint64)(goid.Get())
 }
