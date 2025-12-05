@@ -674,6 +674,97 @@ func (suite *mountTestSuite) TestCleanUpOnStartFlag() {
 	}
 }
 
+// TestLoggingGoroutineIDDefaultBehavior ensures that when logging.goroutine-id is
+// not set in config, the mount code block sets it based on log level:
+// - LOG_DEBUG and above -> true
+// - below LOG_DEBUG (e.g., LOG_INFO) -> false
+func (suite *mountTestSuite) TestLoggingGoroutineIDDefaultBehavior() {
+	// Prepare two minimal configs differing only by logging.level
+	cfgDebug := `
+logging:
+  type: syslog
+  level: log_debug
+default-working-dir: /tmp/blobfuse2
+file_cache:
+  path: /tmp/fileCachePath
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 60
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+  max-retries: 1
+components:
+  - libfuse
+  - file_cache
+  - attr_cache
+  - azstorage
+`
+
+	cfgInfo := `
+logging:
+  type: syslog
+  level: log_info
+default-working-dir: /tmp/blobfuse2
+file_cache:
+  path: /tmp/fileCachePath
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 60
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+  max-retries: 1
+components:
+  - libfuse
+  - file_cache
+  - attr_cache
+  - azstorage
+`
+
+	// Helper to run mount and inspect options.Logging.LogGoroutineID
+	run := func(cfg string) (bool, string) {
+		// reset shared state
+		resetCLIFlags(*mountCmd)
+		resetCLIFlags(*mountAllCmd)
+		viper.Reset()
+		options = mountOptions{}
+
+		// write config
+		confFile, err := os.CreateTemp("", "conf*.yaml")
+		suite.Assert().NoError(err)
+
+		_, err = confFile.WriteString(cfg)
+		suite.Assert().NoError(err)
+		confFile.Close()
+		defer os.Remove(confFile.Name())
+
+		// mount dir must exist and be empty
+		mntDir, err := os.MkdirTemp("", "mntdir")
+		suite.Assert().NoError(err)
+		defer os.RemoveAll(mntDir)
+
+		// Run the command; it may fail later, but the logging option should be set by then
+		out, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFile.Name()))
+		suite.Assert().Error(err)
+		return options.Logging.LogGoroutineID, out
+	}
+
+	// Case: LOG_DEBUG -> expect true
+	gidDebug, _ := run(cfgDebug)
+	suite.Assert().True(gidDebug)
+
+	// Case: LOG_INFO -> expect false
+	gidInfo, _ := run(cfgInfo)
+	suite.Assert().False(gidInfo)
+}
+
 func TestMountCommand(t *testing.T) {
 	confFile, err := os.CreateTemp("", "conf*.yaml")
 	if err != nil {
