@@ -5,7 +5,7 @@
 - Added RHEL 10.0 package distribution support for x86_64 and aarch64 architectures. ([PR #2066](https://github.com/Azure/azure-storage-fuse/pull/2066))
 
 **Bug Fixes**
-
+- Print error to the StdErr when incorrect command line options are passed, Removed custom cobra fork dependency. ([PR #2079](https://github.com/Azure/azure-storage-fuse/pull/2079))
 
 ## 2.5.1 (2025-10-15)
 **Bug Fixes**

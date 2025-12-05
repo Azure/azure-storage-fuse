@@ -56,13 +56,12 @@ type genConfigParams struct {
 var optsGenCfg genConfigParams
 
 var generatedConfig = &cobra.Command{
-	Use:               "gen-config",
-	Short:             "Generate default config file.",
-	Long:              "Generate default config file with the values pre-calculated by blobfuse2.",
-	SuggestFor:        []string{"generate default config", "generate config"},
-	Hidden:            false,
-	Args:              cobra.ExactArgs(0),
-	FlagErrorHandling: cobra.ContinueOnError,
+	Use:        "gen-config",
+	Short:      "Generate default config file.",
+	Long:       "Generate default config file with the values pre-calculated by blobfuse2.",
+	SuggestFor: []string{"generate default config", "generate config"},
+	Hidden:     false,
+	Args:       cobra.ExactArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		// Show help if no flags are provided

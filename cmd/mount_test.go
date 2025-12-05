@@ -397,7 +397,7 @@ func (suite *mountTestSuite) TestInvalidLibfuseOption() {
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o default_permissions", "-o umask=755", "-o uid=1000", "-o gid=1000", "-o direct_io", "-o a=b=c")
 	suite.assert.Error(err)
-	suite.assert.Contains(op, "invalid FUSE options")
+	suite.assert.Contains(op, "Invalid FUSE options")
 }
 
 // mount failure test where a libfuse option is undefined
@@ -413,7 +413,7 @@ func (suite *mountTestSuite) TestUndefinedLibfuseOption() {
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o allow_root", "-o umask=755", "-o uid=1000", "-o gid=1000", "-o direct_io", "-o random_option")
 	suite.assert.Error(err)
-	suite.assert.Contains(op, "invalid FUSE options")
+	suite.assert.Contains(op, "Invalid FUSE options")
 }
 
 // mount failure test where umask value is invalid
@@ -460,6 +460,32 @@ func (suite *mountTestSuite) TestInvalidGIDValue() {
 		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o uid=1000", "-o direct_io", "-o gid=abcd")
 	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse gid")
+}
+
+func (suite *mountTestSuite) TestInvalidFlagWithValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect flag
+	out, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--invalid-flag=test")
+	suite.assert.Error(err)
+	suite.assert.Contains(out, "unknown flag: --invalid-flag")
+}
+
+func (suite *mountTestSuite) TestInvalidFlagWithOutValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect flag
+	out, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--invalid-flag")
+	suite.assert.Error(err)
+	suite.assert.Contains(out, "unknown flag: --invalid-flag")
 }
 
 // fuse option parsing validation

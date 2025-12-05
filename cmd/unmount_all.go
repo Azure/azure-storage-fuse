@@ -43,11 +43,10 @@ import (
 )
 
 var umntAllCmd = &cobra.Command{
-	Use:               "all",
-	Short:             "Unmount all instances of Blobfuse2",
-	Long:              "Unmount all instances of Blobfuse2",
-	SuggestFor:        []string{"al", "all"},
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "all",
+	Short:      "Unmount all instances of Blobfuse2",
+	Long:       "Unmount all instances of Blobfuse2",
+	SuggestFor: []string{"al", "all"},
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		lazy, _ := cmd.Flags().GetBool("lazy")
 		lstMnt, err := common.ListMountPoints()

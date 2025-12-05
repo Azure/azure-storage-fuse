@@ -60,13 +60,12 @@ var secOpts secureOptions
 
 // Section defining all the command that we have in secure feature
 var secureCmd = &cobra.Command{
-	Use:               "secure",
-	Short:             "Encrypt / Decrypt your config file",
-	Long:              "Encrypt / Decrypt your config file",
-	SuggestFor:        []string{"sec", "secre"},
-	Example:           "blobfuse2 secure encrypt --config-file=config.yaml --passphrase=PASSPHRASE",
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "secure",
+	Short:      "Encrypt / Decrypt your config file",
+	Long:       "Encrypt / Decrypt your config file",
+	SuggestFor: []string{"sec", "secre"},
+	Example:    "blobfuse2 secure encrypt --config-file=config.yaml --passphrase=PASSPHRASE",
+	Args:       cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
@@ -77,12 +76,11 @@ var secureCmd = &cobra.Command{
 }
 
 var encryptCmd = &cobra.Command{
-	Use:               "encrypt",
-	Short:             "Encrypt your config file",
-	Long:              "Encrypt your config file",
-	SuggestFor:        []string{"en", "enc"},
-	Example:           "blobfuse2 secure encrypt --config-file=config.yaml --passphrase=PASSPHRASE",
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "encrypt",
+	Short:      "Encrypt your config file",
+	Long:       "Encrypt your config file",
+	SuggestFor: []string{"en", "enc"},
+	Example:    "blobfuse2 secure encrypt --config-file=config.yaml --passphrase=PASSPHRASE",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
@@ -99,12 +97,11 @@ var encryptCmd = &cobra.Command{
 }
 
 var decryptCmd = &cobra.Command{
-	Use:               "decrypt",
-	Short:             "Decrypt your config file",
-	Long:              "Decrypt your config file",
-	SuggestFor:        []string{"de", "dec"},
-	Example:           "blobfuse2 secure decrypt --config-file=config.yaml --passphrase=PASSPHRASE",
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "decrypt",
+	Short:      "Decrypt your config file",
+	Long:       "Decrypt your config file",
+	SuggestFor: []string{"de", "dec"},
+	Example:    "blobfuse2 secure decrypt --config-file=config.yaml --passphrase=PASSPHRASE",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {

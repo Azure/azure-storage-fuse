@@ -42,12 +42,11 @@ import (
 )
 
 var mountListCmd = &cobra.Command{
-	Use:               "list",
-	Short:             "List all blobfuse2 mountpoints",
-	Long:              "List all blobfuse2 mountpoints",
-	SuggestFor:        []string{"lst", "list"},
-	Example:           "blobfuse2 mount list",
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "list",
+	Short:      "List all blobfuse2 mountpoints",
+	Long:       "List all blobfuse2 mountpoints",
+	SuggestFor: []string{"lst", "list"},
+	Example:    "blobfuse2 mount list",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		lstMnt, err := common.ListMountPoints()
 		if err != nil {

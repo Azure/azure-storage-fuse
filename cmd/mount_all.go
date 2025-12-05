@@ -62,12 +62,11 @@ type containerListingOptions struct {
 var mountAllOpts containerListingOptions
 
 var mountAllCmd = &cobra.Command{
-	Use:               "all [path] <flags>",
-	Short:             "Mounts all azure blob container for a given account as a filesystem",
-	Long:              "Mounts all azure blob container for a given account as a filesystem",
-	SuggestFor:        []string{"mnta", "mout"},
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "all [path] <flags>",
+	Short:      "Mounts all azure blob container for a given account as a filesystem",
+	Long:       "Mounts all azure blob container for a given account as a filesystem",
+	SuggestFor: []string{"mnta", "mout"},
+	Args:       cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
