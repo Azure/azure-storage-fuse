@@ -48,11 +48,12 @@ import (
 
 // LogConfig : Configuration to be provided to logging infra
 type LogFileConfig struct {
-	LogFile      string
-	LogSize      uint64
-	LogFileCount int
-	LogLevel     common.LogLevel
-	LogTag       string
+	LogFile        string
+	LogSize        uint64
+	LogFileCount   int
+	LogLevel       common.LogLevel
+	LogTag         string
+	LogGoroutineID bool
 
 	currentLogSize uint64
 }
@@ -219,14 +220,23 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...any) {
 	// Only log if the log level matches the log request
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	msg = fmt.Sprintf("%s : %s[%d] : [%s] %s [%s (%d)]: %s",
-		time.Now().Format(time.UnixDate),
+
+	base := fmt.Sprintf("%s : %s[%d] : ",
+		time.Now().Format(common.UnixDateMillis),
 		l.fileConfig.LogTag,
-		l.procPID,
+		l.procPID)
+
+	remaining := fmt.Sprintf("[%s] %s [%s (%d)]: %s",
 		common.MountPath,
 		lvl,
 		filepath.Base(fn), ln,
 		msg)
+
+	if l.fileConfig.LogGoroutineID {
+		msg = fmt.Sprintf("%s[%d]%s", base, common.GetGoroutineID(), remaining)
+	} else {
+		msg = fmt.Sprintf("%s%s", base, remaining)
+	}
 
 	l.channel <- msg
 }
