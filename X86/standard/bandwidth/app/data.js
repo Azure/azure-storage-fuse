@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1764491861299,
+  "lastUpdate": 1765096324928,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2367,6 +2367,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 2613.286953589038,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "bf0bb76533a5215eec5c79e4a6ffbef4d2024a77",
+          "message": "Bump github.com/spf13/cobra from 1.10.1 to 1.10.2 (#2085)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2025-12-05T04:01:51Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/bf0bb76533a5215eec5c79e4a6ffbef4d2024a77"
+        },
+        "date": 1765096324672,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 782.6795747423147,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_10GB",
+            "value": 1868.826304420425,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_100GB",
+            "value": 2048.9920630172287,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_40GB",
+            "value": 1691.7675821143152,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_1GB",
+            "value": 1272.1229484420282,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_10GB",
+            "value": 2294.1111094743624,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_100GB",
+            "value": 2701.073370695359,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_40GB",
+            "value": 2645.7825329146413,
             "unit": "MiB/s"
           }
         ]
