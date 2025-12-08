@@ -6,6 +6,7 @@
 
 **Bug Fixes**
 - Print error to the StdErr when incorrect command line options are passed, Removed custom cobra fork dependency. ([PR #2079](https://github.com/Azure/azure-storage-fuse/pull/2079))
+- Change the --hard-limit flag in file_cache to false by default, In 2.5.1 this caused regression after converting this flag to true by default. ([PR #2086](https://github.com/Azure/azure-storage-fuse/pull/2086))
 
 ## 2.5.1 (2025-10-15)
 **Bug Fixes**

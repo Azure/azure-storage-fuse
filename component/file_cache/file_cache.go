@@ -250,7 +250,7 @@ func (fc *FileCache) Configure(_ bool) error {
 	fc.syncToFlush = conf.SyncToFlush
 	fc.syncToDelete = !conf.SyncNoOp
 	fc.refreshSec = conf.RefreshSec
-	fc.hardLimit = true
+	fc.hardLimit = conf.HardLimit
 
 	err = config.UnmarshalKey("lazy-write", &fc.lazyWrite)
 	if err != nil {
@@ -334,9 +334,6 @@ func (fc *FileCache) Configure(_ bool) error {
 	}
 	if config.IsSet(compName + ".sync-to-flush") {
 		log.Warn("Sync will upload current contents of file.")
-	}
-	if config.IsSet(compName + ".hard-limit") {
-		fc.hardLimit = conf.HardLimit
 	}
 
 	fc.diskHighWaterMark = 0
