@@ -44,6 +44,7 @@ import (
 	"io/fs"
 	"runtime/cgo"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -60,10 +61,11 @@ import (
 
 type libfuseTestSuite struct {
 	suite.Suite
-	assert   *assert.Assertions
-	libfuse  *Libfuse
-	mockCtrl *gomock.Controller
-	mock     *internal.MockComponent
+	assert        *assert.Assertions
+	libfuse       *Libfuse
+	mockCtrl      *gomock.Controller
+	mock          *internal.MockComponent
+	handleCounter atomic.Uint64
 }
 
 type fileHandle struct {
@@ -105,6 +107,29 @@ func (suite *libfuseTestSuite) setupTestHelper(config string) {
 func (suite *libfuseTestSuite) cleanupTest() {
 	// suite.libfuse.Stop()
 	suite.mockCtrl.Finish()
+}
+
+// Return true if handle is valid for info/ false otherwise
+func (suite *libfuseTestSuite) isHandleValid(fi *C.fuse_file_info_t) (ok bool) {
+	if fi == nil {
+		return false
+	}
+	if fi.fh == 0 {
+		return false
+	}
+
+	// if call to the cgo.Handle.Value() panics then handle is invalid and return false
+	defer func() {
+		if r := recover(); r != nil {
+			suite.assert.Equal("runtime/cgo: misuse of an invalid Handle", r)
+			ok = false
+			return
+		}
+	}()
+
+	handle := cgo.Handle(fi.fh).Value().(*handlemap.Handle)
+
+	return handle != nil
 }
 
 func testMkDir(suite *libfuseTestSuite) {
@@ -183,10 +208,14 @@ func testCreate(suite *libfuseTestSuite) {
 	mode := fs.FileMode(0775)
 	info := &C.fuse_file_info_t{}
 	options := internal.CreateFileOptions{Name: name, Mode: mode}
-	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, nil)
+	h := &handlemap.Handle{}
+	suite.mock.EXPECT().CreateFile(options).Return(h, nil)
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
 	option := internal.GetAttrOptions{Name: name}
 	suite.mock.EXPECT().GetAttr(option).Return(&internal.ObjAttr{}, nil)
 	stbuf := &C.stat_t{}
@@ -194,6 +223,12 @@ func testCreate(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(stbuf.st_mtim.tv_nsec, C.long(0))
 	suite.assert.NotEqual(stbuf.st_mtim.tv_sec, C.long(0))
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testCreateError(suite *libfuseTestSuite) {
@@ -208,6 +243,7 @@ func testCreateError(suite *libfuseTestSuite) {
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testOpen(suite *libfuseTestSuite) {
@@ -220,10 +256,18 @@ func testOpen(suite *libfuseTestSuite) {
 	info := &C.fuse_file_info_t{}
 	info.flags = C.O_RDWR
 	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+	h := &handlemap.Handle{}
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testOpenSyncDirectFlag(suite *libfuseTestSuite) {
@@ -236,12 +280,20 @@ func testOpenSyncDirectFlag(suite *libfuseTestSuite) {
 	info := &C.fuse_file_info_t{}
 	info.flags = C.O_RDWR | C.O_SYNC | C.__O_DIRECT
 	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+	h := &handlemap.Handle{}
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(C.int(0), info.flags&C.O_SYNC)
 	suite.assert.Equal(C.int(0), info.flags&C.__O_DIRECT)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 // WriteBack caching and ignore-open-flags enabled by default
@@ -257,11 +309,13 @@ func testOpenAppendFlagDefault(suite *libfuseTestSuite) {
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(-C.EINVAL), err)
+	suite.assert.False(suite.isHandleValid(info))
 
 	info.flags = C.O_WRONLY | C.O_APPEND
 
 	err = libfuse_open(path, info)
 	suite.assert.Equal(C.int(-C.EINVAL), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testOpenAppendFlagDisableWritebackCache(suite *libfuseTestSuite) {
@@ -279,19 +333,34 @@ func testOpenAppendFlagDisableWritebackCache(suite *libfuseTestSuite) {
 	info := &C.fuse_file_info_t{}
 	info.flags = C.O_RDWR | C.O_APPEND
 	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+	h := &handlemap.Handle{}
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 
 	flags = C.O_WRONLY | C.O_APPEND&0xffffffff
 	info = &C.fuse_file_info_t{}
 	info.flags = C.O_WRONLY | C.O_APPEND
 	options = internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
 	err = libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
@@ -309,30 +378,52 @@ func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
 	info := &C.fuse_file_info_t{}
 	info.flags = C.O_RDWR | C.O_APPEND
 	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+	h := &handlemap.Handle{}
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(C.int(0), info.flags&C.O_APPEND)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 
 	flags = C.O_RDWR & 0xffffffff
 	info = &C.fuse_file_info_t{}
 	info.flags = C.O_WRONLY | C.O_APPEND
 	options = internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
 	err = libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(C.int(0), info.flags&C.O_APPEND)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 
 	flags = C.O_RDWR & 0xffffffff
 	info = &C.fuse_file_info_t{}
 	info.flags = C.O_WRONLY
 	options = internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
-	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
 	err = libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testOpenNotExists(suite *libfuseTestSuite) {
@@ -349,6 +440,7 @@ func testOpenNotExists(suite *libfuseTestSuite) {
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(-C.ENOENT), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testOpenError(suite *libfuseTestSuite) {
@@ -365,6 +457,7 @@ func testOpenError(suite *libfuseTestSuite) {
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testTruncate(suite *libfuseTestSuite) {
@@ -400,15 +493,30 @@ func testFTruncate(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
 
-	handle := handlemap.NewHandle(name)
-	fi := C.fuse_file_info_t{}
-	fi.fh = C.uint64_t(cgo.NewHandle(handle))
+	flags := C.O_RDWR & 0xffffffff
+	mode := fs.FileMode(fuseFS.filePermission)
+	info := &C.fuse_file_info_t{}
+	info.flags = C.O_RDWR
+	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	h := &handlemap.Handle{}
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
-	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
-	suite.mock.EXPECT().TruncateFile(options).Return(nil)
-
-	err := libfuse_truncate(path, C.off_t(size), &fi)
+	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
+
+	truncOptions := internal.TruncateFileOptions{Handle: h, Name: name, OldSize: -1, NewSize: size}
+	suite.mock.EXPECT().TruncateFile(truncOptions).Return(nil)
+
+	err = libfuse_truncate(path, C.off_t(size), info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testFTruncateError(suite *libfuseTestSuite) {
@@ -418,15 +526,30 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
 
-	handle := handlemap.NewHandle(name)
-	fi := C.fuse_file_info_t{}
-	fi.fh = C.uint64_t(cgo.NewHandle(handle))
+	flags := C.O_RDWR & 0xffffffff
+	mode := fs.FileMode(fuseFS.filePermission)
+	info := &C.fuse_file_info_t{}
+	info.flags = C.O_RDWR
+	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	h := &handlemap.Handle{}
+	suite.mock.EXPECT().OpenFile(options).Return(h, nil)
 
-	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
-	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
+	err := libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
 
-	err := libfuse_truncate(path, C.off_t(size), &fi)
+	truncOptions := internal.TruncateFileOptions{Handle: h, Name: name, OldSize: -1, NewSize: size}
+	suite.mock.EXPECT().TruncateFile(truncOptions).Return(errors.New("failed to truncate file"))
+
+	err = libfuse_truncate(path, C.off_t(size), info)
 	suite.assert.Equal(C.int(-C.EIO), err)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: h}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testUnlink(suite *libfuseTestSuite) {
@@ -560,8 +683,11 @@ func testFsync(suite *libfuseTestSuite) {
 	handle := &handlemap.Handle{}
 	openOptions := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
 	suite.mock.EXPECT().OpenFile(openOptions).Return(handle, nil)
-	libfuse_open(path, info)
+	err := libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
 
 	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
 	suite.assert.NotNil(handle)
@@ -569,8 +695,14 @@ func testFsync(suite *libfuseTestSuite) {
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(nil)
 
-	err := libfuse_fsync(path, C.int(0), info)
+	err = libfuse_fsync(path, C.int(0), info)
 	suite.assert.Equal(C.int(0), err)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testFsyncError(suite *libfuseTestSuite) {
@@ -585,8 +717,11 @@ func testFsyncError(suite *libfuseTestSuite) {
 	handle := &handlemap.Handle{}
 	openOptions := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
 	suite.mock.EXPECT().OpenFile(openOptions).Return(handle, nil)
-	libfuse_open(path, info)
+	err := libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.ulong(suite.handleCounter.Add(1)), info.fh)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
+	suite.assert.True(suite.isHandleValid(info))
 
 	handle = cgo.Handle(info.fh).Value().(*handlemap.Handle)
 	suite.assert.NotNil(handle)
@@ -594,8 +729,14 @@ func testFsyncError(suite *libfuseTestSuite) {
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(errors.New("failed to sync file"))
 
-	err := libfuse_fsync(path, C.int(0), info)
+	err = libfuse_fsync(path, C.int(0), info)
 	suite.assert.Equal(C.int(-C.EIO), err)
+	suite.assert.True(suite.isHandleValid(info))
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).Return(nil)
+	err = libfuse_release(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.False(suite.isHandleValid(info))
 }
 
 func testFsyncDir(suite *libfuseTestSuite) {
