@@ -92,7 +92,7 @@ func (suite *typesTestSuite) TestFindBlocksToModify() {
 	suite.assert.Equal(int64(5), size)
 	suite.assert.True(largerThanFile)
 
-	index, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
+	_, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
 	suite.assert.Equal(int64(0), size)
 	suite.assert.True(largerThanFile)
 	suite.assert.True(appendOnly)

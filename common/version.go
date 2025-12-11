@@ -56,7 +56,7 @@ func ParseVersion(raw string) (*Version, error) {
 	const standardError = "invalid version string"
 
 	rawSegments := strings.Split(raw, ".")
-	if !(len(rawSegments) == 3 || (len(rawSegments) == 4 && (strings.Contains(rawSegments[2], "-") || strings.Contains(rawSegments[2], "~")))) {
+	if len(rawSegments) != 3 && (len(rawSegments) != 4 || (!strings.Contains(rawSegments[2], "-") && (!strings.Contains(rawSegments[2], "~")))) {
 		return nil, errors.New(standardError)
 	}
 

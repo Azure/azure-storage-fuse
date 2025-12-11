@@ -51,7 +51,7 @@ type blockTestSuite struct {
 func (suite *blockTestSuite) SetupTest() {
 }
 
-func (suite *blockTestSuite) cleanupTest() {
+func (suite *blockTestSuite) CleanupTest() {
 }
 
 func (suite *blockTestSuite) TestAllocate() {
@@ -79,7 +79,8 @@ func (suite *blockTestSuite) TestAllocateBig() {
 	suite.assert.NotNil(b.data)
 	suite.assert.Equal(100*1024*1024, cap(b.data))
 
-	b.Delete()
+	err = b.Delete()
+	suite.assert.NoError(err)
 }
 
 func (suite *blockTestSuite) TestAllocateHuge() {
@@ -144,7 +145,7 @@ func (suite *blockTestSuite) TestReady() {
 	suite.assert.NotNil(b.state)
 
 	b.Ready(BlockStatusDownloaded)
-	suite.assert.Equal(1, len(b.state))
+	suite.assert.Len(b.state, 1)
 
 	<-b.state
 	suite.assert.Empty(b.state)
@@ -168,7 +169,7 @@ func (suite *blockTestSuite) TestUnBlock() {
 	suite.assert.Nil(b.node)
 
 	b.Ready(BlockStatusDownloaded)
-	suite.assert.Equal(1, len(b.state))
+	suite.assert.Len(b.state, 1)
 
 	<-b.state
 	suite.assert.Empty(b.state)
@@ -201,7 +202,7 @@ func (suite *blockTestSuite) TestWriter() {
 	suite.assert.False(b.IsDirty())
 
 	b.Ready(BlockStatusDownloaded)
-	suite.assert.Equal(1, len(b.state))
+	suite.assert.Len(b.state, 1)
 
 	<-b.state
 	suite.assert.Empty(b.state)
@@ -223,7 +224,7 @@ func (suite *blockTestSuite) TestWriter() {
 	suite.assert.False(b.IsDirty())
 
 	b.Ready(BlockStatusUploaded)
-	suite.assert.Equal(1, len(b.state))
+	suite.assert.Len(b.state, 1)
 
 	<-b.state
 	suite.assert.Empty(b.state)
