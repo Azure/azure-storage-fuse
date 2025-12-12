@@ -113,11 +113,17 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceApiVersion))
 	}
 
+	perRetryPolicies := []policy.Policy{}
+	if conf.limitBytesPerSec > 0 || conf.limitOpsPerSec > 0 {
+		perRetryPolicies = append(perRetryPolicies, newRateLimitingPolicy(conf.limitBytesPerSec, conf.limitOpsPerSec))
+	}
+
 	return azcore.ClientOptions{
-		Retry:           retryOptions,
-		Logging:         logOptions,
-		PerCallPolicies: perCallPolicies,
-		Transport:       transportOptions,
+		Retry:            retryOptions,
+		Logging:          logOptions,
+		PerCallPolicies:  perCallPolicies,
+		PerRetryPolicies: perRetryPolicies,
+		Transport:        transportOptions,
 	}, err
 }
 

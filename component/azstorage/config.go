@@ -201,6 +201,8 @@ type AzStorageOptions struct {
 	UseHTTPS       bool   `config:"use-https" yaml:"-"`
 	SetContentType bool   `config:"set-content-type" yaml:"-"`
 	CaCertFile     string `config:"ca-cert-file" yaml:"-"`
+	LimitBytesPerSec        int64  `config:"limit-bytes-per-sec" yaml:"limit-bytes-per-sec"`
+	LimitOpsPerSec          int64  `config:"limit-ops-per-sec" yaml:"limit-ops-per-sec"`
 }
 
 // RegisterEnvVariables : Register environment varilables
@@ -629,6 +631,18 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 				return errors.New("SAS key update failure")
 			}
 		}
+	}
+
+	// Rate limiting
+	az.stConfig.limitBytesPerSec = -1
+	az.stConfig.limitOpsPerSec = -1
+
+	if opt.LimitBytesPerSec > 0 {
+		az.stConfig.limitBytesPerSec = opt.LimitBytesPerSec
+	}
+
+	if opt.LimitOpsPerSec > 0 {
+		az.stConfig.limitOpsPerSec = opt.LimitOpsPerSec
 	}
 
 	return nil

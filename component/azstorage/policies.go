@@ -37,8 +37,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"golang.org/x/time/rate"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 // blobfuseTelemetryPolicy is a custom pipeline policy to prepend the blobfuse user agent string to the one coming from SDK.
@@ -77,5 +80,83 @@ func newServiceVersionPolicy(version string) policy.Policy {
 
 func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
 	req.Raw().Header["x-ms-version"] = []string{r.serviceApiVersion}
+	return req.Next()
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Policy to limit the rate of requests
+type rateLimitingPolicy struct {
+	bandwidthLimiter *rate.Limiter
+	opsLimiter       *rate.Limiter
+}
+
+func newRateLimitingPolicy(bytesPerSec int64, opsPerSec int64) policy.Policy {
+	p := &rateLimitingPolicy{}
+
+	if bytesPerSec > 0 {
+		// Burst size is set to the limit itself to allow full utilization up to the limit
+		p.bandwidthLimiter = rate.NewLimiter(rate.Limit(bytesPerSec), int(bytesPerSec))
+		log.Info("RateLimitingPolicy : Bandwidth limit set to %d bytes/sec", bytesPerSec)
+	}
+
+	if opsPerSec > 0 {
+		// Burst size is set to the limit itself
+		p.opsLimiter = rate.NewLimiter(rate.Limit(opsPerSec), int(opsPerSec))
+		log.Info("RateLimitingPolicy : Ops limit set to %d ops/sec", opsPerSec)
+	}
+
+	return p
+}
+
+func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
+	ctx := req.Raw().Context()
+
+	// Limit operations per second
+	if p.opsLimiter != nil {
+		// Wait for 1 token
+		err := p.opsLimiter.Wait(ctx)
+		if err != nil {
+			log.Err("RateLimitingPolicy : Ops limit wait failed [%s]", err.Error())
+			return nil, err
+		}
+	}
+
+	// Limit bandwidth
+	if p.bandwidthLimiter != nil {
+		// Calculate the size of the request body
+		var bodySize int64
+		if req.Body() != nil {
+			// This is an approximation. For exact size we might need to read the body which is not efficient.
+			// For Seekable body we can get the size.
+			if seeker, ok := req.Body().(interface {
+				Seek(offset int64, whence int) (int64, error)
+			}); ok {
+				current, _ := seeker.Seek(0, 1)
+				end, _ := seeker.Seek(0, 2)
+				_, _ = seeker.Seek(current, 0)
+				bodySize = end
+			} else {
+				// Fallback or estimation if needed.
+				// For now, if we can't determine size, we might skip or assume a default.
+				// However, for upload, the body should be seekable usually in SDK.
+				// If not, we might just count the header size or similar?
+				// Let's try to get Content-Length header if set.
+				if req.Raw().ContentLength > 0 {
+					bodySize = req.Raw().ContentLength
+				}
+			}
+		}
+
+		if bodySize > 0 {
+			// Wait for tokens equal to body size
+			// WaitN blocks until lim permits n events to happen.
+			err := p.bandwidthLimiter.WaitN(ctx, int(bodySize))
+			if err != nil {
+				log.Err("RateLimitingPolicy : Bandwidth limit wait failed [%s]", err.Error())
+				return nil, err
+			}
+		}
+	}
+
 	return req.Next()
 }

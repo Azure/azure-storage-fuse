@@ -90,6 +90,8 @@ type mountOptions struct {
 	MonitorOpt        monitorOptions `config:"health_monitor"`
 	WaitForMount      time.Duration  `config:"wait-for-mount"`
 	LazyWrite         bool           `config:"lazy-write"`
+	LimitBytesPerSec  int64          `config:"limit-bytes-per-sec"`
+	LimitOpsPerSec    int64          `config:"limit-ops-per-sec"`
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
@@ -903,6 +905,12 @@ func init() {
 
 	mountCmd.PersistentFlags().Bool("disable-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
 	config.BindPFlag("disable-kernel-cache", mountCmd.PersistentFlags().Lookup("disable-kernel-cache"))
+
+	mountCmd.PersistentFlags().Int64("limit-bytes-per-sec", -1, "Limit bandwidth in bytes per second. Default is -1 (unlimited).")
+	config.BindPFlag("azstorage.limit-bytes-per-sec", mountCmd.PersistentFlags().Lookup("limit-bytes-per-sec"))
+
+	mountCmd.PersistentFlags().Int64("limit-ops-per-sec", -1, "Limit operations per second. Default is -1 (unlimited).")
+	config.BindPFlag("azstorage.limit-ops-per-sec", mountCmd.PersistentFlags().Lookup("limit-ops-per-sec"))
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
