@@ -34,7 +34,6 @@
 package cmd
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -161,17 +160,17 @@ func (suite *rootCmdSuite) TestGetRemoteVersionCurrentSame() {
 	suite.assert.Nil(msg)
 }
 
-func (suite *rootCmdSuite) testExecute() {
-	defer suite.cleanupTest()
-	buf := new(bytes.Buffer)
-	rootCmd.SetOut(buf)
-	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"--version"})
+// func (suite *rootCmdSuite) testExecute() {
+// 	defer suite.cleanupTest()
+// 	buf := new(bytes.Buffer)
+// 	rootCmd.SetOut(buf)
+// 	rootCmd.SetErr(buf)
+// 	rootCmd.SetArgs([]string{"--version"})
 
-	err := Execute()
-	suite.assert.NoError(err)
-	suite.assert.Contains(buf.String(), "blobfuse2 version")
-}
+// 	err := Execute()
+// 	suite.assert.NoError(err)
+// 	suite.assert.Contains(buf.String(), "blobfuse2 version")
+// }
 
 func (suite *rootCmdSuite) TestParseArgs() {
 	defer suite.cleanupTest()

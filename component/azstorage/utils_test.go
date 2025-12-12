@@ -70,7 +70,7 @@ func (s *utilsTestSuite) TestContentType() {
 
 	// assert mp4 content type would get deserialized correctly
 	val = getContentType("file.mp4")
-	assert.EqualValues("video/mp4", val)
+	assert.Equal("video/mp4", val)
 }
 
 type contentTypeVal struct {
@@ -265,11 +265,11 @@ func (s *utilsTestSuite) TestSanitizeEtag() {
 
 	etagValue := azcore.ETag("\"abcd\"")
 	etag := sanitizeEtag(&etagValue)
-	assert.EqualValues("abcd", etag)
+	assert.Equal("abcd", etag)
 
 	etagValue = azcore.ETag("abcd")
 	etag = sanitizeEtag(&etagValue)
-	assert.EqualValues("abcd", etag)
+	assert.Equal("abcd", etag)
 }
 
 func (s *utilsTestSuite) TestBlockNonProxyOptions() {
@@ -485,8 +485,8 @@ func (s *utilsTestSuite) TestRemoveLeadingSlashes() {
 	}
 }
 
-func (suite *utilsTestSuite) TestRemovePrefixPath() {
-	assert := assert.New(suite.T())
+func (s *utilsTestSuite) TestRemovePrefixPath() {
+	assert := assert.New(s.T())
 
 	var inputs = []struct {
 		prefixPath string
@@ -505,7 +505,7 @@ func (suite *utilsTestSuite) TestRemovePrefixPath() {
 	}
 
 	for _, i := range inputs {
-		suite.Run(filepath.Join(i.prefixPath, i.path), func() {
+		s.Run(filepath.Join(i.prefixPath, i.path), func() {
 			output := removePrefixPath(i.prefixPath, i.path)
 			assert.Equal(i.result, output)
 		})

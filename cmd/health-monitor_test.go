@@ -132,7 +132,7 @@ func (suite *hmonTestSuite) TestBuildHmonCliParams() {
 	}
 
 	cliParams := buildCliParamForMonitor()
-	suite.assert.Equal(11, len(cliParams))
+	suite.assert.Len(cliParams, 11)
 }
 
 func (suite *hmonTestSuite) TestHmonInvalidOptions() {

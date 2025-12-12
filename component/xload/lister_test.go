@@ -80,7 +80,8 @@ func (suite *listTestSuite) SetupSuite() {
 	suite.assert.NoError(err)
 
 	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", lb_path)
-	config.ReadConfigFromReader(strings.NewReader(cfg))
+	err = config.ReadConfigFromReader(strings.NewReader(cfg))
+	suite.assert.NoError(err)
 
 	lb = loopback.NewLoopbackFSComponent()
 	err = lb.Configure(true)

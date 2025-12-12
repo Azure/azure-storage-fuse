@@ -62,7 +62,8 @@ func (suite *lruPolicyTestSuite) SetupTest() {
 	// }
 	suite.assert = assert.New(suite.T())
 
-	os.Mkdir(cache_path, fs.FileMode(0777))
+	err := os.Mkdir(cache_path, fs.FileMode(0777))
+	suite.assert.NoError(err)
 
 	config := cachePolicyConfig{
 		tmpPath:       cache_path,
@@ -80,11 +81,13 @@ func (suite *lruPolicyTestSuite) SetupTest() {
 func (suite *lruPolicyTestSuite) setupTestHelper(config cachePolicyConfig) {
 	suite.policy = NewLRUPolicy(config).(*lruPolicy)
 
-	suite.policy.StartPolicy()
+	err := suite.policy.StartPolicy()
+	suite.assert.NoError(err)
 }
 
 func (suite *lruPolicyTestSuite) cleanupTest() {
-	suite.policy.ShutdownPolicy()
+	err := suite.policy.ShutdownPolicy()
+	suite.assert.NoError(err)
 
 	os.RemoveAll(cache_path)
 }
@@ -94,9 +97,9 @@ func (suite *lruPolicyTestSuite) TestDefault() {
 	suite.assert.Equal("lru", suite.policy.Name())
 	suite.assert.EqualValues(0, suite.policy.cacheTimeout) // cacheTimeout does not change
 	suite.assert.EqualValues(defaultMaxEviction, suite.policy.maxEviction)
-	suite.assert.EqualValues(0, suite.policy.maxSizeMB)
-	suite.assert.EqualValues(defaultMaxThreshold, suite.policy.highThreshold)
-	suite.assert.EqualValues(defaultMinThreshold, suite.policy.lowThreshold)
+	suite.assert.Equal(0, int(suite.policy.maxSizeMB))
+	suite.assert.Equal(defaultMaxThreshold, int(suite.policy.highThreshold))
+	suite.assert.Equal(defaultMinThreshold, int(suite.policy.lowThreshold))
 }
 
 func (suite *lruPolicyTestSuite) TestUpdateConfig() {
@@ -110,14 +113,15 @@ func (suite *lruPolicyTestSuite) TestUpdateConfig() {
 		lowThreshold:  20,
 		fileLocks:     &common.LockMap{},
 	}
-	suite.policy.UpdateConfig(config)
+	err := suite.policy.UpdateConfig(config)
+	suite.assert.NoError(err)
 
 	suite.assert.NotEqualValues(120, suite.policy.cacheTimeout) // cacheTimeout does not change
 	suite.assert.EqualValues(0, suite.policy.cacheTimeout)      // cacheTimeout does not change
 	suite.assert.EqualValues(100, suite.policy.maxEviction)
-	suite.assert.EqualValues(10, suite.policy.maxSizeMB)
-	suite.assert.EqualValues(70, suite.policy.highThreshold)
-	suite.assert.EqualValues(20, suite.policy.lowThreshold)
+	suite.assert.Equal(10, int(suite.policy.maxSizeMB))
+	suite.assert.Equal(70, int(suite.policy.highThreshold))
+	suite.assert.Equal(20, int(suite.policy.lowThreshold))
 }
 
 func (suite *lruPolicyTestSuite) TestCacheValid() {
