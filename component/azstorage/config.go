@@ -197,12 +197,12 @@ type AzStorageOptions struct {
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
 
 	// v1 support
-	UseAdls        bool   `config:"use-adls" yaml:"-"`
-	UseHTTPS       bool   `config:"use-https" yaml:"-"`
-	SetContentType bool   `config:"set-content-type" yaml:"-"`
-	CaCertFile     string `config:"ca-cert-file" yaml:"-"`
-	LimitBytesPerSec        int64  `config:"limit-bytes-per-sec" yaml:"limit-bytes-per-sec"`
-	LimitOpsPerSec          int64  `config:"limit-ops-per-sec" yaml:"limit-ops-per-sec"`
+	UseAdls          bool   `config:"use-adls" yaml:"-"`
+	UseHTTPS         bool   `config:"use-https" yaml:"-"`
+	SetContentType   bool   `config:"set-content-type" yaml:"-"`
+	CaCertFile       string `config:"ca-cert-file" yaml:"-"`
+	LimitBytesPerSec int64  `config:"limit-bytes-per-sec" yaml:"limit-bytes-per-sec"`
+	LimitOpsPerSec   int64  `config:"limit-ops-per-sec" yaml:"limit-ops-per-sec"`
 }
 
 // RegisterEnvVariables : Register environment varilables
@@ -540,7 +540,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, limit-bytes-per-sec %d, limit-ops-per-sec %d",
+		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.limitBytesPerSec, az.stConfig.limitOpsPerSec)
 
 	return nil
 }

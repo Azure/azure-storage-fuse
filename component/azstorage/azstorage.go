@@ -693,6 +693,12 @@ func init() {
 	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
 	config.BindPFlag(compName+".filter", blobFilter)
 
+	limitBytesPerSec := config.AddInt64Flag("limit-bytes-per-sec", -1, "Limit bandwidth in bytes per second. Default is -1 (unlimited).")
+	config.BindPFlag(compName+".limit-bytes-per-sec", limitBytesPerSec)
+
+	limitOpsPerSec := config.AddInt64Flag("limit-ops-per-sec", -1, "Limit operations per second. Default is -1 (unlimited).")
+	config.BindPFlag(compName+".limit-ops-per-sec", limitOpsPerSec)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
