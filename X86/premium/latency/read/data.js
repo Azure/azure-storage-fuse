@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1765082646640,
+  "lastUpdate": 1765687646893,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -3444,6 +3444,73 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 74.74270821577666,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d8a31a5066f5f064fdce5de9fbf44006bf0693d5",
+          "message": "Fix linting issues (#2087)",
+          "timestamp": "2025-12-12T08:13:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d8a31a5066f5f064fdce5de9fbf44006bf0693d5"
+        },
+        "date": 1765687646655,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.10162329825166666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 69.43172399480166,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.09144956636333335,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.1820449097386667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09411901848333333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 70.695672936619,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.16208179841066667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 0.8636692845056667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 77.73633044315534,
             "unit": "milliseconds"
           }
         ]
