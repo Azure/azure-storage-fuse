@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1765104014352,
+  "lastUpdate": 1765709720912,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1225,6 +1225,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 6.585249635800387,
+            "unit": "GiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d8a31a5066f5f064fdce5de9fbf44006bf0693d5",
+          "message": "Fix linting issues (#2087)",
+          "timestamp": "2025-12-12T08:13:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d8a31a5066f5f064fdce5de9fbf44006bf0693d5"
+        },
+        "date": 1765709720687,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 8.81297365357922,
+            "unit": "GiB/s"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 6.576776457474006,
             "unit": "GiB/s"
           }
         ]
