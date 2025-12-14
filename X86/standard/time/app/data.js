@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1765096326241,
+  "lastUpdate": 1765702198218,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2429,6 +2429,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 15.484265804290771,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d8a31a5066f5f064fdce5de9fbf44006bf0693d5",
+          "message": "Fix linting issues (#2087)",
+          "timestamp": "2025-12-12T08:13:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d8a31a5066f5f064fdce5de9fbf44006bf0693d5"
+        },
+        "date": 1765702197973,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.4725732803344727,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 6.241597652435303,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 52.75731039047241,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 23.581167936325073,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.9240720272064209,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 13.897322177886963,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 51.74390363693237,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 21.63017964363098,
             "unit": "seconds"
           }
         ]
