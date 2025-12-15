@@ -36,8 +36,6 @@ package azstorage
 import (
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"golang.org/x/time/rate"
 
@@ -149,43 +147,4 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 	}
 
 	return req.Next()
-}
-
-// parseRangeHeader parses the x-ms-range header and returns the size of the range requested
-// Examples of x-ms-range header:
-//
-//	bytes=0-499       --> returns 500
-//	bytes=500-999     --> returns 500
-//	bytes=500-        --> returns error (open ended range)
-//	bytes=-500        --> returns error
-func parseRangeHeader(rangeHeader string) (int64, error) {
-	if rangeHeader == "" {
-		return 0, fmt.Errorf("empty x-ms-range header")
-	}
-
-	if !strings.HasPrefix(rangeHeader, "bytes=") {
-		return 0, fmt.Errorf("invalid x-ms-range header format %s", rangeHeader)
-	}
-
-	parts := strings.Split(strings.TrimPrefix(rangeHeader, "bytes="), "-")
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid x-ms-range header format %s", rangeHeader)
-	}
-
-	start, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	if parts[1] == "" {
-		// Open ended range
-		return 0, fmt.Errorf("invalid x-ms-range header format %s, open ended range not supported", rangeHeader)
-	}
-
-	end, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return end - start + 1, nil
 }
