@@ -36,6 +36,8 @@ package azstorage
 import (
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"golang.org/x/time/rate"
 
@@ -121,42 +123,69 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 		}
 	}
 
-	// Limit bandwidth
-	if p.bandwidthLimiter != nil {
-		// Calculate the size of the request body
-		var bodySize int64
-		if req.Body() != nil {
-			// This is an approximation. For exact size we might need to read the body which is not efficient.
-			// For Seekable body we can get the size.
-			if seeker, ok := req.Body().(interface {
-				Seek(offset int64, whence int) (int64, error)
-			}); ok {
-				current, _ := seeker.Seek(0, 1)
-				end, _ := seeker.Seek(0, 2)
-				_, _ = seeker.Seek(current, 0)
-				bodySize = end
-			} else {
-				// Fallback or estimation if needed.
-				// For now, if we can't determine size, we might skip or assume a default.
-				// However, for upload, the body should be seekable usually in SDK.
-				// If not, we might just count the header size or similar?
-				// Let's try to get Content-Length header if set.
-				if req.Raw().ContentLength > 0 {
-					bodySize = req.Raw().ContentLength
-				}
-			}
+	// Limit bandwidth for downloads (Azure Egress)
+	// We only limit bandwidth for GET requests as those are typically downloads
+	if p.bandwidthLimiter != nil && req.Raw().Method == http.MethodGet {
+		// Check for Range header
+		// TODO: Get() method canononicalizes the headers, whereas it is stored in lower case by SDK
+		rangeHeader := req.Raw().Header.Get("Range")
+		if rangeHeader == "" {
+			rangeHeader = req.Raw().Header.Get("x-ms-range")
 		}
 
-		if bodySize > 0 {
-			// Wait for tokens equal to body size
-			// WaitN blocks until lim permits n events to happen.
-			err := p.bandwidthLimiter.WaitN(ctx, int(bodySize))
-			if err != nil {
-				log.Err("RateLimitingPolicy : Bandwidth limit wait failed [%s]", err.Error())
-				return nil, err
+		if rangeHeader != "" {
+			size, err := parseRangeHeader(rangeHeader)
+			if err == nil && size > 0 {
+				// Wait for tokens equal to size
+				err := p.bandwidthLimiter.WaitN(ctx, int(size))
+				if err != nil {
+					log.Err("RateLimitingPolicy : Bandwidth limit wait failed [%s]", err.Error())
+					return nil, err
+				}
+			} else if err != nil {
+				log.Err("RateLimitingPolicy : Failed to parse Range header %s: [%s]", rangeHeader, err.Error())
 			}
 		}
 	}
 
 	return req.Next()
+}
+
+// parseRangeHeader parses the x-ms-range header and returns the size of the range requested
+// Examples of x-ms-range header:
+//
+//	bytes=0-499       --> returns 500
+//	bytes=500-999     --> returns 500
+//	bytes=500-        --> returns error (open ended range)
+//	bytes=-500        --> returns error
+func parseRangeHeader(rangeHeader string) (int64, error) {
+	if rangeHeader == "" {
+		return 0, fmt.Errorf("empty x-ms-range header")
+	}
+
+	if !strings.HasPrefix(rangeHeader, "bytes=") {
+		return 0, fmt.Errorf("invalid x-ms-range header format %s", rangeHeader)
+	}
+
+	parts := strings.Split(strings.TrimPrefix(rangeHeader, "bytes="), "-")
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("invalid x-ms-range header format %s", rangeHeader)
+	}
+
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	if parts[1] == "" {
+		// Open ended range
+		return 0, fmt.Errorf("invalid x-ms-range header format %s, open ended range not supported", rangeHeader)
+	}
+
+	end, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return end - start + 1, nil
 }
