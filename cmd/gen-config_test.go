@@ -71,7 +71,7 @@ func (suite *genConfig) TestFileCacheConfigGen() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--tmp-path=%s", tempDir))
@@ -98,7 +98,7 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache", fmt.Sprintf("--tmp-path=%s", tempDir))
@@ -126,7 +126,7 @@ func (suite *genConfig) TestBlockCacheConfigGen1() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache")

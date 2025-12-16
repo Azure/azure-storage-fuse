@@ -73,7 +73,8 @@ func (suite *splitterTestSuite) SetupSuite() {
 	suite.assert.NoError(err)
 
 	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", remote_path)
-	config.ReadConfigFromReader(strings.NewReader(cfg))
+	err = config.ReadConfigFromReader(strings.NewReader(cfg))
+	suite.assert.NoError(err)
 
 	remote = loopback.NewLoopbackFSComponent()
 	err = remote.Configure(true)

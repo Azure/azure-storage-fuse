@@ -53,7 +53,7 @@ type threadPoolTestSuite struct {
 func (suite *threadPoolTestSuite) SetupTest() {
 }
 
-func (suite *threadPoolTestSuite) cleanupTest() {
+func (suite *threadPoolTestSuite) CleanupTest() {
 }
 
 func (suite *threadPoolTestSuite) TestCreate() {

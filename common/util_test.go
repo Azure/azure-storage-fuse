@@ -51,7 +51,10 @@ var home_dir, _ = os.UserHomeDir()
 
 func randomString(length int) string {
 	b := make([]byte, length)
-	rand.Read(b)
+	_, err := rand.Read(b)
+	if err != nil {
+		panic(err)
+	}
 	return fmt.Sprintf("%x", b)[:length]
 }
 
@@ -90,7 +93,7 @@ func (suite *utilTestSuite) TestThreadSafeBitmap() {
 		}
 	}
 
-	clear := func() {
+	_clear := func() {
 		defer wg.Done()
 		<-start
 		for i := range 100000 {
@@ -109,7 +112,7 @@ func (suite *utilTestSuite) TestThreadSafeBitmap() {
 	wg.Add(4)
 	go set()
 	go access()
-	go clear()
+	go _clear()
 	go resetBitmap()
 	close(start)
 	wg.Wait()
@@ -193,7 +196,8 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	fileName := "config.yaml"
 
 	lbpath := filepath.Join(home_dir, "lbpath")
-	os.MkdirAll(lbpath, 0777)
+	err := os.MkdirAll(lbpath, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(lbpath)
 
 	content := "components:\n" +
@@ -203,7 +207,8 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 		"  path: " + lbpath + "\n\n"
 
 	mntdir := filepath.Join(home_dir, "mountdir")
-	os.MkdirAll(mntdir, 0777)
+	err = os.MkdirAll(mntdir, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(mntdir)
 
 	dir, err := os.Getwd()
@@ -246,7 +251,8 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 func (suite *typesTestSuite) TestDirectoryExists() {
 	rand := randomString(8)
 	dir := filepath.Join(home_dir, "dir"+rand)
-	os.MkdirAll(dir, 0777)
+	err := os.MkdirAll(dir, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(dir)
 
 	exists := DirectoryExists(dir)
@@ -264,34 +270,40 @@ func (suite *typesTestSuite) TestDirectoryDoesNotExist() {
 func (suite *typesTestSuite) TestEncryptBadKey() {
 	// Generate a random key
 	key := make([]byte, 20)
-	rand.Read(key)
+	_, err := rand.Read(key)
+	suite.assert.NoError(err)
 
 	data := make([]byte, 1024)
-	rand.Read(data)
+	_, err = rand.Read(data)
+	suite.assert.NoError(err)
 
-	_, err := EncryptData(data, key)
+	_, err = EncryptData(data, key)
 	suite.assert.Error(err)
 }
 
 func (suite *typesTestSuite) TestDecryptBadKey() {
 	// Generate a random key
 	key := make([]byte, 20)
-	rand.Read(key)
+	_, err := rand.Read(key)
+	suite.assert.NoError(err)
 
 	data := make([]byte, 1024)
-	rand.Read(data)
+	_, err = rand.Read(data)
+	suite.assert.NoError(err)
 
-	_, err := DecryptData(data, key)
+	_, err = DecryptData(data, key)
 	suite.assert.Error(err)
 }
 
 func (suite *typesTestSuite) TestEncryptDecrypt() {
 	// Generate a random key
 	key := make([]byte, 16)
-	rand.Read(key)
+	_, err := rand.Read(key)
+	suite.assert.NoError(err)
 
 	data := make([]byte, 1024)
-	rand.Read(data)
+	_, err = rand.Read(data)
+	suite.assert.NoError(err)
 
 	cipher, err := EncryptData(data, key)
 	suite.assert.NoError(err)
@@ -492,8 +504,8 @@ func (suite *utilTestSuite) TestGetFuseMinorVersion() {
 	suite.assert.GreaterOrEqual(i, 0)
 }
 
-func (s *utilTestSuite) TestGetMD5() {
-	assert := assert.New(s.T())
+func (suite *utilTestSuite) TestGetMD5() {
+	assert := assert.New(suite.T())
 
 	f, err := os.Create("abc.txt")
 	assert.NoError(err)
@@ -514,7 +526,7 @@ func (s *utilTestSuite) TestGetMD5() {
 	os.Remove("abc.txt")
 }
 
-func (s *utilTestSuite) TestComponentExists() {
+func (suite *utilTestSuite) TestComponentExists() {
 	components := []string{
 		"component1",
 		"component2",
@@ -522,60 +534,60 @@ func (s *utilTestSuite) TestComponentExists() {
 	}
 
 	exists := ComponentInPipeline(components, "component1")
-	s.True(exists)
+	suite.True(exists)
 
 	exists = ComponentInPipeline(components, "component4")
-	s.False(exists)
+	suite.False(exists)
 
 }
 
-func (s *utilTestSuite) TestValidatePipeline() {
+func (suite *utilTestSuite) TestValidatePipeline() {
 	err := ValidatePipeline([]string{"libfuse", "file_cache", "block_cache", "azstorage"})
-	s.Assert().Error(err)
+	suite.Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "xload", "azstorage"})
-	s.Assert().Error(err)
+	suite.Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "block_cache", "xload", "azstorage"})
-	s.Assert().Error(err)
+	suite.Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "block_cache", "xload", "azstorage"})
-	s.Assert().Error(err)
+	suite.Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "azstorage"})
-	s.Assert().NoError(err)
+	suite.NoError(err)
 
 	err = ValidatePipeline([]string{"libfuse", "block_cache", "azstorage"})
-	s.Assert().NoError(err)
+	suite.NoError(err)
 
 	err = ValidatePipeline([]string{"libfuse", "xload", "attr_cache", "azstorage"})
-	s.Assert().NoError(err)
+	suite.NoError(err)
 }
 
-func (s *utilTestSuite) TestUpdatePipeline() {
+func (suite *utilTestSuite) TestUpdatePipeline() {
 	pipeline := UpdatePipeline([]string{"libfuse", "file_cache", "azstorage"}, "xload")
-	s.NotNil(pipeline)
-	s.False(ComponentInPipeline(pipeline, "file_cache"))
-	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
+	suite.NotNil(pipeline)
+	suite.False(ComponentInPipeline(pipeline, "file_cache"))
+	suite.Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "block_cache", "azstorage"}, "xload")
-	s.NotNil(pipeline)
-	s.False(ComponentInPipeline(pipeline, "block_cache"))
-	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
+	suite.NotNil(pipeline)
+	suite.False(ComponentInPipeline(pipeline, "block_cache"))
+	suite.Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "file_cache", "azstorage"}, "block_cache")
-	s.NotNil(pipeline)
-	s.False(ComponentInPipeline(pipeline, "file_cache"))
-	s.Assert().Equal([]string{"libfuse", "block_cache", "azstorage"}, pipeline)
+	suite.NotNil(pipeline)
+	suite.False(ComponentInPipeline(pipeline, "file_cache"))
+	suite.Equal([]string{"libfuse", "block_cache", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "block_cache")
-	s.NotNil(pipeline)
-	s.False(ComponentInPipeline(pipeline, "xload"))
-	s.Assert().Equal([]string{"libfuse", "block_cache", "azstorage"}, pipeline)
+	suite.NotNil(pipeline)
+	suite.False(ComponentInPipeline(pipeline, "xload"))
+	suite.Equal([]string{"libfuse", "block_cache", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "xload")
-	s.NotNil(pipeline)
-	s.Assert().Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
+	suite.NotNil(pipeline)
+	suite.Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 }
 
 func TestPrettyOpenFlags(t *testing.T) {

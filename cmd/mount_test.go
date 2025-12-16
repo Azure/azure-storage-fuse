@@ -171,6 +171,8 @@ func (suite *mountTestSuite) TestMountDirNotEmpty() {
 
 	err = os.MkdirAll(tempDir, 0777)
 	suite.assert.NoError(err)
+	err = os.MkdirAll(tempDir, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(mntDir)
 
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest))
@@ -539,16 +541,16 @@ func (suite *mountTestSuite) TestUpdateCliParams() {
 	cliParams := []string{"blobfuse2", "mount", "~/mntdir/", "--foreground=false"}
 
 	updateCliParams(&cliParams, "tmp-path", "tmpPath1")
-	suite.assert.Equal(5, len(cliParams))
+	suite.assert.Len(cliParams, 5)
 	suite.assert.Equal("--tmp-path=tmpPath1", cliParams[4])
 
 	updateCliParams(&cliParams, "container-name", "testCnt1")
-	suite.assert.Equal(6, len(cliParams))
+	suite.assert.Len(cliParams, 6)
 	suite.assert.Equal("--container-name=testCnt1", cliParams[5])
 
 	updateCliParams(&cliParams, "tmp-path", "tmpPath2")
 	updateCliParams(&cliParams, "container-name", "testCnt2")
-	suite.assert.Equal(6, len(cliParams))
+	suite.assert.Len(cliParams, 6)
 	suite.assert.Equal("--tmp-path=tmpPath2", cliParams[4])
 	suite.assert.Equal("--container-name=testCnt2", cliParams[5])
 }
@@ -595,7 +597,8 @@ func (suite *mountTestSuite) TestCleanUpOnStartFlag() {
 	// Create a test directory
 	testDir := filepath.Join(os.TempDir(), "cleanup_test")
 	os.RemoveAll(testDir)
-	os.MkdirAll(testDir, 0755)
+	err := os.MkdirAll(testDir, 0755)
+	suite.assert.NoError(err)
 
 	defer func() {
 		os.RemoveAll(testDir)
@@ -604,9 +607,12 @@ func (suite *mountTestSuite) TestCleanUpOnStartFlag() {
 	testPath := filepath.Join(testDir, "dir1")
 	testPath2 := filepath.Join(testDir, "dir2")
 	testPath3 := filepath.Join(testDir, "dir3")
-	os.MkdirAll(testPath, 0755)
-	os.MkdirAll(testPath2, 0755)
-	os.MkdirAll(testPath3, 0755)
+	err = os.MkdirAll(testPath, 0755)
+	suite.assert.NoError(err)
+	err = os.MkdirAll(testPath2, 0755)
+	suite.assert.NoError(err)
+	err = os.MkdirAll(testPath3, 0755)
+	suite.assert.NoError(err)
 
 	createFilesInCacheDirs := func() {
 		// Create some test files

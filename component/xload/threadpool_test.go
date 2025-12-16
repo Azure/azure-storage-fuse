@@ -97,8 +97,10 @@ func (suite *threadPoolTestSuite) TestThreadPoolSchedule() {
 	suite.assert.NotNil(tp.priorityItems)
 	suite.assert.NotNil(tp.workItems)
 
-	tp.Schedule(&WorkItem{Priority: true})
-	tp.Schedule(&WorkItem{})
+	err := tp.Schedule(&WorkItem{Priority: true})
+	suite.assert.NoError(err)
+	err = tp.Schedule(&WorkItem{})
+	suite.assert.NoError(err)
 
 	time.Sleep(1 * time.Second)
 	tp.Stop()
@@ -123,9 +125,11 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 
 	for i := range 100 {
 		if i < 20 {
-			tp.Schedule(&WorkItem{Priority: true})
+			err := tp.Schedule(&WorkItem{Priority: true})
+			suite.assert.NoError(err)
 		} else {
-			tp.Schedule(&WorkItem{})
+			err := tp.Schedule(&WorkItem{})
+			suite.assert.NoError(err)
 		}
 
 	}
