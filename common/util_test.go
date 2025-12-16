@@ -643,7 +643,7 @@ func TestPrettyOpenFlags(t *testing.T) {
 // the same goroutine.
 func (suite *utilTestSuite) TestGetGoroutineIDBasic() {
 	gid1 := GetGoroutineID()
-	suite.Assert().Positive(gid1)
+	suite.Positive(gid1)
 	gid2 := GetGoroutineID()
 	suite.Equal(gid1, gid2, "goroutine id should be stable within same goroutine")
 }
@@ -668,9 +668,9 @@ func (suite *utilTestSuite) TestGetGoroutineIDParallel() {
 
 	idMap := make(map[uint64]struct{}, workers)
 	for id := range idsCh {
-		suite.Assert().Positive(id)
+		suite.Positive(id)
 		idMap[id] = struct{}{}
 	}
 
-	suite.Assert().Len(idMap, workers, "expected unique goroutine ids equal to workers")
+	suite.Len(idMap, workers, "expected unique goroutine ids equal to workers")
 }
