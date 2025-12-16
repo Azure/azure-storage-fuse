@@ -641,16 +641,16 @@ func TestPrettyOpenFlags(t *testing.T) {
 
 // TestGetGoroutineIDBasic validates that GetGoroutineID returns a non-zero, stable goroutine id within
 // the same goroutine.
-func (s *utilTestSuite) TestGetGoroutineIDBasic() {
+func (suite *utilTestSuite) TestGetGoroutineIDBasic() {
 	gid1 := GetGoroutineID()
-	s.Assert().Greater(gid1, uint64(0))
+	suite.Assert().Positive(gid1)
 	gid2 := GetGoroutineID()
-	s.Assert().Equal(gid1, gid2, "goroutine id should be stable within same goroutine")
+	suite.Equal(gid1, gid2, "goroutine id should be stable within same goroutine")
 }
 
-// TestGetGoroutineIDConcurrency validates that concurrently obtained goroutine IDs are unique
+// TestGetGoroutineIDParallel validates that concurrently obtained goroutine IDs are unique
 // for live goroutines.
-func (s *utilTestSuite) TestGetGoroutineIDConcurrency() {
+func (suite *utilTestSuite) TestGetGoroutineIDParallel() {
 	const workers = 10
 	idsCh := make(chan uint64, workers)
 	var wg sync.WaitGroup
@@ -668,9 +668,9 @@ func (s *utilTestSuite) TestGetGoroutineIDConcurrency() {
 
 	idMap := make(map[uint64]struct{}, workers)
 	for id := range idsCh {
-		s.Assert().Greater(id, uint64(0))
+		suite.Assert().Positive(id)
 		idMap[id] = struct{}{}
 	}
 
-	s.Assert().Equal(workers, len(idMap), "expected unique goroutine ids equal to workers")
+	suite.Assert().Len(idMap, workers, "expected unique goroutine ids equal to workers")
 }

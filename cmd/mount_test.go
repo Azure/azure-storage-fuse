@@ -744,31 +744,31 @@ components:
 
 		// write config
 		confFile, err := os.CreateTemp("", "conf*.yaml")
-		suite.Assert().NoError(err)
+		suite.NoError(err)
 
 		_, err = confFile.WriteString(cfg)
-		suite.Assert().NoError(err)
+		suite.NoError(err)
 		confFile.Close()
 		defer os.Remove(confFile.Name())
 
 		// mount dir must exist and be empty
 		mntDir, err := os.MkdirTemp("", "mntdir")
-		suite.Assert().NoError(err)
+		suite.NoError(err)
 		defer os.RemoveAll(mntDir)
 
 		// Run the command; it may fail later, but the logging option should be set by then
 		out, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFile.Name()))
-		suite.Assert().Error(err)
+		suite.Error(err)
 		return options.Logging.LogGoroutineID, out
 	}
 
 	// Case: LOG_DEBUG -> expect true
 	gidDebug, _ := run(cfgDebug)
-	suite.Assert().True(gidDebug)
+	suite.True(gidDebug)
 
 	// Case: LOG_INFO -> expect false
 	gidInfo, _ := run(cfgInfo)
-	suite.Assert().False(gidInfo)
+	suite.False(gidInfo)
 }
 
 func TestMountCommand(t *testing.T) {
