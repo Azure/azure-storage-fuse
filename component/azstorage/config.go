@@ -97,20 +97,20 @@ type AccountType int
 
 var EAccountType = AccountType(0).INVALID_ACC()
 
-func (AccountType) INVALID_ACC() AccountType {
+func (a AccountType) INVALID_ACC() AccountType {
 	return AccountType(0)
 }
 
-func (AccountType) BLOCK() AccountType {
+func (a AccountType) BLOCK() AccountType {
 	return AccountType(1)
 }
 
-func (AccountType) ADLS() AccountType {
+func (a AccountType) ADLS() AccountType {
 	return AccountType(2)
 }
 
-func (f AccountType) String() string {
-	return enum.StringInt(f, reflect.TypeOf(f))
+func (a AccountType) String() string {
+	return enum.StringInt(a, reflect.TypeOf(a))
 }
 
 func (a *AccountType) Parse(s string) error {
@@ -250,8 +250,7 @@ func formatEndpointProtocol(endpoint string, http bool) string {
 	// If the pvtEndpoint does not have protocol mentioned in front, pvtEndpoint parsing will fail while
 	// creating URI also the string shall end with "/"
 	if correctedEndpoint != "" {
-		if !(strings.HasPrefix(correctedEndpoint, "https://") ||
-			strings.HasPrefix(correctedEndpoint, "http://")) {
+		if !strings.HasPrefix(correctedEndpoint, "https://") && !strings.HasPrefix(correctedEndpoint, "http://") {
 			if http {
 				correctedEndpoint = "http://" + correctedEndpoint
 			} else {

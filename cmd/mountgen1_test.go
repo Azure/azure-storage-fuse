@@ -128,13 +128,18 @@ func (suite *genOneConfigTestSuite) TestConfigCreation() {
 	suite.assert.NoError(err)
 
 	viper.SetConfigFile("json")
-	config.ReadFromConfigFile(outFile.Name())
+	err = config.ReadFromConfigFile(outFile.Name())
+	suite.assert.NoError(err)
 
 	var clientId, tenantId, cacheDir, mountDirTest string
-	config.UnmarshalKey("clientid", &clientId)
-	config.UnmarshalKey("tenantid", &tenantId)
-	config.UnmarshalKey("cachedir", &cacheDir)
-	config.UnmarshalKey("mountdir", &mountDirTest)
+	err = config.UnmarshalKey("clientid", &clientId)
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("tenantid", &tenantId)
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("cachedir", &cacheDir)
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("mountdir", &mountDirTest)
+	suite.assert.NoError(err)
 
 	suite.assert.Equal("myClientId", clientId)
 	suite.assert.Equal("myTenantId", tenantId)

@@ -48,7 +48,7 @@ type configTestSuite struct {
 	suite.Suite
 }
 
-func (suite *configTestSuite) SetupTest() {
+func (s *configTestSuite) SetupTest() {
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
 	if err != nil {
 		panic("Unable to set silent logger as default.")
@@ -308,7 +308,7 @@ func (s *configTestSuite) TestAuthModeMSI() {
 	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
 	assert.Equal(az.stConfig.authConfig.ApplicationID, opt.ApplicationID)
-	assert.Equal("", az.stConfig.authConfig.ResourceID)
+	assert.Empty(az.stConfig.authConfig.ResourceID)
 
 	// test more than one credential passed for msi
 	opt.ResourceID = "123"

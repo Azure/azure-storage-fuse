@@ -42,7 +42,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	mrand "math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -101,7 +100,7 @@ func initDataValidationFlags() {
 
 func getDataValidationTestDirName(n int) string {
 	b := make([]byte, n)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return fmt.Sprintf("%x", b)[:n]
 }
 
@@ -157,7 +156,7 @@ func (suite *dataValidationTestSuite) helperValidateFileContent(localFilePath st
 
 func (suite *dataValidationTestSuite) helperCreateFile(localFilePath string, remoteFilePath string, size int64) {
 	buffer := make([]byte, 1*1024*1024)
-	rand.Read(buffer)
+	_, _ = rand.Read(buffer)
 
 	writeFile := func(file *os.File) {
 		originalSize := size
@@ -246,17 +245,6 @@ func createFileHandleInLocalAndRemote(suite *dataValidationTestSuite, localFileP
 	return lfh, rfh
 }
 
-// Open File in Local and Mounted Directories and returns there file handles the associated fd has O_RDONLY Mode
-func openFileHandleInLocalAndRemote(suite *dataValidationTestSuite, flags int, localFilePath, remoteFilePath string) (lfh *os.File, rfh *os.File) {
-	lfh, err := os.OpenFile(localFilePath, flags, 0666)
-	suite.NoError(err)
-
-	rfh, err = os.OpenFile(remoteFilePath, flags, 0666)
-	suite.NoError(err)
-
-	return lfh, rfh
-}
-
 // closes the file handles, This ensures that data is flushed to disk/Azure Storage from the cache
 func closeFileHandles(suite *dataValidationTestSuite, handles ...*os.File) {
 	for _, h := range handles {
@@ -284,7 +272,7 @@ func generateFileWithRandomData(suite *dataValidationTestSuite, filePath string,
 	suite.NoError(err)
 	bufferSize := 4 * 1024
 	buffer := make([]byte, 4*1024)
-	rand.Read(buffer)
+	_, _ = rand.Read(buffer)
 	blocks := size / bufferSize
 	for range blocks {
 		bytesToWrite := min(bufferSize, size)
@@ -294,28 +282,6 @@ func generateFileWithRandomData(suite *dataValidationTestSuite, filePath string,
 		size -= bytesWritten
 	}
 	closeFileHandles(suite, fh)
-}
-
-func compareReadOperInLocalAndRemote(suite *dataValidationTestSuite, lfh, rfh *os.File, offset int64) {
-	buffer1 := make([]byte, 4*int(_1MB))
-	buffer2 := make([]byte, 4*int(_1MB))
-
-	bytes_read_local, err1 := lfh.ReadAt(buffer1, offset)
-	bytes_read_remote, err2 := rfh.ReadAt(buffer2, offset)
-	suite.Equal(err1, err2)
-	suite.Equal(bytes_read_local, bytes_read_remote)
-	suite.Equal(buffer1[:bytes_read_local], buffer2[:bytes_read_remote])
-}
-
-func compareWriteOperInLocalAndRemote(suite *dataValidationTestSuite, lfh, rfh *os.File, offset int64) {
-	sizeofbuffer := (mrand.Int() % 4) + 1
-	buffer := make([]byte, sizeofbuffer*int(_1MB))
-	rand.Read(buffer)
-
-	bytes_written_local, err1 := lfh.WriteAt(buffer, offset)
-	bytes_written_remote, err2 := rfh.WriteAt(buffer, offset)
-	suite.Equal(err1, err2)
-	suite.Equal(bytes_written_local, bytes_written_remote)
 }
 
 // -------------- Data Validation Tests -------------------
@@ -927,10 +893,10 @@ func TestDataValidationTestSuite(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create test directory [%s]\n", err.Error())
 	}
-	rand.Read(minBuff)
-	rand.Read(medBuff)
-	rand.Read(largeBuff)
-	rand.Read(hugeBuff)
+	_, _ = rand.Read(minBuff)
+	_, _ = rand.Read(medBuff)
+	_, _ = rand.Read(largeBuff)
+	_, _ = rand.Read(hugeBuff)
 
 	// Run the actual End to End test
 	suite.Run(t, new(dataValidationTestSuite))

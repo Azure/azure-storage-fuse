@@ -231,6 +231,7 @@ func (suite *LoopbackFSTestSuite) TestReadInBuffer() {
 	}
 
 	err = suite.lfs.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	assert.NoError(err)
 }
 
 func (suite *LoopbackFSTestSuite) TestWriteFile() {
@@ -322,7 +323,8 @@ func (suite *LoopbackFSTestSuite) TestCommitNilDataToExistingFile() {
 	assert.NoError(err)
 	defer os.RemoveAll(lfs.path)
 	Filepath := filepath.Join(lfs.path, "testFile")
-	os.WriteFile(Filepath, []byte("hello"), 0777)
+	err = os.WriteFile(Filepath, []byte("hello"), 0777)
+	assert.NoError(err)
 
 	blockList := []string{}
 	err = lfs.CommitData(internal.CommitDataOptions{Name: "testFile", List: blockList})

@@ -162,6 +162,7 @@ func (suite *ConfigTestSuite) TestOverlapShadowConfigReader() {
 	templAppFlag.Changed = true
 	BindPFlag("template.metadata.labels.app", templAppFlag)
 	err = os.Setenv("CF_TEST_TEMPLABELS_APP", "somethingthatshouldnotshowup")
+	assert.NoError(err)
 	BindEnv("template.metadata.labels.app", "CF_TEST_TEMPLABELS_APP")
 
 	err = ReadConfigFromReader(strings.NewReader(specconf))
@@ -313,6 +314,7 @@ func (suite *ConfigTestSuite) TestPlainConfig1Reader() {
 	}{}
 
 	err = Unmarshal(&randOpts)
+	assert.NoError(err)
 	assert.Empty(randOpts)
 }
 
@@ -466,7 +468,8 @@ func (suite *ConfigTestSuite) TestConfigFileDecryption() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
 
-	os.WriteFile("test.yaml", []byte(config2), 0644)
+	err := os.WriteFile("test.yaml", []byte(config2), 0644)
+	assert.NoError(err)
 	plaintext, err := os.ReadFile("test.yaml")
 	assert.NoError(err)
 	assert.NotNil(plaintext)
