@@ -53,6 +53,8 @@ const (
 	DefaultLogFileCount   = 10
 	FileSystemName        = "blobfuse2"
 
+	UnixDateMillis = "Mon Jan _2 15:04:05.000 MST 2006"
+
 	DefaultConfigFilePath = "config.yaml"
 
 	MaxConcurrency     = 40
@@ -146,12 +148,13 @@ func (l *LogLevel) Parse(s string) error {
 }
 
 type LogConfig struct {
-	Level       LogLevel
-	MaxFileSize uint64
-	FileCount   uint64
-	FilePath    string
-	TimeTracker bool
-	Tag         string // logging tag which can be either blobfuse2 or bfusemon
+	Level          LogLevel
+	MaxFileSize    uint64
+	FileCount      uint64
+	FilePath       string
+	TimeTracker    bool
+	Tag            string // logging tag which can be either blobfuse2 or bfusemon
+	LogGoroutineID bool   // whether to log goroutine id in each log line
 }
 
 // Flags for block
