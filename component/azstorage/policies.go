@@ -93,16 +93,30 @@ type rateLimitingPolicy struct {
 func newRateLimitingPolicy(bytesPerSec int64, opsPerSec int64) policy.Policy {
 	p := &rateLimitingPolicy{}
 
+	// Use 10 minutes window for calculating the burst size for rate limiter.
+	// This allows short bursts of traffic while still enforcing the average rate limit over a longer period
+	// This is especially useful for bandwidth limiting where downloads can be bursty
+	// and we want to avoid throttling during short bursts.
+	// Burst size = rate * window size
+	// For example, for 1 MB/s limit, burst size = 1 MB/s * 600 s = 600 MB
+	// This allows short bursts up to 600 MB while still enforcing the average rate of 1 MB/s over 10 minutes
+	// Note: The window size is a trade-off between responsiveness and burst tolerance.
+	// A larger window size allows for larger bursts but may delay the enforcement of the rate limit.
+	// A smaller window size enforces the rate limit more quickly but may not allow for sufficient bursts.
+	const windowSize = 600
+
 	if bytesPerSec > 0 {
-		// Burst size is set to the limit itself to allow full utilization up to the limit
-		p.bandwidthLimiter = rate.NewLimiter(rate.Limit(bytesPerSec), int(bytesPerSec))
-		log.Info("RateLimitingPolicy : Bandwidth limit set to %d bytes/sec", bytesPerSec)
+		bandwidthBurstSize := bytesPerSec * int64(windowSize)
+		p.bandwidthLimiter = rate.NewLimiter(rate.Limit(bytesPerSec), int(bandwidthBurstSize))
+		log.Info("RateLimitingPolicy : Bandwidth limit set to %d bytes/sec with burst size of %d bytes",
+			bytesPerSec, bandwidthBurstSize)
 	}
 
 	if opsPerSec > 0 {
-		// Burst size is set to the limit itself
-		p.opsLimiter = rate.NewLimiter(rate.Limit(opsPerSec), int(opsPerSec))
-		log.Info("RateLimitingPolicy : Ops limit set to %d ops/sec", opsPerSec)
+		opsBurstSize := opsPerSec * int64(windowSize)
+		p.opsLimiter = rate.NewLimiter(rate.Limit(opsPerSec), int(opsBurstSize))
+		log.Info("RateLimitingPolicy : Ops limit set to %d ops/sec with burst size of %d ops",
+			opsPerSec, opsBurstSize)
 	}
 
 	return p
