@@ -55,6 +55,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"github.com/petermattis/goid"
 	"gopkg.in/ini.v1"
 )
 
@@ -668,4 +669,12 @@ func PrettyOpenFlags(f int) string {
 	}
 
 	return fmt.Sprintf("[%s]", strings.Join(out, " | "))
+}
+
+// GetGoroutineID returns the goroutine id of the current goroutine.
+// It uses the goid package to retrieve the goroutine id which fetches it
+// from the GO internal runtime data structures, instead of making expensive
+// runtime.Stack calls.
+func GetGoroutineID() uint64 {
+	return (uint64)(goid.Get())
 }
