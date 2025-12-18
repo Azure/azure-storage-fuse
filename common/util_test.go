@@ -34,11 +34,9 @@
 package common
 
 import (
-	"bytes"
 	"crypto/rand"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -65,78 +63,6 @@ func (suite *utilTestSuite) SetupTest() {
 
 func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
-}
-
-func (suite *utilTestSuite) TestIsMountActiveNoMount() {
-	var out bytes.Buffer
-	cmd := exec.Command("../blobfuse2", "unmount", "all")
-	cmd.Stdout = &out
-	err := cmd.Run()
-	suite.assert.NoError(err)
-	cmd = exec.Command("pidof", "blobfuse2")
-	cmd.Stdout = &out
-	err = cmd.Run()
-	suite.assert.Equal("exit status 1", err.Error())
-	res, err := IsMountActive("/mnt/blobfuse")
-	suite.assert.NoError(err)
-	suite.assert.False(res)
-}
-
-func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
-	var out bytes.Buffer
-
-	// Define the file name and the content you want to write
-	fileName := "config.yaml"
-
-	lbpath := filepath.Join(home_dir, "lbpath")
-	os.MkdirAll(lbpath, 0777)
-	defer os.RemoveAll(lbpath)
-
-	content := "components:\n" +
-		"  - libfuse\n" +
-		"  - loopbackfs\n\n" +
-		"loopbackfs:\n" +
-		"  path: " + lbpath + "\n\n"
-
-	mntdir := filepath.Join(home_dir, "mountdir")
-	os.MkdirAll(mntdir, 0777)
-	defer os.RemoveAll(mntdir)
-
-	dir, err := os.Getwd()
-	suite.assert.NoError(err)
-	configFile := filepath.Join(dir, "config.yaml")
-	// Create or open the file. If it doesn't exist, it will be created.
-	file, err := os.Create(fileName)
-	suite.assert.NoError(err)
-	defer file.Close() // Ensure the file is closed after we're done
-
-	// Write the content to the file
-	_, err = file.WriteString(content)
-	suite.assert.NoError(err)
-
-	err = os.Chdir("..")
-	suite.assert.NoError(err)
-
-	dir, err = os.Getwd()
-	suite.assert.NoError(err)
-	binary := filepath.Join(dir, "blobfuse2")
-	cmd := exec.Command(binary, mntdir, "--config-file", configFile)
-	cmd.Stdout = &out
-	err = cmd.Run()
-	suite.assert.NoError(err)
-
-	res, err := IsMountActive(mntdir)
-	suite.assert.NoError(err)
-	suite.assert.True(res)
-
-	res, err = IsMountActive("/mnt/blobfuse")
-	suite.assert.NoError(err)
-	suite.assert.False(res)
-
-	cmd = exec.Command(binary, "unmount", mntdir)
-	cmd.Stdout = &out
-	err = cmd.Run()
-	suite.assert.NoError(err)
 }
 
 func (suite *typesTestSuite) TestDirectoryExists() {
@@ -381,11 +307,6 @@ func (suite *utilTestSuite) TestCRC64() {
 	crc1 := GetCRC64(data, len(data))
 
 	suite.assert.NotEqual(crc, crc1)
-}
-
-func (suite *utilTestSuite) TestGetFuseMinorVersion() {
-	i := GetFuseMinorVersion()
-	suite.assert.GreaterOrEqual(i, 0)
 }
 
 func (s *utilTestSuite) TestGetMD5() {

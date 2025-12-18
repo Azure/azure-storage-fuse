@@ -37,7 +37,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"log/syslog"
 	"path/filepath"
 	"runtime"
 
@@ -80,41 +79,6 @@ func (l *SysLogger) GetType() string {
 
 func (l *SysLogger) GetLogLevel() common.LogLevel {
 	return l.level
-}
-
-func (l *SysLogger) init() error {
-	// Configure logger to write to the syslog. You could do this in init(), too.
-	logwriter, e := syslog.New(getSyslogLevel(l.level), l.tag)
-
-	if e != nil {
-		return ErrNoSyslogService
-	}
-
-	l.logger = log.New(logwriter, "", 0)
-	if l.logger == nil {
-		return errors.New("unable to create logger object")
-	}
-
-	return nil
-}
-
-// Convert our log levels to standard syslog levels
-func getSyslogLevel(lvl common.LogLevel) syslog.Priority {
-	// By default keep the log level to log warning and match the rest
-	switch lvl {
-	case common.ELogLevel.LOG_CRIT():
-		return syslog.LOG_CRIT
-	case common.ELogLevel.LOG_DEBUG():
-		return syslog.LOG_DEBUG
-	case common.ELogLevel.LOG_ERR():
-		return syslog.LOG_ERR
-	case common.ELogLevel.LOG_INFO():
-		return syslog.LOG_INFO
-	case common.ELogLevel.LOG_TRACE():
-		return syslog.LOG_DEBUG
-	default:
-		return syslog.LOG_WARNING
-	}
 }
 
 func (l *SysLogger) write(lvl string, format string, args ...any) {
