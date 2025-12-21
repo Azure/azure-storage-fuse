@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1765715105780,
+  "lastUpdate": 1766319874103,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1304,6 +1304,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 861.8668619791666,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "dd6a9cf285ebcefc98cdc8ebc7405b889ba4c65e",
+          "message": "Add goroutine id in debug logs (#2063)",
+          "timestamp": "2025-12-17T09:18:20Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/dd6a9cf285ebcefc98cdc8ebc7405b889ba4c65e"
+        },
+        "date": 1766319873867,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 38139.614908854164,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 42832.543619791664,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 876.5947265625,
             "unit": "MiB/s"
           }
         ]
