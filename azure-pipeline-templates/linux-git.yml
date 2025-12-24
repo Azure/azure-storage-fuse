@@ -50,7 +50,7 @@ steps:
       prefix: ${{ parameters.cache_mode }}
       mountStep:
         script: |
-          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 --block-cache-pool-size=2048
 
   - script: |
       ls -lrt
@@ -86,6 +86,18 @@ steps:
     workingDirectory: $(MOUNT_DIR)
 
   - script: |
+      cd linux-*/
+      make clean
+    displayName: 'make clean'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      cd linux-*/
+      make -j$(nproc) 2>&1 | tee log
+    displayName: 'Compile Linux Source using parallel make again'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
       git clone https://github.com/microsoft/vscode.git
     displayName: 'Git Clone VS Code'
     workingDirectory: $(MOUNT_DIR)
@@ -110,3 +122,14 @@ steps:
       ./blobfuse2 --version
     displayName: 'Run Blobfuse on the Mountpoint'
     workingDirectory: $(MOUNT_DIR)/azure-storage-fuse
+
+  - script: |
+      tail -n 5000 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
+
+  - script: |
+      cat $(WORK_DIR)/*.trace
+    displayName: 'View stack trace'
+    condition: failed()
+
