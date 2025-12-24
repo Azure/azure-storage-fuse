@@ -194,6 +194,20 @@ func (suite *fileCacheTestSuite) TestConfig() {
 	suite.assert.Equal(int(suite.fileCache.cacheTimeout), cacheTimeout)
 }
 
+func (suite *fileCacheTestSuite) TestNegativeCacheSize() {
+	var cacheSize float64 = -100
+
+	configStr := fmt.Sprintf("file_cache:\n  path: %s\n  max-size-mb: %f\n", suite.cache_path, cacheSize)
+
+	err := config.ReadConfigFromReader(strings.NewReader(configStr))
+	suite.assert.NoError(err)
+
+	fc := NewFileCacheComponent()
+	err = fc.Configure(true)
+	suite.assert.Error(err)
+	suite.assert.Contains(err.Error(), fmt.Sprintf("max-size-mb: %f must be greater than 0", cacheSize))
+}
+
 func (suite *fileCacheTestSuite) TestDefaultCacheSize() {
 	defer suite.cleanupTest()
 	// Setup
@@ -208,7 +222,7 @@ func (suite *fileCacheTestSuite) TestDefaultCacheSize() {
 	freeDisk, err := strconv.Atoi(strings.TrimSpace(out.String()))
 	suite.assert.NoError(err)
 	expected := uint64(0.8 * float64(freeDisk))
-	actual := suite.fileCache.maxCacheSize * MB
+	actual := suite.fileCache.maxCacheSizeMB * MB
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
 	suite.assert.LessOrEqual(difference, tolerance, "mssg:", actual, expected)
