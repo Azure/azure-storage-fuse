@@ -1,0 +1,82 @@
+# Run various targeted file IO scenarios and check the data integrity.
+parameters:
+  - name: config_file
+    type: string
+  - name: cache_mode
+    type: string
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: verbose_log
+    type: boolean
+    default: false
+
+steps:
+    # Generate config file for file cache
+  - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for File Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+      continueOnError: false
+
+  # Generate Config file for block cache
+  - ${{ if eq(parameters.cache_mode, 'block_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for Block Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+
+  - script: |
+      sudo mkdir -p $(WORK_DIR)/t1
+      sudo chown -R `whoami` $(WORK_DIR)/t1
+      chmod 777 $(WORK_DIR)/t1
+    displayName: 'Create temp Directory'
+
+  - template: 'mount.yml'
+    parameters:
+      prefix: ${{ parameters.cache_mode }}
+      mountStep:
+        script: |
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
+
+  - script:
+      go test -v ./test/scenarios -mountpoints="$(MOUNT_DIR),$(WORK_DIR)/t1"
+    displayName: 'Run Scenarios'
+
+  - template: 'mount.yml'
+    parameters:
+      prefix: ${{ parameters.cache_mode }}
+      mountStep:
+        script: |
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 -o direct_io
+
+  - script:
+      go test -v ./test/scenarios -mountpoints="$(MOUNT_DIR),$(WORK_DIR)/t1" -mount-point-direct-io=true
+    displayName: 'Run Scenarios'
+    
+  # -----------------------------------------------------------------------------
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: blobfuse2-logs.txt
+      artifactName: 'blobfuse_block_cache.txt'
+    condition: failed()
+
+  - script: |
+      tail -n 5000 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
+
