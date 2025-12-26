@@ -512,6 +512,36 @@ func (s *utilsTestSuite) TestRemovePrefixPath() {
 	}
 }
 
+func (s *utilsTestSuite) TestParseRangeHeader() {
+	assert := assert.New(s.T())
+
+	tests := []struct {
+		header   string
+		expected int64
+		hasError bool
+	}{
+		{"bytes=0-100", 101, false},
+		{"bytes=100-200", 101, false},
+		{"bytes=0-0", 1, false},
+		{"bytes=0-", 0, true}, // Open ended not supported in utils.go
+		{"", 0, true},
+		{"invalid", 0, true},
+		{"bytes=abc-def", 0, true},
+		{"bytes=100-50", -49, false}, // Valid parse, but negative size
+	}
+
+	for _, test := range tests {
+		size, err := parseRangeHeader(test.header)
+
+		if test.hasError {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+			assert.Equal(test.expected, size)
+		}
+	}
+}
+
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }
