@@ -139,15 +139,14 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 	// Limit bandwidth for downloads (Azure Egress)
 	// We only limit bandwidth for GET requests as those are typically downloads
 	if p.bandwidthLimiter != nil && req.Raw().Method == http.MethodGet {
-		// Check for Range header
-		// TODO: Get() method canononicalizes the headers, whereas it is stored in lower case by SDK
-		rangeHeader := req.Raw().Header.Get("Range")
-		if rangeHeader == "" {
-			rangeHeader = req.Raw().Header.Get("x-ms-range")
+		// Check for x-ms-range header
+		rangeHeader := req.Raw().Header["x-ms-range"]
+		if len(rangeHeader) == 0 {
+			rangeHeader = req.Raw().Header["Range"]
 		}
 
-		if rangeHeader != "" {
-			size, err := parseRangeHeader(rangeHeader)
+		if len(rangeHeader) > 0 {
+			size, err := parseRangeHeader(rangeHeader[0])
 			if err == nil && size > 0 {
 				// Wait for tokens equal to size
 				err := p.bandwidthLimiter.WaitN(ctx, int(size))
