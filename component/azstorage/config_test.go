@@ -437,6 +437,40 @@ func (s *configTestSuite) TestSASRefresh() {
 	assert.NoError(err)
 }
 
+func (s *configTestSuite) TestRateLimitConfig() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{}
+	opt.AccountName = "abcd"
+	opt.Container = "abcd"
+	opt.AuthMode = "key"
+	opt.AccountKey = "abcd"
+
+	// Test default values (no limit)
+	err := ParseAndReadDynamicConfig(az, opt, false)
+	assert.NoError(err)
+	assert.Equal(int64(-1), az.stConfig.limitBytesPerSec)
+	assert.Equal(int64(-1), az.stConfig.limitOpsPerSec)
+
+	// Test setting limits
+	opt.LimitBytesPerSec = 1024
+	opt.LimitOpsPerSec = 10
+	err = ParseAndReadDynamicConfig(az, opt, false)
+	assert.NoError(err)
+	assert.Equal(int64(1024), az.stConfig.limitBytesPerSec)
+	assert.Equal(int64(10), az.stConfig.limitOpsPerSec)
+
+	// Test setting only one limit
+	opt.LimitBytesPerSec = 2048
+	opt.LimitOpsPerSec = 0 // Should be ignored/reset to default
+
+	err = ParseAndReadDynamicConfig(az, opt, false)
+	assert.NoError(err)
+	assert.Equal(int64(2048), az.stConfig.limitBytesPerSec)
+	assert.Equal(int64(-1), az.stConfig.limitOpsPerSec)
+}
+
 func TestConfigTestSuite(t *testing.T) {
 	suite.Run(t, new(configTestSuite))
 }

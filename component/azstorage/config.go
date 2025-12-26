@@ -633,7 +633,7 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		}
 	}
 
-	// Rate limiting
+	// Rate limiting, default is no limit
 	az.stConfig.limitBytesPerSec = -1
 	az.stConfig.limitOpsPerSec = -1
 
