@@ -449,6 +449,9 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 	info, err := os.Lstat(path)
 	if err != nil {
 		log.Err("LoopbackFS::GetAttr : error [%s]", err)
+		if os.IsNotExist(err) {
+			return nil, syscall.ENOENT
+		}
 		return &internal.ObjAttr{}, err
 	}
 	attr := &internal.ObjAttr{

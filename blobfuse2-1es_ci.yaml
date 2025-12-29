@@ -93,6 +93,8 @@ extends:
             value: '$(Agent.TempDirectory)/blob_mnt'
           - name: GOPATH
             value: '$(Agent.TempDirectory)/go'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
 
         steps:
           # Pull and build the code, Run the Unit Tests
@@ -121,6 +123,11 @@ extends:
             displayName: 'Static Analysis (Lint)'
             condition: always()
             workingDirectory: $(WORK_DIR)
+
+          - template: 'azure-pipeline-templates/pjdfstest.yml@self'
+            parameters:
+              config_file: $(BLOBFUSE2_CFG)
+              cache_mode: 'loopbackfs'
 
           # Copyright checks
           - script: |

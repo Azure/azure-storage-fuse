@@ -1,0 +1,116 @@
+parameters:
+  - name: config_file
+    type: string
+  - name: cache_mode
+    type: string
+  - name: verbose_log
+    type: boolean
+    default: false
+
+
+steps:
+  - script: |
+      git clone https://github.com/pjd/pjdfstest.git
+      autoreconf -ifs
+      ./configure
+      make pjdfstest
+    displayName: 'Install pjdfs test suite'
+    workingDirectory: $(WORK_DIR)
+
+  - ${{ if eq(parameters.cache_mode, 'loopbackfs') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/config_key.yaml --container-name=xyz --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for loopbackfs'
+      continueOnError: false
+
+  - template: 'mount.yml'
+    parameters:
+      prefix: ${{ parameters.cache_mode }}
+      mountStep:
+        script: |
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+
+  - script: |
+      ls -lrt
+    displayName: 'Print contents of Mountpoint'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/chflags/*.t
+    displayName: 'chflags'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/chmod/0[4689].t \
+                ../../pjdfstest/tests/chmod/10.t
+    displayName: 'chmod'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/chown/0[4689].t \
+                ../../pjdfstest/tests/chown/10.t
+    displayName: 'chown'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/ftruncate/0[147-9].t \
+                ../../pjdfstest/tests/ftruncate/1[0134].t
+    displayName: 'ftruncate'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/granular/*.t
+    displayName: 'granular'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/mkdir/0[347-9].t \
+                ../../pjdfstest/tests/mkdir/1[12]*.t
+    displayName: 'mkdir'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/mknod/0[479].t \
+                ../../pjdfstest/tests/mknod/10.t
+    displayName: 'mknod/create'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/open/0[49].t \
+                ../../pjdfstest/tests/open/1*.t \
+                ../../pjdfstest/tests/open/2[0-134].t
+    displayName: 'open'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/rename/0[2-36-8].t \
+                ../../pjdfstest/tests/rename/1[15-9].t \
+                ../../pjdfstest/tests/rename/22.t
+    displayName: 'rename'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/rmdir/0[3-59].t \
+                ../../pjdfstest/tests/rmdir/1[02-5].t
+    displayName: 'rmdir'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/symlink/0[13479].t \
+                ../../pjdfstest/tests/symlink/1*.t
+    displayName: 'symlink'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/truncate/0[147-9].t \
+                ../../pjdfstest/tests/truncate/1[0134].t
+    displayName: 'truncate'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      prove -rv ../../pjdfstest/tests/unlink/0[47-8].t \
+                ../../pjdfstest/tests/unlink/1[02-4].t
+    displayName: 'unlink'
+    workingDirectory: $(MOUNT_DIR)
+
