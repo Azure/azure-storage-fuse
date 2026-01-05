@@ -68,6 +68,8 @@ mount_blobfuse() {
         exit 1
     fi
 
+    ps aux | grep blobfuse2
+
     # Wait for daemon to stabilize
     sleep 10
 
