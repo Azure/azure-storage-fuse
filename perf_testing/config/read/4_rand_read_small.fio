@@ -1,6 +1,6 @@
 [global]
 name=blobfuse_benchmark
-bs=256k
+bs=1M
 runtime=30s
 time_based
 filename=read_small_fio.data
@@ -11,3 +11,4 @@ size=5m
 rw=randread
 ioengine=sync
 fallocate=none
+direct=1
