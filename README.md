@@ -107,8 +107,8 @@ Below table provides `latency/time` and `bandwidth` results for various tests on
 ### Write
 In this test `fio` command is used to run various write workflows. As part of the test `bandwidth` and `latency` are measured. Each test is run for 30 seconds and average of 3 such iteration is taken. Both `bandwidth` and `latency` are taken from `fio` output directly and projected in the charts. To simulate different write work-flows following cases are performed:
 ```
-    - Sequential write on a 100G file
     - Sequential write on a 100G file with direct-io
+    - Sequential write on a 100G file with kernel-cache enabled.
     - Sequential write by 4 parallel threads on 4 different files of 100G size.
     - Sequential write by 16 parallel threads on 16 different files of 100G size.
 ```
@@ -117,12 +117,12 @@ All fio config files used during these tests are located [here](https://github.c
 ### Read
 In this test `fio` command is used to run various read workflows. As part of the test `bandwidth` and `latency` are measured. Each test is run for 30 seconds and average of 3 such iteration is taken. Both `bandwidth` and `latency` are taken from `fio` output directly and projected in the charts. To simulate different read work-flows following cases are performed:
 ```
-    - Sequential read on a 100G file
-    - Random read on a 100G file
-    - Sequential read on a small 5M file
-    - Random read on a small 5M file
     - Sequential read on a 100G file with direct-io
     - Random read on a 100G file with direct-io
+    - Sequential read on a 100G file with kernel-cache enabled.
+    - Random read on a 100G file with kernel-cache enabled.
+    - Sequential read on a small 5M file
+    - Random read on a small 5M file
     - Sequential read on a 100G file by 4 parallel threads
     - Sequential read on a 100G file by 16 parallel threads
     - Random read on a 100G file by 4 parallel threads
