@@ -12,11 +12,11 @@ X86_64 tests are performed on `Standard D96ds_v5` (96 vcpus, 384 GiB memory) Azu
 ARM64 tests are performed on `Standard D96pds_v6` (96 vcpus, 384 GiB memory) Azure VM running in `eastus2` region. Specifications of this VM can be found [here](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/dpdsv6-series?tabs=sizebasic#sizes-in-series).
 
 #### Disk Throughput
-| VM                 | Read (MB/s) | Write (MB/s) |
-|--------------------|-------------|--------------|
-| Standard D96ds_v5  | [Throughput](https://azure.github.io/azure-storage-fuse/X86/disk/read/) | [Throughput](https://azure.github.io/azure-storage-fuse/X86/disk/write)  |
-| Standard D96pds_v6 | [Throughput](https://azure.github.io/azure-storage-fuse/ARM64/disk/read/) | [Throughput](https://azure.github.io/azure-storage-fuse/ARM64/disk/write)  |
 
+| VM                 | Read (MB/s)                                                                 | Write (MB/s)                                                                  |
+|--------------------|-----------------------------------------------------------------------------|-------------------------------------------------------------------------------|
+| Standard D96ds_v5  | [Throughput](https://azure.github.io/azure-storage-fuse/X86/disk/read/)     | [Throughput](https://azure.github.io/azure-storage-fuse/X86/disk/write/)      |
+| Standard D96pds_v6 | [Throughput](https://azure.github.io/azure-storage-fuse/ARM64/disk/read/)   | [Throughput](https://azure.github.io/azure-storage-fuse/ARM64/disk/write/)    |
 
 ### Storage
 A `Premium Blob Storage Account` and a `Standard Blob Storage Account` in `eastus2` region were used to conduct all tests. HNS was disabled on both these accounts.
