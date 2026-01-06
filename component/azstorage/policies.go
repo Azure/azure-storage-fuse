@@ -149,6 +149,7 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 			size, err := parseRangeHeader(rangeHeader)
 			if err == nil && size > 0 {
 				// Wait for tokens equal to size
+				log.Info("RateLimitingPolicy : Limiting download of %d bytes", size)
 				err := p.bandwidthLimiter.WaitN(ctx, int(size))
 				if err != nil {
 					log.Err("RateLimitingPolicy : Bandwidth limit wait failed [%s]", err.Error())

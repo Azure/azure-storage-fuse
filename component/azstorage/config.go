@@ -195,14 +195,14 @@ type AzStorageOptions struct {
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
 	Filter                  string `config:"filter" yaml:"filter"`
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
+	LimitBytesPerSec        int64  `config:"limit-bytes-per-sec" yaml:"limit-bytes-per-sec"`
+	LimitOpsPerSec          int64  `config:"limit-ops-per-sec" yaml:"limit-ops-per-sec"`
 
 	// v1 support
-	UseAdls          bool   `config:"use-adls" yaml:"-"`
-	UseHTTPS         bool   `config:"use-https" yaml:"-"`
-	SetContentType   bool   `config:"set-content-type" yaml:"-"`
-	CaCertFile       string `config:"ca-cert-file" yaml:"-"`
-	LimitBytesPerSec int64  `config:"limit-bytes-per-sec" yaml:"limit-bytes-per-sec"`
-	LimitOpsPerSec   int64  `config:"limit-ops-per-sec" yaml:"limit-ops-per-sec"`
+	UseAdls        bool   `config:"use-adls" yaml:"-"`
+	UseHTTPS       bool   `config:"use-https" yaml:"-"`
+	SetContentType bool   `config:"set-content-type" yaml:"-"`
+	CaCertFile     string `config:"ca-cert-file" yaml:"-"`
 }
 
 // RegisterEnvVariables : Register environment varilables
