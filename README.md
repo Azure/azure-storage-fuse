@@ -23,7 +23,7 @@ A `Premium Blob Storage Account` and a `Standard Blob Storage Account` in `eastu
 
 ### Blobfuse2 configuration
 Blobfuse2 is configured with file-cache, block-cache for all tests.
-- file cache: [config](https://github.com/Azure/azure-storage-fuse/blob/main/testdata/config/azure_key.yaml)
+- file cache: [config](https://github.com/Azure/azure-storage-fuse/blob/main/testdata/config/azure_key_perf.yaml)
 - block cache: [config](https://github.com/Azure/azure-storage-fuse/blob/main/testdata/config/azure_block_bench.yaml)
 
 ## Tests and Results
