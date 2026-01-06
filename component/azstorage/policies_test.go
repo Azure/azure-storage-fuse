@@ -95,7 +95,7 @@ func (s *policiesTestSuite) TestRateLimitingPolicy_BandwidthLimit() {
 	req, err := runtime.NewRequest(context.Background(), http.MethodGet, "http://localhost")
 	assert.NoError(err)
 
-	req.Raw().Header.Set("Range", "bytes=0-99") // 100 bytes
+	req.Raw().Header["Range"] = []string{"bytes=0-99"} // 100 bytes
 
 	// Consume burst (10 requests of 100 bytes = 1000 bytes)
 	for i := 0; i < 10; i++ {
@@ -121,7 +121,7 @@ func (s *policiesTestSuite) TestRateLimitingPolicy_NoLimit() {
 	}, &policy.ClientOptions{Transport: &mockTransport{}})
 
 	req, _ := runtime.NewRequest(context.Background(), http.MethodGet, "http://localhost")
-	req.Raw().Header.Set("Range", "bytes=0-99")
+	req.Raw().Header["Range"] = []string{"bytes=0-99"}
 
 	start := time.Now()
 	for i := 0; i < 20; i++ {
@@ -144,7 +144,7 @@ func (s *policiesTestSuite) TestRateLimitingPolicy_BandwidthLimit_XMsRange() {
 	}, &policy.ClientOptions{Transport: &mockTransport{}})
 
 	req, _ := runtime.NewRequest(context.Background(), http.MethodGet, "http://localhost")
-	req.Raw().Header.Set("x-ms-range", "bytes=0-99") // 100 bytes
+	req.Raw().Header["x-ms-range"] = []string{"bytes=0-99"} // 100 bytes
 
 	// Consume burst
 	for i := 0; i < 10; i++ {

@@ -140,13 +140,13 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 	// We only limit bandwidth for GET requests as those are typically downloads
 	if p.bandwidthLimiter != nil && req.Raw().Method == http.MethodGet {
 		// Check for x-ms-range header
-		rangeHeader := req.Raw().Header.Get("x-ms-range")
-		if rangeHeader == "" {
-			rangeHeader = req.Raw().Header.Get("Range")
+		rangeHeader := req.Raw().Header["x-ms-range"]
+		if len(rangeHeader) == 0 {
+			rangeHeader = req.Raw().Header["Range"]
 		}
 
-		if rangeHeader != "" {
-			size, err := parseRangeHeader(rangeHeader)
+		if len(rangeHeader) > 0 {
+			size, err := parseRangeHeader(rangeHeader[0])
 			if err == nil && size > 0 {
 				// Wait for tokens equal to size
 				log.Info("RateLimitingPolicy : Limiting download of %d bytes", size)
