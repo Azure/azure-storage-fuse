@@ -9,8 +9,14 @@ To keep track of performance regression introduced by any commit in the main bra
 ### VM
 X86_64 tests are performed on `Standard D96ds_v5` (96 vcpus, 384 GiB memory) Azure VM running in `eastus2` region. Specifications of this VM can be found [here](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/ddv5-series?tabs=sizebasic#sizes-in-series).
 
-
 ARM64 tests are performed on `Standard D96pds_v6` (96 vcpus, 384 GiB memory) Azure VM running in `eastus2` region. Specifications of this VM can be found [here](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/dpdsv6-series?tabs=sizebasic#sizes-in-series).
+
+#### Disk Throughput
+| VM                 | Read (MB/s) | Write (MB/s) |
+|--------------------|-------------|--------------|
+| Standard D96ds_v5  | [Throughput](https://azure.github.io/azure-storage-fuse/X86/disk/read/) | [Throughput](https://azure.github.io/azure-storage-fuse/X86/disk/write)  |
+| Standard D96pds_v6 | [Throughput](https://azure.github.io/azure-storage-fuse/ARM64/disk/read/) | [Throughput](https://azure.github.io/azure-storage-fuse/ARM64/disk/write)  |
+
 
 ### Storage
 A `Premium Blob Storage Account` and a `Standard Blob Storage Account` in `eastus2` region were used to conduct all tests. HNS was disabled on both these accounts.
@@ -31,7 +37,7 @@ Master test script that simulates this benchmarking test suite is located [here]
 
 Below table provides `latency/time` and `bandwidth` results for various tests on respective account types. Each test has a linked section describing details of that test case.
 
-### X86_64 Results
+### VM: Standard D96ds_v5 (96 vcpus, 384 GiB memory) (X86_64) Results
 
 | Test Name | Premium Blob Storage Account | Standard Blob Storage Account | 
 | ----------- | -------------- | ----------- |
@@ -45,7 +51,7 @@ Below table provides `latency/time` and `bandwidth` results for various tests on
 | [Max Out](https://azure.github.io/azure-storage-fuse/#max-out)       |  [Time](https://azure.github.io/azure-storage-fuse/X86/premium/time/highapp/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/X86/premium/bandwidth/highapp/) |  [Time](https://azure.github.io/azure-storage-fuse/X86/standard/time/highapp/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/X86/standard/bandwidth/highapp/) |  
 
 
-### ARM64 Results
+### VM: Standard D96pds_v6 (96 vcpus, 384 GiB memory) (ARM64) Results
 
 | Test Name | Premium Blob Storage Account | Standard Blob Storage Account | 
 | ----------- | -------------- | ----------- |
