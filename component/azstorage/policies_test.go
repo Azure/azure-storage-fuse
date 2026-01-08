@@ -161,6 +161,38 @@ func (s *policiesTestSuite) TestRateLimitingPolicy_BandwidthLimit_XMsRange() {
 	assert.GreaterOrEqual(duration, 900*time.Millisecond, "Expected delay of ~1s, got %v", duration)
 }
 
+func (s *policiesTestSuite) TestRateLimitingPolicy_BandwidthLimit_SkipNonGet() {
+	assert := assert.New(s.T())
+
+	// Limit 100 bytes/sec. burst 1000.
+	p := newRateLimitingPolicy(100, -1)
+	pipeline := runtime.NewPipeline("test", "v1", runtime.PipelineOptions{
+		PerRetry: []policy.Policy{p},
+	}, &policy.ClientOptions{Transport: &mockTransport{}})
+
+	// Create requests for checkable methods
+	methods := []string{http.MethodPut, http.MethodPost, http.MethodDelete, http.MethodHead}
+
+	for _, method := range methods {
+		req, _ := runtime.NewRequest(context.Background(), method, "http://localhost")
+		// Even if we have a range header that implies a large payload
+		// the policy should ignore it because it's not GET.
+		req.Raw().Header["Range"] = []string{"bytes=0-999"} // 1000 bytes
+
+		start := time.Now()
+		// Execute multiple times - if limited, this would take ~10 seconds (1000 bytes * 10 / 100 bytes/sec)
+		// But since we are skipping non-GET, it should be instant.
+		for i := 0; i < 11; i++ {
+			_, err := pipeline.Do(req)
+			assert.NoError(err)
+		}
+		duration := time.Since(start)
+
+		// Each request should be effectively instant, so total should be very fast
+		assert.Less(duration, 100*time.Millisecond, "Expected fast execution for method %s, got %v", method, duration)
+	}
+}
+
 func TestPoliciesSuite(t *testing.T) {
 	suite.Run(t, new(policiesTestSuite))
 }
