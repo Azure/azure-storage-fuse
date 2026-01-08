@@ -174,7 +174,7 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 					return nil, err
 				}
 			} else if err != nil {
-				log.Err("RateLimitingPolicy : Failed to parse Range header %s: [%s]", rangeHeader, err.Error())
+				log.Err("RateLimitingPolicy : Failed to parse Range header %s: [%s]", rangeHeader[0], err.Error())
 				return nil, err
 			}
 		}
