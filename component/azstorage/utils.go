@@ -81,6 +81,9 @@ const (
 	DisableKeepAlives      bool          = false
 	DisableCompression     bool          = false
 	MaxResponseHeaderBytes int64         = 0
+
+	X_Ms_Range  string = "x-ms-range"
+	RangeHeader string = "Range"
 )
 
 // getAzStorageClientOptions : Create client options based on the config
@@ -597,6 +600,7 @@ func sanitizeEtag(ETag *azcore.ETag) string {
 //	bytes=500-999     --> returns 500
 //	bytes=500-        --> returns error (open ended range)
 //	bytes=-500        --> returns error
+//	bytes=1000-500    --> returns error (invalid range)
 func parseRangeHeader(rangeHeader string) (int64, error) {
 	if rangeHeader == "" {
 		return 0, fmt.Errorf("empty x-ms-range header")
@@ -616,14 +620,19 @@ func parseRangeHeader(rangeHeader string) (int64, error) {
 		return 0, err
 	}
 
+	// Open ended range
 	if parts[1] == "" {
-		// Open ended range
 		return 0, fmt.Errorf("invalid x-ms-range header format %s, open ended range not supported", rangeHeader)
 	}
 
 	end, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
 		return 0, err
+	}
+
+	// Invalid range
+	if end < start {
+		return 0, fmt.Errorf("invalid range %s", rangeHeader)
 	}
 
 	return end - start + 1, nil

@@ -463,7 +463,7 @@ func (s *configTestSuite) TestRateLimitConfig() {
 
 	// Test setting only one limit
 	opt.LimitBytesPerSec = 2048
-	opt.LimitOpsPerSec = 0 // Should be ignored/reset to default
+	opt.LimitOpsPerSec = 0 // reset to no limit
 
 	err = ParseAndReadDynamicConfig(az, opt, false)
 	assert.NoError(err)

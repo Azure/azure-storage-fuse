@@ -35,7 +35,9 @@ package azstorage
 
 import (
 	"fmt"
+	"math"
 	"net/http"
+	"strings"
 
 	"golang.org/x/time/rate"
 
@@ -108,16 +110,28 @@ func newRateLimitingPolicy(bytesPerSec int64, opsPerSec int64) policy.Policy {
 
 	if bytesPerSec > 0 {
 		bandwidthBurstSize := bytesPerSec * int64(windowSize)
-		p.bandwidthLimiter = rate.NewLimiter(rate.Limit(bytesPerSec), int(bandwidthBurstSize))
+		burst := int(bandwidthBurstSize)
+		// On 32-bit systems, int is 32-bit. If bandwidthBurstSize > MaxInt, we need to clamp it.
+		// math.MaxInt is platform dependent.
+		if bandwidthBurstSize > int64(math.MaxInt) {
+			burst = math.MaxInt
+		}
+
+		p.bandwidthLimiter = rate.NewLimiter(rate.Limit(bytesPerSec), burst)
 		log.Info("RateLimitingPolicy : Bandwidth limit set to %d bytes/sec with burst size of %d bytes",
-			bytesPerSec, bandwidthBurstSize)
+			bytesPerSec, burst)
 	}
 
 	if opsPerSec > 0 {
 		opsBurstSize := opsPerSec * int64(windowSize)
-		p.opsLimiter = rate.NewLimiter(rate.Limit(opsPerSec), int(opsBurstSize))
+		burst := int(opsBurstSize)
+		if opsBurstSize > int64(math.MaxInt) {
+			burst = math.MaxInt
+		}
+
+		p.opsLimiter = rate.NewLimiter(rate.Limit(opsPerSec), burst)
 		log.Info("RateLimitingPolicy : Ops limit set to %d ops/sec with burst size of %d ops",
-			opsPerSec, opsBurstSize)
+			opsPerSec, burst)
 	}
 
 	return p
@@ -136,20 +150,24 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 		}
 	}
 
-	// Limit bandwidth for downloads (Azure Egress)
-	// We only limit bandwidth for GET requests as those are typically downloads
+	// Limit bandwidth for blob downloads (Azure egress: data leaving Azure Storage).
+	// This policy intentionally applies only to GET requests, which represent download operations.
 	if p.bandwidthLimiter != nil && req.Raw().Method == http.MethodGet {
 		// Check for x-ms-range header
-		rangeHeader := req.Raw().Header["x-ms-range"]
+		// We are not using req.Raw().Header.Get() as it canonicalizes the header name.
+		// Whereas SDK stores the header in the request is stored in lower case.
+		// So we directly access the header map with lower case key.
+		// NOTE: using strings.ToLower to ignore the lint error regarding canonicalized headers.
+		rangeHeader := req.Raw().Header[strings.ToLower(X_Ms_Range)]
 		if len(rangeHeader) == 0 {
-			rangeHeader = req.Raw().Header["Range"]
+			rangeHeader = req.Raw().Header[RangeHeader]
 		}
 
 		if len(rangeHeader) > 0 {
 			size, err := parseRangeHeader(rangeHeader[0])
 			if err == nil && size > 0 {
-				// Wait for tokens equal to size
-				log.Info("RateLimitingPolicy : Limiting download of %d bytes", size)
+				// Wait for tokens equal to size.
+				// NOTE: range size is guaranteed to be within int range by parseRangeHeader.
 				err := p.bandwidthLimiter.WaitN(ctx, int(size))
 				if err != nil {
 					log.Err("RateLimitingPolicy : Bandwidth limit wait failed [%s]", err.Error())
@@ -157,6 +175,7 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 				}
 			} else if err != nil {
 				log.Err("RateLimitingPolicy : Failed to parse Range header %s: [%s]", rangeHeader, err.Error())
+				return nil, err
 			}
 		}
 	}

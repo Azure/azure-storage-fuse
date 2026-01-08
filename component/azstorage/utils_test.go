@@ -523,11 +523,11 @@ func (s *utilsTestSuite) TestParseRangeHeader() {
 		{"bytes=0-100", 101, false},
 		{"bytes=100-200", 101, false},
 		{"bytes=0-0", 1, false},
-		{"bytes=0-", 0, true}, // Open ended not supported in utils.go
+		{"bytes=0-", 0, true}, // open ended range not supported
 		{"", 0, true},
 		{"invalid", 0, true},
 		{"bytes=abc-def", 0, true},
-		{"bytes=100-50", -49, false}, // Valid parse, but negative size
+		{"bytes=100-50", 0, true}, // invalid range
 	}
 
 	for _, test := range tests {
