@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767792941070,
+  "lastUpdate": 1767972313488,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -95,6 +95,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_directio",
             "value": 0.4044279848253334,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "id": "c56972bec7730d1d75b9247bda2c7be99c616a1c",
+          "message": "modify benchmarks",
+          "timestamp": "2026-01-09T07:33:48Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/c56972bec7730d1d75b9247bda2c7be99c616a1c"
+        },
+        "date": 1767972313258,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write_kernel_cache",
+            "value": 0.374751992659,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.37814093928933334,
             "unit": "milliseconds"
           }
         ]
