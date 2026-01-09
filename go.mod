@@ -25,6 +25,11 @@ require (
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
+	go.opentelemetry.io/otel v1.24.0
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.2.0
+	go.opentelemetry.io/otel/sdk/log v0.2.0
+	go.opentelemetry.io/proto/otlpproto v1.0.0
+	github.com/Azure/azure-monitor-opentelemetry-exporter v1.0.0
 )
 
 require (
