@@ -2,9 +2,9 @@ name: perftesting
 description: "Execute perf testing scripts and generate the pages"
 
 inputs:
-  MACHINE: 
+  ARCH:
     required: true
-    description: "Type of machine"
+    description: "Type of architecture"
   STANDARD_ACCOUNT:
     required: true
     description: "Standard Storage Account"
@@ -35,6 +35,9 @@ inputs:
   GITHUB_TOKEN:
     required: true
     description: "GitHub Token"
+  CACHE_MODE:
+    required: true
+    description: "Cache mode for testing"
 
 runs:
   using: "composite"
@@ -60,7 +63,7 @@ runs:
         sudo dpkg --configure -a
         echo "Starting Updates and Installation of Packages"
         sudo apt-get update --fix-missing
-        sudo apt-get install fuse3 libfuse3-dev gcc -y
+        sudo apt-get install -y fuse3 libfuse3-dev gcc mdadm
 
     # Install Tools
     - name: "Install Tools"
@@ -72,14 +75,14 @@ runs:
     - name: "Install Go"
       shell: bash
       run: |
-        ./go_installer.sh ../
+        ./go_installer.sh ../ &> /dev/null
         go version
 
     # Build Blobfuse2
     - name: "Build Blobfuse2"
       shell: bash
       run: |
-        ./build.sh
+        ./build.sh &> /dev/null
 
     # Run binary and validate the version
     - name: "Validate Version"
@@ -110,177 +113,134 @@ runs:
           echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.PREMIUM_HNS_KEY }}" >> $GITHUB_ENV
         fi
 
-    # Create the config file for testing
+    # Create the block_cache config file for testing
     - name: "Create config file for account type: ${{ matrix.TestType }}"
+      if : ${{ inputs.CACHE_MODE == 'block_cache' }}
       shell: bash
       run: |
         blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ inputs.BENCH_CONTAINER }}  --output-file=./config.yaml
         cat ./config.yaml
 
+    - name: "Create config file for account type: ${{ matrix.TestType }}"
+      if : ${{ inputs.CACHE_MODE == 'file_cache' }}
+      shell: bash
+      run: |
+        blobfuse2 gen-test-config --config-file=azure_key_perf.yaml --container-name=${{ inputs.BENCH_CONTAINER }} --temp-path=/mnt/localssd/tempcache --output-file=./config.yaml
+        cat ./config.yaml
+
+    - name: "Mount the disk"
+      if : ${{ inputs.ARCH == 'ARM64' }}
+      shell: bash
+      run: |
+        df -h
+        lsblk -o NAME,MODEL,SIZE,TYPE,MOUNTPOINT
+        # Unmount any of the drives if they are currently mounted
+        sudo umount /dev/nvme*p1 || true
+
+        # Create the RAID 0 array without interactive prompts
+        sudo mdadm --create --verbose /dev/md0 \
+        --level=0 \
+        --raid-devices=6 \
+        --force \
+        /dev/nvme0n1p1 /dev/nvme1n1p1 /dev/nvme2n1p1 /dev/nvme3n1p1 /dev/nvme4n1p1 /dev/nvme5n1p1
+
+        sudo mkfs.ext4 -F /dev/md0
+        sudo mkdir -p /mnt/localssd
+        sudo mount /dev/md0 /mnt/localssd
+        sudo chmod 777 /mnt/localssd
+
+        # Verify the new filesystem is mounted
+        echo "RAID array created and mounted successfully:"
+        df -h
+
+    # Run this test only once for the entire matrix.
+    - name: "Run Disk Benchmark tests"
+      if : ${{ matrix.TestType == 'premium' && matrix.CacheMode == 'file_cache' }}
+      uses: ./.github/actions/disk-benchmark
+      with:
+        ARCH: ${{ inputs.ARCH }}
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+
     # Create the config file for testing
     - name: "Create mount path"
       shell: bash
       run: |
+        df -h
         sudo mkdir -p /mnt/blob_mnt
-        sudo mkdir -p /mnt/tempcache
+        sudo mkdir -p /mnt/localssd/tempcache
         sudo chmod 777 /mnt/blob_mnt
-        sudo chmod 777 /mnt/tempcache
+        sudo chmod 777 /mnt/localssd
+        sudo chmod 777 /mnt/localssd/tempcache
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------------
     # Run the basic tests using FIO
 
-    # Run the Write tests
+    # Run the Read tests on blobfuse mountpoint
     - name: "Read Test"
-      uses: "./.github/template/generate_page"
-      with:
-        MACHINE: ${{ inputs.MACHINE }}
-        TEST: "read"
-        TYPE: ${{ matrix.TestType }}
-        TOKEN: ${{ inputs.GITHUB_TOKEN }}
+      shell: bash
+      run: |
+        rm -rf /mnt/blob_mnt/*
+        rm -rf /mnt/localssd/tempcache/*
+        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt read ${{ matrix.CacheMode }}
 
-    # Run the Write tests with high number of threads
-    - name: "High threads Test"
-      uses: "./.github/template/generate_page"
+    - name: "Update Bandwidth Results : Read"
+      # if: github.event_name != 'workflow_dispatch'
+      uses: benchmark-action/github-action-benchmark@v1
       with:
-        MACHINE: ${{ inputs.MACHINE }}
-        TEST: "highlyparallel"
-        TYPE: ${{ matrix.TestType }}
-        TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        output-file-path: read/bandwidth_results.json
+        tool: 'customBiggerIsBetter'
+        max-items-in-chart: 100
+        github-token: ${{ inputs.GITHUB_TOKEN }}
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/bandwidth/read
 
-    # Run the Write tests
+    - name: "Update Latency Results : Read"
+      # if: github.event_name != 'workflow_dispatch'
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: read/latency_results.json
+        tool: 'customSmallerIsBetter'
+        max-items-in-chart: 100
+        github-token: ${{ inputs.GITHUB_TOKEN }}
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/time/read
+
+    # Run the Write tests on blobfuse mountpoint
     - name: "Write Test"
-      uses: "./.github/template/generate_page"
-      with:
-        MACHINE: ${{ inputs.MACHINE }}
-        TEST: "write"
-        TYPE: ${{ matrix.TestType }}
-        TOKEN: ${{ inputs.GITHUB_TOKEN }}
-          
-    # Run the Create tests
-    - name: "Create File Test"
-      uses: "./.github/template/generate_page"
-      with:
-        MACHINE: ${{ inputs.MACHINE }}
-        TEST: "create"
-        TYPE: ${{ matrix.TestType }}
-        TOKEN: ${{ inputs.GITHUB_TOKEN }}
-    # ---------------------------------------------------------------------------------------
-
-
-    # Below tests needs to run seperatly as output is different
-    # ---------------------------------------------------------------------------------------------------
-    # Run the List tests
-    # this shall always runs after create tests
-    - name: "List File Test"
       shell: bash
       run: |
         rm -rf /mnt/blob_mnt/*
-        rm -rf /mnt/tempcache/*
-        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt list
-      
-    - name: "Update Benchmark Results : List"
+        rm -rf /mnt/localssd/tempcache/*
+        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt write ${{ matrix.CacheMode }}
+
+    - name: "Update Bandwidth Results : Write"
+      # if: github.event_name != 'workflow_dispatch'
       uses: benchmark-action/github-action-benchmark@v1
       with:
-        output-file-path: list/list_results.json
-        tool: 'customSmallerIsBetter'
-        #alert-threshold: "500%"
-        max-items-in-chart: 100
-        github-token: ${{ inputs.GITHUB_TOKEN }}
-        #fail-on-alert: true
-        auto-push: true
-        comment-on-alert: true
-        gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/time/list
-
-    # ---------------------------------------------------------------------------------------
-    # Run App baseed tests
-    # This needs to run seperatly as output is different
-    - name: "App based Test"
-      shell: bash
-      run: |
-        rm -rf /mnt/blob_mnt/*
-        rm -rf /mnt/tempcache/*
-        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt app
-
-      
-    - name: "Update Bandwidth Results : App"
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        output-file-path: app/app_bandwidth.json
+        output-file-path: write/bandwidth_results.json
         tool: 'customBiggerIsBetter'
-        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
-        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/bandwidth/app
+        benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/bandwidth/write
 
-    - name: "Update Latency Results : App"
+    - name: "Update Latency Results : Write"
+      # if: github.event_name != 'workflow_dispatch'
       uses: benchmark-action/github-action-benchmark@v1
       with:
-        output-file-path: app/app_time.json
+        output-file-path: write/latency_results.json
         tool: 'customSmallerIsBetter'
-        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
-        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/time/app    
-
-    - name: "Update Bandwidth Results : High Speed App"
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        output-file-path: app/highapp_bandwidth.json
-        tool: 'customBiggerIsBetter'
-        #alert-threshold: "160%"
-        max-items-in-chart: 100
-        github-token: ${{ inputs.GITHUB_TOKEN }}
-        #fail-on-alert: true
-        auto-push: true
-        comment-on-alert: true
-        gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/bandwidth/highapp   
-
-    - name: "Update Latency Results : High Speed App"
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        output-file-path: app/highapp_time.json
-        tool: 'customSmallerIsBetter'
-        #alert-threshold: "160%"
-        max-items-in-chart: 100
-        github-token: ${{ inputs.GITHUB_TOKEN }}
-        #fail-on-alert: true
-        auto-push: true
-        comment-on-alert: true
-        gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/time/highapp  
+        benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/time/write
 
     # ---------------------------------------------------------------------------------------
-    # Run Rename tests
-    # This needs to run seperatly as output is different
-    - name: "Rename Test"
-      shell: bash
-      run: |
-        rm -rf /mnt/blob_mnt/*
-        rm -rf /mnt/tempcache/*
-        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt rename
-
-    - name: "Update Latency Results : Rename"
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        output-file-path: rename/rename_time.json
-        tool: 'customSmallerIsBetter'
-        #alert-threshold: "160%"
-        max-items-in-chart: 100
-        github-token: ${{ inputs.GITHUB_TOKEN }}
-        #fail-on-alert: true
-        auto-push: true
-        comment-on-alert: true
-        gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/time/rename  
-    # ---------------------------------------------------------------------------------------          
-                
