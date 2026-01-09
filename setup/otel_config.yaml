@@ -1,0 +1,41 @@
+# OpenTelemetry Configuration for Azure Storage Fuse
+# This configuration enables direct gRPC export of logs to OTel collector
+# with periodic batch export to Azure Monitor (1-minute intervals)
+
+otel:
+  enabled: true
+  # gRPC endpoint of OpenTelemetry collector
+  # Default: localhost:4317 (local OTel collector)
+  collector_endpoint: "localhost:4317"
+  
+  # Batch processor settings for log export
+  batch:
+    # Timeout for batching logs before export (in seconds)
+    timeout_seconds: 60  # 1-minute interval
+    # Maximum number of logs to buffer before force export
+    max_queue_size: 10000
+    # Maximum number of logs per batch
+    max_batch_size: 512
+  
+  # Azure Monitor integration
+  azure_monitor:
+    # Application Insights instrumentation key
+    instrumentation_key: "${AZURE_INSTRUMENTATION_KEY}"
+    # Optional: Custom endpoint for Azure Monitor
+    # endpoint: "https://your-endpoint.monitor.azure.com"
+    # Service identification
+    service_name: "azure-storage-fuse"
+    service_version: "2.5.1"
+    environment: "production"
+
+  # Resource attributes to be sent with logs
+  resource:
+    # Service namespace
+    service_namespace: "azure"
+    # Service instance ID (can be set at runtime)
+    # service_instance_id: "${HOSTNAME}"
+
+# Environment variables to be set:
+# AZURE_INSTRUMENTATION_KEY - Application Insights instrumentation key (required)
+# OTEL_COLLECTOR_ENDPOINT - Override default collector endpoint (optional)
+# LOG_LEVEL - Log level (debug, info, warn, error)
