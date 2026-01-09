@@ -1,0 +1,70 @@
+# OpenTelemetry Collector Configuration
+# Configuration for receiving logs from Azure Storage Fuse and exporting to various backends
+
+receivers:
+  # OTLP gRPC receiver for logs
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Batch processor to send logs in batches
+  batch:
+    # Timeout to send logs if batch not full
+    timeout: 60s
+    # Size of the batch, logs will be sent when batch reaches this size
+    send_batch_size: 512
+    # Maximum number of items in the queue
+    max_queue_size: 10000
+
+  # Memory limiter to prevent OOMKilled
+  memory_limiter:
+    # Maximum memory to use
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  # Attributes processor to add custom attributes
+  attributes:
+    actions:
+      - key: service.name
+        value: azure-storage-fuse
+        action: insert
+      - key: service.version
+        value: 2.5.1
+        action: insert
+
+exporters:
+  # Logging exporter for console output (for debugging)
+  logging:
+    loglevel: debug
+
+  # Jaeger exporter for distributed tracing
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+
+  # Prometheus remote write exporter for metrics (if needed)
+  prometheusremotewrite:
+    endpoint: "http://prometheus:9090/api/v1/write"
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    # Logs pipeline
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes, batch]
+      exporters: [logging, jaeger]
+
+  # Health check extension
+  extensions: [health_check]
+
+extensions:
+  health_check:
+    endpoint: :13133
