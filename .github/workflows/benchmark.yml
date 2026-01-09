@@ -1,4 +1,5 @@
 name: Benchmark
+
 on:
   workflow_dispatch: 
     inputs:
@@ -11,32 +12,42 @@ on:
     - cron: '0 4 * * SUN'
 
 jobs:
-  X86_PerfTesting:
-    strategy:
-      max-parallel: 1
-      matrix:
-        TestType: ["premium", "standard"]
-        # TestType: ["premium", "standard", "premium_hns", "standard_hns"]
-            
-    runs-on: [self-hosted, 1ES.Pool=blobfuse2-benchmark]
-    timeout-minutes: 360
+  PerfTesting:
+    name: ${{ matrix.config.arch }} - ${{ matrix.TestType }} - ${{ matrix.CacheMode }}
+    # Dynamically select the runner based on the matrix configuration
+    runs-on: [self-hosted, "${{ matrix.config.runner }}"]
+    timeout-minutes: 400
 
     permissions:
       id-token: write
       contents: write
       pages: write
-    
+
+    strategy:
+      # Run one at a time to avoid impacting storage performance during benchmarks
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        # Define the hardware/runner configurations
+        config:
+          - { arch: "X86", runner: "1ES.Pool=blobfuse2-benchmark" }
+          - { arch: "ARM64", runner: "1ES.Pool=blobfuse2-benchmark-arm" }
+        # Define the storage account types to test
+        # Note: 'TestType' variable name MUST remain as-is; the perftesting action relies on it.
+        TestType: ["premium", "standard"]
+        CacheMode: ["file_cache", "block_cache"]
+
     steps:
-      # Checkout main branch
       - name: 'Checkout Blobfuse2'
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }} # Checkout the branch that triggered the workflow
+          ref: ${{ github.ref }}
 
-      - name: "X86 Perf Testing"
-        uses: "./.github/template/perftesting"
+      - name: "Run Perf Testing"
+        uses: "./.github/actions/perftesting"
         with:
-          MACHINE: "X86"
+          # Pass the arch type from our config matrix
+          ARCH: ${{ matrix.config.arch }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STANDARD_ACCOUNT: ${{ secrets.STANDARD_ACCOUNT }}
           PREMIUM_ACCOUNT: ${{ secrets.PREMIUM_ACCOUNT }}
@@ -47,43 +58,4 @@ jobs:
           STANDARD_HNS_KEY: ${{ secrets.STANDARD_HNS_KEY }}
           PREMIUM_HNS_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
           BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
-
-  Arm64_PerfTesting:
-    needs: X86_PerfTesting
-
-    strategy:
-      max-parallel: 1
-      matrix:
-        TestType: ["premium", "standard"]
-        # TestType: ["premium", "standard", "premium_hns", "standard_hns"]
-            
-    runs-on: [self-hosted, 1ES.Pool=blobfuse2-benchmark-arm]
-    timeout-minutes: 360
-
-    permissions:
-      id-token: write
-      contents: write
-      pages: write
-    
-    steps:
-      - name: 'Checkout Blobfuse2'
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.ref }} # Checkout the branch that triggered the workflow
-
-      - name: "ARM64 Perf Testing"
-        uses: "./.github/template/perftesting"
-        with:
-          MACHINE: "ARM"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STANDARD_ACCOUNT: ${{ secrets.STANDARD_ACCOUNT }}
-          PREMIUM_ACCOUNT: ${{ secrets.PREMIUM_ACCOUNT }}
-          STANDARD_HNS_ACCOUNT: ${{ secrets.STANDARD_HNS_ACCOUNT }}
-          PREMIUM_HNS_ACCOUNT: ${{ secrets.PREMIUM_HNS_ACCOUNT }}
-          STANDARD_KEY: ${{ secrets.STANDARD_KEY }}
-          PREMIUM_KEY: ${{ secrets.PREMIUM_KEY }}
-          STANDARD_HNS_KEY: ${{ secrets.STANDARD_HNS_KEY }}
-          PREMIUM_HNS_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
-          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
-
-  
+          CACHE_MODE: ${{ matrix.CacheMode }}
