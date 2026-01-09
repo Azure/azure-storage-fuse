@@ -195,8 +195,8 @@ type AzStorageOptions struct {
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
 	Filter                  string `config:"filter" yaml:"filter"`
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
-	LimitBytesPerSec        int64  `config:"limit-bytes-per-sec" yaml:"limit-bytes-per-sec"`
-	LimitOpsPerSec          int64  `config:"limit-ops-per-sec" yaml:"limit-ops-per-sec"`
+	CapMbps                 int64  `config:"cap-mbps" yaml:"cap-mbps"`
+	CapIOps                 int64  `config:"cap-iops" yaml:"cap-iops"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -539,8 +539,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, limit-bytes-per-sec %d, limit-ops-per-sec %d",
-		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.limitBytesPerSec, az.stConfig.limitOpsPerSec)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps %d, cap-iops %d",
+		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbps, az.stConfig.capIOps)
 
 	return nil
 }
@@ -634,15 +634,15 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 	}
 
 	// Rate limiting, default is no limit
-	az.stConfig.limitBytesPerSec = -1
-	az.stConfig.limitOpsPerSec = -1
+	az.stConfig.capMbps = -1
+	az.stConfig.capIOps = -1
 
-	if opt.LimitBytesPerSec > 0 {
-		az.stConfig.limitBytesPerSec = opt.LimitBytesPerSec
+	if opt.CapMbps > 0 {
+		az.stConfig.capMbps = opt.CapMbps
 	}
 
-	if opt.LimitOpsPerSec > 0 {
-		az.stConfig.limitOpsPerSec = opt.LimitOpsPerSec
+	if opt.CapIOps > 0 {
+		az.stConfig.capIOps = opt.CapIOps
 	}
 
 	return nil
