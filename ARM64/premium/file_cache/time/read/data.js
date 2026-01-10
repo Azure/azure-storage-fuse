@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767963216753,
+  "lastUpdate": 1768044971151,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -334,6 +334,73 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 0.573825765884,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "id": "977c0a1c71d2cde4a3aea0d38a0a59f3f7a126f1",
+          "message": "modify benchmarks",
+          "timestamp": "2026-01-09T10:09:46Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/977c0a1c71d2cde4a3aea0d38a0a59f3f7a126f1"
+        },
+        "date": 1768044970911,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_kernel_cache",
+            "value": 0.8804761825093333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_kernel_cache",
+            "value": 1.202383888826,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.7052768500273333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.3326657956486667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.6433368090439999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 0.6473353083856667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.609416114384,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 0.7411942239983332,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 0.5558387270656667,
             "unit": "milliseconds"
           }
         ]
