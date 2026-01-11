@@ -88,6 +88,8 @@ run_fio_job() {
     echo -n "Running job ${job_name} for ${ITERATIONS} iterations... "
 
     for i in $(seq 1 "${ITERATIONS}"); do
+	# drop the kernel page cache to get more accurate results
+	sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
         echo -n "${i}; "
         set +e
         
