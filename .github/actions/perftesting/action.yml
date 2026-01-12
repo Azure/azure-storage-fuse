@@ -62,14 +62,16 @@ runs:
         echo "Released any lock if some other process has acquired"
         sudo dpkg --configure -a
         echo "Starting Updates and Installation of Packages"
-        sudo apt-get update --fix-missing
-        sudo apt-get install -y fuse3 libfuse3-dev gcc mdadm
+        sudo apt-get update --fix-missing &> /dev/null
+        sudo apt-get install -y fuse3 libfuse3-dev gcc &> /dev/null
 
     # Install Tools
     - name: "Install Tools"
       shell: bash
       run: |
-        sudo apt-get install fio jq python3 -y
+        sudo apt-get install jq python3 mdadm bc -y &> /dev/null
+        # Install fio from source
+        ./tools/install_fio.sh
 
     # Install GoLang
     - name: "Install Go"

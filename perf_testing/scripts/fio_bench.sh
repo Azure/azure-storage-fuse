@@ -81,49 +81,91 @@ mount_blobfuse() {
     echo "File system mounted successfully."
 }
 
+# Set the network interface to monitor
+INTERFACE="eth0"
+
 # Helper: Execute a single FIO job multiple times
 run_fio_job() {
     local job_file=$1
     local job_name
     job_name=$(basename "${job_file}" .fio)
 
-    echo -n "Running job ${job_name} for ${ITERATIONS} iterations... "
+    echo -n "Running job ${job_name} ... "
 
-    for i in $(seq 1 "${ITERATIONS}"); do
-        # drop the kernel page cache to get more accurate results
-        sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
-        echo -n "${i}; "
-        set +e
-        
-        timeout 300m fio --thread \
-            --output="${OUTPUT_DIR}/${job_name}_trial${i}.json" \
+    # drop the kernel page cache to get more accurate results
+    sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
+
+    # Get Network initial stats for logs.
+    start_rx=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
+    start_tx=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
+    start_time=$(date +%s.%N)
+
+    set +e
+    timeout 300m fio --thread \
+            --output="${OUTPUT_DIR}/${job_name}_trial.json" \
             --output-format=json \
             --directory="${MOUNT_DIR}" \
             --eta=never \
             "${job_file}" > /dev/null
 
-        local status=$?
-        set -e
-        
-        if [ $status -ne 0 ]; then
-            echo "Error: Job ${job_name} failed with status ${status}"
-            exit 1
-        fi
-    done
+    local status=$?
+    set -e
+
+    if [ $status -ne 0 ]; then
+        echo "Error: Job ${job_name} failed with status ${status}"
+        exit 1
+    fi
+
+    # Get final stats for network usage calculation
+    end_time=$(date +%s.%N)
+    end_rx=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
+    end_tx=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
+
+    echo "-------------------------------------"
+    echo "Command finished. Calculating network usage..."
+
+    # Calculate the duration
+    duration=$(echo "$end_time - $start_time" | bc)
+
+    # Calculate the difference in bytes
+    rx_bytes=$((end_rx - start_rx))
+    tx_bytes=$((end_tx - start_tx))
+
+    # Calculate bandwidth in Megabits per second (Mbps)
+    # (bytes * 8) / (duration * 1000 * 1000)
+    rx_mbps=$(echo "scale=4; ($rx_bytes * 8) / ($duration * 1000000)" | bc)
+    tx_mbps=$(echo "scale=4; ($tx_bytes * 8) / ($duration * 1000000)" | bc)
+
+    # Output the results
+    echo
+    echo "Interface: $INTERFACE"
+    echo "Duration: ${duration} seconds"
+    echo
+    echo "Received (RX):"
+    echo "  - Bytes: $rx_bytes"
+    echo "  - Average Bandwidth: ${rx_mbps} Mbps"
+    echo
+    echo "Transmitted (TX):"
+    echo "  - Bytes: $tx_bytes"
+    echo "  - Average Bandwidth: ${tx_mbps} Mbps"
+
+    # done
     echo "Done."
+
+    cat "${OUTPUT_DIR}/${job_name}_trial.json"
 
     # Generate summary JSONs using jq
     # Bandwidth Summary
     jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += (
         if ($job."job options".rw | contains("read")) then $job.read.bw / 1024
         else $job.write.bw / 1024 end
-    )) | {name: .name, value: (.value / .len), unit: "MiB/s"}' "${OUTPUT_DIR}/${job_name}_trial"*.json | tee "${OUTPUT_DIR}/${job_name}_bandwidth_summary.json" > /dev/null
+    )) | {name: .name, value: (.value / .len), unit: "MiB/s"}' "${OUTPUT_DIR}/${job_name}_trial".json | tee "${OUTPUT_DIR}/${job_name}_bandwidth_summary.json" > /dev/null
 
     # Latency Summary
     jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += (
         if ($job."job options".rw | contains("read")) then $job.read.lat_ns.mean / 1000000
         else $job.write.lat_ns.mean / 1000000 end
-    )) | {name: .name, value: (.value / .len), unit: "milliseconds"}' "${OUTPUT_DIR}/${job_name}_trial"*.json | tee "${OUTPUT_DIR}/${job_name}_latency_summary.json" > /dev/null
+    )) | {name: .name, value: (.value / .len), unit: "milliseconds"}' "${OUTPUT_DIR}/${job_name}_trial".json | tee "${OUTPUT_DIR}/${job_name}_latency_summary.json" > /dev/null
 }
 
 # Helper: Iterate over all FIO files in a directory
@@ -133,14 +175,9 @@ run_test_suite() {
 
     for job_file in "${config_dir}"/*.fio; do
         if [ ! -f "$job_file" ]; then continue; fi
-	# TODO: Remove this condition once block cache has the support.
-	# currently block_cache doesn't support multiple handle writes well. So skip those tests.
-	if [[ "${CACHE_MODE}" == "block_cache" && "${TEST_NAME}" == "write" && "$(basename "$job_file")" == *thread* ]]; then
-	    echo "Skipping test ${job_file} for block_cache write mode."
-	    continue
-	fi
         
         mount_blobfuse
+	rm -rf "${MOUNT_DIR}/"*
         run_fio_job "$job_file"
         cleanup_mount
     done
