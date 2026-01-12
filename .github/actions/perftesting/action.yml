@@ -184,7 +184,7 @@ runs:
         ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt read ${{ matrix.CacheMode }}
 
     - name: "Update Bandwidth Results : Read"
-      # if: github.event_name != 'workflow_dispatch'
+      if: ${{ github.ref == 'refs/heads/main' }}
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: read/bandwidth_results.json
@@ -197,7 +197,7 @@ runs:
         benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/bandwidth/read
 
     - name: "Update Latency Results : Read"
-      # if: github.event_name != 'workflow_dispatch'
+      if: ${{ github.ref == 'refs/heads/main' }}
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: read/latency_results.json
@@ -218,7 +218,7 @@ runs:
         ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt write ${{ matrix.CacheMode }}
 
     - name: "Update Bandwidth Results : Write"
-      # if: github.event_name != 'workflow_dispatch'
+      if: ${{ github.ref == 'refs/heads/main' }}
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: write/bandwidth_results.json
@@ -231,7 +231,7 @@ runs:
         benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/bandwidth/write
 
     - name: "Update Latency Results : Write"
-      # if: github.event_name != 'workflow_dispatch'
+      if: ${{ github.ref == 'refs/heads/main' }}
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: write/latency_results.json
