@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768225100658,
+  "lastUpdate": 1768293301133,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -269,6 +269,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_read_directio",
             "value": 11465.3603515625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "id": "bf0e75eca48b257fb225136721a3a105dfbee066",
+          "message": "add parallel file writes to different files fio configs",
+          "timestamp": "2026-01-12T07:35:36Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/bf0e75eca48b257fb225136721a3a105dfbee066"
+        },
+        "date": 1768293300885,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_directio",
+            "value": 16400.400390625,
             "unit": "MiB/s"
           }
         ]
