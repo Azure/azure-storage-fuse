@@ -41,6 +41,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -655,4 +656,11 @@ func (suite *utilTestSuite) TestGetGoroutineIDParallel() {
 	}
 
 	suite.Len(idMap, workers, "expected unique goroutine ids equal to workers")
+}
+
+func (suite *utilTestSuite) TestSetFrsize() {
+	st := &syscall.Statfs_t{}
+	var val uint64 = 4096
+	SetFrsize(st, val)
+	suite.assert.Equal(int64(val), st.Frsize)
 }
