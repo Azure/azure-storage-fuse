@@ -20,16 +20,13 @@ file_cache:
   timeout-sec: 30
   allow-non-empty-temp: true
   cleanup-on-start: true
+  sync-to-flush: true
 
 attr_cache:
   timeout-sec: 7200
   
 azstorage:
-  type: { STO_ACC_TYPE }
-  endpoint: { STO_ACC_ENDPOINT }
-  use-http: { USE_HTTP }
-  account-name: { STO_ACC_NAME }
-  account-key: { STO_ACC_KEY }
   mode: key
   container: { 0 }
-  tier: hot
+  account-name: { AZURE_STORAGE_ACCOUNT }
+  account-key: { AZURE_STORAGE_ACCESS_KEY }
