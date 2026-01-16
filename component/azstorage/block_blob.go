@@ -961,7 +961,15 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, length int64) ([]byte
 		Count:  length,
 	}
 
+	// Track request
+	trackAzureRequest("ReadBuffer")
+	startTime := time.Now()
+	
 	_, err := blobClient.DownloadBuffer(context.Background(), buff, &dlOpts)
+
+	// Track response with duration
+	duration := time.Since(startTime).Seconds()
+	trackAzureResponse("ReadBuffer", err, duration)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -975,6 +983,9 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, length int64) ([]byte
 		log.Err("BlockBlob::ReadBuffer : Failed to download blob %s [%s]", name, err.Error())
 		return buff, err
 	}
+	
+	// Track bytes transferred
+	trackBytesTransferred("ReadBuffer", length, "download")
 
 	return buff, nil
 }
@@ -1205,6 +1216,10 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, d
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromBuffer", name)
 
+	// Track request
+	trackAzureRequest("WriteFromBuffer")
+	startTime := time.Now()
+	
 	_, err := blobClient.UploadBuffer(context.Background(), data, &blockblob.UploadBufferOptions{
 		BlockSize:   bb.Config.blockSize,
 		Concurrency: bb.Config.maxConcurrency,
@@ -1216,10 +1231,17 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, d
 		CPKInfo: bb.blobCPKOpt,
 	})
 
+	// Track response with duration
+	duration := time.Since(startTime).Seconds()
+	trackAzureResponse("WriteFromBuffer", err, duration)
+
 	if err != nil {
 		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s [%s]", name, err.Error())
 		return err
 	}
+	
+	// Track bytes transferred
+	trackBytesTransferred("WriteFromBuffer", int64(len(data)), "upload")
 
 	return nil
 }
