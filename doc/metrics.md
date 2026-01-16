@@ -7,8 +7,10 @@ This document describes the OpenTelemetry (OTEL) metrics functionality in Blobfu
 Blobfuse2 now supports exporting operational metrics via OpenTelemetry, providing real-time insights into:
 - Cache performance (hits, misses, evictions, usage)
 - System resource utilization (memory, CPU)
-- Azure Storage operations (requests, responses, errors, bytes transferred)
+- **Azure Storage operations (requests, responses, errors, bytes transferred, latency)**
 - Filesystem operations
+
+**All Azure Storage API calls are now fully instrumented** with request/response tracking, status codes, error classification (4xx/5xx), bytes transferred, and request duration histograms.
 
 ## Metrics Collected
 
@@ -31,11 +33,37 @@ Blobfuse2 now supports exporting operational metrics via OpenTelemetry, providin
 
 ### Azure Storage Metrics
 
-- `blobfuse.azure.requests{operation}` - Number of requests to Azure Storage
-- `blobfuse.azure.responses{operation, status_code}` - Number of responses from Azure Storage
-- `blobfuse.azure.errors{operation, error_type, status_code}` - Number of errors (4xx/5xx)
-- `blobfuse.azure.bytes_transferred{operation, direction}` - Bytes uploaded/downloaded
-- `blobfuse.azure.request_duration{operation, status_code}` - Request duration histogram
+**All Azure Storage API calls are fully instrumented with:**
+
+**Request/Response Tracking:**
+- `blobfuse.azure.requests{operation, component}` - Total requests to Azure Storage
+  - Operations tracked: `DeleteFile`, `ReadToFile`, `ReadBuffer`, `ReadInBuffer`, `WriteFromFile`, `WriteFromBuffer`, `GetProperties`
+  
+- `blobfuse.azure.responses{operation, status_code, component}` - Responses with HTTP status codes
+  - Tracks success (2xx), client errors (4xx), and server errors (5xx)
+  
+- `blobfuse.azure.errors{operation, error_type, status_code, component}` - Error tracking with classification
+  - `error_type`: `client_error` (4xx) or `server_error` (5xx)
+  - Enables separate alerting for client vs server issues
+
+**Data Transfer:**
+- `blobfuse.azure.bytes_transferred{operation, direction, component}` - Bytes uploaded/downloaded
+  - `direction`: `upload` or `download`
+  - Tracks actual bytes transferred per operation
+
+**Performance:**
+- `blobfuse.azure.request_duration{operation, status_code, component}` - Request latency histogram (seconds)
+  - Enables percentile calculations (p50, p95, p99)
+  - Correlates latency with status codes
+
+**Example Values:**
+```
+blobfuse_azure_requests_total{operation="ReadToFile", component="azstorage"} 1500
+blobfuse_azure_responses_total{operation="ReadToFile", status_code="200", component="azstorage"} 1450
+blobfuse_azure_errors_total{operation="ReadToFile", error_type="client_error", status_code="404", component="azstorage"} 50
+blobfuse_azure_bytes_transferred_total{operation="ReadToFile", direction="download", component="azstorage"} 524288000
+blobfuse_azure_request_duration_bucket{operation="ReadToFile", status_code="200", component="azstorage", le="0.5"} 1200
+```
 
 ### Operation Metrics
 
@@ -209,14 +237,37 @@ blobfuse_cache_usage_mb
 # Request rate by operation
 sum(rate(blobfuse_azure_requests_total[5m])) by (operation)
 
-# Error rate
-sum(rate(blobfuse_azure_errors_total[5m])) by (error_type)
+# Success rate (2xx responses / total requests)
+sum(rate(blobfuse_azure_responses_total{status_code=~"2.."}[5m])) /
+  sum(rate(blobfuse_azure_requests_total[5m]))
 
-# 95th percentile latency
-histogram_quantile(0.95, rate(blobfuse_azure_request_duration_bucket[5m]))
+# Error rate by operation
+sum(rate(blobfuse_azure_errors_total[5m])) by (operation, error_type)
 
-# Bandwidth usage
-sum(rate(blobfuse_azure_bytes_transferred_total[5m])) by (direction)
+# Client errors (4xx) vs Server errors (5xx)
+sum(rate(blobfuse_azure_errors_total{error_type="client_error"}[5m]))
+sum(rate(blobfuse_azure_errors_total{error_type="server_error"}[5m]))
+
+# 95th percentile latency by operation
+histogram_quantile(0.95, sum(rate(blobfuse_azure_request_duration_bucket[5m])) by (operation, le))
+
+# 99th percentile latency for successful requests
+histogram_quantile(0.99, sum(rate(blobfuse_azure_request_duration_bucket{status_code=~"2.."}[5m])) by (le))
+
+# Bandwidth usage (MB/s)
+sum(rate(blobfuse_azure_bytes_transferred_total[5m])) by (direction) / 1024 / 1024
+
+# Download bandwidth by operation
+sum(rate(blobfuse_azure_bytes_transferred_total{direction="download"}[5m])) by (operation) / 1024 / 1024
+
+# Upload bandwidth by operation
+sum(rate(blobfuse_azure_bytes_transferred_total{direction="upload"}[5m])) by (operation) / 1024 / 1024
+
+# Request distribution by status code
+sum(rate(blobfuse_azure_responses_total[5m])) by (status_code)
+
+# Most common errors
+topk(5, sum(rate(blobfuse_azure_errors_total[5m])) by (operation, status_code))
 ```
 
 ### System Resources
@@ -239,17 +290,67 @@ Example Prometheus alerting rules:
 groups:
   - name: blobfuse2_alerts
     rules:
-      - alert: HighErrorRate
-        expr: rate(blobfuse_azure_errors_total[5m]) > 0.1
+      - alert: HighAzureStorageErrorRate
+        expr: |
+          sum(rate(blobfuse_azure_errors_total[5m])) /
+          sum(rate(blobfuse_azure_requests_total[5m])) > 0.1
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High error rate in Blobfuse2"
+          summary: "High error rate in Azure Storage requests"
+          description: "{{ $value | humanizePercentage }} of requests are failing"
+      
+      - alert: HighAzureServerErrors
+        expr: rate(blobfuse_azure_errors_total{error_type="server_error"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High rate of 5xx errors from Azure Storage"
+          description: "Azure Storage is returning server errors"
+      
+      - alert: HighAzureClientErrors
+        expr: rate(blobfuse_azure_errors_total{error_type="client_error",status_code!="404"}[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of 4xx errors (excluding 404)"
+          description: "Check authentication or request validity"
+      
+      - alert: HighAzureRequestLatency
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(blobfuse_azure_request_duration_bucket[5m])) by (operation, le)
+          ) > 2.0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Azure Storage request latency"
+          description: "P95 latency for {{ $labels.operation }} is {{ $value }}s"
           
       - alert: LowCacheHitRatio
         expr: |
           sum(rate(blobfuse_cache_hits_total[5m])) /
+          (sum(rate(blobfuse_cache_hits_total[5m])) + sum(rate(blobfuse_cache_misses_total[5m]))) < 0.5
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Low cache hit ratio"
+          description: "Cache hit ratio is {{ $value | humanizePercentage }}"
+      
+      - alert: HighMemoryUsage
+        expr: blobfuse_system_memory_bytes > 8589934592  # 8GB
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Blobfuse2 is using {{ $value | humanize }}B of memory"
+```
           (sum(rate(blobfuse_cache_hits_total[5m])) + sum(rate(blobfuse_cache_misses_total[5m]))) < 0.5
         for: 10m
         labels:
