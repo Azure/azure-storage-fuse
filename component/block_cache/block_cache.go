@@ -54,6 +54,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/metrics"
 	"github.com/vibhansa-msft/tlru"
 )
 
@@ -120,6 +121,8 @@ const (
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &BlockCache{}
 
+var blockCacheMetricsCollector *metrics.MetricsCollector
+
 func (bc *BlockCache) Name() string {
 	return compName
 }
@@ -162,6 +165,9 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to start  disk-policy for block-cache")
 		}
 	}
+	
+	// create metrics collector for block cache
+	blockCacheMetricsCollector = metrics.NewMetricsCollector(bc.Name())
 
 	return nil
 }
@@ -660,6 +666,8 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	index := bc.getBlockIndex(readoffset)
 	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
+		// Record cache miss
+		blockCacheMetricsCollector.RecordCacheMiss("block_cache")
 
 		// block is not present in the buffer list, check if it is uncommitted
 		// If yes, commit all the uncommitted blocks first and then download this block
@@ -726,6 +734,9 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			log.Err("BlockCache::getBlock : Failed to get the required block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
 			return nil, fmt.Errorf("not able to find block immediately after scheduling")
 		}
+	} else {
+		// Record cache hit
+		blockCacheMetricsCollector.RecordCacheHit("block_cache")
 	}
 
 	// We have the block now which we wish to read

@@ -46,6 +46,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/metrics"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
@@ -66,6 +67,7 @@ const compName = "azstorage"
 var _ internal.Component = &AzStorage{}
 
 var azStatsCollector *stats_manager.StatsCollector
+var azMetricsCollector *metrics.MetricsCollector
 
 func (az *AzStorage) Name() string {
 	return az.BaseComponent.Name()
@@ -185,6 +187,9 @@ func (az *AzStorage) Start(ctx context.Context) error {
 
 	// create stats collector for azstorage
 	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
+	
+	// create metrics collector for azstorage
+	azMetricsCollector = metrics.NewMetricsCollector(az.Name())
 
 	return nil
 }
