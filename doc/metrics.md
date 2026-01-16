@@ -14,6 +14,31 @@ Blobfuse2 now supports exporting operational metrics via OpenTelemetry, providin
 
 ## Metrics Collected
 
+### Operation Metrics
+
+**All Azure Storage operations are tracked by type:**
+
+- `blobfuse.operations{operation, component}` - Count of operations by type
+
+**Operations tracked include:**
+- **Directory Operations**: CreateDir, DeleteDir, RenameDir, ReadDir, StreamDir, List
+- **File Operations**: CreateFile, OpenFile, DeleteFile, RenameFile
+- **Read Operations**: ReadFile, ReadInBuffer
+- **Write Operations**: WriteFile, CopyFromFile
+- **Attribute Operations**: GetAttr (GetProperties), Chmod, Chown
+- **Advanced Operations**: TruncateFile, FlushFile, CopyToFile, GetFileBlockOffsets
+- **Block Operations**: StageBlock, CommitBlocks, StageData, CommitData, GetCommittedBlockList
+- **Symlink Operations**: CreateLink, ReadLink
+
+**Example:**
+```
+blobfuse_operations_total{operation="ReadFile", component="azstorage"} 800
+blobfuse_operations_total{operation="WriteFile", component="azstorage"} 400
+blobfuse_operations_total{operation="GetAttr", component="azstorage"} 2000
+blobfuse_operations_total{operation="List", component="azstorage"} 350
+blobfuse_operations_total{operation="DeleteFile", component="azstorage"} 75
+```
+
 ### Cache Metrics
 
 **File Cache:**
@@ -217,6 +242,32 @@ If metrics collection causes memory issues:
 
 ## Example Queries
 
+### Operation Metrics
+
+```promql
+# Top 10 most frequent operations
+topk(10, sum(rate(blobfuse_operations_total[5m])) by (operation))
+
+# Total operations per second
+sum(rate(blobfuse_operations_total[5m]))
+
+# Read operations rate (all read-related operations)
+sum(rate(blobfuse_operations_total{operation=~"Read.*|GetAttr|List"}[5m]))
+
+# Write operations rate (all write-related operations)
+sum(rate(blobfuse_operations_total{operation=~"Write.*|Create.*|Delete.*|Truncate.*"}[5m]))
+
+# Directory vs File operations
+sum(rate(blobfuse_operations_total{operation=~".*Dir"}[5m])) # Directory ops
+sum(rate(blobfuse_operations_total{operation=~".*File"}[5m])) # File ops
+
+# Block operations rate
+sum(rate(blobfuse_operations_total{operation=~".*Block.*|Stage.*|Commit.*"}[5m]))
+
+# Operations by type over time
+sum(rate(blobfuse_operations_total[5m])) by (operation)
+```
+
 ### Cache Performance
 
 ```promql
@@ -350,6 +401,26 @@ groups:
         annotations:
           summary: "High memory usage"
           description: "Blobfuse2 is using {{ $value | humanize }}B of memory"
+      
+      - alert: UnusualOperationPattern
+        expr: |
+          sum(rate(blobfuse_operations_total{operation="DeleteFile"}[5m])) > 
+          sum(rate(blobfuse_operations_total{operation="CreateFile"}[5m])) * 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More deletes than creates"
+          description: "Unusual pattern: delete rate is much higher than create rate"
+      
+      - alert: HighBlockOperationRate
+        expr: rate(blobfuse_operations_total{operation=~".*Block.*|Stage.*|Commit.*"}[5m]) > 100
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "High block operation rate"
+          description: "Block operations are running at {{ $value }}/sec"
 ```
           (sum(rate(blobfuse_cache_hits_total[5m])) + sum(rate(blobfuse_cache_misses_total[5m]))) < 0.5
         for: 10m
