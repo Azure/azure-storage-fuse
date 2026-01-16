@@ -128,7 +128,7 @@ func deleteFile(name string) error {
 		log.Err("cachePolicy::DeleteItem : Failed to delete local file %s [%v]", name, err.Error())
 		return err
 	}
-	
+
 	// Record eviction metric
 	fileCacheMetricsCollector.RecordCacheEviction("file_cache", 1)
 

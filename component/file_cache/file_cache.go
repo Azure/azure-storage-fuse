@@ -166,7 +166,7 @@ func (fc *FileCache) Start(ctx context.Context) error {
 
 	// create stats collector for file cache
 	fileCacheStatsCollector = stats_manager.NewStatsCollector(fc.Name())
-	
+
 	// create metrics collector for file cache
 	fileCacheMetricsCollector = metrics.NewMetricsCollector(fc.Name())
 

@@ -58,35 +58,35 @@ const (
 
 // MetricsCollector provides OpenTelemetry metrics collection for blobfuse2
 type MetricsCollector struct {
-	meter          metric.Meter
-	meterProvider  *sdkmetric.MeterProvider
-	componentName  string
-	enabled        bool
-	shutdownOnce   sync.Once
-	
+	meter         metric.Meter
+	meterProvider *sdkmetric.MeterProvider
+	componentName string
+	enabled       bool
+	shutdownOnce  sync.Once
+
 	// Operation counters
 	operationCounter metric.Int64Counter
-	
+
 	// Cache metrics
 	cacheUsageGauge      metric.Float64ObservableGauge
 	cacheHitCounter      metric.Int64Counter
 	cacheMissCounter     metric.Int64Counter
 	cacheEvictionCounter metric.Int64Counter
-	
+
 	// System metrics
 	memoryUsageGauge metric.Int64ObservableGauge
 	cpuUsageGauge    metric.Float64ObservableGauge
-	
+
 	// Network metrics (Azure Storage)
-	requestCounter       metric.Int64Counter
-	responseCounter      metric.Int64Counter
-	errorCounter         metric.Int64Counter
-	bytesTransferred     metric.Int64Counter
-	requestDuration      metric.Float64Histogram
-	
+	requestCounter   metric.Int64Counter
+	responseCounter  metric.Int64Counter
+	errorCounter     metric.Int64Counter
+	bytesTransferred metric.Int64Counter
+	requestDuration  metric.Float64Histogram
+
 	// Cache state tracking
-	cacheUsageMB     float64
-	cacheUsageMutex  sync.RWMutex
+	cacheUsageMB    float64
+	cacheUsageMutex sync.RWMutex
 }
 
 var (
@@ -97,14 +97,14 @@ var (
 // InitMetrics initializes the OpenTelemetry metrics infrastructure
 func InitMetrics(ctx context.Context, endpoint string, enabled bool) error {
 	var initErr error
-	
+
 	initOnce.Do(func() {
 		if !enabled || endpoint == "" {
 			log.Info("metrics::InitMetrics : Metrics collection disabled")
 			globalCollector = &MetricsCollector{enabled: false}
 			return
 		}
-		
+
 		// Create OTLP metric exporter
 		exporter, err := otlpmetricgrpc.New(ctx,
 			otlpmetricgrpc.WithEndpoint(endpoint),
@@ -116,7 +116,7 @@ func InitMetrics(ctx context.Context, endpoint string, enabled bool) error {
 			globalCollector = &MetricsCollector{enabled: false}
 			return
 		}
-		
+
 		// Create resource with service information
 		res, err := resource.New(ctx,
 			resource.WithAttributes(
@@ -130,32 +130,32 @@ func InitMetrics(ctx context.Context, endpoint string, enabled bool) error {
 			globalCollector = &MetricsCollector{enabled: false}
 			return
 		}
-		
+
 		// Create meter provider
 		meterProvider := sdkmetric.NewMeterProvider(
 			sdkmetric.WithResource(res),
 			sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter,
 				sdkmetric.WithInterval(10*time.Second))),
 		)
-		
+
 		otel.SetMeterProvider(meterProvider)
-		
+
 		globalCollector = &MetricsCollector{
 			meterProvider: meterProvider,
 			meter:         meterProvider.Meter(meterName),
 			enabled:       true,
 		}
-		
+
 		// Initialize metrics
 		if err := globalCollector.initializeMetrics(); err != nil {
 			log.Err("metrics::InitMetrics : Failed to initialize metrics [%v]", err)
 			initErr = err
 			return
 		}
-		
+
 		log.Info("metrics::InitMetrics : OpenTelemetry metrics initialized successfully")
 	})
-	
+
 	return initErr
 }
 
@@ -173,12 +173,12 @@ func NewMetricsCollector(componentName string) *MetricsCollector {
 	if !global.enabled {
 		return &MetricsCollector{enabled: false}
 	}
-	
+
 	return &MetricsCollector{
-		meter:          global.meter,
-		meterProvider:  global.meterProvider,
-		componentName:  componentName,
-		enabled:        true,
+		meter:                global.meter,
+		meterProvider:        global.meterProvider,
+		componentName:        componentName,
+		enabled:              true,
 		operationCounter:     global.operationCounter,
 		cacheUsageGauge:      global.cacheUsageGauge,
 		cacheHitCounter:      global.cacheHitCounter,
@@ -197,7 +197,7 @@ func NewMetricsCollector(componentName string) *MetricsCollector {
 // initializeMetrics creates all metric instruments
 func (mc *MetricsCollector) initializeMetrics() error {
 	var err error
-	
+
 	// Operation counter
 	mc.operationCounter, err = mc.meter.Int64Counter(
 		"blobfuse.operations",
@@ -207,7 +207,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Cache hit counter
 	mc.cacheHitCounter, err = mc.meter.Int64Counter(
 		"blobfuse.cache.hits",
@@ -217,7 +217,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Cache miss counter
 	mc.cacheMissCounter, err = mc.meter.Int64Counter(
 		"blobfuse.cache.misses",
@@ -227,7 +227,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Cache eviction counter
 	mc.cacheEvictionCounter, err = mc.meter.Int64Counter(
 		"blobfuse.cache.evictions",
@@ -237,7 +237,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Cache usage gauge
 	mc.cacheUsageGauge, err = mc.meter.Float64ObservableGauge(
 		"blobfuse.cache.usage_mb",
@@ -254,7 +254,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Memory usage gauge
 	mc.memoryUsageGauge, err = mc.meter.Int64ObservableGauge(
 		"blobfuse.system.memory_bytes",
@@ -270,7 +270,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// CPU usage gauge
 	mc.cpuUsageGauge, err = mc.meter.Float64ObservableGauge(
 		"blobfuse.system.cpu_usage",
@@ -289,7 +289,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Request counter
 	mc.requestCounter, err = mc.meter.Int64Counter(
 		"blobfuse.azure.requests",
@@ -299,7 +299,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Response counter
 	mc.responseCounter, err = mc.meter.Int64Counter(
 		"blobfuse.azure.responses",
@@ -309,7 +309,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Error counter
 	mc.errorCounter, err = mc.meter.Int64Counter(
 		"blobfuse.azure.errors",
@@ -319,7 +319,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Bytes transferred counter
 	mc.bytesTransferred, err = mc.meter.Int64Counter(
 		"blobfuse.azure.bytes_transferred",
@@ -329,7 +329,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Request duration histogram
 	mc.requestDuration, err = mc.meter.Float64Histogram(
 		"blobfuse.azure.request_duration",
@@ -339,7 +339,7 @@ func (mc *MetricsCollector) initializeMetrics() error {
 	if err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -348,14 +348,14 @@ func (mc *MetricsCollector) RecordOperation(operation string, count int64) {
 	if !mc.enabled {
 		return
 	}
-	
+
 	attrs := []attribute.KeyValue{
 		attribute.String("operation", operation),
 	}
 	if mc.componentName != "" {
 		attrs = append(attrs, attribute.String("component", mc.componentName))
 	}
-	
+
 	mc.operationCounter.Add(context.Background(), count, metric.WithAttributes(attrs...))
 }
 
@@ -364,14 +364,14 @@ func (mc *MetricsCollector) RecordCacheHit(cacheType string) {
 	if !mc.enabled {
 		return
 	}
-	
+
 	attrs := []attribute.KeyValue{
 		attribute.String("cache_type", cacheType),
 	}
 	if mc.componentName != "" {
 		attrs = append(attrs, attribute.String("component", mc.componentName))
 	}
-	
+
 	mc.cacheHitCounter.Add(context.Background(), 1, metric.WithAttributes(attrs...))
 }
 
@@ -380,14 +380,14 @@ func (mc *MetricsCollector) RecordCacheMiss(cacheType string) {
 	if !mc.enabled {
 		return
 	}
-	
+
 	attrs := []attribute.KeyValue{
 		attribute.String("cache_type", cacheType),
 	}
 	if mc.componentName != "" {
 		attrs = append(attrs, attribute.String("component", mc.componentName))
 	}
-	
+
 	mc.cacheMissCounter.Add(context.Background(), 1, metric.WithAttributes(attrs...))
 }
 
@@ -396,14 +396,14 @@ func (mc *MetricsCollector) RecordCacheEviction(cacheType string, count int64) {
 	if !mc.enabled {
 		return
 	}
-	
+
 	attrs := []attribute.KeyValue{
 		attribute.String("cache_type", cacheType),
 	}
 	if mc.componentName != "" {
 		attrs = append(attrs, attribute.String("component", mc.componentName))
 	}
-	
+
 	mc.cacheEvictionCounter.Add(context.Background(), count, metric.WithAttributes(attrs...))
 }
 
@@ -412,7 +412,7 @@ func (mc *MetricsCollector) SetCacheUsage(usageMB float64) {
 	if !mc.enabled {
 		return
 	}
-	
+
 	mc.cacheUsageMutex.Lock()
 	mc.cacheUsageMB = usageMB
 	mc.cacheUsageMutex.Unlock()
@@ -423,14 +423,14 @@ func (mc *MetricsCollector) RecordAzureRequest(operation string) {
 	if !mc.enabled {
 		return
 	}
-	
+
 	attrs := []attribute.KeyValue{
 		attribute.String("operation", operation),
 	}
 	if mc.componentName != "" {
 		attrs = append(attrs, attribute.String("component", mc.componentName))
 	}
-	
+
 	mc.requestCounter.Add(context.Background(), 1, metric.WithAttributes(attrs...))
 }
 
@@ -439,7 +439,7 @@ func (mc *MetricsCollector) RecordAzureResponse(operation string, statusCode int
 	if !mc.enabled {
 		return
 	}
-	
+
 	attrs := []attribute.KeyValue{
 		attribute.String("operation", operation),
 		attribute.Int("status_code", statusCode),
@@ -447,12 +447,12 @@ func (mc *MetricsCollector) RecordAzureResponse(operation string, statusCode int
 	if mc.componentName != "" {
 		attrs = append(attrs, attribute.String("component", mc.componentName))
 	}
-	
+
 	mc.responseCounter.Add(context.Background(), 1, metric.WithAttributes(attrs...))
-	
+
 	// Record duration
 	mc.requestDuration.Record(context.Background(), duration, metric.WithAttributes(attrs...))
-	
+
 	// Record error if status code indicates failure
 	if statusCode >= 400 {
 		errorAttrs := []attribute.KeyValue{
@@ -472,7 +472,7 @@ func (mc *MetricsCollector) RecordBytesTransferred(operation string, bytes int64
 	if !mc.enabled {
 		return
 	}
-	
+
 	attrs := []attribute.KeyValue{
 		attribute.String("operation", operation),
 		attribute.String("direction", direction),
@@ -480,7 +480,7 @@ func (mc *MetricsCollector) RecordBytesTransferred(operation string, bytes int64
 	if mc.componentName != "" {
 		attrs = append(attrs, attribute.String("component", mc.componentName))
 	}
-	
+
 	mc.bytesTransferred.Add(context.Background(), bytes, metric.WithAttributes(attrs...))
 }
 
@@ -489,7 +489,7 @@ func (mc *MetricsCollector) Shutdown(ctx context.Context) error {
 	if !mc.enabled || mc.meterProvider == nil {
 		return nil
 	}
-	
+
 	var shutdownErr error
 	mc.shutdownOnce.Do(func() {
 		shutdownErr = mc.meterProvider.Shutdown(ctx)
@@ -497,7 +497,7 @@ func (mc *MetricsCollector) Shutdown(ctx context.Context) error {
 			log.Err("metrics::Shutdown : Failed to shutdown meter provider [%v]", shutdownErr)
 		}
 	})
-	
+
 	return shutdownErr
 }
 

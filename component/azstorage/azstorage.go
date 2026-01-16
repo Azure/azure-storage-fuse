@@ -187,7 +187,7 @@ func (az *AzStorage) Start(ctx context.Context) error {
 
 	// create stats collector for azstorage
 	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
-	
+
 	// create metrics collector for azstorage
 	azMetricsCollector = metrics.NewMetricsCollector(az.Name())
 

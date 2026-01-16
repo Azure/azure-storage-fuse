@@ -165,7 +165,7 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 			return fmt.Errorf("failed to start  disk-policy for block-cache")
 		}
 	}
-	
+
 	// create metrics collector for block cache
 	blockCacheMetricsCollector = metrics.NewMetricsCollector(bc.Name())
 

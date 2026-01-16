@@ -42,18 +42,18 @@ import (
 func TestMetricsInitialization(t *testing.T) {
 	// Test that metrics can be initialized without errors
 	ctx := context.Background()
-	
+
 	// Initialize with disabled metrics
 	err := InitMetrics(ctx, "", false)
 	if err != nil {
 		t.Fatalf("Failed to initialize disabled metrics: %v", err)
 	}
-	
+
 	collector := GetGlobalCollector()
 	if collector == nil {
 		t.Fatal("Global collector should not be nil")
 	}
-	
+
 	if collector.enabled {
 		t.Error("Collector should be disabled when initialized with enabled=false")
 	}
@@ -62,18 +62,18 @@ func TestMetricsInitialization(t *testing.T) {
 func TestMetricsCollectorCreation(t *testing.T) {
 	// Test creating component-specific metrics collectors
 	ctx := context.Background()
-	
+
 	// Initialize metrics (disabled for this test)
 	_ = InitMetrics(ctx, "", false)
-	
+
 	// Create component-specific collectors
 	collector1 := NewMetricsCollector("test_component_1")
 	collector2 := NewMetricsCollector("test_component_2")
-	
+
 	if collector1 == nil {
 		t.Fatal("Component collector 1 should not be nil")
 	}
-	
+
 	if collector2 == nil {
 		t.Fatal("Component collector 2 should not be nil")
 	}
@@ -83,9 +83,9 @@ func TestMetricsOperations(t *testing.T) {
 	// Test that metric operations don't panic when disabled
 	ctx := context.Background()
 	_ = InitMetrics(ctx, "", false)
-	
+
 	collector := NewMetricsCollector("test_component")
-	
+
 	// These should not panic even when metrics are disabled
 	collector.RecordOperation("test_op", 1)
 	collector.RecordCacheHit("test_cache")
@@ -101,12 +101,12 @@ func TestMetricsShutdown(t *testing.T) {
 	// Test that shutdown works correctly
 	ctx := context.Background()
 	_ = InitMetrics(ctx, "", false)
-	
+
 	collector := GetGlobalCollector()
-	
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	err := collector.Shutdown(shutdownCtx)
 	if err != nil {
 		t.Errorf("Shutdown failed: %v", err)
@@ -129,7 +129,7 @@ func TestErrorTypeClassification(t *testing.T) {
 		{200, "unknown"},
 		{300, "unknown"},
 	}
-	
+
 	for _, tt := range tests {
 		result := getErrorType(tt.statusCode)
 		if result != tt.expected {
