@@ -56,6 +56,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/metrics"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -71,12 +72,18 @@ type LogOptions struct {
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
 }
 
+type MetricsOptions struct {
+	Enabled  bool   `config:"enabled" yaml:"enabled,omitempty"`
+	Endpoint string `config:"endpoint" yaml:"endpoint,omitempty"`
+}
+
 type mountOptions struct {
 	MountPath      string
 	inputMountPath string
 	ConfigFile     string
 
 	Logging           LogOptions     `config:"logging"`
+	Metrics           MetricsOptions `config:"metrics"`
 	Components        []string       `config:"components"`
 	Foreground        bool           `config:"foreground"`
 	NonEmpty          bool           `config:"nonempty"`
@@ -694,6 +701,27 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 	common.PollingPipe += "_" + pid
 	log.Debug("Mount::runPipeline : blobfuse2 pid = %v, transfer pipe = %v, polling pipe = %v", pid, common.TransferPipe, common.PollingPipe)
 
+	// Initialize OpenTelemetry metrics if enabled
+	common.EnableMetrics = options.Metrics.Enabled
+	common.MetricsEndpoint = options.Metrics.Endpoint
+	if common.EnableMetrics {
+		err := metrics.InitMetrics(ctx, options.Metrics.Endpoint, true)
+		if err != nil {
+			log.Err("Mount::runPipeline : Failed to initialize metrics [%v]", err)
+			// Continue even if metrics initialization fails
+		} else {
+			log.Info("Mount::runPipeline : OpenTelemetry metrics initialized")
+			// Ensure metrics are properly shut down on exit
+			defer func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := metrics.GetGlobalCollector().Shutdown(shutdownCtx); err != nil {
+					log.Err("Mount::runPipeline : Failed to shutdown metrics [%v]", err)
+				}
+			}()
+		}
+	}
+
 	go startMonitor(os.Getpid())
 
 	err := pipeline.Start(ctx)
@@ -871,6 +899,12 @@ func init() {
 	mountCmd.PersistentFlags().Bool("log-goroutine-id",
 		false, "Enable logging of goroutine IDs. Default is true for LOG_DEBUG level, false otherwise.")
 	config.BindPFlag("logging.goroutine-id", mountCmd.PersistentFlags().Lookup("log-goroutine-id"))
+
+	mountCmd.PersistentFlags().Bool("enable-metrics", false, "Enable OpenTelemetry metrics collection. Default is false.")
+	config.BindPFlag("metrics.enabled", mountCmd.PersistentFlags().Lookup("enable-metrics"))
+
+	mountCmd.PersistentFlags().String("metrics-endpoint", "", "OpenTelemetry metrics collector endpoint (e.g., localhost:4317 for OTLP gRPC).")
+	config.BindPFlag("metrics.endpoint", mountCmd.PersistentFlags().Lookup("metrics-endpoint"))
 
 	mountCmd.PersistentFlags().Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
 	config.BindPFlag("foreground", mountCmd.PersistentFlags().Lookup("foreground"))
