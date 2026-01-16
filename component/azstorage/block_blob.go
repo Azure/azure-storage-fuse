@@ -641,6 +641,9 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		Include:    bb.listDetails,
 	})
 
+	// Record operation count
+	azMetricsCollector.RecordOperation("List", 1)
+
 	listBlob, err := pager.NextPage(context.Background())
 
 	// Note: Since we make a list call with a prefix, we will not fail here for a non-existent directory.
@@ -1839,6 +1842,9 @@ func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
 func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
+	// Record operation count
+	azMetricsCollector.RecordOperation("GetCommittedBlockList", 1)
+
 	storageBlockList, err := blobClient.GetBlockList(context.Background(), blockblob.BlockListTypeCommitted, nil)
 
 	if err != nil {
@@ -1874,6 +1880,10 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 	defer cancel()
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	
+	// Record operation count
+	azMetricsCollector.RecordOperation("StageBlock", 1)
+	
 	_, err := blobClient.StageBlock(ctx,
 		id,
 		streaming.NopCloser(bytes.NewReader(data)),
@@ -1897,6 +1907,10 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *stri
 	defer cancel()
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	
+	// Record operation count
+	azMetricsCollector.RecordOperation("CommitBlocks", 1)
+	
 	resp, err := blobClient.CommitBlockList(ctx,
 		blockList,
 		&blockblob.CommitBlockListOptions{
