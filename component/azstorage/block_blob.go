@@ -316,9 +316,19 @@ func (bb *BlockBlob) DeleteFile(name string) (err error) {
 	log.Trace("BlockBlob::DeleteFile : name %s", name)
 
 	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	
+	// Track request
+	trackAzureRequest("DeleteFile")
+	startTime := time.Now()
+	
 	_, err = blobClient.Delete(context.Background(), &blob.DeleteOptions{
 		DeleteSnapshots: to.Ptr(blob.DeleteSnapshotsOptionTypeInclude),
 	})
+	
+	// Track response with duration
+	duration := time.Since(startTime).Seconds()
+	trackAzureResponse("DeleteFile", err, duration)
+	
 	if err != nil {
 		serr := storeBlobErrToErr(err)
 		switch serr {
@@ -481,9 +491,18 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	log.Trace("BlockBlob::getAttrUsingRest : name %s", name)
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	
+	// Track request
+	trackAzureRequest("GetProperties")
+	startTime := time.Now()
+	
 	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
 		CPKInfo: bb.blobCPKOpt,
 	})
+
+	// Track response with duration
+	duration := time.Since(startTime).Seconds()
+	trackAzureResponse("GetProperties", err, duration)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
@@ -863,7 +882,15 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 		Count:  count,
 	}
 
+	// Track request
+	trackAzureRequest("ReadToFile")
+	startTime := time.Now()
+	
 	_, err = blobClient.DownloadFile(context.Background(), fi, &dlOpts)
+
+	// Track response with duration
+	duration := time.Since(startTime).Seconds()
+	trackAzureResponse("ReadToFile", err, duration)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -878,6 +905,9 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 
 		// store total bytes downloaded so far
 		azStatsCollector.UpdateStats(stats_manager.Increment, bytesDownloaded, count)
+		
+		// Track bytes transferred
+		trackBytesTransferred("ReadToFile", count, "download")
 	}
 
 	if bb.Config.validateMD5 {
@@ -970,7 +1000,15 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 		CPKInfo: bb.blobCPKOpt,
 	}
 
+	// Track request
+	trackAzureRequest("ReadInBuffer")
+	startTime := time.Now()
+	
 	downloadResponse, err := blobClient.DownloadStream(ctx, opt)
+
+	// Track response with duration
+	duration := time.Since(startTime).Seconds()
+	trackAzureResponse("ReadInBuffer", err, duration)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -1005,6 +1043,11 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 
 	if etag != nil {
 		*etag = sanitizeEtag(downloadResponse.ETag)
+	}
+	
+	// Track bytes transferred (dataRead is the actual bytes read)
+	if dataRead > 0 {
+		trackBytesTransferred("ReadInBuffer", int64(dataRead), "download")
 	}
 
 	return nil
@@ -1117,7 +1160,15 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 		}
 	}
 
+	// Track request
+	trackAzureRequest("WriteFromFile")
+	startTime := time.Now()
+	
 	_, err = blobClient.UploadFile(context.Background(), fi, uploadOptions)
+
+	// Track response with duration
+	duration := time.Since(startTime).Seconds()
+	trackAzureResponse("WriteFromFile", err, duration)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
@@ -1138,6 +1189,9 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 		// store total bytes uploaded so far
 		if stat.Size() > 0 {
 			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, stat.Size())
+			
+			// Track bytes transferred
+			trackBytesTransferred("WriteFromFile", stat.Size(), "upload")
 		}
 	}
 
