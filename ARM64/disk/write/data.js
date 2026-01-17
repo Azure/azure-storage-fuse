@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768576762364,
+  "lastUpdate": 1768688209498,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -107,6 +107,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_directio",
             "value": 6633.1982421875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "copilot-swe-agent[bot]",
+            "username": "Copilot",
+            "email": "198982749+Copilot@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "copilot-swe-agent[bot]",
+            "username": "Copilot",
+            "email": "198982749+Copilot@users.noreply.github.com"
+          },
+          "id": "3c2d251d59b318a7be24e0f2fa352031657792b7",
+          "message": "Refactor: Move filecache read test into fio_bench.sh\n\n- Integrated filecache read test as a function within fio_bench.sh\n- Removed standalone filecache_read_test.sh script\n- Reverted action.yml to remove separate test step\n- Reuses existing mount/unmount helper functions\n- Simpler overall structure with no duplicate logic\n\nCo-authored-by: syeleti-msft <172502481+syeleti-msft@users.noreply.github.com>",
+          "timestamp": "2026-01-17T18:17:28Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/3c2d251d59b318a7be24e0f2fa352031657792b7"
+        },
+        "date": 1768688207933,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write_directio",
+            "value": 6764.6572265625,
             "unit": "MiB/s"
           }
         ]
