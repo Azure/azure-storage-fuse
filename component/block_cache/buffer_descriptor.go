@@ -8,31 +8,38 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
+// bufferDescriptor tracks metadata and reference count for a memory buffer that caches block data.
+// Each buffer is associated with a specific block of a file.
 type bufferDescriptor struct {
-	bufIdx        int
-	block         *block
-	nxtFreeBuffer int
+	bufIdx        int    // Index of this buffer in the buffer pool
+	block         *block // Pointer to the block this buffer caches
+	nxtFreeBuffer int    // Index of next free buffer (used when buffer is in free list)
 
-	// Ref count indicates how many users are using this buffer.
-	// When ref count is zero, it means no one is using this buffer and it can be evicted.
-	// while incrementing refCnt, bufferTableMgr Lock must be held, either in shared or exclusive mode.
+	// Reference count tracking how many concurrent users hold this buffer.
+	// refCnt semantics:
+	//   - When buffer is added to bufferTableMgr, refCnt is initialized to 1 (table holds a reference)
+	//   - Each LookUp or GetOrCreate operation increments refCnt (user acquires a reference)
+	//   - Each release() call decrements refCnt (user releases their reference)
+	//   - When refCnt reaches 0, buffer has no users and can be returned to free list
+	// Thread-safety: refCnt must be incremented while holding bufferTableMgr lock (shared or exclusive)
 	refCnt atomic.Int32
-	// # of bytes read in this buffer. This is useful in the eviction logic.
-	bytesRead atomic.Int32
-	// # of bytes written in this buffer. This is useful in the upload logic.
-	bytesWritten atomic.Int32
-	// # of eviction cycles passed since this buffer was assigned.
-	numEvictionCyclesPassed atomic.Int32
 
-	// This lock must be held while reading/writing the content of the buffer.
-	// While downloading the buffer content, this lock must be held in exclusively, while reading the data from the buffer,
-	// this lock must be held in shared mode.
+	// Track buffer usage for eviction decisions
+	bytesRead               atomic.Int32 // # of bytes read from this buffer (helps determine if buffer was used)
+	bytesWritten            atomic.Int32 // # of bytes written to this buffer (helps determine if upload is needed)
+	numEvictionCyclesPassed atomic.Int32 // # of eviction cycles this buffer has survived
+
+	// Content synchronization lock for buffer data access
+	// - Held exclusively during download/upload operations (modifying buffer content)
+	// - Held in shared mode during read operations (multiple readers can proceed concurrently)
 	contentLock sync.RWMutex
-	buf         []byte
-	valid       atomic.Bool
-	dirty       atomic.Bool
-	downloadErr error
-	uploadErr   error
+
+	// Buffer state and data
+	buf         []byte      // Actual memory buffer holding block data
+	valid       atomic.Bool // True if buffer contains valid data (download completed successfully)
+	dirty       atomic.Bool // True if buffer has been modified and needs to be uploaded
+	downloadErr error       // Captures any error that occurred during download
+	uploadErr   error       // Captures any error that occurred during upload
 }
 
 func (bd *bufferDescriptor) String() string {
@@ -50,54 +57,89 @@ func (bd *bufferDescriptor) String() string {
 		bd.block.file.Name)
 }
 
-// ensureBufferValidForRead: ensures that the buffer is valid, i.e., no download error, if there is download error,
+// ensureBufferValidForRead verifies that the buffer contains valid data and is safe to read.
+// This method handles synchronization with ongoing download operations.
+//
+// Return values:
+//   - nil: buffer is valid and ready for reading
+//   - downloadErr: buffer download failed, error details provided
+//   - panic: buffer is in an inconsistent state (neither valid nor errored)
+//
+// Implementation details:
+//   - If buffer is already valid, returns immediately
+//   - If download is in progress, waits by acquiring and releasing contentLock (download holds it exclusively)
+//   - After download completes, checks if data is valid or if an error occurred
 func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 	if bd.valid.Load() {
 		// Buffer is valid, safe to read.
 		return nil
 	}
-	// Wait for the Download to happen. if there was an error during download, it will be set in downloadErr.
+
+	// Wait for the download to complete by acquiring the read lock.
+	// If download is in progress, it holds the lock exclusively, so we wait here.
+	// Once download completes and releases the lock, we can proceed.
 	bd.contentLock.RLock()
 	bd.contentLock.RUnlock()
 
 	if bd.valid.Load() && bd.downloadErr == nil {
-		// Safe to read data from this buffer.
+		// Download completed successfully, buffer is now valid and safe to read.
 		return nil
 	}
 
 	if !bd.valid.Load() && bd.downloadErr != nil {
-		// There was an error during download.
+		// Download failed, return the error to the caller.
 		return bd.downloadErr
 	}
 
-	// This should not happen.
+	// Inconsistent state: buffer is not valid but also has no error.
+	// This should never happen and indicates a bug in the download logic.
 	err := fmt.Sprintf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, blockIdx: %d, valid: %v, downloadErr: %v, file: %s",
 		bd.bufIdx, bd.block.idx, bd.valid.Load(), bd.downloadErr, bd.block.file.Name)
 	panic(err)
 }
 
-// release: releases the buffer descriptor, decrements the ref count.
-// If the ref count reaches 0, it returns true, indicating that the buffer descriptor is removed from the buffer table
-// manager and is returned back to free list.
+// release decrements the reference count for this buffer descriptor.
+// When refCnt reaches 0, the buffer is returned to the free list for reuse.
+//
+// Return value:
+//   - true: buffer was released to free list (refCnt reached 0)
+//   - false: buffer still has active references (refCnt > 0)
+//
+// Reference counting semantics:
+//   - Each user (including the buffer table) holds a counted reference
+//   - Buffer table holds refCnt=1 when buffer is only in the table
+//   - Additional users increment refCnt (e.g., reads, writes, lookups)
+//   - When buffer is removed from table AND all users release, refCnt reaches 0
+//   - refCnt=0 means buffer can be safely recycled
+//
+// Thread-safety: Uses atomic operations for refCnt manipulation.
+// Panics if refCnt goes negative, indicating a reference counting bug.
 func (bd *bufferDescriptor) release() bool {
 	newRefCnt := bd.refCnt.Add(-1)
 
 	if newRefCnt == 0 {
-		// This means the buffer descriptor has been removed from the buffer table manager, safe to return it back to free list.
+		// No more references exist (table removed it and all users released).
+		// Safe to return buffer to free list for reuse.
 		log.Debug("bufferDescriptor::release: Releasing bufferIdx: %d for blockIdx: %d back to free list, bytesRead: %d, bytesWritten: %d, file: %s",
 			bd.bufIdx, bd.block.idx, bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
 		freeList.releaseBuffer(bd)
 		return true
 	} else if newRefCnt < 0 {
+		// Negative refCnt indicates a bug: release() called more times than acquire.
+		// This should never happen and represents a serious reference counting error.
 		err := fmt.Sprintf("bufferDescriptor::release: bufferIdx: %d for blockIdx: %d has negative refCount: %d, bytesRead: %d, bytesWritten: %d, file: %s",
 			bd.bufIdx, bd.block.idx, bd.refCnt.Load(), bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
 		log.Err(err)
 		panic(err)
 	}
 
+	// Buffer still has active references, not ready for release yet.
 	return false
 }
 
+// reset clears all fields of the buffer descriptor and zeros the buffer content.
+// This prepares the buffer for reuse by a different block.
+// Called when buffer is returned to free list or when a victim buffer is being reassigned.
 func (bd *bufferDescriptor) reset() {
 	bd.block = nil
 	bd.nxtFreeBuffer = -1
@@ -109,5 +151,6 @@ func (bd *bufferDescriptor) reset() {
 	bd.dirty.Store(false)
 	bd.downloadErr = nil
 	bd.uploadErr = nil
+	// Zero out the buffer content for security and consistency
 	copy(bd.buf, freeList.bufPool.GetZeroBuffer())
 }
