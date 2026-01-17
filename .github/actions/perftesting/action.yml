@@ -185,6 +185,15 @@ runs:
         rm -rf /mnt/localssd/tempcache/*
         ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt read ${{ matrix.CacheMode }}
 
+    # Run custom filecache read test (only for file_cache mode)
+    - name: "Filecache Custom Read Test"
+      if: ${{ inputs.CACHE_MODE == 'file_cache' }}
+      shell: bash
+      run: |
+        rm -rf /mnt/blob_mnt/*
+        rm -rf /mnt/localssd/tempcache/*
+        ./perf_testing/scripts/filecache_read_test.sh /mnt/blob_mnt ${{ matrix.CacheMode }}
+
     - name: "Update Bandwidth Results : Read"
       if: ${{ github.ref == 'refs/heads/main' }}
       uses: benchmark-action/github-action-benchmark@v1

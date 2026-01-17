@@ -191,6 +191,16 @@ cleanup_mount
 if [[ "${TEST_NAME}" == "write" ]]; then
     run_test_suite "./perf_testing/config/write"
 elif [[ "${TEST_NAME}" == "read" ]]; then
+    # Skip FIO read tests for file_cache mode as they don't include file open time
+    # (filecache downloads files during open, leading to misleading throughput results)
+    if [[ "${CACHE_MODE}" == "file_cache" ]]; then
+        echo "Skipping FIO read tests for file_cache mode - use filecache_read_test.sh instead"
+        # Create empty results files to avoid errors in the workflow
+        mkdir -p "${OUTPUT_DIR}"
+        echo "[]" > "${OUTPUT_DIR}/bandwidth_results.json"
+        echo "[]" > "${OUTPUT_DIR}/latency_results.json"
+        exit 0
+    fi
     run_test_suite "./perf_testing/config/read"
 fi
 
