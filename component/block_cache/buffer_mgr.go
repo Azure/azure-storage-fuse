@@ -14,10 +14,12 @@ const (
 
 var btm *BufferTableMgr
 
-// Buffer table to translate block to buffer index.
+// BufferTableMgr manages the mapping between blocks and their associated buffer descriptors.
+// It maintains a table (map) that tracks which buffer is caching which block's data.
+// Thread-safety is provided by a read-write mutex allowing concurrent lookups.
 type BufferTableMgr struct {
-	table map[*block]*bufferDescriptor
-	mu    sync.RWMutex
+	table map[*block]*bufferDescriptor // Maps blocks to their buffer descriptors
+	mu    sync.RWMutex                 // Protects concurrent access to the table
 }
 
 func NewBufferTableMgr() {
@@ -54,15 +56,35 @@ func (b bufDescStatus) String() string {
 	}
 }
 
+// GetOrCreateBufferDescriptor retrieves an existing buffer for a block or allocates a new one.
+// This is the main entry point for accessing block data through the buffer cache.
+//
+// Parameters:
+//   - blk: The block for which we need a buffer
+//   - doesRead: If true, buffer data will be downloaded from storage (for read operations)
+//   - sync: If true, operations (download/upload) complete before returning; if false, they run asynchronously
+//
+// Returns:
+//   - bufferDescriptor: The buffer holding (or will hold) the block's data
+//   - bufDescStatus: Status indicating if buffer existed, was allocated, was a victim, etc.
+//   - error: Any error encountered during buffer acquisition or download
+//
+// Reference counting flow:
+//  1. If buffer exists: refCnt is incremented by LookUp (user acquires reference)
+//  2. If buffer doesn't exist: new buffer allocated with refCnt=1 (table holds initial reference)
+//  3. Caller must call release() when done to decrement refCnt
+//
+// Thread-safety: Uses block-level locking to prevent concurrent creation for the same block
 func GetOrCreateBufferDescriptor(blk *block, doesRead bool, sync bool) (*bufferDescriptor, bufDescStatus, error) {
 	stime := time.Now()
 
 	log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Requesting buffer for blockIdx: %d, doesRead: %v, sync: %v, file: %s",
 		blk.idx, doesRead, sync, blk.file.Name)
 
-	// First look up if the buffer descriptor already exists.
+	// Step 1: Check if buffer already exists for this block (fast path)
 	bufDesc, err := btm.LookUpBufferDescriptor(blk)
 	if bufDesc != nil {
+		// Buffer exists, refCnt already incremented by LookUp
 		log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Found existing bufferIdx: %d, blockIdx: %d, took: %v, refCnt: %d, bytesRead: %d, bytesWritten: %d, sync: %v",
 			bufDesc.bufIdx, blk.idx, time.Since(stime), bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load(), sync)
 		return bufDesc, bufDescStatusExists, nil
@@ -71,28 +93,29 @@ func GetOrCreateBufferDescriptor(blk *block, doesRead bool, sync bool) (*bufferD
 		return nil, bufDescStatusInvalid, err
 	}
 
-	// At this point, we know that buffer descriptor does not exist. Need to create a new buffer descriptor.
-	// There is a chance that multiple threads are trying to create buffer descriptor for the same block.
-	// Hence take an exclusive lock on the block to ensure only one goroutine creates the buffer descriptor.
+	// Step 2: Buffer doesn't exist, need to create one (slow path)
+	// Lock the block to prevent multiple goroutines from creating buffers for the same block
 	blk.mu.Lock()
 	defer blk.mu.Unlock()
 
-	// Acquire the lock on buffer table manager to create a new buffer descriptor.
+	// Step 3: Acquire buffer table lock for modifications
 	btm.mu.Lock()
 
-	// Double check if another goroutine created the buffer descriptor.
+	// Step 4: Double-check pattern - another goroutine may have created the buffer while we waited for the lock
 	bufDesc, exists := btm.table[blk]
 	if exists {
+		// Another goroutine created the buffer, increment refCnt and use it
 		bufDesc.refCnt.Add(1)
 		log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: (Double Check) Found existing bufferIdx: %d, blockIdx: %d, refCnt: %d, bytesRead: %d, bytesWritten: %d, sync: %v",
 			bufDesc.bufIdx, blk.idx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load(), sync)
 
-		// Release the lock on buffer table manager.
 		btm.mu.Unlock()
 
+		// Ensure the buffer is valid before returning
 		if err := bufDesc.ensureBufferValidForRead(); err == nil {
 			return bufDesc, bufDescStatusExists, nil
 		} else {
+			// Buffer has download error, release our reference and return error
 			log.Err("BufferTableMgr::GetOrCreateBufferDescriptor: Existing bufferIdx: %d, blockIdx: %d, sync: %v, has download error",
 				bufDesc.bufIdx, blk.idx, sync)
 
@@ -104,7 +127,7 @@ func GetOrCreateBufferDescriptor(blk *block, doesRead bool, sync bool) (*bufferD
 		}
 	}
 
-	// Before Creating a new buffer descriptor, check if the file needs to be flushed.
+	// Step 5: Check if block is in uncommitted state (requires file flush before reading)
 	if blk.state == uncommitedBlock {
 		// Release the lock on buffer table manager.
 		btm.mu.Unlock()
@@ -155,25 +178,26 @@ func GetOrCreateBufferDescriptor(blk *block, doesRead bool, sync bool) (*bufferD
 	}
 
 	if victim {
-		// Remove the victim buffer's block mapping from buffer table.
+		// Eviction successful: remove victim buffer's old block mapping and reset it for reuse
 		delete(btm.table, bufDesc.block)
 		bufDesc.reset()
 	}
 
-	// Add the new buffer descriptor to buffer table.
+	// Step 6: Add the new buffer descriptor to the table and initialize it
 	btm.table[blk] = bufDesc
 
-	// Initialize the buffer descriptor.
+	// Initialize buffer with refCnt=1 (table holds the initial reference)
+	// Callers who use this buffer will have their reference already counted (returned from this function)
 	bufDesc.refCnt.Store(1)
 	bufDesc.block = blk
 
-	// Take the content lock on buffer descriptor before releasing the buffer table manager lock, so that no one else
-	// can use it first, other than us, when the buffer is being downloaded, This will get unlocked once download is complete.
+	// Step 7: Prepare buffer for download if needed
+	// Lock buffer content before releasing table lock to prevent others from accessing incomplete buffer
 	if doesRead {
 		bufDesc.contentLock.Lock()
-		// The unlock will happen after download is complete in another goroutine worker function.
+		// This lock will be released after download completes in the worker goroutine
 	} else {
-		// This buffer will be used for writing new data, so mark it as valid & dirty.
+		// For write operations, buffer doesn't need download - mark as valid and dirty immediately
 		bufDesc.valid.Store(true)
 		bufDesc.dirty.Store(true)
 	}
@@ -221,9 +245,22 @@ func GetOrCreateBufferDescriptor(blk *block, doesRead bool, sync bool) (*bufferD
 	return bufDesc, bufDescStatusAllocated, nil
 }
 
-// LookUpBufferDescriptor: looks up the buffer descriptor for the given block. and increments the ref count and
-// usage count if found. It is necessary that btm must always locked while incrementing the ref count and usage count of
-// the buffer descriptor.
+// LookUpBufferDescriptor searches for an existing buffer descriptor for the given block.
+// If found, it increments the reference count to prevent the buffer from being evicted while in use.
+//
+// Parameters:
+//   - blk: The block to look up
+//
+// Returns:
+//   - bufferDescriptor: The buffer if found, nil if not found
+//   - error: Any error during validation (e.g., download error on the buffer)
+//
+// Reference counting:
+//   - If buffer exists, refCnt is incremented atomically (user acquires reference)
+//   - Caller MUST call release() when done to decrement refCnt
+//   - Increment happens while holding bufferTableMgr lock to ensure thread-safety
+//
+// Thread-safety: Uses read lock for lookup, allowing concurrent lookups by multiple threads
 func (btm *BufferTableMgr) LookUpBufferDescriptor(blk *block) (*bufferDescriptor, error) {
 	btm.mu.RLock()
 	bufDesc, exists := btm.table[blk]
@@ -246,15 +283,34 @@ func (btm *BufferTableMgr) LookUpBufferDescriptor(blk *block) (*bufferDescriptor
 	return nil, nil
 }
 
-// removeBufferDescriptor: removes the buffer descriptor from buffer table manager, and releases the buffer back to free
-// list if no one is using it.
-// strict: if true, will not remove the buffer descriptor if it has any references.
-// Returns true if the buffer descriptor was released to the freelist, false otherwise.
+// removeBufferDescriptor removes a buffer descriptor from the buffer table and releases it if no longer in use.
+//
+// Parameters:
+//   - bufDesc: The buffer descriptor to remove
+//   - strict: If true, removal fails if there are active user references (refCnt > 1)
+//     If false, removal proceeds even if users still hold references
+//
+// Returns:
+//   - isRemovedFromBufMgr: true if buffer was removed from the table
+//   - isReleasedToFreeList: true if buffer was returned to free list (refCnt reached 0)
+//
+// Reference counting semantics:
+//   - Buffer must not be dirty (flush required first)
+//   - In strict mode: fails if refCnt > 1 (users other than table hold references)
+//   - Removes buffer from table, then decrements refCnt (releases table's reference)
+//   - If refCnt reaches 0 after decrement, buffer is returned to free list
+//   - If refCnt > 0 after decrement, other users still hold references (buffer not freed yet)
+//
+// Use cases:
+//   - strict=true: Used when we want to ensure no active users (e.g., file closure)
+//   - strict=false: Used for eviction (acceptable to remove even if users exist)
 func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, strict bool) (isRemovedFromBufMgr bool, isReleasedToFreeList bool) {
 	log.Debug("BufferTableMgr::removeBufferDescriptor: Remove blockIdx: %d, bufferIdx: %d for file: %s from buffer table",
 		bufDesc.block.idx, bufDesc.bufIdx, bufDesc.block.file.Name)
 
 	btm.mu.Lock()
+
+	// Check 1: Cannot remove dirty buffers (data not yet uploaded to storage)
 	if bufDesc.dirty.Load() {
 		btm.mu.Unlock()
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Cannot remove dirty bufferIdx: %d for blockIdx: %d, flush needed before reading block data",
@@ -262,14 +318,16 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 		return false, false
 	}
 
-	if strict && bufDesc.refCnt.Load() > 0 {
+	// Check 2: In strict mode, ensure no user references exist (only table reference allowed)
+	// refCnt > 1 means: 1 (table) + N (active users), so removal would be unsafe
+	if strict && bufDesc.refCnt.Load() > 1 {
 		btm.mu.Unlock()
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Cannot remove bufferIdx: %d for blockIdx: %d, refCnt: %d > 1",
 			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt.Load())
 		return false, false
 	}
 
-	// Check evict status of the buffer descriptor, we need to evict only once from the map.
+	// Check 3: Verify buffer is still in the table (may have been removed by another goroutine)
 	if _, ok := btm.table[bufDesc.block]; !ok {
 		btm.mu.Unlock()
 		log.Debug("BufferTableMgr::removeBufferDescriptor: BufferIdx: %d not found in buffer table, already removed",
@@ -277,19 +335,22 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 		return true, false
 	}
 
-	// Remove the buffer descriptor from buffer table.
+	// Step 1: Remove buffer from the table (no longer mapped to this block)
 	delete(btm.table, bufDesc.block)
 	btm.mu.Unlock()
 
-	// Reduce the ref count for the buffer descriptor itself. This tells the other users that once refCnt reaches -1,
-	// this buffer descriptor can be released back to free list safely.
-	if bufDesc.refCnt.Add(-1) == -1 {
-		// Release the buffer back to free list.
+	// Step 2: Decrement refCnt to release table's reference
+	// If refCnt becomes 0, no one is using the buffer anymore and it can be freed
+	// If refCnt > 0, other users still hold references (they will release later)
+	if bufDesc.refCnt.Add(-1) == 0 {
+		// Buffer completely released - return to free list for reuse
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Released bufferIdx: %d, blockIdx: %d back to free list",
 			bufDesc.bufIdx, bufDesc.block.idx)
 		freeList.releaseBuffer(bufDesc)
 		return true, true
 	}
 
+	// Buffer removed from table but still has active user references
+	// Users will eventually release() and the last one will return buffer to free list
 	return true, false
 }
