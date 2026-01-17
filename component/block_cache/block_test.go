@@ -9,7 +9,7 @@ import (
 func TestCreateBlock(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testBlockId123", localBlock, f)
-	
+
 	assert.NotNil(t, blk)
 	assert.Equal(t, 0, blk.idx)
 	assert.Equal(t, "testBlockId123", blk.id)
@@ -27,7 +27,7 @@ func TestBlockStates(t *testing.T) {
 
 func TestNewBlockList(t *testing.T) {
 	bl := newBlockList()
-	
+
 	assert.NotNil(t, bl)
 	assert.NotNil(t, bl.list)
 	assert.Equal(t, 0, len(bl.list))
@@ -39,7 +39,7 @@ func TestGetBlockIndex(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024, // 1 MB
 	}
-	
+
 	// Test various offsets
 	assert.Equal(t, 0, getBlockIndex(0))
 	assert.Equal(t, 0, getBlockIndex(1024*1024-1))
@@ -54,7 +54,7 @@ func TestConvertOffsetIntoBlockOffset(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024, // 1 MB
 	}
-	
+
 	// Test various offsets
 	assert.Equal(t, int64(0), convertOffsetIntoBlockOffset(0))
 	assert.Equal(t, int64(100), convertOffsetIntoBlockOffset(100))
@@ -68,14 +68,14 @@ func TestGetBlockSize(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024, // 1 MB
 	}
-	
+
 	// Test full blocks
 	assert.Equal(t, 1024*1024, getBlockSize(10*1024*1024, 0))
 	assert.Equal(t, 1024*1024, getBlockSize(10*1024*1024, 5))
-	
+
 	// Test last partial block
 	assert.Equal(t, 512*1024, getBlockSize(5*1024*1024+512*1024, 5))
-	
+
 	// Test single block file smaller than block size
 	assert.Equal(t, 500, getBlockSize(500, 0))
 }
@@ -85,7 +85,7 @@ func TestGetNoOfBlocksInFile(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024, // 1 MB
 	}
-	
+
 	// Test various file sizes
 	assert.Equal(t, 0, getNoOfBlocksInFile(0))
 	assert.Equal(t, 1, getNoOfBlocksInFile(1))
@@ -100,12 +100,12 @@ func TestUpdateBlockListForReadOnlyFile(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024, // 1 MB
 	}
-	
+
 	f := createFile("readonly.txt")
 	f.size = 5 * 1024 * 1024 // 5 MB file
-	
+
 	updateBlockListForReadOnlyFile(f)
-	
+
 	assert.Equal(t, 5, len(f.blockList.list))
 	for i := 0; i < 5; i++ {
 		assert.NotNil(t, f.blockList.list[i])
@@ -114,7 +114,7 @@ func TestUpdateBlockListForReadOnlyFile(t *testing.T) {
 		assert.Equal(t, committedBlock, f.blockList.list[i].state)
 		assert.Equal(t, f, f.blockList.list[i].file)
 	}
-	
+
 	// Test that calling again doesn't recreate the list
 	oldList := f.blockList.list
 	updateBlockListForReadOnlyFile(f)
@@ -126,12 +126,12 @@ func TestUpdateBlockListForReadOnlyFile_EmptyFile(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024, // 1 MB
 	}
-	
+
 	f := createFile("empty.txt")
 	f.size = 0
-	
+
 	updateBlockListForReadOnlyFile(f)
-	
+
 	assert.Equal(t, 0, len(f.blockList.list))
 }
 
@@ -140,12 +140,12 @@ func TestUpdateBlockListForReadOnlyFile_PartialBlock(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024, // 1 MB
 	}
-	
+
 	f := createFile("partial.txt")
 	f.size = 2*1024*1024 + 512*1024 // 2.5 MB file
-	
+
 	updateBlockListForReadOnlyFile(f)
-	
+
 	// Should have 3 blocks (0, 1, 2)
 	assert.Equal(t, 3, len(f.blockList.list))
 }
