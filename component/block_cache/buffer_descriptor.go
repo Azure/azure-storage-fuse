@@ -77,20 +77,20 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 }
 
 // release: releases the buffer descriptor, decrements the ref count.
-// If the ref count reaches -1, it returns true, indicating that the buffer descriptor is removed from the buffer table
+// If the ref count reaches 0, it returns true, indicating that the buffer descriptor is removed from the buffer table
 // manager and is returned back to free list.
 func (bd *bufferDescriptor) release() bool {
 	newRefCnt := bd.refCnt.Add(-1)
 
-	if newRefCnt == -1 {
-		// This means the buffer descriptor has removed from the buffer table manager, safe to return it back to free list.
+	if newRefCnt == 0 {
+		// This means the buffer descriptor has been removed from the buffer table manager, safe to return it back to free list.
 		log.Debug("bufferDescriptor::release: Releasing bufferIdx: %d for blockIdx: %d back to free list, bytesRead: %d, bytesWritten: %d, file: %s",
 			bd.bufIdx, bd.block.idx, bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
 		freeList.releaseBuffer(bd)
 		return true
-	} else if newRefCnt < -1 {
+	} else if newRefCnt < 0 {
 		err := fmt.Sprintf("bufferDescriptor::release: bufferIdx: %d for blockIdx: %d has negative refCount: %d, bytesRead: %d, bytesWritten: %d, file: %s",
-			bd.bufIdx, bd.block.idx, bd.refCnt, bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
+			bd.bufIdx, bd.block.idx, bd.refCnt.Load(), bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
 		log.Err(err)
 		panic(err)
 	}

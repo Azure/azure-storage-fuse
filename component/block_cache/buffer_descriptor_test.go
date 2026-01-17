@@ -53,20 +53,14 @@ func TestBufferDescriptor_Release(t *testing.T) {
 	assert.False(t, released, "Should not be released back to free list yet")
 	assert.Equal(t, int32(1), bd.refCnt.Load())
 
-	// Test release to 0
+	// Test release to 0 (should trigger free list return)
 	released = bd.release()
-	assert.False(t, released, "Should not be released at 0")
+	assert.True(t, released, "Should be released back to free list at 0")
 	assert.Equal(t, int32(0), bd.refCnt.Load())
-
-	// Test release to -1 (should trigger free list return)
-	released = bd.release()
-	assert.True(t, released, "Should be released back to free list at -1")
-	assert.Equal(t, int32(-1), bd.refCnt.Load())
 }
 
-// SUSPICIOUS FINDING: Release allows refCnt to go to -1 before returning to free list
-// This is intentional design but could be confusing - it marks the buffer as "removed from table"
-func TestBufferDescriptor_Release_NegativeOne(t *testing.T) {
+// Test that release correctly handles the transition to refCnt=0
+func TestBufferDescriptor_Release_ToZero(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024,
 	}
@@ -82,12 +76,12 @@ func TestBufferDescriptor_Release_NegativeOne(t *testing.T) {
 		block:  blk,
 	}
 
-	// Set to 0 and release
-	bd.refCnt.Store(0)
+	// Set to 1 and release to 0
+	bd.refCnt.Store(1)
 	released := bd.release()
 
-	assert.True(t, released, "Should be released at -1")
-	assert.Equal(t, int32(-1), bd.refCnt.Load(), "RefCnt should be -1 to mark removal")
+	assert.True(t, released, "Should be released at 0")
+	assert.Equal(t, int32(0), bd.refCnt.Load(), "RefCnt should be 0 after release")
 }
 
 func TestBufferDescriptor_Release_Panic(t *testing.T) {
@@ -106,12 +100,12 @@ func TestBufferDescriptor_Release_Panic(t *testing.T) {
 		block:  blk,
 	}
 
-	// Set to -1 and try to release again - should panic
-	bd.refCnt.Store(-1)
+	// Set to 0 and try to release again - should panic
+	bd.refCnt.Store(0)
 
 	assert.Panics(t, func() {
 		bd.release()
-	}, "Should panic when refCnt goes below -1")
+	}, "Should panic when refCnt goes below 0")
 }
 
 func TestBufferDescriptor_Reset(t *testing.T) {

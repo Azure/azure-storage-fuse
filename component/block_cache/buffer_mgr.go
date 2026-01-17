@@ -262,7 +262,7 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 		return false, false
 	}
 
-	if strict && bufDesc.refCnt.Load() > 0 {
+	if strict && bufDesc.refCnt.Load() > 1 {
 		btm.mu.Unlock()
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Cannot remove bufferIdx: %d for blockIdx: %d, refCnt: %d > 1",
 			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt.Load())
@@ -281,9 +281,9 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 	delete(btm.table, bufDesc.block)
 	btm.mu.Unlock()
 
-	// Reduce the ref count for the buffer descriptor itself. This tells the other users that once refCnt reaches -1,
+	// Reduce the ref count for the buffer descriptor itself. This tells the other users that once refCnt reaches 0,
 	// this buffer descriptor can be released back to free list safely.
-	if bufDesc.refCnt.Add(-1) == -1 {
+	if bufDesc.refCnt.Add(-1) == 0 {
 		// Release the buffer back to free list.
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Released bufferIdx: %d, blockIdx: %d back to free list",
 			bufDesc.bufIdx, bufDesc.block.idx)

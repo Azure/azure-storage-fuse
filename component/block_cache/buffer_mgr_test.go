@@ -136,8 +136,8 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Dirty(t *testing.T) {
 	assert.False(t, isReleased)
 }
 
-// SUSPICIOUS FINDING: removeBufferDescriptor with strict=true won't remove if refCnt > 0
-// This prevents removing buffers that are still in use, but caller must handle this
+// Test that removeBufferDescriptor with strict=true won't remove if there are user references (refCnt > 1)
+// This prevents removing buffers that are still in use by other operations
 func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithRefs(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
@@ -156,18 +156,52 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithRefs(t *testing.T) {
 		block:  blk,
 		buf:    buf,
 	}
-	bd.refCnt.Store(2)
+	bd.refCnt.Store(2) // Table (1) + user reference (1)
 	bd.valid.Store(true)
 
 	btm.mu.Lock()
 	btm.table[blk] = bd
 	btm.mu.Unlock()
 
-	// Try to remove buffer with strict=true and refCnt > 0
+	// Try to remove buffer with strict=true and refCnt > 1
 	isRemoved, isReleased := btm.removeBufferDescriptor(bd, true)
 
-	assert.False(t, isRemoved, "Should not remove in strict mode with refs")
+	assert.False(t, isRemoved, "Should not remove in strict mode with user refs")
 	assert.False(t, isReleased)
+}
+
+// Test that removeBufferDescriptor with strict=true WILL remove if only table holds reference (refCnt=1)
+func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithOnlyTableRef(t *testing.T) {
+	// Setup
+	bc = &BlockCache{blockSize: 1024 * 1024}
+	err := createFreeList(bc.blockSize, 10*bc.blockSize)
+	assert.NoError(t, err)
+	defer destroyFreeList()
+
+	NewBufferTableMgr()
+
+	f := createFile("test.txt")
+	blk := createBlock(0, "testId", localBlock, f)
+
+	buf, _ := freeList.bufPool.GetBuffer()
+	bd := &bufferDescriptor{
+		bufIdx: 0,
+		block:  blk,
+		buf:    buf,
+	}
+	bd.refCnt.Store(1) // Only table reference
+	bd.valid.Store(true)
+
+	btm.mu.Lock()
+	btm.table[blk] = bd
+	btm.mu.Unlock()
+
+	// Try to remove buffer with strict=true and refCnt=1 (only table)
+	isRemoved, isReleased := btm.removeBufferDescriptor(bd, true)
+
+	assert.True(t, isRemoved, "Should remove in strict mode with only table ref")
+	assert.True(t, isReleased, "Should be released to free list")
+	assert.Equal(t, int32(0), bd.refCnt.Load(), "refCnt should be 0")
 }
 
 func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
@@ -188,7 +222,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
 		block:  blk,
 		buf:    buf,
 	}
-	bd.refCnt.Store(0)
+	bd.refCnt.Store(1) // Table holds a reference
 	bd.valid.Store(true)
 
 	btm.mu.Lock()
@@ -200,7 +234,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
 
 	assert.True(t, isRemoved, "Should be removed from table")
 	assert.True(t, isReleased, "Should be released to free list")
-	assert.Equal(t, int32(-1), bd.refCnt.Load(), "refCnt should be -1")
+	assert.Equal(t, int32(0), bd.refCnt.Load(), "refCnt should be 0")
 
 	// Verify it's not in table anymore
 	btm.mu.RLock()

@@ -258,15 +258,14 @@ func TestReleaseAllBuffersForFile_WithBlocks(t *testing.T) {
 
 		bufDesc, err := freeList.allocateBuffer(blk)
 		assert.NoError(t, err)
-		bufDesc.refCnt.Store(1)
+		bufDesc.refCnt.Store(1) // Table holds 1 reference
 		bufDesc.valid.Store(true)
 
 		btm.mu.Lock()
 		btm.table[blk] = bufDesc
 		btm.mu.Unlock()
 
-		// Release the buffer so refCnt is 0, making it eligible for removal
-		bufDesc.release()
+		// Don't release here - releaseAllBuffersForFile will handle it
 	}
 
 	// Release all buffers
