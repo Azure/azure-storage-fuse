@@ -184,6 +184,118 @@ run_test_suite() {
 }
 
 # --------------------------------------------------------------------------------------------------
+# Helper: Run custom filecache read test
+run_filecache_read_test() {
+    echo "Running custom filecache read test..."
+    
+    local TEST_FILE="filecache_read_test_100gb.data"
+    local BLOCK_SIZE="1M"
+    
+    # Step 1: Mount and create the test file if it doesn't exist
+    mount_blobfuse
+    rm -rf "${MOUNT_DIR}/"*
+    
+    if [ ! -f "${MOUNT_DIR}/${TEST_FILE}" ]; then
+        echo "Creating 100GB test file: ${TEST_FILE}..."
+        echo "This may take some time..."
+        
+        # Create the file using dd (this will upload to blob storage in file_cache mode)
+        dd if=/dev/urandom of="${MOUNT_DIR}/${TEST_FILE}" bs=1M count=102400 status=progress
+        
+        echo "Test file created successfully."
+        
+        # Sync to ensure file is uploaded
+        sync
+        sleep 5
+    fi
+    
+    # Verify file exists and get its size
+    if [ ! -f "${MOUNT_DIR}/${TEST_FILE}" ]; then
+        echo "Error: Test file does not exist"
+        exit 1
+    fi
+    
+    local FILE_SIZE=$(stat -c%s "${MOUNT_DIR}/${TEST_FILE}")
+    echo "Test file size: $FILE_SIZE bytes"
+    
+    # Step 2: Unmount to clear any cached data
+    echo "Unmounting to clear cache..."
+    cleanup_mount
+    sleep 5
+    
+    # Step 3: Clear kernel page cache
+    echo "Dropping kernel caches..."
+    sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
+    sleep 2
+    
+    # Step 4: Mount again for the read test
+    echo "Remounting for read test..."
+    mount_blobfuse
+    
+    # Step 5: Run the read test with direct I/O
+    echo "Starting sequential read test with direct I/O (block size: ${BLOCK_SIZE})..."
+    
+    # Get initial network stats
+    local start_rx=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
+    local start_tx=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
+    local start_time=$(date +%s.%N)
+    
+    # Perform the read test using dd with direct I/O
+    # O_DIRECT flag ensures we bypass the OS page cache
+    # This includes the open time (when filecache downloads the file)
+    dd if="${MOUNT_DIR}/${TEST_FILE}" of=/dev/null bs=${BLOCK_SIZE} iflag=direct 2>&1 | tee "${OUTPUT_DIR}/dd_output.txt"
+    
+    # Get final stats
+    local end_time=$(date +%s.%N)
+    local end_rx=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
+    local end_tx=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
+    
+    # Calculate metrics
+    local duration=$(echo "$end_time - $start_time" | bc)
+    local rx_bytes=$((end_rx - start_rx))
+    local tx_bytes=$((end_tx - start_tx))
+    
+    # Calculate bandwidth in Mbps
+    local rx_mbps=$(echo "scale=4; ($rx_bytes * 8) / ($duration * 1000000)" | bc)
+    local tx_mbps=$(echo "scale=4; ($tx_bytes * 8) / ($duration * 1000000)" | bc)
+    
+    # Calculate throughput in MiB/s (includes open time)
+    local throughput_mibs=$(echo "scale=4; $FILE_SIZE / ($duration * 1024 * 1024)" | bc)
+    
+    echo "-------------------------------------"
+    echo "Test completed!"
+    echo "Duration: ${duration} seconds"
+    echo "Throughput: ${throughput_mibs} MiB/s (including file open time)"
+    echo
+    echo "Network Statistics:"
+    echo "Interface: $INTERFACE"
+    echo "Received (RX): $rx_bytes bytes (${rx_mbps} Mbps)"
+    echo "Transmitted (TX): $tx_bytes bytes (${tx_mbps} Mbps)"
+    echo "-------------------------------------"
+    
+    # Generate JSON output for bandwidth results
+    cat > "${OUTPUT_DIR}/filecache_sequential_read_bandwidth_summary.json" <<EOF
+{
+  "name": "filecache_sequential_read_100GB_directio",
+  "value": ${throughput_mibs},
+  "unit": "MiB/s"
+}
+EOF
+    
+    # Generate JSON output for latency (time taken)
+    local latency_ms=$(echo "scale=4; $duration * 1000" | bc)
+    cat > "${OUTPUT_DIR}/filecache_sequential_read_latency_summary.json" <<EOF
+{
+  "name": "filecache_sequential_read_100GB_directio",
+  "value": ${latency_ms},
+  "unit": "milliseconds"
+}
+EOF
+    
+    echo "Filecache read test completed successfully!"
+}
+
+# --------------------------------------------------------------------------------------------------
 # Main Execution
 
 cleanup_mount
@@ -191,17 +303,14 @@ cleanup_mount
 if [[ "${TEST_NAME}" == "write" ]]; then
     run_test_suite "./perf_testing/config/write"
 elif [[ "${TEST_NAME}" == "read" ]]; then
-    # Skip FIO read tests for file_cache mode as they don't include file open time
-    # (filecache downloads files during open, leading to misleading throughput results)
+    # For file_cache mode, run custom read test instead of FIO
+    # (filecache downloads files during open, so FIO tests don't include this time)
     if [[ "${CACHE_MODE}" == "file_cache" ]]; then
-        echo "Skipping FIO read tests for file_cache mode - use filecache_read_test.sh instead"
-        # Create empty results files to avoid errors in the workflow
-        mkdir -p "${OUTPUT_DIR}"
-        echo "[]" > "${OUTPUT_DIR}/bandwidth_results.json"
-        echo "[]" > "${OUTPUT_DIR}/latency_results.json"
-        exit 0
+        echo "Running custom read test for file_cache mode..."
+        run_filecache_read_test
+    else
+        run_test_suite "./perf_testing/config/read"
     fi
-    run_test_suite "./perf_testing/config/read"
 fi
 
 # Final Reporting
