@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768563626774,
+  "lastUpdate": 1768712105069,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -284,6 +284,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 111.32596929537,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "cd2cb4303028ac433d46f7284e70869eb529a19e",
+          "message": "Add parallel file writes to different files fio configs (#2096)",
+          "timestamp": "2026-01-14T13:24:28Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/cd2cb4303028ac433d46f7284e70869eb529a19e"
+        },
+        "date": 1768712104820,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.217169562251,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.257336350122,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.29958740366200004,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 110.356419389706,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.487499158857,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.440012208667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 117.071012102339,
             "unit": "milliseconds"
           }
         ]
