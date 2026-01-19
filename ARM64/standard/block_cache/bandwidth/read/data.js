@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768719948569,
+  "lastUpdate": 1768811837581,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -341,6 +341,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 36.6796875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a2737d80372ce80fade958bca7e049c7aa0336e3",
+          "message": "Update blobfuse2 version to 2.5.2 (#2109)",
+          "timestamp": "2026-01-19T05:47:36Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a2737d80372ce80fade958bca7e049c7aa0336e3"
+        },
+        "date": 1768811835970,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 3713.80859375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 3855.0380859375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3166.0634765625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 8.8876953125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 9449.9814453125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 9695.8212890625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 37.146484375,
             "unit": "MiB/s"
           }
         ]
