@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768717751297,
+  "lastUpdate": 1768809727122,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -341,6 +341,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 1.07766675,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a2737d80372ce80fade958bca7e049c7aa0336e3",
+          "message": "Update blobfuse2 version to 2.5.2 (#2109)",
+          "timestamp": "2026-01-19T05:47:36Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a2737d80372ce80fade958bca7e049c7aa0336e3"
+        },
+        "date": 1768809726872,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.391839018051,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.402917662646,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.42845672704099996,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 1.102999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.353754582246,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 0.36654071261,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 1.11577125,
             "unit": "milliseconds"
           }
         ]
