@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768716317041,
+  "lastUpdate": 1768808244295,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -341,6 +341,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 52.306640625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a2737d80372ce80fade958bca7e049c7aa0336e3",
+          "message": "Update blobfuse2 version to 2.5.2 (#2109)",
+          "timestamp": "2026-01-19T05:47:36Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a2737d80372ce80fade958bca7e049c7aa0336e3"
+        },
+        "date": 1768808242762,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 2895.26953125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 4195.392578125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3032.6357421875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 14.2255859375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 8075.708984375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 9038.94921875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 54.16796875,
             "unit": "MiB/s"
           }
         ]
