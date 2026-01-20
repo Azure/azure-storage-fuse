@@ -76,10 +76,12 @@ func TestFileTruncateShrink(t *testing.T) {
 		{fmt.Sprintf("%s_10M_5K_truncate", filename), 10 * 1024 * 1024, 5 * 1024, truncate},
 		{fmt.Sprintf("%s_20M_5K_truncate", filename), 20 * 1024 * 1024, 5 * 1024, truncate},
 		{fmt.Sprintf("%s_30M_20M_truncate", filename), 30 * 1024 * 1024, 20 * 1024 * 1024, truncate},
+		{fmt.Sprintf("%s_32M_5M_truncate", filename), 32 * 1024 * 1024, 5 * 1024 * 1024, truncate},
 		{fmt.Sprintf("%s_20_5_ftruncate", filename), 20, 5, ftruncate},
 		{fmt.Sprintf("%s_10M_5K_ftruncate", filename), 10 * 1024 * 1024, 5 * 1024, ftruncate},
 		{fmt.Sprintf("%s_20M_5K_ftruncate", filename), 20 * 1024 * 1024, 5 * 1024, ftruncate},
 		{fmt.Sprintf("%s_30M_20M_ftruncate", filename), 30 * 1024 * 1024, 20 * 1024 * 1024, ftruncate},
+		{fmt.Sprintf("%s_32M_5M_ftruncate", filename), 32 * 1024 * 1024, 5 * 1024 * 1024, ftruncate},
 	}
 
 	// Add the number of test cases to the WaitGroup
