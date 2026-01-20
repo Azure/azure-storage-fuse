@@ -5,11 +5,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
-
-const StdBlockIdLength int = 24 // We use base64 encoded strings of length 24 in Blobfuse when updating the files.
 
 var ErrInvalidBlockList = errors.New("Invalid Block List, not compatible with Block Cache for write operations")
 
@@ -78,8 +77,8 @@ func validateBlockList(blkList *internal.CommittedBlockList, f *File) error {
 		} else if idx == (listLen-1) && blk.Size > bc.blockSize {
 			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d bytes) than block size configured is %d bytes", idx, blk.Size, bc.blockSize)
 			return ErrInvalidBlockList
-		} else if len(blk.Id) != StdBlockIdLength {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block Id length for blk idx : %d is %d bytes is not matching to what blobfuse uses(i.e., %d bytes)", idx, len(blk.Id), StdBlockIdLength)
+		} else if len(blk.Id) != common.BlockIDLenghtBase64 {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block Id length for blk idx : %d is %d bytes is not matching to what blobfuse uses(i.e., %d bytes)", idx, len(blk.Id), common.BlockIDLenghtBase64)
 			return ErrInvalidBlockList
 		}
 		newblkList = append(newblkList, createBlock(idx, blk.Id, committedBlock, f))

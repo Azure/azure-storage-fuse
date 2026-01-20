@@ -213,7 +213,8 @@ func (fl *freeListType) getVictimBuffer() *bufferDescriptor {
 
 		numTries++
 
-		if bufDesc.refCnt.Load() == 0 {
+		// See if the buffer descriptor is present in only buffer table manager(refCnt=1) and has no users for it.
+		if bufDesc.refCnt.Load() == 1 {
 			if bufDesc.bytesRead.Load() == int32(bc.blockSize) || bufDesc.numEvictionCyclesPassed.Load() > 0 {
 				// Found a victim buffer. pin the buffer by increasing refCnt.
 				log.Debug("getVictimBuffer: Selected victim bufferIdx: %d, blockIdx: %d after %d tries",
@@ -235,8 +236,8 @@ func (fl *freeListType) getVictimBuffer() *bufferDescriptor {
 			}
 		}
 
-		log.Debug("getVictimBuffer: bufferIdx: %d for blockIdx: %d is in use, refCnt: %d, bytesRead: %d, bytesWritten: %d",
-			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt, bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
+		log.Debug("getVictimBuffer: bufferIdx: %d is in use, refCnt: %d, bytesRead: %d, bytesWritten: %d",
+			bufDesc.bufIdx, bufDesc.refCnt, bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
 	}
 
 	return nil
