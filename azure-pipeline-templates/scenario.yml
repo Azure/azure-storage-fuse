@@ -96,7 +96,7 @@ steps:
 
   - script:
       # specify mountpoints in order of test dirs, t1 is local filesystem, MOUNT_DIR is blobfuse2 mount
-      # for i in $(seq 1 10); do echo "Iteration $i"; go test -v ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" || { echo "Test failed on iteration $i"; exit 1; }; done
+      for i in $(seq 1 10); do echo "Iteration $i"; go test ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" || { echo "Test failed on iteration $i"; exit 1; }; done
       # go test -v ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)"
     displayName: 'Run custom Scenarios'
 
@@ -109,7 +109,7 @@ steps:
 
   - script:
       # specify mountpoints in order of test dirs, t1 is local filesystem, MOUNT_DIR is blobfuse2 mount
-      # for i in $(seq 1 10); do echo "Iteration $i"; go test -v ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" -mount-point-direct-io=true || { echo "Test failed on iteration $i"; exit 1; }; done
+      for i in $(seq 1 10); do echo "Iteration $i"; go test ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" -mount-point-direct-io=true || { echo "Test failed on iteration $i"; exit 1; }; done
       # go test -v ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" -mount-point-direct-io=true
     displayName: 'Run Scenarios'
 
