@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -449,7 +450,8 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 	info, err := os.Lstat(path)
 	if err != nil {
 		log.Err("LoopbackFS::GetAttr : error [%s]", err)
-		return &internal.ObjAttr{}, err
+		// This returns fs.PathError which cannot be handled by the caller, convert to the appropriate fs error code.
+		return &internal.ObjAttr{}, err.(*fs.PathError).Err
 	}
 	attr := &internal.ObjAttr{
 		Path:  options.Name,
