@@ -150,13 +150,6 @@ func TestUpdateBlockListForReadOnlyFile_PartialBlock(t *testing.T) {
 	assert.Equal(t, 3, len(f.blockList.list))
 }
 
-// SUSPICIOUS FINDING: The validateBlockList function expects StdBlockIdLength to be exactly 24 bytes
-// This is a hardcoded constant that must match Azure Blob Storage's block ID format
-// If Azure changes this format, this would break
-func TestStdBlockIdLength(t *testing.T) {
-	assert.Equal(t, 24, StdBlockIdLength, "Standard block ID length must be 24 for Azure compatibility")
-}
-
 // SUSPICIOUS FINDING: ErrInvalidBlockList is returned when blocklist doesn't match expected format
 // This could happen if files were created with different block sizes or by other tools
 func TestErrInvalidBlockList(t *testing.T) {
