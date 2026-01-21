@@ -306,8 +306,128 @@ func (suite *LoopbackFSTestSuite) TestStageAndCommitData() {
 	assert.NoError(err)
 
 	blockList := []string{"123", "789", "456"}
-	err = lfs.CommitData(internal.CommitDataOptions{Name: "testBlock", List: blockList})
+	err = lfs.CommitData(internal.CommitDataOptions{Name: "testBlock", List: blockList, BlockSize: uint64(len(loremText))})
 	assert.NoError(err)
+	
+	// Verify that the block list was saved
+	committedList, err := lfs.GetCommittedBlockList("testBlock")
+	assert.NoError(err)
+	assert.NotNil(committedList)
+	assert.Equal(len(blockList), len(*committedList))
+	
+	// Verify block IDs are correct
+	for i, block := range *committedList {
+		assert.Equal(blockList[i], block.Id)
+		assert.Equal(int64(i*len(loremText)), block.Offset)
+		assert.Equal(uint64(len(loremText)), block.Size)
+	}
+}
+
+func (suite *LoopbackFSTestSuite) TestGetCommittedBlockList() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+
+	lfs := &LoopbackFS{}
+	lfs.path = common.ExpandPath("~/blocklisttest")
+	err := os.MkdirAll(lfs.path, os.FileMode(0777))
+	assert.NoError(err)
+	defer os.RemoveAll(lfs.path)
+
+	// Test with a file that has a saved block list
+	testData := []byte("Test data block")
+	err = lfs.StageData(internal.StageDataOptions{Name: "testFile", Data: testData, Id: "block1"})
+	assert.NoError(err)
+
+	err = lfs.StageData(internal.StageDataOptions{Name: "testFile", Data: testData, Id: "block2"})
+	assert.NoError(err)
+
+	blockList := []string{"block1", "block2"}
+	err = lfs.CommitData(internal.CommitDataOptions{Name: "testFile", List: blockList, BlockSize: uint64(len(testData))})
+	assert.NoError(err)
+
+	// Retrieve and verify the committed block list
+	committedList, err := lfs.GetCommittedBlockList("testFile")
+	assert.NoError(err)
+	assert.NotNil(committedList)
+	assert.Equal(2, len(*committedList))
+	assert.Equal("block1", (*committedList)[0].Id)
+	assert.Equal("block2", (*committedList)[1].Id)
+}
+
+func (suite *LoopbackFSTestSuite) TestDeleteFileRemovesBlockList() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+
+	lfs := &LoopbackFS{}
+	lfs.path = common.ExpandPath("~/blocklistdeltest")
+	err := os.MkdirAll(lfs.path, os.FileMode(0777))
+	assert.NoError(err)
+	defer os.RemoveAll(lfs.path)
+
+	// Create a file with block list
+	testData := []byte("Test data")
+	err = lfs.StageData(internal.StageDataOptions{Name: "testFile", Data: testData, Id: "block1"})
+	assert.NoError(err)
+
+	err = lfs.CommitData(internal.CommitDataOptions{Name: "testFile", List: []string{"block1"}, BlockSize: uint64(len(testData))})
+	assert.NoError(err)
+
+	// Verify block list exists
+	committedList, err := lfs.GetCommittedBlockList("testFile")
+	assert.NoError(err)
+	assert.NotNil(committedList)
+	assert.Equal(1, len(*committedList))
+
+	// Delete the file
+	err = lfs.DeleteFile(internal.DeleteFileOptions{Name: "testFile"})
+	assert.NoError(err)
+
+	// Verify block list is removed (should fallback to file-based calculation)
+	// Since file is deleted, this should error
+	_, err = lfs.GetCommittedBlockList("testFile")
+	assert.Error(err)
+}
+
+func (suite *LoopbackFSTestSuite) TestRenameFileMovesBlockList() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+
+	lfs := &LoopbackFS{}
+	lfs.path = common.ExpandPath("~/blocklistrentest")
+	err := os.MkdirAll(lfs.path, os.FileMode(0777))
+	assert.NoError(err)
+	defer os.RemoveAll(lfs.path)
+
+	// Create a file with block list
+	testData := []byte("Test data for rename")
+	err = lfs.StageData(internal.StageDataOptions{Name: "oldFile", Data: testData, Id: "block1"})
+	assert.NoError(err)
+
+	err = lfs.CommitData(internal.CommitDataOptions{Name: "oldFile", List: []string{"block1"}, BlockSize: uint64(len(testData))})
+	assert.NoError(err)
+
+	// Verify block list exists under old name
+	committedList, err := lfs.GetCommittedBlockList("oldFile")
+	assert.NoError(err)
+	assert.NotNil(committedList)
+	assert.Equal(1, len(*committedList))
+	assert.Equal("block1", (*committedList)[0].Id)
+
+	// Rename the file
+	err = lfs.RenameFile(internal.RenameFileOptions{Src: "oldFile", Dst: "newFile"})
+	assert.NoError(err)
+
+	// Verify block list is now under new name
+	committedList, err = lfs.GetCommittedBlockList("newFile")
+	assert.NoError(err)
+	assert.NotNil(committedList)
+	assert.Equal(1, len(*committedList))
+	assert.Equal("block1", (*committedList)[0].Id)
+
+	// Verify old name no longer has the block list in the map
+	// (should fall back to file-based calculation, but file doesn't exist at old path)
+	_, err = lfs.GetCommittedBlockList("oldFile")
+	assert.Error(err) // File doesn't exist at old path
 }
 
 // This test is for opening the file in O_TRUNC on the existing file
