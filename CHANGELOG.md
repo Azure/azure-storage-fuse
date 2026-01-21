@@ -2,7 +2,9 @@
 **Features**
 - Add rate limit functionality for ingress bandwidth (bytes downloaded per second) and operations per second ([PR #2093](https://github.com/Azure/azure-storage-fuse/pull/2093))
 
-## 2.5.2 (Unreleased)
+**Bug Fixes**
+
+## 2.5.2 (2026-01-19)
 **Features**
 - Add Build Support for arm 32bit.([PR #2068](https://github.com/Azure/azure-storage-fuse/pull/2068))
 - Added Debian 13 (trixie) support for package installation.([#2064](https://github.com/Azure/azure-storage-fuse/issues/2064))

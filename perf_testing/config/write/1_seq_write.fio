@@ -1,0 +1,18 @@
+[global]
+name=blobfuse_benchmark
+bs=1M
+filename=write_fio.data
+group_reporting
+
+[sequential_write]
+size=100G
+rw=write
+ioengine=sync
+fallocate=none
+create_on_open=1
+direct=1
+# Do fsync after all the writes, generally fio only calculates the
+# throughput based on the IO time. but as we flush some/all data in
+# the flush/close. it is important we capture the flush time while
+# computing the throughput. value=size/bs
+fsync=100000

@@ -1,13 +1,12 @@
 [global]
 name=blobfuse_benchmark
 bs=1M
-runtime=30s
-time_based
 filename=read_fio.data
 group_reporting
 
-[random_read_kernel_cache]
+[sequential_read]
 size=100G
-rw=randread
+rw=read
 ioengine=sync
 fallocate=none
+direct=1

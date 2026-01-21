@@ -26,3 +26,7 @@ component/azstorage/logfile.txt
 logfile.txt
 **/logfile.txt
 **/logfile.txt.*
+# Emacs backup and auto-save files
+*~
+\#*\#
+.\#*

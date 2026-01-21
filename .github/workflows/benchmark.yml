@@ -34,8 +34,8 @@ jobs:
           - { arch: "ARM64", runner: "1ES.Pool=blobfuse2-benchmark-arm" }
         # Define the storage account types to test
         # Note: 'TestType' variable name MUST remain as-is; the perftesting action relies on it.
-        TestType: ["premium", "standard"]
-        CacheMode: ["file_cache", "block_cache"]
+        TestType: ["standard", "premium"]
+        CacheMode: ["block_cache", "file_cache"]
 
     steps:
       - name: 'Checkout Blobfuse2'
