@@ -31,6 +31,89 @@
    SOFTWARE
 */
 
+// Package block_cache implements a high-performance caching layer for Azure Storage Fuse (Blobfuse2).
+//
+// # Overview
+//
+// The block_cache component provides an in-memory buffer cache for file data, allowing
+// efficient read and write operations by caching fixed-size blocks of data. It sits between
+// the FUSE filesystem layer and the Azure Storage backend, reducing latency and improving
+// throughput by minimizing remote storage operations.
+//
+// # Key Concepts
+//
+// - **Block**: A fixed-size chunk of file data (configurable, default 16MB). Files are divided
+//   into sequential blocks for caching.
+//
+// - **Buffer**: An in-memory storage area that holds the actual data for a block. Buffers are
+//   allocated from a fixed-size buffer pool.
+//
+// - **Buffer Descriptor**: Metadata structure that tracks the state of a buffer, including
+//   reference count, dirty flag, validity, and association with a block.
+//
+// - **Buffer Table Manager**: Maps blocks to their corresponding buffer descriptors, enabling
+//   fast lookup of cached data.
+//
+// - **Free List**: Manages available buffers, implementing allocation and eviction policies
+//   when the buffer pool is exhausted.
+//
+// # Architecture
+//
+// The component follows a layered architecture:
+//
+//	FUSE Operations (read/write/truncate)
+//	         ↓
+//	    File Operations (file.go)
+//	         ↓
+//	   Block Operations (block.go)
+//	         ↓
+//	  Buffer Management (buffer_mgr.go)
+//	         ↓
+//	  Buffer Allocation (freelist.go)
+//	         ↓
+//	   Buffer Pool (buffer_pool.go)
+//	         ↓
+//	 Worker Pool (async I/O operations)
+//
+// # Concurrency Model
+//
+// The block_cache is designed for high concurrency:
+//
+// - **Per-file locking**: File-level read-write locks protect file metadata and block lists.
+// - **Per-buffer locking**: Buffer content locks allow concurrent reads while blocking writes.
+// - **Reference counting**: Prevents premature buffer eviction while in use.
+// - **Lock-free operations**: Atomic operations minimize contention on hot paths.
+//
+// # Buffer Lifecycle
+//
+//  1. **Allocation**: Buffer allocated from free list or evicted from cache
+//  2. **Mapping**: Buffer mapped to block in buffer table manager (refCnt = 1 for table)
+//  3. **Usage**: Users acquire references (refCnt++), perform I/O operations
+//  4. **Release**: Users release references (refCnt--)
+//  5. **Eviction**: When refCnt reaches 1 (only table reference), buffer becomes eviction candidate
+//  6. **Cleanup**: When refCnt reaches 0 (removed from table and all users released), buffer returns to free list
+//
+// # Configuration
+//
+// Key configuration parameters:
+//
+// - block-size-mb: Size of each cached block (default: 16 MB)
+// - mem-size-mb: Total memory allocated for buffer pool
+// - prefetch: Number of blocks to prefetch for sequential reads
+// - parallelism: Number of worker threads for async I/O operations
+//
+// # Performance Optimization
+//
+// - **Read-ahead**: Sequential access patterns trigger automatic prefetching
+// - **Write coalescing**: Multiple writes to the same block are batched
+// - **Lazy write**: Dirty blocks are uploaded asynchronously when possible
+// - **Eviction policy**: LRU-based eviction prioritizes frequently accessed blocks
+//
+// # Thread Safety
+//
+// All public methods are thread-safe and designed for concurrent access from multiple
+// FUSE threads. Internal synchronization uses a combination of mutexes, read-write locks,
+// and atomic operations to balance safety and performance.
 package block_cache
 
 import (
@@ -57,78 +140,156 @@ import (
    - To read any new setting from config file follow the Configure method default comments
 */
 
-// Common structure for Component
+// BlockCache is the main component structure that manages block-level caching for file data.
+//
+// It implements the internal.Component interface and participates in the Blobfuse2 pipeline.
+// BlockCache sits between the libfuse component and the Azure Storage backend, providing:
+//
+//   - In-memory caching of file blocks to reduce remote storage access
+//   - Efficient read-ahead for sequential access patterns
+//   - Write buffering and coalescing for improved write performance
+//   - Concurrent access management through reference counting
+//
+// Lifecycle:
+//   1. Constructor (NewBlockCacheComponent) creates the component
+//   2. Configure() reads configuration and initializes parameters
+//   3. Start() initializes buffer pool and worker threads
+//   4. File operations (OpenFile, ReadInBuffer, WriteFile, etc.) handle I/O
+//   5. Stop() cleans up resources and stops workers
+//
+// Thread Safety:
+// All methods are thread-safe and designed for concurrent access from multiple FUSE threads.
 type BlockCache struct {
 	internal.BaseComponent
 
-	blockSize       uint64          // Size of each block to be cached
-	memSize         uint64          // Mem size to be used for caching at the startup
-	mntPath         string          // Mount path
-	tmpPath         string          // Disk path where these blocks will be cached
-	diskSize        uint64          // Size of disk space allocated for the caching
-	diskTimeout     uint32          // Timeout for which disk blocks will be cached
-	workers         uint32          // Number of threads working to fetch the blocks
-	prefetch        uint32          // Number of blocks to be prefetched
-	fileLocks       *common.LockMap // Locks for each file_blockid to avoid multiple threads to fetch same block
-	fileNodeMap     sync.Map        // Map holding files that are there in our cache
-	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
-	noPrefetch      bool            // Flag to indicate if prefetch is disabled
-	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
-	consistency     bool            // Flag to indicate if strong data consistency is enabled
-	//	stream          *Stream
-	lazyWrite              bool           // Flag to indicate if lazy write is enabled
-	fileCloseOpt           sync.WaitGroup // Wait group to wait for all async close operations to complete
-	maxFileSize            uint64         // Max file size supported by block cache
-	deferEmptyBlobCreation bool           // Flag to indicate if empty blob creation is deferred until file is closed
+	// Block and buffer pool configuration
+	blockSize uint64 // Size of each block to be cached (in bytes, e.g., 16MB)
+	memSize   uint64 // Total memory allocated for buffer pool (in bytes)
+
+	// Disk caching configuration (currently unused, reserved for future disk-backed caching)
+	mntPath     string // Mount path for the filesystem
+	tmpPath     string // Disk path where blocks could be cached to disk
+	diskSize    uint64 // Size of disk space allocated for caching
+	diskTimeout uint32 // Timeout for disk-cached blocks (in seconds)
+
+	// Worker pool configuration
+	workers  uint32 // Number of worker threads for async download/upload operations
+	prefetch uint32 // Number of blocks to prefetch for sequential reads
+
+	// File and block management
+	fileLocks   *common.LockMap // Per-file locks to coordinate operations (currently unused)
+	fileNodeMap sync.Map        // Map of filepath -> *File for tracking open files (currently unused)
+
+	// Performance and behavior flags
+	maxDiskUsageHit        bool // Flag indicating if disk cache limit was reached (currently unused)
+	noPrefetch             bool // If true, disables read-ahead prefetching
+	prefetchOnOpen         bool // If true, start prefetching immediately on file open
+	consistency            bool // If true, ensures strong consistency with storage
+	lazyWrite              bool // If true, enables lazy write mode (write buffering)
+	deferEmptyBlobCreation bool // If true, defers creation of empty files until data is written
+
+	// Synchronization
+	fileCloseOpt sync.WaitGroup // Wait group for async file close operations
+
+	// Limits
+	maxFileSize uint64 // Maximum file size supported by block cache (blockSize * MAX_BLOCKS)
 }
 
-// Structure defining your config parameters
+// BlockCacheOptions defines configuration parameters for the BlockCache component.
+//
+// These options are loaded from the configuration file and control the behavior
+// of the block cache, including memory usage, prefetching, and performance tuning.
 type BlockCacheOptions struct {
-	BlockSize              float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	MemSize                uint64  `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
-	TmpPath                string  `config:"path" yaml:"path,omitempty"`
-	DiskSize               uint64  `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
-	DiskTimeout            uint32  `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
-	PrefetchCount          uint32  `config:"prefetch" yaml:"prefetch,omitempty"`
-	Workers                uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
-	PrefetchOnOpen         bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
-	Consistency            bool    `config:"consistency" yaml:"consistency,omitempty"`
-	CleanupOnStart         bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
-	DeferEmptyBlobCreation bool    `config:"defer-empty-blob-creation" yaml:"defer-empty-blob-creation,omitempty"`
+	// BlockSize is the size of each cached block in megabytes (float for precision).
+	// Default: 16 MB. Larger blocks reduce metadata overhead but increase memory usage.
+	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+
+	// MemSize is the total memory allocated for the buffer pool in megabytes.
+	// If not specified, a default based on available system RAM is used.
+	MemSize uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
+
+	// TmpPath is the directory path for disk-based caching (currently unused).
+	// Reserved for future implementation of two-tier caching (memory + disk).
+	TmpPath string `config:"path" yaml:"path,omitempty"`
+
+	// DiskSize is the disk space allocated for caching in megabytes (currently unused).
+	DiskSize uint64 `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
+
+	// DiskTimeout is the duration in seconds that disk-cached blocks remain valid (currently unused).
+	DiskTimeout uint32 `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
+
+	// PrefetchCount is the maximum number of blocks to prefetch for sequential reads.
+	// Set to 0 to disable prefetching. Default: calculated based on CPU count.
+	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
+
+	// Workers is the number of goroutines in the worker pool for async I/O operations.
+	// Default: 3 * number of CPUs. Higher values increase parallelism but use more resources.
+	Workers uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
+
+	// PrefetchOnOpen enables immediate prefetching when a file is opened.
+	// If false, prefetching starts after the first read operation.
+	PrefetchOnOpen bool `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
+
+	// Consistency enables strong data consistency mode.
+	// When true, ensures reads always reflect the latest data from storage.
+	Consistency bool `config:"consistency" yaml:"consistency,omitempty"`
+
+	// CleanupOnStart removes any cached data from tmpPath on startup.
+	CleanupOnStart bool `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
+
+	// DeferEmptyBlobCreation postpones creation of empty files in storage.
+	// When true, empty files are only created when data is written or the handle is closed.
+	// Default: true (recommended for better performance).
+	DeferEmptyBlobCreation bool `config:"defer-empty-blob-creation" yaml:"defer-empty-blob-creation,omitempty"`
 }
 
+// Component configuration constants
 const (
-	compName                = "block_cache"
-	defaultTimeout          = 120
-	defaultBlockSize        = 16
-	MAX_POOL_USAGE   uint32 = 80
-	MIN_POOL_USAGE   uint32 = 50
-	MIN_PREFETCH            = 5
-	MIN_WRITE_BLOCK         = 3
-	MIN_RANDREAD            = 10
-	MAX_FAIL_CNT            = 3
-	MAX_BLOCKS              = 50000
+	compName         = "block_cache"  // Component name used in configuration and logs
+	defaultTimeout   = 120            // Default disk cache timeout in seconds
+	defaultBlockSize = 16             // Default block size in megabytes
+	MAX_POOL_USAGE   uint32 = 80      // Maximum buffer pool usage threshold (percentage)
+	MIN_POOL_USAGE   uint32 = 50      // Minimum buffer pool usage threshold (percentage)
+	MIN_PREFETCH     = 5              // Minimum number of blocks for prefetch
+	MIN_WRITE_BLOCK  = 3              // Minimum number of blocks for write operations
+	MIN_RANDREAD     = 10             // Minimum random read threshold
+	MAX_FAIL_CNT     = 3              // Maximum failure count before error
+	MAX_BLOCKS       = 50000          // Maximum number of blocks per file (limits file size)
 )
 
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &BlockCache{}
 var bc *BlockCache
 
+// Name returns the component name used for configuration and logging.
 func (bc *BlockCache) Name() string {
 	return compName
 }
 
+// SetName sets the component name. Called by the pipeline during initialization.
 func (bc *BlockCache) SetName(name string) {
 	bc.BaseComponent.SetName(name)
 }
 
+// SetNextComponent sets the next component in the pipeline.
+// BlockCache typically sits above the Azure Storage component.
 func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 	bc.BaseComponent.SetNextComponent(nc)
 }
 
-// Start : Pipeline calls this method to start the component functionality
+// Start initializes the BlockCache component and starts its worker pool.
 //
-//	this shall not Block the call otherwise pipeline will not start
+// This method is called by the pipeline after Configure() completes.
+// It performs the following initialization:
+//
+//  1. Creates the buffer pool and free list for buffer management
+//  2. Initializes the worker pool for async I/O operations
+//  3. Sets up the buffer table manager for block-to-buffer mapping
+//
+// This method must not block, as it would prevent the pipeline from starting.
+// All background operations are launched as goroutines.
+//
+// Returns an error if buffer pool initialization fails.
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
 
@@ -142,7 +303,15 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop : Stop the component functionality and kill all threads started
+// Stop shuts down the BlockCache component and releases all resources.
+//
+// This method is called by the pipeline during shutdown. It performs cleanup:
+//
+//  1. Destroys the buffer pool and free list
+//  2. Releases all allocated memory buffers
+//  3. (Future) Cleans up disk cache if configured
+//
+// After Stop() completes, the component cannot be reused without reinitialization.
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
 
@@ -157,15 +326,31 @@ func (bc *BlockCache) Stop() error {
 	return nil
 }
 
-// GenConfig : Generate the default config for the component
+// GenConfig generates the default configuration for the BlockCache component.
+// Currently returns an empty string as default config is handled elsewhere.
 func (bc *BlockCache) GenConfig() string {
 	log.Info("BlockCache::Configure : config generation started")
 	return ""
 }
 
-// Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
+// Configure reads configuration and initializes BlockCache parameters.
 //
-//	Return failure if any config is not valid to exit the process
+// This method is called by the pipeline after the constructor and before Start().
+// It performs the following:
+//
+//  1. Reads and validates configuration from the config file
+//  2. Sets default values for unspecified parameters
+//  3. Calculates derived values (e.g., maxFileSize = blockSize * MAX_BLOCKS)
+//  4. Validates configuration consistency (e.g., tmpPath != mntPath)
+//
+// Configuration validation:
+//   - Block size must be positive
+//   - Memory size defaults to system RAM percentage if not specified
+//   - Prefetch count defaults based on CPU count
+//   - Worker count defaults to 3x CPU count
+//
+// Returns an error if configuration is invalid, which will cause the pipeline
+// to fail initialization and exit.
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
 
@@ -292,6 +477,19 @@ func (bc *BlockCache) Configure(_ bool) error {
 	return nil
 }
 
+// GetAttr retrieves file attributes for the specified file.
+//
+// This method intercepts GetAttr calls to provide updated file size information
+// for files that are currently open and modified. This ensures that GetAttr
+// returns the current in-memory size rather than the stale size from storage.
+//
+// Behavior:
+//   - If file is not open: forwards to next component (returns storage attributes)
+//   - If file is open and modified: returns updated attributes with current size
+//   - If file is open but not modified: forwards to next component
+//
+// This is critical for correctness when applications check file size after writing
+// but before the file is closed and flushed to storage.
 func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
 	log.Trace("BlockCache::GetAttr : file: %s", options.Name)
 
@@ -317,7 +515,18 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 	return attr, nil
 }
 
-// CreateFile: Create a new file
+// CreateFile creates a new file in storage and opens it for reading/writing.
+//
+// This method:
+//  1. Creates the file in the next component (storage layer)
+//  2. Opens the file using OpenFile() to set up caching structures
+//
+// The actual file creation in storage may be deferred if deferEmptyBlobCreation
+// is enabled, in which case the file is only created in storage when data is
+// written or the file is closed.
+//
+// Returns a handle that can be used for subsequent I/O operations, or an error
+// if creation fails.
 func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
 	_, err := bc.NextComponent().CreateFile(options)
@@ -333,7 +542,30 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 	})
 }
 
-// OpenFile: Create a handle for the file user has requested to open
+// OpenFile opens a file and creates a handle for I/O operations.
+//
+// This method is called when a user opens a file. It performs initialization:
+//
+//  1. Retrieves file attributes (size, mtime) from storage
+//  2. Creates a new handle with a pattern detector for read-ahead optimization
+//  3. Gets or creates a File object for this path (shared across handles)
+//  4. Initializes file state (size, block list) if this is the first open
+//  5. Handles special open flags:
+//     - O_TRUNC: truncates file to zero size
+//     - O_WRONLY/O_RDWR: retrieves block list for write operations
+//     - O_RDONLY: creates synthetic block list for read-only access
+//
+// Block List Management:
+//   - For write-enabled files: validates and loads committed block list from storage
+//   - For read-only files: creates a synthetic block list based on file size
+//   - Invalid block lists (non-aligned blocks) cause open to fail
+//
+// Thread Safety:
+// Multiple handles can be open for the same file simultaneously. The File object
+// is shared and synchronized. Each handle gets its own pattern detector for
+// independent read-ahead behavior.
+//
+// Returns a handle for I/O operations, or an error if open fails.
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::OpenFile : name=%s, flags=%s, mode=%s", options.Name, common.PrettyOpenFlags(options.Flags), options.Mode)
 
@@ -423,7 +655,26 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	return handle, nil
 }
 
-// ReadInBuffer: Read the file into a buffer
+// ReadInBuffer reads data from a file into the provided buffer.
+//
+// This method handles read requests from FUSE by:
+//
+//  1. Scheduling read-ahead based on detected access pattern (per-handle)
+//  2. Reading the requested data from cached blocks
+//  3. Fetching blocks from storage if not in cache
+//
+// Read-ahead:
+//   - Each handle has its own pattern detector to support concurrent reads
+//     with different access patterns on the same file
+//   - Sequential patterns trigger automatic prefetching
+//   - Random patterns disable prefetching to avoid wasting cache space
+//
+// The actual read implementation is in file.read(), which handles:
+//   - Block-level I/O and cache management
+//   - Waiting for async downloads to complete
+//   - Copying data from cached blocks to user buffer
+//
+// Returns the number of bytes read, or an error if the read fails.
 func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
 
@@ -443,7 +694,27 @@ func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, 
 	return n, err
 }
 
-// WriteFile: Write to the local file
+// WriteFile writes data to a file at the specified offset.
+//
+// This method handles write requests from FUSE by delegating to file.write().
+// The write operation:
+//
+//  1. Allocates or reuses blocks to cover the write range
+//  2. Copies data from user buffer to cached blocks
+//  3. Marks modified blocks as dirty
+//  4. May schedule async upload if blocks are full
+//  5. Updates file size if the write extends the file
+//
+// Write Behavior:
+//   - Writes are cached in memory; blocks are uploaded to storage during flush
+//   - Partial block writes are supported (read-modify-write)
+//   - Multiple concurrent writes to the same file are serialized
+//   - Write errors are sticky (subsequent operations fail)
+//
+// The actual write implementation is in file.write().
+//
+// Returns the number of bytes written (should always equal len(options.Data)),
+// or an error if the write fails.
 func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
 	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
 
@@ -459,7 +730,23 @@ func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error)
 	return len(options.Data), err
 }
 
-// TruncateFile: Truncate the file to specified size
+// TruncateFile truncates or extends a file to the specified size.
+//
+// This method handles truncate operations by:
+//
+//  1. Opening the file if no handle is provided
+//  2. Delegating to file.truncate() for the actual operation
+//  3. Closing the temporary handle if one was created
+//
+// Truncate Behavior:
+//   - Shrinking: removes blocks beyond new size, clears partial block
+//   - Extending: adds new zero-filled blocks
+//   - Always flushes file before and after the operation
+//   - Updates file size atomically
+//
+// The actual truncate implementation is in file.truncate().
+//
+// Returns an error if the truncate operation fails.
 func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("BlockCache::TruncateFile : name: %s, size: %d", options.Name, options.NewSize)
 
@@ -502,8 +789,21 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 	return nil
 }
 
-// SyncFile: Sync the file to remote storage
-// Call comes when user-application calls fsync on the file descriptor
+// SyncFile synchronizes file data with storage (fsync operation).
+//
+// This method is called when a user application calls fsync() on a file descriptor.
+// It ensures all modified data is written to storage by:
+//
+//  1. Flushing all dirty blocks to storage
+//  2. Committing the block list
+//  3. Waiting for all uploads to complete
+//
+// After SyncFile returns successfully, the file data is guaranteed to be
+// persistent in Azure Storage.
+//
+// The actual sync implementation is in file.flush().
+//
+// Returns an error if any upload or commit operation fails.
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
 
@@ -518,8 +818,22 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	return nil
 }
 
-// FlushFile: Call comes when user-application is closing the file descriptor.
-// There is a possibility that we get multiple flush calls for the same handle if user used dup2 or fork.
+// FlushFile flushes file data to storage (called on close).
+//
+// This method is called when a user application closes a file descriptor.
+// Note: Multiple flush calls may occur for the same handle if the application
+// used dup2() or fork(), as each file descriptor triggers a separate flush.
+//
+// FlushFile:
+//  1. Waits for any pending writes to complete
+//  2. Uploads all dirty blocks to storage
+//  3. Commits the block list
+//
+// Unlike SyncFile (explicit fsync), FlushFile is implicit and happens automatically
+// when the application closes the file. Both use the same underlying file.flush()
+// implementation.
+//
+// Returns an error if any upload or commit operation fails.
 func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
 
@@ -534,10 +848,26 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	return nil
 }
 
-// ReleaseFile: all the FD's corresponding to this handle were closed by application so release all the blocks
-// and submit back to the pool.
-// Flush the file before releasing, if some memory mapped file is still dirty..btw, we don't get the flush call from
-// FUSE if the backing fd of the map is already closed by the application.
+// ReleaseFile releases all resources associated with a file handle.
+//
+// This method is called after all file descriptors for a handle have been closed.
+// It performs cleanup:
+//
+//  1. Flushes any remaining dirty data (handles memory-mapped files)
+//  2. Removes the handle from the file's handle list
+//  3. If this was the last handle:
+//     - Removes the file from the file map
+//     - Releases all cached blocks back to the free list
+//
+// Unlike FlushFile (which may be called multiple times), ReleaseFile is called
+// exactly once per handle, after all file descriptors are closed.
+//
+// Memory-mapped files:
+// For memory-mapped files, the OS may not call FlushFile before ReleaseFile
+// if the backing file descriptor was already closed. ReleaseFile performs
+// a final flush to ensure no data is lost.
+//
+// Returns an error if the final flush fails (error is logged but cleanup proceeds).
 func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	log.Trace("BlockCache::ReleaseFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
 
@@ -554,7 +884,17 @@ func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	return nil
 }
 
-// DeleteFile: Invalidate the file in local cache.
+// DeleteFile deletes a file from storage.
+//
+// This method forwards the delete operation to the next component (storage layer).
+// The block cache does not maintain persistent cache entries, so no cache
+// invalidation is needed.
+//
+// If the file is currently open, the in-memory state remains valid until all
+// handles are closed. The file will be removed from storage but cached data
+// remains accessible until ReleaseFile is called.
+//
+// Returns an error if the delete operation fails in storage.
 func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("BlockCache::DeleteFile : name: %s", options.Name)
 
@@ -567,7 +907,16 @@ func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 	return nil
 }
 
-// RenameFile: Invalidate the file in local cache.
+// RenameFile renames a file in storage.
+//
+// This method forwards the rename operation to the next component (storage layer).
+// Since the block cache is purely in-memory and keyed by file path, no explicit
+// cache invalidation is needed.
+//
+// If the file is currently open under the old name, it remains open and accessible.
+// New opens must use the new name.
+//
+// Returns an error if the rename operation fails in storage.
 func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("BlockCache::RenameFile : src: %s -> dst: %s", options.Src, options.Dst)
 
@@ -580,7 +929,12 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	return nil
 }
 
-// DeleteDir: Recursively invalidate the directory and its children
+// DeleteDir recursively deletes a directory in storage.
+//
+// This method forwards the delete operation to the next component (storage layer).
+// No cache invalidation is needed as the cache is purely in-memory.
+//
+// Returns an error if the delete operation fails in storage.
 func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("BlockCache::DeleteDir : name: %s", options.Name)
 
@@ -593,7 +947,13 @@ func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
 	return nil
 }
 
-// RenameDir: Recursively invalidate the source directory and its children
+// RenameDir renames a directory in storage.
+//
+// This method forwards the rename operation to the next component (storage layer).
+// No cache invalidation is needed as the cache is purely in-memory and keyed
+// by full file paths.
+//
+// Returns an error if the rename operation fails in storage.
 func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("BlockCache::RenameDir : src: %s -> dst: %s", options.Src, options.Dst)
 
@@ -606,14 +966,29 @@ func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 	return nil
 }
 
+// StatFs returns filesystem statistics.
+//
+// This method returns a dummy statfs structure as BlockCache does not track
+// filesystem-level statistics. The actual implementation is in the storage layer.
+//
+// Returns an empty syscall.Statfs_t structure and true to indicate success.
 func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	log.Trace("BlockCache::StatFS")
 	return &syscall.Statfs_t{}, true, nil
 }
 
 // ------------------------- Factory -------------------------------------------
-// Pipeline will call this method to create your object, initialize your variables here
-// << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
+
+// NewBlockCacheComponent creates a new BlockCache component instance.
+//
+// This factory function is called by the pipeline during initialization.
+// It creates the component with default values; actual configuration happens
+// later in Configure().
+//
+// The global 'bc' variable is set to enable access from package-level functions
+// like block size calculations.
+//
+// Returns a new BlockCache component implementing the internal.Component interface.
 func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{
 		fileLocks: common.NewLockMap(),
@@ -623,7 +998,29 @@ func NewBlockCacheComponent() internal.Component {
 	return comp
 }
 
-// On init register this component to pipeline and supply your constructor
+// init registers the BlockCache component with the pipeline.
+//
+// This function is called automatically when the package is imported.
+// It performs two tasks:
+//
+//  1. Registers the component factory with the pipeline so BlockCache can be
+//     included in the component chain
+//  2. Defines command-line flags for block cache configuration
+//
+// Command-line flags:
+//   - --block-cache-block-size: Block size in MB
+//   - --block-cache-pool-size: Total memory pool size in MB
+//   - --block-cache-path: Path for disk caching (future feature)
+//   - --block-cache-disk-size: Disk cache size in MB (future feature)
+//   - --block-cache-disk-timeout: Disk cache timeout in seconds (future feature)
+//   - --block-cache-prefetch: Number of blocks to prefetch
+//   - --block-cache-parallelism: Number of worker threads
+//   - --block-cache-prefetch-on-open: Enable prefetch on file open
+//   - --block-cache-strong-consistency: Enable strong consistency mode
+//   - --block-cache-defer-empty-file-creation: Defer empty file creation to close
+//
+// These flags are bound to the configuration system and can be set via
+// command line or configuration file.
 func init() {
 	internal.AddComponent(compName, NewBlockCacheComponent)
 	blockSizeMb := config.AddFloat64Flag("block-cache-block-size", 0.0, "Size (in MB) of a block to be downloaded for block-cache.")
