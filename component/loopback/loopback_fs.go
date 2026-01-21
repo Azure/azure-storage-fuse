@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -263,16 +264,17 @@ func (lfs *LoopbackFS) CreateLink(options internal.CreateLinkOptions) error {
 func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("LoopbackFS::DeleteFile : name=%s", options.Name)
 	path := filepath.Join(lfs.path, options.Name)
-	
+
 	// Remove the file
 	err := os.Remove(path)
 	if err != nil {
 		return err
 	}
-	
-	// Also remove the saved block list for this file
+
+	// Also remove the saved block list for this file, and all the blocks data.
 	lfs.blockLists.Delete(options.Name)
-	
+	removeAllFilesWithGivenPrefix(path)
+
 	return nil
 }
 
@@ -306,18 +308,18 @@ func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("LoopbackFS::RenameFile : %s -> %s", options.Src, options.Dst)
 	oldPath := filepath.Join(lfs.path, options.Src)
 	newPath := filepath.Join(lfs.path, options.Dst)
-	
+
 	err := os.Rename(oldPath, newPath)
 	if err != nil {
 		return err
 	}
-	
+
 	// Move the block list from old name to new name
 	if value, ok := lfs.blockLists.Load(options.Src); ok {
 		lfs.blockLists.Store(options.Dst, value)
 		lfs.blockLists.Delete(options.Src)
 	}
-	
+
 	return nil
 }
 
@@ -414,11 +416,11 @@ func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error 
 	if err != nil {
 		return err
 	}
-	
+
 	// Clear the saved block list when truncating
 	// The file structure has changed, so the old block list is no longer valid
 	lfs.blockLists.Delete(options.Name)
-	
+
 	return nil
 }
 
@@ -482,7 +484,7 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 	info, err := os.Lstat(path)
 	if err != nil {
 		log.Err("LoopbackFS::GetAttr : error [%s]", err)
-		return &internal.ObjAttr{}, err
+		return &internal.ObjAttr{}, err.(*fs.PathError).Err
 	}
 	attr := &internal.ObjAttr{
 		Path:  options.Name,
@@ -529,7 +531,7 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 
 	mainFilepath := filepath.Join(lfs.path, options.Name)
 
-	blob, err := os.OpenFile(mainFilepath, os.O_RDWR|os.O_CREATE, os.FileMode(0777))
+	blob, err := os.OpenFile(mainFilepath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(0777))
 	if err != nil {
 		log.Err("LoopbackFS::CommitData : error opening [%s]", err)
 		return err
@@ -588,10 +590,10 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 	}
 
 	// delete the staged files
-	for _, id := range options.List {
-		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
-		_ = os.Remove(path)
-	}
+	// for _, id := range options.List {
+	// 	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
+	// 	_ = os.Remove(path)
+	// }
 
 	err = blob.Close()
 	if err != nil {
