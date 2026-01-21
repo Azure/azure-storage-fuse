@@ -1,0 +1,26 @@
+[global]
+ioengine=libaio
+direct=0
+rw=randwrite
+bs=128k
+size=512m
+numjobs=4
+nrfiles=16
+file_service_type=random
+group_reporting=1
+
+; Integrity / failure behavior
+verify=crc32c
+verify_interval=4k
+do_verify=1
+verify_fatal=1
+verify_async=0
+exitall_on_error=1
+continue_on_error=none
+; Make sure fio doesn't "pass" while ignoring errors
+disk_util=0
+
+; Make data hit your FUSE FS (not just buffered) for this test
+fsync=1
+
+[job1]
