@@ -123,6 +123,30 @@ steps:
     workingDirectory: $(MOUNT_DIR)
 
   - script: |
+      ls -lrt
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio $(WORK_DIR)/test/fio/verify-basic.fio || { echo "VERIFY FAILED"; exit 1; }
+    displayName: 'verify-basic'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      ls -lrt
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio $(WORK_DIR)/test/fio/verify-mixed.fio || { echo "VERIFY FAILED"; exit 1; }
+    displayName: 'verify-mixed'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      ls -lrt
+      rm -rf ./*
+      echo "******FIO JOB STARTING*******"
+      fio $(WORK_DIR)/test/fio/verify-sharedfile-no-overlap.fio || { echo "VERIFY FAILED"; exit 1; }
+    displayName: 'verify-sharedfile-no-overlap'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
       tail -n 5000 blobfuse2-logs.txt
     displayName: 'View Logs'
     condition: failed()
