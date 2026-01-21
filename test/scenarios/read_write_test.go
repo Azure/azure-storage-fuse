@@ -135,6 +135,10 @@ func TestWriteReadData(t *testing.T) {
 			assert.Equal(t, bytesRead, bytesWritten)
 			totalRead += bytesRead
 		}
+		err = fileRead.Close()
+		assert.NoError(t, err)
+		err = fileWrite.Close()
+		assert.NoError(t, err)
 	}
 	checkFileIntegrity(t, filename)
 	removeFiles(t, filename)
