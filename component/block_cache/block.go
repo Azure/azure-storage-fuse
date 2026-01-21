@@ -18,8 +18,9 @@ var ErrInvalidBlockList = errors.New("Invalid Block List, not compatible with Bl
 // blockState represents the current state of a block in its lifecycle.
 //
 // State transitions:
-//   localBlock -> uncommitedBlock -> committedBlock
-//   committedBlock -> localBlock (when modified)
+//
+//	localBlock -> uncommitedBlock -> committedBlock
+//	committedBlock -> localBlock (when modified)
 //
 // These states track whether a block's data is only in memory, uploaded but
 // not committed, or fully committed to storage.

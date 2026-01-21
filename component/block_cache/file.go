@@ -13,34 +13,77 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
-// Note: There is a reason why we are storing the references to open handles inside a file rather
-// maintaing a counter, because to support deferring the removal of files when some open handles are present.
-// At that time we dont want to iterate over entire open handle map to change some fields
+// File represents a cached file with associated metadata and open handles.
+//
+// Overview:
+//
+// The File struct is the central structure for managing file state in BlockCache.
+// Multiple file handles can reference the same File object, allowing concurrent
+// access while maintaining consistent state.
+//
+// Key Responsibilities:
+//
+//   - Track all open handles for a file
+//   - Maintain file size (both in memory and on storage)
+//   - Manage the list of blocks that make up the file
+//   - Coordinate read and write operations
+//   - Handle flush operations to sync data to storage
+//
+// Concurrency:
+//
+//   - File-level RWMutex protects metadata and block list
+//   - Atomic operations protect size and error fields
+//   - Pending operation tracking prevents race conditions during flush
+//
+// Lifecycle:
+//
+//  1. Created when first handle is opened (via getFileFromPath)
+//  2. Shared across multiple handles to the same path
+//  3. Removed from file map when last handle is closed
+//  4. All buffers released when file is removed
+//
+// Note: We store references to open handles (rather than just counting them)
+// to support deferred file removal. When a file is deleted while handles are
+// still open, we can iterate through handles to mark them appropriately.
 type File struct {
-	mu            sync.RWMutex
-	Name          string                         // File Name
-	sizeOnStorage int64                          // File Size on the Azure storage
-	size          int64                          // File Size
-	Etag          string                         // Etag of the file
-	handles       map[*handlemap.Handle]struct{} // Open file handles for this file
-	blockList     *blockList                     //  These blocks inside blocklist is used for files which can both read and write.
-	synced        bool                           // Is file synced with Azure storage?
+	mu            sync.RWMutex                   // Protects file metadata and block list
+	Name          string                         // File path (absolute)
+	sizeOnStorage int64                          // File size as last known in Azure Storage
+	size          int64                          // Current file size (may differ from storage if modified)
+	Etag          string                         // ETag from Azure Storage (for consistency checks)
+	handles       map[*handlemap.Handle]struct{} // Set of open handles for this file
+	blockList     *blockList                     // Ordered list of blocks composing this file
+	synced        bool                           // True if file is synchronized with Azure Storage
 
-	// Number of pending read operations
-	numPendingReads atomic.Int32
+	// Concurrency tracking for read operations
+	numPendingReads atomic.Int32 // Number of active read operations
 
-	// Store any error occurred during file operations
-	// If we encounter any write error, we set this error and return it for subsequent operations.
-	err atomic.Value
-	//
-	// To wait for pending writes to complete during flushing the file to the storage.
+	// Error handling: stores any error encountered during file operations.
+	// Once set, subsequent operations fail fast with this error.
+	// This provides "sticky error" semantics to prevent cascading failures.
+	err atomic.Value // Stores string (error message) or nil
+
+	// Synchronization for write operations during flush.
+	// Writers increment this before modifying the file, allowing flush to wait
+	// for all pending writes to complete before uploading data.
 	pendingWriters sync.WaitGroup
-	//
-	// If file is small enough to fit in a single block, then we can optimize the flush to do putBlob instead of
-	// putBlock & putBlockList. This boolean indicates whether the file is flushed using putBlob previously.
+
+	// Optimization flag: if true, the file was uploaded using PutBlob (for small files)
+	// rather than PutBlock + PutBlockList. This tracks the upload method for
+	// consistency during subsequent flushes.
 	singleBlockFilePersisted bool
 }
 
+// createFile creates a new File instance with default values.
+//
+// Parameters:
+//   - fileName: Full path to the file
+//
+// Returns a new File object with:
+//   - Empty handle map
+//   - Empty block list (state: blockListNotRetrieved)
+//   - Size set to -1 (indicates uninitialized)
+//   - Synced set to true (no pending changes)
 func createFile(fileName string) *File {
 	f := &File{
 		Name:          fileName,
@@ -54,6 +97,16 @@ func createFile(fileName string) *File {
 	return f
 }
 
+// updateFileSize atomically updates the file size if the new size is larger.
+//
+// This method ensures file size only increases, preventing corruption from
+// out-of-order updates. Uses compare-and-swap for thread-safe updates.
+//
+// Parameters:
+//   - size: New file size to set (if larger than current size)
+//
+// This is called after write operations to extend the file size.
+// Multiple concurrent writes may call this, so CAS ensures correct ordering.
 func (f *File) updateFileSize(size int64) {
 	for {
 		currentSize := atomic.LoadInt64(&f.size)
@@ -67,6 +120,35 @@ func (f *File) updateFileSize(size int64) {
 	}
 }
 
+// read reads data from the file into the provided buffer.
+//
+// This method implements the core read logic for BlockCache, handling:
+//
+//  1. Block-level I/O: Maps file offset to blocks and reads from each block
+//  2. Cache management: Gets or creates buffer descriptors for blocks
+//  3. Download coordination: Triggers downloads for uncached blocks
+//  4. Flush handling: Flushes uncommitted blocks before reading
+//  5. Buffer cleanup: Removes fully-read buffers to free cache space
+//
+// Parameters:
+//   - options: Read options including offset, data buffer, and handle
+//
+// Returns:
+//   - int: Number of bytes read
+//   - error: Any error encountered (EOF if reading past end of file)
+//
+// Concurrency:
+//   - Tracks pending reads via numPendingReads for monitoring
+//   - Multiple reads can proceed concurrently (shared block locks)
+//   - Reads may block waiting for downloads to complete
+//
+// Performance optimization:
+//   - Removes buffers from cache after they are fully read
+//   - This frees space for more useful blocks (prefetch, write buffers)
+//
+// Thread Safety:
+// Safe to call concurrently from multiple goroutines, even for the same file.
+// Block-level locking ensures consistent reads during concurrent operations.
 func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
 	f.numPendingReads.Add(1)
 	defer f.numPendingReads.Add(-1)
@@ -159,6 +241,30 @@ func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
 	return bytesRead, nil
 }
 
+// scheduleReadAhead triggers prefetching of blocks for sequential access patterns.
+//
+// This method analyzes the access pattern using the pattern detector and schedules
+// asynchronous downloads for future blocks if sequential access is detected.
+//
+// Parameters:
+//   - pd: Pattern detector tracking this handle's access pattern
+//   - offset: Current read offset
+//
+// Behavior:
+//   - Only schedules read-ahead for sequential patterns
+//   - Prefetches up to bc.prefetch blocks ahead
+//   - Tracks next read-ahead block index to avoid duplicate prefetches
+//   - Skips blocks that are already in cache
+//   - Stops when reaching end of file
+//
+// Why per-handle detection:
+// Different handles may read the same file with different patterns
+// (e.g., one sequential, one random). Per-handle detection optimizes
+// for each access pattern independently.
+//
+// Async operation:
+// Read-ahead downloads run asynchronously. The calling read operation doesn't
+// wait for prefetches to complete. Future reads benefit from prefetched data.
 func (f *File) scheduleReadAhead(pd *patternDetector, offset int64) {
 	patterntype := pd.updateAccessPattern(offset)
 	if patterntype != patternSequential {
@@ -220,8 +326,46 @@ func (f *File) scheduleReadAhead(pd *patternDetector, offset int64) {
 	}
 }
 
-// write: writes data to the file at the given offset.
-// This should always write len(options.Data) bytes, otherwise it must return an error.
+// write writes data to the file at the specified offset.
+//
+// This method implements the core write logic for BlockCache, handling:
+//
+//  1. Block allocation: Creates new blocks as needed to cover write range
+//  2. Buffer management: Gets or creates buffers for modified blocks
+//  3. Data copying: Copies user data into cached blocks
+//  4. Dirty tracking: Marks modified blocks as dirty
+//  5. Upload scheduling: Triggers async uploads for full blocks
+//  6. Size updates: Extends file size if write extends beyond current EOF
+//  7. Error handling: Implements sticky error semantics
+//
+// Parameters:
+//   - options: Write options including offset, data buffer, and handle
+//
+// Returns an error if:
+//   - Write would exceed maximum file size (blockSize * MAX_BLOCKS)
+//   - Previous write operation failed (sticky error)
+//   - Block allocation or buffer acquisition fails
+//
+// Write Behavior:
+//
+//   - Partial block writes are supported (read-modify-write)
+//   - Multiple writes to same block accumulate in memory
+//   - Blocks are uploaded when full or during flush
+//   - Writes are serialized per file via file mutex
+//   - Write wait group tracks pending writes for flush coordination
+//
+// Performance optimizations:
+//
+//   - Async upload when block is full and no other references exist
+//   - Write-through for completed blocks reduces flush latency
+//
+// Thread Safety:
+// While multiple goroutines can call write concurrently, the file mutex
+// serializes writes to maintain consistency. Each write operation completes
+// atomically from the file's perspective.
+//
+// Important: This method MUST write all len(options.Data) bytes successfully
+// or return an error. Partial writes are not allowed.
 func (f *File) write(options *internal.WriteFileOptions) error {
 
 	offset := options.Offset
@@ -342,6 +486,60 @@ func (f *File) write(options *internal.WriteFileOptions) error {
 	return nil
 }
 
+// flush synchronizes all file data with Azure Storage.
+//
+// This is the most complex operation in BlockCache, handling:
+//
+//  1. Wait for pending writes: Ensures no writes are in progress
+//  2. Block state analysis: Identifies which blocks need uploading
+//  3. Sparse block handling: Uploads zero blocks for unwritten regions
+//  4. Dirty block upload: Uploads all modified blocks
+//  5. Block list commit: Calls PutBlockList to finalize the file
+//
+// Parameters:
+//   - takeFileLock: If true, acquires exclusive file lock; if false, assumes lock is held
+//
+// Returns an error if any upload or commit operation fails.
+//
+// Block Upload Logic:
+//
+//   - committedBlock: Already in storage, no upload needed
+//   - uncommitedBlock: Already uploaded via StageData, no re-upload needed
+//   - localBlock (no buffer): Sparse block, upload zero-filled data
+//   - localBlock (with buffer, dirty): Modified block, upload actual data
+//   - localBlock (with buffer, not dirty): Bug (should not happen)
+//
+// Sparse Block Optimization:
+//
+// When a file is extended (e.g., via truncate), new blocks may exist in the
+// block list but have never been written. These are "sparse" blocks. Rather
+// than allocating buffers for them, we upload a single zero block and reuse
+// its block ID for all sparse blocks (except the last block).
+//
+// File Extension Handling:
+//
+// If a file is extended (write beyond previous EOF), the last block of the
+// previous size may need to be extended with zeros. This is detected by
+// comparing size with sizeOnStorage.
+//
+// Empty Files:
+//
+// Files with no blocks (zero length) are created using CreateFile rather
+// than PutBlockList, as Azure Storage requires at least one block for
+// PutBlockList.
+//
+// Error Handling:
+//
+// Any upload or commit error is stored in f.err (sticky error semantics).
+// Subsequent operations will fail fast with this error.
+//
+// Thread Safety:
+//
+// This method must be called with the file lock held (or takeFileLock=true).
+// It waits for all pending writers to complete before proceeding.
+//
+// Important: After flush succeeds, f.synced is set to true and subsequent
+// flush calls become no-ops until the file is modified again.
 func (f *File) flush(takeFileLock bool) error {
 	log.Debug("File::flush: Flushing file: %s, takeFileLock: %v", f.Name, takeFileLock)
 
@@ -557,6 +755,58 @@ func (f *File) flush(takeFileLock bool) error {
 	return nil
 }
 
+// truncate changes the file size to the specified value.
+//
+// This method handles both shrinking and extending files, with different
+// operations required for each case:
+//
+// Shrinking (newSize < currentSize):
+//  1. Flush file to ensure all data is in storage
+//  2. Reduce number of blocks to fit new size
+//  3. Release buffers for removed blocks
+//  4. Clear partial data in last block
+//  5. Mark last block as dirty (needs re-upload with correct size)
+//  6. Flush again to commit the truncation
+//
+// Extending (newSize > currentSize):
+//  1. Flush file to ensure current state is saved
+//  2. Add new zero-filled blocks as needed
+//  3. All new blocks share the same block ID (zero block optimization)
+//  4. Flush again to commit the extension
+//
+// Parameters:
+//   - options: Truncate options including new size and handle
+//
+// Returns an error if:
+//   - Previous write operation failed (sticky error)
+//   - Flush operations fail
+//   - Buffer operations fail
+//
+// Block Management:
+//
+//   - Shrinking: Blocks beyond newSize are removed from block list
+//   - Extending: New blocks are added with localBlock state
+//   - Last block: Always marked as localBlock and dirty after truncate
+//
+// Zero-filling:
+//
+// When extending, new blocks are zero-filled implicitly (during flush,
+// sparse blocks are uploaded as zeros). When shrinking, the remainder
+// of the last block is explicitly zero-filled for security and consistency.
+//
+// Flush Behavior:
+//
+// Truncate performs TWO flushes:
+//  1. Before: Ensures current data is saved (prevents data loss)
+//  2. After: Commits the size change to storage
+//
+// Thread Safety:
+//
+// This method acquires exclusive file lock to prevent concurrent modifications.
+// It's safe to call from multiple goroutines.
+//
+// Important: newSize must be within [0, maxFileSize]. Truncating beyond
+// maxFileSize is not supported.
 func (f *File) truncate(options *internal.TruncateFileOptions) error {
 	log.Debug("File::truncate: Truncating file: %s to size: %d", f.Name, options.NewSize)
 	f.mu.Lock()

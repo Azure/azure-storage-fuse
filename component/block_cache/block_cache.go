@@ -42,20 +42,20 @@
 //
 // # Key Concepts
 //
-// - **Block**: A fixed-size chunk of file data (configurable, default 16MB). Files are divided
-//   into sequential blocks for caching.
+//   - **Block**: A fixed-size chunk of file data (configurable, default 16MB). Files are divided
+//     into sequential blocks for caching.
 //
-// - **Buffer**: An in-memory storage area that holds the actual data for a block. Buffers are
-//   allocated from a fixed-size buffer pool.
+//   - **Buffer**: An in-memory storage area that holds the actual data for a block. Buffers are
+//     allocated from a fixed-size buffer pool.
 //
-// - **Buffer Descriptor**: Metadata structure that tracks the state of a buffer, including
-//   reference count, dirty flag, validity, and association with a block.
+//   - **Buffer Descriptor**: Metadata structure that tracks the state of a buffer, including
+//     reference count, dirty flag, validity, and association with a block.
 //
-// - **Buffer Table Manager**: Maps blocks to their corresponding buffer descriptors, enabling
-//   fast lookup of cached data.
+//   - **Buffer Table Manager**: Maps blocks to their corresponding buffer descriptors, enabling
+//     fast lookup of cached data.
 //
-// - **Free List**: Manages available buffers, implementing allocation and eviction policies
-//   when the buffer pool is exhausted.
+//   - **Free List**: Manages available buffers, implementing allocation and eviction policies
+//     when the buffer pool is exhausted.
 //
 // # Architecture
 //
@@ -151,11 +151,11 @@ import (
 //   - Concurrent access management through reference counting
 //
 // Lifecycle:
-//   1. Constructor (NewBlockCacheComponent) creates the component
-//   2. Configure() reads configuration and initializes parameters
-//   3. Start() initializes buffer pool and worker threads
-//   4. File operations (OpenFile, ReadInBuffer, WriteFile, etc.) handle I/O
-//   5. Stop() cleans up resources and stops workers
+//  1. Constructor (NewBlockCacheComponent) creates the component
+//  2. Configure() reads configuration and initializes parameters
+//  3. Start() initializes buffer pool and worker threads
+//  4. File operations (OpenFile, ReadInBuffer, WriteFile, etc.) handle I/O
+//  5. Stop() cleans up resources and stops workers
 //
 // Thread Safety:
 // All methods are thread-safe and designed for concurrent access from multiple FUSE threads.
@@ -245,16 +245,16 @@ type BlockCacheOptions struct {
 
 // Component configuration constants
 const (
-	compName         = "block_cache"  // Component name used in configuration and logs
-	defaultTimeout   = 120            // Default disk cache timeout in seconds
-	defaultBlockSize = 16             // Default block size in megabytes
-	MAX_POOL_USAGE   uint32 = 80      // Maximum buffer pool usage threshold (percentage)
-	MIN_POOL_USAGE   uint32 = 50      // Minimum buffer pool usage threshold (percentage)
-	MIN_PREFETCH     = 5              // Minimum number of blocks for prefetch
-	MIN_WRITE_BLOCK  = 3              // Minimum number of blocks for write operations
-	MIN_RANDREAD     = 10             // Minimum random read threshold
-	MAX_FAIL_CNT     = 3              // Maximum failure count before error
-	MAX_BLOCKS       = 50000          // Maximum number of blocks per file (limits file size)
+	compName                = "block_cache" // Component name used in configuration and logs
+	defaultTimeout          = 120           // Default disk cache timeout in seconds
+	defaultBlockSize        = 16            // Default block size in megabytes
+	MAX_POOL_USAGE   uint32 = 80            // Maximum buffer pool usage threshold (percentage)
+	MIN_POOL_USAGE   uint32 = 50            // Minimum buffer pool usage threshold (percentage)
+	MIN_PREFETCH            = 5             // Minimum number of blocks for prefetch
+	MIN_WRITE_BLOCK         = 3             // Minimum number of blocks for write operations
+	MIN_RANDREAD            = 10            // Minimum random read threshold
+	MAX_FAIL_CNT            = 3             // Maximum failure count before error
+	MAX_BLOCKS              = 50000         // Maximum number of blocks per file (limits file size)
 )
 
 // Verification to check satisfaction criteria with Component Interface
