@@ -57,23 +57,23 @@ import (
 )
 
 const (
-	integrationTestMountPath  = "/tmp/blobfuse_integration_mount"
-	integrationTestCachePath  = "/tmp/blobfuse_integration_cache"
+	integrationTestMountPath    = "/tmp/blobfuse_integration_mount"
+	integrationTestCachePath    = "/tmp/blobfuse_integration_cache"
 	integrationTestLoopbackPath = "/tmp/blobfuse_integration_loopback"
 )
 
 type BlockCacheLoopbackIntegrationTestSuite struct {
 	suite.Suite
-	assert      *assert.Assertions
-	blockCache  *BlockCache
-	loopbackFS  *loopback.LoopbackFS
-	testPath    string
-	cachePath   string
+	assert     *assert.Assertions
+	blockCache *BlockCache
+	loopbackFS *loopback.LoopbackFS
+	testPath   string
+	cachePath  string
 }
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) SetupTest() {
 	suite.assert = assert.New(suite.T())
-	
+
 	// Generate unique test paths for this test
 	testID := fmt.Sprintf("%d", time.Now().UnixNano())
 	suite.testPath = filepath.Join(integrationTestLoopbackPath, testID)
@@ -147,7 +147,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TearDownTest() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileCreateAndOpen() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_create_open.txt"
 
 	// Create file
@@ -171,7 +171,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileCreateAndOpen(
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileRead() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_read.txt"
 	content := "Hello, World! This is a test file for reading."
 
@@ -209,7 +209,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileRead() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileWrite() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_write.txt"
 	content := "This is test content for writing."
 
@@ -249,7 +249,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileWrite() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestWriteThenRead() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_write_read.txt"
 	content := "Data to write and then read back for verification."
 
@@ -302,7 +302,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestWriteThenRead() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileTruncate() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_truncate.txt"
 	initialContent := "This is a longer content that will be truncated."
 
@@ -362,7 +362,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileTruncate() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileTruncateToZero() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_truncate_zero.txt"
 	initialContent := "This content will be truncated to zero."
 
@@ -400,7 +400,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileTruncateToZero() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileRename() {
 	defer suite.TearDownTest()
-	
+
 	oldName := "test_old_name.txt"
 	newName := "test_new_name.txt"
 	content := "Content for rename test."
@@ -460,7 +460,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileRename() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileDelete() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_delete.txt"
 	content := "This file will be deleted."
 
@@ -497,7 +497,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileDelete() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestReadNonExistentFile() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "nonexistent.txt"
 
 	// Try to open non-existent file
@@ -515,7 +515,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestReadNonExistentFile() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReads() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_concurrent_reads.txt"
 	content := strings.Repeat("Concurrent read test data. ", 100)
 
@@ -576,11 +576,11 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReads() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentWrites() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_concurrent_writes.txt"
 	numWriters := 5
 	contentPerWriter := "Writer data chunk. "
-	
+
 	// Create file
 	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{
 		Name: fileName,
@@ -667,7 +667,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentWrites() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReadWrite() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_concurrent_read_write.txt"
 	initialContent := strings.Repeat("Initial data. ", 50)
 
@@ -759,14 +759,14 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReadWrite() {
 		suite.T().Logf("Error during concurrent read/write: %v", err)
 		errorCount++
 	}
-	
+
 	// Allow some errors due to concurrent access but ensure no deadlocks
 	suite.assert.Less(errorCount, numReaders+numWriters, "Too many errors during concurrent operations")
 }
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestMultipleHandlesToSameFile() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_multiple_handles.txt"
 	content := "Content for multiple handles test."
 
@@ -813,9 +813,9 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestMultipleHandlesToSameFi
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestInterleavedReadWrite() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_interleaved_ops.txt"
-	
+
 	// Create file
 	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{
 		Name: fileName,
@@ -828,7 +828,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestInterleavedReadWrite() 
 	// Perform interleaved operations
 	operations := []string{"write", "read", "write", "read", "write", "read"}
 	offset := int64(0)
-	
+
 	for i, op := range operations {
 		handle, err := suite.blockCache.OpenFile(internal.OpenFileOptions{
 			Name:  fileName,
@@ -872,7 +872,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestInterleavedReadWrite() 
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestPartialReadWrite() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_partial_ops.txt"
 	fullContent := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -897,8 +897,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestPartialReadWrite() {
 
 	// Read partial content from different offsets
 	testCases := []struct {
-		offset int64
-		length int
+		offset   int64
+		length   int
 		expected string
 	}{
 		{0, 10, fullContent[0:10]},
@@ -932,10 +932,10 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestPartialReadWrite() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBlockBoundaryOperations() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_block_boundary.txt"
 	blockSize := 1024 * 1024 // 1MB (matching config)
-	
+
 	// Create content that spans multiple blocks
 	content := make([]byte, blockSize*2+500)
 	for i := range content {
@@ -1000,10 +1000,10 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBlockBoundaryOperations
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestLargeFileOperations() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_large_file.txt"
 	size := 5 * 1024 * 1024 // 5MB
-	
+
 	// Create large content with pattern
 	content := make([]byte, size)
 	pattern := []byte("LARGE_FILE_TEST_PATTERN_")
@@ -1056,7 +1056,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestLargeFileOperations() {
 	for i := 0; i < 5; i++ {
 		offset := rand.Int63n(int64(size - 1000))
 		buffer := make([]byte, 1000)
-		
+
 		bytesRead, err := suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{
 			Handle: handle,
 			Offset: offset,
@@ -1073,10 +1073,10 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestLargeFileOperations() {
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestSequentialVsRandomAccess() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_access_patterns.txt"
 	size := 2 * 1024 * 1024 // 2MB
-	
+
 	content := make([]byte, size)
 	for i := range content {
 		content[i] = byte(i % 256)
@@ -1128,7 +1128,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestSequentialVsRandomAcces
 	for i := 0; i < 20; i++ {
 		offset := rand.Intn(size - chunkSize)
 		buffer := make([]byte, chunkSize)
-		
+
 		bytesRead, err := suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{
 			Handle: handle,
 			Offset: int64(offset),
@@ -1149,7 +1149,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestSequentialVsRandomAcces
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRapidOpenCloseCycles() {
 	defer suite.TearDownTest()
-	
+
 	fileName := "test_rapid_cycles.txt"
 	content := "Data for rapid open/close test."
 
@@ -1188,7 +1188,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRapidOpenCloseCycles() 
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestManyConcurrentFileOperations() {
 	defer suite.TearDownTest()
-	
+
 	numFiles := 20
 	numOpsPerFile := 5
 
@@ -1268,7 +1268,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestManyConcurrentFileOpera
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileOperationsUnderMemoryPressure() {
 	defer suite.TearDownTest()
-	
+
 	// Create multiple large files to stress memory
 	// NOTE: Reduced from 10 to 5 files to avoid triggering a known race condition
 	// in block_cache buffer management under extreme concurrency
