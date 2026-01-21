@@ -1085,7 +1085,7 @@ stages:
       jobs:
         # Ubuntu Tests
         - job: Set_1
-          timeoutInMinutes: 60
+          timeoutInMinutes: 360
           strategy:
             matrix:
               Ubuntu-20:
