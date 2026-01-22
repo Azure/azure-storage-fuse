@@ -52,7 +52,7 @@ jobs:
       - name: Setup Go (cache modules)
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.6'
+          go-version-file: 'go.mod'
 
       - name: Build ARM binary (cross-compile with sysroot includes)
         env:
