@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768803985461,
+  "lastUpdate": 1769317148850,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -398,6 +398,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 35.2529296875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Copilot",
+            "username": "Copilot",
+            "email": "198982749+Copilot@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "e52f77ae5619f0ec9ac73e728eb3251539b72201",
+          "message": "Update Go version from 1.25.1 to 1.25.6 (#2115)\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: souravgupta-msft <98318303+souravgupta-msft@users.noreply.github.com>",
+          "timestamp": "2026-01-23T11:51:16Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/e52f77ae5619f0ec9ac73e728eb3251539b72201"
+        },
+        "date": 1769317147233,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 4643.044921875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 2951.267578125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3422.1162109375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 8.927734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 7811.4267578125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 7429.7109375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 36.767578125,
             "unit": "MiB/s"
           }
         ]
