@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768810076992,
+  "lastUpdate": 1769323276441,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -223,6 +223,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 2.918396885669,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Copilot",
+            "username": "Copilot",
+            "email": "198982749+Copilot@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "e52f77ae5619f0ec9ac73e728eb3251539b72201",
+          "message": "Update Go version from 1.25.1 to 1.25.6 (#2115)\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: souravgupta-msft <98318303+souravgupta-msft@users.noreply.github.com>",
+          "timestamp": "2026-01-23T11:51:16Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/e52f77ae5619f0ec9ac73e728eb3251539b72201"
+        },
+        "date": 1769323276190,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.77258011625,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 3.016549389484,
             "unit": "milliseconds"
           }
         ]
