@@ -124,6 +124,26 @@ func GetUsage(path string) (float64, error) {
 	return currSize, nil
 }
 
+// GetAvailFree: Available bytes
+func GetAvailFree(path string) (uint64, uint64, error) {
+	var stat unix.Statfs_t
+	err := unix.Statfs(path, &stat)
+	if err != nil {
+		return 0, 0, err
+	}
+	return stat.Bavail * uint64(stat.Bsize), stat.Bfree * uint64(stat.Bsize), err
+}
+
+// GetFreeRam: Available ram
+func GetFreeRam() (uint64, error) {
+	var sysinfo unix.Sysinfo_t
+	err := unix.Sysinfo(&sysinfo)
+	if err != nil {
+		return 0, err
+	}
+	return sysinfo.Freeram * uint64(sysinfo.Unit), nil
+}
+
 var currentUID int = -1
 
 // GetDiskUsageFromStatfs: Current disk usage of temp path

@@ -47,7 +47,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -268,7 +267,7 @@ func (suite *blockCacheTestSuite) TestStatfsMemory() {
 	stat, ret, err := tobj.blockCache.StatFs()
 	suite.assert.True(ret)
 	suite.assert.NoError(err)
-	suite.assert.NotEqual(&syscall.Statfs_t{}, stat)
+	suite.assert.NotEqual(&common.Statfs_t{}, stat)
 	actual := tobj.blockCache.memSize
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
@@ -295,7 +294,7 @@ func (suite *blockCacheTestSuite) TestStatfsDisk() {
 	stat, ret, err := tobj.blockCache.StatFs()
 	suite.assert.True(ret)
 	suite.assert.NoError(err)
-	suite.assert.NotEqual(&syscall.Statfs_t{}, stat)
+	suite.assert.NotEqual(&common.Statfs_t{}, stat)
 	actual := tobj.blockCache.diskSize
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
@@ -2760,85 +2759,6 @@ func (suite *blockCacheTestSuite) TestSizeOfFileInOpen() {
 	suite.assert.Equal(size, int(_1MB))
 	size = check(os.O_TRUNC) // size of the file would be zero here.
 	suite.assert.Equal(int(0), size)
-}
-
-func (suite *blockCacheTestSuite) TestStrongConsistency() {
-	tobj, err := setupPipeline("")
-	defer tobj.cleanupPipeline()
-
-	suite.assert.NoError(err)
-	suite.assert.NotNil(tobj.blockCache)
-
-	tobj.blockCache.consistency = true
-
-	path := getTestFileName(suite.T().Name())
-	options := internal.CreateFileOptions{Name: path, Mode: 0777}
-	h, err := tobj.blockCache.CreateFile(options)
-	suite.assert.NoError(err)
-	suite.assert.NotNil(h)
-	suite.assert.Equal(int64(0), h.Size)
-	suite.assert.False(h.Dirty())
-
-	storagePath := filepath.Join(tobj.fake_storage_path, path)
-	fs, err := os.Stat(storagePath)
-	suite.assert.NoError(err)
-	suite.assert.Equal(int64(0), fs.Size())
-	//Generate random size of file in bytes less than 2MB
-
-	size := rand.Intn(2097152)
-	data := make([]byte, size)
-
-	n, err := tobj.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: data}) // Write data to file
-	suite.assert.NoError(err)
-	suite.assert.Equal(n, size)
-	suite.assert.Equal(h.Size, int64(size))
-
-	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
-	suite.assert.NoError(err)
-	suite.assert.Nil(h.Buffers.Cooked)
-	suite.assert.Nil(h.Buffers.Cooking)
-
-	localPath := filepath.Join(tobj.disk_cache_path, path+"::0")
-
-	xattrMd5sumOrg := make([]byte, 32)
-	_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sumOrg)
-	suite.assert.NoError(err)
-
-	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR})
-	suite.assert.NoError(err)
-	suite.assert.NotNil(h)
-	_, _ = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
-	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
-	suite.assert.NoError(err)
-	suite.assert.Nil(h.Buffers.Cooked)
-	suite.assert.Nil(h.Buffers.Cooking)
-
-	xattrMd5sumRead := make([]byte, 32)
-	_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sumRead)
-	suite.assert.NoError(err)
-	suite.assert.Equal(xattrMd5sumOrg, xattrMd5sumRead)
-
-	err = syscall.Setxattr(localPath, "user.md5sum", []byte("000"), 0)
-	suite.assert.NoError(err)
-
-	xattrMd5sum1 := make([]byte, 32)
-	_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sum1)
-	suite.assert.NoError(err)
-
-	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR})
-	suite.assert.NoError(err)
-	suite.assert.NotNil(h)
-	_, _ = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
-	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
-	suite.assert.NoError(err)
-	suite.assert.Nil(h.Buffers.Cooked)
-	suite.assert.Nil(h.Buffers.Cooking)
-
-	xattrMd5sum2 := make([]byte, 32)
-	_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sum2)
-	suite.assert.NoError(err)
-
-	suite.assert.NotEqual(xattrMd5sum1, xattrMd5sum2)
 }
 
 func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {

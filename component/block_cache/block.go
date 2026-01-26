@@ -35,8 +35,6 @@ package block_cache
 
 import (
 	"container/list"
-	"fmt"
-	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 )
@@ -73,49 +71,6 @@ type blockInfo struct {
 	id        string // blockID of the block
 	committed bool   // flag to determine if the block has been committed or not
 	size      uint64 // length of data in block
-}
-
-// AllocateBlock creates a new memory mapped buffer for the given size
-func AllocateBlock(size uint64) (*Block, error) {
-	if size == 0 {
-		return nil, fmt.Errorf("invalid size")
-	}
-
-	prot, flags := syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE
-	addr, err := syscall.Mmap(-1, 0, int(size), prot, flags)
-
-	if err != nil {
-		return nil, fmt.Errorf("mmap error: %v", err)
-	}
-
-	block := &Block{
-		data:  addr,
-		state: nil,
-		id:    -1,
-		node:  nil,
-	}
-
-	// we do not create channel here, as that will be created when buffer is retrieved
-	// reinit will always be called before use and that will create the channel as well.
-	block.flags.Reset()
-	block.flags.Set(BlockFlagFresh)
-	return block, nil
-}
-
-// Delete cleans up the memory mapped buffer
-func (b *Block) Delete() error {
-	if b.data == nil {
-		return fmt.Errorf("invalid buffer")
-	}
-
-	err := syscall.Munmap(b.data)
-	b.data = nil
-	if err != nil {
-		// if we get here, there is likely memory corruption.
-		return fmt.Errorf("munmap error: %v", err)
-	}
-
-	return nil
 }
 
 // ReUse reinits the Block by recreating its channel

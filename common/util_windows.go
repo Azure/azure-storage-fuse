@@ -43,6 +43,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/shirou/gopsutil/v4/mem"
 	"golang.org/x/sys/windows"
 )
 
@@ -117,6 +118,31 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 
 	usedSpace := float64(total - avail)
 	return usedSpace, float64(usedSpace) / float64(total) * 100, nil
+}
+
+// GetAvailFree: Available bytes
+func GetAvailFree(path string) (uint64, uint64, error) {
+	var free, total, avail uint64
+
+	pathPtr, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	err = windows.GetDiskFreeSpaceEx(pathPtr, &free, &total, &avail)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return avail, free, nil
+}
+
+// GetFreeRam: Available ram
+func GetFreeRam() (uint64, error) {
+	v, err := mem.VirtualMemory()
+	if err != nil {
+		return 0, err
+	}
+	return v.Available, nil
 }
 
 // List all mount points which were mounted using blobfuse2

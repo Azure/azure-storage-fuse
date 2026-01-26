@@ -1,3 +1,5 @@
+//go:build windows
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -33,19 +35,69 @@
 
 package xload
 
-// Block is a memory mapped buffer with its state to hold data
-type Block struct {
-	Index  int    // Index of the block in the pool
-	Offset int64  // Start offset of the data this block holds
-	Length int64  // Length of data that this block holds
-	Id     string // ID to represent this block in the blob
-	Data   []byte // Data this block holds
+import (
+	"fmt"
+	"unsafe"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"golang.org/x/sys/windows"
+)
+
+// AllocateBlock creates a new memory mapped buffer for the given size
+func AllocateBlock(size uint64) (*Block, error) {
+	if size == 0 {
+		return nil, fmt.Errorf("invalid size")
+	}
+
+	freeRam, err := common.GetFreeRam()
+	if err != nil {
+		log.Warn("could not get free RAM: %v", err)
+	} else {
+		if freeRam < size {
+			// Not enough free RAM to allocate the requested size
+			return nil, fmt.Errorf("insufficient memory available: requested %d bytes, available %d bytes", size, freeRam)
+		}
+	}
+
+	// https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+	ptr, err := windows.VirtualAlloc(
+		0,
+		uintptr(size),
+		windows.MEM_COMMIT|windows.MEM_RESERVE,
+		windows.PAGE_READWRITE,
+	)
+	if err != nil || ptr == 0 {
+		return nil, fmt.Errorf("create virtual mapping error: %v", err)
+	}
+
+	data := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), size)
+
+	block := &Block{
+		Data:  data,
+	}
+
+	return block, nil
 }
 
-// Clear the old data of this block
-func (b *Block) ReUse() {
-	b.Id = ""
-	b.Index = 0
-	b.Offset = 0
-	b.Length = 0
+// Delete cleans up the memory mapped buffer
+func (b *Block) Delete() error {
+	if b.Data == nil {
+		return fmt.Errorf("invalid buffer")
+	}
+
+	addr := uintptr(unsafe.Pointer(unsafe.SliceData(b.Data)))
+
+	err := windows.VirtualFree(
+		uintptr(addr),
+		0,
+		windows.MEM_RELEASE,
+	)
+	b.Data = nil
+
+	if err != nil {
+		return fmt.Errorf("cannot unmap memory mapped file: %w", err)
+	}
+
+	return nil
 }
