@@ -96,6 +96,9 @@ var BfsDisabled = false
 var TransferPipe = "/tmp/transferPipe"
 var PollingPipe = "/tmp/pollPipe"
 
+var EnableMetrics = false
+var MetricsEndpoint = ""
+
 var MountPath string
 
 // LogLevel enum

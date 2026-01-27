@@ -1,0 +1,43 @@
+# Sample Blobfuse2 configuration with OpenTelemetry metrics enabled
+#
+# This configuration demonstrates how to enable OpenTelemetry metrics collection
+# and export to an OTLP collector endpoint
+#
+
+# Enable OpenTelemetry metrics collection
+metrics:
+  enabled: true
+  # OTLP gRPC collector endpoint (e.g., Jaeger, Prometheus with OTLP receiver, etc.)
+  # Default port for OTLP gRPC is 4317
+  endpoint: localhost:4317
+
+# Logging configuration
+logging:
+  type: syslog
+  level: LOG_WARNING
+  file-path: /tmp/blobfuse2.log
+
+# File cache configuration
+file_cache:
+  path: /tmp/blobfuse-cache
+  timeout-sec: 120
+  max-size-mb: 4096
+
+# Azure storage configuration
+# Replace with your storage account credentials
+azstorage:
+  type: block
+  account-name: mystorageaccount
+  # Use one of the following authentication methods:
+  # account-key: <your-account-key>
+  # sas: <your-sas-token>
+  # Or use managed identity / service principal
+  use-http: false
+  container: mycontainer
+
+# Component pipeline
+components:
+  - libfuse
+  - file_cache
+  - attr_cache
+  - azstorage
