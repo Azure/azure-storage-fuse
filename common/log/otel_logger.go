@@ -43,9 +43,9 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	otellog "go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
-	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 )
 
 // OtelLogger : OpenTelemetry-based logger that exports logs via OTLP
@@ -82,10 +82,10 @@ func newOtelLogger(config OtelLoggerConfig) (*OtelLogger, error) {
 
 	// Create OTLP HTTP exporter
 	ctx := context.Background()
-	
+
 	var exporter *otlploghttp.Exporter
 	var err error
-	
+
 	if config.Endpoint != "" {
 		exporter, err = otlploghttp.New(ctx,
 			otlploghttp.WithEndpoint(config.Endpoint),
@@ -95,7 +95,7 @@ func newOtelLogger(config OtelLoggerConfig) (*OtelLogger, error) {
 		// Use default endpoint from environment variables (OTEL_EXPORTER_OTLP_ENDPOINT)
 		exporter, err = otlploghttp.New(ctx)
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OTLP exporter: %w", err)
 	}
@@ -200,7 +200,7 @@ func (l *OtelLogger) logEvent(severity otellog.Severity, lvl string, format stri
 	msg := fmt.Sprintf(format, args...)
 
 	ctx := context.Background()
-	
+
 	// Build attributes
 	attrs := []otellog.KeyValue{
 		otellog.String("level", lvl),
