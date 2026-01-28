@@ -100,10 +100,6 @@ var generatedConfig = &cobra.Command{
 
 		var sb strings.Builder
 
-		if optsGenCfg.directIO {
-			sb.WriteString("direct-io: true\n")
-		}
-
 		if optsGenCfg.readOnly {
 			sb.WriteString("read-only: true\n\n")
 		}
