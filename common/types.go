@@ -155,6 +155,7 @@ type LogConfig struct {
 	TimeTracker    bool
 	Tag            string // logging tag which can be either blobfuse2 or bfusemon
 	LogGoroutineID bool   // whether to log goroutine id in each log line
+	OtelEndpoint   string // OpenTelemetry OTLP endpoint (e.g., "localhost:4318")
 }
 
 // Flags for block
