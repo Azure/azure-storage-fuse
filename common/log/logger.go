@@ -90,6 +90,17 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 	case "silent":
 		silentLogger := &SilentLogger{}
 		return silentLogger, nil
+	case "otel":
+		otelLogger, err := newOtelLogger(OtelLoggerConfig{
+			Endpoint:       config.OtelEndpoint,
+			LogLevel:       config.Level,
+			LogTag:         config.Tag,
+			LogGoroutineID: config.LogGoroutineID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return otelLogger, nil
 	case "", "default", "syslog":
 		sysLogger, err := newSysLogger(config.Level, config.Tag, config.LogGoroutineID)
 		if err != nil {

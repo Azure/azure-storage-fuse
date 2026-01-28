@@ -46,6 +46,15 @@ Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supporte
 ## _New BlobFuse2 Health Monitor_
 One of the biggest BlobFuse2 features is our brand new health monitor. It allows customers gain more insight into how their BlobFuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up.
 
+## OpenTelemetry Integration
+Blobfuse2 now supports OpenTelemetry for sending structured logs to Azure Monitor, Application Insights, or any OpenTelemetry-compatible backend. This enables enhanced observability with rich log attributes and integration with modern monitoring platforms. See [OTEL_SETUP.md](OTEL_SETUP.md) for detailed setup instructions.
+
+**Key Features:**
+- Export logs via OpenTelemetry Protocol (OTLP)
+- Send logs directly to Azure Monitor / Application Insights
+- Rich structured logging with attributes (file, line, PID, mount path, etc.)
+- Compatible with any OpenTelemetry backend
+
 ## Distinctive features compared to blobfuse (v1.x)
 - Blobfuse2 is fuse3 compatible (other than Ubuntu-18 and Debian-9, where it still runs with fuse2)
 - Support for higher service version offering latest and greatest of azure storage features (supported by azure go-sdk)
@@ -62,6 +71,7 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 - CLI to list all blobfuse2 mount points
 - CLI to unmount one, multiple or all blobfuse2 mountpoints
 - Option to dump logs to syslog or a file on disk
+- OpenTelemetry support for sending logs to Azure Monitor and other observability platforms
 - Support for config file encryption and mounting with an encrypted config file via a passphrase (CLI or environment variable) to decrypt the config file
 - CLI to check or update a parameter in the encrypted config
 - Set MD5 sum of a blob while uploading
