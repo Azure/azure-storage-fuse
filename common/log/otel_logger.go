@@ -61,7 +61,7 @@ type OtelLogger struct {
 
 // OtelLoggerConfig : Configuration for OpenTelemetry logger
 type OtelLoggerConfig struct {
-	Endpoint       string // OTLP endpoint (e.g., "http://localhost:4318")
+	Endpoint       string // OTLP endpoint without protocol (e.g., "localhost:4318")
 	LogLevel       common.LogLevel
 	LogTag         string
 	LogGoroutineID bool
@@ -87,10 +87,18 @@ func newOtelLogger(config OtelLoggerConfig) (*OtelLogger, error) {
 	var err error
 
 	if config.Endpoint != "" {
-		exporter, err = otlploghttp.New(ctx,
+		// Only use insecure mode for localhost/127.0.0.1
+		// Production deployments should use TLS
+		opts := []otlploghttp.Option{
 			otlploghttp.WithEndpoint(config.Endpoint),
-			otlploghttp.WithInsecure(),
-		)
+		}
+
+		// Use insecure only for localhost endpoints
+		if config.Endpoint == "localhost:4318" || config.Endpoint == "127.0.0.1:4318" {
+			opts = append(opts, otlploghttp.WithInsecure())
+		}
+
+		exporter, err = otlploghttp.New(ctx, opts...)
 	} else {
 		// Use default endpoint from environment variables (OTEL_EXPORTER_OTLP_ENDPOINT)
 		exporter, err = otlploghttp.New(ctx)
@@ -177,7 +185,7 @@ func (l *OtelLogger) SetLogFileCount(count int) {
 
 func (l *OtelLogger) SetLogLevel(level common.LogLevel) {
 	l.logLevel = level
-	l.logEvent(otellog.SeverityFatal, common.ELogLevel.LOG_CRIT().String(), "Log level reset to : %s", level.String())
+	l.logEvent(otellog.SeverityInfo, common.ELogLevel.LOG_INFO().String(), "Log level reset to : %s", level.String())
 }
 
 func (l *OtelLogger) Destroy() error {
@@ -196,7 +204,12 @@ func (l *OtelLogger) LogRotate() error {
 
 // logEvent : Emit log record via OpenTelemetry
 func (l *OtelLogger) logEvent(severity otellog.Severity, lvl string, format string, args ...any) {
-	_, fn, ln, _ := runtime.Caller(3)
+	_, fn, ln, ok := runtime.Caller(3)
+	if !ok {
+		// If Caller fails, use default values
+		fn = "unknown"
+		ln = 0
+	}
 	msg := fmt.Sprintf(format, args...)
 
 	ctx := context.Background()

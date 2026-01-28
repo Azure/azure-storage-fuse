@@ -100,13 +100,9 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
+      # Export to Azure Monitor only. To also see logs in collector output,
+      # add 'logging' to the exporters list: exporters: [azuremonitor, logging]
       exporters: [azuremonitor]
-    
-    # Uncomment to also see logs in collector output
-    # logs:
-    #   receivers: [otlp]
-    #   processors: [batch]
-    #   exporters: [azuremonitor, logging]
 ```
 
 ### 3. Running the OpenTelemetry Collector
