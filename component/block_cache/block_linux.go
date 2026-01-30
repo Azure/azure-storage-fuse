@@ -1,3 +1,5 @@
+//go:build linux
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -31,21 +33,53 @@
    SOFTWARE
 */
 
-package xload
+package block_cache
 
-// Block is a memory mapped buffer with its state to hold data
-type Block struct {
-	Index  int    // Index of the block in the pool
-	Offset int64  // Start offset of the data this block holds
-	Length int64  // Length of data that this block holds
-	Id     string // ID to represent this block in the blob
-	Data   []byte // Data this block holds
+import (
+	"fmt"
+
+	"golang.org/x/sys/unix"
+)
+
+// AllocateBlock creates a new memory mapped buffer for the given size
+func AllocateBlock(size uint64) (*Block, error) {
+	if size == 0 {
+		return nil, fmt.Errorf("invalid size")
+	}
+
+	prot, flags := unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE
+	addr, err := unix.Mmap(-1, 0, int(size), prot, flags)
+
+	if err != nil {
+		return nil, fmt.Errorf("mmap error: %v", err)
+	}
+
+	block := &Block{
+		data:  addr,
+		state: nil,
+		id:    -1,
+		node:  nil,
+	}
+
+	// we do not create channel here, as that will be created when buffer is retrieved
+	// reinit will always be called before use and that will create the channel as well.
+	block.flags.Reset()
+	block.flags.Set(BlockFlagFresh)
+	return block, nil
 }
 
-// Clear the old data of this block
-func (b *Block) ReUse() {
-	b.Id = ""
-	b.Index = 0
-	b.Offset = 0
-	b.Length = 0
+// Delete cleans up the memory mapped buffer
+func (b *Block) Delete() error {
+	if b.data == nil {
+		return fmt.Errorf("invalid buffer")
+	}
+
+	err := unix.Munmap(b.data)
+	b.data = nil
+	if err != nil {
+		// if we get here, there is likely memory corruption.
+		return fmt.Errorf("munmap error: %v", err)
+	}
+
+	return nil
 }

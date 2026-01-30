@@ -31,21 +31,14 @@
    SOFTWARE
 */
 
-package xload
+package block_cache
 
-// Block is a memory mapped buffer with its state to hold data
-type Block struct {
-	Index  int    // Index of the block in the pool
-	Offset int64  // Start offset of the data this block holds
-	Length int64  // Length of data that this block holds
-	Id     string // ID to represent this block in the blob
-	Data   []byte // Data this block holds
+// setBlockChecksum is a no-op on Windows.
+func setBlockChecksum(localPath string, data []byte, n int) error {
+	return nil
 }
 
-// Clear the old data of this block
-func (b *Block) ReUse() {
-	b.Id = ""
-	b.Index = 0
-	b.Offset = 0
-	b.Length = 0
+// checkBlockConsistency is a no-op on Windows.
+func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes int, localPath, fileName string) bool {
+	return true
 }

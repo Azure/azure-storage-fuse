@@ -34,7 +34,6 @@
 package block_cache
 
 import (
-	"bytes"
 	"container/list"
 	"context"
 	"fmt"
@@ -46,7 +45,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -343,26 +341,24 @@ func (bc *BlockCache) Configure(_ bool) error {
 }
 
 func (bc *BlockCache) getDefaultDiskSize(path string) uint64 {
-	var stat syscall.Statfs_t
-	err := syscall.Statfs(path, &stat)
+	bavail, _, err := common.GetAvailFree(path)
 	if err != nil {
 		log.Info("BlockCache::getDefaultDiskSize : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", bc.Name(), err.Error())
 		return uint64(4192) * _1MB
 	}
 
-	return uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize))
+	return uint64(0.8 * float64(bavail))
 }
 
 func (bc *BlockCache) getDefaultMemSize() uint64 {
-	var sysinfo syscall.Sysinfo_t
-	err := syscall.Sysinfo(&sysinfo)
+	freeRam, err := common.GetFreeRam()
 
 	if err != nil {
 		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of 4GB.", bc.Name(), err.Error())
 		return uint64(4192) * _1MB
 	}
 
-	return uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
+	return uint64(0.8 * (float64)(freeRam))
 }
 
 // CreateFile: Create a new file
@@ -1111,8 +1107,7 @@ func (bc *BlockCache) download(item *workItem) {
 
 			// If user has enabled consistency check then compute the md5sum and save it in xattr
 			if bc.consistency {
-				hash := common.GetCRC64(item.block.data, n)
-				err = syscall.Setxattr(localPath, "user.md5sum", hash, 0)
+				err = setBlockChecksum(localPath, item.block.data, n)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
 				}
@@ -1122,30 +1117,6 @@ func (bc *BlockCache) download(item *workItem) {
 
 	// Just mark the block that download is complete
 	item.block.Ready(BlockStatusDownloaded)
-}
-
-func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes int, localPath, fileName string) bool {
-	if !blockCache.consistency {
-		return true
-	}
-	// Calculate MD5 checksum of the read data
-	actualHash := common.GetCRC64(item.block.data, numberOfBytes)
-
-	// Retrieve MD5 checksum from xattr
-	xattrHash := make([]byte, 8)
-	_, err := syscall.Getxattr(localPath, "user.md5sum", xattrHash)
-	if err != nil {
-		log.Err("BlockCache::download : Failed to get md5sum for file %s [%v]", fileName, err.Error())
-	} else {
-		// Compare checksums
-		if !bytes.Equal(actualHash, xattrHash) {
-			log.Err("BlockCache::download : MD5 checksum mismatch for file %s, expected %v, got %v", fileName, xattrHash, actualHash)
-			_ = os.Remove(localPath)
-			return false
-		}
-	}
-
-	return true
 }
 
 // WriteFile: Write to the local file
@@ -1537,8 +1508,7 @@ func (bc *BlockCache) upload(item *workItem) {
 
 			// If user has enabled consistency check then compute the md5sum and save it in xattr
 			if bc.consistency {
-				hash := common.GetCRC64(item.block.data, int(blockSize))
-				err = syscall.Setxattr(localPath, "user.md5sum", hash, 0)
+				err = setBlockChecksum(localPath, item.block.data, int(blockSize))
 				if err != nil {
 					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
 				}
@@ -1935,7 +1905,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 	return nil
 }
 
-func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
+func (bc *BlockCache) StatFs() (*common.Statfs_t, bool, error) {
 	var maxCacheSize uint64
 	if bc.diskSize > 0 {
 		maxCacheSize = bc.diskSize
@@ -1951,16 +1921,22 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	usage = usage * float64(_1MB)
 
 	available := (float64)(maxCacheSize) - usage
-	statfs := &syscall.Statfs_t{}
-	err := syscall.Statfs("/", statfs)
+	_, free, err := common.GetAvailFree("/")
 	if err != nil {
 		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
-	statfs.Frsize = int64(bc.blockSize)
-	statfs.Blocks = uint64(maxCacheSize) / uint64(bc.blockSize)
-	statfs.Bavail = uint64(math.Max(0, available)) / uint64(bc.blockSize)
-	statfs.Bfree = statfs.Bavail
+
+	statfs := &common.Statfs_t{
+		Blocks:  uint64(maxCacheSize) / uint64(bc.blockSize),
+		Bavail:  uint64(max(0, available)) / uint64(bc.blockSize),
+		Bfree:   free,
+		Bsize:   int64(bc.blockSize),
+		Ffree:   1e9,
+		Files:   1e9,
+		Frsize:  int64(bc.blockSize),
+		Namemax: 255,
+	}
 
 	return statfs, true, nil
 }

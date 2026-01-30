@@ -31,21 +31,43 @@
    SOFTWARE
 */
 
-package xload
+package block_cache
 
-// Block is a memory mapped buffer with its state to hold data
-type Block struct {
-	Index  int    // Index of the block in the pool
-	Offset int64  // Start offset of the data this block holds
-	Length int64  // Length of data that this block holds
-	Id     string // ID to represent this block in the blob
-	Data   []byte // Data this block holds
+import (
+	"bytes"
+	"os"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"golang.org/x/sys/unix"
+)
+
+// setBlockChecksum sets the checksum as an xattr on Linux.
+func setBlockChecksum(localPath string, data []byte, n int) error {
+	hash := common.GetCRC64(data, n)
+	return unix.Setxattr(localPath, "user.md5sum", hash, 0)
 }
 
-// Clear the old data of this block
-func (b *Block) ReUse() {
-	b.Id = ""
-	b.Index = 0
-	b.Offset = 0
-	b.Length = 0
+func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes int, localPath, fileName string) bool {
+	if !blockCache.consistency {
+		return true
+	}
+	// Calculate MD5 checksum of the read data
+	actualHash := common.GetCRC64(item.block.data, numberOfBytes)
+
+	// Retrieve MD5 checksum from xattr
+	xattrHash := make([]byte, 8)
+	_, err := unix.Getxattr(localPath, "user.md5sum", xattrHash)
+	if err != nil {
+		log.Err("BlockCache::download : Failed to get md5sum for file %s [%v]", fileName, err.Error())
+	} else {
+		// Compare checksums
+		if !bytes.Equal(actualHash, xattrHash) {
+			log.Err("BlockCache::download : MD5 checksum mismatch for file %s, expected %v, got %v", fileName, xattrHash, actualHash)
+			_ = os.Remove(localPath)
+			return false
+		}
+	}
+
+	return true
 }

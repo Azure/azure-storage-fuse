@@ -38,7 +38,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,6 +123,7 @@ const (
 	defaultFileCacheTimeout = 120
 	defaultCacheUpdateCount = 100
 	MB                      = 1024 * 1024
+	blockSize               = 4096
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -285,13 +285,12 @@ func (fc *FileCache) Configure(_ bool) error {
 		}
 	}
 
-	var stat syscall.Statfs_t
-	err = syscall.Statfs(fc.tmpPath, &stat)
+	avail, err := fc.getAvailableSize()
 	if err != nil {
 		log.Err("FileCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", fc.Name(), err.Error())
 		fc.maxCacheSize = 4192
 	} else {
-		fc.maxCacheSize = (0.8 * float64(stat.Bavail) * float64(stat.Bsize)) / (MB)
+		fc.maxCacheSize = (0.8 * float64(avail)) / (MB)
 	}
 
 	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB != 0 {
@@ -370,7 +369,7 @@ func (fc *FileCache) OnConfigChange() {
 	_ = fc.policy.UpdateConfig(fc.GetPolicyConfig(conf))
 }
 
-func (fc *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
+func (fc *FileCache) StatFs() (*common.Statfs_t, bool, error) {
 	// cache_size = f_blocks * f_frsize/1024
 	// cache_size - used = f_frsize * f_bavail/1024
 	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
@@ -384,17 +383,24 @@ func (fc *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	usage = usage * MB
 
 	available := maxCacheSize - usage
-	statfs := &syscall.Statfs_t{}
-	err := syscall.Statfs("/", statfs)
+	availableOnCache, err := fc.getAvailableSize()
 	if err != nil {
 		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
-	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
-	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
-	statfs.Bfree = statfs.Bavail
+	
+	statfs := common.Statfs_t{
+		Blocks:  uint64(maxCacheSize) / uint64(blockSize),
+		Bavail:  uint64(max(0, available)) / uint64(blockSize),
+		Bfree:   availableOnCache / uint64(blockSize),
+		Bsize:   blockSize,
+		Ffree:   1e9,
+		Files:   1e9,
+		Frsize:  blockSize,
+		Namemax: 255,
+	}
 
-	return statfs, true, nil
+	return &statfs, true, nil
 }
 
 func (fc *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
@@ -483,28 +489,6 @@ func (fc *FileCache) DeleteDir(options internal.DeleteDirOptions) error {
 
 	go fc.invalidateDirectory(options.Name)
 	return err
-}
-
-// Creates a new object attribute
-func newObjAttr(path string, info fs.FileInfo) *internal.ObjAttr {
-	stat := info.Sys().(*syscall.Stat_t)
-	attrs := &internal.ObjAttr{
-		Path:  path,
-		Name:  info.Name(),
-		Size:  info.Size(),
-		Mode:  info.Mode(),
-		Mtime: time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec),
-		Atime: time.Unix(stat.Atim.Sec, stat.Atim.Nsec),
-		Ctime: time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec),
-	}
-
-	if info.Mode()&os.ModeSymlink != 0 {
-		attrs.Flags.Set(internal.PropFlagSymlink)
-	} else if info.IsDir() {
-		attrs.Flags.Set(internal.PropFlagIsDir)
-	}
-
-	return attrs
 }
 
 // ReadDir: Consolidate entries in storage and local cache to return the children under this path.
@@ -821,7 +805,7 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 	fileExists := false
 	downloadRequired := false
 	lmt := time.Time{}
-	var stat *syscall.Stat_t = nil
+	var fileSize int64
 
 	// The file is not cached then we need to download
 	if !fc.policy.IsCached(localPath) {
@@ -834,7 +818,7 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 		// The file exists in local cache
 		// The file needs to be downloaded if the cacheTimeout elapsed (check last change time and last modified time)
 		fileExists = true
-		stat = finfo.Sys().(*syscall.Stat_t)
+		fileSize = finfo.Size()
 
 		// Deciding based on last modified time is not correct. Last modified time is based on the file was last written
 		// so if file was last written back to container 2 days back then even downloading it now shall represent the same date
@@ -844,8 +828,9 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 		// and hence last change time on local disk will then represent the download time.
 
 		lmt = finfo.ModTime()
+		ctme := getChangeTime(finfo)
 		if time.Since(finfo.ModTime()).Seconds() > fc.cacheTimeout &&
-			time.Since(time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec)).Seconds() > fc.cacheTimeout {
+			time.Since(ctme).Seconds() > fc.cacheTimeout {
 			log.Debug("FileCache::isDownloadRequired : %s not valid as per time checks", localPath)
 			downloadRequired = true
 		}
@@ -876,15 +861,15 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 		}
 	}
 
-	if fc.refreshSec != 0 && !downloadRequired && attr != nil && stat != nil {
+	if fc.refreshSec != 0 && !downloadRequired && attr != nil && fileSize != 0 {
 		// We decided that based on lmt of file file-cache-timeout has not expired
 		// However, user has configured refresh time then check time has elapsed since last download time of file or not
 		// If so, compare the lmt of file in local cache and once in container and redownload only if lmt of container is latest.
 		// If time matches but size does not then still we need to redownlaod the file.
-		if attr.Mtime.After(lmt) || stat.Size != attr.Size {
+		if attr.Mtime.After(lmt) || fileSize != attr.Size {
 			// File has not been modified at storage yet so no point in redownloading the file
 			log.Info("FileCache::isDownloadRequired : File is modified in container, so forcing redownload %s [A-%v : L-%v] [A-%v : L-%v]",
-				blobPath, attr.Mtime, lmt, attr.Size, stat.Size)
+				blobPath, attr.Mtime, lmt, attr.Size, fileSize)
 			downloadRequired = true
 
 			// As we have decided to continue using old file, we reset the timer to check again after refresh time interval
@@ -1169,8 +1154,9 @@ func (fc *FileCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	}
 
 	// Removing f.ReadAt as it involves lot of house keeping and then calls syscall.Pread
-	// Instead we will call syscall directly for better perf
-	return syscall.Pread(options.Handle.FD(), options.Data, options.Offset)
+	// Instead we will call platform-specific pread directly for better perf
+	f.ReadAt(options.Data, options.Offset)
+	return pread(options.Handle.FD(), options.Data, options.Offset)
 }
 
 // WriteFile: Write to the local file
@@ -1206,8 +1192,8 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 	}
 
 	// Removing f.WriteAt as it involves lot of house keeping and then calls syscall.Pwrite
-	// Instead we will call syscall directly for better perf
-	bytesWritten, err := syscall.Pwrite(options.Handle.FD(), options.Data, options.Offset)
+	// Instead we will call platform-specific pwrite directly for better perf
+	bytesWritten, err := pwrite(options.Handle.FD(), options.Data, options.Offset)
 
 	if err == nil {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
@@ -1278,21 +1264,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 			return syscall.EBADF
 		}
 
-		// Flush all data to disk that has been buffered by the kernel.
-		// We cannot close the incoming handle since the user called flush, note close and flush can be called on the same handle multiple times.
-		// To ensure the data is flushed to disk before writing to storage, we duplicate the handle and close that handle.
-		// f.fsync() is another option but dup+close does it quickly compared to sync
-		dupFd, err := syscall.Dup(int(f.Fd()))
-		if err != nil {
-			log.Err("FileCache::FlushFile : error [couldn't duplicate the fd] %s", options.Handle.Path)
-			return syscall.EIO
-		}
-
-		err = syscall.Close(dupFd)
-		if err != nil {
-			log.Err("FileCache::FlushFile : error [unable to close duplicate fd] %s", options.Handle.Path)
-			return syscall.EIO
-		}
+		err := fc.syncFile(f, options.Handle.Path)
 
 		// Write to storage
 		// Create a new handle for the SDK to use to upload (read local file)
