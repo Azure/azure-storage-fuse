@@ -856,16 +856,24 @@ func TestConfigureWorkflow(t *testing.T) {
 		// Reset viper for clean test
 		config.ResetConfig()
 
-		// User sets explicit value
+		// Simulate user setting explicit values before workflow configuration
+		// When a user sets a value, config.IsSet() will return true for that key
 		config.Set("use-attr-cache", "false")
+		config.Set("attr_cache.timeout-sec", "60")
 
+		// Apply training workflow
 		err := configureWorkflow("training")
 		assert.NoError(err)
 
-		// User's explicit setting should not be overridden
-		// Note: Since we check config.IsSet(), the workflow should not override explicit values
-		// However, the current implementation uses Set() which will override
-		// For proper testing, we need to test via the full mount flow with flags
+		// Verify workflow did NOT override user's explicit values
+		// The workflow sets use-attr-cache to true and timeout to 7200
+		// but since user already set these, they should remain unchanged
+		assert.Equal("false", viper.GetString("use-attr-cache"))
+		assert.Equal("60", viper.GetString("attr_cache.timeout-sec"))
+
+		// Verify workflow DID set values that user didn't specify
+		assert.Equal("8192", viper.GetString("file_cache.max-size-mb"))
+		assert.Equal("120", viper.GetString("libfuse.attribute-expiration-sec"))
 	})
 }
 

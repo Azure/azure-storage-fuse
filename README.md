@@ -151,9 +151,9 @@ To learn about a specific command, just include the name of the command (For exa
     * `--filter=<STRING>`: Enable blob filters for read-only mount to restrict the view on what all blobs user can see or read.
     * `--preload`: Enable preload for read-only mount to start downloading all blobs from container when mount succeeds.
     * `--workflow=<training|serving|checkpointing>`: Auto-configure cache settings based on workflow type. This option automatically sets optimal cache configurations for common use cases:
-        - **training**: Optimized for reading multiple training dataset files. Uses file_cache with large cache size (8GB) and long timeout (2 hours) for better read performance.
-        - **serving**: Optimized for model serving workloads. Enables preload feature to download all files on mount, sets read-only mode, and uses moderate cache timeout (1 hour).
-        - **checkpointing**: Optimized for writing large checkpoint files. Uses block_cache with larger blocks (64MB), disables kernel cache for immediate writes, and uses shorter cache timeout (2 minutes).
+        - **training**: Optimized for reading multiple training dataset files. Uses file_cache with large cache size (8GB) and cache timeout (7200 seconds/2 hours), attr_cache timeout (7200 seconds/2 hours) for better read performance.
+        - **serving**: Optimized for model serving workloads. Enables preload feature to download all files on mount, sets read-only mode, attr_cache timeout (3600 seconds/1 hour), and libfuse attribute expiration (300 seconds/5 minutes).
+        - **checkpointing**: Optimized for writing large checkpoint files. Uses block_cache with larger blocks (64MB), disables kernel cache for immediate writes, attr_cache timeout (120 seconds/2 minutes), and libfuse attribute expiration (60 seconds/1 minute).
         - Note: Any explicitly provided cache configuration flags will override the workflow defaults.
 <!--  * `--lazy-write` : To enable async close file handle call and schedule the upload in background. (hidden flag) -->
 - Attribute cache options
