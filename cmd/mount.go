@@ -212,7 +212,7 @@ func configureWorkflow(workflow string) error {
 		// Training workflow: Reading multiple training dataset files
 		// Use file_cache for better performance with multiple file reads
 		log.Info("Mount::configureWorkflow : Training workflow - optimizing for reading multiple dataset files")
-		
+
 		// Enable file_cache if not explicitly configured
 		if !config.IsSet("components") && !config.IsSet("block-cache") && !config.IsSet("streaming") {
 			// File cache will be added to pipeline in the standard flow
@@ -224,7 +224,7 @@ func configureWorkflow(workflow string) error {
 				config.Set("file_cache.max-size-mb", "8192") // 8GB cache for datasets
 			}
 		}
-		
+
 		// Enable attr_cache if not explicitly disabled
 		if !config.IsSet("use-attr-cache") {
 			config.Set("use-attr-cache", "true")
@@ -232,7 +232,7 @@ func configureWorkflow(workflow string) error {
 		if !config.IsSet("attr_cache.timeout-sec") {
 			config.Set("attr_cache.timeout-sec", "7200") // Long timeout for training
 		}
-		
+
 		// Optimize libfuse settings for training
 		if !config.IsSet("libfuse.attribute-expiration-sec") {
 			config.Set("libfuse.attribute-expiration-sec", "120")
@@ -245,12 +245,12 @@ func configureWorkflow(workflow string) error {
 		// Serving workflow: Load model from storage and serve requests
 		// Use preload feature to download all files on mount
 		log.Info("Mount::configureWorkflow : Serving workflow - optimizing for model loading and serving")
-		
+
 		// Enable preload if not explicitly configured
 		if !config.IsSet("preload") && !config.IsSet("components") {
 			config.Set("preload", "true")
 		}
-		
+
 		// Enable attr_cache if not explicitly disabled
 		if !config.IsSet("use-attr-cache") {
 			config.Set("use-attr-cache", "true")
@@ -258,12 +258,12 @@ func configureWorkflow(workflow string) error {
 		if !config.IsSet("attr_cache.timeout-sec") {
 			config.Set("attr_cache.timeout-sec", "3600") // 1 hour for serving
 		}
-		
+
 		// Set read-only mode for serving (preload requirement)
 		if !config.IsSet("read-only") {
 			config.Set("read-only", "true")
 		}
-		
+
 		// Optimize libfuse settings for serving
 		if !config.IsSet("libfuse.attribute-expiration-sec") {
 			config.Set("libfuse.attribute-expiration-sec", "300")
@@ -276,12 +276,12 @@ func configureWorkflow(workflow string) error {
 		// Checkpointing workflow: Writing large checkpoint files
 		// Use block_cache mode for writing and disable kernel cache
 		log.Info("Mount::configureWorkflow : Checkpointing workflow - optimizing for large file writes")
-		
+
 		// Enable block_cache if not explicitly configured
 		if !config.IsSet("block-cache") && !config.IsSet("components") && !config.IsSet("streaming") {
 			config.Set("block-cache", "true")
 		}
-		
+
 		// Configure block_cache for large writes
 		if !config.IsSet("block_cache.block-size-mb") {
 			config.Set("block_cache.block-size-mb", "64") // Larger blocks for checkpoints
@@ -292,12 +292,12 @@ func configureWorkflow(workflow string) error {
 		if !config.IsSet("block_cache.parallelism") {
 			config.Set("block_cache.parallelism", "128") // High parallelism for writes
 		}
-		
+
 		// Disable kernel cache for immediate writes
 		if !config.IsSet("disable-kernel-cache") {
 			config.Set("disable-kernel-cache", "true")
 		}
-		
+
 		// Enable attr_cache if not explicitly disabled
 		if !config.IsSet("use-attr-cache") {
 			config.Set("use-attr-cache", "true")
@@ -305,7 +305,7 @@ func configureWorkflow(workflow string) error {
 		if !config.IsSet("attr_cache.timeout-sec") {
 			config.Set("attr_cache.timeout-sec", "120") // Shorter timeout for checkpointing
 		}
-		
+
 		// Optimize libfuse settings for checkpointing
 		if !config.IsSet("libfuse.attribute-expiration-sec") {
 			config.Set("libfuse.attribute-expiration-sec", "60")
@@ -317,7 +317,7 @@ func configureWorkflow(workflow string) error {
 	default:
 		return fmt.Errorf("invalid workflow type '%s'. Allowed values: training, serving, checkpointing", workflow)
 	}
-	
+
 	return nil
 }
 

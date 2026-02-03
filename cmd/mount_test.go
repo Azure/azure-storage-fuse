@@ -795,10 +795,10 @@ func TestConfigureWorkflow(t *testing.T) {
 	t.Run("TrainingWorkflow", func(t *testing.T) {
 		// Reset viper for clean test
 		config.ResetConfig()
-		
+
 		err := configureWorkflow("training")
 		assert.NoError(err)
-		
+
 		// Verify training-specific settings
 		assert.Equal("7200", viper.GetString("file_cache.timeout-sec"))
 		assert.Equal("8192", viper.GetString("file_cache.max-size-mb"))
@@ -811,10 +811,10 @@ func TestConfigureWorkflow(t *testing.T) {
 	t.Run("ServingWorkflow", func(t *testing.T) {
 		// Reset viper for clean test
 		config.ResetConfig()
-		
+
 		err := configureWorkflow("serving")
 		assert.NoError(err)
-		
+
 		// Verify serving-specific settings
 		assert.Equal("true", viper.GetString("preload"))
 		assert.Equal("true", viper.GetString("use-attr-cache"))
@@ -827,10 +827,10 @@ func TestConfigureWorkflow(t *testing.T) {
 	t.Run("CheckpointingWorkflow", func(t *testing.T) {
 		// Reset viper for clean test
 		config.ResetConfig()
-		
+
 		err := configureWorkflow("checkpointing")
 		assert.NoError(err)
-		
+
 		// Verify checkpointing-specific settings
 		assert.Equal("true", viper.GetString("block-cache"))
 		assert.Equal("64", viper.GetString("block_cache.block-size-mb"))
@@ -846,7 +846,7 @@ func TestConfigureWorkflow(t *testing.T) {
 	t.Run("InvalidWorkflow", func(t *testing.T) {
 		// Reset viper for clean test
 		config.ResetConfig()
-		
+
 		err := configureWorkflow("invalid")
 		assert.Error(err)
 		assert.Contains(err.Error(), "invalid workflow type")
@@ -855,13 +855,13 @@ func TestConfigureWorkflow(t *testing.T) {
 	t.Run("UserOverrideRespected", func(t *testing.T) {
 		// Reset viper for clean test
 		config.ResetConfig()
-		
+
 		// User sets explicit value
 		config.Set("use-attr-cache", "false")
-		
+
 		err := configureWorkflow("training")
 		assert.NoError(err)
-		
+
 		// User's explicit setting should not be overridden
 		// Note: Since we check config.IsSet(), the workflow should not override explicit values
 		// However, the current implementation uses Set() which will override
@@ -877,17 +877,17 @@ func TestWorkflowWithMountOptions(t *testing.T) {
 		// Reset viper and options for clean test
 		config.ResetConfig()
 		options = mountOptions{}
-		
+
 		// Set workflow
 		options.Workflow = "training"
-		
+
 		err := configureWorkflow(options.Workflow)
 		assert.NoError(err)
-		
+
 		// Unmarshal to populate options from config
 		err = config.Unmarshal(&options)
 		assert.NoError(err)
-		
+
 		// Verify that options were populated correctly
 		assert.True(options.AttrCache)
 	})
@@ -896,17 +896,17 @@ func TestWorkflowWithMountOptions(t *testing.T) {
 		// Reset viper and options for clean test
 		config.ResetConfig()
 		options = mountOptions{}
-		
+
 		// Set workflow
 		options.Workflow = "serving"
-		
+
 		err := configureWorkflow(options.Workflow)
 		assert.NoError(err)
-		
+
 		// Unmarshal to populate options from config
 		err = config.Unmarshal(&options)
 		assert.NoError(err)
-		
+
 		// Verify that options were populated correctly
 		assert.True(options.Preload)
 		assert.True(options.AttrCache)
@@ -916,20 +916,19 @@ func TestWorkflowWithMountOptions(t *testing.T) {
 		// Reset viper and options for clean test
 		config.ResetConfig()
 		options = mountOptions{}
-		
+
 		// Set workflow
 		options.Workflow = "checkpointing"
-		
+
 		err := configureWorkflow(options.Workflow)
 		assert.NoError(err)
-		
+
 		// Unmarshal to populate options from config
 		err = config.Unmarshal(&options)
 		assert.NoError(err)
-		
+
 		// Verify that options were populated correctly
 		assert.True(options.BlockCache)
 		assert.True(options.AttrCache)
 	})
 }
-
