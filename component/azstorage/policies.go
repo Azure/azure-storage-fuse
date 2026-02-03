@@ -88,11 +88,11 @@ func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Policy to limit the rate of requests
 type rateLimitingPolicy struct {
-	bandwidthLimiter *rate.Limiter
-	opsLimiter       *rate.Limiter
+	ingressBandwidthLimiter *rate.Limiter
+	opsLimiter              *rate.Limiter
 }
 
-func newRateLimitingPolicy(bytesPerSec int64, opsPerSec int64) policy.Policy {
+func newRateLimitingPolicy(readBytesPerSec int64, opsPerSec int64) policy.Policy {
 	p := &rateLimitingPolicy{}
 
 	// Use 10 second window for burst size calculation for rate limiter.
@@ -108,18 +108,18 @@ func newRateLimitingPolicy(bytesPerSec int64, opsPerSec int64) policy.Policy {
 	// while setting a lower opsPerSec value will limit the number of operations per second.
 	const windowSize = 10
 
-	if bytesPerSec > 0 {
-		bandwidthBurstSize := bytesPerSec * int64(windowSize)
-		burst := int(bandwidthBurstSize)
+	if readBytesPerSec > 0 {
+		ingressBandwidthBurstSize := readBytesPerSec * int64(windowSize)
+		burst := int(ingressBandwidthBurstSize)
 		// On 32-bit systems, int is 32-bit. If bandwidthBurstSize > MaxInt, we need to clamp it.
 		// math.MaxInt is platform dependent.
-		if bandwidthBurstSize > int64(math.MaxInt) {
+		if ingressBandwidthBurstSize > int64(math.MaxInt) {
 			burst = math.MaxInt
 		}
 
-		p.bandwidthLimiter = rate.NewLimiter(rate.Limit(bytesPerSec), burst)
+		p.ingressBandwidthLimiter = rate.NewLimiter(rate.Limit(readBytesPerSec), burst)
 		log.Info("RateLimitingPolicy : Bandwidth limit set to %d bytes/sec with burst size of %d bytes",
-			bytesPerSec, burst)
+			readBytesPerSec, burst)
 	}
 
 	if opsPerSec > 0 {
@@ -150,9 +150,9 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 		}
 	}
 
-	// Limit bandwidth for blob downloads (Azure egress: data leaving Azure Storage).
+	// Limit ingress bandwidth for blob downloads (Azure egress: data leaving Azure Storage).
 	// This policy intentionally applies only to GET requests, which represent download operations.
-	if p.bandwidthLimiter != nil && req.Raw().Method == http.MethodGet {
+	if p.ingressBandwidthLimiter != nil && req.Raw().Method == http.MethodGet {
 		// Check for x-ms-range header
 		// We are not using req.Raw().Header.Get() as it canonicalizes the header name.
 		// Whereas SDK stores the header in the request is stored in lower case.
@@ -168,7 +168,7 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 			if err == nil && size > 0 {
 				// Wait for tokens equal to size.
 				// NOTE: range size is guaranteed to be within int range by parseRangeHeader.
-				err := p.bandwidthLimiter.WaitN(ctx, int(size))
+				err := p.ingressBandwidthLimiter.WaitN(ctx, int(size))
 				if err != nil {
 					log.Err("RateLimitingPolicy : Bandwidth limit wait failed [%s]", err.Error())
 					return nil, err

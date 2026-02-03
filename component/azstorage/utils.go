@@ -118,9 +118,9 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 	}
 
 	perRetryPolicies := []policy.Policy{}
-	if conf.capMbps > 0 || conf.capIOps > 0 {
-		// Convert Mbps to Bytes/sec: 1 Mbps = 131072 Bytes/sec
-		bytesPerSec := conf.capMbps * 131072
+	if conf.capMbpsRead > 0 || conf.capIOps > 0 {
+		// Convert Mbps to Bytes/sec: 1 Mbps = (1024* 1024) / 8 = 131072 Bytes/sec
+		bytesPerSec := conf.capMbpsRead * 131072
 		perRetryPolicies = append(perRetryPolicies, newRateLimitingPolicy(bytesPerSec, conf.capIOps))
 	}
 

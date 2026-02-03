@@ -693,8 +693,8 @@ func init() {
 	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
 	config.BindPFlag(compName+".filter", blobFilter)
 
-	capMbps := config.AddInt64Flag("cap-mbps", -1, "Limit the throughput of downloads from your storage account. Value measured in megabits per second. Default is -1 (no limit)")
-	config.BindPFlag(compName+".cap-mbps", capMbps)
+	capMbpsRead := config.AddInt64Flag("cap-mbps-read", -1, "Limit the throughput of downloads from your storage account. Value measured in megabits per second. Default is -1 (no limit)")
+	config.BindPFlag(compName+".cap-mbps-read", capMbpsRead)
 
 	capIOps := config.AddInt64Flag("cap-iops", -1, "Limit the total storage operations per second. Default is -1 (no limit)")
 	config.BindPFlag(compName+".cap-iops", capIOps)

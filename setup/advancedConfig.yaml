@@ -164,7 +164,7 @@ azstorage:
   cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
   cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>
   preserve-acl: true|false <preserve ACLs and Permissions set on file during updates>
-  cap-mbps: <Limit the throughput of downloads from your storage account. Value measured in megabits per second. Default is -1 (no limit)>
+  cap-mbps-read: <Limit the throughput of downloads from your storage account. Value measured in megabits per second. Default is -1 (no limit)>
   cap-iops: <Limit the total storage operations per second. Default is -1 (no limit)>
 
 # Mount all configuration

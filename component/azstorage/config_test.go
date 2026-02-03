@@ -450,24 +450,24 @@ func (s *configTestSuite) TestRateLimitConfig() {
 	// Test default values (no limit)
 	err := ParseAndReadDynamicConfig(az, opt, false)
 	assert.NoError(err)
-	assert.Equal(int64(-1), az.stConfig.capMbps)
+	assert.Equal(int64(-1), az.stConfig.capMbpsRead)
 	assert.Equal(int64(-1), az.stConfig.capIOps)
 
 	// Test setting limits
-	opt.CapMbps = 100
+	opt.CapMbpsRead = 100
 	opt.CapIOps = 10
 	err = ParseAndReadDynamicConfig(az, opt, false)
 	assert.NoError(err)
-	assert.Equal(int64(100), az.stConfig.capMbps)
+	assert.Equal(int64(100), az.stConfig.capMbpsRead)
 	assert.Equal(int64(10), az.stConfig.capIOps)
 
 	// Test setting only one limit
-	opt.CapMbps = 200
+	opt.CapMbpsRead = 200
 	opt.CapIOps = 0 // reset to no limit
 
 	err = ParseAndReadDynamicConfig(az, opt, false)
 	assert.NoError(err)
-	assert.Equal(int64(200), az.stConfig.capMbps)
+	assert.Equal(int64(200), az.stConfig.capMbpsRead)
 	assert.Equal(int64(-1), az.stConfig.capIOps)
 }
 
