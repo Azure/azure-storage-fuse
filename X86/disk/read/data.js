@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770208990976,
+  "lastUpdate": 1770365527267,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -269,6 +269,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_read_directio",
             "value": 3888.9150390625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Copilot",
+            "username": "Copilot",
+            "email": "198982749+Copilot@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "id": "fb409bf9b05dd18e5881dd0caaebcffd0d13b7f3",
+          "message": "Add comprehensive documentation to block_cache component (#2113)\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: syeleti-msft <172502481+syeleti-msft@users.noreply.github.com>",
+          "timestamp": "2026-01-21T19:53:14Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/fb409bf9b05dd18e5881dd0caaebcffd0d13b7f3"
+        },
+        "date": 1770365527001,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_directio",
+            "value": 3912.1298828125,
             "unit": "MiB/s"
           }
         ]
