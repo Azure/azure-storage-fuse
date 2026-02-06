@@ -34,6 +34,8 @@
 package xload
 
 import (
+	"bufio"
+	"container/list"
 	"context"
 	"fmt"
 	"math"
@@ -41,6 +43,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -48,31 +51,43 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/fsnotify/fsnotify"
+	"github.com/vibhansa-msft/tlru"
 )
 
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize         uint64             // Size of each block to be cached
-	mode              Mode               // Mode of the Xload component
-	exportProgress    bool               // Export the progress of xload operation to json file
-	validateMD5       bool               // validate md5sum on download, if md5sum is set on blob
-	workerCount       uint32             // Number of workers running
-	blockPool         *BlockPool         // Pool of blocks
-	path              string             // Path on local disk where Xload will operate
-	defaultPermission os.FileMode        // Default permissions of files and directories in the xload path
-	comps             []XComponent       // list of components in xload
-	statsMgr          *StatsManager      // stats manager
-	fileLocks         *common.LockMap    // lock to take on a file if one thread is processing it
-	poolSize          uint32             // Number of blocks in the pool
-	poolctx           context.Context    // context for the thread pool
-	poolCancelFunc    context.CancelFunc // cancel function for the thread pool
+	blockSize          uint64              // Size of each block to be cached
+	mode               Mode                // Mode of the Xload component
+	exportProgress     bool                // Export the progress of xload operation to json file
+	validateMD5        bool                // validate md5sum on download, if md5sum is set on blob
+	workerCount        uint32              // Number of workers running
+	blockPool          *BlockPool          // Pool of blocks
+	path               string              // Path on local disk where Xload will operate
+	defaultPermission  os.FileMode         // Default permissions of files and directories in the xload path
+	comps              []XComponent        // list of components in xload
+	hintFile           string              // external prefetch hint file path
+	hintSeen           map[string]struct{} // already scheduled hint entries
+	hintPollInterval   time.Duration       // poll interval for hint file
+	hintPollConfigured bool                // whether user explicitly set poll interval
+	hintMu             sync.Mutex          // guard hintSeen
+	maxCacheSizeMB     float64             // optional cap for xload cache (MB), 0 = disabled
+	evictPolicy        *tlru.TLRU          // eviction policy shared with file_cache limits
+	cacheNodes         sync.Map            // track tlru nodes per path
+	statsMgr           *StatsManager       // stats manager
+	fileLocks          *common.LockMap     // lock to take on a file if one thread is processing it
+	poolSize           uint32              // Number of blocks in the pool
+	poolctx            context.Context     // context for the thread pool
+	poolCancelFunc     context.CancelFunc  // cancel function for the thread pool
 }
 
 // Structure defining your config parameters
 type XloadOptions struct {
 	BlockSize      float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	Mode           string  `config:"mode" yaml:"mode,omitempty"`
+	PrefetchHint   string  `config:"prefetch-hint-file" yaml:"prefetch-hint-file,omitempty"`
+	HintPollSec    uint32  `config:"prefetch-hint-poll-sec" yaml:"prefetch-hint-poll-sec,omitempty"`
 	Path           string  `config:"path" yaml:"path,omitempty"`
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
 	ValidateMD5    bool    `config:"validate-md5" yaml:"validate-md5,omitempty"`
@@ -203,6 +218,32 @@ func (xl *Xload) Configure(_ bool) error {
 	xl.exportProgress = conf.ExportProgress
 	xl.validateMD5 = conf.ValidateMD5
 
+	// Prefetch hint support: if a hint file is provided, xload will only download paths listed in that file and skip full-container listing.
+	xl.hintFile = strings.TrimSpace(conf.PrefetchHint)
+	hintPoll := uint32(2)
+	if config.IsSet(compName + ".prefetch-hint-poll-sec") {
+		xl.hintPollConfigured = true
+	}
+	if conf.HintPollSec > 0 {
+		hintPoll = conf.HintPollSec
+	}
+	xl.hintPollInterval = time.Duration(hintPoll) * time.Second
+	if xl.hintFile != "" {
+		xl.hintSeen = make(map[string]struct{})
+	}
+
+	// Reuse file_cache max-size-mb to cap xload's cache.
+	if config.IsSet("file_cache.max-size-mb") {
+		var fcConf struct {
+			MaxSizeMB float64 `config:"max-size-mb"`
+		}
+		if err := config.UnmarshalKey("file_cache", &fcConf); err != nil {
+			log.Warn("Xload::Configure : failed to read file_cache.max-size-mb [%s]", err.Error())
+		} else if fcConf.MaxSizeMB > 0 {
+			xl.maxCacheSizeMB = fcConf.MaxSizeMB
+		}
+	}
+
 	allowOther := false
 	err = config.UnmarshalKey("allow-other", &allowOther)
 	if err != nil {
@@ -228,8 +269,46 @@ func (xl *Xload) Configure(_ bool) error {
 
 	xl.poolctx, xl.poolCancelFunc = context.WithCancel(context.Background())
 
-	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v", xl.blockSize,
-		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5)
+	if xl.maxCacheSizeMB > 0 {
+		// ttl must be >0 for tlru; we rely on cacheNeedsEviction for size-based cleanup, so use a long TTL.
+		const evictTTLSeconds = 3600
+
+		// Channel-backed tlru buffers on MaxNodes, so bound it based on the estimated number of cached files.
+		maxCacheBytes := xl.maxCacheSizeMB * float64(MB)
+		estimatedNodes := uint32(1)
+		if xl.blockSize > 0 {
+			estimatedNodes = uint32(math.Ceil(maxCacheBytes / float64(xl.blockSize)))
+			if estimatedNodes == 0 {
+				estimatedNodes = 1
+			}
+		}
+
+		// Cap the buffer to keep memory reasonable even for large cache sizes.
+		const maxEvictBuffer = 100000
+		if estimatedNodes > maxEvictBuffer {
+			estimatedNodes = maxEvictBuffer
+		}
+
+		xl.evictPolicy, err = tlru.New(estimatedNodes, evictTTLSeconds, xl.cacheEvict, 60, xl.cacheNeedsEviction)
+		if err != nil {
+			log.Err("Xload::Configure : failed to create eviction policy [%s]", err.Error())
+			return fmt.Errorf("config error in %s [%s]", xl.Name(), err.Error())
+		}
+	}
+
+	hintFileLog := "disabled"
+	hintPollLog := "-"
+	maxCacheLog := "unbounded"
+	if xl.hintFile != "" {
+		hintFileLog = xl.hintFile
+		hintPollLog = xl.hintPollInterval.String()
+	}
+	if xl.maxCacheSizeMB > 0 {
+		maxCacheLog = fmt.Sprintf("%.2fMB", xl.maxCacheSizeMB)
+	}
+
+	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v, prefetch hint %v, hint poll %v, max cache %v",
+		xl.blockSize, xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5, hintFileLog, hintPollLog, maxCacheLog)
 
 	return nil
 }
@@ -251,6 +330,13 @@ func (xl *Xload) Start(ctx context.Context) error {
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err
+	}
+
+	if xl.evictPolicy != nil {
+		if err := xl.evictPolicy.Start(); err != nil {
+			log.Err("Xload::Start : failed to start eviction policy [%s]", err.Error())
+			return err
+		}
 	}
 
 	// Xload : start code goes here
@@ -303,6 +389,10 @@ func (xl *Xload) Stop() error {
 		log.Warn("Xload::Stop : Stop timeout")
 	}
 
+	if xl.evictPolicy != nil {
+		_ = xl.evictPolicy.Stop()
+	}
+
 	// TODO:: xload : should we delete the files from local path
 	err := common.TempCacheCleanup(xl.path)
 	if err != nil {
@@ -315,17 +405,22 @@ func (xl *Xload) Stop() error {
 func (xl *Xload) createDownloader() error {
 	log.Trace("Xload::createDownloader : Starting downloader")
 
-	// Create remote lister pool to list remote files
-	rl, err := newRemoteLister(&remoteListerOptions{
-		path:              xl.path,
-		workerCount:       uint32(math.Min(float64(runtime.NumCPU()/2), float64(MAX_LISTER))),
-		defaultPermission: xl.defaultPermission,
-		remote:            xl.NextComponent(),
-		statsMgr:          xl.statsMgr,
-	})
-	if err != nil {
-		log.Err("Xload::createDownloader : Unable to create remote lister [%s]", err.Error())
-		return err
+	comps := []XComponent{}
+
+	// If no hint file is provided, run the normal full-container listing.
+	if xl.hintFile == "" {
+		rl, err := newRemoteLister(&remoteListerOptions{
+			path:              xl.path,
+			workerCount:       uint32(math.Min(float64(runtime.NumCPU()/2), float64(MAX_LISTER))),
+			defaultPermission: xl.defaultPermission,
+			remote:            xl.NextComponent(),
+			statsMgr:          xl.statsMgr,
+		})
+		if err != nil {
+			log.Err("Xload::createDownloader : Unable to create remote lister [%s]", err.Error())
+			return err
+		}
+		comps = append(comps, rl)
 	}
 
 	ds, err := newDownloadSplitter(&downloadSplitterOptions{
@@ -352,7 +447,8 @@ func (xl *Xload) createDownloader() error {
 		return err
 	}
 
-	xl.comps = []XComponent{rl, ds, rdm}
+	comps = append(comps, ds, rdm)
+	xl.comps = comps
 	return nil
 }
 
@@ -384,7 +480,189 @@ func (xl *Xload) startComponents() error {
 		xl.comps[i].Start(xl.poolctx)
 	}
 
+	if xl.hintFile != "" {
+		xl.startHintWatcher()
+	}
+
 	return nil
+}
+
+// startHintWatcher monitors an external hint file and schedules downloads for newly added paths.
+// If the user configured a poll interval, we use polling; otherwise, we prefer fsnotify watch.
+func (xl *Xload) startHintWatcher() {
+	if xl.hintPollConfigured && xl.hintPollInterval > 0 {
+		log.Info("Xload::startHintWatcher : polling hint file %s every %s", xl.hintFile, xl.hintPollInterval)
+		xl.startHintPoller()
+		return
+	}
+
+	if err := xl.startHintFileWatch(); err != nil {
+		log.Warn("Xload::startHintWatcher : watch failed for %s, falling back to polling [%s]", xl.hintFile, err.Error())
+		xl.startHintPoller()
+	}
+}
+
+// startHintPoller uses time-based polling to read the hint file.
+func (xl *Xload) startHintPoller() {
+	go func() {
+		ticker := time.NewTicker(xl.hintPollInterval)
+		defer ticker.Stop()
+
+		xl.processHintFile()
+
+		for {
+			select {
+			case <-xl.poolctx.Done():
+				return
+			case <-ticker.C:
+				xl.processHintFile()
+			}
+		}
+	}()
+}
+
+// startHintFileWatch uses fsnotify to react to changes without busy polling.
+func (xl *Xload) startHintFileWatch() error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+
+	hintDir := filepath.Dir(xl.hintFile)
+	if err := watcher.Add(hintDir); err != nil {
+		_ = watcher.Close()
+		return err
+	}
+
+	log.Info("Xload::startHintWatcher : watching hint file %s for changes", xl.hintFile)
+
+	go func() {
+		defer watcher.Close()
+
+		xl.processHintFile()
+
+		for {
+			select {
+			case <-xl.poolctx.Done():
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+
+				if event.Name == xl.hintFile && (event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename|fsnotify.Chmod) != 0) {
+					xl.processHintFile()
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Warn("Xload::startHintWatcher : fsnotify error [%s]", err.Error())
+			}
+		}
+	}()
+
+	return nil
+}
+
+// processHintFile reads the hint file and triggers downloads for unseen paths.
+func (xl *Xload) processHintFile() {
+	if xl.hintFile == "" {
+		return
+	}
+
+	f, err := os.Open(xl.hintFile)
+	if err != nil {
+		log.Debug("Xload::processHintFile : unable to open hint file %s [%s]", xl.hintFile, err.Error())
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		fileName := strings.TrimSpace(scanner.Text())
+		if fileName == "" {
+			continue
+		}
+
+		xl.hintMu.Lock()
+		_, seen := xl.hintSeen[fileName]
+		if !seen {
+			xl.hintSeen[fileName] = struct{}{}
+		}
+		xl.hintMu.Unlock()
+
+		if seen {
+			continue
+		}
+
+		log.Debug("Xload::processHintFile : scheduling download for hinted file %s", fileName)
+		if err := xl.downloadFile(fileName); err != nil {
+			log.Err("Xload::processHintFile : failed to schedule %s [%s]", fileName, err.Error())
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Err("Xload::processHintFile : scanner error for %s [%s]", xl.hintFile, err.Error())
+	}
+}
+
+// cacheNeedsEviction is invoked by the eviction policy to decide whether to evict entries.
+func (xl *Xload) cacheNeedsEviction() bool {
+	if xl.maxCacheSizeMB <= 0 {
+		return false
+	}
+
+	usageMB, err := common.GetUsage(xl.path)
+	if err != nil {
+		log.Warn("Xload::cacheNeedsEviction : unable to read usage for %s [%s]", xl.path, err.Error())
+		return false
+	}
+
+	if usageMB >= xl.maxCacheSizeMB {
+		log.Info("Xload::cacheNeedsEviction : cache usage %.2f MB >= cap %.2f MB", usageMB, xl.maxCacheSizeMB)
+		return true
+	}
+
+	return false
+}
+
+// cacheEvict removes a cached file when eviction policy picks it.
+func (xl *Xload) cacheEvict(node *list.Element) {
+	fileName := node.Value.(string)
+
+	if xl.fileLocks.Locked(fileName) {
+		log.Info("Xload::cacheEvict : skipping eviction for locked file %s", fileName)
+		return
+	}
+
+	flock := xl.fileLocks.Get(fileName)
+	flock.Lock()
+	defer flock.Unlock()
+
+	xl.cacheNodes.Delete(fileName)
+
+	localPath := filepath.Join(xl.path, fileName)
+	if err := os.Remove(localPath); err != nil && !os.IsNotExist(err) {
+		log.Warn("Xload::cacheEvict : failed to remove %s [%s]", localPath, err.Error())
+	} else {
+		log.Info("Xload::cacheEvict : evicted %s", fileName)
+	}
+}
+
+// touchCacheEntry refreshes recency for a cached file and enrolls new items into the eviction policy.
+func (xl *Xload) touchCacheEntry(name string) {
+	if xl.evictPolicy == nil {
+		return
+	}
+
+	node, found := xl.cacheNodes.Load(name)
+	if !found {
+		node = xl.evictPolicy.Add(name)
+		xl.cacheNodes.Store(name, node)
+	} else {
+		xl.evictPolicy.Refresh(node.(*list.Element))
+	}
 }
 
 func (xl *Xload) getSplitter() XComponent {
@@ -411,6 +689,8 @@ func (xl *Xload) downloadFile(fileName string) error {
 		log.Err("Xload::downloadFile : Failed to get attr of %s [%s]", fileName, err.Error())
 		return err
 	}
+
+	xl.touchCacheEntry(fileName)
 
 	fileMode := xl.defaultPermission
 	if !attr.IsModeDefault() {
@@ -468,6 +748,8 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 		log.Debug("Xload::OpenFile : %s will be served from local path", options.Name)
 	}
 
+	xl.touchCacheEntry(options.Name)
+
 	fh, err := os.OpenFile(localPath, options.Flags, options.Mode)
 	if err != nil {
 		log.Err("Xload::OpenFile : error opening cached file %s [%s]", options.Name, err.Error())
@@ -522,4 +804,10 @@ func init() {
 
 	poolSize := config.AddInt32Flag("pool-size", 300, "number of blocks in the blockpool for preload")
 	config.BindPFlag(compName+".pool-size", poolSize)
+
+	hintFile := config.AddStringFlag("prefetch-hint-file", "", "path to a prefetch hint file for xload")
+	config.BindPFlag(compName+".prefetch-hint-file", hintFile)
+
+	hintPoll := config.AddInt32Flag("prefetch-hint-poll-sec", 2, "poll interval in seconds for the xload hint file")
+	config.BindPFlag(compName+".prefetch-hint-poll-sec", hintPoll)
 }
