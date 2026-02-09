@@ -67,9 +67,9 @@ type Xload struct {
 	path               string              // Path on local disk where Xload will operate
 	defaultPermission  os.FileMode         // Default permissions of files and directories in the xload path
 	comps              []XComponent        // list of components in xload
-	hintFile           string              // external prefetch hint file path
+	hintDir            string              // external prefetch hint directory
 	hintSeen           map[string]struct{} // already scheduled hint entries
-	hintPollInterval   time.Duration       // poll interval for hint file
+	hintPollInterval   time.Duration       // poll interval for hint directory
 	hintPollConfigured bool                // whether user explicitly set poll interval
 	hintMu             sync.Mutex          // guard hintSeen
 	maxCacheSizeMB     float64             // optional cap for xload cache (MB), 0 = disabled
@@ -86,7 +86,7 @@ type Xload struct {
 type XloadOptions struct {
 	BlockSize      float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	Mode           string  `config:"mode" yaml:"mode,omitempty"`
-	PrefetchHint   string  `config:"prefetch-hint-file" yaml:"prefetch-hint-file,omitempty"`
+	PrefetchHint   string  `config:"prefetch-hint-dir" yaml:"prefetch-hint-dir,omitempty"`
 	HintPollSec    uint32  `config:"prefetch-hint-poll-sec" yaml:"prefetch-hint-poll-sec,omitempty"`
 	Path           string  `config:"path" yaml:"path,omitempty"`
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
@@ -218,8 +218,8 @@ func (xl *Xload) Configure(_ bool) error {
 	xl.exportProgress = conf.ExportProgress
 	xl.validateMD5 = conf.ValidateMD5
 
-	// Prefetch hint support: if a hint file is provided, xload will only download paths listed in that file and skip full-container listing.
-	xl.hintFile = strings.TrimSpace(conf.PrefetchHint)
+	// Prefetch hint support: if a hint directory is provided, xload will honor any files created inside it and skip full-container listing.
+	xl.hintDir = strings.TrimSpace(conf.PrefetchHint)
 	hintPoll := uint32(2)
 	if config.IsSet(compName + ".prefetch-hint-poll-sec") {
 		xl.hintPollConfigured = true
@@ -228,7 +228,7 @@ func (xl *Xload) Configure(_ bool) error {
 		hintPoll = conf.HintPollSec
 	}
 	xl.hintPollInterval = time.Duration(hintPoll) * time.Second
-	if xl.hintFile != "" {
+	if xl.hintDir != "" {
 		xl.hintSeen = make(map[string]struct{})
 	}
 
@@ -296,19 +296,19 @@ func (xl *Xload) Configure(_ bool) error {
 		}
 	}
 
-	hintFileLog := "disabled"
+	hintPathLog := "disabled"
 	hintPollLog := "-"
 	maxCacheLog := "unbounded"
-	if xl.hintFile != "" {
-		hintFileLog = xl.hintFile
+	if xl.hintDir != "" {
+		hintPathLog = xl.hintDir
 		hintPollLog = xl.hintPollInterval.String()
 	}
 	if xl.maxCacheSizeMB > 0 {
 		maxCacheLog = fmt.Sprintf("%.2fMB", xl.maxCacheSizeMB)
 	}
 
-	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v, prefetch hint %v, hint poll %v, max cache %v",
-		xl.blockSize, xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5, hintFileLog, hintPollLog, maxCacheLog)
+	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v, prefetch hint dir %v, hint poll %v, max cache %v",
+		xl.blockSize, xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5, hintPathLog, hintPollLog, maxCacheLog)
 
 	return nil
 }
@@ -407,8 +407,8 @@ func (xl *Xload) createDownloader() error {
 
 	comps := []XComponent{}
 
-	// If no hint file is provided, run the normal full-container listing.
-	if xl.hintFile == "" {
+	// If no hint directory is provided, run the normal full-container listing.
+	if xl.hintDir == "" {
 		rl, err := newRemoteLister(&remoteListerOptions{
 			path:              xl.path,
 			workerCount:       uint32(math.Min(float64(runtime.NumCPU()/2), float64(MAX_LISTER))),
@@ -480,66 +480,67 @@ func (xl *Xload) startComponents() error {
 		xl.comps[i].Start(xl.poolctx)
 	}
 
-	if xl.hintFile != "" {
+	if xl.hintDir != "" {
+		// Process any existing hint files immediately on start so preload begins without waiting for watch/poll ticks.
+		xl.processHintDir()
 		xl.startHintWatcher()
 	}
 
 	return nil
 }
 
-// startHintWatcher monitors an external hint file and schedules downloads for newly added paths.
+// startHintWatcher monitors an external hint directory and schedules downloads for newly added paths.
 // If the user configured a poll interval, we use polling; otherwise, we prefer fsnotify watch.
 func (xl *Xload) startHintWatcher() {
 	if xl.hintPollConfigured && xl.hintPollInterval > 0 {
-		log.Info("Xload::startHintWatcher : polling hint file %s every %s", xl.hintFile, xl.hintPollInterval)
+		log.Info("Xload::startHintWatcher : polling hint dir %s every %s", xl.hintDir, xl.hintPollInterval)
 		xl.startHintPoller()
 		return
 	}
 
-	if err := xl.startHintFileWatch(); err != nil {
-		log.Warn("Xload::startHintWatcher : watch failed for %s, falling back to polling [%s]", xl.hintFile, err.Error())
+	if err := xl.startHintDirWatch(); err != nil {
+		log.Warn("Xload::startHintWatcher : watch failed for %s, falling back to polling [%s]", xl.hintDir, err.Error())
 		xl.startHintPoller()
 	}
 }
 
-// startHintPoller uses time-based polling to read the hint file.
+// startHintPoller uses time-based polling to read the hint directory.
 func (xl *Xload) startHintPoller() {
 	go func() {
 		ticker := time.NewTicker(xl.hintPollInterval)
 		defer ticker.Stop()
 
-		xl.processHintFile()
+		xl.processHintDir()
 
 		for {
 			select {
 			case <-xl.poolctx.Done():
 				return
 			case <-ticker.C:
-				xl.processHintFile()
+				xl.processHintDir()
 			}
 		}
 	}()
 }
 
-// startHintFileWatch uses fsnotify to react to changes without busy polling.
-func (xl *Xload) startHintFileWatch() error {
+// startHintDirWatch uses fsnotify to react to changes without busy polling.
+func (xl *Xload) startHintDirWatch() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
 	}
 
-	hintDir := filepath.Dir(xl.hintFile)
-	if err := watcher.Add(hintDir); err != nil {
+	if err := watcher.Add(xl.hintDir); err != nil {
 		_ = watcher.Close()
 		return err
 	}
 
-	log.Info("Xload::startHintWatcher : watching hint file %s for changes", xl.hintFile)
+	log.Info("Xload::startHintWatcher : watching hint dir %s for changes", xl.hintDir)
 
 	go func() {
 		defer watcher.Close()
 
-		xl.processHintFile()
+		xl.processHintDir()
 
 		for {
 			select {
@@ -550,8 +551,8 @@ func (xl *Xload) startHintFileWatch() error {
 					return
 				}
 
-				if event.Name == xl.hintFile && (event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename|fsnotify.Chmod) != 0) {
-					xl.processHintFile()
+				if strings.HasPrefix(event.Name, xl.hintDir) && (event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename|fsnotify.Chmod) != 0) {
+					xl.processHintDir()
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
@@ -565,15 +566,33 @@ func (xl *Xload) startHintFileWatch() error {
 	return nil
 }
 
-// processHintFile reads the hint file and triggers downloads for unseen paths.
-func (xl *Xload) processHintFile() {
-	if xl.hintFile == "" {
+// processHintDir walks the configured hint directory and processes all files within it.
+func (xl *Xload) processHintDir() {
+	if xl.hintDir == "" {
 		return
 	}
 
-	f, err := os.Open(xl.hintFile)
+	entries, err := os.ReadDir(xl.hintDir)
 	if err != nil {
-		log.Debug("Xload::processHintFile : unable to open hint file %s [%s]", xl.hintFile, err.Error())
+		log.Debug("Xload::processHintDir : unable to read hint dir %s [%s]", xl.hintDir, err.Error())
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		path := filepath.Join(xl.hintDir, entry.Name())
+		xl.processHintFile(path)
+	}
+}
+
+// processHintFile reads the provided hint file and triggers downloads for unseen paths.
+func (xl *Xload) processHintFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		log.Debug("Xload::processHintFile : unable to open hint file %s [%s]", path, err.Error())
 		return
 	}
 	defer f.Close()
@@ -603,7 +622,7 @@ func (xl *Xload) processHintFile() {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Err("Xload::processHintFile : scanner error for %s [%s]", xl.hintFile, err.Error())
+		log.Err("Xload::processHintFile : scanner error for %s [%s]", path, err.Error())
 	}
 }
 
@@ -805,9 +824,9 @@ func init() {
 	poolSize := config.AddInt32Flag("pool-size", 300, "number of blocks in the blockpool for preload")
 	config.BindPFlag(compName+".pool-size", poolSize)
 
-	hintFile := config.AddStringFlag("prefetch-hint-file", "", "path to a prefetch hint file for xload")
-	config.BindPFlag(compName+".prefetch-hint-file", hintFile)
+	hintDir := config.AddStringFlag("prefetch-hint-dir", "", "directory containing prefetch hint files for xload")
+	config.BindPFlag(compName+".prefetch-hint-dir", hintDir)
 
-	hintPoll := config.AddInt32Flag("prefetch-hint-poll-sec", 2, "poll interval in seconds for the xload hint file")
+	hintPoll := config.AddInt32Flag("prefetch-hint-poll-sec", 2, "poll interval in seconds for the xload hint directory (set to force polling instead of watch)")
 	config.BindPFlag(compName+".prefetch-hint-poll-sec", hintPoll)
 }
