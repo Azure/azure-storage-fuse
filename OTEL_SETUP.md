@@ -10,19 +10,19 @@ Blobfuse2 now supports OpenTelemetry (OTel) for logging, enabling you to send st
 
 ```
 ┌─────────────┐         OTLP/HTTP          ┌──────────────────┐
-│             │  ────────────────────────>  │  OpenTelemetry   │
-│  Blobfuse2  │  (logs with attributes)     │    Collector     │
-│             │                              │                  │
-└─────────────┘                              └──────────────────┘
-                                                      │
-                                                      │ Azure Monitor
-                                                      │ Exporter
-                                                      ▼
-                                             ┌──────────────────┐
-                                             │  Azure Monitor/  │
-                                             │  Application     │
-                                             │    Insights      │
-                                             └──────────────────┘
+│             │  ────────────────────────> │  OpenTelemetry   │
+│  Blobfuse2  │  (logs with attributes)    │    Collector     │
+│             │                            │                  │
+└─────────────┘                            └──────────────────┘
+                                                    │
+                                                    │ Azure Monitor
+                                                    │ Exporter
+                                                    ▼
+                                           ┌──────────────────┐
+                                           │  Azure Monitor/  │
+                                           │  Application     │
+                                           │    Insights      │
+                                           └──────────────────┘
 ```
 
 **Key Components:**
@@ -92,8 +92,7 @@ exporters:
     connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
     
   # Optional: Also export to console for debugging
-  logging:
-    loglevel: debug
+  debug: {}
 
 service:
   pipelines:

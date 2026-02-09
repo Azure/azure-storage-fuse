@@ -93,10 +93,12 @@ func newOtelLogger(config OtelLoggerConfig) (*OtelLogger, error) {
 			otlploghttp.WithEndpoint(config.Endpoint),
 		}
 
+		// TODO: Consider adding a config option to explicitly allow insecure mode for
+		// non-localhost endpoints if needed, but default to secure mode for safety.
 		// Use insecure only for localhost endpoints
-		if config.Endpoint == "localhost:4318" || config.Endpoint == "127.0.0.1:4318" {
-			opts = append(opts, otlploghttp.WithInsecure())
-		}
+		// if config.Endpoint == "localhost:4318" || config.Endpoint == "127.0.0.1:4318" {
+		opts = append(opts, otlploghttp.WithInsecure())
+		// }
 
 		exporter, err = otlploghttp.New(ctx, opts...)
 	} else {
@@ -222,6 +224,8 @@ func (l *OtelLogger) logEvent(severity otellog.Severity, lvl string, format stri
 		otellog.Int("pid", l.procPID),
 		otellog.String("tag", l.logTag),
 		otellog.String("mount_path", common.MountPath),
+		otellog.String("hostname", common.GetHostName()),
+		otellog.String("host_ip", common.GetHostIP()),
 	}
 
 	if l.logGoroutineID {
