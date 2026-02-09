@@ -195,6 +195,8 @@ type AzStorageOptions struct {
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
 	Filter                  string `config:"filter" yaml:"filter"`
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
+	CapMbpsRead             int64  `config:"cap-mbps-read" yaml:"cap-mbps-read"`
+	CapIOps                 int64  `config:"cap-iops" yaml:"cap-iops"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -537,7 +539,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps-read %d, cap-iops %d",
+		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbpsRead, az.stConfig.capIOps)
 
 	return nil
 }
@@ -628,6 +631,18 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 				return errors.New("SAS key update failure")
 			}
 		}
+	}
+
+	// Rate limiting, default is no limit
+	az.stConfig.capMbpsRead = -1
+	az.stConfig.capIOps = -1
+
+	if opt.CapMbpsRead > 0 {
+		az.stConfig.capMbpsRead = opt.CapMbpsRead
+	}
+
+	if opt.CapIOps > 0 {
+		az.stConfig.capIOps = opt.CapIOps
 	}
 
 	return nil
