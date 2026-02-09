@@ -107,7 +107,10 @@ func (suite *OtelLoggerTestSuite) TestOtelLoggerLoggingLevels() {
 		suite.T().Skipf("Skipping test - OTel logger initialization failed: %v", err)
 		return
 	}
-	defer logger.Destroy()
+	defer func() {
+		err := logger.Destroy()
+		assert.NoError(err)
+	}()
 
 	// Test all logging levels - these should not panic
 	assert.NotPanics(func() {
@@ -134,7 +137,10 @@ func (suite *OtelLoggerTestSuite) TestOtelLoggerSetLogLevel() {
 		suite.T().Skipf("Skipping test - OTel logger initialization failed: %v", err)
 		return
 	}
-	defer logger.Destroy()
+	defer func() {
+		err := logger.Destroy()
+		assert.NoError(err)
+	}()
 
 	// Test setting log level
 	assert.Equal(common.ELogLevel.LOG_INFO(), logger.GetLogLevel())
@@ -157,7 +163,10 @@ func (suite *OtelLoggerTestSuite) TestOtelLoggerDefaultLogLevel() {
 		suite.T().Skipf("Skipping test - OTel logger initialization failed: %v", err)
 		return
 	}
-	defer logger.Destroy()
+	defer func() {
+		err := logger.Destroy()
+		assert.NoError(err)
+	}()
 
 	assert.Equal(common.ELogLevel.LOG_DEBUG(), logger.GetLogLevel(), "Should default to LOG_DEBUG")
 }
@@ -175,7 +184,10 @@ func (suite *OtelLoggerTestSuite) TestOtelLoggerInterface() {
 		suite.T().Skipf("Skipping test - OTel logger initialization failed: %v", err)
 		return
 	}
-	defer logger.Destroy()
+	defer func() {
+		err := logger.Destroy()
+		assert.NoError(err)
+	}()
 
 	// Test that OtelLogger implements Logger interface
 	var _ Logger = logger

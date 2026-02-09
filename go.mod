@@ -23,6 +23,9 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/vibhansa-msft/blobfilter v0.0.0-20250115104552-d9d40722be3e
 	github.com/vibhansa-msft/tlru v0.0.0-20240410102558-9e708419e21f
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.10.0
+	go.opentelemetry.io/otel/log v0.10.0
+	go.opentelemetry.io/otel/sdk/log v0.10.0
 	go.uber.org/atomic v1.11.0
 	golang.org/x/time v0.14.0
 	gopkg.in/ini.v1 v1.67.1
@@ -37,11 +40,8 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.34.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.10.0 // indirect
-	go.opentelemetry.io/otel/log v0.10.0 // indirect
 	go.opentelemetry.io/otel/metric v1.34.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.34.0 // indirect
-	go.opentelemetry.io/otel/sdk/log v0.10.0 // indirect
 	go.opentelemetry.io/otel/trace v1.34.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250115164207-1a7da9e5054f // indirect
