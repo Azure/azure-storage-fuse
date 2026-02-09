@@ -85,6 +85,10 @@ type AzStorageConfig struct {
 
 	// Blob filters
 	filter *blobfilter.BlobFilter
+
+	// Rate limiting
+	capMbpsRead int64
+	capIOps     int64
 }
 
 type AzStorageConnection struct {

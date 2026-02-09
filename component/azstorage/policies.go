@@ -35,10 +35,15 @@ package azstorage
 
 import (
 	"fmt"
+	"math"
 	"net/http"
+	"strings"
+
+	"golang.org/x/time/rate"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 // blobfuseTelemetryPolicy is a custom pipeline policy to prepend the blobfuse user agent string to the one coming from SDK.
@@ -77,5 +82,103 @@ func newServiceVersionPolicy(version string) policy.Policy {
 
 func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
 	req.Raw().Header["x-ms-version"] = []string{r.serviceApiVersion}
+	return req.Next()
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Policy to limit the rate of requests
+type rateLimitingPolicy struct {
+	ingressBandwidthLimiter *rate.Limiter
+	opsLimiter              *rate.Limiter
+}
+
+func newRateLimitingPolicy(readBytesPerSec int64, opsPerSec int64) policy.Policy {
+	p := &rateLimitingPolicy{}
+
+	// Use 10 second window for burst size calculation for rate limiter.
+	// This allows for short bursts while still enforcing the average rate over a reasonable time period.
+	// A larger window size would allow larger bursts but would be less effective at limiting short term spikes.
+	// A smaller window size would limit bursts more but could lead to underutilization of available bandwidth/ops.
+	// 10 seconds is a reasonable compromise between these factors.
+	// Note: The burst size is the maximum number of tokens that can be accumulated in the bucket.
+	// Therefore, a larger burst size allows for larger bursts of traffic,
+	// but does not affect the average rate over time.
+	// Users can adjust the bytesPerSec and opsPerSec values to fine-tune the rate limiting behavior as needed.
+	// For example, setting a higher bytesPerSec value will allow for higher average bandwidth,
+	// while setting a lower opsPerSec value will limit the number of operations per second.
+	const windowSize = 10
+
+	if readBytesPerSec > 0 {
+		ingressBandwidthBurstSize := readBytesPerSec * int64(windowSize)
+		burst := int(ingressBandwidthBurstSize)
+		// On 32-bit systems, int is 32-bit. If bandwidthBurstSize > MaxInt, we need to clamp it.
+		// math.MaxInt is platform dependent.
+		if ingressBandwidthBurstSize > int64(math.MaxInt) {
+			burst = math.MaxInt
+		}
+
+		p.ingressBandwidthLimiter = rate.NewLimiter(rate.Limit(readBytesPerSec), burst)
+		log.Info("RateLimitingPolicy : Bandwidth limit set to %d bytes/sec with burst size of %d bytes",
+			readBytesPerSec, burst)
+	}
+
+	if opsPerSec > 0 {
+		opsBurstSize := opsPerSec * int64(windowSize)
+		burst := int(opsBurstSize)
+		if opsBurstSize > int64(math.MaxInt) {
+			burst = math.MaxInt
+		}
+
+		p.opsLimiter = rate.NewLimiter(rate.Limit(opsPerSec), burst)
+		log.Info("RateLimitingPolicy : Ops limit set to %d ops/sec with burst size of %d ops",
+			opsPerSec, burst)
+	}
+
+	return p
+}
+
+func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
+	ctx := req.Raw().Context()
+
+	// Limit operations per second
+	if p.opsLimiter != nil {
+		// Wait for 1 token
+		err := p.opsLimiter.Wait(ctx)
+		if err != nil {
+			log.Err("RateLimitingPolicy : Ops limit wait failed [%s]", err.Error())
+			return nil, err
+		}
+	}
+
+	// Limit ingress bandwidth for blob downloads (Azure egress: data leaving Azure Storage).
+	// This policy intentionally applies only to GET requests, which represent download operations.
+	if p.ingressBandwidthLimiter != nil && req.Raw().Method == http.MethodGet {
+		// Check for x-ms-range header
+		// We are not using req.Raw().Header.Get() as it canonicalizes the header name.
+		// Whereas SDK stores the header in the request is stored in lower case.
+		// So we directly access the header map with lower case key.
+		// NOTE: using strings.ToLower to ignore the lint error regarding canonicalized headers.
+		rangeHeader := req.Raw().Header[strings.ToLower(X_Ms_Range)]
+		if len(rangeHeader) == 0 {
+			rangeHeader = req.Raw().Header[RangeHeader]
+		}
+
+		if len(rangeHeader) > 0 {
+			size, err := parseRangeHeader(rangeHeader[0])
+			if err == nil && size > 0 {
+				// Wait for tokens equal to size.
+				// NOTE: range size is guaranteed to be within int range by parseRangeHeader.
+				err := p.ingressBandwidthLimiter.WaitN(ctx, int(size))
+				if err != nil {
+					log.Err("RateLimitingPolicy : Bandwidth limit wait failed [%s]", err.Error())
+					return nil, err
+				}
+			} else if err != nil {
+				log.Err("RateLimitingPolicy : Failed to parse Range header %s: [%s]", rangeHeader[0], err.Error())
+				return nil, err
+			}
+		}
+	}
+
 	return req.Next()
 }
