@@ -69,6 +69,7 @@ type LogOptions struct {
 	LogFileCount   uint64 `config:"file-count" yaml:"file-count,omitempty"`
 	LogGoroutineID bool   `config:"goroutine-id" yaml:"goroutine-id,omitempty"`
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
+	OtelEndpoint   string `config:"otel-endpoint" yaml:"otel-endpoint,omitempty"`
 }
 
 type mountOptions struct {
@@ -435,6 +436,7 @@ var mountCmd = &cobra.Command{
 			Level:          logLevel,
 			TimeTracker:    options.Logging.TimeTracker,
 			LogGoroutineID: options.Logging.LogGoroutineID,
+			OtelEndpoint:   options.Logging.OtelEndpoint,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
