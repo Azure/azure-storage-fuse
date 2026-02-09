@@ -1,0 +1,131 @@
+name: Auto Comment Issue OR Discussion
+
+on:
+  issues:
+    types: [opened]
+  discussion:
+    types: [created]
+
+jobs:
+  auto-comment:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+      issues: write
+      discussions: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    # Install dependencies
+    - name: Install dependencies
+      run: |
+        sudo apt-get install jq
+        python -m pip install --upgrade pip
+        pip install mcp httpx python-dotenv requests openai transformers torch
+
+    # ---------------------------------------------------------------------------------------------------------------
+    # Query DeepWiki using title and body of the issue/discussion
+    - name: Run DeepWiki Query
+      id: deepwiki-step
+      env:
+        # The repository to be queried by DeepWiki. Update this if needed.
+        TARGET_REPO: "Azure/azure-storage-fuse"
+        # Combine title and body to form a comprehensive question
+        ISSUE_TITLE: $(jq -r '.issue.title // .discussion.title' "${{ github.event_path }}")
+        ISSUE_BODY: $(jq -r '.issue.body // .discussion.body' "${{ github.event_path }}")
+      run: |
+        # Run the python script and capture its output to a file
+        python .github/scripts/deepwiki_query.py "${{ env.TARGET_REPO }}" "${{ env.ISSUE_TITLE }}" "${{ env.ISSUE_BODY }}" > deepwiki_response.md
+
+    # If above script failed then fail the workflow
+    - name: Check DeepWiki Query Success
+      if: ${{ failure() }}
+      run: |
+        echo "DeepWiki query failed. Exiting workflow."
+        exit 1
+
+    - name: Print DeepWiki response
+      run: cat deepwiki_response.md
+    # ---------------------------------------------------------------------------------------------------------------
+
+    # Parse DeepWiki response to extract relevant text
+    - name: Parse DeepWiki Responce and extract text
+      id: deepwiki-parse-step
+      run: |
+        # Run the python script and capture its output to a file
+        python .github/scripts/extract_text.py deepwiki_response.md > deepwiki_parsed.md
+
+    # If above script failed then fail the workflow
+    - name: Check DeepWiki Parsing Success
+      if: ${{ failure() }}
+      run: |
+        echo "DeepWiki parsing failed. Exiting workflow."
+        exit 1
+
+    - name: Print DeepWiki response
+      run: cat deepwiki_parsed.md
+    # --------------------------------------------------------------------------------------------------------------- 
+
+    # Summarize DeepWiki response using AI
+    - name: Summarize DeepWiki Response with AI
+      id: summarization-step
+      run: |
+        python .github/scripts/ai_summarize.py deepwiki_parsed.md issue_comment.md
+
+    # If above script failed then fail the workflow
+    - name: Check Summarization Success
+      if: ${{ failure() }}
+      run: |
+        echo "Summarization failed. Exiting workflow."
+        exit 1
+
+    - name: Print summarized response
+      run: cat issue_comment.md
+    # --------------------------------------------------------------------------------------------------------------- 
+
+    # Post the summary as a comment on the issue
+    - name: Post Comment to Issue
+      if: github.event_name == 'issues'
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        issue-number: ${{ github.event.issue.number }}
+        body-path: 'issue_comment.md'
+        token: ${{ secrets.GITHUB_TOKEN }}
+    # --------------------------------------------------------------------------------------------------------------- 
+
+    # Post the summary as a comment on discussion
+    - name: Post Comment to Discussion
+      if: github.event_name == 'discussion_comment' || github.event_name == 'discussion'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const fs = require('fs');
+          const path = 'deepwiki_parsed.md'; 
+          const body = fs.readFileSync(path, 'utf8')
+            .replace(/`/g, '\`')    // remove backticks
+            .replace(/"/g, '\"');     // escape double quotes
+          const discussion_id = context.payload.discussion.node_id;
+          await github.graphql(`
+            mutation {
+              addDiscussionComment(input: {
+                discussionId: "${discussion_id}",
+                body: "${body}"
+              }) {
+                comment {
+                  id
+                }
+              }
+            }
+          `);
+
+    # --------------------------------------------------------------------------------------------------------------- 

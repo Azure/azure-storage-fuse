@@ -1,0 +1,70 @@
+name: Monthly Issue Dump
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'  # Runs at 00:00 on the 1st of every month
+  workflow_dispatch:     # Allows manual triggering
+
+jobs:
+  dump-issues:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # Set timeout to 1 hour
+
+    permissions:
+      id-token: write
+      contents: write
+      issues: write
+      discussions: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install python3-dev -y
+          python -m pip install --upgrade pip
+      
+      - name: Install pip packages
+        run: |
+          pip install --only-binary :all: requests PyGithub
+          
+      - name: Run issue dump script
+        run: python .github/scripts/issue_normalizer.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.MAIN_REPO_SEC }}
+          GITHUB_REPO_OWNER: "Azure"
+          GITHUB_REPO_NAME: "azure-storage-fuse"
+
+      - name: Print git diff
+        run: git diff
+
+      - name: Print the doc directory contents
+        run: |
+          mv *.jsonl ./doc/
+          ls -la ./doc/
+
+      - name: Create new branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b issue-dump-$(date +'%Y-%m')
+          git status
+          git add ./doc/issues.jsonl
+          git add ./doc/prs.jsonl
+          git status
+          git commit -m "Monthly issue dump for $(date +'%B %Y')"
+          git push origin issue-dump-$(date +'%Y-%m')
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          branch: issue-dump-$(date +'%Y-%m')
+          title: "Monthly Issue Dump - $(date +'%B %Y')"
