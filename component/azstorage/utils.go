@@ -657,3 +657,40 @@ func parseRangeHeader(rangeHeader string) (int64, error) {
 
 // 	return blobtags
 // }
+
+// getStatusCodeFromError extracts the HTTP status code from an Azure SDK error
+func getStatusCodeFromError(err error) int {
+	if err == nil {
+		return 200 // Success
+	}
+	
+	var respErr *azcore.ResponseError
+	if errors.As(err, &respErr) {
+		return respErr.StatusCode
+	}
+	
+	// If we can't extract status code, return 0 (unknown)
+	return 0
+}
+
+// trackAzureRequest records an Azure Storage request metric
+func trackAzureRequest(operation string) {
+	if azMetricsCollector != nil {
+		azMetricsCollector.RecordAzureRequest(operation)
+	}
+}
+
+// trackAzureResponse records an Azure Storage response metric with status code and duration
+func trackAzureResponse(operation string, err error, duration float64) {
+	if azMetricsCollector != nil {
+		statusCode := getStatusCodeFromError(err)
+		azMetricsCollector.RecordAzureResponse(operation, statusCode, duration)
+	}
+}
+
+// trackBytesTransferred records bytes transferred to/from Azure Storage
+func trackBytesTransferred(operation string, bytes int64, direction string) {
+	if azMetricsCollector != nil {
+		azMetricsCollector.RecordBytesTransferred(operation, bytes, direction)
+	}
+}

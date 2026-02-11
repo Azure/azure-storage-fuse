@@ -46,6 +46,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/metrics"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
@@ -66,6 +67,7 @@ const compName = "azstorage"
 var _ internal.Component = &AzStorage{}
 
 var azStatsCollector *stats_manager.StatsCollector
+var azMetricsCollector *metrics.MetricsCollector
 
 func (az *AzStorage) Name() string {
 	return az.BaseComponent.Name()
@@ -186,6 +188,9 @@ func (az *AzStorage) Start(ctx context.Context) error {
 	// create stats collector for azstorage
 	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
 
+	// create metrics collector for azstorage
+	azMetricsCollector = metrics.NewMetricsCollector(az.Name())
+
 	return nil
 }
 
@@ -212,6 +217,7 @@ func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	if err == nil {
 		azStatsCollector.PushEvents(createDir, options.Name, map[string]any{mode: options.Mode.String()})
 		azStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
+		azMetricsCollector.RecordOperation("CreateDir", 1)
 	}
 
 	return err
@@ -225,6 +231,7 @@ func (az *AzStorage) DeleteDir(options internal.DeleteDirOptions) error {
 	if err == nil {
 		azStatsCollector.PushEvents(deleteDir, options.Name, nil)
 		azStatsCollector.UpdateStats(stats_manager.Increment, deleteDir, (int64)(1))
+		azMetricsCollector.RecordOperation("DeleteDir", 1)
 	}
 
 	return err
@@ -288,6 +295,9 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 		}
 	}
 
+	// Record operation count
+	azMetricsCollector.RecordOperation("ReadDir", 1)
+
 	return blobList, nil
 }
 
@@ -341,6 +351,9 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	// increment streamdir call count
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
 
+	// Record operation count
+	azMetricsCollector.RecordOperation("StreamDir", 1)
+
 	return new_list, *new_marker, nil
 }
 
@@ -354,6 +367,7 @@ func (az *AzStorage) RenameDir(options internal.RenameDirOptions) error {
 	if err == nil {
 		azStatsCollector.PushEvents(renameDir, options.Src, map[string]any{src: options.Src, dest: options.Dst})
 		azStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
+		azMetricsCollector.RecordOperation("RenameDir", 1)
 	}
 	return err
 }
@@ -381,6 +395,9 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	// increment open file handles count
 	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
 
+	// Record operation count
+	azMetricsCollector.RecordOperation("CreateFile", 1)
+
 	return handle, nil
 }
 
@@ -404,6 +421,9 @@ func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 	// increment open file handles count
 	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
+
+	// Record operation count
+	azMetricsCollector.RecordOperation("OpenFile", 1)
 
 	return handle, nil
 }
@@ -444,6 +464,8 @@ func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 
 func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, err error) {
 	//log.Trace("AzStorage::ReadFile : Read %s", h.Path)
+	// Record operation count
+	azMetricsCollector.RecordOperation("ReadFile", 1)
 	return az.storage.ReadBuffer(options.Handle.Path, 0, 0)
 }
 
@@ -484,15 +506,22 @@ func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length
 		length = 0
 	}
 
+	// Record operation count
+	azMetricsCollector.RecordOperation("ReadInBuffer", 1)
+
 	return
 }
 
 func (az *AzStorage) WriteFile(options *internal.WriteFileOptions) (int, error) {
+	// Record operation count
+	azMetricsCollector.RecordOperation("WriteFile", 1)
 	err := az.storage.Write(options)
 	return len(options.Data), err
 }
 
 func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
+	// Record operation count
+	azMetricsCollector.RecordOperation("GetFileBlockOffsets", 1)
 	return az.storage.GetFileBlockOffsets(options.Name)
 
 }
@@ -504,17 +533,22 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 	if err == nil {
 		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]any{size: options.NewSize})
 		azStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
+		azMetricsCollector.RecordOperation("TruncateFile", 1)
 	}
 	return err
 }
 
 func (az *AzStorage) CopyToFile(options internal.CopyToFileOptions) error {
 	log.Trace("AzStorage::CopyToFile : Read file %s", options.Name)
+	// Record operation count
+	azMetricsCollector.RecordOperation("CopyToFile", 1)
 	return az.storage.ReadToFile(options.Name, options.Offset, options.Count, options.File)
 }
 
 func (az *AzStorage) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("AzStorage::CopyFromFile : Upload file %s", options.Name)
+	// Record operation count
+	azMetricsCollector.RecordOperation("CopyFromFile", 1)
 	return az.storage.WriteFromFile(options.Name, options.Metadata, options.File)
 }
 
@@ -526,6 +560,7 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 	if err == nil {
 		azStatsCollector.PushEvents(createLink, options.Name, map[string]any{target: options.Target})
 		azStatsCollector.UpdateStats(stats_manager.Increment, createLink, (int64)(1))
+		azMetricsCollector.RecordOperation("CreateLink", 1)
 	}
 
 	return err
@@ -538,6 +573,7 @@ func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) 
 	if err != nil {
 		azStatsCollector.PushEvents(readLink, options.Name, nil)
 		azStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))
+		azMetricsCollector.RecordOperation("ReadLink", 1)
 	}
 
 	return string(data), err
@@ -546,6 +582,8 @@ func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) 
 // Attribute operations
 func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.ObjAttr, err error) {
 	//log.Trace("AzStorage::GetAttr : Get attributes of file %s", name)
+	// Record operation count (GetProperties)
+	azMetricsCollector.RecordOperation("GetAttr", 1)
 	return az.storage.GetAttr(options.Name)
 }
 
@@ -556,6 +594,7 @@ func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 	if err == nil {
 		azStatsCollector.PushEvents(chmod, options.Name, map[string]any{mode: options.Mode.String()})
 		azStatsCollector.UpdateStats(stats_manager.Increment, chmod, (int64)(1))
+		azMetricsCollector.RecordOperation("Chmod", 1)
 	}
 
 	return err
@@ -563,23 +602,33 @@ func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 
 func (az *AzStorage) Chown(options internal.ChownOptions) error {
 	log.Trace("AzStorage::Chown : Change ownership of file %s to %d-%d", options.Name, options.Owner, options.Group)
+	// Record operation count
+	azMetricsCollector.RecordOperation("Chown", 1)
 	return az.storage.ChangeOwner(options.Name, options.Owner, options.Group)
 }
 
 func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("AzStorage::FlushFile : Flush file %s", options.Handle.Path)
+	// Record operation count
+	azMetricsCollector.RecordOperation("FlushFile", 1)
 	return az.storage.StageAndCommit(options.Handle.Path, options.Handle.CacheObj.BlockOffsetList)
 }
 
 func (az *AzStorage) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
+	// Record operation count
+	azMetricsCollector.RecordOperation("GetCommittedBlockList", 1)
 	return az.storage.GetCommittedBlockList(name)
 }
 
 func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
+	// Record operation count
+	azMetricsCollector.RecordOperation("StageData", 1)
 	return az.storage.StageBlock(opt.Name, opt.Data, opt.Id)
 }
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
+	// Record operation count
+	azMetricsCollector.RecordOperation("CommitData", 1)
 	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
 }
 

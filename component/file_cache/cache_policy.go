@@ -98,6 +98,7 @@ func getUsagePercentage(path string, maxSizeMB float64) float64 {
 
 	fileCacheStatsCollector.UpdateStats(stats_manager.Replace, cacheUsage, fmt.Sprintf("%f MB", curSize))
 	fileCacheStatsCollector.UpdateStats(stats_manager.Replace, usgPer, fmt.Sprintf("%f%%", usagePercent))
+	fileCacheMetricsCollector.SetCacheUsage(curSize)
 
 	return usagePercent
 }
@@ -127,6 +128,9 @@ func deleteFile(name string) error {
 		log.Err("cachePolicy::DeleteItem : Failed to delete local file %s [%v]", name, err.Error())
 		return err
 	}
+
+	// Record eviction metric
+	fileCacheMetricsCollector.RecordCacheEviction("file_cache", 1)
 
 	return nil
 }

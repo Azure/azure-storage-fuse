@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/metrics"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
@@ -130,6 +131,7 @@ const (
 var _ internal.Component = &FileCache{}
 
 var fileCacheStatsCollector *stats_manager.StatsCollector
+var fileCacheMetricsCollector *metrics.MetricsCollector
 
 func (fc *FileCache) Name() string {
 	return compName
@@ -164,6 +166,9 @@ func (fc *FileCache) Start(ctx context.Context) error {
 
 	// create stats collector for file cache
 	fileCacheStatsCollector = stats_manager.NewStatsCollector(fc.Name())
+
+	// create metrics collector for file cache
+	fileCacheMetricsCollector = metrics.NewMetricsCollector(fc.Name())
 
 	return nil
 }
@@ -1029,9 +1034,12 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
+		fileCacheMetricsCollector.RecordCacheMiss("file_cache")
+		fileCacheMetricsCollector.RecordOperation("download", 1)
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
 		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, cacheServed, (int64)(1))
+		fileCacheMetricsCollector.RecordCacheHit("file_cache")
 	}
 
 	// Open the file and grab a shared lock to prevent deletion by the cache policy.
