@@ -99,6 +99,9 @@ type mountOptions struct {
 	BlockCache        bool     `config:"block-cache"`
 	Preload           bool     `config:"preload"`
 	EntryCacheTimeout int      `config:"list-cache-timeout"`
+
+	// Workflow-based auto-configuration
+	Workflow string `config:"workflow"`
 }
 
 var options mountOptions
@@ -202,6 +205,122 @@ func OnConfigChange() {
 	}
 }
 
+// configureWorkflow : Auto-configure cache settings based on workflow type
+func configureWorkflow(workflow string) error {
+	switch workflow {
+	case "training":
+		// Training workflow: Reading multiple training dataset files
+		// Use file_cache for better performance with multiple file reads
+		log.Info("Mount::configureWorkflow : Training workflow - optimizing for reading multiple dataset files")
+
+		// Enable file_cache if not explicitly configured
+		if !config.IsSet("components") && !config.IsSet("block-cache") && !config.IsSet("streaming") {
+			// File cache will be added to pipeline in the standard flow
+			// Just set file_cache specific configurations
+			if !config.IsSet("file_cache.timeout-sec") {
+				config.Set("file_cache.timeout-sec", "7200") // 2 hours for training data
+			}
+			if !config.IsSet("file_cache.max-size-mb") {
+				config.Set("file_cache.max-size-mb", "8192") // 8GB cache for datasets
+			}
+		}
+
+		// Enable attr_cache if not explicitly disabled
+		if !config.IsSet("use-attr-cache") {
+			config.Set("use-attr-cache", "true")
+		}
+		if !config.IsSet("attr_cache.timeout-sec") {
+			config.Set("attr_cache.timeout-sec", "7200") // Long timeout for training
+		}
+
+		// Optimize libfuse settings for training
+		if !config.IsSet("libfuse.attribute-expiration-sec") {
+			config.Set("libfuse.attribute-expiration-sec", "120")
+		}
+		if !config.IsSet("libfuse.entry-expiration-sec") {
+			config.Set("libfuse.entry-expiration-sec", "120")
+		}
+
+	case "serving":
+		// Serving workflow: Load model from storage and serve requests
+		// Use preload feature to download all files on mount
+		log.Info("Mount::configureWorkflow : Serving workflow - optimizing for model loading and serving")
+
+		// Enable preload if not explicitly configured
+		if !config.IsSet("preload") && !config.IsSet("components") {
+			config.Set("preload", "true")
+		}
+
+		// Enable attr_cache if not explicitly disabled
+		if !config.IsSet("use-attr-cache") {
+			config.Set("use-attr-cache", "true")
+		}
+		if !config.IsSet("attr_cache.timeout-sec") {
+			config.Set("attr_cache.timeout-sec", "3600") // 1 hour for serving
+		}
+
+		// Set read-only mode for serving (preload requirement)
+		if !config.IsSet("read-only") {
+			config.Set("read-only", "true")
+		}
+
+		// Optimize libfuse settings for serving
+		if !config.IsSet("libfuse.attribute-expiration-sec") {
+			config.Set("libfuse.attribute-expiration-sec", "300")
+		}
+		if !config.IsSet("libfuse.entry-expiration-sec") {
+			config.Set("libfuse.entry-expiration-sec", "300")
+		}
+
+	case "checkpointing":
+		// Checkpointing workflow: Writing large checkpoint files
+		// Use block_cache mode for writing and disable kernel cache
+		log.Info("Mount::configureWorkflow : Checkpointing workflow - optimizing for large file writes")
+
+		// Enable block_cache if not explicitly configured
+		if !config.IsSet("block-cache") && !config.IsSet("components") && !config.IsSet("streaming") {
+			config.Set("block-cache", "true")
+		}
+
+		// Configure block_cache for large writes
+		if !config.IsSet("block_cache.block-size-mb") {
+			config.Set("block_cache.block-size-mb", "64") // Larger blocks for checkpoints
+		}
+		if !config.IsSet("block_cache.mem-size-mb") {
+			config.Set("block_cache.mem-size-mb", "4096") // 4GB memory cache
+		}
+		if !config.IsSet("block_cache.parallelism") {
+			config.Set("block_cache.parallelism", "128") // High parallelism for writes
+		}
+
+		// Disable kernel cache for immediate writes
+		if !config.IsSet("disable-kernel-cache") {
+			config.Set("disable-kernel-cache", "true")
+		}
+
+		// Enable attr_cache if not explicitly disabled
+		if !config.IsSet("use-attr-cache") {
+			config.Set("use-attr-cache", "true")
+		}
+		if !config.IsSet("attr_cache.timeout-sec") {
+			config.Set("attr_cache.timeout-sec", "120") // Shorter timeout for checkpointing
+		}
+
+		// Optimize libfuse settings for checkpointing
+		if !config.IsSet("libfuse.attribute-expiration-sec") {
+			config.Set("libfuse.attribute-expiration-sec", "60")
+		}
+		if !config.IsSet("libfuse.entry-expiration-sec") {
+			config.Set("libfuse.entry-expiration-sec", "60")
+		}
+
+	default:
+		return fmt.Errorf("invalid workflow type '%s'. Allowed values: training, serving, checkpointing", workflow)
+	}
+
+	return nil
+}
+
 // parseConfig : Based on config file or encrypted data parse the provided config
 func parseConfig() error {
 	options.ConfigFile = common.ExpandPath(options.ConfigFile)
@@ -283,6 +402,18 @@ var mountCmd = &cobra.Command{
 		err := config.Unmarshal(&options)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
+		}
+
+		// Apply workflow-based auto-configuration if workflow is specified
+		if options.Workflow != "" {
+			if err := configureWorkflow(options.Workflow); err != nil {
+				return err
+			}
+			// Re-unmarshal to pick up workflow-based config changes
+			err := config.Unmarshal(&options)
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal config after workflow configuration [%s]", err.Error())
+			}
 		}
 
 		if !configFileExists || len(options.Components) == 0 {
@@ -855,6 +986,13 @@ func init() {
 	// Add a generic cleanup-on-start flag that applies to all cache components
 	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache, block_cache, xload components.")
 	config.BindPFlag("cleanup-on-start", mountCmd.PersistentFlags().Lookup("cleanup-on-start"))
+
+	// Add workflow flag for auto-configuration of cache settings
+	mountCmd.Flags().StringVar(&options.Workflow, "workflow", "", "Auto-configure cache settings based on workflow type. Allowed values: training|serving|checkpointing")
+	config.BindPFlag("workflow", mountCmd.Flags().Lookup("workflow"))
+	_ = mountCmd.RegisterFlagCompletionFunc("workflow", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"training", "serving", "checkpointing"}, cobra.ShellCompDirectiveNoFileComp
+	})
 
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")

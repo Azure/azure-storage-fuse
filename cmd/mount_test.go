@@ -787,3 +787,156 @@ func TestMountCommand(t *testing.T) {
 
 	suite.Run(t, new(mountTestSuite))
 }
+
+// TestConfigureWorkflow tests the workflow auto-configuration function
+func TestConfigureWorkflow(t *testing.T) {
+	assert := assert.New(t)
+
+	t.Run("TrainingWorkflow", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		err := configureWorkflow("training")
+		assert.NoError(err)
+
+		// Verify training-specific settings
+		assert.Equal("7200", viper.GetString("file_cache.timeout-sec"))
+		assert.Equal("8192", viper.GetString("file_cache.max-size-mb"))
+		assert.Equal("true", viper.GetString("use-attr-cache"))
+		assert.Equal("7200", viper.GetString("attr_cache.timeout-sec"))
+		assert.Equal("120", viper.GetString("libfuse.attribute-expiration-sec"))
+		assert.Equal("120", viper.GetString("libfuse.entry-expiration-sec"))
+	})
+
+	t.Run("ServingWorkflow", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		err := configureWorkflow("serving")
+		assert.NoError(err)
+
+		// Verify serving-specific settings
+		assert.Equal("true", viper.GetString("preload"))
+		assert.Equal("true", viper.GetString("use-attr-cache"))
+		assert.Equal("3600", viper.GetString("attr_cache.timeout-sec"))
+		assert.Equal("true", viper.GetString("read-only"))
+		assert.Equal("300", viper.GetString("libfuse.attribute-expiration-sec"))
+		assert.Equal("300", viper.GetString("libfuse.entry-expiration-sec"))
+	})
+
+	t.Run("CheckpointingWorkflow", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		err := configureWorkflow("checkpointing")
+		assert.NoError(err)
+
+		// Verify checkpointing-specific settings
+		assert.Equal("true", viper.GetString("block-cache"))
+		assert.Equal("64", viper.GetString("block_cache.block-size-mb"))
+		assert.Equal("4096", viper.GetString("block_cache.mem-size-mb"))
+		assert.Equal("128", viper.GetString("block_cache.parallelism"))
+		assert.Equal("true", viper.GetString("disable-kernel-cache"))
+		assert.Equal("true", viper.GetString("use-attr-cache"))
+		assert.Equal("120", viper.GetString("attr_cache.timeout-sec"))
+		assert.Equal("60", viper.GetString("libfuse.attribute-expiration-sec"))
+		assert.Equal("60", viper.GetString("libfuse.entry-expiration-sec"))
+	})
+
+	t.Run("InvalidWorkflow", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		err := configureWorkflow("invalid")
+		assert.Error(err)
+		assert.Contains(err.Error(), "invalid workflow type")
+	})
+
+	t.Run("UserOverrideRespected", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		// Simulate user setting explicit values before workflow configuration
+		// When a user sets a value, config.IsSet() will return true for that key
+		config.Set("use-attr-cache", "false")
+		config.Set("attr_cache.timeout-sec", "60")
+
+		// Apply training workflow
+		err := configureWorkflow("training")
+		assert.NoError(err)
+
+		// Verify workflow did NOT override user's explicit values
+		// The workflow sets use-attr-cache to true and timeout to 7200
+		// but since user already set these, they should remain unchanged
+		assert.Equal("false", viper.GetString("use-attr-cache"))
+		assert.Equal("60", viper.GetString("attr_cache.timeout-sec"))
+
+		// Verify workflow DID set values that user didn't specify
+		assert.Equal("8192", viper.GetString("file_cache.max-size-mb"))
+		assert.Equal("120", viper.GetString("libfuse.attribute-expiration-sec"))
+	})
+}
+
+// TestWorkflowWithMountOptions tests workflow integration with mount options
+func TestWorkflowWithMountOptions(t *testing.T) {
+	assert := assert.New(t)
+
+	t.Run("TrainingWorkflowOptions", func(t *testing.T) {
+		// Reset viper and options for clean test
+		config.ResetConfig()
+		options = mountOptions{}
+
+		// Set workflow
+		options.Workflow = "training"
+
+		err := configureWorkflow(options.Workflow)
+		assert.NoError(err)
+
+		// Unmarshal to populate options from config
+		err = config.Unmarshal(&options)
+		assert.NoError(err)
+
+		// Verify that options were populated correctly
+		assert.True(options.AttrCache)
+	})
+
+	t.Run("ServingWorkflowOptions", func(t *testing.T) {
+		// Reset viper and options for clean test
+		config.ResetConfig()
+		options = mountOptions{}
+
+		// Set workflow
+		options.Workflow = "serving"
+
+		err := configureWorkflow(options.Workflow)
+		assert.NoError(err)
+
+		// Unmarshal to populate options from config
+		err = config.Unmarshal(&options)
+		assert.NoError(err)
+
+		// Verify that options were populated correctly
+		assert.True(options.Preload)
+		assert.True(options.AttrCache)
+	})
+
+	t.Run("CheckpointingWorkflowOptions", func(t *testing.T) {
+		// Reset viper and options for clean test
+		config.ResetConfig()
+		options = mountOptions{}
+
+		// Set workflow
+		options.Workflow = "checkpointing"
+
+		err := configureWorkflow(options.Workflow)
+		assert.NoError(err)
+
+		// Unmarshal to populate options from config
+		err = config.Unmarshal(&options)
+		assert.NoError(err)
+
+		// Verify that options were populated correctly
+		assert.True(options.BlockCache)
+		assert.True(options.AttrCache)
+	})
+}
