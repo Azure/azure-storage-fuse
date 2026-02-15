@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770537136549,
+  "lastUpdate": 1771141205099,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -287,6 +287,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 1.705619120624,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "8cfdd0212d34abc1e48e7c2b8bbf92c840c2d4ef",
+          "message": "Adding rate limit functionality for ingress bandwidth and operations per second (#2093)",
+          "timestamp": "2026-02-09T06:07:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8cfdd0212d34abc1e48e7c2b8bbf92c840c2d4ef"
+        },
+        "date": 1771141204864,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.643056207832,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 1.67454348667,
             "unit": "milliseconds"
           }
         ]
