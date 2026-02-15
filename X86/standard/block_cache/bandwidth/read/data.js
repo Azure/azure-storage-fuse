@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1770528084437,
+  "lastUpdate": 1771132504445,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -569,6 +569,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 35.49609375,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "8cfdd0212d34abc1e48e7c2b8bbf92c840c2d4ef",
+          "message": "Adding rate limit functionality for ingress bandwidth and operations per second (#2093)",
+          "timestamp": "2026-02-09T06:07:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8cfdd0212d34abc1e48e7c2b8bbf92c840c2d4ef"
+        },
+        "date": 1771132502850,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 2533.58203125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 3679.009765625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3277.21875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 8.072265625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 8295.52734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 8206.771484375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 31.951171875,
             "unit": "MiB/s"
           }
         ]
