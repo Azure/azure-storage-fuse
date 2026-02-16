@@ -1,7 +1,6 @@
 package block_cache
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -66,12 +65,10 @@ type workerPool struct {
 	wg      sync.WaitGroup // Tracks active workers for clean shutdown
 	close   chan struct{}  // Closed to signal workers to exit
 	tasks   chan *task     // Buffered channel of pending tasks
+	bc      *BlockCache    // Reference to parent BlockCache for I/O operations
 }
 
-// wp is the global worker pool instance, initialized during Start().
-var wp *workerPool
-
-// NewWorkerPool creates and starts a worker pool with the specified number of workers.
+// createWorkerPool creates and starts a worker pool with the specified number of workers.
 //
 // Parameters:
 //   - workers: Number of worker goroutines to create
@@ -81,12 +78,13 @@ var wp *workerPool
 //
 // The task channel is buffered (workers*2) to allow some queueing of pending
 // operations without blocking the submitter.
-func NewWorkerPool(workers int) {
+func createWorkerPool(workers int, bc *BlockCache) *workerPool {
 	// Create the worker pool.
-	wp = &workerPool{
+	wp := &workerPool{
 		workers: workers,
 		close:   make(chan struct{}),
 		tasks:   make(chan *task, workers*2),
+		bc:      bc,
 	}
 
 	// Start the workers.
@@ -96,6 +94,8 @@ func NewWorkerPool(workers int) {
 	for range wp.workers {
 		go wp.worker()
 	}
+
+	return wp
 }
 
 // destroyWorkerPool shuts down the worker pool and waits for all workers to exit.
@@ -108,7 +108,7 @@ func NewWorkerPool(workers int) {
 //
 // Note: Pending tasks in the channel are abandoned. Callers should ensure
 // all important tasks complete before destroying the pool.
-func (wp *workerPool) destroyWorkerPool() {
+func (wp *workerPool) destroy() {
 	close(wp.close)
 	wp.wg.Wait()
 }
@@ -129,9 +129,9 @@ func (wp *workerPool) worker() {
 		select {
 		case task := <-wp.tasks:
 			if task.download {
-				wp.downloadBlock(task)
+				wp.downloadBlock(task, wp.bc)
 			} else {
-				wp.uploadBlock(task)
+				wp.uploadBlock(task, wp.bc)
 			}
 		case <-wp.close:
 			return
@@ -189,7 +189,7 @@ func (wp *workerPool) queueWork(block *block, bufDesc *bufferDescriptor, downloa
 //   - Download holds a reference during the operation
 //   - Sync downloads: caller releases reference after waiting
 //   - Async downloads: worker releases reference after completion
-func (wp *workerPool) downloadBlock(task *task) {
+func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 	var err error
 	// time.Sleep(10 * time.Millisecond) // Simulate download time
 	// err := fmt.Errorf("simulated download error") // Simulate an error
@@ -207,7 +207,7 @@ func (wp *workerPool) downloadBlock(task *task) {
 		task.bufDesc.downloadErr = err
 
 		// Remove it from buffer table manager, so that it accepts no more new readers.
-		btm.removeBufferDescriptor(task.bufDesc, false /*strict*/)
+		bc.btm.removeBufferDescriptor(task.bufDesc, false /*strict*/, bc.freeList)
 	} else {
 		log.Debug("BlockCache::downloadBlock: Successfully downloaded block idx %d into buffer idx %d",
 			task.block.idx, task.bufDesc.bufIdx)
@@ -218,7 +218,7 @@ func (wp *workerPool) downloadBlock(task *task) {
 	task.bufDesc.contentLock.Unlock()
 
 	if !task.sync {
-		if ok := task.bufDesc.release(); ok {
+		if ok := task.bufDesc.release(bc.freeList); ok {
 			log.Debug("BlockCache::downloadBlock: Released bufferIdx: %d for blockIdx: %d back to free list after async download",
 				task.bufDesc.bufIdx, task.block.idx)
 		}
@@ -267,12 +267,12 @@ func (wp *workerPool) downloadBlock(task *task) {
 // For async uploads, the worker removes the buffer from the table after upload
 // completes. This frees cache space for other blocks. The caller doesn't wait,
 // so we can't rely on the caller to release the buffer.
-func (wp *workerPool) uploadBlock(task *task) {
+func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	task.block.id = common.GetBlockID(common.BlockIDLength)
 
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name: task.block.file.Name,
-		Data: task.bufDesc.buf[:getBlockSize(atomic.LoadInt64(&task.block.file.size), task.block.idx)],
+		Data: task.bufDesc.buf[:getBlockSize(atomic.LoadInt64(&task.block.file.size), task.block.idx, int64(bc.blockSize))],
 		Id:   task.block.id,
 	})
 
@@ -293,16 +293,16 @@ func (wp *workerPool) uploadBlock(task *task) {
 	task.block.numWrites.Store(0)
 
 	if !task.sync {
-		if ok := task.bufDesc.release(); ok {
+		if ok := task.bufDesc.release(bc.freeList); ok {
 			// This should not be released as we did not removed it from buffer table manager yet.
-			err := fmt.Sprintf("BlockCache::uploadBlock: Released bufferIdx: %d for blockIdx: %d back to free list after async upload",
+			log.Err("BlockCache::uploadBlock: Released bufferIdx: %d for blockIdx: %d back to free list after async upload",
 				task.bufDesc.bufIdx, task.block.idx)
-			panic(err)
 		}
+
 		log.Debug("BlockCache::uploadBlock: Async upload completed for buffer idx %d for block idx %d, refCnt: %d",
 			task.bufDesc.bufIdx, task.block.idx, task.bufDesc.refCnt.Load())
 
-		ok1, ok2 := btm.removeBufferDescriptor(task.bufDesc, true /*strict*/)
+		ok1, ok2 := bc.btm.removeBufferDescriptor(task.bufDesc, true /*strict*/, bc.freeList)
 		log.Debug("BlockCache::uploadBlock: Removed bufferIdx: %d for blockIdx: %d from buffer table manager after async upload, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
 			task.bufDesc.bufIdx, task.block.idx, ok1, ok2)
 	}
