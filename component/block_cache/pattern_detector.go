@@ -7,6 +7,12 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
+const (
+	sequentialWindowBlocks    = 2
+	minStreakForSeqPattern    = 3
+	maxStreakForRandomPattern = -3
+)
+
 // patternDetector analyzes file access patterns to optimize read-ahead behavior.
 //
 // Overview:
@@ -194,16 +200,16 @@ func newPatternDetector() *patternDetector {
 // Uses atomic operations throughout, allowing concurrent calls without locks.
 // The pattern may be slightly inaccurate under high concurrency, but this is
 // acceptable for a heuristic optimization.
-func (pd *patternDetector) updateAccessPattern(currentOffset int64) patternType {
+func (pd *patternDetector) updateAccessPattern(currentOffset int64, blockSize int64) patternType {
 	prevOffset := pd.prevOffset.Swap(currentOffset)
-	windowSize := int64(bc.blockSize) * 2 // 2 blocks window
+	windowSize := blockSize * sequentialWindowBlocks
 
 	absDiff := int64(math.Abs(float64(currentOffset - prevOffset)))
 
 	if absDiff <= windowSize {
 		// Sequential access
 		newStreak := pd.streak.Add(1)
-		if newStreak >= 3 {
+		if newStreak >= minStreakForSeqPattern {
 			return patternSequential
 		} else if newStreak < 0 {
 			// Reset streak
@@ -214,7 +220,7 @@ func (pd *patternDetector) updateAccessPattern(currentOffset int64) patternType 
 	} else {
 		// Random access
 		newStreak := pd.streak.Add(-1)
-		if newStreak <= -3 {
+		if newStreak <= maxStreakForRandomPattern {
 			return patternRandom
 		} else if newStreak > 0 {
 			// Reset streak
