@@ -12,8 +12,6 @@ const (
 	errFlushNeeded = "Flush needed before reading block data"
 )
 
-var btm *BufferTableMgr
-
 // BufferTableMgr manages the mapping between blocks and their associated buffer descriptors.
 // It maintains a table (map) that tracks which buffer is caching which block's data.
 // Thread-safety is provided by a read-write mutex allowing concurrent lookups.
@@ -22,8 +20,8 @@ type BufferTableMgr struct {
 	mu    sync.RWMutex                 // Protects concurrent access to the table
 }
 
-func NewBufferTableMgr() {
-	btm = &BufferTableMgr{
+func newBufferTableMgr() *BufferTableMgr {
+	return &BufferTableMgr{
 		table: make(map[*block]*bufferDescriptor),
 	}
 }
@@ -74,7 +72,7 @@ func (b bufDescStatus) String() string {
 //  3. Caller must call release() when done to decrement refCnt
 //
 // Thread-safety: Uses block-level locking to prevent concurrent creation for the same block
-func GetOrCreateBufferDescriptor(blk *block, sync bool) (*bufferDescriptor, bufDescStatus, error) {
+func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, workerPool *workerPool, blk *block, sync bool) (*bufferDescriptor, bufDescStatus, error) {
 	stime := time.Now()
 
 	log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Requesting buffer for blockIdx: %d, sync: %v, file: %s",
@@ -115,11 +113,11 @@ func GetOrCreateBufferDescriptor(blk *block, sync bool) (*bufferDescriptor, bufD
 			return bufDesc, bufDescStatusExists, nil
 		} else {
 			// Buffer has download error, release our reference and return error
-			log.Err("BufferTableMgr::GetOrCreateBufferDescriptor: Existing bufferIdx: %d, blockIdx: %d, sync: %v, has download error",
-				bufDesc.bufIdx, blk.idx, sync)
+			log.Err("BufferTableMgr::GetOrCreateBufferDescriptor: Existing bufferIdx: %d, blockIdx: %d, sync: %v, has error: %v",
+				bufDesc.bufIdx, blk.idx, sync, err)
 
-			if ok := bufDesc.release(); ok {
-				log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Released bufferIdx: %d for blockIdx: %d back to free list after download error: %v",
+			if ok := bufDesc.release(freeList); ok {
+				log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Released bufferIdx: %d for blockIdx: %d back to free list after error: %v",
 					bufDesc.bufIdx, blk.idx, err)
 			}
 			return nil, bufDescStatusInvalid, err
@@ -156,13 +154,19 @@ func GetOrCreateBufferDescriptor(blk *block, sync bool) (*bufferDescriptor, bufD
 			btm.mu.Unlock()
 
 			// No free buffer present in freeList, need to evict a buffer. Request a victim buffer from Buffers in use list.
-			bufDesc = freeList.getVictimBuffer()
+			bufDesc, err = freeList.getVictimBuffer(workerPool)
+			if err != nil {
+				// This should never happen as we just failed to allocate a buffer from free list.
+				log.Crit(fmt.Sprintf("BufferTableMgr::GetOrCreateBufferDescriptor: Failed to get victim buffer for blockIdx: %d, file: %s, sync: %v: %v",
+					blk.idx, blk.file.Name, sync, err))
+				return nil, bufDescStatusInvalid, err
+			}
 
 			// Re-acquire the lock on buffer table manager to update the table.
 			btm.mu.Lock()
 
 			victimRefCnt := bufDesc.refCnt.Load()
-			if victimRefCnt == 2 {
+			if victimRefCnt == refCountTableAndOneUser {
 				// Victim buffer is not in use, can evict.
 				victim = true
 			} else {
@@ -178,7 +182,7 @@ func GetOrCreateBufferDescriptor(blk *block, sync bool) (*bufferDescriptor, bufD
 
 				// Victim buffer is still in use, cannot evict. Retry getting another victim.
 				// Reduce the refCnt on victim buffer that was chosen.
-				if ok := bufDesc.release(); ok {
+				if ok := bufDesc.release(freeList); ok {
 					log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Released victim bufferIdx: %d for blockIdx: %d back to free list after failed eviction attempt",
 						bufDesc.bufIdx, bufDesc.block.idx)
 				}
@@ -196,14 +200,14 @@ func GetOrCreateBufferDescriptor(blk *block, sync bool) (*bufferDescriptor, bufD
 	if victim {
 		// Eviction successful: remove victim buffer's old block mapping and reset it for reuse
 		delete(btm.table, bufDesc.block)
-		bufDesc.reset()
+		bufDesc.reset(freeList)
 	}
 
 	// Step 6: Add the new buffer descriptor to the table and initialize it
 	// Initialize buffer with refCnt=2
 	// 1 for table + 1 for caller
 	btm.table[blk] = bufDesc
-	bufDesc.refCnt.Store(2)
+	bufDesc.refCnt.Store(refCountTableAndOneUser)
 	bufDesc.block = blk
 
 	// Step 7: Prepare buffer for download if needed
@@ -223,15 +227,15 @@ func GetOrCreateBufferDescriptor(blk *block, sync bool) (*bufferDescriptor, bufD
 
 	// This is where we should downlod the blockdata into the buffer, check the blocks flag status.
 	if doRead {
-		blk.scheduleDownload(bufDesc, sync)
+		blk.scheduleDownload(workerPool, freeList, bufDesc, sync)
 
 		if sync {
 			// Check if there was any error during download, and also blocks here until download is complete.
 			if err := bufDesc.ensureBufferValidForRead(); err != nil {
-				log.Err("BufferTableMgr::GetOrCreateBufferDescriptor: Download block failed for file: %s, blockIdx: %d: %v",
-					blk.file.Name, blk.idx, bufDesc.downloadErr)
+				log.Err("BufferTableMgr::GetOrCreateBufferDescriptor: Download block failed for file: %s, blockIdx: %d: %v, err: %v",
+					blk.file.Name, blk.idx, bufDesc.downloadErr, err)
 
-				if ok := bufDesc.release(); ok {
+				if ok := bufDesc.release(freeList); ok {
 					log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Released bufferIdx: %d for blockIdx: %d back to free list after download failure: %v",
 						bufDesc.bufIdx, blk.idx)
 				}
@@ -310,7 +314,7 @@ func (btm *BufferTableMgr) LookUpBufferDescriptor(blk *block) (*bufferDescriptor
 // Use cases:
 //   - strict=true: Used when we want to ensure no active users (e.g., file closure)
 //   - strict=false: Used for eviction (acceptable to remove even if users exist)
-func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, strict bool) (isRemovedFromBufMgr bool, isReleasedToFreeList bool) {
+func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, strict bool, freeList *freeListType) (isRemovedFromBufMgr bool, isReleasedToFreeList bool) {
 	log.Debug("BufferTableMgr::removeBufferDescriptor: Remove blockIdx: %d, bufferIdx: %d for file: %s from buffer table",
 		bufDesc.block.idx, bufDesc.bufIdx, bufDesc.block.file.Name)
 
@@ -326,7 +330,7 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 
 	// Check 2: In strict mode, ensure no user references exist (only table reference allowed)
 	// refCnt > 1 means: 1 (table) + N (active users), so removal would be unsafe
-	if strict && bufDesc.refCnt.Load() > 1 {
+	if strict && bufDesc.refCnt.Load() > refCountTableOnly {
 		btm.mu.Unlock()
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Cannot remove bufferIdx: %d for blockIdx: %d, refCnt: %d > 1",
 			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt.Load())
