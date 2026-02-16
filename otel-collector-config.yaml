@@ -14,6 +14,10 @@ processors:
 exporters:
   azuremonitor:
     connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 10000
     
   # Optional: Also export to console for debugging
   debug: {}

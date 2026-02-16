@@ -53,6 +53,7 @@ type OtelLogger struct {
 	loggerProvider *sdklog.LoggerProvider
 	logger         otellog.Logger
 	stdLogger      *log.Logger
+	sysLogger      *SysLogger
 	procPID        int
 	logLevel       common.LogLevel
 	logTag         string
@@ -119,7 +120,15 @@ func newOtelLogger(config OtelLoggerConfig) (*OtelLogger, error) {
 	l.logger = l.loggerProvider.Logger(config.LogTag)
 
 	// Create a standard logger for compatibility
-	l.stdLogger = log.New(os.Stdout, "", 0)
+	// Use sys logger to connect to syslog
+	sysLog, err := newSysLogger(config.LogLevel, config.LogTag, config.LogGoroutineID)
+	if err == nil {
+		l.sysLogger = sysLog
+		l.stdLogger = sysLog.GetLoggerObj()
+	} else {
+		// Fallback to stdout
+		l.stdLogger = log.New(os.Stdout, "", 0)
+	}
 
 	return l, nil
 }
@@ -172,25 +181,29 @@ func (l *OtelLogger) Crit(format string, args ...any) {
 	}
 }
 
+// Not applicable for OTLP logger - logs are sent to remote endpoint
 func (l *OtelLogger) SetLogFile(name string) error {
-	// Not applicable for OTLP logger - logs are sent to remote endpoint
 	return nil
 }
 
+// Not applicable for OTLP logger - no local file rotation
 func (l *OtelLogger) SetMaxLogSize(size int) {
-	// Not applicable for OTLP logger - no local file rotation
 }
 
+// Not applicable for OTLP logger - no local file rotation
 func (l *OtelLogger) SetLogFileCount(count int) {
-	// Not applicable for OTLP logger - no local file rotation
 }
 
 func (l *OtelLogger) SetLogLevel(level common.LogLevel) {
 	l.logLevel = level
-	l.logEvent(otellog.SeverityInfo, common.ELogLevel.LOG_INFO().String(), "Log level reset to : %s", level.String())
+	l.logEvent(otellog.SeverityFatal, common.ELogLevel.LOG_CRIT().String(), "Log level reset to : %s", level.String())
 }
 
 func (l *OtelLogger) Destroy() error {
+	if l.sysLogger != nil {
+		_ = l.sysLogger.Destroy()
+	}
+
 	if l.loggerProvider != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -242,15 +255,30 @@ func (l *OtelLogger) logEvent(severity otellog.Severity, lvl string, format stri
 	// Emit the log record
 	l.logger.Emit(ctx, record)
 
-	// Also write to stdout for immediate visibility during debugging
-	timestamp := time.Now().Format(common.UnixDateMillis)
-	if l.logGoroutineID {
-		l.stdLogger.Printf("%s : %s[%d][%d] : [%s] %s [%s (%d)]: %s",
-			timestamp, l.logTag, l.procPID, common.GetGoroutineID(),
-			common.MountPath, lvl, filepath.Base(fn), ln, msg)
+	// Also write to syslog for visibility
+	base := fmt.Sprintf("%s : %s[%d] : ",
+		time.Now().Format(common.UnixDateMillis),
+		l.logTag,
+		l.procPID)
+
+	remaining := fmt.Sprintf("[%s] %s [%s (%d)]: %s",
+		common.MountPath,
+		lvl,
+		filepath.Base(fn), ln,
+		msg)
+
+	if l.sysLogger != nil {
+		if l.logGoroutineID {
+			l.stdLogger.Printf("[%d]%s", common.GetGoroutineID(), remaining)
+		} else {
+			l.stdLogger.Printf("%s", remaining)
+		}
 	} else {
-		l.stdLogger.Printf("%s : %s[%d] : [%s] %s [%s (%d)]: %s",
-			timestamp, l.logTag, l.procPID,
-			common.MountPath, lvl, filepath.Base(fn), ln, msg)
+		// Fallback to standard logger if sysLogger is not available
+		if l.logGoroutineID {
+			l.stdLogger.Printf("%s[%d]%s", base, common.GetGoroutineID(), remaining)
+		} else {
+			l.stdLogger.Printf("%s%s", base, remaining)
+		}
 	}
 }
