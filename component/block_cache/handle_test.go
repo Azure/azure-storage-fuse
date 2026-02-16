@@ -60,7 +60,7 @@ func TestDeleteOpenHandleForFile_LastHandle(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	// Create file with one handle
 	handle := handlemap.NewHandle("deleteme.txt")
@@ -140,7 +140,7 @@ func TestDeleteFileIfNoOpenHandles(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	// Create a file
 	handle := handlemap.NewHandle("deleteifno.txt")
@@ -191,7 +191,7 @@ func TestGetFileFromPath_RaceCondition(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	// Test basic concurrent access doesn't crash
 	done := make(chan bool)
@@ -230,7 +230,7 @@ func TestReleaseAllBuffersForFile_EmptyBlockList(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("empty.txt")
 
@@ -247,7 +247,7 @@ func TestReleaseAllBuffersForFile_WithBlocks(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("withblocks.txt")
 
