@@ -2,6 +2,7 @@ package block_cache
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -257,6 +258,16 @@ func getNoOfBlocksInFile(size int64) int {
 	return int((size + int64(bc.blockSize) - 1) / int64(bc.blockSize))
 }
 
+func validateBlockIndex(blockIdx int) error {
+	if blockIdx < 0 {
+		return fmt.Errorf("negative block index: %d", blockIdx)
+	}
+	if blockIdx > MAX_BLOCKS {
+		return fmt.Errorf("block index exceeds maximum: %d > %d", blockIdx, MAX_BLOCKS)
+	}
+	return nil
+}
+
 // scheduleUpload queues a block upload operation to the worker pool.
 //
 // This method schedules the block data in bufDesc to be uploaded to Azure Storage.
@@ -293,7 +304,7 @@ func (blk *block) scheduleUpload(bufDesc *bufferDescriptor, sync bool) {
 	bufDesc.refCnt.Add(1)
 
 	// Schedule upload
-	wp.queueWork(blk, bufDesc, false /*download*/, wait, sync /*sync*/)
+	bc.workerPool.queueWork(blk, bufDesc, false /*download*/, wait, sync /*sync*/)
 
 	if sync {
 		// Wait for upload to complete.
@@ -329,7 +340,7 @@ func (blk *block) scheduleDownload(bufDesc *bufferDescriptor, sync bool) {
 	bufDesc.refCnt.Add(1)
 
 	// Schedule download
-	wp.queueWork(blk, bufDesc, true, wait, sync)
+	bc.workerPool.queueWork(blk, bufDesc, true, wait, sync)
 
 	if sync {
 		// Wait for download to complete.

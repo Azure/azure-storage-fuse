@@ -1,7 +1,6 @@
 package block_cache
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -68,10 +67,7 @@ type workerPool struct {
 	tasks   chan *task     // Buffered channel of pending tasks
 }
 
-// wp is the global worker pool instance, initialized during Start().
-var wp *workerPool
-
-// NewWorkerPool creates and starts a worker pool with the specified number of workers.
+// createWorkerPool creates and starts a worker pool with the specified number of workers.
 //
 // Parameters:
 //   - workers: Number of worker goroutines to create
@@ -81,9 +77,9 @@ var wp *workerPool
 //
 // The task channel is buffered (workers*2) to allow some queueing of pending
 // operations without blocking the submitter.
-func NewWorkerPool(workers int) {
+func createWorkerPool(workers int) *workerPool {
 	// Create the worker pool.
-	wp = &workerPool{
+	wp := &workerPool{
 		workers: workers,
 		close:   make(chan struct{}),
 		tasks:   make(chan *task, workers*2),
@@ -96,6 +92,8 @@ func NewWorkerPool(workers int) {
 	for range wp.workers {
 		go wp.worker()
 	}
+
+	return wp
 }
 
 // destroyWorkerPool shuts down the worker pool and waits for all workers to exit.
@@ -108,7 +106,7 @@ func NewWorkerPool(workers int) {
 //
 // Note: Pending tasks in the channel are abandoned. Callers should ensure
 // all important tasks complete before destroying the pool.
-func (wp *workerPool) destroyWorkerPool() {
+func (wp *workerPool) destroy() {
 	close(wp.close)
 	wp.wg.Wait()
 }
@@ -207,7 +205,7 @@ func (wp *workerPool) downloadBlock(task *task) {
 		task.bufDesc.downloadErr = err
 
 		// Remove it from buffer table manager, so that it accepts no more new readers.
-		btm.removeBufferDescriptor(task.bufDesc, false /*strict*/)
+		bc.btm.removeBufferDescriptor(task.bufDesc, false /*strict*/)
 	} else {
 		log.Debug("BlockCache::downloadBlock: Successfully downloaded block idx %d into buffer idx %d",
 			task.block.idx, task.bufDesc.bufIdx)
@@ -295,14 +293,14 @@ func (wp *workerPool) uploadBlock(task *task) {
 	if !task.sync {
 		if ok := task.bufDesc.release(); ok {
 			// This should not be released as we did not removed it from buffer table manager yet.
-			err := fmt.Sprintf("BlockCache::uploadBlock: Released bufferIdx: %d for blockIdx: %d back to free list after async upload",
+			log.Err("BlockCache::uploadBlock: Released bufferIdx: %d for blockIdx: %d back to free list after async upload",
 				task.bufDesc.bufIdx, task.block.idx)
-			panic(err)
 		}
+
 		log.Debug("BlockCache::uploadBlock: Async upload completed for buffer idx %d for block idx %d, refCnt: %d",
 			task.bufDesc.bufIdx, task.block.idx, task.bufDesc.refCnt.Load())
 
-		ok1, ok2 := btm.removeBufferDescriptor(task.bufDesc, true /*strict*/)
+		ok1, ok2 := bc.btm.removeBufferDescriptor(task.bufDesc, true /*strict*/)
 		log.Debug("BlockCache::uploadBlock: Removed bufferIdx: %d for blockIdx: %d from buffer table manager after async upload, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
 			task.bufDesc.bufIdx, task.block.idx, ok1, ok2)
 	}

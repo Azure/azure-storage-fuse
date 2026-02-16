@@ -162,6 +162,10 @@ import (
 type BlockCache struct {
 	internal.BaseComponent
 
+	btm        *BufferTableMgr
+	freeList   *freeListType
+	workerPool *workerPool
+
 	// Block and buffer pool configuration
 	blockSize uint64 // Size of each block to be cached (in bytes, e.g., 16MB)
 	memSize   uint64 // Total memory allocated for buffer pool (in bytes)
@@ -293,13 +297,18 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
 
-	if err := createFreeList(bc.blockSize, bc.memSize); err != nil {
+	var err error
+	var fl *freeListType
+
+	if fl, err = createFreeList(bc.blockSize, bc.memSize); err != nil {
 		log.Err("BlockCache::Start : fail to initialize buffer pool [%v]", err)
 		return fmt.Errorf("failed to start %s [%v]", bc.Name(), err)
 	}
 
-	NewWorkerPool(int(bc.workers))
-	NewBufferTableMgr()
+	bc.freeList = fl
+	bc.workerPool = createWorkerPool(int(bc.workers))
+	bc.btm = newBufferTableMgr()
+
 	return nil
 }
 
@@ -315,7 +324,13 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
 
-	destroyFreeList()
+	if bc.workerPool != nil {
+		bc.workerPool.destroy()
+	}
+
+	if bc.freeList != nil {
+		bc.freeList.destroy()
+	}
 
 	// Clear the disk cache on exit
 	// if bc.tmpPath != "" {
@@ -596,7 +611,12 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle := createFreshHandleForFile(options.Name, attr.Size, attr.Mtime, options.Flags)
 
 	// Get file object from the map or create a new one for this path.
-	f, firstOpen := getFileFromPath(handle)
+	f, firstOpen, err := getFileFromPath(handle)
+	if err != nil {
+		log.Err("BlockCache::OpenFile : Failed to get file object for %s [%v]", options.Name, err)
+		return nil, err
+	}
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -618,7 +638,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			err = f.flush(false /* takefilelock */)
 			if err != nil {
 				log.Err("BlockCache::OpenFile : Failed to flush file %s before truncating on open [%v]", options.Name, err)
-				deleteOpenHandleForFile(handle, false /* takeFileLock */)
+				deleteOpenHandleForFile(handle, f, false /* takeFileLock */)
 				return nil, err
 			}
 			releaseAllBuffersForFile(f)
@@ -641,7 +661,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 				if err != nil {
 					log.Err("BlockCache::OpenFile : Failed to get block list of %s, first_open: %v, curOpenHandles: %d, [%v]",
 						options.Name, firstOpen, len(f.handles), err)
-					deleteOpenHandleForFile(handle, false /* takeFileLock */)
+					deleteOpenHandleForFile(handle, f, false /* takeFileLock */)
 					return nil, err
 				}
 
@@ -650,7 +670,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 					log.Err("BlockCache::OpenFile : Invalid block list for file: %s, first_open: %v, curOpenHandles: %d,  [%v]",
 						options.Name, firstOpen, len(f.handles), err)
 					f.blockList.state = blockListInvalid
-					deleteOpenHandleForFile(handle, false /* takeFileLock */)
+					deleteOpenHandleForFile(handle, f, false /* takeFileLock */)
 					return nil, err
 				} else {
 					f.blockList.state = blockListValid
@@ -658,7 +678,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			} else if f.blockList.state == blockListInvalid {
 				log.Err("BlockCache::OpenFile : Invalid block list for file: %s, first_open: %v, curOpenHandles: %d",
 					options.Name, firstOpen, len(f.handles))
-				deleteOpenHandleForFile(handle, false /* takeFileLock */)
+				deleteOpenHandleForFile(handle, f, false /* takeFileLock */)
 				return nil, fmt.Errorf("invalid block list for file: %s", options.Name)
 			}
 		} else {
@@ -694,7 +714,11 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 //
 // Returns the number of bytes read, or an error if the read fails.
 func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
-	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
+	bcHandle, ok := options.Handle.IFObj.(*blockCacheHandle)
+	if !ok {
+		log.Err("BlockCache::ReadInBuffer : Invalid handle type: %T", options.Handle.IFObj)
+		return 0, fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
+	}
 
 	log.Debug("BlockCache::ReadInBuffer : name: %s, buf size: %d, offset: %d, handle: %d",
 		options.Handle.Path, len(options.Data), options.Offset, options.Handle.ID)
@@ -734,7 +758,11 @@ func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, 
 // Returns the number of bytes written (should always equal len(options.Data)),
 // or an error if the write fails.
 func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error) {
-	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
+	bcHandle, ok := options.Handle.IFObj.(*blockCacheHandle)
+	if !ok {
+		log.Err("BlockCache::ReadInBuffer : Invalid handle type: %T", options.Handle.IFObj)
+		return 0, fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
+	}
 
 	log.Debug("BlockCache::WriteFile : name: %s, buf size: %d, offset: %d, handle: %d",
 		options.Handle.Path, len(options.Data), options.Offset, options.Handle.ID)
@@ -792,7 +820,11 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 		options.Handle = truncHandle
 	}
 
-	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
+	bcHandle, ok := options.Handle.IFObj.(*blockCacheHandle)
+	if !ok {
+		log.Err("BlockCache::ReadInBuffer : Invalid handle type: %T", options.Handle.IFObj)
+		return fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
+	}
 
 	log.Debug("BlockCache::TruncateFile : name: %s, size: %d, handle: %d",
 		options.Handle.Path, options.NewSize, options.Handle.ID)
@@ -823,7 +855,11 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 //
 // Returns an error if any upload or commit operation fails.
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
-	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
+	bcHandle, ok := options.Handle.IFObj.(*blockCacheHandle)
+	if !ok {
+		log.Err("BlockCache::ReadInBuffer : Invalid handle type: %T", options.Handle.IFObj)
+		return fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
+	}
 
 	log.Debug("BlockCache::SyncFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
 
@@ -853,7 +889,11 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 //
 // Returns an error if any upload or commit operation fails.
 func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
-	bcHandle := options.Handle.IFObj.(*blockCacheHandle)
+	bcHandle, ok := options.Handle.IFObj.(*blockCacheHandle)
+	if !ok {
+		log.Err("BlockCache::ReadInBuffer : Invalid handle type: %T", options.Handle.IFObj)
+		return fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
+	}
 
 	log.Debug("BlockCache::FlushFile : handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
 
@@ -896,7 +936,13 @@ func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 		log.Err("BlockCache::ReleaseFile : Failed to flush file %s before release [%v]", options.Handle.Path, err)
 	}
 
-	deleteOpenHandleForFile(options.Handle, true /* takeFileLock */)
+	bcHandle, ok := options.Handle.IFObj.(*blockCacheHandle)
+	if !ok {
+		log.Err("BlockCache::ReadInBuffer : Invalid handle type: %T", options.Handle.IFObj)
+		return fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
+	}
+
+	deleteOpenHandleForFile(options.Handle, bcHandle.file, true /* takeFileLock */)
 	// freeList.debugListMustBeFull()
 	log.Debug("BlockCache::ReleaseFile : Released handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
 	return nil

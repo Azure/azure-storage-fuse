@@ -8,6 +8,12 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
+const (
+	// Reference counting
+	refCountTableOnly       = 1
+	refCountTableAndOneUser = 2
+)
+
 // bufferDescriptor tracks metadata and reference count for a memory buffer that caches block data.
 // Each buffer is associated with a specific block of a file.
 type bufferDescriptor struct {
@@ -93,9 +99,11 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 
 	// Inconsistent state: buffer is not valid but also has no error.
 	// This should never happen and indicates a bug in the download logic.
-	err := fmt.Sprintf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, blockIdx: %d, valid: %v, downloadErr: %v, file: %s",
+	err := fmt.Errorf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, blockIdx: %d, valid: %v, downloadErr: %v, file: %s",
 		bd.bufIdx, bd.block.idx, bd.valid.Load(), bd.downloadErr, bd.block.file.Name)
-	panic(err)
+	log.Crit(err.Error())
+
+	return err
 }
 
 // release decrements the reference count for this buffer descriptor.
@@ -122,7 +130,7 @@ func (bd *bufferDescriptor) release() bool {
 		// Safe to return buffer to free list for reuse.
 		log.Debug("bufferDescriptor::release: Releasing bufferIdx: %d for blockIdx: %d back to free list, bytesRead: %d, bytesWritten: %d, file: %s",
 			bd.bufIdx, bd.block.idx, bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
-		freeList.releaseBuffer(bd)
+		bc.freeList.releaseBuffer(bd)
 		return true
 	} else if newRefCnt < 0 {
 		// Negative refCnt indicates a bug: release() called more times than acquire.
@@ -152,5 +160,5 @@ func (bd *bufferDescriptor) reset() {
 	bd.downloadErr = nil
 	bd.uploadErr = nil
 	// Zero out the buffer content for security and consistency
-	copy(bd.buf, freeList.bufPool.GetZeroBuffer())
+	copy(bd.buf, bc.freeList.bufPool.GetZeroBuffer())
 }
