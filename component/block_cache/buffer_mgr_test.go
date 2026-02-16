@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewBufferTableMgr(t *testing.T) {
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	assert.NotNil(t, btm)
 	assert.NotNil(t, btm.table)
@@ -30,7 +30,7 @@ func TestBufferTableMgr_LookUpBufferDescriptor_NotExists(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
@@ -49,7 +49,7 @@ func TestBufferTableMgr_LookUpBufferDescriptor_Exists(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
@@ -84,7 +84,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_NotInTable(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
@@ -111,7 +111,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Dirty(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
@@ -145,7 +145,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithRefs(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
@@ -178,7 +178,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithOnlyTableRef(t *testing
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
@@ -211,7 +211,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
@@ -250,7 +250,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_WithRemainingRefs(t *testing.T) {
 	assert.NoError(t, err)
 	defer destroyFreeList()
 
-	NewBufferTableMgr()
+	newBufferTableMgr()
 
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
