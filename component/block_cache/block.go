@@ -2,6 +2,7 @@ package block_cache
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -147,7 +148,7 @@ func newBlockList() *blockList {
 // BlockCache assumes all blocks (except the last) are exactly blockSize bytes.
 // Files created by other tools or older versions may have differently sized blocks,
 // which would break BlockCache's offset calculations and read/write operations.
-func validateBlockList(blkList *internal.CommittedBlockList, f *File) error {
+func validateBlockList(bc *BlockCache, blkList *internal.CommittedBlockList, f *File) error {
 	if blkList == nil || len(*blkList) == 0 {
 		return ErrInvalidBlockList
 	}
@@ -188,7 +189,7 @@ func validateBlockList(blkList *internal.CommittedBlockList, f *File) error {
 //   - f: File object to populate with synthetic block list
 //
 // The synthetic block list is created only if it doesn't already exist.
-func updateBlockListForReadOnlyFile(f *File) {
+func updateBlockListForReadOnlyFile(bc *BlockCache, f *File) {
 	if len(f.blockList.list) != 0 {
 		// no need to update blocklist again, if already present
 		return
@@ -214,8 +215,8 @@ func updateBlockListForReadOnlyFile(f *File) {
 // Returns the 0-based block index.
 //
 // Example: With 16MB blocks, offset 17MB returns 1 (second block).
-func getBlockIndex(offset int64) int {
-	return int(offset / int64(bc.blockSize))
+func getBlockIndex(offset int64, blockSize int64) int {
+	return int(offset / blockSize)
 }
 
 // convertOffsetIntoBlockOffset converts a file offset to an offset within a block.
@@ -226,8 +227,8 @@ func getBlockIndex(offset int64) int {
 // Returns the offset within the block (0 to blockSize-1).
 //
 // Example: With 16MB blocks, offset 17MB returns 1MB (offset within second block).
-func convertOffsetIntoBlockOffset(offset int64) int64 {
-	return offset - int64(getBlockIndex(offset))*int64(bc.blockSize)
+func convertOffsetIntoBlockOffset(offset int64, blockSize int64) int64 {
+	return offset - int64(getBlockIndex(offset, blockSize))*blockSize
 }
 
 // getBlockSize calculates the actual size of a block in a file.
@@ -241,8 +242,8 @@ func convertOffsetIntoBlockOffset(offset int64) int64 {
 // Returns the size of the block in bytes.
 //
 // Example: With 16MB blocks and 17MB file, block 0 is 16MB, block 1 is 1MB.
-func getBlockSize(size int64, idx int) int {
-	return min(int(bc.blockSize), int(size)-(idx*int(bc.blockSize)))
+func getBlockSize(fileSize int64, idx int, blockSize int64) int {
+	return min(int(blockSize), int(fileSize-int64(idx)*blockSize))
 }
 
 // getNoOfBlocksInFile calculates how many blocks are needed for a file of given size.
@@ -253,8 +254,18 @@ func getBlockSize(size int64, idx int) int {
 // Returns the number of blocks needed (rounds up for partial blocks).
 //
 // Example: With 16MB blocks, a 17MB file needs 2 blocks.
-func getNoOfBlocksInFile(size int64) int {
-	return int((size + int64(bc.blockSize) - 1) / int64(bc.blockSize))
+func getNoOfBlocksInFile(size int64, blockSize int64) int {
+	return int((size + blockSize - 1) / blockSize)
+}
+
+func validateBlockIndex(blockIdx int) error {
+	if blockIdx < 0 {
+		return fmt.Errorf("negative block index: %d", blockIdx)
+	}
+	if blockIdx > MAX_BLOCKS {
+		return fmt.Errorf("block index exceeds maximum: %d > %d", blockIdx, MAX_BLOCKS)
+	}
+	return nil
 }
 
 // scheduleUpload queues a block upload operation to the worker pool.
@@ -277,7 +288,7 @@ func getNoOfBlocksInFile(size int64) int {
 //   - Block ID is generated and assigned
 //   - Buffer is marked as not dirty
 //   - Any upload errors are captured in bufDesc.uploadErr
-func (blk *block) scheduleUpload(bufDesc *bufferDescriptor, sync bool) {
+func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor, sync bool) {
 	// This buffer descriptor has reached its maximum usage count, schedule upload.
 	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, sync: %v, usageCnt: %d, refCnt: %d",
 		blk.idx, bufDesc.bufIdx, sync, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
@@ -293,12 +304,12 @@ func (blk *block) scheduleUpload(bufDesc *bufferDescriptor, sync bool) {
 	bufDesc.refCnt.Add(1)
 
 	// Schedule upload
-	wp.queueWork(blk, bufDesc, false /*download*/, wait, sync /*sync*/)
+	workerPool.queueWork(blk, bufDesc, false /*download*/, wait, sync /*sync*/)
 
 	if sync {
 		// Wait for upload to complete.
 		<-wait
-		if ok := bufDesc.release(); ok {
+		if ok := bufDesc.release(freeList); ok {
 			log.Debug("BlockCache::scheduleUpload: Released bufferIdx: %d for blockIdx: %d back to free list after sync upload",
 				bufDesc.bufIdx, blk.idx)
 		}
@@ -323,18 +334,18 @@ func (blk *block) scheduleUpload(bufDesc *bufferDescriptor, sync bool) {
 //   - Buffer is marked as valid (or invalid if download failed)
 //   - Any download errors are captured in bufDesc.downloadErr
 //   - Content lock is released allowing reads to proceed
-func (blk *block) scheduleDownload(bufDesc *bufferDescriptor, sync bool) {
+func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor, sync bool) {
 	wait := make(chan struct{}, 1)
 	// Increment refCnt for download
 	bufDesc.refCnt.Add(1)
 
 	// Schedule download
-	wp.queueWork(blk, bufDesc, true, wait, sync)
+	workerPool.queueWork(blk, bufDesc, true, wait, sync)
 
 	if sync {
 		// Wait for download to complete.
 		<-wait
-		if ok := bufDesc.release(); ok {
+		if ok := bufDesc.release(freeList); ok {
 			log.Debug("BlockCache::scheduleDownload: Released bufferIdx: %d for blockIdx: %d back to free list after sync download",
 				bufDesc.bufIdx, blk.idx)
 		}
