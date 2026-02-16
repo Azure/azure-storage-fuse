@@ -8,12 +8,20 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
+const (
+	// Reference counting
+	refCountTableOnly       = 1
+	refCountTableAndOneUser = 2
+)
+
 // bufferDescriptor tracks metadata and reference count for a memory buffer that caches block data.
 // Each buffer is associated with a specific block of a file.
 type bufferDescriptor struct {
-	bufIdx        int    // Index of this buffer in the buffer pool
-	block         *block // Pointer to the block this buffer caches
-	nxtFreeBuffer int    // Index of next free buffer (used when buffer is in free list)
+	block *block // Pointer to the block this buffer caches
+	buf   []byte // Actual memory buffer holding block data
+
+	bufIdx        int // Index of this buffer in the buffer pool
+	nxtFreeBuffer int // Index of next free buffer (used when buffer is in free list)
 
 	// Reference count tracking how many concurrent users hold this buffer.
 	// refCnt semantics:
@@ -34,8 +42,6 @@ type bufferDescriptor struct {
 	// - Held in shared mode during read operations (multiple readers can proceed concurrently)
 	contentLock sync.RWMutex
 
-	// Buffer state and data
-	buf         []byte      // Actual memory buffer holding block data
 	valid       atomic.Bool // True if buffer contains valid data (download completed successfully)
 	dirty       atomic.Bool // True if buffer has been modified and needs to be uploaded
 	downloadErr error       // Captures any error that occurred during download
@@ -93,9 +99,11 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 
 	// Inconsistent state: buffer is not valid but also has no error.
 	// This should never happen and indicates a bug in the download logic.
-	err := fmt.Sprintf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, blockIdx: %d, valid: %v, downloadErr: %v, file: %s",
+	err := fmt.Errorf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, blockIdx: %d, valid: %v, downloadErr: %v, file: %s",
 		bd.bufIdx, bd.block.idx, bd.valid.Load(), bd.downloadErr, bd.block.file.Name)
-	panic(err)
+	log.Crit(err.Error())
+
+	return err
 }
 
 // release decrements the reference count for this buffer descriptor.
@@ -114,7 +122,7 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 //
 // Thread-safety: Uses atomic operations for refCnt manipulation.
 // Panics if refCnt goes negative, indicating a reference counting bug.
-func (bd *bufferDescriptor) release() bool {
+func (bd *bufferDescriptor) release(fl *freeListType) bool {
 	newRefCnt := bd.refCnt.Add(-1)
 
 	if newRefCnt == 0 {
@@ -122,7 +130,7 @@ func (bd *bufferDescriptor) release() bool {
 		// Safe to return buffer to free list for reuse.
 		log.Debug("bufferDescriptor::release: Releasing bufferIdx: %d for blockIdx: %d back to free list, bytesRead: %d, bytesWritten: %d, file: %s",
 			bd.bufIdx, bd.block.idx, bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
-		freeList.releaseBuffer(bd)
+		fl.releaseBuffer(bd)
 		return true
 	} else if newRefCnt < 0 {
 		// Negative refCnt indicates a bug: release() called more times than acquire.
@@ -140,7 +148,7 @@ func (bd *bufferDescriptor) release() bool {
 // reset clears all fields of the buffer descriptor and zeros the buffer content.
 // This prepares the buffer for reuse by a different block.
 // Called when buffer is returned to free list or when a victim buffer is being reassigned.
-func (bd *bufferDescriptor) reset() {
+func (bd *bufferDescriptor) reset(fl *freeListType) {
 	bd.block = nil
 	bd.nxtFreeBuffer = -1
 	bd.refCnt.Store(0)
@@ -152,5 +160,5 @@ func (bd *bufferDescriptor) reset() {
 	bd.downloadErr = nil
 	bd.uploadErr = nil
 	// Zero out the buffer content for security and consistency
-	copy(bd.buf, freeList.bufPool.GetZeroBuffer())
+	copy(bd.buf, fl.bufPool.GetZeroBuffer())
 }
