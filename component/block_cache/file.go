@@ -149,7 +149,7 @@ func (f *File) updateFileSize(size int64) {
 // Thread Safety:
 // Safe to call concurrently from multiple goroutines, even for the same file.
 // Block-level locking ensures consistent reads during concurrent operations.
-func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
+func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int, error) {
 	f.numPendingReads.Add(1)
 	defer f.numPendingReads.Add(-1)
 
@@ -166,7 +166,11 @@ func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
 	bytesRead := 0
 
 	for offset < endOffset {
-		blockIdx := getBlockIndex(offset)
+		blockIdx := getBlockIndex(offset, int64(bc.blockSize))
+		if err := validateBlockIndex(blockIdx); err != nil {
+			return 0, err
+		}
+
 		var blk *block
 	retry:
 
@@ -182,7 +186,10 @@ func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
 			return 0, io.EOF
 		}
 
-		bufDesc, status, err := GetOrCreateBufferDescriptor(blk,
+		bufDesc, status, err := bc.btm.GetOrCreateBufferDescriptor(
+			bc.freeList,
+			bc.workerPool,
+			blk,
 			true, /*sync*/
 		)
 		if err != nil {
@@ -194,7 +201,7 @@ func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
 			// The block is in uncommited state, need to flush the file first before reading.
 			log.Debug("File::read: Block in uncommited state, flushing file: %s before read, blockIdx: %d", f.Name, blockIdx)
 
-			if err := f.flush(true /*takeFileLock*/); err != nil {
+			if err := f.flush(bc, true /*takeFileLock*/); err != nil {
 				log.Err("File::read: Failed to flush file: %s before read, blockIdx: %d: %v", f.Name, blockIdx, err)
 				return 0, err
 			}
@@ -208,14 +215,14 @@ func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
 
 		// Copy data from block buffer to user buffer
 		bufDesc.contentLock.RLock()
-		offsetInsideBlock := convertOffsetIntoBlockOffset(offset)
-		blockLen := getBlockSize(fileSize, blockIdx)
+		offsetInsideBlock := convertOffsetIntoBlockOffset(offset, int64(bc.blockSize))
+		blockLen := getBlockSize(fileSize, blockIdx, int64(bc.blockSize))
 		n := copy(options.Data[bufOffset:], bufDesc.buf[offsetInsideBlock:blockLen])
 		bufDesc.contentLock.RUnlock()
 
 		if bufDesc.bytesRead.Add(int32(n)) >= int32(bc.blockSize) {
 			// Remove this buffer from table as it is fully read.
-			if ok, _ := btm.removeBufferDescriptor(bufDesc, true /*strict*/); ok {
+			if ok, _ := bc.btm.removeBufferDescriptor(bufDesc, true /*strict*/, bc.freeList); ok {
 				log.Debug("File::read: Removed bufferIdx: %d for blockIdx: %d from buffer table manager after full read at file: %s, offset: %d",
 					bufDesc.bufIdx, blk.idx, f.Name, options.Offset)
 			}
@@ -225,7 +232,7 @@ func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
 			n, f.Name, blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), f.numPendingReads.Load(), time.Since(stime))
 
 		// Release the buffer descriptor
-		if ok := bufDesc.release(); ok {
+		if ok := bufDesc.release(bc.freeList); ok {
 			log.Debug("File::read: Released bufferIdx: %d for blockIdx: %d back to free list after read at file: %s, offset: %d",
 				bufDesc.bufIdx, blk.idx, f.Name, options.Offset)
 		}
@@ -265,15 +272,15 @@ func (f *File) read(options *internal.ReadInBufferOptions) (int, error) {
 // Async operation:
 // Read-ahead downloads run asynchronously. The calling read operation doesn't
 // wait for prefetches to complete. Future reads benefit from prefetched data.
-func (f *File) scheduleReadAhead(pd *patternDetector, offset int64) {
-	patterntype := pd.updateAccessPattern(offset)
+func (f *File) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int64) {
+	patterntype := pd.updateAccessPattern(offset, int64(bc.blockSize))
 	if patterntype != patternSequential {
 		return
 	}
 
 	// Only schedule read-ahead for sequential access patterns
 	numReadAheadBlocks := int(bc.prefetch)
-	currentBlockIdx := getBlockIndex(offset)
+	currentBlockIdx := getBlockIndex(offset, int64(bc.blockSize))
 
 	for range numReadAheadBlocks {
 		nextBlockIdx := pd.nxtReadAheadBlockIdx.Add(1)
@@ -297,7 +304,10 @@ func (f *File) scheduleReadAhead(pd *patternDetector, offset int64) {
 			return
 		}
 
-		bufDesc, status, err := GetOrCreateBufferDescriptor(blk,
+		bufDesc, status, err := bc.btm.GetOrCreateBufferDescriptor(
+			bc.freeList,
+			bc.workerPool,
+			blk,
 			false, /* sync */
 		)
 		if err != nil {
@@ -308,7 +318,7 @@ func (f *File) scheduleReadAhead(pd *patternDetector, offset int64) {
 
 		if bufDesc != nil {
 			// Release the buffer descriptor as we dont need it
-			if ok := bufDesc.release(); ok {
+			if ok := bufDesc.release(bc.freeList); ok {
 				log.Debug("File::scheduleReadAhead: Released bufferIdx: %d for blockIdx: %d back to free list after read-ahead at file: %s",
 					bufDesc.bufIdx, blk.idx, f.Name)
 			}
@@ -366,7 +376,7 @@ func (f *File) scheduleReadAhead(pd *patternDetector, offset int64) {
 //
 // Important: This method MUST write all len(options.Data) bytes successfully
 // or return an error. Partial writes are not allowed.
-func (f *File) write(options *internal.WriteFileOptions) error {
+func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 
 	offset := options.Offset
 	endOffset := options.Offset + int64(len(options.Data))
@@ -384,7 +394,7 @@ func (f *File) write(options *internal.WriteFileOptions) error {
 	}
 
 	for offset < endOffset {
-		blockIdx := getBlockIndex(offset)
+		blockIdx := getBlockIndex(offset, int64(bc.blockSize))
 		var blk *block
 	retry:
 
@@ -410,7 +420,10 @@ func (f *File) write(options *internal.WriteFileOptions) error {
 		f.synced = false
 		f.mu.Unlock()
 
-		bufDesc, status, err := GetOrCreateBufferDescriptor(blk,
+		bufDesc, status, err := bc.btm.GetOrCreateBufferDescriptor(
+			bc.freeList,
+			bc.workerPool,
+			blk,
 			true, /*sync*/
 		)
 		if err != nil {
@@ -426,7 +439,7 @@ func (f *File) write(options *internal.WriteFileOptions) error {
 			// Decrement the write wait group before flushing, as flush will wait for all pending writers to complete.
 			f.pendingWriters.Done()
 
-			if err := f.flush(true /*takeFileLock*/); err != nil {
+			if err := f.flush(bc, true /*takeFileLock*/); err != nil {
 				log.Err("File::write: Failed to flush file: %s before write, blockIdx: %d: %v", f.Name, blockIdx, err)
 				return err
 			}
@@ -435,7 +448,7 @@ func (f *File) write(options *internal.WriteFileOptions) error {
 		}
 
 		log.Debug("File::write: Got buffer descriptor for file: %s, blockIdx: %d, status: %v", f.Name, blockIdx, status)
-		offsetInsideBlock := convertOffsetIntoBlockOffset(offset)
+		offsetInsideBlock := convertOffsetIntoBlockOffset(offset, int64(bc.blockSize))
 
 		// Take the exclusive lock on buffer content to write data
 		bufDesc.contentLock.Lock()
@@ -459,8 +472,8 @@ func (f *File) write(options *internal.WriteFileOptions) error {
 		//
 		// Schedule upload if buffer is fully written and no other references
 		uploadScheduled := false
-		if bufDesc.bytesWritten.Load() >= int32(bc.blockSize) && bufDesc.refCnt.Load() == 2 {
-			blk.scheduleUpload(bufDesc, false /*sync*/)
+		if bufDesc.bytesWritten.Load() >= int32(bc.blockSize) && bufDesc.refCnt.Load() == refCountTableAndOneUser {
+			blk.scheduleUpload(bc.workerPool, bc.freeList, bufDesc, false /*sync*/)
 			uploadScheduled = true
 		}
 		//
@@ -474,7 +487,7 @@ func (f *File) write(options *internal.WriteFileOptions) error {
 			n, f.Name, f.size, blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(), uploadScheduled)
 
 		// Release the buffer descriptor
-		if ok := bufDesc.release(); ok {
+		if ok := bufDesc.release(bc.freeList); ok {
 			log.Debug("File::write: Released bufferIdx: %d for blockIdx: %d back to free list after write at file: %s, offset: %d",
 				bufDesc.bufIdx, blk.idx, f.Name, options.Offset)
 		}
@@ -540,7 +553,7 @@ func (f *File) write(options *internal.WriteFileOptions) error {
 //
 // Important: After flush succeeds, f.synced is set to true and subsequent
 // flush calls become no-ops until the file is modified again.
-func (f *File) flush(takeFileLock bool) error {
+func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 	log.Debug("File::flush: Flushing file: %s, takeFileLock: %v", f.Name, takeFileLock)
 
 	if takeFileLock {
@@ -582,7 +595,7 @@ func (f *File) flush(takeFileLock bool) error {
 		offsetInsideBlock := int64(bc.blockSize)
 
 		if isLastBlock {
-			offsetInsideBlock = convertOffsetIntoBlockOffset(f.size - 1)
+			offsetInsideBlock = convertOffsetIntoBlockOffset(f.size-1, int64(bc.blockSize))
 			offsetInsideBlock++
 			blk.id = common.GetBlockID(common.BlockIDLength)
 		}
@@ -591,7 +604,7 @@ func (f *File) flush(takeFileLock bool) error {
 
 		err := bc.NextComponent().StageData(internal.StageDataOptions{
 			Name: f.Name,
-			Data: freeList.bufPool.zeroBuf[:offsetInsideBlock],
+			Data: bc.freeList.bufPool.zeroBuf[:offsetInsideBlock],
 			Id:   blk.id,
 		})
 		if err == nil && offsetInsideBlock == int64(bc.blockSize) {
@@ -606,13 +619,16 @@ func (f *File) flush(takeFileLock bool) error {
 	// If the file is expanded by write, the last block may got sparse, may need to extend it.
 	if blockListLen > 0 && f.size > f.sizeOnStorage && f.sizeOnStorage%int64(bc.blockSize) != 0 {
 		// reupload the block that was partially filled earlier to extend it with zeros.
-		lastBlockIdx := getBlockIndex(f.sizeOnStorage - 1)
+		lastBlockIdx := getBlockIndex(f.sizeOnStorage-1, int64(bc.blockSize))
 		lastBlock := f.blockList.list[lastBlockIdx]
 		if lastBlock.state == committedBlock && lastBlock.numWrites.Load() == 0 {
 			// Last block is committed and no writes on it, need to extend it with zeros by making it dirty.
 			log.Debug("File::flush: Extending last blockIdx: %d for file: %s during flush to accommodate file size expansion",
 				lastBlock.idx, f.Name)
-			bufDesc, _, err := GetOrCreateBufferDescriptor(lastBlock,
+			bufDesc, _, err := bc.btm.GetOrCreateBufferDescriptor(
+				bc.freeList,
+				bc.workerPool,
+				lastBlock,
 				true, /*sync*/
 			)
 			if err != nil {
@@ -623,10 +639,12 @@ func (f *File) flush(takeFileLock bool) error {
 
 			atomic.StoreInt32((*int32)(&lastBlock.state), int32(localBlock))
 			bufDesc.dirty.Store(true)
-			// Release the buffer descriptor
-			if ok := bufDesc.release(); ok {
-				panic(fmt.Sprintf("File::flush: Released bufferIdx: %d for last blockIdx: %d back to free list after flush at file: %s",
-					bufDesc.bufIdx, lastBlock.idx, f.Name))
+			// Release the buffer descriptor, that is just acquired, this should not free the buffer as buffer is dirty.
+			if ok := bufDesc.release(bc.freeList); ok {
+				err = fmt.Errorf("File::flush: Released bufferIdx: %d for last blockIdx: %d back to free list after flush at file: %s",
+					bufDesc.bufIdx, lastBlock.idx, f.Name)
+				log.Crit(err.Error())
+				return err
 			}
 		}
 
@@ -639,12 +657,14 @@ func (f *File) flush(takeFileLock bool) error {
 			continue
 		}
 
-		bufDesc, _ := btm.LookUpBufferDescriptor(blk)
+		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
 		if bufDesc == nil {
 			// No buffer descriptor found for this block, sparse blocks must have no writes on it.
 			if blk.state == localBlock && blk.numWrites.Load() > 0 {
-				panic(fmt.Sprintf("File::flush: No buffer descriptor found for local blockIdx: %d during flush at file: %s",
-					blk.idx, f.Name))
+				err := fmt.Errorf("File::flush: No buffer descriptor found for local blockIdx: %d during flush at file: %s",
+					blk.idx, f.Name)
+				log.Crit(err.Error())
+				return err
 			}
 
 			// This is a sparse block which is not modified. Hence no buffer descriptor is present. Upload zero block if
@@ -661,7 +681,7 @@ func (f *File) flush(takeFileLock bool) error {
 
 		// Release the buffer descriptor
 		releaseBufDesc := func() {
-			if ok := bufDesc.release(); ok {
+			if ok := bufDesc.release(bc.freeList); ok {
 				log.Debug("File::flush: Released bufferIdx: %d for blockIdx: %d back to free list after flush at file: %s",
 					bufDesc.bufIdx, blk.idx, f.Name)
 			}
@@ -676,7 +696,7 @@ func (f *File) flush(takeFileLock bool) error {
 			log.Debug("File::flush: Scheduling upload for bufferIdx: %d, blockIdx: %d during flush, bytesRead: %d, bytesWritten: %d at file: %s",
 				bufDesc.bufIdx, blk.idx, bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load(), f.Name)
 
-			blk.scheduleUpload(bufDesc, true /*sync*/)
+			blk.scheduleUpload(bc.workerPool, bc.freeList, bufDesc, true /*sync*/)
 
 			if bufDesc.uploadErr != nil {
 				log.Err("File::flush: Upload error for bufferIdx: %d, blockIdx: %d during flush at file: %s: %v",
@@ -698,8 +718,11 @@ func (f *File) flush(takeFileLock bool) error {
 				return bufDesc.uploadErr
 			} else if blk.state == localBlock {
 				// not expected as error must be set when dirty is false
-				panic(fmt.Sprintf("File::flush: Inconsistent state for bufferIdx: %d, blockIdx: %d during flush at file: %s, dirty: %v, uploadErr: %v",
-					bufDesc.bufIdx, blk.idx, f.Name, bufDesc.dirty.Load(), bufDesc.uploadErr))
+				err := fmt.Errorf("File::flush: Inconsistent state for bufferIdx: %d, blockIdx: %d during flush at file: %s, dirty: %v, uploadErr: %v",
+					bufDesc.bufIdx, blk.idx, f.Name, bufDesc.dirty.Load(), bufDesc.uploadErr)
+				log.Crit(err.Error())
+				releaseBufDesc()
+				return err
 			} else {
 				log.Debug("File::flush: No upload needed for bufferIdx: %d, blockIdx: %d during flush at file: %s",
 					bufDesc.bufIdx, blk.idx, f.Name)
@@ -807,7 +830,7 @@ func (f *File) flush(takeFileLock bool) error {
 //
 // Important: newSize must be within [0, maxFileSize]. Truncating beyond
 // maxFileSize is not supported.
-func (f *File) truncate(options *internal.TruncateFileOptions) error {
+func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) error {
 	log.Debug("File::truncate: Truncating file: %s to size: %d", f.Name, options.NewSize)
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -828,7 +851,7 @@ func (f *File) truncate(options *internal.TruncateFileOptions) error {
 
 	// Flush the file before truncating
 	log.Debug("File::truncate: Flushing file: %s before truncation", f.Name)
-	if err := f.flush(false /*takeFileLock*/); err != nil {
+	if err := f.flush(bc, false /*takeFileLock*/); err != nil {
 		return err
 	}
 
@@ -837,23 +860,27 @@ func (f *File) truncate(options *internal.TruncateFileOptions) error {
 	atomic.StoreInt64(&f.size, options.NewSize)
 	f.synced = false
 
-	noOfBlocks := getNoOfBlocksInFile(options.NewSize)
+	noOfBlocks := getNoOfBlocksInFile(options.NewSize, int64(bc.blockSize))
 
 	if noOfBlocks < len(f.blockList.list) {
 		// Shrink the block list, give back the buffers shrinked to free list.
 		for i := noOfBlocks; i < len(f.blockList.list); i++ {
 			blk := f.blockList.list[i]
-			bufDesc, _ := btm.LookUpBufferDescriptor(blk)
+			bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
 			if bufDesc != nil {
 				// Release the buffer descriptor
-				if ok := bufDesc.release(); ok {
-					panic(fmt.Sprintf("File::truncate: Released bufferIdx: %d for blockIdx: %d back to free list during truncate at file: %s",
-						bufDesc.bufIdx, blk.idx, f.Name))
+				if ok := bufDesc.release(bc.freeList); ok {
+					err := fmt.Errorf("File::truncate: Released bufferIdx: %d for blockIdx: %d back to free list during truncate at file: %s",
+						bufDesc.bufIdx, blk.idx, f.Name)
+					log.Crit(err.Error())
+					return err
 				}
 				// Remove this buffer from buffer table manager
-				if ok1, ok2 := btm.removeBufferDescriptor(bufDesc, false /*strict*/); !ok1 {
-					panic(fmt.Sprintf("File::truncate: Removed buffer: %v for blockIdx: %d from buffer table manager during truncate at file: %s, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v, refCnt: %d",
-						bufDesc, blk.idx, f.Name, ok1, ok2, bufDesc.refCnt.Load()))
+				if ok1, ok2 := bc.btm.removeBufferDescriptor(bufDesc, false /*strict*/, bc.freeList); !ok1 {
+					err := fmt.Errorf("File::truncate: Removed buffer: %v for blockIdx: %d from buffer table manager during truncate at file: %s, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v, refCnt: %d",
+						bufDesc, blk.idx, f.Name, ok1, ok2, bufDesc.refCnt.Load())
+					log.Crit(err.Error())
+					return err
 				}
 			}
 		}
@@ -866,7 +893,10 @@ func (f *File) truncate(options *internal.TruncateFileOptions) error {
 		// make the last block as local block.
 		lastBlock := f.blockList.list[len(f.blockList.list)-1]
 
-		bufDesc, status, err := GetOrCreateBufferDescriptor(lastBlock,
+		bufDesc, status, err := bc.btm.GetOrCreateBufferDescriptor(
+			bc.freeList,
+			bc.workerPool,
+			lastBlock,
 			true, /*sync*/
 		)
 		if err != nil {
@@ -881,8 +911,8 @@ func (f *File) truncate(options *internal.TruncateFileOptions) error {
 		// Clean the rest of the buffer if file is getting shrinked as it may contain old/dirty data.
 		if isFileShrinking {
 			bufDesc.contentLock.Lock()
-			offsetInsideBlock := convertOffsetIntoBlockOffset(f.size - 1)
-			copy(bufDesc.buf[offsetInsideBlock+1:], freeList.bufPool.zeroBuf[:])
+			offsetInsideBlock := convertOffsetIntoBlockOffset(f.size-1, int64(bc.blockSize))
+			copy(bufDesc.buf[offsetInsideBlock+1:], bc.freeList.bufPool.zeroBuf[:])
 			bufDesc.contentLock.Unlock()
 		}
 
@@ -890,7 +920,7 @@ func (f *File) truncate(options *internal.TruncateFileOptions) error {
 			lastBlock.idx, f.Name, status)
 
 		// Release the buffer descriptor
-		if ok := bufDesc.release(); ok {
+		if ok := bufDesc.release(bc.freeList); ok {
 			log.Debug("File::truncate: Released bufferIdx: %d for last blockIdx: %d back to free list after truncate at file: %s",
 				bufDesc.bufIdx, lastBlock.idx, f.Name)
 		}
@@ -911,7 +941,7 @@ func (f *File) truncate(options *internal.TruncateFileOptions) error {
 
 	// Flush the file again to commit the truncation
 	log.Debug("File::truncate: Flushing file: %s after truncation", f.Name)
-	if err := f.flush(false /*takeFileLock*/); err != nil {
+	if err := f.flush(bc, false /*takeFileLock*/); err != nil {
 		return err
 	}
 
