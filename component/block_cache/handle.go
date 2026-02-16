@@ -87,37 +87,35 @@ var fileMap sync.Map
 //   - Only one goroutine creates a new File for a given path
 //   - All goroutines correctly add their handles to the File
 //   - No handles are lost due to race conditions
-func getFileFromPath(handle *handlemap.Handle) (*File, bool) {
-	f := createFile(handle.Path)
-	var first_open bool = false
+func getFileFromPath(handle *handlemap.Handle) (*File, bool, error) {
+	const maxRetries = 10
 
-retry:
-	file, loaded := fileMap.LoadOrStore(handle.Path, f)
-	if !loaded {
-		first_open = true
-		log.Debug("getFileFromPath: File %s not found in fileMap, stored new file: %v", handle.Path, f)
-
-		f.mu.Lock()
-		f.handles[handle] = struct{}{}
-		f.mu.Unlock()
-	} else {
-		f2 := file.(*File)
-
-		f2.mu.Lock()
-		if len(f2.handles) == 0 {
-			// previous handle released the file, after we loaded it from fileMap
-			log.Err("getFileFromPath: File %s found in fileMap but has zero open handles, race with deleting the handles, file: %v",
-				handle.Path, f2)
-			f2.mu.Unlock()
-			goto retry
-		} else {
-			log.Debug("getFileFromPath: File %s found in fileMap with open handles, proceeding, file: %v", handle.Path, f2)
-			f2.handles[handle] = struct{}{}
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		f := createFile(handle.Path)
+		file, loaded := fileMap.LoadOrStore(handle.Path, f)
+		fileObj, ok := file.(*File)
+		if !ok {
+			return nil, false, fmt.Errorf("invalid file type in map")
 		}
-		f2.mu.Unlock()
+
+		fileObj.mu.Lock()
+
+		if len(fileObj.handles) == 0 && loaded {
+			// File is being deleted/ some other handle is in race for creation,
+			// retry with backoff
+			fileObj.mu.Unlock()
+			time.Sleep(time.Millisecond * time.Duration(attempt+1))
+			continue
+		}
+
+		fileObj.handles[handle] = struct{}{}
+		firstOpen := !loaded
+		fileObj.mu.Unlock()
+
+		return fileObj, firstOpen, nil
 	}
 
-	return file.(*File), first_open
+	return nil, false, fmt.Errorf("failed to get file after %d retries", maxRetries)
 }
 
 // deleteOpenHandleForFile removes a handle from the file's handle set.
@@ -144,8 +142,7 @@ retry:
 //
 // Important: This function must be called for every handle, exactly once,
 // to prevent buffer leaks and maintain correct reference counts.
-func deleteOpenHandleForFile(handle *handlemap.Handle, takeFileLock bool) {
-	file := handle.IFObj.(*blockCacheHandle).file
+func deleteOpenHandleForFile(bc *BlockCache, handle *handlemap.Handle, file *File, takeFileLock bool) {
 	log.Debug("deleteOpenHandleForFile: Deleting handle: %d for file %s", handle.ID, file.Name)
 
 	if takeFileLock {
@@ -160,7 +157,7 @@ func deleteOpenHandleForFile(handle *handlemap.Handle, takeFileLock bool) {
 			file.mu.Unlock()
 		}
 
-		releaseAllBuffersForFile(file)
+		releaseAllBuffersForFile(bc, file)
 		return
 	}
 
@@ -195,20 +192,21 @@ func deleteOpenHandleForFile(handle *handlemap.Handle, takeFileLock bool) {
 //
 // These panics indicate serious bugs in reference counting or buffer lifecycle
 // management and help catch correctness issues during development.
-func releaseAllBuffersForFile(file *File) {
+func releaseAllBuffersForFile(bc *BlockCache, file *File) {
 	log.Debug("releaseAllBuffersForFile: Releasing all buffers for file %s", file.Name)
 	// Release all buffers held by this file
 	for _, blk := range file.blockList.list {
-		bufDesc, _ := btm.LookUpBufferDescriptor(blk)
+		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
 		if bufDesc == nil {
 			continue
 		}
 
 		// Release the reference held just now for lookup
-		if ok := bufDesc.release(); ok {
+		if ok := bufDesc.release(bc.freeList); ok {
 			// It is present in buffer table manager, so should not be released here
-			panic(fmt.Sprintf("releaseAllBuffersForFile: Released bufferIdx: %d for blockIdx: %d of file %s back to free list during lookup release",
+			log.Crit(fmt.Sprintf("releaseAllBuffersForFile: Released bufferIdx: %d for blockIdx: %d of file %s back to free list during lookup release",
 				bufDesc.bufIdx, blk.idx, file.Name))
+			continue
 		}
 
 		// Ensure the buffer is valid for read before releasing, if read-ahead is in progress, wait for it to complete.
@@ -217,11 +215,12 @@ func releaseAllBuffersForFile(file *File) {
 		log.Debug("releaseAllBuffersForFile: Releasing bufferIdx: %d for blockIdx: %d of file %s from buffer table manager",
 			bufDesc.bufIdx, blk.idx, file.Name)
 
-		if ok1, ok2 := btm.removeBufferDescriptor(bufDesc, true /*strict*/); !ok1 || !ok2 {
+		if ok1, ok2 := bc.btm.removeBufferDescriptor(bufDesc, true /*strict*/, bc.freeList); !ok1 || !ok2 {
 			// There should be no more readers for this buffer descriptor, that mean it should always release the buffer
 			// descriptor successfully here.
-			panic(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove buffer: [%v], refCnt: %d, for blockIdx: %d of file %s from buffer table manager, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
+			log.Crit(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove buffer: [%v], refCnt: %d, for blockIdx: %d of file %s from buffer table manager, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
 				bufDesc, bufDesc.refCnt.Load(), blk.idx, file.Name, ok1, ok2))
+			continue
 		}
 
 		log.Debug("releaseAllBuffersForFile: Released bufferIdx: %d for blockIdx: %d of file %s",
