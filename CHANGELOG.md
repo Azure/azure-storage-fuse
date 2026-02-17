@@ -4,6 +4,7 @@
 
 **Bug Fixes**
 - Fix panic while reading an archived blob using file-cache ([PR #2127](https://github.com/Azure/azure-storage-fuse/pull/2127)]
+- Ensure logger is properly deinitialized on mount failures ([PR #2125](https://github.com/Azure/azure-storage-fuse/pull/2125)]
 
 ## 2.5.2 (2026-01-19)
 **Features**
