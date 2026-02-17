@@ -56,6 +56,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -2147,6 +2148,96 @@ func (suite *fileCacheTestSuite) createRemoteDirectoryStructure() {
 	suite.assert.NoError(err)
 
 	err = os.MkdirAll(filepath.Join(suite.fake_storage_path, "h", "l", "m", "n"), 0777)
+	suite.assert.NoError(err)
+}
+
+// TestOpenFileDownloadFailure tests that when CopyToFile fails during OpenFile,
+// the correct download error is returned (not the cleanup error) and the 
+// partially downloaded file is removed from the cache.
+func (suite *fileCacheTestSuite) TestOpenFileDownloadFailure() {
+	// Create a mock controller and component
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+	
+	mockComponent := internal.NewMockComponent(mockCtrl)
+	
+	// Create a new file cache with the mock component
+	// First, stop the default file cache
+	suite.fileCache.Stop()
+	suite.loopback.Stop()
+	
+	rand := randomString(8)
+	cache_path := filepath.Join(home_dir, "file_cache"+rand)
+	defaultConfig := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 0", cache_path)
+	
+	err := config.ReadConfigFromReader(strings.NewReader(defaultConfig))
+	suite.assert.NoError(err)
+	
+	fileCache := NewFileCacheComponent()
+	fileCache.SetNextComponent(mockComponent)
+	err = fileCache.Configure(true)
+	suite.assert.NoError(err)
+	
+	// Expect Start and Stop calls
+	mockComponent.EXPECT().Start(gomock.Any()).Return(nil).Times(1)
+	mockComponent.EXPECT().Stop().Return(nil).Times(1)
+	
+	err = mockComponent.Start(context.Background())
+	suite.assert.NoError(err)
+	
+	err = fileCache.Start(context.Background())
+	suite.assert.NoError(err)
+	
+	fc := fileCache.(*FileCache)
+	
+	// Test file path
+	path := "test_download_failure.txt"
+	localPath := filepath.Join(cache_path, path)
+	
+	// Set up expectations for GetAttr to return a valid file that exists in storage
+	mockComponent.EXPECT().
+		GetAttr(gomock.Any()).
+		Return(&internal.ObjAttr{
+			Path:  path,
+			Name:  filepath.Base(path),
+			Size:  1024,
+			Mode:  0777,
+			Flags: internal.NewFileBitMap(),
+		}, nil).
+		Times(1)
+	
+	// Set up expectation for CopyToFile to fail with a download error
+	downloadErr := fmt.Errorf("simulated download failure")
+	mockComponent.EXPECT().
+		CopyToFile(gomock.Any()).
+		Return(downloadErr).
+		Times(1)
+	
+	// Attempt to open the file - this should fail
+	handle, err := fc.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0777})
+	
+	// Assert that the error returned is the download error, not a cleanup error
+	suite.assert.Error(err)
+	suite.assert.Equal(downloadErr, err)
+	suite.assert.Nil(handle)
+	
+	// Verify that the partially downloaded file was cleaned up from the cache
+	_, statErr := os.Stat(localPath)
+	suite.assert.True(os.IsNotExist(statErr), "Partially downloaded file should be cleaned up from cache")
+	
+	// Clean up
+	err = fc.Stop()
+	suite.assert.NoError(err)
+	err = mockComponent.Stop()
+	suite.assert.NoError(err)
+	os.RemoveAll(cache_path)
+	
+	// Restart the default file cache for other tests
+	suite.loopback = newLoopbackFS()
+	suite.fileCache = newTestFileCache(suite.loopback)
+	err = suite.loopback.Start(context.Background())
+	suite.assert.NoError(err)
+	err = suite.fileCache.Start(context.Background())
 	suite.assert.NoError(err)
 }
 
