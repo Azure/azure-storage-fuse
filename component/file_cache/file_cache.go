@@ -993,9 +993,9 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 				// File was created locally and now download has failed so we need to delete it back from local cache
 				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
 				_ = f.Close()
-				err = os.Remove(localPath)
-				if err != nil {
-					log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
+				err2 := os.Remove(localPath)
+				if err2 != nil {
+					log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err2.Error())
 				}
 				return nil, err
 			}
