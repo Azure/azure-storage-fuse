@@ -2166,9 +2166,9 @@ func (suite *fileCacheTestSuite) TestOpenFileDownloadFailure() {
 	suite.fileCache.Stop()
 	suite.loopback.Stop()
 
-	rand := randomString(8)
-	cache_path := filepath.Join(home_dir, "file_cache"+rand)
-	defaultConfig := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 0", cache_path)
+	randStr := randomString(8)
+	cachePath := filepath.Join(home_dir, "file_cache"+randStr)
+	defaultConfig := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 0", cachePath)
 
 	err := config.ReadConfigFromReader(strings.NewReader(defaultConfig))
 	suite.assert.NoError(err)
@@ -2192,7 +2192,7 @@ func (suite *fileCacheTestSuite) TestOpenFileDownloadFailure() {
 
 	// Test file path
 	path := "test_download_failure.txt"
-	localPath := filepath.Join(cache_path, path)
+	localPath := filepath.Join(cachePath, path)
 
 	// Set up expectations for GetAttr to return a valid file that exists in storage
 	mockComponent.EXPECT().
@@ -2201,7 +2201,7 @@ func (suite *fileCacheTestSuite) TestOpenFileDownloadFailure() {
 			Path:  path,
 			Name:  filepath.Base(path),
 			Size:  1024,
-			Mode:  0777,
+			Mode:  0644,
 			Flags: internal.NewFileBitMap(),
 		}, nil).
 		Times(1)
@@ -2214,7 +2214,7 @@ func (suite *fileCacheTestSuite) TestOpenFileDownloadFailure() {
 		Times(1)
 
 	// Attempt to open the file - this should fail
-	handle, err := fc.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0777})
+	handle, err := fc.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0644})
 
 	// Assert that the error returned is the download error, not a cleanup error
 	suite.assert.Error(err)
@@ -2230,7 +2230,7 @@ func (suite *fileCacheTestSuite) TestOpenFileDownloadFailure() {
 	suite.assert.NoError(err)
 	err = mockComponent.Stop()
 	suite.assert.NoError(err)
-	os.RemoveAll(cache_path)
+	os.RemoveAll(cachePath)
 
 	// Restart the default file cache for other tests
 	suite.loopback = newLoopbackFS()
