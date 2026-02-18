@@ -41,18 +41,32 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
-
-type policiesTestSuite struct {
-	suite.Suite
-}
 
 type mockTransport struct{}
 
 func (m *mockTransport) Do(req *http.Request) (*http.Response, error) {
 	return &http.Response{StatusCode: 200}, nil
+}
+
+type policiesTestSuite struct {
+	suite.Suite
+}
+
+func (s *policiesTestSuite) SetupTest() {
+	// Initialize the logger
+	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
+	if err != nil {
+		panic("Unable to set silent logger as default.")
+	}
+}
+
+func (s *policiesTestSuite) TearDownTest() {
+	_ = log.Destroy()
 }
 
 func (s *policiesTestSuite) TestRateLimitingPolicy_OpsLimit() {
