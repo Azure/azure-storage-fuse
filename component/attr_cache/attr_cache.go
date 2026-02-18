@@ -137,8 +137,8 @@ func (ac *AttrCache) GenConfig() string {
 	log.Info("AttrCache::Configure : config generation started")
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n%s:", ac.Name()))
-	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", defaultAttrCacheTimeout))
+	fmt.Fprintf(&sb, "\n%s:", ac.Name())
+	fmt.Fprintf(&sb, "\n  timeout-sec: %v", defaultAttrCacheTimeout)
 
 	return sb.String()
 }
