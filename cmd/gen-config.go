@@ -113,7 +113,7 @@ var generatedConfig = &cobra.Command{
 
 		sb.WriteString("\ncomponents:\n")
 		for _, component := range pipeline {
-			sb.WriteString(fmt.Sprintf("  - %s\n", component))
+			fmt.Fprintf(&sb, "  - %s\n", component)
 		}
 
 		for _, component := range pipeline {
