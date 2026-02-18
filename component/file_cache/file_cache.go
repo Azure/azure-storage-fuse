@@ -191,7 +191,7 @@ func (fc *FileCache) GenConfig() string {
 	log.Info("FileCache::Configure : config generation started")
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n%s:", fc.Name()))
+	fmt.Fprintf(&sb, "\n%s:", fc.Name())
 
 	tmpPath := ""
 	_ = config.UnmarshalKey("tmp-path", &tmpPath)
@@ -204,8 +204,8 @@ func (fc *FileCache) GenConfig() string {
 		timeout = 0
 	}
 
-	sb.WriteString(fmt.Sprintf("\n  path: %v", common.ExpandPath(tmpPath)))
-	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", timeout))
+	fmt.Fprintf(&sb, "\n  path: %v", common.ExpandPath(tmpPath))
+	fmt.Fprintf(&sb, "\n  timeout-sec: %v", timeout)
 
 	return sb.String()
 }
