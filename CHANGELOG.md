@@ -3,6 +3,7 @@
 - Add rate limit functionality for ingress bandwidth (bytes downloaded per second) and operations per second ([PR #2093](https://github.com/Azure/azure-storage-fuse/pull/2093))
 
 **Bug Fixes**
+- Fix panic while reading an archived blob using file-cache ([PR #2127](https://github.com/Azure/azure-storage-fuse/pull/2127)]
 
 ## 2.5.2 (2026-01-19)
 **Features**
