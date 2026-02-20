@@ -35,8 +35,7 @@ func TestBufferDescriptor_Release(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024,
 	}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	f := createFile("test.txt")
@@ -49,12 +48,12 @@ func TestBufferDescriptor_Release(t *testing.T) {
 
 	// Test normal release (refCnt from 2 to 1)
 	bd.refCnt.Store(2)
-	released := bd.release()
+	released := bd.release(freeList)
 	assert.False(t, released, "Should not be released back to free list yet")
 	assert.Equal(t, int32(1), bd.refCnt.Load())
 
 	// Test release to 0 (should trigger free list return)
-	released = bd.release()
+	released = bd.release(freeList)
 	assert.True(t, released, "Should be released back to free list at 0")
 	assert.Equal(t, int32(0), bd.refCnt.Load())
 }
@@ -64,8 +63,7 @@ func TestBufferDescriptor_Release_ToZero(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024,
 	}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	f := createFile("test.txt")
@@ -78,7 +76,7 @@ func TestBufferDescriptor_Release_ToZero(t *testing.T) {
 
 	// Set to 1 and release to 0
 	bd.refCnt.Store(1)
-	released := bd.release()
+	released := bd.release(freeList)
 
 	assert.True(t, released, "Should be released at 0")
 	assert.Equal(t, int32(0), bd.refCnt.Load(), "RefCnt should be 0 after release")
@@ -88,8 +86,7 @@ func TestBufferDescriptor_Release_Panic(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024,
 	}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	f := createFile("test.txt")
@@ -104,7 +101,7 @@ func TestBufferDescriptor_Release_Panic(t *testing.T) {
 	bd.refCnt.Store(0)
 
 	assert.Panics(t, func() {
-		bd.release()
+		bd.release(freeList)
 	}, "Should panic when refCnt goes below 0")
 }
 
@@ -112,8 +109,7 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	bc = &BlockCache{
 		blockSize: 1024 * 1024,
 	}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	f := createFile("test.txt")
@@ -141,7 +137,7 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	}
 
 	// Reset
-	bufDesc.reset()
+	bufDesc.reset(freeList)
 
 	// Verify all fields are reset
 	assert.Nil(t, bufDesc.block)
@@ -219,7 +215,6 @@ func TestBufferDescriptor_EnsureBufferValidForRead_WaitForDownload(t *testing.T)
 	assert.NoError(t, err)
 }
 
-// SUSPICIOUS FINDING: ensureBufferValidForRead panics if buffer is neither valid nor has error
 // This indicates an inconsistent state that shouldn't happen
 func TestBufferDescriptor_EnsureBufferValidForRead_InconsistentState(t *testing.T) {
 	f := createFile("test.txt")
@@ -232,9 +227,8 @@ func TestBufferDescriptor_EnsureBufferValidForRead_InconsistentState(t *testing.
 	bd.valid.Store(false)
 	// No download error set, and not valid - this is inconsistent
 
-	assert.Panics(t, func() {
-		bd.ensureBufferValidForRead()
-	}, "Should panic on inconsistent state")
+	err := bd.ensureBufferValidForRead()
+	assert.Error(t, err, "Should return error on inconsistent state")
 }
 
 func TestBufferDescriptor_AtomicFields(t *testing.T) {
