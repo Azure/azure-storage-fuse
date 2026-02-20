@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771136837283,
+  "lastUpdate": 1771619016741,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -350,6 +350,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_read_directio",
             "value": 3880.625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Copilot",
+            "username": "Copilot",
+            "email": "198982749+Copilot@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "id": "6542d75ad4451a238f013b387e75970aee542584",
+          "message": "block_cache: restore test compatibility after refactor and expand integration coverage for concurrency/data integrity (#2133)\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: syeleti-msft <172502481+syeleti-msft@users.noreply.github.com>",
+          "timestamp": "2026-02-20T10:49:10Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/6542d75ad4451a238f013b387e75970aee542584"
+        },
+        "date": 1771619016486,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_directio",
+            "value": 3837.900390625,
             "unit": "MiB/s"
           }
         ]
