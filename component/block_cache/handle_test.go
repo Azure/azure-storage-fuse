@@ -24,7 +24,8 @@ func TestGetFileFromPath_FirstOpen(t *testing.T) {
 
 	handle := handlemap.NewHandle("newfile.txt")
 
-	f, firstOpen := getFileFromPath(handle)
+	f, firstOpen, err := getFileFromPath(handle)
+	assert.NoError(t, err)
 
 	assert.NotNil(t, f)
 	assert.True(t, firstOpen, "Should be first open")
@@ -37,12 +38,14 @@ func TestGetFileFromPath_FirstOpen(t *testing.T) {
 func TestGetFileFromPath_SecondOpen(t *testing.T) {
 	// First open
 	handle1 := handlemap.NewHandle("existingfile.txt")
-	f1, firstOpen1 := getFileFromPath(handle1)
+	f1, firstOpen1, err := getFileFromPath(handle1)
+	assert.NoError(t, err)
 	assert.True(t, firstOpen1)
 
 	// Second open
 	handle2 := handlemap.NewHandle("existingfile.txt")
-	f2, firstOpen2 := getFileFromPath(handle2)
+	f2, firstOpen2, err := getFileFromPath(handle2)
+	assert.NoError(t, err)
 
 	assert.False(t, firstOpen2, "Should not be first open")
 	assert.Equal(t, f1, f2, "Should be same file object")
@@ -56,15 +59,16 @@ func TestGetFileFromPath_SecondOpen(t *testing.T) {
 func TestDeleteOpenHandleForFile_LastHandle(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
-	newBufferTableMgr()
+	btm = newBufferTableMgr()
+	bc.btm = btm
 
 	// Create file with one handle
 	handle := handlemap.NewHandle("deleteme.txt")
-	f, _ := getFileFromPath(handle)
+	f, _, err := getFileFromPath(handle)
+	assert.NoError(t, err)
 
 	handle.IFObj = &blockCacheHandle{
 		file:            f,
@@ -76,7 +80,7 @@ func TestDeleteOpenHandleForFile_LastHandle(t *testing.T) {
 	assert.True(t, exists)
 
 	// Delete the handle
-	deleteOpenHandleForFile(handle, true)
+	deleteOpenHandleForFile(bc, handle, f, true)
 
 	// File should be removed from map
 	_, exists = fileMap.Load("deleteme.txt")
@@ -86,16 +90,17 @@ func TestDeleteOpenHandleForFile_LastHandle(t *testing.T) {
 func TestDeleteOpenHandleForFile_NotLastHandle(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	// Create file with two handles
 	handle1 := handlemap.NewHandle("multi-handle.txt")
-	f, _ := getFileFromPath(handle1)
+	f, _, err := getFileFromPath(handle1)
+	assert.NoError(t, err)
 
 	handle2 := handlemap.NewHandle("multi-handle.txt")
-	getFileFromPath(handle2)
+	_, _, err = getFileFromPath(handle2)
+	assert.NoError(t, err)
 
 	handle1.IFObj = &blockCacheHandle{
 		file:            f,
@@ -103,7 +108,7 @@ func TestDeleteOpenHandleForFile_NotLastHandle(t *testing.T) {
 	}
 
 	// Delete first handle
-	deleteOpenHandleForFile(handle1, true)
+	deleteOpenHandleForFile(bc, handle1, f, true)
 
 	// File should still be in map
 	_, exists := fileMap.Load("multi-handle.txt")
@@ -116,7 +121,8 @@ func TestDeleteOpenHandleForFile_NotLastHandle(t *testing.T) {
 func TestCheckFileExistsInOpen_Exists(t *testing.T) {
 	// Create a file
 	handle := handlemap.NewHandle("checkexists.txt")
-	f, _ := getFileFromPath(handle)
+	f, _, err := getFileFromPath(handle)
+	assert.NoError(t, err)
 
 	// Check it exists
 	foundFile, exists := checkFileExistsInOpen("checkexists.txt")
@@ -136,15 +142,16 @@ func TestCheckFileExistsInOpen_NotExists(t *testing.T) {
 func TestDeleteFileIfNoOpenHandles(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
-	newBufferTableMgr()
+	btm = newBufferTableMgr()
+	bc.btm = btm
 
 	// Create a file
 	handle := handlemap.NewHandle("deleteifno.txt")
-	f, _ := getFileFromPath(handle)
+	f, _, err := getFileFromPath(handle)
+	assert.NoError(t, err)
 
 	handle.IFObj = &blockCacheHandle{
 		file:            f,
@@ -152,7 +159,7 @@ func TestDeleteFileIfNoOpenHandles(t *testing.T) {
 	}
 
 	// Close the handle
-	deleteOpenHandleForFile(handle, true)
+	deleteOpenHandleForFile(bc, handle, f, true)
 
 	// File should already be deleted by deleteOpenHandleForFile
 	_, exists := fileMap.Load("deleteifno.txt")
@@ -187,15 +194,15 @@ func TestGetFileFromPath_RaceCondition(t *testing.T) {
 
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
-	newBufferTableMgr()
+	btm = newBufferTableMgr()
+	bc.btm = btm
 
 	// Test basic concurrent access doesn't crash
 	done := make(chan bool)
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 1000; i++ {
 		go func(id int) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -205,18 +212,19 @@ func TestGetFileFromPath_RaceCondition(t *testing.T) {
 			}()
 
 			handle := handlemap.NewHandle("racefile.txt")
-			f, _ := getFileFromPath(handle)
+			f, _, err := getFileFromPath(handle)
+			assert.NoError(t, err)
 			handle.IFObj = &blockCacheHandle{
 				file:            f,
 				patternDetector: newPatternDetector(),
 			}
 			// Brief delay to allow overlapping access
 			time.Sleep(time.Millisecond)
-			deleteOpenHandleForFile(handle, true)
+			deleteOpenHandleForFile(bc, handle, f, true)
 		}(i)
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 1000; i++ {
 		<-done
 	}
 
@@ -226,16 +234,16 @@ func TestGetFileFromPath_RaceCondition(t *testing.T) {
 func TestReleaseAllBuffersForFile_EmptyBlockList(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
-	newBufferTableMgr()
+	btm = newBufferTableMgr()
+	bc.btm = btm
 
 	f := createFile("empty.txt")
 
 	// Release with no blocks - should not panic
-	releaseAllBuffersForFile(f)
+	releaseAllBuffersForFile(bc, f)
 
 	// Should work without error
 }
@@ -243,11 +251,11 @@ func TestReleaseAllBuffersForFile_EmptyBlockList(t *testing.T) {
 func TestReleaseAllBuffersForFile_WithBlocks(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
-	newBufferTableMgr()
+	btm = newBufferTableMgr()
+	bc.btm = btm
 
 	f := createFile("withblocks.txt")
 
@@ -269,7 +277,7 @@ func TestReleaseAllBuffersForFile_WithBlocks(t *testing.T) {
 	}
 
 	// Release all buffers
-	releaseAllBuffersForFile(f)
+	releaseAllBuffersForFile(bc, f)
 
 	// Block list should be nil
 	assert.Nil(t, f.blockList)
