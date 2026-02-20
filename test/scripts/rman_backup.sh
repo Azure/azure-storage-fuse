@@ -9,6 +9,8 @@
 # Usage: ./rman_backup.sh /path/to/mountpoint [sizes]
 #   sizes: comma-separated list of datafile sizes (default: 10M,100M,1G,10G)
 
+# Note: -e is intentionally omitted because the script uses explicit $? checks
+# and graceful skip logic (exit 0 when Oracle is unavailable).
 set -uo pipefail
 
 MOUNT_POINT="$1"
@@ -45,7 +47,7 @@ cleanup() {
     # Drop test tablespaces if Oracle is running
     if pgrep -x "ora_pmon_XE" > /dev/null 2>&1; then
         for SIZE in "${SIZE_ARRAY[@]}"; do
-            local ts_name="BFUSE_${SIZE}"
+            ts_name="BFUSE_${SIZE}"
             sqlplus -s / as sysdba <<EOF 2>/dev/null || true
 ALTER TABLESPACE ${ts_name} OFFLINE;
 DROP TABLESPACE ${ts_name} INCLUDING CONTENTS AND DATAFILES;
@@ -103,9 +105,10 @@ install_oracle_xe() {
         }
     fi
 
-    # Configure Oracle XE with default password
+    # Configure Oracle XE with password from environment (test-only default)
+    local ora_pwd="${ORACLE_XE_PASSWORD:-Oracle123}"
     echo -e "${CYAN}Configuring Oracle XE...${NC}"
-    printf 'Oracle123\nOracle123\n' | sudo /etc/init.d/oracle-xe-21c configure
+    printf '%s\n%s\n' "$ora_pwd" "$ora_pwd" | sudo /etc/init.d/oracle-xe-21c configure
     if [ $? -ne 0 ]; then
         echo -e "${RED}[SKIP] Failed to configure Oracle XE. Skipping actual RMAN tests.${NC}"
         return 1
@@ -370,7 +373,12 @@ rman_backup_and_restore_verify() {
 
     # Take MD5 checksum of original datafile
     local orig_md5
-    orig_md5=$(md5sum "$datafile" 2>/dev/null | awk '{print $1}')
+    orig_md5=$(md5sum "$datafile" | awk '{print $1}')
+    if [ -z "$orig_md5" ]; then
+        echo -e "${RED}[FAIL] Could not compute MD5 of original datafile: ${datafile}${NC}"
+        FAILED=$((FAILED + 1))
+        return 1
+    fi
     echo "Original datafile MD5: $orig_md5"
 
     # Backup tablespace to FUSE mount
@@ -390,7 +398,12 @@ rman_backup_and_restore_verify() {
 
     # Compare the datafile copy on FUSE mount with original
     local copy_md5
-    copy_md5=$(md5sum "${backup_dir}/${ts_name}_copy.dbf" 2>/dev/null | awk '{print $1}')
+    copy_md5=$(md5sum "${backup_dir}/${ts_name}_copy.dbf" | awk '{print $1}')
+    if [ -z "$copy_md5" ]; then
+        echo -e "${RED}[FAIL] Could not compute MD5 of backup copy: ${backup_dir}/${ts_name}_copy.dbf${NC}"
+        FAILED=$((FAILED + 1))
+        return 1
+    fi
     echo "Backup copy MD5:      $copy_md5"
 
     if [ "$orig_md5" == "$copy_md5" ]; then
