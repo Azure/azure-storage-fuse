@@ -228,13 +228,10 @@ func (fl *freeListType) resetBufferDescriptors() {
 			return
 		}
 
-		fl.mutex.Lock()
-
-		log.Debug("releaseBuffer: Released bufferIdx: %d for blockIdx: %d", bufDesc.bufIdx, bufDesc.block.idx)
-
 		// Reset the buffer descriptor.
 		bufDesc.reset(fl)
 
+		fl.mutex.Lock()
 		if fl.lastFreeBuffer == -1 {
 			// Free list is empty.
 			fl.firstFreeBuffer = bufDesc.bufIdx
@@ -245,6 +242,8 @@ func (fl *freeListType) resetBufferDescriptors() {
 			fl.lastFreeBuffer = bufDesc.bufIdx
 		}
 		fl.mutex.Unlock()
+
+		log.Debug("releaseBufferDescriptors: Added bufferIdx: %d back to freelist", bufDesc.bufIdx)
 	}
 }
 
@@ -454,7 +453,7 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool) (*bufferDescript
 	}
 
 	err := fmt.Errorf("getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",
-		maxRounds, numTries, maxBuffers)
+		maxRoundsBeforeGivingUp, numTries, maxBuffers)
 	log.Crit(err.Error())
 	return nil, err
 }

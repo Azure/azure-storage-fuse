@@ -9,8 +9,7 @@ import (
 func TestCreateFreeList(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	assert.NotNil(t, freeList)
@@ -31,22 +30,17 @@ func TestCreateFreeList(t *testing.T) {
 func TestCreateFreeList_ZeroMemSize(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 
-	// When memSize is 0, it should calculate based on system RAM
-	err := createFreeList(bc.blockSize, 0)
-	assert.NoError(t, err)
-	defer destroyFreeList()
-
-	assert.NotNil(t, freeList)
-	assert.NotNil(t, freeList.bufDescriptors)
-	// Should have allocated some buffers based on system RAM
-	assert.Greater(t, len(freeList.bufDescriptors), 0)
+	// When memSize is 0, free list creation should fail.
+	var err error
+	freeList, err = createFreeList(bc.blockSize, 0)
+	assert.Error(t, err)
+	assert.Nil(t, freeList)
 }
 
 func TestDestroyFreeList(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 
-	err := createFreeList(bc.blockSize, 5*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 5*bc.blockSize)
 
 	destroyFreeList()
 
@@ -56,8 +50,7 @@ func TestDestroyFreeList(t *testing.T) {
 
 func TestFreeList_AllocateBuffer(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	f := createFile("test.txt")
@@ -83,8 +76,7 @@ func TestFreeList_AllocateBuffer(t *testing.T) {
 
 func TestFreeList_AllocateBuffer_Exhausted(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 3*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 3*bc.blockSize)
 	defer destroyFreeList()
 
 	f := createFile("test.txt")
@@ -108,8 +100,7 @@ func TestFreeList_AllocateBuffer_Exhausted(t *testing.T) {
 
 func TestFreeList_ReleaseBuffer(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	f := createFile("test.txt")
@@ -130,8 +121,7 @@ func TestFreeList_GetVictimBuffer(t *testing.T) {
 	// This test is complex due to the blocking nature of getVictimBuffer
 	// Just verify the basic structure exists
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 10*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
 	// Verify victim pointer is initialized
@@ -146,8 +136,7 @@ func TestFreeList_GetVictimBuffer_AllInUse(t *testing.T) {
 	// Testing the infinite loop scenario is not practical
 
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 3*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 3*bc.blockSize)
 	defer destroyFreeList()
 
 	// Document that all descriptors exist
@@ -176,8 +165,7 @@ func TestFreeList_VictimSelection_FullyRead(t *testing.T) {
 
 func TestFreeList_CircularVictimSelection(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	err := createFreeList(bc.blockSize, 5*bc.blockSize)
-	assert.NoError(t, err)
+	setupTestFreeList(t, bc.blockSize, 5*bc.blockSize)
 	defer destroyFreeList()
 
 	// Verify that nxtVictimBuffer wraps around

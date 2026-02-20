@@ -65,6 +65,14 @@ type block struct {
 	numWrites atomic.Int32
 }
 
+func (blk *block) getState() blockState {
+	return blockState(atomic.LoadInt32((*int32)(&blk.state)))
+}
+
+func (blk *block) setState(newState blockState) {
+	atomic.StoreInt32((*int32)(&blk.state), int32(newState))
+}
+
 // createBlock creates a new block with the specified parameters.
 //
 // Parameters:
