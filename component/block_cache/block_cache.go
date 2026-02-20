@@ -659,7 +659,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 					return nil, err
 				}
 
-				err = validateBlockList(bc, blkList, f)
+				err = validateBlockList(blkList, f, bc.blockSize)
 				if err != nil {
 					log.Err("BlockCache::OpenFile : Invalid block list for file: %s, first_open: %v, curOpenHandles: %d,  [%v]",
 						options.Name, firstOpen, len(f.handles), err)
@@ -676,7 +676,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 				return nil, fmt.Errorf("invalid block list for file: %s", options.Name)
 			}
 		} else {
-			updateBlockListForReadOnlyFile(bc, f)
+			updateBlockListForReadOnlyFile(f, int64(bc.blockSize))
 		}
 	}
 
