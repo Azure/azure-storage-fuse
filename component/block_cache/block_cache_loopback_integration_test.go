@@ -34,6 +34,7 @@
 package block_cache
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -131,9 +132,11 @@ block_cache:
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TearDownTest() {
 	if suite.blockCache != nil {
 		suite.blockCache.Stop()
+		suite.blockCache = nil
 	}
 	if suite.loopbackFS != nil {
 		suite.loopbackFS.Stop()
+		suite.loopbackFS = nil
 	}
 
 	// Cleanup test directories
@@ -1366,6 +1369,131 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileOperationsUnderMemo
 
 	// Under memory pressure some operations may fail, but most should succeed
 	suite.assert.Less(errorCount, numFiles/2, "Too many failures under memory pressure")
+}
+
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentMultiHandleDisjointWritesDataIntegrity() {
+	defer suite.TearDownTest()
+
+	fileName := "test_disjoint_multi_handle.bin"
+	chunkSize := 1024 * 1024
+	firstHalf := bytes.Repeat([]byte{0x11}, chunkSize)
+	secondHalf := bytes.Repeat([]byte{0x22}, chunkSize)
+
+	handle1, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+
+	handle2, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_RDWR, Mode: 0777})
+	suite.assert.NoError(err)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_, err := suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle1, Offset: 0, Data: firstHalf})
+		if err != nil {
+			errs <- err
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		_, err := suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle2, Offset: int64(chunkSize), Data: secondHalf})
+		if err != nil {
+			errs <- err
+		}
+	}()
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		suite.assert.NoError(err)
+	}
+
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle1}))
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle2}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle1}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle2}))
+
+	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
+	suite.assert.NoError(err)
+	suite.assert.Equal(2*chunkSize, len(data))
+	suite.assert.Equal(firstHalf, data[:chunkSize])
+	suite.assert.Equal(secondHalf, data[chunkSize:])
+}
+
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestReadFailsAfterHandleRelease() {
+	defer suite.TearDownTest()
+
+	fileName := "test_released_handle.txt"
+	filePath := filepath.Join(suite.testPath, fileName)
+	suite.assert.NoError(os.WriteFile(filePath, []byte("payload"), 0777))
+
+	handle, err := suite.blockCache.OpenFile(internal.OpenFileOptions{
+		Name:  fileName,
+		Flags: os.O_RDONLY,
+		Mode:  0777,
+	})
+	suite.assert.NoError(err)
+
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	buf := make([]byte, 7)
+	suite.assert.Panics(func() {
+		_, _ = suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{
+			Handle: handle,
+			Offset: 0,
+			Data:   buf,
+		})
+	})
+}
+
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRandomWritesAndFullReadIntegrity() {
+	defer suite.TearDownTest()
+
+	fileName := "test_random_write_integrity.bin"
+	fileSize := 512 * 1024
+	expected := make([]byte, fileSize)
+
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: expected})
+	suite.assert.NoError(err)
+
+	rng := rand.New(rand.NewSource(42))
+	for i := 0; i < 100; i++ {
+		length := rng.Intn(4096) + 1
+		offset := rng.Intn(fileSize - length)
+		payload := make([]byte, length)
+		_, _ = rng.Read(payload)
+
+		_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{
+			Handle: handle,
+			Offset: int64(offset),
+			Data:   payload,
+		})
+		suite.assert.NoError(err)
+		copy(expected[offset:offset+length], payload)
+	}
+
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	handle, err = suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_RDONLY, Mode: 0777})
+	suite.assert.NoError(err)
+
+	got := make([]byte, fileSize)
+	bytesRead, err := suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   got,
+	})
+	suite.assert.NoError(err)
+	suite.assert.Equal(fileSize, bytesRead)
+	suite.assert.Equal(expected, got)
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
 }
 
 // ============================================================================

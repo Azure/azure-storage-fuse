@@ -454,7 +454,7 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool) (*bufferDescript
 	}
 
 	err := fmt.Errorf("getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",
-		maxRounds, numTries, maxBuffers)
+		maxRoundsBeforeGivingUp, numTries, maxBuffers)
 	log.Crit(err.Error())
 	return nil, err
 }
