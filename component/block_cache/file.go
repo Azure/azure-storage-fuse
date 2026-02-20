@@ -45,6 +45,9 @@ import (
 // Note: We store references to open handles (rather than just counting them)
 // to support deferred file removal. When a file is deleted while handles are
 // still open, we can iterate through handles to mark them appropriately.
+//
+// TODO: Add global context to the file that can propagate to all the operations
+// on the file, this would simplify cancellations and timeouts easier.
 type File struct {
 	mu            sync.RWMutex                   // Protects file metadata and block list
 	Name          string                         // File path (absolute)
@@ -454,7 +457,7 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		bufDesc.contentLock.Lock()
 
 		// Change the block state to localBlock as it is being modified
-		atomic.StoreInt32((*int32)(&blk.state), int32(localBlock))
+		blk.setState(localBlock)
 		blk.numWrites.Add(1)
 		bufDesc.dirty.Store(true)
 
@@ -621,7 +624,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		// reupload the block that was partially filled earlier to extend it with zeros.
 		lastBlockIdx := getBlockIndex(f.sizeOnStorage-1, int64(bc.blockSize))
 		lastBlock := f.blockList.list[lastBlockIdx]
-		if lastBlock.state == committedBlock && lastBlock.numWrites.Load() == 0 {
+		if lastBlock.getState() == committedBlock && lastBlock.numWrites.Load() == 0 {
 			// Last block is committed and no writes on it, need to extend it with zeros by making it dirty.
 			log.Debug("File::flush: Extending last blockIdx: %d for file: %s during flush to accommodate file size expansion",
 				lastBlock.idx, f.Name)
@@ -637,7 +640,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 				return err
 			}
 
-			atomic.StoreInt32((*int32)(&lastBlock.state), int32(localBlock))
+			lastBlock.setState(localBlock)
 			bufDesc.dirty.Store(true)
 			// Release the buffer descriptor, that is just acquired, this should not free the buffer as buffer is dirty.
 			if ok := bufDesc.release(bc.freeList); ok {
@@ -652,7 +655,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 
 	// Schedule upload for all dirty blocks
 	for i, blk := range f.blockList.list {
-		if blk.state == committedBlock || blk.state == uncommitedBlock {
+		if blk.getState() == committedBlock || blk.getState() == uncommitedBlock {
 			// No need to upload committed or uncommitted blocks
 			continue
 		}
@@ -660,7 +663,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
 		if bufDesc == nil {
 			// No buffer descriptor found for this block, sparse blocks must have no writes on it.
-			if blk.state == localBlock && blk.numWrites.Load() > 0 {
+			if blk.getState() == localBlock && blk.numWrites.Load() > 0 {
 				err := fmt.Errorf("File::flush: No buffer descriptor found for local blockIdx: %d during flush at file: %s",
 					blk.idx, f.Name)
 				log.Crit(err.Error())
@@ -716,7 +719,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 				releaseBufDesc()
 
 				return bufDesc.uploadErr
-			} else if blk.state == localBlock {
+			} else if blk.getState() == localBlock {
 				// not expected as error must be set when dirty is false
 				err := fmt.Errorf("File::flush: Inconsistent state for bufferIdx: %d, blockIdx: %d during flush at file: %s, dirty: %v, uploadErr: %v",
 					bufDesc.bufIdx, blk.idx, f.Name, bufDesc.dirty.Load(), bufDesc.uploadErr)
@@ -770,7 +773,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 
 	// update the block states.
 	for _, blk := range f.blockList.list {
-		blk.state = committedBlock
+		blk.setState(committedBlock)
 	}
 
 	f.sizeOnStorage = f.size
@@ -905,7 +908,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 			return err
 		}
 
-		atomic.StoreInt32((*int32)(&lastBlock.state), int32(localBlock))
+		lastBlock.setState(localBlock)
 		bufDesc.dirty.Store(true)
 
 		// Clean the rest of the buffer if file is getting shrinked as it may contain old/dirty data.
