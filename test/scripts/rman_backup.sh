@@ -107,19 +107,15 @@ trap cleanup EXIT
 # ==============================================================================
 run_sqlplus() {
     local sql="$1"
-    sudo -E -u oracle bash -c "
-        export ORACLE_HOME='${ORACLE_HOME}'
-        export ORACLE_SID='${ORACLE_SID}'
-        export PATH='${ORACLE_HOME}/bin:\$PATH'
-        export LD_LIBRARY_PATH='${ORACLE_HOME}/lib'
-        export NLS_LANG='AMERICAN_AMERICA.AL32UTF8'
-        sqlplus -s '/ as sysdba' <<EOSQL
-SET HEADING OFF FEEDBACK OFF PAGESIZE 0 LINESIZE 200
-WHENEVER SQLERROR EXIT SQL.SQLCODE
-${sql}
-EXIT;
-EOSQL
-    "
+    local script
+    script=$(printf 'SET HEADING OFF FEEDBACK OFF PAGESIZE 0 LINESIZE 200\nWHENEVER SQLERROR EXIT SQL.SQLCODE\n%s\nEXIT;\n' "$sql")
+    sudo -E -u oracle \
+        ORACLE_HOME="${ORACLE_HOME}" \
+        ORACLE_SID="${ORACLE_SID}" \
+        PATH="${ORACLE_HOME}/bin:${PATH}" \
+        LD_LIBRARY_PATH="${ORACLE_HOME}/lib" \
+        NLS_LANG="AMERICAN_AMERICA.AL32UTF8" \
+        bash -c 'echo "$1" | sqlplus -s "/ as sysdba"' _ "$script"
 }
 
 # ==============================================================================
@@ -127,16 +123,14 @@ EOSQL
 # ==============================================================================
 run_rman() {
     local commands="$1"
-    sudo -E -u oracle bash -c "
-        export ORACLE_HOME='${ORACLE_HOME}'
-        export ORACLE_SID='${ORACLE_SID}'
-        export PATH='${ORACLE_HOME}/bin:\$PATH'
-        export LD_LIBRARY_PATH='${ORACLE_HOME}/lib'
-        rman target / <<EORMAN
-${commands}
-EXIT;
-EORMAN
-    "
+    local script
+    script=$(printf '%s\nEXIT;\n' "$commands")
+    sudo -E -u oracle \
+        ORACLE_HOME="${ORACLE_HOME}" \
+        ORACLE_SID="${ORACLE_SID}" \
+        PATH="${ORACLE_HOME}/bin:${PATH}" \
+        LD_LIBRARY_PATH="${ORACLE_HOME}/lib" \
+        bash -c 'echo "$1" | rman target /' _ "$script"
 }
 
 # ==============================================================================
@@ -503,6 +497,21 @@ if [ $? -ne 0 ]; then
     echo -e "${RED}Oracle OS authentication failed. Skipping actual RMAN tests.${NC}"
     echo -e "${CYAN}Ensure the 'oracle' user exists and the database is running.${NC}"
     exit 0
+fi
+
+# Enable ARCHIVELOG mode if not already enabled.
+# RMAN cannot backup or copy active datafiles in NOARCHIVELOG mode (ORA-19602).
+echo -e "${CYAN}Checking ARCHIVELOG mode...${NC}"
+ARCHIVELOG_STATUS=$(run_sqlplus "SELECT LOG_MODE FROM V\$DATABASE;")
+if echo "$ARCHIVELOG_STATUS" | grep -q "NOARCHIVELOG"; then
+    echo -e "${CYAN}Enabling ARCHIVELOG mode (requires restart)...${NC}"
+    run_sqlplus "SHUTDOWN IMMEDIATE;"
+    run_sqlplus "STARTUP MOUNT;"
+    run_sqlplus "ALTER DATABASE ARCHIVELOG;"
+    run_sqlplus "ALTER DATABASE OPEN;"
+    echo -e "${GREEN}ARCHIVELOG mode enabled${NC}"
+else
+    echo -e "${CYAN}ARCHIVELOG mode is already enabled${NC}"
 fi
 
 mkdir -p "$BACKUP_BASE"
