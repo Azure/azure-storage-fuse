@@ -144,36 +144,25 @@ install_oracle_xe() {
 
     echo -e "${CYAN}Installing Oracle XE...${NC}"
 
-    # Install prerequisites
-    sudo apt-get update -y
-    sudo apt-get install -y libaio1 unzip wget bc
+    # Install prerequisites (Oracle Linux uses yum)
+    sudo yum install -y libaio bc wget unzip
 
-    # Download and install Oracle XE
-    # Use the Oracle XE RPM via alien for Ubuntu
+    # Download and install Oracle XE natively via RPM (Oracle Linux)
     if ! command -v sqlplus &> /dev/null; then
-        sudo apt-get install -y alien
-
-        # Download Oracle XE 21c
         ORACLE_XE_RPM="oracle-database-xe-21c-1.0-1.ol8.x86_64.rpm"
         if [ ! -f "/tmp/${ORACLE_XE_RPM}" ]; then
             echo -e "${CYAN}Downloading Oracle XE...${NC}"
             wget -q "https://download.oracle.com/otn-pub/otn_software/db-express/${ORACLE_XE_RPM}" \
                 -O "/tmp/${ORACLE_XE_RPM}" || {
-                echo -e "${RED}Failed to download Oracle XE. Trying alternative mirror...${NC}"
-                # If direct download fails, the pipeline agents should have Oracle XE pre-installed
+                echo -e "${RED}Failed to download Oracle XE.${NC}"
                 echo -e "${RED}[SKIP] Oracle XE not available for download. Skipping actual RMAN tests.${NC}"
                 return 1
             }
         fi
 
-        echo -e "${CYAN}Converting RPM to DEB and installing...${NC}"
-        cd /tmp
-        sudo alien --to-deb --scripts "${ORACLE_XE_RPM}" || {
-            echo -e "${RED}[SKIP] Failed to convert Oracle XE package. Skipping actual RMAN tests.${NC}"
-            return 1
-        }
-        sudo dpkg -i oracle-database-xe-21c*.deb || {
-            echo -e "${RED}[SKIP] Failed to install Oracle XE. Skipping actual RMAN tests.${NC}"
+        echo -e "${CYAN}Installing Oracle XE RPM...${NC}"
+        sudo yum localinstall -y "/tmp/${ORACLE_XE_RPM}" || {
+            echo -e "${RED}[SKIP] Failed to install Oracle XE RPM. Skipping actual RMAN tests.${NC}"
             return 1
         }
     fi

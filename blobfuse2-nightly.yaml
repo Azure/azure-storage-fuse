@@ -1241,26 +1241,19 @@ stages:
     - stage: RmanBackupTests
       dependsOn: []
       jobs:
-        # Ubuntu Tests
+        # Oracle Linux - native distro for Oracle XE and RMAN
         - job: Set_1
           timeoutInMinutes: 360
           strategy:
             matrix:
-              Ubuntu-20:
-                AgentName: 'blobfuse-ubuntu20'
-                distro: 'ubuntu'
-                distro_version: 'ubuntu_20_x86'
-                fuselib: 'libfuse-dev'
-                tags: 'fuse2'
-              Ubuntu-22:
-                AgentName: 'blobfuse-ubuntu22'
-                distro: 'ubuntu'
-                distro_version: 'ubuntu_22_x86'
-                fuselib: 'libfuse3-dev'
+              Oracle-8.1:
+                AgentName: 'blobfuse-oracle81'
+                distro: 'oracle'
+                distro_version: 'Oracle-8.1'
                 tags: 'fuse3'
 
           pool:
-            name: "blobfuse-ubuntu-pool"
+            name: "blobfuse-oracle-pool"
             demands:
               - ImageOverride -equals $(AgentName)
 
