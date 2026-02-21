@@ -505,10 +505,24 @@ echo -e "${CYAN}Checking ARCHIVELOG mode...${NC}"
 ARCHIVELOG_STATUS=$(run_sqlplus "SELECT LOG_MODE FROM V\$DATABASE;")
 if echo "$ARCHIVELOG_STATUS" | grep -q "NOARCHIVELOG"; then
     echo -e "${CYAN}Enabling ARCHIVELOG mode (requires restart)...${NC}"
-    run_sqlplus "SHUTDOWN IMMEDIATE;"
-    run_sqlplus "STARTUP MOUNT;"
-    run_sqlplus "ALTER DATABASE ARCHIVELOG;"
-    run_sqlplus "ALTER DATABASE OPEN;"
+    run_sqlplus "SHUTDOWN IMMEDIATE;" || {
+        echo -e "${RED}Failed to shutdown database for ARCHIVELOG switch. Skipping.${NC}"
+        exit 0
+    }
+    run_sqlplus "STARTUP MOUNT;" || {
+        echo -e "${RED}Failed to start database in mount mode. Attempting full startup...${NC}"
+        run_sqlplus "STARTUP;"
+        exit 0
+    }
+    run_sqlplus "ALTER DATABASE ARCHIVELOG;" || {
+        echo -e "${RED}Failed to enable ARCHIVELOG mode. Opening database and skipping.${NC}"
+        run_sqlplus "ALTER DATABASE OPEN;"
+        exit 0
+    }
+    run_sqlplus "ALTER DATABASE OPEN;" || {
+        echo -e "${RED}Failed to open database after ARCHIVELOG switch.${NC}"
+        exit 0
+    }
     echo -e "${GREEN}ARCHIVELOG mode enabled${NC}"
 else
     echo -e "${CYAN}ARCHIVELOG mode is already enabled${NC}"
