@@ -506,6 +506,8 @@ if [ $? -ne 0 ]; then
 fi
 
 mkdir -p "$BACKUP_BASE"
+# chmod 777 is needed because blobfuse2 FUSE mounts do not support POSIX
+# ownership/ACLs, and the oracle user (via sudo -u oracle) must write here.
 chmod 777 "$BACKUP_BASE"
 
 # Configure RMAN defaults
