@@ -1250,6 +1250,7 @@ stages:
                 AgentName: 'blobfuse-oracle81'
                 distro: 'oracle'
                 distro_version: 'Oracle-8.1'
+                containerName: "test-cnt-ora-81-rman"
                 tags: 'fuse3'
 
           pool:
