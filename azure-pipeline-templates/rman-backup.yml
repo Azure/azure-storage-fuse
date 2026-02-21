@@ -49,7 +49,7 @@ steps:
       mountStep:
         script: |
           # Enable allow_other in fuse.conf so the oracle user can access the FUSE mount
-          sudo sed -i 's/#user_allow_other/user_allow_other/' /etc/fuse.conf
+          sudo sed -i 's/^#\s*user_allow_other/user_allow_other/' /etc/fuse.conf
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 -o allow_other
 
   # Run actual RMAN backup tests with various database file sizes
