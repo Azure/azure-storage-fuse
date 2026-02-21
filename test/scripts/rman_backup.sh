@@ -40,6 +40,38 @@ FAILED=0
 
 IFS=',' read -ra SIZE_ARRAY <<< "$SIZES"
 
+# ==============================================================================
+# setup_oracle_env: Set Oracle environment variables
+# Detects ORACLE_HOME from common locations if not already set.
+# ==============================================================================
+setup_oracle_env() {
+    # Try to source Oracle's environment profile if available
+    if [ -f /opt/oracle/product/21c/dbhomeXE/bin/oracle_env.sh ]; then
+        . /opt/oracle/product/21c/dbhomeXE/bin/oracle_env.sh 2>/dev/null || true
+    elif [ -f /etc/profile.d/oracle-xe-21c.sh ]; then
+        . /etc/profile.d/oracle-xe-21c.sh 2>/dev/null || true
+    fi
+
+    # Detect ORACLE_HOME from known paths if not set
+    if [ -z "${ORACLE_HOME:-}" ]; then
+        for candidate in /opt/oracle/product/21c/dbhomeXE /u01/app/oracle/product/21c/dbhomeXE; do
+            if [ -d "$candidate" ]; then
+                export ORACLE_HOME="$candidate"
+                break
+            fi
+        done
+    fi
+
+    export ORACLE_HOME="${ORACLE_HOME:-/opt/oracle/product/21c/dbhomeXE}"
+    export ORACLE_SID="${ORACLE_SID:-XE}"
+    export PATH="$ORACLE_HOME/bin:$PATH"
+    export LD_LIBRARY_PATH="$ORACLE_HOME/lib:${LD_LIBRARY_PATH:-}"
+    export NLS_LANG="AMERICAN_AMERICA.AL32UTF8"
+}
+
+# Set Oracle environment early so cleanup and all functions have access
+setup_oracle_env
+
 cleanup() {
     echo "Cleaning up..."
     rm -rf "$RESTORE_DIR"
@@ -48,10 +80,18 @@ cleanup() {
     if pgrep -x "ora_pmon_XE" > /dev/null 2>&1; then
         for SIZE in "${SIZE_ARRAY[@]}"; do
             ts_name="BFUSE_${SIZE}"
-            sqlplus -s / as sysdba <<EOF 2>/dev/null || true
-ALTER TABLESPACE ${ts_name} OFFLINE;
-DROP TABLESPACE ${ts_name} INCLUDING CONTENTS AND DATAFILES;
-EOF
+            run_sqlplus "
+                BEGIN
+                    EXECUTE IMMEDIATE 'ALTER TABLESPACE ${ts_name} OFFLINE';
+                EXCEPTION WHEN OTHERS THEN NULL;
+                END;
+                /
+                BEGIN
+                    EXECUTE IMMEDIATE 'DROP TABLESPACE ${ts_name} INCLUDING CONTENTS AND DATAFILES';
+                EXCEPTION WHEN OTHERS THEN NULL;
+                END;
+                /
+            " 2>/dev/null || true
         done
     fi
 
@@ -59,6 +99,45 @@ EOF
 }
 
 trap cleanup EXIT
+
+# ==============================================================================
+# run_sqlplus: Execute SQL statement via sqlplus as the oracle OS user.
+# Uses 'sudo -u oracle' to ensure OS authentication ('/ as sysdba') succeeds,
+# since the oracle user is in the dba group by default.
+# ==============================================================================
+run_sqlplus() {
+    local sql="$1"
+    sudo -E -u oracle bash -c "
+        export ORACLE_HOME='${ORACLE_HOME}'
+        export ORACLE_SID='${ORACLE_SID}'
+        export PATH='${ORACLE_HOME}/bin:\$PATH'
+        export LD_LIBRARY_PATH='${ORACLE_HOME}/lib'
+        export NLS_LANG='AMERICAN_AMERICA.AL32UTF8'
+        sqlplus -s '/ as sysdba' <<EOSQL
+SET HEADING OFF FEEDBACK OFF PAGESIZE 0 LINESIZE 200
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+${sql}
+EXIT;
+EOSQL
+    "
+}
+
+# ==============================================================================
+# run_rman: Execute RMAN commands as the oracle OS user.
+# ==============================================================================
+run_rman() {
+    local commands="$1"
+    sudo -E -u oracle bash -c "
+        export ORACLE_HOME='${ORACLE_HOME}'
+        export ORACLE_SID='${ORACLE_SID}'
+        export PATH='${ORACLE_HOME}/bin:\$PATH'
+        export LD_LIBRARY_PATH='${ORACLE_HOME}/lib'
+        rman target / <<EORMAN
+${commands}
+EXIT;
+EORMAN
+    "
+}
 
 # ==============================================================================
 # install_oracle_xe: Install Oracle XE if not already installed
@@ -114,44 +193,9 @@ install_oracle_xe() {
         return 1
     fi
 
-    # Set environment
+    # Re-detect Oracle environment after installation
     setup_oracle_env
     return 0
-}
-
-# ==============================================================================
-# setup_oracle_env: Set Oracle environment variables
-# ==============================================================================
-setup_oracle_env() {
-    export ORACLE_HOME="${ORACLE_HOME:-/opt/oracle/product/21c/dbhomeXE}"
-    export ORACLE_SID="${ORACLE_SID:-XE}"
-    export PATH="$ORACLE_HOME/bin:$PATH"
-    export LD_LIBRARY_PATH="$ORACLE_HOME/lib:${LD_LIBRARY_PATH:-}"
-    export NLS_LANG="AMERICAN_AMERICA.AL32UTF8"
-}
-
-# ==============================================================================
-# run_sqlplus: Execute SQL statement via sqlplus
-# ==============================================================================
-run_sqlplus() {
-    local sql="$1"
-    sqlplus -s / as sysdba <<EOF
-SET HEADING OFF FEEDBACK OFF PAGESIZE 0 LINESIZE 200
-WHENEVER SQLERROR EXIT SQL.SQLCODE
-${sql}
-EXIT;
-EOF
-}
-
-# ==============================================================================
-# run_rman: Execute RMAN commands
-# ==============================================================================
-run_rman() {
-    local commands="$1"
-    rman target / <<EOF
-${commands}
-EXIT;
-EOF
 }
 
 # ==============================================================================
@@ -216,6 +260,7 @@ rman_full_backup() {
     echo -e "${CYAN}------------------------------------------------------------${NC}"
 
     mkdir -p "$backup_dir"
+    chmod 777 "$backup_dir"
 
     # Perform RMAN full backup of the tablespace to blobfuse2 mount
     run_rman "
@@ -284,6 +329,7 @@ rman_incremental_backup() {
     echo -e "${CYAN}------------------------------------------------------------${NC}"
 
     mkdir -p "$backup_dir"
+    chmod 777 "$backup_dir"
 
     # Level 0 incremental backup (base)
     echo -e "${CYAN}Creating Level 0 incremental backup...${NC}"
@@ -370,10 +416,11 @@ rman_backup_and_restore_verify() {
     echo -e "${CYAN}------------------------------------------------------------${NC}"
 
     mkdir -p "$backup_dir"
+    chmod 777 "$backup_dir"
 
-    # Take MD5 checksum of original datafile
+    # Take MD5 checksum of original datafile (owned by oracle user)
     local orig_md5
-    orig_md5=$(md5sum "$datafile" | awk '{print $1}')
+    orig_md5=$(sudo md5sum "$datafile" | awk '{print $1}')
     if [ -z "$orig_md5" ]; then
         echo -e "${RED}[FAIL] Could not compute MD5 of original datafile: ${datafile}${NC}"
         FAILED=$((FAILED + 1))
@@ -429,11 +476,8 @@ echo "Starting Actual RMAN Backup Tests on $MOUNT_POINT"
 echo "Database file sizes: ${SIZES}"
 echo "============================================================"
 
-# Set up Oracle environment
-setup_oracle_env
-
-# Verify Oracle XE is available
-if ! command -v rman &> /dev/null; then
+# Verify Oracle XE is available (check both PATH and ORACLE_HOME/bin)
+if ! command -v rman &> /dev/null && [ ! -x "${ORACLE_HOME}/bin/rman" ]; then
     echo -e "${CYAN}RMAN utility not found, attempting Oracle XE installation...${NC}"
     install_oracle_xe
     if [ $? -ne 0 ]; then
@@ -452,7 +496,17 @@ if ! pgrep -x "ora_pmon_XE" > /dev/null 2>&1; then
     }
 fi
 
+# Verify OS authentication works before proceeding
+echo -e "${CYAN}Verifying Oracle OS authentication...${NC}"
+run_sqlplus "SELECT 'AUTH_OK' FROM dual;"
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Oracle OS authentication failed. Skipping actual RMAN tests.${NC}"
+    echo -e "${CYAN}Ensure the 'oracle' user exists and the database is running.${NC}"
+    exit 0
+fi
+
 mkdir -p "$BACKUP_BASE"
+chmod 777 "$BACKUP_BASE"
 
 # Configure RMAN defaults
 echo -e "${CYAN}Configuring RMAN defaults...${NC}"
