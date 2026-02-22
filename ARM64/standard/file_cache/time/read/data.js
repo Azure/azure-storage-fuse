@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771140865401,
+  "lastUpdate": 1771745720523,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -479,6 +479,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "filecache_sequential_read_100GB_directio",
             "value": 98461.14123,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "3a1bde1c68c909572341fbc054a19b18c21894fc",
+          "message": "Ensure logger is destroyed before returning from mount command. (#2125)",
+          "timestamp": "2026-02-20T10:30:07Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/3a1bde1c68c909572341fbc054a19b18c21894fc"
+        },
+        "date": 1771745720298,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "filecache_sequential_read_100GB_directio",
+            "value": 93298.25758,
             "unit": "milliseconds"
           }
         ]
