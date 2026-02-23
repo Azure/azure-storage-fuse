@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -62,6 +63,8 @@ import (
 var RootMount bool
 var ForegroundMount bool
 var IsStream bool
+var HostName string
+var HostIP string
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -648,4 +651,39 @@ func PrettyOpenFlags(f int) string {
 // runtime.Stack calls.
 func GetGoroutineID() uint64 {
 	return (uint64)(goid.Get())
+}
+
+func GetHostName() string {
+	if HostName != "" {
+		return HostName
+	}
+
+	var err error
+	HostName, err = os.Hostname()
+	if err != nil {
+		HostName = "unknown"
+	}
+
+	return HostName
+}
+
+func GetHostIP() string {
+	if HostIP != "" {
+		return HostIP
+	}
+
+	HostIP = "unknown"
+	addrs, err := net.InterfaceAddrs()
+	if err == nil {
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+				if ipnet.IP.To4() != nil {
+					HostIP = ipnet.IP.String()
+					break
+				}
+			}
+		}
+	}
+
+	return HostIP
 }

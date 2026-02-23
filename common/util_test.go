@@ -664,3 +664,36 @@ func (suite *utilTestSuite) TestSetFrsize() {
 	SetFrsize(st, val)
 	suite.assert.Equal(int64(val), st.Frsize)
 }
+
+func (suite *utilTestSuite) TestGetHostName() {
+	// Reset global var to force logic execution
+	originalHostName := HostName
+	HostName = ""
+	defer func() { HostName = originalHostName }()
+
+	// First call
+	hn := GetHostName()
+	suite.assert.NotEmpty(hn)
+	suite.assert.Equal(HostName, hn)
+
+	// Cached call
+	HostName = "cached-hostname"
+	hn = GetHostName()
+	suite.assert.Equal("cached-hostname", hn)
+}
+
+func (suite *utilTestSuite) TestGetHostIP() {
+	// Reset global var
+	originalHostIP := HostIP
+	HostIP = ""
+	defer func() { HostIP = originalHostIP }()
+
+	// First call
+	ip := GetHostIP()
+	suite.assert.NotEmpty(ip)
+
+	// Cached call
+	HostIP = "1.2.3.4"
+	ip = GetHostIP()
+	suite.assert.Equal("1.2.3.4", ip)
+}
