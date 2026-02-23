@@ -442,6 +442,12 @@ var mountCmd = &cobra.Command{
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 		}
 
+		// It's best to destroy the logger before we return to the caller, as caller may abruptly exit on error and we
+		// might lose some logs in the channel which are not yet flushed to the file in case of not destroying the logger
+		defer func() {
+			_ = log.Destroy()
+		}()
+
 		if !disableVersionCheck {
 			err := VersionCheck()
 			if err != nil {
