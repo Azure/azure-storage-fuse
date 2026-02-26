@@ -181,10 +181,10 @@ install_oracle_xe() {
 
     # Set Oracle data location to DATA_DIR to avoid insufficient space on /opt/oracle
     if [ -f /etc/sysconfig/oracle-xe-21c.conf ]; then
-        if grep -q "^ORACLE_DATA_LOCATION=" /etc/sysconfig/oracle-xe-21c.conf; then
-            sudo sed -i "s|^ORACLE_DATA_LOCATION=.*|ORACLE_DATA_LOCATION=${DATA_DIR//|/\\|}|" /etc/sysconfig/oracle-xe-21c.conf
+        if grep -q "^DBFILE_DEST=" /etc/sysconfig/oracle-xe-21c.conf; then
+            sudo sed -i "s|^DBFILE_DEST=.*|DBFILE_DEST=${DATA_DIR//|/\\|}|" /etc/sysconfig/oracle-xe-21c.conf
         else
-            echo "ORACLE_DATA_LOCATION=${DATA_DIR}" | sudo tee -a /etc/sysconfig/oracle-xe-21c.conf
+            echo "DBFILE_DEST=${DATA_DIR}" | sudo tee -a /etc/sysconfig/oracle-xe-21c.conf
         fi
     fi
 
@@ -296,7 +296,7 @@ rman_full_backup() {
     # Validate the backup using RMAN VALIDATE
     echo -e "${CYAN}Validating backup with RMAN VALIDATE...${NC}"
     run_rman "
-        VALIDATE BACKUPSET TAG 'FULL_${ts_name}';
+        VALIDATE BACKUPSET BY TAG 'FULL_${ts_name}';
     "
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL] RMAN VALIDATE failed for full backup of ${ts_name}${NC}"
@@ -381,7 +381,7 @@ rman_incremental_backup() {
     # Validate level 0 backup
     echo -e "${CYAN}Validating Level 0 backup...${NC}"
     run_rman "
-        VALIDATE BACKUPSET TAG 'INCR0_${ts_name}';
+        VALIDATE BACKUPSET BY TAG 'INCR0_${ts_name}';
     "
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL] RMAN VALIDATE failed for level 0 backup of ${ts_name}${NC}"
@@ -392,7 +392,7 @@ rman_incremental_backup() {
     # Validate level 1 backup
     echo -e "${CYAN}Validating Level 1 backup...${NC}"
     run_rman "
-        VALIDATE BACKUPSET TAG 'INCR1_${ts_name}';
+        VALIDATE BACKUPSET BY TAG 'INCR1_${ts_name}';
     "
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL] RMAN VALIDATE failed for level 1 backup of ${ts_name}${NC}"
