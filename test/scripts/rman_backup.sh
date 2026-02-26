@@ -28,6 +28,17 @@ if [ ! -d "$MOUNT_POINT" ]; then
     exit 1
 fi
 
+if [ -z "$DATA_DIR" ]; then
+    echo "Usage: $0 /path/to/mountpoint /path/to/data-dir [sizes]"
+    echo "  data-dir: directory with sufficient space for Oracle database files (>=4.5GB)"
+    exit 1
+fi
+
+if [ ! -d "$DATA_DIR" ]; then
+    echo "Error: Data directory $DATA_DIR does not exist."
+    exit 1
+fi
+
 # Colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -168,6 +179,15 @@ install_oracle_xe() {
         }
     fi
 
+    # Set Oracle data location to DATA_DIR to avoid insufficient space on /opt/oracle
+    if [ -f /etc/sysconfig/oracle-xe-21c.conf ]; then
+        if grep -q "^ORACLE_DATA_LOCATION=" /etc/sysconfig/oracle-xe-21c.conf; then
+            sudo sed -i "s|^ORACLE_DATA_LOCATION=.*|ORACLE_DATA_LOCATION=${DATA_DIR//|/\\|}|" /etc/sysconfig/oracle-xe-21c.conf
+        else
+            echo "ORACLE_DATA_LOCATION=${DATA_DIR}" | sudo tee -a /etc/sysconfig/oracle-xe-21c.conf
+        fi
+    fi
+
     # Configure Oracle XE with password from environment (test-only default)
     local ora_pwd="${ORACLE_XE_PASSWORD:-Oracle123}"
     echo -e "${CYAN}Configuring Oracle XE...${NC}"
@@ -188,7 +208,7 @@ install_oracle_xe() {
 create_tablespace() {
     local size="$1"
     local ts_name="BFUSE_${size}"
-    local df_dir="/opt/oracle/oradata/XE/bfuse_test"
+    local df_dir="${DATA_DIR}/oradata/XE/bfuse_test"
 
     echo -e "${CYAN}Creating tablespace ${ts_name} with ${size} datafile...${NC}"
 
@@ -392,7 +412,7 @@ rman_backup_and_restore_verify() {
     local size="$1"
     local ts_name="BFUSE_${size}"
     local backup_dir="$BACKUP_BASE/verify_${size}"
-    local df_dir="/opt/oracle/oradata/XE/bfuse_test"
+    local df_dir="${DATA_DIR}/oradata/XE/bfuse_test"
     local datafile="${df_dir}/${ts_name}.dbf"
 
     echo -e "${CYAN}------------------------------------------------------------${NC}"
