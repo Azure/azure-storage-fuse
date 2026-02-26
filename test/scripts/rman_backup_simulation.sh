@@ -9,7 +9,8 @@
 #   sizes: comma-separated list of file sizes (default: 10M,100M,1G,10G)
 
 MOUNT_POINT="$1"
-SIZES="${2:-10M,100M,1G,10G}"
+DATA_DIR="$2"
+SIZES="${3:-10M,100M,1G,10G}"
 
 if [ -z "$MOUNT_POINT" ]; then
     echo "Usage: $0 /path/to/mountpoint [sizes]"
@@ -29,7 +30,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 BACKUP_DIR="$MOUNT_POINT/rman_backup"
-SOURCE_DIR="/tmp/rman_source_$$"
+SOURCE_DIR="$DATA_DIR/rman_source_$$"
 PASSED=0
 FAILED=0
 

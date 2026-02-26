@@ -51,7 +51,7 @@ steps:
 
   # Run RMAN backup simulation with various database file sizes
   - script:
-      $(WORK_DIR)/test/scripts/rman_backup_simulation.sh $(MOUNT_DIR) 10M,100M,1G,10G
+      $(WORK_DIR)/test/scripts/rman_backup_simulation.sh $(MOUNT_DIR) $(ROOT_DIR) 10M,100M,1G,10G
     displayName: 'RMAN Backup Simulation'
     timeoutInMinutes: 120
 

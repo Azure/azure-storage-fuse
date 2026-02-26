@@ -14,7 +14,8 @@
 set -uo pipefail
 
 MOUNT_POINT="$1"
-SIZES="${2:-10M,100M,1G,10G}"
+DATA_DIR="$2"
+SIZES="${3:-10M,100M,1G,10G}"
 
 if [ -z "$MOUNT_POINT" ]; then
     echo "Usage: $0 /path/to/mountpoint [sizes]"
@@ -34,7 +35,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 BACKUP_BASE="$MOUNT_POINT/rman_backup"
-RESTORE_DIR="/tmp/rman_restore_$$"
+RESTORE_DIR="$DATA_DIR/rman_restore_$$"
 PASSED=0
 FAILED=0
 
@@ -150,10 +151,10 @@ install_oracle_xe() {
     # Download and install Oracle XE natively via RPM (Oracle Linux)
     if ! command -v sqlplus &> /dev/null; then
         ORACLE_XE_RPM="oracle-database-xe-21c-1.0-1.ol8.x86_64.rpm"
-        if [ ! -f "/tmp/${ORACLE_XE_RPM}" ]; then
+        if [ ! -f "$DATA_DIR/${ORACLE_XE_RPM}" ]; then
             echo -e "${CYAN}Downloading Oracle XE...${NC}"
             wget -q "https://download.oracle.com/otn-pub/otn_software/db-express/${ORACLE_XE_RPM}" \
-                -O "/tmp/${ORACLE_XE_RPM}" || {
+                -O "$DATA_DIR/${ORACLE_XE_RPM}" || {
                 echo -e "${RED}Failed to download Oracle XE.${NC}"
                 echo -e "${RED}[SKIP] Oracle XE not available for download. Skipping actual RMAN tests.${NC}"
                 return 1
@@ -161,7 +162,7 @@ install_oracle_xe() {
         fi
 
         echo -e "${CYAN}Installing Oracle XE RPM...${NC}"
-        sudo yum localinstall -y "/tmp/${ORACLE_XE_RPM}" || {
+        sudo yum localinstall -y "$DATA_DIR/${ORACLE_XE_RPM}" || {
             echo -e "${RED}[SKIP] Failed to install Oracle XE RPM. Skipping actual RMAN tests.${NC}"
             return 1
         }

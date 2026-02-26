@@ -54,7 +54,7 @@ steps:
 
   # Run actual RMAN backup tests with various database file sizes
   - script:
-      $(WORK_DIR)/test/scripts/rman_backup.sh $(MOUNT_DIR) 10M,100M,1G,10G
+      $(WORK_DIR)/test/scripts/rman_backup.sh $(MOUNT_DIR) $(ROOT_DIR) 10M,100M,1G,10G
     displayName: 'RMAN Backup with Oracle XE'
     timeoutInMinutes: 180
 
