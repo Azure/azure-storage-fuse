@@ -16,9 +16,9 @@ Always reference these instructions first and fallback to search or bash command
   sudo apt install -y libfuse3-dev fuse3 gcc
   ```
 
-- Install Go 1.24.4+ (already available in most environments):
+- Install Go 1.25.7+ (already available in most environments):
   ```bash
-  go version  # Should show 1.24.4 or higher
+  go version  # Should show 1.25.7 or higher
   ```
 
 - Build blobfuse2 binary:
@@ -108,7 +108,7 @@ Always reference these instructions first and fallback to search or bash command
   - `./build.sh fuse2` - legacy fuse2 build
   - `./build.sh health` - health monitor binary
 - **Output**: `blobfuse2` binary (~30MB) and optionally `bfusemon` binary (~6MB)
-- **Go Version**: Requires Go 1.24.4+ (specified in go.mod)
+- **Go Version**: Requires Go 1.25.7+ (specified in go.mod)
 - **Tags**: Use `fuse3` tag for testing/building (default), `fuse2` for legacy systems
 
 ## Testing Infrastructure
