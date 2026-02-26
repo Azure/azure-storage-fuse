@@ -11,6 +11,7 @@ import (
 // errFreeListFull indicates that all buffers are currently in use.
 // When this error is returned, buffer eviction is required to proceed.
 var errFreeListFull = errors.New("All buffers are in use, Free list is full!")
+var errNoVictimBufferFound = errors.New("Scanned through all buffers without finding a victim. This should never happen.")
 
 const (
 	minEvictionCyclesToPass = 1
@@ -455,5 +456,5 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool) (*bufferDescript
 	err := fmt.Errorf("getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",
 		maxRoundsBeforeGivingUp, numTries, maxBuffers)
 	log.Crit(err.Error())
-	return nil, err
+	return nil, errNoVictimBufferFound
 }

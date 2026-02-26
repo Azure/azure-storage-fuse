@@ -45,6 +45,9 @@ import (
 // Note: We store references to open handles (rather than just counting them)
 // to support deferred file removal. When a file is deleted while handles are
 // still open, we can iterate through handles to mark them appropriately.
+//
+// TODO: Add global context to the file that can propagate to all the operations
+// on the file, this would simplify cancellations and timeouts easier.
 type File struct {
 	mu            sync.RWMutex                   // Protects file metadata and block list
 	Name          string                         // File path (absolute)

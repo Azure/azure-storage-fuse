@@ -2,9 +2,21 @@ package block_cache
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func isBufDescExistsInFreeList(fl *freeListType, bufIdx int) bool {
+	fl.mutex.Lock()
+	defer fl.mutex.Unlock()
+	for i := fl.firstFreeBuffer; i != -1; i = fl.bufDescriptors[i].nxtFreeBuffer {
+		if i == bufIdx {
+			return true
+		}
+	}
+	return false
+}
 
 func TestCreateFreeList(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
@@ -115,6 +127,13 @@ func TestFreeList_ReleaseBuffer(t *testing.T) {
 
 	// Give some time for the reset goroutine to process
 	// The buffer should eventually be back in the free list
+	for len(freeList.resetBufferDesc) > 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Verify the buffer is back in the free list
+	isBack := isBufDescExistsInFreeList(freeList, bufDesc.bufIdx)
+	assert.True(t, isBack, "Released buffer should be back in the free list")
 }
 
 func TestFreeList_GetVictimBuffer(t *testing.T) {
@@ -126,21 +145,59 @@ func TestFreeList_GetVictimBuffer(t *testing.T) {
 
 	// Verify victim pointer is initialized
 	assert.Equal(t, 0, freeList.nxtVictimBuffer)
+
+	// Allocate all buffers and pin 9 buffers and leave 1 buffer unpinned to be selected as victim
+	for i := range 10 {
+		bufDesc, err := freeList.allocateBuffer(createBlock(int(i), "testId", localBlock, createFile("test.txt")))
+		assert.NoError(t, err)
+		assert.NotNil(t, bufDesc)
+		assert.Equal(t, i, bufDesc.bufIdx)
+		assert.Equal(t, -1, bufDesc.nxtFreeBuffer)
+		assert.Equal(t, int32(0), bufDesc.refCnt.Load(), "Newly allocated buffer should have refCnt 0")
+
+		bufDesc.refCnt.Store(refCountTableOnly) // Pin the buffer for buffer table manager.
+		if i < 9 {
+			bufDesc.refCnt.Add(1) // Pin the buffer to indicate it's in use and should not be selected as victim
+		}
+	}
+
+	// Get victim buffer - should return the unpinned buffer
+	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool)
+	assert.NoError(t, err)
+	assert.NotNil(t, victimBufDesc)
+	assert.Equal(t, 9, victimBufDesc.bufIdx)
+	assert.Equal(t, 0, freeList.nxtVictimBuffer) // Should advance victim pointer
+	assert.Equal(t, int32(2), victimBufDesc.refCnt.Load(), "Victim buffer should be pinned to count 2 after selection")
 }
 
-// SUSPICIOUS FINDING: getVictimBuffer can loop indefinitely if all buffers have refCnt > 0
-// This assumes FUSE threads are limited and will eventually release buffers
 func TestFreeList_GetVictimBuffer_AllInUse(t *testing.T) {
-	// This documents the potential for infinite loop
 	// In production, FUSE limits threads so buffers eventually release
-	// Testing the infinite loop scenario is not practical
+	// Testing this so that the error is getting thrown in this edge case
 
 	bc = &BlockCache{blockSize: 1024 * 1024}
-	setupTestFreeList(t, bc.blockSize, 3*bc.blockSize)
+	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
 
-	// Document that all descriptors exist
-	assert.Equal(t, 3, len(freeList.bufDescriptors))
+	// Verify victim pointer is initialized
+	assert.Equal(t, 0, freeList.nxtVictimBuffer)
+
+	// Allocate all buffers and pin 9 buffers and leave 1 buffer unpinned to be selected as victim
+	for i := range 10 {
+		bufDesc, err := freeList.allocateBuffer(createBlock(int(i), "testId", localBlock, createFile("test.txt")))
+		assert.NoError(t, err)
+		assert.NotNil(t, bufDesc)
+		assert.Equal(t, i, bufDesc.bufIdx)
+		assert.Equal(t, -1, bufDesc.nxtFreeBuffer)
+		assert.Equal(t, int32(0), bufDesc.refCnt.Load(), "Newly allocated buffer should have refCnt 0")
+
+		bufDesc.refCnt.Store(refCountTableAndOneUser) // Pin the buffer for buffer table manager.
+	}
+
+	// Get victim buffer - should return nil, as all the buffers are in use.
+	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool)
+	assert.Nil(t, victimBufDesc)
+	assert.Error(t, err)
+	assert.ErrorIs(t, errNoVictimBufferFound, err)
 }
 
 func TestFreeList_EvictionCyclesPassed(t *testing.T) {

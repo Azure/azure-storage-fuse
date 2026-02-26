@@ -215,7 +215,6 @@ func TestBufferDescriptor_EnsureBufferValidForRead_WaitForDownload(t *testing.T)
 	assert.NoError(t, err)
 }
 
-// SUSPICIOUS FINDING: ensureBufferValidForRead returns an error when buffer is neither valid nor has download error
 // This indicates an inconsistent state that shouldn't happen
 func TestBufferDescriptor_EnsureBufferValidForRead_InconsistentState(t *testing.T) {
 	f := createFile("test.txt")

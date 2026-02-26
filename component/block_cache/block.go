@@ -156,7 +156,7 @@ func newBlockList() *blockList {
 // BlockCache assumes all blocks (except the last) are exactly blockSize bytes.
 // Files created by other tools or older versions may have differently sized blocks,
 // which would break BlockCache's offset calculations and read/write operations.
-func validateBlockList(bc *BlockCache, blkList *internal.CommittedBlockList, f *File) error {
+func validateBlockList(blkList *internal.CommittedBlockList, f *File, blockSize uint64) error {
 	if blkList == nil || len(*blkList) == 0 {
 		return ErrInvalidBlockList
 	}
@@ -164,11 +164,11 @@ func validateBlockList(bc *BlockCache, blkList *internal.CommittedBlockList, f *
 	var newblkList []*block = make([]*block, 0, listLen)
 
 	for idx, blk := range *blkList {
-		if idx < (listLen-1) && blk.Size != bc.blockSize {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format blk idx : %d is having size %d bytes, while block size set is %d bytes", idx, blk.Size, bc.blockSize)
+		if idx < (listLen-1) && blk.Size != blockSize {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format blk idx : %d is having size %d bytes, while block size set is %d bytes", idx, blk.Size, blockSize)
 			return ErrInvalidBlockList
-		} else if idx == (listLen-1) && blk.Size > bc.blockSize {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d bytes) than block size configured is %d bytes", idx, blk.Size, bc.blockSize)
+		} else if idx == (listLen-1) && blk.Size > blockSize {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d bytes) than block size configured is %d bytes", idx, blk.Size, blockSize)
 			return ErrInvalidBlockList
 		} else if len(blk.Id) != common.BlockIDLenghtBase64 {
 			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block Id length for blk idx : %d is %d bytes is not matching to what blobfuse uses(i.e., %d bytes)", idx, len(blk.Id), common.BlockIDLenghtBase64)
@@ -197,13 +197,13 @@ func validateBlockList(bc *BlockCache, blkList *internal.CommittedBlockList, f *
 //   - f: File object to populate with synthetic block list
 //
 // The synthetic block list is created only if it doesn't already exist.
-func updateBlockListForReadOnlyFile(bc *BlockCache, f *File) {
+func updateBlockListForReadOnlyFile(f *File, blockSize int64) {
 	if len(f.blockList.list) != 0 {
 		// no need to update blocklist again, if already present
 		return
 	}
 
-	noOfBlocks := (f.size + int64(bc.blockSize) - 1) / int64(bc.blockSize)
+	noOfBlocks := (f.size + blockSize - 1) / blockSize
 	var newblkList []*block = make([]*block, 0, noOfBlocks)
 
 	for i := range int(noOfBlocks) {
