@@ -1305,7 +1305,7 @@ stages:
             - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:
                 unmount: true
-                delete_containers: true
+                delete_containers: false
 
   - ${{ if ne(parameters.linux_git_test, 'none') }}:
     - stage: CompileLinux_GitClone
