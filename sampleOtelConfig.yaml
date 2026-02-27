@@ -1,5 +1,11 @@
-# Sample configuration for Blobfuse2 with OpenTelemetry logging
-# This configuration demonstrates how to send logs to Azure Monitor via OpenTelemetry
+# Sample configuration for Blobfuse2 with OpenTelemetry logging and metrics
+# This configuration demonstrates how to send logs and metrics to Azure Monitor via OpenTelemetry
+
+# Shared OTLP endpoint for OpenTelemetry Collector (used by both logging and metrics).
+# If not specified, uses OTEL_EXPORTER_OTLP_ENDPOINT environment variable.
+# For Azure Monitor: Set up an OpenTelemetry Collector with Azure Monitor exporter
+# pointing to your Application Insights connection string.
+otel-endpoint: localhost:4318
 
 # Logging configuration with OpenTelemetry
 logging:
@@ -7,17 +13,21 @@ logging:
   type: otel
   level: log_debug
   
-  # OTLP endpoint for OpenTelemetry Collector
-  # If not specified, uses OTEL_EXPORTER_OTLP_ENDPOINT environment variable
-  # For Azure Monitor: Set up an OpenTelemetry Collector with Azure Monitor exporter
-  # pointing to your Application Insights connection string
-  otel-endpoint: localhost:4318
-  
   # Optional: Enable goroutine ID logging for debugging
   goroutine-id: false
   
   # Optional: Track time for performance monitoring
   track-time: false
+
+# OpenTelemetry Metrics configuration (independent of logging)
+# When enabled, blobfuse2 periodically exports CPU, memory, and disk (file cache)
+# usage metrics via OTLP to an OpenTelemetry Collector.
+metrics:
+  # Enable or disable OTel metrics export. Default: false
+  enable: false
+
+  # How often metrics are collected and exported, in seconds. Default: 30
+  # collection-interval-sec: 30
 
 components:
   - libfuse

@@ -69,7 +69,13 @@ type LogOptions struct {
 	LogFileCount   uint64 `config:"file-count" yaml:"file-count,omitempty"`
 	LogGoroutineID bool   `config:"goroutine-id" yaml:"goroutine-id,omitempty"`
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
-	OtelEndpoint   string `config:"otel-endpoint" yaml:"otel-endpoint,omitempty"`
+}
+
+// MetricsOptions holds configuration for OpenTelemetry system metrics export.
+// This is a top-level config section independent of logging.
+type MetricsOptions struct {
+	Enable             bool `config:"enable" yaml:"enable,omitempty"`
+	CollectionInterval int  `config:"collection-interval-sec" yaml:"collection-interval-sec,omitempty"`
 }
 
 type mountOptions struct {
@@ -77,7 +83,9 @@ type mountOptions struct {
 	inputMountPath string
 	ConfigFile     string
 
+	OtelEndpoint      string         `config:"otel-endpoint"`
 	Logging           LogOptions     `config:"logging"`
+	Metrics           MetricsOptions `config:"metrics"`
 	Components        []string       `config:"components"`
 	Foreground        bool           `config:"foreground"`
 	NonEmpty          bool           `config:"nonempty"`
@@ -436,7 +444,7 @@ var mountCmd = &cobra.Command{
 			Level:          logLevel,
 			TimeTracker:    options.Logging.TimeTracker,
 			LogGoroutineID: options.Logging.LogGoroutineID,
-			OtelEndpoint:   options.Logging.OtelEndpoint,
+			OtelEndpoint:   options.OtelEndpoint,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
@@ -708,6 +716,37 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 	if err != nil {
 		log.Err("mount: error unable to start pipeline [%s]", err.Error())
 		return fmt.Errorf("unable to start pipeline [%s]", err.Error())
+	}
+
+	// Start OTel metrics collection if enabled in config.
+	// Metrics configuration is independent of logging — both share the top-level otel-endpoint.
+	// This runs after pipeline.Start so that mount path and file cache path are fully resolved.
+	if options.Metrics.Enable {
+		metricsEndpoint := options.OtelEndpoint
+
+		// Resolve the file cache path from config (only present when file_cache is in the pipeline)
+		var fileCachePath string
+		if common.ComponentInPipeline(options.Components, "file_cache") {
+			_ = config.UnmarshalKey("file_cache.path", &fileCachePath)
+			fileCachePath = common.ExpandPath(fileCachePath)
+		}
+
+		metricsCfg := log.OtelMetricsConfig{
+			Endpoint:           metricsEndpoint,
+			CollectionInterval: time.Duration(options.Metrics.CollectionInterval) * time.Second,
+			FileCachePath:      fileCachePath,
+		}
+		if startErr := log.StartOtelMetrics(metricsCfg); startErr != nil {
+			log.Err("mount: failed to start OTel metrics [%s]", startErr.Error())
+		} else {
+			log.Crit("mount: OTel metrics collection started (endpoint=%s, interval=%ds, cache-path=%s)",
+				metricsEndpoint, options.Metrics.CollectionInterval, fileCachePath)
+			defer func() {
+				if stopErr := log.StopOtelMetrics(); stopErr != nil {
+					log.Err("mount: failed to stop OTel metrics [%s]", stopErr.Error())
+				}
+			}()
+		}
 	}
 
 	err = pipeline.Stop()

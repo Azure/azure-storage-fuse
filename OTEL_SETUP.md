@@ -1,17 +1,17 @@
 # OpenTelemetry Integration for Blobfuse2
 
-This guide explains how to configure Blobfuse2 to send logs to Azure Monitor using OpenTelemetry.
+This guide explains how to configure Blobfuse2 to send logs **and system metrics** to Azure Monitor using OpenTelemetry.
 
 ## Overview
 
-Blobfuse2 now supports OpenTelemetry (OTel) for logging, enabling you to send structured logs to Azure Monitor, Application Insights, or any OpenTelemetry-compatible backend. This integration uses the OpenTelemetry Protocol (OTLP) to export logs.
+Blobfuse2 supports OpenTelemetry (OTel) for both logging and metrics, enabling you to send structured logs **and resource-usage metrics** (CPU, memory, disk) to Azure Monitor, Application Insights, or any OpenTelemetry-compatible backend. This integration uses the OpenTelemetry Protocol (OTLP) to export data.
 
 ## Architecture
 
 ```
 ┌─────────────┐         OTLP/HTTP          ┌──────────────────┐
 │             │  ────────────────────────> │  OpenTelemetry   │
-│  Blobfuse2  │  (logs with attributes)    │    Collector     │
+│  Blobfuse2  │  (logs + metrics)          │    Collector     │
 │             │                            │                  │
 └─────────────┘                            └──────────────────┘
                                                     │
@@ -26,9 +26,9 @@ Blobfuse2 now supports OpenTelemetry (OTel) for logging, enabling you to send st
 ```
 
 **Key Components:**
-1. **Blobfuse2**: Emits structured logs via OTLP
-2. **OpenTelemetry Collector**: Receives logs and forwards to Azure Monitor
-3. **Azure Monitor/Application Insights**: Stores and visualizes logs
+1. **Blobfuse2**: Emits structured logs and system metrics via OTLP
+2. **OpenTelemetry Collector**: Receives logs/metrics and forwards to Azure Monitor
+3. **Azure Monitor/Application Insights**: Stores and visualizes logs and metrics
 
 ## Prerequisites
 
@@ -40,9 +40,13 @@ Blobfuse2 now supports OpenTelemetry (OTel) for logging, enabling you to send st
 
 ### 1. Blobfuse2 Configuration
 
-Update your Blobfuse2 configuration file to use OpenTelemetry logging:
+Update your Blobfuse2 configuration file to use OpenTelemetry logging and metrics:
 
 ```yaml
+# Shared OTLP endpoint for both logging and metrics.
+# If omitted, uses OTEL_EXPORTER_OTLP_ENDPOINT environment variable.
+otel-endpoint: localhost:4318
+
 logging:
   # Set type to 'otel' to enable OpenTelemetry logging
   type: otel
@@ -50,24 +54,38 @@ logging:
   # Log level: log_off, log_crit, log_err, log_warning, log_info, log_trace, log_debug
   level: log_info
   
-  # OTLP endpoint (optional - defaults to OTEL_EXPORTER_OTLP_ENDPOINT env var)
-  # For local collector, use: localhost:4318
-  otel-endpoint: localhost:4318
-  
   # Optional: Enable goroutine ID tracking for debugging
   goroutine-id: false
   
   # Optional: Enable performance time tracking
   track-time: false
+
+# OpenTelemetry system metrics (independent of logging)
+metrics:
+  # Enable periodic export of CPU, memory, and disk usage metrics via OTLP.
+  enable: true
+
+  # Collection interval in seconds. Default: 30
+  # collection-interval-sec: 30
 ```
 
-**Configuration Options:**
+**Top-level Configuration:**
+- `otel-endpoint`: OTLP HTTP endpoint shared by both logging and metrics (e.g., `localhost:4318`)
+  - If omitted, uses `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable
+
+**Logging Configuration Options:**
 - `type`: Set to `otel` to enable OpenTelemetry logging
 - `level`: Log level (log_off, log_crit, log_err, log_warning, log_info, log_trace, log_debug)
-- `otel-endpoint`: OTLP HTTP endpoint (e.g., `localhost:4318`)
-  - If omitted, uses `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable
 - `goroutine-id`: Include goroutine ID in log attributes (useful for debugging)
 - `track-time`: Enable time tracking for performance monitoring
+
+**Metrics Configuration Options** (top-level `metrics:` section):
+- `enable`: Set to `true` to enable OTel metrics export (default: `false`)
+- `collection-interval-sec`: How often metrics are collected and exported, in seconds (default: `30`)
+
+> **Note:** The `logging` and `metrics` sections are independent — either can be enabled without the other. Both use the shared top-level `otel-endpoint`.
+
+> **Note:** Disk usage metrics are only collected when `file_cache` is in the pipeline and has a valid `path` configured.
 
 ### 2. OpenTelemetry Collector Configuration
 
@@ -99,10 +117,14 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
-      # Export to Azure Monitor only. To also see logs in collector output,
-      # add 'logging' to the exporters list: exporters: [azuremonitor, logging]
+      exporters: [azuremonitor]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [azuremonitor]
 ```
+
+> **Important:** The `metrics` pipeline must be present in the collector config for Blobfuse2 system metrics to reach Azure Monitor.
 
 ### 3. Running the OpenTelemetry Collector
 
@@ -196,6 +218,21 @@ Blobfuse2 enriches logs with the following attributes when using OpenTelemetry:
 | `mount_path` | Mount path | "/mnt/blobfuse" |
 | `goroutine_id` | Goroutine ID (if enabled) | 42 |
 
+## System Metrics
+
+When `enable: true` is set under the top-level `metrics:` section, Blobfuse2 periodically exports the following system metrics via OTLP. All metrics carry common attributes (`tag`, `mount_path`, `hostname`, `host_ip`).
+
+| Metric Name | Type | Unit | Description |
+|-------------|------|------|-------------|
+| `blobfuse2.system.cpu.usage_percent` | Gauge | `%` | Overall CPU usage percentage (all cores) |
+| `blobfuse2.system.memory.usage_bytes` | Gauge | `By` | Process memory usage (runtime.MemStats.Sys) |
+| `blobfuse2.system.memory.total_bytes` | Gauge | `By` | Total system memory |
+| `blobfuse2.system.disk.usage_bytes` | Gauge | `By` | Disk space used on the file cache volume |
+| `blobfuse2.system.disk.total_bytes` | Gauge | `By` | Total disk space on the file cache volume |
+| `blobfuse2.system.disk.usage_percent` | Gauge | `%` | Disk usage percentage on the file cache volume |
+
+> **Note:** Disk metrics (`blobfuse2.system.disk.*`) are only emitted when `file_cache` is part of the pipeline and has a valid `path` configured. If file cache is not enabled, only CPU and memory metrics are exported.
+
 ## Querying Logs in Azure Monitor
 
 Once logs are flowing to Azure Monitor, you can query them using Kusto Query Language (KQL):
@@ -240,6 +277,52 @@ traces
 | where customDimensions.level in ("LOG_ERR", "LOG_CRIT")
 | summarize count() by bin(timestamp, 1h)
 | render timechart
+```
+
+## Querying Metrics in Azure Monitor
+
+Blobfuse2 system metrics appear in the `customMetrics` table in Application Insights.
+
+### CPU Usage Over Time
+
+```kql
+customMetrics
+| where timestamp > ago(1h)
+| where name == "blobfuse2.system.cpu.usage_percent"
+| project timestamp, CPUPercent = value
+| order by timestamp asc
+| render timechart
+```
+
+### Memory Usage Over Time
+
+```kql
+customMetrics
+| where timestamp > ago(1h)
+| where name == "blobfuse2.system.memory.usage_bytes"
+| project timestamp, MemoryMB = value / (1024 * 1024)
+| order by timestamp asc
+| render timechart
+```
+
+### Disk Usage (File Cache) Over Time
+
+```kql
+customMetrics
+| where timestamp > ago(1h)
+| where name == "blobfuse2.system.disk.usage_percent"
+| project timestamp, DiskPercent = value
+| order by timestamp asc
+| render timechart
+```
+
+### All Blobfuse2 Metrics Summary
+
+```kql
+customMetrics
+| where timestamp > ago(1h)
+| where name startswith "blobfuse2.system."
+| summarize avg(value), max(value), min(value) by name
 ```
 
 ## Testing the Integration

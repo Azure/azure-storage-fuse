@@ -28,5 +28,10 @@ service:
       receivers: [otlp]
       processors: [batch]
       # Export to Azure Monitor only. To also see logs in collector output,
-      # add 'logging' to the exporters list: exporters: [azuremonitor, logging]
+      # add 'debug' to the exporters list: exporters: [azuremonitor, debug]
+      exporters: [azuremonitor]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      # Export metrics to Azure Monitor. Add 'debug' to also see metrics in collector output.
       exporters: [azuremonitor]
