@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1771744499205,
+  "lastUpdate": 1772349037168,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -683,6 +683,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 121.075406690836,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "3a1bde1c68c909572341fbc054a19b18c21894fc",
+          "message": "Ensure logger is destroyed before returning from mount command. (#2125)",
+          "timestamp": "2026-02-20T10:30:07Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/3a1bde1c68c909572341fbc054a19b18c21894fc"
+        },
+        "date": 1772349036938,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.282619762932,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.27404633603,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.297254885137,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 112.295503970149,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.399705467754,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.2783955174189998,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 116.367732937076,
             "unit": "milliseconds"
           }
         ]
