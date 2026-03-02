@@ -43,6 +43,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,6 +81,9 @@ const (
 	DisableKeepAlives      bool          = false
 	DisableCompression     bool          = false
 	MaxResponseHeaderBytes int64         = 0
+
+	X_Ms_Range  string = "x-ms-range"
+	RangeHeader string = "Range"
 )
 
 // getAzStorageClientOptions : Create client options based on the config
@@ -113,11 +117,19 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceApiVersion))
 	}
 
+	perRetryPolicies := []policy.Policy{}
+	if conf.capMbpsRead > 0 || conf.capIOps > 0 {
+		// Convert Mbps to Bytes/sec: 1 Mbps = (1024* 1024) / 8 = 131072 Bytes/sec
+		bytesPerSec := conf.capMbpsRead * 131072
+		perRetryPolicies = append(perRetryPolicies, newRateLimitingPolicy(bytesPerSec, conf.capIOps))
+	}
+
 	return azcore.ClientOptions{
-		Retry:           retryOptions,
-		Logging:         logOptions,
-		PerCallPolicies: perCallPolicies,
-		Transport:       transportOptions,
+		Retry:            retryOptions,
+		Logging:          logOptions,
+		PerCallPolicies:  perCallPolicies,
+		PerRetryPolicies: perRetryPolicies,
+		Transport:        transportOptions,
 	}, err
 }
 
@@ -581,6 +593,51 @@ func sanitizeEtag(ETag *azcore.ETag) string {
 		return strings.Trim(string(*ETag), `"`)
 	}
 	return ""
+}
+
+// parseRangeHeader parses the x-ms-range header and returns the size of the range requested.
+// Examples of x-ms-range header:
+//
+//	bytes=0-499       --> returns 500
+//	bytes=500-999     --> returns 500
+//	bytes=500-        --> returns error (open ended range)
+//	bytes=-500        --> returns error
+//	bytes=1000-500    --> returns error (invalid range)
+func parseRangeHeader(rangeHeader string) (int64, error) {
+	if rangeHeader == "" {
+		return 0, fmt.Errorf("empty x-ms-range header")
+	}
+
+	if !strings.HasPrefix(rangeHeader, "bytes=") {
+		return 0, fmt.Errorf("invalid x-ms-range header format %s", rangeHeader)
+	}
+
+	parts := strings.Split(strings.TrimPrefix(rangeHeader, "bytes="), "-")
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("invalid x-ms-range header format %s", rangeHeader)
+	}
+
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	// Open ended range
+	if parts[1] == "" {
+		return 0, fmt.Errorf("invalid x-ms-range header format %s, open ended range not supported", rangeHeader)
+	}
+
+	end, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	// Invalid range
+	if end < start {
+		return 0, fmt.Errorf("invalid range %s", rangeHeader)
+	}
+
+	return end - start + 1, nil
 }
 
 // func parseBlobTags(tags *container.BlobTags) map[string]string {

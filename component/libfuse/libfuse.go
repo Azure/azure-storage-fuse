@@ -268,7 +268,7 @@ func (lf *Libfuse) GenConfig() string {
 	_ = config.UnmarshalKey("direct-io", &directIO)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n%s:", lf.Name()))
+	fmt.Fprintf(&sb, "\n%s:", lf.Name())
 
 	timeout := defaultEntryExpiration
 	if directIO {
@@ -276,9 +276,9 @@ func (lf *Libfuse) GenConfig() string {
 		sb.WriteString("\n  direct-io: true")
 	}
 
-	sb.WriteString(fmt.Sprintf("\n  attribute-expiration-sec: %v", timeout))
-	sb.WriteString(fmt.Sprintf("\n  entry-expiration-sec: %v", timeout))
-	sb.WriteString(fmt.Sprintf("\n  negative-entry-expiration-sec: %v", timeout))
+	fmt.Fprintf(&sb, "\n  attribute-expiration-sec: %v", timeout)
+	fmt.Fprintf(&sb, "\n  entry-expiration-sec: %v", timeout)
+	fmt.Fprintf(&sb, "\n  negative-entry-expiration-sec: %v", timeout)
 
 	return sb.String()
 }
