@@ -5,15 +5,17 @@
 # Creates database files of various sizes, performs full and incremental
 # backup simulations, and validates data integrity via MD5 checksums.
 #
-# Usage: ./rman_backup_simulation.sh /path/to/mountpoint [sizes]
+# Usage: ./rman_backup_simulation.sh /path/to/mountpoint /path/to/data_dir [sizes]
+#   data_dir: directory where source data files will be created
 #   sizes: comma-separated list of file sizes (default: 10M,100M,1G,10G)
 
 MOUNT_POINT="$1"
 DATA_DIR="$2"
 SIZES="${3:-10M,100M,1G,10G}"
 
-if [ -z "$MOUNT_POINT" ]; then
-    echo "Usage: $0 /path/to/mountpoint [sizes]"
+if [ -z "$MOUNT_POINT" ] || [ -z "$DATA_DIR" ]; then
+    echo "Usage: $0 /path/to/mountpoint /path/to/data_dir [sizes]"
+    echo "  data_dir: directory where source data files will be created"
     echo "  sizes: comma-separated list (e.g., 10M,100M,1G,10G)"
     exit 1
 fi
