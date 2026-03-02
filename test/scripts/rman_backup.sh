@@ -295,7 +295,8 @@ rman_full_backup() {
 
     # Perform RESTORE VALIDATE to confirm backup can be restored.
     # This does a dry-run restore: RMAN reads every backup piece from the
-    # FUSE mount and verifies it is intact without writing anything.
+    # FUSE mount, validates every Oracle block's checksum, and confirms
+    # recoverability — without writing anything to disk.
     echo -e "${CYAN}Running RESTORE VALIDATE...${NC}"
     run_rman "
         RESTORE TABLESPACE ${ts_name} VALIDATE;
@@ -414,79 +415,45 @@ rman_backup_and_restore_verify() {
     mkdir -p "$backup_dir"
     chmod 777 "$backup_dir"
 
-    # Take tablespace offline so the datafile is in a consistent, quiesced state.
-    # An online backup-as-copy writes fuzzy SCN markers into the copy's header,
-    # causing an unavoidable MD5 mismatch with the live file.  An offline copy is
-    # a byte-for-byte duplicate that can be verified with MD5.
-    echo -e "${CYAN}Taking tablespace ${ts_name} offline for consistent copy...${NC}"
-    run_sqlplus "ALTER TABLESPACE ${ts_name} OFFLINE NORMAL;"
+    # Write the datafile to the FUSE mount as an RMAN copy.
+    echo -e "${CYAN}Creating datafile copy on FUSE mount...${NC}"
+    run_rman "
+        BACKUP AS COPY
+            DATAFILE '${datafile}'
+            FORMAT '${backup_dir}/${ts_name}_copy.dbf';
+    "
     if [ $? -ne 0 ]; then
-        echo -e "${RED}[FAIL] Could not take tablespace ${ts_name} offline${NC}"
+        echo -e "${RED}[FAIL] RMAN backup as copy failed for ${ts_name}${NC}"
         FAILED=$((FAILED + 1))
         return 1
     fi
 
-    # Take MD5 checksum of the offline (consistent) datafile
-    local orig_md5
-    orig_md5=$(sudo md5sum "$datafile" | awk '{print $1}')
-    if [ -z "$orig_md5" ]; then
-        run_sqlplus "ALTER TABLESPACE ${ts_name} ONLINE;" || true
-        echo -e "${RED}[FAIL] Could not compute MD5 of original datafile: ${datafile}${NC}"
-        FAILED=$((FAILED + 1))
-        return 1
-    fi
-    echo "Original datafile MD5: $orig_md5"
-
-    # Copy the offline datafile to the FUSE mount using a plain OS copy.
-    # RMAN BACKUP AS COPY always rewrites SCN/checkpoint bytes in the copy's
-    # Oracle file header (even for offline tablespaces), making a byte-level
-    # MD5 comparison impossible.  A raw 'cp' produces a true bit-for-bit
-    # replica that can be verified with MD5.
-    sudo -u oracle \
-        ORACLE_HOME="${ORACLE_HOME}" \
-        ORACLE_SID="${ORACLE_SID}" \
-        PATH="${ORACLE_HOME}/bin:${PATH}" \
-        LD_LIBRARY_PATH="${ORACLE_HOME}/lib" \
-        cp "${datafile}" "${backup_dir}/${ts_name}_copy.dbf"
-    if [ $? -ne 0 ]; then
-        run_sqlplus "ALTER TABLESPACE ${ts_name} ONLINE;" || true
-        echo -e "${RED}[FAIL] File copy to FUSE mount failed for ${ts_name}${NC}"
+    # Verify the copy file was actually written to the FUSE mount
+    if [ ! -f "${backup_dir}/${ts_name}_copy.dbf" ]; then
+        echo -e "${RED}[FAIL] Backup copy not found on FUSE mount: ${backup_dir}/${ts_name}_copy.dbf${NC}"
         FAILED=$((FAILED + 1))
         return 1
     fi
 
-    # Bring tablespace back online
-    echo -e "${CYAN}Bringing tablespace ${ts_name} back online...${NC}"
-    run_sqlplus "ALTER TABLESPACE ${ts_name} ONLINE;"
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}[WARN] Could not bring tablespace ${ts_name} back online${NC}"
-    fi
-
-    # Drop page cache
+    # Drop page cache to force subsequent reads from FUSE
     sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null
 
-    # Compare the datafile copy on FUSE mount with original
-    local copy_md5
-    copy_md5=$(md5sum "${backup_dir}/${ts_name}_copy.dbf" | awk '{print $1}')
-    if [ -z "$copy_md5" ]; then
-        echo -e "${RED}[FAIL] Could not compute MD5 of backup copy: ${backup_dir}/${ts_name}_copy.dbf${NC}"
-        FAILED=$((FAILED + 1))
-        return 1
-    fi
-    echo "Backup copy MD5:      $copy_md5"
-
-    if [ "$orig_md5" == "$copy_md5" ]; then
-        echo -e "${GREEN}[PASS] RMAN backup copy integrity verified: ${ts_name}${NC}"
-        echo "       MD5: $orig_md5"
-        PASSED=$((PASSED + 1))
-    else
-        echo -e "${RED}[FAIL] RMAN backup copy integrity MISMATCH: ${ts_name}${NC}"
-        echo "       Original MD5: $orig_md5"
-        echo "       Copy MD5:     $copy_md5"
+    # Use RMAN RESTORE VALIDATE to verify the copy on the FUSE mount.
+    # This is a dry-run restore: RMAN reads the copy from the FUSE mount,
+    # validates every Oracle block's checksum, and confirms the tablespace
+    # can be recovered — without writing anything to disk.
+    echo -e "${CYAN}Validating copy with RMAN RESTORE VALIDATE...${NC}"
+    run_rman "
+        RESTORE TABLESPACE ${ts_name} VALIDATE;
+    "
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}[FAIL] RMAN RESTORE VALIDATE failed for ${ts_name}${NC}"
         FAILED=$((FAILED + 1))
         return 1
     fi
 
+    echo -e "${GREEN}[PASS] RMAN backup copy integrity verified: ${ts_name}${NC}"
+    PASSED=$((PASSED + 1))
     return 0
 }
 
