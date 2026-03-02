@@ -45,6 +45,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -1249,6 +1250,167 @@ func (suite *fileCacheTestSuite) TestFlushFileErrorBadFd() {
 	err := suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
 	suite.assert.Error(err)
 	suite.assert.EqualValues(syscall.EBADF, err)
+}
+
+// TestFlushFileConcurrent verifies that concurrent FlushFile calls for the same file
+// are serialized by the per-file lock. When multiple file descriptors (e.g. from dup() or fork())
+// trigger libfuse_flush concurrently, each would independently call CopyFromFile (PutBlock + PutBlockList).
+// Without locking, the first PutBlockList succeeds but subsequent ones fail with InvalidBlockList.
+// This test creates a file, writes data, then calls FlushFile concurrently from multiple goroutines
+// to ensure all complete without error.
+func (suite *fileCacheTestSuite) TestFlushFileConcurrent() {
+	defer suite.cleanupTest()
+	file := "file_concurrent_flush"
+	handle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	suite.assert.NoError(err)
+
+	testData := "concurrent flush test data"
+	data := []byte(testData)
+	_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.NoError(err)
+	suite.assert.True(handle.Dirty())
+
+	// Simulate multiple concurrent flush calls (as would happen with dup'd file descriptors).
+	// All flushes operate on the same handle/path and should be serialized by the lock.
+	concurrency := 5
+	var wg sync.WaitGroup
+	errs := make([]error, concurrency)
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			// Each goroutine calls FlushFile without LockAlreadyHeld (the default),
+			// mimicking concurrent libfuse_flush calls from different file descriptors.
+			errs[idx] = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
+		}(i)
+	}
+	wg.Wait()
+
+	for i, e := range errs {
+		suite.assert.NoError(e, "FlushFile goroutine %d returned error", i)
+	}
+	suite.assert.False(handle.Dirty())
+
+	// Verify the file was correctly flushed to storage
+	d, _ := os.ReadFile(suite.fake_storage_path + "/" + file)
+	suite.assert.Equal(data, d)
+
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+}
+
+// TestFlushFileLockAlreadyHeld verifies that FlushFile works correctly when
+// LockAlreadyHeld is set to true, which is the case when called from releaseFileInternal.
+// releaseFileInternal already holds the file lock, so FlushFile must skip locking to avoid deadlock.
+func (suite *fileCacheTestSuite) TestFlushFileLockAlreadyHeld() {
+	defer suite.cleanupTest()
+	file := "file_lock_already_held"
+	handle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	suite.assert.NoError(err)
+
+	testData := "lock already held flush test"
+	data := []byte(testData)
+	_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.NoError(err)
+	suite.assert.True(handle.Dirty())
+
+	// Simulate what releaseFileInternal does: acquire the lock, then call FlushFile with LockAlreadyHeld.
+	// This must not deadlock.
+	flock := suite.fileCache.fileLocks.Get(handle.Path)
+	flock.Lock()
+
+	err = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle, CloseInProgress: true, LockAlreadyHeld: true})
+	suite.assert.NoError(err)
+	suite.assert.False(handle.Dirty())
+
+	flock.Unlock()
+
+	// Verify the file was correctly flushed to storage
+	d, _ := os.ReadFile(suite.fake_storage_path + "/" + file)
+	suite.assert.Equal(data, d)
+
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+}
+
+// TestFlushFileConcurrentWithRelease verifies that concurrent FlushFile calls
+// (from libfuse_flush) and ReleaseFile (close) are properly serialized.
+// This simulates the real-world scenario where flush and close race on the same file.
+func (suite *fileCacheTestSuite) TestFlushFileConcurrentWithRelease() {
+	defer suite.cleanupTest()
+	file := "file_concurrent_flush_release"
+	handle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	suite.assert.NoError(err)
+
+	testData := "concurrent flush release test data"
+	data := []byte(testData)
+	_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.NoError(err)
+
+	// Start a concurrent flush to simulate libfuse_flush from a dup'd fd
+	var wg sync.WaitGroup
+	var flushErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		flushErr = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
+	}()
+
+	// Immediately call ReleaseFile to simulate the close path racing with flush
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+
+	wg.Wait()
+	// The flush should either succeed (ran first) or succeed (ran after release flushed).
+	// In either case, no InvalidBlockList error should occur.
+	suite.assert.NoError(flushErr)
+
+	// Verify the file was correctly flushed to storage
+	d, _ := os.ReadFile(suite.fake_storage_path + "/" + file)
+	suite.assert.Equal(data, d)
+}
+
+// TestFlushFileSyncFileConcurrent verifies that SyncFile (which calls FlushFile internally)
+// and direct FlushFile calls are properly serialized when called concurrently.
+func (suite *fileCacheTestSuite) TestFlushFileSyncFileConcurrent() {
+	defer suite.cleanupTest()
+	suite.fileCache.syncToFlush = true
+	defer func() { suite.fileCache.syncToFlush = false }()
+
+	file := "file_sync_flush_concurrent"
+	handle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	suite.assert.NoError(err)
+
+	testData := "sync flush concurrent test data"
+	data := []byte(testData)
+	_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.NoError(err)
+	suite.assert.True(handle.Dirty())
+
+	// Launch concurrent SyncFile and FlushFile calls
+	var wg sync.WaitGroup
+	var syncErr, flushErr error
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		syncErr = suite.fileCache.SyncFile(internal.SyncFileOptions{Handle: handle})
+	}()
+	go func() {
+		defer wg.Done()
+		flushErr = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
+	}()
+	wg.Wait()
+
+	suite.assert.NoError(syncErr)
+	suite.assert.NoError(flushErr)
+
+	// Verify the file was correctly flushed to storage
+	d, _ := os.ReadFile(suite.fake_storage_path + "/" + file)
+	suite.assert.Equal(data, d)
+
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	suite.assert.NoError(err)
 }
 
 func (suite *fileCacheTestSuite) TestGetAttrCase1() {

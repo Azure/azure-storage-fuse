@@ -1093,7 +1093,9 @@ func (fc *FileCache) releaseFileInternal(options internal.ReleaseFileOptions, fl
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
+	// Pass LockAlreadyHeld: true since ReleaseFile already acquired the file lock (flock)
+	// before calling this method. Acquiring it again in FlushFile would cause a deadlock.
+	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true, LockAlreadyHeld: true}) //nolint
 	if err != nil {
 		log.Err("FileCache::releaseFileInternal : failed to flush file %s", options.Handle.Path)
 		return err
@@ -1268,9 +1270,25 @@ func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 // }
 
 // FlushFile: Flush the local file to storage
+// FlushFile can be called concurrently by multiple libfuse_flush calls for different file descriptors
+// (e.g. due to dup(), dup2() or fork()). Without serialization, each fd would independently call
+// CopyFromFile (which does PutBlock + PutBlockList), leading to InvalidBlockList errors when
+// concurrent PutBlockList calls race against each other.
+// To prevent this, we acquire a per-file lock here unless the caller already holds it
+// (indicated by options.LockAlreadyHeld, e.g. when called from releaseFileInternal).
 func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	//defer exectime.StatTimeCurrentBlock("FileCache::FlushFile")()
 	log.Trace("FileCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+
+	// Acquire per-file lock to serialize concurrent flush operations for the same file.
+	// Multiple libfuse_flush calls (from dup'd fds) can arrive in parallel and each would
+	// attempt PutBlock + PutBlockList, causing InvalidBlockList errors on the storage side.
+	// Skip locking if the caller already holds the lock (e.g. releaseFileInternal).
+	if !options.LockAlreadyHeld {
+		flock := fc.fileLocks.Get(options.Handle.Path)
+		flock.Lock()
+		defer flock.Unlock()
+	}
 
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
