@@ -1319,11 +1319,23 @@ func (suite *fileCacheTestSuite) TestFlushFileLockAlreadyHeld() {
 	flock := suite.fileCache.fileLocks.Get(handle.Path)
 	flock.Lock()
 
-	err = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle, CloseInProgress: true, LockAlreadyHeld: true})
-	suite.assert.NoError(err)
-	suite.assert.False(handle.Dirty())
+	done := make(chan error, 1)
+	go func() {
+		done <- suite.fileCache.FlushFile(internal.FlushFileOptions{
+			Handle:          handle,
+			CloseInProgress: true,
+			LockAlreadyHeld: true})
+	}()
 
-	flock.Unlock()
+	select {
+	case err := <-done:
+		suite.assert.NoError(err)
+		suite.assert.False(handle.Dirty())
+		flock.Unlock()
+	case <-time.After(2 * time.Second):
+		flock.Unlock()
+		suite.T().Fatal("FlushFile likely deadlocked while lock already held")
+	}
 
 	// Verify the file was correctly flushed to storage
 	d, _ := os.ReadFile(suite.fake_storage_path + "/" + file)
