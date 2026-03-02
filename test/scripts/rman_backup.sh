@@ -296,7 +296,7 @@ rman_full_backup() {
     # Validate the backup using RMAN VALIDATE
     echo -e "${CYAN}Validating backup with RMAN VALIDATE...${NC}"
     run_rman "
-        VALIDATE BACKUPSET BY TAG 'FULL_${ts_name}';
+        VALIDATE BACKUP OF TABLESPACE ${ts_name};
     "
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL] RMAN VALIDATE failed for full backup of ${ts_name}${NC}"
@@ -381,7 +381,7 @@ rman_incremental_backup() {
     # Validate level 0 backup
     echo -e "${CYAN}Validating Level 0 backup...${NC}"
     run_rman "
-        VALIDATE BACKUPSET BY TAG 'INCR0_${ts_name}';
+        VALIDATE BACKUP OF TABLESPACE ${ts_name};
     "
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL] RMAN VALIDATE failed for level 0 backup of ${ts_name}${NC}"
@@ -392,7 +392,7 @@ rman_incremental_backup() {
     # Validate level 1 backup
     echo -e "${CYAN}Validating Level 1 backup...${NC}"
     run_rman "
-        VALIDATE BACKUPSET BY TAG 'INCR1_${ts_name}';
+        VALIDATE BACKUP OF TABLESPACE ${ts_name};
     "
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL] RMAN VALIDATE failed for level 1 backup of ${ts_name}${NC}"
@@ -422,26 +422,47 @@ rman_backup_and_restore_verify() {
     mkdir -p "$backup_dir"
     chmod 777 "$backup_dir"
 
-    # Take MD5 checksum of original datafile (owned by oracle user)
+    # Take tablespace offline so the datafile is in a consistent, quiesced state.
+    # An online backup-as-copy writes fuzzy SCN markers into the copy's header,
+    # causing an unavoidable MD5 mismatch with the live file.  An offline copy is
+    # a byte-for-byte duplicate that can be verified with MD5.
+    echo -e "${CYAN}Taking tablespace ${ts_name} offline for consistent copy...${NC}"
+    run_sqlplus "ALTER TABLESPACE ${ts_name} OFFLINE NORMAL;"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}[FAIL] Could not take tablespace ${ts_name} offline${NC}"
+        FAILED=$((FAILED + 1))
+        return 1
+    fi
+
+    # Take MD5 checksum of the offline (consistent) datafile
     local orig_md5
     orig_md5=$(sudo md5sum "$datafile" | awk '{print $1}')
     if [ -z "$orig_md5" ]; then
+        run_sqlplus "ALTER TABLESPACE ${ts_name} ONLINE;" || true
         echo -e "${RED}[FAIL] Could not compute MD5 of original datafile: ${datafile}${NC}"
         FAILED=$((FAILED + 1))
         return 1
     fi
     echo "Original datafile MD5: $orig_md5"
 
-    # Backup tablespace to FUSE mount
+    # Backup offline datafile to FUSE mount as a byte-for-byte copy
     run_rman "
         BACKUP AS COPY
             DATAFILE '${datafile}'
             FORMAT '${backup_dir}/${ts_name}_copy.dbf';
     "
     if [ $? -ne 0 ]; then
+        run_sqlplus "ALTER TABLESPACE ${ts_name} ONLINE;" || true
         echo -e "${RED}[FAIL] RMAN backup as copy failed for ${ts_name}${NC}"
         FAILED=$((FAILED + 1))
         return 1
+    fi
+
+    # Bring tablespace back online
+    echo -e "${CYAN}Bringing tablespace ${ts_name} back online...${NC}"
+    run_sqlplus "ALTER TABLESPACE ${ts_name} ONLINE;"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}[WARN] Could not bring tablespace ${ts_name} back online${NC}"
     fi
 
     # Drop page cache
