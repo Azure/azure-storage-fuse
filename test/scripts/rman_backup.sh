@@ -46,7 +46,6 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 BACKUP_BASE="$MOUNT_POINT/rman_backup"
-RESTORE_DIR="$DATA_DIR/rman_restore_$$"
 PASSED=0
 FAILED=0
 
@@ -86,7 +85,6 @@ setup_oracle_env
 
 cleanup() {
     echo "Cleaning up..."
-    rm -rf "$RESTORE_DIR"
 
     # Drop test tablespaces if Oracle is running
     if pgrep -x "ora_pmon_XE" > /dev/null 2>&1; then
@@ -374,7 +372,7 @@ rman_incremental_backup() {
     # confirms recoverability without writing anything.
     echo -e "${CYAN}Validating Level 0 backup...${NC}"
     run_rman "
-        RESTORE TABLESPACE ${ts_name} VALIDATE;
+	RESTORE TABLESPACE ${ts_name} VALIDATE;
     "
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL] RMAN VALIDATE failed for level 0 backup of ${ts_name}${NC}"
@@ -385,7 +383,7 @@ rman_incremental_backup() {
     # Validate level 1 backup
     echo -e "${CYAN}Validating Level 1 backup...${NC}"
     run_rman "
-        RESTORE TABLESPACE ${ts_name} VALIDATE;
+	RESTORE TABLESPACE ${ts_name} VALIDATE;
     "
     if [ $? -ne 0 ]; then
         echo -e "${RED}[FAIL] RMAN VALIDATE failed for level 1 backup of ${ts_name}${NC}"
