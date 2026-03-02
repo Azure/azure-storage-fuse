@@ -14,7 +14,7 @@
 set -uo pipefail
 
 MOUNT_POINT="$1"
-DATA_DIR="$2"
+DATA_DIR="${2:-}"
 SIZES="${3:-10M,100M,1G,10G}"
 
 if [ -z "$MOUNT_POINT" ]; then
