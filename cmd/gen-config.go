@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -36,6 +36,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -55,14 +56,18 @@ type genConfigParams struct {
 var optsGenCfg genConfigParams
 
 var generatedConfig = &cobra.Command{
-	Use:               "gen-config",
-	Short:             "Generate default config file.",
-	Long:              "Generate default config file with the values pre-caculated by blobfuse2.",
-	SuggestFor:        []string{"generate default config", "generate config"},
-	Hidden:            true,
-	Args:              cobra.ExactArgs(0),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "gen-config",
+	Short:      "Generate default config file.",
+	Long:       "Generate default config file with the values pre-calculated by blobfuse2.",
+	SuggestFor: []string{"generate default config", "generate config"},
+	Hidden:     false,
+	Args:       cobra.ExactArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
+
+		// Show help if no flags are provided
+		if cmd.Flags().NFlag() == 0 {
+			return cmd.Help()
+		}
 
 		// Check if configTmp is not provided when component is fc
 		if (!optsGenCfg.blockCache) && optsGenCfg.tmpPath == "" {
@@ -108,7 +113,7 @@ var generatedConfig = &cobra.Command{
 
 		sb.WriteString("\ncomponents:\n")
 		for _, component := range pipeline {
-			sb.WriteString(fmt.Sprintf("  - %s\n", component))
+			fmt.Fprintf(&sb, "  - %s\n", component)
 		}
 
 		for _, component := range pipeline {
@@ -135,6 +140,15 @@ var generatedConfig = &cobra.Command{
 			fmt.Println(sb.String())
 		} else {
 			err = common.WriteToFile(filePath, sb.String(), common.WriteToFileOptions{Flags: os.O_TRUNC, Permission: 0644})
+			if err == nil {
+				// Get absolute path to avoid showing ./
+				absPath, pathErr := filepath.Abs(filePath)
+				if pathErr != nil {
+					absPath = filePath
+				}
+
+				fmt.Printf("Generated config file: %s\n", absPath)
+			}
 		}
 
 		return err
@@ -144,9 +158,22 @@ var generatedConfig = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(generatedConfig)
 
-	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Block-Cache shall be used as caching strategy")
-	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Direct-io mode shall be used")
-	generatedConfig.Flags().BoolVar(&optsGenCfg.readOnly, "ro", false, "Mount in read-only mode")
-	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Temp cache path to be used")
-	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Output file location")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Generate config file for streaming with block-cache mode")
+	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Generate config file for file-cache mode, string specifies temp cache path")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Generate config file for direct-io mode without any caching")
+	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Specifies location for generated config file, default is current directory")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.readOnly, "ro", false, "Mount in read-only mode; can be used along with block-cache, file-cache and direct-io")
+
+	// Disable flag sorting to preserve the order defined above
+	generatedConfig.Flags().SortFlags = false
+
+	// Override the default error handler to show help on unknown flags
+	generatedConfig.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		cmd.Println(err)
+		cmd.Println()
+		if helpErr := cmd.Help(); helpErr != nil {
+			cmd.PrintErrln("Failed to display help:", helpErr)
+		}
+		return nil
+	})
 }

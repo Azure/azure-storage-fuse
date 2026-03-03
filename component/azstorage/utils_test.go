@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -56,21 +56,21 @@ func (s *utilsTestSuite) TestContentType() {
 	assert := assert.New(s.T())
 
 	val := getContentType("a.tst")
-	assert.EqualValues("application/octet-stream", val, "Content-type mismatch")
+	assert.Equal("application/octet-stream", val, "Content-type mismatch")
 
 	newSet := `{
 		".tst": "application/test",
 		".dum": "dummy/test"
 		}`
 	err := populateContentType(newSet)
-	assert.Nil(err, "Failed to populate new config")
+	assert.NoError(err, "Failed to populate new config")
 
 	val = getContentType("a.tst")
-	assert.EqualValues("application/test", val, "Content-type mismatch")
+	assert.Equal("application/test", val, "Content-type mismatch")
 
 	// assert mp4 content type would get deserialized correctly
 	val = getContentType("file.mp4")
-	assert.EqualValues(val, "video/mp4")
+	assert.Equal("video/mp4", val)
 }
 
 type contentTypeVal struct {
@@ -136,7 +136,7 @@ func (s *utilsTestSuite) TestGetContentType() {
 	for _, i := range inputs {
 		s.Run(i.val, func() {
 			output := getContentType(i.val)
-			assert.EqualValues(i.result, output)
+			assert.Equal(i.result, output)
 		})
 	}
 }
@@ -172,7 +172,7 @@ func (s *utilsTestSuite) TestGetAccessTierType() {
 	for _, i := range inputs {
 		s.Run(i.val, func() {
 			output := getAccessTierType(i.val)
-			assert.EqualValues(i.result, output)
+			assert.Equal(i.result, output)
 		})
 	}
 }
@@ -198,10 +198,10 @@ func (s *utilsTestSuite) TestGetFileMode() {
 		s.Run(i.val, func() {
 			m, err := getFileMode(i.val)
 			if i.str == "" {
-				assert.Nil(err)
+				assert.NoError(err)
 			}
 
-			assert.EqualValues(i.mode, m)
+			assert.Equal(i.mode, m)
 			if err != nil {
 				assert.Contains(err.Error(), i.str)
 			}
@@ -237,10 +237,10 @@ func (s *utilsTestSuite) TestGetFileModeFromACL() {
 		s.Run(i.acl, func() {
 			m, err := getFileModeFromACL(objid, i.acl, i.owner)
 			if i.errstr == "" {
-				assert.Nil(err)
-				assert.EqualValues(i.mode, m)
+				assert.NoError(err)
+				assert.Equal(i.mode, m)
 			} else {
-				assert.NotNil(err)
+				assert.Error(err)
 				assert.Contains(err.Error(), i.errstr)
 			}
 		})
@@ -251,13 +251,13 @@ func (s *utilsTestSuite) TestSanitizeSASKey() {
 	assert := assert.New(s.T())
 
 	key := sanitizeSASKey("")
-	assert.EqualValues("", key)
+	assert.Empty(key)
 
 	key = sanitizeSASKey("?abcd")
-	assert.EqualValues("?abcd", key)
+	assert.Equal("?abcd", key)
 
 	key = sanitizeSASKey("abcd")
-	assert.EqualValues("?abcd", key)
+	assert.Equal("?abcd", key)
 }
 
 func (s *utilsTestSuite) TestSanitizeEtag() {
@@ -265,62 +265,62 @@ func (s *utilsTestSuite) TestSanitizeEtag() {
 
 	etagValue := azcore.ETag("\"abcd\"")
 	etag := sanitizeEtag(&etagValue)
-	assert.EqualValues(etag, "abcd")
+	assert.Equal("abcd", etag)
 
 	etagValue = azcore.ETag("abcd")
 	etag = sanitizeEtag(&etagValue)
-	assert.EqualValues(etag, "abcd")
+	assert.Equal("abcd", etag)
 }
 
 func (s *utilsTestSuite) TestBlockNonProxyOptions() {
 	assert := assert.New(s.T())
 	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{})
-	assert.Nil(err)
-	assert.EqualValues(opt.Retry.MaxRetries, 0)
+	assert.NoError(err)
+	assert.EqualValues(0, opt.Retry.MaxRetries)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBlockProxyOptions() {
 	assert := assert.New(s.T())
 	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
-	assert.Nil(err)
-	assert.EqualValues(opt.Retry.MaxRetries, 3)
+	assert.NoError(err)
+	assert.EqualValues(3, opt.Retry.MaxRetries)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 
 	opt, err = getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "http://127.0.0.1:8080", maxRetries: 3})
-	assert.Nil(err)
-	assert.EqualValues(opt.Retry.MaxRetries, 3)
+	assert.NoError(err)
+	assert.EqualValues(3, opt.Retry.MaxRetries)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 
 	opt, err = getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "https://128.0.0.1:8080", maxRetries: 3})
-	assert.Nil(err)
-	assert.EqualValues(opt.Retry.MaxRetries, 3)
+	assert.NoError(err)
+	assert.EqualValues(3, opt.Retry.MaxRetries)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBfsNonProxyOptions() {
 	assert := assert.New(s.T())
 	opt, err := getAzDatalakeServiceClientOptions(&AzStorageConfig{})
-	assert.Nil(err)
-	assert.EqualValues(opt.Retry.MaxRetries, 0)
+	assert.NoError(err)
+	assert.EqualValues(0, opt.Retry.MaxRetries)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBfsProxyOptions() {
 	assert := assert.New(s.T())
 	opt, err := getAzDatalakeServiceClientOptions(&AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
-	assert.Nil(err)
-	assert.EqualValues(opt.Retry.MaxRetries, 3)
+	assert.NoError(err)
+	assert.EqualValues(3, opt.Retry.MaxRetries)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 
 	opt, err = getAzDatalakeServiceClientOptions(&AzStorageConfig{proxyAddress: "http://127.0.0.1:8080", maxRetries: 3})
-	assert.Nil(err)
-	assert.EqualValues(opt.Retry.MaxRetries, 3)
+	assert.NoError(err)
+	assert.EqualValues(3, opt.Retry.MaxRetries)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 
 	opt, err = getAzDatalakeServiceClientOptions(&AzStorageConfig{proxyAddress: "https://128.0.0.1:8080", maxRetries: 3})
-	assert.Nil(err)
-	assert.EqualValues(opt.Retry.MaxRetries, 3)
+	assert.NoError(err)
+	assert.EqualValues(3, opt.Retry.MaxRetries)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
@@ -388,7 +388,7 @@ func (s *utilsTestSuite) TestFormatEndpointAccountType() {
 	for _, i := range inputs {
 		s.Run(i.endpoint+","+i.account.String(), func() {
 			output := formatEndpointAccountType(i.endpoint, i.account)
-			assert.EqualValues(i.result, output)
+			assert.Equal(i.result, output)
 		})
 	}
 }
@@ -420,7 +420,7 @@ func (s *utilsTestSuite) TestFormatEndpointProtocol() {
 	for _, i := range inputs {
 		s.Run(i.endpoint+","+strconv.FormatBool(i.ustHttp), func() {
 			output := formatEndpointProtocol(i.endpoint, i.ustHttp)
-			assert.EqualValues(i.result, output)
+			assert.Equal(i.result, output)
 		})
 	}
 }
@@ -430,42 +430,42 @@ func (s *utilsTestSuite) TestAutoDetectAuthMode() {
 
 	var authType string
 	authType = autoDetectAuthMode(AzStorageOptions{})
-	assert.Equal(authType, "msi")
+	assert.Equal("msi", authType)
 
 	var authType_ AuthType
 	err := authType_.Parse(authType)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.Equal(authType_, EAuthType.MSI())
 
 	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc"})
-	assert.Equal(authType, "key")
+	assert.Equal("key", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc"})
-	assert.Equal(authType, "sas")
+	assert.Equal("sas", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc"})
-	assert.Equal(authType, "msi")
+	assert.Equal("msi", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{ResourceID: "abc"})
-	assert.Equal(authType, "msi")
+	assert.Equal("msi", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{ClientID: "abc"})
-	assert.Equal(authType, "spn")
+	assert.Equal("spn", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{ClientSecret: "abc"})
-	assert.Equal(authType, "spn")
+	assert.Equal("spn", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{TenantID: "abc"})
-	assert.Equal(authType, "spn")
+	assert.Equal("spn", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc", AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
-	assert.Equal(authType, "msi")
+	assert.Equal("msi", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
-	assert.Equal(authType, "key")
+	assert.Equal("key", authType)
 
 	authType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc", ClientID: "abc"})
-	assert.Equal(authType, "sas")
+	assert.Equal("sas", authType)
 }
 
 func (s *utilsTestSuite) TestRemoveLeadingSlashes() {
@@ -485,8 +485,8 @@ func (s *utilsTestSuite) TestRemoveLeadingSlashes() {
 	}
 }
 
-func (suite *utilsTestSuite) TestRemovePrefixPath() {
-	assert := assert.New(suite.T())
+func (s *utilsTestSuite) TestRemovePrefixPath() {
+	assert := assert.New(s.T())
 
 	var inputs = []struct {
 		prefixPath string
@@ -505,10 +505,40 @@ func (suite *utilsTestSuite) TestRemovePrefixPath() {
 	}
 
 	for _, i := range inputs {
-		suite.Run(filepath.Join(i.prefixPath, i.path), func() {
+		s.Run(filepath.Join(i.prefixPath, i.path), func() {
 			output := removePrefixPath(i.prefixPath, i.path)
-			assert.EqualValues(i.result, output)
+			assert.Equal(i.result, output)
 		})
+	}
+}
+
+func (s *utilsTestSuite) TestParseRangeHeader() {
+	assert := assert.New(s.T())
+
+	tests := []struct {
+		header   string
+		expected int64
+		hasError bool
+	}{
+		{"bytes=0-100", 101, false},
+		{"bytes=100-200", 101, false},
+		{"bytes=0-0", 1, false},
+		{"bytes=0-", 0, true}, // open ended range not supported
+		{"", 0, true},
+		{"invalid", 0, true},
+		{"bytes=abc-def", 0, true},
+		{"bytes=100-50", 0, true}, // invalid range
+	}
+
+	for _, test := range tests {
+		size, err := parseRangeHeader(test.header)
+
+		if test.hasError {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+			assert.Equal(test.expected, size)
+		}
 	}
 }
 

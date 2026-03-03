@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -91,7 +91,7 @@ type OpenFileOptions struct {
 	Mode  os.FileMode
 }
 
-type CloseFileOptions struct {
+type ReleaseFileOptions struct {
 	Handle *handlemap.Handle
 }
 
@@ -127,9 +127,12 @@ type GetFileBlockOffsetsOptions struct {
 }
 
 type TruncateFileOptions struct {
-	Handle *handlemap.Handle
-	Name   string
-	Size   int64
+	Handle  *handlemap.Handle
+	Name    string
+	OldSize int64
+	NewSize int64
+	// This is equivalent to the storage block Size.
+	BlockSize int64
 }
 
 type CopyToFileOptions struct {
@@ -158,10 +161,6 @@ type SyncDirOptions struct {
 	Name string
 }
 
-type ReleaseFileOptions struct {
-	Handle *handlemap.Handle
-}
-
 type UnlinkFileOptions struct {
 	Name string
 }
@@ -179,11 +178,6 @@ type ReadLinkOptions struct {
 type GetAttrOptions struct {
 	Name             string
 	RetrieveMetadata bool
-}
-
-type SetAttrOptions struct {
-	Name string
-	Attr *ObjAttr
 }
 
 type ChmodOptions struct {

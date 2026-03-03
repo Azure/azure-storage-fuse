@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -232,7 +232,7 @@ func (sc *StatsCollector) statsDumper() {
 			// log.Debug("stats_manager::statsDumper : stats: %v", string(msg))
 
 			stMgrOpt.transferMtx.Lock()
-			_, err = f.WriteString(fmt.Sprintf("%v\n", string(msg)))
+			_, err = fmt.Fprintf(f, "%v\n", string(msg))
 			stMgrOpt.transferMtx.Unlock()
 			if err != nil {
 				log.Err("stats_manager::statsDumper : Unable to write to pipe [%v]", err)
@@ -354,7 +354,7 @@ func statsPolling() {
 
 			// send the stats collected so far to transfer pipe
 			stMgrOpt.transferMtx.Lock()
-			_, err = tf.WriteString(fmt.Sprintf("%v\n", string(msg)))
+			_, err = fmt.Fprintf(tf, "%v\n", string(msg))
 			stMgrOpt.transferMtx.Unlock()
 			if err != nil {
 				log.Err("stats_manager::statsDumper : Unable to write to pipe [%v]", err)

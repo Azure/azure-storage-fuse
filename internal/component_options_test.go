@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -57,7 +57,7 @@ func (s *componentOptionsTestSuite) TestExtendDirName() {
 	for _, tt := range tests {
 		s.Run(tt.input, func() {
 			output := ExtendDirName(tt.input)
-			assert.EqualValues(tt.expectedOutput, output)
+			assert.Equal(tt.expectedOutput, output)
 		})
 	}
 }
@@ -75,7 +75,7 @@ func (s *componentOptionsTestSuite) TestTruncateDirName() {
 	for _, tt := range tests {
 		s.Run(tt.input, func() {
 			output := TruncateDirName(tt.input)
-			assert.EqualValues(tt.expectedOutput, output)
+			assert.Equal(tt.expectedOutput, output)
 		})
 	}
 }

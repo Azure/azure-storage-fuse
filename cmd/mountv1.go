@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -143,12 +143,11 @@ func resetOptions() {
 }
 
 var generateConfigCmd = &cobra.Command{
-	Use:               "mountv1",
-	Short:             "Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags",
-	Long:              "Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags",
-	SuggestFor:        []string{"conv config", "convert config"},
-	Args:              cobra.MaximumNArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "mountv1",
+	Short:      "Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags",
+	Long:       "Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags",
+	SuggestFor: []string{"conv config", "convert config"},
+	Args:       cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !disableVersionCheck {
 			err := VersionCheck()
@@ -229,11 +228,12 @@ var generateConfigCmd = &cobra.Command{
 			}
 
 			accountType := ""
-			if bfv2StorageConfigOptions.AccountType == "" || bfv2StorageConfigOptions.AccountType == "blob" {
+			switch bfv2StorageConfigOptions.AccountType {
+			case "", "blob":
 				accountType = "blob"
-			} else if bfv2StorageConfigOptions.AccountType == "adls" {
+			case "adls":
 				accountType = "dfs"
-			} else {
+			default:
 				return fmt.Errorf("invalid account type")
 			}
 			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf("%s://%s.%s.core.windows.net", http, accountName, accountType)

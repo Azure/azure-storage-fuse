@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -40,26 +40,26 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
-func NewDirBitMap() common.BitMap16 {
-	bm := common.BitMap16(0)
+func NewDirBitMap() common.BitMap64 {
+	bm := common.BitMap64(0)
 	bm.Set(PropFlagIsDir)
 	return bm
 }
 
-func NewSymlinkBitMap() common.BitMap16 {
-	bm := common.BitMap16(0)
+func NewSymlinkBitMap() common.BitMap64 {
+	bm := common.BitMap64(0)
 	bm.Set(PropFlagSymlink)
 	return bm
 }
 
-func NewFileBitMap() common.BitMap16 {
-	bm := common.BitMap16(0)
+func NewFileBitMap() common.BitMap64 {
+	bm := common.BitMap64(0)
 	return bm
 }
 
 // Flags represented in common.BitMap16 for various properties of the object
 const (
-	PropFlagUnknown uint16 = iota
+	PropFlagUnknown uint64 = iota
 	PropFlagNotExists
 	PropFlagIsDir
 	PropFlagEmptyDir
@@ -75,7 +75,7 @@ type ObjAttr struct {
 	Crtime   time.Time          // creation time
 	Size     int64              // size of the file/directory
 	Mode     os.FileMode        // permissions in 0xxx format
-	Flags    common.BitMap16    // flags
+	Flags    common.BitMap64    // flags
 	Path     string             // full path
 	Name     string             // base name of the path
 	MD5      []byte             // MD5 of the blob as per last GetAttr

@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -35,6 +35,7 @@ package log
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -72,25 +73,27 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 		config.Tag = common.FileSystemName
 	}
 
-	if name == "base" {
+	switch name {
+	case "base":
 		baseLogger, err := newBaseLogger(LogFileConfig{
-			LogFile:      config.FilePath,
-			LogLevel:     config.Level,
-			LogSize:      config.MaxFileSize * 1024 * 1024,
-			LogFileCount: int(config.FileCount),
-			LogTag:       config.Tag,
+			LogFile:        config.FilePath,
+			LogLevel:       config.Level,
+			LogSize:        config.MaxFileSize * 1024 * 1024,
+			LogFileCount:   int(config.FileCount),
+			LogTag:         config.Tag,
+			LogGoroutineID: config.LogGoroutineID,
 		})
 		if err != nil {
 			return nil, err
 		}
 		return baseLogger, nil
-	} else if name == "silent" {
+	case "silent":
 		silentLogger := &SilentLogger{}
 		return silentLogger, nil
-	} else if name == "" || name == "default" || name == "syslog" {
-		sysLogger, err := newSysLogger(config.Level, config.Tag)
+	case "", "default", "syslog":
+		sysLogger, err := newSysLogger(config.Level, config.Tag, config.LogGoroutineID)
 		if err != nil {
-			if err == NoSyslogService {
+			if err == ErrNoSyslogService {
 				// Syslog service does not exists on this system
 				// fallback to file based logging.
 				return NewLogger("base", config)
@@ -184,8 +187,12 @@ func SetLogLevel(lvl common.LogLevel) {
 }
 
 // Destroy : DeInitialize the logging library
+// This should only be called from the main function.
 func Destroy() error {
-	return logObj.Destroy()
+	if logObj != nil {
+		return logObj.Destroy()
+	}
+	return fmt.Errorf("Logger is not initialized")
 }
 
 // ------------------ Public methods for logging events ------------------

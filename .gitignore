@@ -26,3 +26,14 @@ component/azstorage/logfile.txt
 logfile.txt
 **/logfile.txt
 **/logfile.txt.*
+# Test trace files
+*/_tmp_*.trace
+_tmp_*.trace
+# Emacs backup and auto-save files
+*~
+\#*\#
+.\#*
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo

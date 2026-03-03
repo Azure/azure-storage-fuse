@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -63,13 +63,12 @@ func resetMonitorOptions() {
 }
 
 var healthMonCmd = &cobra.Command{
-	Use:               "health-monitor",
-	Short:             "Monitor blobfuse2 mount",
-	Long:              "Monitor blobfuse2 mount",
-	SuggestFor:        []string{"bfusemon", "monitor health"},
-	Args:              cobra.ExactArgs(0),
-	Hidden:            true,
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "health-monitor",
+	Short:      "Monitor blobfuse2 mount",
+	Long:       "Monitor blobfuse2 mount",
+	SuggestFor: []string{"bfusemon", "monitor health"},
+	Args:       cobra.ExactArgs(0),
+	Hidden:     true,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		resetMonitorOptions()
 

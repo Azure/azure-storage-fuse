@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -40,6 +40,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,7 +52,10 @@ var home_dir, _ = os.UserHomeDir()
 
 func randomString(length int) string {
 	b := make([]byte, length)
-	rand.Read(b)
+	_, err := rand.Read(b)
+	if err != nil {
+		panic(err)
+	}
 	return fmt.Sprintf("%x", b)[:length]
 }
 
@@ -67,18 +72,121 @@ func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
 }
 
+func (suite *utilTestSuite) TestThreadSafeBitmap() {
+	var bitmap BitMap64
+
+	start := make(chan bool)
+	var wg sync.WaitGroup
+
+	set := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.Set(uint64(i % 64))
+		}
+	}
+
+	access := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.IsSet(uint64(i % 64))
+		}
+	}
+
+	_clear := func() {
+		defer wg.Done()
+		<-start
+		for i := range 100000 {
+			bitmap.Clear(uint64(i % 64))
+		}
+	}
+
+	resetBitmap := func() {
+		defer wg.Done()
+		<-start
+		for range 100000 {
+			bitmap.Reset()
+		}
+	}
+
+	wg.Add(4)
+	go set()
+	go access()
+	go _clear()
+	go resetBitmap()
+	close(start)
+	wg.Wait()
+}
+
+func (suite *utilTestSuite) TestBitmapSetIsSetClear() {
+	var bitmap BitMap64
+
+	for i := uint64(0); i < 1000; i++ {
+		j := i % 64
+		ok := bitmap.Set(j)
+		// first time setting the bit should return true
+		suite.assert.True(ok)
+		for k := uint64(0); k < 64; k++ {
+			if k == j {
+				suite.assert.True(bitmap.IsSet(k))
+			} else {
+				suite.assert.False(bitmap.IsSet(k))
+			}
+		}
+
+		ok = bitmap.Set(j)
+		// Second time setting the bit should return true
+		suite.assert.False(ok)
+
+		ok = bitmap.Clear(j)
+		// first time clearing the bit should return true
+		suite.assert.True(ok)
+		suite.assert.False(bitmap.IsSet(j))
+
+		ok = bitmap.Clear(j)
+		// second time clearing the bit should return false
+		suite.assert.False(ok)
+		suite.assert.False(bitmap.IsSet(j))
+
+		for k := uint64(0); k < 64; k++ {
+			suite.assert.False(bitmap.IsSet(k))
+		}
+	}
+}
+
+func (suite *utilTestSuite) TestBitmapReset() {
+	var bitmap BitMap64
+
+	for i := uint64(0); i < 64; i++ {
+		bitmap.Set(i)
+	}
+
+	ok := bitmap.Reset()
+	// Reset should return true if any bit was set
+	suite.assert.True(ok)
+
+	for i := uint64(0); i < 64; i++ {
+		suite.assert.False(bitmap.IsSet(i))
+	}
+
+	ok = bitmap.Reset()
+	// Reset should return false if no bit was set
+	suite.assert.False(ok)
+}
+
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	var out bytes.Buffer
 	cmd := exec.Command("../blobfuse2", "unmount", "all")
 	cmd.Stdout = &out
 	err := cmd.Run()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	cmd = exec.Command("pidof", "blobfuse2")
 	cmd.Stdout = &out
 	err = cmd.Run()
 	suite.assert.Equal("exit status 1", err.Error())
 	res, err := IsMountActive("/mnt/blobfuse")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.False(res)
 }
 
@@ -89,7 +197,8 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	fileName := "config.yaml"
 
 	lbpath := filepath.Join(home_dir, "lbpath")
-	os.MkdirAll(lbpath, 0777)
+	err := os.MkdirAll(lbpath, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(lbpath)
 
 	content := "components:\n" +
@@ -99,50 +208,52 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 		"  path: " + lbpath + "\n\n"
 
 	mntdir := filepath.Join(home_dir, "mountdir")
-	os.MkdirAll(mntdir, 0777)
+	err = os.MkdirAll(mntdir, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(mntdir)
 
 	dir, err := os.Getwd()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	configFile := filepath.Join(dir, "config.yaml")
 	// Create or open the file. If it doesn't exist, it will be created.
 	file, err := os.Create(fileName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	defer file.Close() // Ensure the file is closed after we're done
 
 	// Write the content to the file
 	_, err = file.WriteString(content)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	err = os.Chdir("..")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	dir, err = os.Getwd()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	binary := filepath.Join(dir, "blobfuse2")
 	cmd := exec.Command(binary, mntdir, "--config-file", configFile)
 	cmd.Stdout = &out
 	err = cmd.Run()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	res, err := IsMountActive(mntdir)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.True(res)
 
 	res, err = IsMountActive("/mnt/blobfuse")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.False(res)
 
 	cmd = exec.Command(binary, "unmount", mntdir)
 	cmd.Stdout = &out
 	err = cmd.Run()
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *typesTestSuite) TestDirectoryExists() {
 	rand := randomString(8)
 	dir := filepath.Join(home_dir, "dir"+rand)
-	os.MkdirAll(dir, 0777)
+	err := os.MkdirAll(dir, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(dir)
 
 	exists := DirectoryExists(dir)
@@ -160,41 +271,47 @@ func (suite *typesTestSuite) TestDirectoryDoesNotExist() {
 func (suite *typesTestSuite) TestEncryptBadKey() {
 	// Generate a random key
 	key := make([]byte, 20)
-	rand.Read(key)
+	_, err := rand.Read(key)
+	suite.assert.NoError(err)
 
 	data := make([]byte, 1024)
-	rand.Read(data)
+	_, err = rand.Read(data)
+	suite.assert.NoError(err)
 
-	_, err := EncryptData(data, key)
-	suite.assert.NotNil(err)
+	_, err = EncryptData(data, key)
+	suite.assert.Error(err)
 }
 
 func (suite *typesTestSuite) TestDecryptBadKey() {
 	// Generate a random key
 	key := make([]byte, 20)
-	rand.Read(key)
+	_, err := rand.Read(key)
+	suite.assert.NoError(err)
 
 	data := make([]byte, 1024)
-	rand.Read(data)
+	_, err = rand.Read(data)
+	suite.assert.NoError(err)
 
-	_, err := DecryptData(data, key)
-	suite.assert.NotNil(err)
+	_, err = DecryptData(data, key)
+	suite.assert.Error(err)
 }
 
 func (suite *typesTestSuite) TestEncryptDecrypt() {
 	// Generate a random key
 	key := make([]byte, 16)
-	rand.Read(key)
+	_, err := rand.Read(key)
+	suite.assert.NoError(err)
 
 	data := make([]byte, 1024)
-	rand.Read(data)
+	_, err = rand.Read(data)
+	suite.assert.NoError(err)
 
 	cipher, err := EncryptData(data, key)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	d, err := DecryptData(cipher, key)
-	suite.assert.Nil(err)
-	suite.assert.EqualValues(data, d)
+	suite.assert.NoError(err)
+	suite.assert.Equal(data, d)
 }
 
 func (suite *utilTestSuite) TestMonitorBfs() {
@@ -277,39 +394,21 @@ func (suite *utilTestSuite) TestGetUSage() {
 
 	dirName := filepath.Join(pwd, "util_test")
 	err = os.Mkdir(dirName, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	data := make([]byte, 1024*1024)
 	err = os.WriteFile(dirName+"/1.txt", data, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	err = os.WriteFile(dirName+"/2.txt", data, 0777)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	usage, err := GetUsage(dirName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.GreaterOrEqual(int(usage), 2)
 	suite.assert.LessOrEqual(int(usage), 4)
 
 	_ = os.RemoveAll(dirName)
-}
-
-func (suite *utilTestSuite) TestGetDiskUsage() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		return
-	}
-
-	dirName := filepath.Join(pwd, "util_test", "a", "b", "c")
-	err = os.MkdirAll(dirName, 0777)
-	suite.assert.Nil(err)
-
-	usage, usagePercent, err := GetDiskUsageFromStatfs(dirName)
-	suite.assert.Nil(err)
-	suite.assert.NotEqual(usage, 0)
-	suite.assert.NotEqual(usagePercent, 0)
-	suite.assert.NotEqual(usagePercent, 100)
-	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
 }
 
 func (suite *utilTestSuite) TestDirectoryCleanup() {
@@ -320,7 +419,7 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 	suite.assert.False(exists)
 
 	err := TempCacheCleanup(dirName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Directory exists but is empty
 	_ = os.MkdirAll(dirName, 0777)
@@ -331,7 +430,7 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 	suite.assert.True(empty)
 
 	err = TempCacheCleanup(dirName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Directory exists and is not empty
 	_ = os.MkdirAll(dirName+"/A", 0777)
@@ -342,7 +441,7 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 	suite.assert.False(empty)
 
 	err = TempCacheCleanup(dirName)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_ = os.RemoveAll(dirName)
 
@@ -361,14 +460,14 @@ func (suite *utilTestSuite) TestWriteToFile() {
 	defer os.Remove(filePath)
 
 	err = WriteToFile(filePath, content, WriteToFileOptions{})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	// Check if file exists
 	suite.assert.FileExists(filePath)
 
 	// Check the content of the file
 	data, err := os.ReadFile(filePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Equal(content, string(data))
 
 }
@@ -388,29 +487,29 @@ func (suite *utilTestSuite) TestGetFuseMinorVersion() {
 	suite.assert.GreaterOrEqual(i, 0)
 }
 
-func (s *utilTestSuite) TestGetMD5() {
-	assert := assert.New(s.T())
+func (suite *utilTestSuite) TestGetMD5() {
+	assert := assert.New(suite.T())
 
 	f, err := os.Create("abc.txt")
-	assert.Nil(err)
+	assert.NoError(err)
 
 	_, err = f.Write([]byte(randomString(50)))
-	assert.Nil(err)
+	assert.NoError(err)
 
 	f.Close()
 
 	f, err = os.Open("abc.txt")
-	assert.Nil(err)
+	assert.NoError(err)
 
 	md5Sum, err := GetMD5(f)
-	assert.Nil(err)
+	assert.NoError(err)
 	assert.NotZero(md5Sum)
 
 	f.Close()
 	os.Remove("abc.txt")
 }
 
-func (s *utilTestSuite) TestComponentExists() {
+func (suite *utilTestSuite) TestComponentExists() {
 	components := []string{
 		"component1",
 		"component2",
@@ -418,58 +517,150 @@ func (s *utilTestSuite) TestComponentExists() {
 	}
 
 	exists := ComponentInPipeline(components, "component1")
-	s.Assert().True(exists)
+	suite.True(exists)
 
 	exists = ComponentInPipeline(components, "component4")
-	s.Assert().False(exists)
+	suite.False(exists)
 
 }
 
-func (s *utilTestSuite) TestValidatePipeline() {
+func (suite *utilTestSuite) TestValidatePipeline() {
 	err := ValidatePipeline([]string{"libfuse", "file_cache", "block_cache", "azstorage"})
-	s.Assert().NotNil(err)
+	suite.Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "xload", "azstorage"})
-	s.Assert().NotNil(err)
+	suite.Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "block_cache", "xload", "azstorage"})
-	s.Assert().NotNil(err)
+	suite.Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "block_cache", "xload", "azstorage"})
-	s.Assert().NotNil(err)
+	suite.Error(err)
 
 	err = ValidatePipeline([]string{"libfuse", "file_cache", "azstorage"})
-	s.Assert().Nil(err)
+	suite.NoError(err)
 
 	err = ValidatePipeline([]string{"libfuse", "block_cache", "azstorage"})
-	s.Assert().Nil(err)
+	suite.NoError(err)
 
 	err = ValidatePipeline([]string{"libfuse", "xload", "attr_cache", "azstorage"})
-	s.Assert().Nil(err)
+	suite.NoError(err)
 }
 
-func (s *utilTestSuite) TestUpdatePipeline() {
+func (suite *utilTestSuite) TestUpdatePipeline() {
 	pipeline := UpdatePipeline([]string{"libfuse", "file_cache", "azstorage"}, "xload")
-	s.Assert().NotNil(pipeline)
-	s.Assert().False(ComponentInPipeline(pipeline, "file_cache"))
-	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+	suite.NotNil(pipeline)
+	suite.False(ComponentInPipeline(pipeline, "file_cache"))
+	suite.Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "block_cache", "azstorage"}, "xload")
-	s.Assert().NotNil(pipeline)
-	s.Assert().False(ComponentInPipeline(pipeline, "block_cache"))
-	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+	suite.NotNil(pipeline)
+	suite.False(ComponentInPipeline(pipeline, "block_cache"))
+	suite.Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "file_cache", "azstorage"}, "block_cache")
-	s.Assert().NotNil(pipeline)
-	s.Assert().False(ComponentInPipeline(pipeline, "file_cache"))
-	s.Assert().Equal(pipeline, []string{"libfuse", "block_cache", "azstorage"})
+	suite.NotNil(pipeline)
+	suite.False(ComponentInPipeline(pipeline, "file_cache"))
+	suite.Equal([]string{"libfuse", "block_cache", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "block_cache")
-	s.Assert().NotNil(pipeline)
-	s.Assert().False(ComponentInPipeline(pipeline, "xload"))
-	s.Assert().Equal(pipeline, []string{"libfuse", "block_cache", "azstorage"})
+	suite.NotNil(pipeline)
+	suite.False(ComponentInPipeline(pipeline, "xload"))
+	suite.Equal([]string{"libfuse", "block_cache", "azstorage"}, pipeline)
 
 	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "xload")
-	s.Assert().NotNil(pipeline)
-	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+	suite.NotNil(pipeline)
+	suite.Equal([]string{"libfuse", "xload", "azstorage"}, pipeline)
+}
+
+func TestPrettyOpenFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		flag int
+		want string
+	}{
+		{
+			name: "read only",
+			flag: os.O_RDONLY,
+			want: "[O_RDONLY]",
+		},
+		{
+			name: "write only",
+			flag: os.O_WRONLY,
+			want: "[O_WRONLY]",
+		},
+		{
+			name: "read write",
+			flag: os.O_RDWR,
+			want: "[O_RDWR]",
+		},
+		{
+			name: "rdwr create trunc",
+			flag: os.O_RDWR | os.O_CREATE | os.O_TRUNC,
+			// access first, then flags in flagNames order
+			want: "[O_RDWR | O_CREATE | O_TRUNC]",
+		},
+		{
+			name: "wronly append",
+			flag: os.O_WRONLY | os.O_APPEND,
+			want: "[O_WRONLY | O_APPEND]",
+		},
+		{
+			name: "rdwr append create excl sync trunc",
+			flag: os.O_RDWR | os.O_APPEND | os.O_CREATE | os.O_EXCL | os.O_SYNC | os.O_TRUNC,
+			want: "[O_RDWR | O_APPEND | O_CREATE | O_EXCL | O_SYNC | O_TRUNC]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PrettyOpenFlags(tt.flag)
+			if got != tt.want {
+				t.Fatalf("PrettyOpenFlags(%#x) = %q, want %q", tt.flag, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestGetGoroutineIDBasic validates that GetGoroutineID returns a non-zero, stable goroutine id within
+// the same goroutine.
+func (suite *utilTestSuite) TestGetGoroutineIDBasic() {
+	gid1 := GetGoroutineID()
+	suite.Positive(gid1)
+	gid2 := GetGoroutineID()
+	suite.Equal(gid1, gid2, "goroutine id should be stable within same goroutine")
+}
+
+// TestGetGoroutineIDParallel validates that concurrently obtained goroutine IDs are unique
+// for live goroutines.
+func (suite *utilTestSuite) TestGetGoroutineIDParallel() {
+	const workers = 10
+	idsCh := make(chan uint64, workers)
+	var wg sync.WaitGroup
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			idsCh <- GetGoroutineID()
+		}()
+	}
+
+	wg.Wait()
+	close(idsCh)
+
+	idMap := make(map[uint64]struct{}, workers)
+	for id := range idsCh {
+		suite.Positive(id)
+		idMap[id] = struct{}{}
+	}
+
+	suite.Len(idMap, workers, "expected unique goroutine ids equal to workers")
+}
+
+func (suite *utilTestSuite) TestSetFrsize() {
+	st := &syscall.Statfs_t{}
+	var val uint64 = 4096
+	SetFrsize(st, val)
+	suite.assert.Equal(int64(val), st.Frsize)
 }

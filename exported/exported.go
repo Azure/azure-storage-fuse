@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -72,7 +72,7 @@ type RenameDirOptions = internal.RenameDirOptions
 type CreateFileOptions = internal.CreateFileOptions
 type DeleteFileOptions = internal.DeleteFileOptions
 type OpenFileOptions = internal.OpenFileOptions
-type CloseFileOptions = internal.CloseFileOptions
+type ReleaseFileOptions = internal.ReleaseFileOptions
 type RenameFileOptions = internal.RenameFileOptions
 type ReadFileOptions = internal.ReadFileOptions
 type ReadInBufferOptions = internal.ReadInBufferOptions
@@ -84,12 +84,10 @@ type CopyFromFileOptions = internal.CopyFromFileOptions
 type FlushFileOptions = internal.FlushFileOptions
 type SyncFileOptions = internal.SyncFileOptions
 type SyncDirOptions = internal.SyncDirOptions
-type ReleaseFileOptions = internal.ReleaseFileOptions
 type UnlinkFileOptions = internal.UnlinkFileOptions
 type CreateLinkOptions = internal.CreateLinkOptions
 type ReadLinkOptions = internal.ReadLinkOptions
 type GetAttrOptions = internal.GetAttrOptions
-type SetAttrOptions = internal.SetAttrOptions
 type ChmodOptions = internal.ChmodOptions
 type ChownOptions = internal.ChownOptions
 type StageDataOptions = internal.StageDataOptions

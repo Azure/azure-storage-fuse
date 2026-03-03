@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -61,7 +61,7 @@ func (suite *threadPoolTestSuite) TestThreadPoolCreate() {
 		return 0, nil
 	})
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(1))
+	suite.assert.Equal(uint32(1), tp.worker)
 }
 
 func (suite *threadPoolTestSuite) TestThreadPoolStartStop() {
@@ -73,7 +73,7 @@ func (suite *threadPoolTestSuite) TestThreadPoolStartStop() {
 
 	tp := NewThreadPool(2, r)
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(2))
+	suite.assert.Equal(uint32(2), tp.worker)
 
 	tp.Start(context.TODO())
 	suite.assert.NotNil(tp.priorityItems)
@@ -91,14 +91,16 @@ func (suite *threadPoolTestSuite) TestThreadPoolSchedule() {
 
 	tp := NewThreadPool(2, r)
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(2))
+	suite.assert.Equal(uint32(2), tp.worker)
 
 	tp.Start(context.TODO())
 	suite.assert.NotNil(tp.priorityItems)
 	suite.assert.NotNil(tp.workItems)
 
-	tp.Schedule(&WorkItem{Priority: true})
-	tp.Schedule(&WorkItem{})
+	err := tp.Schedule(&WorkItem{Priority: true})
+	suite.assert.NoError(err)
+	err = tp.Schedule(&WorkItem{})
+	suite.assert.NoError(err)
 
 	time.Sleep(1 * time.Second)
 	tp.Stop()
@@ -115,7 +117,7 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 
 	tp := NewThreadPool(10, r)
 	suite.assert.NotNil(tp)
-	suite.assert.Equal(tp.worker, uint32(10))
+	suite.assert.Equal(uint32(10), tp.worker)
 
 	tp.Start(context.TODO())
 	suite.assert.NotNil(tp.priorityItems)
@@ -123,15 +125,17 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 
 	for i := range 100 {
 		if i < 20 {
-			tp.Schedule(&WorkItem{Priority: true})
+			err := tp.Schedule(&WorkItem{Priority: true})
+			suite.assert.NoError(err)
 		} else {
-			tp.Schedule(&WorkItem{})
+			err := tp.Schedule(&WorkItem{})
+			suite.assert.NoError(err)
 		}
 
 	}
 
 	time.Sleep(1 * time.Second)
-	suite.assert.Equal(callbackCnt, int32(100))
+	suite.assert.Equal(int32(100), callbackCnt)
 	tp.Stop()
 }
 

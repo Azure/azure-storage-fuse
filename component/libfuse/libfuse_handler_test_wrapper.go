@@ -1,5 +1,4 @@
 //go:build !fuse2
-// +build !fuse2
 
 /*
     _____           _____   _____   ____          ______  _____  ------
@@ -12,7 +11,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -76,10 +75,10 @@ var defaultSize = int64(0)
 var defaultMode = 0777
 
 func newTestLibfuse(next internal.Component, configuration string) *Libfuse {
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	libfuse := NewLibfuseComponent()
 	libfuse.SetNextComponent(next)
-	libfuse.Configure(true)
+	_ = libfuse.Configure(true)
 
 	return libfuse.(*Libfuse)
 }
@@ -373,10 +372,10 @@ func testTruncate(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
-	options := internal.TruncateFileOptions{Name: name, Size: size}
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
-	err := libfuse_truncate(path, C.long(size), nil)
+	err := libfuse_truncate(path, C.off_t(size), nil)
 	suite.assert.Equal(C.int(0), err)
 }
 
@@ -386,10 +385,10 @@ func testTruncateError(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
-	options := internal.TruncateFileOptions{Name: name, Size: size}
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
-	err := libfuse_truncate(path, C.long(size), nil)
+	err := libfuse_truncate(path, C.off_t(size), nil)
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
@@ -401,14 +400,14 @@ func testFTruncate(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
 	fi := C.fuse_file_info_t{}
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
-	options := internal.TruncateFileOptions{Handle: handle, Name: name, Size: size}
+	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
-	err := libfuse_truncate(path, C.long(size), &fi)
+	err := libfuse_truncate(path, C.off_t(size), &fi)
 	suite.assert.Equal(C.int(0), err)
 }
 
@@ -420,14 +419,14 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
 	fi := C.fuse_file_info_t{}
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
-	options := internal.TruncateFileOptions{Handle: handle, Name: name, Size: size}
+	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
-	err := libfuse_truncate(path, C.long(size), &fi)
+	err := libfuse_truncate(path, C.off_t(size), &fi)
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
@@ -675,10 +674,10 @@ func testStatFs(suite *libfuseTestSuite) {
 	buf := &C.statvfs_t{}
 	libfuse_statfs(path, buf)
 
-	suite.assert.Equal(int(buf.f_frsize), 1)
-	suite.assert.Equal(int(buf.f_blocks), 2)
-	suite.assert.Equal(int(buf.f_bavail), 3)
-	suite.assert.Equal(int(buf.f_bfree), 4)
+	suite.assert.Equal(1, int(buf.f_frsize))
+	suite.assert.Equal(2, int(buf.f_blocks))
+	suite.assert.Equal(3, int(buf.f_bavail))
+	suite.assert.Equal(4, int(buf.f_bfree))
 }
 
 func testChmodError(suite *libfuseTestSuite) {

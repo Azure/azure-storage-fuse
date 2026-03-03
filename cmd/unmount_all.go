@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -43,11 +43,10 @@ import (
 )
 
 var umntAllCmd = &cobra.Command{
-	Use:               "all",
-	Short:             "Unmount all instances of Blobfuse2",
-	Long:              "Unmount all instances of Blobfuse2",
-	SuggestFor:        []string{"al", "all"},
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "all",
+	Short:      "Unmount all instances of Blobfuse2",
+	Long:       "Unmount all instances of Blobfuse2",
+	SuggestFor: []string{"al", "all"},
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		lazy, _ := cmd.Flags().GetBool("lazy")
 		lstMnt, err := common.ListMountPoints()

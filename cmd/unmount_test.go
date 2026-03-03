@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -92,104 +92,109 @@ func (suite *unmountTestSuite) TestUnmountCmd() {
 	defer suite.cleanupTest()
 
 	mountDirectory1, _ := os.MkdirTemp("", "TestUnMountTemp")
-	os.MkdirAll(mountDirectory1, 0777)
+	err := os.MkdirAll(mountDirectory1, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(mountDirectory1)
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory1, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
-	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	_, err = cmd.Output()
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory1)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *unmountTestSuite) TestUnmountCmdFail() {
 	defer suite.cleanupTest()
 
 	mountDirectory2, _ := os.MkdirTemp("", "TestUnMountTemp")
-	os.MkdirAll(mountDirectory2, 0777)
+	err := os.MkdirAll(mountDirectory2, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(mountDirectory2)
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory2, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
-	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	_, err = cmd.Output()
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 	err = os.Chdir(mountDirectory2)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory2)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 
 	err = os.Chdir(currentDir)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory2)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *unmountTestSuite) TestUnmountCmdWildcard() {
 	defer suite.cleanupTest()
 
 	mountDirectory3, _ := os.MkdirTemp("", "TestUnMountTemp")
-	os.MkdirAll(mountDirectory3, 0777)
+	err := os.MkdirAll(mountDirectory3, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(mountDirectory3)
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory3, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
-	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	_, err = cmd.Output()
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory3+"*")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *unmountTestSuite) TestUnmountCmdWildcardFail() {
 	defer suite.cleanupTest()
 
 	mountDirectory4, _ := os.MkdirTemp("", "TestUnMountTemp")
-	os.MkdirAll(mountDirectory4, 0777)
+	err := os.MkdirAll(mountDirectory4, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(mountDirectory4)
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory4, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
-	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	_, err = cmd.Output()
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 	err = os.Chdir(mountDirectory4)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory4+"*")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	if err != nil {
 		suite.assert.Contains(err.Error(), "failed to unmount")
 	}
 
 	err = os.Chdir(currentDir)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory4+"*")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *unmountTestSuite) TestUnmountCmdValidArg() {
 	defer suite.cleanupTest()
 
 	mountDirectory5, _ := os.MkdirTemp("", "TestUnMountTemp")
-	os.MkdirAll(mountDirectory5, 0777)
+	err := os.MkdirAll(mountDirectory5, 0777)
+	suite.assert.NoError(err)
 	defer os.RemoveAll(mountDirectory5)
 
 	cmd := exec.Command("../blobfuse2", "mount", mountDirectory5, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
-	_, err := cmd.Output()
-	suite.assert.Nil(err)
+	_, err = cmd.Output()
+	suite.assert.NoError(err)
 
 	time.Sleep(5 * time.Second)
 	lst, _ := unmountCmd.ValidArgsFunction(nil, nil, "")
 	suite.assert.NotEmpty(lst)
 
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory5+"*")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	lst, _ = unmountCmd.ValidArgsFunction(nil, nil, "abcd")
 	suite.assert.Empty(lst)
@@ -207,11 +212,12 @@ func (suite *unmountTestSuite) TestUnmountCmdLazy() {
 	for _, lazyFlag := range lazyFlags {
 		for _, flagPosition := range possibleFlagPositions {
 			mountDirectory6, _ := os.MkdirTemp("", "TestUnMountTemp")
-			os.MkdirAll(mountDirectory6, 0777)
+			err := os.MkdirAll(mountDirectory6, 0777)
+			suite.assert.NoError(err)
 			defer os.RemoveAll(mountDirectory6)
 
 			cmd := exec.Command("../blobfuse2", "mount", mountDirectory6, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
-			_, err := cmd.Output()
+			_, err = cmd.Output()
 			suite.assert.NoError(err)
 
 			time.Sleep(2 * time.Second)
@@ -242,6 +248,32 @@ func (suite *unmountTestSuite) TestUnmountCmdLazy() {
 			suite.cleanupTest()
 		}
 	}
+}
+
+func (suite *unmountTestSuite) TestInvalidFlagWithValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect flag
+	out, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--invalid-flag=test")
+	suite.assert.Error(err)
+	suite.assert.Contains(out, "unknown flag: --invalid-flag")
+}
+
+func (suite *unmountTestSuite) TestInvalidFlagWithOutValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect flag
+	out, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--invalid-flag")
+	suite.assert.Error(err)
+	suite.assert.Contains(out, "unknown flag: --invalid-flag")
 }
 
 func TestUnMountCommand(t *testing.T) {

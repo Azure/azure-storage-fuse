@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,7 +34,6 @@
 package cmd
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -74,14 +73,14 @@ func (suite *rootCmdSuite) TestNoOptions() {
 	defer suite.cleanupTest()
 	out, err := executeCommandC(rootCmd, "")
 	suite.assert.Contains(out, "missing command options")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *rootCmdSuite) TestNoOptionsNoVersionCheck() {
 	defer suite.cleanupTest()
 	out, err := executeCommandC(rootCmd, "--disable-version-check")
 	suite.assert.Contains(out, "missing command options")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
@@ -122,7 +121,7 @@ func (suite *rootCmdSuite) TestGetRemoteVersionInvalidURL() {
 	defer suite.cleanupTest()
 	out, err := getRemoteVersion("abcd")
 	suite.assert.Empty(out)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionInvalidContainer() {
@@ -130,7 +129,7 @@ func (suite *rootCmdSuite) TestGetRemoteVersionInvalidContainer() {
 	latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest1/"
 	out, err := getRemoteVersion(latestVersionUrl)
 	suite.assert.Empty(out)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "unable to get latest version")
 }
 
@@ -143,7 +142,7 @@ func (suite *rootCmdSuite) TestGetRemoteVersionValidContainer() {
 	latestVersionUrl := common.Blobfuse2ListContainerURL + "/latest/index.xml"
 	out, err := getRemoteVersion(latestVersionUrl)
 	suite.assert.NotEmpty(out)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionCurrentOlder() {
@@ -161,17 +160,17 @@ func (suite *rootCmdSuite) TestGetRemoteVersionCurrentSame() {
 	suite.assert.Nil(msg)
 }
 
-func (suite *rootCmdSuite) testExecute() {
-	defer suite.cleanupTest()
-	buf := new(bytes.Buffer)
-	rootCmd.SetOut(buf)
-	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"--version"})
+// func (suite *rootCmdSuite) testExecute() {
+// 	defer suite.cleanupTest()
+// 	buf := new(bytes.Buffer)
+// 	rootCmd.SetOut(buf)
+// 	rootCmd.SetErr(buf)
+// 	rootCmd.SetArgs([]string{"--version"})
 
-	err := Execute()
-	suite.assert.Nil(err)
-	suite.assert.Contains(buf.String(), "blobfuse2 version")
-}
+// 	err := Execute()
+// 	suite.assert.NoError(err)
+// 	suite.assert.Contains(buf.String(), "blobfuse2 version")
+// }
 
 func (suite *rootCmdSuite) TestParseArgs() {
 	defer suite.cleanupTest()

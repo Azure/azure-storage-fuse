@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -62,12 +62,11 @@ type containerListingOptions struct {
 var mountAllOpts containerListingOptions
 
 var mountAllCmd = &cobra.Command{
-	Use:               "all [path] <flags>",
-	Short:             "Mounts all azure blob container for a given account as a filesystem",
-	Long:              "Mounts all azure blob container for a given account as a filesystem",
-	SuggestFor:        []string{"mnta", "mout"},
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "all [path] <flags>",
+	Short:      "Mounts all azure blob container for a given account as a filesystem",
+	Long:       "Mounts all azure blob container for a given account as a filesystem",
+	SuggestFor: []string{"mnta", "mout"},
+	Args:       cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
@@ -220,10 +219,7 @@ func getContainerList() ([]string, error) {
 
 // FiterAllowedContainer : Filter which containers are allowed to be mounted
 func filterAllowedContainerList(containers []string) []string {
-	allowListing := false
-	if len(mountAllOpts.AllowList) > 0 {
-		allowListing = true
-	}
+	allowListing := len(mountAllOpts.AllowList) > 0
 
 	// Convert the entire container list into a map
 	var filterContainer = make(map[string]bool)

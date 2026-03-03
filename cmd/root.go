@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -62,12 +62,11 @@ type Blob struct {
 var disableVersionCheck bool
 
 var rootCmd = &cobra.Command{
-	Use:               "blobfuse2",
-	Short:             "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage.",
-	Long:              "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the fuse protocol to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.",
-	Version:           common.Blobfuse2Version,
-	FlagErrorHandling: cobra.ExitOnError,
-	SilenceUsage:      true,
+	Use:          "blobfuse2",
+	Short:        "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage.",
+	Long:         "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the fuse protocol to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.",
+	Version:      common.Blobfuse2Version,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !disableVersionCheck {
 			err := VersionCheck()
@@ -180,7 +179,7 @@ func beginDetectNewVersion() chan any {
 		}
 
 		if local.OlderThan(*remote) {
-			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
+			executablePathSegments := strings.Split(strings.ReplaceAll(os.Args[0], "\\", "/"), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
 			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
 			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)

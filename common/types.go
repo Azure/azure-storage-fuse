@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -47,11 +47,13 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.6.0~preview.1"
+	blobfuse2Version_ = "2.5.2"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
 	FileSystemName        = "blobfuse2"
+
+	UnixDateMillis = "Mon Jan _2 15:04:05.000 MST 2006"
 
 	DefaultConfigFilePath = "config.yaml"
 
@@ -68,7 +70,7 @@ const (
 	BfuseStats    = "blobfuse_stats"
 	BlockIDLength = 16
 
-	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+	FuseAllowedFlags = "Invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
 	UserAgentHeader = "User-Agent"
 
@@ -146,27 +148,27 @@ func (l *LogLevel) Parse(s string) error {
 }
 
 type LogConfig struct {
-	Level       LogLevel
-	MaxFileSize uint64
-	FileCount   uint64
-	FilePath    string
-	TimeTracker bool
-	Tag         string // logging tag which can be either blobfuse2 or bfusemon
+	Level          LogLevel
+	MaxFileSize    uint64
+	FileCount      uint64
+	FilePath       string
+	TimeTracker    bool
+	Tag            string // logging tag which can be either blobfuse2 or bfusemon
+	LogGoroutineID bool   // whether to log goroutine id in each log line
 }
 
-// Flags for blocks
+// Flags for block
 const (
-	BlockFlagUnknown uint16 = iota
+	BlockFlagUnknown uint64 = iota
 	DirtyBlock
 	TruncatedBlock
-	RemovedBlocks
 )
 
 type Block struct {
 	sync.RWMutex
 	StartIndex int64
 	EndIndex   int64
-	Flags      BitMap16
+	Flags      BitMap64
 	Id         string
 	Data       []byte
 }
@@ -181,32 +183,55 @@ func (block *Block) Truncated() bool {
 	return block.Flags.IsSet(TruncatedBlock)
 }
 
-func (block *Block) Removed() bool {
-	return block.Flags.IsSet(RemovedBlocks)
-}
-
 // Flags for block offset list
 const (
-	BolFlagUnknown uint16 = iota
-	SmallFile
+	BlobFlagUnknown     uint64 = iota
+	BlobFlagHasNoBlocks        // set if the blob does not have any blocks
+	BlobFlagBlockListModified
 )
 
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList struct {
 	BlockList     []*Block //blockId to offset mapping
-	Flags         BitMap16
+	Flags         BitMap64
 	BlockIdLength int64
 	Size          int64
 	Mtime         time.Time
 }
 
-// Dirty : Handle is dirty or not
-func (bol *BlockOffsetList) SmallFile() bool {
-	return bol.Flags.IsSet(SmallFile)
+func (bol *BlockOffsetList) HasNoBlocks() bool {
+	return len(bol.BlockList) == 0
+}
+
+func (bol *BlockOffsetList) IsBlockListModified() bool {
+	return bol.Flags.IsSet(BlobFlagBlockListModified)
+}
+
+func (bol *BlockOffsetList) ValidateBlockListAgainstFileSize(fileSize int64) bool {
+	if bol.HasNoBlocks() {
+		return fileSize == 0
+	}
+	if bol.BlockList[len(bol.BlockList)-1].EndIndex != fileSize {
+		return false
+	}
+	return true
+}
+
+func (bol *BlockOffsetList) HasAllBlocksWithSameBlockSize() (blockSize int64, ok bool) {
+	if bol.HasNoBlocks() {
+		return 0, true
+	}
+	blockSize = bol.BlockList[0].EndIndex - bol.BlockList[0].StartIndex
+	for _, blk := range bol.BlockList {
+		if blk.EndIndex-blk.StartIndex != blockSize {
+			return 0, false
+		}
+	}
+	return blockSize, true
 }
 
 // return true if item found and index of the item
-func (bol BlockOffsetList) BinarySearch(offset int64) (bool, int) {
+func (bol *BlockOffsetList) BinarySearch(offset int64) (bool, int) {
 	lowerBound := 0
 	size := len(bol.BlockList)
 	higherBound := size - 1
@@ -310,8 +335,8 @@ func NewUUID() (u uuid) {
 }
 
 // returns block id of given length
-func GetBlockID(len int64) string {
-	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(len))
+func GetBlockID(length int64) string {
+	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(length))
 }
 
 func GetIdLength(id string) int64 {

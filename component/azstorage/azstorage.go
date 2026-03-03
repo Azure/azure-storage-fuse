@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -270,7 +270,7 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 	}
 
 	path := formatListDirName(options.Name)
-	var iteration int = 0
+	var iteration = 0
 	var marker *string = nil
 	for {
 		new_list, new_marker, err := az.storage.List(path, marker, common.MaxDirListCount)
@@ -408,8 +408,8 @@ func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	return handle, nil
 }
 
-func (az *AzStorage) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("AzStorage::CloseFile : %s", options.Handle.Path)
+func (az *AzStorage) ReleaseFile(options internal.ReleaseFileOptions) error {
+	log.Trace("AzStorage::ReleaseFile : %s", options.Handle.Path)
 
 	// decrement open file handles count
 	azStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
@@ -468,7 +468,7 @@ func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length
 		return 0, syscall.ERANGE
 	}
 
-	var dataLen int64 = int64(len(options.Data))
+	var dataLen = int64(len(options.Data))
 	if size < (options.Offset + int64(len(options.Data))) {
 		dataLen = size - options.Offset
 	}
@@ -498,11 +498,11 @@ func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOpt
 }
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
-	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.Size)
-	err := az.storage.TruncateFile(options.Name, options.Size)
+	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.NewSize)
+	err := az.storage.TruncateFile(options)
 
 	if err == nil {
-		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]any{size: options.Size})
+		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]any{size: options.NewSize})
 		azStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
 	}
 	return err
@@ -692,6 +692,12 @@ func init() {
 
 	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
 	config.BindPFlag(compName+".filter", blobFilter)
+
+	capMbpsRead := config.AddInt64Flag("cap-mbps-read", -1, "Limit the throughput of downloads from your storage account. Value measured in megabits per second. Default is -1 (no limit)")
+	config.BindPFlag(compName+".cap-mbps-read", capMbpsRead)
+
+	capIOps := config.AddInt64Flag("cap-iops", -1, "Limit the total storage operations per second. Default is -1 (no limit)")
+	config.BindPFlag(compName+".cap-iops", capIOps)
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

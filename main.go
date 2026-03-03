@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -35,8 +35,6 @@ package main
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/cmd"
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	_ "github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 //go:generate ./cmd/componentGenerator.sh $NAME
@@ -44,10 +42,4 @@ import (
 
 func main() {
 	_ = cmd.Execute()
-	defer func() {
-		if panicErr := recover(); panicErr != nil {
-			log.Err("PANIC: %v", panicErr)
-			panic(panicErr)
-		}
-	}()
 }

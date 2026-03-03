@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -45,17 +45,19 @@ import (
 )
 
 type SysLogger struct {
-	level  common.LogLevel
-	tag    string
-	logger *log.Logger
+	level          common.LogLevel
+	tag            string
+	logGoroutineID bool
+	logger         *log.Logger
 }
 
-var NoSyslogService = errors.New("failed to create syslog object")
+var ErrNoSyslogService = errors.New("failed to create syslog object")
 
-func newSysLogger(lvl common.LogLevel, tag string) (*SysLogger, error) {
+func newSysLogger(lvl common.LogLevel, tag string, logGoroutineID bool) (*SysLogger, error) {
 	l := &SysLogger{
-		level: lvl,
-		tag:   tag,
+		level:          lvl,
+		tag:            tag,
+		logGoroutineID: logGoroutineID,
 	}
 	err := l.init()
 	if err != nil {
@@ -87,7 +89,7 @@ func (l *SysLogger) init() error {
 	logwriter, e := syslog.New(getSyslogLevel(l.level), l.tag)
 
 	if e != nil {
-		return NoSyslogService
+		return ErrNoSyslogService
 	}
 
 	l.logger = log.New(logwriter, "", 0)
@@ -120,7 +122,12 @@ func getSyslogLevel(lvl common.LogLevel) syslog.Priority {
 func (l *SysLogger) write(lvl string, format string, args ...any) {
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+
+	if l.logGoroutineID {
+		l.logger.Print("[", common.GetGoroutineID(), "][", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+	} else {
+		l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+	}
 }
 
 func (l *SysLogger) Debug(format string, args ...any) {

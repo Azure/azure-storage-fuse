@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -51,7 +51,7 @@ type blockTestSuite struct {
 func (suite *blockTestSuite) SetupTest() {
 }
 
-func (suite *blockTestSuite) cleanupTest() {
+func (suite *blockTestSuite) CleanupTest() {
 }
 
 func (suite *blockTestSuite) TestAllocate() {
@@ -59,12 +59,12 @@ func (suite *blockTestSuite) TestAllocate() {
 
 	b, err := AllocateBlock(0)
 	suite.assert.Nil(b)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid size")
 
 	b, err = AllocateBlock(10)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(b.data)
 
 	_ = b.Delete()
@@ -75,11 +75,12 @@ func (suite *blockTestSuite) TestAllocateBig() {
 
 	b, err := AllocateBlock(100 * 1024 * 1024)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(b.data)
-	suite.assert.Equal(cap(b.data), 100*1024*1024)
+	suite.assert.Equal(100*1024*1024, cap(b.data))
 
-	b.Delete()
+	err = b.Delete()
+	suite.assert.NoError(err)
 }
 
 func (suite *blockTestSuite) TestAllocateHuge() {
@@ -87,7 +88,7 @@ func (suite *blockTestSuite) TestAllocateHuge() {
 
 	b, err := AllocateBlock(50 * 1024 * 1024 * 1024)
 	suite.assert.Nil(b)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "mmap error")
 }
 
@@ -96,11 +97,11 @@ func (suite *blockTestSuite) TestFreeNilData() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	b.data = nil
 
 	err = b.Delete()
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid buffer")
 }
 
@@ -109,11 +110,11 @@ func (suite *blockTestSuite) TestFreeInvalidData() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	b.data = make([]byte, 1)
 
 	err = b.Delete()
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid argument")
 }
 
@@ -122,7 +123,7 @@ func (suite *blockTestSuite) TestResuse() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Nil(b.state)
 
 	b.ReUse()
@@ -137,17 +138,17 @@ func (suite *blockTestSuite) TestReady() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Nil(b.state)
 
 	b.ReUse()
 	suite.assert.NotNil(b.state)
 
 	b.Ready(BlockStatusDownloaded)
-	suite.assert.Equal(len(b.state), 1)
+	suite.assert.Len(b.state, 1)
 
 	<-b.state
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	b.ReUse()
 	suite.assert.NotNil(b.state)
@@ -160,7 +161,7 @@ func (suite *blockTestSuite) TestUnBlock() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Nil(b.state)
 
 	b.ReUse()
@@ -168,17 +169,17 @@ func (suite *blockTestSuite) TestUnBlock() {
 	suite.assert.Nil(b.node)
 
 	b.Ready(BlockStatusDownloaded)
-	suite.assert.Equal(len(b.state), 1)
+	suite.assert.Len(b.state, 1)
 
 	<-b.state
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	b.Unblock()
 	suite.assert.NotNil(b.state)
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	<-b.state
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	_ = b.Delete()
 }
@@ -188,7 +189,7 @@ func (suite *blockTestSuite) TestWriter() {
 
 	b, err := AllocateBlock(1)
 	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.Nil(b.state)
 	suite.assert.Nil(b.node)
 	suite.assert.False(b.IsDirty())
@@ -197,18 +198,18 @@ func (suite *blockTestSuite) TestWriter() {
 	suite.assert.NotNil(b.state)
 	suite.assert.Nil(b.node)
 	suite.assert.Zero(b.offset)
-	suite.assert.Equal(b.id, int64(-1))
+	suite.assert.Equal(int64(-1), b.id)
 	suite.assert.False(b.IsDirty())
 
 	b.Ready(BlockStatusDownloaded)
-	suite.assert.Equal(len(b.state), 1)
+	suite.assert.Len(b.state, 1)
 
 	<-b.state
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	b.Unblock()
 	suite.assert.NotNil(b.state)
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	b.Uploading()
 	suite.assert.NotNil(b.state)
@@ -223,17 +224,17 @@ func (suite *blockTestSuite) TestWriter() {
 	suite.assert.False(b.IsDirty())
 
 	b.Ready(BlockStatusUploaded)
-	suite.assert.Equal(len(b.state), 1)
+	suite.assert.Len(b.state, 1)
 
 	<-b.state
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	b.Unblock()
 	suite.assert.NotNil(b.state)
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	<-b.state
-	suite.assert.Equal(len(b.state), 0)
+	suite.assert.Empty(b.state)
 
 	_ = b.Delete()
 }

@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -68,7 +68,7 @@ func createSingleFile(size float32, path string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return float64(time.Now().Sub(start)), nil
+	return float64(time.Since(start)), nil
 }
 
 func (suite *benchmarkSuite) TestCreateSingleFiles() {

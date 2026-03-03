@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -156,7 +156,7 @@ func (bfs *BlobfuseStats) statsPoll() {
 	defer ticker.Stop()
 
 	for t := range ticker.C {
-		_, err = pf.WriteString(fmt.Sprintf("Poll at %v\n", t.Format(time.RFC3339)))
+		_, err = fmt.Fprintf(pf, "Poll at %v\n", t.Format(time.RFC3339))
 		if err != nil {
 			log.Err("StatsReader::statsPoll : [%v]", err)
 			break

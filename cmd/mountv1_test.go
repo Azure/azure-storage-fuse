@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -92,7 +92,10 @@ func resetCLIFlags(cmd cobra.Command) {
 	// reset all CLI flags before next test
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		f.Changed = false
-		f.Value.Set(f.DefValue)
+		err := f.Value.Set(f.DefValue)
+		if err != nil {
+			panic(fmt.Sprintf("Unable to reset flag %s: %v", f.Name, err))
+		}
 	})
 	viper.Reset()
 }
@@ -119,10 +122,11 @@ func (suite *generateConfigTestSuite) TestConfigFileInvalid() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName myOtherAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName myOtherAccountName")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.NotNil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.Error(err)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileKey() {
@@ -132,23 +136,25 @@ func (suite *generateConfigTestSuite) TestConfigFileKey() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\naccountKey myAccountKey\nauthType Key\ncontainerName myContainerName\n")
-
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\naccountKey myAccountKey\nauthType Key\ncontainerName myContainerName\n")
+	suite.assert.NoError(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("myAccountName", options.AccountName)
-	suite.assert.EqualValues("myAccountKey", options.AccountKey)
-	suite.assert.EqualValues("key", options.AuthMode)
-	suite.assert.EqualValues("myContainerName", options.Container)
-	suite.assert.EqualValues("https://myAccountName.blob.core.windows.net", options.Endpoint)
+	suite.assert.Equal("myAccountName", options.AccountName)
+	suite.assert.Equal("myAccountKey", options.AccountKey)
+	suite.assert.Equal("key", options.AuthMode)
+	suite.assert.Equal("myContainerName", options.Container)
+	suite.assert.Equal("https://myAccountName.blob.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileSas() {
@@ -158,23 +164,26 @@ func (suite *generateConfigTestSuite) TestConfigFileSas() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nsasToken mySasToken\nauthType SAS\ncontainerName myContainerName\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nsasToken mySasToken\nauthType SAS\ncontainerName myContainerName\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("myAccountName", options.AccountName)
-	suite.assert.EqualValues("mySasToken", options.SaSKey)
-	suite.assert.EqualValues("sas", options.AuthMode)
-	suite.assert.EqualValues("myContainerName", options.Container)
-	suite.assert.EqualValues("https://myAccountName.blob.core.windows.net", options.Endpoint)
+	suite.assert.Equal("myAccountName", options.AccountName)
+	suite.assert.Equal("mySasToken", options.SaSKey)
+	suite.assert.Equal("sas", options.AuthMode)
+	suite.assert.Equal("myContainerName", options.Container)
+	suite.assert.Equal("https://myAccountName.blob.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileSPN() {
@@ -184,26 +193,29 @@ func (suite *generateConfigTestSuite) TestConfigFileSPN() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nservicePrincipalClientId clientId\nservicePrincipalTenantId tenantId\nservicePrincipalClientSecret clientSecret\naadEndpoint aadEndpoint\nauthType SPN\ncontainerName myContainerName\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nservicePrincipalClientId clientId\nservicePrincipalTenantId tenantId\nservicePrincipalClientSecret clientSecret\naadEndpoint aadEndpoint\nauthType SPN\ncontainerName myContainerName\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("myAccountName", options.AccountName)
-	suite.assert.EqualValues("clientId", options.ClientID)
-	suite.assert.EqualValues("tenantId", options.TenantID)
-	suite.assert.EqualValues("clientSecret", options.ClientSecret)
-	suite.assert.EqualValues("aadEndpoint", options.ActiveDirectoryEndpoint)
-	suite.assert.EqualValues("spn", options.AuthMode)
-	suite.assert.EqualValues("myContainerName", options.Container)
-	suite.assert.EqualValues("https://myAccountName.blob.core.windows.net", options.Endpoint)
+	suite.assert.Equal("myAccountName", options.AccountName)
+	suite.assert.Equal("clientId", options.ClientID)
+	suite.assert.Equal("tenantId", options.TenantID)
+	suite.assert.Equal("clientSecret", options.ClientSecret)
+	suite.assert.Equal("aadEndpoint", options.ActiveDirectoryEndpoint)
+	suite.assert.Equal("spn", options.AuthMode)
+	suite.assert.Equal("myContainerName", options.Container)
+	suite.assert.Equal("https://myAccountName.blob.core.windows.net", options.Endpoint)
 }
 func (suite *generateConfigTestSuite) TestConfigFileMSI() {
 	defer suite.cleanupTest()
@@ -212,25 +224,28 @@ func (suite *generateConfigTestSuite) TestConfigFileMSI() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nidentityClientId clientId\nidentityObjectId objectId\nidentityResourceId resourceId\nauthType MSI\ncontainerName myContainerName\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nidentityClientId clientId\nidentityObjectId objectId\nidentityResourceId resourceId\nauthType MSI\ncontainerName myContainerName\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("myAccountName", options.AccountName)
-	suite.assert.EqualValues("clientId", options.ApplicationID)
-	suite.assert.EqualValues("objectId", options.ObjectID)
-	suite.assert.EqualValues("resourceId", options.ResourceID)
-	suite.assert.EqualValues("msi", options.AuthMode)
-	suite.assert.EqualValues("myContainerName", options.Container)
-	suite.assert.EqualValues("https://myAccountName.blob.core.windows.net", options.Endpoint)
+	suite.assert.Equal("myAccountName", options.AccountName)
+	suite.assert.Equal("clientId", options.ApplicationID)
+	suite.assert.Equal("objectId", options.ObjectID)
+	suite.assert.Equal("resourceId", options.ResourceID)
+	suite.assert.Equal("msi", options.AuthMode)
+	suite.assert.Equal("myContainerName", options.Container)
+	suite.assert.Equal("https://myAccountName.blob.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileProxy() {
@@ -240,20 +255,23 @@ func (suite *generateConfigTestSuite) TestConfigFileProxy() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nhttpProxy httpProxy\nhttpsProxy httpsProxy\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nhttpProxy httpProxy\nhttpsProxy httpsProxy\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("httpProxy", options.HttpProxyAddress)
-	suite.assert.EqualValues("httpsProxy", options.HttpsProxyAddress)
+	suite.assert.Equal("httpProxy", options.HttpProxyAddress)
+	suite.assert.Equal("httpsProxy", options.HttpsProxyAddress)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileBlobEndpoint() {
@@ -263,19 +281,22 @@ func (suite *generateConfigTestSuite) TestConfigFileBlobEndpoint() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nblobEndpoint blobEndpoint\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nblobEndpoint blobEndpoint\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("blobEndpoint", options.Endpoint)
+	suite.assert.Equal("blobEndpoint", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileAccountType() {
@@ -285,20 +306,23 @@ func (suite *generateConfigTestSuite) TestConfigFileAccountType() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\naccountType adls\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\naccountType adls\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("adls", options.AccountType)
-	suite.assert.EqualValues("https://myAccountName.dfs.core.windows.net", options.Endpoint)
+	suite.assert.Equal("adls", options.AccountType)
+	suite.assert.Equal("https://myAccountName.dfs.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileAuthMode() {
@@ -308,19 +332,22 @@ func (suite *generateConfigTestSuite) TestConfigFileAuthMode() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nauthType Key\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nauthType Key\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("key", options.AuthMode)
+	suite.assert.Equal("key", options.AuthMode)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileLogLevel() {
@@ -330,19 +357,22 @@ func (suite *generateConfigTestSuite) TestConfigFileLogLevel() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("logging", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("logging", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("LOG_ERROR", options.LogLevel)
+	suite.assert.Equal("LOG_ERROR", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsNewLine() {
@@ -352,19 +382,22 @@ func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsNewLine() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n# accountName myAccountName\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n# accountName myAccountName\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("logging", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("logging", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("LOG_ERROR", options.LogLevel)
+	suite.assert.Equal("LOG_ERROR", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsSameLine() {
@@ -374,19 +407,22 @@ func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsSameLine() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR #LOG_DEBUG\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR #LOG_DEBUG\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("logging", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("logging", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("LOG_ERROR", options.LogLevel)
+	suite.assert.Equal("LOG_ERROR", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileCaCertFileError() {
@@ -396,10 +432,11 @@ func (suite *generateConfigTestSuite) TestConfigFileCaCertFileError() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\ncaCertFile caCertFile\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\ncaCertFile caCertFile\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.NotNil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.Error(err)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileDnsTypeError() {
@@ -409,10 +446,11 @@ func (suite *generateConfigTestSuite) TestConfigFileDnsTypeError() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\ndnsType dnsType\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\ndnsType dnsType\n")
+	suite.assert.NoError(err)
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.NotNil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.Error(err)
 }
 
 func (suite *generateConfigTestSuite) TestConfigCLILogLevel() {
@@ -422,19 +460,23 @@ func (suite *generateConfigTestSuite) TestConfigCLILogLevel() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n")
+	suite.assert.NoError(err)
+
 	logLevel := "--log-level=LOG_DEBUG"
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", logLevel, fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", logLevel, fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("logging", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("logging", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("LOG_DEBUG", options.LogLevel)
+	suite.assert.Equal("LOG_DEBUG", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamLogging() {
@@ -442,7 +484,8 @@ func (suite *generateConfigTestSuite) TestCLIParamLogging() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
 
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
@@ -450,17 +493,19 @@ func (suite *generateConfigTestSuite) TestCLIParamLogging() {
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	logLevel := "--log-level=LOG_DEBUG"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, logLevel, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, logLevel, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := LogOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("logging", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("logging", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("LOG_DEBUG", options.LogLevel)
+	suite.assert.Equal("LOG_DEBUG", options.LogLevel)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
@@ -469,7 +514,9 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -482,18 +529,20 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 	low := "--low-disk-threshold=40"
 	emptyDirCheck := "--empty-dir-check=false"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, maxEviction, high, low, emptyDirCheck, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, maxEviction, high, low, emptyDirCheck, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := file_cache.FileCacheOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("file_cache", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("file_cache", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("fileCachePath", options.TmpPath)
-	suite.assert.EqualValues(15, options.MaxSizeMB)
+	suite.assert.Equal("fileCachePath", options.TmpPath)
+	suite.assert.InEpsilon(15, options.MaxSizeMB, 1e-6)
 	suite.assert.EqualValues(60, options.Timeout)
 	suite.assert.EqualValues(7, options.MaxEviction)
 	suite.assert.EqualValues(60, options.HighThreshold)
@@ -506,7 +555,9 @@ func (suite *generateConfigTestSuite) TestAddStreamAndFileCache() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -516,16 +567,18 @@ func (suite *generateConfigTestSuite) TestAddStreamAndFileCache() {
 	timeout := "--file-cache-timeout-in-seconds=60"
 	useStreaming := "--streaming=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useStreaming, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useStreaming, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := mountOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.Unmarshal(&options)
-	suite.assert.EqualValues([]string{"libfuse", "stream", "azstorage"}, options.Components)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.Unmarshal(&options)
+	suite.assert.NoError(err)
+	suite.assert.Equal([]string{"libfuse", "stream", "azstorage"}, options.Components)
 
 }
 
@@ -534,7 +587,9 @@ func (suite *generateConfigTestSuite) TestComponentCorrectOrder() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -545,16 +600,18 @@ func (suite *generateConfigTestSuite) TestComponentCorrectOrder() {
 	useAttrCache := "--use-attr-cache"
 	streaming := "--streaming=false"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useAttrCache, streaming, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useAttrCache, streaming, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := mountOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.Unmarshal(&options)
-	suite.assert.EqualValues([]string{"libfuse", "file_cache", "attr_cache", "azstorage"}, options.Components)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.Unmarshal(&options)
+	suite.assert.NoError(err)
+	suite.assert.Equal([]string{"libfuse", "file_cache", "attr_cache", "azstorage"}, options.Components)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamFileCacheUploadModifiedOnlyError() {
@@ -562,15 +619,17 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCacheUploadModifiedOnlyErr
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	modifiedOnly := "--upload-modified-only=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamFileCachePollTimeoutError() {
@@ -578,15 +637,17 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCachePollTimeoutError() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	modifiedOnly := "--cache-poll-timeout-msec=60"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
@@ -594,7 +655,9 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -604,18 +667,20 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	blocksPerFile := "--max-blocks-per-file=10"
 	cacheSize := "--stream-cache-mb=40"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, streaming, blockSize, blocksPerFile, cacheSize, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, streaming, blockSize, blocksPerFile, cacheSize, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := block_cache.StreamOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("stream", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("stream", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues(1, int(options.CachedObjLimit))
-	suite.assert.EqualValues(50, int(options.BufferSize))
+	suite.assert.Equal(1, int(options.CachedObjLimit))
+	suite.assert.Equal(50, int(options.BufferSize))
 	suite.assert.EqualValues(5, options.BlockSize)
 }
 
@@ -624,7 +689,9 @@ func (suite *generateConfigTestSuite) TestCLIParamAttrCache() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -633,15 +700,17 @@ func (suite *generateConfigTestSuite) TestCLIParamAttrCache() {
 	cacheOnList := "--cache-on-list=true"
 	noSymlinks := "--no-symlinks=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, attrCache, cacheOnList, noSymlinks, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, attrCache, cacheOnList, noSymlinks, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := attr_cache.AttrCacheOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("attr_cache", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("attr_cache", &options)
+	suite.assert.NoError(err)
 
 	suite.assert.False(options.NoCacheOnList)
 	suite.assert.True(options.NoSymlinks)
@@ -652,7 +721,9 @@ func (suite *generateConfigTestSuite) TestCLIParamStorage() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -668,26 +739,28 @@ func (suite *generateConfigTestSuite) TestCLIParamStorage() {
 	httpProxy := "--http-proxy=httpProxy"
 	httpsProxy := "--https-proxy=httpsProxy"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, adls, https, container, concurrency, cancelListOnMount, maxRetry, maxRetryTimeout, retryDelayFactor, httpProxy, httpsProxy, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, adls, https, container, concurrency, cancelListOnMount, maxRetry, maxRetryTimeout, retryDelayFactor, httpProxy, httpsProxy, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
 	options := azstorage.AzStorageOptions{}
 
 	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("azstorage", &options)
+	err = config.ReadFromConfigFile(v2ConfigFile.Name())
+	suite.assert.NoError(err)
+	err = config.UnmarshalKey("azstorage", &options)
+	suite.assert.NoError(err)
 
-	suite.assert.EqualValues("adls", options.AccountType)
+	suite.assert.Equal("adls", options.AccountType)
 	suite.assert.True(options.UseHTTP)
-	suite.assert.EqualValues("myContainerName", options.Container)
+	suite.assert.Equal("myContainerName", options.Container)
 	suite.assert.EqualValues(3, options.MaxConcurrency)
 	suite.assert.EqualValues(60, options.CancelListForSeconds)
 	suite.assert.EqualValues(5, options.MaxRetries)
 	suite.assert.EqualValues(10, options.MaxTimeout)
 	suite.assert.EqualValues(8, options.BackoffTime)
-	suite.assert.EqualValues("httpProxy", options.HttpProxyAddress)
-	suite.assert.EqualValues("httpsProxy", options.HttpsProxyAddress)
+	suite.assert.Equal("httpProxy", options.HttpProxyAddress)
+	suite.assert.Equal("httpsProxy", options.HttpsProxyAddress)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageCaCertFileError() {
@@ -695,15 +768,17 @@ func (suite *generateConfigTestSuite) TestCLIParamStorageCaCertFileError() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	caCertFile := "--ca-cert-file=path"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, caCertFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, caCertFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageContentTypeError() {
@@ -711,15 +786,17 @@ func (suite *generateConfigTestSuite) TestCLIParamStorageContentTypeError() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	contentType := "--set-content-type=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, contentType, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, contentType, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageBackgroundDownloadError() {
@@ -727,15 +804,17 @@ func (suite *generateConfigTestSuite) TestCLIParamStorageBackgroundDownloadError
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	download := "--background-download=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageInvalidateOnSyncNoError() {
@@ -743,15 +822,17 @@ func (suite *generateConfigTestSuite) TestCLIParamStorageInvalidateOnSyncNoError
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	download := "--invalidate-on-sync=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamPreMountValidateNoError() {
@@ -759,15 +840,17 @@ func (suite *generateConfigTestSuite) TestCLIParamPreMountValidateNoError() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	download := "--pre-mount-validate=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.NoError(err)
 }
 
 // mountv1 failure test where a libfuse option is incorrect
@@ -776,7 +859,9 @@ func (suite *generateConfigTestSuite) TestInvalidLibfuseOption() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -786,8 +871,8 @@ func (suite *generateConfigTestSuite) TestInvalidLibfuseOption() {
 	op, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o default_permissions", "-o umask=755", "-o a=b=c")
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "invalid FUSE options")
+	suite.assert.Error(err)
+	suite.assert.Contains(op, "Invalid FUSE options")
 }
 
 // mountv1 failure test where a libfuse option is undefined
@@ -796,7 +881,9 @@ func (suite *generateConfigTestSuite) TestUndefinedLibfuseOption() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -806,8 +893,8 @@ func (suite *generateConfigTestSuite) TestUndefinedLibfuseOption() {
 	op, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o allow_root", "-o umask=755", "-o random_option")
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "invalid FUSE options")
+	suite.assert.Error(err)
+	suite.assert.Contains(op, "Invalid FUSE options")
 }
 
 // mountv1 failure test where umask value is invalid
@@ -816,7 +903,9 @@ func (suite *generateConfigTestSuite) TestInvalidUmaskValue() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -826,7 +915,7 @@ func (suite *generateConfigTestSuite) TestInvalidUmaskValue() {
 	op, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=abcd")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse umask")
 }
 
@@ -836,7 +925,9 @@ func (suite *generateConfigTestSuite) TestInvalidAttrTimeout() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -847,7 +938,7 @@ func (suite *generateConfigTestSuite) TestInvalidAttrTimeout() {
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other=false", "-o entry_timeout=120", "-o negative_timeout=120", "-o ro",
 		"-o allow_root", "-o default_permissions", "-o umask=755", "-o attr_timeout=abcd")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse attr_timeout")
 }
 
@@ -857,7 +948,9 @@ func (suite *generateConfigTestSuite) TestInvalidEntryTimeout() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -868,7 +961,7 @@ func (suite *generateConfigTestSuite) TestInvalidEntryTimeout() {
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other=false", "-o attr_timeout=120", "-o negative_timeout=120", "-o ro",
 		"-o allow_root", "-o default_permissions", "-o umask=755", "-o entry_timeout=abcd")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse entry_timeout")
 }
 
@@ -878,7 +971,9 @@ func (suite *generateConfigTestSuite) TestInvalidNegativeTimeout() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -889,7 +984,7 @@ func (suite *generateConfigTestSuite) TestInvalidNegativeTimeout() {
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other=false", "-o entry_timeout=120", "-o attr_timeout=120", "-o ro",
 		"-o allow_root", "-o default_permissions", "-o umask=755", "-o negative_timeout=abcd")
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "failed to parse negative_timeout")
 }
 
@@ -905,7 +1000,7 @@ func (suite *generateConfigTestSuite) TestEnvVarAccountName() {
 	defer os.Unsetenv("AZURE_STORAGE_ACCOUNT")
 
 	_, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 }
 
 func (suite *generateConfigTestSuite) TestEnvVarAccountNameError() {
@@ -918,7 +1013,7 @@ func (suite *generateConfigTestSuite) TestEnvVarAccountNameError() {
 	tempDir := randomString(6)
 
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile)
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "invalid account name")
 }
 
@@ -927,7 +1022,9 @@ func (suite *generateConfigTestSuite) TestInvalidAccountType() {
 	name := generateFileName()
 	v1ConfigFile, _ := os.CreateTemp("", name+".tmp.cfg")
 	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName\naccountType random")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\naccountType random")
+	suite.assert.NoError(err)
+
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -935,6 +1032,6 @@ func (suite *generateConfigTestSuite) TestInvalidAccountType() {
 	tempDir := randomString(6)
 
 	op, err := executeCommandC(rootCmd, "mountv1", tempDir, "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Contains(op, "invalid account type")
 }

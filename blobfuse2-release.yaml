@@ -91,7 +91,7 @@ stages:
               sudo apt-get update --fix-missing
               sudo apt-get install ruby-dev build-essential pkg-config cmake gcc g++ rpm $(fuselib) -y
               sudo gem install dotenv -v 2.8.1
-              sudo gem install fpm -V
+              sudo gem install fpm -v 1.16
             displayName: "Installing Dependencies"
 
           # get glibc version with which build is done
@@ -203,7 +203,7 @@ stages:
           - script: |
               sudo apt-get update --fix-missing
               sudo apt-get install ruby-dev build-essential pkg-config cmake gcc g++ rpm $(fuselib) -y
-              sudo gem install fpm -V
+              sudo gem install fpm -v 1.16
             displayName: "Installing Dependencies"
 
           # get glibc version with which build is done
@@ -604,9 +604,11 @@ stages:
                 ls -l $(Build.ArtifactStagingDirectory)
                 rm -rf ./blobfuse2*Debian-*.deb
               else
-                echo "Generating for Debian 11"
+                echo "Generating for Debian 11/12/13"
                 f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Ubuntu-20.04:Debian-11.0:' <<< "$f")
+                cp "$f" $(sed 's:Ubuntu-20.04:Debian-12.0:' <<< "$f")
+                cp "$f" $(sed 's:Ubuntu-20.04:Debian-13.0:' <<< "$f")
                 cp ./blobfuse2*Debian-*.deb $(Build.ArtifactStagingDirectory)
                 ls -l $(Build.ArtifactStagingDirectory)
                 rm -rf ./blobfuse2*Debian-*.deb

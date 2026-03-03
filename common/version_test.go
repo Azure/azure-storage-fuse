@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -49,23 +49,23 @@ func (vSuite *versionTestSuite) TestVersionEquality() {
 
 	v1, _ := ParseVersion("10.0.0")
 	v2, _ := ParseVersion("10.0.0")
-	assert.Equal(v1.compare(*v2), 0)
+	assert.Equal(0, v1.compare(*v2))
 
 	v1, _ = ParseVersion("10.0.0-preview.1")
 	v2, _ = ParseVersion("10.0.0-preview.1")
-	assert.Equal(v1.compare(*v2), 0)
+	assert.Equal(0, v1.compare(*v2))
 
 	v1, _ = ParseVersion("10.0.0-beta.5")
 	v2, _ = ParseVersion("10.0.0-beta.5")
-	assert.Equal(v1.compare(*v2), 0)
+	assert.Equal(0, v1.compare(*v2))
 
 	v1, _ = ParseVersion("10.0.0~preview.1")
 	v2, _ = ParseVersion("10.0.0~preview.1")
-	assert.Equal(v1.compare(*v2), 0)
+	assert.Equal(0, v1.compare(*v2))
 
 	v1, _ = ParseVersion("10.0.0~beta.5")
 	v2, _ = ParseVersion("10.0.0~beta.5")
-	assert.Equal(v1.compare(*v2), 0)
+	assert.Equal(0, v1.compare(*v2))
 }
 
 func (vSuite *versionTestSuite) TestVersionSuperiority() {
@@ -73,35 +73,35 @@ func (vSuite *versionTestSuite) TestVersionSuperiority() {
 
 	v1, _ := ParseVersion("11.3.0")
 	v2, _ := ParseVersion("10.8.3")
-	assert.Equal(v1.compare(*v2), 1)
+	assert.Equal(1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.6")
 	v2, _ = ParseVersion("15.3.5")
-	assert.Equal(v1.compare(*v2), 1)
+	assert.Equal(1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.6")
 	v2, _ = ParseVersion("15.5.5")
-	assert.Equal(v1.compare(*v2), 1)
+	assert.Equal(1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.5")
 	v2, _ = ParseVersion("15.5.5-preview.3")
-	assert.Equal(v1.compare(*v2), 1)
+	assert.Equal(1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.5-preview.6")
 	v2, _ = ParseVersion("15.5.5-preview.3")
-	assert.Equal(v1.compare(*v2), 1)
+	assert.Equal(1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.6")
 	v2, _ = ParseVersion("15.5.6~preview.3")
-	assert.Equal(v1.compare(*v2), 1)
+	assert.Equal(1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.6~preview.6")
 	v2, _ = ParseVersion("15.5.6~preview.3")
-	assert.Equal(v1.compare(*v2), 1)
+	assert.Equal(1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.7~preview.6")
 	v2, _ = ParseVersion("15.5.7-preview.3")
-	assert.Equal(v1.compare(*v2), 1)
+	assert.Equal(1, v1.compare(*v2))
 }
 
 func (vSuite *versionTestSuite) TestVersionInferiority() {
@@ -109,35 +109,35 @@ func (vSuite *versionTestSuite) TestVersionInferiority() {
 
 	v1, _ := ParseVersion("10.5.6")
 	v2, _ := ParseVersion("11.8.3")
-	assert.Equal(v1.compare(*v2), -1)
+	assert.Equal(-1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.3.6")
 	v2, _ = ParseVersion("15.5.5")
-	assert.Equal(v1.compare(*v2), -1)
+	assert.Equal(-1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.5")
 	v2, _ = ParseVersion("15.5.6")
-	assert.Equal(v1.compare(*v2), -1)
+	assert.Equal(-1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.5-preview.6")
 	v2, _ = ParseVersion("15.5.5")
-	assert.Equal(v1.compare(*v2), -1)
+	assert.Equal(-1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.5-preview.3")
 	v2, _ = ParseVersion("15.5.5-preview.6")
-	assert.Equal(v1.compare(*v2), -1)
+	assert.Equal(-1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.6~preview.6")
 	v2, _ = ParseVersion("15.5.6")
-	assert.Equal(v1.compare(*v2), -1)
+	assert.Equal(-1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.6~preview.3")
 	v2, _ = ParseVersion("15.5.6~preview.6")
-	assert.Equal(v1.compare(*v2), -1)
+	assert.Equal(-1, v1.compare(*v2))
 
 	v1, _ = ParseVersion("15.5.7-preview.3")
 	v2, _ = ParseVersion("15.5.7~preview.6")
-	assert.Equal(v1.compare(*v2), -1)
+	assert.Equal(-1, v1.compare(*v2))
 }
 
 func TestVersionTestSuite(t *testing.T) {

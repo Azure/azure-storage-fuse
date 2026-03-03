@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,9 +64,9 @@ func remountCheck(suite *mountSuite) {
 	var errb bytes.Buffer
 	mountCmd.Stderr = &errb
 	_, err := mountCmd.Output()
-	suite.NotEqual(nil, err)
+	suite.Error(err)
 	fmt.Println(errb.String())
-	suite.NotEqual(0, len(errb.String()))
+	suite.NotEmpty(errb.String())
 	suite.Contains(errb.String(), "directory is already mounted")
 }
 
@@ -75,7 +75,7 @@ func listBlobfuseMounts(suite *mountSuite) []byte {
 	mntListCmd := exec.Command(blobfuseBinary, "mount", "list")
 	cliOut, err := mntListCmd.Output()
 	fmt.Println(string(cliOut))
-	suite.Equal(nil, err)
+	suite.NoError(err)
 	return cliOut
 }
 
@@ -84,8 +84,8 @@ func blobfuseUnmount(suite *mountSuite, unmountOutput string) {
 	unmountCmd := exec.Command(blobfuseBinary, "unmount", "all")
 	cliOut, err := unmountCmd.Output()
 	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
-	suite.Equal(nil, err)
+	suite.NotEmpty(cliOut)
+	suite.NoError(err)
 	suite.Contains(string(cliOut), unmountOutput)
 
 	// wait after unmount
@@ -93,7 +93,7 @@ func blobfuseUnmount(suite *mountSuite, unmountOutput string) {
 
 	// validate unmount
 	cliOut = listBlobfuseMounts(suite)
-	suite.Equal(0, len(cliOut))
+	suite.Empty(cliOut)
 }
 
 // mount command test along with remount on the same path
@@ -102,15 +102,15 @@ func (suite *mountSuite) TestMountCmd() {
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile)
 	cliOut, err := mountCmd.Output()
 	fmt.Println(string(cliOut))
-	suite.Equal(0, len(cliOut))
-	suite.Equal(nil, err)
+	suite.Empty(cliOut)
+	suite.NoError(err)
 
 	// wait for mount
 	time.Sleep(10 * time.Second)
 
 	// validate mount
 	cliOut = listBlobfuseMounts(suite)
-	suite.NotEqual(0, len(cliOut))
+	suite.NotEmpty(cliOut)
 	suite.Contains(string(cliOut), mntDir)
 
 	remountCheck(suite)
@@ -126,14 +126,14 @@ func (suite *mountSuite) TestMountDirNotExists() {
 	var errb bytes.Buffer
 	mountCmd.Stderr = &errb
 	_, err := mountCmd.Output()
-	suite.NotEqual(nil, err)
+	suite.Error(err)
 	fmt.Println(errb.String())
-	suite.NotEqual(0, len(errb.String()))
+	suite.NotEmpty(errb.String())
 	suite.Contains(errb.String(), "mount directory does not exist")
 
 	// list blobfuse mounted directories
 	cliOut := listBlobfuseMounts(suite)
-	suite.Equal(0, len(cliOut))
+	suite.Empty(cliOut)
 
 	// unmount
 	blobfuseUnmount(suite, "Nothing to unmount")
@@ -147,14 +147,14 @@ func (suite *mountSuite) TestMountDirNotEmptyFailure() {
 	var errb bytes.Buffer
 	mountCmd.Stderr = &errb
 	_, err := mountCmd.Output()
-	suite.NotEqual(nil, err)
+	suite.Error(err)
 	fmt.Println(errb.String())
-	suite.NotEqual(0, len(errb.String()))
+	suite.NotEmpty(errb.String())
 	suite.Contains(errb.String(), "mount directory is not empty")
 
 	// list blobfuse mounted directories
 	cliOut := listBlobfuseMounts(suite)
-	suite.Equal(0, len(cliOut))
+	suite.Empty(cliOut)
 
 	os.RemoveAll(tempDir)
 
@@ -169,15 +169,15 @@ func (suite *mountSuite) TestMountDirNotEmptySuccess() {
 
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile, "-o", "nonempty")
 	cliOut, err := mountCmd.Output()
-	suite.Equal(0, len(cliOut))
-	suite.Equal(nil, err)
+	suite.Empty(cliOut)
+	suite.NoError(err)
 
 	// wait for mount
 	time.Sleep(10 * time.Second)
 
 	// validate mount
 	cliOut = listBlobfuseMounts(suite)
-	suite.NotEqual(0, len(cliOut))
+	suite.NotEmpty(cliOut)
 	suite.Contains(string(cliOut), mntDir)
 
 	remountCheck(suite)
@@ -194,14 +194,14 @@ func (suite *mountSuite) TestMountPathNotProvided() {
 	var errb bytes.Buffer
 	mountCmd.Stderr = &errb
 	_, err := mountCmd.Output()
-	suite.NotEqual(nil, err)
+	suite.Error(err)
 	fmt.Println(errb.String())
-	suite.NotEqual(0, len(errb.String()))
+	suite.NotEmpty(errb.String())
 	suite.Contains(errb.String(), "mount path not provided")
 
 	// list blobfuse mounted directories
 	cliOut := listBlobfuseMounts(suite)
-	suite.Equal(0, len(cliOut))
+	suite.Empty(cliOut)
 
 	// unmount
 	blobfuseUnmount(suite, "Nothing to unmount")
@@ -213,14 +213,14 @@ func (suite *mountSuite) TestConfigFileNotProvided() {
 	var errb bytes.Buffer
 	mountCmd.Stderr = &errb
 	_, err := mountCmd.Output()
-	suite.NotEqual(nil, err)
+	suite.Error(err)
 	fmt.Println(errb.String())
-	suite.NotEqual(0, len(errb.String()))
+	suite.NotEmpty(errb.String())
 	suite.Contains(errb.String(), "failed to initialize new pipeline")
 
 	// list blobfuse mounted directories
 	cliOut := listBlobfuseMounts(suite)
-	suite.Equal(0, len(cliOut))
+	suite.Empty(cliOut)
 
 	// unmount
 	blobfuseUnmount(suite, "Nothing to unmount")
@@ -229,7 +229,8 @@ func (suite *mountSuite) TestConfigFileNotProvided() {
 // mount failure test where config file is not provided and environment variables have incorrect credentials
 func (suite *mountSuite) TestEnvVarMountFailure() {
 	tempDir := filepath.Join(mntDir, "..", "tempdir")
-	os.Mkdir(tempDir, 0777)
+	err := os.Mkdir(tempDir, 0777)
+	suite.NoError(err)
 
 	// create environment variables
 	os.Setenv("AZURE_STORAGE_ACCOUNT", "myAccount")
@@ -239,11 +240,11 @@ func (suite *mountSuite) TestEnvVarMountFailure() {
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempDir, "--container-name=myContainer")
 	cliOut, err := mountCmd.Output()
 	fmt.Println(string(cliOut))
-	suite.NotEqual(nil, err)
+	suite.Error(err)
 
 	// list blobfuse mounted directories
 	cliOut = listBlobfuseMounts(suite)
-	suite.Equal(0, len(cliOut))
+	suite.Empty(cliOut)
 
 	// unmount
 	blobfuseUnmount(suite, "Nothing to unmount")
@@ -259,10 +260,11 @@ func (suite *mountSuite) TestEnvVarMountFailure() {
 func (suite *mountSuite) TestEnvVarMount() {
 	// read config file
 	configData, err := os.ReadFile(configFile)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	viper.SetConfigType("yaml")
-	viper.ReadConfig(bytes.NewBuffer(configData))
+	err = viper.ReadConfig(bytes.NewBuffer(configData))
+	suite.NoError(err)
 
 	// create environment variables
 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
@@ -276,15 +278,15 @@ func (suite *mountSuite) TestEnvVarMount() {
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempCachePath)
 	cliOut, err := mountCmd.Output()
 	fmt.Println(string(cliOut))
-	suite.Equal(0, len(cliOut))
-	suite.Equal(nil, err)
+	suite.Empty(cliOut)
+	suite.NoError(err)
 
 	// wait for mount
 	time.Sleep(10 * time.Second)
 
 	// list blobfuse mounted directories
 	cliOut = listBlobfuseMounts(suite)
-	suite.NotEqual(0, len(cliOut))
+	suite.NotEmpty(cliOut)
 	suite.Contains(string(cliOut), mntDir)
 
 	// unmount
@@ -293,31 +295,31 @@ func (suite *mountSuite) TestEnvVarMount() {
 	mountAllCmd := exec.Command(blobfuseBinary, "mount", "all", mntDir, "--tmp-path="+tempCachePath)
 	cliOut, err = mountAllCmd.Output()
 	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
-	suite.Equal(nil, err)
+	suite.NotEmpty(cliOut)
+	suite.NoError(err)
 
 	// wait for mount
 	time.Sleep(10 * time.Second)
 
 	// list blobfuse mounted directories
 	cliOut = listBlobfuseMounts(suite)
-	suite.NotEqual(0, len(cliOut))
+	suite.NotEmpty(cliOut)
 	suite.Contains(string(cliOut), mntDir)
 
 	// unmount
 	blobfuseUnmount(suite, mntDir)
 
 	err = os.RemoveAll(mntDir)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.RemoveAll(tempCachePath)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.Mkdir(mntDir, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	err = os.Mkdir(tempCachePath, 0777)
-	suite.Equal(nil, err)
+	suite.NoError(err)
 
 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
@@ -421,15 +423,15 @@ func mountAndValidate(suite *mountSuite, args ...string) {
 	mountCmd := exec.Command(blobfuseBinary, args...)
 	cliOut, err := mountCmd.Output()
 	fmt.Println(string(cliOut))
-	suite.Equal(0, len(cliOut))
-	suite.Equal(nil, err)
+	suite.Empty(cliOut)
+	suite.NoError(err)
 
 	// wait for mount
 	time.Sleep(10 * time.Second)
 
 	// validate mount
 	cliOut = listBlobfuseMounts(suite)
-	suite.NotEqual(0, len(cliOut))
+	suite.NotEmpty(cliOut)
 	suite.Contains(string(cliOut), mntDir)
 }
 
@@ -445,22 +447,23 @@ func (suite *mountSuite) TestWriteBackCacheAndIgnoreOpenFlags() {
 
 	// write to file in the local directory
 	buff := make([]byte, 200)
-	rand.Read(buff)
-	err := os.WriteFile(remoteFilePath, buff, 0777)
-	suite.Nil(err)
+	_, err := rand.Read(buff)
+	suite.NoError(err)
+	err = os.WriteFile(remoteFilePath, buff, 0777)
+	suite.NoError(err)
 
 	// unmount
 	blobfuseUnmount(suite, mntDir)
 
 	mountAndValidate(suite, "--disable-writeback-cache=false", "--ignore-open-flags=false")
 	f, err := os.OpenFile(remoteFilePath, os.O_APPEND, 0777)
-	suite.NotNil(err)
+	suite.Error(err)
 	suite.Nil(f)
 	blobfuseUnmount(suite, mntDir)
 
 	mountAndValidate(suite, "--disable-writeback-cache=true", "--ignore-open-flags=false")
 	f, err = os.OpenFile(remoteFilePath, os.O_APPEND, 0777)
-	suite.Nil(err)
+	suite.NoError(err)
 	suite.NotNil(f)
 	f.Close()
 	time.Sleep(2 * time.Second)
@@ -468,7 +471,7 @@ func (suite *mountSuite) TestWriteBackCacheAndIgnoreOpenFlags() {
 
 	mountAndValidate(suite, "--disable-writeback-cache=false", "--ignore-open-flags=true")
 	f, err = os.OpenFile(remoteFilePath, os.O_APPEND, 0777)
-	suite.Nil(err)
+	suite.NoError(err)
 	suite.NotNil(f)
 	f.Close()
 	time.Sleep(2 * time.Second)
@@ -476,13 +479,13 @@ func (suite *mountSuite) TestWriteBackCacheAndIgnoreOpenFlags() {
 
 	mountAndValidate(suite)
 	f, err = os.OpenFile(remoteFilePath, os.O_APPEND, 0777)
-	suite.Nil(err)
+	suite.NoError(err)
 	suite.NotNil(f)
 	f.Close()
 	time.Sleep(2 * time.Second)
 
 	err = os.RemoveAll(remoteFilePath)
-	suite.Nil(err)
+	suite.NoError(err)
 
 	blobfuseUnmount(suite, mntDir)
 }
@@ -508,7 +511,10 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		fmt.Println("Could not cleanup mount directory before testing")
 	}
-	os.Mkdir(mntDir, 0777)
+	err = os.Mkdir(mntDir, 0777)
+	if err != nil {
+		fmt.Println("Could not create mount directory for testing")
+	}
 
 	m.Run()
 

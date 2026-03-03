@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -53,13 +53,12 @@ var opts configGenOptions
 var templatesDir = "testdata/config/"
 
 var generateTestConfig = &cobra.Command{
-	Use:               "gen-test-config",
-	Short:             "Generate config file for testing given an output path.",
-	Long:              "Generate config file for testing given an output path.",
-	SuggestFor:        []string{"conv test config", "convert test config"},
-	Hidden:            true,
-	Args:              cobra.ExactArgs(0),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "gen-test-config",
+	Short:      "Generate config file for testing given an output path.",
+	Long:       "Generate config file for testing given an output path.",
+	SuggestFor: []string{"conv test config", "convert test config"},
+	Hidden:     true,
+	Args:       cobra.ExactArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var templateConfig []byte
 		var err error

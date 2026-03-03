@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -67,6 +67,7 @@ type LogOptions struct {
 	LogFilePath    string `config:"file-path" yaml:"file-path,omitempty"`
 	MaxLogFileSize uint64 `config:"max-file-size-mb" yaml:"max-file-size-mb,omitempty"`
 	LogFileCount   uint64 `config:"file-count" yaml:"file-count,omitempty"`
+	LogGoroutineID bool   `config:"goroutine-id" yaml:"goroutine-id,omitempty"`
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
 }
 
@@ -75,22 +76,21 @@ type mountOptions struct {
 	inputMountPath string
 	ConfigFile     string
 
-	Logging            LogOptions     `config:"logging"`
-	Components         []string       `config:"components"`
-	Foreground         bool           `config:"foreground"`
-	NonEmpty           bool           `config:"nonempty"`
-	DefaultWorkingDir  string         `config:"default-working-dir"`
-	CPUProfile         string         `config:"cpu-profile"`
-	MemProfile         string         `config:"mem-profile"`
-	PassPhrase         string         `config:"passphrase"`
-	SecureConfig       bool           `config:"secure-config"`
-	DynamicProfiler    bool           `config:"dynamic-profile"`
-	ProfilerPort       int            `config:"profiler-port"`
-	ProfilerIP         string         `config:"profiler-ip"`
-	MonitorOpt         monitorOptions `config:"health_monitor"`
-	WaitForMount       time.Duration  `config:"wait-for-mount"`
-	LazyWrite          bool           `config:"lazy-write"`
-	disableKernelCache bool           `config:"disable-kernel-cache"`
+	Logging           LogOptions     `config:"logging"`
+	Components        []string       `config:"components"`
+	Foreground        bool           `config:"foreground"`
+	NonEmpty          bool           `config:"nonempty"`
+	DefaultWorkingDir string         `config:"default-working-dir"`
+	CPUProfile        string         `config:"cpu-profile"`
+	MemProfile        string         `config:"mem-profile"`
+	PassPhrase        string         `config:"passphrase"`
+	SecureConfig      bool           `config:"secure-config"`
+	DynamicProfiler   bool           `config:"dynamic-profile"`
+	ProfilerPort      int            `config:"profiler-port"`
+	ProfilerIP        string         `config:"profiler-ip"`
+	MonitorOpt        monitorOptions `config:"health_monitor"`
+	WaitForMount      time.Duration  `config:"wait-for-mount"`
+	LazyWrite         bool           `config:"lazy-write"`
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
@@ -247,12 +247,11 @@ func parseConfig() error {
 }
 
 var mountCmd = &cobra.Command{
-	Use:               "mount [path]",
-	Short:             "Mounts the azure container as a filesystem",
-	Long:              "Mounts the azure container as a filesystem",
-	SuggestFor:        []string{"mnt", "mout"},
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "mount [path]",
+	Short:      "Mounts the azure container as a filesystem",
+	Long:       "Mounts the azure container as a filesystem",
+	SuggestFor: []string{"mnt", "mout"},
+	Args:       cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])
@@ -419,17 +418,33 @@ var mountCmd = &cobra.Command{
 			return fmt.Errorf("invalid log level [%s]", err.Error())
 		}
 
-		err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
-			FilePath:    options.Logging.LogFilePath,
-			MaxFileSize: options.Logging.MaxLogFileSize,
-			FileCount:   options.Logging.LogFileCount,
-			Level:       logLevel,
-			TimeTracker: options.Logging.TimeTracker,
-		})
+		// If goroutine-id is not set in config file, then set it based on log level.
+		// For LOG_DEBUG level, enable goroutine-id by default.
+		if !config.IsSet("logging.goroutine-id") {
+			if logLevel >= common.ELogLevel.LOG_DEBUG() {
+				options.Logging.LogGoroutineID = true
+			} else {
+				options.Logging.LogGoroutineID = false
+			}
+		}
 
+		err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
+			FilePath:       options.Logging.LogFilePath,
+			MaxFileSize:    options.Logging.MaxLogFileSize,
+			FileCount:      options.Logging.LogFileCount,
+			Level:          logLevel,
+			TimeTracker:    options.Logging.TimeTracker,
+			LogGoroutineID: options.Logging.LogGoroutineID,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 		}
+
+		// It's best to destroy the logger before we return to the caller, as caller may abruptly exit on error and we
+		// might lose some logs in the channel which are not yet flushed to the file in case of not destroying the logger
+		defer func() {
+			_ = log.Destroy()
+		}()
 
 		if !disableVersionCheck {
 			err := VersionCheck()
@@ -462,6 +477,7 @@ var mountCmd = &cobra.Command{
 		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
 		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
+		log.Crit("Log options: %+v", options.Logging)
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
 
 		if directIO {
@@ -487,22 +503,25 @@ var mountCmd = &cobra.Command{
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)
-			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
+			return fmt.Errorf("failed to initialize new pipeline [%s]", err.Error())
 		}
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
-			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
+			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
+			// Save the stack trace of the mount process in case of any panic
 			pid := os.Getpid()
-			fname := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
+			traceFile := fmt.Sprintf("%s.%d.trace", strings.ReplaceAll(options.MountPath, "/", "_"), pid)
+			// we link this file to stderr of child process in daemon mode
+			traceFilePath := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
 
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       022,
-				LogFileName: fname, // this will redirect stderr of child to given file
+				LogFileName: traceFilePath, // this will redirect stderr of child to given file
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
@@ -529,22 +548,42 @@ var mountCmd = &cobra.Command{
 				rmErr := os.Remove(pidFileName)
 				if rmErr != nil {
 					log.Err("mount : auto cleanup failed [%v]", rmErr.Error())
-					return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
+					return fmt.Errorf("failed to daemonize application [%s]", err.Error())
 				}
 				goto retry
 			}
 
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil { // execute in child only
+
+				// defer the removal of this temp file. This file should only be removed when the mountpoint is
+				// gracefully unmounted. In case of any panic caused by go runtime/ by our application. This file
+				// would have the essential stack trace to debug the issue.
+				ppid := os.Getppid()
+				traceFile = fmt.Sprintf("%s.%d.trace", strings.ReplaceAll(options.MountPath, "/", "_"), ppid)
+				// we link this file to stderr of child process in daemon mode
+				traceFilePath = filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
+
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
 
 				// In case of failure stderr will have the error emitted by child and parent will read
 				// those logs from the file set in daemon context
-				return runPipeline(pipeline, ctx)
+				err = runPipeline(pipeline, ctx)
+
+				defer func() {
+					// if there is any error while initializing the components, we shouldn't delete this temp file.
+					// as this file is used by the parent to get the errors from it's child.
+					if err == nil {
+						rmErr := os.Remove(traceFilePath)
+						if rmErr != nil {
+							log.Err("mount : Failed to delete temp file: %s[%v]", traceFilePath, err)
+						}
+					}
+				}()
+
 			} else { // execute in parent only
-				defer os.Remove(fname)
 
 				childDone := make(chan struct{})
 
@@ -561,16 +600,23 @@ var mountCmd = &cobra.Command{
 					buff, err := os.ReadFile(dmnCtx.LogFileName)
 					if err != nil {
 						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
-						return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
+						err = fmt.Errorf("failed to mount, please check logs [%s]", err.Error())
 					} else {
-						return Destroy(string(buff))
+						err = fmt.Errorf("%s", string(buff))
 					}
+
+					// Safe to delete the temp file.
+					rmErr := os.Remove(traceFilePath)
+					if rmErr != nil {
+						log.Err("mount : Failed to delete temp file: %s[%v]", traceFilePath, err)
+					}
+
+					return errors.Join(err, rmErr)
 
 				case <-time.After(options.WaitForMount):
 					log.Info("mount: Child [%v : %s] status check timeout", child.Pid, options.MountPath)
 				}
 
-				_ = log.Destroy()
 			}
 		} else {
 			if options.CPUProfile != "" {
@@ -659,16 +705,15 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 	err := pipeline.Start(ctx)
 	if err != nil {
 		log.Err("mount: error unable to start pipeline [%s]", err.Error())
-		return Destroy(fmt.Sprintf("unable to start pipeline [%s]", err.Error()))
+		return fmt.Errorf("unable to start pipeline [%s]", err.Error())
 	}
 
 	err = pipeline.Stop()
 	if err != nil {
 		log.Err("mount: error unable to stop pipeline [%s]", err.Error())
-		return Destroy(fmt.Sprintf("unable to stop pipeline [%s]", err.Error()))
+		return fmt.Errorf("unable to stop pipeline [%s]", err.Error())
 	}
 
-	_ = log.Destroy()
 	return nil
 }
 
@@ -829,14 +874,19 @@ func init() {
 	config.BindPFlag("logging.file-path", mountCmd.PersistentFlags().Lookup("log-file-path"))
 	_ = mountCmd.MarkPersistentFlagDirname("log-file-path")
 
+	mountCmd.PersistentFlags().Bool("log-goroutine-id",
+		false, "Enable logging of goroutine IDs. Default is true for LOG_DEBUG level, false otherwise.")
+	config.BindPFlag("logging.goroutine-id", mountCmd.PersistentFlags().Lookup("log-goroutine-id"))
+
 	mountCmd.PersistentFlags().Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
 	config.BindPFlag("foreground", mountCmd.PersistentFlags().Lookup("foreground"))
 
 	mountCmd.PersistentFlags().Bool("read-only", false, "Mount the system in read only mode. Default value false.")
 	config.BindPFlag("read-only", mountCmd.PersistentFlags().Lookup("read-only"))
 
-	mountCmd.PersistentFlags().Bool("lazy-write", false, "Async write to storage container after file handle is closed.")
-	config.BindPFlag("lazy-write", mountCmd.PersistentFlags().Lookup("lazy-write"))
+	mountCmd.Flags().Bool("lazy-write", false, "Async write to storage container after file handle is closed.")
+	config.BindPFlag("lazy-write", mountCmd.Flags().Lookup("lazy-write"))
+	mountCmd.Flags().Lookup("lazy-write").Hidden = true
 
 	mountCmd.PersistentFlags().String("default-working-dir", "", "Default working directory for storing log files and other blobfuse2 information")
 	mountCmd.PersistentFlags().Lookup("default-working-dir").Hidden = true
@@ -880,13 +930,4 @@ func init() {
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
 	config.AddConfigChangeEventListener(config.ConfigChangeEventHandlerFunc(OnConfigChange))
-}
-
-func Destroy(message string) error {
-	_ = log.Destroy()
-	if message != "" {
-		return fmt.Errorf("%s", message)
-	}
-
-	return nil
 }

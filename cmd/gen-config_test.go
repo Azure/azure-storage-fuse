@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -63,19 +63,19 @@ func (suite *genConfig) getDefaultLogLocation() string {
 func (suite *genConfig) TestNoTempPath() {
 	defer suite.cleanupTest()
 
-	_, err := executeCommandC(rootCmd, "gen-config")
-	suite.assert.NotNil(err)
+	_, err := executeCommandC(rootCmd, "gen-config", "--o", "./blobfuse2.yaml")
+	suite.assert.Error(err)
 }
 
 func (suite *genConfig) TestFileCacheConfigGen() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--tmp-path=%s", tempDir))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	logFilePath := suite.getDefaultLogLocation()
 
@@ -84,7 +84,7 @@ func (suite *genConfig) TestFileCacheConfigGen() {
 
 	//check if the generated file is not empty
 	file, err := os.ReadFile(logFilePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotEmpty(file)
 
 	//check if the generated file has the correct component
@@ -98,11 +98,11 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache", fmt.Sprintf("--tmp-path=%s", tempDir))
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	logFilePath := suite.getDefaultLogLocation()
 
@@ -111,7 +111,7 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 
 	//check if the generated file is not empty
 	file, err := os.ReadFile(logFilePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotEmpty(file)
 
 	//check if the generated file has the correct component
@@ -126,11 +126,11 @@ func (suite *genConfig) TestBlockCacheConfigGen1() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	logFilePath := suite.getDefaultLogLocation()
 
@@ -139,7 +139,7 @@ func (suite *genConfig) TestBlockCacheConfigGen1() {
 
 	//check if the generated file is not empty
 	file, err := os.ReadFile(logFilePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotEmpty(file)
 
 	//check if the generated file has the correct component
@@ -155,14 +155,14 @@ func (suite *genConfig) TestDirectIOConfigGen() {
 	defer suite.cleanupTest()
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache", "--direct-io")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	logFilePath := suite.getDefaultLogLocation()
 	suite.assert.FileExists(logFilePath)
 
 	//check if the generated file is not empty
 	file, err := os.ReadFile(logFilePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotEmpty(file)
 
 	//check if the generated file has the correct direct io flag
@@ -174,11 +174,11 @@ func (suite *genConfig) TestOutputFile() {
 	defer suite.cleanupTest()
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache", "--direct-io", "--o", "1.yaml")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	//check if the generated file is not empty
 	file, err := os.ReadFile("1.yaml")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotEmpty(file)
 
 	//check if the generated file has the correct direct io flag
@@ -191,7 +191,7 @@ func (suite *genConfig) TestConsoleOutput() {
 	defer suite.cleanupTest()
 
 	op, err := executeCommandC(rootCmd, "gen-config", "--block-cache", "--direct-io", "--o", "console")
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 
 	//check if the generated file has the correct direct io flag
 	suite.assert.Empty(op)

@@ -1,5 +1,4 @@
 //go:build fuse2
-// +build fuse2
 
 /*
     _____           _____   _____   ____          ______  _____  ------
@@ -12,7 +11,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -77,10 +76,10 @@ var defaultSize = int64(0)
 var defaultMode = 0777
 
 func newTestLibfuse(next internal.Component, configuration string) *Libfuse {
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	libfuse := NewLibfuseComponent()
 	libfuse.SetNextComponent(next)
-	libfuse.Configure(true)
+	_ = libfuse.Configure(true)
 
 	return libfuse.(*Libfuse)
 }
@@ -130,10 +129,10 @@ func testStatFs(suite *libfuseTestSuite) {
 	buf := &C.statvfs_t{}
 	libfuse_statfs(path, buf)
 
-	suite.assert.Equal(int(buf.f_frsize), 1)
-	suite.assert.Equal(int(buf.f_blocks), 2)
-	suite.assert.Equal(int(buf.f_bavail), 3)
-	suite.assert.Equal(int(buf.f_bfree), 4)
+	suite.assert.Equal(1, int(buf.f_frsize))
+	suite.assert.Equal(2, int(buf.f_blocks))
+	suite.assert.Equal(3, int(buf.f_bavail))
+	suite.assert.Equal(4, int(buf.f_bfree))
 }
 
 func testMkDirError(suite *libfuseTestSuite) {
@@ -395,10 +394,10 @@ func testTruncate(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
-	options := internal.TruncateFileOptions{Name: name, Size: size}
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
-	err := libfuse2_truncate(path, C.long(size))
+	err := libfuse2_truncate(path, C.off_t(size))
 	suite.assert.Equal(C.int(0), err)
 }
 
@@ -408,10 +407,10 @@ func testTruncateError(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
-	options := internal.TruncateFileOptions{Name: name, Size: size}
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
-	err := libfuse2_truncate(path, C.long(size))
+	err := libfuse2_truncate(path, C.off_t(size))
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 

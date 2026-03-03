@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -278,12 +278,12 @@ func (lfs *LoopbackFS) OpenFile(options internal.OpenFileOptions) (*handlemap.Ha
 	return handle, nil
 }
 
-func (lfs *LoopbackFS) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("LoopbackFS::CloseFile : name=%s", options.Handle.Path)
+func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
+	log.Trace("LoopbackFS::ReleaseFile : name=%s", options.Handle.Path)
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
-		log.Err("LoopbackFS::CloseFile : error [file not available]")
+		log.Err("LoopbackFS::ReleaseFile : error [file not available]")
 		return syscall.EBADF
 	}
 
@@ -386,7 +386,7 @@ func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error
 func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("LoopbackFS::TruncateFile : name=%s", options.Name)
 	fsPath := filepath.Join(lfs.path, options.Name)
-	return os.Truncate(fsPath, options.Size)
+	return os.Truncate(fsPath, options.NewSize)
 }
 
 func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
@@ -397,16 +397,6 @@ func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
 		return os.ErrClosed
 	}
 
-	return nil
-}
-
-func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
-	log.Trace("LoopbackFS::ReleaseFile : name=%s", options.Handle.Path)
-	f := options.Handle.GetFileObject()
-	if f == nil {
-		log.Err("LoopbackFS::ReleaseFile : error [file not open]")
-		return fmt.Errorf("LoopbackFS::ReleaseFile : %s file not open", options.Handle.Path)
-	}
 	return nil
 }
 

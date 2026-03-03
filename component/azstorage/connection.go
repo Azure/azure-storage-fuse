@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -85,6 +85,10 @@ type AzStorageConfig struct {
 
 	// Blob filters
 	filter *blobfilter.BlobFilter
+
+	// Rate limiting
+	capMbpsRead int64
+	capIOps     int64
 }
 
 type AzStorageConnection struct {
@@ -120,8 +124,8 @@ type AzConnection interface {
 	List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error)
 
 	ReadToFile(name string, offset int64, count int64, fi *os.File) error
-	ReadBuffer(name string, offset int64, len int64) ([]byte, error)
-	ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error
+	ReadBuffer(name string, offset int64, length int64) ([]byte, error)
+	ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
 	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
@@ -130,7 +134,7 @@ type AzConnection interface {
 
 	ChangeMod(string, os.FileMode) error
 	ChangeOwner(string, int, int) error
-	TruncateFile(string, int64) error
+	TruncateFile(options internal.TruncateFileOptions) error
 	StageAndCommit(name string, bol *common.BlockOffsetList) error
 
 	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)

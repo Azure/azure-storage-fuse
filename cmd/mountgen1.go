@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -66,13 +66,12 @@ func resetGenOneOptions() {
 }
 
 var gen1Cmd = &cobra.Command{
-	Use:               "mountgen1",
-	Short:             "Mounts Azure Storage ADLS Gen 1 account using SPN auth",
-	Long:              "Mounts Azure Storage ADLS Gen 1 account using SPN auth",
-	SuggestFor:        []string{"mntgen1", "gen1 mount"},
-	Args:              cobra.ExactArgs(1),
-	Hidden:            true,
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "mountgen1",
+	Short:      "Mounts Azure Storage ADLS Gen 1 account using SPN auth",
+	Long:       "Mounts Azure Storage ADLS Gen 1 account using SPN auth",
+	SuggestFor: []string{"mntgen1", "gen1 mount"},
+	Args:       cobra.ExactArgs(1),
+	Hidden:     true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resetGenOneOptions()
 		options.MountPath = args[0]

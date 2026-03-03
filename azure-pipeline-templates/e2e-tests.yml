@@ -72,7 +72,7 @@ steps:
     condition: ${{ parameters.verbose_log }}
     
   - script: |
-      tail -n 200 blobfuse2-logs.txt
+      tail -n 5000 blobfuse2-logs.txt
     displayName: 'View Logs'
     condition: failed()
 

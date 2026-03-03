@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -65,7 +65,7 @@ type entryCacheTestSuite struct {
 
 func newLoopbackFS() internal.Component {
 	loopback := loopback.NewLoopbackFSComponent()
-	loopback.Configure(true)
+	_ = loopback.Configure(true)
 
 	return loopback
 }
@@ -106,11 +106,13 @@ func (suite *entryCacheTestSuite) SetupTest() {
 func (suite *entryCacheTestSuite) setupTestHelper(configuration string) {
 	suite.assert = assert.New(suite.T())
 
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	err := config.ReadConfigFromReader(strings.NewReader(configuration))
+	suite.assert.NoError(err)
 	suite.loopback = newLoopbackFS()
 	suite.entryCache = newEntryCache(suite.loopback)
-	suite.loopback.Start(context.Background())
-	err := suite.entryCache.Start(context.Background())
+	err = suite.loopback.Start(context.Background())
+	suite.assert.NoError(err)
+	err = suite.entryCache.Start(context.Background())
 	if err != nil {
 		panic(fmt.Sprintf("Unable to start file cache [%s]", err.Error()))
 	}
@@ -118,8 +120,9 @@ func (suite *entryCacheTestSuite) setupTestHelper(configuration string) {
 }
 
 func (suite *entryCacheTestSuite) cleanupTest() {
-	suite.loopback.Stop()
-	err := suite.entryCache.Stop()
+	err := suite.loopback.Stop()
+	suite.assert.NoError(err)
+	err = suite.entryCache.Stop()
 	if err != nil {
 		panic(fmt.Sprintf("Unable to stop file cache [%s]", err.Error()))
 	}
@@ -132,17 +135,17 @@ func (suite *entryCacheTestSuite) TestEmpty() {
 	defer suite.cleanupTest()
 
 	objs, token, err := suite.entryCache.StreamDir(internal.StreamDirOptions{Name: "", Token: ""})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(objs)
-	suite.assert.Equal(token, "")
+	suite.assert.Empty(token)
 
 	_, found := suite.entryCache.pathMap.Load("##")
 	suite.assert.False(found)
 
 	objs, token, err = suite.entryCache.StreamDir(internal.StreamDirOptions{Name: "ABCD", Token: ""})
-	suite.assert.NotNil(err)
+	suite.assert.Error(err)
 	suite.assert.Nil(objs)
-	suite.assert.Equal(token, "")
+	suite.assert.Empty(token)
 }
 
 func (suite *entryCacheTestSuite) TestWithEntry() {
@@ -151,18 +154,18 @@ func (suite *entryCacheTestSuite) TestWithEntry() {
 	// Create a file
 	filePath := filepath.Join(suite.fake_storage_path, "testfile1")
 	h, err := os.Create(filePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
 	h.Close()
 
 	objs, token, err := suite.entryCache.StreamDir(internal.StreamDirOptions{Name: "", Token: ""})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(objs)
-	suite.assert.Equal(token, "")
+	suite.assert.Empty(token)
 
 	cachedObjs, found := suite.entryCache.pathMap.Load("##")
 	suite.assert.True(found)
-	suite.assert.Equal(len(objs), 1)
+	suite.assert.Len(objs, 1)
 
 	suite.assert.Equal(objs, cachedObjs.(pathCacheItem).children)
 }
@@ -173,42 +176,42 @@ func (suite *entryCacheTestSuite) TestCachedEntry() {
 	// Create a file
 	filePath := filepath.Join(suite.fake_storage_path, "testfile1")
 	h, err := os.Create(filePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
 	h.Close()
 
 	objs, token, err := suite.entryCache.StreamDir(internal.StreamDirOptions{Name: "", Token: ""})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(objs)
-	suite.assert.Equal(token, "")
+	suite.assert.Empty(token)
 
 	cachedObjs, found := suite.entryCache.pathMap.Load("##")
 	suite.assert.True(found)
-	suite.assert.Equal(len(objs), 1)
+	suite.assert.Len(objs, 1)
 
 	suite.assert.Equal(objs, cachedObjs.(pathCacheItem).children)
 
 	filePath = filepath.Join(suite.fake_storage_path, "testfile2")
 	h, err = os.Create(filePath)
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
 	h.Close()
 
 	objs, token, err = suite.entryCache.StreamDir(internal.StreamDirOptions{Name: "", Token: ""})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(objs)
-	suite.assert.Equal(token, "")
-	suite.assert.Equal(len(objs), 1)
+	suite.assert.Empty(token)
+	suite.assert.Len(objs, 1)
 
 	time.Sleep(40 * time.Second)
 	_, found = suite.entryCache.pathMap.Load("##")
 	suite.assert.False(found)
 
 	objs, token, err = suite.entryCache.StreamDir(internal.StreamDirOptions{Name: "", Token: ""})
-	suite.assert.Nil(err)
+	suite.assert.NoError(err)
 	suite.assert.NotNil(objs)
-	suite.assert.Equal(token, "")
-	suite.assert.Equal(len(objs), 2)
+	suite.assert.Empty(token)
+	suite.assert.Len(objs, 2)
 
 }
 

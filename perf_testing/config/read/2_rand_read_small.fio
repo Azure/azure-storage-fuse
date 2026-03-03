@@ -1,14 +1,14 @@
 [global]
 name=blobfuse_benchmark
-bs=256k
+bs=1M
 runtime=30s
 time_based
-filename=read_fio.data
+filename=read_small_fio.data
 group_reporting
 
-[random_read_4_threads]
-size=100G
+[random_read_small_file]
+size=5m
 rw=randread
 ioengine=sync
 fallocate=none
-numjobs=4
+direct=1

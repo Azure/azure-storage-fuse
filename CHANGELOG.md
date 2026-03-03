@@ -1,7 +1,29 @@
-## 2.5.1 (Unreleased)
+## 2.5.3 (Unreleased)
+**Features**
+- Add rate limit functionality for ingress bandwidth (bytes downloaded per second) and operations per second ([PR #2093](https://github.com/Azure/azure-storage-fuse/pull/2093))
+
 **Bug Fixes**
-- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call.
-- Mount will fail if FNS account is mounted as HNS account.
+- Fix panic while reading an archived blob using file-cache ([PR #2127](https://github.com/Azure/azure-storage-fuse/pull/2127)]
+- Ensure logger is properly deinitialized on mount failures ([PR #2125](https://github.com/Azure/azure-storage-fuse/pull/2125)]
+
+## 2.5.2 (2026-01-19)
+**Features**
+- Add Build Support for arm 32bit.([PR #2068](https://github.com/Azure/azure-storage-fuse/pull/2068))
+- Added Debian 13 (trixie) support for package installation.([#2064](https://github.com/Azure/azure-storage-fuse/issues/2064))
+- Added RHEL 10.0 package distribution support for x86_64 and aarch64 architectures. ([PR #2066](https://github.com/Azure/azure-storage-fuse/pull/2066))
+
+**Bug Fixes**
+- Print error to the StdErr when incorrect command line options are passed, Removed custom cobra fork dependency. ([PR #2079](https://github.com/Azure/azure-storage-fuse/pull/2079))
+- Change the --hard-limit flag in file_cache to false by default, In 2.5.1 this caused a regression after converting this flag to true by default. ([PR #2086](https://github.com/Azure/azure-storage-fuse/pull/2086))
+
+## 2.5.1 (2025-10-15)
+**Bug Fixes**
+- Fail file open operation if the file being downloaded by file-cache can not fit in available disk space (either configured by user or computed implicitly by blobfuse). User application will receive ENOSPC (no space left on device) in response to file open call. ([PR #1870](https://github.com/Azure/azure-storage-fuse/pull/1870))
+- Mount will fail if FNS account is mounted as HNS account. ([PR #1925](https://github.com/Azure/azure-storage-fuse/pull/1925))
+- Redirect Stack trace to log file (WORK_DIR/mount_path.pid.trace) instead of console in case of panic for better debuggability. ([PR #1939](https://github.com/Azure/azure-storage-fuse/pull/1939))
+- Truncating the file in file_cache resulting in OOM panic by go-runtime in some scenarios. ([PR #2003](https://github.com/Azure/azure-storage-fuse/pull/2003))
+- Open file error(No BlockList error) in block_cache when file is truncated before to less than 256MiB. ([PR #2003](https://github.com/Azure/azure-storage-fuse/pull/2003)) ([GH Issue #1951](https://github.com/Azure/azure-storage-fuse/issues/1951))
+- Prevent reusing the same block ID in truncate operation which could lead to issues. ([PR #2003](https://github.com/Azure/azure-storage-fuse/pull/2003))
 
 ## 2.5.0 (2025-07-17)
 **Bug Fixes**

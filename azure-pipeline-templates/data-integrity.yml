@@ -168,7 +168,12 @@ steps:
     condition: failed()
 
   - script: |
-      tail -n 200 blobfuse2-logs.txt
+      tail -n 5000 blobfuse2-logs.txt
     displayName: 'View Logs'
+    condition: failed()
+
+  - script: |
+      cat $(WORK_DIR)/*.trace
+    displayName: 'View stack trace'
     condition: failed()
 
