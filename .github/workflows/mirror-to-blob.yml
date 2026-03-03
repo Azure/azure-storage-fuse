@@ -14,7 +14,8 @@ permissions:
 jobs:
   mirror:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 180   # ✅ 3 hours
+    
     env:
       AZURE_STORAGE_ACCOUNT: blobfusemcpserver
 

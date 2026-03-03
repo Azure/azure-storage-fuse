@@ -24,7 +24,6 @@ from urllib.parse import urlencode
 
 import requests
 
-
 OWNER = os.getenv("OWNER", "Azure")
 REPO = os.getenv("REPO", "azure-storage-fuse")
 BASE = "https://api.github.com"
@@ -120,7 +119,9 @@ def export():
     if since:
         params["since"] = since
 
+    print("Fetching issues from:", issues_url, params)
     threads = list(_paginate(issues_url, params))
+    print("Threads fetched:", len(threads))
 
     threads_out = []
     issue_pr_comments_out = []
@@ -130,7 +131,8 @@ def export():
     for it in threads:
         number = it["number"]
         is_pr = "pull_request" in it
-
+        print("Fetching id: ", number, " PR: ", is_pr)
+        
         labels = []
         if isinstance(it.get("labels"), list):
             labels = [l.get("name") for l in it.get("labels", []) if isinstance(l, dict) and l.get("name")]
