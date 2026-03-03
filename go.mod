@@ -2,7 +2,7 @@ module github.com/Azure/azure-storage-fuse/v2
 
 go 1.25
 
-toolchain go1.25.6
+toolchain go1.25.7
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0

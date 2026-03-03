@@ -33,3 +33,7 @@ _tmp_*.trace
 *~
 \#*\#
 .\#*
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
