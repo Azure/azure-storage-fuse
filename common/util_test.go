@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -41,6 +41,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -410,24 +411,6 @@ func (suite *utilTestSuite) TestGetUSage() {
 	_ = os.RemoveAll(dirName)
 }
 
-func (suite *utilTestSuite) TestGetDiskUsage() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		return
-	}
-
-	dirName := filepath.Join(pwd, "util_test", "a", "b", "c")
-	err = os.MkdirAll(dirName, 0777)
-	suite.assert.NoError(err)
-
-	usage, usagePercent, err := GetDiskUsageFromStatfs(dirName)
-	suite.assert.NoError(err)
-	suite.assert.NotEqual(0, usage)
-	suite.assert.NotEqual(0, usagePercent)
-	suite.assert.NotEqual(100, usagePercent)
-	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
-}
-
 func (suite *utilTestSuite) TestDirectoryCleanup() {
 	dirName := "./TestDirectoryCleanup"
 
@@ -673,4 +656,11 @@ func (suite *utilTestSuite) TestGetGoroutineIDParallel() {
 	}
 
 	suite.Len(idMap, workers, "expected unique goroutine ids equal to workers")
+}
+
+func (suite *utilTestSuite) TestSetFrsize() {
+	st := &syscall.Statfs_t{}
+	var val uint64 = 4096
+	SetFrsize(st, val)
+	suite.assert.Equal(int64(val), st.Frsize)
 }

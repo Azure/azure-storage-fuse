@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -199,19 +199,19 @@ func (bc *BlockCache) GenConfig() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n%s:", bc.Name()))
+	fmt.Fprintf(&sb, "\n%s:", bc.Name())
 
-	sb.WriteString(fmt.Sprintf("\n  block-size-mb: %v", defaultBlockSize))
-	sb.WriteString(fmt.Sprintf("\n  mem-size-mb: %v", memSize))
-	sb.WriteString(fmt.Sprintf("\n  prefetch: %v", prefetch))
-	sb.WriteString(fmt.Sprintf("\n  parallelism: %v", uint32(3*runtime.NumCPU())))
+	fmt.Fprintf(&sb, "\n  block-size-mb: %v", defaultBlockSize)
+	fmt.Fprintf(&sb, "\n  mem-size-mb: %v", memSize)
+	fmt.Fprintf(&sb, "\n  prefetch: %v", prefetch)
+	fmt.Fprintf(&sb, "\n  parallelism: %v", uint32(3*runtime.NumCPU()))
 
 	var tmpPath = ""
 	_ = config.UnmarshalKey("tmp-path", &tmpPath)
 	if tmpPath != "" {
-		sb.WriteString(fmt.Sprintf("\n  path: %v", tmpPath))
-		sb.WriteString(fmt.Sprintf("\n  disk-size-mb: %v", bc.getDefaultDiskSize(tmpPath)))
-		sb.WriteString(fmt.Sprintf("\n  disk-timeout-sec: %v", defaultTimeout))
+		fmt.Fprintf(&sb, "\n  path: %v", tmpPath)
+		fmt.Fprintf(&sb, "\n  disk-size-mb: %v", bc.getDefaultDiskSize(tmpPath))
+		fmt.Fprintf(&sb, "\n  disk-timeout-sec: %v", defaultTimeout)
 	}
 
 	return sb.String()

@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -439,6 +439,12 @@ var mountCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 		}
+
+		// It's best to destroy the logger before we return to the caller, as caller may abruptly exit on error and we
+		// might lose some logs in the channel which are not yet flushed to the file in case of not destroying the logger
+		defer func() {
+			_ = log.Destroy()
+		}()
 
 		if !disableVersionCheck {
 			err := VersionCheck()

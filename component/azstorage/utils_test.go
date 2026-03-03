@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -509,6 +509,36 @@ func (s *utilsTestSuite) TestRemovePrefixPath() {
 			output := removePrefixPath(i.prefixPath, i.path)
 			assert.Equal(i.result, output)
 		})
+	}
+}
+
+func (s *utilsTestSuite) TestParseRangeHeader() {
+	assert := assert.New(s.T())
+
+	tests := []struct {
+		header   string
+		expected int64
+		hasError bool
+	}{
+		{"bytes=0-100", 101, false},
+		{"bytes=100-200", 101, false},
+		{"bytes=0-0", 1, false},
+		{"bytes=0-", 0, true}, // open ended range not supported
+		{"", 0, true},
+		{"invalid", 0, true},
+		{"bytes=abc-def", 0, true},
+		{"bytes=100-50", 0, true}, // invalid range
+	}
+
+	for _, test := range tests {
+		size, err := parseRangeHeader(test.header)
+
+		if test.hasError {
+			assert.Error(err)
+		} else {
+			assert.NoError(err)
+			assert.Equal(test.expected, size)
+		}
 	}
 }
 
