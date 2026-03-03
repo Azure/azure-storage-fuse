@@ -55,11 +55,21 @@ jobs:
             --destination wiki
 
       # ✅ Export issues / PRs
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests
+
       - name: Export GitHub history
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python scripts/export_github_history.py
+          python3 scripts/export_github_history.py
 
       # ✅ Upload GitHub history
       - name: Upload GitHub history
