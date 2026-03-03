@@ -139,7 +139,7 @@ def export():
 
         # 1) thread document (issue or PR)
         threads_out.append({
-            "id": _stable_id("thread", number),
+            "id": _stable_id("thread", f"{OWNER}/{REPO}#{number}"),
             "content_type": "github_pr" if is_pr else "github_issue",
             "repo": f"{OWNER}/{REPO}",
             "github_number": number,
