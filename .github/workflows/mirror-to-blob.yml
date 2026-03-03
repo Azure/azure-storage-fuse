@@ -65,13 +65,28 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install requests
 
+      # ✅ Restore incremental state so the exporter continues from last run
+      - name: Restore incremental state
+        run: |
+          mkdir -p out_github_export
+          az storage blob download \
+            --auth-mode login \
+            --account-name $AZURE_STORAGE_ACCOUNT \
+            --container-name repo-gh \
+            --name state.json \
+            --file out_github_export/state.json \
+            --no-progress \
+            || echo "No previous state.json in blob - first run will perform a full export"
+
       - name: Export GitHub history
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 scripts/export_github_history.py
 
-      # ✅ Upload GitHub history
+      # ✅ Upload GitHub history (including updated state.json for next incremental run).
+      #    --overwrite ensures all exported JSONL files and state.json are replaced with the
+      #    latest data from this run.
       - name: Upload GitHub history
         run: |
           az storage blob upload-batch \
@@ -79,4 +94,5 @@ jobs:
             --account-name $AZURE_STORAGE_ACCOUNT \
             --container-name repo-gh \
             --source out_github_export \
-            --destination .
+            --destination . \
+            --overwrite
