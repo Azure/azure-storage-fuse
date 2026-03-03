@@ -168,7 +168,13 @@ def export():
 
             # 2) issue comments (for issues AND PR timeline comments)
             ic_url = f"{BASE}/repos/{OWNER}/{REPO}/issues/{number}/comments"
-            for c in _paginate(ic_url):
+            since_val = state.get("since")
+            if since_val:
+                ic_params = {"since": since_val}
+                ic_iter = _paginate(ic_url, ic_params)
+            else:
+                ic_iter = _paginate(ic_url)
+            for c in ic_iter:
                 f_comments.write(json.dumps({
                     "id": _stable_id("issue_comment", number, c["id"]),
                     "content_type": "github_pr_issue_comment" if is_pr else "github_issue_comment",
