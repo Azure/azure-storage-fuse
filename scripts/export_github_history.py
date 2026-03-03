@@ -117,15 +117,20 @@ def export():
 
     # Open output files once for streaming writes.
     # Use append mode on incremental runs so previously exported records are
-    # preserved; use write mode on a full (first) run to start clean.
-    # Azure AI Search uses the stable document "id" for upserts, so duplicate
-    # records in append mode are safely overwritten by the indexer.
-    file_mode = "a" if since else "w"
+    # preserved; use write mode on a full (first) run or when prior JSONL
+    # files are not present (e.g., fresh CI workspace) to avoid creating
+    # partial histories. Azure AI Search uses the stable document "id" for
+    # upserts, so duplicate records in append mode are safely overwritten by
+    # the indexer.
     threads_path = os.path.join(OUT_DIR, "threads_issues_prs.jsonl")
     comments_path = os.path.join(OUT_DIR, "issue_pr_comments.jsonl")
     reviews_path = os.path.join(OUT_DIR, "pr_reviews.jsonl")
     review_comments_path = os.path.join(OUT_DIR, "pr_review_comments.jsonl")
 
+    if since and all(os.path.exists(p) for p in (threads_path, comments_path, reviews_path, review_comments_path)):
+        file_mode = "a"
+    else:
+        file_mode = "w"
     newest = None
     thread_count = 0
 
