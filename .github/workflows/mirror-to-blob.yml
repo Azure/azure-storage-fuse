@@ -33,12 +33,13 @@ jobs:
       # ✅ Upload repo code
       - name: Upload repo code
         run: |
-          az storage blob upload-batch \
+          az storage copy \
             --auth-mode login \
             --account-name $AZURE_STORAGE_ACCOUNT \
-            --container-name repo-code \
             --source . \
-            --destination azure-storage-fuse
+            --destination "https://${AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/repo-code/azure-storage-fuse" \
+            --recursive \
+            --exclude-path ".git"
 
       # ✅ Upload wiki
       - name: Clone wiki
