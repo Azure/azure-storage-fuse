@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -80,7 +80,8 @@ func (suite *listTestSuite) SetupSuite() {
 	suite.assert.NoError(err)
 
 	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", lb_path)
-	config.ReadConfigFromReader(strings.NewReader(cfg))
+	err = config.ReadConfigFromReader(strings.NewReader(cfg))
+	suite.assert.NoError(err)
 
 	lb = loopback.NewLoopbackFSComponent()
 	err = lb.Configure(true)

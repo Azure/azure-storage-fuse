@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -42,13 +42,12 @@ import (
 )
 
 var generateCmd = &cobra.Command{
-	Use:               "generate [component name]",
-	Hidden:            true,
-	Short:             "Generate a new component for Blobfuse2",
-	Long:              "Generate a new component for Blobfuse2",
-	SuggestFor:        []string{"gen", "gener"},
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "generate [component name]",
+	Hidden:     true,
+	Short:      "Generate a new component for Blobfuse2",
+	Long:       "Generate a new component for Blobfuse2",
+	SuggestFor: []string{"gen", "gener"},
+	Args:       cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		componentName := args[0]
 		script := exec.Command("./cmd/componentGenerator.sh", componentName)

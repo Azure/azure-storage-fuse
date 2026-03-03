@@ -1,5 +1,4 @@
 //go:build fuse2
-// +build fuse2
 
 /*
     _____           _____   _____   ____          ______  _____  ------
@@ -12,7 +11,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -398,7 +397,7 @@ func testTruncate(suite *libfuseTestSuite) {
 	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
-	err := libfuse2_truncate(path, C.long(size))
+	err := libfuse2_truncate(path, C.off_t(size))
 	suite.assert.Equal(C.int(0), err)
 }
 
@@ -411,7 +410,7 @@ func testTruncateError(suite *libfuseTestSuite) {
 	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
-	err := libfuse2_truncate(path, C.long(size))
+	err := libfuse2_truncate(path, C.off_t(size))
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 

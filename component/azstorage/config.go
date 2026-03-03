@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -97,20 +97,20 @@ type AccountType int
 
 var EAccountType = AccountType(0).INVALID_ACC()
 
-func (AccountType) INVALID_ACC() AccountType {
+func (a AccountType) INVALID_ACC() AccountType {
 	return AccountType(0)
 }
 
-func (AccountType) BLOCK() AccountType {
+func (a AccountType) BLOCK() AccountType {
 	return AccountType(1)
 }
 
-func (AccountType) ADLS() AccountType {
+func (a AccountType) ADLS() AccountType {
 	return AccountType(2)
 }
 
-func (f AccountType) String() string {
-	return enum.StringInt(f, reflect.TypeOf(f))
+func (a AccountType) String() string {
+	return enum.StringInt(a, reflect.TypeOf(a))
 }
 
 func (a *AccountType) Parse(s string) error {
@@ -195,6 +195,8 @@ type AzStorageOptions struct {
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
 	Filter                  string `config:"filter" yaml:"filter"`
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
+	CapMbpsRead             int64  `config:"cap-mbps-read" yaml:"cap-mbps-read"`
+	CapIOps                 int64  `config:"cap-iops" yaml:"cap-iops"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -248,8 +250,7 @@ func formatEndpointProtocol(endpoint string, http bool) string {
 	// If the pvtEndpoint does not have protocol mentioned in front, pvtEndpoint parsing will fail while
 	// creating URI also the string shall end with "/"
 	if correctedEndpoint != "" {
-		if !(strings.HasPrefix(correctedEndpoint, "https://") ||
-			strings.HasPrefix(correctedEndpoint, "http://")) {
+		if !strings.HasPrefix(correctedEndpoint, "https://") && !strings.HasPrefix(correctedEndpoint, "http://") {
 			if http {
 				correctedEndpoint = "http://" + correctedEndpoint
 			} else {
@@ -338,7 +339,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	if opt.BlockSize != 0 {
 		if opt.BlockSize > blockblob.MaxStageBlockBytes {
-			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes", blockblob.MaxStageBlockBytes)
+			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %d Bytes",
+				int64(blockblob.MaxStageBlockBytes))
 			return errors.New("block size is too large")
 		}
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
@@ -537,7 +539,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps-read %d, cap-iops %d",
+		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbpsRead, az.stConfig.capIOps)
 
 	return nil
 }
@@ -628,6 +631,18 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 				return errors.New("SAS key update failure")
 			}
 		}
+	}
+
+	// Rate limiting, default is no limit
+	az.stConfig.capMbpsRead = -1
+	az.stConfig.capIOps = -1
+
+	if opt.CapMbpsRead > 0 {
+		az.stConfig.capMbpsRead = opt.CapMbpsRead
+	}
+
+	if opt.CapIOps > 0 {
+		az.stConfig.capIOps = opt.CapIOps
 	}
 
 	return nil

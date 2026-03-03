@@ -1,0 +1,24 @@
+# Fio configuration for parallel sequential writes to different files.
+# This config uses a single job definition with 'numjobs'
+# to spawn multiple processes, each writing to a unique file.
+
+[global]
+name=blobfuse_benchmark
+ioengine=sync
+size=10G
+group_reporting
+
+[seq_write_parallel_16_files]
+rw=write
+bs=1M
+numjobs=16
+nrfiles=1 # Each job handles 1 file
+filename_format=$jobname.$jobnum.$filenum
+fallocate=none
+create_on_open=1
+direct=1
+# Do fsync after all the writes, generally fio only calculates the
+# throughput based on the IO time. but as we flush some/all data in
+# the flush/close. it is important we capture the flush time while
+# computing the throughput. value=size/bs
+fsync=10000

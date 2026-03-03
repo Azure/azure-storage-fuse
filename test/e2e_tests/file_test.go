@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -90,7 +90,7 @@ func initFileFlags() {
 
 func getFileTestDirName(n int) string {
 	b := make([]byte, n)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return fmt.Sprintf("%x", b)[:n]
 }
 
@@ -710,8 +710,8 @@ func TestFileTestSuite(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create test directory [%s]\n", err.Error())
 	}
-	rand.Read(fileTest.minBuff)
-	rand.Read(fileTest.medBuff)
+	_, _ = rand.Read(fileTest.minBuff)
+	_, _ = rand.Read(fileTest.medBuff)
 
 	// Run the actual End to End test
 	suite.Run(t, &fileTest)

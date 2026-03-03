@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -48,7 +48,7 @@ type configTestSuite struct {
 	suite.Suite
 }
 
-func (suite *configTestSuite) SetupTest() {
+func (s *configTestSuite) SetupTest() {
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
 	if err != nil {
 		panic("Unable to set silent logger as default.")
@@ -308,7 +308,7 @@ func (s *configTestSuite) TestAuthModeMSI() {
 	assert.NoError(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
 	assert.Equal(az.stConfig.authConfig.ApplicationID, opt.ApplicationID)
-	assert.Equal("", az.stConfig.authConfig.ResourceID)
+	assert.Empty(az.stConfig.authConfig.ResourceID)
 
 	// test more than one credential passed for msi
 	opt.ResourceID = "123"
@@ -435,6 +435,40 @@ func (s *configTestSuite) TestSASRefresh() {
 	az.storage = &BlockBlob{Auth: &azAuthBlobSAS{azAuthSAS: azAuthSAS{azAuthBase: azAuthBase{config: azAuthConfig{Endpoint: "abcd:://qreq!@#$%^&*()_)(*&^%$#"}}}}}
 	err := ParseAndReadDynamicConfig(az, opt, true)
 	assert.NoError(err)
+}
+
+func (s *configTestSuite) TestRateLimitConfig() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{}
+	opt.AccountName = "abcd"
+	opt.Container = "abcd"
+	opt.AuthMode = "key"
+	opt.AccountKey = "abcd"
+
+	// Test default values (no limit)
+	err := ParseAndReadDynamicConfig(az, opt, false)
+	assert.NoError(err)
+	assert.Equal(int64(-1), az.stConfig.capMbpsRead)
+	assert.Equal(int64(-1), az.stConfig.capIOps)
+
+	// Test setting limits
+	opt.CapMbpsRead = 100
+	opt.CapIOps = 10
+	err = ParseAndReadDynamicConfig(az, opt, false)
+	assert.NoError(err)
+	assert.Equal(int64(100), az.stConfig.capMbpsRead)
+	assert.Equal(int64(10), az.stConfig.capIOps)
+
+	// Test setting only one limit
+	opt.CapMbpsRead = 200
+	opt.CapIOps = 0 // reset to no limit
+
+	err = ParseAndReadDynamicConfig(az, opt, false)
+	assert.NoError(err)
+	assert.Equal(int64(200), az.stConfig.capMbpsRead)
+	assert.Equal(int64(-1), az.stConfig.capIOps)
 }
 
 func TestConfigTestSuite(t *testing.T) {

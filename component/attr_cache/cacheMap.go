@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -43,7 +43,7 @@ import (
 
 // Flags represented in BitMap for various flags in the attr cache item
 const (
-	AttrFlagUnknown uint16 = iota
+	AttrFlagUnknown uint64 = iota
 	AttrFlagExists
 	AttrFlagValid
 )
@@ -52,7 +52,7 @@ const (
 type attrCacheItem struct {
 	attr     *internal.ObjAttr
 	cachedAt time.Time
-	attrFlag common.BitMap16
+	attrFlag common.BitMap64
 }
 
 func newAttrCacheItem(attr *internal.ObjAttr, exists bool, cachedAt time.Time) *attrCacheItem {

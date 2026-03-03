@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -195,7 +195,7 @@ func (suite *LoopbackFSTestSuite) TestOpenReadCloseFile() {
 	assert.NoError(err, "OpenReadCloseFile: Failed to read file")
 	assert.Equal(data, []byte(loremText))
 
-	err = suite.lfs.CloseFile(internal.CloseFileOptions{Handle: handle})
+	err = suite.lfs.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	assert.NoError(err, "OpenReadCloseFile: Failed to close file")
 }
 
@@ -230,7 +230,8 @@ func (suite *LoopbackFSTestSuite) TestReadInBuffer() {
 		assert.Equal(testCase.data, testCase.truth)
 	}
 
-	err = suite.lfs.CloseFile(internal.CloseFileOptions{Handle: handle})
+	err = suite.lfs.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	assert.NoError(err)
 }
 
 func (suite *LoopbackFSTestSuite) TestWriteFile() {
@@ -249,7 +250,7 @@ func (suite *LoopbackFSTestSuite) TestWriteFile() {
 	assert.NoError(err)
 	assert.Len([]byte(quotesText)[5:], n, "WriteFile: failed to write specified number of bytes")
 
-	err = suite.lfs.CloseFile(internal.CloseFileOptions{Handle: handle})
+	err = suite.lfs.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	assert.NoError(err, "WriteFile: Failed to close file")
 
 }
@@ -322,7 +323,8 @@ func (suite *LoopbackFSTestSuite) TestCommitNilDataToExistingFile() {
 	assert.NoError(err)
 	defer os.RemoveAll(lfs.path)
 	Filepath := filepath.Join(lfs.path, "testFile")
-	os.WriteFile(Filepath, []byte("hello"), 0777)
+	err = os.WriteFile(Filepath, []byte("hello"), 0777)
+	assert.NoError(err)
 
 	blockList := []string{}
 	err = lfs.CommitData(internal.CommitDataOptions{Name: "testFile", List: blockList})

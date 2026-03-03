@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -92,7 +92,7 @@ func (suite *typesTestSuite) TestFindBlocksToModify() {
 	suite.assert.Equal(int64(5), size)
 	suite.assert.True(largerThanFile)
 
-	index, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
+	_, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
 	suite.assert.Equal(int64(0), size)
 	suite.assert.True(largerThanFile)
 	suite.assert.True(appendOnly)

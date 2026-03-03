@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -56,7 +56,7 @@ func ParseVersion(raw string) (*Version, error) {
 	const standardError = "invalid version string"
 
 	rawSegments := strings.Split(raw, ".")
-	if !(len(rawSegments) == 3 || (len(rawSegments) == 4 && (strings.Contains(rawSegments[2], "-") || strings.Contains(rawSegments[2], "~")))) {
+	if len(rawSegments) != 3 && (len(rawSegments) != 4 || (!strings.Contains(rawSegments[2], "-") && (!strings.Contains(rawSegments[2], "~")))) {
 		return nil, errors.New(standardError)
 	}
 

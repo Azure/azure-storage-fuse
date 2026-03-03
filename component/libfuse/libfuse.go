@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -71,7 +71,7 @@ type Libfuse struct {
 	disableWritebackCache bool
 	ignoreOpenFlags       bool
 	nonEmptyMount         bool
-	lsFlags               common.BitMap16
+	lsFlags               common.BitMap64
 	maxFuseThreads        uint32
 	directIO              bool
 	umask                 uint32
@@ -268,7 +268,7 @@ func (lf *Libfuse) GenConfig() string {
 	_ = config.UnmarshalKey("direct-io", &directIO)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n%s:", lf.Name()))
+	fmt.Fprintf(&sb, "\n%s:", lf.Name())
 
 	timeout := defaultEntryExpiration
 	if directIO {
@@ -276,9 +276,9 @@ func (lf *Libfuse) GenConfig() string {
 		sb.WriteString("\n  direct-io: true")
 	}
 
-	sb.WriteString(fmt.Sprintf("\n  attribute-expiration-sec: %v", timeout))
-	sb.WriteString(fmt.Sprintf("\n  entry-expiration-sec: %v", timeout))
-	sb.WriteString(fmt.Sprintf("\n  negative-entry-expiration-sec: %v", timeout))
+	fmt.Fprintf(&sb, "\n  attribute-expiration-sec: %v", timeout)
+	fmt.Fprintf(&sb, "\n  entry-expiration-sec: %v", timeout)
+	fmt.Fprintf(&sb, "\n  negative-entry-expiration-sec: %v", timeout)
 
 	return sb.String()
 }

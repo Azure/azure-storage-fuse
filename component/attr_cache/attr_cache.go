@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -137,8 +137,8 @@ func (ac *AttrCache) GenConfig() string {
 	log.Info("AttrCache::Configure : config generation started")
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n%s:", ac.Name()))
-	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", defaultAttrCacheTimeout))
+	fmt.Fprintf(&sb, "\n%s:", ac.Name())
+	fmt.Fprintf(&sb, "\n  timeout-sec: %v", defaultAttrCacheTimeout)
 
 	return sb.String()
 }

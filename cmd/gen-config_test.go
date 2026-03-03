@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -63,7 +63,7 @@ func (suite *genConfig) getDefaultLogLocation() string {
 func (suite *genConfig) TestNoTempPath() {
 	defer suite.cleanupTest()
 
-	_, err := executeCommandC(rootCmd, "gen-config")
+	_, err := executeCommandC(rootCmd, "gen-config", "--o", "./blobfuse2.yaml")
 	suite.assert.Error(err)
 }
 
@@ -71,7 +71,7 @@ func (suite *genConfig) TestFileCacheConfigGen() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--tmp-path=%s", tempDir))
@@ -98,7 +98,7 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache", fmt.Sprintf("--tmp-path=%s", tempDir))
@@ -126,7 +126,7 @@ func (suite *genConfig) TestBlockCacheConfigGen1() {
 	defer suite.cleanupTest()
 
 	tempDir, _ := os.MkdirTemp("", "TestTempDir")
-	os.MkdirAll(tempDir, 0777)
+	_ = os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache")

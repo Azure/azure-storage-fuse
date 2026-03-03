@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -67,6 +67,7 @@ type LogOptions struct {
 	LogFilePath    string `config:"file-path" yaml:"file-path,omitempty"`
 	MaxLogFileSize uint64 `config:"max-file-size-mb" yaml:"max-file-size-mb,omitempty"`
 	LogFileCount   uint64 `config:"file-count" yaml:"file-count,omitempty"`
+	LogGoroutineID bool   `config:"goroutine-id" yaml:"goroutine-id,omitempty"`
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
 }
 
@@ -246,12 +247,11 @@ func parseConfig() error {
 }
 
 var mountCmd = &cobra.Command{
-	Use:               "mount [path]",
-	Short:             "Mounts the azure container as a filesystem",
-	Long:              "Mounts the azure container as a filesystem",
-	SuggestFor:        []string{"mnt", "mout"},
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:        "mount [path]",
+	Short:      "Mounts the azure container as a filesystem",
+	Long:       "Mounts the azure container as a filesystem",
+	SuggestFor: []string{"mnt", "mout"},
+	Args:       cobra.ExactArgs(1),
 	RunE: func(_ *cobra.Command, args []string) error {
 		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])
@@ -418,16 +418,33 @@ var mountCmd = &cobra.Command{
 			return fmt.Errorf("invalid log level [%s]", err.Error())
 		}
 
+		// If goroutine-id is not set in config file, then set it based on log level.
+		// For LOG_DEBUG level, enable goroutine-id by default.
+		if !config.IsSet("logging.goroutine-id") {
+			if logLevel >= common.ELogLevel.LOG_DEBUG() {
+				options.Logging.LogGoroutineID = true
+			} else {
+				options.Logging.LogGoroutineID = false
+			}
+		}
+
 		err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
-			FilePath:    options.Logging.LogFilePath,
-			MaxFileSize: options.Logging.MaxLogFileSize,
-			FileCount:   options.Logging.LogFileCount,
-			Level:       logLevel,
-			TimeTracker: options.Logging.TimeTracker,
+			FilePath:       options.Logging.LogFilePath,
+			MaxFileSize:    options.Logging.MaxLogFileSize,
+			FileCount:      options.Logging.LogFileCount,
+			Level:          logLevel,
+			TimeTracker:    options.Logging.TimeTracker,
+			LogGoroutineID: options.Logging.LogGoroutineID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 		}
+
+		// It's best to destroy the logger before we return to the caller, as caller may abruptly exit on error and we
+		// might lose some logs in the channel which are not yet flushed to the file in case of not destroying the logger
+		defer func() {
+			_ = log.Destroy()
+		}()
 
 		if !disableVersionCheck {
 			err := VersionCheck()
@@ -460,6 +477,7 @@ var mountCmd = &cobra.Command{
 		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
 		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
+		log.Crit("Log options: %+v", options.Logging)
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
 
 		if directIO {
@@ -856,14 +874,19 @@ func init() {
 	config.BindPFlag("logging.file-path", mountCmd.PersistentFlags().Lookup("log-file-path"))
 	_ = mountCmd.MarkPersistentFlagDirname("log-file-path")
 
+	mountCmd.PersistentFlags().Bool("log-goroutine-id",
+		false, "Enable logging of goroutine IDs. Default is true for LOG_DEBUG level, false otherwise.")
+	config.BindPFlag("logging.goroutine-id", mountCmd.PersistentFlags().Lookup("log-goroutine-id"))
+
 	mountCmd.PersistentFlags().Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
 	config.BindPFlag("foreground", mountCmd.PersistentFlags().Lookup("foreground"))
 
 	mountCmd.PersistentFlags().Bool("read-only", false, "Mount the system in read only mode. Default value false.")
 	config.BindPFlag("read-only", mountCmd.PersistentFlags().Lookup("read-only"))
 
-	mountCmd.PersistentFlags().Bool("lazy-write", false, "Async write to storage container after file handle is closed.")
-	config.BindPFlag("lazy-write", mountCmd.PersistentFlags().Lookup("lazy-write"))
+	mountCmd.Flags().Bool("lazy-write", false, "Async write to storage container after file handle is closed.")
+	config.BindPFlag("lazy-write", mountCmd.Flags().Lookup("lazy-write"))
+	mountCmd.Flags().Lookup("lazy-write").Hidden = true
 
 	mountCmd.PersistentFlags().String("default-working-dir", "", "Default working directory for storing log files and other blobfuse2 information")
 	mountCmd.PersistentFlags().Lookup("default-working-dir").Hidden = true

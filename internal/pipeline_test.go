@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,6 +34,7 @@
 package internal
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -104,13 +105,13 @@ type pipelineTestSuite struct {
 	assert *assert.Assertions
 }
 
-func (suite *pipelineTestSuite) SetupTest() {
+func (s *pipelineTestSuite) SetupTest() {
 	AddComponent("ComponentA", NewComponentA)
 	AddComponent("ComponentB", NewComponentB)
 	AddComponent("ComponentC", NewComponentC)
 	AddComponent("stream", NewComponentStream)
 	AddComponent("block_cache", NewComponentBlockCache)
-	suite.assert = assert.New(suite.T())
+	s.assert = assert.New(s.T())
 }
 
 func (s *pipelineTestSuite) TestCreatePipeline() {
@@ -134,7 +135,7 @@ func (s *pipelineTestSuite) TestStartStopCreateNewPipeline() {
 	p, err := NewPipeline([]string{"ComponentA", "ComponentB"}, false)
 	s.assert.NoError(err)
 	print(p.components[0].Name())
-	err = p.Start(nil)
+	err = p.Start(context.Background())
 	s.assert.NoError(err)
 
 	err = p.Stop()

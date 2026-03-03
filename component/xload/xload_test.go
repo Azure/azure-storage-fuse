@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,7 +64,7 @@ type xloadTestSuite struct {
 
 func newLoopbackFS() internal.Component {
 	loopback := loopback.NewLoopbackFSComponent()
-	loopback.Configure(true)
+	_ = loopback.Configure(true)
 
 	return loopback
 }
@@ -102,7 +102,8 @@ func (suite *xloadTestSuite) setupTestHelper(configuration string, startComponen
 	suite.assert = assert.New(suite.T())
 
 	var err error
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	err = config.ReadConfigFromReader(strings.NewReader(configuration))
+	suite.assert.NoError(err)
 	suite.loopback = newLoopbackFS()
 	suite.xload, err = newTestXload(suite.loopback)
 	if err != nil {
@@ -110,7 +111,10 @@ func (suite *xloadTestSuite) setupTestHelper(configuration string, startComponen
 	}
 
 	if startComponents {
-		suite.loopback.Start(context.Background())
+		err = suite.loopback.Start(context.Background())
+		if err != nil {
+			return err
+		}
 		err := suite.xload.Start(context.Background())
 		if err != nil {
 			return err
@@ -123,11 +127,11 @@ func (suite *xloadTestSuite) setupTestHelper(configuration string, startComponen
 func (suite *xloadTestSuite) cleanupTest(stopComp bool) {
 	config.ResetConfig()
 	if stopComp {
-		suite.loopback.Stop()
-		err := suite.xload.Stop()
-		if err != nil {
-			suite.assert.NoError(err)
-		}
+		err := suite.loopback.Stop()
+		suite.assert.NoError(err)
+
+		err = suite.xload.Stop()
+		suite.assert.NoError(err)
 	}
 
 	// Delete the temp directories created
@@ -346,7 +350,8 @@ func (suite *xloadTestSuite) TestXComponentDefault() {
 
 	t := &testCmp{}
 
-	t.Schedule(nil)
+	err := t.Schedule(nil)
+	suite.assert.NoError(err)
 
 	n, err := t.Process(nil)
 	suite.assert.NoError(err)
@@ -431,12 +436,13 @@ func (suite *xloadTestSuite) TestDownloadFileGetAttrError() {
 	}
 
 	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", suite.fake_storage_path)
-	config.ReadConfigFromReader(strings.NewReader(cfg))
+	err := config.ReadConfigFromReader(strings.NewReader(cfg))
+	suite.assert.NoError(err)
 	loopback := newLoopbackFS()
 
 	xl.SetNextComponent(loopback)
 
-	err := xl.createDownloader()
+	err = xl.createDownloader()
 	suite.assert.NoError(err)
 	suite.assert.Len(xl.comps, 3)
 
@@ -485,7 +491,7 @@ func (suite *xloadTestSuite) TestOpenFileAlreadyDownloaded() {
 	suite.assert.NotNil(fh)
 	suite.assert.Equal((int64)(36), fh.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh})
 	suite.assert.NoError(err)
 
 	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3"})
@@ -493,7 +499,7 @@ func (suite *xloadTestSuite) TestOpenFileAlreadyDownloaded() {
 	suite.assert.NotNil(fh2)
 	suite.assert.Equal((int64)(27), fh2.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh2})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh2})
 	suite.assert.NoError(err)
 
 	validateMD5(suite.local_path, suite.fake_storage_path, suite.assert)
@@ -520,7 +526,7 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	suite.assert.NotNil(fh)
 	suite.assert.Equal((int64)(0), fh.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh})
 	suite.assert.NoError(err)
 
 	fh1, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "file_4", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
@@ -528,7 +534,7 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	suite.assert.NotNil(fh1)
 	suite.assert.Equal((int64)(36), fh1.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh1})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh1})
 	suite.assert.NoError(err)
 
 	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
@@ -536,7 +542,7 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	suite.assert.NotNil(fh2)
 	suite.assert.Equal((int64)(27), fh2.Size)
 
-	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh2})
+	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh2})
 	suite.assert.NoError(err)
 
 	suite.validateMD5WithOpenFile(suite.local_path, suite.fake_storage_path)
@@ -566,7 +572,7 @@ func (suite *xloadTestSuite) validateMD5WithOpenFile(localPath string, remotePat
 
 			suite.assert.Equal(localMD5, remoteMD5)
 
-			err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+			err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh})
 			suite.assert.NoError(err)
 		}
 	}

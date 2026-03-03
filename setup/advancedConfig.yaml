@@ -48,6 +48,7 @@ logging:
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
   max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
   file-count: <maximum number of files to be rotated to preserve old logs. Default - 10>
+  goroutine-id: <true|false enable goroutine id in logs for better debugging. Default - true if log level is log_debug, else false>
 
 # Pipeline configuration. Choose components to be engaged. The order below is the priority order that needs to be followed.
 components:
@@ -163,6 +164,8 @@ azstorage:
   cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
   cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>
   preserve-acl: true|false <preserve ACLs and Permissions set on file during updates>
+  cap-mbps-read: <Limit the throughput of downloads from your storage account. Value measured in megabits per second. Default is -1 (no limit)>
+  cap-iops: <Limit the total storage operations per second. Default is -1 (no limit)>
 
 # Mount all configuration
 mountall:

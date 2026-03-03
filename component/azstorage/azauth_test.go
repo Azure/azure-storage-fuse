@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -461,8 +461,8 @@ func (suite *authTestSuite) TestBlockSasKeySetOption() {
 	if stg == nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
 	}
-	stg.SetupPipeline()
-	stg.UpdateServiceClient("saskey", storageTestConfigurationParameters.BlockSas)
+	_ = stg.SetupPipeline()
+	_ = stg.UpdateServiceClient("saskey", storageTestConfigurationParameters.BlockSas)
 	if err := stg.SetupPipeline(); err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
 	}
@@ -594,8 +594,8 @@ func (suite *authTestSuite) TestAdlsSasKeySetOption() {
 	if stg == nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
 	}
-	stg.SetupPipeline()
-	stg.UpdateServiceClient("saskey", storageTestConfigurationParameters.AdlsSas)
+	_ = stg.SetupPipeline()
+	_ = stg.UpdateServiceClient("saskey", storageTestConfigurationParameters.AdlsSas)
 	if err := stg.SetupPipeline(); err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
 	}

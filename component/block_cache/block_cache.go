@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -199,19 +199,19 @@ func (bc *BlockCache) GenConfig() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\n%s:", bc.Name()))
+	fmt.Fprintf(&sb, "\n%s:", bc.Name())
 
-	sb.WriteString(fmt.Sprintf("\n  block-size-mb: %v", defaultBlockSize))
-	sb.WriteString(fmt.Sprintf("\n  mem-size-mb: %v", memSize))
-	sb.WriteString(fmt.Sprintf("\n  prefetch: %v", prefetch))
-	sb.WriteString(fmt.Sprintf("\n  parallelism: %v", uint32(3*runtime.NumCPU())))
+	fmt.Fprintf(&sb, "\n  block-size-mb: %v", defaultBlockSize)
+	fmt.Fprintf(&sb, "\n  mem-size-mb: %v", memSize)
+	fmt.Fprintf(&sb, "\n  prefetch: %v", prefetch)
+	fmt.Fprintf(&sb, "\n  parallelism: %v", uint32(3*runtime.NumCPU()))
 
 	var tmpPath = ""
 	_ = config.UnmarshalKey("tmp-path", &tmpPath)
 	if tmpPath != "" {
-		sb.WriteString(fmt.Sprintf("\n  path: %v", tmpPath))
-		sb.WriteString(fmt.Sprintf("\n  disk-size-mb: %v", bc.getDefaultDiskSize(tmpPath)))
-		sb.WriteString(fmt.Sprintf("\n  disk-timeout-sec: %v", defaultTimeout))
+		fmt.Fprintf(&sb, "\n  path: %v", tmpPath)
+		fmt.Fprintf(&sb, "\n  disk-size-mb: %v", bc.getDefaultDiskSize(tmpPath))
+		fmt.Fprintf(&sb, "\n  disk-timeout-sec: %v", defaultTimeout)
 	}
 
 	return sb.String()
@@ -336,8 +336,10 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, "+
+		"disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, lazy-write: %v, cleanup-on-start %t",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize,
+		bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, bc.lazyWrite, conf.CleanupOnStart)
 
 	return nil
 }
@@ -388,7 +390,8 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 
 // OpenFile: Create a handle for the file user has requested to open
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("BlockCache::OpenFile : name=%s, flags=%X, mode=%s", options.Name, options.Flags, options.Mode)
+	log.Trace("BlockCache::OpenFile : name=%s, flags=%s, mode=%s",
+		options.Name, common.PrettyOpenFlags(options.Flags), options.Mode)
 
 	attr, err := bc.NextComponent().GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
@@ -507,30 +510,30 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	return nil
 }
 
-// CloseFile: File is closed by application so release all the blocks and submit back to blockPool
-func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
+// ReleaseFile: File is closed by application so release all the blocks and submit back to blockPool
+func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	bc.fileCloseOpt.Add(1)
 	if !bc.lazyWrite {
 		// Sync close is called so wait till the upload completes
-		return bc.closeFileInternal(options)
+		return bc.releaseFileInternal(options)
 	}
 
 	// Async close is called so schedule the upload and return here
-	go bc.closeFileInternal(options) //nolint
+	go bc.releaseFileInternal(options) //nolint
 	return nil
 }
 
-// closeFileInternal: Actual handling of the close file goes here
-func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error {
-	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+// releaseFileInternal: Actual handling of the close file goes here
+func (bc *BlockCache) releaseFileInternal(options internal.ReleaseFileOptions) error {
+	log.Trace("BlockCache::ReleaseFileInternal : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
 	defer bc.fileCloseOpt.Done()
 
 	if options.Handle.Dirty() {
-		log.Info("BlockCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
+		log.Info("BlockCache::ReleaseFileInternal : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
 		err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 		if err != nil {
-			log.Err("BlockCache::CloseFile : failed to flush file %s", options.Handle.Path)
+			log.Err("BlockCache::ReleaseFileInternal : failed to flush file %s", options.Handle.Path)
 			return err
 		}
 	}
@@ -1957,7 +1960,7 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
-	statfs.Frsize = int64(bc.blockSize)
+	common.SetFrsize(statfs, bc.blockSize)
 	statfs.Blocks = uint64(maxCacheSize) / uint64(bc.blockSize)
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(bc.blockSize)
 	statfs.Bfree = statfs.Bavail

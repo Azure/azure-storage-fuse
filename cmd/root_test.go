@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,7 +34,6 @@
 package cmd
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -161,17 +160,17 @@ func (suite *rootCmdSuite) TestGetRemoteVersionCurrentSame() {
 	suite.assert.Nil(msg)
 }
 
-func (suite *rootCmdSuite) testExecute() {
-	defer suite.cleanupTest()
-	buf := new(bytes.Buffer)
-	rootCmd.SetOut(buf)
-	rootCmd.SetErr(buf)
-	rootCmd.SetArgs([]string{"--version"})
+// func (suite *rootCmdSuite) testExecute() {
+// 	defer suite.cleanupTest()
+// 	buf := new(bytes.Buffer)
+// 	rootCmd.SetOut(buf)
+// 	rootCmd.SetErr(buf)
+// 	rootCmd.SetArgs([]string{"--version"})
 
-	err := Execute()
-	suite.assert.NoError(err)
-	suite.assert.Contains(buf.String(), "blobfuse2 version")
-}
+// 	err := Execute()
+// 	suite.assert.NoError(err)
+// 	suite.assert.Contains(buf.String(), "blobfuse2 version")
+// }
 
 func (suite *rootCmdSuite) TestParseArgs() {
 	defer suite.cleanupTest()

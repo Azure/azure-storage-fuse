@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -76,11 +76,12 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 	switch name {
 	case "base":
 		baseLogger, err := newBaseLogger(LogFileConfig{
-			LogFile:      config.FilePath,
-			LogLevel:     config.Level,
-			LogSize:      config.MaxFileSize * 1024 * 1024,
-			LogFileCount: int(config.FileCount),
-			LogTag:       config.Tag,
+			LogFile:        config.FilePath,
+			LogLevel:       config.Level,
+			LogSize:        config.MaxFileSize * 1024 * 1024,
+			LogFileCount:   int(config.FileCount),
+			LogTag:         config.Tag,
+			LogGoroutineID: config.LogGoroutineID,
 		})
 		if err != nil {
 			return nil, err
@@ -90,7 +91,7 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 		silentLogger := &SilentLogger{}
 		return silentLogger, nil
 	case "", "default", "syslog":
-		sysLogger, err := newSysLogger(config.Level, config.Tag)
+		sysLogger, err := newSysLogger(config.Level, config.Tag, config.LogGoroutineID)
 		if err != nil {
 			if err == ErrNoSyslogService {
 				// Syslog service does not exists on this system

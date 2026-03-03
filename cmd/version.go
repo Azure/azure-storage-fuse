@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -44,9 +44,8 @@ import (
 var check bool
 
 var versionCmd = &cobra.Command{
-	Use:               "version [--check]",
-	Short:             "Command to print the current version along with optional check for latest version",
-	FlagErrorHandling: cobra.ExitOnError,
+	Use:   "version [--check]",
+	Short: "Command to print the current version along with optional check for latest version",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Printf("blobfuse2 version: %s\n", common.Blobfuse2Version)
 		if check {
