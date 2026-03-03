@@ -102,12 +102,6 @@ def _stable_id(*parts):
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
-def _write_jsonl(path, records):
-    with open(path, "w", encoding="utf-8") as f:
-        for rec in records:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-
-
 def export():
     _ensure_out_dir()
     state = _load_state()
@@ -120,105 +114,120 @@ def export():
         params["since"] = since
 
     print("Fetching issues from:", issues_url, params)
-    threads = list(_paginate(issues_url, params))
-    print("Threads fetched:", len(threads))
 
-    threads_out = []
-    issue_pr_comments_out = []
-    pr_reviews_out = []
-    pr_review_comments_out = []
+    # Open output files once for streaming writes.
+    # Use append mode on incremental runs so previously exported records are
+    # preserved; use write mode on a full (first) run to start clean.
+    # Azure AI Search uses the stable document "id" for upserts, so duplicate
+    # records in append mode are safely overwritten by the indexer.
+    file_mode = "a" if since else "w"
+    threads_path = os.path.join(OUT_DIR, "threads_issues_prs.jsonl")
+    comments_path = os.path.join(OUT_DIR, "issue_pr_comments.jsonl")
+    reviews_path = os.path.join(OUT_DIR, "pr_reviews.jsonl")
+    review_comments_path = os.path.join(OUT_DIR, "pr_review_comments.jsonl")
 
-    for it in threads:
-        number = it["number"]
-        is_pr = "pull_request" in it
-        print("Fetching id: ", number, " PR: ", is_pr)
-        
-        labels = []
-        if isinstance(it.get("labels"), list):
-            labels = [l.get("name") for l in it.get("labels", []) if isinstance(l, dict) and l.get("name")]
+    newest = None
+    thread_count = 0
 
-        # 1) thread document (issue or PR)
-        threads_out.append({
-            "id": _stable_id("thread", f"{OWNER}/{REPO}#{number}"),
-            "content_type": "github_pr" if is_pr else "github_issue",
-            "repo": f"{OWNER}/{REPO}",
-            "github_number": number,
-            "title": it.get("title", ""),
-            "content": it.get("body") or "",
-            "state": it.get("state"),
-            "labels": labels,
-            "author": (it.get("user") or {}).get("login"),
-            "created_at": it.get("created_at"),
-            "updated_at": it.get("updated_at"),
-            "closed_at": it.get("closed_at"),
-            "source_url": it.get("html_url"),
-        })
+    with open(threads_path, file_mode, encoding="utf-8") as f_threads, \
+         open(comments_path, file_mode, encoding="utf-8") as f_comments, \
+         open(reviews_path, file_mode, encoding="utf-8") as f_reviews, \
+         open(review_comments_path, file_mode, encoding="utf-8") as f_review_comments:
 
-        # 2) issue comments (for issues AND PR timeline comments)
-        ic_url = f"{BASE}/repos/{OWNER}/{REPO}/issues/{number}/comments"
-        for c in _paginate(ic_url):
-            issue_pr_comments_out.append({
-                "id": _stable_id("issue_comment", number, c["id"]),
-                "content_type": "github_pr_issue_comment" if is_pr else "github_issue_comment",
+        for it in _paginate(issues_url, params):
+            thread_count += 1
+            number = it["number"]
+            is_pr = "pull_request" in it
+            print("Fetching id: ", number, " PR: ", is_pr)
+
+            labels = []
+            if isinstance(it.get("labels"), list):
+                labels = [l.get("name") for l in it.get("labels", []) if isinstance(l, dict) and l.get("name")]
+
+            # 1) thread document (issue or PR) — written immediately
+            f_threads.write(json.dumps({
+                "id": _stable_id("thread", f"{OWNER}/{REPO}#{number}"),
+                "content_type": "github_pr" if is_pr else "github_issue",
                 "repo": f"{OWNER}/{REPO}",
                 "github_number": number,
-                "comment_id": c["id"],
-                "author": (c.get("user") or {}).get("login"),
-                "created_at": c.get("created_at"),
-                "updated_at": c.get("updated_at"),
-                "source_url": c.get("html_url"),
-                "content": c.get("body") or "",
-            })
+                "title": it.get("title", ""),
+                "content": it.get("body") or "",
+                "state": it.get("state"),
+                "labels": labels,
+                "author": (it.get("user") or {}).get("login"),
+                "created_at": it.get("created_at"),
+                "updated_at": it.get("updated_at"),
+                "closed_at": it.get("closed_at"),
+                "source_url": it.get("html_url"),
+            }, ensure_ascii=False) + "\n")
 
-        if is_pr:
-            # 3) PR reviews (top-level review bodies)
-            reviews_url = f"{BASE}/repos/{OWNER}/{REPO}/pulls/{number}/reviews"
-            for rv in _paginate(reviews_url):
-                pr_reviews_out.append({
-                    "id": _stable_id("pr_review", number, rv["id"]),
-                    "content_type": "github_pr_review",
+            # Track newest timestamp for incremental state update
+            ts = it.get("updated_at")
+            if ts and (newest is None or ts > newest):
+                newest = ts
+
+            # 2) issue comments (for issues AND PR timeline comments)
+            ic_url = f"{BASE}/repos/{OWNER}/{REPO}/issues/{number}/comments"
+            for c in _paginate(ic_url):
+                f_comments.write(json.dumps({
+                    "id": _stable_id("issue_comment", number, c["id"]),
+                    "content_type": "github_pr_issue_comment" if is_pr else "github_issue_comment",
                     "repo": f"{OWNER}/{REPO}",
                     "github_number": number,
-                    "review_id": rv["id"],
-                    "state": rv.get("state"),
-                    "author": (rv.get("user") or {}).get("login"),
-                    "submitted_at": rv.get("submitted_at"),
-                    "source_url": rv.get("html_url"),
-                    "content": rv.get("body") or "",
-                })
+                    "comment_id": c["id"],
+                    "author": (c.get("user") or {}).get("login"),
+                    "created_at": c.get("created_at"),
+                    "updated_at": c.get("updated_at"),
+                    "source_url": c.get("html_url"),
+                    "content": c.get("body") or "",
+                }, ensure_ascii=False) + "\n")
 
-            # 4) PR review comments (diff comments)
-            prc_url = f"{BASE}/repos/{OWNER}/{REPO}/pulls/{number}/comments"
-            for rc in _paginate(prc_url):
-                pr_review_comments_out.append({
-                    "id": _stable_id("pr_review_comment", number, rc["id"]),
-                    "content_type": "github_pr_review_comment",
-                    "repo": f"{OWNER}/{REPO}",
-                    "github_number": number,
-                    "comment_id": rc["id"],
-                    "pull_request_review_id": rc.get("pull_request_review_id"),
-                    "path": rc.get("path"),
-                    "line": rc.get("line"),
-                    "side": rc.get("side"),
-                    "author": (rc.get("user") or {}).get("login"),
-                    "created_at": rc.get("created_at"),
-                    "updated_at": rc.get("updated_at"),
-                    "source_url": rc.get("html_url"),
-                    "content": rc.get("body") or "",
-                })
+            if is_pr:
+                # 3) PR reviews (top-level review bodies)
+                reviews_url = f"{BASE}/repos/{OWNER}/{REPO}/pulls/{number}/reviews"
+                for rv in _paginate(reviews_url):
+                    f_reviews.write(json.dumps({
+                        "id": _stable_id("pr_review", number, rv["id"]),
+                        "content_type": "github_pr_review",
+                        "repo": f"{OWNER}/{REPO}",
+                        "github_number": number,
+                        "review_id": rv["id"],
+                        "state": rv.get("state"),
+                        "author": (rv.get("user") or {}).get("login"),
+                        "submitted_at": rv.get("submitted_at"),
+                        "source_url": rv.get("html_url"),
+                        "content": rv.get("body") or "",
+                    }, ensure_ascii=False) + "\n")
 
-    # Write JSONL files (one doc per line)
-    _write_jsonl(os.path.join(OUT_DIR, "threads_issues_prs.jsonl"), threads_out)
-    _write_jsonl(os.path.join(OUT_DIR, "issue_pr_comments.jsonl"), issue_pr_comments_out)
-    _write_jsonl(os.path.join(OUT_DIR, "pr_reviews.jsonl"), pr_reviews_out)
-    _write_jsonl(os.path.join(OUT_DIR, "pr_review_comments.jsonl"), pr_review_comments_out)
+                # 4) PR review comments (diff comments)
+                prc_url = f"{BASE}/repos/{OWNER}/{REPO}/pulls/{number}/comments"
+                for rc in _paginate(prc_url):
+                    f_review_comments.write(json.dumps({
+                        "id": _stable_id("pr_review_comment", number, rc["id"]),
+                        "content_type": "github_pr_review_comment",
+                        "repo": f"{OWNER}/{REPO}",
+                        "github_number": number,
+                        "comment_id": rc["id"],
+                        "pull_request_review_id": rc.get("pull_request_review_id"),
+                        "path": rc.get("path"),
+                        "line": rc.get("line"),
+                        "side": rc.get("side"),
+                        "author": (rc.get("user") or {}).get("login"),
+                        "created_at": rc.get("created_at"),
+                        "updated_at": rc.get("updated_at"),
+                        "source_url": rc.get("html_url"),
+                        "content": rc.get("body") or "",
+                    }, ensure_ascii=False) + "\n")
+
+            # Flush after each thread so progress is preserved on interruption
+            f_threads.flush()
+            f_comments.flush()
+            f_reviews.flush()
+            f_review_comments.flush()
+
+    print("Threads fetched:", thread_count)
 
     # Update incremental marker: latest updated_at seen
-    newest = None
-    for t in threads:
-        ts = t.get("updated_at")
-        if ts and (newest is None or ts > newest):
-            newest = ts
     if newest:
         state["since"] = newest
         _save_state(state)
