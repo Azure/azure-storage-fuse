@@ -195,8 +195,13 @@ def export():
 
             if is_pr:
                 # 3) PR reviews (top-level review bodies)
+                # The GitHub reviews endpoint does not support a 'since' filter;
+                # skip reviews whose submitted_at is before the incremental cursor.
                 reviews_url = f"{BASE}/repos/{OWNER}/{REPO}/pulls/{number}/reviews"
                 for rv in _paginate(reviews_url):
+                    submitted_at = rv.get("submitted_at")
+                    if since and submitted_at and submitted_at < since:
+                        continue
                     f_reviews.write(json.dumps({
                         "id": _stable_id("pr_review", number, rv["id"]),
                         "content_type": "github_pr_review",
@@ -205,14 +210,17 @@ def export():
                         "review_id": rv["id"],
                         "state": rv.get("state"),
                         "author": (rv.get("user") or {}).get("login"),
-                        "submitted_at": rv.get("submitted_at"),
+                        "submitted_at": submitted_at,
                         "source_url": rv.get("html_url"),
                         "content": rv.get("body") or "",
                     }, ensure_ascii=False) + "\n")
 
                 # 4) PR review comments (diff comments)
+                # The GitHub pull review comments endpoint supports 'since',
+                # so pass the incremental cursor to avoid re-fetching old records.
                 prc_url = f"{BASE}/repos/{OWNER}/{REPO}/pulls/{number}/comments"
-                for rc in _paginate(prc_url):
+                prc_params = {"since": since} if since else {}
+                for rc in _paginate(prc_url, prc_params):
                     f_review_comments.write(json.dumps({
                         "id": _stable_id("pr_review_comment", number, rc["id"]),
                         "content_type": "github_pr_review_comment",
