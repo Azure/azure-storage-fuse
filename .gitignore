@@ -33,3 +33,4 @@ _tmp_*.trace
 *~
 \#*\#
 .\#*
+cmd/_tmp_*.trace
