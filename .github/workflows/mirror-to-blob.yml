@@ -72,12 +72,11 @@ jobs:
       - name: Restore incremental state
         run: |
           mkdir -p out_github_export
-          az storage blob download \
+          az storage blob download-batch \
             --auth-mode login \
             --account-name $AZURE_STORAGE_ACCOUNT \
-            --container-name repo-gh \
-            --name state.json \
-            --file out_github_export/state.json \
+            --source repo-gh \
+            --destination out_github_export \
             --no-progress \
             || echo "No previous state.json in blob - first run will perform a full export"
           for blob in threads_issues_prs.jsonl issue_pr_comments.jsonl pr_reviews.jsonl pr_review_comments.jsonl; do
