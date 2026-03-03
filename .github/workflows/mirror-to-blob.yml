@@ -66,7 +66,9 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install requests
 
-      # ✅ Restore previous export (state.json + JSONL files) so the exporter continues from last run
+      # ✅ Restore incremental state and existing JSONL exports so the exporter
+      #    can append new/updated records to the full historical files rather
+      #    than to an empty workspace, preserving the complete history in blob.
       - name: Restore incremental state
         run: |
           mkdir -p out_github_export
@@ -76,7 +78,17 @@ jobs:
             --source repo-gh \
             --destination out_github_export \
             --no-progress \
-            || echo "No previous export in blob - first run will perform a full export"
+            || echo "No previous state.json in blob - first run will perform a full export"
+          for blob in threads_issues_prs.jsonl issue_pr_comments.jsonl pr_reviews.jsonl pr_review_comments.jsonl; do
+            az storage blob download \
+              --auth-mode login \
+              --account-name $AZURE_STORAGE_ACCOUNT \
+              --container-name repo-gh \
+              --name "$blob" \
+              --file "out_github_export/$blob" \
+              --no-progress \
+              || echo "No previous $blob in blob - will be created fresh on first run"
+          done
 
       - name: Export GitHub history
         env:
