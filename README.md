@@ -1,58 +1,34 @@
-# Blobfuse2 - A Microsoft supported Azure Storage FUSE driver
+# Blobfuse - A Microsoft supported Azure Storage FUSE driver
 ## About
-Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the libfuse open source library (fuse3) to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.
-This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fuse).
 
-## About Data Consistency and Concurrency
-Blobfuse2 is stable and ***supported by Microsoft*** when used within its [documented limits](#un-supported-file-system-operations). Blobfuse2 supports high-performance reads and writes with strong consistency; however, it is recommended that multiple clients do not modify the same blob/file simultaneously to ensure data integrity. Blobfuse2 does not guarantee continuous synchronization of data written to the same blob/file using multiple clients or across multiple mounts of Blobfuse2 concurrently. If you modify an existing blob/file with another client while also reading that object, Blobfuse2 will not return the most up-to-date data. To ensure your reads see the newest blob/file data, disable all forms of caching at kernel (using `direct-io`) as well as at Blobfuse2 level, and then re-open the blob/file.
+Blobfuse is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the libfuse open source library (fuse3) to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs. BlobFuse lets Linux workloads use Azure Blob Storage like a local file system for several scenarios, including AI/ML training and checkpointing, HPC simulations, Kubernetes stateful workloads, big data analytics/preprocessing, and large-scale backup and archiving. BlobFuse supports standard file operations with caching, offers health monitoring and blob filtering, and can preload containers or folders into the local cache for faster access.
 
-Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
+BlobFuse supports two operating modes: a **caching** mode that works by cahing data locally on VM nodes, ideal for repeatedly accessed data that fits on VM local storage, and a **streaming** mode that reads large files in chunks directly from storage for big AI/ML, genomics, or HPC workloads. This [article](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-streaming-versus-caching) helps you decide which mode is best suited for your workloads.
+> [!NOTE]
+> BlobFuse v2 is the latest version of BlobFuse and has many significant improvements over BlobFuse v1. BlobFuse v1 support ends in September 2026. Migrate to BlobFuse v2 by using the provided [instructions](https://github.com/Azure/azure-storage-fuse/blob/main/MIGRATION.md).
 
-## [List of Supported Platforms](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Platforms)
+Detailed documentation of BlobFuse is [here](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-what-is).  
+Please submit any issues/feature requests/questions [here](https://github.com/azure/azure-storage-fuse/issues).
 
-## [Steps to Install Blobfuse2](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Installation)
+## Install BlobFuse
+You can install BlobFuse from Microsoft repositories for Linux by using simple commands to install the BlobFuse package. If no package is available for your distribution and version, you can build the binary from source code. Refer to the [instructions](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-mount-container) for details.
 
-## [Choose config](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Config-Guide)
+## Mount BlobFuse
+You can mount a container by using the `mount` command. You can either include your desired configuration settings as command line parameters or provide a configuration file that contains your settings. Refer the [page](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-install) for details.
 
-## [Config File Best Practices](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-File-Best-Practices)
+## BlobFuse Logging
+By default, BlobFuse logs warnings to the system log. However, you can route logs to a local directory, change which types of information appear in logs, or disable logs entirely by changing the default configuration. Refer the [page](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-enable-logs) for details.
 
-## [Blockcache Limitations And Recommendations](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Blockcache-Limitations-And-Recommendations)
-
-## [Supported Operations And Usage](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Operation-and-Usage)
-
-## [Benchmarks](https://azure.github.io/azure-storage-fuse/)
-
-## [Features](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Features)
-
-## [_New Health Monitor_](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md)
-
-## [CLI parameters](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Cli%E2%80%90Parameters)
-
-## [Environment variables](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Environment-Variables)
-
-## [Blob Filter](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Blob-Filter)
-
-## [Preload Data](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Preload)
-
-## [Using Private Endpoints with HNS-Enabled Storage Accounts](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90Private-Endpoint-With-HNS)
-
-## [Enhancement Over BlobFusev1](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Enhancement-Over-V1)
-
-## [Frequently Asked Questions](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2%E2%80%90FAQ)
-
-## [Limitations And Unsupported Operations](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Limitations)
-
-
-##  NOTICE
-- Due to known data consistency issues when using Blobfuse2 in `block-cache` mode,  it is strongly recommended that all Blobfuse2 installations be upgraded to version 2.3.2. For more information, see [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues).
-- Login via Managed Identify is supported with Object-ID for all versions of Blobfuse except 2.3.0 and 2.3.2.To use Object-ID for these two versions, use Azure CLI or utilize Application/Client-ID or Resource ID based authentication.
-- `streaming` mode is being deprecated. This is the older option and is replaced by streaming with `block-cache` mode which is the more performant streaming option.
-- Block cache will no longer dynamically consume more memory if required by application but will strictly adhere to the memory limit which is 80% of free memory by default or whatever is configured by the user.
-  
+## Monitor BlobFuse
+Health monitor is a tool that you use to monitor mount activities and resource usage. This [article](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-health-monitor) describes what data you can obtain, and how to enable health monitor and view output reports.
 
 ## Find help from your command prompt
 To see a list of commands, type `blobfuse2 -h` and then press the ENTER key.
 To learn about a specific command, just include the name of the command (For example: `blobfuse2 mount -h`).
+
+## Limitations and known issues with BlobFuse
+Refer the [page](https://learn.microsoft.com/en-us/azure/storage/blobs/blobfuse2-known-issues) for limitations and known issues.  
+For troubleshooting common issues, refer this [page](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-troubleshooting).
 
 ## License
 This project is licensed under MIT.
@@ -71,3 +47,4 @@ bot. You will only need to do this once across all repos using our CLA.
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
