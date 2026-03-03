@@ -62,10 +62,11 @@ def _save_state(state):
         json.dump(state, f, indent=2)
 
 
-def _request_json(url, params=None):
+def _request_json(url, params=None, max_retries=3):
     if params:
         url = f"{url}?{urlencode(params)}"
 
+    retries = 0
     while True:
         r = requests.get(url, headers=_headers(), timeout=60)
 
@@ -77,6 +78,14 @@ def _request_json(url, params=None):
                 print(f"[rate-limit] sleeping {sleep_for}s", file=sys.stderr)
                 time.sleep(sleep_for)
                 continue
+
+        # Retry on transient 5xx errors
+        if r.status_code >= 500 and retries < max_retries:
+            retries += 1
+            sleep_for = 2 ** retries  # exponential backoff: 2, 4, 8 seconds
+            print(f"[retry {retries}/{max_retries}] {r.status_code} - sleeping {sleep_for}s", file=sys.stderr)
+            time.sleep(sleep_for)
+            continue
 
         r.raise_for_status()
         return r.json(), r.headers
@@ -99,7 +108,7 @@ def _paginate(url, params=None):
 
 def _stable_id(*parts):
     raw = "|".join(str(p) for p in parts)
-    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def export():
@@ -173,13 +182,7 @@ def export():
 
             # 2) issue comments (for issues AND PR timeline comments)
             ic_url = f"{BASE}/repos/{OWNER}/{REPO}/issues/{number}/comments"
-            since_val = state.get("since")
-            if since_val:
-                ic_params = {"since": since_val}
-                ic_iter = _paginate(ic_url, ic_params)
-            else:
-                ic_iter = _paginate(ic_url)
-            for c in ic_iter:
+            for c in _paginate(ic_url, {"since": since} if since else None):
                 f_comments.write(json.dumps({
                     "id": _stable_id("issue_comment", number, c["id"]),
                     "content_type": "github_pr_issue_comment" if is_pr else "github_issue_comment",
