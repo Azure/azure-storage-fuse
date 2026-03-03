@@ -38,7 +38,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -227,7 +226,7 @@ func UpdateFileCachePath(path string) {
 
 // registerMetrics creates all OTel metric instruments and registers their observation callbacks.
 // CPU usage is computed as a percentage across all cores using /proc/stat.
-// Memory usage is read from runtime.MemStats.
+// Memory usage is the process RSS read from /proc/self/status (matches top RES).
 // Disk usage is read via syscall.Statfs on the file cache directory.
 func (m *OtelMetrics) registerMetrics() error {
 	// Common attributes attached to every metric observation
@@ -253,7 +252,7 @@ func (m *OtelMetrics) registerMetrics() error {
 	// ---- Memory Usage Gauge (bytes used by this process) ----
 	m.memoryUsageGauge, err = m.meter.Float64ObservableGauge(
 		"blobfuse2.system.memory.usage_bytes",
-		otelmetric.WithDescription("Current memory usage of the blobfuse2 process in bytes (Sys from runtime.MemStats)"),
+		otelmetric.WithDescription("Current memory usage of the blobfuse2 process in bytes — matches RES in top"),
 		otelmetric.WithUnit("By"),
 	)
 	if err != nil {
@@ -312,7 +311,7 @@ func (m *OtelMetrics) registerMetrics() error {
 				o.ObserveFloat64(m.cpuUsageGauge, cpuPercent, attrSet)
 			}
 
-			// Collect memory usage (process-level via runtime.MemStats)
+			// Collect memory usage (process RSS from /proc/self/status)
 			memUsage, memTotal := m.getMemoryUsage()
 			o.ObserveFloat64(m.memoryUsageGauge, memUsage, attrSet)
 			o.ObserveFloat64(m.memoryTotalGauge, memTotal, attrSet)
@@ -425,15 +424,43 @@ func readProcStat() (total, idle float64, err error) {
 	return 0, 0, fmt.Errorf("/proc/stat does not contain cpu line")
 }
 
-// getMemoryUsage returns the current process memory usage and total system memory.
-// Process memory is obtained from runtime.MemStats (Sys field = total bytes obtained from OS).
+// getMemoryUsage returns the current process memory usage (RSS) and total system memory.
+// Process memory is obtained from /proc/self/status (VmRSS) which matches the RES column
+// in top/htop. This includes all memory held in RAM: Go heap, Go stacks, CGo/C allocations,
+// libfuse buffers, mmap'd regions, etc.
 // Total system memory is read from /proc/meminfo.
 func (m *OtelMetrics) getMemoryUsage() (usageBytes float64, totalBytes float64) {
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	usageBytes = float64(memStats.Sys)
+	usageBytes = float64(getProcessRSS())
 	totalBytes = float64(getTotalSystemMemory())
 	return
+}
+
+// getProcessRSS reads VmRSS from /proc/self/status to get the Resident Set Size
+// of the current process in bytes. This includes all memory actually held in RAM:
+// Go heap, Go stacks, CGo/C allocations, libfuse buffers, mmap'd regions, etc.
+// This matches the RES column shown by top/htop.
+func getProcessRSS() uint64 {
+	f, err := os.Open("/proc/self/status")
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "VmRSS:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				val, err := strconv.ParseUint(fields[1], 10, 64)
+				if err == nil {
+					// /proc/self/status reports VmRSS in kB
+					return val * 1024
+				}
+			}
+		}
+	}
+	return 0
 }
 
 // getTotalSystemMemory reads MemTotal from /proc/meminfo to determine total RAM in bytes.
