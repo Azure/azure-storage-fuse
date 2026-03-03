@@ -5,7 +5,7 @@
 **Bug Fixes**
 - Fix panic while reading an archived blob using file cache ([PR #2127](https://github.com/Azure/azure-storage-fuse/pull/2127))
 - Ensure logger is properly deinitialized on mount failures ([PR #2125](https://github.com/Azure/azure-storage-fuse/pull/2125))
-- Fix InvalidBlockList error caused due to parallel flush file calls in file cache ([PR #2136](https://github.com/Azure/azure-storage-fuse/pull/2136))
+- Fix InvalidBlockList error caused by parallel flush file calls in file cache ([PR #2136](https://github.com/Azure/azure-storage-fuse/pull/2136))
 
 ## 2.5.2 (2026-01-19)
 **Features**
