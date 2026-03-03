@@ -72,6 +72,7 @@ type fileCacheTestSuite struct {
 	loopback          internal.Component
 	cache_path        string
 	fake_storage_path string
+	configString      string
 }
 
 func newLoopbackFS() internal.Component {
@@ -119,6 +120,7 @@ func (suite *fileCacheTestSuite) SetupTest() {
 
 func (suite *fileCacheTestSuite) setupTestHelper(configuration string) {
 	suite.assert = assert.New(suite.T())
+	suite.configString = configuration
 
 	err := config.ReadConfigFromReader(strings.NewReader(configuration))
 	suite.assert.NoError(err)
@@ -1255,25 +1257,27 @@ func (suite *fileCacheTestSuite) TestFlushFileErrorBadFd() {
 
 // setupMockFileCacheForFlush creates a file cache backed by a gomock NextComponent
 // and returns (fileCache, mockComponent, cachePath, cleanup).
-// The caller must defer cleanup() to restore the default suite file cache.
+// The caller must defer cleanup() to stop the independent file cache and remove its temp dir.
+// The suite-level loopback and fileCache are left running throughout and are not affected.
 func (suite *fileCacheTestSuite) setupMockFileCacheForFlush(mockCtrl *gomock.Controller) (*FileCache, *internal.MockComponent, string, func()) {
 	mockComponent := internal.NewMockComponent(mockCtrl)
-
-	// Stop the default suite-level file cache / loopback so we can wire in the mock.
-	err := suite.fileCache.Stop()
-	suite.assert.NoError(err)
-	err = suite.loopback.Stop()
-	suite.assert.NoError(err)
 
 	randStr := randomString(8)
 	cachePath := filepath.Join(home_dir, "file_cache"+randStr)
 	cfg := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 0", cachePath)
-	err = config.ReadConfigFromReader(strings.NewReader(cfg))
+
+	// Overwrite global config to configure the independent FileCache, then immediately
+	// restore the original config so the suite-level components are unaffected.
+	err := config.ReadConfigFromReader(strings.NewReader(cfg))
 	suite.assert.NoError(err)
 
 	fcComp := NewFileCacheComponent()
 	fcComp.SetNextComponent(mockComponent)
 	err = fcComp.Configure(true)
+	suite.assert.NoError(err)
+
+	// Restore the suite's original config so subsequent suite-level operations work correctly.
+	err = config.ReadConfigFromReader(strings.NewReader(suite.configString))
 	suite.assert.NoError(err)
 
 	mockComponent.EXPECT().Start(gomock.Any()).Return(nil).Times(1)
@@ -1290,12 +1294,6 @@ func (suite *fileCacheTestSuite) setupMockFileCacheForFlush(mockCtrl *gomock.Con
 		_ = fc.Stop()
 		_ = mockComponent.Stop()
 		os.RemoveAll(cachePath)
-
-		// Restart the default suite-level file cache for subsequent tests.
-		suite.loopback = newLoopbackFS()
-		suite.fileCache = newTestFileCache(suite.loopback)
-		_ = suite.loopback.Start(context.Background())
-		_ = suite.fileCache.Start(context.Background())
 	}
 
 	return fc, mockComponent, cachePath, cleanup
@@ -1311,6 +1309,7 @@ func (suite *fileCacheTestSuite) setupMockFileCacheForFlush(mockCtrl *gomock.Con
 // With the per-file lock this can never happen; without it, the overlapping calls
 // would cause the test to fail.
 func (suite *fileCacheTestSuite) TestFlushFileConcurrent() {
+	defer suite.cleanupTest()
 	mockCtrl := gomock.NewController(suite.T())
 	defer mockCtrl.Finish()
 
@@ -1443,6 +1442,7 @@ func (suite *fileCacheTestSuite) TestFlushFileLockAlreadyHeld() {
 // (from libfuse_flush) and ReleaseFile (close) are properly serialized so that
 // CopyFromFile never runs in parallel.
 func (suite *fileCacheTestSuite) TestFlushFileConcurrentWithRelease() {
+	defer suite.cleanupTest()
 	mockCtrl := gomock.NewController(suite.T())
 	defer mockCtrl.Finish()
 
@@ -1510,6 +1510,7 @@ func (suite *fileCacheTestSuite) TestFlushFileConcurrentWithRelease() {
 // when syncToFlush is enabled) and a direct FlushFile call are serialized so that
 // CopyFromFile never runs concurrently.
 func (suite *fileCacheTestSuite) TestFlushFileSyncFileConcurrent() {
+	defer suite.cleanupTest()
 	mockCtrl := gomock.NewController(suite.T())
 	defer mockCtrl.Finish()
 
