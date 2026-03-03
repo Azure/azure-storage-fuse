@@ -2,6 +2,9 @@ name: Mirror GitHub Content to Blob Storage
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - vibhansa/mcpintegrate
   schedule:
     - cron: "0 0 * * 0"   #  every Sunday at 00:00 UTC
 
