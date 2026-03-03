@@ -1,4 +1,4 @@
-name: Step-2 Mirror GitHub Content to Blob Storage
+name: Mirror GitHub Content to Blob Storage
 
 on:
   workflow_dispatch:
