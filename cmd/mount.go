@@ -712,15 +712,9 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 
 	go startMonitor(os.Getpid())
 
-	err := pipeline.Start(ctx)
-	if err != nil {
-		log.Err("mount: error unable to start pipeline [%s]", err.Error())
-		return fmt.Errorf("unable to start pipeline [%s]", err.Error())
-	}
-
 	// Start OTel metrics collection if enabled in config.
 	// Metrics configuration is independent of logging — both share the top-level otel-endpoint.
-	// This runs after pipeline.Start so that mount path and file cache path are fully resolved.
+	// This must run before pipeline.Start() because libfuse.Start() blocks until unmount.
 	if options.Metrics.Enable {
 		metricsEndpoint := options.OtelEndpoint
 
@@ -736,6 +730,7 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 			CollectionInterval: time.Duration(options.Metrics.CollectionInterval) * time.Second,
 			FileCachePath:      fileCachePath,
 		}
+
 		if startErr := log.StartOtelMetrics(metricsCfg); startErr != nil {
 			log.Err("mount: failed to start OTel metrics [%s]", startErr.Error())
 		} else {
@@ -747,6 +742,12 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 				}
 			}()
 		}
+	}
+
+	err := pipeline.Start(ctx)
+	if err != nil {
+		log.Err("mount: error unable to start pipeline [%s]", err.Error())
+		return fmt.Errorf("unable to start pipeline [%s]", err.Error())
 	}
 
 	err = pipeline.Stop()
