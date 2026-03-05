@@ -3,7 +3,7 @@
 
 Blobfuse is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the libfuse open source library (fuse3) to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs. BlobFuse lets Linux workloads use Azure Blob Storage like a local file system for several scenarios, including AI/ML training and checkpointing, HPC simulations, Kubernetes stateful workloads, big data analytics/preprocessing, and large-scale backup and archiving. BlobFuse supports standard file operations with caching, offers health monitoring and blob filtering, and can preload containers or folders into the local cache for faster access.
 
-BlobFuse supports two operating modes: a **caching** mode that works by cahing data locally on VM nodes, ideal for repeatedly accessed data that fits on VM local storage, and a **streaming** mode that reads large files in chunks directly from storage for big AI/ML, genomics, or HPC workloads. This [article](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-streaming-versus-caching) helps you decide which mode is best suited for your workloads.
+BlobFuse supports two operating modes: a **caching** mode that works by caching data locally on VM nodes, ideal for repeatedly accessed data that fits on VM local storage, and a **streaming** mode that reads large files in chunks directly from storage for big AI/ML, genomics, or HPC workloads. This [article](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-streaming-versus-caching) helps you decide which mode is best suited for your workloads.
 > [!NOTE]
 > BlobFuse v2 is the latest version of BlobFuse and has many significant improvements over BlobFuse v1. BlobFuse v1 support ends in September 2026. Migrate to BlobFuse v2 by using the provided [instructions](https://github.com/Azure/azure-storage-fuse/blob/main/MIGRATION.md).
 
@@ -47,4 +47,5 @@ bot. You will only need to do this once across all repos using our CLA.
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
 
