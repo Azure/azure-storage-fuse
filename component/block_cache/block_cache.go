@@ -939,7 +939,7 @@ func (bc *BlockCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	deleteOpenHandleForFile(bc, options.Handle, bcHandle.file, true /* takeFileLock */)
 	// freeList.debugListMustBeFull()
 	log.Debug("BlockCache::ReleaseFile : Released handle: %d, path: %s", options.Handle.ID, options.Handle.Path)
-	return nil
+	return err
 }
 
 // DeleteFile deletes a file from storage.
