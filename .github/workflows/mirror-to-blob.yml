@@ -20,7 +20,7 @@ jobs:
       AZURE_STORAGE_ACCOUNT: blobfusemcpserver
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ✅ Azure authentication (OIDC)
       - name: Azure login
