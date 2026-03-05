@@ -1,0 +1,69 @@
+# Perform actual Oracle RMAN backup workloads on blobfuse2 mount
+# to verify data integrity with various database file sizes.
+# Requires Oracle XE to be available on the agent (installed if missing).
+#
+parameters:
+  - name: config_file
+    type: string
+  - name: cache_mode
+    type: string
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: verbose_log
+    type: boolean
+    default: false
+
+steps:
+    # Generate config file for file cache
+  - ${{ if eq(parameters.cache_mode, 'file_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for File Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+      continueOnError: false
+
+  # Generate Config file for block cache
+  - ${{ if eq(parameters.cache_mode, 'block_cache') }}:
+    - script: |
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+        cat ${{ parameters.config_file }}
+      displayName: 'Create Config File for Block Cache'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+
+  - template: 'mount.yml'
+    parameters:
+      prefix: ${{ parameters.cache_mode }}
+      mountStep:
+        script: |
+          # Enable allow_other in fuse.conf so the oracle user can access the FUSE mount
+          sudo sed -i 's/^#\s*user_allow_other/user_allow_other/' /etc/fuse.conf
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 -o allow_other
+
+  # Run actual RMAN backup tests with various database file sizes
+  - script: |
+      $(WORK_DIR)/test/scripts/rman_backup.sh $(MOUNT_DIR) $(ROOT_DIR) 10M,100M,1G,10G
+    displayName: 'RMAN Backup with Oracle XE'
+    timeoutInMinutes: 180
+
+  - script: |
+      tail -n 5000 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
+
+  - script: |
+      cat $(WORK_DIR)/*.trace
+    displayName: 'View stack trace'
+    condition: failed()
