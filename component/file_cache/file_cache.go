@@ -1093,7 +1093,9 @@ func (fc *FileCache) releaseFileInternal(options internal.ReleaseFileOptions, fl
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
+	// Pass LockAlreadyHeld: true since ReleaseFile already acquired the file lock (flock)
+	// before calling this method. Acquiring it again in FlushFile would cause a deadlock.
+	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true, LockAlreadyHeld: true}) //nolint
 	if err != nil {
 		log.Err("FileCache::releaseFileInternal : failed to flush file %s", options.Handle.Path)
 		return err
@@ -1268,6 +1270,15 @@ func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 // }
 
 // FlushFile: Flush the local file to storage
+// FlushFile can be called concurrently by multiple libfuse_flush calls for different file descriptors
+// (e.g. due to dup(), dup2() or fork()). Without serialization, each fd would independently call
+// CopyFromFile (which does PutBlock + PutBlockList), leading to InvalidBlockList errors when
+// concurrent PutBlockList calls race against each other.
+// To prevent this, we acquire a per-file lock before uploading unless the caller already holds it
+// (indicated by options.LockAlreadyHeld, e.g. when called from releaseFileInternal).
+//
+// Fast-path: If the handle is not dirty, or if lazyWrite defers the upload, we return immediately
+// without acquiring the lock to avoid unnecessary contention on the hot flush path.
 func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	//defer exectime.StatTimeCurrentBlock("FileCache::FlushFile")()
 	log.Trace("FileCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
@@ -1275,102 +1286,128 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 	fc.policy.CacheValid(localPath)
-	// if our handle is dirty then that means we wrote to the file
-	if options.Handle.Dirty() {
-		if fc.lazyWrite && !options.CloseInProgress {
-			// As lazy-write is enable, upload will be scheduled when file is closed.
-			log.Info("FileCache::FlushFile : %s will be flushed when handle %d is closed", options.Handle.Path, options.Handle.ID)
-			return nil
-		}
 
-		f := options.Handle.GetFileObject()
-		if f == nil {
-			log.Err("FileCache::FlushFile : error [couldn't find fd in handle] %s", options.Handle.Path)
-			return syscall.EBADF
-		}
+	// Fast-path: skip the lock entirely when no upload will happen.
+	// libfuse calls flush on every close() of a file descriptor, even when nothing was written,
+	// so this avoids contention for the common read-only / clean-handle case.
+	if !options.Handle.Dirty() {
+		return nil
+	}
 
-		// Flush all data to disk that has been buffered by the kernel.
-		// We cannot close the incoming handle since the user called flush, note close and flush can be called on the same handle multiple times.
-		// To ensure the data is flushed to disk before writing to storage, we duplicate the handle and close that handle.
-		// f.fsync() is another option but dup+close does it quickly compared to sync
-		dupFd, err := syscall.Dup(int(f.Fd()))
-		if err != nil {
-			log.Err("FileCache::FlushFile : error [couldn't duplicate the fd] %s", options.Handle.Path)
-			return syscall.EIO
-		}
+	// Fast-path: if lazy-write is enabled and file is not being closed, the upload is deferred
+	// to file close time. No lock needed since we are not touching storage.
+	if fc.lazyWrite && !options.CloseInProgress {
+		log.Info("FileCache::FlushFile : %s will be flushed when handle %d is closed", options.Handle.Path, options.Handle.ID)
+		return nil
+	}
 
-		err = syscall.Close(dupFd)
-		if err != nil {
-			log.Err("FileCache::FlushFile : error [unable to close duplicate fd] %s", options.Handle.Path)
-			return syscall.EIO
-		}
+	// Acquire per-file lock to serialize concurrent upload operations for the same file.
+	// Multiple libfuse_flush calls (from dup'd fds) can arrive in parallel and each would
+	// attempt PutBlock + PutBlockList, causing InvalidBlockList errors on the storage side.
+	// Skip locking if the caller already holds the lock (e.g. releaseFileInternal).
+	if !options.LockAlreadyHeld {
+		flock := fc.fileLocks.Get(options.Handle.Path)
+		flock.Lock()
+		defer flock.Unlock()
+	}
 
-		// Write to storage
-		// Create a new handle for the SDK to use to upload (read local file)
-		// The local handle can still be used for read and write.
-		var orgMode fs.FileMode
-		modeChanged := false
+	// Re-check Dirty() after acquiring the lock.
+	// Another goroutine that held the lock before us may have already uploaded the file
+	// and cleared the dirty flag. Uploading again would be redundant (and the second
+	// PutBlockList could race with the next write sequence, producing InvalidBlockList).
+	if !options.Handle.Dirty() {
+		log.Debug("FileCache::FlushFile : %s handle %d is no longer dirty after acquiring lock, skipping upload",
+			options.Handle.Path, options.Handle.ID)
+		return nil
+	}
 
-		uploadHandle, err := os.Open(localPath)
-		if err != nil {
-			if os.IsPermission(err) {
-				info, _ := os.Stat(localPath)
-				orgMode = info.Mode()
-				newMode := orgMode | 0444
-				err = os.Chmod(localPath, newMode)
-				if err == nil {
-					modeChanged = true
-					uploadHandle, err = os.Open(localPath)
-					log.Info("FileCache::FlushFile : read mode added to file %s", options.Handle.Path)
-				}
+	f := options.Handle.GetFileObject()
+	if f == nil {
+		log.Err("FileCache::FlushFile : error [couldn't find fd in handle] %s", options.Handle.Path)
+		return syscall.EBADF
+	}
+
+	// Flush all data to disk that has been buffered by the kernel.
+	// We cannot close the incoming handle since the user called flush, note close and flush can be called on the same handle multiple times.
+	// To ensure the data is flushed to disk before writing to storage, we duplicate the handle and close that handle.
+	// f.fsync() is another option but dup+close does it quickly compared to sync
+	dupFd, err := syscall.Dup(int(f.Fd()))
+	if err != nil {
+		log.Err("FileCache::FlushFile : error [couldn't duplicate the fd] %s", options.Handle.Path)
+		return syscall.EIO
+	}
+
+	err = syscall.Close(dupFd)
+	if err != nil {
+		log.Err("FileCache::FlushFile : error [unable to close duplicate fd] %s", options.Handle.Path)
+		return syscall.EIO
+	}
+
+	// Write to storage
+	// Create a new handle for the SDK to use to upload (read local file)
+	// The local handle can still be used for read and write.
+	var orgMode fs.FileMode
+	modeChanged := false
+
+	uploadHandle, err := os.Open(localPath)
+	if err != nil {
+		if os.IsPermission(err) {
+			info, _ := os.Stat(localPath)
+			orgMode = info.Mode()
+			newMode := orgMode | 0444
+			err = os.Chmod(localPath, newMode)
+			if err == nil {
+				modeChanged = true
+				uploadHandle, err = os.Open(localPath)
+				log.Info("FileCache::FlushFile : read mode added to file %s", options.Handle.Path)
 			}
-
-			if err != nil {
-				log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
-				return err
-			}
-		}
-		err = fc.NextComponent().CopyFromFile(
-			internal.CopyFromFileOptions{
-				Name: options.Handle.Path,
-				File: uploadHandle,
-			})
-
-		uploadHandle.Close()
-
-		if modeChanged {
-			err1 := os.Chmod(localPath, orgMode)
-			if err1 != nil {
-				log.Err("FileCache::FlushFile : Failed to remove read mode from file %s [%s]", options.Handle.Path, err1.Error())
-			}
 		}
 
 		if err != nil {
-			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
+			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
 			return err
 		}
+	}
+	err = fc.NextComponent().CopyFromFile(
+		internal.CopyFromFileOptions{
+			Name: options.Handle.Path,
+			File: uploadHandle,
+		})
 
-		options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	uploadHandle.Close()
 
-		// If chmod was done on the file before it was uploaded to container then setting up mode would have been missed
-		// Such file names are added to this map and here post upload we try to set the mode correctly
-		_, found := fc.missedChmodList.Load(options.Handle.Path)
-		if found {
-			// If file is found in map it means last chmod was missed on this
-			// Delete the entry from map so that any further flush do not try to update the mode again
-			fc.missedChmodList.Delete(options.Handle.Path)
+	if modeChanged {
+		err1 := os.Chmod(localPath, orgMode)
+		if err1 != nil {
+			log.Err("FileCache::FlushFile : Failed to remove read mode from file %s [%s]", options.Handle.Path, err1.Error())
+		}
+	}
 
-			// When chmod on container was missed, local file was updated with correct mode
-			// Here take the mode from local cache and update the container accordingly
-			localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-			info, err := os.Lstat(localPath)
-			if err == nil {
-				err = fc.Chmod(internal.ChmodOptions{Name: options.Handle.Path, Mode: info.Mode()})
-				if err != nil {
-					// chmod was missed earlier for this file and doing it now also
-					// resulted in error so ignore this one and proceed for flush handling
-					log.Err("FileCache::FlushFile : %s chmod failed [%s]", options.Handle.Path, err.Error())
-				}
+	if err != nil {
+		log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
+		return err
+	}
+
+	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+
+	// If chmod was done on the file before it was uploaded to container then setting up mode would have been missed
+	// Such file names are added to this map and here post upload we try to set the mode correctly
+	_, found := fc.missedChmodList.Load(options.Handle.Path)
+	if found {
+		// If file is found in map it means last chmod was missed on this
+		// Delete the entry from map so that any further flush do not try to update the mode again
+		fc.missedChmodList.Delete(options.Handle.Path)
+
+		// When chmod on container was missed, local file was updated with correct mode
+		// Here take the mode from local cache and update the container accordingly
+		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
+		info, err := os.Lstat(localPath)
+		if err == nil {
+			err = fc.Chmod(internal.ChmodOptions{Name: options.Handle.Path, Mode: info.Mode()})
+			if err != nil {
+				// chmod was missed earlier for this file and doing it now also
+				// resulted in error so ignore this one and proceed for flush handling
+				log.Err("FileCache::FlushFile : %s chmod failed [%s]", options.Handle.Path, err.Error())
 			}
 		}
 	}
