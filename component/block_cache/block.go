@@ -119,6 +119,20 @@ const (
 	blockListNotRetrieved
 )
 
+// Map blocklistState to string for logging and debugging purposes.
+func (state blocklistState) String() string {
+	switch state {
+	case blockListInvalid:
+		return "Invalid"
+	case blockListValid:
+		return "Valid"
+	case blockListNotRetrieved:
+		return "NotRetrieved"
+	default:
+		return fmt.Sprintf("Unknown(%d)", state)
+	}
+}
+
 // blockList maintains the list of blocks for a file.
 //
 // The block list tracks all blocks in a file in sequential order and
