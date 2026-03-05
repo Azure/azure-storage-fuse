@@ -617,27 +617,9 @@ func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBl
 		return list, nil
 	}
 
-	// Fallback to computing block list from file size
-	mainFilepath := filepath.Join(lfs.path, name)
-
-	info, err := os.Lstat(mainFilepath)
-	if err != nil {
-		return nil, err
-	}
-
-	blockSize := uint64(1 * 1024 * 1024)
-	blocks := info.Size() / (int64)(blockSize)
-	list := make(internal.CommittedBlockList, 0)
-
-	for i := range blocks {
-		list = append(list, internal.CommittedBlock{
-			Id:     fmt.Sprintf("%d", i),
-			Offset: i * (int64)(blockSize),
-			Size:   blockSize,
-		})
-	}
-
-	return &list, nil
+	// Return empty list if file does not exist, this is equivlent to blob with no blocks commmitted
+	// (blob commited using PutBlob)
+	return nil, nil
 }
 
 func NewLoopbackFSComponent() internal.Component {

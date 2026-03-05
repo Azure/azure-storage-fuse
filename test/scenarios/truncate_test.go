@@ -359,3 +359,32 @@ func FileTruncate(t *testing.T, filename string, initialSize int, finalSize int,
 	checkFileIntegrity(t, filename)
 	removeFiles(t, filename)
 }
+
+func TestCreateTruncateWrite(t *testing.T) {
+	t.Parallel()
+
+	filename := "testfile_create_truncate_write.txt"
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file, err := os.Create(filePath)
+		assert.NoError(t, err)
+
+		err = os.Truncate(filePath, 10*1024*1024)
+		assert.NoError(t, err)
+
+		content := []byte("Hello World")
+		written, err := file.Write(content)
+		assert.NoError(t, err)
+		assert.Equal(t, len(content), written)
+
+		err = file.Close()
+		assert.NoError(t, err)
+
+		readContent, err := os.ReadFile(filePath)
+		assert.NoError(t, err)
+		assert.Equal(t, string(content)+string(make([]byte, 10*1024*1024-len(content))), string(readContent))
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
