@@ -89,12 +89,14 @@ type File struct {
 //   - Synced set to true (no pending changes)
 func createFile(fileName string) *File {
 	f := &File{
-		Name:          fileName,
-		handles:       make(map[*handlemap.Handle]struct{}),
-		blockList:     newBlockList(),
-		size:          -1,
-		sizeOnStorage: -1,
-		synced:        true,
+		Name:            fileName,
+		handles:         make(map[*handlemap.Handle]struct{}),
+		blockList:       newBlockList(),
+		size:            -1,
+		sizeOnStorage:   -1,
+		synced:          true,
+		numPendingReads: atomic.Int32{},
+		pendingWriters:  sync.WaitGroup{},
 	}
 
 	return f
@@ -573,14 +575,14 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		return nil
 	}
 
-	if f.synced == true {
-		log.Debug("File::flush: File: %s is already synced, no flush needed", f.Name)
-		return nil
-	}
-
 	if f.err.Load() != nil {
 		log.Err("File::flush: Previous write error found for file: %s, error: %v", f.Name, f.err.Load())
 		return fmt.Errorf("previous write error: %v", f.err.Load())
+	}
+
+	if f.synced == true {
+		log.Debug("File::flush: File: %s is already synced, no flush needed", f.Name)
+		return nil
 	}
 
 	// Wait for all pending writes to complete inorder to have the clean state of the file.
