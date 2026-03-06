@@ -73,6 +73,15 @@ Please validate recommendations before acting on them.
 {agent_reply}
 """
 
+dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
+if dry_run:
+    print("DRY_RUN enabled. Skipping GitHub comment post.")
+    print(f"Target URL: {comments_url}")
+    print("----- Generated Reply Start -----")
+    print(final_reply)
+    print("----- Generated Reply End -----")
+    raise SystemExit(0)
+
 # -----------------------------
 # Post reply back to GitHub
 # -----------------------------

@@ -1,0 +1,105 @@
+name: Blobfuse Buddy – AI Auto Reply
+
+on:
+  workflow_dispatch:
+    inputs:
+      event_type:
+        description: "Mock event type for manual testing"
+        required: true
+        default: "issue"
+        type: choice
+        options:
+          - issue
+          - discussion
+      title:
+        description: "Mock title"
+        required: false
+        default: "Test: Blobfuse Buddy workflow"
+        type: string
+      body:
+        description: "Mock body"
+        required: false
+        default: "This is a manual workflow_dispatch test payload."
+        type: string
+  issues:
+    types: [opened]
+  discussion:
+    types: [created]
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  discussions: write
+
+jobs:
+  ai-reply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_MCP_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_MCP_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_MCP_SUBSCRIPTION_ID }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install openai azure-identity requests
+
+      - name: Create mock event payload (manual test)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          MOCK_EVENT_TYPE: ${{ inputs.event_type }}
+          MOCK_TITLE: ${{ inputs.title }}
+          MOCK_BODY: ${{ inputs.body }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          event_type = os.environ["MOCK_EVENT_TYPE"]
+          title = os.environ["MOCK_TITLE"]
+          body = os.environ["MOCK_BODY"]
+          repository = os.environ["REPOSITORY"]
+
+          if event_type == "issue":
+              payload = {
+                  "issue": {
+                      "title": title,
+                      "body": body,
+                      "comments_url": f"https://api.github.com/repos/{repository}/issues/1/comments"
+                  }
+              }
+          else:
+              payload = {
+                  "discussion": {
+                      "title": title,
+                      "body": body,
+                      "comments_url": f"https://api.github.com/repos/{repository}/discussions/1/comments"
+                  }
+              }
+
+          with open("mock_event.json", "w", encoding="utf-8") as file:
+              json.dump(payload, file)
+          PY
+
+      - name: Call Azure AI Foundry Agent
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_name == 'workflow_dispatch' && format('{0}/mock_event.json', github.workspace) || github.event_path }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+          FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai
+          FOUNDRY_API_VERSION: 2025-11-15-preview
+        run: |
+          python scripts/call_agent.py
