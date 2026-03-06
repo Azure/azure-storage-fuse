@@ -22,7 +22,13 @@ elif is_discussion:
     body = event["discussion"].get("body", "")
     comments_url = event["discussion"]["comments_url"]
 else:
-    raise RuntimeError("Unsupported GitHub event")
+    dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
+    if not dry_run:
+        raise RuntimeError("Unsupported GitHub event")
+    title = os.getenv("MOCK_TITLE", "Dry-run workflow test")
+    body = os.getenv("MOCK_BODY", "No issue/discussion payload found; using dry-run fallback.")
+    repository = os.getenv("GITHUB_REPOSITORY", "owner/repo")
+    comments_url = f"https://api.github.com/repos/{repository}/issues/1/comments"
 
 # -----------------------------
 # Build prompt

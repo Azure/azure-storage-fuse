@@ -102,6 +102,8 @@ jobs:
           GITHUB_EVENT_PATH: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && format('{0}/mock_event.json', github.workspace) || github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && 'true' || 'false' }}
+          MOCK_TITLE: ${{ github.event_name == 'workflow_dispatch' && inputs.title || format('Push test on {0}', github.ref_name) }}
+          MOCK_BODY: ${{ github.event_name == 'workflow_dispatch' && inputs.body || format('Temporary push-triggered test for commit {0}.', github.sha) }}
           FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai
           FOUNDRY_API_VERSION: 2025-11-15-preview
         run: |
