@@ -58,6 +58,22 @@ jobs:
             --source wiki \
             --destination-path wiki
 
+
+      # ✅ Upload public documentation
+      - name: Fetch public documentation
+        run: |
+          pip install html2text
+          python scripts/fetch_public_docs.p
+
+      - name: Upload public documentation
+        run: |
+          az storage blob upload-batch \
+            --auth-mode login \
+            --account-name $AZURE_STORAGE_ACCOUNT \
+            --container-name repo-docs \
+            --source public \
+            --destination public
+
       # ✅ Export issues / PRs
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -68,6 +84,7 @@ jobs:
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install requests
+          python3 -m pip install html2text
 
       # ✅ Restore incremental state and existing JSONL exports so the exporter
       #    can append new/updated records to the full historical files rather
@@ -100,3 +117,6 @@ jobs:
             --destination repo-gh \
             --source out_github_export \
             --overwrite
+
+
+         
