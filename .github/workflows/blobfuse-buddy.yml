@@ -110,8 +110,8 @@ jobs:
           GITHUB_EVENT_PATH: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && format('{0}/mock_event.json', github.workspace) || github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && 'true' || 'false' }}
-          MOCK_TITLE: Blobfuse config question: direct-io vs disable-kernel-cache
-          MOCK_BODY: What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?
+          MOCK_TITLE: "Blobfuse config question: direct-io vs disable-kernel-cache"
+          MOCK_BODY: "What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?"
           FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai
           FOUNDRY_API_VERSION: 2025-11-15-preview
         run: |
