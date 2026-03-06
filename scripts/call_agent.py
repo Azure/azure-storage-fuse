@@ -49,29 +49,23 @@ Please analyze and provide a helpful response.
 # Call Azure AI Foundry Agent
 # -----------------------------
 dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
-if dry_run:
-    agent_reply = (
-        "[DRY_RUN] Mock reply generated locally. "
-        "Azure AI Foundry call was skipped for safe workflow testing."
-    )
-else:
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://ai.azure.com/.default"
-    )
+token_provider = get_bearer_token_provider(
+    DefaultAzureCredential(),
+    "https://ai.azure.com/.default"
+)
 
-    client = OpenAI(
-        api_key=token_provider,
-        base_url=os.environ["FOUNDRY_BASE_URL"],
-        default_query={"api-version": os.environ["FOUNDRY_API_VERSION"]}
-    )
+client = OpenAI(
+    api_key=token_provider,
+    base_url=os.environ["FOUNDRY_BASE_URL"],
+    default_query={"api-version": os.environ["FOUNDRY_API_VERSION"]}
+)
 
-    response = client.responses.create(
-        input=prompt,
-        timeout=60
-    )
+response = client.responses.create(
+    input=prompt,
+    timeout=60
+)
 
-    agent_reply = response.output_text.strip()
+agent_reply = response.output_text.strip()
 
 # -----------------------------
 # Prepend AI disclaimer
