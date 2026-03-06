@@ -195,7 +195,12 @@ def main() -> int:
         print(f"Error: Unable to access repository '{repo_name}': {ex}", file=sys.stderr)
         return 1
 
-    since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days_lookback)
+    run_timestamp = datetime.datetime.now(datetime.timezone.utc)
+    since = run_timestamp - datetime.timedelta(days=days_lookback)
+
+    print(f"Report Generated On: {run_timestamp:%Y-%m-%d %H:%M:%S} UTC")
+    print(f"Report Window: Last {days_lookback} days")
+    print()
 
     issues = repo.get_issues(state="all", since=since)
 
