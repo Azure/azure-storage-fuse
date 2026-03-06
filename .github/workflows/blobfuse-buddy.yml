@@ -21,6 +21,9 @@ on:
         required: false
         default: "This is a manual workflow_dispatch test payload."
         type: string
+  push:
+    branches:
+      - vibhansa/mcpintegrate
   issues:
     types: [opened]
   discussion:
