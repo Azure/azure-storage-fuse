@@ -60,11 +60,11 @@ jobs:
           pip install openai azure-identity requests
 
       - name: Create mock event payload (manual test)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
         env:
-          MOCK_EVENT_TYPE: ${{ inputs.event_type }}
-          MOCK_TITLE: ${{ inputs.title }}
-          MOCK_BODY: ${{ inputs.body }}
+          MOCK_EVENT_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.event_type || 'issue' }}
+          MOCK_TITLE: ${{ github.event_name == 'workflow_dispatch' && inputs.title || format('Push test on {0}', github.ref_name) }}
+          MOCK_BODY: ${{ github.event_name == 'workflow_dispatch' && inputs.body || format('Temporary push-triggered test for commit {0}.', github.sha) }}
           REPOSITORY: ${{ github.repository }}
         run: |
           python - <<'PY'
@@ -99,9 +99,9 @@ jobs:
 
       - name: Call Azure AI Foundry Agent
         env:
-          GITHUB_EVENT_PATH: ${{ github.event_name == 'workflow_dispatch' && format('{0}/mock_event.json', github.workspace) || github.event_path }}
+          GITHUB_EVENT_PATH: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && format('{0}/mock_event.json', github.workspace) || github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+          DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && 'true' || 'false' }}
           FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai
           FOUNDRY_API_VERSION: 2025-11-15-preview
         run: |
