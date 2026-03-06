@@ -14,12 +14,12 @@ on:
       title:
         description: "Mock title"
         required: false
-        default: "Test: Blobfuse Buddy workflow"
+        default: "Blobfuse config question: direct-io vs disable-kernel-cache"
         type: string
       body:
         description: "Mock body"
         required: false
-        default: "This is a manual workflow_dispatch test payload."
+        default: "What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?"
         type: string
   push:
     branches:
@@ -63,8 +63,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
         env:
           MOCK_EVENT_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.event_type || 'issue' }}
-          MOCK_TITLE: ${{ github.event_name == 'workflow_dispatch' && inputs.title || format('Push test on {0}', github.ref_name) }}
-          MOCK_BODY: ${{ github.event_name == 'workflow_dispatch' && inputs.body || format('Temporary push-triggered test for commit {0}.', github.sha) }}
+          MOCK_TITLE: ${{ github.event_name == 'workflow_dispatch' && inputs.title || 'Blobfuse config question: direct-io vs disable-kernel-cache' }}
+          MOCK_BODY: ${{ github.event_name == 'workflow_dispatch' && inputs.body || 'What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?' }}
           REPOSITORY: ${{ github.repository }}
         run: |
           python - <<'PY'
@@ -102,8 +102,8 @@ jobs:
           GITHUB_EVENT_PATH: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && format('{0}/mock_event.json', github.workspace) || github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && 'true' || 'false' }}
-          MOCK_TITLE: ${{ github.event_name == 'workflow_dispatch' && inputs.title || format('Push test on {0}', github.ref_name) }}
-          MOCK_BODY: ${{ github.event_name == 'workflow_dispatch' && inputs.body || format('Temporary push-triggered test for commit {0}.', github.sha) }}
+          MOCK_TITLE: ${{ github.event_name == 'workflow_dispatch' && inputs.title || 'Blobfuse config question: direct-io vs disable-kernel-cache' }}
+          MOCK_BODY: ${{ github.event_name == 'workflow_dispatch' && inputs.body || 'What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?' }}
           FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai
           FOUNDRY_API_VERSION: 2025-11-15-preview
         run: |

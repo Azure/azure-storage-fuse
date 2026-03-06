@@ -87,11 +87,16 @@ Please validate recommendations before acting on them.
 """
 
 if dry_run:
+    question = f"Title: {title}\nDescription: {body}"
     print("DRY_RUN enabled. Skipping GitHub comment post.")
     print(f"Target URL: {comments_url}")
-    print("----- Generated Reply Start -----")
+    print("----- Validation Q&A -----")
+    print("Question Asked:")
+    print(question)
+    print()
+    print("Agent Answer:")
     print(final_reply)
-    print("----- Generated Reply End -----")
+    print("----- End Validation Q&A -----")
     raise SystemExit(0)
 
 # -----------------------------
