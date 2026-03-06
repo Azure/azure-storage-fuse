@@ -1,0 +1,65 @@
+name: Monthly issue metrics
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - vibhansa/mcpintegrate
+  schedule:
+    - cron: "0 0 1 * *"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: issue metrics
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install PyGithub
+
+      - name: Generate 90-day issue and PR metrics report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_NAME: ${{ github.repository }}
+        run: |
+          python scripts/issueMetrics.py --days 90 > issueMetric.txt
+
+      - name: Checkout benchmarks branch
+        uses: actions/checkout@v4
+        with:
+          ref: benchmarks
+          path: benchmarks-branch
+
+      - name: Publish report to benchmarks branch
+        shell: bash
+        run: |
+          set -e
+          report_date=$(date -u +%Y-%m-%d)
+
+          cp issueMetric.txt benchmarks-branch/issueMetric.txt
+          mkdir -p benchmarks-branch/issueMetrics
+          cp issueMetric.txt benchmarks-branch/issueMetrics/issueMetric-${report_date}.txt
+
+          cd benchmarks-branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add issueMetric.txt issueMetrics/
+
+          if git diff --cached --quiet; then
+            echo "No report changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Publish issue metrics report for ${report_date}"
+          git push origin benchmarks

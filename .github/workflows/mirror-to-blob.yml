@@ -1,7 +1,10 @@
-name: Step-2 Mirror GitHub Content to Blob Storage
+name: Mirror GitHub Content to Blob Storage
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - vibhansa/mcpintegrate
   schedule:
     - cron: "0 0 * * 0"   #  every Sunday at 00:00 UTC
 
@@ -51,9 +54,25 @@ jobs:
           az storage blob upload-batch \
             --auth-mode login \
             --account-name $AZURE_STORAGE_ACCOUNT \
-            --container-name repo-docs \
+            --destination repo-docs \
             --source wiki \
-            --destination wiki
+            --destination-path wiki
+
+
+      # ✅ Upload public documentation
+      - name: Fetch public documentation
+        run: |
+          pip install html2text
+          python scripts/fetch_public_docs.p
+
+      - name: Upload public documentation
+        run: |
+          az storage blob upload-batch \
+            --auth-mode login \
+            --account-name $AZURE_STORAGE_ACCOUNT \
+            --container-name repo-docs \
+            --source public \
+            --destination public
 
       # ✅ Export issues / PRs
       - name: Set up Python
@@ -65,6 +84,7 @@ jobs:
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install requests
+          python3 -m pip install html2text
 
       # ✅ Restore incremental state and existing JSONL exports so the exporter
       #    can append new/updated records to the full historical files rather
@@ -94,7 +114,9 @@ jobs:
           az storage blob upload-batch \
             --auth-mode login \
             --account-name $AZURE_STORAGE_ACCOUNT \
-            --container-name repo-gh \
+            --destination repo-gh \
             --source out_github_export \
-            --destination . \
             --overwrite
+
+
+         
