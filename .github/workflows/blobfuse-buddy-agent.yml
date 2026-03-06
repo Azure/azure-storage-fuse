@@ -1,0 +1,45 @@
+name: Blobfuse Buddy – AI Auto Reply
+
+on:
+  issues:
+    types: [opened]
+  discussion:
+    types: [created]
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  discussions: write
+
+jobs:
+  ai-reply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_MCP_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_MCP_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_MCP_SUBSCRIPTION_ID }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install openai azure-identity requests
+
+      - name: Call Azure AI Foundry Agent
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai
+          FOUNDRY_API_VERSION: 2025-11-15-preview
+        run: |
+          python scripts/call_agent.py
