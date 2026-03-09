@@ -152,7 +152,7 @@ func (suite *libfuseTestSuite) TestConfigFuseTraceEnable() {
 
 	suite.assert.Equal("libfuse", suite.libfuse.Name())
 	suite.assert.Empty(suite.libfuse.mountPath)
-	// Fuse trace should work as we are mouting using foreground option.
+	// Fuse trace should work as we are mounting using foreground option.
 	suite.assert.True(suite.libfuse.traceEnable)
 	common.ForegroundMount = false
 }
