@@ -1,0 +1,100 @@
+name: Step-2 Mirror GitHub Content to Blob Storage
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0"   #  every Sunday at 00:00 UTC
+
+permissions:
+  id-token: write
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180   # ✅ 3 hours
+    
+    env:
+      AZURE_STORAGE_ACCOUNT: blobfusemcpserver
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # ✅ Azure authentication (OIDC)
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_MCP_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_MCP_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_MCP_SUBSCRIPTION_ID }}
+
+      # ✅ Upload repo code
+      - name: Upload repo code
+        run: |
+          az storage copy \
+            --auth-mode login \
+            --account-name $AZURE_STORAGE_ACCOUNT \
+            --source . \
+            --destination "https://${AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/repo-code/azure-storage-fuse" \
+            --recursive \
+            --exclude-path ".git"
+
+      # ✅ Upload wiki
+      - name: Clone wiki
+        run: |
+          git clone https://github.com/Azure/azure-storage-fuse.wiki.git wiki
+
+      - name: Upload wiki docs
+        run: |
+          az storage blob upload-batch \
+            --auth-mode login \
+            --account-name $AZURE_STORAGE_ACCOUNT \
+            --container-name repo-docs \
+            --source wiki \
+            --destination wiki
+
+      # ✅ Export issues / PRs
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests
+
+      # ✅ Restore incremental state and existing JSONL exports so the exporter
+      #    can append new/updated records to the full historical files rather
+      #    than to an empty workspace, preserving the complete history in blob.
+      - name: Restore incremental state
+        run: |
+          mkdir -p out_github_export
+          az storage blob download-batch \
+            --auth-mode login \
+            --account-name $AZURE_STORAGE_ACCOUNT \
+            --source repo-gh \
+            --destination out_github_export \
+            --no-progress \
+            || echo "No previous export in blob - first run will perform a full export"
+
+      - name: Export GitHub history
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/export_github_history.py
+
+      # ✅ Upload GitHub history (including updated state.json for next incremental run).
+      #    --overwrite ensures all exported JSONL files and state.json are replaced with the
+      #    latest data from this run.
+      - name: Upload GitHub history
+        run: |
+          az storage blob upload-batch \
+            --auth-mode login \
+            --account-name $AZURE_STORAGE_ACCOUNT \
+            --container-name repo-gh \
+            --source out_github_export \
+            --destination . \
+            --overwrite
