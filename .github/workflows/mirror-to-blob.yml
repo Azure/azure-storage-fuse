@@ -2,9 +2,6 @@ name: Mirror GitHub Content to Blob Storage
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - vibhansa/mcpintegrate
   schedule:
     - cron: "0 0 * * 0"   #  every Sunday at 00:00 UTC
 
@@ -63,7 +60,7 @@ jobs:
       - name: Fetch public documentation
         run: |
           pip install html2text
-          python scripts/fetch_public_docs.p
+          python scripts/fetch_public_docs.py
 
       - name: Upload public documentation
         run: |

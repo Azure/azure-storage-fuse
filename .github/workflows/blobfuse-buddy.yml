@@ -21,9 +21,6 @@ on:
         required: false
         default: "What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?"
         type: string
-  push:
-    branches:
-      - vibhansa/mcpintegrate
   issues:
     types: [opened]
   discussion:
@@ -60,7 +57,7 @@ jobs:
           pip install openai azure-identity requests
 
       - name: Create mock event payload (manual test)
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           ORIGINAL_EVENT_PATH: ${{ github.event_path }}
@@ -97,6 +94,7 @@ jobs:
                   "discussion": {
                       "title": title,
                       "body": body,
+                      "node_id": "MOCK_NODE_ID",
                       "comments_url": f"https://api.github.com/repos/{repository}/discussions/1/comments"
                   }
               }
@@ -107,9 +105,9 @@ jobs:
 
       - name: Call Azure AI Foundry Agent
         env:
-          GITHUB_EVENT_PATH: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && format('{0}/mock_event.json', github.workspace) || github.event_path }}
+          GITHUB_EVENT_PATH: ${{ github.event_name == 'workflow_dispatch' && format('{0}/mock_event.json', github.workspace) || github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && 'true' || 'false' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
           MOCK_TITLE: "Blobfuse config question: direct-io vs disable-kernel-cache"
           MOCK_BODY: "What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?"
           FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai

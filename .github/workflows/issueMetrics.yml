@@ -1,9 +1,6 @@
 name: Monthly issue metrics
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - vibhansa/mcpintegrate
   schedule:
     - cron: "0 0 1 * *"
 

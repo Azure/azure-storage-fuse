@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import requests
 from openai import OpenAI
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
@@ -20,7 +21,8 @@ if is_issue:
 elif is_discussion:
     title = event["discussion"]["title"]
     body = event["discussion"].get("body", "")
-    comments_url = event["discussion"]["comments_url"]
+    discussion_node_id = event["discussion"]["node_id"]
+    comments_url = None  # discussions use GraphQL, not REST
 else:
     dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
     if not dry_run:
@@ -144,10 +146,38 @@ headers = {
     "Accept": "application/vnd.github+json",
 }
 
-post_resp = requests.post(
-    comments_url,
-    headers=headers,
-    json={"body": final_reply},
-)
-
-post_resp.raise_for_status()
+try:
+    if is_discussion:
+        # GitHub discussions require the GraphQL API for commenting
+        graphql_url = "https://api.github.com/graphql"
+        mutation = """
+        mutation($discussionId: ID!, $body: String!) {
+          addDiscussionComment(input: {discussionId: $discussionId, body: $body}) {
+            comment { id url }
+          }
+        }
+        """
+        gql_resp = requests.post(
+            graphql_url,
+            headers=headers,
+            json={"query": mutation, "variables": {"discussionId": discussion_node_id, "body": final_reply}},
+        )
+        gql_resp.raise_for_status()
+        gql_data = gql_resp.json()
+        if "errors" in gql_data:
+            print(f"GraphQL errors: {gql_data['errors']}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Discussion comment posted: {gql_data['data']['addDiscussionComment']['comment']['url']}")
+    else:
+        # Issues use the REST API
+        post_resp = requests.post(
+            comments_url,
+            headers=headers,
+            json={"body": final_reply},
+        )
+        post_resp.raise_for_status()
+        print(f"Issue comment posted: {post_resp.json().get('html_url', comments_url)}")
+except requests.exceptions.HTTPError as e:
+    print(f"Failed to post comment: {e}", file=sys.stderr)
+    print(f"Response body: {e.response.text}", file=sys.stderr)
+    sys.exit(1)
