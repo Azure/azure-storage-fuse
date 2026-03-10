@@ -4,6 +4,7 @@ bs=1M
 filename=hole_over_blocks_fio.data
 verify=crc32c
 verify_fatal=1
+direct=1
 group_reporting
 
 [hole]
