@@ -277,7 +277,7 @@ func (suite *unmountTestSuite) TestInvalidFlagWithOutValue() {
 }
 
 func TestUnMountCommand(t *testing.T) {
-	if _, err := exec.LookPath("../blobfuse2"); err != nil {
+	if _, err := os.Stat("../blobfuse2"); os.IsNotExist(err) {
 		t.Skip("blobfuse2 binary not found, skipping unmount tests")
 	}
 

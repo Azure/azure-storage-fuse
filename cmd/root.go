@@ -105,6 +105,9 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
+	// Version XML with formatting/declarations is typically under 100 bytes,
+	// but allow up to 200 bytes to accommodate variations while still rejecting
+	// obviously wrong responses like HTML error pages.
 	if len(body) > 200 {
 		log.Err("getRemoteVersion: something suspicious in the contents from remote version")
 		return "", fmt.Errorf("unable to get latest version")

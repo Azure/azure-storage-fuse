@@ -176,7 +176,7 @@ func (suite *utilTestSuite) TestBitmapReset() {
 }
 
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
-	if _, err := exec.LookPath("../blobfuse2"); err != nil {
+	if _, err := os.Stat("../blobfuse2"); os.IsNotExist(err) {
 		suite.T().Skip("blobfuse2 binary not found, skipping test")
 	}
 	var out bytes.Buffer
