@@ -212,9 +212,8 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 		// Remove it from buffer table manager, so that it accepts no more new readers.
 		bc.btm.removeBufferDescriptor(bufDesc, false /*strict*/, bc.freeList)
 	} else {
-		log.Debug("BlockCache::downloadBlock: Successfully downloaded block idx %d into buffer idx %d",
-			block.idx, bufDesc.bufIdx)
-
+		log.Debug("BlockCache::downloadBlock: Successfully downloaded blockIdx: %d into bufferIdx: %d, file: %s",
+			block.idx, bufDesc.bufIdx, block.file.Name)
 		bufDesc.valid.Store(true)
 	}
 
@@ -222,11 +221,11 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 
 	if !task.sync {
 		if ok := bufDesc.release(bc.freeList); ok {
-			log.Debug("BlockCache::downloadBlock: Released bufferIdx: %d for blockIdx: %d back to free list after async download",
-				bufDesc.bufIdx, block.idx)
+			log.Debug("BlockCache::downloadBlock: Released bufferIdx: %d for blockIdx: %d of file: %s back to free list after async download",
+				bufDesc.bufIdx, block.idx, block.file.Name)
 		}
-		log.Debug("BlockCache::downloadBlock: Async download completed for buffer idx %d for block idx %d, refCnt: %d",
-			bufDesc.bufIdx, block.idx, bufDesc.refCnt.Load())
+		log.Debug("BlockCache::downloadBlock: Async download completed for bufferIdx %d for blockIdx %d, refCnt: %d, file: %s",
+			bufDesc.bufIdx, block.idx, bufDesc.refCnt.Load(), block.file.Name)
 	}
 
 	close(task.signalOnCompletion)
@@ -283,13 +282,13 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	})
 
 	if err != nil {
-		log.Err("BlockCache::getBlockIDList : Failed to write block for %v, ID: %v [%v]",
-			block.file.Name, block.id, err)
+		log.Err("BlockCache::getBlockIDList : Failed to write block for %v, ID: %v, file: %s [%v]",
+			block.file.Name, block.id, block.file.Name, err)
 		bufDesc.uploadErr = err
 		block.file.err.Store(err.Error())
 	} else {
-		log.Debug("BlockCache::uploadBlock: Successfully uploaded blockIdx: %d from bufferIdx: %d, sync: %t",
-			block.idx, bufDesc.bufIdx, task.sync)
+		log.Debug("BlockCache::uploadBlock: Successfully uploaded blockIdx: %d from bufferIdx: %d, file: %s, sync: %t",
+			block.idx, bufDesc.bufIdx, block.file.Name, task.sync)
 		bufDesc.dirty.Store(false)
 		// Change the state of the block to uncommited, to reflect that it is uploaded but not yet committed.
 		block.setState(uncommitedBlock)
@@ -298,19 +297,19 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	// Reset the numWrites.
 	block.numWrites.Store(0)
 
+	bufDesc.contentLock.Unlock()
+
 	if !task.sync {
 		if ok := bufDesc.release(bc.freeList); ok {
 			// This should not be released as we did not removed it from buffer table manager yet.
-			log.Err("BlockCache::uploadBlock: Released bufferIdx: %d for blockIdx: %d back to free list after async upload",
-				bufDesc.bufIdx, block.idx)
+			log.Err("BlockCache::uploadBlock: Released bufferIdx: %d for blockIdx: %d of file: %s back to free list after async upload",
+				bufDesc.bufIdx, block.idx, block.file.Name)
 		}
 
 		ok1, ok2 := bc.btm.removeBufferDescriptor(bufDesc, true /*strict*/, bc.freeList)
-		log.Debug("BlockCache::uploadBlock: Removed bufferIdx: %d for blockIdx: %d from buffer table manager after async upload, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
-			bufDesc.bufIdx, block.idx, ok1, ok2)
+		log.Debug("BlockCache::uploadBlock: Removed bufferIdx: %d for blockIdx: %d of file: %s from buffer table manager after async upload, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
+			bufDesc.bufIdx, block.idx, block.file.Name, ok1, ok2)
 	}
-
-	bufDesc.contentLock.Unlock()
 
 	close(task.signalOnCompletion)
 }

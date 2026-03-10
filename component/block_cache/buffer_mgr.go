@@ -8,8 +8,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-const (
-	errFlushNeeded = "Flush needed before reading block data"
+var (
+	errBuffersExhausted error = fmt.Errorf("No free buffers available")
 )
 
 // BufferTableMgr manages the mapping between blocks and their associated buffer descriptors.
@@ -142,10 +142,20 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 	// Get the Buffer Descriptor from free list.
 	bufDesc, err = freeList.allocateBuffer(blk)
 	if err == errFreeListFull {
-		// TODO: Do we really need to get the victim buffer for readaheads as well?
 		// Failed to allocate buffer from free list, as free list is full. Need to evict a buffer.
 		log.Info("BufferTableMgr::GetOrCreateBufferDescriptor: Failed to allocate buffer for blockIdx: %d, sync: %v: %v",
 			blk.idx, sync, err)
+
+		// for readahead blocks, there is no need to get the block by getting victim buffer, just fail with error.
+		if !sync {
+			// Release the lock on buffer table manager.
+			btm.mu.Unlock()
+
+			log.Info("BufferTableMgr::GetOrCreateBufferDescriptor: Async request for blockIdx: %d, sync: %v failed to allocate buffer and will not retry with eviction, file: %s",
+				blk.idx, sync, blk.file.Name)
+			return nil, bufDescStatusInvalid, errBuffersExhausted
+		}
+
 		retries := 1
 
 		// Retry loop to find a victim buffer for eviction.
@@ -154,7 +164,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 			btm.mu.Unlock()
 
 			// No free buffer present in freeList, need to evict a buffer. Request a victim buffer from Buffers in use list.
-			bufDesc, err = freeList.getVictimBuffer(workerPool)
+			bufDesc, err = freeList.getVictimBuffer(workerPool, btm)
 			if err != nil {
 				// This should never happen as we just failed to allocate a buffer from free list.
 				log.Crit(fmt.Sprintf("BufferTableMgr::GetOrCreateBufferDescriptor: Failed to get victim buffer for blockIdx: %d, file: %s, sync: %v: %v",
@@ -166,7 +176,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 			btm.mu.Lock()
 
 			victimRefCnt := bufDesc.refCnt.Load()
-			if victimRefCnt == refCountTableAndOneUser {
+			if victimRefCnt == refCountTableAndOneUser && !bufDesc.dirty.Load() {
 				// Victim buffer is not in use, can evict.
 				victim = true
 			} else {
@@ -183,12 +193,12 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 				// Victim buffer is still in use, cannot evict. Retry getting another victim.
 				// Reduce the refCnt on victim buffer that was chosen.
 				if ok := bufDesc.release(freeList); ok {
-					log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Released victim bufferIdx: %d for blockIdx: %d back to free list after failed eviction attempt",
-						bufDesc.bufIdx, bufDesc.block.idx)
+					log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Released victim bufferIdx: %d for blockIdx: %d back to free list after failed eviction attempt, file: %s",
+						bufDesc.bufIdx, bufDesc.block.idx, blk.file.Name)
 				}
 
-				log.Err("BufferTableMgr::GetOrCreateBufferDescriptor: Victim bufferIdx: %d, blockIdx: %d has refCount: %d for blockIdx: %d, sync: %v, retries: %d, retrying eviction",
-					bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt.Load(), blk.idx, sync, retries)
+				log.Err("BufferTableMgr::GetOrCreateBufferDescriptor: Victim bufferIdx: %d, blockIdx: %d has refCount: %d, dirty: %v for blockIdx: %d, sync: %v, retries: %d retrying eviction",
+					bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt.Load(), bufDesc.dirty.Load(), blk.idx, sync, retries)
 				retries++
 			}
 		}
@@ -319,10 +329,10 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 		bufDesc.block.idx, bufDesc.bufIdx, bufDesc.block.file.Name)
 
 	btm.mu.Lock()
+	defer btm.mu.Unlock()
 
 	// Check 1: Cannot remove dirty buffers (data not yet uploaded to storage)
-	if bufDesc.dirty.Load() {
-		btm.mu.Unlock()
+	if strict && bufDesc.dirty.Load() {
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Cannot remove dirty bufferIdx: %d for blockIdx: %d, flush needed before reading block data",
 			bufDesc.bufIdx, bufDesc.block.idx)
 		return false, false
@@ -331,7 +341,6 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 	// Check 2: In strict mode, ensure no user references exist (only table reference allowed)
 	// refCnt > 1 means: 1 (table) + N (active users), so removal would be unsafe
 	if strict && bufDesc.refCnt.Load() > refCountTableOnly {
-		btm.mu.Unlock()
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Cannot remove bufferIdx: %d for blockIdx: %d, refCnt: %d > 1",
 			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt.Load())
 		return false, false
@@ -339,7 +348,6 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 
 	// Check 3: Verify buffer is still in the table (may have been removed by another goroutine)
 	if _, ok := btm.table[bufDesc.block]; !ok {
-		btm.mu.Unlock()
 		log.Debug("BufferTableMgr::removeBufferDescriptor: BufferIdx: %d not found in buffer table, already removed",
 			bufDesc.bufIdx)
 		return true, false
@@ -347,11 +355,12 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, str
 
 	// Step 1: Remove buffer from the table (no longer mapped to this block)
 	delete(btm.table, bufDesc.block)
-	btm.mu.Unlock()
 
 	// Step 2: Decrement refCnt to release table's reference
 	// If refCnt becomes 0, no one is using the buffer anymore and it can be freed
 	// If refCnt > 0, other users still hold references (they will release later)
+	// Note: decrementing last refCnt must be done inside the btm lock as it affects
+	// victim eviction safety.
 	if bufDesc.refCnt.Add(-1) == 0 {
 		// Buffer completely released - return to free list for reuse
 		log.Debug("BufferTableMgr::removeBufferDescriptor: Released bufferIdx: %d, blockIdx: %d back to free list",

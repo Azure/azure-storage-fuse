@@ -201,6 +201,9 @@ func releaseAllBuffersForFile(bc *BlockCache, file *File) {
 			continue
 		}
 
+		// Ensure the buffer is valid for read before releasing, if read-ahead is in progress, wait for it to complete.
+		bufDesc.ensureBufferValidForRead()
+
 		// Release the reference held just now for lookup
 		if ok := bufDesc.release(bc.freeList); ok {
 			// It is present in buffer table manager, so should not be released here
@@ -209,17 +212,14 @@ func releaseAllBuffersForFile(bc *BlockCache, file *File) {
 			continue
 		}
 
-		// Ensure the buffer is valid for read before releasing, if read-ahead is in progress, wait for it to complete.
-		bufDesc.ensureBufferValidForRead()
-
 		log.Debug("releaseAllBuffersForFile: Releasing bufferIdx: %d for blockIdx: %d of file %s from buffer table manager",
 			bufDesc.bufIdx, blk.idx, file.Name)
 
 		if ok1, ok2 := bc.btm.removeBufferDescriptor(bufDesc, true /*strict*/, bc.freeList); !ok1 || !ok2 {
 			// There should be no more readers for this buffer descriptor, that mean it should always release the buffer
-			// descriptor successfully here.
-			log.Crit(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove buffer: [%v], refCnt: %d, for blockIdx: %d of file %s from buffer table manager, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
-				bufDesc, bufDesc.refCnt.Load(), blk.idx, file.Name, ok1, ok2))
+			// descriptor successfully here. It might possible that this is chosen as victim after the release.
+			log.Err(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove buffer: [%v], for blockIdx: %d of file %s from buffer table manager, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
+				bufDesc, blk.idx, file.Name, ok1, ok2))
 			continue
 		}
 

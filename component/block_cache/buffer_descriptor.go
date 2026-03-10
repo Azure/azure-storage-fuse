@@ -99,8 +99,8 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 
 	// Inconsistent state: buffer is not valid but also has no error.
 	// This should never happen and indicates a bug in the download logic.
-	err := fmt.Errorf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, blockIdx: %d, valid: %v, downloadErr: %v, file: %s",
-		bd.bufIdx, bd.block.idx, bd.valid.Load(), bd.downloadErr, bd.block.file.Name)
+	err := fmt.Errorf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, valid: %v, downloadErr: %v",
+		bd.bufIdx, bd.valid.Load(), bd.downloadErr)
 	log.Crit(err.Error())
 
 	return err
@@ -135,8 +135,8 @@ func (bd *bufferDescriptor) release(fl *freeListType) bool {
 	} else if newRefCnt < 0 {
 		// Negative refCnt indicates a bug: release() called more times than acquire.
 		// This should never happen and represents a serious reference counting error.
-		err := fmt.Sprintf("bufferDescriptor::release: bufferIdx: %d for blockIdx: %d has negative refCount: %d, bytesRead: %d, bytesWritten: %d, file: %s",
-			bd.bufIdx, bd.block.idx, bd.refCnt.Load(), bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
+		err := fmt.Sprintf("bufferDescriptor::release: bufferIdx: %d has negative refCount: %d, bytesRead: %d, bytesWritten: %d",
+			bd.bufIdx, bd.refCnt.Load(), bd.bytesRead.Load(), bd.bytesWritten.Load())
 		log.Err(err)
 		panic(err)
 	}

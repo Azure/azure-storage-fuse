@@ -403,7 +403,7 @@ func (fl *freeListType) debugListMustBeFull() {
 // The mutex is released during victim search to avoid blocking other
 // operations. The victim buffer is pinned (refCnt incremented) before
 // returning to prevent eviction by other threads.
-func (fl *freeListType) getVictimBuffer(workerPool *workerPool) (*bufferDescriptor, error) {
+func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTableMgr) (*bufferDescriptor, error) {
 	log.Debug("getVictimBuffer: Starting to look for victim buffer")
 
 	maxBuffers := len(fl.bufDescriptors)
@@ -433,16 +433,32 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool) (*bufferDescript
 				log.Debug("getVictimBuffer: Selected victim bufferIdx: %d, blockIdx: %d after %d tries",
 					bufDesc.bufIdx, bufDesc.block.idx, numTries)
 
-				bufDesc.refCnt.Add(1)
+				pinnedBuffer := false
 
-				// If the block is dirty, we should need to upload it before reusing it.
-				if bufDesc.dirty.Load() {
-					log.Debug("getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
-						bufDesc.bufIdx, bufDesc.block.idx)
-					bufDesc.block.scheduleUpload(workerPool, fl, bufDesc, true /* sync */)
+				btm.mu.Lock()
+				// Check for the refCnt again after acquiring the lock to make sure the buffer is still a valid victim before pinning it.
+				if bufDesc.refCnt.Load() != refCountTableOnly {
+					log.Debug("getVictimBuffer: Victim bufferIdx: %d is no longer a valid victim after acquiring lock, refCnt: %d, giving it another chance",
+						bufDesc.bufIdx, bufDesc.refCnt.Load())
+					bufDesc.numEvictionCyclesPassed.Store(0) // Reset eviction cycle counter to give it another chance.
+				} else {
+					log.Debug("getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d of file: %s is still a valid victim after acquiring lock, pinning it for eviction",
+						bufDesc.bufIdx, bufDesc.block.idx, bufDesc.block.file.Name)
+					bufDesc.refCnt.Add(1)
+					pinnedBuffer = true
 				}
+				btm.mu.Unlock()
 
-				return bufDesc, nil
+				if pinnedBuffer {
+					// If the block is dirty, we should need to upload it before reusing it.
+					if bufDesc.dirty.Load() {
+						log.Debug("getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
+							bufDesc.bufIdx, bufDesc.block.idx)
+						bufDesc.block.scheduleUpload(workerPool, fl, bufDesc, true /* sync */)
+					}
+
+					return bufDesc, nil
+				}
 			} else {
 				// Give one more chance to this buffer to be used.
 				bufDesc.numEvictionCyclesPassed.Add(1)

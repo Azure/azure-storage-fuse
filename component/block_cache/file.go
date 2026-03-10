@@ -215,8 +215,8 @@ func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 			goto retry
 		}
 
-		log.Debug("File::read: Got buffer descriptor for file: %s, blockIdx: %d, status: %v, numParallelReaders: %d, took: %v",
-			f.Name, blockIdx, status, f.numPendingReads.Load(), time.Since(stime))
+		log.Debug("File::read: Got buffer descriptor bufIdx: %d for file: %s, blockIdx: %d, status: %v, numParallelReaders: %d, took: %v",
+			bufDesc.bufIdx, f.Name, blockIdx, status, f.numPendingReads.Load(), time.Since(stime))
 
 		// Copy data from block buffer to user buffer
 		bufDesc.contentLock.RLock()
@@ -452,7 +452,9 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 			goto retry
 		}
 
-		log.Debug("File::write: Got buffer descriptor for file: %s, blockIdx: %d, status: %v", f.Name, blockIdx, status)
+		log.Debug("File::write: Got buffer descriptor bufIdx: %d for file: %s, blockIdx: %d, status: %v",
+			bufDesc.bufIdx, f.Name, blockIdx, status)
+
 		offsetInsideBlock := convertOffsetIntoBlockOffset(offset, int64(bc.blockSize))
 
 		// Take the exclusive lock on buffer content to write data
@@ -664,6 +666,12 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 
 		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
 		if bufDesc == nil {
+			// It might happen this buffer has chosen as victim and removed from table after uploading.
+			if blk.getState() == committedBlock || blk.getState() == uncommitedBlock {
+				// No need to upload committed or uncommitted blocks
+				continue
+			}
+
 			// No buffer descriptor found for this block, sparse blocks must have no writes on it.
 			if blk.getState() == localBlock && blk.numWrites.Load() > 0 {
 				err := fmt.Errorf("File::flush: No buffer descriptor found for local blockIdx: %d during flush at file: %s",
@@ -881,11 +889,10 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 					return err
 				}
 				// Remove this buffer from buffer table manager
-				if ok1, ok2 := bc.btm.removeBufferDescriptor(bufDesc, false /*strict*/, bc.freeList); !ok1 {
+				if ok1, ok2 := bc.btm.removeBufferDescriptor(bufDesc, true /*strict*/, bc.freeList); !ok1 {
 					err := fmt.Errorf("File::truncate: Removed buffer: %v for blockIdx: %d from buffer table manager during truncate at file: %s, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v, refCnt: %d",
 						bufDesc, blk.idx, f.Name, ok1, ok2, bufDesc.refCnt.Load())
-					log.Crit(err.Error())
-					return err
+					log.Err(err.Error())
 				}
 			}
 		}
