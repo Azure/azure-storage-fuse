@@ -85,6 +85,7 @@ func checkVersionExists(versionUrl string) bool {
 		log.Err("checkVersionExists: error getting version file from container [%s]", err.Error())
 		return false
 	}
+	defer resp.Body.Close()
 
 	return resp.StatusCode != 404
 }
@@ -96,6 +97,7 @@ func getRemoteVersion(req string) (string, error) {
 		log.Err("getRemoteVersion: error listing version file from container [%s]", err.Error())
 		return "", err
 	}
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -103,7 +105,7 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
-	if len(body) > 50 {
+	if len(body) > 200 {
 		log.Err("getRemoteVersion: something suspicious in the contents from remote version")
 		return "", fmt.Errorf("unable to get latest version")
 	}

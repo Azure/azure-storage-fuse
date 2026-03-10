@@ -52,6 +52,17 @@ type utilsTestSuite struct {
 	suite.Suite
 }
 
+func (s *utilsTestSuite) SetupTest() {
+	err := log.SetDefaultLogger("base", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
+	if err != nil {
+		panic("Unable to set default logger for utils tests.")
+	}
+}
+
+func (s *utilsTestSuite) TearDownTest() {
+	_ = log.Destroy()
+}
+
 func (s *utilsTestSuite) TestContentType() {
 	assert := assert.New(s.T())
 
