@@ -141,6 +141,7 @@ func TestFreeList_GetVictimBuffer(t *testing.T) {
 	// Just verify the basic structure exists
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
+	bc.btm = newBufferTableMgr()
 	defer destroyFreeList()
 
 	// Verify victim pointer is initialized
@@ -162,7 +163,7 @@ func TestFreeList_GetVictimBuffer(t *testing.T) {
 	}
 
 	// Get victim buffer - should return the unpinned buffer
-	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool)
+	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool, bc.btm)
 	assert.NoError(t, err)
 	assert.NotNil(t, victimBufDesc)
 	assert.Equal(t, 9, victimBufDesc.bufIdx)
@@ -176,6 +177,7 @@ func TestFreeList_GetVictimBuffer_AllInUse(t *testing.T) {
 
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
+	bc.btm = newBufferTableMgr()
 	defer destroyFreeList()
 
 	// Verify victim pointer is initialized
@@ -194,7 +196,7 @@ func TestFreeList_GetVictimBuffer_AllInUse(t *testing.T) {
 	}
 
 	// Get victim buffer - should return nil, as all the buffers are in use.
-	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool)
+	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool, bc.btm)
 	assert.Nil(t, victimBufDesc)
 	assert.Error(t, err)
 	assert.ErrorIs(t, errNoVictimBufferFound, err)
