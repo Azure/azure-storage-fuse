@@ -6,6 +6,7 @@ filename=stripe_write_fio.data
 verify=crc32c
 verify_fatal=1
 ioengine=sync
+direct=1
 group_reporting
 
 [job1]
