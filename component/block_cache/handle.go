@@ -201,26 +201,35 @@ func releaseAllBuffersForFile(bc *BlockCache, file *File) {
 			continue
 		}
 
-		// Release the reference held just now for lookup
-		if ok := bufDesc.release(bc.freeList); ok {
-			// It is present in buffer table manager, so should not be released here
-			log.Crit(fmt.Sprintf("releaseAllBuffersForFile: Released bufferIdx: %d for blockIdx: %d of file %s back to free list during lookup release",
-				bufDesc.bufIdx, blk.idx, file.Name))
-			continue
-		}
-
 		// Ensure the buffer is valid for read before releasing, if read-ahead is in progress, wait for it to complete.
 		bufDesc.ensureBufferValidForRead()
 
 		log.Debug("releaseAllBuffersForFile: Releasing bufferIdx: %d for blockIdx: %d of file %s from buffer table manager",
 			bufDesc.bufIdx, blk.idx, file.Name)
 
-		if ok1, ok2 := bc.btm.removeBufferDescriptor(bufDesc, true /*strict*/, bc.freeList); !ok1 || !ok2 {
-			// There should be no more readers for this buffer descriptor, that mean it should always release the buffer
-			// descriptor successfully here.
-			log.Crit(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove buffer: [%v], refCnt: %d, for blockIdx: %d of file %s from buffer table manager, isRemovedFromBufMgr: %v, isReleasedToFreeList: %v",
-				bufDesc, bufDesc.refCnt.Load(), blk.idx, file.Name, ok1, ok2))
-			continue
+		if ok := bc.btm.removeBufferDescriptor(bufDesc, bc.freeList); !ok {
+			// This should always succeed because where we are at the release, there shouldn't be any active references
+			// to the buffer (all handles are closed), so it must be present in the buffer table manager and must have
+			// refCnt exactly equal to refCntTableAndOneUser.
+			//
+			// This buffer may get chosen as victim, so max refCnt can be refCntTableAndOneUser+1 (the +1 is for the victim selection algo).
+			// If it's more than that, it indicates a bug in reference counting or buffer lifecycle management.
+			if bufDesc.refCnt.Load() > refCountTableAndOneUser+1 {
+				panic(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove buffer: [%v], for blockIdx: %d of file %s from buffer table manager",
+					bufDesc, blk.idx, file.Name))
+			}
+
+			if bufDesc.dirty.Load() {
+				// This means upload has failed for the buffer, relase the buffer for now, this buffer would be collected
+				// by the victim selection algo later.
+				log.Warn("releaseAllBuffersForFile: BufferIdx: %d [%v] for blockIdx: %d of file %s is dirty, which indicates upload failure",
+					bufDesc.bufIdx, bufDesc, blk.idx, file.Name)
+			}
+
+			if ok := bufDesc.release(bc.freeList); ok {
+				log.Debug("releaseAllBuffersForFile: BufferIdx: %d for blockIdx: %d of file %s released to free list",
+					bufDesc.bufIdx, blk.idx, file.Name)
+			}
 		}
 
 		log.Debug("releaseAllBuffersForFile: Released bufferIdx: %d for blockIdx: %d of file %s",
