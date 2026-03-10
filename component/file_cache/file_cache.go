@@ -1066,29 +1066,15 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 // ReleaseFile: Flush the file and invalidate it from the cache.
 func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
+	log.Trace("FileCache::ReleaseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+
 	// Lock the file so that while close is in progress no one can open the file again
 	flock := fc.fileLocks.Get(options.Handle.Path)
 	flock.Lock()
+	defer flock.Unlock()
 
 	// Async close is called so schedule the upload and return here
 	fc.fileCloseOpt.Add(1)
-
-	if !fc.lazyWrite {
-		// Sync close is called so wait till the upload completes
-		return fc.releaseFileInternal(options, flock)
-	}
-
-	go fc.releaseFileInternal(options, flock) //nolint
-	return nil
-}
-
-// releaseFileInternal: Actual handling of the close file goes here
-func (fc *FileCache) releaseFileInternal(options internal.ReleaseFileOptions, flock *common.LockMapItem) error {
-	log.Trace("FileCache::releaseFileInternal : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-
-	// Lock is acquired by ReleaseFile, at end of this method we need to unlock
-	// If its async call file shall be locked till the upload completes.
-	defer flock.Unlock()
 	defer fc.fileCloseOpt.Done()
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
