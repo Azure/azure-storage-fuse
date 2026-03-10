@@ -45,13 +45,13 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Libfuse:
-              vmImage: 'ubuntu-18.04'
-              fuselib: 'libfuse-dev'
-              tags: 'fuse2'
-              depends: 'fuse'
-              container: 'test-cnt-ubn-18'
-              AgentName: "blobfuse-ubuntu18"
+            # Libfuse:
+            #   vmImage: 'ubuntu-18.04'
+            #   fuselib: 'libfuse-dev'
+            #   tags: 'fuse2'
+            #   depends: 'fuse'
+            #   container: 'test-cnt-ubn-18'
+            #   AgentName: "blobfuse-ubuntu18"
             Libfuse3:
               vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
