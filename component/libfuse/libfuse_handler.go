@@ -123,7 +123,7 @@ func (lf *Libfuse) initFuse() error {
 	operations := C.fuse_operations_t{}
 
 	if lf.extensionPath != "" {
-		log.Trace("Libfuse::InitFuse : Going for extension mouting [%s]", lf.extensionPath)
+		log.Trace("Libfuse::InitFuse : Going for extension mounting [%s]", lf.extensionPath)
 
 		// User has given an extension so we need to register it to fuse
 		//  and then register ourself to it

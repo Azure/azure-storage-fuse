@@ -20,7 +20,7 @@ jobs:
       AZURE_STORAGE_ACCOUNT: blobfusemcpserver
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ✅ Azure authentication (OIDC)
       - name: Azure login
@@ -73,7 +73,7 @@ jobs:
 
       # ✅ Export issues / PRs
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.x"
 
