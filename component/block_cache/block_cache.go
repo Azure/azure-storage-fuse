@@ -401,7 +401,10 @@ func (bc *BlockCache) Configure(_ bool) error {
 		//
 		// TODO: This can be config value.
 		//
-		usablePercentSystemRAM := 70
+		// In the older block cache, we set this to 80% usable memory which is very aggresive, and can cause
+		// OOM on the system. Setting this to 50% for now, and we can increase this later based on telemetry
+		// and testing.
+		usablePercentSystemRAM := 50
 
 		//
 		// Allow higher number of maxBuffers if system can afford.
@@ -440,7 +443,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.prefetch = conf.PrefetchCount
 		if bc.prefetch == 0 {
 			bc.noPrefetch = true
-		} // else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
+		}
+		// This seems aggresive from the old code. User can set the prefetch to 2/3 blocks which is a valid use case.
+		// else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
 		// 	log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MIN_PREFETCH*2)+1)
 		// 	return fmt.Errorf("config error in %s [invalid prefetch count]", bc.Name())
 		// }
