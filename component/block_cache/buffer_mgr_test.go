@@ -131,7 +131,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Dirty(t *testing.T) {
 	btm.mu.Unlock()
 
 	// Try to remove dirty buffer
-	isRemoved, isReleased := btm.removeBufferDescriptor(bd, false /*strict*/, freeList)
+	isRemoved, isReleased := btm.removeBufferDescriptor(bd, true /*strict*/, freeList)
 
 	assert.False(t, isRemoved, "Should not remove dirty buffer")
 	assert.False(t, isReleased)
