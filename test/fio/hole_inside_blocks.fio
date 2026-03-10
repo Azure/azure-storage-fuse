@@ -5,6 +5,7 @@ filename=hole_inside_blocks_fio.data
 verify=crc32c
 verify_fatal=1
 verify_dump=1
+direct=1
 group_reporting
 
 [hole]
