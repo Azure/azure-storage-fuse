@@ -1068,24 +1068,25 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	log.Trace("FileCache::ReleaseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
-	// Lock the file so that while close is in progress no one can open the file again
-	flock := fc.fileLocks.Get(options.Handle.Path)
-	flock.Lock()
-	defer flock.Unlock()
-
 	// Async close is called so schedule the upload and return here
 	fc.fileCloseOpt.Add(1)
 	defer fc.fileCloseOpt.Done()
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-	// Pass LockAlreadyHeld: true since ReleaseFile already acquired the file lock (flock)
-	// before calling this method. Acquiring it again in FlushFile would cause a deadlock.
-	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true, LockAlreadyHeld: true}) //nolint
+	// FlushFile takes lock on the given file to ensure that while close is in progress no one can open the file again
+	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 	if err != nil {
 		log.Err("FileCache::releaseFileInternal : failed to flush file %s", options.Handle.Path)
 		return err
 	}
+
+	// Take lock and decrement the handle count for this file.
+	// We need to take lock here to make sure that cache policy does not delete
+	// the file while we are in the middle of closing it and updating handle count.
+	flock := fc.fileLocks.Get(options.Handle.Path)
+	flock.Lock()
+	defer flock.Unlock()
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
@@ -1098,6 +1099,7 @@ func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 		log.Err("FileCache::releaseFileInternal : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
 		return err
 	}
+
 	flock.Dec()
 
 	// If it is an fsync op then purge the file
@@ -1257,11 +1259,10 @@ func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 
 // FlushFile: Flush the local file to storage
 // FlushFile can be called concurrently by multiple libfuse_flush calls for different file descriptors
-// (e.g. due to dup(), dup2() or fork()). Without serialization, each fd would independently call
-// CopyFromFile (which does PutBlock + PutBlockList), leading to InvalidBlockList errors when
+// (e.g. due to dup(), dup2() or fork()) for the same file. Without serialization, each fd would independently
+// call CopyFromFile (which does PutBlock + PutBlockList), leading to InvalidBlockList errors when
 // concurrent PutBlockList calls race against each other.
-// To prevent this, we acquire a per-file lock before uploading unless the caller already holds it
-// (indicated by options.LockAlreadyHeld, e.g. when called from releaseFileInternal).
+// To prevent this, we acquire a per-file lock before uploading the file.
 //
 // Fast-path: If the handle is not dirty, or if lazyWrite defers the upload, we return immediately
 // without acquiring the lock to avoid unnecessary contention on the hot flush path.
@@ -1290,12 +1291,9 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	// Acquire per-file lock to serialize concurrent upload operations for the same file.
 	// Multiple libfuse_flush calls (from dup'd fds) can arrive in parallel and each would
 	// attempt PutBlock + PutBlockList, causing InvalidBlockList errors on the storage side.
-	// Skip locking if the caller already holds the lock (e.g. releaseFileInternal).
-	if !options.LockAlreadyHeld {
-		flock := fc.fileLocks.Get(options.Handle.Path)
-		flock.Lock()
-		defer flock.Unlock()
-	}
+	flock := fc.fileLocks.Get(options.Handle.Path)
+	flock.Lock()
+	defer flock.Unlock()
 
 	// Re-check Dirty() after acquiring the lock.
 	// Another goroutine that held the lock before us may have already uploaded the file

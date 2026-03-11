@@ -151,12 +151,6 @@ type CopyFromFileOptions struct {
 type FlushFileOptions struct {
 	Handle          *handlemap.Handle
 	CloseInProgress bool
-
-	// LockAlreadyHeld indicates whether the caller has already acquired the file lock for this path.
-	// When true, FlushFile will skip acquiring the lock to avoid deadlock.
-	// This should be set to true only when the caller (e.g. releaseFileInternal) has already locked
-	// the file via fileLocks.
-	LockAlreadyHeld bool
 }
 
 type SyncFileOptions struct {

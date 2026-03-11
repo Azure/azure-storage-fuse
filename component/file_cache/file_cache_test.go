@@ -1392,52 +1392,6 @@ func (suite *fileCacheTestSuite) TestFlushFileConcurrent() {
 	f.Close()
 }
 
-// TestFlushFileLockAlreadyHeld verifies that FlushFile works correctly when
-// LockAlreadyHeld is set to true, which is the case when called from releaseFileInternal.
-// releaseFileInternal already holds the file lock, so FlushFile must skip locking to avoid deadlock.
-func (suite *fileCacheTestSuite) TestFlushFileLockAlreadyHeld() {
-	defer suite.cleanupTest()
-	file := "file_lock_already_held"
-	handle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
-	suite.assert.NoError(err)
-
-	testData := "lock already held flush test"
-	data := []byte(testData)
-	_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
-	suite.assert.NoError(err)
-	suite.assert.True(handle.Dirty())
-
-	// Simulate what releaseFileInternal does: acquire the lock, then call FlushFile with LockAlreadyHeld.
-	// This must not deadlock.
-	flock := suite.fileCache.fileLocks.Get(handle.Path)
-	flock.Lock()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- suite.fileCache.FlushFile(internal.FlushFileOptions{
-			Handle:          handle,
-			CloseInProgress: true,
-			LockAlreadyHeld: true})
-	}()
-
-	select {
-	case err := <-done:
-		suite.assert.NoError(err)
-		suite.assert.False(handle.Dirty())
-		flock.Unlock()
-	case <-time.After(2 * time.Second):
-		flock.Unlock()
-		suite.T().Fatal("FlushFile likely deadlocked while lock already held")
-	}
-
-	// Verify the file was correctly flushed to storage
-	d, _ := os.ReadFile(suite.fake_storage_path + "/" + file)
-	suite.assert.Equal(data, d)
-
-	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
-	suite.assert.NoError(err)
-}
-
 // TestFlushFileConcurrentWithRelease verifies that a concurrent FlushFile call
 // (from libfuse_flush) and ReleaseFile (close) are properly serialized so that
 // CopyFromFile never runs in parallel.
