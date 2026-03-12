@@ -1,10 +1,10 @@
 # OpenTelemetry Integration for Blobfuse2
 
-This guide explains how to configure Blobfuse2 to send logs **and system metrics** to Azure Monitor using OpenTelemetry.
+This guide explains how to configure Blobfuse2 to send  **logs and system metrics** to Azure Monitor using OpenTelemetry.
 
 ## Overview
 
-Blobfuse2 supports OpenTelemetry (OTel) for both logging and metrics, enabling you to send structured logs **and resource-usage metrics** (CPU, memory, disk) to Azure Monitor, Application Insights, or any OpenTelemetry-compatible backend. This integration uses the OpenTelemetry Protocol (OTLP) to export data.
+Blobfuse2 supports OpenTelemetry (OTel) for both logging and metrics, enabling you to send structured **logs and resource-usage metrics** (CPU, memory, disk) to Azure Monitor, Application Insights, or any OpenTelemetry-compatible backend. This integration uses the OpenTelemetry Protocol (OTLP) to export data.
 
 ## Architecture
 
@@ -225,13 +225,57 @@ When `enable: true` is set under the top-level `metrics:` section, Blobfuse2 per
 | Metric Name | Type | Unit | Description |
 |-------------|------|------|-------------|
 | `blobfuse2.system.cpu.usage_percent` | Gauge | `%` | Overall CPU usage percentage (all cores) |
-| `blobfuse2.system.memory.usage_bytes` | Gauge | `By` | Process memory usage (runtime.MemStats.Sys) |
+| `blobfuse2.system.memory.usage_bytes` | Gauge | `By` | Process memory RSS (matches `top` RES column) |
 | `blobfuse2.system.memory.total_bytes` | Gauge | `By` | Total system memory |
 | `blobfuse2.system.disk.usage_bytes` | Gauge | `By` | Disk space used on the file cache volume |
 | `blobfuse2.system.disk.total_bytes` | Gauge | `By` | Total disk space on the file cache volume |
 | `blobfuse2.system.disk.usage_percent` | Gauge | `%` | Disk usage percentage on the file cache volume |
 
 > **Note:** Disk metrics (`blobfuse2.system.disk.*`) are only emitted when `file_cache` is part of the pipeline and has a valid `path` configured. If file cache is not enabled, only CPU and memory metrics are exported.
+
+## Storage Request Metrics
+
+When metrics are enabled, Blobfuse2 also tracks per-REST-call metrics for every Azure Storage HTTP request. These are collected via an Azure SDK pipeline policy that wraps the retry loop.
+
+| Metric Name | Type | Unit | Description |
+|-------------|------|------|-------------|
+| `blobfuse2.storage.request.duration_ms` | Histogram | `ms` | Round-trip latency of each Azure Storage REST call (includes retries) |
+| `blobfuse2.storage.request.count` | Counter | `{request}` | Total number of Azure Storage REST requests |
+| `blobfuse2.storage.request.retry_count` | Histogram | `{retry}` | Number of retries per Azure Storage REST operation |
+
+### Metric Attributes
+
+Each storage request metric is tagged with the following attributes:
+
+| Attribute | Description | Example Values |
+|-----------|-------------|----------------|
+| `operation` | Classified REST operation | `ListBlobs`, `GetBlob`, `PutBlob`, `PutBlock`, `PutBlockList`, `DeleteBlob`, `GetBlobProperties` |
+| `status` | Response status category | `success`, `error`, `throttled`, `not_found`, `server_error`, `conflict` |
+| `status_code` | HTTP status code | `200`, `404`, `429`, `500` |
+| `mount_path` | Mount path | `/mnt/blobfuse` |
+
+### Supported Operations
+
+The policy classifies requests into the following operation names:
+
+| Operation | HTTP Method | Description |
+|-----------|-------------|-------------|
+| `ListContainers` | GET | List all containers |
+| `ListBlobs` | GET | List blobs in a container |
+| `GetBlob` | GET | Download blob content |
+| `GetBlockList` | GET | Get block list of a blob |
+| `GetBlobMetadata` | GET | Get blob metadata |
+| `GetBlobProperties` | HEAD | Get blob properties |
+| `PutBlob` | PUT | Upload a whole blob |
+| `PutBlock` | PUT | Stage a block |
+| `PutBlockList` | PUT | Commit a block list |
+| `SetBlobMetadata` | PUT | Set blob metadata |
+| `CopyBlob` | PUT | Start a blob copy |
+| `DeleteBlob` | DELETE | Delete a blob |
+| `CreateContainer` | PUT | Create a container |
+| `DeleteContainer` | DELETE | Delete a container |
+| `DfsAppend` | PATCH | Data Lake append |
+| `DfsFlush` | PATCH | Data Lake flush |
 
 ## Querying Logs in Azure Monitor
 
@@ -316,13 +360,97 @@ customMetrics
 | render timechart
 ```
 
-### All Blobfuse2 Metrics Summary
+### All Blobfuse2 System Metrics Summary
 
 ```kql
 customMetrics
 | where timestamp > ago(1h)
 | where name startswith "blobfuse2.system."
 | summarize avg(value), max(value), min(value) by name
+```
+
+### Storage Request Latency by Operation (P50, P95, P99)
+
+```kql
+customMetrics
+| where timestamp > ago(1h)
+| where name == "blobfuse2.storage.request.duration_ms"
+| extend operation = tostring(customDimensions.operation)
+| summarize
+    P50 = percentile(value, 50),
+    P95 = percentile(value, 95),
+    P99 = percentile(value, 99),
+    avg_ms = avg(value),
+    count = count()
+  by operation
+| order by count desc
+```
+
+### Request Count by Operation and Status
+
+```kql
+customMetrics
+| where timestamp > ago(1h)
+| where name == "blobfuse2.storage.request.count"
+| extend operation = tostring(customDimensions.operation),
+         status = tostring(customDimensions.status)
+| summarize total = sum(value) by operation, status
+| order by total desc
+```
+
+### Failed Requests (Non-Success)
+
+```kql
+customMetrics
+| where timestamp > ago(1h)
+| where name == "blobfuse2.storage.request.count"
+| extend status = tostring(customDimensions.status)
+| where status != "success" and status != "not_found"
+| extend operation = tostring(customDimensions.operation),
+         status_code = tostring(customDimensions.status_code)
+| summarize total = sum(value) by operation, status, status_code
+| order by total desc
+```
+
+### Throttled Requests Over Time
+
+```kql
+customMetrics
+| where timestamp > ago(24h)
+| where name == "blobfuse2.storage.request.count"
+| extend status = tostring(customDimensions.status)
+| where status == "throttled"
+| extend operation = tostring(customDimensions.operation)
+| summarize throttled = sum(value) by bin(timestamp, 5m), operation
+| render timechart
+```
+
+### Retry Analysis by Operation
+
+```kql
+customMetrics
+| where timestamp > ago(1h)
+| where name == "blobfuse2.storage.request.retry_count"
+| extend operation = tostring(customDimensions.operation)
+| where value > 0
+| summarize
+    total_retries = sum(value),
+    avg_retries = avg(value),
+    max_retries = max(value),
+    count = count()
+  by operation
+| order by total_retries desc
+```
+
+### Request Latency Over Time (by Operation)
+
+```kql
+customMetrics
+| where timestamp > ago(6h)
+| where name == "blobfuse2.storage.request.duration_ms"
+| extend operation = tostring(customDimensions.operation)
+| summarize avg_ms = avg(value) by bin(timestamp, 5m), operation
+| render timechart
 ```
 
 ## Testing the Integration

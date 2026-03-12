@@ -117,6 +117,14 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceApiVersion))
 	}
 
+	// Inject OTel request metrics policy if metrics collection is enabled.
+	// This records per-REST-call latency, request count, and retry count.
+	otelPolicy := NewOtelRequestPolicy()
+	if otelPolicy != nil {
+		perCallPolicies = append(perCallPolicies, otelPolicy)
+		log.Info("utils::getAzStorageClientOptions : OTel request metrics policy injected into pipeline")
+	}
+
 	perRetryPolicies := []policy.Policy{}
 	if conf.capMbpsRead > 0 || conf.capIOps > 0 {
 		// Convert Mbps to Bytes/sec: 1 Mbps = (1024* 1024) / 8 = 131072 Bytes/sec

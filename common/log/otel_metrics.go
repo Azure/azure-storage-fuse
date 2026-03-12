@@ -212,6 +212,22 @@ func IsOtelMetricsRunning() bool {
 	return otelMetricsInstance != nil
 }
 
+// GetOtelMeter returns the OTel meter instance if the metrics pipeline is running.
+// External components (e.g., the Azure SDK request metrics policy) use this to register
+// their own instruments on the same meter provider, ensuring all metrics flow through
+// a single OTLP exporter.
+// Returns nil if metrics are not running.
+func GetOtelMeter() otelmetric.Meter {
+	otelMetricsMu.Lock()
+	defer otelMetricsMu.Unlock()
+
+	if otelMetricsInstance == nil {
+		return nil
+	}
+
+	return otelMetricsInstance.meter
+}
+
 // UpdateFileCachePath updates the file cache path for disk usage monitoring at runtime.
 // This allows the metrics module to start monitoring disk usage after file cache is configured.
 func UpdateFileCachePath(path string) {
