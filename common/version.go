@@ -39,11 +39,18 @@ import (
 	"strings"
 )
 
-const BlobFuse2WarningsURL = "https://aka.ms/blobfuse2warnings"
-const BlobFuse2BlockingURL = "https://aka.ms/blobfuse2blockers"
+const (
+	BlobFuse2WarningsURL = "https://aka.ms/blobfuse2warnings"
+	BlobFuse2BlockingURL = "https://aka.ms/blobfuse2blockers"
 
-// GitHub REST API endpoint for latest release
-const GitHubLatestReleaseURL = "https://api.github.com/repos/Azure/azure-storage-fuse/releases/latest"
+	githubAPI = "https://api.github.com/repos/Azure/azure-storage-fuse"
+
+	// GitHub REST API endpoint for latest release
+	GitHubLatestReleaseURL = githubAPI + "/releases/latest"
+
+	// GitHub REST API endpoint for release directory contents (security warnings, blocked versions)
+	GitHubReleaseContentsURL = githubAPI + "/contents/release"
+)
 
 type Version struct {
 	segments []int64

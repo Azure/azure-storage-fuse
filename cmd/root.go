@@ -78,28 +78,36 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-// check if the version file exists in the container
+// check if the version file exists in the GitHub release directory
 func checkVersionExists(versionUrl string) bool {
-	resp, err := http.Get(versionUrl)
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: getTransport(),
+	}
+
+	req, err := http.NewRequest("GET", versionUrl, nil)
 	if err != nil {
-		log.Err("checkVersionExists: error getting version file from container [%s]", err.Error())
+		log.Err("checkVersionExists: error creating request [%s]", err.Error())
 		return false
 	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Err("checkVersionExists: error getting version file from GitHub [%s]", err.Error())
+		return false
+	}
+	defer resp.Body.Close()
 
 	return resp.StatusCode != 404
 }
 
 func getGitHubLatestRemoteVersion(apiEndpoint string) (*common.Version, error) {
-	transport := &http.Transport{
-		MaxIdleConns:       10,
-		IdleConnTimeout:    30 * time.Second,
-		DisableCompression: true,  // GitHub API responses are small
-		DisableKeepAlives:  false, // Connections are reused
-	}
-
 	client := &http.Client{
 		Timeout:   30 * time.Second,
-		Transport: transport,
+		Transport: getTransport(),
 	}
 
 	// Get Request
@@ -113,17 +121,17 @@ func getGitHubLatestRemoteVersion(apiEndpoint string) (*common.Version, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Err("getGitHubLatestRemoteVersion: error in GitHub GET latest release [%s]", err.Error())
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("error in GitHub GET latest release: %s", resp.Status)
+		return nil, fmt.Errorf("getGitHubLatestRemoteVersion: error in GitHub GET latest release: %s", resp.Status)
 	}
 
 	var release struct { // JSON response representation
 		TagName string `json:"tag_name"`
-		Name    string `json:"name"`
 	}
 
 	decoder := json.NewDecoder(resp.Body)
@@ -132,8 +140,9 @@ func getGitHubLatestRemoteVersion(apiEndpoint string) (*common.Version, error) {
 		return nil, err
 	}
 
-	// Remove v prefix in TagName, convert str to Version
-	versionStr := strings.TrimPrefix(release.TagName, "v")
+	// Remove blobfuse2- prefix in TagName, convert str to Version
+	// Tag name example, blobfuse2-2.5.2
+	versionStr := strings.TrimPrefix(release.TagName, "blobfuse2-")
 	return common.ParseVersion(versionStr)
 }
 
@@ -161,13 +170,13 @@ func beginDetectNewVersion() chan any {
 			return
 		}
 
-		warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
+		warningsUrl := common.GitHubReleaseContentsURL + "/securitywarnings/" + common.Blobfuse2Version
 		hasWarnings := checkVersionExists(warningsUrl)
 
 		if hasWarnings {
 			// This version has known issues associated with it
 			// Check whether the version has been blocked by the dev team or not.
-			blockedVersions := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
+			blockedVersions := common.GitHubReleaseContentsURL + "/blockedversions/" + common.Blobfuse2Version
 			isBlocked := checkVersionExists(blockedVersions)
 
 			if isBlocked {
@@ -278,6 +287,15 @@ func parseArgs(cmdArgs []string) []string {
 	}
 
 	return args
+}
+
+func getTransport() *http.Transport {
+	return &http.Transport{
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,  // GitHub API responses are small
+		DisableKeepAlives:  false, // Connections are reused
+	}
 }
 
 // Execute : Actual command execution starts from here
