@@ -1,6 +1,6 @@
 #!/bin/bash
 work_dir=$(echo $1 | sed 's:/*$::')
-version="1.25.7"
+version="1.26.1"
 arch=`hostnamectl | grep "Arch" | rev | cut -d " " -f 1 | rev`
 
 if [ $arch != "arm64" ]
