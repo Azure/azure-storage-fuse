@@ -176,6 +176,9 @@ func (suite *utilTestSuite) TestBitmapReset() {
 }
 
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
+	if _, err := os.Stat("../blobfuse2"); os.IsNotExist(err) {
+		suite.T().Skip("blobfuse2 binary not found, skipping test")
+	}
 	var out bytes.Buffer
 	cmd := exec.Command("../blobfuse2", "unmount", "all")
 	cmd.Stdout = &out
@@ -191,13 +194,22 @@ func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 }
 
 func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
+	dir, err := os.Getwd()
+	suite.assert.NoError(err)
+
+	parentDir := filepath.Dir(dir)
+	binary := filepath.Join(parentDir, "blobfuse2")
+	if _, err := os.Stat(binary); os.IsNotExist(err) {
+		suite.T().Skip("blobfuse2 binary not found, skipping test")
+	}
+
 	var out bytes.Buffer
 
 	// Define the file name and the content you want to write
 	fileName := "config.yaml"
 
 	lbpath := filepath.Join(home_dir, "lbpath")
-	err := os.MkdirAll(lbpath, 0777)
+	err = os.MkdirAll(lbpath, 0777)
 	suite.assert.NoError(err)
 	defer os.RemoveAll(lbpath)
 
@@ -212,8 +224,6 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	suite.assert.NoError(err)
 	defer os.RemoveAll(mntdir)
 
-	dir, err := os.Getwd()
-	suite.assert.NoError(err)
 	configFile := filepath.Join(dir, "config.yaml")
 	// Create or open the file. If it doesn't exist, it will be created.
 	file, err := os.Create(fileName)
@@ -229,7 +239,7 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 
 	dir, err = os.Getwd()
 	suite.assert.NoError(err)
-	binary := filepath.Join(dir, "blobfuse2")
+	binary = filepath.Join(dir, "blobfuse2")
 	cmd := exec.Command(binary, mntdir, "--config-file", configFile)
 	cmd.Stdout = &out
 	err = cmd.Run()

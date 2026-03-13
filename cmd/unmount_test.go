@@ -277,6 +277,10 @@ func (suite *unmountTestSuite) TestInvalidFlagWithOutValue() {
 }
 
 func TestUnMountCommand(t *testing.T) {
+	if _, err := os.Stat("../blobfuse2"); os.IsNotExist(err) {
+		t.Skip("blobfuse2 binary not found, skipping unmount tests")
+	}
+
 	confFile, err := os.CreateTemp("", "conf*.yaml")
 	if err != nil {
 		t.Error("Failed to create config file")

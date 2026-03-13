@@ -195,19 +195,19 @@ func (s *blockBlobTestSuite) SetupTest() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Println("Unable to get home directory")
-		os.Exit(1)
+		s.T().Skip("Unable to get home directory")
 	}
 	cfgFile, err := os.Open(homeDir + "/azuretest.json")
 	if err != nil {
 		fmt.Println("Unable to open config file")
-		os.Exit(1)
+		s.T().Skip("Azure test config file not found at " + homeDir + "/azuretest.json")
 	}
 
 	cfgData, _ := io.ReadAll(cfgFile)
 	err = json.Unmarshal(cfgData, &storageTestConfigurationParameters)
 	if err != nil {
 		fmt.Println("Failed to parse the config file")
-		os.Exit(1)
+		s.T().Skip("Failed to parse the config file")
 	}
 
 	cfgFile.Close()

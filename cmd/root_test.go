@@ -34,8 +34,10 @@
 package cmd
 
 import (
+	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -43,6 +45,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
+
+// isVersionEndpointReachable checks if the remote version endpoint is reachable.
+func isVersionEndpointReachable() bool {
+	conn, err := net.DialTimeout("tcp", "blobfuse2.z13.web.core.windows.net:443", 2*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
 
 type rootCmdSuite struct {
 	suite.Suite
@@ -91,6 +103,9 @@ func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
 
 func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 	defer suite.cleanupTest()
+	if !isVersionEndpointReachable() {
+		suite.T().Skip("version endpoint is not reachable")
+	}
 	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
 	found := checkVersionExists(warningsUrl)
 	suite.assert.False(found)
@@ -98,6 +113,9 @@ func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 
 func (suite *rootCmdSuite) TestSecurityWarnings() {
 	defer suite.cleanupTest()
+	if !isVersionEndpointReachable() {
+		suite.T().Skip("version endpoint is not reachable")
+	}
 	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + "1.1.1"
 	found := checkVersionExists(warningsUrl)
 	suite.assert.True(found)
@@ -105,6 +123,9 @@ func (suite *rootCmdSuite) TestSecurityWarnings() {
 
 func (suite *rootCmdSuite) TestBlockedVersion() {
 	defer suite.cleanupTest()
+	if !isVersionEndpointReachable() {
+		suite.T().Skip("version endpoint is not reachable")
+	}
 	warningsUrl := common.Blobfuse2ListContainerURL + "/blockedversions/" + "1.1.1"
 	isBlocked := checkVersionExists(warningsUrl)
 	suite.assert.True(isBlocked)
@@ -112,6 +133,9 @@ func (suite *rootCmdSuite) TestBlockedVersion() {
 
 func (suite *rootCmdSuite) TestNonBlockedVersion() {
 	defer suite.cleanupTest()
+	if !isVersionEndpointReachable() {
+		suite.T().Skip("version endpoint is not reachable")
+	}
 	warningsUrl := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
 	found := checkVersionExists(warningsUrl)
 	suite.assert.False(found)
@@ -126,6 +150,9 @@ func (suite *rootCmdSuite) TestGetRemoteVersionInvalidURL() {
 
 func (suite *rootCmdSuite) TestGetRemoteVersionInvalidContainer() {
 	defer suite.cleanupTest()
+	if !isVersionEndpointReachable() {
+		suite.T().Skip("version endpoint is not reachable")
+	}
 	latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest1/"
 	out, err := getRemoteVersion(latestVersionUrl)
 	suite.assert.Empty(out)
@@ -139,6 +166,9 @@ func getDummyVersion() string {
 
 func (suite *rootCmdSuite) TestGetRemoteVersionValidContainer() {
 	defer suite.cleanupTest()
+	if !isVersionEndpointReachable() {
+		suite.T().Skip("version endpoint is not reachable")
+	}
 	latestVersionUrl := common.Blobfuse2ListContainerURL + "/latest/index.xml"
 	out, err := getRemoteVersion(latestVersionUrl)
 	suite.assert.NotEmpty(out)
@@ -147,6 +177,9 @@ func (suite *rootCmdSuite) TestGetRemoteVersionValidContainer() {
 
 func (suite *rootCmdSuite) TestGetRemoteVersionCurrentOlder() {
 	defer suite.cleanupTest()
+	if !isVersionEndpointReachable() {
+		suite.T().Skip("version endpoint is not reachable")
+	}
 	common.Blobfuse2Version = getDummyVersion()
 	msg := <-beginDetectNewVersion()
 	suite.assert.NotEmpty(msg)
@@ -155,6 +188,9 @@ func (suite *rootCmdSuite) TestGetRemoteVersionCurrentOlder() {
 
 func (suite *rootCmdSuite) TestGetRemoteVersionCurrentSame() {
 	defer suite.cleanupTest()
+	if !isVersionEndpointReachable() {
+		suite.T().Skip("version endpoint is not reachable")
+	}
 	common.Blobfuse2Version = common.Blobfuse2Version_()
 	msg := <-beginDetectNewVersion()
 	suite.assert.Nil(msg)
