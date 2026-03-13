@@ -34,10 +34,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"slices"
@@ -89,38 +89,52 @@ func checkVersionExists(versionUrl string) bool {
 	return resp.StatusCode != 404
 }
 
-// getRemoteVersion : From public container get the latest blobfuse version
-func getRemoteVersion(req string) (string, error) {
-	resp, err := http.Get(req)
+func getGitHubLatestRemoteVersion(apiEndpoint string) (*common.Version, error) {
+	transport := &http.Transport{
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,  // GitHub API responses are small
+		DisableKeepAlives:  false, // Connections are reused
+	}
+
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: transport,
+	}
+
+	// Get Request
+	req, err := http.NewRequest("GET", apiEndpoint, nil)
 	if err != nil {
-		log.Err("getRemoteVersion: error listing version file from container [%s]", err.Error())
-		return "", err
+		return nil, err
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := client.Do(req)
 	if err != nil {
-		log.Err("getRemoteVersion: error reading body of response [%s]", err.Error())
-		return "", err
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error in GitHub GET latest release: %s", resp.Status)
 	}
 
-	if len(body) > 50 {
-		log.Err("getRemoteVersion: something suspicious in the contents from remote version")
-		return "", fmt.Errorf("unable to get latest version")
+	var release struct { // JSON response representation
+		TagName string `json:"tag_name"`
+		Name    string `json:"name"`
 	}
 
-	var versionList VersionFilesList
-	err = xml.Unmarshal(body, &versionList)
+	decoder := json.NewDecoder(resp.Body)
+	err = decoder.Decode(&release)
 	if err != nil {
-		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err.Error())
-		return "", err
+		return nil, err
 	}
 
-	if len(versionList.Version) < 5 || len(versionList.Version) > 20 {
-		return "", fmt.Errorf("unable to get latest version")
-	}
-
-	versionName := versionList.Version
-	return versionName, nil
+	// Remove v prefix in TagName, convert str to Version
+	versionStr := strings.TrimPrefix(release.TagName, "v")
+	return common.ParseVersion(versionStr)
 }
 
 // beginDetectNewVersion : Get latest release version and compare if user needs an upgrade or not
@@ -130,8 +144,7 @@ func beginDetectNewVersion() chan any {
 	go func() {
 		defer close(completed)
 
-		latestVersionUrl := common.Blobfuse2ListContainerURL + "/latest/index.xml"
-		remoteVersion, err := getRemoteVersion(latestVersionUrl)
+		remote, err := getGitHubLatestRemoteVersion(common.GitHubLatestReleaseURL)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
 			if strings.Contains(err.Error(), "no such host") {
@@ -144,13 +157,6 @@ func beginDetectNewVersion() chan any {
 		local, err := common.ParseVersion(common.Blobfuse2Version)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version [%s]", err.Error())
-			completed <- err.Error()
-			return
-		}
-
-		remote, err := common.ParseVersion(remoteVersion)
-		if err != nil {
-			log.Err("beginDetectNewVersion: error parsing remoteVersion [%s]", err.Error())
 			completed <- err.Error()
 			return
 		}
@@ -181,9 +187,9 @@ func beginDetectNewVersion() chan any {
 		if local.OlderThan(*remote) {
 			executablePathSegments := strings.Split(strings.ReplaceAll(os.Args[0], "\\", "/"), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
-			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
-			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
-			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remote.String())
+			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remote.String())
+			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remote.String())
 
 			completed <- "A new version of Blobfuse2 is available"
 		}

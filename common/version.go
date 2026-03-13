@@ -39,9 +39,11 @@ import (
 	"strings"
 )
 
-const Blobfuse2ListContainerURL = "https://blobfuse2.z13.web.core.windows.net/release"
 const BlobFuse2WarningsURL = "https://aka.ms/blobfuse2warnings"
 const BlobFuse2BlockingURL = "https://aka.ms/blobfuse2blockers"
+
+// GitHub REST API endpoint for latest release
+const GitHubLatestReleaseURL = "https://api.github.com/repos/Azure/azure-storage-fuse/releases/latest"
 
 type Version struct {
 	segments []int64
@@ -133,4 +135,9 @@ func (v Version) OlderThan(v2 Version) bool {
 // detect if version v is newer than v2
 func (v Version) NewerThan(v2 Version) bool {
 	return v.compare(v2) == 1
+}
+
+// return the original version string
+func (v Version) String() string {
+	return v.original
 }
