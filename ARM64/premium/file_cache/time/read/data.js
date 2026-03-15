@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772959301116,
+  "lastUpdate": 1773564104437,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -560,6 +560,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "filecache_sequential_read_100GB_directio",
             "value": 92746.324785,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f99e4575490575b37e5be1d9aca1ced78a2b139a",
+          "message": "Adding version files for warnings (#2159)",
+          "timestamp": "2026-03-15T08:19:00Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/f99e4575490575b37e5be1d9aca1ced78a2b139a"
+        },
+        "date": 1773564104200,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "filecache_sequential_read_100GB_directio",
+            "value": 90602.388813,
             "unit": "milliseconds"
           }
         ]
