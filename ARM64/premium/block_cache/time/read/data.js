@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772958126672,
+  "lastUpdate": 1773562980656,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -740,6 +740,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 63.670514080594,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f99e4575490575b37e5be1d9aca1ced78a2b139a",
+          "message": "Adding version files for warnings (#2159)",
+          "timestamp": "2026-03-15T08:19:00Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/f99e4575490575b37e5be1d9aca1ced78a2b139a"
+        },
+        "date": 1773562980425,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.26033466479899997,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.266520821306,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.286955949639,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 57.645958604606,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.399525639746,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.202825929102,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 63.309075414338,
             "unit": "milliseconds"
           }
         ]
