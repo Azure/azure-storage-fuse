@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772958246003,
+  "lastUpdate": 1773563093696,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -415,6 +415,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 6819.5625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f99e4575490575b37e5be1d9aca1ced78a2b139a",
+          "message": "Adding version files for warnings (#2159)",
+          "timestamp": "2026-03-15T08:19:00Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/f99e4575490575b37e5be1d9aca1ced78a2b139a"
+        },
+        "date": 1773563093263,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 2536.34765625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 6826.666015625,
             "unit": "MiB/s"
           }
         ]
