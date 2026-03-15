@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1772947161752,
+  "lastUpdate": 1773552417784,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -797,6 +797,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 31.3623046875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "0bf9b9fd08c108cf05e1d11de2c0803454265e6f",
+          "message": "Updating version to 2.5.3 (#2158)",
+          "timestamp": "2026-03-12T15:19:46Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/0bf9b9fd08c108cf05e1d11de2c0803454265e6f"
+        },
+        "date": 1773552416195,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 4443.0185546875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 3485.349609375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3254.6162109375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 8.5498046875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 8182.1806640625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 8793.47265625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 33.62890625,
             "unit": "MiB/s"
           }
         ]
