@@ -91,56 +91,56 @@ func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
 
 func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 	defer suite.cleanupTest()
-	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
+	warningsUrl := common.GitHubReleaseContentsURL + "/securitywarnings/" + common.Blobfuse2Version
 	found := checkVersionExists(warningsUrl)
 	suite.assert.False(found)
 }
 
 func (suite *rootCmdSuite) TestSecurityWarnings() {
 	defer suite.cleanupTest()
-	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + "1.1.1"
+	warningsUrl := common.GitHubReleaseContentsURL + "/securitywarnings/" + "1.1.1"
 	found := checkVersionExists(warningsUrl)
 	suite.assert.True(found)
 }
 
 func (suite *rootCmdSuite) TestBlockedVersion() {
 	defer suite.cleanupTest()
-	warningsUrl := common.Blobfuse2ListContainerURL + "/blockedversions/" + "1.1.1"
+	warningsUrl := common.GitHubReleaseContentsURL + "/blockedversions/" + "1.1.1"
 	isBlocked := checkVersionExists(warningsUrl)
 	suite.assert.True(isBlocked)
 }
 
 func (suite *rootCmdSuite) TestNonBlockedVersion() {
 	defer suite.cleanupTest()
-	warningsUrl := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
+	warningsUrl := common.GitHubReleaseContentsURL + "/blockedversions/" + common.Blobfuse2Version
 	found := checkVersionExists(warningsUrl)
 	suite.assert.False(found)
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionInvalidURL() {
 	defer suite.cleanupTest()
-	out, err := getRemoteVersion("abcd")
-	suite.assert.Empty(out)
+	out, err := getGitHubLatestRemoteVersion("abcd")
+	suite.assert.Nil(out)
 	suite.assert.Error(err)
 }
 
-func (suite *rootCmdSuite) TestGetRemoteVersionInvalidContainer() {
+func (suite *rootCmdSuite) TestGetRemoteVersionInvalidRepo() {
 	defer suite.cleanupTest()
-	latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest1/"
-	out, err := getRemoteVersion(latestVersionUrl)
-	suite.assert.Empty(out)
+	latestVersionUrl := strings.Replace(common.GitHubLatestReleaseURL, "Azure/azure-storage-fuse", "Azure/azure-storage-fuse-invalid", 1)
+	out, err := getGitHubLatestRemoteVersion(latestVersionUrl)
+	suite.assert.Nil(out)
 	suite.assert.Error(err)
-	suite.assert.Contains(err.Error(), "unable to get latest version")
+	suite.assert.Contains(err.Error(), "error in GitHub GET latest release")
 }
 
 func getDummyVersion() string {
 	return "1.0.0"
 }
 
-func (suite *rootCmdSuite) TestGetRemoteVersionValidContainer() {
+func (suite *rootCmdSuite) TestGetRemoteVersionValidRepo() {
 	defer suite.cleanupTest()
-	latestVersionUrl := common.Blobfuse2ListContainerURL + "/latest/index.xml"
-	out, err := getRemoteVersion(latestVersionUrl)
+	latestVersionUrl := common.GitHubLatestReleaseURL
+	out, err := getGitHubLatestRemoteVersion(latestVersionUrl)
 	suite.assert.NotEmpty(out)
 	suite.assert.NoError(err)
 }
