@@ -60,8 +60,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value={{tag}},prefix=v
+            type=semver,pattern={{major}}.{{minor}},value={{tag}},prefix=v
+            type=semver,pattern={{version}},value={{tag}},prefix=blobfuse-
+            type=semver,pattern={{major}}.{{minor}},value={{tag}},prefix=blobfuse-
             type=ref,event=tag
 
       - name: Build and push Docker image
