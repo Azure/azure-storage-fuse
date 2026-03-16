@@ -1,3 +1,6 @@
+# To pull the latest image from GitHub Container Registry, use the following command:
+# docker pull ghcr.io/azure/azure-storage-fuse:latest
+
 name: Build and Publish Container Image
 
 on:
