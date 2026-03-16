@@ -44,7 +44,10 @@ const (
 	BlobFuse2BlockingURL = "https://aka.ms/blobfuse2blockers"
 
 	githubAPI = "https://api.github.com/repos/Azure/azure-storage-fuse"
+)
 
+// GitHub REST API endpoints (vars so tests can override with a mock server)
+var (
 	// GitHub REST API endpoint for latest release
 	GitHubLatestReleaseURL = githubAPI + "/releases/latest"
 

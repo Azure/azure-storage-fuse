@@ -34,6 +34,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -44,9 +47,77 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// knownSecurityWarnings lists versions that have security warnings in the release directory.
+var knownSecurityWarnings = map[string]bool{
+	"1.1.1":           true,
+	"2.2.0":           true,
+	"2.2.1":           true,
+	"2.3.0":           true,
+	"2.3.0~preview.1": true,
+	"2.3.1~preview.1": true,
+}
+
+// knownBlockedVersions lists versions that are blocked in the release directory.
+var knownBlockedVersions = map[string]bool{
+	"1.1.1": true,
+	"2.3.0": true,
+}
+
+// newMockGitHubServer creates an httptest server that simulates the GitHub API
+// endpoints used by checkVersionExists and getGitHubLatestRemoteVersion.
+func newMockGitHubServer(latestTag string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Simulate /releases/latest
+		if path == "/releases/latest" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"tag_name": latestTag,
+			})
+			return
+		}
+
+		// Simulate /contents/release/securitywarnings/<version>
+		if strings.HasPrefix(path, "/contents/release/securitywarnings/") {
+			version := strings.TrimPrefix(path, "/contents/release/securitywarnings/")
+			if knownSecurityWarnings[version] {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"name":"` + version + `"}`))
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		// Simulate /contents/release/blockedversions/<version>
+		if strings.HasPrefix(path, "/contents/release/blockedversions/") {
+			version := strings.TrimPrefix(path, "/contents/release/blockedversions/")
+			if knownBlockedVersions[version] {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"name":"` + version + `"}`))
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		// Anything else: 404
+		w.WriteHeader(http.StatusNotFound)
+	}))
+}
+
 type rootCmdSuite struct {
 	suite.Suite
 	assert *assert.Assertions
+	server *httptest.Server
+
+	// originals saved for restore
+	origReleaseURL  string
+	origContentsURL string
+	origVersion     string
 }
 
 type osArgs struct {
@@ -60,13 +131,35 @@ func (suite *rootCmdSuite) SetupTest() {
 	if err != nil {
 		panic("Unable to set silent logger as default.")
 	}
-	// suite.testExecute()
+
+	// Save original values
+	suite.origReleaseURL = common.GitHubLatestReleaseURL
+	suite.origContentsURL = common.GitHubReleaseContentsURL
+	suite.origVersion = common.Blobfuse2Version
+
+	// Start mock GitHub API server (latest tag = current version so "same version" is default)
+	suite.server = newMockGitHubServer("blobfuse2-" + common.Blobfuse2Version_())
+
+	// Override the URL vars to point at the mock server
+	common.GitHubLatestReleaseURL = suite.server.URL + "/releases/latest"
+	common.GitHubReleaseContentsURL = suite.server.URL + "/contents/release"
 }
 
 func (suite *rootCmdSuite) cleanupTest() {
 	rootCmd.SetOut(nil)
 	rootCmd.SetErr(nil)
 	rootCmd.SetArgs(nil)
+
+	// Restore original URL vars and version
+	common.GitHubLatestReleaseURL = suite.origReleaseURL
+	common.GitHubReleaseContentsURL = suite.origContentsURL
+	common.Blobfuse2Version = suite.origVersion
+}
+
+func (suite *rootCmdSuite) TearDownTest() {
+	if suite.server != nil {
+		suite.server.Close()
+	}
 }
 
 func (suite *rootCmdSuite) TestNoOptions() {
@@ -126,7 +219,8 @@ func (suite *rootCmdSuite) TestGetRemoteVersionInvalidURL() {
 
 func (suite *rootCmdSuite) TestGetRemoteVersionInvalidRepo() {
 	defer suite.cleanupTest()
-	latestVersionUrl := strings.Replace(common.GitHubLatestReleaseURL, "Azure/azure-storage-fuse", "Azure/azure-storage-fuse-invalid", 1)
+	// Use a path on the mock server that will return 404
+	latestVersionUrl := suite.server.URL + "/releases/nonexistent"
 	out, err := getGitHubLatestRemoteVersion(latestVersionUrl)
 	suite.assert.Nil(out)
 	suite.assert.Error(err)
