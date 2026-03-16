@@ -101,7 +101,17 @@ func checkVersionExists(versionUrl string) bool {
 	}
 	defer resp.Body.Close()
 
-	return resp.StatusCode != 404
+	// Treat only 2xx as "exists". 404 is a normal "does not exist" case.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false
+	}
+
+	// For other status codes (e.g., 401, 403, 5xx), log and treat as unknown/non-existent.
+	log.Err("checkVersionExists: unexpected status code from GitHub [%d] for URL %s", resp.StatusCode, versionUrl)
+	return false
 }
 
 func getGitHubLatestRemoteVersion(apiEndpoint string) (*common.Version, error) {
@@ -118,6 +128,7 @@ func getGitHubLatestRemoteVersion(apiEndpoint string) (*common.Version, error) {
 
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "blobfuse2-version-check")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -290,7 +301,20 @@ func parseArgs(cmdArgs []string) []string {
 }
 
 func getTransport() *http.Transport {
+	// Prefer cloning the default transport so we inherit standard
+	// proxy/TLS settings (including HTTP(S)_PROXY and NO_PROXY).
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		cp := dt.Clone()
+		cp.MaxIdleConns = 10
+		cp.IdleConnTimeout = 30 * time.Second
+		cp.DisableCompression = true // GitHub API responses are small
+		cp.DisableKeepAlives = false // Connections are reused
+		return cp
+	}
+
+	// Fallback: construct a transport that at least respects proxy env vars.
 	return &http.Transport{
+		Proxy:              http.ProxyFromEnvironment,
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
 		DisableCompression: true,  // GitHub API responses are small
