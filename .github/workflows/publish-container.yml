@@ -7,7 +7,7 @@ on:
   push:
     tags:
       - 'v*'
-      - 'blobfuse-*'
+      - 'blobfuse2-*'
 
 permissions:
   contents: read
