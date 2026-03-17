@@ -34,8 +34,6 @@
 package cmd
 
 import (
-	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"net/http"
@@ -49,15 +47,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-type VersionFilesList struct {
-	Version string `xml:"latest"`
-}
-
-type Blob struct {
-	XMLName xml.Name `xml:"Blob"`
-	Name    string   `xml:"Name"`
-}
 
 var disableVersionCheck bool
 
@@ -78,138 +67,108 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-// check if the version file exists in the GitHub release directory
-func checkVersionExists(versionUrl string) bool {
+// checkVersionExists checks whether a file exists at the given raw GitHub URL
+// by issuing an HTTP HEAD request. This is used to probe files under:
+//   - release/latest/<version>           – to determine if the running version is the latest
+//   - release/securitywarnings/<version> – to determine if the version has known security issues
+//   - release/blockedversions/<version>  – to determine if the version is blocked from use
+//
+// HEAD is preferred over GET because we only need the HTTP status code, not the
+// file body. raw.githubusercontent.com returns 200 when the file exists and 404
+// when it does not; no authentication is required for public repos.
+func checkVersionExists(fileUrl string) bool {
 	client := &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: getTransport(),
 	}
 
-	req, err := http.NewRequest("GET", versionUrl, nil)
+	req, err := http.NewRequest("HEAD", fileUrl, nil)
 	if err != nil {
 		log.Err("checkVersionExists: error creating request [%s]", err.Error())
 		return false
 	}
 
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Err("checkVersionExists: error getting version file from GitHub [%s]", err.Error())
+		log.Err("checkVersionExists: error checking version file [%s]", err.Error())
 		return false
 	}
 	defer resp.Body.Close()
 
-	// Treat only 2xx as "exists". 404 is a normal "does not exist" case.
+	// 2xx means the file exists on the benchmarks branch.
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return true
 	}
+	// 404 is the normal "file does not exist" case.
 	if resp.StatusCode == http.StatusNotFound {
 		return false
 	}
 
-	// For other status codes (e.g., 401, 403, 5xx), log and treat as unknown/non-existent.
-	log.Err("checkVersionExists: unexpected status code from GitHub [%d] for URL %s", resp.StatusCode, versionUrl)
+	// For other status codes (e.g., 403, 5xx) log a warning and treat as non-existent.
+	log.Err("checkVersionExists: unexpected status code [%d] for URL %s", resp.StatusCode, fileUrl)
 	return false
 }
 
-func getGitHubLatestRemoteVersion(apiEndpoint string) (*common.Version, error) {
-	client := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: getTransport(),
-	}
-
-	// Get Request
-	req, err := http.NewRequest("GET", apiEndpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("User-Agent", "blobfuse2-version-check")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Err("getGitHubLatestRemoteVersion: error in GitHub GET latest release [%s]", err.Error())
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("getGitHubLatestRemoteVersion: error in GitHub GET latest release: %s", resp.Status)
-	}
-
-	var release struct { // JSON response representation
-		TagName string `json:"tag_name"`
-	}
-
-	decoder := json.NewDecoder(resp.Body)
-	err = decoder.Decode(&release)
-	if err != nil {
-		return nil, err
-	}
-
-	// Remove blobfuse2- prefix in TagName, convert str to Version
-	// Tag name example, blobfuse2-2.5.2
-	versionStr := strings.TrimPrefix(release.TagName, "blobfuse2-")
-	return common.ParseVersion(versionStr)
-}
-
-// beginDetectNewVersion : Get latest release version and compare if user needs an upgrade or not
+// beginDetectNewVersion checks whether the current blobfuse2 version is the
+// latest, has known security warnings, or has been blocked entirely.
+//
+// Instead of calling the GitHub REST API (which is subject to aggressive
+// rate-limiting / 429 errors), we check for sentinel files served by
+// raw.githubusercontent.com from the "benchmarks" branch under release/:
+//
+//	release/latest/<version>           – exists only for the current latest GA version
+//	release/securitywarnings/<version> – exists if this version has known issues
+//	release/blockedversions/<version>  – exists if this version must not be used
 func beginDetectNewVersion() chan any {
 	completed := make(chan any)
 	stderr := os.Stderr
 	go func() {
 		defer close(completed)
 
-		remote, err := getGitHubLatestRemoteVersion(common.GitHubLatestReleaseURL)
-		if err != nil {
-			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
-			if strings.Contains(err.Error(), "no such host") {
-				log.Err("beginDetectNewVersion: check your network connection and proxy settings")
-			}
-			completed <- err.Error()
-			return
-		}
-
-		local, err := common.ParseVersion(common.Blobfuse2Version)
+		// Validate that the compiled-in version string is well-formed.
+		_, err := common.ParseVersion(common.Blobfuse2Version)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version [%s]", err.Error())
 			completed <- err.Error()
 			return
 		}
 
-		warningsUrl := common.GitHubReleaseContentsURL + "/securitywarnings/" + common.Blobfuse2Version
+		// --- Security warnings check ---
+		// If a file release/securitywarnings/<version> exists, this version
+		// has known issues that the user should be aware of.
+		warningsUrl := common.GitHubReleaseBaseURL + "/securitywarnings/" + common.Blobfuse2Version
 		hasWarnings := checkVersionExists(warningsUrl)
 
 		if hasWarnings {
-			// This version has known issues associated with it
-			// Check whether the version has been blocked by the dev team or not.
-			blockedVersions := common.GitHubReleaseContentsURL + "/blockedversions/" + common.Blobfuse2Version
-			isBlocked := checkVersionExists(blockedVersions)
+			// This version has known issues associated with it.
+			// Check whether the version has been blocked by the dev team.
+			blockedUrl := common.GitHubReleaseBaseURL + "/blockedversions/" + common.Blobfuse2Version
+			isBlocked := checkVersionExists(blockedUrl)
 
 			if isBlocked {
-				// This version is blocked and customer shall not be allowed to use this.
+				// This version is blocked and customer shall not be allowed to use it.
 				blockedPage := common.BlobFuse2BlockingURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
 				fmt.Fprintf(stderr, "PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
 				log.Warn("PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
 				os.Exit(1)
 			} else {
-				// This version is not blocked but has know issues list which customer shall visit.
+				// This version is not blocked but has a known-issues list which the customer should visit.
 				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
 				fmt.Fprintf(stderr, "WARNING: Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 				log.Warn("WARNING: Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 			}
 		}
 
-		if local.OlderThan(*remote) {
+		// --- Latest-version check ---
+		// If release/latest/<currentVersion> does NOT exist the running
+		// version is outdated and a newer release is available.
+		latestUrl := common.GitHubReleaseBaseURL + "/latest/" + common.Blobfuse2Version
+		isLatest := checkVersionExists(latestUrl)
+		if !isLatest {
 			executablePathSegments := strings.Split(strings.ReplaceAll(os.Args[0], "\\", "/"), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
-			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remote.String())
-			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remote.String())
-			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remote.String())
+			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s", common.Blobfuse2Version)
+			fmt.Fprintf(stderr, "*** %s: A new version is available. Current version [%s] is outdated. Consider upgrading to the latest version for bug-fixes & new features. ***\n", executableName, common.Blobfuse2Version)
 
 			completed <- "A new version of Blobfuse2 is available"
 		}

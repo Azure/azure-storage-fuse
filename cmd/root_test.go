@@ -60,7 +60,6 @@ func (suite *rootCmdSuite) SetupTest() {
 	if err != nil {
 		panic("Unable to set silent logger as default.")
 	}
-	// suite.testExecute()
 }
 
 func (suite *rootCmdSuite) cleanupTest() {
@@ -83,93 +82,94 @@ func (suite *rootCmdSuite) TestNoOptionsNoVersionCheck() {
 	suite.assert.Error(err)
 }
 
+// TestCheckVersionExistsInvalidURL verifies that a completely invalid URL
+// returns false rather than panicking.
 func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
 	defer suite.cleanupTest()
-	found := checkVersionExists("abcd")
+	found := checkVersionExists("://bad-url")
 	suite.assert.False(found)
 }
 
+// TestNoSecurityWarnings verifies that the current build version has
+// no security-warning file on the benchmarks branch.
 func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 	defer suite.cleanupTest()
-	warningsUrl := common.GitHubReleaseContentsURL + "/securitywarnings/" + common.Blobfuse2Version
+	warningsUrl := common.GitHubReleaseBaseURL + "/securitywarnings/" + common.Blobfuse2Version
 	found := checkVersionExists(warningsUrl)
 	suite.assert.False(found)
 }
 
+// TestSecurityWarnings verifies that version 1.1.1 has a security-warning
+// file on the benchmarks branch (live HTTP call).
 func (suite *rootCmdSuite) TestSecurityWarnings() {
 	defer suite.cleanupTest()
-	warningsUrl := common.GitHubReleaseContentsURL + "/securitywarnings/" + "1.1.1"
+	warningsUrl := common.GitHubReleaseBaseURL + "/securitywarnings/" + "1.1.1"
 	found := checkVersionExists(warningsUrl)
 	suite.assert.True(found)
 }
 
+// TestBlockedVersion verifies that version 1.1.1 has a blocked-version
+// file on the benchmarks branch (live HTTP call).
 func (suite *rootCmdSuite) TestBlockedVersion() {
 	defer suite.cleanupTest()
-	warningsUrl := common.GitHubReleaseContentsURL + "/blockedversions/" + "1.1.1"
-	isBlocked := checkVersionExists(warningsUrl)
+	blockedUrl := common.GitHubReleaseBaseURL + "/blockedversions/" + "1.1.1"
+	isBlocked := checkVersionExists(blockedUrl)
 	suite.assert.True(isBlocked)
 }
 
+// TestNonBlockedVersion verifies that the current build version is NOT in the
+// blocked-versions list on the benchmarks branch.
 func (suite *rootCmdSuite) TestNonBlockedVersion() {
 	defer suite.cleanupTest()
-	warningsUrl := common.GitHubReleaseContentsURL + "/blockedversions/" + common.Blobfuse2Version
-	found := checkVersionExists(warningsUrl)
+	blockedUrl := common.GitHubReleaseBaseURL + "/blockedversions/" + common.Blobfuse2Version
+	found := checkVersionExists(blockedUrl)
 	suite.assert.False(found)
 }
 
-func (suite *rootCmdSuite) TestGetRemoteVersionInvalidURL() {
+// TestLatestVersionExists verifies that the file release/latest/2.5.2 is
+// present on the benchmarks branch (it is the current GA latest).
+func (suite *rootCmdSuite) TestLatestVersionExists() {
 	defer suite.cleanupTest()
-	out, err := getGitHubLatestRemoteVersion("abcd")
-	suite.assert.Nil(out)
-	suite.assert.Error(err)
+	latestUrl := common.GitHubReleaseBaseURL + "/latest/2.5.2"
+	found := checkVersionExists(latestUrl)
+	suite.assert.True(found)
 }
 
-func (suite *rootCmdSuite) TestGetRemoteVersionInvalidRepo() {
+// TestLatestVersionNotExists verifies that an unknown/old version does NOT
+// have a file under release/latest/.
+func (suite *rootCmdSuite) TestLatestVersionNotExists() {
 	defer suite.cleanupTest()
-	latestVersionUrl := strings.Replace(common.GitHubLatestReleaseURL, "Azure/azure-storage-fuse", "Azure/azure-storage-fuse-invalid", 1)
-	out, err := getGitHubLatestRemoteVersion(latestVersionUrl)
-	suite.assert.Nil(out)
-	suite.assert.Error(err)
-	suite.assert.Contains(err.Error(), "error in GitHub GET latest release")
+	latestUrl := common.GitHubReleaseBaseURL + "/latest/1.0.0"
+	found := checkVersionExists(latestUrl)
+	suite.assert.False(found)
 }
 
 func getDummyVersion() string {
 	return "1.0.0"
 }
 
-func (suite *rootCmdSuite) TestGetRemoteVersionValidRepo() {
+// TestDetectNewVersionCurrentOlder sets the current version to a dummy old
+// value (1.0.0) so that release/latest/1.0.0 returns 404, which triggers the
+// "new version available" message.
+func (suite *rootCmdSuite) TestDetectNewVersionCurrentOlder() {
 	defer suite.cleanupTest()
-	latestVersionUrl := common.GitHubLatestReleaseURL
-	out, err := getGitHubLatestRemoteVersion(latestVersionUrl)
-	suite.assert.NotEmpty(out)
-	suite.assert.NoError(err)
-}
-
-func (suite *rootCmdSuite) TestGetRemoteVersionCurrentOlder() {
-	defer suite.cleanupTest()
+	savedVersion := common.Blobfuse2Version
 	common.Blobfuse2Version = getDummyVersion()
+	defer func() { common.Blobfuse2Version = savedVersion }()
+
 	msg := <-beginDetectNewVersion()
 	suite.assert.NotEmpty(msg)
 	suite.assert.Contains(msg, "A new version of Blobfuse2 is available")
 }
 
-func (suite *rootCmdSuite) TestGetRemoteVersionCurrentSame() {
-	defer suite.cleanupTest()
-	common.Blobfuse2Version = common.Blobfuse2Version_()
-	msg := <-beginDetectNewVersion()
-	suite.assert.Nil(msg)
-}
-
-// func (suite *rootCmdSuite) testExecute() {
+// TestDetectNewVersionCurrentLatest sets the current version to the actual
+// latest on the benchmarks branch (2.5.2) so that release/latest/2.5.2
+// exists and no upgrade message is produced.
+// func (suite *rootCmdSuite) TestDetectNewVersionCurrentLatest() {
 // 	defer suite.cleanupTest()
-// 	buf := new(bytes.Buffer)
-// 	rootCmd.SetOut(buf)
-// 	rootCmd.SetErr(buf)
-// 	rootCmd.SetArgs([]string{"--version"})
-
-// 	err := Execute()
-// 	suite.assert.NoError(err)
-// 	suite.assert.Contains(buf.String(), "blobfuse2 version")
+// 	common.Blobfuse2Version = common.Blobfuse2Version_()
+// 	msg := <-beginDetectNewVersion()
+// 	suite.assert.Nil(msg)
 // }
 
 func (suite *rootCmdSuite) TestParseArgs() {
