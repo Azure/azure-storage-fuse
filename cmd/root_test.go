@@ -126,14 +126,15 @@ func (suite *rootCmdSuite) TestNonBlockedVersion() {
 	suite.assert.False(found)
 }
 
-// TestLatestVersionExists verifies that the file release/latest/2.5.2 is
+// TODO: uncomment this after release
+// TestLatestVersionExists verifies that the file release/latest/{Blobfuse2Version} is
 // present on the benchmarks branch (it is the current GA latest).
-func (suite *rootCmdSuite) TestLatestVersionExists() {
-	defer suite.cleanupTest()
-	latestUrl := common.GitHubReleaseBaseURL + "/latest/2.5.2"
-	found := checkVersionExists(latestUrl)
-	suite.assert.True(found)
-}
+// func (suite *rootCmdSuite) TestLatestVersionExists() {
+// 	defer suite.cleanupTest()
+// 	latestUrl := common.GitHubReleaseBaseURL + "/latest/" + common.Blobfuse2Version
+// 	found := checkVersionExists(latestUrl)
+// 	suite.assert.True(found)
+// }
 
 // TestLatestVersionNotExists verifies that an unknown/old version does NOT
 // have a file under release/latest/.
@@ -163,7 +164,7 @@ func (suite *rootCmdSuite) TestDetectNewVersionCurrentOlder() {
 }
 
 // TestDetectNewVersionCurrentLatest sets the current version to the actual
-// latest on the benchmarks branch (2.5.2) so that release/latest/2.5.2
+// latest on the benchmarks branch so that release/latest/{Blobfuse2Version}
 // exists and no upgrade message is produced.
 // func (suite *rootCmdSuite) TestDetectNewVersionCurrentLatest() {
 // 	defer suite.cleanupTest()

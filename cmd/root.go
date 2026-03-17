@@ -104,7 +104,7 @@ func checkVersionExists(fileUrl string) bool {
 		return false
 	}
 
-	// For other status codes (e.g., 403, 5xx) log a warning and treat as non-existent.
+	// For other status codes (e.g., 403, 5xx) log error and treat as non-existent.
 	log.Err("checkVersionExists: unexpected status code [%d] for URL %s", resp.StatusCode, fileUrl)
 	return false
 }

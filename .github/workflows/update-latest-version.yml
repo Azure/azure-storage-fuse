@@ -65,5 +65,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git add release/latest/
-          git commit -m "Update latest version to ${NEW_VERSION}"
-          git push origin benchmarks
+          
+          # Only commit and push if there are staged changes.
+          if git diff --cached --quiet; then
+            echo "No changes to commit; skipping commit and push."
+          else
+            git commit -m "Update latest version to ${NEW_VERSION}"
+            git push origin benchmarks
+          fi
