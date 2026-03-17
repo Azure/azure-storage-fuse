@@ -54,7 +54,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install openai azure-identity requests
+          pip install openai azure-identity requests mcp httpx python-dotenv
 
       - name: Create mock event payload (manual test)
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -112,5 +112,6 @@ jobs:
           MOCK_BODY: "What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?"
           FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai
           FOUNDRY_API_VERSION: 2025-11-15-preview
+          DEEPWIKI_REPO: ${{ github.repository }}
         run: |
           python scripts/call_agent.py

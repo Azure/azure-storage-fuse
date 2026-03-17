@@ -1,7 +1,9 @@
 import json
 import os
+import re
 import sys
 import requests
+from pathlib import Path
 from openai import OpenAI
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
@@ -32,9 +34,128 @@ else:
     repository = os.getenv("GITHUB_REPOSITORY", "owner/repo")
     comments_url = f"https://api.github.com/repos/{repository}/issues/1/comments"
 
+
+# -----------------------------
+# Query DeepWiki for context (via MCP SSE)
+# -----------------------------
+DEEPWIKI_REPO = os.getenv("DEEPWIKI_REPO")  # e.g. "Azure/azure-storage-fuse"
+
+def query_deepwiki(question, repo_name):
+    """Ask DeepWiki a question about the repo via MCP SSE and return its answer."""
+    if not repo_name:
+        print("DEEPWIKI_REPO not set, skipping DeepWiki query.")
+        return ""
+    try:
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, os.path.join(os.path.dirname(__file__), "deepwiki_query.py"),
+             repo_name, question, ""],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            print(f"DeepWiki query failed (non-fatal): {result.stderr.strip()}")
+            return ""
+        answer = result.stdout.strip()
+        print(f"DeepWiki returned {len(answer)} chars.")
+        return answer
+    except Exception as e:
+        print(f"DeepWiki query failed (non-fatal): {e}")
+        return ""
+
+
+# -----------------------------
+# Search local repo docs for context
+# -----------------------------
+DOC_FILES = [
+    "TSG.md",
+    "README.md",
+    "MIGRATION.md",
+    "KnownLimitations.txt",
+    "CHANGELOG.md",
+    "setup/baseConfig.yaml",
+    "setup/advancedConfig.yaml",
+    "setup/readme.md",
+    "sampleFileCacheConfig.yaml",
+    "sampleBlockCacheConfig.yaml",
+    "sampleFileCacheWithSASConfig.yaml",
+]
+# Include all CLI docs from doc/
+DOC_DIR = Path("doc")
+if DOC_DIR.is_dir():
+    DOC_FILES.extend(str(p) for p in DOC_DIR.glob("*.md"))
+
+MAX_CONTEXT_CHARS = 12000  # cap to avoid overwhelming the prompt
+
+
+def search_local_docs(question):
+    """Search repo documentation for paragraphs relevant to the question."""
+    # Extract keywords (3+ char words, lowercased, deduplicated)
+    words = set(re.findall(r"[a-z][a-z0-9_-]{2,}", question.lower()))
+    # Add common blobfuse terms that might appear as sub-strings
+    extra = {"mount", "unmount", "cache", "fuse", "config", "auth", "sas",
+             "spn", "msi", "key", "permission", "error", "fail", "timeout"}
+    keywords = words | (extra & set(question.lower().split()))
+
+    scored_chunks = []
+    for filepath in DOC_FILES:
+        path = Path(filepath)
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        # Split into paragraphs (double-newline or markdown heading boundary)
+        paragraphs = re.split(r"\n{2,}|\n(?=#)", text)
+        for para in paragraphs:
+            para = para.strip()
+            if len(para) < 30:
+                continue
+            lower_para = para.lower()
+            score = sum(1 for kw in keywords if kw in lower_para)
+            if score > 0:
+                scored_chunks.append((score, filepath, para))
+
+    # Sort by relevance and assemble context within budget
+    scored_chunks.sort(key=lambda x: x[0], reverse=True)
+    context_parts = []
+    total = 0
+    for score, source, chunk in scored_chunks:
+        if total + len(chunk) > MAX_CONTEXT_CHARS:
+            break
+        context_parts.append(f"[Source: {source}]\n{chunk}")
+        total += len(chunk)
+
+    result = "\n\n---\n\n".join(context_parts)
+    print(f"Local doc search: {len(context_parts)} relevant snippets, {total} chars.")
+    return result
+
+
+# -----------------------------
+# Gather context
+# -----------------------------
+user_question = f"{title}\n{body}"
+deepwiki_context = query_deepwiki(user_question, DEEPWIKI_REPO)
+local_doc_context = search_local_docs(user_question)
+
 # -----------------------------
 # Build prompt
 # -----------------------------
+context_block = ""
+if deepwiki_context:
+    context_block += f"""
+--- DeepWiki Reference Answer ---
+{deepwiki_context}
+--- End DeepWiki Reference ---
+"""
+if local_doc_context:
+    context_block += f"""
+--- Relevant Documentation Snippets ---
+{local_doc_context}
+--- End Documentation ---
+"""
+
 prompt = f"""
 New GitHub item received.
 
@@ -43,8 +164,10 @@ Title:
 
 Description:
 {body}
-
-Please analyze and provide a helpful response.
+{context_block}
+Using the reference information above as grounding context, please analyze the issue/question
+and provide a helpful, accurate response. Prioritize factual accuracy from the documentation.
+Where the documentation doesn't cover the topic, use your own knowledge but note it clearly.
 """
 
 # -----------------------------
