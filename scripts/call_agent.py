@@ -196,6 +196,28 @@ response = client.responses.create(
 agent_reply = response.output_text.strip()
 
 # -----------------------------
+# Strip unwanted sections from agent reply
+# -----------------------------
+# Remove "Summary Table" and "Primary Sources" sections (and variants)
+agent_reply = re.sub(
+    r"(?:^|\n)#+\s*\*?\*?Summary\s+Table\*?\*?.*?(?=\n#+\s|\Z)",
+    "", agent_reply, flags=re.DOTALL | re.IGNORECASE
+)
+agent_reply = re.sub(
+    r"(?:^|\n)\*?\*?Summary\s+Table\*?\*?\s*\n\|.*?(?=\n#+\s|\n[^|\s]|\Z)",
+    "", agent_reply, flags=re.DOTALL | re.IGNORECASE
+)
+agent_reply = re.sub(
+    r"(?:^|\n)#+\s*\*?\*?(?:Primary\s+Sources?|References?)\*?\*?.*?(?=\n#+\s|\Z)",
+    "", agent_reply, flags=re.DOTALL | re.IGNORECASE
+)
+agent_reply = re.sub(
+    r"(?:^|\n)\*?\*?(?:Primary\s+Sources?|References?)[:\*]*\*?\*?\s*\n.*?(?=\n#+\s|\n\n[^-*\s]|\Z)",
+    "", agent_reply, flags=re.DOTALL | re.IGNORECASE
+)
+agent_reply = agent_reply.strip()
+
+# -----------------------------
 # Prepend AI disclaimer
 # -----------------------------
 final_reply = f"""⚠️ **AI‑generated response**
