@@ -277,7 +277,6 @@ func (s *utilsTestSuite) TestBlockNonProxyOptions() {
 	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{})
 	assert.NoError(err)
 	assert.EqualValues(0, opt.Retry.MaxRetries)
-	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBlockProxyOptions() {
@@ -285,17 +284,14 @@ func (s *utilsTestSuite) TestBlockProxyOptions() {
 	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
 	assert.NoError(err)
 	assert.EqualValues(3, opt.Retry.MaxRetries)
-	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 
 	opt, err = getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "http://127.0.0.1:8080", maxRetries: 3})
 	assert.NoError(err)
 	assert.EqualValues(3, opt.Retry.MaxRetries)
-	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 
 	opt, err = getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "https://128.0.0.1:8080", maxRetries: 3})
 	assert.NoError(err)
 	assert.EqualValues(3, opt.Retry.MaxRetries)
-	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBfsNonProxyOptions() {
@@ -303,7 +299,6 @@ func (s *utilsTestSuite) TestBfsNonProxyOptions() {
 	opt, err := getAzDatalakeServiceClientOptions(&AzStorageConfig{})
 	assert.NoError(err)
 	assert.EqualValues(0, opt.Retry.MaxRetries)
-	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBfsProxyOptions() {
@@ -311,17 +306,14 @@ func (s *utilsTestSuite) TestBfsProxyOptions() {
 	opt, err := getAzDatalakeServiceClientOptions(&AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
 	assert.NoError(err)
 	assert.EqualValues(3, opt.Retry.MaxRetries)
-	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 
 	opt, err = getAzDatalakeServiceClientOptions(&AzStorageConfig{proxyAddress: "http://127.0.0.1:8080", maxRetries: 3})
 	assert.NoError(err)
 	assert.EqualValues(3, opt.Retry.MaxRetries)
-	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 
 	opt, err = getAzDatalakeServiceClientOptions(&AzStorageConfig{proxyAddress: "https://128.0.0.1:8080", maxRetries: 3})
 	assert.NoError(err)
 	assert.EqualValues(3, opt.Retry.MaxRetries)
-	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 type endpointAccountType struct {

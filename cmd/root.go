@@ -34,10 +34,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"slices"
@@ -78,49 +78,83 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-// check if the version file exists in the container
+// check if the version file exists in the GitHub release directory
 func checkVersionExists(versionUrl string) bool {
-	resp, err := http.Get(versionUrl)
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: getTransport(),
+	}
+
+	req, err := http.NewRequest("GET", versionUrl, nil)
 	if err != nil {
-		log.Err("checkVersionExists: error getting version file from container [%s]", err.Error())
+		log.Err("checkVersionExists: error creating request [%s]", err.Error())
 		return false
 	}
 
-	return resp.StatusCode != 404
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Err("checkVersionExists: error getting version file from GitHub [%s]", err.Error())
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Treat only 2xx as "exists". 404 is a normal "does not exist" case.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false
+	}
+
+	// For other status codes (e.g., 401, 403, 5xx), log and treat as unknown/non-existent.
+	log.Err("checkVersionExists: unexpected status code from GitHub [%d] for URL %s", resp.StatusCode, versionUrl)
+	return false
 }
 
-// getRemoteVersion : From public container get the latest blobfuse version
-func getRemoteVersion(req string) (string, error) {
-	resp, err := http.Get(req)
+func getGitHubLatestRemoteVersion(apiEndpoint string) (*common.Version, error) {
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: getTransport(),
+	}
+
+	// Get Request
+	req, err := http.NewRequest("GET", apiEndpoint, nil)
 	if err != nil {
-		log.Err("getRemoteVersion: error listing version file from container [%s]", err.Error())
-		return "", err
+		return nil, err
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "blobfuse2-version-check")
+
+	resp, err := client.Do(req)
 	if err != nil {
-		log.Err("getRemoteVersion: error reading body of response [%s]", err.Error())
-		return "", err
+		log.Err("getGitHubLatestRemoteVersion: error in GitHub GET latest release [%s]", err.Error())
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("getGitHubLatestRemoteVersion: error in GitHub GET latest release: %s", resp.Status)
 	}
 
-	if len(body) > 50 {
-		log.Err("getRemoteVersion: something suspicious in the contents from remote version")
-		return "", fmt.Errorf("unable to get latest version")
+	var release struct { // JSON response representation
+		TagName string `json:"tag_name"`
 	}
 
-	var versionList VersionFilesList
-	err = xml.Unmarshal(body, &versionList)
+	decoder := json.NewDecoder(resp.Body)
+	err = decoder.Decode(&release)
 	if err != nil {
-		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err.Error())
-		return "", err
+		return nil, err
 	}
 
-	if len(versionList.Version) < 5 || len(versionList.Version) > 20 {
-		return "", fmt.Errorf("unable to get latest version")
-	}
-
-	versionName := versionList.Version
-	return versionName, nil
+	// Remove blobfuse2- prefix in TagName, convert str to Version
+	// Tag name example, blobfuse2-2.5.2
+	versionStr := strings.TrimPrefix(release.TagName, "blobfuse2-")
+	return common.ParseVersion(versionStr)
 }
 
 // beginDetectNewVersion : Get latest release version and compare if user needs an upgrade or not
@@ -130,8 +164,7 @@ func beginDetectNewVersion() chan any {
 	go func() {
 		defer close(completed)
 
-		latestVersionUrl := common.Blobfuse2ListContainerURL + "/latest/index.xml"
-		remoteVersion, err := getRemoteVersion(latestVersionUrl)
+		remote, err := getGitHubLatestRemoteVersion(common.GitHubLatestReleaseURL)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
 			if strings.Contains(err.Error(), "no such host") {
@@ -148,20 +181,13 @@ func beginDetectNewVersion() chan any {
 			return
 		}
 
-		remote, err := common.ParseVersion(remoteVersion)
-		if err != nil {
-			log.Err("beginDetectNewVersion: error parsing remoteVersion [%s]", err.Error())
-			completed <- err.Error()
-			return
-		}
-
-		warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
+		warningsUrl := common.GitHubReleaseContentsURL + "/securitywarnings/" + common.Blobfuse2Version
 		hasWarnings := checkVersionExists(warningsUrl)
 
 		if hasWarnings {
 			// This version has known issues associated with it
 			// Check whether the version has been blocked by the dev team or not.
-			blockedVersions := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
+			blockedVersions := common.GitHubReleaseContentsURL + "/blockedversions/" + common.Blobfuse2Version
 			isBlocked := checkVersionExists(blockedVersions)
 
 			if isBlocked {
@@ -181,9 +207,9 @@ func beginDetectNewVersion() chan any {
 		if local.OlderThan(*remote) {
 			executablePathSegments := strings.Split(strings.ReplaceAll(os.Args[0], "\\", "/"), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
-			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
-			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
-			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remote.String())
+			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remote.String())
+			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remote.String())
 
 			completed <- "A new version of Blobfuse2 is available"
 		}
@@ -272,6 +298,28 @@ func parseArgs(cmdArgs []string) []string {
 	}
 
 	return args
+}
+
+func getTransport() *http.Transport {
+	// Prefer cloning the default transport so we inherit standard
+	// proxy/TLS settings (including HTTP(S)_PROXY and NO_PROXY).
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		cp := dt.Clone()
+		cp.MaxIdleConns = 10
+		cp.IdleConnTimeout = 30 * time.Second
+		cp.DisableCompression = true // GitHub API responses are small
+		cp.DisableKeepAlives = false // Connections are reused
+		return cp
+	}
+
+	// Fallback: construct a transport that at least respects proxy env vars.
+	return &http.Transport{
+		Proxy:              http.ProxyFromEnvironment,
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,  // GitHub API responses are small
+		DisableKeepAlives:  false, // Connections are reused
+	}
 }
 
 // Execute : Actual command execution starts from here
