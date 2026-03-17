@@ -33,7 +33,7 @@ permissions:
   discussions: write
 
 jobs:
-  ai-reply:
+  buddy-reply:
     runs-on: ubuntu-latest
 
     steps:
