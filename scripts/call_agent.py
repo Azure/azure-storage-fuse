@@ -57,6 +57,9 @@ def query_deepwiki(question, repo_name):
             return ""
         answer = result.stdout.strip()
         print(f"DeepWiki returned {len(answer)} chars.")
+        print("----- DeepWiki Answer -----")
+        print(answer)
+        print("----- End DeepWiki Answer -----")
         return answer
     except Exception as e:
         print(f"DeepWiki query failed (non-fatal): {e}")
