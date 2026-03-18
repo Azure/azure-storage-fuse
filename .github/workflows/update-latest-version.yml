@@ -1,0 +1,75 @@
+# This workflow updates the latest-version sentinel file on the benchmarks
+# branch whenever a new GA (non-preview) release tag is created.
+#
+# The blobfuse2 binary checks raw.githubusercontent.com for the file
+#   release/latest/<version>
+# on the benchmarks branch to determine whether the running version is
+# outdated. This workflow keeps that file in sync with the newest release.
+#
+# Trigger: creation of a tag matching "blobfuse2-*" that does NOT contain
+# "preview" (e.g. blobfuse2-2.5.3). Preview tags are intentionally excluded.
+
+name: Update Latest Version
+
+on:
+  push:
+    tags:
+      - 'blobfuse2-*'
+
+jobs:
+  update-latest-version:
+    # Skip preview / pre-release tags.
+    if: "!contains(github.ref_name, 'preview')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # Checkout the benchmarks branch where release metadata lives.
+      - name: Checkout benchmarks branch
+        uses: actions/checkout@v4
+        with:
+          ref: benchmarks
+          fetch-depth: 0
+
+      # Extract version from the tag (strip "blobfuse2-" prefix), remove
+      # the old sentinel file, and create the new one.
+      - name: Update latest version file
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          NEW_VERSION="${TAG_NAME#blobfuse2-}"
+          echo "New release version: ${NEW_VERSION}"
+
+          cd release/latest/
+          echo "Before cleanup:"
+          ls -l
+
+          # Remove old latest-version sentinel file(s)
+          rm -f *
+
+          echo "After cleanup:"
+          ls -l
+
+          # Create new empty sentinel file named after the released version
+          touch "${NEW_VERSION}"
+
+          echo "After update:"
+          ls -l
+
+      # Commit and push the change to the benchmarks branch.
+      - name: Commit and push to benchmarks
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          NEW_VERSION="${TAG_NAME#blobfuse2-}"
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add release/latest/
+          
+          # Only commit and push if there are staged changes.
+          if git diff --cached --quiet; then
+            echo "No changes to commit; skipping commit and push."
+          else
+            git commit -m "Update latest version to ${NEW_VERSION}"
+            git push origin benchmarks
+          fi
