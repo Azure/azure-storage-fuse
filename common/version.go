@@ -43,13 +43,16 @@ const (
 	BlobFuse2WarningsURL = "https://aka.ms/blobfuse2warnings"
 	BlobFuse2BlockingURL = "https://aka.ms/blobfuse2blockers"
 
-	githubAPI = "https://api.github.com/repos/Azure/azure-storage-fuse"
-
-	// GitHub REST API endpoint for latest release
-	GitHubLatestReleaseURL = githubAPI + "/releases/latest"
-
-	// GitHub REST API endpoint for release directory contents (security warnings, blocked versions)
-	GitHubReleaseContentsURL = githubAPI + "/contents/release"
+	// GitHubReleaseBaseURL is the base URL for raw file access on the benchmarks
+	// branch. Version metadata files live under release/ in three sub-directories:
+	//   release/latest/<version>           – exists only for the latest GA version
+	//   release/securitywarnings/<version> – exists if this version has known issues
+	//   release/blockedversions/<version>  – exists if this version must not be used
+	//
+	// We use raw.githubusercontent.com instead of the GitHub REST API
+	// (api.github.com) to avoid authentication requirements and aggressive
+	// rate-limiting / 429-throttling that affects CI pipelines.
+	GitHubReleaseBaseURL = "https://raw.githubusercontent.com/Azure/azure-storage-fuse/benchmarks/release"
 )
 
 type Version struct {
