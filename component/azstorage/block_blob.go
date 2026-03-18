@@ -450,7 +450,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 			srcPath := removePrefixPath(bb.Config.prefixPath, *blobInfo.Name)
 			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1), nil)
 			if err != nil {
-				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
+				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error())
 			}
 		}
 	}
@@ -630,7 +630,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// APIs that may be affected include IsDirEmpty, ReadDir and StreamDir
 
 	if err != nil {
-		log.Err("BlockBlob::List : Failed to list the container with the prefix %s", err.Error)
+		log.Err("BlockBlob::List : Failed to list the container with the prefix %s", err.Error())
 		return nil, nil, err
 	}
 
@@ -1179,7 +1179,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 	storageBlockList, err := blobClient.GetBlockList(context.Background(), blockblob.BlockListTypeCommitted, nil)
 
 	if err != nil {
-		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
+		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s [%s]", name, err.Error())
 		return &common.BlockOffsetList{}, err
 	}
 
@@ -1584,7 +1584,7 @@ func (bb *BlockBlob) Write(options *internal.WriteFileOptions) error {
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
 		err := bb.WriteFromBuffer(name, options.Metadata, *dataBuffer)
 		if err != nil {
-			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
+			log.Err("BlockBlob::Write : Failed to upload to blob %s [%s]", name, err.Error())
 			return err
 		}
 		// case 2: given offset is within the size of the blob - and the blob consists of multiple blocks
@@ -1597,7 +1597,7 @@ func (bb *BlockBlob) Write(options *internal.WriteFileOptions) error {
 		if exceedsFileBlocks {
 			newBufferSize, err = bb.createNewBlocks(fileOffsets, offset, length)
 			if err != nil {
-				log.Err("BlockBlob::Write : Failed to create new blocks for file %s", name, err.Error())
+				log.Err("BlockBlob::Write : Failed to create new blocks for file %s [%s]", name, err.Error())
 				return err
 			}
 		}
@@ -1766,7 +1766,7 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 	storageBlockList, err := blobClient.GetBlockList(context.Background(), blockblob.BlockListTypeCommitted, nil)
 
 	if err != nil {
-		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
+		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s [%s]", name, err.Error())
 		return nil, err
 	}
 

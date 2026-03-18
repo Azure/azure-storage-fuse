@@ -119,7 +119,7 @@ func main() {
 		"Blobfuse2 Stats poll interval: %v \n"+
 		"Health Stats poll interval: %v \n"+
 		"Cache Path: %v \n"+
-		"Max cache size in MB: %v \n",
+		"Max cache size in MB: %v \n"+
 		"Output path: %v",
 		hmcommon.Pid, common.TransferPipe, common.PollingPipe, hmcommon.BfsPollInterval,
 		hmcommon.ProcMonInterval, hmcommon.TempCachePath, hmcommon.MaxCacheSize, hmcommon.OutputPath)

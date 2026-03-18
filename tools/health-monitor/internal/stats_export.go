@@ -243,7 +243,7 @@ func (se *StatsExporter) checkOutputFile() error {
 
 		err = se.getNewFile()
 		if err != nil {
-			log.Err("stats_exporter::checkOutputFile : [%v]")
+			log.Err("stats_exporter::checkOutputFile : [%v]", err)
 			return err
 		}
 		return nil

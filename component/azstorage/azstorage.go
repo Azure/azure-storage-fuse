@@ -132,13 +132,13 @@ func (az *AzStorage) OnConfigChange() {
 
 	err = ParseAndReadDynamicConfig(az, conf, true)
 	if err != nil {
-		log.Err("AzStorage::OnConfigChange : failed to reparse config", err.Error())
+		log.Err("AzStorage::OnConfigChange : failed to reparse config [%s]", err.Error())
 		return
 	}
 
 	err = az.storage.UpdateConfig(az.stConfig)
 	if err != nil {
-		log.Err("AzStorage::OnConfigChange : failed to UpdateConfig", err.Error())
+		log.Err("AzStorage::OnConfigChange : failed to UpdateConfig [%s]", err.Error())
 		return
 	}
 

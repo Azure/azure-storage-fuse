@@ -379,7 +379,7 @@ func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 
 		for _, attr := range pathList {
 			if len(ac.cacheMap) > ac.maxFiles {
-				log.Debug("AttrCache::cacheAttributes : %s skipping adding path to attribute cache because it is full", pathList)
+				log.Debug("AttrCache::cacheAttributes : skipping adding path to attribute cache because it is full (count: %d)", len(pathList))
 				break
 			}
 
