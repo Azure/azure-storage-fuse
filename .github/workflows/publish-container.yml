@@ -1,0 +1,82 @@
+# To pull the latest image from GitHub Container Registry, use the following command:
+# docker pull ghcr.io/azure/azure-storage-fuse:latest
+
+name: Build and Publish Container Image
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'blobfuse2-*'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: azure/blobfuse2
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install FUSE dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse3-dev fuse3
+
+      - name: Build blobfuse2 binary
+        run: ./build.sh
+
+      - name: Prepare Docker build context
+        run: |
+          cp blobfuse2 docker/
+          cp setup/11-blobfuse2.conf docker/
+          cp setup/blobfuse2-logrotate docker/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}},value={{tag}},prefix=v
+            type=semver,pattern={{major}}.{{minor}},value={{tag}},prefix=v
+            type=semver,pattern={{version}},value={{tag}},prefix=blobfuse-
+            type=semver,pattern={{major}}.{{minor}},value={{tag}},prefix=blobfuse-
+            type=ref,event=tag
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Clean up build artifacts
+        run: |
+          rm -f docker/blobfuse2
+          rm -f docker/11-blobfuse2.conf
+          rm -f docker/blobfuse2-logrotate
