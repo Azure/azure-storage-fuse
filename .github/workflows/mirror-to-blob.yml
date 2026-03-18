@@ -24,7 +24,7 @@ jobs:
 
       # ✅ Azure authentication (OIDC)
       - name: Azure login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_MCP_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_MCP_TENANT_ID }}
