@@ -27,7 +27,7 @@ jobs:
     steps:
       # Checkout the benchmarks branch where release metadata lives.
       - name: Checkout benchmarks branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: benchmarks
           fetch-depth: 0
