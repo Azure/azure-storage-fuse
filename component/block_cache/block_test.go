@@ -230,3 +230,51 @@ func TestValidateBlockList_Invalid_BlockSizes(t *testing.T) {
 	err := validateBlockList(storageBlockList, f, bc.blockSize)
 	assert.Error(t, err, "Block list should be invalid with incorrect block sizes")
 }
+
+func TestBlockListStateString(t *testing.T) {
+	assert.Equal(t, "Invalid", blockListInvalid.String())
+	assert.Equal(t, "Valid", blockListValid.String())
+	assert.Equal(t, "NotRetrieved", blockListNotRetrieved.String())
+	assert.Contains(t, blocklistState(99).String(), "Unknown")
+}
+
+func TestValidateBlockIndex(t *testing.T) {
+	assert.Error(t, validateBlockIndex(-1))
+	assert.Error(t, validateBlockIndex(MAX_BLOCKS+1))
+	assert.NoError(t, validateBlockIndex(0))
+	assert.NoError(t, validateBlockIndex(MAX_BLOCKS))
+}
+
+func TestValidateBlockList_EmptyOrNil(t *testing.T) {
+	blockSize := uint64(1024 * 1024)
+	f := createFile("empty_list.txt")
+	var nilList *internal.CommittedBlockList
+	assert.Error(t, validateBlockList(nilList, f, blockSize))
+
+	empty := internal.CommittedBlockList{}
+	assert.Error(t, validateBlockList(&empty, f, blockSize))
+}
+
+func TestBlock_GetSetState(t *testing.T) {
+	f := createFile("test.txt")
+	blk := createBlock(0, "testId", localBlock, f)
+
+	assert.Equal(t, localBlock, blk.getState())
+
+	blk.setState(uncommitedBlock)
+	assert.Equal(t, uncommitedBlock, blk.getState())
+
+	blk.setState(committedBlock)
+	assert.Equal(t, committedBlock, blk.getState())
+}
+
+func TestBlock_NumWrites(t *testing.T) {
+	f := createFile("test.txt")
+	blk := createBlock(0, "testId", localBlock, f)
+
+	assert.Equal(t, int32(0), blk.numWrites.Load())
+	blk.numWrites.Add(1)
+	assert.Equal(t, int32(1), blk.numWrites.Load())
+	blk.numWrites.Store(0)
+	assert.Equal(t, int32(0), blk.numWrites.Load())
+}

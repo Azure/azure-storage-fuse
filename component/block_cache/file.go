@@ -491,7 +491,7 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		}
 
 		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d, uploadScheduled: %v",
-			n, f.Name, f.size, blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(), uploadScheduled)
+			n, f.Name, atomic.LoadInt64(&f.size), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(), uploadScheduled)
 
 		// Release the buffer descriptor
 		if ok := bufDesc.release(bc.freeList); ok {
@@ -571,7 +571,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		log.Debug("File::flush: Acquired exclusive lock for flush on file: %s", f.Name)
 	}
 
-	log.Debug("File::flush: Flushing file: %s, size: %d, takeFileLock: %v", f.Name, f.size, takeFileLock)
+	log.Debug("File::flush: Flushing file: %s, size: %d, takeFileLock: %v", f.Name, atomic.LoadInt64(&f.size), takeFileLock)
 
 	if f.blockList.state != blockListValid {
 		return nil
@@ -591,6 +591,9 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 	// We dont allow the new writers to proceed as we have the exclusive lock on file.
 	f.pendingWriters.Wait()
 
+	size := atomic.LoadInt64(&f.size)
+	sizeOnStorage := atomic.LoadInt64(&f.sizeOnStorage)
+
 	zeroBlockId := common.GetBlockID(common.BlockIDLength)
 	isZeroBlockUploaded := false
 	uploadZeroBlock := func(blk *block, isLastBlock bool) error {
@@ -602,7 +605,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		offsetInsideBlock := int64(bc.blockSize)
 
 		if isLastBlock {
-			offsetInsideBlock = convertOffsetIntoBlockOffset(f.size-1, int64(bc.blockSize))
+			offsetInsideBlock = convertOffsetIntoBlockOffset(atomic.LoadInt64(&f.size)-1, int64(bc.blockSize))
 			offsetInsideBlock++
 			blk.id = common.GetBlockID(common.BlockIDLength)
 		}
@@ -624,9 +627,9 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 	blockListLen := len(f.blockList.list)
 
 	// If the file is expanded by write, the last block may got sparse, may need to extend it.
-	if blockListLen > 0 && f.size > f.sizeOnStorage && f.sizeOnStorage%int64(bc.blockSize) != 0 {
+	if blockListLen > 0 && size > sizeOnStorage && sizeOnStorage%int64(bc.blockSize) != 0 {
 		// reupload the block that was partially filled earlier to extend it with zeros.
-		lastBlockIdx := getBlockIndex(f.sizeOnStorage-1, int64(bc.blockSize))
+		lastBlockIdx := getBlockIndex(sizeOnStorage-1, int64(bc.blockSize))
 		lastBlock := f.blockList.list[lastBlockIdx]
 		if lastBlock.getState() == committedBlock && lastBlock.numWrites.Load() == 0 {
 			// Last block is committed and no writes on it, need to extend it with zeros by making it dirty.
@@ -777,7 +780,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		f.err.Store(err.Error())
 		return err
 	} else {
-		log.Debug("File::flush: Successfully committed block list for file: %s, size: %d", f.Name, f.size)
+		log.Debug("File::flush: Successfully committed block list for file: %s, size: %d", f.Name, size)
 		f.synced = true
 	}
 
@@ -786,7 +789,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		blk.setState(committedBlock)
 	}
 
-	f.sizeOnStorage = f.size
+	atomic.StoreInt64(&f.sizeOnStorage, size)
 
 	return nil
 }
@@ -869,7 +872,8 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 	}
 
 	// Update the file size
-	isFileShrinking := f.size > options.NewSize
+	currentSize := atomic.LoadInt64(&f.size)
+	isFileShrinking := currentSize > options.NewSize
 	atomic.StoreInt64(&f.size, options.NewSize)
 	f.synced = false
 
@@ -926,7 +930,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 		// Clean the rest of the buffer if file is getting shrinked as it may contain old/dirty data.
 		if isFileShrinking {
 			bufDesc.contentLock.Lock()
-			offsetInsideBlock := convertOffsetIntoBlockOffset(f.size-1, int64(bc.blockSize))
+			offsetInsideBlock := convertOffsetIntoBlockOffset(atomic.LoadInt64(&f.size)-1, int64(bc.blockSize))
 			copy(bufDesc.buf[offsetInsideBlock+1:], bc.freeList.bufPool.zeroBuf[:])
 			bufDesc.contentLock.Unlock()
 		}
