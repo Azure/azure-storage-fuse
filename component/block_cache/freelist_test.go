@@ -127,7 +127,11 @@ func TestFreeList_ReleaseBuffer(t *testing.T) {
 
 	// Give some time for the reset goroutine to process
 	// The buffer should eventually be back in the free list
-	for len(freeList.resetBufferDesc) > 0 {
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if isBufDescExistsInFreeList(freeList, bufDesc.bufIdx) {
+			break
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -247,4 +251,37 @@ func TestFreeList_CircularVictimSelection(t *testing.T) {
 func TestErrFreeListFull(t *testing.T) {
 	assert.NotNil(t, errFreeListFull)
 	assert.Contains(t, errFreeListFull.Error(), "Free list is full")
+}
+
+func TestFreeList_DebugListMustBeFull(t *testing.T) {
+	bc = &BlockCache{blockSize: 1024 * 1024}
+	setupTestFreeList(t, bc.blockSize, 4*bc.blockSize)
+	defer destroyFreeList()
+
+	// Free list should be full initially.
+	freeList.debugListMustBeFull()
+}
+
+func TestFreeList_DebugListMustBeFull_Panics(t *testing.T) {
+	bc = &BlockCache{blockSize: 1024 * 1024}
+	setupTestFreeList(t, bc.blockSize, 4*bc.blockSize)
+	defer destroyFreeList()
+
+	f := createFile("test.txt")
+	blk := createBlock(0, "testId", localBlock, f)
+
+	// Allocate one buffer so free list is no longer full
+	_, err := freeList.allocateBuffer(blk)
+	assert.NoError(t, err)
+
+	assert.Panics(t, func() {
+		freeList.debugListMustBeFull()
+	})
+}
+
+func TestCreateFreeList_ZeroBuffers(t *testing.T) {
+	// bufSize bigger than memSize should yield 0 buffers and error
+	_, err := createFreeList(1024*1024, 512)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "0 buffers")
 }

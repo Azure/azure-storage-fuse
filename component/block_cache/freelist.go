@@ -466,7 +466,7 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTable
 		}
 
 		log.Debug("getVictimBuffer: bufferIdx: %d is in use, refCnt: %d, bytesRead: %d, bytesWritten: %d",
-			bufDesc.bufIdx, bufDesc.refCnt, bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
+			bufDesc.bufIdx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
 	}
 
 	err := fmt.Errorf("getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",

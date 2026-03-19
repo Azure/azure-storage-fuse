@@ -308,13 +308,13 @@ func (suite *LoopbackFSTestSuite) TestStageAndCommitData() {
 	blockList := []string{"123", "789", "456"}
 	err = lfs.CommitData(internal.CommitDataOptions{Name: "testBlock", List: blockList, BlockSize: uint64(len(loremText))})
 	assert.NoError(err)
-	
+
 	// Verify that the block list was saved
 	committedList, err := lfs.GetCommittedBlockList("testBlock")
 	assert.NoError(err)
 	assert.NotNil(committedList)
 	assert.Equal(len(blockList), len(*committedList))
-	
+
 	// Verify block IDs are correct
 	for i, block := range *committedList {
 		assert.Equal(blockList[i], block.Id)

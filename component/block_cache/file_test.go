@@ -573,6 +573,54 @@ func (suite *FileOperationsTestSuite) TestFlush_AlreadySynced_NoOp() {
 	suite.assert.True(f.synced, "synced must remain true")
 }
 
+// flush should safely wait for in-flight writes and not deadlock.
+func (suite *FileOperationsTestSuite) TestFlush_ConcurrentWithWrites() {
+	name := "test_flush_concurrent_writes.txt"
+	handle, f := suite.openWriteFile(name, nil)
+	defer suite.closeFile(handle)
+
+	const writers = 5
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make(chan error, writers+1)
+	active := atomic.Int32{}
+
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-start
+			active.Add(1)
+			defer active.Add(-1)
+
+			errs <- f.write(suite.blockCache, &internal.WriteFileOptions{
+				Handle: handle,
+				Offset: int64(idx) * 256,
+				Data:   bytes.Repeat([]byte("W"), 256),
+			})
+		}(i)
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-start
+		deadline := time.Now().Add(500 * time.Millisecond)
+		for active.Load() == 0 && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		errs <- f.flush(suite.blockCache, true)
+	}()
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		suite.assert.NoError(err)
+	}
+}
+
 // flush when f.err is set must return an error immediately.
 func (suite *FileOperationsTestSuite) TestFlush_StickyErrorFails() {
 	name := "test_flush_sticky.txt"
@@ -887,6 +935,200 @@ func (suite *FileOperationsTestSuite) TestTruncate_ExtendByMultipleBlocks() {
 	suite.assert.NoError(err)
 	suite.assert.Equal(newSize, int64(len(diskData)))
 	suite.assert.Equal(filePayload, diskData)
+}
+
+// Write to a file with sticky error must fail immediately.
+func (suite *FileOperationsTestSuite) TestWrite_StickyErrorFails() {
+	name := "test_write_sticky.txt"
+	handle, f := suite.openWriteFile(name, nil)
+	defer func() {
+		err := suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+		suite.assert.Error(err)
+	}()
+
+	f.err.Store("injected write error")
+	err := f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   []byte("should fail"),
+	})
+	suite.assert.Error(err)
+	suite.assert.Contains(err.Error(), "previous write error")
+}
+
+// Write exceeding max file size must error.
+func (suite *FileOperationsTestSuite) TestWrite_ExceedsMaxFileSizeReturnsError() {
+	name := "test_write_overflow.txt"
+	handle, f := suite.openWriteFile(name, nil)
+	defer suite.closeFile(handle)
+
+	// Write at an offset that would exceed maxFileSize
+	err := f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: int64(suite.blockCache.maxFileSize),
+		Data:   []byte("x"),
+	})
+	suite.assert.Error(err)
+	suite.assert.Contains(err.Error(), "maximum file size")
+}
+
+// Concurrent read and write on same file with data integrity.
+func (suite *FileOperationsTestSuite) TestConcurrent_ReadWriteFlush() {
+	name := "test_concurrent_rwf.txt"
+	payload := bytes.Repeat([]byte("R"), int(suite.blockCache.blockSize))
+	handle, f := suite.openWriteFile(name, payload)
+	defer suite.closeFile(handle)
+
+	const goroutines = 6
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-start
+			switch idx % 3 {
+			case 0: // reader
+				buf := make([]byte, 128)
+				_, errs[idx] = f.read(suite.blockCache, &internal.ReadInBufferOptions{
+					Handle: handle,
+					Offset: 0,
+					Data:   buf,
+				})
+			case 1: // writer
+				errs[idx] = f.write(suite.blockCache, &internal.WriteFileOptions{
+					Handle: handle,
+					Offset: int64(idx) * 64,
+					Data:   bytes.Repeat([]byte("W"), 64),
+				})
+			case 2: // flusher
+				errs[idx] = f.flush(suite.blockCache, true)
+			}
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
+
+	for i, err := range errs {
+		suite.assert.NoError(err, "goroutine %d failed", i)
+	}
+}
+
+// Truncate then write then flush must produce correct data.
+func (suite *FileOperationsTestSuite) TestTruncate_ThenWrite_ThenFlush() {
+	name := "test_trunc_write_flush.txt"
+	content := bytes.Repeat([]byte("A"), 512)
+	handle, f := suite.openWriteFile(name, content)
+	defer suite.closeFile(handle)
+
+	// Truncate to 10
+	suite.assert.NoError(f.truncate(suite.blockCache, &internal.TruncateFileOptions{
+		Name:    name,
+		NewSize: 10,
+	}))
+
+	// Write at offset 5
+	suite.assert.NoError(f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 5,
+		Data:   []byte("HELLO"),
+	}))
+
+	suite.assert.NoError(f.flush(suite.blockCache, true))
+
+	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
+	suite.assert.NoError(err)
+	suite.assert.Equal(10, len(diskData))
+	suite.assert.Equal([]byte("HELLO"), diskData[5:10])
+}
+
+// Write a full block to trigger async upload, then read back to verify.
+func (suite *FileOperationsTestSuite) TestWrite_FullBlockTriggersUpload() {
+	name := "test_write_full_block.txt"
+	handle, f := suite.openWriteFile(name, nil)
+	defer suite.closeFile(handle)
+
+	blockSz := int(suite.blockCache.blockSize)
+	payload := bytes.Repeat([]byte("F"), blockSz)
+
+	err := f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   payload,
+	})
+	suite.assert.NoError(err)
+	suite.assert.Equal(int64(blockSz), atomic.LoadInt64(&f.size))
+
+	// Flush and verify on disk
+	suite.assert.NoError(f.flush(suite.blockCache, true))
+	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
+	suite.assert.NoError(err)
+	suite.assert.Equal(payload, diskData)
+}
+
+// Write spanning 3+ blocks then flush to exercise multi-block upload and GetOrCreateBufferDescriptor.
+func (suite *FileOperationsTestSuite) TestWrite_MultiBlock_ThenFlush() {
+	name := "test_write_3blocks.txt"
+	handle, f := suite.openWriteFile(name, nil)
+	defer suite.closeFile(handle)
+
+	blockSz := int(suite.blockCache.blockSize)
+	payload := bytes.Repeat([]byte("M"), blockSz*3+100)
+
+	err := f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   payload,
+	})
+	suite.assert.NoError(err)
+	suite.assert.Equal(int64(len(payload)), atomic.LoadInt64(&f.size))
+	suite.assert.GreaterOrEqual(len(f.blockList.list), 4)
+
+	suite.assert.NoError(f.flush(suite.blockCache, true))
+	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
+	suite.assert.NoError(err)
+	suite.assert.Equal(payload, diskData)
+}
+
+// Read after write on an uncommitted block should trigger flush and succeed.
+func (suite *FileOperationsTestSuite) TestRead_AfterWriteUncommittedBlock() {
+	name := "test_read_uncommitted.txt"
+	handle, f := suite.openWriteFile(name, nil)
+	defer suite.closeFile(handle)
+
+	blockSz := int(suite.blockCache.blockSize)
+
+	payload := bytes.Repeat([]byte("M"), blockSz)
+	suite.assert.NoError(f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   payload,
+	}))
+	suite.assert.NoError(f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: int64(blockSz),
+		Data:   payload,
+	}))
+	suite.assert.NoError(f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 2 * int64(blockSz),
+		Data:   payload,
+	}))
+
+	// Read back the first block - should trigger flush of all blocks and return correct data
+	buf := make([]byte, len(payload))
+	n, err := f.read(suite.blockCache, &internal.ReadInBufferOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   buf,
+	})
+
+	suite.assert.NoError(err)
+	suite.assert.Equal(len(payload), n)
+	suite.assert.Equal(payload, buf)
 }
 
 // ============================================================================

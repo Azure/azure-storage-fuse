@@ -624,9 +624,11 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		patternDetector: newPatternDetector(),
 	}
 
-	if f.size == -1 {
-		f.size = attr.Size
-		f.sizeOnStorage = attr.Size
+	size := atomic.LoadInt64(&f.size)
+	if size == -1 {
+		atomic.StoreInt64(&f.size, attr.Size)
+		atomic.StoreInt64(&f.sizeOnStorage, attr.Size)
+		size = attr.Size
 	}
 
 	if options.Flags&os.O_TRUNC != 0 {
@@ -644,16 +646,17 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			f.blockList = newBlockList()
 		}
 
-		f.size = 0
+		size = 0
+		atomic.StoreInt64(&f.size, 0)
 		f.synced = false
 	}
 
-	if f.size == 0 {
+	if size == 0 {
 		// This check would be helpful for newly created files
 		f.blockList.state = blockListValid
 	}
 
-	if f.size > 0 {
+	if size > 0 {
 		if (options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0) {
 			if f.blockList.state == blockListNotRetrieved {
 				blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)

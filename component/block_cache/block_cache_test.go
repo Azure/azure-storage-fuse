@@ -144,6 +144,27 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TearDownTest() {
 	os.RemoveAll(suite.cachePath)
 }
 
+func (suite *BlockCacheLoopbackIntegrationTestSuite) writeFileHelper(fileName string, content []byte) {
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{
+		Name: fileName,
+		Mode: 0777,
+	})
+	suite.assert.NoError(err)
+
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   []byte(content),
+	})
+	suite.assert.NoError(err)
+
+	err = suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+	suite.assert.NoError(err)
+}
+
 // ============================================================================
 // Basic File Operations Tests
 // ============================================================================
@@ -178,10 +199,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileRead() {
 	fileName := "test_read.txt"
 	content := "Hello, World! This is a test file for reading."
 
-	// Create file directly in loopback storage
-	filePath := filepath.Join(suite.testPath, fileName)
-	err := os.WriteFile(filePath, []byte(content), 0777)
-	suite.assert.NoError(err)
+	// Create file
+	suite.writeFileHelper(fileName, []byte(content))
 
 	// Open file through block_cache
 	handle, err := suite.blockCache.OpenFile(internal.OpenFileOptions{
@@ -522,10 +541,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReads() {
 	fileName := "test_concurrent_reads.txt"
 	content := strings.Repeat("Concurrent read test data. ", 100)
 
-	// Create and write file
-	filePath := filepath.Join(suite.testPath, fileName)
-	err := os.WriteFile(filePath, []byte(content), 0777)
-	suite.assert.NoError(err)
+	// Create file with content
+	suite.writeFileHelper(fileName, []byte(content))
 
 	// Perform concurrent reads
 	numReaders := 10
@@ -674,10 +691,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReadWrite() {
 	fileName := "test_concurrent_read_write.txt"
 	initialContent := strings.Repeat("Initial data. ", 50)
 
-	// Create file with initial content
-	filePath := filepath.Join(suite.testPath, fileName)
-	err := os.WriteFile(filePath, []byte(initialContent), 0777)
-	suite.assert.NoError(err)
+	suite.writeFileHelper(fileName, []byte(initialContent))
 
 	// Launch concurrent readers and writers
 	numReaders := 5
@@ -730,7 +744,9 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReadWrite() {
 					Flags: os.O_RDWR,
 					Mode:  0777,
 				})
+
 				if err != nil {
+					fmt.Printf("Writer %d iteration %d: failed to open file: %v\n", writerId, j, err)
 					errors <- fmt.Errorf("writer %d iteration %d: failed to open: %v", writerId, j, err)
 					return
 				}
@@ -764,7 +780,229 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReadWrite() {
 	}
 
 	// Allow some errors due to concurrent access but ensure no deadlocks
-	suite.assert.Less(errorCount, numReaders+numWriters, "Too many errors during concurrent operations")
+	suite.assert.Equal(errorCount, 0, "Too many errors during concurrent operations")
+}
+
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentOpenSameFile() {
+	defer suite.TearDownTest()
+
+	fileName := "test_concurrent_open_same_file.txt"
+	payload := bytes.Repeat([]byte("A"), int(suite.blockCache.blockSize*2))
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{
+		Name: fileName,
+		Mode: 0777,
+	})
+	suite.assert.NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   payload,
+	})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	const goroutines = 12
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errors := make(chan error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(workerId int) {
+			defer wg.Done()
+			<-start
+
+			flags := os.O_RDONLY
+			if workerId%3 == 0 {
+				flags = os.O_RDWR
+			}
+
+			handle, err := suite.blockCache.OpenFile(internal.OpenFileOptions{
+				Name:  fileName,
+				Flags: flags,
+				Mode:  0777,
+			})
+			if err != nil {
+				errors <- fmt.Errorf("open %d: %v", workerId, err)
+				return
+			}
+
+			if flags == os.O_RDWR {
+				_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{
+					Handle: handle,
+					Offset: int64(workerId * 8),
+					Data:   []byte("concurrent"),
+				})
+				if err != nil {
+					errors <- fmt.Errorf("write %d: %v", workerId, err)
+				}
+				if err := suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}); err != nil {
+					errors <- fmt.Errorf("sync %d: %v", workerId, err)
+				}
+			} else {
+				buf := make([]byte, 32)
+				_, err = suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{
+					Handle: handle,
+					Offset: int64(workerId),
+					Data:   buf,
+				})
+				if err != nil && err != io.EOF {
+					errors <- fmt.Errorf("read %d: %v", workerId, err)
+				}
+			}
+
+			if err := suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}); err != nil {
+				errors <- fmt.Errorf("release %d: %v", workerId, err)
+			}
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
+	close(errors)
+
+	for err := range errors {
+		suite.assert.NoError(err)
+	}
+}
+
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestMetadataOpsCoverage() {
+	defer suite.TearDownTest()
+
+	dirName := "test_meta_dir"
+	fileName := "test_meta_file.txt"
+	origPath := filepath.Join(suite.testPath, dirName)
+	suite.assert.NoError(os.MkdirAll(origPath, 0777))
+	suite.assert.NoError(os.WriteFile(filepath.Join(origPath, fileName), []byte("data"), 0777))
+
+	// RenameFile
+	newFileName := "test_meta_file_renamed.txt"
+	suite.assert.NoError(suite.blockCache.RenameFile(internal.RenameFileOptions{
+		Src: filepath.Join(dirName, fileName),
+		Dst: filepath.Join(dirName, newFileName),
+	}))
+
+	// DeleteFile
+	suite.assert.NoError(suite.blockCache.DeleteFile(internal.DeleteFileOptions{
+		Name: filepath.Join(dirName, newFileName),
+	}))
+
+	// RenameDir
+	newDirName := "test_meta_dir_renamed"
+	suite.assert.NoError(suite.blockCache.RenameDir(internal.RenameDirOptions{
+		Src: dirName,
+		Dst: newDirName,
+	}))
+
+	// DeleteDir
+	suite.assert.NoError(suite.blockCache.DeleteDir(internal.DeleteDirOptions{
+		Name: newDirName,
+	}))
+
+	// StatFs
+	statfs, ok, err := suite.blockCache.StatFs()
+	suite.assert.NoError(err)
+	suite.assert.True(ok)
+	suite.assert.NotNil(statfs)
+
+	// GenConfig
+	suite.assert.Equal("", suite.blockCache.GenConfig())
+}
+
+// Test TruncateFile without a handle (nil handle path).
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestTruncateFile_NilHandle() {
+	defer suite.TearDownTest()
+
+	fileName := "test_truncate_nil_handle.txt"
+	content := strings.Repeat("data", 100)
+
+	// Create file with content via BlockCache
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte(content)})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	// Truncate with nil handle — should open internally
+	err = suite.blockCache.TruncateFile(internal.TruncateFileOptions{Name: fileName, NewSize: 10, Handle: nil})
+	suite.assert.NoError(err)
+
+	// Verify
+	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
+	suite.assert.NoError(err)
+	suite.assert.Equal(10, len(data))
+	suite.assert.Equal(data, []byte(content[:len(data)]))
+}
+
+// Test GetAttr for an open modified file returns in-memory size.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestGetAttr_OpenModifiedFile() {
+	defer suite.TearDownTest()
+
+	fileName := "test_getattr_open.txt"
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte("hello world extended data")})
+	suite.assert.NoError(err)
+
+	// GetAttr while file is open and modified should reflect in-memory size
+	attr, err := suite.blockCache.GetAttr(internal.GetAttrOptions{Name: fileName})
+	suite.assert.NoError(err)
+	suite.assert.Equal(attr.Size, int64(len("hello world extended data")))
+
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+}
+
+// Test write-then-read cycle through the BlockCache API with data integrity check.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestWriteThenRead_DataIntegrity() {
+	defer suite.TearDownTest()
+
+	fileName := "test_write_read_integrity.txt"
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+
+	payload := bytes.Repeat([]byte("ABCDEFGH"), 1024)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: payload})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	// Read back
+	handle, err = suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_RDONLY, Mode: 0777})
+	suite.assert.NoError(err)
+
+	buf := make([]byte, len(payload))
+	n, err := suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: buf})
+	suite.assert.NoError(err)
+	suite.assert.Equal(len(payload), n)
+	suite.assert.Equal(payload, buf)
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+}
+
+// Test OpenFile with O_TRUNC flag.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestOpenFile_Truncate() {
+	defer suite.TearDownTest()
+
+	fileName := "test_open_trunc.txt"
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte("existing content")})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	// Reopen with O_TRUNC
+	handle, err = suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_RDWR | os.O_TRUNC, Mode: 0777})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
+	suite.assert.NoError(err)
+	suite.assert.Equal(0, len(data))
 }
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestMultipleHandlesToSameFile() {
@@ -773,10 +1011,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestMultipleHandlesToSameFi
 	fileName := "test_multiple_handles.txt"
 	content := "Content for multiple handles test."
 
-	// Create and write file
-	filePath := filepath.Join(suite.testPath, fileName)
-	err := os.WriteFile(filePath, []byte(content), 0777)
-	suite.assert.NoError(err)
+	// Create file with content
+	suite.writeFileHelper(fileName, []byte(content))
 
 	// Open multiple handles to the same file
 	numHandles := 5
@@ -1085,10 +1321,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestSequentialVsRandomAcces
 		content[i] = byte(i % 256)
 	}
 
-	// Write file
-	filePath := filepath.Join(suite.testPath, fileName)
-	err := os.WriteFile(filePath, content, 0777)
-	suite.assert.NoError(err)
+	// Create file with content
+	suite.writeFileHelper(fileName, content)
 
 	// Test sequential access
 	handle, err := suite.blockCache.OpenFile(internal.OpenFileOptions{
@@ -1156,10 +1390,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRapidOpenCloseCycles() 
 	fileName := "test_rapid_cycles.txt"
 	content := "Data for rapid open/close test."
 
-	// Create file
-	filePath := filepath.Join(suite.testPath, fileName)
-	err := os.WriteFile(filePath, []byte(content), 0777)
-	suite.assert.NoError(err)
+	// Create file with content
+	suite.writeFileHelper(fileName, []byte(content))
 
 	// Rapidly open and close file
 	cycles := 100
@@ -1186,6 +1418,262 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRapidOpenCloseCycles() 
 			Handle: handle,
 		})
 		suite.assert.NoError(err, "Cycle %d: failed to close", i)
+	}
+}
+
+// TestEvictionPath exercises the buffer eviction (victim buffer) code path by
+// creating enough files to exceed the buffer pool, forcing eviction.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestEvictionPath() {
+	defer suite.TearDownTest()
+
+	blockSz := int(suite.blockCache.blockSize)
+	// memSize is 20MB with 1MB blocks = 20 buffers. Write 25 files of 1 block each to force eviction.
+	numFiles := 25
+	payload := bytes.Repeat([]byte("E"), blockSz)
+
+	for i := 0; i < numFiles; i++ {
+		name := fmt.Sprintf("evict_%d.txt", i)
+		handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0777})
+		suite.assert.NoError(err, "file %d create", i)
+
+		_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: payload})
+		suite.assert.NoError(err, "file %d write", i)
+
+		suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}), "file %d sync", i)
+		suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}), "file %d release", i)
+	}
+
+	// Now read all files back to exercise eviction during reads
+	for i := 0; i < numFiles; i++ {
+		name := fmt.Sprintf("evict_%d.txt", i)
+		handle, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: name, Flags: os.O_RDONLY, Mode: 0777})
+		suite.assert.NoError(err, "file %d open", i)
+
+		buf := make([]byte, blockSz)
+		n, err := suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: buf})
+		suite.assert.NoError(err, "file %d read", i)
+		suite.assert.Equal(blockSz, n, "file %d bytes", i)
+		suite.assert.Equal(payload, buf, "file %d data", i)
+
+		suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}), "file %d release", i)
+	}
+}
+
+// TestFlush_ExtendedFile tests flush when file was extended beyond sizeOnStorage.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFlush_ExtendedFile() {
+	defer suite.TearDownTest()
+
+	fileName := "test_flush_extended.txt"
+	blockSz := int(suite.blockCache.blockSize)
+	initial := bytes.Repeat([]byte("I"), blockSz/2)
+
+	// Create and write half a block
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: initial})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	// Reopen and extend by writing at offset beyond previous size
+	handle, err = suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_RDWR, Mode: 0777})
+	suite.assert.NoError(err)
+
+	extension := bytes.Repeat([]byte("X"), blockSz)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: int64(blockSz), Data: extension})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	// Verify data
+	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
+	suite.assert.NoError(err)
+	suite.assert.Equal(blockSz*2, len(data))
+	suite.assert.Equal(initial, data[:blockSz/2])
+	suite.assert.Equal(extension, data[blockSz:])
+	suite.assert.Equal(make([]byte, blockSz/2), data[blockSz/2:blockSz])
+}
+
+// TestConcurrent_OpenFlushRelease exercises concurrent open+flush+release on different files.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrent_OpenFlushRelease() {
+	defer suite.TearDownTest()
+
+	numFiles := 8
+	var wg sync.WaitGroup
+	errs := make(chan error, numFiles*3)
+
+	for i := 0; i < numFiles; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			name := fmt.Sprintf("conc_flush_%d.txt", idx)
+
+			handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0777})
+			if err != nil {
+				errs <- fmt.Errorf("create %d: %v", idx, err)
+				return
+			}
+
+			_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{
+				Handle: handle,
+				Offset: 0,
+				Data:   bytes.Repeat([]byte("F"), 512),
+			})
+			if err != nil {
+				errs <- fmt.Errorf("write %d: %v", idx, err)
+			}
+
+			if err := suite.blockCache.FlushFile(internal.FlushFileOptions{Handle: handle}); err != nil {
+				errs <- fmt.Errorf("flush %d: %v", idx, err)
+			}
+
+			if err := suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}); err != nil {
+				errs <- fmt.Errorf("release %d: %v", idx, err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		suite.assert.NoError(err)
+	}
+}
+
+// Test OpenFile with O_TRUNC while another handle is already open exercises the flush-before-truncate path.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestOpenFile_TruncWhileOpen() {
+	defer suite.TearDownTest()
+
+	fileName := "test_open_trunc_while_open.txt"
+	handle1, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle1, Offset: 0, Data: []byte("keep this data around")})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle1}))
+
+	// Open a second handle with O_TRUNC while handle1 is still open
+	handle2, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_RDWR | os.O_TRUNC, Mode: 0777})
+	suite.assert.NoError(err)
+
+	// pread from handle1
+	_, err = suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{
+		Handle: handle1,
+		Offset: 0,
+		Data:   make([]byte, 10),
+	})
+	suite.assert.Equal(err, io.EOF)
+
+	// Release both handles
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle1}))
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle2}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle2}))
+
+	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
+	suite.assert.NoError(err)
+	suite.assert.Equal(0, len(data))
+}
+
+// Test write then read on same handle without intermediate flush exercises the read-uncommitted-block path.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestWriteThenReadSameHandle() {
+	defer suite.TearDownTest()
+
+	fileName := "test_write_read_same_handle.txt"
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+
+	payload := bytes.Repeat([]byte("Z"), 1024)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: payload})
+	suite.assert.NoError(err)
+
+	// Read back without explicit sync — should trigger flush for uncommitted block
+	buf := make([]byte, 1024)
+	n, err := suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: buf})
+	suite.assert.NoError(err)
+	suite.assert.Equal(1024, n)
+	suite.assert.Equal(payload, buf)
+
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+}
+
+// Test write beyond existing blocks to exercise new block creation in file.write.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestWriteBeyondExistingBlocks() {
+	defer suite.TearDownTest()
+
+	fileName := "test_write_beyond.txt"
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+
+	blockSz := int(suite.blockCache.blockSize)
+	// Write at an offset 3 blocks in to force block creation
+	payload := bytes.Repeat([]byte("B"), 512)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: int64(blockSz * 3), Data: payload})
+	suite.assert.NoError(err)
+
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
+	suite.assert.NoError(err)
+	suite.assert.Equal(blockSz*3+512, len(data))
+	suite.assert.Equal(payload, data[blockSz*3:])
+}
+
+// TestEvictionUnderPressure stresses the buffer pool to trigger the victim retry/double-check
+// paths in GetOrCreateBufferDescriptor by concurrently reading many files with limited buffers.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestEvictionUnderPressure() {
+	defer suite.TearDownTest()
+
+	blockSz := int(suite.blockCache.blockSize)
+	// With 20MB mem and 1MB blocks = 20 buffers. Create 40 files to force heavy eviction.
+	numFiles := 40
+	payload := bytes.Repeat([]byte("P"), blockSz)
+
+	// Create all files
+	for i := 0; i < numFiles; i++ {
+		name := fmt.Sprintf("pressure_%d.txt", i)
+		h, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0777})
+		suite.assert.NoError(err)
+		_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: payload})
+		suite.assert.NoError(err)
+		suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
+		suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	}
+
+	// Concurrently read all files in batches to create eviction pressure without exhausting buffers
+	batchSize := 10
+	for start := 0; start < numFiles; start += batchSize {
+		var wg sync.WaitGroup
+		errs := make(chan error, batchSize)
+		end := start + batchSize
+		if end > numFiles {
+			end = numFiles
+		}
+		for i := start; i < end; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				name := fmt.Sprintf("pressure_%d.txt", idx)
+				h, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: name, Flags: os.O_RDONLY, Mode: 0777})
+				if err != nil {
+					errs <- fmt.Errorf("open %d: %v", idx, err)
+					return
+				}
+				buf := make([]byte, blockSz)
+				_, err = suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: buf})
+				if err != nil {
+					errs <- fmt.Errorf("read %d: %v", idx, err)
+				}
+				if err := suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
+					errs <- fmt.Errorf("release %d: %v", idx, err)
+				}
+			}(i)
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			suite.assert.NoError(err)
+		}
 	}
 }
 
@@ -1427,8 +1915,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestReadFailsAfterHandleRel
 	defer suite.TearDownTest()
 
 	fileName := "test_released_handle.txt"
-	filePath := filepath.Join(suite.testPath, fileName)
-	suite.assert.NoError(os.WriteFile(filePath, []byte("payload"), 0777))
+	suite.writeFileHelper(fileName, []byte("This file will be read after handle release."))
 
 	handle, err := suite.blockCache.OpenFile(internal.OpenFileOptions{
 		Name:  fileName,

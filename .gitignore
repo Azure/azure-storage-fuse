@@ -38,3 +38,4 @@ _tmp_*.trace
 __pycache__/
 *.pyc
 *.pyo
+/.agent-shell/

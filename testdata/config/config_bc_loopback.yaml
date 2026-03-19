@@ -20,5 +20,5 @@ loopbackfs:
 # Test block cache with low memory for stress testing.
 block_cache:
   block-size-mb: 8
-  mem-size-mb: 256
+  mem-size-mb: 512
   prefetch: 1
