@@ -165,12 +165,43 @@ func TestDeleteFileIfNoOpenHandles(t *testing.T) {
 	_, exists := fileMap.Load("deleteifno.txt")
 	assert.False(t, exists)
 
-	// Call deleteFileIfNoOpenHandles - should be no-op
+	// Call deleteFileIfNoOpenHandles - should be no-op (not in map)
 	deleteFileIfNoOpenHandles("deleteifno.txt")
 
 	// Still should not exist
 	_, exists = fileMap.Load("deleteifno.txt")
 	assert.False(t, exists)
+}
+
+func TestDeleteFileIfNoOpenHandles_WithEmptyHandles(t *testing.T) {
+	// Insert a file into the map with zero handles — simulates an orphaned entry
+	f := createFile("orphan.txt")
+	fileMap.Store("orphan.txt", f)
+
+	_, exists := fileMap.Load("orphan.txt")
+	assert.True(t, exists)
+
+	// This should detect zero handles and remove the file from the map
+	deleteFileIfNoOpenHandles("orphan.txt")
+
+	_, exists = fileMap.Load("orphan.txt")
+	assert.False(t, exists, "File with no handles should be removed from map")
+}
+
+func TestDeleteFileIfNoOpenHandles_WithHandles(t *testing.T) {
+	// Insert a file into the map with one handle — should NOT delete
+	f := createFile("has_handle.txt")
+	handle := handlemap.NewHandle("has_handle.txt")
+	f.handles[handle] = struct{}{}
+	fileMap.Store("has_handle.txt", f)
+
+	deleteFileIfNoOpenHandles("has_handle.txt")
+
+	_, exists := fileMap.Load("has_handle.txt")
+	assert.True(t, exists, "File with handles should not be removed")
+
+	// Clean up
+	fileMap.Delete("has_handle.txt")
 }
 
 func TestBlockCacheHandle_Structure(t *testing.T) {
