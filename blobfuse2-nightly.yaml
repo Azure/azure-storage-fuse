@@ -579,13 +579,14 @@ stages:
                   Description: 'Red Hat Enterprise Linux 9.0'
                   AgentName: 'blobfuse-rhel9'
                   tags: 'fuse3'
-                CentOS-7.9:
-                  distro_version: "CentOS-7.9"
-                  distro: centos
-                  poolName: 'blobfuse-centos-pool'
-                  containerName: "test-cnt-cent-7"
-                  Description: "CentOS 7.9"
-                  AgentName: "blobfuse-centos7"
+                # Commenting as CentOS 7.9 image is not available in the marketplace currently
+                # CentOS-7.9:
+                #   distro_version: "CentOS-7.9"
+                #   distro: centos
+                #   poolName: 'blobfuse-centos-pool'
+                #   containerName: "test-cnt-cent-7"
+                #   Description: "CentOS 7.9"
+                #   AgentName: "blobfuse-centos7"
                 CentOS-8.5:
                   distro_version: "CentOS-8.5"
                   distro: centos
