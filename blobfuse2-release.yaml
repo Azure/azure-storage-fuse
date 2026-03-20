@@ -962,12 +962,13 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            CentOS-7.9:
-              agentName: "blobfuse-centos7"
-              vmImage: 'CentOS-7.0'
-              fuse-version: 'fuse3'
-              tags: 'fuse3'
-              container: 'test-cnt-cent-7'
+            # Commenting as CentOS 7.9 image is not available in the marketplace currently
+            # CentOS-7.9:
+            #   agentName: "blobfuse-centos7"
+            #   vmImage: 'CentOS-7.0'
+            #   fuse-version: 'fuse3'
+            #   tags: 'fuse3'
+            #   container: 'test-cnt-cent-7'
             CentOS-8.5:
               agentName: "blobfuse-centos8"
               vmImage: 'CentOS-8.0'
@@ -1045,7 +1046,13 @@ stages:
 
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
+              echo "Generating for CentOS-7.0 for fuse3"
+              f=`ls ./blobfuse2*$(vmImage)*.rpm`
+              cp "$f" $(sed 's:CentOS-8.0:CentOS-7.0:' <<< "$f")
+              cp ./blobfuse2*CentOS-7.0*.rpm $(Build.ArtifactStagingDirectory)
+              rm -rf ./blobfuse2*CentOS-7.0*.rpm
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
+              ls -l $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-signed
 
