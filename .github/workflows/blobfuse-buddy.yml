@@ -1,0 +1,117 @@
+name: Blobfuse Buddy – AI Auto Reply
+
+on:
+  workflow_dispatch:
+    inputs:
+      event_type:
+        description: "Mock event type for manual testing"
+        required: true
+        default: "issue"
+        type: choice
+        options:
+          - issue
+          - discussion
+      title:
+        description: "Mock title"
+        required: false
+        default: "Blobfuse config question: direct-io vs disable-kernel-cache"
+        type: string
+      body:
+        description: "Mock body"
+        required: false
+        default: "What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?"
+        type: string
+  issues:
+    types: [opened]
+  discussion:
+    types: [created]
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  discussions: write
+
+jobs:
+  buddy-reply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_MCP_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_MCP_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_MCP_SUBSCRIPTION_ID }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install openai azure-identity requests mcp httpx python-dotenv
+
+      - name: Create mock event payload (manual test)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          ORIGINAL_EVENT_PATH: ${{ github.event_path }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          event_name = os.environ["GITHUB_EVENT_NAME"]
+          event_type = "issue"
+          title = "Blobfuse config question: direct-io vs disable-kernel-cache"
+          body = "What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?"
+          repository = os.environ["REPOSITORY"]
+
+          if event_name == "workflow_dispatch":
+              with open(os.environ["ORIGINAL_EVENT_PATH"], "r", encoding="utf-8") as event_file:
+                  original_event = json.load(event_file)
+              inputs = original_event.get("inputs", {})
+              event_type = inputs.get("event_type", event_type)
+              title = inputs.get("title", title)
+              body = inputs.get("body", body)
+
+          if event_type == "issue":
+              payload = {
+                  "issue": {
+                      "title": title,
+                      "body": body,
+                      "comments_url": f"https://api.github.com/repos/{repository}/issues/1/comments"
+                  }
+              }
+          else:
+              payload = {
+                  "discussion": {
+                      "title": title,
+                      "body": body,
+                      "node_id": "MOCK_NODE_ID",
+                      "comments_url": f"https://api.github.com/repos/{repository}/discussions/1/comments"
+                  }
+              }
+
+          with open("mock_event.json", "w", encoding="utf-8") as file:
+              json.dump(payload, file)
+          PY
+
+      - name: Call Azure AI Foundry Agent
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_name == 'workflow_dispatch' && format('{0}/mock_event.json', github.workspace) || github.event_path }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+          MOCK_TITLE: "Blobfuse config question: direct-io vs disable-kernel-cache"
+          MOCK_BODY: "What is the difference between direct-io and disable-kernel-cache in Blobfuse2, and which option is generally preferred?"
+          FOUNDRY_BASE_URL: https://blobfuse-buddy-resource.services.ai.azure.com/api/projects/blobfuse-buddy/applications/blobfuse-buddy/protocols/openai
+          FOUNDRY_API_VERSION: 2025-11-15-preview
+          DEEPWIKI_REPO: ${{ github.repository }}
+        run: |
+          python scripts/call_agent.py

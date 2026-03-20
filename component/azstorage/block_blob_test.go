@@ -410,7 +410,7 @@ func (s *blockBlobTestSuite) TestCreateDir() {
 	// Testing dir and dir/
 	var paths = []string{generateDirectoryName(), generateDirectoryName() + "/"}
 	for _, path := range paths {
-		log.Debug(path)
+		log.Debug("%s", path)
 		s.Run(path, func() {
 			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
 
@@ -431,7 +431,7 @@ func (s *blockBlobTestSuite) TestDeleteDir() {
 	// Testing dir and dir/
 	var paths = []string{generateDirectoryName(), generateDirectoryName() + "/"}
 	for _, path := range paths {
-		log.Debug(path)
+		log.Debug("%s", path)
 		s.Run(path, func() {
 			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
 			s.assert.NoError(err)
@@ -553,7 +553,7 @@ func (s *blockBlobTestSuite) TestIsDirEmpty() {
 	// Testing dir and dir/
 	var paths = []string{name, name + "/"}
 	for _, path := range paths {
-		log.Debug(path)
+		log.Debug("%s", path)
 		s.Run(path, func() {
 			empty := s.az.IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 
@@ -606,7 +606,7 @@ func (s *blockBlobTestSuite) TestReadDir() {
 	// Testing dir and dir/
 	var paths = []string{name, name + "/"}
 	for _, path := range paths {
-		log.Debug(path)
+		log.Debug("%s", path)
 		s.Run(path, func() {
 			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.NoError(err)
@@ -627,7 +627,7 @@ func (s *blockBlobTestSuite) TestReadDirNoVirtualDirectory() {
 	// Testing dir and dir/
 	var paths = []string{"", "/"}
 	for _, path := range paths {
-		log.Debug(path)
+		log.Debug("%s", path)
 		s.Run(path, func() {
 			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.NoError(err)
@@ -671,7 +671,7 @@ func (s *blockBlobTestSuite) TestReadDirRoot() {
 	// Testing dir and dir/
 	var paths = []string{"", "/"}
 	for _, path := range paths {
-		log.Debug(path)
+		log.Debug("%s", path)
 		s.Run(path, func() {
 			// ReadDir only reads the first level of the hierarchy
 			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
