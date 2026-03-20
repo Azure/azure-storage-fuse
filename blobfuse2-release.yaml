@@ -596,9 +596,8 @@ stages:
 
           - script: |
               for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
-              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
               if [ $(AgentName) == "blobfuse-ubuntu20" ]; then
-                echo "Generating for Ubuntu-18 and Debian 9/10"
+                echo "Generating for Ubuntu-18 and Debian 9/10 for fuse2"
                 f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Ubuntu-20.04:Ubuntu-18.04:' <<< "$f")
                 cp "$f" $(sed 's:Ubuntu-20.04:Debian-9.0:' <<< "$f")
@@ -609,7 +608,8 @@ stages:
                 rm -rf ./blobfuse2*Ubuntu-18*.deb
                 rm -rf ./blobfuse2*Debian-*.deb
               else
-                echo "Generating for Ubuntu-20 and Debian 11/12/13"
+                cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+                echo "Generating for Ubuntu-20 and Debian 11/12/13 for fuse3"
                 f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Ubuntu-22.04:Ubuntu-20.04:' <<< "$f")
                 cp "$f" $(sed 's:Ubuntu-22.04:Debian-11.0:' <<< "$f")
