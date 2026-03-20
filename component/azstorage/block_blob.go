@@ -630,7 +630,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// APIs that may be affected include IsDirEmpty, ReadDir and StreamDir
 
 	if err != nil {
-		log.Err("BlockBlob::List : Failed to list the container with the prefix %s", err.Error())
+		log.Err("BlockBlob::List : Failed to list the container with the prefix %s: %v", listPath, err)
 		return nil, nil, err
 	}
 
