@@ -50,15 +50,15 @@ stages:
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
               depends: 'fuse'
-              container: 'test-cnt-ubn-20'
+              container: 'test-cnt-ubn-18'
               AgentName: "blobfuse-ubuntu20"
             Libfuse3:
-              vmImage: 'ubuntu-22.04'
+              vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               depends: 'fuse3'
-              container: 'test-cnt-ubn-22'
-              AgentName: "blobfuse-ubuntu22"
+              container: 'test-cnt-ubn-20'
+              AgentName: "blobfuse-ubuntu20"
 
         pool:
           name: "blobfuse-ubuntu-pool"
@@ -282,9 +282,9 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Ubuntu-22:
-              vmImage: 'Ubuntu-22.04'
-              AgentName: "blobfuse-ubuntu22"
+            Ubuntu-20:
+              vmImage: 'Ubuntu-20.04'
+              AgentName: "blobfuse-ubuntu20"
         pool:
           name: "blobfuse-ubuntu-pool"
           demands:
@@ -323,7 +323,7 @@ stages:
 
           - script: |
               sudo apt-get update
-              wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
+              wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
               sudo dpkg -i packages-microsoft-prod.deb
               sudo apt update
               sudo apt install apt-transport-https -y
