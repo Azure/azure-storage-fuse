@@ -37,6 +37,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"os/user"
@@ -85,8 +86,8 @@ func checkFileIntegrity(t *testing.T, filename string) {
 				referenceMD5 = md5sum
 				referenceSize = fi.Size()
 			} else {
-				assert.Equal(t, referenceMD5, md5sum, "File content mismatch between mountpoints")
-				assert.Equal(t, referenceSize, fi.Size(), "File Size mismatch between mountpoints")
+				assert.Equal(t, referenceMD5, md5sum, fmt.Sprintf("File content mismatch between mountpoints, mountpoint: %s, file: %s", mnt, filename))
+				assert.Equal(t, referenceSize, fi.Size(), fmt.Sprintf("File Size mismatch between mountpoints, mountpoint: %s, file: %s", mnt, filename))
 			}
 		}
 	}
