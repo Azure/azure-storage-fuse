@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773552417784,
+  "lastUpdate": 1774156691053,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -854,6 +854,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 33.62890625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "deb0acf245da9615cb2d0366d9dabc940a09f41a",
+          "message": "Fix release pipeline (#2176)",
+          "timestamp": "2026-03-21T07:34:03Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/deb0acf245da9615cb2d0366d9dabc940a09f41a"
+        },
+        "date": 1774156689430,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 4428.0849609375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 4484.9833984375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3294.4052734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 7.904296875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 8030.7421875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 7523.87890625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 32.28515625,
             "unit": "MiB/s"
           }
         ]
