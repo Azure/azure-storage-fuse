@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1773563094972,
+  "lastUpdate": 1774167472899,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -447,6 +447,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 1.6374747991029999,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "deb0acf245da9615cb2d0366d9dabc940a09f41a",
+          "message": "Fix release pipeline (#2176)",
+          "timestamp": "2026-03-21T07:34:03Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/deb0acf245da9615cb2d0366d9dabc940a09f41a"
+        },
+        "date": 1774167472666,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.39714784556599997,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 1.639138240234,
             "unit": "milliseconds"
           }
         ]
