@@ -1496,7 +1496,7 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Ubuntu-22:
+            Ubuntu-20:
               vmImage: 'Ubuntu-20.04'
               AgentName: "blobfuse-ubuntu20"
         pool:
