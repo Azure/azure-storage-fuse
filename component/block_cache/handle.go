@@ -273,7 +273,33 @@ func deleteFileIfNoOpenHandles(key string) {
 func checkFileExistsInOpen(key string) (*File, bool) {
 	f, ok := fileMap.Load(key)
 	if ok {
-		return f.(*File), ok
+		return f.(*File), true
 	}
-	return nil, ok
+	return nil, false
+}
+
+func renameFileInFileMap(oldPath, newPath string) error {
+	value, ok := fileMap.Load(oldPath)
+	if !ok {
+		return fmt.Errorf("file not found for path: %s", oldPath)
+	}
+
+	fileObj, ok := value.(*File)
+	if !ok {
+		return fmt.Errorf("invalid file type in map for path: %s", oldPath)
+	}
+
+	fileObj.mu.Lock()
+	fileObj.Name = newPath
+	fileObj.mu.Unlock()
+
+	// Attempt to store the file with the new path
+	_, loaded := fileMap.LoadOrStore(newPath, fileObj)
+	if loaded {
+		return fmt.Errorf("a file already exists for the new path: %s", newPath)
+	}
+
+	// Remove the old path from the map
+	fileMap.Delete(oldPath)
+	return nil
 }
