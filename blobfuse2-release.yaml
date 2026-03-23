@@ -1496,9 +1496,9 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Ubuntu-22:
-              vmImage: 'Ubuntu-22.04'
-              AgentName: "blobfuse-ubuntu22"
+            Ubuntu-20:
+              vmImage: 'Ubuntu-20.04'
+              AgentName: "blobfuse-ubuntu20"
         pool:
           name: "blobfuse-ubuntu-pool"
           demands:
@@ -1529,7 +1529,7 @@ stages:
 
           - script: |
               sudo apt-get update
-              wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
+              wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
               sudo dpkg -i packages-microsoft-prod.deb
               sudo apt update
               sudo apt install apt-transport-https -y
