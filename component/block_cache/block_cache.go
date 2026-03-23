@@ -986,6 +986,32 @@ func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("BlockCache::RenameFile : src: %s -> dst: %s", options.Src, options.Dst)
 
+	// Support deletion of opened files.
+	if common.IsFuseHiddenFile(options.Dst) {
+		// Some file handles are opened to the source file, flush the source file before
+		// renaming to the hidden file name as there may be some dirty data in the cache..
+		file, ok := checkFileExistsInOpen(options.Src)
+		if !ok {
+			// No open file handles for the source file, fail the rename.
+			log.Err("BlockCache::RenameFile : No open file handles for source file %s while renaming to hidden file name",
+				options.Src)
+			return fmt.Errorf("no open file handles for source file %s while renaming to hidden file name", options.Src)
+		}
+
+		log.Info("BlockCache::RenameFile : Renaming file %s to hidden file name %s, flushing the file before renaming",
+			options.Src, options.Dst)
+		err := file.flush(bc, true /* takefilelock */)
+		if err != nil {
+			log.Err("BlockCache::RenameFile : Failed to flush file %s before renaming to hidden file name %s [%v]",
+				options.Src, options.Dst, err)
+			return fmt.Errorf("failed to flush file %s before renaming to hidden file name %s [%v]", options.Src, options.Dst, err)
+		}
+
+		// Change the file name in the file map to the hidden file name, so that subsequent
+		// open calls with the hidden file name can find the file object and open successfully.
+		err = renameFileInFileMap(options.Src, options.Dst)
+	}
+
 	err := bc.NextComponent().RenameFile(options)
 	if err != nil {
 		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
