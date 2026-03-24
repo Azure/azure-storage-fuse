@@ -125,7 +125,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 	}
 
 	// Step 5: Check if block is in uncommitted state (requires file flush before reading)
-	// You cannot read the uncommited data from azure storage, so we need to flush the file first.
+	// You cannot read the uncommitted data from azure storage, so we need to flush the file first.
 	if blk.state == uncommitedBlock {
 		// Release the lock on buffer table manager.
 		btm.mu.Unlock()
@@ -167,8 +167,8 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 			bufDesc, err = freeList.getVictimBuffer(workerPool, btm)
 			if err != nil {
 				// This should never happen as we just failed to allocate a buffer from free list.
-				log.Crit(fmt.Sprintf("BufferTableMgr::GetOrCreateBufferDescriptor: Failed to get victim buffer for blockIdx: %d, file: %s, sync: %v: %v",
-					blk.idx, blk.file.Name, sync, err))
+				log.Crit("BufferTableMgr::GetOrCreateBufferDescriptor: Failed to get victim buffer for blockIdx: %d, file: %s, sync: %v: %v",
+					blk.idx, blk.file.Name, sync, err)
 				return nil, bufDescStatusInvalid, err
 			}
 
@@ -235,7 +235,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 	// Release the lock on buffer table manager.
 	btm.mu.Unlock()
 
-	// This is where we should downlod the blockdata into the buffer, check the blocks flag status.
+	// This is where we should download the blockdata into the buffer, check the blocks flag status.
 	if doRead {
 		blk.scheduleDownload(workerPool, freeList, bufDesc, sync)
 
@@ -247,7 +247,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 
 				if ok := bufDesc.release(freeList); ok {
 					log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Released bufferIdx: %d for blockIdx: %d back to free list after download failure: %v",
-						bufDesc.bufIdx, blk.idx)
+						bufDesc.bufIdx, blk.idx, err)
 				}
 				return nil, bufDescStatusInvalid, err
 			}

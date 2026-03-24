@@ -401,7 +401,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		//
 		// TODO: This can be config value.
 		//
-		// In the older block cache, we set this to 80% usable memory which is very aggresive, and can cause
+		// In the older block cache, we set this to 80% usable memory which is very aggressive, and can cause
 		// OOM on the system. Setting this to 50% for now, and we can increase this later based on telemetry
 		// and testing.
 		usablePercentSystemRAM := 50
@@ -426,7 +426,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.consistency = conf.Consistency
 
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
-	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
+	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(runtime.NumCPU())))
 	bc.noPrefetch = false
 
 	if (!config.IsSet(compName + ".mem-size-mb")) && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
@@ -444,7 +444,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		if bc.prefetch == 0 {
 			bc.noPrefetch = true
 		}
-		// This seems aggresive from the old code. User can set the prefetch to 2/3 blocks which is a valid use case.
+		// This seems aggressive from the old code. User can set the prefetch to 2/3 blocks which is a valid use case.
 		// else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
 		// 	log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MIN_PREFETCH*2)+1)
 		// 	return fmt.Errorf("config error in %s [invalid prefetch count]", bc.Name())
@@ -453,7 +453,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	bc.maxDiskUsageHit = false
 
-	bc.workers = uint32(3 * runtime.NumCPU())
+	bc.workers = uint32(runtime.NumCPU())
 	if config.IsSet(compName + ".parallelism") {
 		bc.workers = conf.Workers
 	}
@@ -530,7 +530,7 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 		return attr, err
 	}
 
-	// file stucture has more updated info than attribute cache/Azure storage, if the file is open
+	// file structure has more updated info than attribute cache/Azure storage, if the file is open
 	file, ok := checkFileExistsInOpen(options.Name)
 	if ok {
 		fileSize := atomic.LoadInt64(&file.size)

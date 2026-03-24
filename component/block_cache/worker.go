@@ -287,7 +287,7 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 		log.Debug("BlockCache::uploadBlock: Successfully uploaded blockIdx: %d from bufferIdx: %d, file: %s, sync: %t",
 			block.idx, bufDesc.bufIdx, block.file.Name, task.sync)
 		bufDesc.dirty.Store(false)
-		// Change the state of the block to uncommited, to reflect that it is uploaded but not yet committed.
+		// Change the state of the block to uncommitted, to reflect that it is uploaded but not yet committed.
 		block.setState(uncommitedBlock)
 	}
 
