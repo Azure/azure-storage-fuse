@@ -352,7 +352,7 @@ func (fl *freeListType) debugListMustBeFull() {
 	if count != len(fl.bufDescriptors) {
 		err := fmt.Sprintf("freeList::debugListMustBeFull: Free list is not full, count: %d, expected: %d",
 			count, len(fl.bufDescriptors))
-		log.Err(err)
+		log.Err("%s", err)
 		panic(err)
 	}
 
@@ -471,6 +471,6 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTable
 
 	err := fmt.Errorf("getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",
 		maxRoundsBeforeGivingUp, numTries, maxBuffers)
-	log.Crit(err.Error())
+	log.Crit("%s", err.Error())
 	return nil, errNoVictimBufferFound
 }
