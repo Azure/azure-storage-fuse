@@ -203,8 +203,8 @@ func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 		}
 
 		if status == bufDescStatusNeedsFileFlush {
-			// The block is in uncommited state, need to flush the file first before reading.
-			log.Debug("File::read: Block in uncommited state, flushing file: %s before read, blockIdx: %d", f.Name, blockIdx)
+			// The block is in uncommitted state, need to flush the file first before reading.
+			log.Debug("File::read: Block in uncommitted state, flushing file: %s before read, blockIdx: %d", f.Name, blockIdx)
 
 			if err := f.flush(bc, true /*takeFileLock*/); err != nil {
 				log.Err("File::read: Failed to flush file: %s before read, blockIdx: %d: %v", f.Name, blockIdx, err)
@@ -330,12 +330,12 @@ func (f *File) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 		}
 
 		if status == bufDescStatusExists {
-			log.Debug("File::scheduleReadAhead: Block already in cache, wrong read-ahead scheduled for file: %s, blockIdx: %d, patter: %v, status: %v",
+			log.Debug("File::scheduleReadAhead: Block already in cache, wrong read-ahead scheduled for file: %s, blockIdx: %d, pattern: %v, status: %v",
 				f.Name, blk.idx, patterntype, status)
 
 		} else {
 			// We have scheduled read-ahead for this block
-			log.Debug("File::scheduleReadAhead: Scheduled read-ahead for file: %s, blockIdx: %d, patter: %v, status: %v",
+			log.Debug("File::scheduleReadAhead: Scheduled read-ahead for file: %s, blockIdx: %d, pattern: %v, status: %v",
 				f.Name, blk.idx, patterntype, status)
 		}
 	}
@@ -439,8 +439,8 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		}
 
 		if status == bufDescStatusNeedsFileFlush {
-			// The block is in uncommited state, need to flush the file first before writing.
-			log.Debug("File::write: Block in uncommited state, flushing file: %s before write, blockIdx: %d", f.Name, blockIdx)
+			// The block is in uncommitted state, need to flush the file first before writing.
+			log.Debug("File::write: Block in uncommitted state, flushing file: %s before write, blockIdx: %d", f.Name, blockIdx)
 			// Decrement the write wait group before flushing, as flush will wait for all pending writers to complete.
 			f.pendingWriters.Done()
 
@@ -448,7 +448,7 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 				log.Err("File::write: Failed to flush file: %s before write, blockIdx: %d: %v", f.Name, blockIdx, err)
 				return err
 			}
-			// Retry gettting the block descriptor after flush
+			// Retry getting the block descriptor after flush
 			goto retry
 		}
 
@@ -653,7 +653,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 			if ok := bufDesc.release(bc.freeList); ok {
 				err = fmt.Errorf("File::flush: Released bufferIdx: %d for last blockIdx: %d back to free list after flush at file: %s",
 					bufDesc.bufIdx, lastBlock.idx, f.Name)
-				log.Crit(err.Error())
+				log.Crit("%s", err.Error())
 				return err
 			}
 		}
@@ -679,7 +679,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 			if blk.getState() == localBlock && blk.numWrites.Load() > 0 {
 				err := fmt.Errorf("File::flush: No buffer descriptor found for local blockIdx: %d during flush at file: %s",
 					blk.idx, f.Name)
-				log.Crit(err.Error())
+				log.Crit("%s", err.Error())
 				return err
 			}
 
@@ -736,7 +736,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 				// not expected as error must be set when dirty is false
 				err := fmt.Errorf("File::flush: Inconsistent state for bufferIdx: %d, blockIdx: %d during flush at file: %s, dirty: %v, uploadErr: %v",
 					bufDesc.bufIdx, blk.idx, f.Name, bufDesc.dirty.Load(), bufDesc.uploadErr)
-				log.Crit(err.Error())
+				log.Crit("%s", err.Error())
 				releaseBufDesc()
 				return err
 			} else {
@@ -880,7 +880,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 	noOfBlocks := getNoOfBlocksInFile(options.NewSize, int64(bc.blockSize))
 
 	if noOfBlocks < len(f.blockList.list) {
-		// Shrink the block list, give back the buffers shrinked to free list.
+		// Shrink the block list, give back the buffers shrank to free list.
 		for i := noOfBlocks; i < len(f.blockList.list); i++ {
 			blk := f.blockList.list[i]
 			bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
@@ -898,7 +898,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 
 					err := fmt.Errorf("File::truncate: Released bufferIdx: %d[%v] for blockIdx: %d back to free list during truncate at file: %s",
 						bufDesc.bufIdx, bufDesc, blk.idx, f.Name)
-					log.Crit(err.Error())
+					log.Crit("%s", err.Error())
 					return err
 				}
 			}
@@ -927,7 +927,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 		lastBlock.setState(localBlock)
 		bufDesc.dirty.Store(true)
 
-		// Clean the rest of the buffer if file is getting shrinked as it may contain old/dirty data.
+		// Clean the rest of the buffer if file is getting shrank as it may contain old/dirty data.
 		if isFileShrinking {
 			bufDesc.contentLock.Lock()
 			offsetInsideBlock := convertOffsetIntoBlockOffset(atomic.LoadInt64(&f.size)-1, int64(bc.blockSize))

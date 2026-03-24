@@ -101,7 +101,7 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 	// This should never happen and indicates a bug in the download logic.
 	err := fmt.Errorf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, valid: %v, downloadErr: %v",
 		bd.bufIdx, bd.valid.Load(), bd.downloadErr)
-	log.Crit(err.Error())
+	log.Crit("%s", err.Error())
 
 	return err
 }
@@ -137,7 +137,7 @@ func (bd *bufferDescriptor) release(fl *freeListType) bool {
 		// This should never happen and represents a serious reference counting error.
 		err := fmt.Sprintf("bufferDescriptor::release: bufferIdx: %d has negative refCount: %d, bytesRead: %d, bytesWritten: %d",
 			bd.bufIdx, bd.refCnt.Load(), bd.bytesRead.Load(), bd.bytesWritten.Load())
-		log.Err(err)
+		log.Err("%s", err)
 		panic(err)
 	}
 

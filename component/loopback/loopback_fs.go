@@ -617,8 +617,8 @@ func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBl
 		return list, nil
 	}
 
-	// Return empty list if file does not exist, this is equivlent to blob with no blocks commmitted
-	// (blob commited using PutBlob)
+	// Return empty list if file does not exist, this is equivalent to blob with no blocks committed
+	// (blob committed using PutBlob)
 	return nil, nil
 }
 

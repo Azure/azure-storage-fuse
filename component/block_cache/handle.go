@@ -221,7 +221,7 @@ func releaseAllBuffersForFile(bc *BlockCache, file *File) {
 
 			// TODO: force remove such buffers, currently force removal is not present which could cause leak.
 			if bufDesc.dirty.Load() {
-				// This means upload has failed for the buffer, relase the buffer for now, this buffer would be collected
+				// This means upload has failed for the buffer, release the buffer for now, this buffer would be collected
 				// by the victim selection algo later.
 				log.Warn("releaseAllBuffersForFile: BufferIdx: %d [%v] for blockIdx: %d of file %s is dirty, which indicates upload failure",
 					bufDesc.bufIdx, bufDesc, blk.idx, file.Name)
