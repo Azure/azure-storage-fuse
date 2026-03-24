@@ -1540,7 +1540,7 @@ stages:
               # add release tags & push to github
               - task: GithubRelease@1
                 inputs:
-                  githubConnection: 'Azure'
+                  githubConnection: 'GitHubRelease'
                   repositoryName: 'Azure/azure-storage-fuse'
                   action: 'edit'
 
