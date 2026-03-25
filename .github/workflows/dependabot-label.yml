@@ -1,15 +1,15 @@
 name: Label PRs
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [opened]
 
 jobs:
   add-label:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      pull-requests: read
+      pull-requests: write
     steps:
       - name: Check and add copilot label
         uses: actions/github-script@v7
