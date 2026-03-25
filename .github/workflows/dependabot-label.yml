@@ -43,13 +43,11 @@ jobs:
             let copilotCommits = 0;
             for (const commit of commits) {
               const message = (commit.commit.message || '').toLowerCase();
-              const authorName = (commit.commit.author?.name || '').toLowerCase();
               if (
                 message.includes('co-authored-by: copilot') ||
                 message.includes('co-authored-by: github copilot') ||
                 message.includes('[copilot]') ||
-                message.includes('generated-by: copilot') ||
-                authorName.includes('copilot')
+                message.includes('generated-by: copilot')
               ) {
                 copilotCommits++;
               }
