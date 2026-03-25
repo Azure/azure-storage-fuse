@@ -8,7 +8,8 @@ jobs:
   add-label:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      issues: write
+      pull-requests: read
     steps:
       - name: Check and add copilot label
         uses: actions/github-script@v7
