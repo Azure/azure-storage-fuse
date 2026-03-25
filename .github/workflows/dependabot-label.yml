@@ -1,0 +1,67 @@
+name: Label PRs
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  add-label:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Check and add copilot label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+            const actor = context.actor;
+
+            // Check if PR is from dependabot
+            if (actor === 'dependabot[bot]' || actor === 'dependabot') {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: prNumber,
+                labels: ['copilot']
+              });
+              console.log('Added copilot label: PR authored by dependabot');
+              return;
+            }
+
+            // Check if >50% of commits are AI-generated.
+            // Detects:
+            //   - Co-authored-by: Copilot / GitHub Copilot (inline suggestions)
+            //   - Signed-off-by or trailers containing "copilot" (IDE agent via git hook)
+            //   - Commit messages tagged with [copilot] (manual convention)
+            const commits = await github.paginate(
+              github.rest.pulls.listCommits,
+              { owner, repo, pull_number: prNumber }
+            );
+
+            let copilotCommits = 0;
+            for (const commit of commits) {
+              const message = (commit.commit.message || '').toLowerCase();
+              const authorName = (commit.commit.author?.name || '').toLowerCase();
+              if (
+                message.includes('co-authored-by: copilot') ||
+                message.includes('co-authored-by: github copilot') ||
+                message.includes('[copilot]') ||
+                message.includes('generated-by: copilot') ||
+                authorName.includes('copilot')
+              ) {
+                copilotCommits++;
+              }
+            }
+
+            const totalCommits = commits.length;
+            const percentage = totalCommits > 0 ? (copilotCommits / totalCommits) * 100 : 0;
+            console.log(`Copilot commits: ${copilotCommits}/${totalCommits} (${percentage.toFixed(1)}%)`);
+
+            if (percentage > 50) {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: prNumber,
+                labels: ['copilot']
+              });
+              console.log('Added copilot label: >50% commits identified as AI-generated');
+            }
