@@ -3,6 +3,12 @@ name: Label PRs
 on:
   pull_request_target:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to label'
+        required: true
+        type: number
 
 jobs:
   add-label:
@@ -17,8 +23,16 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const prNumber = context.payload.pull_request.number;
-            const prAuthor = context.payload.pull_request.user?.login;
+
+            let prNumber, prAuthor;
+            if (context.eventName === 'workflow_dispatch') {
+              prNumber = Number(context.payload.inputs.pr_number);
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+              prAuthor = pr.user?.login;
+            } else {
+              prNumber = context.payload.pull_request.number;
+              prAuthor = context.payload.pull_request.user?.login;
+            }
 
             // Check if PR is from dependabot
             if (prAuthor === 'dependabot[bot]' || prAuthor === 'dependabot') {
