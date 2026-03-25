@@ -17,10 +17,10 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const prNumber = context.payload.pull_request.number;
-            const actor = context.actor;
+            const prAuthor = context.payload.pull_request.user?.login;
 
             // Check if PR is from dependabot
-            if (actor === 'dependabot[bot]' || actor === 'dependabot') {
+            if (prAuthor === 'dependabot[bot]' || prAuthor === 'dependabot') {
               await github.rest.issues.addLabels({
                 owner, repo, issue_number: prNumber,
                 labels: ['copilot']
