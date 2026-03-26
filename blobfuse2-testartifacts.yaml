@@ -459,18 +459,6 @@ stages:
               temp_dir: $(temp_dir)
               container: $(container)
 
-          # Create container for blobfuse and publish it
-          - script: |
-              sudo apt-get install $(tags) $(fuselib) -y
-              chmod 777 *.sh
-              ./dockerinstall.sh
-              ./buildcontainer.sh Dockerfile x86_64
-              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) x86_64
-              ./buildcontainer.sh DockerfileMariner mariner-x86_64
-              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) mariner-x86_64
-            displayName: "Create and publish container"
-            workingDirectory: $(work_dir)/docker
-
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
             inputs:
@@ -688,16 +676,6 @@ stages:
               temp_dir: $(temp_dir)
               container: $(container)
               
-          # Create container for blobfuse and publish it
-          - script: |
-              sudo apt-get install $(tags) $(fuselib) -y
-              chmod 777 *.sh
-              ./dockerinstall.sh
-              ./buildcontainer.sh DockerfileARM arm64
-              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) arm64
-            displayName: "Create and publish ARM container"
-            workingDirectory: $(work_dir)/docker
-
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
             inputs:
@@ -1800,7 +1778,7 @@ stages:
                 env:
                   AZURE_STORAGE_ACCOUNT: "blobfuse2"
                   AZURE_STORAGE_AUTH_TYPE: "msi"
-                  AZURE_STORAGE_IDENTITY_CLIENT_ID: $(BLOBFUSE2_MSI_CIENT_ID)
+                  AZURE_STORAGE_IDENTITY_CLIENT_ID: $(BF2_MSI_CLIENT_ID)
                 displayName: 'Mount release container for version update'
               
               - script: |
