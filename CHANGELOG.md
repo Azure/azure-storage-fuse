@@ -1,4 +1,9 @@
-## 2.5.3 (Unreleased)
+## 2.5.4 (Unreleased)
+**Features**
+
+**Bug Fixes**
+
+## 2.5.3 (2026-03-25)
 **Features**
 - Add rate limit functionality for ingress bandwidth (bytes downloaded per second) and operations per second ([PR #2093](https://github.com/Azure/azure-storage-fuse/pull/2093))
 
