@@ -56,6 +56,8 @@ import (
 	"syscall"
 
 	"github.com/petermattis/goid"
+	"github.com/prometheus/procfs"
+
 	"gopkg.in/ini.v1"
 )
 
@@ -471,6 +473,26 @@ func GetUsage(path string) (float64, error) {
 	return currSize, nil
 }
 
+// GetAvailableMemoryInMB returns the available RAM of the host running blobfuse.
+// Note that available memory includes free memory and reclaimable memory, so it's a good estimate for how
+// much memory blobfuse can practically use. Obviously if other processes or the kernel use up more memory
+// the available memory will change, caller should be mindful of that.
+func GetAvailableMemoryInMB() (uint64, error) {
+	fs, err := procfs.NewDefaultFS()
+	if err != nil {
+		return 0, fmt.Errorf("GetAvailableMemoryInMB: procfs.NewDefaultFS() failed: %v", err)
+	}
+
+	// Get memory info.
+	memInfo, err := fs.Meminfo()
+	if err != nil {
+		return 0, fmt.Errorf("GetAvailableMemoryInMB: fs.Meminfo() failed: %v", err)
+	}
+
+	// Convert default memory unit (KB) to MB and return.
+	return *(memInfo.MemAvailable) / 1024, nil
+}
+
 func GetFuseMinorVersion() int {
 	var out bytes.Buffer
 	cmd := exec.Command("fusermount3", "--version")
@@ -648,4 +670,12 @@ func PrettyOpenFlags(f int) string {
 // runtime.Stack calls.
 func GetGoroutineID() uint64 {
 	return (uint64)(goid.Get())
+}
+
+// If a file has open handle(s) at the time when unlink() is called to delete the file, fuse renames the file to
+// a special name of the form .fuse_hiddenXXX. This enables fuse to provide POSIX semantics of allowing file to be
+// accessed through existing open fds after the file is deleted.
+func IsFuseHiddenFile(filePath string) bool {
+	fileName := filepath.Base(filePath)
+	return strings.HasPrefix(fileName, ".fuse_hidden")
 }
