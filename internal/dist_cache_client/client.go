@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pb "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client/proto"
@@ -30,8 +31,7 @@ type Client struct {
 	// Buffer pool for chunk-sized allocations (reduces GC pressure)
 	bufPool sync.Pool
 
-	closed bool
-	mu     sync.Mutex
+	closed atomic.Bool
 }
 
 // New creates a new distributed cache client.
@@ -41,7 +41,7 @@ func New(opts ...Option) (*Client, error) {
 		o(cfg)
 	}
 
-	connMgr := newConnManager(cfg.maxConnsPerSvr, cfg.dialTimeout)
+	connMgr := newConnManager(cfg.maxConnsPerSvr, cfg.dialTimeout, cfg.socketBufSize)
 
 	disc, err := newDiscovery(cfg, connMgr, cfg.virtualNodes)
 	if err != nil {
@@ -377,13 +377,9 @@ func (c *Client) PutAttr(ctx context.Context, attrs []FileAttrEntry) error {
 
 // Close shuts down the client and releases all connections.
 func (c *Client) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.closed {
+	if !c.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	c.closed = true
 
 	c.disc.close()
 	c.connMgr.closeAll()
@@ -440,9 +436,7 @@ func (c *Client) deleteKey(ctx context.Context, cacheKey, server string) error {
 }
 
 func (c *Client) checkClosed() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
+	if c.closed.Load() {
 		return ErrClosed
 	}
 	return nil

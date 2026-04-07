@@ -7,7 +7,7 @@ import "time"
 
 const (
 	defaultPort             = 9000
-	defaultChunkSize        = 16 * 1024 * 1024 // 16 MiB, aligned with block_cache default
+	defaultChunkSize        = 32 * 1024 * 1024 // 32 MiB, matching Tachyon production default
 	defaultMaxConnsPerSvr   = 64
 	defaultDialTimeout      = 5 * time.Second
 	defaultRequestTimeout   = 30 * time.Second
@@ -15,6 +15,7 @@ const (
 	defaultMaxParallelOps   = 8
 	defaultVirtualNodes     = 750
 	defaultMaxMsgSize       = 10 * 1024 * 1024 // 10 MB protobuf message limit
+	defaultSocketBufSize    = 0                // 0 = kernel auto-tune (best when host tcp_rmem is tuned)
 )
 
 // clientConfig holds all client configuration.
@@ -35,6 +36,7 @@ type clientConfig struct {
 	discoveryRefresh time.Duration
 	maxParallelOps   int
 	virtualNodes     int
+	socketBufSize    int
 }
 
 func defaultConfig() *clientConfig {
@@ -48,6 +50,7 @@ func defaultConfig() *clientConfig {
 		discoveryRefresh: defaultDiscoveryRefresh,
 		maxParallelOps:   defaultMaxParallelOps,
 		virtualNodes:     defaultVirtualNodes,
+		socketBufSize:    defaultSocketBufSize,
 	}
 }
 
@@ -85,7 +88,7 @@ func WithAuth(accountName, accountKey string) Option {
 	}
 }
 
-// WithChunkSize sets the chunk size in bytes (default 16 MiB).
+// WithChunkSize sets the chunk size in bytes (default 32 MiB).
 func WithChunkSize(size int64) Option {
 	return func(c *clientConfig) { c.chunkSize = size }
 }
@@ -123,6 +126,12 @@ func WithMaxParallelOps(n int) Option {
 // WithVirtualNodes sets the number of virtual nodes per server in the hash ring.
 func WithVirtualNodes(n int) Option {
 	return func(c *clientConfig) { c.virtualNodes = n }
+}
+
+// WithSocketBufferSize sets the TCP socket buffer size (SO_RCVBUF/SO_SNDBUF).
+// 0 uses the system default. Larger values improve throughput on high-bandwidth links.
+func WithSocketBufferSize(bytes int) Option {
+	return func(c *clientConfig) { c.socketBufSize = bytes }
 }
 
 // uploadConfig holds per-upload options.

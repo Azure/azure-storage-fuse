@@ -234,7 +234,7 @@ func parseServerList(list string) []string {
 // DiscoverServers is a standalone function for discovering servers without creating a full client.
 // Useful for health checks and diagnostics.
 func DiscoverServers(ctx context.Context, cfg *clientConfig) ([]string, error) {
-	cm := newConnManager(2, cfg.dialTimeout)
+	cm := newConnManager(2, cfg.dialTimeout, 0)
 	defer cm.closeAll()
 
 	d := &discovery{cfg: cfg, connMgr: cm}
