@@ -572,6 +572,12 @@ func ValidatePipeline(pipeline []string) error {
 		return fmt.Errorf("mount: block-cache and xload cannot be used together")
 	}
 
+	// dist_cache requires file_cache or block_cache as upstream L1
+	if ComponentInPipeline(pipeline, "dist_cache") &&
+		ComponentInPipeline(pipeline, "xload") {
+		return fmt.Errorf("mount: dist-cache and xload cannot be used together")
+	}
+
 	return nil
 }
 
