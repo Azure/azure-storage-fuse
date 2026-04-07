@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 
 	pb "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client/proto"
 	"golang.org/x/sync/errgroup"
@@ -150,7 +149,8 @@ func (c *Client) uploadSingleChunk(ctx context.Context, plan chunkPlan, data []b
 }
 
 // downloadChunked downloads all chunks of a file and writes them in order to w.
-// Uses splice(2) zero-copy when w is an *os.File.
+// Chunks are downloaded in parallel and streamed to the writer as soon as
+// each in-order chunk completes, reducing memory from O(file) to O(parallelism * chunk).
 func (c *Client) downloadChunked(ctx context.Context, filePath string, fileSize int64, w io.Writer, dcfg *downloadConfig) (*FileMetadata, error) {
 	plans, err := c.planChunks(filePath, fileSize)
 	if err != nil {
@@ -166,16 +166,49 @@ func (c *Client) downloadChunked(ctx context.Context, filePath string, fileSize 
 		return c.downloadSingleChunkToWriter(ctx, plans[0], w, dcfg)
 	}
 
-	// Multi-chunk: download in parallel into buffers, then write sequentially
-	type chunkResult struct {
+	// Multi-chunk: download in parallel, stream to writer in order
+	type chunkSlot struct {
 		data     []byte
 		metadata map[string][]byte
+		err      error
+		done     chan struct{} // closed when chunk download completes
 	}
 
-	results := make([]chunkResult, len(plans))
-	var mu sync.Mutex
+	slots := make([]chunkSlot, len(plans))
+	for i := range slots {
+		slots[i].done = make(chan struct{})
+	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	// Writer goroutine: writes chunks in order as they complete
+	var totalWritten int64
+	var firstMeta map[string][]byte
+	var writeErr error
+	writerDone := make(chan struct{})
+
+	go func() {
+		defer close(writerDone)
+		for i := range slots {
+			<-slots[i].done
+			if slots[i].err != nil {
+				writeErr = slots[i].err
+				return
+			}
+			if firstMeta == nil && slots[i].metadata != nil {
+				firstMeta = slots[i].metadata
+			}
+			n, err := w.Write(slots[i].data)
+			c.putBuffer(slots[i].data[:cap(slots[i].data)])
+			slots[i].data = nil
+			if err != nil {
+				writeErr = fmt.Errorf("write chunk: %w", err)
+				return
+			}
+			totalWritten += int64(n)
+		}
+	}()
+
+	// Download goroutines with bounded parallelism
+	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(c.cfg.maxParallelOps)
 
 	for i := range plans {
@@ -183,41 +216,48 @@ func (c *Client) downloadChunked(ctx context.Context, filePath string, fileSize 
 		idx := i
 		g.Go(func() error {
 			buf := c.getBuffer()
-			n, meta, err := c.downloadSingleChunkToBuffer(ctx, plan, buf, dcfg)
+			n, meta, err := c.downloadSingleChunkToBuffer(gctx, plan, buf, dcfg)
 			if err != nil {
 				c.putBuffer(buf)
+				slots[idx].err = err
+				close(slots[idx].done)
 				return err
 			}
-			mu.Lock()
-			results[idx] = chunkResult{data: buf[:n], metadata: meta}
-			mu.Unlock()
+			slots[idx].data = buf[:n]
+			slots[idx].metadata = meta
+			close(slots[idx].done)
 			return nil
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		// Clean up any allocated buffers
-		for _, r := range results {
-			if r.data != nil {
-				c.putBuffer(r.data[:cap(r.data)])
+	dlErr := g.Wait()
+
+	// Signal any remaining slots on error so writer doesn't hang
+	if dlErr != nil {
+		for i := range slots {
+			select {
+			case <-slots[i].done:
+			default:
+				slots[i].err = dlErr
+				close(slots[i].done)
 			}
 		}
-		return nil, err
 	}
 
-	// Write chunks in order
-	var totalWritten int64
-	var firstMeta map[string][]byte
-	for _, r := range results {
-		if firstMeta == nil && r.metadata != nil {
-			firstMeta = r.metadata
+	<-writerDone
+
+	// Clean up any unreleased buffers
+	for i := range slots {
+		if slots[i].data != nil {
+			c.putBuffer(slots[i].data[:cap(slots[i].data)])
 		}
-		n, err := w.Write(r.data)
-		c.putBuffer(r.data[:cap(r.data)])
-		if err != nil {
-			return nil, fmt.Errorf("write chunk: %w", err)
-		}
-		totalWritten += int64(n)
+	}
+
+	if dlErr != nil {
+		return nil, dlErr
+	}
+	if writeErr != nil {
+		return nil, writeErr
 	}
 
 	return &FileMetadata{
