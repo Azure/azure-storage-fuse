@@ -19,6 +19,16 @@ multi-node workloads.
 > blobfuse code uses generic naming (`dist_cache`, `dcache`) so that renaming the server
 > requires no blobfuse code changes.
 
+### Prerequisites
+
+The `dist_cache` component requires a running **Tachyon cache server cluster** as a
+prerequisite. Tachyon is a separate service that must be deployed and operational before
+enabling `dist_cache` in BlobFuse2. BlobFuse2 does not include or manage the cache
+servers — it is a client that connects to an existing Tachyon deployment.
+
+See the [Tachyon project](https://github.com/Azure/Tachyon) for server installation and
+deployment instructions (Kubernetes Helm charts, bare-metal setup, etc.).
+
 ## 2. Motivation
 
 ### Current State

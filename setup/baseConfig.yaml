@@ -44,6 +44,7 @@ file_cache:
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
 
 # Distributed cache configuration (optional, for multi-node shared caching)
+# Requires a running Tachyon cache server cluster (https://github.com/Azure/Tachyon).
 # Requires block_cache or file_cache in the pipeline. Mutually exclusive with xload.
 dist_cache:
   # Server discovery — at least one method must be configured
