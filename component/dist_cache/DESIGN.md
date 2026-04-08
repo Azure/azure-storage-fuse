@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | **Authors** | |
-| **Status** | Draft |
+| **Status** | Implemented |
 | **Target** | Blobfuse2 |
-| **Last Updated** | 2026-04-07 |
+| **Last Updated** | 2026-04-08 |
 
 ## 1. Summary
 
@@ -56,8 +56,7 @@ of building a distributed storage system inside blobfuse is not the right level 
 
 Integrate the distributed cache platform as an optional pipeline
 component. The server already provides server discovery, consistent hashing, replication, TTL-based
-eviction, Kubernetes operators, and Prometheus monitoring. The integration requires ~2,000–4,000
-lines of Go code versus ~48,000 for the custom approach.
+eviction, Kubernetes operators, and Prometheus monitoring. The integration requires ~3,000 lines of Go code (implemented) versus ~48,000 for the custom approach.
 
 ## 3. Architecture
 
@@ -257,20 +256,14 @@ Best for: Multi-node clusters, Kubernetes, HPC. Combines local speed with distri
 Whole-file caching suits workloads that read files end-to-end (e.g., config files, scripts,
 small-to-medium data files).
 
-#### Topology B: Distributed-Only (No Local Cache)
+#### ~~Topology B: Distributed-Only (No Local Cache)~~ — NOT SUPPORTED
 
-```yaml
-components:
-  - libfuse
-  - dist_cache      # sole cache layer
-  - attr_cache
-  - azstorage
-```
+> **Note**: dist_cache cannot currently operate without block_cache or file_cache. FUSE sends
+> small reads (1 MB via `max_read`) but dist_cache works with 32 MB chunks — this buffer size
+> mismatch causes failures. Making dist_cache standalone would require reimplementing block
+> management. Use Topology A or B instead.
 
-Best for: Ephemeral pods with no local storage, or when distributed cache nodes have NVMe and
-compute nodes do not.
-
-#### Topology C: Block Cache + Distributed Cache (Recommended for large-file / ML workloads)
+#### Topology B: Block Cache + Distributed Cache (Recommended for large-file / ML workloads)
 
 ```yaml
 components:
@@ -284,9 +277,9 @@ Best for: Large file workloads (ML training datasets, checkpoints) where block-l
 patterns dominate. block_cache calls `NextComponent().ReadInBuffer()` for block misses and
 `NextComponent().StageData()`/`CommitData()` for uploads, all of which dist_cache intercepts.
 
-**Topologies A and C are both recommended** — choose based on workload. Both use the same
+**Topologies A and B are both recommended** — choose based on workload. Both use the same
 chunk keys in the distributed cache (derived from `block_cache.block-size-mb`), so nodes running Topology A
-and nodes running Topology C can share the same distributed cache cluster with no data duplication.
+and nodes running Topology B can share the same distributed cache cluster with no data duplication.
 
 ### 3.8 file_cache vs block_cache: Integration Requirements
 
@@ -309,9 +302,9 @@ It calls these methods on NextComponent:
 
 This maps directly to the distributed cache's Upload/Download API — a natural fit.
 
-#### block_cache (Block-Level, 16 MB blocks)
+#### block_cache (Block-Level, configurable block size)
 
-block_cache downloads individual blocks (default 16 MB) on demand with prefetch, and uploads
+block_cache downloads individual blocks (default 16 MB, recommended 32 MB for production) on demand with prefetch, and uploads
 via staged block commits. It calls these methods on NextComponent:
 
 | Method | When | Data Unit |
@@ -357,10 +350,12 @@ This enables **cross-pipeline cache sharing**:
 - Node C (block_cache pipeline) caches only block 0 → Node D (file_cache pipeline) downloads
   all chunks, block 0 is already an L2 hit
 
-**Chunk size derivation**: dist_cache does **not** have its own chunk-size setting. It reads
-`block_cache.block-size-mb` from the config (using `config.IsSet`, same pattern as xload).
-If block_cache config is absent, it defaults to 16 MiB (matching block_cache's own default).
-This eliminates the possibility of mismatched sizes — there is exactly one knob to tune.
+**Chunk size derivation**: dist_cache resolves chunk size using this priority chain:
+`block_cache.block-size-mb` > `stream.block-size-mb` > `dist_cache.chunk-size-mb` > default (16 MiB).
+When block_cache is in the pipeline, its block-size-mb takes precedence automatically.
+The `dist_cache.chunk-size-mb` setting serves as a fallback when used with file_cache
+(where no block_cache is present). This eliminates the possibility of mismatched sizes
+within a pipeline — there is exactly one effective knob to tune.
 
 #### Implementation Phasing
 
@@ -445,7 +440,7 @@ func WithDiscoveryURL(url string) Option
 func WithPort(port int) Option
 func WithAuth(accountName, accountKey string) Option
 func WithHashType(hashType string) Option           // "consistent" or "modulo"
-func WithChunkSize(size int64) Option                // default 16 MiB (aligned with block_cache)
+func WithChunkSize(size int64) Option                // default 16 MiB; 32 MiB recommended for production
 func WithCachePrefix(prefix string) Option           // e.g., "accountName/containerName"
 func WithMaxConnsPerServer(n int) Option
 func WithDialTimeout(d time.Duration) Option
@@ -560,10 +555,12 @@ File: "container/path/to/blob" (100 MB)
 - The non-default chunk size is appended to the key to avoid collisions
 
 **Default chunk size**: The server defaults to 4 MiB. For blobfuse integration, we recommend
-**16 MiB** to align with block_cache's default block size. This alignment means:
+**32 MiB** to align with block_cache's recommended production block size (`block-size-mb: 32`).
+The default in blobfuse is 16 MiB (matching block_cache's built-in default), but production
+deployments should use 32 MiB for optimal throughput. This alignment means:
 
 ```
-block_cache ReadInBuffer(offset=N×16MB, size=16MB) = exactly one distributed cache chunk
+block_cache ReadInBuffer(offset=N×32MB, size=32MB) = exactly one distributed cache chunk
 ```
 
 This eliminates the need for separate block-level integration logic — the Go client's chunking
@@ -659,20 +656,49 @@ a well-optimized Go client can match or exceed C++ client throughput.
    before reading any responses. The server processes requests sequentially per connection,
    but pipelining eliminates one RTT per chunk. The C++ client does NOT do this.
 
-#### Performance Validation
+#### Performance Validation — Actual Results
 
-Before integration, benchmark the Go client standalone against the C++ client:
+Benchmarked on 3× Standard_E192ids_v6 (192 vCPU, 1.8 TiB RAM, 200 Gbps NIC) in AKS
+with MTU 9000 and TCP tuning (BBR, 64 MB socket buffers). Pod-to-pod: 64 Gbps measured.
 
-```
-Benchmark: 1000 × Download(16MB chunk) from a 3-node cluster
-Metric: throughput (MB/s), p50/p99 latency, CPU usage
+##### Go Client Direct (no FUSE overhead)
 
-Expected: Go within 5% of C++ throughput (likely faster due to splice)
-Red flag: >15% regression → investigate before proceeding
-```
+| File Size | Throughput | Configuration |
+|-----------|-----------|---------------|
+| 128 MB | 4,512 MB/s | P8 / C32 / S0 |
+| 256 MB | 5,030 MB/s | P8 / C32 / S0 |
+| 512 MB | 5,267 MB/s | P8 / C32 / S0 |
+| 1 GB | 5,927 MB/s | P8 / C32 / S0 |
 
-Add a `cmd/dcache-bench` tool for standalone client benchmarking that can be run
-independently of the full blobfuse pipeline.
+##### Blobfuse End-to-End (block_cache + dist_cache, 32 MB chunks)
+
+Cold reads = first access (from Azure Blob or dist_cache). Warm reads = kernel page cache.
+
+| File Size | Baseline Cold | dcache Cold | Cold Speedup | Baseline Warm | dcache Warm |
+|-----------|--------------|-------------|-------------|---------------|-------------|
+| 128 MB | 294 MB/s | 1,280 MB/s | **4.4×** | 4,129 MB/s | 4,129 MB/s |
+| 256 MB | 396 MB/s | 1,910 MB/s | **4.8×** | 4,413 MB/s | 4,266 MB/s |
+| 512 MB | 651 MB/s | 1,605 MB/s | **2.5×** | 4,530 MB/s | 4,571 MB/s |
+| 1 GB | 895 MB/s | 1,689 MB/s | **1.9×** | 4,551 MB/s | 4,675 MB/s |
+| 5 GB | 1,459 MB/s | 2,480 MB/s | **1.7×** | 6,044 MB/s | 5,988 MB/s |
+| 10 GB | 1,950 MB/s | 2,265 MB/s | **1.2×** | 4,818 MB/s | 4,904 MB/s |
+
+Cross-node reads (Node B reading data cached by Node A):
+
+| File Size | Baseline Cold | dcache Cold | Cold Speedup |
+|-----------|--------------|-------------|-------------|
+| 128 MB | 305 MB/s | 1,376 MB/s | **4.5×** |
+| 256 MB | 405 MB/s | 1,651 MB/s | **4.1×** |
+| 512 MB | 642 MB/s | 1,712 MB/s | **2.7×** |
+| 1 GB | 1,039 MB/s | 2,048 MB/s | **2.0×** |
+| 5 GB | 1,672 MB/s | 2,249 MB/s | **1.3×** |
+| 10 GB | 1,499 MB/s | 1,997 MB/s | **1.3×** |
+
+**Key findings**:
+- dist_cache cold reads are **1.2–4.5× faster** than blob baseline
+- Smaller files benefit most (blob latency dominates at small sizes)
+- Warm reads converge to ~4–6 GB/s regardless of config (kernel page cache dominates)
+- Cross-node sharing eliminates redundant Azure egress entirely
 
 ## 5. Blobfuse Component Design
 
@@ -753,8 +779,14 @@ type DistCacheOptions struct {
     AuthAccountKey  string `config:"auth-account-key"  yaml:"auth-account-key,omitempty"`
     HashType        string `config:"hash-type"       yaml:"hash-type,omitempty"`
     BypassOnError   bool   `config:"bypass-on-error" yaml:"bypass-on-error,omitempty"`
-    // Chunk size is NOT configured here — it is read from block_cache.block-size-mb
-    // (default 16 MiB). This ensures a single source of truth for block/chunk alignment.
+    // Chunk size for distributed cache operations. When block_cache is present,
+    // this is overridden by block_cache.block-size-mb to keep alignment consistent.
+    // When used with file_cache (no block_cache), this is the primary chunk size config.
+    ChunkSizeMB     float64 `config:"chunk-size-mb" yaml:"chunk-size-mb,omitempty"`
+    // Cache prefix for generating chunk keys (e.g., "accountName/containerName")
+    CachePrefix     string `config:"cache-prefix"  yaml:"cache-prefix,omitempty"`
+    // Maximum connections per cache server for connection pooling
+    MaxConnsPerSvr  int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"`
 }
 ```
 
@@ -934,9 +966,9 @@ Add a gRPC service in front of the distributed cache server and use standard gRP
 
 ## 8. Implementation Plan
 
-### Phase 1: Go Client Package (in blobfuse repo)
+### Phase 1: Go Client Package ✅ Complete
 
-Create `internal/dist_cache_client/` — a self-contained Go client with no blobfuse imports:
+Created `internal/dist_cache_client/` — a self-contained Go client with no blobfuse imports:
 - Copy protobuf types from the distributed cache's `test/pkg/scenario/cachepb/`
 - Implement full client API (see §8.1 for full protocol surface)
 - Client-side chunking matching StreamingClient behavior
@@ -1113,9 +1145,9 @@ comparing throughput (MB/s), latency (p50/p99), and CPU usage. Target: within 5%
 throughput. This can also be added to the distributed cache's perf test suite
 (`test/perf/tachyon_client_suite_test.go`).
 
-### Phase 2: Blobfuse Component (file_cache + block_cache)
+### Phase 2: Blobfuse Component ✅ Complete
 
-Create `component/dist_cache/`:
+Created `component/dist_cache/`:
 - Component registration at LevelMid priority
 - Config parsing and CLI flag bindings
 - **file_cache ops**: CopyToFile (multi-chunk download with lock protocol), CopyFromFile (multi-chunk upload)
@@ -1125,15 +1157,16 @@ Create `component/dist_cache/`:
 - Graceful degradation on distributed cache errors
 - Unit tests with mocked distributed cache client
 
-### Phase 3: Pipeline Integration
+### Phase 3: Pipeline Integration ✅ Complete
 
-- Update `cmd/mount.go` to support dist_cache in pipeline
-- Update `common.ValidatePipeline()` to allow file_cache+dist_cache and block_cache+dist_cache
-- CLI flag bindings
-- Add sample configuration files
-- Add `gen-config` support
+- Updated `cmd/mount.go` to support dist_cache in pipeline
+- Updated `common.ValidatePipeline()` to allow file_cache+dist_cache and block_cache+dist_cache
+  (rejects dist_cache+xload)
+- CLI flag bindings: `--dist-cache-discovery-url`, `--dist-cache-server-list`
+- Environment variable: `DIST_CACHE_SERVER_LIST`
+- Added blank import in `cmd/imports.go` for component registration
 
-### Phase 4: Testing & Documentation
+### Phase 4: Testing & Documentation ✅ Testing Complete, Documentation In Progress
 
 #### 4a. Testing Strategy
 
@@ -1233,19 +1266,26 @@ benchmarks.
 
 ## 10. Open Questions
 
-1. **Cache key namespacing**: Should the key include the Azure storage account and container
-   (e.g., `account/container/path`) to avoid collisions across accounts?
+1. ~~**Cache key namespacing**~~: **Resolved** — Cache keys use `cachePrefix/filePath:offset:chunkSize`
+   format. The `cache-prefix` config (typically `accountName/containerName`) provides namespacing
+   to avoid collisions across storage accounts and containers.
 
-2. **Distributed cache auth**: In deployments where Distributed cache auth is enabled, how should blobfuse obtain
-   the auth credentials? Via config file only, or also via environment variables / managed identity?
+2. **Distributed cache auth**: In deployments where auth is enabled, how should blobfuse obtain
+   the auth credentials? Currently supported via `auth-account-name` and `auth-account-key` in
+   config. Environment variable and managed identity support are future work.
 
 3. **Write-back vs write-through**: The current design is write-through (azstorage first, then
-   populate distributed cache). Should we support write-back (distributed cache first, async flush to azstorage)
-   for write-heavy workloads? This trades durability for performance.
+   populate distributed cache). Write-back (distributed cache first, async flush to azstorage)
+   could improve write-heavy workloads but trades durability for performance. Deferred to Phase 5.
 
-4. ~~**Chunk size alignment**~~: **Resolved** — dist_cache reads `block_cache.block-size-mb`
-   directly (no separate setting). Single source of truth, no possibility of mismatch.
+4. ~~**Chunk size alignment**~~: **Resolved** — dist_cache resolves chunk size via priority chain:
+   `block_cache.block-size-mb` > `stream.block-size-mb` > `dist_cache.chunk-size-mb` > default (16 MiB).
+   Production recommendation is 32 MiB.
 
 5. ~~**Go client module path**~~: **Resolved** — client lives in `internal/dist_cache_client/` within
    the blobfuse repo initially. Will move to the distributed cache repo (e.g., `sdk/go/dcache/`) once
    the upstream repo is open-sourced. Package has no blobfuse imports to keep it portable.
+
+6. ~~**dist_cache standalone (no local cache)**~~: **Resolved** — Not supported. FUSE sends 1 MB reads
+   but dist_cache works with 32 MB chunks — buffer size mismatch prevents standalone operation.
+   dist_cache requires block_cache or file_cache in the pipeline.
