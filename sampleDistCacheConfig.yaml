@@ -4,6 +4,9 @@
 # The distributed cache provides a shared L2 cache between local block_cache (L1)
 # and Azure Blob Storage (L3), reducing Azure egress and read latency for
 # multi-node workloads.
+#
+# PREREQUISITE: A running Tachyon cache server cluster is required.
+# See https://github.com/Azure/Tachyon for installation instructions.
 
 logging:
   type: syslog

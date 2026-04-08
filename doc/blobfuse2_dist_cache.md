@@ -36,8 +36,8 @@ Application
 
 ## Prerequisites
 
-- A running distributed cache server cluster (3+ nodes recommended)
-- Network connectivity between BlobFuse nodes and cache servers
+- **Tachyon cache cluster**: A running [Tachyon](https://github.com/Azure/Tachyon) distributed cache server deployment (3+ nodes recommended). Tachyon must be installed and operational in your cluster before enabling `dist_cache` in BlobFuse2. See the [Tachyon documentation](https://github.com/Azure/Tachyon) for installation instructions.
+- Network connectivity between BlobFuse nodes and Tachyon cache servers (default port: 9065)
 - BlobFuse2 built with the `dist_cache` component (included in standard builds)
 
 ## Configuration

@@ -5,7 +5,7 @@ Blobfuse is an open source project developed to provide a virtual filesystem bac
 
 BlobFuse supports two operating modes: a **caching** mode that works by caching data locally on VM nodes, ideal for repeatedly accessed data that fits on VM local storage, and a **streaming** mode that reads large files in chunks directly from storage for big AI/ML, genomics, or HPC workloads. This [article](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-streaming-versus-caching) helps you decide which mode is best suited for your workloads.
 
-For multi-node deployments (Kubernetes pods, HPC clusters, training jobs), BlobFuse supports an optional **distributed cache** layer that shares cached data across nodes, reducing Azure egress costs and eliminating redundant downloads. See [Distributed Cache](doc/blobfuse2_dist_cache.md) for details.
+For multi-node deployments (Kubernetes pods, HPC clusters, training jobs), BlobFuse supports an optional **distributed cache** layer that shares cached data across nodes, reducing Azure egress costs and eliminating redundant downloads. This requires a running [Tachyon](https://github.com/Azure/Tachyon) cache server cluster as a prerequisite. See [Distributed Cache](doc/blobfuse2_dist_cache.md) for details.
 > [!NOTE]
 > BlobFuse v2 is the latest version of BlobFuse and has many significant improvements over BlobFuse v1. BlobFuse v1 support ends in September 2026. Migrate to BlobFuse v2 by using the provided [instructions](https://github.com/Azure/azure-storage-fuse/blob/main/MIGRATION.md).
 
