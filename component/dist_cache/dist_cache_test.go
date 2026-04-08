@@ -78,6 +78,17 @@ func (m *mockDCacheClient) Delete(_ context.Context, filename string, _ int64) e
 	return nil
 }
 
+func (m *mockDCacheClient) DeleteGroup(_ context.Context, groupID []byte) error {
+	// Remove all entries whose key starts with the group ID (filename)
+	prefix := string(groupID)
+	for k := range m.store {
+		if k == prefix || len(k) > len(prefix) && k[:len(prefix)] == prefix {
+			delete(m.store, k)
+		}
+	}
+	return nil
+}
+
 func (m *mockDCacheClient) GetAttr(_ context.Context, _ string) (*dcache.FileAttr, error) {
 	return nil, dcache.ErrNotFound
 }
@@ -158,6 +169,7 @@ func newTestDistCache(mock *mockDCacheClient, next *mockNextComponent) *DistCach
 		client:        mock,
 		chunkSize:     16 * 1024 * 1024,
 		bypassOnError: true,
+		dirtyFiles:    make(map[string]time.Time),
 	}
 	dc.SetName(compName)
 	dc.SetNextComponent(next)
@@ -246,7 +258,7 @@ func TestCopyToFile_BypassOnError(t *testing.T) {
 
 func TestCopyToFile_NilClient(t *testing.T) {
 	next := &mockNextComponent{copyToFileData: []byte("data")}
-	dc := &DistCache{bypassOnError: true}
+	dc := &DistCache{bypassOnError: true, dirtyFiles: make(map[string]time.Time)}
 	dc.SetName(compName)
 	dc.SetNextComponent(next)
 
@@ -403,8 +415,64 @@ func TestTruncateFile_Invalidation(t *testing.T) {
 	assert.Equal(t, 1, next.truncateFileCalled)
 }
 
+func TestReadInBuffer_BypassesDirtyFile(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{readInBufferData: []byte("fresh-data")}
+	dc := newTestDistCache(mock, next)
+
+	// Populate cache with stale data
+	mock.store["test/file.txt:0"] = []byte("stale-data")
+
+	// Truncate marks the file as dirty
+	err := dc.TruncateFile(internal.TruncateFileOptions{
+		Name:    "test/file.txt",
+		OldSize: 1024,
+		NewSize: 512,
+	})
+	require.NoError(t, err)
+
+	// Read should bypass dist_cache and go to azstorage
+	buf := make([]byte, 64)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.txt",
+		Offset: 0,
+		Data:   buf,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, len("fresh-data"), n)
+	assert.Equal(t, "fresh-data", string(buf[:n]))
+	assert.Equal(t, 1, next.readInBufferCalled, "should bypass dist_cache for dirty file")
+}
+
+func TestCopyToFile_BypassesDirtyFile(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{copyToFileData: []byte("fresh-data")}
+	dc := newTestDistCache(mock, next)
+
+	// Populate cache with stale data
+	mock.store["test/file.txt"] = []byte("stale-data")
+
+	// Delete marks the file as dirty
+	err := dc.DeleteFile(internal.DeleteFileOptions{Name: "test/file.txt"})
+	require.NoError(t, err)
+
+	f, err := os.CreateTemp("", "dcache-dirty-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	// Read should bypass dist_cache
+	err = dc.CopyToFile(internal.CopyToFileOptions{
+		Name:  "test/file.txt",
+		File:  f,
+		Count: 10,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, next.copyToFileCalled, "should bypass dist_cache for dirty file")
+}
+
 func TestPriority(t *testing.T) {
-	dc := &DistCache{}
+	dc := &DistCache{dirtyFiles: make(map[string]time.Time)}
 	assert.Equal(t, internal.EComponentPriority.LevelMid(), dc.Priority())
 }
 

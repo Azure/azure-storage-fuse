@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -59,7 +60,16 @@ type DistCache struct {
 
 	chunkSize     int64
 	bypassOnError bool
+
+	// dirtyFiles tracks recently invalidated files to avoid serving stale data.
+	// After a delete/truncate/rename, the file is added here. Reads for files
+	// in this set bypass dist_cache until the TTL expires, giving the server
+	// time to process the async group-based deletion.
+	dirtyMu    sync.Mutex
+	dirtyFiles map[string]time.Time
 }
+
+const dirtyTTL = 10 * time.Second
 
 // dcacheClient abstracts the distributed cache client for testing.
 type dcacheClient interface {
@@ -68,6 +78,7 @@ type dcacheClient interface {
 	DownloadChunk(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 	UploadChunk(ctx context.Context, filename string, offset int64, data []byte, opts ...dcache.UploadOption) error
 	Delete(ctx context.Context, filename string, fileSize int64) error
+	DeleteGroup(ctx context.Context, groupID []byte) error
 	GetAttr(ctx context.Context, filename string) (*dcache.FileAttr, error)
 	PutAttr(ctx context.Context, attrs []dcache.FileAttrEntry) error
 	Close() error
@@ -77,7 +88,9 @@ type dcacheClient interface {
 var _ internal.Component = &DistCache{}
 
 func NewDistCacheComponent() internal.Component {
-	comp := &DistCache{}
+	comp := &DistCache{
+		dirtyFiles: make(map[string]time.Time),
+	}
 	comp.SetName(compName)
 	return comp
 }
@@ -213,6 +226,12 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 		return dc.NextComponent().CopyToFile(options)
 	}
 
+	// Skip dist_cache for recently invalidated files to avoid stale data
+	if dc.isDirty(options.Name) {
+		log.Debug("DistCache::CopyToFile : dirty, bypassing %s", options.Name)
+		return dc.NextComponent().CopyToFile(options)
+	}
+
 	ctx := context.Background()
 
 	// Try distributed cache with lock-on-miss enabled
@@ -275,16 +294,36 @@ func (dc *DistCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 
 // --- Read path (block_cache) ---
 
+// resolveReadPath returns the file path for a ReadInBuffer call. block_cache
+// sets Handle but not Path; file_cache/azstorage may set Path directly.
+func resolveReadPath(options *internal.ReadInBufferOptions) string {
+	if options.Path != "" {
+		return options.Path
+	}
+	if options.Handle != nil {
+		return options.Handle.Path
+	}
+	return ""
+}
+
 func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	if dc.client == nil {
 		return dc.NextComponent().ReadInBuffer(options)
 	}
 
+	name := resolveReadPath(options)
+
+	// Skip dist_cache for recently invalidated files to avoid stale data
+	if dc.isDirty(name) {
+		log.Debug("DistCache::ReadInBuffer : dirty, bypassing %s", name)
+		return dc.NextComponent().ReadInBuffer(options)
+	}
+
 	ctx := context.Background()
 
-	n, err := dc.client.DownloadChunk(ctx, options.Path, options.Offset, options.Data)
+	n, err := dc.client.DownloadChunk(ctx, name, options.Offset, options.Data)
 	if err == nil {
-		log.Debug("DistCache::ReadInBuffer : L2 hit %s offset=%d", options.Path, options.Offset)
+		log.Debug("DistCache::ReadInBuffer : L2 hit %s offset=%d", name, options.Offset)
 		return n, nil
 	}
 
@@ -297,7 +336,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		// Copy buffer before launching goroutine — caller may reuse it immediately
 		dataCopy := make([]byte, n)
 		copy(dataCopy, options.Data[:n])
-		go dc.uploadChunkAsync(options.Path, options.Offset, dataCopy)
+		go dc.uploadChunkAsync(name, options.Offset, dataCopy)
 		return n, nil
 	}
 
@@ -338,26 +377,56 @@ func (dc *DistCache) CommitData(options internal.CommitDataOptions) error {
 
 func (dc *DistCache) DeleteFile(options internal.DeleteFileOptions) error {
 	if dc.client != nil {
-		_ = dc.client.Delete(context.Background(), options.Name, 0)
+		dc.markDirty(options.Name)
+		_ = dc.client.DeleteGroup(context.Background(), fileGroupID(options.Name))
 	}
 	return dc.NextComponent().DeleteFile(options)
 }
 
 func (dc *DistCache) RenameFile(options internal.RenameFileOptions) error {
 	if dc.client != nil {
-		_ = dc.client.Delete(context.Background(), options.Src, 0)
+		dc.markDirty(options.Src)
+		_ = dc.client.DeleteGroup(context.Background(), fileGroupID(options.Src))
 	}
 	return dc.NextComponent().RenameFile(options)
 }
 
 func (dc *DistCache) TruncateFile(options internal.TruncateFileOptions) error {
 	if dc.client != nil {
-		_ = dc.client.Delete(context.Background(), options.Name, options.OldSize)
+		dc.markDirty(options.Name)
+		_ = dc.client.DeleteGroup(context.Background(), fileGroupID(options.Name))
 	}
 	return dc.NextComponent().TruncateFile(options)
 }
 
 // --- Internal helpers ---
+
+// markDirty records that a file was recently invalidated. Reads for this file
+// will bypass dist_cache until dirtyTTL expires.
+func (dc *DistCache) markDirty(name string) {
+	dc.dirtyMu.Lock()
+	dc.dirtyFiles[name] = time.Now()
+	dc.dirtyMu.Unlock()
+}
+
+// isDirty returns true if the file was recently invalidated and should not be
+// read from dist_cache.
+func (dc *DistCache) isDirty(name string) bool {
+	dc.dirtyMu.Lock()
+	t, ok := dc.dirtyFiles[name]
+	if ok && time.Since(t) > dirtyTTL {
+		delete(dc.dirtyFiles, name)
+		ok = false
+	}
+	dc.dirtyMu.Unlock()
+	return ok
+}
+
+// fileGroupID returns a deterministic group ID for a file, used for group-based
+// cache invalidation. All chunks of the same file share this group ID.
+func fileGroupID(name string) []byte {
+	return []byte(name)
+}
 
 func (dc *DistCache) populateCache(name string, filePath string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -378,7 +447,10 @@ func (dc *DistCache) populateCache(name string, filePath string) {
 		return
 	}
 
-	opts := []dcache.UploadOption{dcache.WithIgnoreLock(true)}
+	opts := []dcache.UploadOption{
+		dcache.WithIgnoreLock(true),
+		dcache.WithGroupID(fileGroupID(name)),
+	}
 	if dc.conf.TTLSeconds > 0 {
 		opts = append(opts, dcache.WithTTL(dc.conf.TTLSeconds))
 	}
@@ -392,7 +464,10 @@ func (dc *DistCache) uploadChunkAsync(name string, offset int64, data []byte) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	opts := []dcache.UploadOption{dcache.WithIgnoreLock(true)}
+	opts := []dcache.UploadOption{
+		dcache.WithIgnoreLock(true),
+		dcache.WithGroupID(fileGroupID(name)),
+	}
 	if dc.conf.TTLSeconds > 0 {
 		opts = append(opts, dcache.WithTTL(dc.conf.TTLSeconds))
 	}
@@ -475,5 +550,3 @@ func (dc *DistCache) pollUntilCached(ctx context.Context, name string, fileSize 
 
 	return nil, fmt.Errorf("dist_cache: poll timeout for %d byte file %s", fileSize, name)
 }
-
-
