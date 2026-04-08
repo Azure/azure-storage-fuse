@@ -378,7 +378,9 @@ func (dc *DistCache) CommitData(options internal.CommitDataOptions) error {
 func (dc *DistCache) DeleteFile(options internal.DeleteFileOptions) error {
 	if dc.client != nil {
 		dc.markDirty(options.Name)
-		_ = dc.client.DeleteGroup(context.Background(), fileGroupID(options.Name))
+		if err := dc.client.DeleteGroup(context.Background(), fileGroupID(options.Name)); err != nil {
+			log.Warn("DistCache::DeleteFile : cache invalidation failed for %s: %v", options.Name, err)
+		}
 	}
 	return dc.NextComponent().DeleteFile(options)
 }
@@ -386,7 +388,9 @@ func (dc *DistCache) DeleteFile(options internal.DeleteFileOptions) error {
 func (dc *DistCache) RenameFile(options internal.RenameFileOptions) error {
 	if dc.client != nil {
 		dc.markDirty(options.Src)
-		_ = dc.client.DeleteGroup(context.Background(), fileGroupID(options.Src))
+		if err := dc.client.DeleteGroup(context.Background(), fileGroupID(options.Src)); err != nil {
+			log.Warn("DistCache::RenameFile : cache invalidation failed for %s: %v", options.Src, err)
+		}
 	}
 	return dc.NextComponent().RenameFile(options)
 }
@@ -394,7 +398,9 @@ func (dc *DistCache) RenameFile(options internal.RenameFileOptions) error {
 func (dc *DistCache) TruncateFile(options internal.TruncateFileOptions) error {
 	if dc.client != nil {
 		dc.markDirty(options.Name)
-		_ = dc.client.DeleteGroup(context.Background(), fileGroupID(options.Name))
+		if err := dc.client.DeleteGroup(context.Background(), fileGroupID(options.Name)); err != nil {
+			log.Warn("DistCache::TruncateFile : cache invalidation failed for %s: %v", options.Name, err)
+		}
 	}
 	return dc.NextComponent().TruncateFile(options)
 }
