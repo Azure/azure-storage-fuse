@@ -6,6 +6,7 @@ package dist_cache
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -401,15 +402,46 @@ func (dc *DistCache) uploadChunkAsync(name string, offset int64, data []byte) {
 	}
 }
 
+// pollUntilCached waits for another node to finish populating a file in the
+// distributed cache. It uses an adaptive timeout scaled to the file size and
+// tracks progress by observing how much data DownloadWithSize writes before
+// hitting a missing chunk. If no progress is seen for staleTimeout the poll
+// gives up early so the caller can fall through to Azure Storage.
 func (dc *DistCache) pollUntilCached(ctx context.Context, name string, fileSize int64, f *os.File) (*dcache.FileMetadata, error) {
-	const maxRetries = 10
-	backoff := 100 * time.Millisecond
+	const (
+		maxPollDuration = 5 * time.Minute
+		minPollDuration = 15 * time.Second
+		staleTimeout    = 30 * time.Second
+		maxBackoff      = 5 * time.Second
+		// Assumed Azure→cache population speed for timeout estimation.
+		estimatedBytesPerSec = 2 * 1024 * 1024 * 1024 // 2 GB/s
+	)
 
-	for i := 0; i < maxRetries; i++ {
+	// Scale timeout with file size: time-to-fill × 2 headroom + base.
+	estimatedFillDur := time.Duration(float64(fileSize)/estimatedBytesPerSec*2+15) * time.Second
+	if estimatedFillDur < minPollDuration {
+		estimatedFillDur = minPollDuration
+	}
+	if estimatedFillDur > maxPollDuration {
+		estimatedFillDur = maxPollDuration
+	}
+
+	deadline := time.Now().Add(estimatedFillDur)
+	backoff := 200 * time.Millisecond
+	var lastFilePos int64
+	lastProgressAt := time.Now()
+
+	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(backoff):
+		}
+
+		// Seek to beginning so a partial retry overwrites from the start,
+		// preventing file corruption from accumulated partial writes.
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return nil, fmt.Errorf("dist_cache: seek failed: %w", err)
 		}
 
 		meta, err := dc.client.DownloadWithSize(ctx, name, fileSize, f)
@@ -420,14 +452,28 @@ func (dc *DistCache) pollUntilCached(ctx context.Context, name string, fileSize 
 			return nil, err
 		}
 
-		// Exponential backoff, max 2 seconds
+		// Track progress: how many bytes were written before hitting a miss.
+		// downloadChunked writes chunks in order, so the file position
+		// indicates how far the populating node has gotten.
+		currentPos, _ := f.Seek(0, io.SeekCurrent)
+		if currentPos > lastFilePos {
+			lastFilePos = currentPos
+			lastProgressAt = time.Now()
+			log.Debug("DistCache::pollUntilCached : progress %d/%d bytes for %s",
+				currentPos, fileSize, name)
+		} else if time.Since(lastProgressAt) > staleTimeout {
+			log.Debug("DistCache::pollUntilCached : no progress for %v, giving up on %s",
+				staleTimeout, name)
+			break
+		}
+
 		backoff *= 2
-		if backoff > 2*time.Second {
-			backoff = 2 * time.Second
+		if backoff > maxBackoff {
+			backoff = maxBackoff
 		}
 	}
 
-	return nil, fmt.Errorf("dist_cache: poll timeout after %d retries", maxRetries)
+	return nil, fmt.Errorf("dist_cache: poll timeout for %d byte file %s", fileSize, name)
 }
 
 // dcacheClientAdapter adapts the real dcache.Client to the dcacheClient interface,
