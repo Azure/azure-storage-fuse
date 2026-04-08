@@ -293,8 +293,10 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		if err != nil {
 			return n, err
 		}
-		// Populate distributed cache (best-effort)
-		go dc.uploadChunkAsync(options.Path, options.Offset, options.Data[:n])
+		// Copy buffer before launching goroutine — caller may reuse it immediately
+		dataCopy := make([]byte, n)
+		copy(dataCopy, options.Data[:n])
+		go dc.uploadChunkAsync(options.Path, options.Offset, dataCopy)
 		return n, nil
 	}
 
@@ -319,7 +321,10 @@ func (dc *DistCache) StageData(options internal.StageDataOptions) error {
 	}
 
 	// Populate distributed cache (best-effort)
-	go dc.uploadChunkAsync(options.Name, int64(options.Offset), options.Data)
+	// Copy buffer before launching goroutine — caller may reuse it immediately
+	dataCopy := make([]byte, len(options.Data))
+	copy(dataCopy, options.Data)
+	go dc.uploadChunkAsync(options.Name, int64(options.Offset), dataCopy)
 	return nil
 }
 
@@ -386,16 +391,12 @@ func (dc *DistCache) uploadChunkAsync(name string, offset int64, data []byte) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Make a copy since the caller may reuse the buffer
-	dataCopy := make([]byte, len(data))
-	copy(dataCopy, data)
-
 	opts := []dcache.UploadOption{dcache.WithIgnoreLock(true)}
 	if dc.conf.TTLSeconds > 0 {
 		opts = append(opts, dcache.WithTTL(dc.conf.TTLSeconds))
 	}
 
-	if err := dc.client.UploadChunk(ctx, name, offset, dataCopy, opts...); err != nil {
+	if err := dc.client.UploadChunk(ctx, name, offset, data, opts...); err != nil {
 		log.Warn("DistCache::uploadChunkAsync : upload failed: %v", err)
 	}
 }

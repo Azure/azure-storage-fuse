@@ -91,6 +91,10 @@ func (c *Client) uploadChunked(ctx context.Context, filePath string, r io.Reader
 		n, err := io.ReadFull(r, buf[:plan.size])
 		if err != nil && err != io.ErrUnexpectedEOF {
 			c.putBuffer(buf)
+			// Clean up previously allocated buffers
+			for j := 0; j < i; j++ {
+				c.putBuffer(chunkData[j][:cap(chunkData[j])])
+			}
 			return fmt.Errorf("read chunk %d: %w", i, err)
 		}
 		chunkData[i] = buf[:n]
