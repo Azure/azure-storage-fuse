@@ -8,6 +8,7 @@ package dist_cache
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ import (
 // mockDCacheClient implements dcacheClient for testing.
 type mockDCacheClient struct {
 	store      map[string][]byte
-	downloadFn func(ctx context.Context, filename string, fileSize int64, w *os.File, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error)
+	downloadFn func(ctx context.Context, filename string, fileSize int64, w io.Writer, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error)
 	chunkFn    func(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 }
 
@@ -31,14 +32,14 @@ func newMockDCacheClient() *mockDCacheClient {
 	}
 }
 
-func (m *mockDCacheClient) Upload(_ context.Context, filename string, data *os.File, size int64, _ ...dcache.UploadOption) error {
+func (m *mockDCacheClient) Upload(_ context.Context, filename string, data io.Reader, size int64, _ ...dcache.UploadOption) error {
 	buf := make([]byte, size)
-	data.ReadAt(buf, 0)
+	io.ReadFull(data, buf)
 	m.store[filename] = buf
 	return nil
 }
 
-func (m *mockDCacheClient) DownloadWithSize(ctx context.Context, filename string, fileSize int64, w *os.File, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+func (m *mockDCacheClient) DownloadWithSize(ctx context.Context, filename string, fileSize int64, w io.Writer, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
 	if m.downloadFn != nil {
 		return m.downloadFn(ctx, filename, fileSize, w, opts...)
 	}
@@ -172,7 +173,7 @@ func TestCopyToFile_L2Hit(t *testing.T) {
 
 	// Pre-populate mock cache
 	testData := []byte("cached data from distributed cache")
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, w *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, w io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
 		w.Write(testData)
 		return &dcache.FileMetadata{Size: int64(len(testData))}, nil
 	}
@@ -198,7 +199,7 @@ func TestCopyToFile_L2MissGotLock(t *testing.T) {
 	dc := newTestDistCache(mock, next)
 
 	// Simulate L2 miss with lock acquired
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
 		return nil, dcache.ErrNotFoundGotLock
 	}
 
@@ -224,7 +225,7 @@ func TestCopyToFile_BypassOnError(t *testing.T) {
 	dc.bypassOnError = true
 
 	// Simulate connection error
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
 		return nil, dcache.ErrConnectionFailed
 	}
 
@@ -416,7 +417,7 @@ func TestPollUntilCached_SucceedsOnRetry(t *testing.T) {
 	// Second call (from pollUntilCached retry): data is available.
 	callCount := 0
 	testData := []byte("cached after retry")
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, w *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, w io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
 		callCount++
 		if callCount == 1 {
 			return nil, dcache.ErrNotFoundAlreadyLocked
@@ -448,7 +449,7 @@ func TestPollUntilCached_SeeksBeforeRetry(t *testing.T) {
 	// Simulate progressive caching: write partial data then fail, then succeed.
 	callCount := 0
 	fullData := []byte("complete file contents here")
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, w *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, w io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
 		callCount++
 		switch {
 		case callCount == 1:
@@ -489,7 +490,7 @@ func TestPollUntilCached_StaleGivesUpEarly(t *testing.T) {
 	dc := newTestDistCache(mock, next)
 
 	// Always return ErrNotFoundAlreadyLocked with no progress (0 bytes written).
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
 		return nil, dcache.ErrNotFoundAlreadyLocked
 	}
 
@@ -518,7 +519,7 @@ func TestPollUntilCached_ContextCancellation(t *testing.T) {
 	next := &mockNextComponent{}
 	dc := newTestDistCache(mock, next)
 
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
 		return nil, dcache.ErrNotFoundAlreadyLocked
 	}
 

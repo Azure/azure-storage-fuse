@@ -63,8 +63,8 @@ type DistCache struct {
 
 // dcacheClient abstracts the distributed cache client for testing.
 type dcacheClient interface {
-	Upload(ctx context.Context, filename string, data *os.File, size int64, opts ...dcache.UploadOption) error
-	DownloadWithSize(ctx context.Context, filename string, fileSize int64, w *os.File, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error)
+	Upload(ctx context.Context, filename string, data io.Reader, size int64, opts ...dcache.UploadOption) error
+	DownloadWithSize(ctx context.Context, filename string, fileSize int64, w io.Writer, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error)
 	DownloadChunk(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 	UploadChunk(ctx context.Context, filename string, offset int64, data []byte, opts ...dcache.UploadOption) error
 	Delete(ctx context.Context, filename string, fileSize int64) error
@@ -189,7 +189,7 @@ func (dc *DistCache) Start(ctx context.Context) error {
 		return fmt.Errorf("dist_cache: failed to start: %w", err)
 	}
 
-	dc.client = &dcacheClientAdapter{client: client}
+	dc.client = client
 	log.Info("DistCache::Start : connected to distributed cache cluster")
 	return nil
 }
@@ -476,40 +476,4 @@ func (dc *DistCache) pollUntilCached(ctx context.Context, name string, fileSize 
 	return nil, fmt.Errorf("dist_cache: poll timeout for %d byte file %s", fileSize, name)
 }
 
-// dcacheClientAdapter adapts the real dcache.Client to the dcacheClient interface,
-// bridging the io.Reader/io.Writer types to *os.File for splice(2) support.
-type dcacheClientAdapter struct {
-	client *dcache.Client
-}
 
-func (a *dcacheClientAdapter) Upload(ctx context.Context, filename string, data *os.File, size int64, opts ...dcache.UploadOption) error {
-	return a.client.Upload(ctx, filename, data, size, opts...)
-}
-
-func (a *dcacheClientAdapter) DownloadWithSize(ctx context.Context, filename string, fileSize int64, w *os.File, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
-	return a.client.DownloadWithSize(ctx, filename, fileSize, w, opts...)
-}
-
-func (a *dcacheClientAdapter) DownloadChunk(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error) {
-	return a.client.DownloadChunk(ctx, filename, offset, buf, opts...)
-}
-
-func (a *dcacheClientAdapter) UploadChunk(ctx context.Context, filename string, offset int64, data []byte, opts ...dcache.UploadOption) error {
-	return a.client.UploadChunk(ctx, filename, offset, data, opts...)
-}
-
-func (a *dcacheClientAdapter) Delete(ctx context.Context, filename string, fileSize int64) error {
-	return a.client.Delete(ctx, filename, fileSize)
-}
-
-func (a *dcacheClientAdapter) GetAttr(ctx context.Context, filename string) (*dcache.FileAttr, error) {
-	return a.client.GetAttr(ctx, filename)
-}
-
-func (a *dcacheClientAdapter) PutAttr(ctx context.Context, attrs []dcache.FileAttrEntry) error {
-	return a.client.PutAttr(ctx, attrs)
-}
-
-func (a *dcacheClientAdapter) Close() error {
-	return a.client.Close()
-}
