@@ -20,11 +20,11 @@ import (
 
 // metricsSnapshot holds aggregated counters from all cache servers.
 type metricsSnapshot struct {
-	downloadSuccess  int64
-	downloadMiss     int64 // InvalidTransition = cache miss / not-found
-	uploadSuccess    int64
-	cacheSizeBytes   int64
-	perServer        map[string]serverMetrics
+	downloadSuccess int64
+	downloadMiss    int64 // InvalidTransition = cache miss / not-found
+	uploadSuccess   int64
+	cacheSizeBytes  int64
+	perServer       map[string]serverMetrics
 }
 
 type serverMetrics struct {
