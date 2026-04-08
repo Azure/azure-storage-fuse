@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client"
@@ -404,4 +405,132 @@ func TestTruncateFile_Invalidation(t *testing.T) {
 func TestPriority(t *testing.T) {
 	dc := &DistCache{}
 	assert.Equal(t, internal.EComponentPriority.LevelMid(), dc.Priority())
+}
+
+func TestPollUntilCached_SucceedsOnRetry(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{copyToFileData: []byte("azure data")}
+	dc := newTestDistCache(mock, next)
+
+	// First call (from CopyToFile with lock): ErrNotFoundAlreadyLocked.
+	// Second call (from pollUntilCached retry): data is available.
+	callCount := 0
+	testData := []byte("cached after retry")
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, w *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+		callCount++
+		if callCount == 1 {
+			return nil, dcache.ErrNotFoundAlreadyLocked
+		}
+		w.Write(testData)
+		return &dcache.FileMetadata{Size: int64(len(testData))}, nil
+	}
+
+	f, err := os.CreateTemp("", "dcache-poll-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	err = dc.CopyToFile(internal.CopyToFileOptions{
+		Name:  "test/poll-retry.txt",
+		Count: int64(len(testData)),
+		File:  f,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, next.copyToFileCalled, "should serve from cache after poll retry")
+}
+
+func TestPollUntilCached_SeeksBeforeRetry(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	// Simulate progressive caching: write partial data then fail, then succeed.
+	callCount := 0
+	fullData := []byte("complete file contents here")
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, w *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+		callCount++
+		switch {
+		case callCount == 1:
+			return nil, dcache.ErrNotFoundAlreadyLocked // initial check
+		case callCount == 2:
+			// Partial write (simulating some cached chunks)
+			w.Write(fullData[:10])
+			return nil, dcache.ErrNotFoundAlreadyLocked
+		default:
+			// Full data available
+			w.Write(fullData)
+			return &dcache.FileMetadata{Size: int64(len(fullData))}, nil
+		}
+	}
+
+	f, err := os.CreateTemp("", "dcache-seek-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	ctx := context.Background()
+	meta, err := dc.pollUntilCached(ctx, "test/seek.txt", int64(len(fullData)), f)
+
+	assert.NoError(t, err)
+	require.NotNil(t, meta)
+
+	// Verify the file contains the correct data (not corruption from partial writes)
+	f.Seek(0, 0)
+	got := make([]byte, len(fullData))
+	n, _ := f.Read(got)
+	assert.Equal(t, len(fullData), n)
+	assert.Equal(t, fullData, got)
+}
+
+func TestPollUntilCached_StaleGivesUpEarly(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	// Always return ErrNotFoundAlreadyLocked with no progress (0 bytes written).
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+		return nil, dcache.ErrNotFoundAlreadyLocked
+	}
+
+	f, err := os.CreateTemp("", "dcache-stale-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	// Use a large file size so the size-adaptive timeout would be long,
+	// but stale detection should trigger much sooner.
+	ctx := context.Background()
+	start := time.Now()
+	_, err = dc.pollUntilCached(ctx, "test/stale.txt", 10*1024*1024*1024, f)
+
+	elapsed := time.Since(start)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "poll timeout")
+	// Stale detection (30s) + some backoff overhead. Should not wait the
+	// full size-proportional timeout (~10s at 2GB/s × 2 headroom = 25s, but
+	// stale kicks in at 30s). Allow generous margin for CI.
+	assert.Less(t, elapsed, 90*time.Second, "should give up after stale timeout, not wait full duration")
+}
+
+func TestPollUntilCached_ContextCancellation(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ *os.File, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+		return nil, dcache.ErrNotFoundAlreadyLocked
+	}
+
+	f, err := os.CreateTemp("", "dcache-ctx-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	_, err = dc.pollUntilCached(ctx, "test/cancel.txt", 1024, f)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
