@@ -110,10 +110,16 @@ func (d *discovery) discoverViaRPC(endpoint string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer d.connMgr.putConn(c)
+	var discarded bool
+	defer func() {
+		if !discarded {
+			d.connMgr.putConn(c)
+		}
+	}()
 
 	if err := c.setDeadline(time.Now().Add(d.cfg.requestTimeout)); err != nil {
 		d.connMgr.discardConn(c)
+		discarded = true
 		return nil, err
 	}
 
@@ -125,12 +131,14 @@ func (d *discovery) discoverViaRPC(endpoint string) ([]string, error) {
 
 	if err := c.sendRequest(req, nil); err != nil {
 		d.connMgr.discardConn(c)
+		discarded = true
 		return nil, fmt.Errorf("send GetCacheServers: %w", err)
 	}
 
 	var resp pb.GetCacheServersResponse
 	if err := c.recvProto(&resp); err != nil {
 		d.connMgr.discardConn(c)
+		discarded = true
 		return nil, fmt.Errorf("recv GetCacheServers: %w", err)
 	}
 
