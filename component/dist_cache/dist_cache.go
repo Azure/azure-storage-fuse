@@ -43,8 +43,10 @@ type DistCacheOptions struct {
 	CachePrefix     string `config:"cache-prefix"      yaml:"cache-prefix,omitempty"`
 	MaxConnsPerSvr  int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"`
 
-	// Chunk size is NOT configured here — it is read from block_cache.block-size-mb
-	// (default 16 MiB). This ensures a single source of truth for block/chunk alignment.
+	// Chunk size for distributed cache operations. When block_cache is present,
+	// this is overridden by block_cache.block-size-mb to keep alignment consistent.
+	// When used with file_cache (no block_cache), this is the primary chunk size config.
+	ChunkSizeMB float64 `config:"chunk-size-mb" yaml:"chunk-size-mb,omitempty"`
 }
 
 // DistCache is the blobfuse component that sits between the local cache and azstorage,
@@ -114,7 +116,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 	dc.conf = conf
 	dc.bypassOnError = conf.BypassOnError
 
-	// Read chunk size from block_cache.block-size-mb (single source of truth)
+	// Resolve chunk size: block_cache.block-size-mb > stream.block-size-mb > dist_cache.chunk-size-mb > default
 	const defaultBlockSizeMB = 16
 	var blockSizeMB float64 = defaultBlockSizeMB
 	if config.IsSet("block_cache.block-size-mb") {
@@ -128,6 +130,8 @@ func (dc *DistCache) Configure(isParent bool) error {
 		if err != nil {
 			blockSizeMB = defaultBlockSizeMB
 		}
+	} else if conf.ChunkSizeMB > 0 {
+		blockSizeMB = conf.ChunkSizeMB
 	}
 	dc.chunkSize = int64(blockSizeMB * 1024 * 1024)
 
@@ -226,7 +230,7 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 			return err
 		}
 		// Populate the distributed cache for other nodes (best-effort, async)
-		go dc.populateCache(options.Name, options.File)
+		go dc.populateCache(options.Name, options.File.Name())
 		return nil
 	}
 
@@ -264,7 +268,7 @@ func (dc *DistCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	}
 
 	// Populate distributed cache (best-effort, async)
-	go dc.populateCache(options.Name, options.File)
+	go dc.populateCache(options.Name, options.File.Name())
 	return nil
 }
 
@@ -349,20 +353,22 @@ func (dc *DistCache) TruncateFile(options internal.TruncateFileOptions) error {
 
 // --- Internal helpers ---
 
-func (dc *DistCache) populateCache(name string, f *os.File) {
+func (dc *DistCache) populateCache(name string, filePath string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
+	// Re-open the file by path (the original handle may be closed by the caller)
+	f, err := os.Open(filePath)
+	if err != nil {
+		log.Warn("DistCache::populateCache : open failed: %v", err)
+		return
+	}
+	defer f.Close()
 
 	// Get file size
 	info, err := f.Stat()
 	if err != nil {
 		log.Warn("DistCache::populateCache : stat failed: %v", err)
-		return
-	}
-
-	// Seek to beginning
-	if _, err := f.Seek(0, 0); err != nil {
-		log.Warn("DistCache::populateCache : seek failed: %v", err)
 		return
 	}
 
