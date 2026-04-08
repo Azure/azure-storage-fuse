@@ -18,19 +18,19 @@ Application
     │
     ▼
 ┌─────────────────┐
-│ FUSE Kernel      │
+│ FUSE Kernel     │
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ block_cache (L1) │  Local memory/disk cache — microsecond reads
+│ block_cache (L1)│  Local memory/disk cache — microsecond reads
 └────────┬────────┘
          ▼ (on L1 miss)
 ┌─────────────────┐
-│ dist_cache (L2)  │  Distributed cache cluster — sub-millisecond reads
+│ dist_cache (L2) │  Distributed cache cluster — sub-millisecond reads
 └────────┬────────┘
          ▼ (on L2 miss)
 ┌─────────────────┐
-│ azstorage (L3)   │  Azure Blob Storage — tens of milliseconds
+│ azstorage (L3)  │  Azure Blob Storage — tens of milliseconds
 └─────────────────┘
 ```
 
