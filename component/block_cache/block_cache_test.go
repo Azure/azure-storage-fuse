@@ -936,7 +936,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestTruncateFile_NilHandle(
 	suite.assert.Equal(data, []byte(content[:len(data)]))
 }
 
-// Test GetAttr for an open modified file returns in-memory size.
+// Test GetAttr for an open modified file returns in-memory size and updated mtime.
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestGetAttr_OpenModifiedFile() {
 	defer suite.TearDownTest()
 
@@ -944,16 +944,44 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestGetAttr_OpenModifiedFil
 	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
 	suite.assert.NoError(err)
 
+	before := time.Now()
 	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte("hello world extended data")})
 	suite.assert.NoError(err)
+	after := time.Now()
 
-	// GetAttr while file is open and modified should reflect in-memory size
+	// GetAttr while file is open and modified should reflect in-memory size and mtime
 	attr, err := suite.blockCache.GetAttr(internal.GetAttrOptions{Name: fileName})
 	suite.assert.NoError(err)
 	suite.assert.Equal(attr.Size, int64(len("hello world extended data")))
+	suite.assert.True(!attr.Mtime.Before(before), "mtime should be >= write start time")
+	suite.assert.True(!attr.Mtime.After(after), "mtime should be <= write end time")
 
 	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
 	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+}
+
+// Test GetAttr for an open truncated file returns updated mtime.
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestGetAttr_TruncatedFile() {
+	defer suite.TearDownTest()
+
+	fileName := "test_getattr_truncate.txt"
+	handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: fileName, Mode: 0777})
+	suite.assert.NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: []byte("hello world extended data")})
+	suite.assert.NoError(err)
+	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
+	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	before := time.Now()
+	err = suite.blockCache.TruncateFile(internal.TruncateFileOptions{Name: fileName, NewSize: 5})
+	suite.assert.NoError(err)
+	after := time.Now()
+
+	attr, err := suite.blockCache.GetAttr(internal.GetAttrOptions{Name: fileName})
+	suite.assert.NoError(err)
+	suite.assert.Equal(int64(5), attr.Size)
+	suite.assert.True(!attr.Mtime.Before(before), "mtime should be >= truncate start time")
+	suite.assert.True(!attr.Mtime.After(after), "mtime should be <= truncate end time")
 }
 
 // Test write-then-read cycle through the BlockCache API with data integrity check.
