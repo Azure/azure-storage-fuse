@@ -125,6 +125,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -534,12 +535,16 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 	file, ok := checkFileExistsInOpen(options.Name)
 	if ok {
 		fileSize := atomic.LoadInt64(&file.size)
-		if (fileSize != -1) && fileSize != attr.Size {
-			// There has been a modification done on the file. Return new attribute with new file size.
+		lmtNano := file.lmtNano.Load()
+		if (fileSize != -1) && (fileSize != attr.Size || lmtNano != 0) {
+			// There has been a modification done on the file. Return new attribute with new file size and mtime.
 			// We dont want to update the value inside the attribute itself, as it changes the state of the attribute
 			// inside the attribute cache
 			newattr := *attr
 			newattr.Size = fileSize
+			if lmtNano != 0 {
+				newattr.Mtime = time.Unix(0, lmtNano)
+			}
 			return &newattr, nil
 		}
 	}
