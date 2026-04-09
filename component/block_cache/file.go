@@ -75,6 +75,11 @@ type File struct {
 	// rather than PutBlock + PutBlockList. This tracks the upload method for
 	// consistency during subsequent flushes.
 	singleBlockFilePersisted bool
+
+	// lmtNano stores the last modification time as Unix nanoseconds.
+	// Updated atomically on write and truncate, read by GetAttr to return
+	// correct mtime while the file is open and modified.
+	lmtNano atomic.Int64
 }
 
 // createFile creates a new File instance with default values.
@@ -502,6 +507,9 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		// Decrement the write wait group after write is completed
 		f.pendingWriters.Done()
 	}
+
+	// Record last modification time after all bytes are written.
+	f.lmtNano.Store(time.Now().UnixNano())
 
 	return nil
 }
@@ -963,6 +971,9 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 	if err := f.flush(bc, false /*takeFileLock*/); err != nil {
 		return err
 	}
+
+	// Record last modification time after truncation.
+	f.lmtNano.Store(time.Now().UnixNano())
 
 	return nil
 }
