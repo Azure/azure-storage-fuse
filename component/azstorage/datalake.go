@@ -460,6 +460,19 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		}
 	}
 
+	if dl.Config.isBlobLayoutAwareRoutingEnabled &&
+		(blobAttr.Mode&os.ModeDir == 0) {
+		// TODO: Replace the getProperties call with getLayout call once the layout call for ADLS
+		// is implemented in the go SDK that includes permissions and other ADLS specific properties
+		// in its response.
+		layoutResp, err := dl.BlockBlob.getBlobLayout(name)
+		if err != nil {
+			log.Err("Datalake::GetAttr : Failed to get blob layout for %s [%v]", name, err)
+		} else {
+			blobAttr.Layout = layoutResp.layout
+		}
+	}
+
 	return blobAttr, nil
 }
 
@@ -481,8 +494,8 @@ func (dl *Datalake) ReadBuffer(name string, offset int64, length int64) ([]byte,
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (dl *Datalake) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error {
-	return dl.BlockBlob.ReadInBuffer(name, offset, length, data, etag)
+func (dl *Datalake) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string, layout *internal.Layout) error {
+	return dl.BlockBlob.ReadInBuffer(name, offset, length, data, etag, layout)
 }
 
 // WriteFromFile : Upload local file to file

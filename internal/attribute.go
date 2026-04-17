@@ -35,10 +35,45 @@ package internal
 
 import (
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 )
+
+type LayoutRange struct {
+	Start    int64
+	End      int64
+	Endpoint string
+}
+
+type Layout struct {
+	LayoutRanges    []LayoutRange
+	lastFetchedTime atomic.Int64
+}
+
+// getIdealEndpoint returns the endpoint to download the blob at the given offset based on the layout.
+// It considers the first range containing the offset. If the chunk isn't fully available, the service
+// still returns correct data.
+func (l *Layout) GetIdealEndpoint(offset int64) string {
+	if l == nil || len(l.LayoutRanges) == 0 {
+		return ""
+	}
+
+	// Binary search to find the first range whose end >= offset
+	left, right := 0, len(l.LayoutRanges)-1
+	for left < right {
+		mid := left + (right-left)/2
+		if l.LayoutRanges[mid].End < offset {
+			left = mid + 1
+		} else {
+			right = mid
+		}
+	}
+
+	// Range is guaranteed to exist, return its endpoint
+	return l.LayoutRanges[left].Endpoint
+}
 
 func NewDirBitMap() common.BitMap64 {
 	bm := common.BitMap64(0)
@@ -81,6 +116,7 @@ type ObjAttr struct {
 	MD5      []byte             // MD5 of the blob as per last GetAttr
 	ETag     string             // ETag of the blob as per last GetAttr
 	Metadata map[string]*string // extra information to preserve
+	Layout   *Layout            // layout of the blob, only used for files
 }
 
 // IsDir : Test blob is a directory or not

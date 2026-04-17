@@ -34,9 +34,11 @@
 package azstorage
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"golang.org/x/time/rate"
@@ -181,4 +183,40 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 	}
 
 	return req.Next()
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Policy for getBlobLayout to route requests to the endpoint specified in the layout if available.
+type ctxLayoutEndpointKey struct{}
+
+func WithLayoutEndpoint(ctx context.Context, endpoint string) context.Context {
+	if endpoint == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxLayoutEndpointKey{}, endpoint)
+}
+
+type layoutPolicy struct {
+}
+
+func (l *layoutPolicy) Do(req *policy.Request) (*http.Response, error) {
+	// Check if the layout endpoint is set in the context
+	if layoutEndpoint := req.Raw().Context().Value(ctxLayoutEndpointKey{}); layoutEndpoint != nil && layoutEndpoint != "" {
+		// Read the request endpoint (account) and set the Host header to the endpoint if not already set.
+		req.Raw().Host = req.Raw().URL.Host
+
+		// Parse the layout endpoint
+		parsedLayoutEndpoint, err := url.Parse(layoutEndpoint.(string))
+		if err != nil {
+			return nil, err
+		}
+
+		// Set the request URL to the layout endpoint
+		req.Raw().URL.Host = parsedLayoutEndpoint.Host
+	}
+	return req.Next()
+}
+
+func NewLayoutPolicy() policy.Policy {
+	return &layoutPolicy{}
 }

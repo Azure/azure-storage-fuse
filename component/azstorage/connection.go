@@ -89,6 +89,9 @@ type AzStorageConfig struct {
 	// Rate limiting
 	capMbpsRead int64
 	capIOps     int64
+
+	// Blob layout aware routing, for improved read performance.
+	isBlobLayoutAwareRoutingEnabled bool
 }
 
 type AzStorageConnection struct {
@@ -125,7 +128,7 @@ type AzConnection interface {
 
 	ReadToFile(name string, offset int64, count int64, fi *os.File) error
 	ReadBuffer(name string, offset int64, length int64) ([]byte, error)
-	ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error
+	ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string, layout *internal.Layout) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
 	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
@@ -140,6 +143,8 @@ type AzConnection interface {
 	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)
 	StageBlock(string, []byte, string) error
 	CommitBlocks(string, []string, *string) error
+
+	// GetBlobLayout(string) (*layout, error)
 
 	UpdateServiceClient(_, _ string) error
 

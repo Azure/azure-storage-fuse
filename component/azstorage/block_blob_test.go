@@ -220,8 +220,8 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 	}
 	s.container = container
 	if configuration == "" {
-		configuration = fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-			storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+		configuration = fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+			storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	}
 	s.config = configuration
 
@@ -252,8 +252,8 @@ func (s *blockBlobTestSuite) cleanupTest() {
 
 func (s *blockBlobTestSuite) TestInvalidBlockSize() {
 	defer s.cleanupTest()
-	configuration := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  block-size-mb: 5000\n account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	configuration := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  block-size-mb: 5000\n account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	_, err := newTestAzStorage(configuration)
 	s.assert.Error(err)
 }
@@ -271,7 +271,7 @@ func (s *blockBlobTestSuite) TestDefault() {
 	s.assert.Empty(s.az.stConfig.authConfig.ClientSecret)
 	s.assert.Empty(s.az.stConfig.authConfig.TenantID)
 	s.assert.Empty(s.az.stConfig.authConfig.ClientID)
-	s.assert.Equal("https://"+s.az.stConfig.authConfig.AccountName+".blob.core.windows.net/", s.az.stConfig.authConfig.Endpoint)
+	s.assert.Equal(blobEndpoint(s.az.stConfig.authConfig.AccountName), s.az.stConfig.authConfig.Endpoint)
 	s.assert.Equal(EAuthType.KEY(), s.az.stConfig.authConfig.AuthMode)
 	s.assert.Equal(s.container, s.az.stConfig.container)
 	s.assert.Empty(s.az.stConfig.prefixPath)
@@ -320,8 +320,8 @@ func (s *blockBlobTestSuite) TestModifyEndpoint() {
 	defer s.cleanupTest()
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, dfsEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 
 	err := s.az.storage.TestPipeline()
@@ -330,6 +330,9 @@ func (s *blockBlobTestSuite) TestModifyEndpoint() {
 
 func (s *blockBlobTestSuite) TestNoEndpoint() {
 	defer s.cleanupTest()
+	if storageTestConfigurationParameters.UsePreprod {
+		s.T().Skip("TestNoEndpoint: skipped when use-preprod=true — the default production endpoint is unreachable with this SDK version")
+	}
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
@@ -344,8 +347,8 @@ func (s *blockBlobTestSuite) TestAccountType() {
 	defer s.cleanupTest()
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 
 	val := s.az.storage.IsAccountADLS()
@@ -356,8 +359,8 @@ func (s *blockBlobTestSuite) TestContainerNotFound() {
 	defer s.cleanupTest()
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, "foo")
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, "foo")
 	s.setupTestHelper(config, "foo", false)
 
 	err := s.az.storage.TestPipeline()
@@ -753,8 +756,8 @@ func (s *blockBlobTestSuite) TestReadDirListBlocked() {
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 
 	listBlockedTime := 10
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  block-list-on-mount-sec: %d\n  fail-unsupported-op: true\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container, listBlockedTime)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  block-list-on-mount-sec: %d\n  fail-unsupported-op: true\n",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container, listBlockedTime)
 	s.setupTestHelper(config, s.container, true)
 
 	name := generateDirectoryName()
@@ -1984,8 +1987,8 @@ func (s *blockBlobTestSuite) TestReadLinkError() {
 
 func (s *blockBlobTestSuite) TestGetAttrDir() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -2013,8 +2016,8 @@ func (s *blockBlobTestSuite) TestGetAttrDir() {
 
 func (s *blockBlobTestSuite) TestGetAttrVirtualDir() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
 	s.tearDownTestHelper(false)
 	s.setupTestHelper(vdConfig, s.container, true)
@@ -2040,8 +2043,8 @@ func (s *blockBlobTestSuite) TestGetAttrVirtualDir() {
 
 func (s *blockBlobTestSuite) TestGetAttrVirtualDirSubDir() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
 	s.tearDownTestHelper(false)
 	s.setupTestHelper(vdConfig, s.container, true)
@@ -2076,8 +2079,8 @@ func (s *blockBlobTestSuite) TestGetAttrVirtualDirSubDir() {
 func (s *blockBlobTestSuite) TestGetAttrDirWithCPKEnabled() {
 	defer s.cleanupTest()
 	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, CPKEncryptionKey, CPKEncryptionKeySHA256, storageTestConfigurationParameters.BlockKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), CPKEncryptionKey, CPKEncryptionKeySHA256, storageTestConfigurationParameters.BlockKey, s.container)
 
 	s.tearDownTestHelper(false)
 	s.setupTestHelper(config, s.container, false)
@@ -2096,8 +2099,8 @@ func (s *blockBlobTestSuite) TestGetAttrDirWithCPKEnabled() {
 
 func (s *blockBlobTestSuite) TestGetAttrFile() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -2124,8 +2127,8 @@ func (s *blockBlobTestSuite) TestGetAttrFile() {
 
 func (s *blockBlobTestSuite) TestGetAttrLink() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -2156,8 +2159,8 @@ func (s *blockBlobTestSuite) TestGetAttrLink() {
 
 func (s *blockBlobTestSuite) TestGetAttrFileSize() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -2188,8 +2191,8 @@ func (s *blockBlobTestSuite) TestGetAttrFileSize() {
 
 func (s *blockBlobTestSuite) TestGetAttrFileTime() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -2228,8 +2231,8 @@ func (s *blockBlobTestSuite) TestGetAttrFileTime() {
 
 func (s *blockBlobTestSuite) TestGetAttrError() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -2268,8 +2271,8 @@ func (s *blockBlobTestSuite) TestChmodIgnore() {
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 	name := generateFileName()
 	_, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
@@ -2296,8 +2299,8 @@ func (s *blockBlobTestSuite) TestChownIgnore() {
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 	name := generateFileName()
 	_, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
@@ -2517,7 +2520,7 @@ func (s *blockBlobTestSuite) TestFlushFileUpdateChunkedFile() {
 	s.assert.NoError(err)
 
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize)
-	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
+	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil, nil)
 	s.assert.NoError(err)
 	copy(h.CacheObj.BlockOffsetList.BlockList[1].Data[MB:2*MB+MB], updatedBlock)
 	h.CacheObj.BlockList[1].Flags.Set(common.DirtyBlock)
@@ -2556,7 +2559,7 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 	// truncate block
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize/2)
 	h.CacheObj.BlockOffsetList.BlockList[1].EndIndex = int64(blockSize + blockSize/2)
-	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
+	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil, nil)
 	s.assert.NoError(err)
 	h.CacheObj.BlockList[1].Flags.Set(common.DirtyBlock)
 
@@ -2948,8 +2951,8 @@ func (s *blockBlobTestSuite) TestUpdateConfig() {
 
 func (s *blockBlobTestSuite) TestMD5SetOnUpload() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -2963,8 +2966,8 @@ func (s *blockBlobTestSuite) TestMD5SetOnUpload() {
 			// Setup
 			s.tearDownTestHelper(false) // Don't delete the generated container.
 
-			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n",
-				storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n",
+				storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 			s.setupTestHelper(config, s.container, true)
 
 			name := generateFileName()
@@ -3001,8 +3004,8 @@ func (s *blockBlobTestSuite) TestMD5SetOnUpload() {
 
 func (s *blockBlobTestSuite) TestMD5NotSetOnUpload() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -3016,8 +3019,8 @@ func (s *blockBlobTestSuite) TestMD5NotSetOnUpload() {
 			// Setup
 			s.tearDownTestHelper(false) // Don't delete the generated container.
 
-			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n",
-				storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n",
+				storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 			s.setupTestHelper(config, s.container, true)
 
 			name := generateFileName()
@@ -3049,8 +3052,8 @@ func (s *blockBlobTestSuite) TestMD5NotSetOnUpload() {
 
 func (s *blockBlobTestSuite) TestMD5AutoSetOnUpload() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -3064,8 +3067,8 @@ func (s *blockBlobTestSuite) TestMD5AutoSetOnUpload() {
 			// Setup
 			s.tearDownTestHelper(false) // Don't delete the generated container.
 
-			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n",
-				storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n",
+				storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 			s.setupTestHelper(config, s.container, true)
 
 			name := generateFileName()
@@ -3102,8 +3105,8 @@ func (s *blockBlobTestSuite) TestMD5AutoSetOnUpload() {
 
 func (s *blockBlobTestSuite) TestInvalidateMD5PostUpload() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -3117,8 +3120,8 @@ func (s *blockBlobTestSuite) TestInvalidateMD5PostUpload() {
 			// Setup
 			s.tearDownTestHelper(false) // Don't delete the generated container.
 
-			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
-				storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+				storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 			s.setupTestHelper(config, s.container, true)
 
 			name := generateFileName()
@@ -3158,8 +3161,8 @@ func (s *blockBlobTestSuite) TestInvalidateMD5PostUpload() {
 
 func (s *blockBlobTestSuite) TestValidateAutoMD5OnRead() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -3173,8 +3176,8 @@ func (s *blockBlobTestSuite) TestValidateAutoMD5OnRead() {
 			// Setup
 			s.tearDownTestHelper(false) // Don't delete the generated container.
 
-			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n  validate-md5: true\n",
-				storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n  validate-md5: true\n",
+				storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 			s.setupTestHelper(config, s.container, true)
 
 			name := generateFileName()
@@ -3214,8 +3217,8 @@ func (s *blockBlobTestSuite) TestValidateAutoMD5OnRead() {
 
 func (s *blockBlobTestSuite) TestValidateManualMD5OnRead() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -3229,8 +3232,8 @@ func (s *blockBlobTestSuite) TestValidateManualMD5OnRead() {
 			// Setup
 			s.tearDownTestHelper(false) // Don't delete the generated container.
 
-			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
-				storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+				storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 			s.setupTestHelper(config, s.container, true)
 
 			name := generateFileName()
@@ -3270,8 +3273,8 @@ func (s *blockBlobTestSuite) TestValidateManualMD5OnRead() {
 
 func (s *blockBlobTestSuite) TestInvalidMD5OnRead() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -3285,8 +3288,8 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnRead() {
 			// Setup
 			s.tearDownTestHelper(false) // Don't delete the generated container.
 
-			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
-				storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+				storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 			s.setupTestHelper(config, s.container, true)
 
 			name := generateFileName()
@@ -3330,8 +3333,8 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnRead() {
 
 func (s *blockBlobTestSuite) TestInvalidMD5OnReadNoVaildate() {
 	defer s.cleanupTest()
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	configs := []string{"", vdConfig}
 	for _, c := range configs {
 		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
@@ -3345,8 +3348,8 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnReadNoVaildate() {
 			// Setup
 			s.tearDownTestHelper(false) // Don't delete the generated container.
 
-			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: false\n",
-				storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: false\n",
+				storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 			s.setupTestHelper(config, s.container, true)
 
 			name := generateFileName()
@@ -3392,8 +3395,8 @@ func (s *blockBlobTestSuite) TestDownloadBlobWithCPKEnabled() {
 	s.tearDownTestHelper(false)
 	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
 	s.setupTestHelper(config, s.container, false)
 
 	blobCPKOpt := &blob.CPKInfo{
@@ -3423,7 +3426,7 @@ func (s *blockBlobTestSuite) TestDownloadBlobWithCPKEnabled() {
 	s.assert.Equal(data, fileData)
 
 	buf := make([]byte, len(data))
-	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil)
+	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil, nil)
 	s.assert.NoError(err)
 	s.assert.Equal(data, buf)
 
@@ -3440,8 +3443,8 @@ func (s *blockBlobTestSuite) TestUploadBlobWithCPKEnabled() {
 
 	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, CPKEncryptionKey, CPKEncryptionKeySHA256, storageTestConfigurationParameters.BlockKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), CPKEncryptionKey, CPKEncryptionKeySHA256, storageTestConfigurationParameters.BlockKey, s.container)
 	s.setupTestHelper(config, s.container, false)
 
 	blobCPKOpt := &blob.CPKInfo{
@@ -3636,8 +3639,8 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 func (s *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, truncatedLength int) {
 	defer s.cleanupTest()
 	// Setup
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	// // This is a little janky but required since testify suite does not support running setup or clean up for subtests.
 
 	s.tearDownTestHelper(false)
@@ -3669,8 +3672,8 @@ func (s *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, 
 func (s *blockBlobTestSuite) UtilityFunctionTruncateFileToLarger(size int, truncatedLength int) {
 	defer s.cleanupTest()
 	// Setup
-	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, blobEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	// // This is a little janky but required since testify suite does not support running setup or clean up for subtests.
 
 	s.tearDownTestHelper(false)
@@ -3704,8 +3707,8 @@ func (s *blockBlobTestSuite) TestList() {
 	defer s.cleanupTest()
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, dfsEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 
 	base := generateDirectoryName()
