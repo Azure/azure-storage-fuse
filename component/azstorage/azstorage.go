@@ -478,7 +478,7 @@ func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length
 	}
 
 	length = int(dataLen)
-	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag)
+	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag, options.Layout)
 	if err != nil {
 		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", path, err.Error())
 		length = 0
@@ -689,6 +689,9 @@ func init() {
 
 	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL and Permissions set on file during updates")
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
+
+	blobLayoutAwareRouting := config.AddBoolFlag("blob-layout-aware-routing", false, "Uses GetBlobLayout API to route read requests to the optimal endpoint based on the layout of the blob. Default: False")
+	config.BindPFlag(compName+".blob-layout-aware-routing", blobLayoutAwareRouting)
 
 	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
 	config.BindPFlag(compName+".filter", blobFilter)

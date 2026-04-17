@@ -80,6 +80,10 @@ type File struct {
 	// Updated atomically on write and truncate, read by GetAttr to return
 	// correct mtime while the file is open and modified.
 	lmtNano atomic.Int64
+
+	// Layout hint for the file, obtained from Azure Storage. This can be used to optimize
+	// getBlob calls for the file by targeting specific endpoints or ranges based on the layout.
+	layout *internal.Layout
 }
 
 // createFile creates a new File instance with default values.

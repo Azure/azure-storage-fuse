@@ -119,8 +119,8 @@ func (s *datalakeTestSuite) setupTestHelper(configuration string, container stri
 	}
 	s.container = container
 	if configuration == "" {
-		configuration = fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-			storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+		configuration = fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+			storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container)
 	}
 	s.config = configuration
 	s.assert = assert.New(s.T())
@@ -162,7 +162,7 @@ func (s *datalakeTestSuite) TestDefault() {
 	s.assert.Empty(s.az.stConfig.authConfig.ClientSecret)
 	s.assert.Empty(s.az.stConfig.authConfig.TenantID)
 	s.assert.Empty(s.az.stConfig.authConfig.ClientID)
-	s.assert.Equal("https://"+s.az.stConfig.authConfig.AccountName+".dfs.core.windows.net/", s.az.stConfig.authConfig.Endpoint)
+	s.assert.Equal(dfsEndpoint(s.az.stConfig.authConfig.AccountName), s.az.stConfig.authConfig.Endpoint)
 	s.assert.Equal(EAuthType.KEY(), s.az.stConfig.authConfig.AuthMode)
 	s.assert.Equal(s.container, s.az.stConfig.container)
 	s.assert.Empty(s.az.stConfig.prefixPath)
@@ -183,8 +183,8 @@ func (s *datalakeTestSuite) TestModifyEndpoint() {
 	defer s.cleanupTest()
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, blobEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 
 	err := s.az.storage.TestPipeline()
@@ -193,6 +193,9 @@ func (s *datalakeTestSuite) TestModifyEndpoint() {
 
 func (s *datalakeTestSuite) TestNoEndpoint() {
 	defer s.cleanupTest()
+	if storageTestConfigurationParameters.UsePreprod {
+		s.T().Skip("TestNoEndpoint: skipped when use-preprod=true — the default production endpoint is unreachable with this SDK version")
+	}
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
@@ -207,8 +210,8 @@ func (s *datalakeTestSuite) TestAccountType() {
 	defer s.cleanupTest()
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 
 	val := s.az.storage.IsAccountADLS()
@@ -219,8 +222,8 @@ func (s *datalakeTestSuite) TestFileSystemNotFound() {
 	defer s.cleanupTest()
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, "foo")
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, "foo")
 	s.setupTestHelper(config, "foo", false)
 
 	err := s.az.storage.TestPipeline()
@@ -262,8 +265,8 @@ func (s *datalakeTestSuite) TestFNSOverHNS() {
 	defer s.cleanupTest()
 	// Testing dir and dir/
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n ",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n ",
+		storageTestConfigurationParameters.BlockAccount, dfsEndpoint(storageTestConfigurationParameters.BlockAccount), storageTestConfigurationParameters.BlockKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 
 	var paths = []string{generateDirectoryName(), generateDirectoryName() + "/"}
@@ -307,8 +310,8 @@ func (s *datalakeTestSuite) TestCreateDirWithCPKEnabled() {
 	defer s.cleanupTest()
 	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
 	s.setupTestHelper(config, s.container, false)
 
 	datalakeCPKOpt := &file.CPKInfo{
@@ -670,8 +673,8 @@ func (s *datalakeTestSuite) TestReadDirListBlocked() {
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 
 	listBlockedTime := 10
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  block-list-on-mount-sec: %d\n  fail-unsupported-op: true\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, listBlockedTime)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  block-list-on-mount-sec: %d\n  fail-unsupported-op: true\n",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container, listBlockedTime)
 	s.setupTestHelper(config, s.container, true)
 
 	name := generateDirectoryName()
@@ -725,8 +728,8 @@ func (s *datalakeTestSuite) TestRenameDirWithCPKEnabled() {
 	defer s.cleanupTest()
 	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
 	s.setupTestHelper(config, s.container, false)
 
 	datalakeCPKOpt := &file.CPKInfo{
@@ -1344,8 +1347,8 @@ func (s *datalakeTestSuite) TestRenameFileWithCPKenabled() {
 	defer s.cleanupTest()
 	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
 	s.setupTestHelper(config, s.container, false)
 
 	datalakeCPKOpt := &file.CPKInfo{
@@ -2051,8 +2054,8 @@ func (s *datalakeTestSuite) TestChownIgnore() {
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 	name := generateFileName()
 	_, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
@@ -2198,7 +2201,7 @@ func (s *datalakeTestSuite) TestFlushFileUpdateChunkedFile() {
 	_, err = rand.Read(updatedBlock)
 	s.assert.NoError(err)
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize)
-	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
+	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil, nil)
 	s.assert.NoError(err)
 	copy(h.CacheObj.BlockOffsetList.BlockList[1].Data[MB:2*MB+MB], updatedBlock)
 	h.CacheObj.BlockList[1].Flags.Set(common.DirtyBlock)
@@ -2238,7 +2241,7 @@ func (s *datalakeTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 	// truncate block
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize/2)
 	h.CacheObj.BlockOffsetList.BlockList[1].EndIndex = int64(blockSize + blockSize/2)
-	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
+	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil, nil)
 	s.assert.NoError(err)
 	h.CacheObj.BlockList[1].Flags.Set(common.DirtyBlock)
 
@@ -2633,8 +2636,8 @@ func (s *datalakeTestSuite) TestDownloadWithCPKEnabled() {
 	s.tearDownTestHelper(false)
 	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
 	s.setupTestHelper(config, s.container, false)
 
 	blobCPKOpt := &blob.CPKInfo{
@@ -2669,7 +2672,7 @@ func (s *datalakeTestSuite) TestDownloadWithCPKEnabled() {
 	s.assert.Equal(data, fileData)
 
 	buf := make([]byte, len(data))
-	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil)
+	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil, nil)
 	s.assert.NoError(err)
 	s.assert.Equal(data, buf)
 
@@ -2685,8 +2688,8 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	s.tearDownTestHelper(false)
 
 	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
 	s.setupTestHelper(config, s.container, false)
 
 	datalakeCPKOpt := &file.CPKInfo{
@@ -2805,8 +2808,8 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
 func (s *datalakeTestSuite) TestPermissionPreservationWithFlag() {
 	defer s.cleanupTest()
 	// Setup
-	conf := fmt.Sprintf("azstorage:\n  preserve-acl: true\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	conf := fmt.Sprintf("azstorage:\n  preserve-acl: true\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container)
 	s.setupTestHelper(conf, s.container, false)
 
 	name := generateFileName()
@@ -2958,8 +2961,8 @@ func (s *datalakeTestSuite) TestList() {
 	defer s.cleanupTest()
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, dfsEndpoint(storageTestConfigurationParameters.AdlsAccount), storageTestConfigurationParameters.AdlsKey, s.container)
 	s.setupTestHelper(config, s.container, false)
 
 	base := generateDirectoryName()

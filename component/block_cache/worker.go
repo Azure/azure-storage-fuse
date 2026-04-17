@@ -202,6 +202,7 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 		Offset: int64(uint64(block.idx) * bc.blockSize),
 		Data:   bufDesc.buf,
 		Size:   atomic.LoadInt64(&block.file.size),
+		Layout: block.file.layout,
 	})
 	if err != nil {
 		log.Err("BlockCache::downloadBlock: ReadInBuffer failed for file %s block idx %d: %v",
