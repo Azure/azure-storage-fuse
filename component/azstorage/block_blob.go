@@ -52,6 +52,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -480,12 +481,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::getAttrUsingRest : name %s", name)
 
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
-	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
-		CPKInfo: bb.blobCPKOpt,
-	})
-
-	if err != nil {
+	parseError := func(err error) (attr *internal.ObjAttr, retErr error) {
 		serr := storeBlobErrToErr(err)
 		switch serr {
 		case ErrFileNotFound:
@@ -497,6 +493,51 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 			log.Err("BlockBlob::getAttrUsingRest : Failed to get blob properties for %s [%s]", name, err.Error())
 			return attr, err
 		}
+	}
+
+	if bb.Config.isBlobLayoutAwareRoutingEnabled {
+		// Get the properties from layout call.
+		layoutResp, err := bb.getBlobLayout(name)
+		sc := bloberror.GetStatusCode(err)
+		if err != nil {
+			if sc == 400 || sc >= 500 { // fall back to old behavior if service doesn't support layout or layout wasn't fetched
+				log.Warn("BlockBlob::getAttrUsingRest : Layout call failed for %s with error [%v]. Falling back to get properties call", name, err)
+			} else { // fail the operation
+				return parseError(err)
+			}
+		} else {
+			// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
+			attr = &internal.ObjAttr{
+				Path:   name, // We don't need to strip the prefixPath here since we pass the input name
+				Name:   filepath.Base(name),
+				Size:   layoutResp.contentLength,
+				Mode:   0,
+				Mtime:  *layoutResp.lmt,
+				Atime:  *layoutResp.lmt,
+				Ctime:  *layoutResp.lmt,
+				Crtime: *layoutResp.lmt,
+				Flags:  internal.NewFileBitMap(),
+				MD5:    layoutResp.contentMD5,
+				ETag:   sanitizeEtag(layoutResp.eTag),
+				Layout: layoutResp.layout,
+			}
+
+			parseMetadata(attr, layoutResp.metadata)
+
+			// We do not get permissions as part of this getAttr call hence setting the flag to true
+			attr.Flags.Set(internal.PropFlagModeDefault)
+
+			return attr, nil
+		}
+	}
+
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		CPKInfo: bb.blobCPKOpt,
+	})
+
+	if err != nil {
+		return parseError(err)
 	}
 
 	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
@@ -590,6 +631,19 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		}) {
 			log.Debug("BlockBlob::GetAttr : Filtered out %s", name)
 			return nil, syscall.ENOENT
+		}
+	}
+
+	if bb.Config.isBlobLayoutAwareRoutingEnabled &&
+		attr != nil &&
+		attr.Layout == nil &&
+		attr.Mode&os.ModeDir == 0 {
+		// We should make an additional layout call if the attribute is fetched through list API.
+		layoutResp, err := bb.getBlobLayout(name)
+		if err != nil {
+			log.Err("BlockBlob::GetAttr : Failed to get blob layout for %s [%v]", name, err)
+		} else {
+			attr.Layout = layoutResp.layout
 		}
 	}
 
@@ -951,7 +1005,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, length int64) ([]byte
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
 // Specifying "0" len will download the entire blob.
-func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error {
+func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string, layout *internal.Layout) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	if etag != nil {
 		*etag = ""
@@ -962,6 +1016,9 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
+	endpoint := layout.GetIdealEndpoint(offset)
+	ctx = WithLayoutEndpoint(ctx, endpoint)
+
 	opt := &blob.DownloadStreamOptions{
 		Range: blob.HTTPRange{
 			Offset: offset,
@@ -970,6 +1027,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 		CPKInfo: bb.blobCPKOpt,
 	}
 
+	// downloadResponse, err := blobClient.DownloadStream(WithLayoutEndpoint(ctx, endpoint), opt)
 	downloadResponse, err := blobClient.DownloadStream(ctx, opt)
 
 	if err != nil {
@@ -1314,7 +1372,7 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 				// create the new block id for this block otherwise it would corrupt the state of the blob.
 				lastBlock.Id = common.GetBlockID(blockList.BlockIdLength)
 
-				err := bb.ReadInBuffer(options.Name, lastBlock.StartIndex, lastBlock.EndIndex-lastBlock.StartIndex, lastBlock.Data, nil)
+				err := bb.ReadInBuffer(options.Name, lastBlock.StartIndex, lastBlock.EndIndex-lastBlock.StartIndex, lastBlock.Data, nil, nil)
 				if err != nil {
 					log.Err("BlockBlob::createNewBlocksTruncate : Failed to adjust last block %s [%v]", options.Name, err)
 					return err
@@ -1370,7 +1428,7 @@ func (bb *BlockBlob) removeBlocksTruncate(blockList *common.BlockOffsetList, opt
 		// create the new block id for this block otherwise it would corrupt the state of the blob.
 		blk.Id = common.GetBlockID(blockList.BlockIdLength)
 
-		err := bb.ReadInBuffer(options.Name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data, nil)
+		err := bb.ReadInBuffer(options.Name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data, nil, nil)
 		if err != nil {
 			log.Err("BlockBlob::removeBlocksTruncate : Failed to remove blocks %s [%v]", options.Name, err)
 			return err
@@ -1441,7 +1499,7 @@ func (bb *BlockBlob) TruncateFileWithoutBlocks(options *internal.TruncateFileOpt
 
 	if options.OldSize > 0 {
 		// Read the file
-		err = bb.ReadInBuffer(options.Name, 0, min(options.NewSize, options.OldSize), buf, nil)
+		err = bb.ReadInBuffer(options.Name, 0, min(options.NewSize, options.OldSize), buf, nil, nil)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFileWithoutBlocks : Failed to read small file %s[%v]", options.Name, err)
 			return err
@@ -1481,7 +1539,7 @@ func (bb *BlockBlob) TruncateFileUsingBlocks(options *internal.TruncateFileOptio
 		buf := make([]byte, options.OldSize)
 
 		// Read the file
-		err = bb.ReadInBuffer(options.Name, 0, options.OldSize, buf, nil)
+		err = bb.ReadInBuffer(options.Name, 0, options.OldSize, buf, nil, nil)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFileUsingBlocks : Failed to read small file %s[%v]", options.Name, err)
 			return err
@@ -1605,7 +1663,7 @@ func (bb *BlockBlob) Write(options *internal.WriteFileOptions) error {
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 		if !appendOnly {
 			// fetch the blocks that will be impacted by the new changes so we can overwrite them
-			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer, nil)
+			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer, nil, nil)
 			if err != nil {
 				log.Err("BlockBlob::Write : Failed to read data in buffer %s [%s]", name, err.Error())
 			}
@@ -1851,4 +1909,22 @@ func (bb *BlockBlob) SetFilter(filter string) error {
 
 	bb.Config.filter = &blobfilter.BlobFilter{}
 	return bb.Config.filter.Configure(filter)
+}
+
+func (bb *BlockBlob) getBlobLayout(fileName string) (*layoutResp, error) {
+	log.Trace("BlockBlob::GetBlobLayout : name %s", fileName)
+
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, fileName))
+
+	layoutResp, err := getLayout(context.Background(),
+		blobClient.GetLayoutPager(&blob.GetLayoutOptions{
+			CPKInfo: bb.blobCPKOpt,
+		}))
+	if err != nil {
+		log.Err("BlockBlob::GetBlobLayout : Failed to get blob layout for blob %s [%s]", fileName, err.Error())
+		return nil, err
+	}
+
+	log.Debug("BlockBlob::GetBlobLayout : Blob layout for blob %s, rangesLen: %d, is %v", fileName, len(layoutResp.layout.LayoutRanges), layoutResp)
+	return layoutResp, err
 }

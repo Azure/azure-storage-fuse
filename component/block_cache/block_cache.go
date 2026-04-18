@@ -624,6 +624,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	if firstOpen {
+		f.layout = attr.Layout
+	}
+
 	handle.IFObj = &blockCacheHandle{
 		file:            f,
 		patternDetector: newPatternDetector(),

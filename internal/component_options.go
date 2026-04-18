@@ -113,6 +113,7 @@ type ReadInBufferOptions struct {
 	Data   []byte
 	Path   string
 	Size   int64
+	Layout *Layout
 }
 
 type WriteFileOptions struct {
