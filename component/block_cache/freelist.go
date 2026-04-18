@@ -239,8 +239,12 @@ func (fl *freeListType) resetBufferDescriptors() {
 			fl.lastFreeBuffer = bufDesc.bufIdx
 		} else {
 			// Append to the end of free list.
-			fl.bufDescriptors[fl.lastFreeBuffer].nxtFreeBuffer = bufDesc.bufIdx
-			fl.lastFreeBuffer = bufDesc.bufIdx
+			// fl.bufDescriptors[fl.lastFreeBuffer].nxtFreeBuffer = bufDesc.bufIdx
+			// fl.lastFreeBuffer = bufDesc.bufIdx
+
+			// Append to start of free list to improve cache locality for recently used buffers.
+			bufDesc.nxtFreeBuffer = fl.firstFreeBuffer
+			fl.firstFreeBuffer = bufDesc.bufIdx
 		}
 		fl.mutex.Unlock()
 
