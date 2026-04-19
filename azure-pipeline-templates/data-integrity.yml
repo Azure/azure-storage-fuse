@@ -88,6 +88,16 @@ steps:
       parameters:
         copy_data: true
         check_consistency: true
+
+    - script: |
+        test/scripts/dd.sh $(MOUNT_DIR)
+      displayName: 'dd tests'
+
+    - script: |
+        test/scripts/extended_dd.sh
+      displayName: 'extended dd tests'
+      env:
+        FUSE_MOUNT_POINT: $(MOUNT_DIR)
   
     # Mount in Block Cache direct-io
     - template: 'mount.yml'
@@ -100,6 +110,16 @@ steps:
       parameters:
         copy_data: true
         check_consistency: true
+
+    - script: |
+        test/scripts/dd.sh $(MOUNT_DIR)
+      displayName: 'dd tests'
+
+    - script: |
+        test/scripts/extended_dd.sh
+      displayName: 'extended dd tests'
+      env:
+        FUSE_MOUNT_POINT: $(MOUNT_DIR)
   
     # Mount in Block Cache read-only
     - template: 'mount.yml'
@@ -161,11 +181,11 @@ steps:
         check_consistency: true
 
   # -----------------------------------------------------------------------------
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathToPublish: blobfuse2-logs.txt
-      artifactName: 'blobfuse_block_cache.txt'
-    condition: failed()
+  # - task: PublishBuildArtifacts@1
+  #   inputs:
+  #     pathToPublish: blobfuse2-logs.txt
+  #     artifactName: 'blobfuse_block_cache.txt'
+  #   condition: failed()
 
   - script: |
       tail -n 5000 blobfuse2-logs.txt
