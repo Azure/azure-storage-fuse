@@ -435,7 +435,8 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 
 	srcDirPresent := false
 	pager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
-		Prefix: to.Ptr(filepath.Join(bb.Config.prefixPath, source) + "/"),
+		Prefix:         to.Ptr(filepath.Join(bb.Config.prefixPath, source) + "/"),
+		UseArrowFormat: to.Ptr(true),
 	})
 	for pager.More() {
 		listBlobResp, err := pager.NextPage(context.Background())
@@ -616,10 +617,11 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 
 	// Get a result segment starting with the blob indicated by the current Marker.
 	pager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
-		Marker:     marker,
-		MaxResults: &count,
-		Prefix:     &listPath,
-		Include:    bb.listDetails,
+		Marker:         marker,
+		MaxResults:     &count,
+		Prefix:         &listPath,
+		Include:        bb.listDetails,
+		UseArrowFormat: to.Ptr(true),
 	})
 
 	listBlob, err := pager.NextPage(context.Background())
