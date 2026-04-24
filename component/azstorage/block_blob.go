@@ -201,9 +201,10 @@ func (bb *BlockBlob) TestPipeline() error {
 	}
 
 	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
-		MaxResults: to.Ptr((int32)(2)),
-		Prefix:     &bb.Config.prefixPath,
-		Include:    includeFields,
+		MaxResults:     to.Ptr((int32)(2)),
+		Prefix:         &bb.Config.prefixPath,
+		Include:        includeFields,
+		UseArrowFormat: to.Ptr(true),
 	})
 
 	// we are just validating the auth mode used. So, no need to iterate over the pages
@@ -231,9 +232,10 @@ func (bb *BlockBlob) IsAccountADLS() bool {
 	includeFields.Permissions = true // for FNS account this property will return back error
 
 	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
-		MaxResults: to.Ptr((int32)(2)),
-		Prefix:     &bb.Config.prefixPath,
-		Include:    includeFields,
+		MaxResults:     to.Ptr((int32)(2)),
+		Prefix:         &bb.Config.prefixPath,
+		Include:        includeFields,
+		UseArrowFormat: to.Ptr(true),
 	})
 
 	// we are just validating the auth mode used. So, no need to iterate over the pages
