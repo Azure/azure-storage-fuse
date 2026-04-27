@@ -19,6 +19,7 @@ import (
 	"time"
 
 	pb "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client/proto"
+	"golang.org/x/sync/errgroup"
 )
 
 // Client is a distributed cache client with chunked storage, connection pooling,
@@ -129,7 +130,50 @@ func (c *Client) DownloadWithSizePartial(ctx context.Context, filename string, f
 		o(dcfg)
 	}
 
-	return c.downloadChunkedPartial(ctx, filename, fileSize, w, dcfg)
+	plans, err := c.planChunks(filename, fileSize)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(plans) == 0 {
+		return nil, nil
+	}
+
+	var mu sync.Mutex
+	var chunkErrors []ChunkError
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(c.cfg.maxParallelOps)
+
+	for i := range plans {
+		plan := plans[i]
+		g.Go(func() error {
+			buf := c.getBuffer()
+			n, _, dlErr := c.downloadSingleChunkToBuffer(gctx, plan, buf, dcfg)
+			if dlErr != nil {
+				c.putBuffer(buf)
+				if dlErr == ErrNotFoundGotLock || dlErr == ErrNotFoundAlreadyLocked || dlErr == ErrNotFound {
+					mu.Lock()
+					chunkErrors = append(chunkErrors, ChunkError{
+						Offset: plan.offset,
+						Size:   plan.size,
+						Err:    dlErr,
+					})
+					mu.Unlock()
+					return nil
+				}
+				return dlErr
+			}
+			_, writeErr := w.WriteAt(buf[:n], plan.offset)
+			c.putBuffer(buf)
+			return writeErr
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return chunkErrors, nil
 }
 
 // DownloadChunk retrieves a single chunk at the given offset.

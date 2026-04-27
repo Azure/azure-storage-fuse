@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 
 	pb "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client/proto"
 	"golang.org/x/sync/errgroup"
@@ -447,56 +446,4 @@ func protoToByteMap(m map[string][]byte) map[string][]byte {
 		out[k] = v
 	}
 	return out
-}
-
-// downloadChunkedPartial downloads all chunks of a file but collects per-chunk
-// miss errors instead of aborting on the first failure. Successfully downloaded
-// chunks are written to w at their correct offsets. Chunks that fail with
-// ErrNotFoundGotLock, ErrNotFoundAlreadyLocked, or ErrNotFound are returned as
-// ChunkError entries so the caller can handle them individually.
-func (c *Client) downloadChunkedPartial(ctx context.Context, filePath string, fileSize int64, w io.WriterAt, dcfg *downloadConfig) ([]ChunkError, error) {
-	plans, err := c.planChunks(filePath, fileSize)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(plans) == 0 {
-		return nil, nil
-	}
-
-	var mu sync.Mutex
-	var chunkErrors []ChunkError
-
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(c.cfg.maxParallelOps)
-
-	for i := range plans {
-		plan := plans[i]
-		g.Go(func() error {
-			buf := c.getBuffer()
-			n, _, err := c.downloadSingleChunkToBuffer(gctx, plan, buf, dcfg)
-			if err != nil {
-				c.putBuffer(buf)
-				if err == ErrNotFoundGotLock || err == ErrNotFoundAlreadyLocked || err == ErrNotFound {
-					mu.Lock()
-					chunkErrors = append(chunkErrors, ChunkError{
-						Offset: plan.offset,
-						Size:   plan.size,
-						Err:    err,
-					})
-					mu.Unlock()
-					return nil
-				}
-				return err
-			}
-			_, writeErr := w.WriteAt(buf[:n], plan.offset)
-			c.putBuffer(buf)
-			return writeErr
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	return chunkErrors, nil
 }
