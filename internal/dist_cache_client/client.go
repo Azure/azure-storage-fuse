@@ -115,6 +115,23 @@ func (c *Client) DownloadWithSize(ctx context.Context, filename string, fileSize
 	return c.downloadChunked(ctx, filename, fileSize, w, dcfg)
 }
 
+// DownloadWithSizePartial retrieves a file but returns per-chunk miss errors
+// instead of failing on the first cache miss. Successfully downloaded chunks
+// are written to w at their correct offsets. The caller can handle individual
+// failed chunks (e.g., fetch from origin, poll for locked chunks).
+func (c *Client) DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...DownloadOption) ([]ChunkError, error) {
+	if err := c.checkClosed(); err != nil {
+		return nil, err
+	}
+
+	dcfg := &downloadConfig{}
+	for _, o := range opts {
+		o(dcfg)
+	}
+
+	return c.downloadChunkedPartial(ctx, filename, fileSize, w, dcfg)
+}
+
 // DownloadChunk retrieves a single chunk at the given offset.
 // When chunkSize-aligned, this is a 1:1 mapping to one distributed cache entry.
 // Ideal for block_cache integration where each ReadInBuffer = one chunk.

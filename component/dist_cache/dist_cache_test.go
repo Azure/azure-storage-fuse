@@ -21,9 +21,10 @@ import (
 
 // mockDCacheClient implements dcacheClient for testing.
 type mockDCacheClient struct {
-	store      map[string][]byte
-	downloadFn func(ctx context.Context, filename string, fileSize int64, w io.Writer, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error)
-	chunkFn    func(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
+	store             map[string][]byte
+	downloadFn        func(ctx context.Context, filename string, fileSize int64, w io.Writer, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error)
+	downloadPartialFn func(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) ([]dcache.ChunkError, error)
+	chunkFn           func(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 }
 
 func newMockDCacheClient() *mockDCacheClient {
@@ -52,6 +53,42 @@ func (m *mockDCacheClient) DownloadWithSize(ctx context.Context, filename string
 		return nil, err
 	}
 	return &dcache.FileMetadata{Size: int64(n)}, nil
+}
+
+func (m *mockDCacheClient) DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+	if m.downloadPartialFn != nil {
+		return m.downloadPartialFn(ctx, filename, fileSize, w, opts...)
+	}
+	// Forward to downloadFn for backward compatibility with existing tests.
+	if m.downloadFn != nil {
+		ow := &offsetWriter{w: w}
+		_, err := m.downloadFn(ctx, filename, fileSize, ow, opts...)
+		if err == nil {
+			return nil, nil
+		}
+		if err == dcache.ErrNotFoundGotLock || err == dcache.ErrNotFoundAlreadyLocked || err == dcache.ErrNotFound {
+			return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: err}}, nil
+		}
+		return nil, err
+	}
+	data, ok := m.store[filename]
+	if !ok {
+		return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: dcache.ErrNotFound}}, nil
+	}
+	w.WriteAt(data, 0)
+	return nil, nil
+}
+
+// offsetWriter adapts io.WriterAt to io.Writer by tracking the current position.
+type offsetWriter struct {
+	w      io.WriterAt
+	offset int64
+}
+
+func (ow *offsetWriter) Write(p []byte) (int, error) {
+	n, err := ow.w.WriteAt(p, ow.offset)
+	ow.offset += int64(n)
+	return n, err
 }
 
 func (m *mockDCacheClient) DownloadChunk(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error) {
@@ -115,6 +152,7 @@ type mockNextComponent struct {
 
 	copyToFileData   []byte // data written on CopyToFile
 	readInBufferData []byte // data returned by ReadInBuffer
+	readInBufferFn   func(options *internal.ReadInBufferOptions) (int, error)
 }
 
 func (m *mockNextComponent) CopyToFile(options internal.CopyToFileOptions) error {
@@ -132,6 +170,9 @@ func (m *mockNextComponent) CopyFromFile(_ internal.CopyFromFileOptions) error {
 
 func (m *mockNextComponent) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	m.readInBufferCalled++
+	if m.readInBufferFn != nil {
+		return m.readInBufferFn(options)
+	}
 	if m.readInBufferData != nil {
 		n := copy(options.Data, m.readInBufferData)
 		return n, nil
@@ -207,7 +248,7 @@ func TestCopyToFile_L2Hit(t *testing.T) {
 
 func TestCopyToFile_L2MissGotLock(t *testing.T) {
 	mock := newMockDCacheClient()
-	next := &mockNextComponent{copyToFileData: []byte("data from azure")}
+	next := &mockNextComponent{readInBufferData: []byte("data from azure")}
 	dc := newTestDistCache(mock, next)
 
 	// Simulate L2 miss with lock acquired
@@ -227,7 +268,8 @@ func TestCopyToFile_L2MissGotLock(t *testing.T) {
 	})
 
 	assert.NoError(t, err)
-	assert.Equal(t, 1, next.copyToFileCalled, "should call azstorage on L2 miss")
+	assert.Equal(t, 1, next.readInBufferCalled, "should call ReadInBuffer for failed chunk")
+	assert.Equal(t, 0, next.copyToFileCalled, "should NOT call CopyToFile for the entire file")
 }
 
 func TestCopyToFile_BypassOnError(t *testing.T) {
@@ -478,20 +520,26 @@ func TestPriority(t *testing.T) {
 
 func TestPollUntilCached_SucceedsOnRetry(t *testing.T) {
 	mock := newMockDCacheClient()
-	next := &mockNextComponent{copyToFileData: []byte("azure data")}
+	next := &mockNextComponent{readInBufferData: []byte("azure data")}
 	dc := newTestDistCache(mock, next)
 
-	// First call (from CopyToFile with lock): ErrNotFoundAlreadyLocked.
-	// Second call (from pollUntilCached retry): data is available.
-	callCount := 0
 	testData := []byte("cached after retry")
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, w io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
-		callCount++
-		if callCount == 1 {
-			return nil, dcache.ErrNotFoundAlreadyLocked
+
+	// DownloadWithSizePartial: all chunks miss (locked by another node).
+	mock.downloadPartialFn = func(_ context.Context, _ string, fileSize int64, _ io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: dcache.ErrNotFoundAlreadyLocked}}, nil
+	}
+
+	// First DownloadChunk call (from pollUntilChunkCached): still locked.
+	// Second call: data is available.
+	chunkCallCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, buf []byte, _ ...dcache.DownloadOption) (int, error) {
+		chunkCallCount++
+		if chunkCallCount == 1 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
 		}
-		w.Write(testData)
-		return &dcache.FileMetadata{Size: int64(len(testData))}, nil
+		n := copy(buf, testData)
+		return n, nil
 	}
 
 	f, err := os.CreateTemp("", "dcache-poll-*")
@@ -602,4 +650,78 @@ func TestPollUntilCached_ContextCancellation(t *testing.T) {
 	_, err = dc.pollUntilCached(ctx, "test/cancel.txt", 1024, f)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestCopyToFile_ChunkLevelGotLock_MultipleChunks(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	chunkA := []byte("chunk-A-data-here!")
+	chunkB := []byte("chunk-B-data-here!")
+
+	// Return correct data for each offset via ReadInBuffer
+	next.readInBufferFn = func(options *internal.ReadInBufferOptions) (int, error) {
+		if options.Offset == 0 {
+			return copy(options.Data, chunkA), nil
+		}
+		return copy(options.Data, chunkB), nil
+	}
+
+	// Chunk 0 is cached, chunk 1 misses with GotLock
+	mock.downloadPartialFn = func(_ context.Context, _ string, _ int64, w io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		w.WriteAt(chunkA, 0) // chunk 0 succeeds
+		return []dcache.ChunkError{{Offset: int64(len(chunkA)), Size: int64(len(chunkB)), Err: dcache.ErrNotFoundGotLock}}, nil
+	}
+
+	f, err := os.CreateTemp("", "dcache-chunk-gotlock-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	err = dc.CopyToFile(internal.CopyToFileOptions{
+		Name:  "test/multi-chunk.txt",
+		Count: int64(len(chunkA) + len(chunkB)),
+		File:  f,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, next.readInBufferCalled, "should only call ReadInBuffer for the missing chunk")
+
+	// Verify file contents: chunk A from cache, chunk B from Azure
+	f.Seek(0, 0)
+	got := make([]byte, len(chunkA)+len(chunkB))
+	n, _ := f.Read(got)
+	assert.Equal(t, len(chunkA)+len(chunkB), n)
+	assert.Equal(t, append(chunkA, chunkB...), got)
+}
+
+func TestCopyToFile_ChunkPollTimeout_FallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{readInBufferData: []byte("azure-fallback")}
+	dc := newTestDistCache(mock, next)
+
+	// DownloadWithSizePartial: chunk locked by another node
+	mock.downloadPartialFn = func(_ context.Context, _ string, fileSize int64, _ io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: dcache.ErrNotFoundAlreadyLocked}}, nil
+	}
+
+	// DownloadChunk always returns locked (simulates poll timeout)
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, dcache.ErrNotFoundAlreadyLocked
+	}
+
+	f, err := os.CreateTemp("", "dcache-chunk-timeout-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	err = dc.CopyToFile(internal.CopyToFileOptions{
+		Name:  "test/chunk-timeout.txt",
+		Count: int64(len("azure-fallback")),
+		File:  f,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to ReadInBuffer after poll timeout")
+	assert.Equal(t, 0, next.copyToFileCalled, "should NOT call CopyToFile for the entire file")
 }
