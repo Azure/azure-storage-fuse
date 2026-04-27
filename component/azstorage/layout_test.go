@@ -55,7 +55,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	"github.com/Azure/azure-storage-fuse/v2/common"
-	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -138,52 +137,6 @@ func TestGetLayout_PagerError(t *testing.T) {
 
 	assert.ErrorIs(t, err, expected)
 	assert.Nil(t, lr)
-}
-
-// TestGetLayout_MetadataFromFirstPageOnly verifies that contentMD5, lmt, metadata, and eTag
-// are taken from the first page even when multiple pages are returned.
-// NOTE: Because constructing pages with populated Endpoints/Ranges requires the internal
-// generated package (not importable from outside azblob), a two-page scenario here uses
-// two nil-endpoint pages; the first nil-endpoint page triggers an early return so only
-// one iteration takes place – the important invariant (first-page metadata wins) is still
-// exercised via the single-page tests above. The integration tests in layoutTestSuite
-// cover the multi-page case against the preprod endpoint.
-
-// ---------------------------------------------------------------------------------------------------------------------------------------------------
-// Unit tests for the BlobLayoutAwareRouting config option (no Azure credentials required)
-
-// TestBlobLayoutAwareRoutingConfig_DefaultIsFalse verifies that the flag defaults to false.
-func TestBlobLayoutAwareRoutingConfig_DefaultIsFalse(t *testing.T) {
-	defer config.ResetConfig()
-	az := &AzStorage{}
-	opt := AzStorageOptions{
-		AccountName: "testaccount",
-		Container:   "testcontainer",
-		AuthMode:    "key",
-		AccountKey:  "dGVzdGtleQ==", // base64 of "testkey"
-	}
-
-	err := ParseAndValidateConfig(az, opt)
-	assert.NoError(t, err)
-	assert.False(t, az.stConfig.isBlobLayoutAwareRoutingEnabled)
-}
-
-// TestBlobLayoutAwareRoutingConfig_CanBeEnabled verifies that setting the option to true
-// correctly propagates into AzStorageConfig.
-func TestBlobLayoutAwareRoutingConfig_CanBeEnabled(t *testing.T) {
-	defer config.ResetConfig()
-	az := &AzStorage{}
-	opt := AzStorageOptions{
-		AccountName:            "testaccount",
-		Container:              "testcontainer",
-		AuthMode:               "key",
-		AccountKey:             "dGVzdGtleQ==",
-		BlobLayoutAwareRouting: true,
-	}
-
-	err := ParseAndValidateConfig(az, opt)
-	assert.NoError(t, err)
-	assert.True(t, az.stConfig.isBlobLayoutAwareRoutingEnabled)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------

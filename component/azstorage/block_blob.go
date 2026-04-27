@@ -99,9 +99,10 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	}
 
 	bb.downloadOptions = &blob.DownloadFileOptions{
-		BlockSize:   bb.Config.blockSize,
-		Concurrency: bb.Config.maxConcurrency,
-		CPKInfo:     bb.blobCPKOpt,
+		EnableLayoutAwareRouting: bb.Config.isBlobLayoutAwareRoutingEnabled,
+		BlockSize:                bb.Config.blockSize,
+		Concurrency:              bb.Config.maxConcurrency,
+		CPKInfo:                  bb.blobCPKOpt,
 	}
 
 	bb.listDetails = container.ListBlobsInclude{

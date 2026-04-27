@@ -144,8 +144,6 @@ type AzConnection interface {
 	StageBlock(string, []byte, string) error
 	CommitBlocks(string, []string, *string) error
 
-	// GetBlobLayout(string) (*layout, error)
-
 	UpdateServiceClient(_, _ string) error
 
 	SetFilter(string) error
