@@ -75,6 +75,7 @@ const dirtyTTL = 10 * time.Second
 type dcacheClient interface {
 	Upload(ctx context.Context, filename string, data io.Reader, size int64, opts ...dcache.UploadOption) error
 	DownloadWithSize(ctx context.Context, filename string, fileSize int64, w io.Writer, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error)
+	DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) ([]dcache.ChunkError, error)
 	DownloadChunk(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 	UploadChunk(ctx context.Context, filename string, offset int64, data []byte, opts ...dcache.UploadOption) error
 	Delete(ctx context.Context, filename string, fileSize int64) error
@@ -234,44 +235,53 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 
 	ctx := context.Background()
 
-	// Try distributed cache with lock-on-miss enabled
-	_, err := dc.client.DownloadWithSize(ctx, options.Name, options.Count, options.File,
+	// Try distributed cache with lock-on-miss enabled, collecting per-chunk misses
+	chunkErrors, err := dc.client.DownloadWithSizePartial(ctx, options.Name, options.Count, options.File,
 		dcache.WithLock(true))
-	if err == nil {
+	if err != nil {
+		if dc.bypassOnError {
+			log.Warn("DistCache::CopyToFile : error, bypassing: %v", err)
+			return dc.NextComponent().CopyToFile(options)
+		}
+		return err
+	}
+
+	if len(chunkErrors) == 0 {
 		log.Debug("DistCache::CopyToFile : L2 hit %s", options.Name)
 		return nil
 	}
 
-	if err == dcache.ErrNotFoundGotLock {
-		// We own this miss — download from Azure via azstorage
-		log.Debug("DistCache::CopyToFile : L2 miss (got lock) %s", options.Name)
-		err = dc.NextComponent().CopyToFile(options)
-		if err != nil {
-			return err
+	// Handle per-chunk cache misses individually
+	for _, ce := range chunkErrors {
+		switch ce.Err {
+		case dcache.ErrNotFoundGotLock:
+			// We own this chunk's miss — download from Azure and populate cache
+			log.Debug("DistCache::CopyToFile : L2 chunk miss (got lock) %s offset=%d", options.Name, ce.Offset)
+			if err := dc.fetchChunkFromRemote(options, ce.Offset, ce.Size, true); err != nil {
+				return err
+			}
+
+		case dcache.ErrNotFoundAlreadyLocked:
+			// Another node is fetching this chunk — poll until cached
+			log.Debug("DistCache::CopyToFile : L2 chunk miss (locked) %s offset=%d, polling", options.Name, ce.Offset)
+			if err := dc.pollUntilChunkCached(ctx, options, ce.Offset, ce.Size); err != nil {
+				// Poll timed out — fall through to Azure for this chunk
+				log.Debug("DistCache::CopyToFile : chunk poll timeout %s offset=%d, falling through", options.Name, ce.Offset)
+				if err := dc.fetchChunkFromRemote(options, ce.Offset, ce.Size, false); err != nil {
+					return err
+				}
+			}
+
+		default:
+			// ErrNotFound or other recoverable miss — download from Azure
+			log.Debug("DistCache::CopyToFile : L2 chunk miss %s offset=%d", options.Name, ce.Offset)
+			if err := dc.fetchChunkFromRemote(options, ce.Offset, ce.Size, false); err != nil {
+				return err
+			}
 		}
-		// Populate the distributed cache for other nodes (best-effort, async)
-		go dc.populateCache(options.Name, options.File.Name())
-		return nil
 	}
 
-	if err == dcache.ErrNotFoundAlreadyLocked {
-		// Another node is fetching — retry with backoff
-		log.Debug("DistCache::CopyToFile : L2 miss (locked) %s, polling", options.Name)
-		meta, pollErr := dc.pollUntilCached(ctx, options.Name, options.Count, options.File)
-		if pollErr == nil && meta != nil {
-			return nil
-		}
-		// Timeout — fall through to azstorage
-		log.Debug("DistCache::CopyToFile : poll timeout %s, falling through", options.Name)
-		return dc.NextComponent().CopyToFile(options)
-	}
-
-	// Other errors
-	if dc.bypassOnError {
-		log.Warn("DistCache::CopyToFile : error, bypassing: %v", err)
-		return dc.NextComponent().CopyToFile(options)
-	}
-	return err
+	return nil
 }
 
 // --- Write path (file_cache) ---
@@ -406,6 +416,71 @@ func (dc *DistCache) TruncateFile(options internal.TruncateFileOptions) error {
 }
 
 // --- Internal helpers ---
+
+// fetchChunkFromRemote downloads a single chunk from Azure via the next component
+// and writes it to the file at the correct offset. If populateCache is true,
+// the chunk is also uploaded to the distributed cache asynchronously.
+func (dc *DistCache) fetchChunkFromRemote(options internal.CopyToFileOptions, offset, size int64, populateCache bool) error {
+	buf := make([]byte, size)
+	readOpts := &internal.ReadInBufferOptions{
+		Path:   options.Name,
+		Offset: offset,
+		Data:   buf,
+	}
+	n, err := dc.NextComponent().ReadInBuffer(readOpts)
+	if err != nil {
+		return err
+	}
+	if _, err := options.File.WriteAt(buf[:n], offset); err != nil {
+		return err
+	}
+	if populateCache {
+		dataCopy := make([]byte, n)
+		copy(dataCopy, buf[:n])
+		go dc.uploadChunkAsync(options.Name, offset, dataCopy)
+	}
+	return nil
+}
+
+// pollUntilChunkCached waits for a single chunk to become available in the
+// distributed cache. Returns nil on success, or an error on timeout/failure.
+func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.CopyToFileOptions, offset, size int64) error {
+	const (
+		maxPollDuration = 30 * time.Second
+		maxBackoff      = 5 * time.Second
+	)
+
+	deadline := time.Now().Add(maxPollDuration)
+	backoff := 200 * time.Millisecond
+	buf := make([]byte, size)
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		n, err := dc.client.DownloadChunk(ctx, options.Name, offset, buf)
+		if err == nil {
+			if _, writeErr := options.File.WriteAt(buf[:n], offset); writeErr != nil {
+				return writeErr
+			}
+			return nil
+		}
+
+		if err != dcache.ErrNotFoundAlreadyLocked && err != dcache.ErrNotFound {
+			return err
+		}
+
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
+
+	return fmt.Errorf("dist_cache: chunk poll timeout for %s offset=%d", options.Name, offset)
+}
 
 // markDirty records that a file was recently invalidated. Reads for this file
 // will bypass dist_cache until dirtyTTL expires.
