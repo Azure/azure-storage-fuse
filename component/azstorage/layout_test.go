@@ -182,9 +182,15 @@ func (s *layoutTestSuite) SetupTest() {
 	s.setupTestHelper("", "", true)
 }
 
-// setupTestHelper initialises the AzStorage component with the preprod endpoint and
-// blob-layout-aware-routing enabled unless an explicit configuration is provided.
+// setupTestHelper initialises the AzStorage component with the blob endpoint (respecting
+// the use-preprod setting) and blob-layout-aware-routing enabled unless an explicit
+// configuration is provided. The suite is skipped when use-preprod is false because
+// the GetBlobLayout API is only available on preprod endpoints.
 func (s *layoutTestSuite) setupTestHelper(configuration string, containerName string, create bool) {
+	if !storageTestConfigurationParameters.UsePreprod {
+		s.T().Skip("layout tests require use-preprod=true in azuretest.json")
+	}
+
 	if containerName == "" {
 		containerName = generateContainerName()
 	}
@@ -194,7 +200,7 @@ func (s *layoutTestSuite) setupTestHelper(configuration string, containerName st
 		configuration = fmt.Sprintf(
 			"azstorage:\n"+
 				"  account-name: %s\n"+
-				"  endpoint: https://%s.blob.preprod.core.windows.net/\n"+
+				"  endpoint: %s\n"+
 				"  type: block\n"+
 				"  account-key: %s\n"+
 				"  mode: key\n"+
@@ -202,7 +208,7 @@ func (s *layoutTestSuite) setupTestHelper(configuration string, containerName st
 				"  fail-unsupported-op: true\n"+
 				"  blob-layout-aware-routing: true",
 			storageTestConfigurationParameters.BlockAccount,
-			storageTestConfigurationParameters.BlockAccount,
+			blobEndpoint(storageTestConfigurationParameters.BlockAccount),
 			storageTestConfigurationParameters.BlockKey,
 			s.container,
 		)
