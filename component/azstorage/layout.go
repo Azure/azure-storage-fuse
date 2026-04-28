@@ -5,6 +5,7 @@ package azstorage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -72,7 +73,7 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 			}
 			idx := int(*ep.Index)
 			if idx < 0 || idx >= len(endpoints) {
-				return nil, errors.New("failed to get layout: endpoint index out of bounds")
+				return nil, fmt.Errorf("failed to get layout: endpoint index %d out of bounds [0, %d)", idx, len(endpoints))
 			}
 			endpoints[idx] = *ep.Value
 		}
@@ -82,7 +83,7 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 			}
 			epIdx := int(*r.EndpointIndex)
 			if epIdx < 0 || epIdx >= len(endpoints) {
-				return nil, errors.New("failed to get layout: range endpoint index out of bounds")
+				return nil, fmt.Errorf("failed to get layout: range endpoint index %d out of bounds [0, %d)", epIdx, len(endpoints))
 			}
 			layoutRanges = append(layoutRanges, internal.LayoutRange{
 				Start:    *r.Start,

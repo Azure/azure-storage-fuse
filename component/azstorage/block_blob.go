@@ -648,6 +648,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		//    isBlobLayoutAwareRoutingEnabled still being true means the service may support layout for some
 		//    blobs; we attempt a GetLayout call here to cover that gap. NOTE: this results in a duplicate
 		//    call when GetLayout fails consistently; this is acceptable while the feature is in pre-GA / preprod.
+		//    TODO: Optimise to skip the duplicate call once the feature reaches GA and all accounts support layout.
 		//
 		// 2. virtual-directory=true (no marker blobs; directories are inferred from prefixes):
 		//    getAttrUsingList() is called, which populates attr from the list response and does NOT include
