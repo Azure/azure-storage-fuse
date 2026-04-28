@@ -16,13 +16,13 @@ import (
 )
 
 type layoutResp struct {
-	layout        *internal.Layout
-	contentLength int64
-	contentMD5    []byte
-	lmt           *time.Time
-	crtime        *time.Time
-	metadata      map[string]*string
-	eTag          *azcore.ETag
+	layout           *internal.Layout
+	contentLength    int64
+	contentMD5       []byte
+	lastModifiedTime *time.Time
+	crtime           *time.Time
+	metadata         map[string]*string
+	eTag             *azcore.ETag
 }
 
 // getLayout gets the layout of the blob.
@@ -49,12 +49,12 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 
 		if lr == nil {
 			lr = &layoutResp{
-				contentLength: contentLength,
-				contentMD5:    resp.BlobContentMD5,
-				lmt:           resp.LastModified,
-				crtime:        resp.BlobCreationTime,
-				metadata:      resp.Metadata,
-				eTag:          resp.ETag,
+				contentLength:    contentLength,
+				contentMD5:       resp.BlobContentMD5,
+				lastModifiedTime: resp.LastModified,
+				crtime:           resp.BlobCreationTime,
+				metadata:         resp.Metadata,
+				eTag:             resp.ETag,
 			}
 		}
 

@@ -120,7 +120,7 @@ func TestGetLayout_NilEndpointsAndRanges(t *testing.T) {
 	// Scalar metadata
 	assert.Equal(t, size, lr.contentLength)
 	assert.Equal(t, md5, lr.contentMD5)
-	assert.Equal(t, to.Ptr(now), lr.lmt)
+	assert.Equal(t, to.Ptr(now), lr.lastModifiedTime)
 	assert.Equal(t, to.Ptr(etag), lr.eTag)
 	assert.Equal(t, metaVal, *lr.metadata["key"])
 
@@ -266,7 +266,7 @@ func (s *layoutTestSuite) TestGetBlobLayout() {
 	s.assert.NotNil(lr.layout)
 	s.assert.Equal(int64(len(content)), lr.contentLength)
 	s.assert.NotNil(lr.eTag)
-	s.assert.NotNil(lr.lmt)
+	s.assert.NotNil(lr.lastModifiedTime)
 	// If the service returns layout ranges, verify each range is well-formed.
 	for _, r := range lr.layout.LayoutRanges {
 		s.assert.GreaterOrEqual(r.Start, int64(0))

@@ -486,13 +486,13 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		serr := storeBlobErrToErr(err)
 		switch serr {
 		case ErrFileNotFound:
-			return attr, syscall.ENOENT
+			return nil, syscall.ENOENT
 		case InvalidPermission:
 			log.Err("BlockBlob::getAttrUsingRest : Insufficient permissions for %s [%s]", name, err.Error())
-			return attr, syscall.EACCES
+			return nil, syscall.EACCES
 		default:
 			log.Err("BlockBlob::getAttrUsingRest : Failed to get blob properties for %s [%s]", name, err.Error())
-			return attr, err
+			return nil, err
 		}
 	}
 
@@ -513,10 +513,10 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 				Name:   filepath.Base(name),
 				Size:   layoutResp.contentLength,
 				Mode:   0,
-				Mtime:  *layoutResp.lmt,
-				Atime:  *layoutResp.lmt,
-				Ctime:  *layoutResp.lmt,
-				Crtime: bb.dereferenceTime(layoutResp.crtime, *layoutResp.lmt),
+				Mtime:  *layoutResp.lastModifiedTime,
+				Atime:  *layoutResp.lastModifiedTime,
+				Ctime:  *layoutResp.lastModifiedTime,
+				Crtime: bb.dereferenceTime(layoutResp.crtime, *layoutResp.lastModifiedTime),
 				Flags:  internal.NewFileBitMap(),
 				MD5:    layoutResp.contentMD5,
 				ETag:   sanitizeEtag(layoutResp.eTag),

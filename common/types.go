@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/JeffreyRichter/enum/enum"
@@ -358,4 +359,49 @@ var azureSpecialContainers = map[string]bool{
 	"web":        true,
 	"logs":       true,
 	"changefeed": true,
+}
+
+const layoutValidityDuration = 5 * time.Minute
+
+type LayoutRange struct {
+	Start    int64
+	End      int64
+	Endpoint string
+}
+
+type Layout struct {
+	LayoutRanges    []LayoutRange
+	LastFetchedTime atomic.Int64
+}
+
+func (l *Layout) Invalidate() {
+	l.LastFetchedTime.Store(0)
+}
+
+func (l *Layout) IsValid() bool {
+	lastFetched := time.Unix(l.LastFetchedTime.Load(), 0)
+	return time.Since(lastFetched) < layoutValidityDuration
+}
+
+// getIdealEndpoint returns the endpoint to download the blob at the given offset based on the layout.
+// It considers the first range containing the offset. If the chunk isn't fully available, the service
+// still returns correct data.
+func (l *Layout) GetIdealEndpoint(offset int64) string {
+	if l == nil || len(l.LayoutRanges) == 0 || !l.IsValid() {
+		return ""
+	}
+
+	// Binary search to find the first range whose end >= offset
+	left, right := 0, len(l.LayoutRanges)-1
+	for left < right {
+		mid := left + (right-left)/2
+		if l.LayoutRanges[mid].End < offset {
+			left = mid + 1
+		} else {
+			right = mid
+		}
+	}
+
+	// Range is guaranteed to exist, return its endpoint
+	return l.LayoutRanges[left].Endpoint
 }
