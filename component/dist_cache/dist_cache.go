@@ -337,13 +337,45 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		return n, nil
 	}
 
-	if err == dcache.ErrNotFound || err == dcache.ErrNotFoundGotLock || err == dcache.ErrNotFoundAlreadyLocked {
-		// L2 miss — read from azstorage
+	if err == dcache.ErrNotFoundGotLock {
+		// We own this chunk's miss — download from Azure and populate cache
+		log.Debug("DistCache::ReadInBuffer : L2 miss (got lock) %s offset=%d", name, options.Offset)
 		n, err = dc.NextComponent().ReadInBuffer(options)
 		if err != nil {
 			return n, err
 		}
-		// Copy buffer before launching goroutine — caller may reuse it immediately
+		dataCopy := make([]byte, n)
+		copy(dataCopy, options.Data[:n])
+		go dc.uploadChunkAsync(name, options.Offset, dataCopy)
+		return n, nil
+	}
+
+	if err == dcache.ErrNotFoundAlreadyLocked {
+		// Another node is fetching this chunk — poll until cached
+		log.Debug("DistCache::ReadInBuffer : L2 miss (locked) %s offset=%d, polling", name, options.Offset)
+		n, pollErr := dc.pollChunkIntoBuffer(ctx, name, options.Offset, options.Data)
+		if pollErr == nil {
+			return n, nil
+		}
+		// Poll timed out — fall through to Azure
+		log.Debug("DistCache::ReadInBuffer : chunk poll timeout %s offset=%d, falling through", name, options.Offset)
+		n, err = dc.NextComponent().ReadInBuffer(options)
+		if err != nil {
+			return n, err
+		}
+		dataCopy := make([]byte, n)
+		copy(dataCopy, options.Data[:n])
+		go dc.uploadChunkAsync(name, options.Offset, dataCopy)
+		return n, nil
+	}
+
+	if err == dcache.ErrNotFound {
+		// L2 miss — read from Azure
+		log.Debug("DistCache::ReadInBuffer : L2 miss %s offset=%d", name, options.Offset)
+		n, err = dc.NextComponent().ReadInBuffer(options)
+		if err != nil {
+			return n, err
+		}
 		dataCopy := make([]byte, n)
 		copy(dataCopy, options.Data[:n])
 		go dc.uploadChunkAsync(name, options.Offset, dataCopy)
@@ -444,7 +476,21 @@ func (dc *DistCache) fetchChunkFromRemote(options internal.CopyToFileOptions, of
 
 // pollUntilChunkCached waits for a single chunk to become available in the
 // distributed cache. Returns nil on success, or an error on timeout/failure.
+// pollUntilChunkCached waits for a single chunk to become available in the
+// distributed cache and writes it to the file. Returns nil on success.
 func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.CopyToFileOptions, offset, size int64) error {
+	buf := make([]byte, size)
+	n, err := dc.pollChunkIntoBuffer(ctx, options.Name, offset, buf)
+	if err != nil {
+		return err
+	}
+	_, err = options.File.WriteAt(buf[:n], offset)
+	return err
+}
+
+// pollChunkIntoBuffer waits for a single chunk to become available in the
+// distributed cache and copies it into buf. Returns the number of bytes read.
+func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name string, offset int64, buf []byte) (int, error) {
 	const (
 		maxPollDuration = 30 * time.Second
 		maxBackoff      = 5 * time.Second
@@ -452,25 +498,21 @@ func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.
 
 	deadline := time.Now().Add(maxPollDuration)
 	backoff := 200 * time.Millisecond
-	buf := make([]byte, size)
 
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return 0, ctx.Err()
 		case <-time.After(backoff):
 		}
 
-		n, err := dc.client.DownloadChunk(ctx, options.Name, offset, buf)
+		n, err := dc.client.DownloadChunk(ctx, name, offset, buf)
 		if err == nil {
-			if _, writeErr := options.File.WriteAt(buf[:n], offset); writeErr != nil {
-				return writeErr
-			}
-			return nil
+			return n, nil
 		}
 
 		if err != dcache.ErrNotFoundAlreadyLocked && err != dcache.ErrNotFound {
-			return err
+			return 0, err
 		}
 
 		backoff *= 2
@@ -479,7 +521,7 @@ func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.
 		}
 	}
 
-	return fmt.Errorf("dist_cache: chunk poll timeout for %s offset=%d", options.Name, offset)
+	return 0, fmt.Errorf("dist_cache: chunk poll timeout for %s offset=%d", name, offset)
 }
 
 // markDirty records that a file was recently invalidated. Reads for this file
