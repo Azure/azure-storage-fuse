@@ -109,9 +109,11 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 		log.Err("utils::getAzStorageClientOptions : Failed to create transport client [%s]", err.Error())
 	}
 
-	layoutPolicy := NewLayoutPolicy()
+	perCallPolicies := []policy.Policy{telemetryPolicy}
 
-	perCallPolicies := []policy.Policy{telemetryPolicy, layoutPolicy}
+	if conf.isBlobLayoutAwareRoutingEnabled {
+		perCallPolicies = append(perCallPolicies, NewLayoutPolicy())
+	}
 
 	serviceApiVersion := os.Getenv("AZURE_STORAGE_SERVICE_API_VERSION")
 	if serviceApiVersion != "" {
