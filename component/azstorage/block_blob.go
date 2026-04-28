@@ -516,7 +516,7 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 				Mtime:  *layoutResp.lmt,
 				Atime:  *layoutResp.lmt,
 				Ctime:  *layoutResp.lmt,
-				Crtime: *layoutResp.lmt,
+				Crtime: bb.dereferenceTime(layoutResp.crtime, *layoutResp.lmt),
 				Flags:  internal.NewFileBitMap(),
 				MD5:    layoutResp.contentMD5,
 				ETag:   sanitizeEtag(layoutResp.eTag),
@@ -639,7 +639,21 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		attr != nil &&
 		attr.Layout == nil &&
 		attr.Mode&os.ModeDir == 0 {
-		// We should make an additional layout call if the attribute is fetched through list API.
+		// Layout-aware routing: GetAttr can be reached via two paths, depending on the virtual-directory setting:
+		//
+		// 1. virtual-directory=false (marker blobs exist for directories):
+		//    getAttrUsingRest() is called, which issues GetLayout first. If GetLayout succeeds, attr.Layout
+		//    is already populated and this block is skipped. If GetLayout fails (service unsupported / error),
+		//    getAttrUsingRest falls back to GetProperties and attr.Layout remains nil — but in that case
+		//    isBlobLayoutAwareRoutingEnabled still being true means the service may support layout for some
+		//    blobs; we attempt a GetLayout call here to cover that gap. NOTE: this results in a duplicate
+		//    call when GetLayout fails consistently; this is acceptable while the feature is in pre-GA / preprod.
+		//
+		// 2. virtual-directory=true (no marker blobs; directories are inferred from prefixes):
+		//    getAttrUsingList() is called, which populates attr from the list response and does NOT include
+		//    layout information. An additional GetLayout call is needed here to obtain routing hints.
+		//    Best-case performance is achieved with virtual-directory=false when marker blobs exist, because
+		//    it avoids this extra per-file GetLayout round-trip.
 		layoutResp, err := bb.getBlobLayout(name)
 		if err != nil {
 			log.Err("BlockBlob::GetAttr : Failed to get blob layout for %s [%v]", name, err)

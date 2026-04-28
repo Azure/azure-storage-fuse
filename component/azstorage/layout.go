@@ -19,6 +19,7 @@ type layoutResp struct {
 	contentLength int64
 	contentMD5    []byte
 	lmt           *time.Time
+	crtime        *time.Time
 	metadata      map[string]*string
 	eTag          *azcore.ETag
 }
@@ -37,6 +38,9 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 			return nil, err
 		}
 
+		if resp.BlobContentLength == nil {
+			return nil, errors.New("failed to get layout: BlobContentLength is nil")
+		}
 		contentLength = *resp.BlobContentLength
 		if eTag == nil {
 			eTag = resp.ETag
@@ -47,6 +51,7 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 				contentLength: contentLength,
 				contentMD5:    resp.BlobContentMD5,
 				lmt:           resp.LastModified,
+				crtime:        resp.BlobCreationTime,
 				metadata:      resp.Metadata,
 				eTag:          resp.ETag,
 			}
@@ -62,15 +67,28 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 		}
 		endpoints := make([]string, len(resp.Endpoints.Endpoint))
 		for _, ep := range resp.Endpoints.Endpoint {
-			endpoints[*ep.Index] = *ep.Value
+			if ep.Index == nil || ep.Value == nil {
+				return nil, errors.New("failed to get layout: endpoint index or value is nil")
+			}
+			idx := int(*ep.Index)
+			if idx < 0 || idx >= len(endpoints) {
+				return nil, errors.New("failed to get layout: endpoint index out of bounds")
+			}
+			endpoints[idx] = *ep.Value
 		}
 		for _, r := range resp.Ranges.Range {
-			lr := internal.LayoutRange{
+			if r.Start == nil || r.End == nil || r.EndpointIndex == nil {
+				return nil, errors.New("failed to get layout: range start, end, or endpoint index is nil")
+			}
+			epIdx := int(*r.EndpointIndex)
+			if epIdx < 0 || epIdx >= len(endpoints) {
+				return nil, errors.New("failed to get layout: range endpoint index out of bounds")
+			}
+			layoutRanges = append(layoutRanges, internal.LayoutRange{
 				Start:    *r.Start,
 				End:      *r.End,
-				Endpoint: endpoints[*r.EndpointIndex],
-			}
-			layoutRanges = append(layoutRanges, lr)
+				Endpoint: endpoints[epIdx],
+			})
 		}
 	}
 
