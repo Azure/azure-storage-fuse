@@ -382,6 +382,85 @@ func TestReadInBuffer_L2Miss(t *testing.T) {
 	assert.Equal(t, 1, next.readInBufferCalled, "should call azstorage on L2 miss")
 }
 
+func TestReadInBuffer_GotLock_DownloadsFromAzure(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure block data")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	// DownloadChunk returns ErrNotFoundGotLock
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, dcache.ErrNotFoundGotLock
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 4096,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should call ReadInBuffer on Azure for the chunk")
+}
+
+func TestReadInBuffer_AlreadyLocked_PollSucceeds(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	cachedData := []byte("block arrived after poll")
+
+	// First DownloadChunk: ErrNotFoundAlreadyLocked (triggers ReadInBuffer → poll)
+	// Poll calls DownloadChunk again: first locked, then succeeds
+	callCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, buf []byte, _ ...dcache.DownloadOption) (int, error) {
+		callCount++
+		if callCount <= 2 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
+		}
+		return copy(buf, cachedData), nil
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(cachedData), n)
+	assert.Equal(t, cachedData, buf[:n])
+	assert.Equal(t, 0, next.readInBufferCalled, "should serve from cache after poll, not Azure")
+}
+
+func TestReadInBuffer_AlreadyLocked_PollTimeout_FallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure fallback data")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	// DownloadChunk always returns locked
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, dcache.ErrNotFoundAlreadyLocked
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to Azure after poll timeout")
+}
+
 func TestStageData_WriteThrough(t *testing.T) {
 	mock := newMockDCacheClient()
 	next := &mockNextComponent{}
