@@ -494,7 +494,7 @@ func (dl *Datalake) ReadBuffer(name string, offset int64, length int64) ([]byte,
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (dl *Datalake) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string, layout *internal.Layout) error {
+func (dl *Datalake) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string, layout *common.Layout) error {
 	return dl.BlockBlob.ReadInBuffer(name, offset, length, data, etag, layout)
 }
 

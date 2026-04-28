@@ -1021,7 +1021,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, length int64) ([]byte
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
 // Specifying "0" len will download the entire blob.
-func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string, layout *internal.Layout) error {
+func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string, layout *common.Layout) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	if etag != nil {
 		*etag = ""

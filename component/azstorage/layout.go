@@ -12,11 +12,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 type layoutResp struct {
-	layout           *internal.Layout
+	layout           *common.Layout
 	contentLength    int64
 	contentMD5       []byte
 	lastModifiedTime *time.Time
@@ -27,7 +27,7 @@ type layoutResp struct {
 
 // getLayout gets the layout of the blob.
 func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]) (*layoutResp, error) {
-	layoutRanges := make([]internal.LayoutRange, 0)
+	layoutRanges := make([]common.LayoutRange, 0)
 
 	var contentLength int64
 	var eTag *azcore.ETag
@@ -61,7 +61,7 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 		if resp.Endpoints == nil || resp.Endpoints.Endpoint == nil || len(resp.Endpoints.Endpoint) == 0 ||
 			resp.Ranges == nil || resp.Ranges.Range == nil || len(resp.Ranges.Range) == 0 {
 			// No layout means we can download the whole blob from the primary endpoint.
-			lr.layout = &internal.Layout{
+			lr.layout = &common.Layout{
 				LayoutRanges: nil,
 			}
 			return lr, nil
@@ -85,7 +85,7 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 			if epIdx < 0 || epIdx >= len(endpoints) {
 				return nil, fmt.Errorf("failed to get layout: range endpoint index %d out of bounds [0, %d)", epIdx, len(endpoints))
 			}
-			layoutRanges = append(layoutRanges, internal.LayoutRange{
+			layoutRanges = append(layoutRanges, common.LayoutRange{
 				Start:    *r.Start,
 				End:      *r.End,
 				Endpoint: endpoints[epIdx],
@@ -99,13 +99,16 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 			return layoutRanges[i].Start < layoutRanges[j].Start
 		})
 
-		lr.layout = &internal.Layout{
+		lr.layout = &common.Layout{
 			LayoutRanges: layoutRanges,
 		}
 	} else {
 		// we didn't get any response, return error
 		return nil, errors.New("failed to get layout: no response")
 	}
+
+	// Set the last fetched time to now. This is used to determine the validity of the layout.
+	lr.layout.LastFetchedTime.Store(time.Now().Unix())
 
 	return lr, nil
 }
