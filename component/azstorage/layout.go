@@ -4,6 +4,8 @@ package azstorage
 
 import (
 	"context"
+	"errors"
+	"sort"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -72,8 +74,18 @@ func getLayout(ctx context.Context, pager *runtime.Pager[blob.GetLayoutResponse]
 		}
 	}
 
-	lr.layout = &internal.Layout{
-		LayoutRanges: layoutRanges,
+	if lr != nil {
+		// Sort the layout ranges by start offset to make sure they are in order.
+		sort.Slice(layoutRanges, func(i, j int) bool {
+			return layoutRanges[i].Start < layoutRanges[j].Start
+		})
+
+		lr.layout = &internal.Layout{
+			LayoutRanges: layoutRanges,
+		}
+	} else {
+		// we didn't get any response, return error
+		return nil, errors.New("failed to get layout: no response")
 	}
 
 	return lr, nil
