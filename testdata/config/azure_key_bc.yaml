@@ -29,4 +29,5 @@ azstorage:
   account-key: { STO_ACC_KEY }
   mode: key
   container: { 0 }
-  tier: hot
+  # tier: hot
+  blob-layout-aware-routing: true
