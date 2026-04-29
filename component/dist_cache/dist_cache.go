@@ -337,8 +337,22 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	ctx := context.Background()
 
 	n, err := dc.client.DownloadChunk(ctx, name, options.Offset, options.Data)
-	if err == nil {
+	if err == nil && n > 0 {
 		log.Debug("DistCache::ReadInBuffer : L2 hit %s offset=%d", name, options.Offset)
+		return n, nil
+	}
+	if err == nil && n == 0 {
+		// Zero-byte hit means corrupt/empty cache entry — treat as miss
+		log.Warn("DistCache::ReadInBuffer : L2 zero-byte hit %s offset=%d, falling through to storage", name, options.Offset)
+		n, err = dc.NextComponent().ReadInBuffer(options)
+		if err != nil {
+			return n, err
+		}
+		if n > 0 {
+			dataCopy := make([]byte, n)
+			copy(dataCopy, options.Data[:n])
+			go dc.uploadChunkAsync(name, options.Offset, dataCopy)
+		}
 		return n, nil
 	}
 

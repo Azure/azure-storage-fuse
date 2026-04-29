@@ -323,6 +323,30 @@ func TestReadInBuffer_L2Hit(t *testing.T) {
 	assert.Equal(t, 0, next.readInBufferCalled, "should NOT call azstorage on L2 hit")
 }
 
+func TestReadInBuffer_L2ZeroByteHit_FallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("data from azure storage")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	// Simulate a cache entry with 0 bytes (corrupt/empty)
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, buf []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, nil
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to azstorage on zero-byte L2 hit")
+}
+
 func TestReadInBuffer_L2Miss(t *testing.T) {
 	mock := newMockDCacheClient()
 	azData := []byte("data from azure storage")
