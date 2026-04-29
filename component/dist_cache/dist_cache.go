@@ -17,9 +17,14 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client"
+	"golang.org/x/sync/errgroup"
 )
 
 const compName = "dist_cache"
+
+// maxParallelChunkOps limits the number of concurrent chunk-level recovery
+// operations (Azure fetches and cache polls) during CopyToFile.
+const maxParallelChunkOps = 8
 
 // DistCacheOptions holds configuration for the distributed cache component.
 type DistCacheOptions struct {
@@ -251,37 +256,38 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 		return nil
 	}
 
-	// Handle per-chunk cache misses individually
+	// Handle per-chunk cache misses in parallel
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxParallelChunkOps)
+
 	for _, ce := range chunkErrors {
+		ce := ce
 		switch ce.Err {
 		case dcache.ErrNotFoundGotLock:
-			// We own this chunk's miss — download from Azure and populate cache
-			log.Debug("DistCache::CopyToFile : L2 chunk miss (got lock) %s offset=%d", options.Name, ce.Offset)
-			if err := dc.fetchChunkFromRemote(options, ce.Offset, ce.Size, true); err != nil {
-				return err
-			}
+			g.Go(func() error {
+				log.Debug("DistCache::CopyToFile : L2 chunk miss (got lock) %s offset=%d", options.Name, ce.Offset)
+				return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, true)
+			})
 
 		case dcache.ErrNotFoundAlreadyLocked:
-			// Another node is fetching this chunk — poll until cached
-			log.Debug("DistCache::CopyToFile : L2 chunk miss (locked) %s offset=%d, polling", options.Name, ce.Offset)
-			if err := dc.pollUntilChunkCached(ctx, options, ce.Offset, ce.Size); err != nil {
-				// Poll timed out — fall through to Azure for this chunk
-				log.Debug("DistCache::CopyToFile : chunk poll timeout %s offset=%d, falling through", options.Name, ce.Offset)
-				if err := dc.fetchChunkFromRemote(options, ce.Offset, ce.Size, false); err != nil {
-					return err
+			g.Go(func() error {
+				log.Debug("DistCache::CopyToFile : L2 chunk miss (locked) %s offset=%d, polling", options.Name, ce.Offset)
+				if err := dc.pollUntilChunkCached(gctx, options, ce.Offset, ce.Size); err != nil {
+					log.Debug("DistCache::CopyToFile : chunk poll timeout %s offset=%d, falling through", options.Name, ce.Offset)
+					return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, false)
 				}
-			}
+				return nil
+			})
 
 		default:
-			// ErrNotFound or other recoverable miss — download from Azure
-			log.Debug("DistCache::CopyToFile : L2 chunk miss %s offset=%d", options.Name, ce.Offset)
-			if err := dc.fetchChunkFromRemote(options, ce.Offset, ce.Size, false); err != nil {
-				return err
-			}
+			g.Go(func() error {
+				log.Debug("DistCache::CopyToFile : L2 chunk miss %s offset=%d", options.Name, ce.Offset)
+				return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, false)
+			})
 		}
 	}
 
-	return nil
+	return g.Wait()
 }
 
 // --- Write path (file_cache) ---
@@ -452,7 +458,13 @@ func (dc *DistCache) TruncateFile(options internal.TruncateFileOptions) error {
 // fetchChunkFromRemote downloads a single chunk from Azure via the next component
 // and writes it to the file at the correct offset. If populateCache is true,
 // the chunk is also uploaded to the distributed cache asynchronously.
-func (dc *DistCache) fetchChunkFromRemote(options internal.CopyToFileOptions, offset, size int64, populateCache bool) error {
+func (dc *DistCache) fetchChunkFromRemote(ctx context.Context, options internal.CopyToFileOptions, offset, size int64, populateCache bool) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	buf := make([]byte, size)
 	readOpts := &internal.ReadInBufferOptions{
 		Path:   options.Name,
@@ -474,8 +486,6 @@ func (dc *DistCache) fetchChunkFromRemote(options internal.CopyToFileOptions, of
 	return nil
 }
 
-// pollUntilChunkCached waits for a single chunk to become available in the
-// distributed cache. Returns nil on success, or an error on timeout/failure.
 // pollUntilChunkCached waits for a single chunk to become available in the
 // distributed cache and writes it to the file. Returns nil on success.
 func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.CopyToFileOptions, offset, size int64) error {
