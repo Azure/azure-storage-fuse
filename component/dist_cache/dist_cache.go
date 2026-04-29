@@ -469,6 +469,7 @@ func (dc *DistCache) fetchChunkFromRemote(ctx context.Context, options internal.
 		Path:   options.Name,
 		Offset: offset,
 		Data:   buf,
+		Size:   options.Count,
 	}
 	n, err := dc.NextComponent().ReadInBuffer(readOpts)
 	if err != nil {
