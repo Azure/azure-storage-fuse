@@ -22,7 +22,6 @@ import (
 // mockDCacheClient implements dcacheClient for testing.
 type mockDCacheClient struct {
 	store             map[string][]byte
-	downloadFn        func(ctx context.Context, filename string, fileSize int64, w io.Writer, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error)
 	downloadPartialFn func(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) ([]dcache.ChunkError, error)
 	chunkFn           func(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 }
@@ -40,36 +39,9 @@ func (m *mockDCacheClient) Upload(_ context.Context, filename string, data io.Re
 	return nil
 }
 
-func (m *mockDCacheClient) DownloadWithSize(ctx context.Context, filename string, fileSize int64, w io.Writer, opts ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
-	if m.downloadFn != nil {
-		return m.downloadFn(ctx, filename, fileSize, w, opts...)
-	}
-	data, ok := m.store[filename]
-	if !ok {
-		return nil, dcache.ErrNotFound
-	}
-	n, err := w.Write(data)
-	if err != nil {
-		return nil, err
-	}
-	return &dcache.FileMetadata{Size: int64(n)}, nil
-}
-
 func (m *mockDCacheClient) DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
 	if m.downloadPartialFn != nil {
 		return m.downloadPartialFn(ctx, filename, fileSize, w, opts...)
-	}
-	// Forward to downloadFn for backward compatibility with existing tests.
-	if m.downloadFn != nil {
-		ow := &offsetWriter{w: w}
-		_, err := m.downloadFn(ctx, filename, fileSize, ow, opts...)
-		if err == nil {
-			return nil, nil
-		}
-		if err == dcache.ErrNotFoundGotLock || err == dcache.ErrNotFoundAlreadyLocked || err == dcache.ErrNotFound {
-			return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: err}}, nil
-		}
-		return nil, err
 	}
 	data, ok := m.store[filename]
 	if !ok {
@@ -77,18 +49,6 @@ func (m *mockDCacheClient) DownloadWithSizePartial(ctx context.Context, filename
 	}
 	w.WriteAt(data, 0)
 	return nil, nil
-}
-
-// offsetWriter adapts io.WriterAt to io.Writer by tracking the current position.
-type offsetWriter struct {
-	w      io.WriterAt
-	offset int64
-}
-
-func (ow *offsetWriter) Write(p []byte) (int, error) {
-	n, err := ow.w.WriteAt(p, ow.offset)
-	ow.offset += int64(n)
-	return n, err
 }
 
 func (m *mockDCacheClient) DownloadChunk(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error) {
@@ -226,9 +186,9 @@ func TestCopyToFile_L2Hit(t *testing.T) {
 
 	// Pre-populate mock cache
 	testData := []byte("cached data from distributed cache")
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, w io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
-		w.Write(testData)
-		return &dcache.FileMetadata{Size: int64(len(testData))}, nil
+	mock.downloadPartialFn = func(_ context.Context, _ string, _ int64, w io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		w.WriteAt(testData, 0)
+		return nil, nil
 	}
 
 	f, err := os.CreateTemp("", "dcache-test-*")
@@ -252,8 +212,8 @@ func TestCopyToFile_L2MissGotLock(t *testing.T) {
 	dc := newTestDistCache(mock, next)
 
 	// Simulate L2 miss with lock acquired
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
-		return nil, dcache.ErrNotFoundGotLock
+	mock.downloadPartialFn = func(_ context.Context, _ string, fileSize int64, _ io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: dcache.ErrNotFoundGotLock}}, nil
 	}
 
 	f, err := os.CreateTemp("", "dcache-test-*")
@@ -279,7 +239,7 @@ func TestCopyToFile_BypassOnError(t *testing.T) {
 	dc.bypassOnError = true
 
 	// Simulate connection error
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
+	mock.downloadPartialFn = func(_ context.Context, _ string, _ int64, _ io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
 		return nil, dcache.ErrConnectionFailed
 	}
 
@@ -634,101 +594,6 @@ func TestPollUntilCached_SucceedsOnRetry(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, 0, next.copyToFileCalled, "should serve from cache after poll retry")
-}
-
-func TestPollUntilCached_SeeksBeforeRetry(t *testing.T) {
-	mock := newMockDCacheClient()
-	next := &mockNextComponent{}
-	dc := newTestDistCache(mock, next)
-
-	// Simulate progressive caching: write partial data then fail, then succeed.
-	callCount := 0
-	fullData := []byte("complete file contents here")
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, w io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
-		callCount++
-		switch {
-		case callCount == 1:
-			return nil, dcache.ErrNotFoundAlreadyLocked // initial check
-		case callCount == 2:
-			// Partial write (simulating some cached chunks)
-			w.Write(fullData[:10])
-			return nil, dcache.ErrNotFoundAlreadyLocked
-		default:
-			// Full data available
-			w.Write(fullData)
-			return &dcache.FileMetadata{Size: int64(len(fullData))}, nil
-		}
-	}
-
-	f, err := os.CreateTemp("", "dcache-seek-*")
-	require.NoError(t, err)
-	defer os.Remove(f.Name())
-	defer f.Close()
-
-	ctx := context.Background()
-	meta, err := dc.pollUntilCached(ctx, "test/seek.txt", int64(len(fullData)), f)
-
-	assert.NoError(t, err)
-	require.NotNil(t, meta)
-
-	// Verify the file contains the correct data (not corruption from partial writes)
-	f.Seek(0, 0)
-	got := make([]byte, len(fullData))
-	n, _ := f.Read(got)
-	assert.Equal(t, len(fullData), n)
-	assert.Equal(t, fullData, got)
-}
-
-func TestPollUntilCached_StaleGivesUpEarly(t *testing.T) {
-	mock := newMockDCacheClient()
-	next := &mockNextComponent{}
-	dc := newTestDistCache(mock, next)
-
-	// Always return ErrNotFoundAlreadyLocked with no progress (0 bytes written).
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
-		return nil, dcache.ErrNotFoundAlreadyLocked
-	}
-
-	f, err := os.CreateTemp("", "dcache-stale-*")
-	require.NoError(t, err)
-	defer os.Remove(f.Name())
-	defer f.Close()
-
-	// Use a large file size so the size-adaptive timeout would be long,
-	// but stale detection should trigger much sooner.
-	ctx := context.Background()
-	start := time.Now()
-	_, err = dc.pollUntilCached(ctx, "test/stale.txt", 10*1024*1024*1024, f)
-
-	elapsed := time.Since(start)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "poll timeout")
-	// Stale detection (30s) + some backoff overhead. Should not wait the
-	// full size-proportional timeout (~10s at 2GB/s × 2 headroom = 25s, but
-	// stale kicks in at 30s). Allow generous margin for CI.
-	assert.Less(t, elapsed, 90*time.Second, "should give up after stale timeout, not wait full duration")
-}
-
-func TestPollUntilCached_ContextCancellation(t *testing.T) {
-	mock := newMockDCacheClient()
-	next := &mockNextComponent{}
-	dc := newTestDistCache(mock, next)
-
-	mock.downloadFn = func(_ context.Context, _ string, _ int64, _ io.Writer, _ ...dcache.DownloadOption) (*dcache.FileMetadata, error) {
-		return nil, dcache.ErrNotFoundAlreadyLocked
-	}
-
-	f, err := os.CreateTemp("", "dcache-ctx-*")
-	require.NoError(t, err)
-	defer os.Remove(f.Name())
-	defer f.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	_, err = dc.pollUntilCached(ctx, "test/cancel.txt", 1024, f)
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestCopyToFile_ChunkLevelGotLock_MultipleChunks(t *testing.T) {
