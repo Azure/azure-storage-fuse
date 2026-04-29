@@ -482,7 +482,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::getAttrUsingRest : name %s", name)
 
-	parseError := func(err error) (attr *internal.ObjAttr, retErr error) {
+	parseError := func(err error) (*internal.ObjAttr, error) {
 		serr := storeBlobErrToErr(err)
 		switch serr {
 		case ErrFileNotFound:
@@ -501,7 +501,10 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		layoutResp, err := bb.getBlobLayout(name)
 		sc := bloberror.GetStatusCode(err)
 		if err != nil {
-			if sc == 400 || sc >= 500 { // fall back to old behavior if service doesn't support layout or layout wasn't fetched
+			if sc == 400 || sc >= 500 {
+				// fall back to old behavior if service doesn't support layout or layout wasn't fetched
+				// TODO: do we need to disable this feature here? after GA this wouldn't be a problem since all accounts
+				// should support layout by then.
 				log.Warn("BlockBlob::getAttrUsingRest : Layout call failed for %s with error [%v]. Falling back to get properties call", name, err)
 			} else { // fail the operation
 				return parseError(err)
@@ -643,7 +646,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		//
 		// 1. virtual-directory=false (marker blobs exist for directories):
 		//    getAttrUsingRest() is called, which issues GetLayout first. If GetLayout succeeds, attr.Layout
-		//    is already populated and this block is skipped. If GetLayout fails (service unsupported / error),
+		//    is already populated and this blob is skipped. If GetLayout fails (service unsupported / error),
 		//    getAttrUsingRest falls back to GetProperties and attr.Layout remains nil — but in that case
 		//    isBlobLayoutAwareRoutingEnabled still being true means the service may support layout for some
 		//    blobs; we attempt a GetLayout call here to cover that gap. NOTE: this results in a duplicate
