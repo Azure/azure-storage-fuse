@@ -2,6 +2,7 @@
 **Features**
 
 **Bug Fixes**
+- Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
 
 ## 2.5.3 (2026-03-25)
 **Features**

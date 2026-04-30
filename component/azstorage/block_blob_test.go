@@ -2094,6 +2094,76 @@ func (s *blockBlobTestSuite) TestGetAttrDirWithCPKEnabled() {
 	s.assert.True(checkMetadata(props.Metadata, folderKey, "true"))
 }
 
+func (s *blockBlobTestSuite) TestGetAttrFileWithCPKEnabledAndPrefixPath() {
+	defer s.cleanupTest()
+	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, CPKEncryptionKey, CPKEncryptionKeySHA256, storageTestConfigurationParameters.BlockKey, s.container)
+
+	s.tearDownTestHelper(false)
+	s.setupTestHelper(config, s.container, false)
+
+	// Create a subdirectory to use as a prefix path and a file inside it
+	prefix := generateDirectoryName()
+	err := s.az.CreateDir(internal.CreateDirOptions{Name: prefix})
+	s.assert.NoError(err)
+
+	fileName := generateFileName()
+	filePath := prefix + "/" + fileName
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: filePath})
+	s.assert.NoError(err)
+
+	// Set the prefix path to the subdirectory
+	_ = s.az.storage.SetPrefixPath(prefix)
+
+	// GetAttr should resolve the file correctly without duplicating the prefix path
+	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: fileName})
+	s.assert.NoError(err)
+	s.assert.NotNil(props)
+	s.assert.Equal(fileName, props.Path)
+	s.assert.False(props.IsDir())
+}
+
+func (s *blockBlobTestSuite) TestReadDirWithCPKEnabledAndPrefixPath() {
+	defer s.cleanupTest()
+	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, CPKEncryptionKey, CPKEncryptionKeySHA256, storageTestConfigurationParameters.BlockKey, s.container)
+
+	s.tearDownTestHelper(false)
+	s.setupTestHelper(config, s.container, false)
+
+	// Create a subdirectory to use as a prefix path with files inside it
+	prefix := generateDirectoryName()
+	err := s.az.CreateDir(internal.CreateDirOptions{Name: prefix})
+	s.assert.NoError(err)
+
+	fileName := generateFileName()
+	filePath := prefix + "/" + fileName
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: filePath})
+	s.assert.NoError(err)
+
+	// Set the prefix path to the subdirectory
+	_ = s.az.storage.SetPrefixPath(prefix)
+
+	// ReadDir should list the file correctly without duplicating the prefix path
+	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: "/"})
+	s.assert.NoError(err)
+	s.assert.NotEmpty(entries)
+
+	// Verify the file path does not have a duplicated prefix
+	found := false
+	for _, entry := range entries {
+		if entry.Name == fileName {
+			found = true
+			s.assert.Equal(fileName, entry.Path)
+			s.assert.False(entry.IsDir())
+			break
+		}
+	}
+	s.assert.True(found, "Expected file not found in ReadDir results")
+}
+
 func (s *blockBlobTestSuite) TestGetAttrFile() {
 	defer s.cleanupTest()
 	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
