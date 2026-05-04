@@ -103,9 +103,7 @@ extends:
 
           # Code lint checks (Static-analysis)
           - script: |
-              # Pinned to v2.11.0 due to checksum issue in v2.12.1 (bump when upstream fixes it)
-              # Refer: https://github.com/Azure/azure-storage-fuse/pull/2201
-              curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.11.0/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.11.0
+              curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.11.0
               $(go env GOPATH)/bin/golangci-lint --version
               $(go env GOPATH)/bin/golangci-lint run --build-tags $(tags) > lint.log
               result=$(cat lint.log | wc -l)
