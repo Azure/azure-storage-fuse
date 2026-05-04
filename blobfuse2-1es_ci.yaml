@@ -103,7 +103,7 @@ extends:
 
           # Code lint checks (Static-analysis)
           - script: |
-              curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+              curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.11.0
               $(go env GOPATH)/bin/golangci-lint --version
               $(go env GOPATH)/bin/golangci-lint run --build-tags $(tags) > lint.log
               result=$(cat lint.log | wc -l)
