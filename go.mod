@@ -8,7 +8,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.4
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.4.4
 	github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda
-	github.com/fsnotify/fsnotify v1.10.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang/mock v1.6.0
 	github.com/montanaflynn/stats v0.9.0
