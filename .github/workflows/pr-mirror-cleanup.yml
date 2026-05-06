@@ -1,0 +1,69 @@
+# Daily cleanup of `pr-mirror/<PR#>` branches created by pr-mirror.yml.
+#
+# A mirror branch is deleted when:
+#   * the corresponding pull request is closed or merged, OR
+#   * the branch tip no longer matches the PR's current head SHA (the PR was
+#     force-pushed and not re-mirrored).
+#
+# This workflow uses no secrets and only mutates `pr-mirror/**` branches.
+
+name: Cleanup PR mirror branches
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete stale pr-mirror/* branches
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prefix = 'pr-mirror/';
+
+            const branches = await github.paginate(
+              github.rest.repos.listBranches,
+              { owner, repo, per_page: 100 }
+            );
+
+            for (const b of branches) {
+              if (!b.name.startsWith(prefix)) continue;
+              const num = Number(b.name.substring(prefix.length));
+              if (!Number.isInteger(num) || num <= 0) continue;
+
+              let reason = null;
+              try {
+                const { data: pr } = await github.rest.pulls.get({
+                  owner, repo, pull_number: num
+                });
+                if (pr.state !== 'open') {
+                  reason = `PR #${num} is ${pr.state}`;
+                } else if (pr.head.sha !== b.commit.sha) {
+                  reason = `PR #${num} head ${pr.head.sha.substring(0,7)} != mirror tip ${b.commit.sha.substring(0,7)}`;
+                }
+              } catch (e) {
+                if (e.status === 404) {
+                  reason = `PR #${num} not found`;
+                } else {
+                  core.warning(`Skipping ${b.name}: ${e.message}`);
+                  continue;
+                }
+              }
+
+              if (reason) {
+                core.info(`Deleting ${b.name} (${reason})`);
+                await github.rest.git.deleteRef({
+                  owner, repo, ref: `heads/${b.name}`
+                });
+              }
+            }

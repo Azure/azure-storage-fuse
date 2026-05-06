@@ -1,0 +1,135 @@
+# Mirror an external PR's head commit to a branch in this repository so that
+# the Azure DevOps `blobfuse2-1es_ci` pipeline (which cannot run on PRs from
+# forks) can be queued manually by a maintainer.
+#
+# Trigger:    a maintainer comments `/mirror` on a pull request.
+# Authorize:  the comment author must have association OWNER or MEMBER.
+# Action:     fetch the PR head SHA via `refs/pull/<n>/head` (no fork code is
+#             ever executed in this workflow) and force-push it to
+#             `refs/heads/pr-mirror/<PR#>` in this repository.
+# Result:     a maintainer can open the ADO pipeline UI, choose
+#             `pr-mirror/<PR#>` as the source branch, and click "Run".
+#
+# Security notes:
+#   * This workflow uses no repository secrets and never checks out fork code.
+#   * Branch protection / rulesets should restrict who can push to
+#     `pr-mirror/**` to the GitHub Actions bot only, and these branches must
+#     not be allowed as merge sources into `main`.
+#   * Pin `blobfuse2-1es_ci` to load its YAML from a fixed ref (e.g. `main`)
+#     so that fork-authored changes to the pipeline file cannot influence the
+#     manually queued run. Otherwise diff the pipeline YAML and any scripts it
+#     invokes before queueing.
+
+name: Mirror PR for ADO CI
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  statuses: write
+
+jobs:
+  mirror:
+    name: Mirror PR head to pr-mirror/<PR#>
+    if: >-
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '/mirror') &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: React to triggering comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
+      - name: Resolve PR head SHA
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            core.setOutput('sha', pr.data.head.sha);
+            core.setOutput('number', String(pr.data.number));
+            core.setOutput('state', pr.data.state);
+
+      - name: Refuse if PR is closed
+        if: steps.pr.outputs.state != 'open'
+        run: |
+          echo "::error::PR #${{ steps.pr.outputs.number }} is not open; refusing to mirror."
+          exit 1
+
+      - name: Checkout repo (no fork code)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Fetch PR head and push to mirror branch
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # GitHub exposes every PR on the upstream repo as refs/pull/<n>/head.
+          # Fetching from `origin` keeps the operation entirely within this
+          # repository and avoids contacting the fork directly.
+          git fetch --no-tags origin "pull/${PR_NUMBER}/head"
+          fetched_sha="$(git rev-parse FETCH_HEAD)"
+          if [ "${fetched_sha}" != "${PR_SHA}" ]; then
+            echo "::error::Fetched SHA ${fetched_sha} does not match PR head ${PR_SHA}."
+            exit 1
+          fi
+          git push --force-with-lease origin \
+            "${PR_SHA}:refs/heads/pr-mirror/${PR_NUMBER}"
+
+      - name: Comment with mirror branch details
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = '${{ steps.pr.outputs.sha }}';
+            const num = '${{ steps.pr.outputs.number }}';
+            const branch = `pr-mirror/${num}`;
+            const shortSha = sha.substring(0, 7);
+            const branchUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/tree/${branch}`;
+            const body = [
+              `🔁 Mirrored \`${shortSha}\` to [\`${branch}\`](${branchUrl}).`,
+              ``,
+              `Maintainers: queue the **blobfuse2-1es_ci** pipeline in Azure DevOps`,
+              `against branch \`${branch}\` to run the credentialed CI.`,
+              ``,
+              `Re-comment \`/mirror\` after any new push to refresh this branch.`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(num),
+              body
+            });
+
+      - name: Set pending commit status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: '${{ steps.pr.outputs.sha }}',
+              state: 'pending',
+              context: 'pr-mirror',
+              description: 'Mirrored to pr-mirror/${{ steps.pr.outputs.number }}; awaiting ADO run'
+            });
