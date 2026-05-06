@@ -94,6 +94,12 @@ jobs:
             echo "::error::Fetched SHA ${fetched_sha} does not match PR head ${PR_SHA}."
             exit 1
           fi
+          # Populate/update the local remote-tracking ref for the destination
+          # branch so --force-with-lease has an expected old value on reruns.
+          if git ls-remote --exit-code --heads origin "pr-mirror/${PR_NUMBER}" >/dev/null 2>&1; then
+            git fetch --no-tags origin \
+              "refs/heads/pr-mirror/${PR_NUMBER}:refs/remotes/origin/pr-mirror/${PR_NUMBER}"
+          fi
           git push --force-with-lease origin \
             "${PR_SHA}:refs/heads/pr-mirror/${PR_NUMBER}"
 
