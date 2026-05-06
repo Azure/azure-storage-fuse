@@ -37,7 +37,7 @@ jobs:
     name: Mirror PR head to pr-mirror/<PR#>
     if: >-
       github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '/mirror') &&
+      github.event.comment.body == '/mirror' &&
       (github.event.comment.author_association == 'OWNER' ||
        github.event.comment.author_association == 'MEMBER')
     runs-on: ubuntu-latest
