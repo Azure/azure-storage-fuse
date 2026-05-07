@@ -2,7 +2,7 @@
 trigger:
   branches:
     include:
-    - pr-mirror/*
+      - pr-mirror/*
 
 # Execute this for every PR on main
 pr:
