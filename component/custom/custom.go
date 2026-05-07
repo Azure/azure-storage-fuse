@@ -41,7 +41,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/exported"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -76,7 +75,7 @@ func initializePlugins() error {
 			return fmt.Errorf("GetExternalComponent function lookup error in plugin %s: %s", file, err.Error())
 		}
 
-		getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() exported.Component))
+		getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() internal.Component))
 		if !ok {
 			log.Err("initializePlugins: GetExternalComponent function in %s has some incorrect definition", file)
 			return fmt.Errorf("GetExternalComponent function in %s has some incorrect definition", file)
