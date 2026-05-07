@@ -1,5 +1,8 @@
-# Do not trigger this pipeline automatically
-trigger: none
+# Run automatically for pr-mirror/* branches
+trigger:
+  branches:
+    include:
+      - pr-mirror/*
 
 # Execute this for every PR on main
 pr:
