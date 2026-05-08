@@ -47,7 +47,8 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.5.3"
+	// Private drop for photon with version v2.5.4~preview.2
+	blobfuse2Version_ = "2.5.4~preview.2"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
