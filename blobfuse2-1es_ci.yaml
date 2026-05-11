@@ -60,7 +60,6 @@ extends:
               poolName: 'blobfuse2-pool'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
-              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
             Ubuntu-22:
               AgentName: 'ubuntu22-1espt'
               distro: 'ubuntu'
@@ -68,7 +67,6 @@ extends:
               poolName: 'blobfuse2-pool'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
-              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
             Ubuntu-22-ARM64:
               AgentName: 'ubn22armblobfuse-1espt'
               distro: 'ubuntu'
@@ -76,7 +74,6 @@ extends:
               poolName: 'blobfuse2-arm-pool'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
-              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
 
         pool:
           name: $(poolName)
