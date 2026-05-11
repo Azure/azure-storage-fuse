@@ -207,6 +207,128 @@ func (s *policiesTestSuite) TestRateLimitingPolicy_BandwidthLimit_SkipNonGet() {
 	}
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// layoutPolicy tests
+
+func (s *policiesTestSuite) TestWithLayoutEndpoint() {
+	assert := assert.New(s.T())
+
+	ctx := context.Background()
+	endpoint := "https://layout.blob.core.windows.net"
+
+	ctxWithEndpoint := WithLayoutEndpoint(ctx, endpoint)
+
+	value := ctxWithEndpoint.Value(ctxLayoutEndpointKey{})
+	assert.NotNil(value)
+	assert.Equal(endpoint, value.(string))
+}
+
+func (s *policiesTestSuite) TestWithLayoutEndpointEmptyString() {
+	assert := assert.New(s.T())
+
+	ctx := context.Background()
+	ctxWithEndpoint := WithLayoutEndpoint(ctx, "")
+
+	value := ctxWithEndpoint.Value(ctxLayoutEndpointKey{})
+	assert.Nil(value)
+}
+
+func (s *policiesTestSuite) TestLayoutPolicyWithLayoutEndpoint() {
+	assert := assert.New(s.T())
+
+	layoutHost := "layout.blob.core.windows.net:443"
+	originalHost := "original.blob.core.windows.net"
+
+	p := NewLayoutPolicy()
+	pipeline := runtime.NewPipeline("test", "v1", runtime.PipelineOptions{
+		PerCall: []policy.Policy{p},
+	}, &policy.ClientOptions{Transport: &mockTransport{}})
+
+	ctx := WithLayoutEndpoint(context.Background(), "https://"+layoutHost)
+	req, err := runtime.NewRequest(ctx, http.MethodGet, "https://"+originalHost+"/container/blob")
+	assert.NoError(err)
+
+	_, err = pipeline.Do(req)
+	assert.NoError(err)
+
+	// Host header should be set to original host
+	assert.Equal(originalHost, req.Raw().Host)
+	// URL host should be redirected to the layout endpoint
+	assert.Equal(layoutHost, req.Raw().URL.Host)
+}
+
+func (s *policiesTestSuite) TestLayoutPolicyWithLayoutEndpointEmpty() {
+	assert := assert.New(s.T())
+
+	originalHost := "original.blob.core.windows.net"
+
+	p := NewLayoutPolicy()
+	pipeline := runtime.NewPipeline("test", "v1", runtime.PipelineOptions{
+		PerCall: []policy.Policy{p},
+	}, &policy.ClientOptions{Transport: &mockTransport{}})
+
+	// Bypass WithLayoutEndpoint to set an empty string directly in context
+	ctx := context.WithValue(context.Background(), ctxLayoutEndpointKey{}, "")
+	req, err := runtime.NewRequest(ctx, http.MethodGet, "https://"+originalHost+"/container/blob")
+	assert.NoError(err)
+
+	_, err = pipeline.Do(req)
+	assert.NoError(err)
+
+	// URL host should remain unchanged when endpoint is empty
+	assert.Equal(originalHost, req.Raw().URL.Host)
+}
+
+func (s *policiesTestSuite) TestLayoutPolicyWithLayoutEndpointInvalid() {
+	assert := assert.New(s.T())
+
+	p := NewLayoutPolicy()
+	pipeline := runtime.NewPipeline("test", "v1", runtime.PipelineOptions{
+		PerCall: []policy.Policy{p},
+	}, &policy.ClientOptions{Transport: &mockTransport{}})
+
+	// Use an invalid URL that will fail url.Parse
+	ctx := context.WithValue(context.Background(), ctxLayoutEndpointKey{}, "://invalid-url")
+	req, err := runtime.NewRequest(ctx, http.MethodGet, "https://original.blob.core.windows.net/container/blob")
+	assert.NoError(err)
+
+	_, err = pipeline.Do(req)
+	assert.Error(err)
+}
+
+func (s *policiesTestSuite) TestLayoutPolicyWithoutLayoutEndpoint() {
+	assert := assert.New(s.T())
+
+	originalHost := "original.blob.core.windows.net"
+
+	p := NewLayoutPolicy()
+	pipeline := runtime.NewPipeline("test", "v1", runtime.PipelineOptions{
+		PerCall: []policy.Policy{p},
+	}, &policy.ClientOptions{Transport: &mockTransport{}})
+
+	req, err := runtime.NewRequest(context.Background(), http.MethodGet, "https://"+originalHost+"/container/blob")
+	assert.NoError(err)
+
+	originalURLHost := req.Raw().URL.Host
+	originalReqHost := req.Raw().Host
+
+	_, err = pipeline.Do(req)
+	assert.NoError(err)
+
+	// Without a layout endpoint in context, Host and URL host should remain unchanged
+	assert.Equal(originalURLHost, req.Raw().URL.Host)
+	assert.Equal(originalReqHost, req.Raw().Host)
+}
+
+func (s *policiesTestSuite) TestNewLayoutPolicy() {
+	assert := assert.New(s.T())
+
+	p := NewLayoutPolicy()
+	assert.NotNil(p)
+	_, ok := p.(*layoutPolicy)
+	assert.True(ok)
+}
+
 func TestPoliciesSuite(t *testing.T) {
 	suite.Run(t, new(policiesTestSuite))
 }

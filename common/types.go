@@ -47,7 +47,8 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.5.3"
+	// private drop for data locality with version 2.5.4~preview.1
+	blobfuse2Version_ = "2.5.4~preview.1"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
