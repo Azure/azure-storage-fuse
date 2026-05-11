@@ -543,11 +543,17 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	// Session API is only supported for Azure Blob Storage (fns/block) accounts with OAuth-based
 	// authentication (MSI, SPN, Azure CLI, Workload Identity). It is not available for DFS/ADLS
 	// accounts, and is ignored when shared key or SAS token authentication is used.
+	// It also requires a single explicitly configured container, so it is ignored for
+	// mount-all-containers mode or when no container name is provided.
 	if opt.UseSession {
 		if az.stConfig.authConfig.AccountType == EAccountType.ADLS() {
 			log.Warn("ParseAndValidateConfig : Session API (use-session) is not supported for DFS/ADLS accounts; ignoring the flag.")
 		} else if az.stConfig.authConfig.AuthMode == EAuthType.KEY() || az.stConfig.authConfig.AuthMode == EAuthType.SAS() {
 			log.Warn("ParseAndValidateConfig : Session API (use-session) requires OAuth-based authentication; ignoring the flag for %s auth.", az.stConfig.authConfig.AuthMode)
+		} else if az.stConfig.mountAllContainers {
+			log.Warn("ParseAndValidateConfig : Session API (use-session) requires a single specified container and is not supported with mount-all-containers; ignoring the flag.")
+		} else if strings.TrimSpace(az.stConfig.container) == "" {
+			log.Warn("ParseAndValidateConfig : Session API (use-session) requires a non-empty container name; ignoring the flag.")
 		} else {
 			az.stConfig.useSession = true
 		}

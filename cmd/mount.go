@@ -927,20 +927,6 @@ func init() {
 	mountCmd.PersistentFlags().Bool("disable-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
 	config.BindPFlag("disable-kernel-cache", mountCmd.PersistentFlags().Lookup("disable-kernel-cache"))
 
-	// use-session enables the Session API for Azure Blob Storage (fns/block) accounts.
-	// Requirements and limitations:
-	//   - Only supported with OAuth-based authentication (MSI, SPN, Azure CLI, Workload Identity).
-	//   - Ignored when using shared key or SAS token authentication.
-	//   - Not applicable to DFS/ADLS accounts; the flag is ignored when use-adls is set.
-	//   - Currently limited to Get Blob requests (HTTP GET on blob URLs without a comp query
-	//     parameter). All other requests fall back to standard bearer token authentication.
-	mountCmd.PersistentFlags().Bool("use-session", false,
-		"Enables Session API for Azure Blob Storage (fns) accounts. "+
-			"Only supported with OAuth-based authentication (MSI/SPN/AzCLI/WorkloadIdentity). "+
-			"Ignored for key/SAS authentication and DFS/ADLS accounts. "+
-			"Currently limited to Get Blob requests; other requests use bearer token authentication.")
-	config.BindPFlag("azstorage.use-session", mountCmd.PersistentFlags().Lookup("use-session"))
-
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
 	config.AddConfigChangeEventListener(config.ConfigChangeEventHandlerFunc(OnConfigChange))
