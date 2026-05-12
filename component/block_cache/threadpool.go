@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package block_cache
+package blockcache
 
 import (
 	"sync"
@@ -68,7 +68,7 @@ type workItem struct {
 	prefetch bool              // Flag marking this is a prefetch request or not
 	failCnt  int32             // How many times this item has failed to download
 	upload   bool              // Flag marking this is a upload request or not
-	blockId  string            // BlockId of the block
+	blockID  string            // BlockId of the block
 	ETag     string            // Etag of the file before scheduling.
 }
 
