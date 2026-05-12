@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-package e2e_tests
+package e2etests
 
 import (
 	"crypto/rand"
@@ -439,9 +439,9 @@ func (suite *dirTestSuite) TestGitStash() {
 		f, err = os.OpenFile("README.md", os.O_RDONLY, 0644)
 		suite.NoError(err)
 		suite.NotZero(f)
-		new_info, err := f.Stat()
+		newInfo, err := f.Stat()
 		suite.NoError(err)
-		suite.Equal(info.Size()+10, new_info.Size())
+		suite.Equal(info.Size()+10, newInfo.Size())
 		data := make([]byte, 10)
 		n, err := f.ReadAt(data, info.Size())
 		suite.NoError(err)

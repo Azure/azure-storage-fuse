@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-package e2e_tests
+package e2etests
 
 import (
 	"crypto/md5"
@@ -722,13 +722,13 @@ func (suite *dataValidationTestSuite) TestPanicOnClosingFile() {
 	suite.NoError(err)
 
 	//Read 1st block
-	bytes_read, err := rfh.Read(buffer)
+	bytesRead, err := rfh.Read(buffer)
 	suite.NoError(err)
-	suite.Equal(bytes_read, blockSizeBytes)
+	suite.Equal(bytesRead, blockSizeBytes)
 
 	//Write to 2nd block
-	bytes_written, err := rfh.Write(buffer)
-	suite.Equal(bytes_written, blockSizeBytes)
+	bytesWritten, err := rfh.Write(buffer)
+	suite.Equal(bytesWritten, blockSizeBytes)
 	suite.NoError(err)
 
 	closeFileHandles(suite, rfh)
@@ -748,14 +748,14 @@ func (suite *dataValidationTestSuite) TestPanicOnWritingToFile() {
 	//Make the cooking+cooked=prefetchCount
 	for i := range 3 {
 		offset := 4 * int64(i) * int64(_1MB)
-		bytes_read, err := rfh.ReadAt(buffer, offset)
+		bytesRead, err := rfh.ReadAt(buffer, offset)
 		suite.NoError(err)
-		suite.Equal(bytes_read, blockSizeBytes)
+		suite.Equal(bytesRead, blockSizeBytes)
 	}
 
 	for i := 18; i < 20; i++ {
-		bytes_written, err := rfh.WriteAt(buffer, 18*int64(blockSizeBytes))
-		suite.Equal(bytes_written, blockSizeBytes)
+		bytesWritten, err := rfh.WriteAt(buffer, 18*int64(blockSizeBytes))
+		suite.Equal(bytesWritten, blockSizeBytes)
 		suite.NoError(err)
 	}
 
@@ -774,16 +774,16 @@ func (suite *dataValidationTestSuite) TestPanicOnReadingFileInRandReadMode() {
 	suite.NoError(err)
 
 	//Write at some offset
-	bytes_written, err := rfh.WriteAt(buffer, 0)
-	suite.Equal(bytes_written, blockSizeBytes)
+	bytesWritten, err := rfh.WriteAt(buffer, 0)
+	suite.Equal(bytesWritten, blockSizeBytes)
 	suite.NoError(err)
 
 	//Make the file handle goto random read mode in block cache(This is causing panic)
 	for i := range 14 {
 		offset := int64(_1MB) * 6 * int64(i)
-		bytes_read, err := rfh.ReadAt(buffer, offset)
+		bytesRead, err := rfh.ReadAt(buffer, offset)
 		suite.NoError(err)
-		suite.Equal(bytes_read, blockSizeBytes)
+		suite.Equal(bytesRead, blockSizeBytes)
 	}
 
 	closeFileHandles(suite, rfh)
