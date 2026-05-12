@@ -81,7 +81,7 @@ func (suite *dataManagerTestSuite) TestProcessErrors() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	item := &WorkItem{
-		CompName: DATA_MANAGER,
+		CompName: DataManagerComp,
 		Path:     "test",
 		Block:    &Block{},
 		Download: false,
