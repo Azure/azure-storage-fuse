@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-package account_cleanup
+package accountcleanup
 
 import (
 	"context"
