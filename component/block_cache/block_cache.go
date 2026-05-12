@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package block_cache
+package blockcache
 
 import (
 	"bytes"
@@ -108,13 +108,13 @@ const (
 	compName                = "block_cache"
 	defaultTimeout          = 120
 	defaultBlockSize        = 16
-	MAX_POOL_USAGE   uint32 = 80
-	MIN_POOL_USAGE   uint32 = 50
-	MIN_PREFETCH            = 5
-	MIN_WRITE_BLOCK         = 3
-	MIN_RANDREAD            = 10
-	MAX_FAIL_CNT            = 3
-	MAX_BLOCKS              = 50000
+	MaxPoolUsage     uint32 = 80
+	MinPoolUsage     uint32 = 50
+	MinPrefetch             = 5
+	MinWriteBlock           = 3
+	MinRandRead             = 10
+	MaxFailCnt              = 3
+	MaxBlocks               = 50000
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -192,10 +192,10 @@ func (bc *BlockCache) Stop() error {
 func (bc *BlockCache) GenConfig() string {
 	log.Info("BlockCache::Configure : config generation started")
 
-	prefetch := uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
+	prefetch := uint32(math.Max((MinPrefetch*2)+1, (float64)(2*runtime.NumCPU())))
 	memSize := uint32(bc.getDefaultMemSize() / _1MB)
 	if (prefetch * defaultBlockSize) > memSize {
-		prefetch = (MIN_PREFETCH * 2) + 1
+		prefetch = (MinPrefetch * 2) + 1
 	}
 
 	var sb strings.Builder
@@ -256,11 +256,11 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.consistency = conf.Consistency
 
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
-	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
+	bc.prefetch = uint32(math.Max((MinPrefetch*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
 
 	if (!config.IsSet(compName + ".mem-size-mb")) && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
-		bc.prefetch = (MIN_PREFETCH * 2) + 1
+		bc.prefetch = (MinPrefetch * 2) + 1
 	}
 
 	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
@@ -273,8 +273,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.prefetch = conf.PrefetchCount
 		if bc.prefetch == 0 {
 			bc.noPrefetch = true
-		} else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
-			log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MIN_PREFETCH*2)+1)
+		} else if conf.PrefetchCount <= (MinPrefetch * 2) {
+			log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MinPrefetch*2)+1)
 			return fmt.Errorf("config error in %s [invalid prefetch count]", bc.Name())
 		}
 	}
@@ -456,11 +456,11 @@ func (bc *BlockCache) validateBlockList(handle *handlemap.Handle, options intern
 
 	for idx, block := range *blockList {
 		if (idx < (listLen-1) && block.Size != bc.blockSize) || (idx == (listLen-1) && block.Size > bc.blockSize) {
-			log.Err("BlockCache::validateBlockList : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
+			log.Err("BlockCache::validateBlockList : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.ID, block.Size)
 			return false
 		}
 		listMap[int64(idx)] = &blockInfo{
-			id:        block.Id,
+			id:        block.ID,
 			committed: true,
 			size:      block.Size,
 		}
@@ -744,7 +744,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			block.flags.Clear(BlockFlagDownloading)
 
 			// Download complete and you are first reader of this block
-			if !bc.noPrefetch && handle.OptCnt <= MIN_RANDREAD {
+			if !bc.noPrefetch && handle.OptCnt <= MinRandRead {
 				// So far this file has been read sequentially so prefetch more
 				val, _ := handle.GetValue("#")
 				if int64(val.(uint64)*bc.blockSize) < handle.Size {
@@ -794,10 +794,10 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 	currentCnt := handle.Buffers.Cooked.Len() + handle.Buffers.Cooking.Len()
 	cnt := uint32(0)
 
-	if handle.OptCnt > MIN_RANDREAD {
+	if handle.OptCnt > MinRandRead {
 		// This handle has been read randomly and we have reached the threshold to declare a random read case
 
-		if currentCnt > MIN_PREFETCH {
+		if currentCnt > MinPrefetch {
 			// As this file is in random read mode now, release the excess buffers. Just keep 5 buffers for it to work
 			log.Info("BlockCache::startPrefetch : Cleanup excessive blocks  %v=>%s index %v", handle.ID, handle.Path, index)
 
@@ -835,7 +835,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 			currentCnt = nodeList.Len()
 			node = nodeList.Front()
 
-			for ; node != nil && currentCnt > MIN_PREFETCH; node = nodeList.Front() {
+			for ; node != nil && currentCnt > MinPrefetch; node = nodeList.Front() {
 				block := node.Value.(*Block)
 				_ = nodeList.Remove(node)
 
@@ -856,7 +856,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 	} else {
 		// This handle is having sequential reads so far
 		// Allocate more buffers if required until we hit the prefetch count limit
-		for ; currentCnt < int(bc.prefetch) && cnt < MIN_PREFETCH; currentCnt++ {
+		for ; currentCnt < int(bc.prefetch) && cnt < MinPrefetch; currentCnt++ {
 			block := bc.blockPool.TryGet()
 			if block != nil {
 				block.node = handle.Buffers.Cooked.PushFront(block)
@@ -1061,7 +1061,7 @@ func (bc *BlockCache) download(item *workItem) {
 		Etag:   &etag,
 	})
 
-	if item.failCnt > MAX_FAIL_CNT {
+	if item.failCnt > MaxFailCnt {
 		// If we failed to read the data 3 times then just give up
 		log.Err("BlockCache::download : 3 attempts to download a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
 		item.block.Failed()
@@ -1195,7 +1195,7 @@ func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error)
 func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) (*Block, error) {
 	// Check the given block index is already available or not
 	index := bc.getBlockIndex(offset)
-	if index >= MAX_BLOCKS {
+	if index >= MaxBlocks {
 		log.Err("BlockCache::getOrCreateBlock : Failed to get Block %v=>%s offset %v", handle.ID, handle.Path, offset)
 		return nil, fmt.Errorf("block index out of range. Increase your block size")
 	}
@@ -1269,7 +1269,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block.Unblock()
 
 		// As we are creating new blocks here, we need to push the block for upload and remove them from list here
-		if handle.Buffers.Cooking.Len() > MIN_WRITE_BLOCK {
+		if handle.Buffers.Cooking.Len() > MinWriteBlock {
 			err = bc.stageBlocks(handle, 1)
 			if err != nil {
 				log.Err("BlockCache::getOrCreateBlock : Unable to stage blocks for %s [%s]", handle.Path, err.Error())
@@ -1360,12 +1360,12 @@ func (bc *BlockCache) releaseDownloadFailedBlock(handle *handlemap.Handle, block
 func (bc *BlockCache) printCooking(handle *handlemap.Handle) { //nolint
 	nodeList := handle.Buffers.Cooking
 	node := nodeList.Front()
-	cookedId := []int64{}
-	cookingId := []int64{}
+	cookedID := []int64{}
+	cookingID := []int64{}
 	for node != nil {
 		nextNode := node.Next()
 		block := node.Value.(*Block)
-		cookingId = append(cookingId, block.id)
+		cookingID = append(cookingID, block.id)
 		node = nextNode
 	}
 	nodeList = handle.Buffers.Cooked
@@ -1373,10 +1373,10 @@ func (bc *BlockCache) printCooking(handle *handlemap.Handle) { //nolint
 	for node != nil {
 		nextNode := node.Next()
 		block := node.Value.(*Block)
-		cookedId = append(cookedId, block.id)
+		cookedID = append(cookedID, block.id)
 		node = nextNode
 	}
-	log.Debug("BlockCache::printCookingnCooked : %v=>%s \n Cooking: [%v] \n Cooked: [%v]", handle.ID, handle.Path, cookingId, cookedId)
+	log.Debug("BlockCache::printCookingnCooked : %v=>%s \n Cooking: [%v] \n Cooked: [%v]", handle.ID, handle.Path, cookingID, cookedID)
 
 }
 
@@ -1413,14 +1413,14 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 		size:      bc.getBlockSize(uint64(handle.Size), block),
 	}
 
-	log.Debug("BlockCache::lineupUpload : block %v, size %v for %v=>%s, blockId %v", block.id, bc.getBlockSize(uint64(handle.Size), block), handle.ID, handle.Path, id)
+	log.Debug("BlockCache::lineupUpload : block %v, size %v for %v=>%s, blockID %v", block.id, bc.getBlockSize(uint64(handle.Size), block), handle.ID, handle.Path, id)
 	item := &workItem{
 		handle:   handle,
 		block:    block,
 		prefetch: false,
 		failCnt:  0,
 		upload:   true,
-		blockId:  id,
+		blockID:  id,
 	}
 
 	block.Uploading()
@@ -1492,13 +1492,13 @@ func (bc *BlockCache) upload(item *workItem) {
 		Name:   item.handle.Path,
 		Data:   item.block.data[0:blockSize],
 		Offset: uint64(item.block.offset),
-		Id:     item.blockId})
+		ID:     item.blockID})
 	if err != nil {
 		// Fail to write the data so just reschedule this request
 		log.Err("BlockCache::upload : Failed to write %v=>%s from offset %v [%s]", item.handle.ID, item.handle.Path, item.block.id, err.Error())
 		item.failCnt++
 
-		if item.failCnt > MAX_FAIL_CNT {
+		if item.failCnt > MaxFailCnt {
 			// If we failed to write the data 3 times then just give up
 			log.Err("BlockCache::upload : 3 attempts to upload a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
 			item.block.Failed()
@@ -1567,13 +1567,13 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 			break
 		}
 
-		err := bc.stageBlocks(handle, MAX_BLOCKS)
+		err := bc.stageBlocks(handle, MaxBlocks)
 		if err != nil {
 			log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s [%s]", handle.Path, err.Error())
 			return err
 		}
 
-		bc.waitAndFreeUploadedBlocks(handle, MAX_BLOCKS)
+		bc.waitAndFreeUploadedBlocks(handle, MaxBlocks)
 	}
 
 	if cnt == 3 {
@@ -1667,7 +1667,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []stri
 
 	zeroBlockStaged := false
 	zeroBlockID := ""
-	restageId := make([]string, 0)
+	restageID := make([]string, 0)
 	index := int64(0)
 	i := 0
 
@@ -1687,7 +1687,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []stri
 				err := bc.NextComponent().StageData(internal.StageDataOptions{
 					Name: handle.Path,
 					Data: bc.blockPool.zeroBlock.data[:fillerSize],
-					Id:   id,
+					ID:   id,
 				})
 
 				if err != nil {
@@ -1699,7 +1699,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []stri
 				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, size %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
 
 				// After the flush call we need to merge this particular block with the next block (semi zero block)
-				restageId = append(restageId, listMap[offsets[i]].id)
+				restageID = append(restageID, listMap[offsets[i]].id)
 
 				// Add the semi zero block to the list
 				blockIDList = append(blockIDList, id)
@@ -1739,11 +1739,11 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []stri
 		}
 	}
 
-	return blockIDList, restageId, nil
+	return blockIDList, restageID, nil
 }
 
 func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (string, error) {
-	if tryCnt > MAX_FAIL_CNT {
+	if tryCnt > MaxFailCnt {
 		// If we failed to write the data 3 times then just give up
 		log.Err("BlockCache::stageZeroBlock : 3 attempts to upload zero block have failed %v=>%v", handle.ID, handle.Path)
 		return "", fmt.Errorf("3 attempts to upload zero block have failed for %v=>%v", handle.ID, handle.Path)
@@ -1755,7 +1755,7 @@ func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (stri
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name: handle.Path,
 		Data: bc.blockPool.zeroBlock.data[:],
-		Id:   id,
+		ID:   id,
 	})
 
 	if err != nil {
@@ -1794,12 +1794,12 @@ func (bc *BlockCache) checkDiskUsage() bool {
 	usage := uint32((data * 100) / float64(bc.diskSize/_1MB))
 
 	if bc.maxDiskUsageHit {
-		if usage >= MIN_POOL_USAGE {
+		if usage >= MinPoolUsage {
 			return true
 		}
 		bc.maxDiskUsageHit = false
 	} else {
-		if usage >= MAX_POOL_USAGE {
+		if usage >= MaxPoolUsage {
 			bc.maxDiskUsageHit = true
 			return true
 		}
