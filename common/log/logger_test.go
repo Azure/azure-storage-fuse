@@ -44,17 +44,17 @@ import (
 
 type LoggerTestSuite struct {
 	suite.Suite
-	log_rotate_test_count int
+	logRotateTestCount int
 }
 
 func fastTestDebug(lts *LoggerTestSuite) {
-	for i := 0; i < lts.log_rotate_test_count; i++ {
+	for i := 0; i < lts.logRotateTestCount; i++ {
 		Debug("hello %d", i)
 	}
 }
 
 func fastTestCrit(lts *LoggerTestSuite) {
-	for i := 0; i < lts.log_rotate_test_count; i++ {
+	for i := 0; i < lts.logRotateTestCount; i++ {
 		Crit("hello %d", i)
 	}
 }
@@ -83,7 +83,7 @@ func simpleTest(lts *LoggerTestSuite) {
 }
 
 func (lts *LoggerTestSuite) SetupTest() {
-	lts.log_rotate_test_count = (10 * 1000 * 10)
+	lts.logRotateTestCount = (10 * 1000 * 10)
 }
 
 func (lts *LoggerTestSuite) TestBaseLogger() {
