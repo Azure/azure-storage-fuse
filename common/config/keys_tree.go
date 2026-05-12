@@ -40,7 +40,7 @@ import (
 	"strings"
 )
 
-const STRUCT_TAG = "config"
+const StructTag = "config"
 
 type TreeNode struct {
 	children map[string]*TreeNode
@@ -237,7 +237,7 @@ func (tree *Tree) MergeWithKey(key string, obj any, getValue func(val any) (res 
 				if elem.Field(i).Type().Kind() == reflect.Struct {
 					subKey := key + "." + idx
 					tree.MergeWithKey(subKey, elem.Field(i).Addr().Interface(), getValue)
-				} else if elem.Field(i).Type().Kind() == reflect.Ptr {
+				} else if elem.Field(i).Type().Kind() == reflect.Pointer {
 					subKey := key + "." + idx
 					tree.MergeWithKey(subKey, elem.Field(i).Elem().Addr().Interface(), getValue)
 				} else {
@@ -274,7 +274,7 @@ func (tree *Tree) Merge(obj any, getValue func(val any) (res any, ok bool)) {
 				if elem.Field(i).Type().Kind() == reflect.Struct {
 					subKey := idx
 					tree.MergeWithKey(subKey, elem.Field(i).Addr().Interface(), getValue)
-				} else if elem.Field(i).Type().Kind() == reflect.Ptr {
+				} else if elem.Field(i).Type().Kind() == reflect.Pointer {
 					subKey := idx
 					tree.MergeWithKey(subKey, elem.Field(i).Elem().Addr().Interface(), getValue)
 				} else {
@@ -349,7 +349,7 @@ func assignToField(field reflect.Value, val any) {
 
 // getIdxFromField is a utility function that returns the key to index into the map based on struct tags.
 func getIdxFromField(structField reflect.StructField) string {
-	idx := structField.Tag.Get(STRUCT_TAG)
+	idx := structField.Tag.Get(StructTag)
 	if idx == "" {
 		idx = strings.ToLower(structField.Name)
 	}
