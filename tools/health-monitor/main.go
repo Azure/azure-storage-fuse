@@ -50,7 +50,7 @@ import (
 func getMonitors() []hminternal.Monitor {
 	compMap := map[string]bool{
 		hmcommon.BlobfuseStats:     hmcommon.NoBfsMon,
-		hmcommon.CpuMemoryProfiler: (hmcommon.NoCpuProf && hmcommon.NoMemProf),
+		hmcommon.CPUMemoryProfiler: (hmcommon.NoCPUProf && hmcommon.NoMemProf),
 		hmcommon.NetworkProfiler:   hmcommon.NoNetProf,
 		hmcommon.FileCacheMon:      hmcommon.NoFileCacheMon,
 	}
@@ -150,7 +150,7 @@ func init() {
 	flag.StringVar(&hmcommon.OutputPath, "output-path", "", "Path where output files will be created")
 
 	flag.BoolVar(&hmcommon.NoBfsMon, "no-blobfuse2-stats", false, "Disable blobfuse2 stats polling")
-	flag.BoolVar(&hmcommon.NoCpuProf, "no-cpu-profiler", false, "Disable CPU monitoring on blobfuse2 process")
+	flag.BoolVar(&hmcommon.NoCPUProf, "no-cpu-profiler", false, "Disable CPU monitoring on blobfuse2 process")
 	flag.BoolVar(&hmcommon.NoMemProf, "no-memory-profiler", false, "Disable memory monitoring on blobfuse2 process")
 	flag.BoolVar(&hmcommon.NoNetProf, "no-network-profiler", false, "Disable network monitoring on blobfuse2 process")
 	flag.BoolVar(&hmcommon.NoFileCacheMon, "no-file-cache-monitor", false, "Disable file cache directory monitor")
