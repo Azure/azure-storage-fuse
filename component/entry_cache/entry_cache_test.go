@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package entry_cache
+package entrycache
 
 import (
 	"context"
@@ -53,14 +53,14 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var home_dir, _ = os.UserHomeDir()
+var homeDir, _ = os.UserHomeDir()
 
 type entryCacheTestSuite struct {
 	suite.Suite
-	assert            *assert.Assertions
-	entryCache        *EntryCache
-	loopback          internal.Component
-	fake_storage_path string
+	assert          *assert.Assertions
+	entryCache      *EntryCache
+	loopback        internal.Component
+	fakeStoragePath string
 }
 
 func newLoopbackFS() internal.Component {
@@ -94,12 +94,12 @@ func (suite *entryCacheTestSuite) SetupTest() {
 		panic("Unable to set silent logger as default.")
 	}
 	rand := randomString(8)
-	suite.fake_storage_path = filepath.Join(home_dir, "fake_storage"+rand)
-	defaultConfig := fmt.Sprintf("read-only: true\n\nentry_cache:\n  timeout-sec: 7\n\nloopbackfs:\n  path: %s", suite.fake_storage_path)
+	suite.fakeStoragePath = filepath.Join(homeDir, "fake_storage"+rand)
+	defaultConfig := fmt.Sprintf("read-only: true\n\nentry_cache:\n  timeout-sec: 7\n\nloopbackfs:\n  path: %s", suite.fakeStoragePath)
 	log.Debug("%s", defaultConfig)
 
 	// Delete the temp directories created
-	os.RemoveAll(suite.fake_storage_path)
+	os.RemoveAll(suite.fakeStoragePath)
 	suite.setupTestHelper(defaultConfig)
 }
 
@@ -128,7 +128,7 @@ func (suite *entryCacheTestSuite) cleanupTest() {
 	}
 
 	// Delete the temp directories created
-	os.RemoveAll(suite.fake_storage_path)
+	os.RemoveAll(suite.fakeStoragePath)
 }
 
 func (suite *entryCacheTestSuite) TestEmpty() {
@@ -152,7 +152,7 @@ func (suite *entryCacheTestSuite) TestWithEntry() {
 	defer suite.cleanupTest()
 
 	// Create a file
-	filePath := filepath.Join(suite.fake_storage_path, "testfile1")
+	filePath := filepath.Join(suite.fakeStoragePath, "testfile1")
 	h, err := os.Create(filePath)
 	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
@@ -174,7 +174,7 @@ func (suite *entryCacheTestSuite) TestCachedEntry() {
 	defer suite.cleanupTest()
 
 	// Create a file
-	filePath := filepath.Join(suite.fake_storage_path, "testfile1")
+	filePath := filepath.Join(suite.fakeStoragePath, "testfile1")
 	h, err := os.Create(filePath)
 	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
@@ -191,7 +191,7 @@ func (suite *entryCacheTestSuite) TestCachedEntry() {
 
 	suite.assert.Equal(objs, cachedObjs.(pathCacheItem).children)
 
-	filePath = filepath.Join(suite.fake_storage_path, "testfile2")
+	filePath = filepath.Join(suite.fakeStoragePath, "testfile2")
 	h, err = os.Create(filePath)
 	suite.assert.NoError(err)
 	suite.assert.NotNil(h)
