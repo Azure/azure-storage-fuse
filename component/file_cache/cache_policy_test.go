@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package file_cache
+package filecache
 
 import (
 	"io/fs"
@@ -57,21 +57,21 @@ func (suite *cachePolicyTestSuite) SetupTest() {
 		panic("Unable to set silent logger as default.")
 	}
 	suite.assert = assert.New(suite.T())
-	err = os.Mkdir(cache_path, fs.FileMode(0777))
+	err = os.Mkdir(cachePath, fs.FileMode(0777))
 	suite.assert.NoError(err)
 }
 
 func (suite *cachePolicyTestSuite) cleanupTest() {
-	os.RemoveAll(cache_path)
+	os.RemoveAll(cachePath)
 }
 
 func (suite *cachePolicyTestSuite) TestGetUsage() {
 	defer suite.cleanupTest()
-	f, _ := os.Create(cache_path + "/test")
+	f, _ := os.Create(cachePath + "/test")
 	data := make([]byte, 1024*1024)
 	_, err := f.Write(data)
 	suite.assert.NoError(err)
-	result, _ := common.GetUsage(cache_path)
+	result, _ := common.GetUsage(cachePath)
 	suite.assert.InEpsilon(float64(1), math.Floor(result), 0.1)
 	f.Close()
 }
@@ -80,10 +80,10 @@ func (suite *cachePolicyTestSuite) TestGetUsagePercentage() {
 	defer suite.cleanupTest()
 	data := make([]byte, 1024*1024)
 
-	f, _ := os.Create(cache_path + "/test")
+	f, _ := os.Create(cachePath + "/test")
 	_, err := f.Write(data)
 	suite.assert.NoError(err)
-	result := getUsagePercentage(cache_path, 4)
+	result := getUsagePercentage(cachePath, 4)
 	// since the value might defer a little distro to distro
 	suite.assert.GreaterOrEqual(result, float64(25))
 	suite.assert.LessOrEqual(result, float64(30))
@@ -97,7 +97,7 @@ func (suite *cachePolicyTestSuite) TestGetUsagePercentage() {
 
 func (suite *cachePolicyTestSuite) TestDeleteFile() {
 	defer suite.cleanupTest()
-	f, _ := os.Create(cache_path + "/test")
+	f, _ := os.Create(cachePath + "/test")
 	result := deleteFile(f.Name() + "not_exist")
 	suite.assert.NoError(result)
 	f.Close()
