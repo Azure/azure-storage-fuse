@@ -316,12 +316,11 @@ func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType,
 		blk.idx, bufDesc.bufIdx, sync, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
 
 	wait := make(chan struct{}, 1)
-	//
+
 	// Take the exclusive lock on buffer content to prevent further writes while upload is in progress.
 	// This will be released after upload is complete.
-	if sync {
-		bufDesc.contentLock.Lock()
-	}
+	bufDesc.contentLock.Lock()
+
 	// Increment refCnt for upload
 	bufDesc.refCnt.Add(1)
 
