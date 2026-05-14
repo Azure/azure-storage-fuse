@@ -202,7 +202,11 @@ func releaseAllBuffersForFile(bc *BlockCache, file *File) {
 		}
 
 		// Ensure the buffer is valid for read before releasing, if read-ahead is in progress, wait for it to complete.
-		bufDesc.ensureBufferValidForRead()
+		if err := bufDesc.ensureBufferValidForRead(); err != nil {
+			log.Warn("releaseAllBuffersForFile: BufferIdx: %d for blockIdx: %d of file %s is not valid for read",
+				bufDesc.bufIdx, blk.idx, file.Name)
+			// Continue with releasing the buffer, this buffer would be collected by the victim selection algo later.
+		}
 
 		log.Debug("releaseAllBuffersForFile: Releasing bufferIdx: %d for blockIdx: %d of file %s from buffer table manager",
 			bufDesc.bufIdx, blk.idx, file.Name)
