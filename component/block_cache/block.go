@@ -315,7 +315,7 @@ func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType,
 	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, sync: %v, usageCnt: %d, refCnt: %d",
 		blk.idx, bufDesc.bufIdx, sync, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
 
-	wait := make(chan struct{}, 1)
+	wait := make(chan struct{})
 
 	// Take the exclusive lock on buffer content to prevent further writes while upload is in progress.
 	// This will be released after upload is complete.
@@ -356,7 +356,7 @@ func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType,
 //   - Any download errors are captured in bufDesc.downloadErr
 //   - Content lock is released allowing reads to proceed
 func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor, sync bool) {
-	wait := make(chan struct{}, 1)
+	wait := make(chan struct{})
 	// Increment refCnt for download
 	bufDesc.refCnt.Add(1)
 
