@@ -289,15 +289,14 @@ func renameFileInFileMap(oldPath, newPath string) error {
 		return fmt.Errorf("invalid file type in map for path: %s", oldPath)
 	}
 
+	// Attempt to store the file with the new path
+	if _, loaded := fileMap.LoadOrStore(newPath, fileObj); loaded {
+		return fmt.Errorf("a file already exists for the new path: %s", newPath)
+	}
+
 	fileObj.mu.Lock()
 	fileObj.Name = newPath
 	fileObj.mu.Unlock()
-
-	// Attempt to store the file with the new path
-	_, loaded := fileMap.LoadOrStore(newPath, fileObj)
-	if loaded {
-		return fmt.Errorf("a file already exists for the new path: %s", newPath)
-	}
 
 	// Remove the old path from the map
 	fileMap.Delete(oldPath)
