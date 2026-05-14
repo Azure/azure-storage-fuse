@@ -21,3 +21,6 @@ sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
 
 # Surface the toolchain version so build logs make the FIPS lineage obvious.
 /usr/local/go/bin/go version
+
+# Remove the tarball
+rm "$work_dir/$tarball"
