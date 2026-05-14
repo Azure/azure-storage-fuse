@@ -196,7 +196,7 @@ func releaseAllBuffersForFile(bc *BlockCache, file *File) {
 	log.Debug("releaseAllBuffersForFile: Releasing all buffers for file %s", file.Name)
 	// Release all buffers held by this file
 	for _, blk := range file.blockList.list {
-		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
+		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk, bc.freeList)
 		if bufDesc == nil {
 			continue
 		}
