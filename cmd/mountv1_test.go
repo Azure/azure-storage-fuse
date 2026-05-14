@@ -44,10 +44,10 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
+	attrcache "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	"github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	blockcache "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
+	filecache "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -193,7 +193,7 @@ func (suite *generateConfigTestSuite) TestConfigFileSPN() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	_, err := v1ConfigFile.WriteString("accountName myAccountName\nservicePrincipalClientId clientId\nservicePrincipalTenantId tenantId\nservicePrincipalClientSecret clientSecret\naadEndpoint aadEndpoint\nauthType SPN\ncontainerName myContainerName\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nservicePrincipalClientId clientID\nservicePrincipalTenantId tenantID\nservicePrincipalClientSecret clientSecret\naadEndpoint aadEndpoint\nauthType SPN\ncontainerName myContainerName\n")
 	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
@@ -209,8 +209,8 @@ func (suite *generateConfigTestSuite) TestConfigFileSPN() {
 	suite.assert.NoError(err)
 
 	suite.assert.Equal("myAccountName", options.AccountName)
-	suite.assert.Equal("clientId", options.ClientID)
-	suite.assert.Equal("tenantId", options.TenantID)
+	suite.assert.Equal("clientID", options.ClientID)
+	suite.assert.Equal("tenantID", options.TenantID)
 	suite.assert.Equal("clientSecret", options.ClientSecret)
 	suite.assert.Equal("aadEndpoint", options.ActiveDirectoryEndpoint)
 	suite.assert.Equal("spn", options.AuthMode)
@@ -224,7 +224,7 @@ func (suite *generateConfigTestSuite) TestConfigFileMSI() {
 	v2ConfigFile, _ := os.CreateTemp("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	_, err := v1ConfigFile.WriteString("accountName myAccountName\nidentityClientId clientId\nidentityObjectId objectId\nidentityResourceId resourceId\nauthType MSI\ncontainerName myContainerName\n")
+	_, err := v1ConfigFile.WriteString("accountName myAccountName\nidentityClientId clientID\nidentityObjectId objectId\nidentityResourceId resourceId\nauthType MSI\ncontainerName myContainerName\n")
 	suite.assert.NoError(err)
 
 	_, err = executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
@@ -240,7 +240,7 @@ func (suite *generateConfigTestSuite) TestConfigFileMSI() {
 	suite.assert.NoError(err)
 
 	suite.assert.Equal("myAccountName", options.AccountName)
-	suite.assert.Equal("clientId", options.ApplicationID)
+	suite.assert.Equal("clientID", options.ApplicationID)
 	suite.assert.Equal("objectId", options.ObjectID)
 	suite.assert.Equal("resourceId", options.ResourceID)
 	suite.assert.Equal("msi", options.AuthMode)
@@ -270,8 +270,8 @@ func (suite *generateConfigTestSuite) TestConfigFileProxy() {
 	err = config.UnmarshalKey("azstorage", &options)
 	suite.assert.NoError(err)
 
-	suite.assert.Equal("httpProxy", options.HttpProxyAddress)
-	suite.assert.Equal("httpsProxy", options.HttpsProxyAddress)
+	suite.assert.Equal("httpProxy", options.HTTPProxyAddress)
+	suite.assert.Equal("httpsProxy", options.HTTPSProxyAddress)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileBlobEndpoint() {
@@ -533,7 +533,7 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
-	options := file_cache.FileCacheOptions{}
+	options := filecache.FileCacheOptions{}
 
 	viper.SetConfigType("yaml")
 	err = config.ReadFromConfigFile(v2ConfigFile.Name())
@@ -671,7 +671,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
-	options := block_cache.StreamOptions{}
+	options := blockcache.StreamOptions{}
 
 	viper.SetConfigType("yaml")
 	err = config.ReadFromConfigFile(v2ConfigFile.Name())
@@ -704,7 +704,7 @@ func (suite *generateConfigTestSuite) TestCLIParamAttrCache() {
 	suite.assert.NoError(err)
 
 	// Read the generated v2 config file
-	options := attr_cache.AttrCacheOptions{}
+	options := attrcache.AttrCacheOptions{}
 
 	viper.SetConfigType("yaml")
 	err = config.ReadFromConfigFile(v2ConfigFile.Name())
@@ -759,8 +759,8 @@ func (suite *generateConfigTestSuite) TestCLIParamStorage() {
 	suite.assert.EqualValues(5, options.MaxRetries)
 	suite.assert.EqualValues(10, options.MaxTimeout)
 	suite.assert.EqualValues(8, options.BackoffTime)
-	suite.assert.Equal("httpProxy", options.HttpProxyAddress)
-	suite.assert.Equal("httpsProxy", options.HttpsProxyAddress)
+	suite.assert.Equal("httpProxy", options.HTTPProxyAddress)
+	suite.assert.Equal("httpsProxy", options.HTTPSProxyAddress)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageCaCertFileError() {
@@ -872,7 +872,7 @@ func (suite *generateConfigTestSuite) TestInvalidLibfuseOption() {
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o default_permissions", "-o umask=755", "-o a=b=c")
 	suite.assert.Error(err)
-	suite.assert.Contains(op, "Invalid FUSE options")
+	suite.assert.Contains(op, "invalid FUSE options")
 }
 
 // mountv1 failure test where a libfuse option is undefined
@@ -894,7 +894,7 @@ func (suite *generateConfigTestSuite) TestUndefinedLibfuseOption() {
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
 		"-o ro", "-o allow_root", "-o umask=755", "-o random_option")
 	suite.assert.Error(err)
-	suite.assert.Contains(op, "Invalid FUSE options")
+	suite.assert.Contains(op, "invalid FUSE options")
 }
 
 // mountv1 failure test where umask value is invalid
