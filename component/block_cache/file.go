@@ -675,7 +675,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 			continue
 		}
 
-		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
+		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk, bc.freeList)
 		if bufDesc == nil {
 			// It might happen this buffer has chosen as victim and removed from table after uploading.
 			if blk.getState() == committedBlock || blk.getState() == uncommitedBlock {
@@ -891,7 +891,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 		// Shrink the block list, give back the buffers shrank to free list.
 		for i := noOfBlocks; i < len(f.blockList.list); i++ {
 			blk := f.blockList.list[i]
-			bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk)
+			bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk, bc.freeList)
 			if bufDesc != nil {
 				// Remove this buffer from buffer table manager, as it is no longer needed.
 				if bc.btm.removeBufferDescriptor(bufDesc, bc.freeList) {
