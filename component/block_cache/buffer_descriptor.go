@@ -35,7 +35,7 @@ type bufferDescriptor struct {
 	// Track buffer usage for eviction decisions
 	bytesRead               atomic.Int32 // # of bytes read from this buffer (helps determine if buffer was used)
 	bytesWritten            atomic.Int32 // # of bytes written to this buffer (helps determine if upload is needed)
-	numEvictionCyclesPassed atomic.Int32 // # of eviction cycles this buffer has survived
+	numEvictionCyclesPassed atomic.Int32 // # of eviction cycles this buffer has survived, heuristic used in victim selection
 
 	// Content synchronization lock for buffer data access
 	// - Held exclusively during download/upload operations (modifying buffer content)
