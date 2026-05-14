@@ -463,17 +463,14 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		offsetInsideBlock := convertOffsetIntoBlockOffset(offset, int64(bc.blockSize))
 
 		// Take the exclusive lock on buffer content to write data
-		bufDesc.contentLock.Lock()
-
 		// Change the block state to localBlock as it is being modified
+		bufDesc.contentLock.Lock()
 		blk.setState(localBlock)
 		blk.numWrites.Add(1)
 		bufDesc.dirty.Store(true)
-
-		// Copy data from user buffer to block buffer
 		n := copy(bufDesc.buf[offsetInsideBlock:bc.blockSize], options.Data[bufOffset:])
-
-		bufDesc.bytesWritten.Add(int32(n))
+		totBytesWrittenBufDesc := bufDesc.bytesWritten.Add(int32(n))
+		bufDesc.contentLock.Unlock()
 
 		offset += int64(n)
 		bufOffset += n
@@ -481,18 +478,11 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		// Update file size if needed
 		f.updateFileSize(offset /* newFileSize */)
 
-		//
 		// Schedule upload if buffer is fully written and no other references
 		uploadScheduled := false
-		if bufDesc.bytesWritten.Load() >= int32(bc.blockSize) && bufDesc.refCnt.Load() == refCountTableAndOneUser {
+		if totBytesWrittenBufDesc >= int32(bc.blockSize) && bufDesc.refCnt.Load() == refCountTableAndOneUser {
 			blk.scheduleUpload(bc.workerPool, bc.freeList, bufDesc, false /*sync*/)
 			uploadScheduled = true
-		}
-		//
-		// Unlock the buffer content lock after write, if upload is scheduled, the lock will be
-		// released after upload is complete in the different goroutine, else we can release it now.
-		if !uploadScheduled {
-			bufDesc.contentLock.Unlock()
 		}
 
 		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d, uploadScheduled: %v",
