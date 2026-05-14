@@ -1,7 +1,6 @@
 package block_cache
 
 import (
-	"math"
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -204,7 +203,10 @@ func (pd *patternDetector) updateAccessPattern(currentOffset int64, blockSize in
 	prevOffset := pd.prevOffset.Swap(currentOffset)
 	windowSize := blockSize * sequentialWindowBlocks
 
-	absDiff := int64(math.Abs(float64(currentOffset - prevOffset)))
+	absDiff := currentOffset - prevOffset
+	if absDiff < 0 {
+		absDiff = -absDiff
+	}
 
 	if absDiff <= windowSize {
 		// Sequential access
