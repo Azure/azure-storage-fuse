@@ -79,7 +79,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 		blk.idx, sync, blk.file.Name)
 
 	// Step 1: Check if buffer already exists for this block (fast path)
-	bufDesc, err := btm.LookUpBufferDescriptor(blk)
+	bufDesc, err := btm.LookUpBufferDescriptor(blk, freeList)
 	if bufDesc != nil {
 		// Buffer exists, refCnt already incremented by LookUp
 		log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Found existing bufferIdx: %d, blockIdx: %d, took: %v, refCnt: %d, bytesRead: %d, bytesWritten: %d, sync: %v",
@@ -281,7 +281,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 //   - Increment happens while holding bufferTableMgr lock to ensure thread-safety
 //
 // Thread-safety: Uses read lock for lookup, allowing concurrent lookups by multiple threads
-func (btm *BufferTableMgr) LookUpBufferDescriptor(blk *block) (*bufferDescriptor, error) {
+func (btm *BufferTableMgr) LookUpBufferDescriptor(blk *block, fl *freeListType) (*bufferDescriptor, error) {
 	btm.mu.RLock()
 	bufDesc, exists := btm.table[blk]
 	if exists {
@@ -293,6 +293,9 @@ func (btm *BufferTableMgr) LookUpBufferDescriptor(blk *block) (*bufferDescriptor
 		btm.mu.RUnlock()
 
 		if err := bufDesc.ensureBufferValidForRead(); err != nil {
+			log.Err("BufferTableMgr::LookUpBufferDescriptor: BufferIdx: %d for blockIdx: %d has error: %v during lookup, file: %s",
+				bufDesc.bufIdx, blk.idx, bufDesc.downloadErr, blk.file.Name)
+			bufDesc.release(fl)
 			return nil, err
 		}
 
