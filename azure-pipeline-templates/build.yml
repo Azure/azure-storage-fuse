@@ -83,7 +83,12 @@ steps:
     displayName: "Go Get"
 
   # Building blobfuse2 binary
+  # FIPS: see go_installer.sh / build.sh — Microsoft Go + CGO + GOTOOLCHAIN=local
+  # is what gives the binary the systemcrypto marker required for FIPS.
   - task: Go@0
+    env:
+      CGO_ENABLED: 1
+      GOTOOLCHAIN: local
     inputs:
       command: 'build'
       arguments: "-tags $(tags) -o blobfuse2"
@@ -92,6 +97,9 @@ steps:
 
   # Building bfusemon binary
   - task: Go@0
+    env:
+      CGO_ENABLED: 1
+      GOTOOLCHAIN: local
     inputs:
       command: 'build'
       arguments: "-tags $(tags) -o bfusemon ./tools/health-monitor/"
