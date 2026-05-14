@@ -40,7 +40,7 @@ func TestBufferTableMgr_LookUpBufferDescriptor_NotExists(t *testing.T) {
 	blk := createBlock(0, "testId", localBlock, f)
 
 	// Lookup non-existent buffer
-	bufDesc, err := btm.LookUpBufferDescriptor(blk)
+	bufDesc, err := btm.LookUpBufferDescriptor(blk, bc.freeList)
 
 	assert.NoError(t, err)
 	assert.Nil(t, bufDesc)
@@ -73,7 +73,7 @@ func TestBufferTableMgr_LookUpBufferDescriptor_Exists(t *testing.T) {
 	btm.mu.Unlock()
 
 	// Lookup existing buffer
-	foundBd, err := btm.LookUpBufferDescriptor(blk)
+	foundBd, err := btm.LookUpBufferDescriptor(blk, bc.freeList)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, foundBd)
@@ -298,7 +298,7 @@ func TestBufferTableMgr_LookUpBufferDescriptor_DownloadError(t *testing.T) {
 	btm.table[blk] = bd
 	btm.mu.Unlock()
 
-	foundBd, err := btm.LookUpBufferDescriptor(blk)
+	foundBd, err := btm.LookUpBufferDescriptor(blk, bc.freeList)
 	assert.Nil(t, foundBd)
 	assert.Error(t, err)
 }
