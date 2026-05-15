@@ -56,7 +56,8 @@ func (s *ErrorInjectionTestSuite) SetupTest() {
 	s.assert.NoError(os.MkdirAll(s.cachePath, 0777))
 
 	cfg := common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()}
-	log.SetDefaultLogger("silent", cfg)
+	err := log.SetDefaultLogger("silent", cfg)
+	s.assert.NoError(err)
 
 	configString := fmt.Sprintf(`
 loopbackfs:
@@ -92,11 +93,13 @@ block_cache:
 
 func (s *ErrorInjectionTestSuite) TearDownTest() {
 	if s.blockCache != nil {
-		s.blockCache.Stop()
+		err := s.blockCache.Stop()
+		s.assert.NoError(err)
 		s.blockCache = nil
 	}
 	if s.loopbackFS != nil {
-		s.loopbackFS.Stop()
+		err := s.loopbackFS.Stop()
+		s.assert.NoError(err)
 		s.loopbackFS = nil
 	}
 	os.RemoveAll(s.testPath)
@@ -213,6 +216,7 @@ func (s *ErrorInjectionTestSuite) TestFlush_StageDataFails() {
 	// Inject StageData error before flush
 	s.mock.setError("StageData", injectedError("StageData"))
 	err = s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h})
+	s.assert.Error(err)
 
 	// Subsequent write should fail with sticky error
 	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("x")})
@@ -291,7 +295,7 @@ func (s *ErrorInjectionTestSuite) TestFlush_SparseFile() {
 	// Verify file size
 	data, err := os.ReadFile(filepath.Join(s.testPath, "sparse.txt"))
 	s.assert.NoError(err)
-	s.assert.Equal(blockSz*3+100, len(data))
+	s.assert.Len(data, blockSz*3+100)
 	// Sparse region should be zeros
 	s.assert.Equal(bytes.Repeat([]byte{0}, blockSz*3), data[:blockSz*3])
 	s.assert.Equal(payload, data[blockSz*3:])
@@ -326,7 +330,7 @@ func (s *ErrorInjectionTestSuite) TestFlush_FileExtension_SizeOnStorageMismatch(
 
 	data, err := os.ReadFile(filepath.Join(s.testPath, "extend.txt"))
 	s.assert.NoError(err)
-	s.assert.Equal(int(s.blockCache.blockSize)*2, len(data))
+	s.assert.Len(data, int(s.blockCache.blockSize)*2)
 }
 
 // ============================================================================
@@ -404,7 +408,7 @@ func (s *ErrorInjectionTestSuite) TestConcurrent_WritesWithEvictionAndErrors() {
 		s.seedFile(fmt.Sprintf("conc_%d.txt", i), payload)
 	}
 
-	// Now do concurrent reads — exercises eviction and GetOrCreateBufferDescriptor paths
+	// Now do concurrent reads — exercises eviction and getOrCreateBufferDescriptor paths
 	var wg sync.WaitGroup
 	start := make(chan bool)
 	for i := 0; i < 15; i++ {
@@ -418,8 +422,11 @@ func (s *ErrorInjectionTestSuite) TestConcurrent_WritesWithEvictionAndErrors() {
 				return
 			}
 			buf := make([]byte, blockSz)
-			s.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: buf})
-			s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+			bytesRead, err := s.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: buf})
+			s.assert.Equal(blockSz, bytesRead)
+			s.assert.NoError(err)
+			err = s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+			s.assert.NoError(err)
 		}(i)
 	}
 	close(start)
@@ -510,7 +517,7 @@ func (s *ErrorInjectionTestSuite) TestFlush_EmptyFile() {
 
 	data, err := os.ReadFile(filepath.Join(s.testPath, "empty_flush.txt"))
 	s.assert.NoError(err)
-	s.assert.Equal(0, len(data))
+	s.assert.Empty(data)
 }
 
 // ============================================================================
@@ -696,6 +703,7 @@ func (s *ErrorInjectionTestSuite) TestWrite_UncommittedBlockRetry() {
 			Offset: int64(i * blockSz),
 			Data:   bytes.Repeat([]byte("E"), blockSz),
 		})
+		s.assert.NoError(err)
 		if err != nil {
 			break
 		}
@@ -703,7 +711,7 @@ func (s *ErrorInjectionTestSuite) TestWrite_UncommittedBlockRetry() {
 
 	// Now write back to block 0 — if its buffer was evicted and the block is uncommitted,
 	// this exercises the retry path
-	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("overwrite")})
+	_, _ = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("overwrite")})
 	// This may or may not succeed depending on eviction, but should not panic
 	s.assert.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
 	s.assert.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
@@ -737,7 +745,8 @@ func (s *ErrorInjectionTestSuite) TestRead_UncommittedBlockRetry() {
 			break
 		}
 	}
-	s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h})
+	err = s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h})
+	s.assert.NoError(err)
 
 	// Read block 0 — exercises eviction during read
 	buf := make([]byte, blockSz)

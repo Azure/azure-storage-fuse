@@ -22,9 +22,9 @@ func TestCreateBlock(t *testing.T) {
 
 func TestBlockStates(t *testing.T) {
 	// Test the different block states
-	assert.Equal(t, blockState(0), localBlock)
-	assert.Equal(t, blockState(1), uncommitedBlock)
-	assert.Equal(t, blockState(2), committedBlock)
+	assert.Equal(t, localBlock, blockState(0))
+	assert.Equal(t, uncommitedBlock, blockState(1))
+	assert.Equal(t, committedBlock, blockState(2))
 }
 
 func TestNewBlockList(t *testing.T) {
@@ -32,7 +32,7 @@ func TestNewBlockList(t *testing.T) {
 
 	assert.NotNil(t, bl)
 	assert.NotNil(t, bl.list)
-	assert.Equal(t, 0, len(bl.list))
+	assert.Empty(t, bl.list)
 	assert.Equal(t, blockListNotRetrieved, bl.state)
 }
 
@@ -95,11 +95,11 @@ func TestUpdateBlockListForReadOnlyFile(t *testing.T) {
 
 	updateBlockListForReadOnlyFile(f, int64(bc.blockSize))
 
-	assert.Equal(t, 5, len(f.blockList.list))
+	assert.Len(t, f.blockList.list, 5)
 	for i := 0; i < 5; i++ {
 		assert.NotNil(t, f.blockList.list[i])
 		assert.Equal(t, i, f.blockList.list[i].idx)
-		assert.Equal(t, "", f.blockList.list[i].id)
+		assert.Empty(t, f.blockList.list[i].id)
 		assert.Equal(t, committedBlock, f.blockList.list[i].getState())
 		assert.Equal(t, f, f.blockList.list[i].file)
 	}
@@ -120,7 +120,7 @@ func TestUpdateBlockListForReadOnlyFile_EmptyFile(t *testing.T) {
 
 	updateBlockListForReadOnlyFile(f, int64(bc.blockSize))
 
-	assert.Equal(t, 0, len(f.blockList.list))
+	assert.Empty(t, f.blockList.list)
 }
 
 func TestUpdateBlockListForReadOnlyFile_PartialBlock(t *testing.T) {
@@ -134,20 +134,20 @@ func TestUpdateBlockListForReadOnlyFile_PartialBlock(t *testing.T) {
 	updateBlockListForReadOnlyFile(f, int64(bc.blockSize))
 
 	// Should have 3 blocks (0, 1, 2)
-	assert.Equal(t, 3, len(f.blockList.list))
+	assert.Len(t, f.blockList.list, 3)
 }
 
 // This could happen if files were created with different block sizes or by other tools
 func TestErrInvalidBlockList(t *testing.T) {
-	assert.NotNil(t, ErrInvalidBlockList)
-	assert.Contains(t, ErrInvalidBlockList.Error(), "Invalid Block List")
+	assert.Error(t, ErrInvalidBlockList)
+	assert.Contains(t, ErrInvalidBlockList.Error(), "invalid block list")
 }
 
 func TestBlockListStates(t *testing.T) {
 	// Test the different blocklist states
-	assert.Equal(t, blocklistState(0), blockListInvalid)
-	assert.Equal(t, blocklistState(1), blockListValid)
-	assert.Equal(t, blocklistState(2), blockListNotRetrieved)
+	assert.Equal(t, blockListInvalid, blocklistState(0))
+	assert.Equal(t, blockListValid, blocklistState(1))
+	assert.Equal(t, blockListNotRetrieved, blocklistState(2))
 }
 
 func TestValidateBlockList_Valid(t *testing.T) {
@@ -169,7 +169,7 @@ func TestValidateBlockList_Valid(t *testing.T) {
 	validate := func() {
 		assert.NoError(t, err, "Block list should be valid")
 		assert.NotNil(t, f.blockList)
-		assert.Equal(t, 3, len(f.blockList.list))
+		assert.Len(t, f.blockList.list, 3)
 
 		// Check that the blocks in the file's block list match the storage block list
 		for i, blk := range f.blockList.list {

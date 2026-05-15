@@ -27,7 +27,7 @@ func TestCreateFreeList(t *testing.T) {
 	assert.NotNil(t, freeList)
 	assert.NotNil(t, freeList.bufPool)
 	assert.NotNil(t, freeList.bufDescriptors)
-	assert.Equal(t, 10, len(freeList.bufDescriptors))
+	assert.Len(t, freeList.bufDescriptors, 10)
 	assert.Equal(t, 0, freeList.firstFreeBuffer)
 	assert.Equal(t, 9, freeList.lastFreeBuffer)
 	assert.Equal(t, 0, freeList.nxtVictimBuffer)
@@ -249,8 +249,8 @@ func TestFreeList_CircularVictimSelection(t *testing.T) {
 }
 
 func TestErrFreeListFull(t *testing.T) {
-	assert.NotNil(t, errFreeListFull)
-	assert.Contains(t, errFreeListFull.Error(), "Free list is full")
+	assert.Error(t, errFreeListFull)
+	assert.Contains(t, errFreeListFull.Error(), "free list is full")
 }
 
 func TestFreeList_DebugListMustBeFull(t *testing.T) {
