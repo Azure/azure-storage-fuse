@@ -19,9 +19,6 @@ func TestCreateFreshHandleForFile(t *testing.T) {
 }
 
 func TestGetFileFromPath_FirstOpen(t *testing.T) {
-	// Clear the file map
-	fileMap = fileMap // Reset doesn't work, but we can use a clean test
-
 	handle := handlemap.NewHandle("newfile.txt")
 
 	f, firstOpen, err := getFileFromPath(handle)
@@ -30,7 +27,7 @@ func TestGetFileFromPath_FirstOpen(t *testing.T) {
 	assert.NotNil(t, f)
 	assert.True(t, firstOpen, "Should be first open")
 	assert.Equal(t, "newfile.txt", f.Name)
-	assert.Equal(t, 1, len(f.handles), "Should have one handle")
+	assert.Len(t, f.handles, 1, "Should have one handle")
 	_, exists := f.handles[handle]
 	assert.True(t, exists, "Handle should be in file's handle map")
 }
@@ -49,7 +46,7 @@ func TestGetFileFromPath_SecondOpen(t *testing.T) {
 
 	assert.False(t, firstOpen2, "Should not be first open")
 	assert.Equal(t, f1, f2, "Should be same file object")
-	assert.Equal(t, 2, len(f2.handles), "Should have two handles")
+	assert.Len(t, f2.handles, 2, "Should have two handles")
 	_, exists1 := f2.handles[handle1]
 	_, exists2 := f2.handles[handle2]
 	assert.True(t, exists1)
@@ -115,7 +112,7 @@ func TestDeleteOpenHandleForFile_NotLastHandle(t *testing.T) {
 	assert.True(t, exists, "File should remain when other handles are open")
 
 	// Should have one handle left
-	assert.Equal(t, 1, len(f.handles))
+	assert.Len(t, f.handles, 1)
 }
 
 func TestCheckFileExistsInOpen_Exists(t *testing.T) {
