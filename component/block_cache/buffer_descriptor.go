@@ -159,6 +159,8 @@ func (bd *bufferDescriptor) reset(fl *freeListType) {
 	bd.dirty.Store(false)
 	bd.downloadErr = nil
 	bd.uploadErr = nil
-	// Zero out the buffer content for security and consistency
-	copy(bd.buf, fl.bufPool.GetZeroBuffer())
+	// Clear the buffer
+	// copy(bd.buf, fl.bufPool.GetZeroBuffer())
+	// no need to copy zero buffer, just set all bytes to 0
+	clear(bd.buf)
 }
