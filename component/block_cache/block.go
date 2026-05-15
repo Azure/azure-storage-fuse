@@ -57,7 +57,7 @@ type block struct {
 	file  *File        // Pointer to the parent file (back reference)
 	idx   int          // Block index in the file (0-based)
 	id    string       // Azure Storage block ID (base64-encoded, generated during upload)
-	state blockState   // Current state: localBlock, uncommitedBlock, or committedBlock
+	state atomic.Int32 // Current state: localBlock, uncommitedBlock, or committedBlock
 
 	// numWrites tracks the number of write operations performed on this block.
 	// Used to detect if a committed block has been modified and needs re-upload.
@@ -66,11 +66,11 @@ type block struct {
 }
 
 func (blk *block) getState() blockState {
-	return blockState(atomic.LoadInt32((*int32)(&blk.state)))
+	return blockState(blk.state.Load())
 }
 
 func (blk *block) setState(newState blockState) {
-	atomic.StoreInt32((*int32)(&blk.state), int32(newState))
+	blk.state.Store(int32(newState))
 }
 
 // createBlock creates a new block with the specified parameters.
@@ -84,12 +84,11 @@ func (blk *block) setState(newState blockState) {
 // Returns a new block instance ready for use.
 func createBlock(idx int, id string, state blockState, f *File) *block {
 	blk := &block{
-		file:      f,
-		idx:       idx,
-		id:        id,
-		state:     state,
-		numWrites: atomic.Int32{},
+		file: f,
+		idx:  idx,
+		id:   id,
 	}
+	blk.state.Store(int32(state))
 
 	return blk
 }
@@ -217,7 +216,7 @@ func updateBlockListForReadOnlyFile(f *File, blockSize int64) {
 		return
 	}
 
-	noOfBlocks := (f.size + blockSize - 1) / blockSize
+	noOfBlocks := (f.size.Load() + blockSize - 1) / blockSize
 	var newblkList []*block = make([]*block, 0, noOfBlocks)
 
 	for i := range int(noOfBlocks) {

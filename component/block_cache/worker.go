@@ -2,7 +2,6 @@ package block_cache
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -201,7 +200,7 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 		Path:   block.file.Name,
 		Offset: int64(uint64(block.idx) * bc.blockSize),
 		Data:   bufDesc.buf,
-		Size:   atomic.LoadInt64(&block.file.size),
+		Size:   block.file.size.Load(),
 	})
 	if err != nil {
 		log.Err("BlockCache::downloadBlock: ReadInBuffer failed for file %s block idx %d: %v",
@@ -274,7 +273,7 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name: block.file.Name,
-		Data: bufDesc.buf[:getBlockSize(atomic.LoadInt64(&block.file.size), block.idx, int64(bc.blockSize))],
+		Data: bufDesc.buf[:getBlockSize(block.file.size.Load(), block.idx, int64(bc.blockSize))],
 		Id:   block.id,
 	})
 
