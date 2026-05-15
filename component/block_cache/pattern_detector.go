@@ -146,10 +146,7 @@ type patternDetector struct {
 //   - False-positive read-ahead is cheaper than missed opportunities
 //   - Random workloads quickly adjust the pattern
 func newPatternDetector() *patternDetector {
-	pd := &patternDetector{
-		prevOffset: atomic.Int64{},
-		streak:     atomic.Int32{},
-	}
+	pd := &patternDetector{}
 
 	//We start with sequential access pattern
 	pd.streak.Store(int32(3))
