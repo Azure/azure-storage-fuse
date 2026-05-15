@@ -152,12 +152,12 @@ func (bufPool *BufferPool) GetBuffer() ([]byte, error) {
 //	defer bufPool.PutBuffer(buf)
 //	// Use buf...
 func (bufPool *BufferPool) PutBuffer(buf []byte) {
-	if bufPool.curBuffers.Add(-1) < 0 {
-		panic("Buffer Pool: PutBuffer: curBuffers went below zero!")
-	}
-
 	if buf == nil {
 		panic("Buffer Pool: PutBuffer: nil buffer passed!")
+	}
+
+	if bufPool.curBuffers.Add(-1) < 0 {
+		panic("Buffer Pool: PutBuffer: curBuffers went below zero!")
 	}
 
 	// Reslice the length of the buffer to its original capacity if it got compacted.
