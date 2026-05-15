@@ -181,33 +181,52 @@ func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 			return 0, err
 		}
 
-		var blk *block
-	retry:
-
-		f.mu.RLock()
-		if blockIdx < len(f.blockList.list) {
-			blk = f.blockList.list[blockIdx]
-		}
-		f.mu.RUnlock()
-
-		if blk == nil {
-			log.Err("File::read: Block not found for file %s blockIdx %d", f.Name, blockIdx)
-			// TODO: is this the right error to return? or EIO is better?
-			return 0, io.EOF
-		}
-
-		bufDesc, status, err := bc.btm.GetOrCreateBufferDescriptor(
-			bc.freeList,
-			bc.workerPool,
-			blk,
-			true, /*sync*/
+		var (
+			blk     *block
+			bufDesc *bufferDescriptor
+			status  bufDescStatus
 		)
-		if err != nil {
-			log.Err("File::read: Failed to get buffer descriptor for file: %s, blockIdx: %d, [%v]", f.Name, blockIdx, err)
-			return 0, err
-		}
 
-		if status == bufDescStatusNeedsFileFlush {
+		// Acquire the block and a valid buffer descriptor for it. If the block
+		// is in uncommitted state, flush the file once and retry the lookup.
+		// Only a single flush is attempted; if the status is still
+		// bufDescStatusNeedsFileFlush after that, we treat it as an error.
+		flushed := false
+		for {
+			f.mu.RLock()
+			if blockIdx < len(f.blockList.list) {
+				blk = f.blockList.list[blockIdx]
+			}
+			f.mu.RUnlock()
+
+			if blk == nil {
+				log.Err("File::read: Block not found for file %s blockIdx %d", f.Name, blockIdx)
+				// TODO: is this the right error to return? or EIO is better?
+				return 0, io.EOF
+			}
+
+			var err error
+			bufDesc, status, err = bc.btm.GetOrCreateBufferDescriptor(
+				bc.freeList,
+				bc.workerPool,
+				blk,
+				true, /*sync*/
+			)
+			if err != nil {
+				log.Err("File::read: Failed to get buffer descriptor for file: %s, blockIdx: %d, [%v]", f.Name, blockIdx, err)
+				return 0, err
+			}
+
+			if status != bufDescStatusNeedsFileFlush {
+				break
+			}
+
+			if flushed {
+				// We already flushed once, but the block is still in uncommitted state. This should not happen.
+				log.Err("File::read: Block still in uncommitted state after flush for file: %s, blockIdx: %d", f.Name, blockIdx)
+				return 0, fmt.Errorf("block %d for file %s still in uncommitted state after flush", blockIdx, f.Name)
+			}
+
 			// The block is in uncommitted state, need to flush the file first before reading.
 			log.Debug("File::read: Block in uncommitted state, flushing file: %s before read, blockIdx: %d", f.Name, blockIdx)
 
@@ -215,9 +234,7 @@ func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 				log.Err("File::read: Failed to flush file: %s before read, blockIdx: %d: %v", f.Name, blockIdx, err)
 				return 0, err
 			}
-
-			// Retry getting the block descriptor after flush
-			goto retry
+			flushed = true
 		}
 
 		log.Debug("File::read: Got buffer descriptor bufIdx: %d for file: %s, blockIdx: %d, status: %v, numParallelReaders: %d, took: %v",
@@ -405,56 +422,78 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 
 	for offset < endOffset {
 		blockIdx := getBlockIndex(offset, int64(bc.blockSize))
-		var blk *block
-	retry:
-
-		f.mu.Lock()
-		// Increment write wait group to track pending writes, This must be done under lock as flushing the file would
-		// block the upcoming writers when it acquires the lock. The call to f.pendingWriters.Done() must be called
-		// after the write is completed even if there is an error, otherwise flush will wait indefinitely.
-		f.pendingWriters.Add(1)
-
-		blockListLen := len(f.blockList.list)
-
-		if blockIdx < blockListLen {
-			blk = f.blockList.list[blockIdx]
-		} else {
-			// Need to create new block
-			for i := blockListLen; i <= blockIdx; i++ {
-				blk = createBlock(i, common.GetBlockID(common.BlockIDLength), localBlock, f)
-				f.blockList.list = append(f.blockList.list, blk)
-				log.Debug("File::write: Created new blockIdx: %d for file: %s during write at offset: %d",
-					blk.idx, f.Name, options.Offset)
-			}
-		}
-		f.synced = false
-		f.mu.Unlock()
-
-		bufDesc, status, err := bc.btm.GetOrCreateBufferDescriptor(
-			bc.freeList,
-			bc.workerPool,
-			blk,
-			true, /*sync*/
+		var (
+			blk     *block
+			bufDesc *bufferDescriptor
+			status  bufDescStatus
 		)
-		if err != nil {
-			// Decrement the write wait group on error
-			f.pendingWriters.Done()
-			log.Err("File::write: Failed to get buffer descriptor for file: %s, blockIdx: %d, [%v]", f.Name, blockIdx, err)
-			return err
-		}
 
-		if status == bufDescStatusNeedsFileFlush {
-			// The block is in uncommitted state, need to flush the file first before writing.
-			log.Debug("File::write: Block in uncommitted state, flushing file: %s before write, blockIdx: %d", f.Name, blockIdx)
+		// Acquire (or create) the block and a valid buffer descriptor for it.
+		// If the block is in uncommitted state, flush the file once and retry
+		// the lookup. Only a single flush is attempted; if the status is still
+		// bufDescStatusNeedsFileFlush after that, we treat it as an error.
+		// pendingWriters is incremented per attempt under f.mu so that flush
+		// (which takes f.mu and then waits on pendingWriters) sees a consistent
+		// view; it is decremented before recursing into flush.
+		flushed := false
+		for {
+			f.mu.Lock()
+			// Increment write wait group to track pending writes, This must be done under lock as flushing the file would
+			// block the upcoming writers when it acquires the lock. The call to f.pendingWriters.Done() must be called
+			// after the write is completed even if there is an error, otherwise flush will wait indefinitely.
+			f.pendingWriters.Add(1)
+
+			blockListLen := len(f.blockList.list)
+
+			if blockIdx < blockListLen {
+				blk = f.blockList.list[blockIdx]
+			} else {
+				// Need to create new block
+				for i := blockListLen; i <= blockIdx; i++ {
+					blk = createBlock(i, common.GetBlockID(common.BlockIDLength), localBlock, f)
+					f.blockList.list = append(f.blockList.list, blk)
+					log.Debug("File::write: Created new blockIdx: %d for file: %s during write at offset: %d",
+						blk.idx, f.Name, options.Offset)
+				}
+			}
+			f.synced = false
+			f.mu.Unlock()
+
+			var err error
+			bufDesc, status, err = bc.btm.GetOrCreateBufferDescriptor(
+				bc.freeList,
+				bc.workerPool,
+				blk,
+				true, /*sync*/
+			)
+			if err != nil {
+				// Decrement the write wait group on error
+				f.pendingWriters.Done()
+				log.Err("File::write: Failed to get buffer descriptor for file: %s, blockIdx: %d, [%v]", f.Name, blockIdx, err)
+				return err
+			}
+
+			if status != bufDescStatusNeedsFileFlush {
+				break
+			}
+
 			// Decrement the write wait group before flushing, as flush will wait for all pending writers to complete.
 			f.pendingWriters.Done()
+
+			if flushed {
+				// We already flushed once, but the block is still in uncommitted state. This should not happen.
+				log.Err("File::write: Block still in uncommitted state after flush for file: %s, blockIdx: %d", f.Name, blockIdx)
+				return fmt.Errorf("block %d for file %s still in uncommitted state after flush", blockIdx, f.Name)
+			}
+
+			// The block is in uncommitted state, need to flush the file first before writing.
+			log.Debug("File::write: Block in uncommitted state, flushing file: %s before write, blockIdx: %d", f.Name, blockIdx)
 
 			if err := f.flush(bc, true /*takeFileLock*/); err != nil {
 				log.Err("File::write: Failed to flush file: %s before write, blockIdx: %d: %v", f.Name, blockIdx, err)
 				return err
 			}
-			// Retry getting the block descriptor after flush
-			goto retry
+			flushed = true
 		}
 
 		log.Debug("File::write: Got buffer descriptor bufIdx: %d for file: %s, blockIdx: %d, status: %v",
