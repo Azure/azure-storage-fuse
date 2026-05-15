@@ -123,7 +123,6 @@ import (
 	"os"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -534,7 +533,7 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 	// file structure has more updated info than attribute cache/Azure storage, if the file is open
 	file, ok := checkFileExistsInOpen(options.Name)
 	if ok {
-		fileSize := atomic.LoadInt64(&file.size)
+		fileSize := file.size.Load()
 		lmtNano := file.lmtNano.Load()
 		if (fileSize != -1) && (fileSize != attr.Size || lmtNano != 0) {
 			// There has been a modification done on the file. Return new attribute with new file size and mtime.
@@ -629,10 +628,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		patternDetector: newPatternDetector(),
 	}
 
-	size := atomic.LoadInt64(&f.size)
+	size := f.size.Load()
 	if size == -1 {
-		atomic.StoreInt64(&f.size, attr.Size)
-		atomic.StoreInt64(&f.sizeOnStorage, attr.Size)
+		f.size.Store(attr.Size)
+		f.sizeOnStorage.Store(attr.Size)
 		size = attr.Size
 	}
 
@@ -652,7 +651,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		}
 
 		size = 0
-		atomic.StoreInt64(&f.size, 0)
+		f.size.Store(0)
 		f.synced = false
 	}
 
