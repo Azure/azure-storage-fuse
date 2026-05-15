@@ -313,7 +313,7 @@ func (suite *LoopbackFSTestSuite) TestStageAndCommitData() {
 	committedList, err := lfs.GetCommittedBlockList("testBlock")
 	assert.NoError(err)
 	assert.NotNil(committedList)
-	assert.Equal(len(blockList), len(*committedList))
+	assert.Len(*committedList, len(blockList))
 
 	// Verify block IDs are correct
 	for i, block := range *committedList {
@@ -349,7 +349,7 @@ func (suite *LoopbackFSTestSuite) TestGetCommittedBlockList() {
 	committedList, err := lfs.GetCommittedBlockList("testFile")
 	assert.NoError(err)
 	assert.NotNil(committedList)
-	assert.Equal(2, len(*committedList))
+	assert.Len(*committedList, 2)
 	assert.Equal("block1", (*committedList)[0].Id)
 	assert.Equal("block2", (*committedList)[1].Id)
 }
@@ -376,7 +376,7 @@ func (suite *LoopbackFSTestSuite) TestDeleteFileRemovesBlockList() {
 	committedList, err := lfs.GetCommittedBlockList("testFile")
 	assert.NoError(err)
 	assert.NotNil(committedList)
-	assert.Equal(1, len(*committedList))
+	assert.Len(*committedList, 1)
 
 	// Delete the file
 	err = lfs.DeleteFile(internal.DeleteFileOptions{Name: "testFile"})
@@ -410,7 +410,7 @@ func (suite *LoopbackFSTestSuite) TestRenameFileMovesBlockList() {
 	committedList, err := lfs.GetCommittedBlockList("oldFile")
 	assert.NoError(err)
 	assert.NotNil(committedList)
-	assert.Equal(1, len(*committedList))
+	assert.Len(*committedList, 1)
 	assert.Equal("block1", (*committedList)[0].Id)
 
 	// Rename the file
@@ -421,7 +421,7 @@ func (suite *LoopbackFSTestSuite) TestRenameFileMovesBlockList() {
 	committedList, err = lfs.GetCommittedBlockList("newFile")
 	assert.NoError(err)
 	assert.NotNil(committedList)
-	assert.Equal(1, len(*committedList))
+	assert.Len(*committedList, 1)
 	assert.Equal("block1", (*committedList)[0].Id)
 
 	// Verify old name no longer has the block list in the map

@@ -90,7 +90,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) SetupTest() {
 	cfg := common.LogConfig{
 		Level: common.ELogLevel.LOG_DEBUG(),
 	}
-	log.SetDefaultLogger("silent", cfg)
+	err = log.SetDefaultLogger("silent", cfg)
+	suite.assert.NoError(err)
 
 	// Setup configuration for block_cache and loopbackfs
 	configString := fmt.Sprintf(`
@@ -131,11 +132,13 @@ block_cache:
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TearDownTest() {
 	if suite.blockCache != nil {
-		suite.blockCache.Stop()
+		err := suite.blockCache.Stop()
+		suite.assert.NoError(err)
 		suite.blockCache = nil
 	}
 	if suite.loopbackFS != nil {
-		suite.loopbackFS.Stop()
+		err := suite.loopbackFS.Stop()
+		suite.assert.NoError(err)
 		suite.loopbackFS = nil
 	}
 
@@ -563,7 +566,10 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReads() {
 				errors <- fmt.Errorf("reader %d: failed to open file: %v", readerId, err)
 				return
 			}
-			defer suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+			defer func() {
+				err2 := suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+				suite.assert.NoError(err2)
+			}()
 
 			buffer := make([]byte, len(content))
 			bytesRead, err := suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{
@@ -628,7 +634,10 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentWrites() {
 				errors <- fmt.Errorf("writer %d: failed to open: %v", writerId, err)
 				return
 			}
-			defer suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+			defer func() {
+				err2 := suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+				suite.assert.NoError(err2)
+			}()
 
 			content := fmt.Sprintf("Writer %d: %s", writerId, contentPerWriter)
 			offset := int64(writerId * len(content))
@@ -726,7 +735,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReadWrite() {
 					errors <- fmt.Errorf("reader %d iteration %d: failed to read: %v", readerId, j, err)
 				}
 
-				suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+				err2 := suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+				suite.assert.NoError(err2)
 				time.Sleep(time.Millisecond * 10)
 			}
 		}(i)
@@ -763,8 +773,10 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReadWrite() {
 					errors <- fmt.Errorf("writer %d iteration %d: failed to write: %v", writerId, j, err)
 				}
 
-				suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle})
-				suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+				err = suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle})
+				suite.assert.NoError(err)
+				err = suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+				suite.assert.NoError(err)
 				time.Sleep(time.Millisecond * 20)
 			}
 		}(i)
@@ -780,7 +792,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentReadWrite() {
 	}
 
 	// Allow some errors due to concurrent access but ensure no deadlocks
-	suite.assert.Equal(errorCount, 0, "Too many errors during concurrent operations")
+	suite.assert.Equal(0, errorCount, "Too many errors during concurrent operations")
 }
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentOpenSameFile() {
@@ -907,7 +919,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestMetadataOpsCoverage() {
 	suite.assert.NotNil(statfs)
 
 	// GenConfig
-	suite.assert.Equal("", suite.blockCache.GenConfig())
+	suite.assert.Empty(suite.blockCache.GenConfig())
 }
 
 // Test TruncateFile without a handle (nil handle path).
@@ -932,7 +944,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestTruncateFile_NilHandle(
 	// Verify
 	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
 	suite.assert.NoError(err)
-	suite.assert.Equal(10, len(data))
+	suite.assert.Len(data, 10)
 	suite.assert.Equal(data, []byte(content[:len(data)]))
 }
 
@@ -953,8 +965,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestGetAttr_OpenModifiedFil
 	attr, err := suite.blockCache.GetAttr(internal.GetAttrOptions{Name: fileName})
 	suite.assert.NoError(err)
 	suite.assert.Equal(attr.Size, int64(len("hello world extended data")))
-	suite.assert.True(!attr.Mtime.Before(before), "mtime should be >= write start time")
-	suite.assert.True(!attr.Mtime.After(after), "mtime should be <= write end time")
+	suite.assert.False(attr.Mtime.Before(before), "mtime should be >= write start time")
+	suite.assert.False(attr.Mtime.After(after), "mtime should be <= write end time")
 
 	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
 	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
@@ -980,8 +992,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestGetAttr_TruncatedFile()
 	attr, err := suite.blockCache.GetAttr(internal.GetAttrOptions{Name: fileName})
 	suite.assert.NoError(err)
 	suite.assert.Equal(int64(5), attr.Size)
-	suite.assert.True(!attr.Mtime.Before(before), "mtime should be >= truncate start time")
-	suite.assert.True(!attr.Mtime.After(after), "mtime should be <= truncate end time")
+	suite.assert.False(attr.Mtime.Before(before), "mtime should be >= truncate start time")
+	suite.assert.False(attr.Mtime.After(after), "mtime should be <= truncate end time")
 }
 
 // Test write-then-read cycle through the BlockCache API with data integrity check.
@@ -1030,7 +1042,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestOpenFile_Truncate() {
 
 	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
 	suite.assert.NoError(err)
-	suite.assert.Equal(0, len(data))
+	suite.assert.Empty(data)
 }
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestMultipleHandlesToSameFile() {
@@ -1319,7 +1331,6 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestLargeFileOperations() {
 	})
 	suite.assert.NoError(err)
 
-	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 5; i++ {
 		offset := rand.Int63n(int64(size - 1000))
 		buffer := make([]byte, 1000)
@@ -1389,7 +1400,6 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestSequentialVsRandomAcces
 	})
 	suite.assert.NoError(err)
 
-	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 20; i++ {
 		offset := rand.Intn(size - chunkSize)
 		buffer := make([]byte, chunkSize)
@@ -1516,7 +1526,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFlush_ExtendedFile() {
 	// Verify data
 	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
 	suite.assert.NoError(err)
-	suite.assert.Equal(blockSz*2, len(data))
+	suite.assert.Len(data, blockSz*2)
 	suite.assert.Equal(initial, data[:blockSz/2])
 	suite.assert.Equal(extension, data[blockSz:])
 	suite.assert.Equal(make([]byte, blockSz/2), data[blockSz/2:blockSz])
@@ -1599,7 +1609,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestOpenFile_TruncWhileOpen
 
 	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
 	suite.assert.NoError(err)
-	suite.assert.Equal(0, len(data))
+	suite.assert.Empty(data)
 }
 
 // Test write then read on same handle without intermediate flush exercises the read-uncommitted-block path.
@@ -1643,12 +1653,12 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestWriteBeyondExistingBloc
 
 	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
 	suite.assert.NoError(err)
-	suite.assert.Equal(blockSz*3+512, len(data))
+	suite.assert.Len(data, blockSz*3+512)
 	suite.assert.Equal(payload, data[blockSz*3:])
 }
 
 // TestEvictionUnderPressure stresses the buffer pool to trigger the victim retry/double-check
-// paths in GetOrCreateBufferDescriptor by concurrently reading many files with limited buffers.
+// paths in getOrCreateBufferDescriptor by concurrently reading many files with limited buffers.
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestEvictionUnderPressure() {
 	defer suite.TearDownTest()
 
@@ -1870,7 +1880,8 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileOperationsUnderMemo
 				errors <- fmt.Errorf("file %d: data verification failed", fileIdx)
 			}
 
-			suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+			err = suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+			suite.assert.NoError(err)
 		}(i)
 	}
 
@@ -1934,7 +1945,7 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestConcurrentMultiHandleDi
 
 	data, err := os.ReadFile(filepath.Join(suite.testPath, fileName))
 	suite.assert.NoError(err)
-	suite.assert.Equal(2*chunkSize, len(data))
+	suite.assert.Len(data, 2*chunkSize)
 	suite.assert.Equal(firstHalf, data[:chunkSize])
 	suite.assert.Equal(secondHalf, data[chunkSize:])
 }

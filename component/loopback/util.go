@@ -17,7 +17,7 @@ func removeAllFilesWithGivenPrefix(prefix string) error {
 	for _, file := range matches {
 		err1 := os.Remove(file)
 		if err1 != nil {
-			errors.Join(err, err1)
+			err = errors.Join(err, err1)
 		}
 	}
 	return err
