@@ -14,7 +14,7 @@ func TestNewBufferTableMgr(t *testing.T) {
 
 	assert.NotNil(t, btm)
 	assert.NotNil(t, btm.table)
-	assert.Equal(t, 0, len(btm.table))
+	assert.Empty(t, btm.table)
 }
 
 func TestBufDescStatus_String(t *testing.T) {
@@ -26,7 +26,7 @@ func TestBufDescStatus_String(t *testing.T) {
 	assert.Equal(t, "Unknown", bufDescStatus(99).String())
 }
 
-func TestBufferTableMgr_LookUpBufferDescriptor_NotExists(t *testing.T) {
+func Test_bufferTableMgr_lookupBufferDescriptor_NotExists(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
@@ -39,13 +39,13 @@ func TestBufferTableMgr_LookUpBufferDescriptor_NotExists(t *testing.T) {
 	blk := createBlock(0, "testId", localBlock, f)
 
 	// Lookup non-existent buffer
-	bufDesc, err := btm.LookUpBufferDescriptor(blk, bc.freeList)
+	bufDesc, err := btm.lookupBufferDescriptor(blk, bc.freeList)
 
 	assert.NoError(t, err)
 	assert.Nil(t, bufDesc)
 }
 
-func TestBufferTableMgr_LookUpBufferDescriptor_Exists(t *testing.T) {
+func Test_bufferTableMgr_lookupBufferDescriptor_Exists(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
@@ -58,7 +58,7 @@ func TestBufferTableMgr_LookUpBufferDescriptor_Exists(t *testing.T) {
 	blk := createBlock(0, "testId", localBlock, f)
 
 	// Manually add a buffer to the table
-	buf, _ := freeList.bufPool.GetBuffer()
+	buf, _ := freeList.bufPool.getBuffer()
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -72,7 +72,7 @@ func TestBufferTableMgr_LookUpBufferDescriptor_Exists(t *testing.T) {
 	btm.mu.Unlock()
 
 	// Lookup existing buffer
-	foundBd, err := btm.LookUpBufferDescriptor(blk, bc.freeList)
+	foundBd, err := btm.lookupBufferDescriptor(blk, bc.freeList)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, foundBd)
@@ -92,7 +92,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_NotInTable(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.GetBuffer()
+	buf, _ := freeList.bufPool.getBuffer()
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -119,7 +119,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Dirty(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.GetBuffer()
+	buf, _ := freeList.bufPool.getBuffer()
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -152,7 +152,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithRefs(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.GetBuffer()
+	buf, _ := freeList.bufPool.getBuffer()
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -184,7 +184,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithOnlyTableRef(t *testing
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.GetBuffer()
+	buf, _ := freeList.bufPool.getBuffer()
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -216,7 +216,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.GetBuffer()
+	buf, _ := freeList.bufPool.getBuffer()
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -254,7 +254,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_WithRemainingRefs(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.GetBuffer()
+	buf, _ := freeList.bufPool.getBuffer()
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -274,7 +274,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_WithRemainingRefs(t *testing.T) {
 	assert.Equal(t, int32(refCountTableAndOneUser+1), bd.refCnt.Load(), "refCnt should be unchanged")
 }
 
-func TestBufferTableMgr_LookUpBufferDescriptor_DownloadError(t *testing.T) {
+func Test_bufferTableMgr_lookupBufferDescriptor_DownloadError(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
@@ -285,7 +285,7 @@ func TestBufferTableMgr_LookUpBufferDescriptor_DownloadError(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.GetBuffer()
+	buf, _ := freeList.bufPool.getBuffer()
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -299,13 +299,13 @@ func TestBufferTableMgr_LookUpBufferDescriptor_DownloadError(t *testing.T) {
 	btm.table[blk] = bd
 	btm.mu.Unlock()
 
-	foundBd, err := btm.LookUpBufferDescriptor(blk, bc.freeList)
+	foundBd, err := btm.lookupBufferDescriptor(blk, bc.freeList)
 	assert.Nil(t, foundBd)
 	assert.Error(t, err)
 }
 
-// Test the slow path of GetOrCreateBufferDescriptor: buffer doesn't exist, gets allocated from free list.
-func TestGetOrCreateBufferDescriptor_AllocateFromFreeList(t *testing.T) {
+// Test the slow path of getOrCreateBufferDescriptor: buffer doesn't exist, gets allocated from free list.
+func Test_getOrCreateBufferDescriptor_AllocateFromFreeList(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
@@ -317,7 +317,7 @@ func TestGetOrCreateBufferDescriptor_AllocateFromFreeList(t *testing.T) {
 	blk := createBlock(0, "testId", localBlock, f)
 
 	// Block is localBlock (not committed), so no download needed — takes the write path (valid+dirty).
-	bufDesc, status, err := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
+	bufDesc, status, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
 	assert.NoError(t, err)
 	assert.NotNil(t, bufDesc)
 	assert.Equal(t, bufDescStatusAllocated, status)
@@ -330,7 +330,7 @@ func TestGetOrCreateBufferDescriptor_AllocateFromFreeList(t *testing.T) {
 }
 
 // Test the double-check path: buffer created while waiting for lock.
-func TestGetOrCreateBufferDescriptor_DoubleCheck(t *testing.T) {
+func Test_getOrCreateBufferDescriptor_DoubleCheck(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
@@ -351,7 +351,7 @@ func TestGetOrCreateBufferDescriptor_DoubleCheck(t *testing.T) {
 	btm.mu.Unlock()
 
 	// Now call GetOrCreate — should find it via LookUp (fast path).
-	bufDesc, status, err := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
+	bufDesc, status, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
 	assert.NoError(t, err)
 	assert.NotNil(t, bufDesc)
 	assert.Equal(t, bufDescStatusExists, status)
@@ -362,7 +362,7 @@ func TestGetOrCreateBufferDescriptor_DoubleCheck(t *testing.T) {
 }
 
 // Test uncommitted block returns bufDescStatusNeedsFileFlush.
-func TestGetOrCreateBufferDescriptor_UncommittedBlock(t *testing.T) {
+func Test_getOrCreateBufferDescriptor_UncommittedBlock(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
@@ -373,14 +373,14 @@ func TestGetOrCreateBufferDescriptor_UncommittedBlock(t *testing.T) {
 	f := createFile("test_uncommitted.txt")
 	blk := createBlock(0, "testId", uncommitedBlock, f)
 
-	bufDesc, status, err := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
+	bufDesc, status, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
 	assert.NoError(t, err)
 	assert.Nil(t, bufDesc)
 	assert.Equal(t, bufDescStatusNeedsFileFlush, status)
 }
 
 // Test async allocation with free list full returns errBuffersExhausted.
-func TestGetOrCreateBufferDescriptor_AsyncFreeListFull(t *testing.T) {
+func Test_getOrCreateBufferDescriptor_AsyncFreeListFull(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 2*bc.blockSize) // Only 2 buffers
 	defer destroyFreeList()
@@ -393,12 +393,12 @@ func TestGetOrCreateBufferDescriptor_AsyncFreeListFull(t *testing.T) {
 	// Exhaust the free list
 	blk0 := createBlock(0, "id0", localBlock, f)
 	blk1 := createBlock(1, "id1", localBlock, f)
-	bd0, _, _ := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk0, true)
-	bd1, _, _ := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk1, true)
+	bd0, _, _ := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk0, true)
+	bd1, _, _ := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk1, true)
 
 	// Now try async allocation (sync=false) — should fail with errBuffersExhausted
 	blk2 := createBlock(2, "id2", localBlock, f)
-	bufDesc, status, err := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk2, false)
+	bufDesc, status, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk2, false)
 	assert.Error(t, err)
 	assert.Equal(t, errBuffersExhausted, err)
 	assert.Nil(t, bufDesc)
@@ -410,7 +410,7 @@ func TestGetOrCreateBufferDescriptor_AsyncFreeListFull(t *testing.T) {
 }
 
 // Test sync allocation with eviction — exercises the victim eviction path.
-func TestGetOrCreateBufferDescriptor_VictimEviction(t *testing.T) {
+func Test_getOrCreateBufferDescriptor_VictimEviction(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 3*bc.blockSize) // 3 buffers
 	defer destroyFreeList()
@@ -425,9 +425,9 @@ func TestGetOrCreateBufferDescriptor_VictimEviction(t *testing.T) {
 	blk0 := createBlock(0, "id0", localBlock, f)
 	blk1 := createBlock(1, "id1", localBlock, f)
 	blk2 := createBlock(2, "id2", localBlock, f)
-	bd0, _, _ := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk0, true)
-	bd1, _, _ := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk1, true)
-	bd2, _, _ := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk2, true)
+	bd0, _, _ := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk0, true)
+	bd1, _, _ := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk1, true)
+	bd2, _, _ := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk2, true)
 
 	// Release user refs so buffers have refCnt=1 (table only) — making them evictable.
 	bd0.release(freeList)
@@ -446,7 +446,7 @@ func TestGetOrCreateBufferDescriptor_VictimEviction(t *testing.T) {
 
 	// Now allocate a 4th block — should evict one of the existing buffers.
 	blk3 := createBlock(3, "id3", localBlock, f)
-	bd3, status, err := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk3, true)
+	bd3, status, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk3, true)
 	assert.NoError(t, err)
 	assert.NotNil(t, bd3)
 	assert.Equal(t, bufDescStatusVictim, status)
@@ -457,7 +457,7 @@ func TestGetOrCreateBufferDescriptor_VictimEviction(t *testing.T) {
 
 // Test the double-check success path directly by pre-populating a buffer in the table
 // that wasn't there during LookUp, simulating another goroutine winning the race.
-func TestGetOrCreateBufferDescriptor_DoubleCheckAfterLookup(t *testing.T) {
+func Test_getOrCreateBufferDescriptor_DoubleCheckAfterLookup(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
@@ -470,12 +470,12 @@ func TestGetOrCreateBufferDescriptor_DoubleCheckAfterLookup(t *testing.T) {
 	blk := createBlock(0, "id0", localBlock, f)
 
 	// First goroutine: allocate a buffer for this block
-	bd1, status1, err := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
+	bd1, status1, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
 	assert.NoError(t, err)
 	assert.Equal(t, bufDescStatusAllocated, status1)
 
 	// Second call for the same block — should hit LookUp fast path (not double-check, but still exercises the "exists" path)
-	bd2, status2, err := btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
+	bd2, status2, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
 	assert.NoError(t, err)
 	assert.Equal(t, bufDescStatusExists, status2)
 	assert.Equal(t, bd1, bd2)
@@ -484,8 +484,8 @@ func TestGetOrCreateBufferDescriptor_DoubleCheckAfterLookup(t *testing.T) {
 	bd2.release(freeList)
 }
 
-// Test concurrent GetOrCreateBufferDescriptor calls for the same block exercises the double-check path.
-func TestGetOrCreateBufferDescriptor_ConcurrentDoubleCheck(t *testing.T) {
+// Test concurrent getOrCreateBufferDescriptor calls for the same block exercises the double-check path.
+func Test_getOrCreateBufferDescriptor_ConcurrentDoubleCheck(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	defer destroyFreeList()
@@ -509,7 +509,7 @@ func TestGetOrCreateBufferDescriptor_ConcurrentDoubleCheck(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			<-start
-			results[idx], statuses[idx], errs[idx] = btm.GetOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
+			results[idx], statuses[idx], errs[idx] = btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk, true)
 		}(i)
 	}
 

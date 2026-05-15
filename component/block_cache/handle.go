@@ -23,7 +23,7 @@ import (
 // For example, one thread might read sequentially while another reads randomly.
 // Per-handle detection allows independent read-ahead behavior for each handle.
 type blockCacheHandle struct {
-	file            *File            // Shared file object (same for all handles to this path)
+	file            *file            // Shared file object (same for all handles to this path)
 	patternDetector *patternDetector // Per-handle access pattern tracking for read-ahead
 }
 
@@ -87,13 +87,13 @@ var fileMap sync.Map
 //   - Only one goroutine creates a new File for a given path
 //   - All goroutines correctly add their handles to the File
 //   - No handles are lost due to race conditions
-func getFileFromPath(handle *handlemap.Handle) (*File, bool, error) {
+func getFileFromPath(handle *handlemap.Handle) (*file, bool, error) {
 	const maxRetries = 10
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		f := createFile(handle.Path)
-		file, loaded := fileMap.LoadOrStore(handle.Path, f)
-		fileObj, ok := file.(*File)
+		existing, loaded := fileMap.LoadOrStore(handle.Path, f)
+		fileObj, ok := existing.(*file)
 		if !ok {
 			return nil, false, fmt.Errorf("invalid file type in map")
 		}
@@ -142,7 +142,7 @@ func getFileFromPath(handle *handlemap.Handle) (*File, bool, error) {
 //
 // Important: This function must be called for every handle, exactly once,
 // to prevent buffer leaks and maintain correct reference counts.
-func deleteOpenHandleForFile(bc *BlockCache, handle *handlemap.Handle, file *File, takeFileLock bool) {
+func deleteOpenHandleForFile(bc *BlockCache, handle *handlemap.Handle, file *file, takeFileLock bool) {
 	log.Debug("deleteOpenHandleForFile: Deleting handle: %d for file %s", handle.ID, file.Name)
 
 	if takeFileLock {
@@ -192,11 +192,11 @@ func deleteOpenHandleForFile(bc *BlockCache, handle *handlemap.Handle, file *Fil
 //
 // These panics indicate serious bugs in reference counting or buffer lifecycle
 // management and help catch correctness issues during development.
-func releaseAllBuffersForFile(bc *BlockCache, file *File) {
+func releaseAllBuffersForFile(bc *BlockCache, file *file) {
 	log.Debug("releaseAllBuffersForFile: Releasing all buffers for file %s", file.Name)
 	// Release all buffers held by this file
 	for _, blk := range file.blockList.list {
-		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk, bc.freeList)
+		bufDesc, _ := bc.btm.lookupBufferDescriptor(blk, bc.freeList)
 		if bufDesc == nil {
 			continue
 		}
@@ -275,10 +275,10 @@ func deleteFileIfNoOpenHandles(key string) {
 //   - bool: true if file exists in map, false otherwise
 //
 // This is useful for checking file state without modifying the map.
-func checkFileExistsInOpen(key string) (*File, bool) {
+func checkFileExistsInOpen(key string) (*file, bool) {
 	f, ok := fileMap.Load(key)
 	if ok {
-		return f.(*File), true
+		return f.(*file), true
 	}
 	return nil, false
 }
@@ -289,7 +289,7 @@ func renameFileInFileMap(oldPath, newPath string) error {
 		return fmt.Errorf("file not found for path: %s", oldPath)
 	}
 
-	fileObj, ok := value.(*File)
+	fileObj, ok := value.(*file)
 	if !ok {
 		return fmt.Errorf("invalid file type in map for path: %s", oldPath)
 	}
