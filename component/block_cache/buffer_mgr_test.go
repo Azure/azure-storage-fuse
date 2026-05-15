@@ -102,9 +102,10 @@ func TestBufferTableMgr_RemoveBufferDescriptor_NotInTable(t *testing.T) {
 	bd.refCnt.Store(1)
 
 	// removeBufferDescriptor expects the buffer to be in the table; not being in table is a bug.
-	assert.Panics(t, func() {
-		_ = btm.removeBufferDescriptor(bd, freeList)
-	})
+	// We now log.Crit and return false instead of panicking, so that a refactor bug here does not
+	// take down the mount.
+	isRemoved := btm.removeBufferDescriptor(bd, freeList)
+	assert.False(t, isRemoved, "Should not remove buffer that is not in table")
 }
 
 func TestBufferTableMgr_RemoveBufferDescriptor_Dirty(t *testing.T) {
@@ -198,9 +199,10 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithOnlyTableRef(t *testing
 	btm.mu.Unlock()
 
 	// removeBufferDescriptor expects the caller to hold a reference too; only table ref is a bug.
-	assert.Panics(t, func() {
-		_ = btm.removeBufferDescriptor(bd, freeList)
-	})
+	// We now log.Crit and return false instead of panicking, so that a refactor bug here does not
+	// take down the mount.
+	isRemoved := btm.removeBufferDescriptor(bd, freeList)
+	assert.False(t, isRemoved, "Should not remove buffer when caller does not hold a reference")
 }
 
 func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
