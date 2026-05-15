@@ -59,12 +59,12 @@ type File struct {
 	synced        bool                           // True if file is synchronized with Azure Storage
 
 	// Concurrency tracking for read operations
-	numPendingReads atomic.Int32 // Number of active read operations
+	numPendingReads atomic.Int32
 
 	// Error handling: stores any error encountered during file operations.
 	// Once set, subsequent operations fail fast with this error.
 	// This provides "sticky error" semantics to prevent cascading failures.
-	err atomic.Value // Stores string (error message) or nil
+	err atomic.Pointer[error]
 
 	// Synchronization for write operations during flush.
 	// Writers increment this before modifying the file, allowing flush to wait
@@ -399,8 +399,8 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 	}
 
 	// If there was any previous write error, return that error, this will safely prevent further writes to the file.
-	if f.err.Load() != nil {
-		return fmt.Errorf("previous write error: %v", f.err.Load())
+	if e := f.err.Load(); e != nil {
+		return fmt.Errorf("previous write error: %w", *e)
 	}
 
 	for offset < endOffset {
@@ -575,9 +575,9 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		return nil
 	}
 
-	if f.err.Load() != nil {
-		log.Err("File::flush: Previous write error found for file: %s, error: %v", f.Name, f.err.Load())
-		return fmt.Errorf("previous write error: %v", f.err.Load())
+	if e := f.err.Load(); e != nil {
+		log.Err("File::flush: Previous write error found for file: %s, error: %v", f.Name, *e)
+		return fmt.Errorf("previous write error: %w", *e)
 	}
 
 	if f.synced == true {
@@ -687,7 +687,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 			if err != nil {
 				log.Err("File::flush: Failed to upload zero block for sparse blockIdx: %d during flush at file: %s: %v",
 					blk.idx, f.Name, err)
-				f.err.Store(err.Error())
+				f.err.Store(&err)
 				return err
 			}
 			continue
@@ -760,7 +760,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		})
 		if err != nil {
 			log.Err("File::flush: Failed to create empty file in storage for file: %s: %v", f.Name, err)
-			f.err.Store(err.Error())
+			f.err.Store(&err)
 			return err
 		}
 		log.Debug("File::flush: Successfully created empty file in storage for file: %s", f.Name)
@@ -775,7 +775,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 	})
 	if err != nil {
 		log.Err("File::flush: Failed to commit block list for file: %s: %v", f.Name, err)
-		f.err.Store(err.Error())
+		f.err.Store(&err)
 		return err
 	} else {
 		log.Debug("File::flush: Successfully committed block list for file: %s, size: %d", f.Name, size)
@@ -852,9 +852,9 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 	log.Debug("File::truncate: Acquired exclusive lock for truncate on file: %s", f.Name)
 
 	// check error state
-	if f.err.Load() != nil {
-		log.Err("File::truncate: Previous write error found for file: %s, error: %v", f.Name, f.err.Load())
-		return fmt.Errorf("previous write error: %v", f.err.Load())
+	if e := f.err.Load(); e != nil {
+		log.Err("File::truncate: Previous write error found for file: %s, error: %v", f.Name, *e)
+		return fmt.Errorf("previous write error: %w", *e)
 	}
 
 	if options.NewSize == atomic.LoadInt64(&f.size) {

@@ -282,7 +282,7 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 		log.Err("BlockCache::getBlockIDList : Failed to write block for %v, ID: %v, file: %s [%v]",
 			block.file.Name, block.id, block.file.Name, err)
 		bufDesc.uploadErr = err
-		block.file.err.Store(err.Error())
+		block.file.err.Store(&err)
 	} else {
 		log.Debug("BlockCache::uploadBlock: Successfully uploaded blockIdx: %d from bufferIdx: %d, file: %s, sync: %t",
 			block.idx, bufDesc.bufIdx, block.file.Name, task.sync)
