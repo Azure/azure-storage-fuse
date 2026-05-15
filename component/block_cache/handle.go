@@ -217,10 +217,11 @@ func releaseAllBuffersForFile(bc *BlockCache, file *File) {
 			// refCnt exactly equal to refCntTableAndOneUser.
 			//
 			// This buffer may get chosen as victim, so max refCnt can be refCntTableAndOneUser+1 (the +1 is for the victim selection algo).
-			// If it's more than that, it indicates a bug in reference counting or buffer lifecycle management.
+			// If it's more than that, it indicates a bug in reference counting or buffer lifecycle management. We log
+			// loudly and continue with cleanup rather than panicking, so a stray reference does not bring down the mount.
 			if bufDesc.refCnt.Load() > refCountTableAndOneUser+1 {
-				panic(fmt.Sprintf("releaseAllBuffersForFile: Failed to remove buffer: [%v], for blockIdx: %d of file %s from buffer table manager",
-					bufDesc, blk.idx, file.Name))
+				log.Crit("releaseAllBuffersForFile: Failed to remove buffer: [%v], for blockIdx: %d of file %s from buffer table manager",
+					bufDesc, blk.idx, file.Name)
 			}
 
 			// TODO: force remove such buffers, currently force removal is not present which could cause leak.
