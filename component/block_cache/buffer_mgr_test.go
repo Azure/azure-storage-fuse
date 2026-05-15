@@ -3,7 +3,6 @@ package block_cache
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -420,7 +419,7 @@ func TestGetOrCreateBufferDescriptor_VictimEviction(t *testing.T) {
 	bc.btm = btm
 
 	f := createFile("test_eviction.txt")
-	atomic.StoreInt64(&f.size, int64(bc.blockSize)*4)
+	f.size.Store(int64(bc.blockSize) * 4)
 
 	// Allocate all 3 buffers as localBlock (they start valid+dirty).
 	blk0 := createBlock(0, "id0", localBlock, f)
@@ -467,7 +466,7 @@ func TestGetOrCreateBufferDescriptor_DoubleCheckAfterLookup(t *testing.T) {
 	bc.btm = btm
 
 	f := createFile("test_dc_after_lookup.txt")
-	atomic.StoreInt64(&f.size, int64(bc.blockSize)*2)
+	f.size.Store(int64(bc.blockSize) * 2)
 	blk := createBlock(0, "id0", localBlock, f)
 
 	// First goroutine: allocate a buffer for this block
@@ -495,7 +494,7 @@ func TestGetOrCreateBufferDescriptor_ConcurrentDoubleCheck(t *testing.T) {
 	bc.btm = btm
 
 	f := createFile("test_concurrent_doublecheck.txt")
-	atomic.StoreInt64(&f.size, int64(bc.blockSize)*2)
+	f.size.Store(int64(bc.blockSize) * 2)
 	blk := createBlock(0, "id0", localBlock, f)
 
 	const goroutines = 8

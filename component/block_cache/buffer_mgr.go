@@ -126,7 +126,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 
 	// Step 5: Check if block is in uncommitted state (requires file flush before reading)
 	// You cannot read the uncommitted data from azure storage, so we need to flush the file first.
-	if blk.state == uncommitedBlock {
+	if blk.getState() == uncommitedBlock {
 		// Release the lock on buffer table manager.
 		btm.mu.Unlock()
 		log.Debug("BufferTableMgr::GetOrCreateBufferDescriptor: Cannot create buffer for blockIdx: %d in uncommitedBlock state, file: %s flush needed",
@@ -136,7 +136,7 @@ func (btm *BufferTableMgr) GetOrCreateBufferDescriptor(freeList *freeListType, w
 	}
 
 	// download is needed only for committed blocks.
-	doRead := (blk.state == committedBlock)
+	doRead := (blk.getState() == committedBlock)
 
 	victim := false
 	// Get the Buffer Descriptor from free list.
