@@ -454,7 +454,7 @@ func (suite *FileOperationsTestSuite) TestWrite_BasicWrite() {
 		Data:   payload,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(int64(len(payload)), atomic.LoadInt64(&f.size))
+	suite.assert.Equal(int64(len(payload)), f.size.Load())
 
 	suite.closeFile(handle)
 }
@@ -473,7 +473,7 @@ func (suite *FileOperationsTestSuite) TestWrite_AtNonZeroOffset() {
 		Data:   payload,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(offset+int64(len(payload)), atomic.LoadInt64(&f.size))
+	suite.assert.Equal(offset+int64(len(payload)), f.size.Load())
 
 	suite.closeFile(handle)
 }
@@ -494,7 +494,7 @@ func (suite *FileOperationsTestSuite) TestWrite_SpanningBlocks() {
 		Data:   payload,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(startOffset+int64(len(payload)), atomic.LoadInt64(&f.size))
+	suite.assert.Equal(startOffset+int64(len(payload)), f.size.Load())
 	suite.assert.Equal(len(f.blockList.list), 2, "should have at least 2 blocks after spanning write")
 
 	suite.closeFile(handle)
@@ -584,7 +584,7 @@ func (suite *FileOperationsTestSuite) TestFlush_ConcurrentWithWrites() {
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	errs := make(chan error, writers+1)
-	active := atomic.Int32{}
+	var active atomic.Int32
 
 	for i := 0; i < writers; i++ {
 		wg.Add(1)
@@ -789,13 +789,13 @@ func (suite *FileOperationsTestSuite) TestTruncate_SameSize_NoOp() {
 	handle, f := suite.openWriteFile(name, content)
 	defer suite.closeFile(handle)
 
-	sizeBefore := atomic.LoadInt64(&f.size)
+	sizeBefore := f.size.Load()
 	err := f.truncate(suite.blockCache, &internal.TruncateFileOptions{
 		Name:    name,
 		NewSize: sizeBefore,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(sizeBefore, atomic.LoadInt64(&f.size), "size must not change")
+	suite.assert.Equal(sizeBefore, f.size.Load(), "size must not change")
 }
 
 // Truncate with a sticky error must fail immediately.
@@ -831,7 +831,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_Shrink() {
 		NewSize: newSize,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(newSize, atomic.LoadInt64(&f.size))
+	suite.assert.Equal(newSize, f.size.Load())
 
 	// Verify on-disk data was truncated
 	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
@@ -853,7 +853,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_Extend() {
 		NewSize: newSize,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(newSize, atomic.LoadInt64(&f.size))
+	suite.assert.Equal(newSize, f.size.Load())
 
 	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
 	suite.assert.NoError(err)
@@ -876,7 +876,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_ToZero() {
 		NewSize: 0,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(int64(0), atomic.LoadInt64(&f.size))
+	suite.assert.Equal(int64(0), f.size.Load())
 	suite.assert.Equal(0, len(f.blockList.list), "block list must be empty after truncate-to-zero")
 
 	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
@@ -906,7 +906,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_ShrinkAcrossBlockBoundary() {
 		NewSize: newSize,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(newSize, atomic.LoadInt64(&f.size))
+	suite.assert.Equal(newSize, f.size.Load())
 	suite.assert.Equal(1, len(f.blockList.list), "only one block should remain after shrink")
 
 	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
@@ -929,7 +929,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_ExtendByMultipleBlocks() {
 		NewSize: newSize,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(newSize, atomic.LoadInt64(&f.size))
+	suite.assert.Equal(newSize, f.size.Load())
 	suite.assert.Equal(3, len(f.blockList.list), "should have 3 blocks after multi-block extend")
 
 	filePayload := make([]byte, newSize)
@@ -1065,7 +1065,7 @@ func (suite *FileOperationsTestSuite) TestWrite_FullBlockTriggersUpload() {
 		Data:   payload,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(int64(blockSz), atomic.LoadInt64(&f.size))
+	suite.assert.Equal(int64(blockSz), f.size.Load())
 
 	// Flush and verify on disk
 	suite.assert.NoError(f.flush(suite.blockCache, true))
@@ -1089,7 +1089,7 @@ func (suite *FileOperationsTestSuite) TestWrite_MultiBlock_ThenFlush() {
 		Data:   payload,
 	})
 	suite.assert.NoError(err)
-	suite.assert.Equal(int64(len(payload)), atomic.LoadInt64(&f.size))
+	suite.assert.Equal(int64(len(payload)), f.size.Load())
 	suite.assert.GreaterOrEqual(len(f.blockList.list), 4)
 
 	suite.assert.NoError(f.flush(suite.blockCache, true))
@@ -1149,8 +1149,8 @@ func TestCreateFile(t *testing.T) {
 
 	assert.NotNil(t, f)
 	assert.Equal(t, "test.txt", f.Name)
-	assert.Equal(t, int64(-1), f.size)
-	assert.Equal(t, int64(-1), f.sizeOnStorage)
+	assert.Equal(t, int64(-1), f.size.Load())
+	assert.Equal(t, int64(-1), f.sizeOnStorage.Load())
 	assert.True(t, f.synced)
 	assert.NotNil(t, f.handles)
 	assert.Equal(t, 0, len(f.handles))
@@ -1160,28 +1160,28 @@ func TestCreateFile(t *testing.T) {
 
 func TestFileUpdateFileSize(t *testing.T) {
 	f := createFile("test.txt")
-	f.size = 100
+	f.size.Store(100)
 
 	// Update to larger size
 	f.updateFileSize(200)
-	assert.Equal(t, int64(200), f.size)
+	assert.Equal(t, int64(200), f.size.Load())
 
 	// Try to update to smaller size - should not change
 	f.updateFileSize(150)
-	assert.Equal(t, int64(200), f.size, "Size should not decrease")
+	assert.Equal(t, int64(200), f.size.Load(), "Size should not decrease")
 
 	// Update to same size
 	f.updateFileSize(200)
-	assert.Equal(t, int64(200), f.size)
+	assert.Equal(t, int64(200), f.size.Load())
 
 	// Update to even larger size
 	f.updateFileSize(300)
-	assert.Equal(t, int64(300), f.size)
+	assert.Equal(t, int64(300), f.size.Load())
 }
 
 func TestFileUpdateFileSize_Concurrent(t *testing.T) {
 	f := createFile("test.txt")
-	f.size = 0
+	f.size.Store(0)
 
 	// Simulate concurrent updates
 	done := make(chan bool)
@@ -1198,13 +1198,13 @@ func TestFileUpdateFileSize_Concurrent(t *testing.T) {
 	}
 
 	// Final size should be the maximum
-	assert.Equal(t, int64(1000), f.size)
+	assert.Equal(t, int64(1000), f.size.Load())
 }
 
 func TestFileInitialSizeIsNegative(t *testing.T) {
 	f := createFile("test.txt")
-	assert.Equal(t, int64(-1), f.size, "Initial size is -1, operations must handle this")
-	assert.Equal(t, int64(-1), f.sizeOnStorage, "Initial sizeOnStorage is -1")
+	assert.Equal(t, int64(-1), f.size.Load(), "Initial size is -1, operations must handle this")
+	assert.Equal(t, int64(-1), f.sizeOnStorage.Load(), "Initial sizeOnStorage is -1")
 }
 
 // Initially synced is true, as the file has no local changes compared to storage.
@@ -1297,14 +1297,14 @@ func TestFile_SizeFields(t *testing.T) {
 	f := createFile("test.txt")
 
 	// Test independent size fields
-	f.size = 1000
-	f.sizeOnStorage = 500
+	f.size.Store(1000)
+	f.sizeOnStorage.Store(500)
 
-	assert.Equal(t, int64(1000), f.size)
-	assert.Equal(t, int64(500), f.sizeOnStorage)
+	assert.Equal(t, int64(1000), f.size.Load())
+	assert.Equal(t, int64(500), f.sizeOnStorage.Load())
 
 	// These should be independent
-	f.size = 2000
-	assert.Equal(t, int64(2000), f.size)
-	assert.Equal(t, int64(500), f.sizeOnStorage, "sizeOnStorage should not change")
+	f.size.Store(2000)
+	assert.Equal(t, int64(2000), f.size.Load())
+	assert.Equal(t, int64(500), f.sizeOnStorage.Load(), "sizeOnStorage should not change")
 }
