@@ -51,8 +51,8 @@ import (
 type File struct {
 	mu            sync.RWMutex                   // Protects file metadata and block list
 	Name          string                         // File path (absolute)
-	sizeOnStorage int64                          // File size as last known in Azure Storage
-	size          int64                          // Current file size (may differ from storage if modified)
+	sizeOnStorage atomic.Int64                   // File size as last known in Azure Storage
+	size          atomic.Int64                   // Current file size (may differ from storage if modified)
 	Etag          string                         // ETag from Azure Storage (for consistency checks)
 	handles       map[*handlemap.Handle]struct{} // Set of open handles for this file
 	blockList     *blockList                     // Ordered list of blocks composing this file
@@ -94,15 +94,13 @@ type File struct {
 //   - Synced set to true (no pending changes)
 func createFile(fileName string) *File {
 	f := &File{
-		Name:            fileName,
-		handles:         make(map[*handlemap.Handle]struct{}),
-		blockList:       newBlockList(),
-		size:            -1,
-		sizeOnStorage:   -1,
-		synced:          true,
-		numPendingReads: atomic.Int32{},
-		pendingWriters:  sync.WaitGroup{},
+		Name:      fileName,
+		handles:   make(map[*handlemap.Handle]struct{}),
+		blockList: newBlockList(),
+		synced:    true,
 	}
+	f.size.Store(-1)
+	f.sizeOnStorage.Store(-1)
 
 	return f
 }
@@ -119,13 +117,13 @@ func createFile(fileName string) *File {
 // Multiple concurrent writes may call this, so CAS ensures correct ordering.
 func (f *File) updateFileSize(size int64) {
 	for {
-		currentSize := atomic.LoadInt64(&f.size)
+		currentSize := f.size.Load()
 
 		if size <= currentSize {
-			break
+			return
 		}
-		if atomic.CompareAndSwapInt64(&f.size, currentSize, size) {
-			break
+		if f.size.CompareAndSwap(currentSize, size) {
+			return
 		}
 	}
 }
@@ -165,7 +163,7 @@ func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 
 	stime := time.Now()
 
-	fileSize := atomic.LoadInt64(&f.size)
+	fileSize := f.size.Load()
 	if options.Offset >= fileSize {
 		return 0, io.EOF
 	}
@@ -525,7 +523,7 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		}
 
 		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d, uploadScheduled: %v",
-			n, f.Name, atomic.LoadInt64(&f.size), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(), uploadScheduled)
+			n, f.Name, f.size.Load(), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(), uploadScheduled)
 
 		// Release the buffer descriptor
 		if ok := bufDesc.release(bc.freeList); ok {
@@ -608,7 +606,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		log.Debug("File::flush: Acquired exclusive lock for flush on file: %s", f.Name)
 	}
 
-	log.Debug("File::flush: Flushing file: %s, size: %d, takeFileLock: %v", f.Name, atomic.LoadInt64(&f.size), takeFileLock)
+	log.Debug("File::flush: Flushing file: %s, size: %d, takeFileLock: %v", f.Name, f.size.Load(), takeFileLock)
 
 	if f.blockList.state != blockListValid {
 		return nil
@@ -628,8 +626,8 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 	// We dont allow the new writers to proceed as we have the exclusive lock on file.
 	f.pendingWriters.Wait()
 
-	size := atomic.LoadInt64(&f.size)
-	sizeOnStorage := atomic.LoadInt64(&f.sizeOnStorage)
+	size := f.size.Load()
+	sizeOnStorage := f.sizeOnStorage.Load()
 
 	zeroBlockId := common.GetBlockID(common.BlockIDLength)
 	isZeroBlockUploaded := false
@@ -642,7 +640,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		offsetInsideBlock := int64(bc.blockSize)
 
 		if isLastBlock {
-			offsetInsideBlock = convertOffsetIntoBlockOffset(atomic.LoadInt64(&f.size)-1, int64(bc.blockSize))
+			offsetInsideBlock = convertOffsetIntoBlockOffset(f.size.Load()-1, int64(bc.blockSize))
 			offsetInsideBlock++
 			blk.id = common.GetBlockID(common.BlockIDLength)
 		}
@@ -826,7 +824,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		blk.setState(committedBlock)
 	}
 
-	atomic.StoreInt64(&f.sizeOnStorage, size)
+	f.sizeOnStorage.Store(size)
 
 	return nil
 }
@@ -896,7 +894,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 		return fmt.Errorf("previous write error: %w", *e)
 	}
 
-	if options.NewSize == atomic.LoadInt64(&f.size) {
+	if options.NewSize == f.size.Load() {
 		// No need to truncate
 		log.Debug("File::truncate: No truncation needed for file: %s, size is already: %d", f.Name, options.NewSize)
 		return nil
@@ -909,9 +907,9 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 	}
 
 	// Update the file size
-	currentSize := atomic.LoadInt64(&f.size)
+	currentSize := f.size.Load()
 	isFileShrinking := currentSize > options.NewSize
-	atomic.StoreInt64(&f.size, options.NewSize)
+	f.size.Store(options.NewSize)
 	f.synced = false
 
 	noOfBlocks := getNoOfBlocksInFile(options.NewSize, int64(bc.blockSize))
@@ -967,7 +965,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 		// Clean the rest of the buffer if file is getting shrank as it may contain old/dirty data.
 		if isFileShrinking {
 			bufDesc.contentLock.Lock()
-			offsetInsideBlock := convertOffsetIntoBlockOffset(atomic.LoadInt64(&f.size)-1, int64(bc.blockSize))
+			offsetInsideBlock := convertOffsetIntoBlockOffset(f.size.Load()-1, int64(bc.blockSize))
 			copy(bufDesc.buf[offsetInsideBlock+1:], bc.freeList.bufPool.zeroBuf[:])
 			bufDesc.contentLock.Unlock()
 		}
