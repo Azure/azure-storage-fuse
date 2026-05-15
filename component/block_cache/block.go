@@ -14,7 +14,7 @@ import (
 // ErrInvalidBlockList indicates that the block list retrieved from storage is not
 // compatible with BlockCache's requirements (e.g., blocks are not aligned to the
 // configured block size).
-var ErrInvalidBlockList = errors.New("Invalid Block List, not compatible with Block Cache for write operations")
+var ErrInvalidBlockList = errors.New("invalid block list, not compatible with block cache for write operations")
 
 // blockState represents the current state of a block in its lifecycle.
 //
@@ -54,7 +54,7 @@ const (
 //   - Reference counting via buffer descriptors prevents premature eviction
 type block struct {
 	mu    sync.RWMutex // Protects block metadata during state transitions
-	file  *File        // Pointer to the parent file (back reference)
+	file  *file        // Pointer to the parent file (back reference)
 	idx   int          // Block index in the file (0-based)
 	id    string       // Azure Storage block ID (base64-encoded, generated during upload)
 	state atomic.Int32 // Current state: localBlock, uncommitedBlock, or committedBlock
@@ -82,7 +82,7 @@ func (blk *block) setState(newState blockState) {
 //   - f: Parent file object
 //
 // Returns a new block instance ready for use.
-func createBlock(idx int, id string, state blockState, f *File) *block {
+func createBlock(idx int, id string, state blockState, f *file) *block {
 	blk := &block{
 		file: f,
 		idx:  idx,
@@ -169,12 +169,12 @@ func newBlockList() *blockList {
 // BlockCache assumes all blocks (except the last) are exactly blockSize bytes.
 // Files created by other tools or older versions may have differently sized blocks,
 // which would break BlockCache's offset calculations and read/write operations.
-func validateBlockList(blkList *internal.CommittedBlockList, f *File, blockSize uint64) error {
+func validateBlockList(blkList *internal.CommittedBlockList, f *file, blockSize uint64) error {
 	if blkList == nil || len(*blkList) == 0 {
 		return ErrInvalidBlockList
 	}
 	listLen := len(*blkList)
-	var newblkList []*block = make([]*block, 0, listLen)
+	newblkList := make([]*block, 0, listLen)
 
 	for idx, blk := range *blkList {
 		if idx < (listLen-1) && blk.Size != blockSize {
@@ -210,14 +210,14 @@ func validateBlockList(blkList *internal.CommittedBlockList, f *File, blockSize 
 //   - f: File object to populate with synthetic block list
 //
 // The synthetic block list is created only if it doesn't already exist.
-func updateBlockListForReadOnlyFile(f *File, blockSize int64) {
+func updateBlockListForReadOnlyFile(f *file, blockSize int64) {
 	if len(f.blockList.list) != 0 {
 		// no need to update blocklist again, if already present
 		return
 	}
 
 	noOfBlocks := (f.size.Load() + blockSize - 1) / blockSize
-	var newblkList []*block = make([]*block, 0, noOfBlocks)
+	newblkList := make([]*block, 0, noOfBlocks)
 
 	for i := range int(noOfBlocks) {
 		newblkList = append(newblkList, createBlock(i, "", committedBlock, f))
