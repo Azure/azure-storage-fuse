@@ -148,8 +148,8 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	assert.Equal(t, int32(0), bufDesc.numEvictionCyclesPassed.Load())
 	assert.False(t, bufDesc.valid.Load())
 	assert.False(t, bufDesc.dirty.Load())
-	assert.Nil(t, bufDesc.downloadErr)
-	assert.Nil(t, bufDesc.uploadErr)
+	assert.NoError(t, bufDesc.downloadErr)
+	assert.NoError(t, bufDesc.uploadErr)
 
 	// Verify buffer is zeroed
 	for i := range bufDesc.buf {

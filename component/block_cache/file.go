@@ -13,12 +13,12 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
-// File represents a cached file with associated metadata and open handles.
+// file represents a cached file with associated metadata and open handles.
 //
 // Overview:
 //
-// The File struct is the central structure for managing file state in BlockCache.
-// Multiple file handles can reference the same File object, allowing concurrent
+// The file struct is the central structure for managing file state in BlockCache.
+// Multiple file handles can reference the same file object, allowing concurrent
 // access while maintaining consistent state.
 //
 // Key Responsibilities:
@@ -31,7 +31,7 @@ import (
 //
 // Concurrency:
 //
-//   - File-level RWMutex protects metadata and block list
+//   - file-level RWMutex protects metadata and block list
 //   - Atomic operations protect size and error fields
 //   - Pending operation tracking prevents race conditions during flush
 //
@@ -48,7 +48,7 @@ import (
 //
 // TODO: Add global context to the file that can propagate to all the operations
 // on the file, this would simplify cancellations and timeouts easier.
-type File struct {
+type file struct {
 	mu            sync.RWMutex                   // Protects file metadata and block list
 	Name          string                         // File path (absolute)
 	sizeOnStorage atomic.Int64                   // File size as last known in Azure Storage
@@ -92,8 +92,8 @@ type File struct {
 //   - Empty block list (state: blockListNotRetrieved)
 //   - Size set to -1 (indicates uninitialized)
 //   - Synced set to true (no pending changes)
-func createFile(fileName string) *File {
-	f := &File{
+func createFile(fileName string) *file {
+	f := &file{
 		Name:      fileName,
 		handles:   make(map[*handlemap.Handle]struct{}),
 		blockList: newBlockList(),
@@ -115,7 +115,7 @@ func createFile(fileName string) *File {
 //
 // This is called after write operations to extend the file size.
 // Multiple concurrent writes may call this, so CAS ensures correct ordering.
-func (f *File) updateFileSize(size int64) {
+func (f *file) updateFileSize(size int64) {
 	for {
 		currentSize := f.size.Load()
 
@@ -157,7 +157,7 @@ func (f *File) updateFileSize(size int64) {
 // Thread Safety:
 // Safe to call concurrently from multiple goroutines, even for the same file.
 // Block-level locking ensures consistent reads during concurrent operations.
-func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int, error) {
+func (f *file) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int, error) {
 	f.numPendingReads.Add(1)
 	defer f.numPendingReads.Add(-1)
 
@@ -204,7 +204,7 @@ func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 			}
 
 			var err error
-			bufDesc, status, err = bc.btm.GetOrCreateBufferDescriptor(
+			bufDesc, status, err = bc.btm.getOrCreateBufferDescriptor(
 				bc.freeList,
 				bc.workerPool,
 				blk,
@@ -297,7 +297,7 @@ func (f *File) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 // Async operation:
 // Read-ahead downloads run asynchronously. The calling read operation doesn't
 // wait for prefetches to complete. Future reads benefit from prefetched data.
-func (f *File) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int64) {
+func (f *file) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int64) {
 	patterntype := pd.updateAccessPattern(offset, int64(bc.blockSize))
 	if patterntype != patternSequential {
 		return
@@ -329,7 +329,7 @@ func (f *File) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 			return
 		}
 
-		bufDesc, status, err := bc.btm.GetOrCreateBufferDescriptor(
+		bufDesc, status, err := bc.btm.getOrCreateBufferDescriptor(
 			bc.freeList,
 			bc.workerPool,
 			blk,
@@ -401,7 +401,7 @@ func (f *File) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 //
 // Important: This method MUST write all len(options.Data) bytes successfully
 // or return an error. Partial writes are not allowed.
-func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
+func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 
 	offset := options.Offset
 	endOffset := options.Offset + int64(len(options.Data))
@@ -458,7 +458,7 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 			f.mu.Unlock()
 
 			var err error
-			bufDesc, status, err = bc.btm.GetOrCreateBufferDescriptor(
+			bufDesc, status, err = bc.btm.getOrCreateBufferDescriptor(
 				bc.freeList,
 				bc.workerPool,
 				blk,
@@ -595,7 +595,7 @@ func (f *File) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 //
 // Important: After flush succeeds, f.synced is set to true and subsequent
 // flush calls become no-ops until the file is modified again.
-func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
+func (f *file) flush(bc *BlockCache, takeFileLock bool) error {
 	log.Debug("File::flush: Flushing file: %s, takeFileLock: %v", f.Name, takeFileLock)
 
 	if takeFileLock {
@@ -617,7 +617,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		return fmt.Errorf("previous write error: %w", *e)
 	}
 
-	if f.synced == true {
+	if f.synced {
 		log.Debug("File::flush: File: %s is already synced, no flush needed", f.Name)
 		return nil
 	}
@@ -670,7 +670,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 			// Last block is committed and no writes on it, need to extend it with zeros by making it dirty.
 			log.Debug("File::flush: Extending last blockIdx: %d for file: %s during flush to accommodate file size expansion",
 				lastBlock.idx, f.Name)
-			bufDesc, _, err := bc.btm.GetOrCreateBufferDescriptor(
+			bufDesc, _, err := bc.btm.getOrCreateBufferDescriptor(
 				bc.freeList,
 				bc.workerPool,
 				lastBlock,
@@ -702,7 +702,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 			continue
 		}
 
-		bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk, bc.freeList)
+		bufDesc, _ := bc.btm.lookupBufferDescriptor(blk, bc.freeList)
 		if bufDesc == nil {
 			// It might happen this buffer has chosen as victim and removed from table after uploading.
 			if blk.getState() == committedBlock || blk.getState() == uncommitedBlock {
@@ -741,7 +741,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 		// If there is any upload scheduled for this buffer, wait for it to complete, this content lock is taken
 		// exclusively during upload.
 		bufDesc.contentLock.Lock()
-		bufDesc.contentLock.Unlock()
+		bufDesc.contentLock.Unlock() //nolint:staticcheck
 
 		if bufDesc.dirty.Load() && bufDesc.uploadErr == nil {
 			log.Debug("File::flush: Scheduling upload for bufferIdx: %d, blockIdx: %d during flush, bytesRead: %d, bytesWritten: %d at file: %s",
@@ -881,7 +881,7 @@ func (f *File) flush(bc *BlockCache, takeFileLock bool) error {
 //
 // Important: newSize must be within [0, maxFileSize]. Truncating beyond
 // maxFileSize is not supported.
-func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) error {
+func (f *file) truncate(bc *BlockCache, options *internal.TruncateFileOptions) error {
 	log.Debug("File::truncate: Truncating file: %s to size: %d", f.Name, options.NewSize)
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -918,7 +918,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 		// Shrink the block list, give back the buffers shrank to free list.
 		for i := noOfBlocks; i < len(f.blockList.list); i++ {
 			blk := f.blockList.list[i]
-			bufDesc, _ := bc.btm.LookUpBufferDescriptor(blk, bc.freeList)
+			bufDesc, _ := bc.btm.lookupBufferDescriptor(blk, bc.freeList)
 			if bufDesc != nil {
 				// Remove this buffer from buffer table manager, as it is no longer needed.
 				if bc.btm.removeBufferDescriptor(bufDesc, bc.freeList) {
@@ -947,7 +947,7 @@ func (f *File) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 		// make the last block as local block.
 		lastBlock := f.blockList.list[len(f.blockList.list)-1]
 
-		bufDesc, status, err := bc.btm.GetOrCreateBufferDescriptor(
+		bufDesc, status, err := bc.btm.getOrCreateBufferDescriptor(
 			bc.freeList,
 			bc.workerPool,
 			lastBlock,

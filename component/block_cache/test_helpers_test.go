@@ -8,7 +8,7 @@ import (
 
 var bc *BlockCache
 var freeList *freeListType
-var btm *BufferTableMgr
+var btm *bufferTableMgr
 
 func setupTestFreeList(t *testing.T, bufSize uint64, memSize uint64) {
 	t.Helper()

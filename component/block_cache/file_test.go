@@ -57,7 +57,8 @@ func (suite *FileOperationsTestSuite) SetupSuite() {
 	suite.assert.NoError(os.MkdirAll(suite.cachePath, 0777))
 
 	cfg := common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()}
-	log.SetDefaultLogger("silent", cfg)
+	err := log.SetDefaultLogger("silent", cfg)
+	suite.assert.NoError(err)
 
 	configString := fmt.Sprintf(`
 loopbackfs:
@@ -90,10 +91,12 @@ block_cache:
 
 func (suite *FileOperationsTestSuite) TearDownSuite() {
 	if suite.blockCache != nil {
-		suite.blockCache.Stop()
+		err := suite.blockCache.Stop()
+		suite.assert.NoError(err)
 	}
 	if suite.loopbackFS != nil {
-		suite.loopbackFS.Stop()
+		err := suite.loopbackFS.Stop()
+		suite.assert.NoError(err)
 	}
 	os.RemoveAll(suite.testPath)
 	os.RemoveAll(suite.cachePath)
@@ -102,7 +105,7 @@ func (suite *FileOperationsTestSuite) TearDownSuite() {
 // openReadFile writes content directly into the loopback storage and opens the
 // file read-only through BlockCache.  The loopback block list is synthetic for
 // read-only access, so no block-list validation is performed.
-func (suite *FileOperationsTestSuite) openReadFile(name string, content []byte) (*handlemap.Handle, *File) {
+func (suite *FileOperationsTestSuite) openReadFile(name string, content []byte) (*handlemap.Handle, *file) {
 	suite.T().Helper()
 	err := os.WriteFile(filepath.Join(suite.testPath, name), content, 0777)
 	suite.assert.NoError(err)
@@ -125,7 +128,7 @@ func (suite *FileOperationsTestSuite) openReadFile(name string, content []byte) 
 //   - If content is non-empty the file is created, the content is written via
 //     BlockCache, flushed, closed, and then re-opened for O_RDWR so that the
 //     committed block list is available for write-mode validation.
-func (suite *FileOperationsTestSuite) openWriteFile(name string, content []byte) (*handlemap.Handle, *File) {
+func (suite *FileOperationsTestSuite) openWriteFile(name string, content []byte) (*handlemap.Handle, *file) {
 	suite.T().Helper()
 	if len(content) == 0 {
 		handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0777})
@@ -437,7 +440,7 @@ func (suite *FileOperationsTestSuite) TestWrite_PutBlobStyleFile() {
 
 	suite.assert.Nil(handle)
 	suite.assert.Error(err)
-	suite.assert.Contains(err.Error(), "Invalid Block List, not compatible with Block Cache for write operations")
+	suite.assert.Contains(err.Error(), "invalid block list, not compatible with block cache for write operations")
 
 	suite.assert.NoError(os.Remove(filepath.Join(suite.testPath, name)))
 }
@@ -495,7 +498,7 @@ func (suite *FileOperationsTestSuite) TestWrite_SpanningBlocks() {
 	})
 	suite.assert.NoError(err)
 	suite.assert.Equal(startOffset+int64(len(payload)), f.size.Load())
-	suite.assert.Equal(len(f.blockList.list), 2, "should have at least 2 blocks after spanning write")
+	suite.assert.Len(f.blockList.list, 2, "should have at least 2 blocks after spanning write")
 
 	suite.closeFile(handle)
 }
@@ -774,7 +777,7 @@ func (suite *FileOperationsTestSuite) TestFlush_MultiBlockSparseFile() {
 
 	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
 	suite.assert.NoError(err)
-	suite.assert.Equal(len(diskData), len(filePayload))
+	suite.assert.Len(diskData, len(filePayload))
 	suite.assert.Equal(filePayload, diskData)
 }
 
@@ -877,7 +880,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_ToZero() {
 	})
 	suite.assert.NoError(err)
 	suite.assert.Equal(int64(0), f.size.Load())
-	suite.assert.Equal(0, len(f.blockList.list), "block list must be empty after truncate-to-zero")
+	suite.assert.Empty(f.blockList.list, "block list must be empty after truncate-to-zero")
 
 	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
 	suite.assert.NoError(err)
@@ -907,7 +910,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_ShrinkAcrossBlockBoundary() {
 	})
 	suite.assert.NoError(err)
 	suite.assert.Equal(newSize, f.size.Load())
-	suite.assert.Equal(1, len(f.blockList.list), "only one block should remain after shrink")
+	suite.assert.Len(f.blockList.list, 1, "only one block should remain after shrink")
 
 	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
 	suite.assert.NoError(err)
@@ -930,7 +933,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_ExtendByMultipleBlocks() {
 	})
 	suite.assert.NoError(err)
 	suite.assert.Equal(newSize, f.size.Load())
-	suite.assert.Equal(3, len(f.blockList.list), "should have 3 blocks after multi-block extend")
+	suite.assert.Len(f.blockList.list, 3, "should have 3 blocks after multi-block extend")
 
 	filePayload := make([]byte, newSize)
 	copy(filePayload, content)
@@ -1046,7 +1049,7 @@ func (suite *FileOperationsTestSuite) TestTruncate_ThenWrite_ThenFlush() {
 
 	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
 	suite.assert.NoError(err)
-	suite.assert.Equal(10, len(diskData))
+	suite.assert.Len(diskData, 10)
 	suite.assert.Equal([]byte("HELLO"), diskData[5:10])
 }
 
@@ -1074,7 +1077,7 @@ func (suite *FileOperationsTestSuite) TestWrite_FullBlockTriggersUpload() {
 	suite.assert.Equal(payload, diskData)
 }
 
-// Write spanning 3+ blocks then flush to exercise multi-block upload and GetOrCreateBufferDescriptor.
+// Write spanning 3+ blocks then flush to exercise multi-block upload and getOrCreateBufferDescriptor.
 func (suite *FileOperationsTestSuite) TestWrite_MultiBlock_ThenFlush() {
 	name := "test_write_3blocks.txt"
 	handle, f := suite.openWriteFile(name, nil)
@@ -1153,7 +1156,7 @@ func TestCreateFile(t *testing.T) {
 	assert.Equal(t, int64(-1), f.sizeOnStorage.Load())
 	assert.True(t, f.synced)
 	assert.NotNil(t, f.handles)
-	assert.Equal(t, 0, len(f.handles))
+	assert.Empty(t, f.handles)
 	assert.NotNil(t, f.blockList)
 	assert.Equal(t, int32(0), f.numPendingReads.Load())
 }
@@ -1258,7 +1261,7 @@ func TestFile_BlockListInitialization(t *testing.T) {
 
 	assert.NotNil(t, f.blockList)
 	assert.Equal(t, blockListNotRetrieved, f.blockList.state)
-	assert.Equal(t, 0, len(f.blockList.list))
+	assert.Empty(t, f.blockList.list)
 }
 
 func TestFile_PendingWritersInitialization(t *testing.T) {
@@ -1277,7 +1280,7 @@ func TestFile_EtagField(t *testing.T) {
 	f := createFile("test.txt")
 
 	// Initially empty
-	assert.Equal(t, "", f.Etag)
+	assert.Empty(t, f.Etag)
 
 	// Can be set
 	f.Etag = "some-etag-value"

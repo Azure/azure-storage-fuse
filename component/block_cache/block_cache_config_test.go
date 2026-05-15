@@ -145,7 +145,7 @@ lazy-write: false
 	err := bc.Configure(true)
 	assert.NoError(t, err)
 	// memSize should be auto-calculated from system RAM
-	assert.Greater(t, bc.memSize, uint64(0))
+	assert.Positive(t, bc.memSize)
 }
 
 func TestBlockCacheConfigure_TmpPathDoesNotExist(t *testing.T) {

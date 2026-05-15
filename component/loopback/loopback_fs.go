@@ -273,7 +273,10 @@ func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
 
 	// Also remove the saved block list for this file, and all the blocks data.
 	lfs.blockLists.Delete(options.Name)
-	removeAllFilesWithGivenPrefix(path)
+	err = removeAllFilesWithGivenPrefix(path)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

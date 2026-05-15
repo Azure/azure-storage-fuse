@@ -122,7 +122,6 @@ import (
 	"math"
 	"os"
 	"runtime"
-	"sync"
 	"syscall"
 	"time"
 
@@ -162,7 +161,7 @@ import (
 type BlockCache struct {
 	internal.BaseComponent
 
-	btm        *BufferTableMgr
+	btm        *bufferTableMgr
 	freeList   *freeListType
 	workerPool *workerPool
 
@@ -181,8 +180,7 @@ type BlockCache struct {
 	prefetch uint32 // Number of blocks to prefetch for sequential reads
 
 	// File and block management
-	fileLocks   *common.LockMap // Per-file locks to coordinate operations (currently unused)
-	fileNodeMap sync.Map        // Map of filepath -> *File for tracking open files (currently unused)
+	fileLocks *common.LockMap // Per-file locks to coordinate operations (currently unused)
 
 	// Performance and behavior flags
 	maxDiskUsageHit        bool // Flag indicating if disk cache limit was reached (currently unused)
@@ -193,7 +191,6 @@ type BlockCache struct {
 	deferEmptyBlobCreation bool // If true, defers creation of empty files until data is written
 
 	// Synchronization
-	fileCloseOpt sync.WaitGroup // Wait group for async file close operations
 
 	// Limits
 	maxFileSize uint64 // Maximum file size supported by block cache (blockSize * MAX_BLOCKS)
@@ -435,7 +432,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
 	if err != nil {
-		log.Err("BlockCache: config error [unable to obtain lazy-write]")
+		log.Err("BlockCache::Configure : config error [unable to obtain lazy-write]")
 		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 	}
 
@@ -464,28 +461,28 @@ func (bc *BlockCache) Configure(_ bool) error {
 		//check mnt path is not same as temp path
 		err = config.UnmarshalKey("mount-path", &bc.mntPath)
 		if err != nil {
-			log.Err("BlockCache: config error [unable to obtain Mount Path]")
+			log.Err("BlockCache::Configure : config error [unable to obtain Mount Path]")
 			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 		}
 
 		if bc.mntPath == bc.tmpPath {
-			log.Err("BlockCache: config error [tmp-path is same as mount path]")
+			log.Err("BlockCache::Configure : config error [tmp-path is same as mount path]")
 			return fmt.Errorf("config error in %s error [tmp-path is same as mount path]", bc.Name())
 		}
 
 		// Extract values from 'conf' and store them as you wish here
 		_, err = os.Stat(bc.tmpPath)
 		if os.IsNotExist(err) {
-			log.Info("BlockCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
+			log.Info("BlockCache::Configure : config error [tmp-path does not exist. attempting to create tmp-path.]")
 			err := os.Mkdir(bc.tmpPath, os.FileMode(0755))
 			if err != nil {
-				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
+				log.Err("BlockCache::Configure : config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 			}
 		}
 
 		if !common.IsDirectoryEmpty(bc.tmpPath) {
-			log.Err("BlockCache: config error %s directory is not empty", bc.tmpPath)
+			log.Err("BlockCache::Configure : config error %s directory is not empty", bc.tmpPath)
 			return fmt.Errorf("config error in %s [%s]", bc.Name(), "temp directory not empty")
 		}
 
@@ -495,13 +492,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	if bc.tmpPath != "" {
-		// bc.diskPolicy, err = tlru.New(uint32((bc.diskSize)/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
-		// if err != nil {
-		// 	log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
-		// 	return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
-		// }
-	}
+	// if bc.tmpPath != "" {
+	// bc.diskPolicy, err = tlru.New(uint32((bc.diskSize)/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
+	// if err != nil {
+	// 	log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
+	// 	return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+	// }
+	// }
 
 	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
 		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
@@ -662,7 +659,8 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	if size > 0 {
 		if (options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0) {
-			if f.blockList.state == blockListNotRetrieved {
+			switch f.blockList.state {
+			case blockListNotRetrieved:
 				blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
 				if err != nil {
 					log.Err("BlockCache::OpenFile : Failed to get block list of %s, first_open: %v, curOpenHandles: %d, [%v]",
@@ -681,12 +679,13 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 				} else {
 					f.blockList.state = blockListValid
 				}
-			} else if f.blockList.state == blockListInvalid {
+			case blockListInvalid:
 				log.Err("BlockCache::OpenFile : Invalid block list for file: %s, first_open: %v, curOpenHandles: %d",
 					options.Name, firstOpen, len(f.handles))
 				deleteOpenHandleForFile(bc, handle, f, false /* takeFileLock */)
 				return nil, fmt.Errorf("invalid block list for file: %s", options.Name)
 			}
+
 		} else {
 			updateBlockListForReadOnlyFile(f, int64(bc.blockSize))
 		}
@@ -1014,6 +1013,11 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 		// Change the file name in the file map to the hidden file name, so that subsequent
 		// open calls with the hidden file name can find the file object and open successfully.
 		err = renameFileInFileMap(options.Src, options.Dst)
+		if err != nil {
+			log.Err("BlockCache::RenameFile : Failed to rename file %s in filemap to hidden file name %s [%v]",
+				options.Src, options.Dst, err)
+			return fmt.Errorf("failed to rename file %s in filemap to hidden file name %s [%v]", options.Src, options.Dst, err)
+		}
 	}
 
 	err := bc.NextComponent().RenameFile(options)

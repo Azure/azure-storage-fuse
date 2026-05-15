@@ -10,8 +10,8 @@ import (
 
 // errFreeListFull indicates that all buffers are currently in use.
 // When this error is returned, buffer eviction is required to proceed.
-var errFreeListFull = errors.New("All buffers are in use, Free list is full!")
-var errNoVictimBufferFound = errors.New("Cannot find Victim buffer, all buffers are busy, Increase the memory limit configured")
+var errFreeListFull = errors.New("all buffers are in use, free list is full")
+var errNoVictimBufferFound = errors.New("cannot find victim buffer, all buffers are busy, increase the memory limit configured")
 
 const (
 	minEvictionCyclesToPass = 1
@@ -77,7 +77,7 @@ const (
 //  5. Evicted: reused for different block
 //  6. Destroyed during Stop(): all buffers deallocated
 type freeListType struct {
-	bufPool         *BufferPool            // Buffer pool for actual memory allocation
+	bufPool         *bufferPool            // Buffer pool for actual memory allocation
 	bufSize         int64                  // Size of each buffer in bytes (should match block size)
 	firstFreeBuffer int                    // Index of first buffer in free list (-1 if empty)
 	lastFreeBuffer  int                    // Index of last buffer in free list (-1 if empty)
@@ -142,13 +142,13 @@ func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
 
 	freeList.bufPool = initBufferPool(bufSize, uint64(maxBuffers))
 
-	for i := 0; i < maxBuffers; i++ {
-		buf, err := freeList.bufPool.GetBuffer()
+	for i := range maxBuffers {
+		buf, err := freeList.bufPool.getBuffer()
 		if err != nil {
-			log.Err("BufferPool::newFreeList: Failed to get buffer from pool: %v", err)
+			log.Err("freeList::createFreeList: Failed to get buffer from pool: %v", err)
 			// Release already allocated buffers.
-			for j := 0; j < i; j++ {
-				freeList.bufPool.PutBuffer(freeList.bufDescriptors[j].buf)
+			for j := range i {
+				freeList.bufPool.putBuffer(freeList.bufDescriptors[j].buf)
 			}
 			return nil, err
 		}
@@ -167,7 +167,7 @@ func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
 	freeList.bufSize = int64(bufSize)
 	go freeList.resetBufferDescriptors()
 
-	log.Info("Buffer Pool: Free list created with buffer size: %d bytes, max buffers: %d, total size: %.2f MB",
+	log.Info("freeList::createFreeList: Free list created with buffer size: %d bytes, max buffers: %d, total size: %.2f MB",
 		bufSize, maxBuffers, float64(uint64(maxBuffers)*bufSize)/(1024.0*1024.0))
 
 	return freeList, nil
@@ -189,15 +189,15 @@ func (fl *freeListType) destroy() {
 	fl.mutex.Lock()
 	defer fl.mutex.Unlock()
 
-	for i := 0; i < len(fl.bufDescriptors); i++ {
-		fl.bufPool.PutBuffer(fl.bufDescriptors[i].buf)
+	for i := range len(fl.bufDescriptors) {
+		fl.bufPool.putBuffer(fl.bufDescriptors[i].buf)
 		fl.bufDescriptors[i].buf = nil
 	}
 
 	fl.bufDescriptors = nil
 	fl.bufPool = nil
 
-	log.Info("Buffer Pool: Free list destroyed")
+	log.Info("freeList::destroy: Free list destroyed")
 }
 
 // resetBufferDescriptors is a background goroutine that resets released buffers.
@@ -248,7 +248,7 @@ func (fl *freeListType) resetBufferDescriptors() {
 		}
 		fl.mutex.Unlock()
 
-		log.Debug("releaseBufferDescriptors: Added bufferIdx: %d back to freelist", bufDesc.bufIdx)
+		log.Debug("freeList::releaseBufferDescriptors: Added bufferIdx: %d back to freelist", bufDesc.bufIdx)
 	}
 }
 
@@ -295,7 +295,7 @@ func (fl *freeListType) allocateBuffer(blk *block) (*bufferDescriptor, error) {
 	bufDesc.nxtFreeBuffer = -1
 	bufDesc.block = blk
 
-	log.Debug("allocateBuffer: Allocated bufferIdx: %d for blockIdx: %d", bufDesc.bufIdx, blk.idx)
+	log.Debug("freeList::allocateBuffer: Allocated bufferIdx: %d for blockIdx: %d", bufDesc.bufIdx, blk.idx)
 
 	return bufDesc, nil
 }
@@ -344,7 +344,7 @@ func (fl *freeListType) debugListMustBeFull() {
 	fl.mutex.Lock()
 	defer fl.mutex.Unlock()
 
-	log.Debug("debugListMustBeFull: Checking if free list is full")
+	log.Debug("freeList::debugListMustBeFull: Checking if free list is full")
 
 	count := 0
 	next := fl.firstFreeBuffer
@@ -360,7 +360,7 @@ func (fl *freeListType) debugListMustBeFull() {
 		panic(err)
 	}
 
-	log.Debug("debugListMustBeFull:  free list is indeed full!")
+	log.Debug("freeList::debugListMustBeFull:  free list is indeed full!")
 
 }
 
@@ -407,8 +407,8 @@ func (fl *freeListType) debugListMustBeFull() {
 // The mutex is released during victim search to avoid blocking other
 // operations. The victim buffer is pinned (refCnt incremented) before
 // returning to prevent eviction by other threads.
-func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTableMgr) (*bufferDescriptor, error) {
-	log.Debug("getVictimBuffer: Starting to look for victim buffer")
+func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *bufferTableMgr) (*bufferDescriptor, error) {
+	log.Debug("freeList::getVictimBuffer: Starting to look for victim buffer")
 
 	maxBuffers := len(fl.bufDescriptors)
 	numTries := 0
@@ -416,7 +416,7 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTable
 	// This loop should always find a victim buffer, as at any time the assumption is there can only be 10 FUSE threads
 	// working on 10 different buffers in the worst case.
 	for {
-		log.Debug("getVictimBuffer: Trying to find victim buffer, try number: %d", numTries+1)
+		log.Debug("freeList::getVictimBuffer: Trying to find victim buffer, try number: %d", numTries+1)
 
 		if numTries >= maxBuffers*maxRoundsBeforeGivingUp {
 			// We've scanned through all buffers maxRounds times without finding a victim. This should never happen.
@@ -434,7 +434,7 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTable
 		if bufDesc.refCnt.Load() == refCountTableOnly {
 			if bufDesc.bytesRead.Load() == int32(fl.bufSize) || bufDesc.numEvictionCyclesPassed.Load() >= minEvictionCyclesToPass {
 				// Found a victim buffer. pin the buffer by increasing refCnt.
-				log.Debug("getVictimBuffer: Selected victim bufferIdx: %d, blockIdx: %d after %d tries",
+				log.Debug("freeList::getVictimBuffer: Selected victim bufferIdx: %d, blockIdx: %d after %d tries",
 					bufDesc.bufIdx, bufDesc.block.idx, numTries)
 
 				pinnedBuffer := false
@@ -442,11 +442,11 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTable
 				btm.mu.Lock()
 				// Check for the refCnt again after acquiring the lock to make sure the buffer is still a valid victim before pinning it.
 				if bufDesc.refCnt.Load() != refCountTableOnly {
-					log.Debug("getVictimBuffer: Victim bufferIdx: %d is no longer a valid victim after acquiring lock, refCnt: %d, giving it another chance",
+					log.Debug("freeList::getVictimBuffer: Victim bufferIdx: %d is no longer a valid victim after acquiring lock, refCnt: %d, giving it another chance",
 						bufDesc.bufIdx, bufDesc.refCnt.Load())
 					bufDesc.numEvictionCyclesPassed.Store(0) // Reset eviction cycle counter to give it another chance.
 				} else {
-					log.Debug("getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d of file: %s is still a valid victim after acquiring lock, pinning it for eviction",
+					log.Debug("freeList::getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d of file: %s is still a valid victim after acquiring lock, pinning it for eviction",
 						bufDesc.bufIdx, bufDesc.block.idx, bufDesc.block.file.Name)
 					bufDesc.refCnt.Add(1)
 					pinnedBuffer = true
@@ -456,7 +456,7 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTable
 				if pinnedBuffer {
 					// If the block is dirty, we should need to upload it before reusing it.
 					if bufDesc.dirty.Load() {
-						log.Debug("getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
+						log.Debug("freeList::getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
 							bufDesc.bufIdx, bufDesc.block.idx)
 						bufDesc.block.scheduleUpload(workerPool, fl, bufDesc, true /* sync */)
 					}
@@ -469,11 +469,11 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *BufferTable
 			}
 		}
 
-		log.Debug("getVictimBuffer: bufferIdx: %d is in use, refCnt: %d, bytesRead: %d, bytesWritten: %d",
+		log.Debug("freeList::getVictimBuffer: bufferIdx: %d is in use, refCnt: %d, bytesRead: %d, bytesWritten: %d",
 			bufDesc.bufIdx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
 	}
 
-	err := fmt.Errorf("getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",
+	err := fmt.Errorf("freeList::getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",
 		maxRoundsBeforeGivingUp, numTries, maxBuffers)
 	log.Crit("%s", err.Error())
 	return nil, errNoVictimBufferFound

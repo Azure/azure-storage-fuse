@@ -85,7 +85,7 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 	// If download is in progress, it holds the lock exclusively, so we wait here.
 	// Once download completes and releases the lock, we can proceed.
 	bd.contentLock.RLock()
-	bd.contentLock.RUnlock()
+	bd.contentLock.RUnlock() //nolint:staticcheck
 
 	if bd.valid.Load() && bd.downloadErr == nil {
 		// Download completed successfully, buffer is now valid and safe to read.
@@ -160,7 +160,7 @@ func (bd *bufferDescriptor) reset(fl *freeListType) {
 	bd.downloadErr = nil
 	bd.uploadErr = nil
 	// Clear the buffer
-	// copy(bd.buf, fl.bufPool.GetZeroBuffer())
+	// copy(bd.buf, fl.bufPool.getZeroBuffer())
 	// no need to copy zero buffer, just set all bytes to 0
 	clear(bd.buf)
 }

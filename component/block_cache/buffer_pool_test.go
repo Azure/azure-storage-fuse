@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var bufPool *BufferPool
+var bufPool *bufferPool
 
 func TestInitBufferPool(t *testing.T) {
 	bufPool := initBufferPool(8*common.MbToBytes, 64)
@@ -18,30 +18,30 @@ func TestInitBufferPool(t *testing.T) {
 }
 
 func TestGetBuffer(t *testing.T) {
-	buf, err := bufPool.GetBuffer()
+	buf, err := bufPool.getBuffer()
 	assert.NoError(t, err)
 	assert.Equal(t, len(buf), bufPool.bufSize)
-	assert.Equal(t, bufPool.bufSize, len(buf))
-	bufPool.PutBuffer(buf)
+	assert.Len(t, buf, bufPool.bufSize)
+	bufPool.putBuffer(buf)
 }
 
 func TestGetBufferExceedLimit(t *testing.T) {
 	// Exhaust the buffer pool
 	var buffers [][]byte
 	for i := int64(0); i < bufPool.maxBuffers; i++ {
-		buf, err := bufPool.GetBuffer()
+		buf, err := bufPool.getBuffer()
 		assert.Equal(t, len(buf), bufPool.bufSize)
 		assert.NoError(t, err)
 		buffers = append(buffers, buf)
 	}
 
 	// Now try to get one more buffer which should fail
-	_, err := bufPool.GetBuffer()
+	_, err := bufPool.getBuffer()
 	assert.Error(t, err)
 
 	// Release all buffers
 	for _, buf := range buffers {
-		bufPool.PutBuffer(buf)
+		bufPool.putBuffer(buf)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestBufSizeConsistency(t *testing.T) {
 	// to the pool, now get them back from the pool and check their sizes again
 	var buffers [][]byte
 	for i := int64(0); i < bufPool.maxBuffers; i++ {
-		buf, err := bufPool.GetBuffer()
+		buf, err := bufPool.getBuffer()
 		assert.Equal(t, len(buf), bufPool.bufSize)
 		assert.NoError(t, err)
 
@@ -60,11 +60,11 @@ func TestBufSizeConsistency(t *testing.T) {
 	}
 	// Release all buffers
 	for _, buf := range buffers {
-		bufPool.PutBuffer(buf)
+		bufPool.putBuffer(buf)
 	}
 	// Get all buffers again and check their sizes
 	for i := int64(0); i < bufPool.maxBuffers; i++ {
-		buf, err := bufPool.GetBuffer()
+		buf, err := bufPool.getBuffer()
 		assert.Equal(t, len(buf), bufPool.bufSize)
 		assert.NoError(t, err)
 	}
@@ -76,7 +76,7 @@ func TestPanicInPutBuffer(t *testing.T) {
 			t.Errorf("The code did not panic when putting nil buffer")
 		}
 	}()
-	bufPool.PutBuffer(nil)
+	bufPool.putBuffer(nil)
 }
 
 func TestMain(m *testing.M) {
