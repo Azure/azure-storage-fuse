@@ -395,7 +395,8 @@ func (suite *FileOperationsTestSuite) TestWrite_StickyErrorPreventsWrite() {
 	name := "test_write_sticky.txt"
 	handle, f := suite.openWriteFile(name, nil)
 
-	f.err.Store("injected error")
+	e := fmt.Errorf("injected error")
+	f.err.Store(&e)
 
 	err := f.write(suite.blockCache, &internal.WriteFileOptions{
 		Handle: handle,
@@ -634,7 +635,9 @@ func (suite *FileOperationsTestSuite) TestFlush_StickyErrorFails() {
 	// Force unsynced state and inject error
 	f.blockList.state = blockListValid
 	f.synced = false
-	f.err.Store("simulated upload error")
+
+	e := fmt.Errorf("simulated upload error")
+	f.err.Store(&e)
 
 	err := f.flush(suite.blockCache, true)
 	suite.assert.Error(err)
@@ -805,7 +808,8 @@ func (suite *FileOperationsTestSuite) TestTruncate_StickyError_Fails() {
 		suite.assert.Error(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
 	}()
 
-	f.err.Store("injected truncate error")
+	e := fmt.Errorf("injected truncate error")
+	f.err.Store(&e)
 	err := f.truncate(suite.blockCache, &internal.TruncateFileOptions{
 		Name:    name,
 		NewSize: 5,
@@ -946,7 +950,8 @@ func (suite *FileOperationsTestSuite) TestWrite_StickyErrorFails() {
 		suite.assert.Error(err)
 	}()
 
-	f.err.Store("injected write error")
+	e := fmt.Errorf("injected write error")
+	f.err.Store(&e)
 	err := f.write(suite.blockCache, &internal.WriteFileOptions{
 		Handle: handle,
 		Offset: 0,
@@ -1215,9 +1220,10 @@ func TestFile_ErrorState(t *testing.T) {
 	assert.Nil(t, f.err.Load())
 
 	// Store an error
-	f.err.Store("test error")
+	e := fmt.Errorf("test error")
+	f.err.Store(&e)
 	assert.NotNil(t, f.err.Load())
-	assert.Equal(t, "test error", f.err.Load())
+	assert.Equal(t, e, *f.err.Load())
 }
 
 func TestFile_PendingReads(t *testing.T) {
