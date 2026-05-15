@@ -352,16 +352,19 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, fre
 	if curRefCnt <= refCountTableOnly {
 		// This should not happen as the caller should be holding a reference to this buffer if this control came here
 		// which means there is a bug in the code where refCnt is being decremented incorrectly somewhere, as the caller
-		// should have at least refCnt>1 for its reference.
-		panic(fmt.Sprintf("BufferTableMgr::removeBufferDescriptor: BufferIdx: %d[%v] for blockIdx: %d has refCnt: %d which is unexpected, something is wrong, file: %s",
-			bufDesc.bufIdx, bufDesc, blk.idx, curRefCnt, blk.file.Name))
+		// should have at least refCnt>1 for its reference. We log and return false instead of panicking so that a bug
+		// here does not bring down the entire mount.
+		log.Crit("BufferTableMgr::removeBufferDescriptor: BufferIdx: %d[%v] for blockIdx: %d has refCnt: %d which is unexpected, something is wrong, file: %s",
+			bufDesc.bufIdx, bufDesc, blk.idx, curRefCnt, blk.file.Name)
+		return false
 	}
 
 	// Check 3: Verify buffer is still in the table (This cannot happen as we have 2 references to this buffer,
 	// but adding for extra safety)
 	if _, ok := btm.table[bufDesc.block]; !ok {
-		panic(fmt.Sprintf("BufferTableMgr::removeBufferDescriptor: BufferIdx: %d[%v] for blockIdx: %d not found in buffer table during removal, something is wrong, file: %s",
-			bufDesc.bufIdx, bufDesc, blk.idx, blk.file.Name))
+		log.Crit("BufferTableMgr::removeBufferDescriptor: BufferIdx: %d[%v] for blockIdx: %d not found in buffer table during removal, something is wrong, file: %s",
+			bufDesc.bufIdx, bufDesc, blk.idx, blk.file.Name)
+		return false
 	}
 
 	// Step 1: Remove buffer from the table (no longer mapped to this block)
@@ -371,9 +374,12 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, fre
 
 	if ok := bufDesc.release(freeList); ok {
 		// This should not release the buffer to free list as the caller should also be holding a reference to this buffer,
-		// so refCnt should be 1 after this release, This means bug in the code and refCnt is being decremented incorrectly somewhere.
-		panic(fmt.Sprintf("BufferTableMgr::removeBufferDescriptor: Failed to release bufferDescriptor: %v for blockIdx: %d back to free list after removal from buffer table, file: %s",
-			bufDesc, blk.idx, blk.file.Name))
+		// so refCnt should be 1 after this release, This means bug in the code and refCnt is being decremented incorrectly
+		// somewhere. The buffer is already gone from the table and from the free list at this point; report success so the
+		// caller does not try to use it again, but log loudly so the bug can be caught.
+		log.Crit("BufferTableMgr::removeBufferDescriptor: First release of bufferDescriptor: %v for blockIdx: %d returned to free list unexpectedly, caller reference appears to be missing, file: %s",
+			bufDesc, blk.idx, blk.file.Name)
+		return true
 	}
 
 	if ok := bufDesc.release(freeList); ok {
@@ -383,7 +389,9 @@ func (btm *BufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, fre
 	}
 
 	// This should not happen as the caller should be holding a reference to this buffer if this control came here which
-	// is not expected.
-	panic(fmt.Sprintf("BufferTableMgr::removeBufferDescriptor: Failed to release bufferDescriptor: %v for blockIdx: %d back to free list after removal from buffer table, file: %s",
-		bufDesc, blk.idx, blk.file.Name))
+	// is not expected. The buffer has been removed from the table; report success but log loudly so the leak can be
+	// diagnosed.
+	log.Crit("BufferTableMgr::removeBufferDescriptor: Final release of bufferDescriptor: %v for blockIdx: %d did not return buffer to free list, possible refcount leak, file: %s",
+		bufDesc, blk.idx, blk.file.Name)
+	return true
 }
