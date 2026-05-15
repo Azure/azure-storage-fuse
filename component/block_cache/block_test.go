@@ -15,7 +15,7 @@ func TestCreateBlock(t *testing.T) {
 	assert.NotNil(t, blk)
 	assert.Equal(t, 0, blk.idx)
 	assert.Equal(t, "testBlockId123", blk.id)
-	assert.Equal(t, localBlock, blk.state)
+	assert.Equal(t, localBlock, blk.getState())
 	assert.Equal(t, f, blk.file)
 	assert.Equal(t, int32(0), blk.numWrites.Load())
 }
@@ -91,7 +91,7 @@ func TestUpdateBlockListForReadOnlyFile(t *testing.T) {
 	}
 
 	f := createFile("readonly.txt")
-	f.size = 5 * 1024 * 1024 // 5 MB file
+	f.size.Store(5 * 1024 * 1024) // 5 MB file
 
 	updateBlockListForReadOnlyFile(f, int64(bc.blockSize))
 
@@ -100,7 +100,7 @@ func TestUpdateBlockListForReadOnlyFile(t *testing.T) {
 		assert.NotNil(t, f.blockList.list[i])
 		assert.Equal(t, i, f.blockList.list[i].idx)
 		assert.Equal(t, "", f.blockList.list[i].id)
-		assert.Equal(t, committedBlock, f.blockList.list[i].state)
+		assert.Equal(t, committedBlock, f.blockList.list[i].getState())
 		assert.Equal(t, f, f.blockList.list[i].file)
 	}
 
@@ -116,7 +116,7 @@ func TestUpdateBlockListForReadOnlyFile_EmptyFile(t *testing.T) {
 	}
 
 	f := createFile("empty.txt")
-	f.size = 0
+	f.size.Store(0)
 
 	updateBlockListForReadOnlyFile(f, int64(bc.blockSize))
 
@@ -129,7 +129,7 @@ func TestUpdateBlockListForReadOnlyFile_PartialBlock(t *testing.T) {
 	}
 
 	f := createFile("partial.txt")
-	f.size = 2*1024*1024 + 512*1024 // 2.5 MB file
+	f.size.Store(2*1024*1024 + 512*1024) // 2.5 MB file
 
 	updateBlockListForReadOnlyFile(f, int64(bc.blockSize))
 
@@ -156,7 +156,7 @@ func TestValidateBlockList_Valid(t *testing.T) {
 	}
 
 	f := createFile("readonly.txt")
-	f.size = 5 * 1024 * 1024 // 5 MB file
+	f.size.Store(5 * 1024 * 1024) // 5 MB file
 
 	storageBlockList := &internal.CommittedBlockList{
 		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 0, Size: 1024 * 1024},
@@ -175,7 +175,7 @@ func TestValidateBlockList_Valid(t *testing.T) {
 		for i, blk := range f.blockList.list {
 			assert.Equal(t, i, blk.idx)
 			assert.Equal(t, (*storageBlockList)[i].Id, blk.id)
-			assert.Equal(t, committedBlock, blk.state)
+			assert.Equal(t, committedBlock, blk.getState())
 			assert.Equal(t, f, blk.file)
 		}
 	}
@@ -201,7 +201,7 @@ func TestValidateBlockList_Invalid_BlockIDLen(t *testing.T) {
 	}
 
 	f := createFile("readonly.txt")
-	f.size = 5 * 1024 * 1024 // 5 MB file
+	f.size.Store(5 * 1024 * 1024) // 5 MB file
 
 	storageBlockList := &internal.CommittedBlockList{
 		internal.CommittedBlock{Id: common.GetBlockID(9), Offset: 0, Size: 1024 * 1024},
@@ -219,7 +219,7 @@ func TestValidateBlockList_Invalid_BlockSizes(t *testing.T) {
 	}
 
 	f := createFile("readonly.txt")
-	f.size = 5 * 1024 * 1024 // 5 MB file
+	f.size.Store(5 * 1024 * 1024) // 5 MB file
 
 	storageBlockList := &internal.CommittedBlockList{
 		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 0, Size: 1024 * 1024},
