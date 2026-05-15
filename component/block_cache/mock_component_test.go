@@ -47,12 +47,6 @@ func (e *errorInjectingComponent) clearErrors() {
 	e.errors = make(map[string]error)
 }
 
-func (e *errorInjectingComponent) getCallCount(op string) int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.calls[op]
-}
-
 func (e *errorInjectingComponent) checkError(op string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
