@@ -83,29 +83,24 @@ steps:
     displayName: "Go Get"
 
   # Building blobfuse2 binary
-  # FIPS: see go_installer.sh / build.sh — Microsoft Go + CGO + GOTOOLCHAIN=local
-  # is what gives the binary the systemcrypto marker required for FIPS.
-  - task: Go@0
-    env:
-      CGO_ENABLED: 1
-      GOTOOLCHAIN: local
-    inputs:
-      command: 'build'
-      arguments: "-tags $(tags) -o blobfuse2"
-      workingDirectory: $(WORK_DIR)
+  # build.sh sets CGO_ENABLED=1 and GOTOOLCHAIN=local — these are what give
+  # the binary the systemcrypto marker required for FIPS compliance. Keep the
+  # build flags centralized in build.sh so CI matches local dev exactly.
+  - script: |
+      chmod 755 build.sh
+      ./build.sh $(tags)
+    workingDirectory: $(WORK_DIR)
     displayName: "Go Build"
+    continueOnError: false
 
   # Building bfusemon binary
-  - task: Go@0
-    env:
-      CGO_ENABLED: 1
-      GOTOOLCHAIN: local
-    inputs:
-      command: 'build'
-      arguments: "-tags $(tags) -o bfusemon ./tools/health-monitor/"
-      workingDirectory: $(WORK_DIR)
+  - script: |
+      chmod 755 build.sh
+      ./build.sh health
+    workingDirectory: $(WORK_DIR)
     condition: eq('${{ parameters.skip_bfusemon }}', false)
     displayName: "Go Build bfusemon"
+    continueOnError: false
 
   #Verification of built binary
   - script: |

@@ -29,18 +29,15 @@ steps:
     displayName: "Installing Blobfuse2 Dependencies"
 
   # Build the binary
-  # FIPS: CGO_ENABLED=1 + Microsoft Go (installed by go_installer.sh) wires
-  # the systemcrypto backend to the system OpenSSL FIPS provider.
-  # GOTOOLCHAIN=local guards against auto-downloading an upstream toolchain.
-  - task: Go@0
-    env:
-      CGO_ENABLED: 1
-      GOTOOLCHAIN: local
-    inputs:
-      command: 'build'
-      arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
-      workingDirectory: ${{ parameters.work_dir }}
-    displayName: 'Building Blobfuse2'
+  # build.sh sets CGO_ENABLED=1 and GOTOOLCHAIN=local for FIPS compliance.
+  # Keeping the build flags in a single script avoids drift between local dev
+  # and CI/release builds.
+  - script: |
+      chmod 755 build.sh
+      ./build.sh ${{ parameters.tags }}
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Building Blobfuse2"
+    continueOnError: false
 
   # Verifying whether built binary is correct
   - script: |
