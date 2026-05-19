@@ -3,7 +3,7 @@ work_dir=$(echo $1 | sed 's:/*$::')
 # Microsoft build of Go (FIPS-capable; ships systemcrypto GOEXPERIMENT).
 # Major.minor stream is pinned via aka.ms redirector so we always pull the
 # latest patch in that line. Override by exporting GO_MAJOR_MINOR before run.
-version="${GO_MAJOR_MINOR:-1.26.2}"
+version="${GO_MAJOR_MINOR:-1.26.3}"
 arch=`hostnamectl | grep "Arch" | rev | cut -d " " -f 1 | rev`
 
 if [ $arch != "arm64" ]
