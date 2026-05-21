@@ -1,5 +1,6 @@
 ## 2.5.4 (Unreleased)
 **Features**
+- Add gzip compression of rolled-over log files for the base logger. Enable with `compress: true` under the `logging` section in config, or via the `--log-compress` CLI flag.
 
 **Bug Fixes**
 - Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
