@@ -240,6 +240,7 @@ const (
 	InvalidRange
 	BlobIsUnderLease
 	InvalidPermission
+	ErrPathTooDeep
 )
 
 // For detailed error list refer below link,
@@ -285,6 +286,8 @@ func storeDatalakeErrToErr(err error) uint16 {
 			return BlobIsUnderLease
 		case datalakeerror.AuthorizationPermissionMismatch:
 			return InvalidPermission
+		case datalakeerror.PathIsTooDeep:
+			return ErrPathTooDeep
 		default:
 			return ErrUnknown
 		}

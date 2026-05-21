@@ -45,6 +45,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -254,6 +255,30 @@ func (suite *dirTestSuite) TestDirDeleteNonEmpty() {
 
 // 	suite.dirTestCleanup([]string{dirName})
 // }
+
+// # Create directory path exceeding ADLS depth limit
+func (suite *dirTestSuite) TestDirCreateDeepPath() {
+	if !suite.adlsTest {
+		fmt.Println("Skipping TestDirCreateDeepPath: not an ADLS account")
+		return
+	}
+
+	// ADLS enforces a maximum path depth of 63 segments from the container root.
+	// Build 65 nested levels from testPath to guarantee the limit is exceeded.
+	const depth = 65
+	topDir := suite.testPath + "/deep"
+	deepPath := topDir
+	for i := range depth {
+		deepPath = filepath.Join(deepPath, fmt.Sprintf("l%d", i))
+	}
+
+	err := os.MkdirAll(deepPath, 0777)
+	suite.Error(err)
+	suite.ErrorIs(err, syscall.ENAMETOOLONG)
+
+	// cleanup any intermediate directories created before the limit was hit
+	suite.dirTestCleanup([]string{topDir})
+}
 
 // # Get stats of a directory
 func (suite *dirTestSuite) TestDirGetStats() {
