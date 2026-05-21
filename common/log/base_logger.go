@@ -34,6 +34,7 @@
 package log
 
 import (
+	"compress/gzip"
 	"fmt"
 	"io"
 	"log"
@@ -54,6 +55,7 @@ type LogFileConfig struct {
 	LogLevel       common.LogLevel
 	LogTag         string
 	LogGoroutineID bool
+	LogCompress    bool
 
 	currentLogSize uint64
 }
@@ -67,6 +69,7 @@ type BaseLogger struct {
 	procPID       int
 
 	fileConfig LogFileConfig
+	compressWg sync.WaitGroup
 }
 
 func newBaseLogger(config LogFileConfig) (*BaseLogger, error) {
@@ -210,6 +213,9 @@ func (l *BaseLogger) Destroy() error {
 	close(l.channel)
 	l.workerDone.Wait()
 
+	// wait for any in-flight async compression to finish before closing the handle
+	l.compressWg.Wait()
+
 	if err := l.logFileHandle.Close(); err != nil {
 		return err
 	}
@@ -251,7 +257,6 @@ func (l *BaseLogger) logDumper(id int, channel <-chan string) {
 
 		l.fileConfig.currentLogSize += (uint64)(len(j))
 		if l.fileConfig.currentLogSize > l.fileConfig.LogSize {
-			//fmt.Println("Calling logrotate : ", l.fileConfig.currentLogSize, " : ", l.fileConfig.logSize)
 			_ = l.LogRotate()
 		}
 	}
@@ -263,28 +268,44 @@ func (l *BaseLogger) LogRotate() error {
 		return nil
 	}
 
+	// ensure any previous async compression has finished before shifting files
+	l.compressWg.Wait()
+
 	if err := l.logFileHandle.Close(); err != nil {
 		return err
 	}
 
-	var fname string
-	var fnameNew string
-	fname = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, (l.fileConfig.LogFileCount - 1))
+	var fname, fnameNew string
 
-	//fmt.Println("Deleting : ", fname)
+	// delete the oldest file (plain or compressed)
+	fname = fmt.Sprintf("%s.%d.gz", l.fileConfig.LogFile, l.fileConfig.LogFileCount-1)
+	os.Remove(fname)
+	fname = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, l.fileConfig.LogFileCount-1)
 	os.Remove(fname)
 
+	// shift .N-1 → .N, preferring .gz variant
 	for i := l.fileConfig.LogFileCount - 2; i > 0; i-- {
-		fname = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, i)
-		fnameNew = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, (i + 1))
-
-		// Move each file to next number 8 -> 9, 7 -> 8, 6 -> 7 ...
-		//fmt.Println("Renaming : ", fname, " : ", fnameNew)
-		_ = os.Rename(fname, fnameNew)
+		fname = fmt.Sprintf("%s.%d.gz", l.fileConfig.LogFile, i)
+		fnameNew = fmt.Sprintf("%s.%d.gz", l.fileConfig.LogFile, i+1)
+		if _, err := os.Stat(fname); err == nil {
+			_ = os.Rename(fname, fnameNew)
+		} else {
+			fname = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, i)
+			fnameNew = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, i+1)
+			_ = os.Rename(fname, fnameNew)
+		}
 	}
 
-	//fmt.Println("Renaming : ", l.fileConfig.logFile, l.fileConfig.logFile+".1")
 	_ = os.Rename(l.fileConfig.LogFile, l.fileConfig.LogFile+".1")
+
+	if l.fileConfig.LogCompress {
+		src := l.fileConfig.LogFile + ".1"
+		l.compressWg.Add(1)
+		go func() {
+			defer l.compressWg.Done()
+			_ = l.compressFile(src)
+		}()
+	}
 
 	var err error
 	l.logFileHandle, err = os.OpenFile(l.fileConfig.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -292,9 +313,41 @@ func (l *BaseLogger) LogRotate() error {
 		l.logFileHandle = os.Stdout
 	}
 
-	// init the log
 	l.logger.SetOutput(l.logFileHandle)
 	l.fileConfig.currentLogSize = 0
 
+	return nil
+}
+
+// compressFile gzip-compresses src to src+".gz" and removes src on success.
+func (l *BaseLogger) compressFile(fname string) error {
+	src, err := os.Open(fname)
+	if err != nil {
+		return err
+	}
+	dst, err := os.Create(fname + ".gz")
+	if err != nil {
+		src.Close()
+		return err
+	}
+	gz := gzip.NewWriter(dst)
+	_, err = io.Copy(gz, src)
+	src.Close()
+	if err != nil {
+		gz.Close()
+		dst.Close()
+		os.Remove(fname + ".gz")
+		return err
+	}
+	if err = gz.Close(); err != nil {
+		dst.Close()
+		os.Remove(fname + ".gz")
+		return err
+	}
+	if err = dst.Close(); err != nil {
+		os.Remove(fname + ".gz")
+		return err
+	}
+	os.Remove(fname)
 	return nil
 }

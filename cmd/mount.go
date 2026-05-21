@@ -69,6 +69,7 @@ type LogOptions struct {
 	LogFileCount   uint64 `config:"file-count" yaml:"file-count,omitempty"`
 	LogGoroutineID bool   `config:"goroutine-id" yaml:"goroutine-id,omitempty"`
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
+	LogCompress    bool   `config:"compress" yaml:"compress,omitempty"`
 }
 
 type mountOptions struct {
@@ -195,6 +196,7 @@ func OnConfigChange() {
 		MaxFileSize: newLogOptions.MaxLogFileSize,
 		FileCount:   newLogOptions.LogFileCount,
 		TimeTracker: newLogOptions.TimeTracker,
+		LogCompress: newLogOptions.LogCompress,
 	})
 
 	if err != nil {
@@ -435,6 +437,7 @@ var mountCmd = &cobra.Command{
 			Level:          logLevel,
 			TimeTracker:    options.Logging.TimeTracker,
 			LogGoroutineID: options.Logging.LogGoroutineID,
+			LogCompress:    options.Logging.LogCompress,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
@@ -877,6 +880,10 @@ func init() {
 	mountCmd.PersistentFlags().Bool("log-goroutine-id",
 		false, "Enable logging of goroutine IDs. Default is true for LOG_DEBUG level, false otherwise.")
 	config.BindPFlag("logging.goroutine-id", mountCmd.PersistentFlags().Lookup("log-goroutine-id"))
+
+	mountCmd.PersistentFlags().Bool("log-compress",
+		false, "Enable gzip compression of rolled-over log files. Only applies to base logger.")
+	config.BindPFlag("logging.compress", mountCmd.PersistentFlags().Lookup("log-compress"))
 
 	mountCmd.PersistentFlags().Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
 	config.BindPFlag("foreground", mountCmd.PersistentFlags().Lookup("foreground"))

@@ -82,6 +82,7 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 			LogFileCount:   int(config.FileCount),
 			LogTag:         config.Tag,
 			LogGoroutineID: config.LogGoroutineID,
+			LogCompress:    config.LogCompress,
 		})
 		if err != nil {
 			return nil, err

@@ -34,7 +34,9 @@
 package log
 
 import (
+	"compress/gzip"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -620,5 +622,275 @@ func TestSilentLogger_GetLogLevel(t *testing.T) {
 	l := &SilentLogger{}
 	if l.GetLogLevel() != common.ELogLevel.LOG_OFF() {
 		t.Errorf("expected LOG_OFF, got %v", l.GetLogLevel())
+	}
+}
+
+// ---- compression tests -----------------------------------------------------
+
+func gzFileContent(t *testing.T, path string) string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open gz %s: %v", path, err)
+	}
+	defer f.Close()
+	r, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatalf("gzip.NewReader %s: %v", path, err)
+	}
+	defer r.Close()
+	b, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read gz %s: %v", path, err)
+	}
+	return string(b)
+}
+
+func TestCompress_ProducesGzFile(t *testing.T) {
+	l, path := makeLogger(t, LogFileConfig{
+		LogLevel:     common.ELogLevel.LOG_DEBUG(),
+		LogFileCount: 5,
+		LogCompress:  true,
+	})
+	l.Info("before-compress-rotate")
+	drainLogger(l)
+
+	if err := l.LogRotate(); err != nil {
+		t.Fatalf("LogRotate: %v", err)
+	}
+	l.compressWg.Wait()
+
+	if !fileExists(path + ".1.gz") {
+		t.Errorf("expected %s.1.gz to exist", path)
+	}
+	if fileExists(path + ".1") {
+		t.Error("plain .1 should have been removed after compression")
+	}
+}
+
+func TestCompress_GzContentIsValid(t *testing.T) {
+	l, path := makeLogger(t, LogFileConfig{
+		LogLevel:     common.ELogLevel.LOG_DEBUG(),
+		LogFileCount: 5,
+		LogCompress:  true,
+	})
+	l.Info("gz-content-check")
+	drainLogger(l)
+
+	if err := l.LogRotate(); err != nil {
+		t.Fatalf("LogRotate: %v", err)
+	}
+	l.compressWg.Wait()
+
+	content := gzFileContent(t, path+".1.gz")
+	if !strings.Contains(content, "gz-content-check") {
+		t.Error("compressed file does not contain expected message")
+	}
+}
+
+func TestCompress_ShiftsGzFiles(t *testing.T) {
+	l, path := makeLogger(t, LogFileConfig{
+		LogLevel:     common.ELogLevel.LOG_DEBUG(),
+		LogFileCount: 5,
+		LogCompress:  true,
+	})
+
+	l.Info("first")
+	drainLogger(l)
+	if err := l.LogRotate(); err != nil {
+		t.Fatalf("rotate 1: %v", err)
+	}
+	l.compressWg.Wait()
+
+	l.Info("second")
+	drainLogger(l)
+	if err := l.LogRotate(); err != nil {
+		t.Fatalf("rotate 2: %v", err)
+	}
+	l.compressWg.Wait()
+
+	if !fileExists(path + ".2.gz") {
+		t.Error("expected .2.gz after two compressed rotations")
+	}
+}
+
+func TestCompress_DeletesOldestGz(t *testing.T) {
+	l, path := makeLogger(t, LogFileConfig{
+		LogLevel:     common.ELogLevel.LOG_DEBUG(),
+		LogFileCount: 3,
+		LogCompress:  true,
+	})
+
+	for i := 0; i < 3; i++ {
+		drainLogger(l)
+		if err := l.LogRotate(); err != nil {
+			t.Fatalf("rotate %d: %v", i+1, err)
+		}
+		l.compressWg.Wait()
+	}
+
+	if fileExists(path+".3.gz") || fileExists(path+".3") {
+		t.Error(".3 or .3.gz should be deleted with LogFileCount=3")
+	}
+}
+
+func TestCompress_TransitionFromPlainFiles(t *testing.T) {
+	// Start without compression, rotate once to create a plain .1 file,
+	// then enable compression and rotate again — .1 (plain) should shift
+	// to .2 (plain) and new .1.gz should appear.
+	l, path := makeLogger(t, LogFileConfig{
+		LogLevel:     common.ELogLevel.LOG_DEBUG(),
+		LogFileCount: 5,
+		LogCompress:  false,
+	})
+
+	l.Info("plain-first")
+	drainLogger(l)
+	if err := l.LogRotate(); err != nil {
+		t.Fatalf("plain rotate: %v", err)
+	}
+
+	// Enable compression and rotate again
+	l.fileConfig.LogCompress = true
+	l.Info("compress-second")
+	drainLogger(l)
+	if err := l.LogRotate(); err != nil {
+		t.Fatalf("compress rotate: %v", err)
+	}
+	l.compressWg.Wait()
+
+	if !fileExists(path + ".1.gz") {
+		t.Error("expected .1.gz after compressed rotation")
+	}
+	if !fileExists(path + ".2") {
+		t.Error("expected plain .2 (shifted from old .1)")
+	}
+}
+
+func TestCompress_NoCompressModeStillPlain(t *testing.T) {
+	l, path := makeLogger(t, LogFileConfig{
+		LogLevel:     common.ELogLevel.LOG_DEBUG(),
+		LogFileCount: 5,
+		LogCompress:  false,
+	})
+	l.Info("plain-log")
+	drainLogger(l)
+
+	if err := l.LogRotate(); err != nil {
+		t.Fatalf("LogRotate: %v", err)
+	}
+
+	if !fileExists(path + ".1") {
+		t.Error("expected plain .1 when compression is disabled")
+	}
+	if fileExists(path + ".1.gz") {
+		t.Error("unexpected .gz file when compression is disabled")
+	}
+}
+
+func TestCompress_AutoRotationProducesGz(t *testing.T) {
+	l, path := makeLogger(t, LogFileConfig{
+		LogLevel:     common.ELogLevel.LOG_DEBUG(),
+		LogFileCount: 5,
+		LogSize:      1,
+		LogCompress:  true,
+	})
+
+	l.Info("auto-compress-trigger")
+	drainLogger(l)
+	l.compressWg.Wait()
+
+	if !fileExists(path + ".1.gz") {
+		t.Error("auto-rotation with compression did not produce .1.gz")
+	}
+}
+
+// ---- compressFile unit tests -----------------------------------------------
+
+func TestCompressFile_ProducesGz(t *testing.T) {
+	l, _ := makeLogger(t, LogFileConfig{LogLevel: common.ELogLevel.LOG_DEBUG()})
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "plain.log")
+	if err := os.WriteFile(src, []byte("hello compress"), 0644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := l.compressFile(src); err != nil {
+		t.Fatalf("compressFile: %v", err)
+	}
+	if !fileExists(src + ".gz") {
+		t.Error("expected .gz file")
+	}
+	if fileExists(src) {
+		t.Error("original file should be removed after compression")
+	}
+}
+
+func TestCompressFile_ContentRoundTrip(t *testing.T) {
+	l, _ := makeLogger(t, LogFileConfig{LogLevel: common.ELogLevel.LOG_DEBUG()})
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "round.log")
+	want := "round-trip content check"
+	if err := os.WriteFile(src, []byte(want), 0644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := l.compressFile(src); err != nil {
+		t.Fatalf("compressFile: %v", err)
+	}
+
+	got := gzFileContent(t, src+".gz")
+	if got != want {
+		t.Errorf("content mismatch: got %q, want %q", got, want)
+	}
+}
+
+func TestCompressFile_MissingSrc(t *testing.T) {
+	l, _ := makeLogger(t, LogFileConfig{LogLevel: common.ELogLevel.LOG_DEBUG()})
+	err := l.compressFile("/nonexistent/path/log.txt")
+	if err == nil {
+		t.Error("expected error for missing source file")
+	}
+}
+
+func TestCompressFile_EmptyFile(t *testing.T) {
+	l, _ := makeLogger(t, LogFileConfig{LogLevel: common.ELogLevel.LOG_DEBUG()})
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "empty.log")
+	if err := os.WriteFile(src, []byte{}, 0644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := l.compressFile(src); err != nil {
+		t.Fatalf("compressFile on empty file: %v", err)
+	}
+	if !fileExists(src + ".gz") {
+		t.Error("expected .gz for empty file")
+	}
+}
+
+func TestCompressFile_LargeContent(t *testing.T) {
+	l, _ := makeLogger(t, LogFileConfig{LogLevel: common.ELogLevel.LOG_DEBUG()})
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "large.log")
+	line := strings.Repeat("abcdefghijklmnopqrstuvwxyz0123456789\n", 1000)
+	data := strings.Repeat(line, 100)
+	if err := os.WriteFile(src, []byte(data), 0644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := l.compressFile(src); err != nil {
+		t.Fatalf("compressFile large: %v", err)
+	}
+	if !fileExists(src + ".gz") {
+		t.Error("expected .gz for large file")
+	}
+	got := gzFileContent(t, src+".gz")
+	if got != data {
+		t.Error("large file round-trip content mismatch")
 	}
 }

@@ -155,6 +155,7 @@ type LogConfig struct {
 	TimeTracker    bool
 	Tag            string // logging tag which can be either blobfuse2 or bfusemon
 	LogGoroutineID bool   // whether to log goroutine id in each log line
+	LogCompress    bool   // compress rolled-over log files (base logger only)
 }
 
 // Flags for block
