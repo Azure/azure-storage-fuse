@@ -143,6 +143,7 @@ func (l *BaseLogger) SetLogFile(name string) error {
 				l.fileConfig.currentLogSize = uint64(fi.Size())
 			}
 		}
+		l.logger.SetOutput(l.logFileHandle)
 	}
 	return nil
 }
@@ -171,7 +172,7 @@ func (l *BaseLogger) init() error {
 		}
 	}
 	if l.fileConfig.LogLevel == common.ELogLevel.INVALID() {
-		l.SetLogLevel(common.ELogLevel.LOG_DEBUG())
+		l.fileConfig.LogLevel = common.ELogLevel.LOG_DEBUG()
 	}
 	if l.fileConfig.LogSize == 0 {
 		l.SetMaxLogSize(common.DefaultMaxLogFileSize)
@@ -257,13 +258,13 @@ func (l *BaseLogger) logDumper(id int, channel <-chan string) {
 }
 
 func (l *BaseLogger) LogRotate() error {
-	//fmt.Println("Log Rotation started")
-	if err := l.logFileHandle.Close(); err != nil {
-		return err
-	}
 	// skip if the file is standard output
 	if l.fileConfig.LogFile == "stdout" {
 		return nil
+	}
+
+	if err := l.logFileHandle.Close(); err != nil {
+		return err
 	}
 
 	var fname string
