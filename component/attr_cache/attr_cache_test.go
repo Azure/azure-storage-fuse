@@ -94,35 +94,48 @@ func getPathAttr(path string, size int64, mode os.FileMode, metadata bool) *inte
 	}
 }
 
+// getCacheItem returns the cached item for path without altering LRU order.
+func getCacheItem(ac *AttrCache, path string) *attrCacheItem {
+	item, ok := ac.lru.Peek(path)
+	if !ok {
+		return nil
+	}
+	return item
+}
+
 func addPathToCache(assert *assert.Assertions, attrCache *AttrCache, path string, metadata bool) {
 	path = internal.TruncateDirName(path)
-	attrCache.cacheMap[path] = newAttrCacheItem(getPathAttr(path, defaultSize, fs.FileMode(defaultMode), metadata), true, time.Now())
-	assert.Contains(attrCache.cacheMap, path)
+	item := newAttrCacheItem(getPathAttr(path, defaultSize, fs.FileMode(defaultMode), metadata), true, time.Now())
+	attrCache.lru.Put(path, item)
+	assert.True(attrCache.lru.Has(path))
 }
 
 func assertDeleted(suite *attrCacheTestSuite, path string) {
-	suite.assert.Contains(suite.attrCache.cacheMap, path)
-	suite.assert.Equal(&internal.ObjAttr{}, suite.attrCache.cacheMap[path].attr)
-	suite.assert.True(suite.attrCache.cacheMap[path].valid())
-	suite.assert.False(suite.attrCache.cacheMap[path].exists())
+	item := getCacheItem(suite.attrCache, path)
+	suite.assert.NotNil(item)
+	suite.assert.Nil(item.attr)
+	suite.assert.True(item.valid)
+	suite.assert.False(item.exists)
 }
 
 func assertInvalid(suite *attrCacheTestSuite, path string) {
-	suite.assert.Contains(suite.attrCache.cacheMap, path)
-	suite.assert.Equal(&internal.ObjAttr{}, suite.attrCache.cacheMap[path].attr)
-	suite.assert.False(suite.attrCache.cacheMap[path].valid())
+	item := getCacheItem(suite.attrCache, path)
+	suite.assert.NotNil(item)
+	suite.assert.Nil(item.attr)
+	suite.assert.False(item.valid)
 }
 
 func assertUntouched(suite *attrCacheTestSuite, path string) {
-	suite.assert.Contains(suite.attrCache.cacheMap, path)
-	suite.assert.NotEqual(&internal.ObjAttr{}, suite.attrCache.cacheMap[path].attr)
-	suite.assert.Equal(suite.attrCache.cacheMap[path].attr.Size, defaultSize)
-	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
-	suite.assert.True(suite.attrCache.cacheMap[path].valid())
-	suite.assert.True(suite.attrCache.cacheMap[path].exists())
+	item := getCacheItem(suite.attrCache, path)
+	suite.assert.NotNil(item)
+	suite.assert.NotEqual(&internal.ObjAttr{}, item.attr)
+	suite.assert.Equal(item.attr.Size, defaultSize)
+	suite.assert.EqualValues(item.attr.Mode, defaultMode)
+	suite.assert.True(item.valid)
+	suite.assert.True(item.exists)
 }
 
-// This method is used when we transfer the attributes from the src to dst, and mark src as invalid
+// assertAttributesTransferred checks that dst has the same attrs as src and is valid/exists.
 func assertAttributesTransferred(suite *attrCacheTestSuite, srcAttr *internal.ObjAttr, dstAttr *internal.ObjAttr) {
 	suite.assert.Equal(srcAttr.Size, dstAttr.Size)
 	suite.assert.Equal(srcAttr.Path, dstAttr.Path)
@@ -130,8 +143,10 @@ func assertAttributesTransferred(suite *attrCacheTestSuite, srcAttr *internal.Ob
 	suite.assert.Equal(srcAttr.Atime, dstAttr.Atime)
 	suite.assert.Equal(srcAttr.Mtime, dstAttr.Mtime)
 	suite.assert.Equal(srcAttr.Ctime, dstAttr.Ctime)
-	suite.assert.True(suite.attrCache.cacheMap[dstAttr.Path].exists())
-	suite.assert.True(suite.attrCache.cacheMap[dstAttr.Path].valid())
+	dstItem := getCacheItem(suite.attrCache, dstAttr.Path)
+	suite.assert.NotNil(dstItem)
+	suite.assert.True(dstItem.exists)
+	suite.assert.True(dstItem.valid)
 }
 
 // If next component changes the times of the attribute.
@@ -225,7 +240,7 @@ func (suite *attrCacheTestSuite) cleanupTest() {
 func (suite *attrCacheTestSuite) TestDefault() {
 	defer suite.cleanupTest()
 	suite.assert.Equal("attr_cache", suite.attrCache.Name())
-	suite.assert.EqualValues(120, suite.attrCache.cacheTimeout)
+	suite.assert.Equal(120*time.Second, suite.attrCache.cacheTimeout)
 	// suite.assert.Equal(suite.attrCache.noSymlinks, false)
 }
 
@@ -237,19 +252,19 @@ func (suite *attrCacheTestSuite) TestConfig() {
 	suite.setupTestHelper(config) // setup a new attr cache with a custom config (clean up will occur after the test as usual)
 
 	suite.assert.Equal("attr_cache", suite.attrCache.Name())
-	suite.assert.EqualValues(60, suite.attrCache.cacheTimeout)
+	suite.assert.Equal(60*time.Second, suite.attrCache.cacheTimeout)
 	suite.assert.True(suite.attrCache.noSymlinks)
 }
 
-// Tests max files config
-func (suite *attrCacheTestSuite) TestConfigMaxFiles() {
+// Tests max-size-mb config
+func (suite *attrCacheTestSuite) TestConfigMaxSizeMB() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default attr cache generated
 	cacheTimeout := 1
-	maxFiles := 10
-	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d\n  max-files: %d", cacheTimeout, maxFiles)
+	maxSizeMB := 256
+	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d\n  max-size-mb: %d", cacheTimeout, maxSizeMB)
 	suite.setupTestHelper(config) // setup a new attr cache with a custom config (clean up will occur after the test as usual)
-	suite.assert.Equal(suite.attrCache.maxFiles, maxFiles)
+	suite.assert.Equal(suite.attrCache.maxSizeBytes, int64(maxSizeMB)*1024*1024)
 }
 
 func (suite *attrCacheTestSuite) TestConfigZero() {
@@ -282,7 +297,7 @@ func (suite *attrCacheTestSuite) TestCreateDir() {
 
 			err := suite.attrCache.CreateDir(options)
 			suite.assert.Error(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Success
 			// Entry Does Not Already Exist
@@ -290,7 +305,7 @@ func (suite *attrCacheTestSuite) TestCreateDir() {
 
 			err = suite.attrCache.CreateDir(options)
 			suite.assert.NoError(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Entry Already Exists
 			addPathToCache(suite.assert, suite.attrCache, path, false)
@@ -321,7 +336,7 @@ func (suite *attrCacheTestSuite) TestDeleteDir() {
 
 			err := suite.attrCache.DeleteDir(options)
 			suite.assert.Error(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Success
 			// Entry Does Not Already Exist
@@ -329,7 +344,7 @@ func (suite *attrCacheTestSuite) TestDeleteDir() {
 
 			err = suite.attrCache.DeleteDir(options)
 			suite.assert.NoError(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Entry Already Exists
 			a, ab, ac := addDirectoryToCache(suite.assert, suite.attrCache, path, false)
@@ -372,20 +387,21 @@ func (suite *attrCacheTestSuite) TestReadDirDoesNotExist() {
 			// Entries Do Not Already Exist
 			suite.mock.EXPECT().ReadDir(options).Return(aAttr, nil)
 
-			suite.assert.Empty(suite.attrCache.cacheMap) // cacheMap should be empty before call
+			suite.assert.Zero(suite.attrCache.lru.Len()) // cache should be empty before call
 			returnedAttr, err := suite.attrCache.ReadDir(options)
 			suite.assert.NoError(err)
 			suite.assert.Equal(aAttr, returnedAttr)
-			suite.assert.Len(aAttr, len(suite.attrCache.cacheMap))
+			suite.assert.Len(aAttr, suite.attrCache.lru.Len())
 
 			// Entries should now be in the cache
 			for _, p := range aAttr {
-				suite.assert.Contains(suite.attrCache.cacheMap, p.Path)
-				suite.assert.NotEqual(&internal.ObjAttr{}, suite.attrCache.cacheMap[p.Path].attr)
-				suite.assert.Equal(suite.attrCache.cacheMap[p.Path].attr.Size, size) // new size should be set
-				suite.assert.Equal(suite.attrCache.cacheMap[p.Path].attr.Mode, mode) // new mode should be set
-				suite.assert.True(suite.attrCache.cacheMap[p.Path].valid())
-				suite.assert.True(suite.attrCache.cacheMap[p.Path].exists())
+				item := getCacheItem(suite.attrCache, p.Path)
+				suite.assert.NotNil(item)
+				suite.assert.NotEqual(&internal.ObjAttr{}, item.attr)
+				suite.assert.Equal(item.attr.Size, size) // new size should be set
+				suite.assert.Equal(item.attr.Mode, mode) // new mode should be set
+				suite.assert.True(item.valid)
+				suite.assert.True(item.exists)
 			}
 		})
 	}
@@ -410,7 +426,7 @@ func (suite *attrCacheTestSuite) TestReadDirExists() {
 			// Entries Already Exist
 			a, ab, ac := addDirectoryToCache(suite.assert, suite.attrCache, path, false)
 
-			suite.assert.NotEmpty(suite.attrCache.cacheMap) // cacheMap should NOT be empty before read dir call and values should be untouched
+			suite.assert.NotZero(suite.attrCache.lru.Len()) // cache should NOT be empty before read dir call and values should be untouched
 			for _, p := range aAttr {
 				assertUntouched(suite, p.Path)
 			}
@@ -422,12 +438,13 @@ func (suite *attrCacheTestSuite) TestReadDirExists() {
 			// a paths should now be updated in the cache
 			for p := a.Front(); p != nil; p = p.Next() {
 				pString := p.Value.(string)
-				suite.assert.Contains(suite.attrCache.cacheMap, pString)
-				suite.assert.NotEqual(&internal.ObjAttr{}, suite.attrCache.cacheMap[pString].attr)
-				suite.assert.Equal(suite.attrCache.cacheMap[pString].attr.Size, size) // new size should be set
-				suite.assert.Equal(suite.attrCache.cacheMap[pString].attr.Mode, mode) // new mode should be set
-				suite.assert.True(suite.attrCache.cacheMap[pString].valid())
-				suite.assert.True(suite.attrCache.cacheMap[pString].exists())
+				item := getCacheItem(suite.attrCache, pString)
+				suite.assert.NotNil(item)
+				suite.assert.NotEqual(&internal.ObjAttr{}, item.attr)
+				suite.assert.Equal(item.attr.Size, size) // new size should be set
+				suite.assert.Equal(item.attr.Mode, mode) // new mode should be set
+				suite.assert.True(item.valid)
+				suite.assert.True(item.exists)
 			}
 
 			// ab and ac paths should be untouched
@@ -456,7 +473,7 @@ func (suite *attrCacheTestSuite) TestReadDirError() {
 
 			_, err := suite.attrCache.ReadDir(options)
 			suite.assert.Error(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 		})
 	}
 }
@@ -488,8 +505,8 @@ func (suite *attrCacheTestSuite) TestRenameDir() {
 
 			err := suite.attrCache.RenameDir(options)
 			suite.assert.Error(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedSrc)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedDst)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedSrc))
+			suite.assert.False(suite.attrCache.lru.Has(truncatedDst))
 
 			// Success
 			// Entry Does Not Already Exist
@@ -497,8 +514,8 @@ func (suite *attrCacheTestSuite) TestRenameDir() {
 
 			err = suite.attrCache.RenameDir(options)
 			suite.assert.NoError(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedSrc)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedDst)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedSrc))
+			suite.assert.False(suite.attrCache.lru.Has(truncatedDst))
 
 			// Entry Already Exists
 			a, ab, ac := addDirectoryToCache(suite.assert, suite.attrCache, input.src, false)
@@ -538,7 +555,7 @@ func (suite *attrCacheTestSuite) TestCreateFile() {
 
 	_, err := suite.attrCache.CreateFile(options)
 	suite.assert.Error(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Success
 	// Entry Does Not Already Exist
@@ -546,7 +563,7 @@ func (suite *attrCacheTestSuite) TestCreateFile() {
 
 	_, err = suite.attrCache.CreateFile(options)
 	suite.assert.NoError(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, path, false)
@@ -569,7 +586,7 @@ func (suite *attrCacheTestSuite) TestDeleteFile() {
 
 	err := suite.attrCache.DeleteFile(options)
 	suite.assert.Error(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Success
 	// Entry Does Not Already Exist
@@ -577,7 +594,7 @@ func (suite *attrCacheTestSuite) TestDeleteFile() {
 
 	err = suite.attrCache.DeleteFile(options)
 	suite.assert.NoError(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, path, false)
@@ -603,7 +620,7 @@ func (suite *attrCacheTestSuite) TestSyncFile() {
 
 	err := suite.attrCache.SyncFile(options)
 	suite.assert.Error(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Success
 	// Entry Does Not Already Exist
@@ -611,7 +628,7 @@ func (suite *attrCacheTestSuite) TestSyncFile() {
 
 	err = suite.attrCache.SyncFile(options)
 	suite.assert.NoError(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, path, false)
@@ -639,7 +656,7 @@ func (suite *attrCacheTestSuite) TestSyncDir() {
 
 			err := suite.attrCache.SyncDir(options)
 			suite.assert.Error(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Success
 			// Entry Does Not Already Exist
@@ -647,7 +664,7 @@ func (suite *attrCacheTestSuite) TestSyncDir() {
 
 			err = suite.attrCache.SyncDir(options)
 			suite.assert.NoError(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Entry Already Exists
 			a, ab, ac := addDirectoryToCache(suite.assert, suite.attrCache, path, false)
@@ -683,8 +700,8 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 
 	err := suite.attrCache.RenameFile(options)
 	suite.assert.Error(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, src)
-	suite.assert.NotContains(suite.attrCache.cacheMap, dst)
+	suite.assert.False(suite.attrCache.lru.Has(src))
+	suite.assert.False(suite.attrCache.lru.Has(dst))
 
 	// Success
 	// Entry Does Not Already Exist
@@ -692,16 +709,16 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 
 	err = suite.attrCache.RenameFile(options)
 	suite.assert.NoError(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, src)
-	suite.assert.NotContains(suite.attrCache.cacheMap, dst)
+	suite.assert.False(suite.attrCache.lru.Has(src))
+	suite.assert.False(suite.attrCache.lru.Has(dst))
 
 	// Src, Dst Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, src, false)
 	addPathToCache(suite.assert, suite.attrCache, dst, false)
-	options.SrcAttr = suite.attrCache.cacheMap[src].attr
+	options.SrcAttr = getCacheItem(suite.attrCache, src).attr
 	options.SrcAttr.Size = 1
 	options.SrcAttr.Mode = 2
-	options.DstAttr = suite.attrCache.cacheMap[dst].attr
+	options.DstAttr = getCacheItem(suite.attrCache, dst).attr
 	options.DstAttr.Size = 3
 	options.DstAttr.Mode = 4
 	srcAttrCopy := *options.SrcAttr
@@ -710,7 +727,7 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 	err = suite.attrCache.RenameFile(options)
 	suite.assert.NoError(err)
 	assertDeleted(suite, src)
-	modifiedDstAttr := suite.attrCache.cacheMap[dst].attr
+	modifiedDstAttr := getCacheItem(suite.attrCache, dst).attr
 	assertSrcAttributeTimeChanged(suite, options.SrcAttr, srcAttrCopy)
 	// Check the attributes of the dst are same as the src.
 	assertAttributesTransferred(suite, options.SrcAttr, modifiedDstAttr)
@@ -718,16 +735,16 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 	// Src Entry Exist and Dst Entry Don't Exist
 	addPathToCache(suite.assert, suite.attrCache, src, false)
 	// Add negative entry to cache for Dst
-	suite.attrCache.cacheMap[dst] = newAttrCacheItem(&internal.ObjAttr{}, false, time.Now())
-	options.SrcAttr = suite.attrCache.cacheMap[src].attr
-	options.DstAttr = suite.attrCache.cacheMap[dst].attr
+	suite.attrCache.lru.Put(dst, newAttrCacheItem(&internal.ObjAttr{}, false, time.Now()))
+	options.SrcAttr = getCacheItem(suite.attrCache, src).attr
+	options.DstAttr = getCacheItem(suite.attrCache, dst).attr
 	options.SrcAttr.Size = 1
 	options.SrcAttr.Mode = 2
 	suite.mock.EXPECT().RenameFile(options).Return(nil)
 	err = suite.attrCache.RenameFile(options)
 	suite.assert.NoError(err)
 	assertDeleted(suite, src)
-	modifiedDstAttr = suite.attrCache.cacheMap[dst].attr
+	modifiedDstAttr = getCacheItem(suite.attrCache, dst).attr
 	assertSrcAttributeTimeChanged(suite, options.SrcAttr, srcAttrCopy)
 	assertAttributesTransferred(suite, options.SrcAttr, modifiedDstAttr)
 }
@@ -748,7 +765,7 @@ func (suite *attrCacheTestSuite) TestWriteFileError() {
 
 	_, err := suite.attrCache.WriteFile(&options)
 	suite.assert.Error(err)
-	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
+	suite.assert.True(suite.attrCache.lru.Has(path)) // GetAttr call will add this to the cache
 }
 
 func (suite *attrCacheTestSuite) TestWriteFileDoesNotExist() {
@@ -766,7 +783,7 @@ func (suite *attrCacheTestSuite) TestWriteFileDoesNotExist() {
 
 	_, err := suite.attrCache.WriteFile(&options)
 	suite.assert.NoError(err)
-	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
+	suite.assert.True(suite.attrCache.lru.Has(path)) // GetAttr call will add this to the cache
 }
 
 func (suite *attrCacheTestSuite) TestWriteFileExists() {
@@ -799,7 +816,7 @@ func (suite *attrCacheTestSuite) TestTruncateFile() {
 
 	err := suite.attrCache.TruncateFile(options)
 	suite.assert.Error(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Success
 	// Entry Does Not Already Exist
@@ -807,7 +824,7 @@ func (suite *attrCacheTestSuite) TestTruncateFile() {
 
 	err = suite.attrCache.TruncateFile(options)
 	suite.assert.NoError(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, path, false)
@@ -815,13 +832,9 @@ func (suite *attrCacheTestSuite) TestTruncateFile() {
 
 	err = suite.attrCache.TruncateFile(options)
 	suite.assert.NoError(err)
-	// suite.assert.Contains(suite.attrCache.cacheMap, path)
-	// suite.assert.NotEqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
-	// suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Size, size) // new size should be set
-	// suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
-	// suite.assert.True(suite.attrCache.cacheMap[path].valid())
-	// suite.assert.True(suite.attrCache.cacheMap[path].exists())
-	suite.assert.False(suite.attrCache.cacheMap[path].valid())
+	item := getCacheItem(suite.attrCache, path)
+	suite.assert.NotNil(item)
+	suite.assert.False(item.valid)
 }
 
 // Tests CopyFromFile
@@ -836,7 +849,7 @@ func (suite *attrCacheTestSuite) TestCopyFromFileError() {
 
 	err := suite.attrCache.CopyFromFile(options)
 	suite.assert.Error(err)
-	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
+	suite.assert.True(suite.attrCache.lru.Has(path)) // GetAttr call will add this to the cache
 }
 
 func (suite *attrCacheTestSuite) TestCopyFromFileDoesNotExist() {
@@ -851,7 +864,7 @@ func (suite *attrCacheTestSuite) TestCopyFromFileDoesNotExist() {
 
 	err := suite.attrCache.CopyFromFile(options)
 	suite.assert.NoError(err)
-	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
+	suite.assert.True(suite.attrCache.lru.Has(path)) // GetAttr call will add this to the cache
 }
 
 func (suite *attrCacheTestSuite) TestCopyFromFileExists() {
@@ -955,8 +968,6 @@ func (suite *attrCacheTestSuite) TestGetAttrExistsWithoutMetadata() {
 			addDirectoryToCache(suite.assert, suite.attrCache, "a", false) // add the paths to the cache with IsMetadataRetrived=false
 
 			options := internal.GetAttrOptions{Name: path}
-			// attributes should not be accessible so call the mock
-			//suite.mock.EXPECT().GetAttr(options).Return(getPathAttr(path, defaultSize, fs.FileMode(defaultMode), false), nil)
 
 			_, err := suite.attrCache.GetAttr(options)
 			suite.assert.NoError(err)
@@ -980,7 +991,7 @@ func (suite *attrCacheTestSuite) TestGetAttrDoesNotExist() {
 			// attributes should not be accessible so call the mock
 			suite.mock.EXPECT().GetAttr(options).Return(getPathAttr(path, defaultSize, fs.FileMode(defaultMode), false), nil)
 
-			suite.assert.Empty(suite.attrCache.cacheMap) // cacheMap should be empty before call
+			suite.assert.Zero(suite.attrCache.lru.Len()) // cache should be empty before call
 			_, err := suite.attrCache.GetAttr(options)
 			suite.assert.NoError(err)
 			assertUntouched(suite, truncatedPath) // item added to cache after
@@ -1005,7 +1016,7 @@ func (suite *attrCacheTestSuite) TestGetAttrOtherError() {
 			result, err := suite.attrCache.GetAttr(options)
 			suite.assert.Equal(err, os.ErrNotExist)
 			suite.assert.Equal(&internal.ObjAttr{}, result)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 		})
 	}
 }
@@ -1027,11 +1038,12 @@ func (suite *attrCacheTestSuite) TestGetAttrEnonetError() {
 			result, err := suite.attrCache.GetAttr(options)
 			suite.assert.Equal(syscall.ENOENT, err)
 			suite.assert.Equal(&internal.ObjAttr{}, result)
-			suite.assert.Contains(suite.attrCache.cacheMap, truncatedPath)
-			suite.assert.Equal(&internal.ObjAttr{}, suite.attrCache.cacheMap[truncatedPath].attr)
-			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].valid())
-			suite.assert.False(suite.attrCache.cacheMap[truncatedPath].exists())
-			suite.assert.NotNil(suite.attrCache.cacheMap[truncatedPath].cachedAt)
+			item := getCacheItem(suite.attrCache, truncatedPath)
+			suite.assert.NotNil(item)
+			suite.assert.Nil(item.attr)
+			suite.assert.True(item.valid)
+			suite.assert.False(item.exists)
+			suite.assert.NotNil(item.cachedAt)
 		})
 	}
 }
@@ -1043,14 +1055,14 @@ func (suite *attrCacheTestSuite) TestCacheTimeout() {
 	cacheTimeout := 1
 	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d", cacheTimeout)
 	suite.setupTestHelper(config) // setup a new attr cache with a custom config (clean up will occur after the test as usual)
-	suite.assert.EqualValues(suite.attrCache.cacheTimeout, cacheTimeout)
+	suite.assert.Equal(time.Duration(cacheTimeout)*time.Second, suite.attrCache.cacheTimeout)
 
 	path := "a"
 	options := internal.GetAttrOptions{Name: path}
 	// attributes should not be accessible so call the mock
 	suite.mock.EXPECT().GetAttr(options).Return(getPathAttr(path, defaultSize, fs.FileMode(defaultMode), true), nil)
 
-	suite.assert.Empty(suite.attrCache.cacheMap) // cacheMap should be empty before call
+	suite.assert.Zero(suite.attrCache.lru.Len()) // cache should be empty before call
 	_, err := suite.attrCache.GetAttr(options)
 	suite.assert.NoError(err)
 	assertUntouched(suite, path) // item added to cache after
@@ -1068,107 +1080,6 @@ func (suite *attrCacheTestSuite) TestCacheTimeout() {
 	suite.assert.NoError(err)
 }
 
-// Tests Cache Cleanup - expired entries are actually removed from cache map
-func (suite *attrCacheTestSuite) TestCacheCleanupExpiredEntries() {
-	defer suite.cleanupTest()
-	suite.cleanupTest() // clean up the default attr cache generated
-	cacheTimeout := 2
-	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d", cacheTimeout)
-	suite.setupTestHelper(config) // setup a new attr cache with a custom config
-	suite.assert.EqualValues(suite.attrCache.cacheTimeout, cacheTimeout)
-
-	path1 := "file1"
-	path2 := "file2"
-	options1 := internal.GetAttrOptions{Name: path1}
-	options2 := internal.GetAttrOptions{Name: path2}
-
-	// Add two files to cache
-	suite.mock.EXPECT().GetAttr(options1).Return(getPathAttr(path1, defaultSize, fs.FileMode(defaultMode), true), nil)
-	suite.mock.EXPECT().GetAttr(options2).Return(getPathAttr(path2, defaultSize, fs.FileMode(defaultMode), true), nil)
-
-	suite.assert.Empty(suite.attrCache.cacheMap) // cacheMap should be empty before calls
-	_, err := suite.attrCache.GetAttr(options1)
-	suite.assert.NoError(err)
-	_, err = suite.attrCache.GetAttr(options2)
-	suite.assert.NoError(err)
-
-	// Verify both items are in cache
-	suite.assert.Len(suite.attrCache.cacheMap, 2)
-	assertUntouched(suite, path1)
-	assertUntouched(suite, path2)
-
-	// Wait for cache timeout to expire, plus additional time for background cleanup to run
-	time.Sleep(time.Second * time.Duration(cacheTimeout+1))
-
-	// Verify that the cache has been cleaned up by background cleanup
-	// Wait a bit more if cleanup is still in progress
-	maxWait := 3 * time.Second
-	waitInterval := 100 * time.Millisecond
-	waited := time.Duration(0)
-
-	for waited < maxWait {
-		suite.attrCache.cacheLock.RLock()
-		cacheSize := len(suite.attrCache.cacheMap)
-		suite.attrCache.cacheLock.RUnlock()
-
-		if cacheSize == 0 {
-			break
-		}
-
-		time.Sleep(waitInterval)
-		waited += waitInterval
-	}
-
-	// Verify that expired entries have been cleaned up
-	suite.assert.Empty(suite.attrCache.cacheMap)
-}
-
-// Tests Cache Cleanup during bulk caching operations
-func (suite *attrCacheTestSuite) TestCacheCleanupDuringBulkCaching() {
-	defer suite.cleanupTest()
-	suite.cleanupTest() // clean up the default attr cache generated
-	cacheTimeout := 3   // Use a longer timeout for this test
-	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d", cacheTimeout)
-	suite.setupTestHelper(config) // setup a new attr cache with a custom config
-	suite.assert.EqualValues(suite.attrCache.cacheTimeout, cacheTimeout)
-
-	// Add some items to cache manually with old timestamps
-	path1 := "oldfile1"
-	path2 := "oldfile2"
-	oldTime := time.Now().Add(-time.Second * time.Duration(cacheTimeout+1))
-	suite.attrCache.cacheMap[path1] = newAttrCacheItem(getPathAttr(path1, defaultSize, fs.FileMode(defaultMode), true), true, oldTime)
-	suite.attrCache.cacheMap[path2] = newAttrCacheItem(getPathAttr(path2, defaultSize, fs.FileMode(defaultMode), true), true, oldTime)
-
-	// Verify both old items are in cache
-	suite.assert.Len(suite.attrCache.cacheMap, 2)
-
-	// Wait a bit for background cleanup to run and remove expired items
-	time.Sleep(time.Second * time.Duration(cacheTimeout+1))
-
-	// Wait for cleanup to complete
-	maxWait := 2 * time.Second
-	waitInterval := 100 * time.Millisecond
-	waited := time.Duration(0)
-
-	for waited < maxWait {
-		suite.attrCache.cacheLock.RLock()
-		cacheSize := len(suite.attrCache.cacheMap)
-		suite.attrCache.cacheLock.RUnlock()
-
-		if cacheSize == 0 {
-			break
-		}
-
-		time.Sleep(waitInterval)
-		waited += waitInterval
-	}
-
-	// Verify that expired entries have been cleaned up
-	suite.assert.Empty(suite.attrCache.cacheMap)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path1)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path2)
-}
-
 // Tests CreateLink
 func (suite *attrCacheTestSuite) TestCreateLink() {
 	defer suite.cleanupTest()
@@ -1182,8 +1093,8 @@ func (suite *attrCacheTestSuite) TestCreateLink() {
 
 	err := suite.attrCache.CreateLink(options)
 	suite.assert.Error(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, link)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(link))
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Success
 	// Entry Does Not Already Exist
@@ -1191,8 +1102,8 @@ func (suite *attrCacheTestSuite) TestCreateLink() {
 
 	err = suite.attrCache.CreateLink(options)
 	suite.assert.NoError(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, link)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.False(suite.attrCache.lru.Has(link))
+	suite.assert.False(suite.attrCache.lru.Has(path))
 
 	// Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, link, false)
@@ -1224,7 +1135,7 @@ func (suite *attrCacheTestSuite) TestChmod() {
 
 			err := suite.attrCache.Chmod(options)
 			suite.assert.Error(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Success
 			// Entry Does Not Already Exist
@@ -1232,7 +1143,7 @@ func (suite *attrCacheTestSuite) TestChmod() {
 
 			err = suite.attrCache.Chmod(options)
 			suite.assert.NoError(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Entry Already Exists
 			addPathToCache(suite.assert, suite.attrCache, path, false)
@@ -1240,12 +1151,13 @@ func (suite *attrCacheTestSuite) TestChmod() {
 
 			err = suite.attrCache.Chmod(options)
 			suite.assert.NoError(err)
-			suite.assert.Contains(suite.attrCache.cacheMap, truncatedPath)
-			suite.assert.NotEqual(&internal.ObjAttr{}, suite.attrCache.cacheMap[truncatedPath].attr)
-			suite.assert.Equal(suite.attrCache.cacheMap[truncatedPath].attr.Size, defaultSize)
-			suite.assert.Equal(suite.attrCache.cacheMap[truncatedPath].attr.Mode, mode) // new mode should be set
-			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].valid())
-			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].exists())
+			item := getCacheItem(suite.attrCache, truncatedPath)
+			suite.assert.NotNil(item)
+			suite.assert.NotEqual(&internal.ObjAttr{}, item.attr)
+			suite.assert.Equal(item.attr.Size, defaultSize)
+			suite.assert.Equal(item.attr.Mode, mode) // new mode should be set
+			suite.assert.True(item.valid)
+			suite.assert.True(item.exists)
 		})
 	}
 }
@@ -1271,7 +1183,7 @@ func (suite *attrCacheTestSuite) TestChown() {
 
 			err := suite.attrCache.Chown(options)
 			suite.assert.Error(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Success
 			// Entry Does Not Already Exist
@@ -1279,7 +1191,7 @@ func (suite *attrCacheTestSuite) TestChown() {
 
 			err = suite.attrCache.Chown(options)
 			suite.assert.NoError(err)
-			suite.assert.NotContains(suite.attrCache.cacheMap, truncatedPath)
+			suite.assert.False(suite.attrCache.lru.Has(truncatedPath))
 
 			// Entry Already Exists
 			addPathToCache(suite.assert, suite.attrCache, path, false)
@@ -1290,6 +1202,78 @@ func (suite *attrCacheTestSuite) TestChown() {
 			assertUntouched(suite, truncatedPath)
 		})
 	}
+}
+
+// TestLRUEvictionOnMemoryLimit verifies that the LRU evicts the least-recently-used entry
+// when the cache exceeds its configured memory limit.
+func (suite *attrCacheTestSuite) TestLRUEvictionOnMemoryLimit() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+
+	// setupTestHelper creates and starts the cache.
+	suite.setupTestHelper(emptyConfig)
+
+	// Insert one entry to measure its cost.
+	path0 := "measure"
+	item0 := newAttrCacheItem(getPathAttr(path0, defaultSize, fs.FileMode(defaultMode), false), true, time.Now())
+	suite.attrCache.lru.Put(path0, item0)
+	singleEntrySize := suite.attrCache.lru.Size()
+	suite.attrCache.lru.Purge()
+	// Set max to exactly 2 entries.
+	suite.attrCache.lru.SetMaxSize(singleEntrySize * 2)
+
+	// Add 3 entries (A, B, C in insertion order: A is LRU).
+	pathA, pathB, pathC := "lru_a", "lru_b", "lru_c"
+	for _, p := range []string{pathA, pathB, pathC} {
+		item := newAttrCacheItem(getPathAttr(p, defaultSize, fs.FileMode(defaultMode), false), true, time.Now())
+		suite.attrCache.lru.Put(p, item)
+	}
+
+	// Only 2 entries should remain, and A (the LRU) should have been evicted.
+	suite.assert.Equal(2, suite.attrCache.lru.Len())
+	suite.assert.False(suite.attrCache.lru.Has(pathA), "LRU entry should have been evicted")
+	suite.assert.True(suite.attrCache.lru.Has(pathB))
+	suite.assert.True(suite.attrCache.lru.Has(pathC))
+	suite.assert.LessOrEqual(suite.attrCache.lru.Size(), singleEntrySize*2)
+}
+
+// TestLRUOrderPreservesRecentlyAccessed verifies that a recently-accessed entry
+// survives eviction over an older, less-recently-used entry.
+func (suite *attrCacheTestSuite) TestLRUOrderPreservesRecentlyAccessed() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+
+	suite.setupTestHelper(emptyConfig)
+
+	// Measure single entry size and set limit to exactly 2 entries.
+	path0 := "measure"
+	item0 := newAttrCacheItem(getPathAttr(path0, defaultSize, fs.FileMode(defaultMode), false), true, time.Now())
+	suite.attrCache.lru.Put(path0, item0)
+	singleEntrySize := suite.attrCache.lru.Size()
+	suite.attrCache.lru.Purge()
+	suite.attrCache.lru.SetMaxSize(singleEntrySize * 2)
+
+	// Insert A, then B.  Order: B (MRU) → A (LRU).
+	pathA, pathB := "ord_a", "ord_b"
+	for _, p := range []string{pathA, pathB} {
+		item := newAttrCacheItem(getPathAttr(p, defaultSize, fs.FileMode(defaultMode), false), true, time.Now())
+		suite.attrCache.lru.Put(p, item)
+	}
+
+	// Access A via GetAttr — this promotes A to MRU.  Order: A (MRU) → B (LRU).
+	// pathA is valid in cache; GetAttr serves it without calling the mock.
+	_, err := suite.attrCache.GetAttr(internal.GetAttrOptions{Name: pathA})
+	suite.assert.NoError(err)
+
+	// Add C — this should evict B (now LRU), not A.
+	pathC := "ord_c"
+	itemC := newAttrCacheItem(getPathAttr(pathC, defaultSize, fs.FileMode(defaultMode), false), true, time.Now())
+	suite.attrCache.lru.Put(pathC, itemC)
+
+	suite.assert.Equal(2, suite.attrCache.lru.Len())
+	suite.assert.True(suite.attrCache.lru.Has(pathA), "A was recently accessed and should survive")
+	suite.assert.False(suite.attrCache.lru.Has(pathB), "B should be evicted (LRU)")
+	suite.assert.True(suite.attrCache.lru.Has(pathC))
 }
 
 // In order for 'go test' to run this suite, we need to create
