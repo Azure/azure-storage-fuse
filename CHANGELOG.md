@@ -1,5 +1,6 @@
 ## 2.5.5 (Unreleased)
 **Features**
+- Add gzip compression of rolled-over log files for the base logger. Enable with `compress: true` under the `logging` section in config, or via the `--log-compress` CLI flag.
 
 **Bug Fixes**
 
