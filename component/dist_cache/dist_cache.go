@@ -504,7 +504,6 @@ func (dc *DistCache) fetchChunkFromRemote(ctx context.Context, options internal.
 // pollUntilChunkCached waits for a single chunk to become available in the
 // distributed cache and writes it to the file. Returns nil on success.
 func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.CopyToFileOptions, offset, size int64) error {
-	log.Debug("DistCache::pollUntilChunkCached : polling for chunk %s offset=%d size=%d", options.Name, offset, size)
 	buf := make([]byte, size)
 	n, err := dc.pollChunkIntoBuffer(ctx, options.Name, offset, buf)
 	if err != nil {
@@ -517,7 +516,6 @@ func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.
 // pollChunkIntoBuffer waits for a single chunk to become available in the
 // distributed cache and copies it into buf. Returns the number of bytes read.
 func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name string, offset int64, buf []byte) (int, error) {
-	log.Debug("DistCache::pollChunkIntoBuffer : polling for chunk %s offset=%d", name, offset)
 	const (
 		maxPollDuration = 30 * time.Second
 		maxBackoff      = 5 * time.Second
