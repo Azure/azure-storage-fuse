@@ -3,6 +3,7 @@
 
 **Bug Fixes**
 - Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
+- Fix three bugs in base logger: `SetLogFile` was not redirecting the underlying writer after changing the file handle; `LogRotate` was closing `os.Stdout` when the log file was set to stdout; `init` was sending to a nil channel when defaulting the log level
 
 ## 2.5.3 (2026-03-25)
 **Features**
