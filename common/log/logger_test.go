@@ -554,7 +554,7 @@ func TestNewLogger_BaseType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewLogger base: %v", err)
 	}
-	defer l.Destroy()
+	defer func() { _ = l.Destroy() }()
 	if l.GetType() != "base" {
 		t.Errorf("expected type 'base', got %s", l.GetType())
 	}
@@ -590,7 +590,7 @@ func TestNewLogger_DefaultTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewLogger: %v", err)
 	}
-	defer l.Destroy()
+	defer func() { _ = l.Destroy() }()
 	// Smoke test: logger should be usable (tag defaulted to FileSystemName)
 	l.Info("tag-default-check")
 }
