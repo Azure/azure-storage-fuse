@@ -145,7 +145,7 @@ func (suite *keysTreeTestSuite) TestIsNotPrimitiveType() {
 		reflect.Array,
 		reflect.Func,
 		reflect.Map,
-		reflect.Ptr,
+		reflect.Pointer,
 		reflect.Slice,
 		reflect.Struct,
 	}
