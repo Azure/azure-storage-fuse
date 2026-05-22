@@ -42,7 +42,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	statsmanager "github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
 /* NOTES:
@@ -126,7 +126,7 @@ const defaultMaxBackground = 128
 
 var fuseFS *Libfuse
 
-var libfuseStatsCollector *stats_manager.StatsCollector
+var libfuseStatsCollector *statsmanager.StatsCollector
 
 // Bitmasks in Go: https://yourbasic.org/golang/bitmask-flag-set-clear/
 
@@ -163,7 +163,7 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
 
 	// create stats collector for libfuse
-	libfuseStatsCollector = stats_manager.NewStatsCollector(lf.Name())
+	libfuseStatsCollector = statsmanager.NewStatsCollector(lf.Name())
 
 	lf.lsFlags = internal.NewDirBitMap()
 	lf.lsFlags.Set(internal.PropFlagModeDefault)
@@ -215,8 +215,8 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
 	lf.nonEmptyMount = opt.nonEmptyMount
 	lf.directIO = opt.DirectIO
-	lf.ownerGID = opt.Gid
-	lf.ownerUID = opt.Uid
+	lf.ownerGID = opt.GID
+	lf.ownerUID = opt.UID
 	lf.umask = opt.Umask
 	if config.IsSet(compName + ".kernel-list-cache-expiration-sec") {
 		lf.kernelListCacheTtlInSec = opt.KernelListCacheTtlInSec
