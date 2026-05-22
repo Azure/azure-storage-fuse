@@ -60,7 +60,7 @@ type listTestSuite struct {
 }
 
 var lb internal.Component
-var lb_path string
+var lbPath string
 var r *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func randomString(length int) string {
@@ -75,11 +75,11 @@ func (suite *listTestSuite) SetupSuite() {
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
 	suite.assert.NoError(err)
 
-	lb_path = filepath.Join("/tmp/", "xload_"+randomString(8))
-	err = os.MkdirAll(lb_path, 0777)
+	lbPath = filepath.Join("/tmp/", "xload_"+randomString(8))
+	err = os.MkdirAll(lbPath, 0777)
 	suite.assert.NoError(err)
 
-	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", lb_path)
+	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", lbPath)
 	err = config.ReadConfigFromReader(strings.NewReader(cfg))
 	suite.assert.NoError(err)
 
@@ -87,11 +87,11 @@ func (suite *listTestSuite) SetupSuite() {
 	err = lb.Configure(true)
 	suite.assert.NoError(err)
 
-	suite.createDirsAndFiles(lb_path)
+	suite.createDirsAndFiles(lbPath)
 }
 
 func (suite *listTestSuite) TearDownSuite() {
-	err := os.RemoveAll(lb_path)
+	err := os.RemoveAll(lbPath)
 	suite.assert.NoError(err)
 }
 
