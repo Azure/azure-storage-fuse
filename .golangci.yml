@@ -22,6 +22,9 @@ linters:
         - suite-thelper
     staticcheck:
       checks: ["all"]
+    govet:
+      disable:
+        - inline
 
   exclusions:
     generated: lax
