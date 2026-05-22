@@ -134,22 +134,22 @@ func ReadFromConfigBuffer(configData []byte) error {
 func DecryptConfigFile(fileName string, passphrase string) error {
 	cipherText, err := os.ReadFile(fileName)
 	if err != nil {
-		return fmt.Errorf("Failed to read encrypted config file [%s]", err.Error())
+		return fmt.Errorf("failed to read encrypted config file [%s]", err.Error())
 	}
 
 	if len(cipherText) == 0 {
-		return fmt.Errorf("Encrypted config file is empty")
+		return fmt.Errorf("encrypted config file is empty")
 	}
 
 	plainText, err := common.DecryptData(cipherText, []byte(passphrase))
 	if err != nil {
-		return fmt.Errorf("Failed to decrypt config file [%s]", err.Error())
+		return fmt.Errorf("failed to decrypt config file [%s]", err.Error())
 	}
 
 	viper.SetConfigType("yaml")
 	err = loadConfigFromBufferToViper(plainText)
 	if err != nil {
-		return fmt.Errorf("Failed to load decrypted config file [%s]", err.Error())
+		return fmt.Errorf("failed to load decrypted config file [%s]", err.Error())
 	}
 
 	return nil
@@ -227,7 +227,7 @@ func BindPFlag(key string, flag *pflag.Flag) {
 //
 // the key parameter should take on the value "auth.key"
 func UnmarshalKey(key string, obj any) error {
-	err := viper.UnmarshalKey(key, obj, func(decodeConfig *mapstructure.DecoderConfig) { decodeConfig.TagName = STRUCT_TAG })
+	err := viper.UnmarshalKey(key, obj, func(decodeConfig *mapstructure.DecoderConfig) { decodeConfig.TagName = StructTag })
 	if err != nil {
 		return fmt.Errorf("config error: unmarshalling [%v]", err)
 	}
@@ -254,7 +254,7 @@ func UnmarshalKey(key string, obj any) error {
 // Unmarshal populates the passed object and all the exported fields.
 // use lower case attribute names to ignore a particular field
 func Unmarshal(obj any) error {
-	err := viper.Unmarshal(obj, func(decodeConfig *mapstructure.DecoderConfig) { decodeConfig.TagName = STRUCT_TAG })
+	err := viper.Unmarshal(obj, func(decodeConfig *mapstructure.DecoderConfig) { decodeConfig.TagName = StructTag })
 	if err != nil {
 		return fmt.Errorf("config error: unmarshalling [%v]", err)
 	}

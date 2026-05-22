@@ -70,7 +70,7 @@ const (
 	BfuseStats    = "blobfuse_stats"
 	BlockIDLength = 16
 
-	FuseAllowedFlags = "Invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
 	UserAgentHeader = "User-Agent"
 
@@ -111,30 +111,37 @@ func (LogLevel) INVALID() LogLevel {
 	return LogLevel(0)
 }
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (LogLevel) LOG_OFF() LogLevel {
 	return LogLevel(1)
 }
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (LogLevel) LOG_CRIT() LogLevel {
 	return LogLevel(2)
 }
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (LogLevel) LOG_ERR() LogLevel {
 	return LogLevel(3)
 }
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (LogLevel) LOG_WARNING() LogLevel {
 	return LogLevel(4)
 }
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (LogLevel) LOG_INFO() LogLevel {
 	return LogLevel(5)
 }
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (LogLevel) LOG_TRACE() LogLevel {
 	return LogLevel(6)
 }
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (LogLevel) LOG_DEBUG() LogLevel {
 	return LogLevel(7)
 }
@@ -173,7 +180,7 @@ type Block struct {
 	StartIndex int64
 	EndIndex   int64
 	Flags      BitMap64
-	Id         string
+	ID         string
 	Data       []byte
 }
 
@@ -196,9 +203,9 @@ const (
 
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList struct {
-	BlockList     []*Block //blockId to offset mapping
+	BlockList     []*Block //blockID to offset mapping
 	Flags         BitMap64
-	BlockIdLength int64
+	BlockIDLength int64
 	Size          int64
 	Mtime         time.Time
 }
@@ -343,9 +350,9 @@ func GetBlockID(length int64) string {
 	return base64.StdEncoding.EncodeToString(NewUUIDWithLength(length))
 }
 
-func GetIdLength(id string) int64 {
-	existingBlockId, _ := base64.StdEncoding.DecodeString(id)
-	return int64(len(existingBlockId))
+func GetIDLength(id string) int64 {
+	existingBlockID, _ := base64.StdEncoding.DecodeString(id)
+	return int64(len(existingBlockID))
 }
 
 func init() {
