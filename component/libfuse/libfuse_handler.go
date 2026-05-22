@@ -75,9 +75,9 @@ In those calls we will convert integer value back to a pointer and get our valid
 */
 
 const (
-	C_ENOENT = int(-C.ENOENT)
-	C_EIO    = int(-C.EIO)
-	C_EACCES = int(-C.EACCES)
+	cENOENT = int(-C.ENOENT)
+	cEIO    = int(-C.EIO)
+	cEACCES = int(-C.EACCES)
 )
 
 // Note: libfuse prepends "/" to the path.
@@ -510,7 +510,7 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 	handle.RUnlock()
 
 	if !found {
-		return C.int(C_EIO)
+		return C.int(cEIO)
 	}
 
 	off64 := uint64(off)
@@ -527,11 +527,11 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 		if err != nil {
 			log.Err("Libfuse::libfuse_readdir : Path %s, handle: %d, offset %d. Error in retrieval %s", handle.Path, handle.ID, off64, err.Error())
 			if os.IsNotExist(err) {
-				return C.int(C_ENOENT)
+				return C.int(cENOENT)
 			} else if os.IsPermission(err) {
-				return C.int(C_EACCES)
+				return C.int(cEACCES)
 			} else {
-				return C.int(C_EIO)
+				return C.int(cEIO)
 			}
 		}
 
