@@ -71,17 +71,17 @@ func (p blobfuseTelemetryPolicy) Do(req *policy.Request) (*http.Response, error)
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Policy to override the service version if requested by user
 type serviceVersionPolicy struct {
-	serviceApiVersion string
+	serviceAPIVersion string
 }
 
 func newServiceVersionPolicy(version string) policy.Policy {
 	return &serviceVersionPolicy{
-		serviceApiVersion: version,
+		serviceAPIVersion: version,
 	}
 }
 
 func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
-	req.Raw().Header["x-ms-version"] = []string{r.serviceApiVersion}
+	req.Raw().Header["x-ms-version"] = []string{r.serviceAPIVersion}
 	return req.Next()
 }
 
@@ -158,7 +158,7 @@ func (p *rateLimitingPolicy) Do(req *policy.Request) (*http.Response, error) {
 		// Whereas SDK stores the header in the request is stored in lower case.
 		// So we directly access the header map with lower case key.
 		// NOTE: using strings.ToLower to ignore the lint error regarding canonicalized headers.
-		rangeHeader := req.Raw().Header[strings.ToLower(X_Ms_Range)]
+		rangeHeader := req.Raw().Header[strings.ToLower(XMsRange)]
 		if len(rangeHeader) == 0 {
 			rangeHeader = req.Raw().Header[RangeHeader]
 		}
