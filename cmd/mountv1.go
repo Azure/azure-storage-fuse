@@ -45,10 +45,10 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
+	attrcache "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	"github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	blockcache "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
+	filecache "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/libfuse"
 
 	"github.com/spf13/cobra"
@@ -77,7 +77,7 @@ type blobfuseCliOptions struct {
 	noSymlinks        bool
 	cacheOnList       bool
 	useAdls           bool
-	useHttps          bool
+	useHTTPS          bool
 	containerName     string
 	maxConcurrency    uint16
 	cancelListOnMount uint16
@@ -90,17 +90,17 @@ type blobfuseCliOptions struct {
 }
 type ComponentsConfig []string
 type PipelineConfig struct {
-	ForegroundOption            bool `yaml:"foreground,omitempty"`
-	ReadOnlyOption              bool `yaml:"read-only,omitempty"`
-	AllowOtherOption            bool `yaml:"allow-other,omitempty"`
-	NonEmptyMountOption         bool `yaml:"nonempty,omitempty"`
-	LogOptions                  `yaml:"logging,omitempty"`
-	libfuse.LibfuseOptions      `yaml:"libfuse,omitempty"`
-	block_cache.StreamOptions   `yaml:"stream,omitempty"`
-	file_cache.FileCacheOptions `yaml:"file_cache,omitempty"`
-	attr_cache.AttrCacheOptions `yaml:"attr_cache,omitempty"`
-	azstorage.AzStorageOptions  `yaml:"azstorage,omitempty"`
-	ComponentsConfig            `yaml:"components,omitempty"`
+	ForegroundOption           bool `yaml:"foreground,omitempty"`
+	ReadOnlyOption             bool `yaml:"read-only,omitempty"`
+	AllowOtherOption           bool `yaml:"allow-other,omitempty"`
+	NonEmptyMountOption        bool `yaml:"nonempty,omitempty"`
+	LogOptions                 `yaml:"logging,omitempty"`
+	libfuse.LibfuseOptions     `yaml:"libfuse,omitempty"`
+	blockcache.StreamOptions   `yaml:"stream,omitempty"`
+	filecache.FileCacheOptions `yaml:"file_cache,omitempty"`
+	attrcache.AttrCacheOptions `yaml:"attr_cache,omitempty"`
+	azstorage.AzStorageOptions `yaml:"azstorage,omitempty"`
+	ComponentsConfig           `yaml:"components,omitempty"`
 }
 
 var outputFilePath string
@@ -110,10 +110,10 @@ var bfConfCliOptions blobfuseCliOptions
 var bfv2StorageConfigOptions azstorage.AzStorageOptions
 var bfv2LoggingConfigOptions LogOptions
 var bfv2FuseConfigOptions libfuse.LibfuseOptions
-var bfv2FileCacheConfigOptions file_cache.FileCacheOptions
-var bfv2AttrCacheConfigOptions attr_cache.AttrCacheOptions
+var bfv2FileCacheConfigOptions filecache.FileCacheOptions
+var bfv2AttrCacheConfigOptions attrcache.AttrCacheOptions
 var bfv2ComponentsConfigOptions ComponentsConfig
-var bfv2StreamConfigOptions block_cache.StreamOptions
+var bfv2StreamConfigOptions blockcache.StreamOptions
 var bfv2ForegroundOption bool
 var bfv2ReadOnlyOption bool
 var bfv2NonEmptyMountOption bool
@@ -129,10 +129,10 @@ func resetOptions() {
 	bfv2StorageConfigOptions = azstorage.AzStorageOptions{}
 	bfv2LoggingConfigOptions = LogOptions{}
 	bfv2FuseConfigOptions = libfuse.LibfuseOptions{}
-	bfv2FileCacheConfigOptions = file_cache.FileCacheOptions{}
-	bfv2AttrCacheConfigOptions = attr_cache.AttrCacheOptions{}
+	bfv2FileCacheConfigOptions = filecache.FileCacheOptions{}
+	bfv2AttrCacheConfigOptions = attrcache.AttrCacheOptions{}
 	bfv2ComponentsConfigOptions = ComponentsConfig{}
-	bfv2StreamConfigOptions = block_cache.StreamOptions{}
+	bfv2StreamConfigOptions = blockcache.StreamOptions{}
 	bfv2ForegroundOption = false
 	bfv2ReadOnlyOption = false
 	bfv2NonEmptyMountOption = false
@@ -363,12 +363,12 @@ func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, c
 		}
 	case "httpProxy":
 		if !flags.Lookup("http-proxy").Changed {
-			bfv2StorageConfigOptions.HttpProxyAddress = configParameterValue
+			bfv2StorageConfigOptions.HTTPProxyAddress = configParameterValue
 		}
 	case "identityClientId":
 		bfv2StorageConfigOptions.ApplicationID = configParameterValue
 	case "httpsProxy":
-		bfv2StorageConfigOptions.HttpsProxyAddress = configParameterValue
+		bfv2StorageConfigOptions.HTTPSProxyAddress = configParameterValue
 	case "identityObjectId":
 		bfv2StorageConfigOptions.ObjectID = configParameterValue
 	case "identityResourceId":
@@ -472,7 +472,7 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 		}
 	}
 	if flags.Lookup("use-https").Changed {
-		bfv2StorageConfigOptions.UseHTTP = !bfConfCliOptions.useHttps
+		bfv2StorageConfigOptions.UseHTTP = !bfConfCliOptions.useHTTPS
 	}
 	if flags.Lookup("container-name").Changed {
 		bfv2StorageConfigOptions.Container = bfConfCliOptions.containerName
@@ -493,10 +493,10 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 		bfv2StorageConfigOptions.BackoffTime = bfConfCliOptions.retryDelayFactor
 	}
 	if flags.Lookup("http-proxy").Changed {
-		bfv2StorageConfigOptions.HttpProxyAddress = bfConfCliOptions.httpProxy
+		bfv2StorageConfigOptions.HTTPProxyAddress = bfConfCliOptions.httpProxy
 	}
 	if flags.Lookup("https-proxy").Changed {
-		bfv2StorageConfigOptions.HttpsProxyAddress = bfConfCliOptions.httpsProxy
+		bfv2StorageConfigOptions.HTTPSProxyAddress = bfConfCliOptions.httpsProxy
 	}
 	if flags.Lookup("d").Changed {
 		bfv2FuseConfigOptions.EnableFuseTrace = bfConfCliOptions.fuseLogging
@@ -514,7 +514,7 @@ func init() {
 
 	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.tmpPath, "tmp-path", "", "Tmp location for the file cache.")
 	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.configFile, "config-file", "", "Input Blobfuse configuration file.")
-	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.useHttps, "use-https", false, "Enables HTTPS communication with Blob storage.")
+	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.useHTTPS, "use-https", false, "Enables HTTPS communication with Blob storage.")
 	generateConfigCmd.Flags().Uint32Var(&bfConfCliOptions.fileCacheTimeout, "file-cache-timeout-in-seconds", 0, "During this time, blobfuse will not check whether the file is up to date or not.")
 	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.containerName, "container-name", "", "Required if no configuration file is specified.")
 	generateConfigCmd.Flags().StringVar(&bfConfCliOptions.logLevel, "log-level", "LOG_WARNING", "Logging level.")
