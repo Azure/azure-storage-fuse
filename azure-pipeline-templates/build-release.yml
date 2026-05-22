@@ -79,7 +79,7 @@ steps:
           echo "\"adls-sas\"": "\"$(BF2_ADLS_ACC_SAS)\"", >> $cnfFile
           echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
           echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
-          echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
+          echo "\"msi-objid\"": "\"$(BF2_MSI_OBJECT_ID)\"", >> $cnfFile
           echo "\"skip-msi\"": "true", >> $cnfFile
           echo "\"skip-azcli\"": "true", >> $cnfFile
           echo "\"proxy-address\"": "\"\"" >> $cnfFile
