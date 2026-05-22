@@ -193,7 +193,7 @@ type ChownOptions struct {
 
 type StageDataOptions struct {
 	Name   string
-	Id     string
+	ID     string
 	Data   []byte
 	Offset uint64
 }
@@ -206,7 +206,7 @@ type CommitDataOptions struct {
 }
 
 type CommittedBlock struct {
-	Id     string
+	ID     string
 	Offset int64
 	Size   uint64
 }
