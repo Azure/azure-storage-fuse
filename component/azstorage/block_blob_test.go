@@ -792,14 +792,14 @@ func (s *blockBlobTestSuite) TestStreamDirSmallCountNoDuplicates() {
 	blobList := make([]*internal.ObjAttr, 0)
 
 	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 1})
+		newList, newMarker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 1})
 		s.assert.NoError(err)
-		blobList = append(blobList, new_list...)
-		marker = new_marker
+		blobList = append(blobList, newList...)
+		marker = newMarker
 		iteration++
 
 		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
-		if new_marker == "" {
+		if newMarker == "" {
 			break
 		}
 	}
@@ -2503,7 +2503,7 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsChunkedFile() {
 	s.assert.NoError(err)
 	s.assert.Len(offsetList.BlockList, 10)
 	s.assert.Zero(offsetList.Flags)
-	s.assert.EqualValues(16, offsetList.BlockIdLength)
+	s.assert.EqualValues(16, offsetList.BlockIDLength)
 }
 
 func (s *blockBlobTestSuite) TestGetFileBlockOffsetsError() {
@@ -2653,7 +2653,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksEmptyFile() {
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(12*MB), h)
 	h.CacheObj.BlockOffsetList = bol
-	h.CacheObj.BlockIdLength = 16
+	h.CacheObj.BlockIDLength = 16
 
 	data1 := make([]byte, blockSize)
 	_, err := rand.Read(data1)
@@ -2662,7 +2662,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksEmptyFile() {
 	blk1 := &common.Block{
 		StartIndex: 0,
 		EndIndex:   int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 		Data:       data1,
 	}
 	blk1.Flags.Set(common.DirtyBlock)
@@ -2674,7 +2674,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksEmptyFile() {
 	blk2 := &common.Block{
 		StartIndex: int64(blockSize),
 		EndIndex:   2 * int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 		Data:       data2,
 	}
 	blk2.Flags.Set(common.DirtyBlock)
@@ -2686,7 +2686,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksEmptyFile() {
 	blk3 := &common.Block{
 		StartIndex: 2 * int64(blockSize),
 		EndIndex:   3 * int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 		Data:       data3,
 	}
 	blk3.Flags.Set(common.DirtyBlock)
@@ -2723,7 +2723,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
-	h.CacheObj.BlockIdLength = 16
+	h.CacheObj.BlockIDLength = 16
 
 	data1 := make([]byte, blockSize)
 	_, err = rand.Read(data1)
@@ -2732,7 +2732,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 	blk1 := &common.Block{
 		StartIndex: int64(fileSize),
 		EndIndex:   int64(fileSize + blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 		Data:       data1,
 	}
 	blk1.Flags.Set(common.DirtyBlock)
@@ -2744,7 +2744,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 	blk2 := &common.Block{
 		StartIndex: int64(fileSize + blockSize),
 		EndIndex:   int64(fileSize + 2*blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 		Data:       data2,
 	}
 	blk2.Flags.Set(common.DirtyBlock)
@@ -2756,7 +2756,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 	blk3 := &common.Block{
 		StartIndex: int64(fileSize + 2*blockSize),
 		EndIndex:   int64(fileSize + 3*blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 		Data:       data3,
 	}
 	blk3.Flags.Set(common.DirtyBlock)
@@ -2785,12 +2785,12 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksEmptyFile() {
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(12*MB), h)
 	h.CacheObj.BlockOffsetList = bol
-	h.CacheObj.BlockIdLength = 16
+	h.CacheObj.BlockIDLength = 16
 
 	blk1 := &common.Block{
 		StartIndex: 0,
 		EndIndex:   int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk1.Flags.Set(common.TruncatedBlock)
 	blk1.Flags.Set(common.DirtyBlock)
@@ -2798,7 +2798,7 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksEmptyFile() {
 	blk2 := &common.Block{
 		StartIndex: int64(blockSize),
 		EndIndex:   2 * int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk2.Flags.Set(common.TruncatedBlock)
 	blk2.Flags.Set(common.DirtyBlock)
@@ -2806,7 +2806,7 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksEmptyFile() {
 	blk3 := &common.Block{
 		StartIndex: 2 * int64(blockSize),
 		EndIndex:   3 * int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk3.Flags.Set(common.TruncatedBlock)
 	blk3.Flags.Set(common.DirtyBlock)
@@ -2842,12 +2842,12 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
-	h.CacheObj.BlockIdLength = 16
+	h.CacheObj.BlockIDLength = 16
 
 	blk1 := &common.Block{
 		StartIndex: int64(fileSize),
 		EndIndex:   int64(fileSize + blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk1.Flags.Set(common.TruncatedBlock)
 	blk1.Flags.Set(common.DirtyBlock)
@@ -2855,7 +2855,7 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
 	blk2 := &common.Block{
 		StartIndex: int64(fileSize + blockSize),
 		EndIndex:   int64(fileSize + 2*blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk2.Flags.Set(common.TruncatedBlock)
 	blk2.Flags.Set(common.DirtyBlock)
@@ -2863,7 +2863,7 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
 	blk3 := &common.Block{
 		StartIndex: int64(fileSize + 2*blockSize),
 		EndIndex:   int64(fileSize + 3*blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk3.Flags.Set(common.TruncatedBlock)
 	blk3.Flags.Set(common.DirtyBlock)
@@ -2891,7 +2891,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(12*MB), h)
 	h.CacheObj.BlockOffsetList = bol
-	h.CacheObj.BlockIdLength = 16
+	h.CacheObj.BlockIDLength = 16
 
 	data1 := make([]byte, blockSize)
 	_, err := rand.Read(data1)
@@ -2900,7 +2900,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
 	blk1 := &common.Block{
 		StartIndex: 0,
 		EndIndex:   int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 		Data:       data1,
 	}
 	blk1.Flags.Set(common.DirtyBlock)
@@ -2908,7 +2908,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
 	blk2 := &common.Block{
 		StartIndex: int64(blockSize),
 		EndIndex:   2 * int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk2.Flags.Set(common.DirtyBlock)
 	blk2.Flags.Set(common.TruncatedBlock)
@@ -2916,7 +2916,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
 	blk3 := &common.Block{
 		StartIndex: 2 * int64(blockSize),
 		EndIndex:   3 * int64(blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk3.Flags.Set(common.DirtyBlock)
 	blk3.Flags.Set(common.TruncatedBlock)
@@ -2954,7 +2954,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	handlemap.CreateCacheObject(int64(16*MB), h)
 	h.CacheObj.BlockOffsetList = bol
-	h.CacheObj.BlockIdLength = 16
+	h.CacheObj.BlockIDLength = 16
 
 	data1 := make([]byte, blockSize)
 	_, err = rand.Read(data1)
@@ -2963,7 +2963,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	blk1 := &common.Block{
 		StartIndex: int64(fileSize),
 		EndIndex:   int64(fileSize + blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 		Data:       data1,
 	}
 	blk1.Flags.Set(common.DirtyBlock)
@@ -2971,7 +2971,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	blk2 := &common.Block{
 		StartIndex: int64(fileSize + blockSize),
 		EndIndex:   int64(fileSize + 2*blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk2.Flags.Set(common.DirtyBlock)
 	blk2.Flags.Set(common.TruncatedBlock)
@@ -2979,7 +2979,7 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	blk3 := &common.Block{
 		StartIndex: int64(fileSize + 2*blockSize),
 		EndIndex:   int64(fileSize + 3*blockSize),
-		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		ID:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIDLength)),
 	}
 	blk3.Flags.Set(common.DirtyBlock)
 	blk3.Flags.Set(common.TruncatedBlock)
@@ -3651,14 +3651,14 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	blobList := make([]*internal.ObjAttr, 0)
 
 	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		newList, newMarker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
 		s.assert.NoError(err)
-		blobList = append(blobList, new_list...)
-		marker = new_marker
+		blobList = append(blobList, newList...)
+		marker = newMarker
 		iteration++
 
 		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
-		if new_marker == "" {
+		if newMarker == "" {
 			break
 		}
 	}
@@ -3668,14 +3668,14 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		newList, newMarker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
 		s.assert.NoError(err)
-		blobList = append(blobList, new_list...)
-		marker = new_marker
+		blobList = append(blobList, newList...)
+		marker = newMarker
 		iteration++
 
 		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
-		if new_marker == "" {
+		if newMarker == "" {
 			break
 		}
 	}
@@ -3686,14 +3686,14 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		newList, newMarker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
 		s.assert.NoError(err)
-		blobList = append(blobList, new_list...)
-		marker = new_marker
+		blobList = append(blobList, newList...)
+		marker = newMarker
 		iteration++
 
 		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
-		if new_marker == "" {
+		if newMarker == "" {
 			break
 		}
 	}

@@ -82,7 +82,7 @@ const (
 	DisableCompression     bool          = false
 	MaxResponseHeaderBytes int64         = 0
 
-	X_Ms_Range  string = "x-ms-range"
+	XMsRange    string = "x-ms-range"
 	RangeHeader string = "Range"
 )
 
@@ -111,10 +111,10 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 
 	perCallPolicies := []policy.Policy{telemetryPolicy}
 
-	serviceApiVersion := os.Getenv("AZURE_STORAGE_SERVICE_API_VERSION")
-	if serviceApiVersion != "" {
+	serviceAPIVersion := os.Getenv("AZURE_STORAGE_SERVICE_API_VERSION")
+	if serviceAPIVersion != "" {
 		// We need to override the service version
-		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceApiVersion))
+		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceAPIVersion))
 	}
 
 	perRetryPolicies := []policy.Policy{}
