@@ -787,3 +787,379 @@ func TestMountCommand(t *testing.T) {
 
 	suite.Run(t, new(mountTestSuite))
 }
+
+// TestConfigureWorkflow tests the workflow auto-configuration function
+func TestConfigureWorkflow(t *testing.T) {
+	assert := assert.New(t)
+
+	t.Run("TrainingWorkflow", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		err := configureWorkflow("training")
+		assert.NoError(err)
+
+		// Verify components pipeline was set
+		components := viper.GetStringSlice("components")
+		assert.Equal([]string{"libfuse", "block_cache", "attr_cache", "azstorage"}, components)
+
+		// Verify training-specific settings (non-default values)
+		assert.Equal("16", viper.GetString("block_cache.block-size-mb"))
+		assert.Equal("4096", viper.GetString("block_cache.mem-size-mb"))
+		assert.Equal("16", viper.GetString("block_cache.parallelism"))
+		assert.Equal("32", viper.GetString("block_cache.prefetch"))
+		assert.Equal("7200", viper.GetString("attr_cache.timeout-sec"))
+
+		// Verify default values are NOT set
+		assert.Equal("", viper.GetString("libfuse.attribute-expiration-sec"))
+		assert.Equal("", viper.GetString("libfuse.entry-expiration-sec"))
+	})
+
+	t.Run("ServingWorkflow", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		err := configureWorkflow("serving")
+		assert.NoError(err)
+
+		// Verify components pipeline was set
+		components := viper.GetStringSlice("components")
+		assert.Equal([]string{"libfuse", "file_cache", "attr_cache", "azstorage"}, components)
+
+		// Verify serving-specific settings (non-default values)
+		assert.Equal("900", viper.GetString("file_cache.timeout-sec"))
+		assert.Equal("16384", viper.GetString("file_cache.max-size-mb"))
+		assert.Equal("900", viper.GetString("attr_cache.timeout-sec"))
+		assert.Equal("true", viper.GetString("read-only"))
+		assert.Equal("300", viper.GetString("libfuse.attribute-expiration-sec"))
+		assert.Equal("300", viper.GetString("libfuse.entry-expiration-sec"))
+	})
+
+	t.Run("CheckpointingWorkflow", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		err := configureWorkflow("checkpointing")
+		assert.NoError(err)
+
+		// Verify components pipeline was set
+		components := viper.GetStringSlice("components")
+		assert.Equal([]string{"libfuse", "block_cache", "attr_cache", "azstorage"}, components)
+
+		// Verify checkpointing-specific settings (non-default values)
+		assert.Equal("32", viper.GetString("block_cache.block-size-mb"))
+		assert.Equal("8192", viper.GetString("block_cache.mem-size-mb"))
+		assert.Equal("32", viper.GetString("block_cache.parallelism"))
+		assert.Equal("60", viper.GetString("libfuse.attribute-expiration-sec"))
+		assert.Equal("60", viper.GetString("libfuse.entry-expiration-sec"))
+
+		// Verify default attr_cache timeout is NOT set (120 is the default)
+		assert.Equal("", viper.GetString("attr_cache.timeout-sec"))
+	})
+
+	t.Run("InvalidWorkflow", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		err := configureWorkflow("invalid")
+		assert.Error(err)
+		assert.Contains(err.Error(), "invalid workflow type")
+	})
+
+	t.Run("UserOverrideRespected", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		// Simulate user setting explicit components before workflow configuration
+		viper.Set("components", []string{"libfuse", "block_cache", "azstorage"})
+
+		// Apply training workflow - should not override components
+		err := configureWorkflow("training")
+		assert.NoError(err)
+
+		// Verify workflow did NOT override user's explicit components
+		components := viper.GetStringSlice("components")
+		assert.Equal([]string{"libfuse", "block_cache", "azstorage"}, components)
+	})
+
+	t.Run("UserOverrideConfigValues", func(t *testing.T) {
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		// User sets explicit cache timeout
+		config.Set("block_cache.mem-size-mb", "16384")
+
+		// Apply training workflow
+		err := configureWorkflow("training")
+		assert.NoError(err)
+
+		// Verify workflow did NOT override user's memory size
+		assert.Equal("16384", viper.GetString("block_cache.mem-size-mb"))
+
+		// Verify workflow DID set values that user didn't specify
+		assert.Equal("16", viper.GetString("block_cache.block-size-mb"))
+	})
+}
+
+// TestWorkflowWithMountOptions tests workflow integration with mount options
+func TestWorkflowWithMountOptions(t *testing.T) {
+	assert := assert.New(t)
+
+	t.Run("TrainingWorkflowOptions", func(t *testing.T) {
+		// Reset viper and options for clean test
+		config.ResetConfig()
+		options = mountOptions{}
+
+		// Set workflow
+		options.Workflow = "training"
+
+		err := configureWorkflow(options.Workflow)
+		assert.NoError(err)
+
+		// Unmarshal to populate options from config
+		err = config.Unmarshal(&options)
+		assert.NoError(err)
+
+		// Verify that components pipeline includes block_cache
+		assert.Contains(options.Components, "block_cache")
+		assert.Contains(options.Components, "attr_cache")
+	})
+
+	t.Run("ServingWorkflowOptions", func(t *testing.T) {
+		// Reset viper and options for clean test
+		config.ResetConfig()
+		options = mountOptions{}
+
+		// Set workflow
+		options.Workflow = "serving"
+
+		err := configureWorkflow(options.Workflow)
+		assert.NoError(err)
+
+		// Unmarshal to populate options from config
+		err = config.Unmarshal(&options)
+		assert.NoError(err)
+
+		// Verify that components pipeline includes file_cache
+		assert.Contains(options.Components, "file_cache")
+		assert.Contains(options.Components, "attr_cache")
+	})
+
+	t.Run("CheckpointingWorkflowOptions", func(t *testing.T) {
+		// Reset viper and options for clean test
+		config.ResetConfig()
+		options = mountOptions{}
+
+		// Set workflow
+		options.Workflow = "checkpointing"
+
+		err := configureWorkflow(options.Workflow)
+		assert.NoError(err)
+
+		// Unmarshal to populate options from config
+		err = config.Unmarshal(&options)
+		assert.NoError(err)
+
+		// Verify that components pipeline includes block_cache
+		assert.Contains(options.Components, "block_cache")
+		assert.Contains(options.Components, "attr_cache")
+	})
+}
+
+// TestCaseSensitiveWorkflow verifies that workflow names
+// are strictly case-sensitive and invalid casing is rejected.
+func TestCaseSensitiveWorkflow(t *testing.T) {
+	assert := assert.New(t)
+
+	// Reset config for clean test execution
+	config.ResetConfig()
+
+	// Configure workflow using uppercase input
+	err := configureWorkflow("TRAINING")
+
+	// Verify invalid casing returns error
+	assert.Error(err)
+
+	// Verify correct error message
+	assert.Contains(err.Error(), "invalid workflow")
+
+	// Verify components were NOT configured
+	components := viper.GetStringSlice("components")
+
+	assert.Empty(components)
+}
+
+// TestEmptyWorkflow verifies that an empty workflow name
+// returns an appropriate error.
+func TestEmptyWorkflow(t *testing.T) {
+	assert := assert.New(t)
+
+	// Reset config for clean test execution
+	config.ResetConfig()
+
+	// Configure empty workflow
+	err := configureWorkflow("")
+
+	// Verify error is returned
+	assert.Error(err)
+
+	// Verify correct error message
+	assert.Contains(err.Error(), "invalid workflow")
+}
+
+// TestWorkflowIdempotency verifies that configuring the same
+// workflow multiple times does not duplicate pipeline components.
+func TestWorkflowIdempotency(t *testing.T) {
+	assert := assert.New(t)
+
+	// Reset config for clean test execution
+	config.ResetConfig()
+
+	// Configure workflow for the first time
+	err := configureWorkflow("training")
+	assert.NoError(err)
+
+	// Configure workflow again
+	err = configureWorkflow("training")
+	assert.NoError(err)
+
+	// Fetch configured components
+	components := viper.GetStringSlice("components")
+
+	// Verify components are not duplicated
+	assert.Equal(
+		[]string{"libfuse", "block_cache", "attr_cache", "azstorage"},
+		components,
+	)
+}
+
+// TestPartialUserOverride verifies that workflow configuration
+// does not overwrite explicitly user-defined config values.
+func TestPartialUserOverride(t *testing.T) {
+	assert := assert.New(t)
+
+	// Reset config for clean test execution
+	config.ResetConfig()
+
+	// User overrides one workflow config value
+	viper.Set("block_cache.mem-size-mb", "16384")
+
+	// Configure training workflow
+	err := configureWorkflow("training")
+	assert.NoError(err)
+
+	// Verify user-defined value is preserved
+	assert.Equal(
+		"16384",
+		viper.GetString("block_cache.mem-size-mb"),
+	)
+
+	// Verify workflow still configures remaining defaults
+	assert.Equal(
+		"16",
+		viper.GetString("block_cache.block-size-mb"),
+	)
+}
+
+// TestMountOptionsComponentOrder verifies that workflow pipeline
+// components are configured in the correct execution order.
+func TestMountOptionsComponentOrder(t *testing.T) {
+	assert := assert.New(t)
+
+	// Reset config and mount options
+	config.ResetConfig()
+	options = mountOptions{}
+
+	// Configure serving workflow
+	options.Workflow = "serving"
+
+	err := configureWorkflow(options.Workflow)
+	assert.NoError(err)
+
+	// Populate mount options from config
+	err = config.Unmarshal(&options)
+	assert.NoError(err)
+
+	// Verify exact component pipeline order
+	assert.Equal(
+		[]string{"libfuse", "file_cache", "attr_cache", "azstorage"},
+		options.Components,
+	)
+}
+
+// TestWorkflowIsolation verifies that workflow configuration
+// does not leak state between independent workflow executions.
+func TestWorkflowIsolation(t *testing.T) {
+	assert := assert.New(t)
+
+	// Reset config for clean test execution
+	config.ResetConfig()
+
+	// Configure training workflow
+	err := configureWorkflow("training")
+	assert.NoError(err)
+
+	// Verify training-specific config exists
+	assert.Equal(
+		"4096",
+		viper.GetString("block_cache.mem-size-mb"),
+	)
+
+	// Reset config before configuring next workflow
+	config.ResetConfig()
+
+	// Configure serving workflow
+	err = configureWorkflow("serving")
+	assert.NoError(err)
+
+	// Verify training config does not leak
+	assert.Equal(
+		"",
+		viper.GetString("block_cache.mem-size-mb"),
+	)
+
+	// Verify serving-specific config exists
+	assert.Equal(
+		"true",
+		viper.GetString("read-only"),
+	)
+}
+
+// TestUnknownConfigPreserved verifies that workflow configuration
+// does not overwrite unrelated user-defined configuration values.
+func TestUnknownConfigPreserved(t *testing.T) {
+	assert := assert.New(t)
+
+	// Reset config for clean test execution
+	config.ResetConfig()
+
+	// Set unrelated user-defined config
+	viper.Set("logging.level", "LOG_DEBUG")
+
+	// Configure training workflow
+	err := configureWorkflow("training")
+	assert.NoError(err)
+
+	// Verify unrelated config is preserved
+	assert.Equal(
+		"LOG_DEBUG",
+		viper.GetString("logging.level"),
+	)
+}
+
+// TestEmptyComponentsBeforeUnmarshal verifies that mount options
+// remain empty when no workflow configuration is applied.
+func TestEmptyComponentsBeforeUnmarshal(t *testing.T) {
+	assert := assert.New(t)
+
+	// Reset config and mount options
+	config.ResetConfig()
+	options = mountOptions{}
+
+	// Unmarshal config into mount options without workflow setup
+	err := config.Unmarshal(&options)
+	assert.NoError(err)
+
+	// Verify components remain empty
+	assert.Empty(options.Components)
+}

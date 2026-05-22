@@ -47,6 +47,7 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -59,6 +60,7 @@ import (
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 type LogOptions struct {
@@ -99,9 +101,215 @@ type mountOptions struct {
 	BlockCache        bool     `config:"block-cache"`
 	Preload           bool     `config:"preload"`
 	EntryCacheTimeout int      `config:"list-cache-timeout"`
+
+	// Workflow-based auto-configuration
+	Workflow string `config:"workflow"`
 }
 
 var options mountOptions
+
+// Supported workflow types.
+const (
+	WorkflowTraining      = "training"
+	WorkflowServing       = "serving"
+	WorkflowCheckpointing = "checkpointing"
+)
+
+// Pipeline-related keys.
+//
+// If any of these are explicitly configured by the user,
+// we treat the pipeline as user-managed and avoid overriding it.
+var pipelineKeys = []string{
+	"components",
+	"block-cache",
+	"streaming",
+	"preload",
+}
+
+// WorkflowConfig defines the default pipeline and settings
+// associated with a workload type.
+type WorkflowConfig struct {
+	// Human-readable workflow description.
+	Description string
+
+	// Ordered pipeline components to use when pipeline
+	// has not been explicitly configured.
+	Components []string
+
+	// Default settings applied only when absent.
+	Settings map[string]string
+
+	// Optional key checked when user already supplied
+	// a custom pipeline.
+	//
+	// If this key is absent, fallback settings are applied.
+	FallbackKey string
+
+	// Settings applied only when:
+	// 1. User already configured pipeline
+	// 2. FallbackKey is missing
+	FallbackSettings map[string]string
+}
+
+// Default workflow configurations.
+//
+// These defaults are workload-aware and optimize the storage
+// pipeline for common ML/AI access patterns.
+var workflowDefaults = map[string]WorkflowConfig{
+
+	// ──────────────────────────────────────────────────────────────────────
+	// Training Workflow
+	//
+	// Optimized for:
+	// - repeated dataset reads
+	// - sequential access
+	// - high read throughput
+	// - metadata caching
+	// ──────────────────────────────────────────────────────────────────────
+
+	WorkflowTraining: {
+		Description: "optimizing for repeated dataset reads using block_cache",
+
+		Components: []string{
+			"libfuse",
+			"block_cache",
+			"attr_cache",
+			"azstorage",
+		},
+
+		Settings: map[string]string{
+			// Good balance between throughput and memory efficiency
+			// for sequential and semi-sequential training reads.
+			"block_cache.block-size-mb": "16",
+
+			// Provides enough memory to cache frequently accessed
+			// dataset blocks across multiple training epochs.
+			"block_cache.mem-size-mb": "4096",
+
+			// Provides sufficient read concurrency for training
+			// workloads without creating excessive backend pressure.
+			"block_cache.parallelism": "16",
+
+			// Improves sequential dataset access by preloading
+			// upcoming blocks during training.
+			"block_cache.prefetch": "32",
+
+			// Reduce repeated metadata lookups for stable
+			// training datasets accessed repeatedly.
+			"attr_cache.timeout-sec": "7200",
+		},
+
+		// If user configured custom pipeline but forgot block-cache,
+		// inject lightweight fallback.
+		FallbackKey: "block-cache",
+
+		FallbackSettings: map[string]string{
+			"block-cache": "true",
+		},
+	},
+
+	// ──────────────────────────────────────────────────────────────────────
+	// Serving Workflow
+	//
+	// Optimized for:
+	// - inference serving
+	// - low latency reads
+	// - read-only workloads
+	// ──────────────────────────────────────────────────────────────────────
+
+	WorkflowServing: {
+		Description: "optimizing for inference serving using file_cache",
+
+		Components: []string{
+			"libfuse",
+			"file_cache",
+			"attr_cache",
+			"azstorage",
+		},
+
+		Settings: map[string]string{
+			// Keep frequently accessed model files cached longer
+			// to reduce repeated downloads during inference.
+			"file_cache.timeout-sec": "900",
+
+			// Cache size should comfortably fit the active model
+			// working set to avoid repeated full-file re-downloads.
+			"file_cache.max-size-mb": "16384",
+
+			// Reduce repeated metadata lookups for relatively
+			// stable model artifacts and serving assets.
+			"attr_cache.timeout-sec": "900",
+
+			// Serving workloads are predominantly read-only and
+			// typically do not require write support.
+			"read-only": "true",
+
+			// Reduce repeated getattr operations while still
+			// allowing periodic metadata refresh.
+			"libfuse.attribute-expiration-sec": "300",
+
+			// Reduce repeated directory and entry lookups for
+			// stable serving model paths.
+			"libfuse.entry-expiration-sec": "300",
+		},
+
+		// If user configured custom pipeline but forgot file-cache,
+		// inject lightweight fallback.
+		FallbackKey: "file-cache",
+
+		FallbackSettings: map[string]string{
+			"file-cache": "true",
+		},
+	},
+
+	// ──────────────────────────────────────────────────────────────────────
+	// Checkpointing Workflow
+	//
+	// Optimized for:
+	// - large sequential writes
+	// - checkpoint uploads
+	// - write throughput
+	// - buffered writes
+	// ──────────────────────────────────────────────────────────────────────
+
+	WorkflowCheckpointing: {
+		Description: "optimizing for large checkpoint writes using block_cache",
+
+		Components: []string{
+			"libfuse",
+			"block_cache",
+			"attr_cache",
+			"azstorage",
+		},
+
+		Settings: map[string]string{
+			// Larger blocks improve sequential checkpoint
+			// upload and download throughput.
+			"block_cache.block-size-mb": "32",
+
+			// Larger in-memory cache helps stage checkpoint
+			// data efficiently during large transfers.
+			"block_cache.mem-size-mb": "8192",
+
+			// Higher concurrency improves checkpoint transfer
+			// throughput without overwhelming backend storage.
+			"block_cache.parallelism": "32",
+
+			// Checkpoint directories may update frequently
+			// during training and recovery operations.
+			"libfuse.attribute-expiration-sec": "60",
+			"libfuse.entry-expiration-sec":     "60",
+		},
+
+		// If user configured custom pipeline but forgot block-cache,
+		// inject lightweight fallback.
+		FallbackKey: "block-cache",
+
+		FallbackSettings: map[string]string{
+			"block-cache": "true",
+		},
+	},
+}
 
 func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	if opt.MountPath == "" {
@@ -202,6 +410,228 @@ func OnConfigChange() {
 	}
 }
 
+// configureWorkflow applies workflow-aware pipeline and cache tuning.
+//
+// Explicit user configuration always takes precedence.
+//
+// Supported workflows:
+//   - training
+//   - serving
+//   - checkpointing
+func configureWorkflow(workflow string) error {
+	log.Info(
+		"Mount::configureWorkflow : Starting workflow auto-configuration [workflow=%s]",
+		workflow,
+	)
+
+	wf, exists := workflowDefaults[workflow]
+	if !exists {
+		valid := validWorkflowNames()
+
+		log.Err(
+			"Mount::configureWorkflow : Invalid workflow specified [workflow=%s, valid=%s]",
+			workflow,
+			strings.Join(valid, ", "),
+		)
+
+		return fmt.Errorf(
+			"invalid workflow type %q (allowed values: %s)",
+			workflow,
+			strings.Join(valid, ", "),
+		)
+	}
+
+	// Warn when user-selected cache pipeline differs from
+	// workflow-recommended cache strategy.
+	if config.IsSet("components") {
+		var components []string
+		_ = config.UnmarshalKey("components", &components)
+
+		hasBlockCache := slices.Contains(components, "block_cache")
+		hasFileCache := slices.Contains(components, "file_cache")
+
+		switch workflow {
+		case WorkflowTraining, WorkflowCheckpointing:
+			if hasFileCache {
+				log.Warn(
+					"Mount::configureWorkflow : Configured cache pipeline differs from recommended cache strategy for workload [%s]",
+					workflow,
+				)
+			}
+
+		case WorkflowServing:
+			if hasBlockCache {
+				log.Warn(
+					"Mount::configureWorkflow : Configured cache pipeline differs from recommended cache strategy for workload [%s]",
+					workflow,
+				)
+			}
+		}
+	}
+
+	log.Info(
+		"Mount::configureWorkflow : Workflow recognized [workflow=%s, description=%s]",
+		workflow,
+		wf.Description,
+	)
+
+	// If user has not configured any pipeline-related settings,
+	// automatically apply workflow defaults.
+	if isPipelineUnconfigured() {
+		log.Info(
+			"Mount::configureWorkflow : No pipeline configuration detected, applying workflow defaults [workflow=%s]",
+			workflow,
+		)
+
+		applyDefaultPipeline(workflow, wf)
+
+	} else {
+		// User already configured custom pipeline.
+		// Respect their configuration and only apply lightweight fallback logic.
+		log.Info(
+			"Mount::configureWorkflow : Existing pipeline configuration detected, applying fallback logic only [workflow=%s]",
+			workflow,
+		)
+
+		applyFallback(workflow, wf)
+	}
+
+	log.Info(
+		"Mount::configureWorkflow : Workflow configuration complete [workflow=%s]",
+		workflow,
+	)
+
+	return nil
+}
+
+// isPipelineUnconfigured returns true when no pipeline-related
+// configuration has been explicitly supplied by the user.
+func isPipelineUnconfigured() bool {
+	for _, key := range pipelineKeys {
+		if config.IsSet(key) {
+			log.Debug(
+				"Mount::isPipelineUnconfigured : Existing pipeline config detected [key=%s]",
+				key,
+			)
+
+			return false
+		}
+	}
+
+	log.Debug(
+		"Mount::isPipelineUnconfigured : No existing pipeline configuration detected",
+	)
+
+	return true
+}
+
+// applyDefaultPipeline applies the workflow's default pipeline
+// and associated settings.
+func applyDefaultPipeline(workflow string, wf WorkflowConfig) {
+	log.Info(
+		"Mount::applyDefaultPipeline : Applying default pipeline [workflow=%s, components=%v]",
+		workflow,
+		wf.Components,
+	)
+
+	// Components pipeline is historically managed directly via viper.
+	viper.Set("components", wf.Components)
+
+	// Apply workflow-specific settings.
+	applySettings(workflow, wf.Settings)
+}
+
+// applyFallback applies lightweight workflow-specific settings
+// when user already configured a custom pipeline but forgot a
+// critical workflow-specific configuration key.
+func applyFallback(workflow string, wf WorkflowConfig) {
+	// Workflow does not define fallback behavior.
+	if wf.FallbackKey == "" {
+		log.Debug(
+			"Mount::applyFallback : No fallback configuration defined [workflow=%s]",
+			workflow,
+		)
+
+		return
+	}
+
+	// User already configured required fallback key.
+	if config.IsSet(wf.FallbackKey) {
+		log.Debug(
+			"Mount::applyFallback : Fallback key already configured [workflow=%s, key=%s]",
+			workflow,
+			wf.FallbackKey,
+		)
+
+		return
+	}
+
+	log.Info(
+		"Mount::applyFallback : Applying fallback settings [workflow=%s, key=%s]",
+		workflow,
+		wf.FallbackKey,
+	)
+
+	applySettings(workflow, wf.FallbackSettings)
+}
+
+// applySettings applies configuration settings only when the
+// corresponding key has not already been explicitly configured
+// by the user.
+func applySettings(workflow string, settings map[string]string) {
+	keys := make([]string, 0, len(settings))
+
+	for key := range settings {
+		keys = append(keys, key)
+	}
+
+	// Deterministic ordering improves log readability/debugging.
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		value := settings[key]
+
+		// Explicit user config always wins.
+		if config.IsSet(key) {
+			log.Debug(
+				"Mount::applySettings : Skipping existing user configuration [workflow=%s, key=%s]",
+				workflow,
+				key,
+			)
+
+			continue
+		}
+
+		config.Set(key, value)
+
+		log.Debug(
+			"Mount::applySettings : Applied workflow default [workflow=%s, key=%s, value=%v]",
+			workflow,
+			key,
+			value,
+		)
+	}
+
+	log.Info(
+		"Mount::applySettings : Applied workflow settings [workflow=%s, count=%d]",
+		workflow,
+		len(settings),
+	)
+}
+
+// validWorkflowNames returns supported workflow names in sorted order.
+func validWorkflowNames() []string {
+	names := make([]string, 0, len(workflowDefaults))
+
+	for workflow := range workflowDefaults {
+		names = append(names, workflow)
+	}
+
+	sort.Strings(names)
+
+	return names
+}
+
 // parseConfig : Based on config file or encrypted data parse the provided config
 func parseConfig() error {
 	options.ConfigFile = common.ExpandPath(options.ConfigFile)
@@ -283,6 +713,21 @@ var mountCmd = &cobra.Command{
 		err := config.Unmarshal(&options)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
+		}
+
+		if options.Workflow != "" {
+			err = configureWorkflow(options.Workflow)
+			if err != nil {
+				return err
+			}
+			// Re-unmarshal to pick up workflow-applied config changes.
+			err = config.Unmarshal(&options)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to unmarshal config after workflow configuration [%s]",
+					err.Error(),
+				)
+			}
 		}
 
 		if !configFileExists || len(options.Components) == 0 {
@@ -861,6 +1306,13 @@ func init() {
 	// Add a generic cleanup-on-start flag that applies to all cache components
 	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache, block_cache, xload components.")
 	config.BindPFlag("cleanup-on-start", mountCmd.PersistentFlags().Lookup("cleanup-on-start"))
+
+	// Add workflow flag for auto-configuration of cache settings
+	mountCmd.Flags().StringVar(&options.Workflow, "workflow", "", "Auto-configure cache settings based on workflow type. Allowed values: training|serving|checkpointing")
+	config.BindPFlag("workflow", mountCmd.Flags().Lookup("workflow"))
+	_ = mountCmd.RegisterFlagCompletionFunc("workflow", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"training", "serving", "checkpointing"}, cobra.ShellCompDirectiveNoFileComp
+	})
 
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")
