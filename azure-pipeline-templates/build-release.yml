@@ -29,9 +29,11 @@ steps:
     displayName: "Installing Blobfuse2 Dependencies"
 
   # Build the binary
-  # build.sh sets CGO_ENABLED=1 and GOTOOLCHAIN=local for FIPS compliance.
-  # Keeping the build flags in a single script avoids drift between local dev
-  # and CI/release builds.
+   # build.sh sets CGO_ENABLED=1 and GOTOOLCHAIN=local, but FIPS compliance
+   # also requires CI to install the Microsoft Go toolchain via go_installer.sh
+   # first, because GOTOOLCHAIN=local uses that locally installed toolchain.
+   # Keeping the build flags and required toolchain aligned avoids drift between
+   # local dev and CI/release builds.
   - script: |
       chmod 755 build.sh
       ./build.sh ${{ parameters.tags }}

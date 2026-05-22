@@ -83,9 +83,11 @@ steps:
     displayName: "Go Get"
 
   # Building blobfuse2 binary
-  # build.sh sets CGO_ENABLED=1 and GOTOOLCHAIN=local — these are what give
-  # the binary the systemcrypto marker required for FIPS compliance. Keep the
-  # build flags centralized in build.sh so CI matches local dev exactly.
+   # build.sh centralizes CI build settings such as CGO_ENABLED=1 and
+   # GOTOOLCHAIN=local, but the systemcrypto marker required for FIPS
+   # compliance also depends on using the Microsoft Go toolchain and the
+   # appropriate GOEXPERIMENT behavior. Keep these build settings centralized
+   # in build.sh so CI matches local dev exactly.
   - script: |
       chmod 755 build.sh
       ./build.sh $(tags)
