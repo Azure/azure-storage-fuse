@@ -387,31 +387,31 @@ func (s *utilsTestSuite) TestFormatEndpointAccountType() {
 
 type endpointProtocol struct {
 	endpoint string
-	ustHttp  bool
+	ustHTTP  bool
 	result   string
 }
 
 func (s *utilsTestSuite) TestFormatEndpointProtocol() {
 	assert := assert.New(s.T())
 	var inputs = []endpointProtocol{
-		{endpoint: "https://account.blob.core.windows.net", result: "https://account.blob.core.windows.net/", ustHttp: true},
-		{endpoint: "http://account.blob.core.windows.net", result: "http://account.blob.core.windows.net/", ustHttp: false},
-		{endpoint: "account.blob.core.windows.net", result: "http://account.blob.core.windows.net/", ustHttp: true},
-		{endpoint: "account.blob.core.windows.net", result: "https://account.blob.core.windows.net/", ustHttp: false},
-		{endpoint: "account.bl://ob.core.windows.net", result: "https://account.bl://ob.core.windows.net/", ustHttp: false},
-		{endpoint: "account.bl://ob.core.windows.net", result: "http://account.bl://ob.core.windows.net/", ustHttp: true},
-		{endpoint: "https://account.blob.core.windows.net/", result: "https://account.blob.core.windows.net/", ustHttp: true},
-		{endpoint: "https://account.blob.core.windows.net/abc", result: "https://account.blob.core.windows.net/abc/", ustHttp: true},
+		{endpoint: "https://account.blob.core.windows.net", result: "https://account.blob.core.windows.net/", ustHTTP: true},
+		{endpoint: "http://account.blob.core.windows.net", result: "http://account.blob.core.windows.net/", ustHTTP: false},
+		{endpoint: "account.blob.core.windows.net", result: "http://account.blob.core.windows.net/", ustHTTP: true},
+		{endpoint: "account.blob.core.windows.net", result: "https://account.blob.core.windows.net/", ustHTTP: false},
+		{endpoint: "account.bl://ob.core.windows.net", result: "https://account.bl://ob.core.windows.net/", ustHTTP: false},
+		{endpoint: "account.bl://ob.core.windows.net", result: "http://account.bl://ob.core.windows.net/", ustHTTP: true},
+		{endpoint: "https://account.blob.core.windows.net/", result: "https://account.blob.core.windows.net/", ustHTTP: true},
+		{endpoint: "https://account.blob.core.windows.net/abc", result: "https://account.blob.core.windows.net/abc/", ustHTTP: true},
 
 		// These are false positive test cases where we are forming the wrong URI and it shall fail for user when used in blobfuse
-		{endpoint: "://account.blob.core.windows.net", result: "https://://account.blob.core.windows.net/", ustHttp: false},
-		{endpoint: "://account.blob.core.windows.net", result: "http://://account.blob.core.windows.net/", ustHttp: true},
-		{endpoint: "https://://./account.blob.core.windows.net", result: "https://://./account.blob.core.windows.net/", ustHttp: true},
+		{endpoint: "://account.blob.core.windows.net", result: "https://://account.blob.core.windows.net/", ustHTTP: false},
+		{endpoint: "://account.blob.core.windows.net", result: "http://://account.blob.core.windows.net/", ustHTTP: true},
+		{endpoint: "https://://./account.blob.core.windows.net", result: "https://://./account.blob.core.windows.net/", ustHTTP: true},
 	}
 
 	for _, i := range inputs {
-		s.Run(i.endpoint+","+strconv.FormatBool(i.ustHttp), func() {
-			output := formatEndpointProtocol(i.endpoint, i.ustHttp)
+		s.Run(i.endpoint+","+strconv.FormatBool(i.ustHTTP), func() {
+			output := formatEndpointProtocol(i.endpoint, i.ustHTTP)
 			assert.Equal(i.result, output)
 		})
 	}
