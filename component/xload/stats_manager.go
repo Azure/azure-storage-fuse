@@ -86,9 +86,9 @@ type statsJSONData struct {
 }
 
 const (
-	STATS_MANAGER  = "STATS_MANAGER"
-	DURATION       = 4                        // time interval in seconds at which the stats will be dumped
-	JSON_FILE_NAME = "xload_stats_{PID}.json" // json file name where the stats manager will dump the stats
+	StatsManagerComp  = "StatsManagerComp"
+	StatsDumpDuration = 4                        // time interval in seconds at which the stats will be dumped
+	JSONFileName      = "xload_stats_{PID}.json" // json file name where the stats manager will dump the stats
 )
 
 func NewStatsManager(count uint32, isExportEnabled bool, pool *BlockPool) (*StatsManager, error) {
@@ -96,7 +96,7 @@ func NewStatsManager(count uint32, isExportEnabled bool, pool *BlockPool) (*Stat
 	var err error
 	if isExportEnabled {
 		pid := fmt.Sprintf("%v", os.Getpid())
-		path := common.ExpandPath(filepath.Join(common.DefaultWorkDir, strings.ReplaceAll(JSON_FILE_NAME, "{PID}", pid)))
+		path := common.ExpandPath(filepath.Join(common.DefaultWorkDir, strings.ReplaceAll(JSONFileName, "{PID}", pid)))
 		log.Crit("statsManager::NewStatsManager : creating json file %v", path)
 		fh, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
@@ -159,7 +159,7 @@ func (sm *StatsManager) statsProcessor() {
 
 	for item := range sm.items {
 		switch item.Component {
-		case LISTER:
+		case ListerComp:
 			sm.totalFiles += item.ListerCount
 			// log.Debug("statsManager::statsProcessor : Directory listed %v, total number of files listed so far = %v", item.name, sm.totalFiles)
 			if item.Dir {
@@ -167,7 +167,7 @@ func (sm *StatsManager) statsProcessor() {
 				sm.updateSuccessFailedCtr(item.Success)
 			}
 
-		case SPLITTER:
+		case SplitterComp:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
 			if item.DiskIO {
 				sm.updateDiskStats(item.BytesTransferred)
@@ -175,7 +175,7 @@ func (sm *StatsManager) statsProcessor() {
 				sm.updateSuccessFailedCtr(item.Success)
 			}
 
-		case DATA_MANAGER:
+		case DataManagerComp:
 			// log.Debug("statsManager::statsProcessor : data manager: Name %v, success %v, download %v, bytes transferred %v", item.name, item.success, item.download, item.bytesTransferred)
 			if item.Download {
 				sm.bytesDownloaded += item.BytesTransferred
@@ -183,7 +183,7 @@ func (sm *StatsManager) statsProcessor() {
 				sm.bytesUploaded += item.BytesTransferred
 			}
 
-		case STATS_MANAGER:
+		case StatsManagerComp:
 			sm.calculateBandwidth()
 
 		default:
@@ -195,7 +195,7 @@ func (sm *StatsManager) statsProcessor() {
 }
 
 func (sm *StatsManager) statsExporter() {
-	ticker := time.NewTicker(DURATION * time.Second)
+	ticker := time.NewTicker(StatsDumpDuration * time.Second)
 
 	for {
 		select {
@@ -204,7 +204,7 @@ func (sm *StatsManager) statsExporter() {
 			return
 		case <-ticker.C:
 			sm.AddStats(&StatsItem{
-				Component: STATS_MANAGER,
+				Component: StatsManagerComp,
 			})
 		}
 	}
