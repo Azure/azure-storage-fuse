@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774160122591,
+  "lastUpdate": 1779605935290,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -911,6 +911,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 60.2685546875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "8bf5ff6a5ccabbb2ab82ddb4fc412bc851479667",
+          "message": "Bump golang.org/x/sys from 0.44.0 to 0.45.0 (#2225)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-05-22T03:39:25Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8bf5ff6a5ccabbb2ab82ddb4fc412bc851479667"
+        },
+        "date": 1779605933728,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 4640.078125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 4396.2197265625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3348.0458984375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 16.189453125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 8188.7236328125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 9084.0537109375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 61.771484375,
             "unit": "MiB/s"
           }
         ]
