@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774167356945,
+  "lastUpdate": 1779613244755,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -854,6 +854,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 64.281974528625,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "8bf5ff6a5ccabbb2ab82ddb4fc412bc851479667",
+          "message": "Bump golang.org/x/sys from 0.44.0 to 0.45.0 (#2225)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-05-22T03:39:25Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8bf5ff6a5ccabbb2ab82ddb4fc412bc851479667"
+        },
+        "date": 1779613244238,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.26510423934,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.252475176462,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.29760261584,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 59.404322158103,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.4471040996,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.42008233822,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 64.86767943382,
             "unit": "milliseconds"
           }
         ]
