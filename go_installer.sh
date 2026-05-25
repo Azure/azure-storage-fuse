@@ -26,6 +26,27 @@ tarball="go${version}.linux-${arch}.tar.gz"
 wget --tries=3 --timeout=60 -O "$work_dir/$tarball" \
   "https://aka.ms/golang/release/latest/${tarball}"
 
+# Verify the tarball against the official SHA256 sidecar published next to
+# the release. This guards against a compromised redirector, a corrupted
+# upstream artifact, or a man-in-the-middle that has TLS but not the
+# checksum. The sidecar lists the resolved release filename (e.g.
+# "go1.26.3-20260508.1.linux-amd64.tar.gz"), so we extract just the hash
+# and compare it against the locally computed hash of the downloaded file.
+wget --tries=3 --timeout=60 -O "$work_dir/$tarball.sha256" \
+  "https://aka.ms/golang/release/latest/${tarball}.sha256"
+
+expected_sha=$(awk '{print $1}' "$work_dir/$tarball.sha256")
+actual_sha=$(sha256sum "$work_dir/$tarball" | awk '{print $1}')
+if [ "$expected_sha" != "$actual_sha" ]; then
+  echo "ERROR: SHA256 mismatch for $tarball" >&2
+  echo "  expected: $expected_sha" >&2
+  echo "  actual:   $actual_sha" >&2
+  rm -f "$work_dir/$tarball" "$work_dir/$tarball.sha256"
+  exit 1
+fi
+echo "SHA256 verified: $actual_sha"
+rm "$work_dir/$tarball.sha256"
+
 sudo rm -rf /usr/local/go
 sudo tar -C /usr/local -xzf "$work_dir/$tarball"
 sudo ln -sf /usr/local/go/bin/go /usr/bin/go
