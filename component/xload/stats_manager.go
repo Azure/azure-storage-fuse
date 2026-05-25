@@ -86,7 +86,7 @@ type statsJSONData struct {
 }
 
 const (
-	StatsManagerComp  = "StatsManagerComp"
+	StatsManagerComp  = "STATS_MANAGER"
 	StatsDumpDuration = 4                        // time interval in seconds at which the stats will be dumped
 	JSONFileName      = "xload_stats_{PID}.json" // json file name where the stats manager will dump the stats
 )
