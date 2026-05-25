@@ -51,9 +51,9 @@ const (
 	MaxDataSplitter        = 16
 	MaxLister              = 16
 	MB              uint64 = (1024 * 1024)
-	ListerComp      string = "ListerComp"
-	SplitterComp    string = "SplitterComp"
-	DataManagerComp string = "DataManagerComp"
+	ListerComp      string = "LISTER"
+	SplitterComp    string = "SPLITTER"
+	DataManagerComp string = "DATA_MANAGER"
 )
 
 // One workitem to be processed
