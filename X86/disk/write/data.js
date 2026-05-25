@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779606375889,
+  "lastUpdate": 1779707487432,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -539,6 +539,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_directio",
             "value": 3920.5546875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "souravgupta-msft",
+            "username": "souravgupta-msft",
+            "email": "souravgupta@microsoft.com"
+          },
+          "committer": {
+            "name": "souravgupta-msft",
+            "username": "souravgupta-msft",
+            "email": "souravgupta@microsoft.com"
+          },
+          "id": "9548d2475395dec26d605f25c67d38cc467e43ed",
+          "message": "changes for private drop",
+          "timestamp": "2026-05-25T09:00:21Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/9548d2475395dec26d605f25c67d38cc467e43ed"
+        },
+        "date": 1779707485250,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write_directio",
+            "value": 3887.9921875,
             "unit": "MiB/s"
           }
         ]
