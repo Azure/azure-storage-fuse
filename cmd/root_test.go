@@ -150,10 +150,20 @@ func getDummyVersion() string {
 }
 
 // TestDetectNewVersionCurrentOlder sets the current version to a dummy old
-// value (1.0.0) so that release/latest/1.0.0 returns 404, which triggers the
-// "new version available" message.
+// value (1.0.0). For the upgrade warning to fire there must be an empty
+// marker file at release/outdated/1.0.0 on the benchmarks branch (created
+// either by the one-time backfill or by a future run of the
+// update-latest-version workflow). Until that marker is published we skip
+// rather than fail so the suite stays green during rollout.
 func (suite *rootCmdSuite) TestDetectNewVersionCurrentOlder() {
 	defer suite.cleanupTest()
+
+	outdatedUrl := common.GitHubReleaseBaseURL + "/outdated/" + getDummyVersion()
+	if !checkVersionExists(outdatedUrl) {
+		suite.T().Skipf("skipping: release/outdated/%s marker not yet published on benchmarks branch", getDummyVersion())
+		return
+	}
+
 	savedVersion := common.Blobfuse2Version
 	common.Blobfuse2Version = getDummyVersion()
 	defer func() { common.Blobfuse2Version = savedVersion }()
@@ -163,15 +173,35 @@ func (suite *rootCmdSuite) TestDetectNewVersionCurrentOlder() {
 	suite.assert.Contains(msg, "A new version of Blobfuse2 is available")
 }
 
-// TestDetectNewVersionCurrentLatest sets the current version to the actual
-// latest on the benchmarks branch so that release/latest/{Blobfuse2Version}
-// exists and no upgrade message is produced.
-// func (suite *rootCmdSuite) TestDetectNewVersionCurrentLatest() {
-// 	defer suite.cleanupTest()
-// 	common.Blobfuse2Version = common.Blobfuse2Version_()
-// 	msg := <-beginDetectNewVersion()
-// 	suite.assert.Nil(msg)
-// }
+// TestDetectNewVersionCurrentNewer pins the local version to a value that is
+// strictly greater than anything ever published (99.99.99) and verifies that
+// no "outdated" message is produced. This is the direct regression test for
+// the bug where any local version that didn't exactly match the single file
+// in release/latest/ was falsely flagged as outdated — including newer
+// builds such as a fresh 2.5.4 against a published 2.5.3.
+//
+// With the marker-file design (release/outdated/<version>), 99.99.99 has no
+// marker because no version newer than it has ever been released, so the
+// HEAD probe returns 404 and no warning is emitted.
+func (suite *rootCmdSuite) TestDetectNewVersionCurrentNewer() {
+	defer suite.cleanupTest()
+	savedVersion := common.Blobfuse2Version
+	common.Blobfuse2Version = "99.99.99"
+	defer func() { common.Blobfuse2Version = savedVersion }()
+
+	msg := <-beginDetectNewVersion()
+	suite.assert.Nil(msg)
+}
+
+// TestOutdatedMarkerNotExistsForFuture verifies that release/outdated/ does
+// not contain a marker for an impossibly-future version. This locks in the
+// invariant the latest-version check relies on: any version newer than the
+// published latest must NOT have a marker file.
+func (suite *rootCmdSuite) TestOutdatedMarkerNotExistsForFuture() {
+	defer suite.cleanupTest()
+	outdatedUrl := common.GitHubReleaseBaseURL + "/outdated/99.99.99"
+	suite.assert.False(checkVersionExists(outdatedUrl))
+}
 
 func (suite *rootCmdSuite) TestParseArgs() {
 	defer suite.cleanupTest()

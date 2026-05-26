@@ -112,13 +112,24 @@ func checkVersionExists(fileUrl string) bool {
 // beginDetectNewVersion checks whether the current blobfuse2 version is the
 // latest, has known security warnings, or has been blocked entirely.
 //
-// Instead of calling the GitHub REST API (which is subject to aggressive
-// rate-limiting / 429 errors), we check for sentinel files served by
-// raw.githubusercontent.com from the "benchmarks" branch under release/:
+// All checks read empty sentinel files served by raw.githubusercontent.com
+// from the "benchmarks" branch (api.github.com is intentionally avoided
+// because its per-IP rate-limit causes 403/429 failures in CI pipelines):
 //
-//	release/latest/<version>           – exists only for the current latest GA version
 //	release/securitywarnings/<version> – exists if this version has known issues
 //	release/blockedversions/<version>  – exists if this version must not be used
+//	release/outdated/<version>         – exists if this version is strictly
+//	                                     older than the published latest
+//
+// We deliberately do NOT read any response body — only HEAD-200 vs HEAD-404
+// is consulted — so a poisoned or man-in-the-middled body cannot influence
+// blobfuse2's behavior (no parsing, no RCE surface). This mirrors the
+// public-storage-account convention the project used historically.
+//
+// The outdated/<version> marker is the key to the bug fix: a build that is
+// newer than the published latest (e.g. 2.5.4 vs published 2.5.3) has NO
+// marker under outdated/ and is therefore correctly classified as up-to-date
+// instead of being falsely flagged.
 func beginDetectNewVersion() chan any {
 	completed := make(chan any)
 	stderr := os.Stderr
@@ -160,11 +171,15 @@ func beginDetectNewVersion() chan any {
 		}
 
 		// --- Latest-version check ---
-		// If release/latest/<currentVersion> does NOT exist the running
-		// version is outdated and a newer release is available.
-		latestUrl := common.GitHubReleaseBaseURL + "/latest/" + common.Blobfuse2Version
-		isLatest := checkVersionExists(latestUrl)
-		if !isLatest {
+		// Probe release/outdated/<localVersion>. The marker file is created
+		// by the update-latest-version workflow for every prior GA version
+		// when a new GA is released, so:
+		//   • local == latest published → no marker → no warning
+		//   • local >  latest published → no marker → no warning (fixes the
+		//     bug where any non-equal version was falsely flagged)
+		//   • local <  latest published → marker exists → upgrade warning
+		outdatedUrl := common.GitHubReleaseBaseURL + "/outdated/" + common.Blobfuse2Version
+		if checkVersionExists(outdatedUrl) {
 			executablePathSegments := strings.Split(strings.ReplaceAll(os.Args[0], "\\", "/"), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
 			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s", common.Blobfuse2Version)

@@ -45,9 +45,23 @@ import (
 	"github.com/JeffreyRichter/enum/enum"
 )
 
+//
+// TODO:
+// Backfill release/outdated/ with empty marker files for every prior
+// GA version (everything older than the current latest 2.5.3).
+// After that, the workflow auto-maintains the folder on every release.
+// A one-liner like the following on a benchmarks checkout would do it:
+//
+// mkdir -p release/outdated
+// for tag in $(git tag --list 'blobfuse2-*' | grep -v preview | sed 's/^blobfuse2-//'); do
+//   if [ "$tag" != "2.5.3" ]; then touch "release/outdated/$tag"; fi
+// done
+// git add release/outdated && git commit -m "Backfill outdated/ markers" && git push origin benchmarks
+//
+
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.5.3"
+	blobfuse2Version_ = "2.5.4"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10

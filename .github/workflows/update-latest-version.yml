@@ -1,10 +1,26 @@
-# This workflow updates the latest-version sentinel file on the benchmarks
+# This workflow updates the latest-version sentinel files on the benchmarks
 # branch whenever a new GA (non-preview) release tag is created.
 #
-# The blobfuse2 binary checks raw.githubusercontent.com for the file
-#   release/latest/<version>
-# on the benchmarks branch to determine whether the running version is
-# outdated. This workflow keeps that file in sync with the newest release.
+# Two complementary sentinels are maintained, both following the
+# "filename-is-the-version, body-is-empty" convention used by the existing
+# securitywarnings/ and blockedversions/ folders. Clients only ever HEAD
+# these files — they never read the body — so a poisoned response cannot
+# influence blobfuse2 behavior (no parsing, no RCE surface).
+#
+#   release/latest/<version>     – empty marker named after the current latest
+#                                  version. There is always exactly one file
+#                                  in this directory.
+#   release/outdated/<version>   – empty marker for EVERY version that has
+#                                  been superseded by a newer GA release.
+#                                  The blobfuse2 binary probes
+#                                  release/outdated/<localVersion> on startup;
+#                                  a HEAD-200 means the local build is older
+#                                  than the published latest and an upgrade
+#                                  warning is emitted. A build newer than the
+#                                  published latest has NO marker here and is
+#                                  therefore correctly classified as
+#                                  up-to-date (this is the bug fix — the old
+#                                  logic flagged any non-equal version).
 #
 # Trigger: creation of a tag matching "blobfuse2-*" that does NOT contain
 # "preview" (e.g. blobfuse2-2.5.3). Preview tags are intentionally excluded.
@@ -32,29 +48,46 @@ jobs:
           ref: benchmarks
           fetch-depth: 0
 
-      # Extract version from the tag (strip "blobfuse2-" prefix), remove
-      # the old sentinel file, and create the new one.
-      - name: Update latest version file
+      # Promote the prior latest to outdated/, then point latest/ at the new
+      # version. Marker files are empty — only their names carry meaning.
+      - name: Update latest and outdated sentinel files
         run: |
           TAG_NAME="${GITHUB_REF_NAME}"
           NEW_VERSION="${TAG_NAME#blobfuse2-}"
           echo "New release version: ${NEW_VERSION}"
 
-          cd release/latest/
-          echo "Before cleanup:"
-          ls -l
+          mkdir -p release/outdated
 
-          # Remove old latest-version sentinel file(s)
-          rm -f *
+          echo "release/latest/ before:"
+          ls -l release/latest/
 
-          echo "After cleanup:"
-          ls -l
+          # Move every existing marker in release/latest/ to release/outdated/.
+          # In steady state there is exactly one such file (the prior latest),
+          # but the glob handles any leftover from a partial run.
+          shopt -s nullglob
+          for f in release/latest/*; do
+            prior=$(basename "$f")
+            # Don't demote the version we are about to publish.
+            if [ "${prior}" = "${NEW_VERSION}" ]; then
+              continue
+            fi
+            echo "Promoting prior latest [${prior}] to outdated/"
+            rm -f "release/latest/${prior}"
+            touch "release/outdated/${prior}"
+          done
+          shopt -u nullglob
 
-          # Create new empty sentinel file named after the released version
-          touch "${NEW_VERSION}"
+          # Create the new empty marker for the freshly released version.
+          touch "release/latest/${NEW_VERSION}"
 
-          echo "After update:"
-          ls -l
+          # Make sure the new version is NOT also marked outdated (defensive
+          # cleanup in case of a re-run of the same tag).
+          rm -f "release/outdated/${NEW_VERSION}"
+
+          echo "release/latest/ after:"
+          ls -l release/latest/
+          echo "release/outdated/ after:"
+          ls -l release/outdated/ || true
 
       # Commit and push the change to the benchmarks branch.
       - name: Commit and push to benchmarks
@@ -64,8 +97,8 @@ jobs:
 
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add release/latest/
-          
+          git add release/latest/ release/outdated/
+
           # Only commit and push if there are staged changes.
           if git diff --cached --quiet; then
             echo "No changes to commit; skipping commit and push."

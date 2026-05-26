@@ -44,10 +44,22 @@ const (
 	BlobFuse2BlockingURL = "https://aka.ms/blobfuse2blockers"
 
 	// GitHubReleaseBaseURL is the base URL for raw file access on the benchmarks
-	// branch. Version metadata files live under release/ in three sub-directories:
-	//   release/latest/<version>           – exists only for the latest GA version
-	//   release/securitywarnings/<version> – exists if this version has known issues
-	//   release/blockedversions/<version>  – exists if this version must not be used
+	// branch. Version metadata files live under release/ in four sub-directories.
+	// In every case the *filename* is the version string (e.g. "2.5.3") and the
+	// file itself is empty — clients only ever probe for existence (HEAD), never
+	// read the body. This deliberately matches the public-storage-account
+	// convention used before the move to GitHub and avoids any content-trust /
+	// parsing-attack surface (e.g., remote code execution via a poisoned body).
+	//
+	//   release/latest/<version>           – the current latest GA version
+	//   release/outdated/<version>         – versions strictly older than the latest;
+	//                                        a HEAD-200 on outdated/<localVersion>
+	//                                        means the local build must upgrade.
+	//                                        Crucially, a build newer than the
+	//                                        published latest has NO marker here
+	//                                        and is therefore NOT flagged.
+	//   release/securitywarnings/<version> – versions with known issues
+	//   release/blockedversions/<version>  – versions that must not be used
 	//
 	// We use raw.githubusercontent.com instead of the GitHub REST API
 	// (api.github.com) to avoid authentication requirements and aggressive
