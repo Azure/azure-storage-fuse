@@ -47,14 +47,52 @@ fi
 echo "SHA256 verified: $actual_sha"
 rm "$work_dir/$tarball.sha256"
 
-sudo rm -rf /usr/local/go
-sudo tar -C /usr/local -xzf "$work_dir/$tarball"
+# Stage the new toolchain in /usr/local/go.new before touching the existing
+# install. Keeping the staging dir on the same filesystem as /usr/local/go
+# ensures the final `mv` is atomic, so a failed tar / power loss / partial
+# extract cannot leave the agent without a working Go.
+NEW_GOROOT="/usr/local/go.new"
+OLD_GOROOT="/usr/local/go.old"
+sudo rm -rf "$NEW_GOROOT" "$OLD_GOROOT"
+sudo mkdir -p "$NEW_GOROOT"
+
+# Clean up the staging dir if anything below fails before we swap.
+trap 'sudo rm -rf "$NEW_GOROOT"' ERR
+
+# Extract into the staging dir. --strip-components=1 drops the tarball's
+# top-level "go/" so the contents land directly under NEW_GOROOT.
+sudo tar -C "$NEW_GOROOT" --strip-components=1 -xzf "$work_dir/$tarball"
+
+# Validate the staged toolchain BEFORE swapping. If any of these checks
+# fail, the existing /usr/local/go is left intact.
+"$NEW_GOROOT/bin/go" version
+
+# Verify this is the Microsoft build of Go, not upstream. The MS fork
+# ships a MICROSOFT_REVISION file at GOROOT that upstream Go does not.
+# This is the definitive FIPS-lineage check: without MS Go, the
+# systemcrypto GOEXPERIMENT is unavailable and binaries built here will
+# not carry the microsoft_systemcrypto marker required for FIPS.
+if [ ! -f "$NEW_GOROOT/MICROSOFT_REVISION" ]; then
+  echo "ERROR: $NEW_GOROOT/MICROSOFT_REVISION not found." >&2
+  echo "       The installed toolchain is not the Microsoft build of Go." >&2
+  echo "       FIPS-compliant binaries cannot be produced. Aborting." >&2
+  exit 1
+fi
+echo "Microsoft Go revision: $(cat "$NEW_GOROOT/MICROSOFT_REVISION")"
+
+# Atomic swap: move the existing install aside, then move the new one in.
+# Both renames are within /usr/local (same filesystem) so each is atomic
+# on Linux. After the swap, prune the old install. The trap above is
+# cleared since the staging dir has been moved into place.
+if [ -d /usr/local/go ]; then
+  sudo mv /usr/local/go "$OLD_GOROOT"
+fi
+sudo mv "$NEW_GOROOT" /usr/local/go
+sudo rm -rf "$OLD_GOROOT"
+trap - ERR
+
 sudo ln -sf /usr/local/go/bin/go /usr/bin/go
 sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
-
-# Smoke test: surface the toolchain version so build logs make the FIPS
-# lineage obvious, and fail the script here if the install is broken.
-/usr/local/go/bin/go version
 
 # Remove the tarball
 rm "$work_dir/$tarball"
