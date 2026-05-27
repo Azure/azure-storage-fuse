@@ -41,6 +41,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -56,6 +57,9 @@ import (
 //
 
 const compName = "loopbackfs"
+
+const dummyPositiveEntryPrefix = "dummy_positive_entry"
+const dummyNegativeEntryPrefix = "dummy_negative_entry"
 
 type LoopbackFS struct {
 	internal.BaseComponent
@@ -445,6 +449,23 @@ func (lfs *LoopbackFS) CopyFromFile(options internal.CopyFromFileOptions) error 
 
 func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
 	log.Trace("LoopbackFS::GetAttr : name=%s", options.Name)
+
+	if strings.Contains(options.Name, dummyPositiveEntryPrefix) {
+		attr := &internal.ObjAttr{
+			Path:  options.Name,
+			Name:  filepath.Base(options.Name),
+			Size:  0,
+			Mode:  0644,
+			Mtime: time.Now(),
+		}
+		attr.Flags.Set(internal.PropFlagModeDefault)
+		return attr, nil
+	}
+
+	if strings.Contains(options.Name, dummyNegativeEntryPrefix) {
+		return &internal.ObjAttr{}, syscall.ENOENT
+	}
+
 	path := filepath.Join(lfs.path, options.Name)
 	info, err := os.Lstat(path)
 	if err != nil {

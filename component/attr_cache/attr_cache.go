@@ -35,6 +35,7 @@ package attr_cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -579,6 +580,10 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 
 	// Get the attributes from next component and cache them
 	pathAttr, err := ac.NextComponent().GetAttr(options)
+
+	if errors.Is(err, syscall.ENOENT) {
+		err = syscall.ENOENT
+	}
 
 	ac.cacheLock.Lock()
 	defer ac.cacheLock.Unlock()
