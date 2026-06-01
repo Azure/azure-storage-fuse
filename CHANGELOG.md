@@ -5,6 +5,9 @@
 **Bug Fixes**
 - Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
 
+**Other Changes**
+- Mirror Go runtime panic/fatal stack traces to the Blobfuse2 log file in addition to the existing per-mount `.trace` file.
+
 ## 2.5.3 (2026-03-25)
 **Features**
 - Add rate limit functionality for ingress bandwidth (bytes downloaded per second) and operations per second ([PR #2093](https://github.com/Azure/azure-storage-fuse/pull/2093))

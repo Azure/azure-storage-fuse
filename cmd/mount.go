@@ -446,12 +446,6 @@ var mountCmd = &cobra.Command{
 			_ = log.Destroy()
 		}()
 
-		// Also dump runtime panic/fatal stack traces to a log file (in addition to stderr, which the daemon
-		// library has redirected to the per-mount trace file). For "base" logging this is the configured log
-		// file; for "syslog" it's common.SyslogFilePath (where rsyslog routes blobfuse2 messages). Works for
-		// panics in any goroutine, including those spawned by libfuse callbacks.
-		setCrashOutput(options.Logging.Type, options.Logging.LogFilePath)
-
 		if !disableVersionCheck {
 			err := VersionCheck()
 			if err != nil {
@@ -485,6 +479,13 @@ var mountCmd = &cobra.Command{
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Crit("Log options: %+v", options.Logging)
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
+
+		// Mirror runtime panic/fatal stack traces to a log file (in addition to stderr, which the daemon library
+		// redirects to the per-mount .trace file). For "base" logging this is the configured log file; for "syslog"
+		// it's common.SyslogFilePath where rsyslog routes blobfuse2 messages. Called after the first log.Crit so
+		// that rsyslog has already created /var/log/blobfuse2.log in syslog mode. Captures panics in any goroutine,
+		// including those spawned by libfuse callbacks.
+		setCrashOutput(options.Logging.Type, options.Logging.LogFilePath)
 
 		if directIO {
 			// Direct IO is enabled, so remove the attr-cache from the pipeline
@@ -689,10 +690,11 @@ func setCrashOutput(loggerType, logFilePath string) {
 		return
 	}
 
-	f, err := os.OpenFile(crashFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	// Open without O_CREATE: in base mode BaseLogger has already created the file; in syslog mode rsyslog owns
+	// the file and must have created it first. If the file is missing (e.g. rsyslog not restarted yet on a fresh
+	// install), let it fail -- the per-mount .trace file still captures the panic via stderr redirection.
+	f, err := os.OpenFile(crashFilePath, os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
-		// The per-mount .trace file still captures the panic via stderr redirection in daemon mode.
-		// So, this is not a critical failure. Just log a warning and continue without the crash dump in the main log file.
 		log.Warn("mount: failed to open %s for crash output [%s]", crashFilePath, err.Error())
 		return
 	}
