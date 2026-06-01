@@ -1,8 +1,8 @@
 
 # Cleanup old installation
 sudo apt remove docker-desktop
-rm -r $HOME/.docker/desktop
-sudo rm/usr/local/bin/com.docker.cli
+rm -rf "$HOME/.docker/desktop"
+sudo rm -f /usr/local/bin/com.docker.cli
 sudo apt purge docker-desktop
 sudo apt-get update
 
