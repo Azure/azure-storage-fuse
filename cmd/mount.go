@@ -446,9 +446,10 @@ var mountCmd = &cobra.Command{
 			_ = log.Destroy()
 		}()
 
-		// Also dump runtime panic/fatal stack traces to the Blobfuse2 log file (in addition to stderr, which the
-		// daemon library has redirected to the per-mount trace file). debug.SetCrashOutput works for panics in any
-		// goroutine, including those spawned by libfuse callbacks.
+		// Also dump runtime panic/fatal stack traces to a log file (in addition to stderr, which the daemon
+		// library has redirected to the per-mount trace file). For "base" logging this is the configured log
+		// file; for "syslog" it's common.SyslogFilePath (where rsyslog routes blobfuse2 messages). Works for
+		// panics in any goroutine, including those spawned by libfuse callbacks.
 		setCrashOutput(options.Logging.Type, options.Logging.LogFilePath)
 
 		if !disableVersionCheck {
@@ -666,23 +667,40 @@ var mountCmd = &cobra.Command{
 	},
 }
 
-// setCrashOutput routes Go runtime crash dumps (panics, fatal errors from any goroutine) to the Blobfuse2 log file
-// in addition to stderr. Only effective for file-based logging ("base"); a no-op for syslog/silent loggers.
+// setCrashOutput routes Go runtime crash dumps (panics, fatal errors from any goroutine) to a file in addition to
+// stderr (which the daemon library redirects to the per-mount .trace file). For "base" logging it uses the
+// configured log file; for "syslog" logging it uses the rsyslog-managed path at common.SyslogFilePath.
+// A no-op for the silent logger or when the target path is not writable.
+// The .trace file still captures the panic in that case.
 func setCrashOutput(loggerType, logFilePath string) {
-	if loggerType != "base" || logFilePath == "" {
+	var crashFilePath string
+	switch loggerType {
+	case "base":
+		// BaseLogger may be configured with "stdout" or no file at all; nothing useful to also write to.
+		if logFilePath == "" || logFilePath == "stdout" {
+			return
+		}
+		crashFilePath = logFilePath
+	case "", "default", "syslog":
+		// syslog can't be redirected to via a file descriptor, so target the rsyslog sink for blobfuse2 messages.
+		crashFilePath = common.SyslogFilePath
+	default:
+		// "silent" or unknown logger: skip.
 		return
 	}
 
-	f, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(crashFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		log.Warn("mount: failed to open log file for crash output [%s]", err.Error())
+		// The per-mount .trace file still captures the panic via stderr redirection in daemon mode.
+		// So, this is not a critical failure. Just log a warning and continue without the crash dump in the main log file.
+		log.Warn("mount: failed to open %s for crash output [%s]", crashFilePath, err.Error())
 		return
 	}
 	// SetCrashOutput dups the fd, so the file handle can be closed immediately.
 	defer f.Close()
 
 	if err := debug.SetCrashOutput(f, debug.CrashOptions{}); err != nil {
-		log.Warn("mount: failed to set crash output to log file [%s]", err.Error())
+		log.Warn("mount: failed to set crash output to %s [%s]", crashFilePath, err.Error())
 	}
 }
 
