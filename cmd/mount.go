@@ -446,6 +446,11 @@ var mountCmd = &cobra.Command{
 			_ = log.Destroy()
 		}()
 
+		// Also dump runtime panic/fatal stack traces to the Blobfuse2 log file (in addition to stderr, which the
+		// daemon library has redirected to the per-mount trace file). debug.SetCrashOutput works for panics in any
+		// goroutine, including those spawned by libfuse callbacks.
+		setCrashOutput(options.Logging.Type, options.Logging.LogFilePath)
+
 		if !disableVersionCheck {
 			err := VersionCheck()
 			if err != nil {
@@ -659,6 +664,26 @@ var mountCmd = &cobra.Command{
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
+}
+
+// setCrashOutput routes Go runtime crash dumps (panics, fatal errors from any goroutine) to the Blobfuse2 log file
+// in addition to stderr. Only effective for file-based logging ("base"); a no-op for syslog/silent loggers.
+func setCrashOutput(loggerType, logFilePath string) {
+	if loggerType != "base" || logFilePath == "" {
+		return
+	}
+
+	f, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Warn("mount: failed to open log file for crash output [%s]", err.Error())
+		return
+	}
+	// SetCrashOutput dups the fd, so the file handle can be closed immediately.
+	defer f.Close()
+
+	if err := debug.SetCrashOutput(f, debug.CrashOptions{}); err != nil {
+		log.Warn("mount: failed to set crash output to log file [%s]", err.Error())
+	}
 }
 
 func monitorChild(pid int, done chan struct{}) {
