@@ -83,19 +83,22 @@ steps:
     displayName: "Go Get"
 
   # Building blobfuse2 binary
-  - task: Go@0
-    inputs:
-      command: 'build'
-      arguments: "-tags $(tags) -o blobfuse2"
-      workingDirectory: $(WORK_DIR)
+  # build.sh centralizes CI build settings such as CGO_ENABLED=1 and
+  # GOTOOLCHAIN=local, but the systemcrypto marker required for FIPS
+  # compliance also depends on using the Microsoft Go toolchain and the
+  # appropriate GOEXPERIMENT behavior. Keep these build settings centralized
+  # in build.sh so CI matches local dev exactly.
+  - script: |
+      chmod 755 build.sh
+      ./build.sh $(tags)
+    workingDirectory: $(WORK_DIR)
     displayName: "Go Build"
 
   # Building bfusemon binary
-  - task: Go@0
-    inputs:
-      command: 'build'
-      arguments: "-tags $(tags) -o bfusemon ./tools/health-monitor/"
-      workingDirectory: $(WORK_DIR)
+  - script: |
+      chmod 755 build.sh
+      ./build.sh health
+    workingDirectory: $(WORK_DIR)
     condition: eq('${{ parameters.skip_bfusemon }}', false)
     displayName: "Go Build bfusemon"
 

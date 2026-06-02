@@ -446,7 +446,7 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		}
 	}
 
-	libfuseStatsCollector.PushEvents(createDir, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(createDir, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
 
 	return 0
@@ -625,7 +625,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	log.Trace("Libfuse::libfuse2_create : %s, handle %d", name, handle.ID)
 	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
-	libfuseStatsCollector.PushEvents(createFile, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(createFile, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -879,7 +879,7 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 		return -C.EIO
 	}
 
-	libfuseStatsCollector.PushEvents(truncateFile, name, map[string]interface{}{size: int64(off)})
+	libfuseStatsCollector.PushEvents(truncateFile, name, map[string]any{size: int64(off)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
 
 	return 0
@@ -965,7 +965,7 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 			return -C.EIO
 		}
 
-		libfuseStatsCollector.PushEvents(renameDir, srcPath, map[string]interface{}{source: srcPath, dest: dstPath})
+		libfuseStatsCollector.PushEvents(renameDir, srcPath, map[string]any{source: srcPath, dest: dstPath})
 		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
 
 	} else {
@@ -980,7 +980,7 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 			return -C.EIO
 		}
 
-		libfuseStatsCollector.PushEvents(renameFile, srcPath, map[string]interface{}{source: srcPath, dest: dstPath})
+		libfuseStatsCollector.PushEvents(renameFile, srcPath, map[string]any{source: srcPath, dest: dstPath})
 		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameFile, (int64)(1))
 
 	}
@@ -1006,7 +1006,7 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 		return -C.EIO
 	}
 
-	libfuseStatsCollector.PushEvents(createLink, name, map[string]interface{}{trgt: targetPath})
+	libfuseStatsCollector.PushEvents(createLink, name, map[string]any{trgt: targetPath})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createLink, (int64)(1))
 
 	return 0
@@ -1038,7 +1038,7 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 	copy(data[:size-1], targetPath)
 	data[len(targetPath)] = 0
 
-	libfuseStatsCollector.PushEvents(readLink, name, map[string]interface{}{trgt: targetPath})
+	libfuseStatsCollector.PushEvents(readLink, name, map[string]any{trgt: targetPath})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))
 
 	return 0
@@ -1091,7 +1091,7 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 		return -C.EIO
 	}
 
-	libfuseStatsCollector.PushEvents(chmod, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(chmod, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, chmod, (int64)(1))
 
 	return 0
