@@ -241,11 +241,11 @@ func LogRotate() error {
 var rotateHooksMu sync.Mutex
 var rotateHooks []func()
 
-// OnLogRotate registers fn to be invoked after each successful log rotation performed by the
+// registerLogRotateHook registers fn to be invoked after each successful log rotation performed by the
 // underlying logger. Useful for callers that hold a file descriptor to the log file (e.g. runtime
 // crash output) and need to re-open it after rotation. Hooks are invoked sequentially and must be
 // cheap and non-blocking; they run inline on the rotation path.
-func OnLogRotate(fn func()) {
+func registerLogRotateHook(fn func()) {
 	if fn == nil {
 		return
 	}
@@ -271,7 +271,7 @@ func invokeRotateHooks() {
 // common.SyslogFilePath where rsyslog routes blobfuse2 messages.
 //
 // It also keeps the crash output fd attached to the live log file across rotations:
-//  1. BaseLogger's in-process size-based rotation invokes the OnLogRotate hook directly.
+//  1. BaseLogger's in-process size-based rotation invokes the registered rotate hook directly.
 //  2. External rotators (logrotate's postrotate, the AKS Blob CSI driver, ...) signal the process
 //     via SIGHUP after rotating the file aside.
 //
@@ -282,12 +282,12 @@ func SetupCrashOutput(loggerType, logFilePath string) {
 
 	// Re-attach the crash output fd after log rotation, so dumps land in the live log file rather than the
 	// rotated copy. Covers two rotation paths:
-	//   1. BaseLogger's in-process size-based rotation invokes the OnLogRotate hook directly. The rename
+	//   1. BaseLogger's in-process size-based rotation invokes the registered rotate hook directly. The rename
 	//      moves the original file aside while our dup'd fd stays pinned to the old inode, so we must re-open
 	//      the live file.
 	//   2. External rotators (e.g. logrotate, AKS CSI driver host) that signal the process via SIGHUP after
 	//      rotating /var/log/blobfuse2.log out of the way -- handled below by installCrashSighupHandler.
-	OnLogRotate(func() {
+	registerLogRotateHook(func() {
 		setCrashOutput(loggerType, logFilePath)
 	})
 

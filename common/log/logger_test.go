@@ -172,18 +172,18 @@ func hookCount() int {
 	return len(rotateHooks)
 }
 
-func (lts *LoggerTestSuite) TestOnLogRotate() {
+func (lts *LoggerTestSuite) TestRegisterLogRotateHook() {
 	assert := assert.New(lts.T())
 	resetCrashOutputState()
 
 	// nil hook must be a no-op.
-	OnLogRotate(nil)
+	registerLogRotateHook(nil)
 	assert.Equal(0, hookCount())
 
 	var order []int
-	OnLogRotate(func() { order = append(order, 1) })
-	OnLogRotate(func() { order = append(order, 2) })
-	OnLogRotate(func() { order = append(order, 3) })
+	registerLogRotateHook(func() { order = append(order, 1) })
+	registerLogRotateHook(func() { order = append(order, 2) })
+	registerLogRotateHook(func() { order = append(order, 3) })
 	assert.Equal(3, hookCount())
 
 	invokeRotateHooks()
@@ -210,7 +210,7 @@ func (lts *LoggerTestSuite) TestBaseLoggerRotateInvokesHook() {
 	defer func() { _ = Destroy() }()
 
 	var fired int32
-	OnLogRotate(func() { atomic.AddInt32(&fired, 1) })
+	registerLogRotateHook(func() { atomic.AddInt32(&fired, 1) })
 
 	assert.NoError(LogRotate())
 	assert.Equal(int32(1), atomic.LoadInt32(&fired))
