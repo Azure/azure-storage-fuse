@@ -122,6 +122,7 @@ const (
 var pipelineKeys = []string{
 	"components",
 	"block-cache",
+	"file-cache",
 	"streaming",
 	"preload",
 }
@@ -419,6 +420,7 @@ func OnConfigChange() {
 //   - serving
 //   - checkpointing
 func configureWorkflow(workflow string) error {
+
 	log.Info(
 		"Mount::configureWorkflow : Starting workflow auto-configuration [workflow=%s]",
 		workflow,
@@ -453,18 +455,12 @@ func configureWorkflow(workflow string) error {
 		switch workflow {
 		case WorkflowTraining, WorkflowCheckpointing:
 			if hasFileCache {
-				log.Warn(
-					"Mount::configureWorkflow : Configured cache pipeline differs from recommended cache strategy for workload [%s]",
-					workflow,
-				)
+				fmt.Fprintf(os.Stderr, "WARNING: Configured cache pipeline differs from recommended cache strategy for workload [%s] (configured: file_cache, recommended: block_cache)\n", workflow)
 			}
 
 		case WorkflowServing:
 			if hasBlockCache {
-				log.Warn(
-					"Mount::configureWorkflow : Configured cache pipeline differs from recommended cache strategy for workload [%s]",
-					workflow,
-				)
+				fmt.Fprintf(os.Stderr, "WARNING: Configured cache pipeline differs from recommended cache strategy for workload [%s] (configured: block_cache, recommended: file_cache)\n", workflow)
 			}
 		}
 	}
@@ -475,8 +471,6 @@ func configureWorkflow(workflow string) error {
 		wf.Description,
 	)
 
-	// If user has not configured any pipeline-related settings,
-	// automatically apply workflow defaults.
 	if isPipelineUnconfigured() {
 		log.Info(
 			"Mount::configureWorkflow : No pipeline configuration detected, applying workflow defaults [workflow=%s]",
@@ -486,8 +480,6 @@ func configureWorkflow(workflow string) error {
 		applyDefaultPipeline(workflow, wf)
 
 	} else {
-		// User already configured custom pipeline.
-		// Respect their configuration and only apply lightweight fallback logic.
 		log.Info(
 			"Mount::configureWorkflow : Existing pipeline configuration detected, applying fallback logic only [workflow=%s]",
 			workflow,
@@ -510,7 +502,7 @@ func isPipelineUnconfigured() bool {
 	for _, key := range pipelineKeys {
 		if config.IsSet(key) {
 			log.Debug(
-				"Mount::isPipelineUnconfigured : Existing pipeline config detected [key=%s]",
+				"Mount::isPipelineblobUnconfigured : Existing pipeline config detected [key=%s]",
 				key,
 			)
 
@@ -541,36 +533,66 @@ func applyDefaultPipeline(workflow string, wf WorkflowConfig) {
 	applySettings(workflow, wf.Settings)
 }
 
-// applyFallback applies lightweight workflow-specific settings
-// when user already configured a custom pipeline but forgot a
-// critical workflow-specific configuration key.
 func applyFallback(workflow string, wf WorkflowConfig) {
-	// Workflow does not define fallback behavior.
 	if wf.FallbackKey == "" {
 		log.Debug(
 			"Mount::applyFallback : No fallback configuration defined [workflow=%s]",
 			workflow,
 		)
-
 		return
 	}
 
-	// User already configured required fallback key.
 	if config.IsSet(wf.FallbackKey) {
 		log.Debug(
 			"Mount::applyFallback : Fallback key already configured [workflow=%s, key=%s]",
 			workflow,
 			wf.FallbackKey,
 		)
-
 		return
 	}
 
-	log.Info(
-		"Mount::applyFallback : Applying fallback settings [workflow=%s, key=%s]",
-		workflow,
-		wf.FallbackKey,
-	)
+	// Check if user already has an explicit cache component in
+	// their pipeline. If so, respect it and skip the fallback entirely.
+	if config.IsSet("components") {
+		var components []string
+		_ = config.UnmarshalKey("components", &components)
+
+		cacheComponents := []string{"file_cache", "block_cache", "stream", "xload"}
+		for _, c := range cacheComponents {
+			if slices.Contains(components, c) {
+				log.Info(
+					"Mount::applyFallback : User pipeline already contains cache "+
+						"component %q, skipping fallback [workflow=%s]",
+					c,
+					workflow,
+				)
+				return
+			}
+		}
+
+		// No cache component found in user pipeline.
+		// Inject the recommended cache component directly after libfuse.
+		recommendedCache := wf.Components[1] // block_cache or file_cache
+		newComponents := []string{components[0], recommendedCache}
+		newComponents = append(newComponents, components[1:]...)
+		viper.Set("components", newComponents)
+
+		log.Info(
+			"Mount::applyFallback : Injected cache component into pipeline [workflow=%s, cache=%s, components=%v]",
+			workflow,
+			recommendedCache,
+			newComponents,
+		)
+
+		// Apply only cache-related workflow settings for the injected cache component.
+		cacheSettings := make(map[string]string)
+		for k, v := range wf.Settings {
+			if strings.HasPrefix(k, recommendedCache+".") {
+				cacheSettings[k] = v
+			}
+		}
+		applySettings(workflow, cacheSettings)
+	}
 
 	applySettings(workflow, wf.FallbackSettings)
 }
@@ -730,7 +752,7 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
-		if !configFileExists || len(options.Components) == 0 {
+		if len(options.Components) == 0 {
 			pipeline := []string{"libfuse"}
 
 			if config.IsSet("streaming") && options.Streaming {
