@@ -441,6 +441,8 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 			return -C.EACCES
 		} else if os.IsExist(err) {
 			return -C.EEXIST
+		} else if errors.Is(err, syscall.ENAMETOOLONG) {
+			return -C.ENAMETOOLONG
 		} else {
 			return -C.EIO
 		}

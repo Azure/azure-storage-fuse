@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/datalakeerror"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
@@ -475,6 +476,38 @@ func (s *utilsTestSuite) TestRemoveLeadingSlashes() {
 	for _, i := range inputs {
 		assert.Equal(i.result, removeLeadingSlashes(i.subdirectory))
 	}
+}
+
+func (s *utilsTestSuite) TestStoreDatalakeErrToErr() {
+	assert := assert.New(s.T())
+
+	type testCase struct {
+		name     string
+		code     datalakeerror.StorageErrorCode
+		expected uint16
+	}
+
+	inputs := []testCase{
+		{name: "PathAlreadyExists", code: datalakeerror.PathAlreadyExists, expected: ErrFileAlreadyExists},
+		{name: "PathNotFound", code: datalakeerror.PathNotFound, expected: ErrFileNotFound},
+		{name: "SourcePathNotFound", code: datalakeerror.SourcePathNotFound, expected: ErrFileNotFound},
+		{name: "LeaseIDMissing", code: datalakeerror.LeaseIDMissing, expected: BlobIsUnderLease},
+		{name: "AuthorizationPermissionMismatch", code: datalakeerror.AuthorizationPermissionMismatch, expected: InvalidPermission},
+		{name: "PathIsTooDeep", code: datalakeerror.PathIsTooDeep, expected: ErrPathTooDeep},
+		{name: "Unknown", code: datalakeerror.StorageErrorCode("UnknownCode"), expected: ErrUnknown},
+	}
+
+	for _, i := range inputs {
+		s.Run(i.name, func() {
+			respErr := &azcore.ResponseError{ErrorCode: string(i.code)}
+			result := storeDatalakeErrToErr(respErr)
+			assert.Equal(i.expected, result)
+		})
+	}
+
+	// nil error returns ErrNoErr
+	result := storeDatalakeErrToErr(nil)
+	assert.Equal(uint16(ErrNoErr), result)
 }
 
 func (s *utilsTestSuite) TestRemovePrefixPath() {

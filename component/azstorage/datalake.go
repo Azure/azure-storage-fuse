@@ -278,6 +278,9 @@ func (dl *Datalake) CreateDirectory(name string) error {
 		case ErrFileAlreadyExists:
 			log.Err("Datalake::CreateDirectory : Path already exists for %s [%s]", name, err.Error())
 			return syscall.EEXIST
+		case ErrPathTooDeep:
+			log.Err("Datalake::CreateDirectory : Path is too deep for %s [%s]", name, err.Error())
+			return syscall.ENAMETOOLONG
 		default:
 			log.Err("Datalake::CreateDirectory : Failed to create directory %s [%s]", name, err.Error())
 			return err
