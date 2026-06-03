@@ -688,6 +688,9 @@ func init() {
 	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", defaultAttrCacheTimeout, "attribute cache timeout")
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
 
+	attrCacheMaxFiles := config.AddIntFlag("attr-cache-max-files", defaultMaxFiles, "Maximum number of file attributes to cache in the attribute cache.")
+	config.BindPFlag(compName+".max-files", attrCacheMaxFiles)
+
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
 

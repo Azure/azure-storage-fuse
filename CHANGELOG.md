@@ -1,6 +1,7 @@
 ## 2.5.4 (Unreleased)
 **Features**
 - Make Blobfuse2 binary FIPS compliant by building with the Microsoft Go toolchain (`systemcrypto` GOEXPERIMENT) and `CGO_ENABLED=1`, routing all `crypto/*` calls through the system OpenSSL FIPS provider ([PR #2226](https://github.com/Azure/azure-storage-fuse/pull/2226))
+- Expose the attribute cache max-files limit as a `--attr-cache-max-files` CLI flag so mountOptions/CSI users can raise the cache cap without a config file ([#2218](https://github.com/Azure/azure-storage-fuse/issues/2218))
 
 **Bug Fixes**
 - Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
