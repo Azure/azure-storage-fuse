@@ -5,6 +5,9 @@
 **Bug Fixes**
 - Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
 
+**Other Changes**
+- CBL-Mariner 2.0 has reached end-of-life; Blobfuse2 packages will no longer be published to Mariner 2.0 repositories.
+
 ## 2.5.3 (2026-03-25)
 **Features**
 - Add rate limit functionality for ingress bandwidth (bytes downloaded per second) and operations per second ([PR #2093](https://github.com/Azure/azure-storage-fuse/pull/2093))
