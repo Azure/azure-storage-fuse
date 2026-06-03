@@ -295,5 +295,8 @@ func (l *BaseLogger) LogRotate() error {
 	l.logger.SetOutput(l.logFileHandle)
 	l.fileConfig.currentLogSize = 0
 
+	// Notify post-rotation hooks (e.g. runtime crash output) that the underlying file has changed.
+	invokeRotateHooks()
+
 	return nil
 }
