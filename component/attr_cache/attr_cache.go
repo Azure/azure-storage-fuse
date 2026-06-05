@@ -279,7 +279,7 @@ func (ac *AttrCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})
 	if err != nil {
 		// Ignore not-exists errors — this can happen if createEmptyFile is set to false.
-		if !os.IsNotExist(err) && err != syscall.ENOENT {
+		if !errors.Is(err, os.ErrNotExist) {
 			return 0, err
 		}
 	}
@@ -312,7 +312,7 @@ func (ac *AttrCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Name, RetrieveMetadata: true})
 	if err != nil {
 		// Ignore not exists errors - this can happen if createEmptyFile is set to false
-		if !os.IsNotExist(err) && err != syscall.ENOENT {
+		if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
@@ -356,12 +356,17 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 	truncatedPath := internal.TruncateDirName(options.Name)
 
 	if item, ok := ac.lru.Get(truncatedPath); ok {
-		if item.valid && time.Since(item.cachedAt) < ac.cacheTimeout {
+		if time.Since(item.cachedAt) < ac.cacheTimeout {
 			log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
 			if item.isNegativeEntry() {
 				return &internal.ObjAttr{}, syscall.ENOENT
 			}
-			return item.getAttr(), nil
+
+			if item.attr != nil {
+				return item.attr, nil
+			}
+
+			log.Crit("AttrCache::GetAttr : %s is marked as positive entry in cache but attr is nil", truncatedPath)
 		}
 	}
 
@@ -370,10 +375,9 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 
 	if err == nil {
 		ac.lru.cachePositiveEntry(truncatedPath, pathAttr)
-	} else if errors.Is(err, syscall.ENOENT) {
+	} else if errors.Is(err, os.ErrNotExist) {
 		// Cache negative entries so repeated lookups for absent paths are cheap.
-		// errors.Is unwraps *fs.PathError so loopback-wrapped ENOENTs are matched,
-		// while generic os.ErrNotExist sentinels from other error paths are not.
+		// errors.Is matches syscall.ENOENT, *fs.PathError wrapping ENOENT, and bare os.ErrNotExist sentinels.
 		ac.lru.cacheNegativeEntry(truncatedPath)
 	}
 
@@ -413,11 +417,11 @@ func (ac *AttrCache) Chmod(options internal.ChmodOptions) error {
 
 	if err == nil {
 		truncated := internal.TruncateDirName(options.Name)
-		if item, ok := ac.lru.Peek(truncated); ok && item.valid && item.exists && item.attr != nil {
+		if item, ok := ac.lru.Peek(truncated); ok && item.exists && item.attr != nil {
 			newAttr := *item.attr // copy the struct so the old item stays immutable
 			newAttr.Mode = options.Mode
 			newAttr.Ctime = time.Now()
-			ac.lru.Put(truncated, newAttrCacheItem(&newAttr, true, time.Now()))
+			ac.lru.Put(truncated, &attrCacheItem{attr: &newAttr, exists: true, cachedAt: time.Now()})
 		}
 	}
 

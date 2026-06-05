@@ -34,7 +34,6 @@
 package attr_cache
 
 import (
-	"os"
 	"testing"
 	"time"
 	"unsafe"
@@ -72,9 +71,8 @@ func makeAttrWithMetadata(path string) *internal.ObjAttr {
 func (s *cacheMapTestSuite) TestNewAttrCacheItemPositive() {
 	attr := makeAttr("f")
 	t := time.Now()
-	item := newAttrCacheItem(attr, true, t)
+	item := &attrCacheItem{attr: attr, exists: true, cachedAt: t}
 
-	s.assert.True(item.valid)
 	s.assert.True(item.exists)
 	s.assert.Equal(attr, item.attr)
 	s.assert.Equal(t, item.cachedAt)
@@ -82,9 +80,8 @@ func (s *cacheMapTestSuite) TestNewAttrCacheItemPositive() {
 
 func (s *cacheMapTestSuite) TestNewAttrCacheItemNegative() {
 	t := time.Now()
-	item := newAttrCacheItem(nil, false, t)
+	item := &attrCacheItem{cachedAt: t}
 
-	s.assert.True(item.valid)
 	s.assert.False(item.exists)
 	s.assert.Nil(item.attr)
 	s.assert.Equal(t, item.cachedAt)
@@ -92,61 +89,16 @@ func (s *cacheMapTestSuite) TestNewAttrCacheItemNegative() {
 
 func (s *cacheMapTestSuite) TestGetAttr() {
 	attr := makeAttr("f")
-	item := newAttrCacheItem(attr, true, time.Now())
-	s.assert.Equal(attr, item.getAttr())
-}
-
-func (s *cacheMapTestSuite) TestInvalidate() {
-	item := newAttrCacheItem(makeAttr("f"), true, time.Now())
-	item.invalidate()
-
-	s.assert.False(item.valid)
-	s.assert.Nil(item.attr)
-	// exists is unchanged — invalidate is about staleness, not presence
-	s.assert.True(item.exists)
+	item := &attrCacheItem{attr: attr, exists: true, cachedAt: time.Now()}
+	s.assert.Equal(attr, item.attr)
 }
 
 func (s *cacheMapTestSuite) TestIsNegativeEntry() {
-	positive := newAttrCacheItem(makeAttr("f"), true, time.Now())
+	positive := &attrCacheItem{attr: makeAttr("f"), exists: true, cachedAt: time.Now()}
 	s.assert.False(positive.isNegativeEntry())
 
-	negative := newAttrCacheItem(nil, false, time.Now())
+	negative := &attrCacheItem{cachedAt: time.Now()}
 	s.assert.True(negative.isNegativeEntry())
-}
-
-func (s *cacheMapTestSuite) TestMarkAsNegativeEntry() {
-	item := newAttrCacheItem(makeAttr("f"), true, time.Now())
-	before := time.Now()
-	item.markAsNegativeEntry(before)
-
-	s.assert.False(item.exists)
-	s.assert.True(item.valid)
-	s.assert.Nil(item.attr)
-	s.assert.Equal(before, item.cachedAt)
-}
-
-func (s *cacheMapTestSuite) TestSetSize() {
-	attr := makeAttr("f")
-	item := newAttrCacheItem(attr, true, time.Now())
-	before := time.Now()
-
-	item.setSize(999)
-
-	s.assert.Equal(int64(999), item.attr.Size)
-	s.assert.False(item.attr.Mtime.Before(before))
-	s.assert.False(item.cachedAt.Before(before))
-}
-
-func (s *cacheMapTestSuite) TestSetMode() {
-	attr := makeAttr("f")
-	item := newAttrCacheItem(attr, true, time.Now())
-	before := time.Now()
-
-	item.setMode(os.FileMode(0644))
-
-	s.assert.Equal(os.FileMode(0644), item.attr.Mode)
-	s.assert.False(item.attr.Ctime.Before(before))
-	s.assert.False(item.cachedAt.Before(before))
 }
 
 // ---- estimateAttrCacheEntrySize ----
@@ -161,7 +113,7 @@ func (s *cacheMapTestSuite) TestEstimateSizeNilItem() {
 
 func (s *cacheMapTestSuite) TestEstimateSizeNilAttr() {
 	key := "p"
-	item := newAttrCacheItem(nil, false, time.Now())
+	item := &attrCacheItem{cachedAt: time.Now()}
 	sz := estimateAttrCacheEntrySize(key, item)
 
 	base := int64(len(key)) + int64(unsafe.Sizeof(*item))
@@ -172,7 +124,7 @@ func (s *cacheMapTestSuite) TestEstimateSizeNilAttr() {
 func (s *cacheMapTestSuite) TestEstimateSizeWithAttr() {
 	key := "file"
 	attr := makeAttr("file")
-	item := newAttrCacheItem(attr, true, time.Now())
+	item := &attrCacheItem{attr: attr, exists: true, cachedAt: time.Now()}
 	sz := estimateAttrCacheEntrySize(key, item)
 
 	// Must be strictly larger than key + item struct alone
@@ -183,7 +135,7 @@ func (s *cacheMapTestSuite) TestEstimateSizeWithAttr() {
 func (s *cacheMapTestSuite) TestEstimateSizeGrowsWithMetadata() {
 	key := "f"
 	attr := makeAttr("f")
-	item := newAttrCacheItem(attr, true, time.Now())
+	item := &attrCacheItem{attr: attr, exists: true, cachedAt: time.Now()}
 	szWithout := estimateAttrCacheEntrySize(key, item)
 
 	v := "value"
@@ -194,8 +146,8 @@ func (s *cacheMapTestSuite) TestEstimateSizeGrowsWithMetadata() {
 }
 
 func (s *cacheMapTestSuite) TestEstimateSizeGrowsWithLongerStrings() {
-	short := estimateAttrCacheEntrySize("a", newAttrCacheItem(makeAttr("a"), true, time.Now()))
-	long := estimateAttrCacheEntrySize("averylongpathname", newAttrCacheItem(makeAttr("averylongpathname"), true, time.Now()))
+	short := estimateAttrCacheEntrySize("a", &attrCacheItem{attr: makeAttr("a"), exists: true, cachedAt: time.Now()})
+	long := estimateAttrCacheEntrySize("averylongpathname", &attrCacheItem{attr: makeAttr("averylongpathname"), exists: true, cachedAt: time.Now()})
 	s.assert.Greater(long, short)
 }
 
@@ -213,7 +165,6 @@ func (s *cacheMapTestSuite) TestCachePositiveEntry() {
 
 	item, ok := lru.Peek("file")
 	s.assert.True(ok)
-	s.assert.True(item.valid)
 	s.assert.True(item.exists)
 	s.assert.Equal(attr, item.attr)
 }
@@ -225,7 +176,6 @@ func (s *cacheMapTestSuite) TestCacheNegativeEntry() {
 
 	item, ok := lru.Peek("missing")
 	s.assert.True(ok)
-	s.assert.True(item.valid)
 	s.assert.False(item.exists)
 	s.assert.Nil(item.attr)
 }
@@ -257,7 +207,6 @@ func (s *cacheMapTestSuite) TestCacheAttributesAllPositive() {
 	for _, key := range []string{"a", "b"} {
 		item, ok := lru.Peek(key)
 		s.assert.True(ok, key)
-		s.assert.True(item.valid, key)
 		s.assert.True(item.exists, key)
 	}
 }
@@ -271,7 +220,6 @@ func (s *cacheMapTestSuite) TestDeletePath() {
 
 	item, ok := lru.Peek("file")
 	s.assert.True(ok)
-	s.assert.True(item.valid)
 	s.assert.True(item.isNegativeEntry())
 	s.assert.Nil(item.attr)
 	s.assert.Equal(t, item.cachedAt)
@@ -279,9 +227,15 @@ func (s *cacheMapTestSuite) TestDeletePath() {
 
 func (s *cacheMapTestSuite) TestDeletePathAbsent() {
 	lru := newTestLRU()
-	// Should not panic when path is not in cache
-	lru.deletePath("nonexistent", time.Now())
-	s.assert.Equal(0, lru.Len())
+	t := time.Now()
+
+	lru.deletePath("nonexistent", t)
+
+	// Always inserts a tombstone — callers confirmed the path is gone from storage
+	item, ok := lru.Peek("nonexistent")
+	s.assert.True(ok)
+	s.assert.True(item.isNegativeEntry())
+	s.assert.Equal(t, item.cachedAt)
 }
 
 func (s *cacheMapTestSuite) TestDeletePathTruncatesTrailingSlash() {
@@ -301,10 +255,8 @@ func (s *cacheMapTestSuite) TestInvalidatePath() {
 
 	lru.invalidatePath("file")
 
-	item, ok := lru.Peek("file")
-	s.assert.True(ok)
-	s.assert.False(item.valid)
-	s.assert.Nil(item.attr)
+	_, ok := lru.Peek("file")
+	s.assert.False(ok)
 }
 
 func (s *cacheMapTestSuite) TestInvalidatePathAbsent() {
@@ -320,9 +272,8 @@ func (s *cacheMapTestSuite) TestInvalidatePathTruncatesTrailingSlash() {
 
 	lru.invalidatePath("dir/")
 
-	item, ok := lru.Peek("dir")
-	s.assert.True(ok)
-	s.assert.False(item.valid)
+	_, ok := lru.Peek("dir")
+	s.assert.False(ok)
 }
 
 func (s *cacheMapTestSuite) TestDeleteDirectory() {
@@ -362,6 +313,27 @@ func (s *cacheMapTestSuite) TestDeleteDirectoryPreservesNonChildren() {
 	s.assert.True(item.isNegativeEntry())
 }
 
+func (s *cacheMapTestSuite) TestDeleteDirectoryAlsoDeletesDirectoryItself() {
+	lru := newTestLRU()
+	lru.cachePositiveEntry("dir", makeAttr("dir"))
+
+	lru.deleteDirectory("dir", time.Now())
+
+	item, ok := lru.Peek("dir")
+	s.assert.True(ok)
+	s.assert.True(item.isNegativeEntry())
+}
+
+func (s *cacheMapTestSuite) TestInvalidateDirectoryAlsoDeletesDirectoryItself() {
+	lru := newTestLRU()
+	lru.cachePositiveEntry("dir", makeAttr("dir"))
+
+	lru.invalidateDirectory("dir")
+
+	_, ok := lru.Peek("dir")
+	s.assert.False(ok)
+}
+
 func (s *cacheMapTestSuite) TestInvalidateDirectory() {
 	lru := newTestLRU()
 	lru.cachePositiveEntry("dir", makeAttr("dir"))
@@ -372,13 +344,12 @@ func (s *cacheMapTestSuite) TestInvalidateDirectory() {
 	lru.invalidateDirectory("dir")
 
 	for _, key := range []string{"dir", "dir/a", "dir/b"} {
-		item, ok := lru.Peek(key)
-		s.assert.True(ok, key)
-		s.assert.False(item.valid, key)
+		_, ok := lru.Peek(key)
+		s.assert.False(ok, key)
 	}
 	item, ok := lru.Peek("other")
 	s.assert.True(ok)
-	s.assert.True(item.valid)
+	s.assert.True(item.exists)
 }
 
 func (s *cacheMapTestSuite) TestInvalidateDirectoryPreservesNonChildren() {
@@ -390,11 +361,10 @@ func (s *cacheMapTestSuite) TestInvalidateDirectoryPreservesNonChildren() {
 
 	item, ok := lru.Peek("dira")
 	s.assert.True(ok)
-	s.assert.True(item.valid)
+	s.assert.True(item.exists)
 
-	item, ok = lru.Peek("dir/x")
-	s.assert.True(ok)
-	s.assert.False(item.valid)
+	_, ok = lru.Peek("dir/x")
+	s.assert.False(ok)
 }
 
 func (s *cacheMapTestSuite) TestUpdateCacheEntry() {

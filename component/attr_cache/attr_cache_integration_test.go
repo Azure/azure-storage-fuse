@@ -116,18 +116,16 @@ func (suite *attrCacheIntegrationTestSuite) mkDir(relPath string) {
 // It asserts that the path is absent or invalid before the call, then confirms
 // it is cached and valid afterwards.
 func (suite *attrCacheIntegrationTestSuite) cacheViaGetAttr(path string) *attrCacheItem {
-	// Pre-condition: entry must not exist or must be stale/invalid in the LRU.
-	if existing, ok := suite.attrCache.lru.Peek(path); ok {
-		suite.assert.False(existing.valid, "cacheViaGetAttr: path %q already has a valid entry in the LRU before GetAttr", path)
-	}
+	// Pre-condition: entry must not already be present in the LRU.
+	_, ok := suite.attrCache.lru.Peek(path)
+	suite.assert.False(ok, "cacheViaGetAttr: path %q already has an entry in the LRU before GetAttr", path)
 
 	_, err := suite.attrCache.GetAttr(internal.GetAttrOptions{Name: path})
 	suite.assert.NoError(err)
 
-	// Post-condition: entry must now be present and valid.
+	// Post-condition: entry must now be present.
 	item, ok := suite.attrCache.lru.Peek(path)
 	suite.assert.True(ok, "cacheViaGetAttr: path %q not found in LRU after GetAttr", path)
-	suite.assert.True(item.valid, "cacheViaGetAttr: path %q is in LRU but not valid after GetAttr", path)
 	return item
 }
 
@@ -155,7 +153,6 @@ func (suite *attrCacheIntegrationTestSuite) TestGetAttrCacheMiss() {
 
 	item, ok := suite.attrCache.lru.Peek("miss.txt")
 	suite.assert.True(ok)
-	suite.assert.True(item.valid)
 	suite.assert.True(item.exists)
 	suite.assert.NotNil(item.attr)
 }
@@ -200,7 +197,6 @@ func (suite *attrCacheIntegrationTestSuite) TestGetAttrNegativeCache() {
 
 	item, ok := suite.attrCache.lru.Peek("ghost.txt")
 	suite.assert.True(ok, "negative entry must be cached")
-	suite.assert.True(item.valid)
 	suite.assert.False(item.exists)
 	suite.assert.Nil(item.attr)
 }
@@ -253,10 +249,8 @@ func (suite *attrCacheIntegrationTestSuite) TestCreateDirInvalidatesCache() {
 	suite.assert.NoError(err)
 
 	// The created path should not be in the cache (invalidated by CreateDir).
-	item, ok := suite.attrCache.lru.Peek("newdir2")
-	if ok {
-		suite.assert.False(item.valid)
-	}
+	_, ok := suite.attrCache.lru.Peek("newdir2")
+	suite.assert.False(ok)
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestDeleteDirMarksDirectoryNegative() {
@@ -268,7 +262,6 @@ func (suite *attrCacheIntegrationTestSuite) TestDeleteDirMarksDirectoryNegative(
 
 	item, ok := suite.attrCache.lru.Peek("todelete")
 	suite.assert.True(ok)
-	suite.assert.True(item.valid)
 	suite.assert.False(item.exists, "deleted dir must be a negative entry")
 }
 
@@ -325,11 +318,9 @@ func (suite *attrCacheIntegrationTestSuite) TestRenameDirMarksSourceNegativeInva
 	suite.assert.True(ok)
 	suite.assert.False(srcItem.exists, "renamed-away dir must be a negative entry")
 
-	// Destination, if cached, must be invalid (not trusted).
-	dstItem, ok := suite.attrCache.lru.Peek("dstdir")
-	if ok {
-		suite.assert.False(dstItem.valid, "dst should be invalidated after rename")
-	}
+	// Destination, if cached, must be absent (invalidated by rename).
+	_, ok = suite.attrCache.lru.Peek("dstdir")
+	suite.assert.False(ok, "dst should be deleted from cache after rename")
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestSyncDirInvalidatesSubtree() {
@@ -345,10 +336,8 @@ func (suite *attrCacheIntegrationTestSuite) TestSyncDirInvalidatesSubtree() {
 	suite.assert.NoError(err)
 
 	for _, p := range []string{"syncdir", "syncdir/sub", "syncdir/sub/f.txt"} {
-		item, ok := suite.attrCache.lru.Peek(p)
-		if ok {
-			suite.assert.False(item.valid, "SyncDir must invalidate %s", p)
-		}
+		_, ok := suite.attrCache.lru.Peek(p)
+		suite.assert.False(ok, "SyncDir must remove %s from cache", p)
 	}
 }
 
@@ -366,7 +355,6 @@ func (suite *attrCacheIntegrationTestSuite) TestReadDirPopulatesCache() {
 	for _, attr := range pathList {
 		item, ok := suite.attrCache.lru.Peek(attr.Path)
 		suite.assert.True(ok, "ReadDir must cache %s", attr.Path)
-		suite.assert.True(item.valid)
 		suite.assert.True(item.exists)
 	}
 }
@@ -401,7 +389,6 @@ func (suite *attrCacheIntegrationTestSuite) TestStreamDirPopulatesCache() {
 	for _, attr := range pathList {
 		item, ok := suite.attrCache.lru.Peek(attr.Path)
 		suite.assert.True(ok, "StreamDir must cache %s", attr.Path)
-		suite.assert.True(item.valid)
 		suite.assert.True(item.exists)
 	}
 }
@@ -428,16 +415,14 @@ func (suite *attrCacheIntegrationTestSuite) TestStreamDirCacheHitOnSubsequentGet
 func (suite *attrCacheIntegrationTestSuite) TestCreateFileInvalidatesEntry() {
 	// Pre-populate a stale entry for a non-existent path.
 	suite.attrCache.lru.Put("newfile.txt",
-		newAttrCacheItem(nil, false, time.Now()))
+		&attrCacheItem{cachedAt: time.Now()})
 
 	h, err := suite.attrCache.CreateFile(internal.CreateFileOptions{Name: "newfile.txt", Mode: 0644})
 	suite.assert.NoError(err)
 	h.GetFileObject().Close()
 
-	item, ok := suite.attrCache.lru.Peek("newfile.txt")
-	if ok {
-		suite.assert.False(item.valid, "CreateFile must invalidate the cache entry")
-	}
+	_, ok := suite.attrCache.lru.Peek("newfile.txt")
+	suite.assert.False(ok, "CreateFile must remove the cache entry")
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestDeleteFileMarksEntryNegative() {
@@ -449,7 +434,6 @@ func (suite *attrCacheIntegrationTestSuite) TestDeleteFileMarksEntryNegative() {
 
 	item, ok := suite.attrCache.lru.Peek("del.txt")
 	suite.assert.True(ok)
-	suite.assert.True(item.valid)
 	suite.assert.False(item.exists, "deleted file must be a negative entry")
 
 	// GetAttr must return ENOENT from cache.
@@ -512,7 +496,6 @@ func (suite *attrCacheIntegrationTestSuite) TestRenameFilePreCachedDestGetsUpdat
 
 	dstItem, ok := suite.attrCache.lru.Peek("rdst.txt")
 	suite.assert.True(ok)
-	suite.assert.True(dstItem.valid)
 	suite.assert.True(dstItem.exists)
 }
 
@@ -529,10 +512,8 @@ func (suite *attrCacheIntegrationTestSuite) TestWriteFileInvalidatesEntry() {
 	})
 	suite.assert.NoError(err)
 
-	item, ok := suite.attrCache.lru.Peek("write.txt")
-	if ok {
-		suite.assert.False(item.valid, "WriteFile must invalidate the cache entry")
-	}
+	_, ok := suite.attrCache.lru.Peek("write.txt")
+	suite.assert.False(ok, "WriteFile must remove the cache entry")
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestTruncateFileInvalidatesEntry() {
@@ -545,10 +526,8 @@ func (suite *attrCacheIntegrationTestSuite) TestTruncateFileInvalidatesEntry() {
 	})
 	suite.assert.NoError(err)
 
-	item, ok := suite.attrCache.lru.Peek("trunc.txt")
-	if ok {
-		suite.assert.False(item.valid, "TruncateFile must invalidate the cache entry")
-	}
+	_, ok := suite.attrCache.lru.Peek("trunc.txt")
+	suite.assert.False(ok, "TruncateFile must remove the cache entry")
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestFlushFileInvalidatesEntry() {
@@ -560,10 +539,8 @@ func (suite *attrCacheIntegrationTestSuite) TestFlushFileInvalidatesEntry() {
 	err := suite.attrCache.FlushFile(internal.FlushFileOptions{Handle: h})
 	suite.assert.NoError(err)
 
-	item, ok := suite.attrCache.lru.Peek("flush.txt")
-	if ok {
-		suite.assert.False(item.valid, "FlushFile must invalidate the cache entry")
-	}
+	_, ok := suite.attrCache.lru.Peek("flush.txt")
+	suite.assert.False(ok, "FlushFile must remove the cache entry")
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestSyncFileInvalidatesEntry() {
@@ -574,10 +551,8 @@ func (suite *attrCacheIntegrationTestSuite) TestSyncFileInvalidatesEntry() {
 	err := suite.attrCache.SyncFile(internal.SyncFileOptions{Handle: h})
 	suite.assert.NoError(err)
 
-	item, ok := suite.attrCache.lru.Peek("sync.txt")
-	if ok {
-		suite.assert.False(item.valid, "SyncFile must invalidate the cache entry")
-	}
+	_, ok := suite.attrCache.lru.Peek("sync.txt")
+	suite.assert.False(ok, "SyncFile must remove the cache entry")
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestChmodUpdatesInPlace() {
@@ -591,7 +566,6 @@ func (suite *attrCacheIntegrationTestSuite) TestChmodUpdatesInPlace() {
 	// Chmod must update the mode in-place, not invalidate.
 	item, ok := suite.attrCache.lru.Peek("chmod.txt")
 	suite.assert.True(ok)
-	suite.assert.True(item.valid, "Chmod must not invalidate the cache entry")
 	suite.assert.True(item.exists)
 	suite.assert.Equal(newMode, item.attr.Mode)
 }
@@ -627,10 +601,8 @@ func (suite *attrCacheIntegrationTestSuite) TestCopyFromFileInvalidatesEntry() {
 	})
 	suite.assert.NoError(err)
 
-	item, ok := suite.attrCache.lru.Peek("copydst.txt")
-	if ok {
-		suite.assert.False(item.valid, "CopyFromFile must invalidate the cache entry")
-	}
+	_, ok := suite.attrCache.lru.Peek("copydst.txt")
+	suite.assert.False(ok, "CopyFromFile must remove the cache entry")
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestCreateLinkInvalidatesBothEnds() {
@@ -647,10 +619,8 @@ func (suite *attrCacheIntegrationTestSuite) TestCreateLinkInvalidatesBothEnds() 
 	suite.assert.NoError(err)
 
 	for _, p := range []string{"linkname", "linktarget.txt"} {
-		item, ok := suite.attrCache.lru.Peek(p)
-		if ok {
-			suite.assert.False(item.valid, "CreateLink must invalidate %s", p)
-		}
+		_, ok := suite.attrCache.lru.Peek(p)
+		suite.assert.False(ok, "CreateLink must remove %s from cache", p)
 	}
 }
 
@@ -664,10 +634,8 @@ func (suite *attrCacheIntegrationTestSuite) TestCommitDataInvalidatesEntry() {
 	})
 	suite.assert.NoError(err)
 
-	item, ok := suite.attrCache.lru.Peek("commit.txt")
-	if ok {
-		suite.assert.False(item.valid, "CommitData must invalidate the cache entry")
-	}
+	_, ok := suite.attrCache.lru.Peek("commit.txt")
+	suite.assert.False(ok, "CommitData must remove the cache entry")
 }
 
 // ---- LRU eviction tests -----------------------------------------------------
@@ -744,9 +712,8 @@ func (suite *attrCacheIntegrationTestSuite) TestConcurrentGetAttrNoRace() {
 
 	// Verify all entries are cached correctly after concurrent access.
 	for i := 0; i < n; i++ {
-		item, ok := suite.attrCache.lru.Peek(fmt.Sprintf("conc_%d.txt", i))
+		_, ok := suite.attrCache.lru.Peek(fmt.Sprintf("conc_%d.txt", i))
 		suite.assert.True(ok)
-		suite.assert.True(item.valid)
 	}
 }
 
