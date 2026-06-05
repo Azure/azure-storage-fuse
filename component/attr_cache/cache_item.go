@@ -34,7 +34,6 @@
 package attr_cache
 
 import (
-	"os"
 	"strings"
 	"time"
 	"unsafe"
@@ -47,49 +46,11 @@ import (
 type attrCacheItem struct {
 	attr     *internal.ObjAttr
 	cachedAt time.Time
-	valid    bool // true if the cached data is fresh and should be used; false means stale
 	exists   bool // true if the entry exists in storage; false marks a negative cache entry (path confirmed absent)
-}
-
-func newAttrCacheItem(attr *internal.ObjAttr, exists bool, cachedAt time.Time) *attrCacheItem {
-	return &attrCacheItem{
-		attr:     attr,
-		cachedAt: cachedAt,
-		valid:    true,
-		exists:   exists,
-	}
-}
-
-func (value *attrCacheItem) getAttr() *internal.ObjAttr {
-	return value.attr
-}
-
-func (value *attrCacheItem) invalidate() {
-	value.valid = false
-	value.attr = nil
 }
 
 func (value *attrCacheItem) isNegativeEntry() bool {
 	return !value.exists
-}
-
-func (value *attrCacheItem) markAsNegativeEntry(deletedTime time.Time) {
-	value.exists = false
-	value.valid = true
-	value.cachedAt = deletedTime
-	value.attr = nil
-}
-
-func (value *attrCacheItem) setSize(size int64) {
-	value.attr.Mtime = time.Now()
-	value.attr.Size = size
-	value.cachedAt = time.Now()
-}
-
-func (value *attrCacheItem) setMode(mode os.FileMode) {
-	value.attr.Mode = mode
-	value.attr.Ctime = time.Now()
-	value.cachedAt = time.Now()
 }
 
 // heapOverheadFactor accounts for Go runtime memory overhead on top of the raw struct
@@ -139,11 +100,11 @@ func newAttrCacheLRU(maxSizeBytes int64) *attrCacheLRU {
 }
 
 func (l *attrCacheLRU) cachePositiveEntry(path string, attr *internal.ObjAttr) {
-	l.Put(path, newAttrCacheItem(attr, true, time.Now()))
+	l.Put(path, &attrCacheItem{attr: attr, exists: true, cachedAt: time.Now()})
 }
 
 func (l *attrCacheLRU) cacheNegativeEntry(path string) {
-	l.Put(path, newAttrCacheItem(nil, false, time.Now()))
+	l.Put(path, &attrCacheItem{cachedAt: time.Now()})
 }
 
 func (l *attrCacheLRU) cacheAttributes(pathList []*internal.ObjAttr) {
@@ -153,56 +114,37 @@ func (l *attrCacheLRU) cacheAttributes(pathList []*internal.ObjAttr) {
 	}
 }
 
+// Marks the entry as negative
 func (l *attrCacheLRU) deletePath(path string, t time.Time) {
-	truncated := internal.TruncateDirName(path)
-	if l.Has(truncated) {
-		l.Put(truncated, newAttrCacheItem(nil, false, t))
-	}
+	l.Put(internal.TruncateDirName(path), &attrCacheItem{cachedAt: t})
 }
 
+// Removes the entry from the cache.
 func (l *attrCacheLRU) invalidatePath(path string) {
-	truncated := internal.TruncateDirName(path)
-	if l.Has(truncated) {
-		l.Put(truncated, &attrCacheItem{valid: false})
-	}
+	l.Delete(internal.TruncateDirName(path))
 }
 
 func (l *attrCacheLRU) deleteDirectory(path string, t time.Time) {
+	// Mark all the child entries as negative entries
 	prefix := internal.ExtendDirName(path)
-
-	// Phase 1: collect matching keys while holding only the read lock (via Range).
-	// Calling Put inside Range would deadlock (Range holds read lock; Put needs write lock).
-	var toMark []string
-	l.Range(func(key string, _ *attrCacheItem) bool {
-		if strings.HasPrefix(key, prefix) {
-			toMark = append(toMark, key)
-		}
-		return true
+	l.ReplaceIf(func(key string, _ *attrCacheItem) bool {
+		return strings.HasPrefix(key, prefix)
+	}, func(_ string) *attrCacheItem {
+		return &attrCacheItem{cachedAt: t}
 	})
 
-	// Phase 2: replace each entry with a new immutable negative item.
-	for _, key := range toMark {
-		l.Put(key, newAttrCacheItem(nil, false, t))
-	}
+	// Mark the directory entry itself as a negative entry
 	l.deletePath(path, t)
 }
 
 func (l *attrCacheLRU) invalidateDirectory(path string) {
+	// Invalidate all the child entries
 	prefix := internal.ExtendDirName(path)
-
-	// Phase 1: collect matching keys under read lock.
-	var toMark []string
-	l.Range(func(key string, _ *attrCacheItem) bool {
-		if strings.HasPrefix(key, prefix) {
-			toMark = append(toMark, key)
-		}
-		return true
+	l.DeleteIf(func(key string, _ *attrCacheItem) bool {
+		return strings.HasPrefix(key, prefix)
 	})
 
-	// Phase 2: replace each entry with a new immutable invalid item.
-	for _, key := range toMark {
-		l.Put(key, &attrCacheItem{valid: false})
-	}
+	// Invalidate directory entry itself
 	l.invalidatePath(path)
 }
 
@@ -211,6 +153,6 @@ func (l *attrCacheLRU) updateCacheEntry(path string, attr *internal.ObjAttr) {
 		if attr != nil {
 			attr.Path = path
 		}
-		l.Put(path, newAttrCacheItem(attr, attr != nil, time.Now()))
+		l.Put(path, &attrCacheItem{attr: attr, exists: attr != nil, cachedAt: time.Now()})
 	}
 }

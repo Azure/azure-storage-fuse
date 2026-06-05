@@ -433,6 +433,77 @@ func (s *lruCacheTestSuite) TestDeleteIfEmpty() {
 	s.assert.Equal(0, lru.Len())
 }
 
+func (s *lruCacheTestSuite) TestReplaceIf() {
+	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
+	overhead := lru.PerEntryOverhead()
+	for _, k := range []string{"a", "b", "c", "d"} {
+		lru.Put(k, 1)
+	}
+
+	lru.ReplaceIf(func(k string, _ int) bool { return k >= "c" }, func(_ string) int { return 99 })
+
+	s.assert.Equal(4, lru.Len())
+	s.assert.Equal(int64(4)*overhead, lru.Size())
+	v, ok := lru.Peek("a")
+	s.assert.True(ok)
+	s.assert.Equal(1, v)
+	v, ok = lru.Peek("c")
+	s.assert.True(ok)
+	s.assert.Equal(99, v)
+	v, ok = lru.Peek("d")
+	s.assert.True(ok)
+	s.assert.Equal(99, v)
+}
+
+func (s *lruCacheTestSuite) TestReplaceIfAll() {
+	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
+	lru.Put("a", 1)
+	lru.Put("b", 2)
+
+	lru.ReplaceIf(func(_ string, _ int) bool { return true }, func(_ string) int { return 0 })
+
+	s.assert.Equal(2, lru.Len())
+	v, _ := lru.Peek("a")
+	s.assert.Equal(0, v)
+	v, _ = lru.Peek("b")
+	s.assert.Equal(0, v)
+}
+
+func (s *lruCacheTestSuite) TestReplaceIfNone() {
+	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
+	overhead := lru.PerEntryOverhead()
+	lru.Put("a", 1)
+	lru.Put("b", 2)
+
+	lru.ReplaceIf(func(_ string, _ int) bool { return false }, func(_ string) int { return 99 })
+
+	s.assert.Equal(2, lru.Len())
+	s.assert.Equal(int64(2)*overhead, lru.Size())
+	v, _ := lru.Peek("a")
+	s.assert.Equal(1, v)
+	v, _ = lru.Peek("b")
+	s.assert.Equal(2, v)
+}
+
+func (s *lruCacheTestSuite) TestReplaceIfEmpty() {
+	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
+	// Should not panic on empty cache
+	lru.ReplaceIf(func(_ string, _ int) bool { return true }, func(_ string) int { return 0 })
+	s.assert.Equal(0, lru.Len())
+}
+
+func (s *lruCacheTestSuite) TestReplaceIfPromotesToMRU() {
+	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
+	lru.Put("a", 1)
+	lru.Put("b", 2) // b is MRU
+
+	lru.ReplaceIf(func(k string, _ int) bool { return k == "a" }, func(_ string) int { return 99 })
+
+	// "a" should have been promoted to MRU after replacement
+	v, _ := lru.Get("a")
+	s.assert.Equal(99, v)
+}
+
 // ---- purge then reuse ----
 
 func (s *lruCacheTestSuite) TestPurgeAndReuse() {

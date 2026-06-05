@@ -241,6 +241,25 @@ func (l *LRU[K, V]) DeleteIf(pred func(K, V) bool) {
 	}
 }
 
+// ReplaceIf replaces the value of every entry for which pred returns true with newVal(key).
+// The factory is called once per matching entry so each gets its own value.
+// It holds the write lock for the entire scan — no entry matching the predicate can be
+// inserted or removed by another goroutine between the scan and the replacements.
+func (l *LRU[K, V]) ReplaceIf(pred func(K, V) bool, newVal func(K) V) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var keys []K
+	for elem := l.list.Front(); elem != nil; elem = elem.Next() {
+		item := elem.Value.(*lruItem[K, V])
+		if pred(item.key, item.val) {
+			keys = append(keys, item.key)
+		}
+	}
+	for _, k := range keys {
+		l.put(k, newVal(k))
+	}
+}
+
 // evictIfNeeded removes the least-recently-used entries until currSize <= maxSize.
 // Must be called with l.mu write-locked.
 func (l *LRU[K, V]) evictIfNeeded() {
