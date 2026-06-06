@@ -425,7 +425,7 @@ func makeTypicalAttr(i int) *internal.ObjAttr {
 // TestAttrCacheLRUHonorsMemoryLimit verifies the hard invariant: Size() never
 // exceeds MaxSize() at any point during a fill that goes well past the limit.
 func (s *cacheMapTestSuite) TestAttrCacheLRUHonorsMemoryLimit() {
-	const maxSize = 32 * 1024 * 1024
+	const maxSize = 64 * 1024 * 1024
 	lru := newAttrCacheLRU(maxSize)
 
 	for i := 0; i < 200_000; i++ {
@@ -444,7 +444,7 @@ func (s *cacheMapTestSuite) TestAttrCacheLRUHonorsMemoryLimit() {
 // LRU accounting have drifted apart.
 // Run with -v to see the per-entry byte budget and capacity for documentation.
 func (s *cacheMapTestSuite) TestNegativeEntryCapacityMatchesEstimate() {
-	const maxSize = 32 * 1024 * 1024
+	const maxSize = 64 * 1024 * 1024
 	lru := newAttrCacheLRU(maxSize)
 
 	k := typicalPath(0)
@@ -452,7 +452,7 @@ func (s *cacheMapTestSuite) TestNegativeEntryCapacityMatchesEstimate() {
 	bytesPerEntry := lru.PerEntryOverhead() + userSize
 	expectedLen := int(int64(maxSize) / bytesPerEntry)
 
-	s.T().Logf("negative entry: %d B/entry → 32 MB holds ~%d entries", bytesPerEntry, expectedLen)
+	s.T().Logf("negative entry: %d B/entry → 64 MB holds ~%d entries", bytesPerEntry, expectedLen)
 
 	for i := 0; i < expectedLen*2; i++ {
 		lru.cacheNegativeEntry(typicalPath(i))
@@ -466,7 +466,7 @@ func (s *cacheMapTestSuite) TestNegativeEntryCapacityMatchesEstimate() {
 // with realistic ETag and MD5 fields populated.
 // Run with -v to see the per-entry byte budget and capacity for documentation.
 func (s *cacheMapTestSuite) TestPositiveEntryCapacityMatchesEstimate() {
-	const maxSize = 32 * 1024 * 1024
+	const maxSize = 64 * 1024 * 1024
 	lru := newAttrCacheLRU(maxSize)
 
 	probe := makeTypicalAttr(0)
@@ -474,7 +474,7 @@ func (s *cacheMapTestSuite) TestPositiveEntryCapacityMatchesEstimate() {
 	bytesPerEntry := lru.PerEntryOverhead() + userSize
 	expectedLen := int(int64(maxSize) / bytesPerEntry)
 
-	s.T().Logf("positive entry (ETag+MD5, no metadata): %d B/entry → 32 MB holds ~%d entries", bytesPerEntry, expectedLen)
+	s.T().Logf("positive entry (ETag+MD5, no metadata): %d B/entry → 64 MB holds ~%d entries", bytesPerEntry, expectedLen)
 
 	for i := 0; i < expectedLen*2; i++ {
 		lru.cachePositiveEntry(typicalPath(i), makeTypicalAttr(i))
