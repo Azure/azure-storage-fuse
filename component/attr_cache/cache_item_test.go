@@ -57,16 +57,6 @@ func makeAttr(path string) *internal.ObjAttr {
 	return &internal.ObjAttr{Path: path, Name: path, Size: 1024, Mode: 0755}
 }
 
-func makeAttrWithMetadata(path string) *internal.ObjAttr {
-	v := "val"
-	return &internal.ObjAttr{
-		Path:     path,
-		Name:     path,
-		ETag:     "etag123",
-		Metadata: map[string]*string{"key": &v},
-	}
-}
-
 // ---- attrCacheItem ----
 
 func (s *cacheMapTestSuite) TestNewAttrCacheItemPositive() {
@@ -398,7 +388,8 @@ func (s *cacheMapTestSuite) TestUpdateCacheEntryAbsent() {
 // real Azure blob paths (container + directory depth + filename).
 // Fixed length keeps every entry's estimated size identical, making capacity
 // arithmetic exact and regression-friendly.
-//   "logs/service/2024/" (18 B) + 34-digit zero-padded index (34 B) = 52 B
+//
+//	"logs/service/2024/" (18 B) + 34-digit zero-padded index (34 B) = 52 B
 func typicalPath(i int) string { return fmt.Sprintf("logs/service/2024/%034d", i) }
 
 // typicalName returns the fixed-length filename portion of typicalPath.
