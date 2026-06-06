@@ -52,7 +52,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -67,11 +66,11 @@ type attrCacheIntegrationTestSuite struct {
 
 func (suite *attrCacheIntegrationTestSuite) SetupTest() {
 	err := log.SetDefaultLogger("silent", common.LogConfig{})
-	require.NoError(suite.T(), err)
+	suite.Require().NoError(err)
 	suite.assert = assert.New(suite.T())
 
 	dir, err := os.MkdirTemp("", "attr_cache_integration_*")
-	require.NoError(suite.T(), err)
+	suite.Require().NoError(err)
 	suite.loopbackDir = dir
 
 	cfg := fmt.Sprintf(
@@ -81,13 +80,13 @@ func (suite *attrCacheIntegrationTestSuite) SetupTest() {
 	_ = config.ReadConfigFromReader(strings.NewReader(cfg))
 
 	loopback := lbfs.NewLoopbackFSComponent()
-	require.NoError(suite.T(), loopback.Configure(true))
-	require.NoError(suite.T(), loopback.Start(context.Background()))
+	suite.Require().NoError(loopback.Configure(true))
+	suite.Require().NoError(loopback.Start(context.Background()))
 
 	ac := NewAttrCacheComponent()
 	ac.SetNextComponent(loopback)
-	require.NoError(suite.T(), ac.Configure(true))
-	require.NoError(suite.T(), ac.Start(context.Background()))
+	suite.Require().NoError(ac.Configure(true))
+	suite.Require().NoError(ac.Start(context.Background()))
 	suite.attrCache = ac.(*AttrCache)
 }
 
@@ -101,15 +100,15 @@ func (suite *attrCacheIntegrationTestSuite) TearDownTest() {
 // touchFile creates a file (and any parent dirs) directly in the loopback dir.
 func (suite *attrCacheIntegrationTestSuite) touchFile(relPath string) {
 	full := filepath.Join(suite.loopbackDir, relPath)
-	require.NoError(suite.T(), os.MkdirAll(filepath.Dir(full), 0755))
+	suite.Require().NoError(os.MkdirAll(filepath.Dir(full), 0755))
 	f, err := os.Create(full)
-	require.NoError(suite.T(), err)
+	suite.Require().NoError(err)
 	f.Close()
 }
 
 // mkDir creates a directory in the loopback dir.
 func (suite *attrCacheIntegrationTestSuite) mkDir(relPath string) {
-	require.NoError(suite.T(), os.MkdirAll(filepath.Join(suite.loopbackDir, relPath), 0755))
+	suite.Require().NoError(os.MkdirAll(filepath.Join(suite.loopbackDir, relPath), 0755))
 }
 
 // cacheViaGetAttr calls GetAttr through the cache, populating the cache.
@@ -587,7 +586,7 @@ func (suite *attrCacheIntegrationTestSuite) TestCopyFromFileInvalidatesEntry() {
 	suite.cacheViaGetAttr("copydst.txt")
 
 	tmpSrc, err := os.CreateTemp("", "copy_src_*")
-	require.NoError(suite.T(), err)
+	suite.Require().NoError(err)
 	defer func() {
 		tmpSrc.Close()
 		os.Remove(tmpSrc.Name())
@@ -649,7 +648,7 @@ func (suite *attrCacheIntegrationTestSuite) TestLRUEvictionForcesRefetch() {
 	// Measure the cost of a single entry.
 	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "lru_a.txt"})
 	singleSize := suite.attrCache.lru.Size()
-	suite.assert.Greater(singleSize, int64(0))
+	suite.assert.Positive(singleSize)
 
 	// Allow exactly two entries.
 	suite.attrCache.lru.SetMaxSize(singleSize * 2)
@@ -800,7 +799,11 @@ func (suite *attrCacheIntegrationTestSuite) TestConcurrentGetAttrAndNilAttrRace(
 			name := fmt.Sprintf("race_%d.txt", idx)
 			for j := 0; j < 20; j++ {
 				_ = suite.attrCache.DeleteFile(internal.DeleteFileOptions{Name: name})
-				suite.touchFile(name)
+				full := filepath.Join(suite.loopbackDir, name)
+				_ = os.MkdirAll(filepath.Dir(full), 0755)
+				if f, err := os.Create(full); err == nil {
+					f.Close()
+				}
 				h, err := suite.attrCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0644})
 				if err == nil {
 					h.GetFileObject().Close()
@@ -877,7 +880,7 @@ func (suite *attrCacheIntegrationTestSuite) TestStaleEntryReplacedOnRefetch() {
 	// After expiry, the new attributes should be fetched.
 	attr, err := suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "stale.txt"})
 	suite.assert.NoError(err)
-	suite.assert.Greater(attr.Size, int64(0), "refreshed entry must reflect new file size")
+	suite.assert.Positive(attr.Size, "refreshed entry must reflect new file size")
 }
 
 func (suite *attrCacheIntegrationTestSuite) TestDeleteThenRecreateFile() {

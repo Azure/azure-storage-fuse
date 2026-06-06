@@ -75,9 +75,9 @@ type AttrCache struct {
 	noSymlinks   bool
 	maxSizeBytes int64
 	lru          *attrCacheLRU
-	stopCh  chan struct{}
-	sweepWg sync.WaitGroup
-	lastOp  atomic.Pointer[time.Time]
+	stopCh       chan struct{}
+	sweepWg      sync.WaitGroup
+	lastOp       atomic.Pointer[time.Time]
 }
 
 // AttrCacheOptions holds the configuration for the attribute cache.

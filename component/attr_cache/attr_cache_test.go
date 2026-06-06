@@ -1423,7 +1423,7 @@ func (s *sweeperTestSuite) TestSweeperGoroutineEvictsEntries() {
 	const timeout = 50 * time.Millisecond
 	ac := &AttrCache{cacheTimeout: timeout}
 	_ = ac.Start(context.Background())
-	defer ac.Stop()
+	defer func() { _ = ac.Stop() }()
 
 	ac.lru.cachePositiveEntry("file", makeAttr("file"))
 
@@ -1444,7 +1444,7 @@ func (s *sweeperTestSuite) TestGetAttrUpdatesLastOp() {
 
 	stored := ac.lastOp.Load()
 	s.assert.NotNil(stored)
-	s.assert.True(!stored.Before(before), "lastOp must be updated by GetAttr")
+	s.assert.False(stored.Before(before), "lastOp must be updated by GetAttr")
 }
 
 // attrCacheNoopNext is a minimal Component stub used by sweeper tests that need

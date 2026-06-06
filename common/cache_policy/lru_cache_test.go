@@ -575,7 +575,7 @@ func (s *lruCacheTestSuite) TestPeekAbsent() {
 	lru := NewLRU[string, string](0, strSizeOf)
 	v, ok := lru.Peek("missing")
 	s.assert.False(ok)
-	s.assert.Equal("", v)
+	s.assert.Empty(v)
 }
 
 // ---- concurrent access ----
