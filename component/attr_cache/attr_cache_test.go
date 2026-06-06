@@ -1311,3 +1311,150 @@ func (suite *attrCacheTestSuite) TestLRUOrderPreservesRecentlyAccessed() {
 func TestAttrCacheTestSuite(t *testing.T) {
 	suite.Run(t, new(attrCacheTestSuite))
 }
+
+// ---- TTL sweeper tests ----
+
+type sweeperTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
+}
+
+func (s *sweeperTestSuite) SetupTest() {
+	s.assert = assert.New(s.T())
+}
+
+// newSweeperCache builds a minimal AttrCache with no mock next-component,
+// suitable for testing sweepExpired directly.
+func newSweeperCache(timeout time.Duration) *AttrCache {
+	ac := &AttrCache{cacheTimeout: timeout}
+	ac.lru = newAttrCacheLRU(0)
+	return ac
+}
+
+func expiredItem() *attrCacheItem {
+	return &attrCacheItem{cachedAt: time.Now().Add(-1 * time.Hour), exists: true, attr: makeAttr("x")}
+}
+
+func freshItem() *attrCacheItem {
+	return &attrCacheItem{cachedAt: time.Now(), exists: true, attr: makeAttr("x")}
+}
+
+// TestSweepExpiredRemovesExpiredEntries verifies that entries past their TTL are deleted
+// and fresh entries within TTL are kept.
+func (s *sweeperTestSuite) TestSweepExpiredRemovesExpiredEntries() {
+	ac := newSweeperCache(100 * time.Millisecond)
+	ac.lru.Put("expired", &attrCacheItem{cachedAt: time.Now().Add(-200 * time.Millisecond), exists: true, attr: makeAttr("expired")})
+	ac.lru.Put("fresh", freshItem())
+
+	ac.sweepExpired()
+
+	s.assert.Equal(1, ac.lru.Len())
+	_, ok := ac.lru.Peek("expired")
+	s.assert.False(ok)
+	_, ok = ac.lru.Peek("fresh")
+	s.assert.True(ok)
+}
+
+// TestSweepExpiredKeepsFreshEntries verifies that no entries are removed when none have expired.
+func (s *sweeperTestSuite) TestSweepExpiredKeepsFreshEntries() {
+	ac := newSweeperCache(1 * time.Hour)
+	ac.lru.Put("a", freshItem())
+	ac.lru.Put("b", freshItem())
+
+	ac.sweepExpired()
+
+	s.assert.Equal(2, ac.lru.Len())
+}
+
+// TestSweepExpiredRemovesNegativeEntries verifies that expired tombstones are swept too.
+func (s *sweeperTestSuite) TestSweepExpiredRemovesNegativeEntries() {
+	ac := newSweeperCache(100 * time.Millisecond)
+	ac.lru.Put("tombstone", &attrCacheItem{cachedAt: time.Now().Add(-200 * time.Millisecond), exists: false})
+
+	ac.sweepExpired()
+
+	s.assert.Equal(0, ac.lru.Len())
+}
+
+// TestSweepExpiredSkipsWhenCacheIsActive verifies the idle gate: if lastOp is recent
+// (within cacheTimeout/2), the sweep is skipped entirely.
+func (s *sweeperTestSuite) TestSweepExpiredSkipsWhenCacheIsActive() {
+	ac := newSweeperCache(1 * time.Hour)
+	ac.lru.Put("expired", expiredItem())
+
+	// Simulate recent cache activity — well within the cacheTimeout/2 idle gate.
+	t := time.Now()
+	ac.lastOp.Store(&t)
+
+	ac.sweepExpired()
+
+	s.assert.Equal(1, ac.lru.Len(), "sweep must be skipped when cache is active")
+}
+
+// TestSweepExpiredRunsWhenCacheIsIdle verifies that entries are swept when lastOp
+// indicates the cache has been idle for longer than cacheTimeout/2.
+func (s *sweeperTestSuite) TestSweepExpiredRunsWhenCacheIsIdle() {
+	ac := newSweeperCache(100 * time.Millisecond)
+	ac.lru.Put("expired", &attrCacheItem{cachedAt: time.Now().Add(-200 * time.Millisecond)})
+
+	// Simulate the cache being idle for 2 hours.
+	old := time.Now().Add(-2 * time.Hour)
+	ac.lastOp.Store(&old)
+
+	ac.sweepExpired()
+
+	s.assert.Equal(0, ac.lru.Len())
+}
+
+// TestSweepExpiredNoopWhenTimeoutZero verifies that sweep is a no-op when cacheTimeout == 0,
+// preventing all entries from being treated as instantly expired.
+func (s *sweeperTestSuite) TestSweepExpiredNoopWhenTimeoutZero() {
+	ac := newSweeperCache(0)
+	ac.lru.Put("entry", freshItem())
+
+	ac.sweepExpired()
+
+	s.assert.Equal(1, ac.lru.Len())
+}
+
+// TestSweeperGoroutineEvictsEntries is an integration test that starts the sweeper goroutine
+// and verifies it removes expired entries within a few sweep cycles.
+func (s *sweeperTestSuite) TestSweeperGoroutineEvictsEntries() {
+	const timeout = 50 * time.Millisecond
+	ac := &AttrCache{cacheTimeout: timeout}
+	_ = ac.Start(context.Background())
+	defer ac.Stop()
+
+	ac.lru.cachePositiveEntry("file", makeAttr("file"))
+
+	// Wait for the entry to expire and at least two sweep cycles to complete.
+	time.Sleep(4 * timeout)
+
+	s.assert.Equal(0, ac.lru.Len(), "sweeper goroutine must have removed the expired entry")
+}
+
+// TestGetAttrUpdatesLastOp verifies that GetAttr refreshes the idle-gate timestamp,
+// preventing the sweeper from running during active lookup traffic.
+func (s *sweeperTestSuite) TestGetAttrUpdatesLastOp() {
+	ac := newSweeperCache(1 * time.Hour)
+	ac.SetNextComponent(&attrCacheNoopNext{})
+
+	before := time.Now()
+	_, _ = ac.GetAttr(internal.GetAttrOptions{Name: "any"})
+
+	stored := ac.lastOp.Load()
+	s.assert.NotNil(stored)
+	s.assert.True(!stored.Before(before), "lastOp must be updated by GetAttr")
+}
+
+// attrCacheNoopNext is a minimal Component stub used by sweeper tests that need
+// a non-nil next component but don't care about its behaviour.
+type attrCacheNoopNext struct{ internal.BaseComponent }
+
+func (n *attrCacheNoopNext) GetAttr(_ internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	return nil, os.ErrNotExist
+}
+
+func TestSweeperTestSuite(t *testing.T) {
+	suite.Run(t, new(sweeperTestSuite))
+}
