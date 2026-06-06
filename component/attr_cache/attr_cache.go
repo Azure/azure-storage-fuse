@@ -56,13 +56,13 @@ const defaultAttrCacheTimeout uint32 = 120
 // defaultMaxSizeMB is the default memory limit for the attribute cache.
 // Set to 0 to disable memory-based eviction (only TTL-based cleanup applies).
 //
-// Rough capacity at 32 MB (52-byte path, 20-byte ETag, 16-byte MD5):
-//   - negative entry (tombstone): ~320 B/entry → ~105 K entries
-//   - positive entry (no metadata): ~964 B/entry → ~35 K entries
+// Rough capacity at 64 MB (52-byte path, 20-byte ETag, 16-byte MD5):
+//   - negative entry (tombstone): ~320 B/entry → ~210 K entries
+//   - positive entry (no metadata): ~964 B/entry → ~70 K entries
 //
 // See TestNegativeEntryCapacityMatchesEstimate and TestPositiveEntryCapacityMatchesEstimate
 // in cache_item_test.go for exact accounting and how to recalculate for different path lengths.
-const defaultMaxSizeMB uint32 = 32
+const defaultMaxSizeMB uint32 = 64
 
 // AttrCache is the pipeline component that caches file/directory attributes.
 // The LRU is thread-safe; no additional locking is needed around individual operations.
