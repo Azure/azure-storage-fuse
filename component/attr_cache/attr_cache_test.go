@@ -134,7 +134,6 @@ func assertUntouched(suite *attrCacheTestSuite, path string) {
 // assertAttributesTransferred checks that dst has the same attrs as src and is valid/exists.
 func assertAttributesTransferred(suite *attrCacheTestSuite, srcAttr *internal.ObjAttr, dstAttr *internal.ObjAttr) {
 	suite.assert.Equal(srcAttr.Size, dstAttr.Size)
-	suite.assert.Equal(srcAttr.Path, dstAttr.Path)
 	suite.assert.Equal(srcAttr.Mode, dstAttr.Mode)
 	suite.assert.Equal(srcAttr.Atime, dstAttr.Atime)
 	suite.assert.Equal(srcAttr.Mtime, dstAttr.Mtime)

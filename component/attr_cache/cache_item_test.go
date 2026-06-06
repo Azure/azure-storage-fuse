@@ -34,6 +34,7 @@
 package attr_cache
 
 import (
+	"fmt"
 	"testing"
 	"time"
 	"unsafe"
@@ -107,7 +108,7 @@ func (s *cacheMapTestSuite) TestEstimateSizeNilItem() {
 	key := "somepath"
 	sz := estimateAttrCacheEntrySize(key, nil)
 	expected := int64(len(key))
-	expected += int64(float64(expected) * heapOverheadFactor)
+	expected += expected
 	s.assert.Equal(expected, sz)
 }
 
@@ -117,7 +118,7 @@ func (s *cacheMapTestSuite) TestEstimateSizeNilAttr() {
 	sz := estimateAttrCacheEntrySize(key, item)
 
 	base := int64(len(key)) + int64(unsafe.Sizeof(*item))
-	expected := base + int64(float64(base)*heapOverheadFactor)
+	expected := base * 2
 	s.assert.Equal(expected, sz)
 }
 
@@ -389,6 +390,115 @@ func (s *cacheMapTestSuite) TestUpdateCacheEntryAbsent() {
 	// Should be a no-op for a path not in cache
 	lru.updateCacheEntry("missing", makeAttr("missing"))
 	s.assert.Equal(0, lru.Len())
+}
+
+// ---- Memory limit and capacity tests ----
+
+// typicalPath returns a deterministic 52-byte path for index i, representative of
+// real Azure blob paths (container + directory depth + filename).
+// Fixed length keeps every entry's estimated size identical, making capacity
+// arithmetic exact and regression-friendly.
+//   "logs/service/2024/" (18 B) + 34-digit zero-padded index (34 B) = 52 B
+func typicalPath(i int) string { return fmt.Sprintf("logs/service/2024/%034d", i) }
+
+// typicalName returns the fixed-length filename portion of typicalPath.
+func typicalName(i int) string { return fmt.Sprintf("%034d", i) }
+
+// fixedETag is a representative Azure ETag (quoted hex string, 20 bytes).
+const fixedETag = "\"0x8DA1B2C3D4E5F6A7\""
+
+// fixedMD5 is a representative 16-byte MD5 digest.
+var fixedMD5 = []byte{
+	0x9b, 0x74, 0xc9, 0x89, 0x7b, 0xac, 0x77, 0x0f,
+	0xfc, 0x9f, 0x8a, 0xd0, 0x7f, 0x36, 0x2e, 0x15,
+}
+
+func makeTypicalAttr(i int) *internal.ObjAttr {
+	return &internal.ObjAttr{
+		Path: typicalPath(i),
+		Name: typicalName(i),
+		ETag: fixedETag,
+		MD5:  fixedMD5,
+	}
+}
+
+// TestAttrCacheLRUHonorsMemoryLimit verifies the hard invariant: Size() never
+// exceeds MaxSize() at any point during a fill that goes well past the limit.
+func (s *cacheMapTestSuite) TestAttrCacheLRUHonorsMemoryLimit() {
+	const maxSize = 32 * 1024 * 1024
+	lru := newAttrCacheLRU(maxSize)
+
+	for i := 0; i < 200_000; i++ {
+		lru.cacheNegativeEntry(typicalPath(i))
+		if i%10_000 == 0 {
+			s.assert.LessOrEqualf(lru.Size(), int64(maxSize),
+				"Size() exceeded MaxSize() after %d inserts", i+1)
+		}
+	}
+	s.assert.LessOrEqual(lru.Size(), int64(maxSize))
+}
+
+// TestNegativeEntryCapacityMatchesEstimate verifies that the actual number of
+// entries the LRU holds at steady state equals the theoretical capacity derived
+// from estimateAttrCacheEntrySize.  A mismatch means the size estimator and the
+// LRU accounting have drifted apart.
+// Run with -v to see the per-entry byte budget and capacity for documentation.
+func (s *cacheMapTestSuite) TestNegativeEntryCapacityMatchesEstimate() {
+	const maxSize = 32 * 1024 * 1024
+	lru := newAttrCacheLRU(maxSize)
+
+	k := typicalPath(0)
+	userSize := estimateAttrCacheEntrySize(k, &attrCacheItem{cachedAt: time.Now()})
+	bytesPerEntry := lru.PerEntryOverhead() + userSize
+	expectedLen := int(int64(maxSize) / bytesPerEntry)
+
+	s.T().Logf("negative entry: %d B/entry → 32 MB holds ~%d entries", bytesPerEntry, expectedLen)
+
+	for i := 0; i < expectedLen*2; i++ {
+		lru.cacheNegativeEntry(typicalPath(i))
+	}
+
+	s.assert.Equal(expectedLen, lru.Len(),
+		"negative-entry capacity mismatch: bytesPerEntry=%d expectedLen=%d", bytesPerEntry, expectedLen)
+}
+
+// TestPositiveEntryCapacityMatchesEstimate is the same check for positive entries
+// with realistic ETag and MD5 fields populated.
+// Run with -v to see the per-entry byte budget and capacity for documentation.
+func (s *cacheMapTestSuite) TestPositiveEntryCapacityMatchesEstimate() {
+	const maxSize = 32 * 1024 * 1024
+	lru := newAttrCacheLRU(maxSize)
+
+	probe := makeTypicalAttr(0)
+	userSize := estimateAttrCacheEntrySize(typicalPath(0), &attrCacheItem{attr: probe, exists: true, cachedAt: time.Now()})
+	bytesPerEntry := lru.PerEntryOverhead() + userSize
+	expectedLen := int(int64(maxSize) / bytesPerEntry)
+
+	s.T().Logf("positive entry (ETag+MD5, no metadata): %d B/entry → 32 MB holds ~%d entries", bytesPerEntry, expectedLen)
+
+	for i := 0; i < expectedLen*2; i++ {
+		lru.cachePositiveEntry(typicalPath(i), makeTypicalAttr(i))
+	}
+
+	s.assert.Equal(expectedLen, lru.Len(),
+		"positive-entry capacity mismatch: bytesPerEntry=%d expectedLen=%d", bytesPerEntry, expectedLen)
+}
+
+// TestEntrySizesAreInExpectedRange guards against silent struct bloat or formula
+// changes.  The bounds are intentionally loose (~2× headroom) so they survive
+// minor struct additions while still catching large regressions.
+func (s *cacheMapTestSuite) TestEntrySizesAreInExpectedRange() {
+	lru := newAttrCacheLRU(0)
+
+	negUserSize := estimateAttrCacheEntrySize(typicalPath(0), &attrCacheItem{cachedAt: time.Now()})
+	negTotal := lru.PerEntryOverhead() + negUserSize
+	s.assert.GreaterOrEqualf(negTotal, int64(300), "negative entry shrank below 300 B (got %d B)", negTotal)
+	s.assert.LessOrEqualf(negTotal, int64(600), "negative entry grew past 600 B (got %d B)", negTotal)
+
+	posUserSize := estimateAttrCacheEntrySize(typicalPath(0), &attrCacheItem{attr: makeTypicalAttr(0), exists: true, cachedAt: time.Now()})
+	posTotal := lru.PerEntryOverhead() + posUserSize
+	s.assert.GreaterOrEqualf(posTotal, int64(700), "positive entry shrank below 700 B (got %d B)", posTotal)
+	s.assert.LessOrEqualf(posTotal, int64(1500), "positive entry grew past 1500 B (got %d B)", posTotal)
 }
 
 func TestCacheMapTestSuite(t *testing.T) {
