@@ -39,6 +39,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -66,12 +68,16 @@ const defaultMaxSizeMB uint32 = 32
 // The LRU is thread-safe; no additional locking is needed around individual operations.
 // Expired entries are rejected lazily at GetAttr time; the memory-bounded LRU evicts
 // stale entries by LRU order as new entries arrive.
+// A background sweeper goroutine reclaims memory from TTL-expired entries when the cache is idle.
 type AttrCache struct {
 	internal.BaseComponent
 	cacheTimeout time.Duration
 	noSymlinks   bool
 	maxSizeBytes int64
 	lru          *attrCacheLRU
+	stopCh  chan struct{}
+	sweepWg sync.WaitGroup
+	lastOp  atomic.Pointer[time.Time]
 }
 
 // AttrCacheOptions holds the configuration for the attribute cache.
@@ -106,17 +112,68 @@ func (ac *AttrCache) Priority() internal.ComponentPriority {
 	return internal.EComponentPriority.LevelTwo()
 }
 
-// Start initialises the cache.
+// Start initialises the cache and launches the background TTL sweeper.
 func (ac *AttrCache) Start(_ context.Context) error {
 	log.Trace("AttrCache::Start : Starting component %s", ac.Name())
+	if ac.stopCh != nil {
+		close(ac.stopCh)
+		ac.sweepWg.Wait()
+		ac.stopCh = nil
+	}
 	ac.lru = newAttrCacheLRU(ac.maxSizeBytes)
+	if ac.cacheTimeout > 0 {
+		ac.stopCh = make(chan struct{})
+		ac.sweepWg.Add(1)
+		go func() {
+			defer ac.sweepWg.Done()
+			ac.ttlSweeper()
+		}()
+	}
 	return nil
 }
 
-// Stop is a no-op; the LRU is garbage-collected when the component is released.
+// Stop cancels the background sweeper and waits for it to exit before returning.
+// Memory held by expired entries is reclaimed by the GC once the component is released.
 func (ac *AttrCache) Stop() error {
 	log.Trace("AttrCache::Stop : Stopping component %s", ac.Name())
+	if ac.stopCh != nil {
+		close(ac.stopCh)
+		ac.sweepWg.Wait()
+		ac.stopCh = nil
+	}
 	return nil
+}
+
+// ttlSweeper ticks every cacheTimeout and evicts expired entries when the cache is idle.
+func (ac *AttrCache) ttlSweeper() {
+	ticker := time.NewTicker(ac.cacheTimeout)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			ac.sweepExpired()
+		case <-ac.stopCh:
+			return
+		}
+	}
+}
+
+// sweepExpired removes all TTL-expired entries from the LRU.
+// The idle gate skips the sweep if the cache was used within the last cacheTimeout/2
+// to avoid holding the write lock during active traffic.
+func (ac *AttrCache) sweepExpired() {
+	if ac.cacheTimeout <= 0 {
+		return
+	}
+	if last := ac.lastOp.Load(); last != nil {
+		if time.Since(*last) < ac.cacheTimeout/2 {
+			return
+		}
+	}
+	timeout := ac.cacheTimeout
+	ac.lru.DeleteIf(func(_ string, item *attrCacheItem) bool {
+		return time.Since(item.cachedAt) >= timeout
+	})
 }
 
 // GenConfig returns a default configuration snippet for this component.
@@ -360,6 +417,8 @@ func (ac *AttrCache) SyncDir(options internal.SyncDirOptions) error {
 // next component and caches the result on miss.
 func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
 	log.Trace("AttrCache::GetAttr : %s", options.Name)
+	t := time.Now()
+	ac.lastOp.Store(&t)
 	truncatedPath := internal.TruncateDirName(options.Name)
 
 	if item, ok := ac.lru.Get(truncatedPath); ok {
