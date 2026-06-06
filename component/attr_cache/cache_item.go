@@ -53,14 +53,15 @@ func (value *attrCacheItem) isNegativeEntry() bool {
 	return !value.exists
 }
 
-// heapOverheadFactor accounts for Go runtime memory overhead on top of the raw struct
-// sizes measured by unsafe.Sizeof. It covers size-class rounding (Go rounds every heap
-// allocation up to the nearest size class), GC metadata, and backing-array rounding for
-// short string and slice fields. 15% is a conservative estimate across the mix of small
-// structs and variable-length strings that make up a typical attr-cache entry.
-const heapOverheadFactor = 0.15
-
 // estimateAttrCacheEntrySize estimates the heap bytes for one attr-cache key-value pair.
+// The result is doubled to account for Go's GOGC=100 behaviour where RSS ≈ 2× live heap.
+//
+// Typical sizes (52-byte path, 20-byte ETag, 16-byte MD5):
+//   - negative entry (tombstone): ~320 B/entry
+//   - positive entry (no metadata): ~964 B/entry
+//
+// See TestNegativeEntryCapacityMatchesEstimate and TestPositiveEntryCapacityMatchesEstimate
+// in cache_item_test.go for exact accounting and how to recalculate for different path lengths.
 func estimateAttrCacheEntrySize(key string, item *attrCacheItem) int64 {
 	// Key string data (the string header is already in LRU's lruItem struct)
 	sz := int64(len(key))
@@ -85,7 +86,10 @@ func estimateAttrCacheEntrySize(key string, item *attrCacheItem) int64 {
 		}
 	}
 
-	return sz + int64(float64(sz)*heapOverheadFactor)
+	// With GOGC=100 (Go's default), the runtime lets garbage accumulate up to 100% of the
+	// live heap before collecting, so RSS can reach ~2× the live heap. Doubling the estimate
+	// keeps the LRU limit meaningful in RSS terms rather than raw heap terms.
+	return sz * 2
 }
 
 // attrCacheLRU is an LRU cache specialised for attr-cache entries. Embedding the generic
@@ -151,7 +155,9 @@ func (l *attrCacheLRU) invalidateDirectory(path string) {
 func (l *attrCacheLRU) updateCacheEntry(path string, attr *internal.ObjAttr) {
 	if l.Has(path) {
 		if attr != nil {
-			attr.Path = path
+			copied := *attr // copy so we don't mutate the caller's struct
+			copied.Path = path
+			attr = &copied
 		}
 		l.Put(path, &attrCacheItem{attr: attr, exists: attr != nil, cachedAt: time.Now()})
 	}
