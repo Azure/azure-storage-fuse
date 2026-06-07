@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780208091405,
+  "lastUpdate": 1780812814759,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1025,6 +1025,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 157.51478578664899,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "e3737e044c07afb242d80bd0d1d881ea04bf859c",
+          "message": "Bump github.com/Azure/azure-sdk-for-go/sdk/azcore from 1.21.1 to 1.22.0 (#2243)",
+          "timestamp": "2026-06-05T05:43:42Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/e3737e044c07afb242d80bd0d1d881ea04bf859c"
+        },
+        "date": 1780812814503,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.238103128167,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.330841809709,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.310595202402,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 128.769471841202,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.513688551045,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.368600282593,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 140.898079456037,
             "unit": "milliseconds"
           }
         ]
