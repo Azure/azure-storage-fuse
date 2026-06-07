@@ -74,10 +74,11 @@ type AttrCache struct {
 	cacheTimeout time.Duration
 	noSymlinks   bool
 	maxSizeBytes int64
-	lru          *attrCacheLRU
-	stopCh       chan struct{}
-	sweepWg      sync.WaitGroup
-	lastOp       atomic.Int64 // Unix seconds of last LRU operation; 0 = no activity yet
+	lru            *attrCacheLRU
+	stopCh         chan struct{}
+	sweepWg        sync.WaitGroup
+	lastOp         atomic.Int64 // Unix seconds of last LRU operation; 0 = no activity yet
+	noCacheOnList  bool
 }
 
 // AttrCacheOptions holds the configuration for the attribute cache.
@@ -112,15 +113,14 @@ func (ac *AttrCache) Priority() internal.ComponentPriority {
 	return internal.EComponentPriority.LevelTwo()
 }
 
-// Start initialises the cache and launches the background TTL sweeper.
-func (ac *AttrCache) Start(_ context.Context) error {
-	log.Trace("AttrCache::Start : Starting component %s", ac.Name())
+// startSweeper stops any running sweeper goroutine and starts a new one using
+// the current cacheTimeout. If cacheTimeout is zero, no sweeper is started.
+func (ac *AttrCache) startSweeper() {
 	if ac.stopCh != nil {
 		close(ac.stopCh)
 		ac.sweepWg.Wait()
 		ac.stopCh = nil
 	}
-	ac.lru = newAttrCacheLRU(ac.maxSizeBytes, &ac.lastOp)
 	if ac.cacheTimeout > 0 {
 		ac.stopCh = make(chan struct{})
 		ac.sweepWg.Add(1)
@@ -129,6 +129,13 @@ func (ac *AttrCache) Start(_ context.Context) error {
 			ac.ttlSweeper()
 		}()
 	}
+}
+
+// Start initialises the cache and launches the background TTL sweeper.
+func (ac *AttrCache) Start(_ context.Context) error {
+	log.Trace("AttrCache::Start : Starting component %s", ac.Name())
+	ac.lru = newAttrCacheLRU(ac.maxSizeBytes, &ac.lastOp)
+	ac.startSweeper()
 	return nil
 }
 
@@ -183,6 +190,7 @@ func (ac *AttrCache) GenConfig() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "\n%s:", ac.Name())
 	fmt.Fprintf(&sb, "\n  timeout-sec: %v", defaultAttrCacheTimeout)
+	fmt.Fprintf(&sb, "\n  max-size-mb: %v", defaultMaxSizeMB)
 
 	return sb.String()
 }
@@ -208,6 +216,13 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.noSymlinks = conf.NoSymlinks
 	}
 
+	// no-cache-on-list (v2) takes priority; fall back to inverted cache-on-list (v1).
+	if config.IsSet(compName + ".no-cache-on-list") {
+		ac.noCacheOnList = conf.NoCacheOnList
+	} else if config.IsSet(compName + ".cache-on-list") {
+		ac.noCacheOnList = !conf.CacheOnList
+	}
+
 	if config.IsSet(compName + ".max-size-mb") {
 		ac.maxSizeBytes = int64(conf.MaxSizeMB) * 1024 * 1024
 	} else {
@@ -217,10 +232,12 @@ func (ac *AttrCache) Configure(_ bool) error {
 	// Propagate the new limit to a running cache (hot-reload support).
 	if ac.lru != nil {
 		ac.lru.SetMaxSize(ac.maxSizeBytes)
+		ac.startSweeper()
 	}
 
-	log.Crit("AttrCache::Configure : cache-timeout %v, symlink %t, max-size-mb %d",
-		ac.cacheTimeout, ac.noSymlinks, conf.MaxSizeMB)
+	effectiveMB := uint32(ac.maxSizeBytes / (1024 * 1024))
+	log.Crit("AttrCache::Configure : cache-timeout %v, no-symlinks %t, no-cache-on-list %t, max-size-mb %d",
+		ac.cacheTimeout, ac.noSymlinks, ac.noCacheOnList, effectiveMB)
 
 	return nil
 }
@@ -263,7 +280,7 @@ func (ac *AttrCache) ReadDir(options internal.ReadDirOptions) (pathList []*inter
 	log.Trace("AttrCache::ReadDir : %s", options.Name)
 
 	pathList, err = ac.NextComponent().ReadDir(options)
-	if err == nil {
+	if err == nil && !ac.noCacheOnList {
 		ac.lru.cacheAttributes(pathList)
 	}
 
@@ -275,7 +292,7 @@ func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	log.Trace("AttrCache::StreamDir : %s", options.Name)
 
 	pathList, token, err := ac.NextComponent().StreamDir(options)
-	if err == nil {
+	if err == nil && !ac.noCacheOnList {
 		ac.lru.cacheAttributes(pathList)
 	}
 

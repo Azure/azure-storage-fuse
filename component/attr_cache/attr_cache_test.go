@@ -727,7 +727,7 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 	// Src Entry Exist and Dst Entry Don't Exist
 	addPathToCache(suite.assert, suite.attrCache, src, false)
 	// Add negative entry to cache for Dst
-	suite.attrCache.lru.Put(dst, &attrCacheItem{attr: &internal.ObjAttr{}, cachedAt: time.Now()})
+	suite.attrCache.lru.Put(dst, &attrCacheItem{cachedAt: time.Now()})
 	options.SrcAttr = getCacheItem(suite.attrCache, src).attr
 	options.DstAttr = getCacheItem(suite.attrCache, dst).attr
 	options.SrcAttr.Size = 1
