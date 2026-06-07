@@ -145,7 +145,7 @@ func (s *cacheMapTestSuite) TestEstimateSizeGrowsWithLongerStrings() {
 // ---- attrCacheLRU ----
 
 func newTestLRU() *attrCacheLRU {
-	return newAttrCacheLRU(0) // no memory limit
+	return newAttrCacheLRU(0, nil) // nil = no idle-gate tracking
 }
 
 func (s *cacheMapTestSuite) TestCachePositiveEntry() {
@@ -417,7 +417,7 @@ func makeTypicalAttr(i int) *internal.ObjAttr {
 // exceeds MaxSize() at any point during a fill that goes well past the limit.
 func (s *cacheMapTestSuite) TestAttrCacheLRUHonorsMemoryLimit() {
 	const maxSize = 64 * 1024 * 1024
-	lru := newAttrCacheLRU(maxSize)
+	lru := newAttrCacheLRU(maxSize, nil)
 
 	for i := 0; i < 200_000; i++ {
 		lru.cacheNegativeEntry(typicalPath(i))
@@ -436,7 +436,7 @@ func (s *cacheMapTestSuite) TestAttrCacheLRUHonorsMemoryLimit() {
 // Run with -v to see the per-entry byte budget and capacity for documentation.
 func (s *cacheMapTestSuite) TestNegativeEntryCapacityMatchesEstimate() {
 	const maxSize = 64 * 1024 * 1024
-	lru := newAttrCacheLRU(maxSize)
+	lru := newAttrCacheLRU(maxSize, nil)
 
 	k := typicalPath(0)
 	userSize := estimateAttrCacheEntrySize(k, &attrCacheItem{cachedAt: time.Now()})
@@ -458,7 +458,7 @@ func (s *cacheMapTestSuite) TestNegativeEntryCapacityMatchesEstimate() {
 // Run with -v to see the per-entry byte budget and capacity for documentation.
 func (s *cacheMapTestSuite) TestPositiveEntryCapacityMatchesEstimate() {
 	const maxSize = 64 * 1024 * 1024
-	lru := newAttrCacheLRU(maxSize)
+	lru := newAttrCacheLRU(maxSize, nil)
 
 	probe := makeTypicalAttr(0)
 	userSize := estimateAttrCacheEntrySize(typicalPath(0), &attrCacheItem{attr: probe, exists: true, cachedAt: time.Now()})
@@ -479,7 +479,7 @@ func (s *cacheMapTestSuite) TestPositiveEntryCapacityMatchesEstimate() {
 // changes.  The bounds are intentionally loose (~2× headroom) so they survive
 // minor struct additions while still catching large regressions.
 func (s *cacheMapTestSuite) TestEntrySizesAreInExpectedRange() {
-	lru := newAttrCacheLRU(0)
+	lru := newAttrCacheLRU(0, nil)
 
 	negUserSize := estimateAttrCacheEntrySize(typicalPath(0), &attrCacheItem{cachedAt: time.Now()})
 	negTotal := lru.PerEntryOverhead() + negUserSize

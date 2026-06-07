@@ -1327,7 +1327,7 @@ func (s *sweeperTestSuite) SetupTest() {
 // suitable for testing sweepExpired directly.
 func newSweeperCache(timeout time.Duration) *AttrCache {
 	ac := &AttrCache{cacheTimeout: timeout}
-	ac.lru = newAttrCacheLRU(0)
+	ac.lru = newAttrCacheLRU(0, &ac.lastOp)
 	return ac
 }
 
@@ -1383,8 +1383,7 @@ func (s *sweeperTestSuite) TestSweepExpiredSkipsWhenCacheIsActive() {
 	ac.lru.Put("expired", expiredItem())
 
 	// Simulate recent cache activity — well within the cacheTimeout/2 idle gate.
-	t := time.Now()
-	ac.lastOp.Store(&t)
+	ac.lastOp.Store(time.Now().Unix())
 
 	ac.sweepExpired()
 
@@ -1398,8 +1397,7 @@ func (s *sweeperTestSuite) TestSweepExpiredRunsWhenCacheIsIdle() {
 	ac.lru.Put("expired", &attrCacheItem{cachedAt: time.Now().Add(-200 * time.Millisecond)})
 
 	// Simulate the cache being idle for 2 hours.
-	old := time.Now().Add(-2 * time.Hour)
-	ac.lastOp.Store(&old)
+	ac.lastOp.Store(time.Now().Add(-2 * time.Hour).Unix())
 
 	ac.sweepExpired()
 
@@ -1443,8 +1441,8 @@ func (s *sweeperTestSuite) TestGetAttrUpdatesLastOp() {
 	_, _ = ac.GetAttr(internal.GetAttrOptions{Name: "any"})
 
 	stored := ac.lastOp.Load()
-	s.assert.NotNil(stored)
-	s.assert.False(stored.Before(before), "lastOp must be updated by GetAttr")
+	s.assert.NotZero(stored)
+	s.assert.GreaterOrEqual(stored, before.Unix(), "lastOp must be updated by GetAttr")
 }
 
 // attrCacheNoopNext is a minimal Component stub used by sweeper tests that need
