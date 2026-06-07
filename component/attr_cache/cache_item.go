@@ -35,6 +35,7 @@ package attr_cache
 
 import (
 	"strings"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -95,12 +96,48 @@ func estimateAttrCacheEntrySize(key string, item *attrCacheItem) int64 {
 // attrCacheLRU is an LRU cache specialised for attr-cache entries. Embedding the generic
 // LRU promotes all its methods (Get, Put, Peek, Delete, …) while allowing cache-specific
 // helpers to be defined here alongside the data model they operate on.
+// lastOp is a pointer to the AttrCache's idle-gate counter; every mutating or read
+// operation records the current Unix second so the TTL sweeper can skip runs during
+// active traffic. Pass nil to disable idle-gate tracking (useful in tests).
 type attrCacheLRU struct {
 	*cachepolicy.LRU[string, *attrCacheItem]
+	lastOp *atomic.Int64
 }
 
-func newAttrCacheLRU(maxSizeBytes int64) *attrCacheLRU {
-	return &attrCacheLRU{cachepolicy.NewLRU(maxSizeBytes, estimateAttrCacheEntrySize)}
+func newAttrCacheLRU(maxSizeBytes int64, lastOp *atomic.Int64) *attrCacheLRU {
+	return &attrCacheLRU{cachepolicy.NewLRU(maxSizeBytes, estimateAttrCacheEntrySize), lastOp}
+}
+
+func (l *attrCacheLRU) touch() {
+	if l.lastOp != nil {
+		l.lastOp.Store(time.Now().Unix())
+	}
+}
+
+// Get promotes the entry to MRU and records cache activity for the idle gate.
+func (l *attrCacheLRU) Get(key string) (*attrCacheItem, bool) {
+	l.touch()
+	return l.LRU.Get(key)
+}
+
+// Put inserts or updates an entry and records cache activity for the idle gate.
+func (l *attrCacheLRU) Put(key string, val *attrCacheItem) {
+	l.touch()
+	l.LRU.Put(key, val)
+}
+
+// Delete removes an entry and records cache activity for the idle gate.
+func (l *attrCacheLRU) Delete(key string) {
+	l.touch()
+	l.LRU.Delete(key)
+}
+
+// ReplaceIf replaces matching entries and records cache activity for the idle gate.
+// DeleteIf is intentionally not overridden — it is called only by the TTL sweeper
+// and must not reset the idle gate, otherwise the sweeper would suppress itself.
+func (l *attrCacheLRU) ReplaceIf(pred func(string, *attrCacheItem) bool, newVal func(string) *attrCacheItem) {
+	l.touch()
+	l.LRU.ReplaceIf(pred, newVal)
 }
 
 func (l *attrCacheLRU) cachePositiveEntry(path string, attr *internal.ObjAttr) {

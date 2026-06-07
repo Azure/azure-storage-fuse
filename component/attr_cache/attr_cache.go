@@ -77,7 +77,7 @@ type AttrCache struct {
 	lru          *attrCacheLRU
 	stopCh       chan struct{}
 	sweepWg      sync.WaitGroup
-	lastOp       atomic.Pointer[time.Time]
+	lastOp       atomic.Int64 // Unix seconds of last LRU operation; 0 = no activity yet
 }
 
 // AttrCacheOptions holds the configuration for the attribute cache.
@@ -120,7 +120,7 @@ func (ac *AttrCache) Start(_ context.Context) error {
 		ac.sweepWg.Wait()
 		ac.stopCh = nil
 	}
-	ac.lru = newAttrCacheLRU(ac.maxSizeBytes)
+	ac.lru = newAttrCacheLRU(ac.maxSizeBytes, &ac.lastOp)
 	if ac.cacheTimeout > 0 {
 		ac.stopCh = make(chan struct{})
 		ac.sweepWg.Add(1)
@@ -165,8 +165,8 @@ func (ac *AttrCache) sweepExpired() {
 	if ac.cacheTimeout <= 0 {
 		return
 	}
-	if last := ac.lastOp.Load(); last != nil {
-		if time.Since(*last) < ac.cacheTimeout/2 {
+	if last := ac.lastOp.Load(); last != 0 {
+		if time.Now().Unix()-last < int64(ac.cacheTimeout/(2*time.Second)) {
 			return
 		}
 	}
@@ -417,8 +417,6 @@ func (ac *AttrCache) SyncDir(options internal.SyncDirOptions) error {
 // next component and caches the result on miss.
 func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
 	log.Trace("AttrCache::GetAttr : %s", options.Name)
-	t := time.Now()
-	ac.lastOp.Store(&t)
 	truncatedPath := internal.TruncateDirName(options.Name)
 
 	if item, ok := ac.lru.Get(truncatedPath); ok {
