@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780209548972,
+  "lastUpdate": 1780814292570,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -575,6 +575,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 2.627985055994,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "e3737e044c07afb242d80bd0d1d881ea04bf859c",
+          "message": "Bump github.com/Azure/azure-sdk-for-go/sdk/azcore from 1.21.1 to 1.22.0 (#2243)",
+          "timestamp": "2026-06-05T05:43:42Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/e3737e044c07afb242d80bd0d1d881ea04bf859c"
+        },
+        "date": 1780814292308,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.745640034922,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 2.727332773151,
             "unit": "milliseconds"
           }
         ]
