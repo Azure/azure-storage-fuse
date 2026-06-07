@@ -77,7 +77,7 @@ func (suite *attrCacheIntegrationTestSuite) SetupTest() {
 		"attr_cache:\n  timeout-sec: 30\n  max-size-mb: 32\n\nloopbackfs:\n  path: %s\n",
 		dir,
 	)
-	_ = config.ReadConfigFromReader(strings.NewReader(cfg))
+	suite.Require().NoError(config.ReadConfigFromReader(strings.NewReader(cfg)))
 
 	loopback := lbfs.NewLoopbackFSComponent()
 	suite.Require().NoError(loopback.Configure(true))
