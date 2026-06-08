@@ -75,6 +75,7 @@ type AttrCache struct {
 	noSymlinks    bool
 	maxSizeBytes  int64
 	lru           *attrCacheLRU
+	lifecycleMu   sync.Mutex // guards stopCh across Start/Stop/startSweeper
 	stopCh        chan struct{}
 	sweepWg       sync.WaitGroup
 	lastOp        atomic.Int64 // Unix seconds of last LRU operation; 0 = no activity yet
@@ -116,6 +117,8 @@ func (ac *AttrCache) Priority() internal.ComponentPriority {
 // startSweeper stops any running sweeper goroutine and starts a new one using
 // the current cacheTimeout. If cacheTimeout is zero, no sweeper is started.
 func (ac *AttrCache) startSweeper() {
+	ac.lifecycleMu.Lock()
+	defer ac.lifecycleMu.Unlock()
 	if ac.stopCh != nil {
 		close(ac.stopCh)
 		ac.sweepWg.Wait()
@@ -143,6 +146,8 @@ func (ac *AttrCache) Start(_ context.Context) error {
 // Memory held by expired entries is reclaimed by the GC once the component is released.
 func (ac *AttrCache) Stop() error {
 	log.Trace("AttrCache::Stop : Stopping component %s", ac.Name())
+	ac.lifecycleMu.Lock()
+	defer ac.lifecycleMu.Unlock()
 	if ac.stopCh != nil {
 		close(ac.stopCh)
 		ac.sweepWg.Wait()

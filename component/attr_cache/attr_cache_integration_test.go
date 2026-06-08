@@ -244,11 +244,11 @@ func (suite *attrCacheIntegrationTestSuite) TestCreateDirInvalidatesCache() {
 	// Remove from disk then re-create via the cache.
 	os.Remove(filepath.Join(suite.loopbackDir, "newdir"))
 
-	err := suite.attrCache.CreateDir(internal.CreateDirOptions{Name: "newdir2", Mode: 0755})
+	err := suite.attrCache.CreateDir(internal.CreateDirOptions{Name: "newdir", Mode: 0755})
 	suite.assert.NoError(err)
 
 	// The created path should not be in the cache (invalidated by CreateDir).
-	_, ok := suite.attrCache.lru.Peek("newdir2")
+	_, ok := suite.attrCache.lru.Peek("newdir")
 	suite.assert.False(ok)
 }
 
