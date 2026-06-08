@@ -248,16 +248,17 @@ func (l *LRU[K, V]) DeleteIf(pred func(K, V) bool) {
 func (l *LRU[K, V]) ReplaceIf(pred func(K, V) bool, newVal func(K) V) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	var keys []K
 	for elem := l.list.Front(); elem != nil; elem = elem.Next() {
 		item := elem.Value.(*lruItem[K, V])
 		if pred(item.key, item.val) {
-			keys = append(keys, item.key)
+			v := newVal(item.key)
+			newSize := l.sizeOf(item.key, v)
+			l.currSize += newSize - item.userSize
+			item.val = v
+			item.userSize = newSize
 		}
 	}
-	for _, k := range keys {
-		l.put(k, newVal(k))
-	}
+	l.evictIfNeeded()
 }
 
 // evictIfNeeded removes the least-recently-used entries until currSize <= maxSize.

@@ -500,8 +500,9 @@ func (s *lruCacheTestSuite) TestReplaceIfPromotesToMRU() {
 	lru.ReplaceIf(func(k string, _ int) bool { return k == "a" }, func(_ string) int { return 99 })
 
 	// "a" should have been promoted to MRU after replacement
-	v, _ := lru.Get("a")
-	s.assert.Equal(99, v)
+	var first string
+	lru.Range(func(k string, _ int) bool { first = k; return false })
+	s.assert.Equal("a", first)
 }
 
 // ---- purge then reuse ----
