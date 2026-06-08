@@ -178,9 +178,12 @@ func (ac *AttrCache) sweepExpired() {
 		}
 	}
 	timeout := ac.cacheTimeout
+	before := ac.lru.Size()
 	ac.lru.DeleteIf(func(_ string, item *attrCacheItem) bool {
 		return time.Since(item.cachedAt) >= timeout
 	})
+	log.Debug("AttrCache::sweepExpired : size %d MB / %d MB (%d entries), reclaimed %d MB",
+		ac.lru.Size()>>20, ac.lru.MaxSize()>>20, ac.lru.Len(), (before-ac.lru.Size())>>20)
 }
 
 // GenConfig returns a default configuration snippet for this component.
