@@ -71,14 +71,14 @@ const defaultMaxSizeMB uint32 = 64
 // A background sweeper goroutine reclaims memory from TTL-expired entries when the cache is idle.
 type AttrCache struct {
 	internal.BaseComponent
-	cacheTimeout time.Duration
-	noSymlinks   bool
-	maxSizeBytes int64
-	lru            *attrCacheLRU
-	stopCh         chan struct{}
-	sweepWg        sync.WaitGroup
-	lastOp         atomic.Int64 // Unix seconds of last LRU operation; 0 = no activity yet
-	noCacheOnList  bool
+	cacheTimeout  time.Duration
+	noSymlinks    bool
+	maxSizeBytes  int64
+	lru           *attrCacheLRU
+	stopCh        chan struct{}
+	sweepWg       sync.WaitGroup
+	lastOp        atomic.Int64 // Unix seconds of last LRU operation; 0 = no activity yet
+	noCacheOnList bool
 }
 
 // AttrCacheOptions holds the configuration for the attribute cache.
