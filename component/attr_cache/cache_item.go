@@ -133,8 +133,8 @@ func (l *attrCacheLRU) Delete(key string) {
 }
 
 // ReplaceIf replaces matching entries and records cache activity for the idle gate.
-// DeleteIf is intentionally not overridden — it is called only by the TTL sweeper
-// and must not reset the idle gate, otherwise the sweeper would suppress itself.
+// DeleteIf is intentionally not overridden because the TTL sweeper relies on it without
+// resetting the idle gate. Call l.touch() explicitly before using DeleteIf elsewhere.
 func (l *attrCacheLRU) ReplaceIf(pred func(string, *attrCacheItem) bool, newVal func(string) *attrCacheItem) {
 	l.touch()
 	l.LRU.ReplaceIf(pred, newVal)
@@ -180,6 +180,7 @@ func (l *attrCacheLRU) deleteDirectory(path string, t time.Time) {
 
 func (l *attrCacheLRU) invalidateDirectory(path string) {
 	// Invalidate all the child entries
+	l.touch()
 	prefix := internal.ExtendDirName(path)
 	l.DeleteIf(func(key string, _ *attrCacheItem) bool {
 		return strings.HasPrefix(key, prefix)

@@ -248,7 +248,8 @@ func (l *LRU[K, V]) DeleteIf(pred func(K, V) bool) {
 func (l *LRU[K, V]) ReplaceIf(pred func(K, V) bool, newVal func(K) V) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for elem := l.list.Front(); elem != nil; elem = elem.Next() {
+	for elem := l.list.Front(); elem != nil; {
+		next := elem.Next()
 		item := elem.Value.(*lruItem[K, V])
 		if pred(item.key, item.val) {
 			v := newVal(item.key)
@@ -256,7 +257,9 @@ func (l *LRU[K, V]) ReplaceIf(pred func(K, V) bool, newVal func(K) V) {
 			l.currSize += newSize - item.userSize
 			item.val = v
 			item.userSize = newSize
+			l.list.MoveToFront(elem)
 		}
+		elem = next
 	}
 	l.evictIfNeeded()
 }
