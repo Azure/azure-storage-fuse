@@ -1253,8 +1253,8 @@ func (suite *attrCacheTestSuite) TestLRUEvictionOnMemoryLimit() {
 	suite.attrCache.lru.SetMaxSize(singleEntrySize * 2)
 
 	// Add 3 entries (A, B, C in insertion order: A is LRU).
-	pathA, pathB, pathC := "lru_a", "lru_b", "lru_c"
-	for _, p := range []string{pathA, pathB, pathC} {
+	pathA, pathB, pathLast := "lru_a", "lru_b", "lru_c"
+	for _, p := range []string{pathA, pathB, pathLast} {
 		item := &attrCacheItem{attr: getPathAttr(p, defaultSize, fs.FileMode(defaultMode), false), exists: true, cachedAt: time.Now()}
 		suite.attrCache.lru.Put(p, item)
 	}
@@ -1263,7 +1263,7 @@ func (suite *attrCacheTestSuite) TestLRUEvictionOnMemoryLimit() {
 	suite.assert.Equal(2, suite.attrCache.lru.Len())
 	suite.assert.False(suite.attrCache.lru.Has(pathA), "LRU entry should have been evicted")
 	suite.assert.True(suite.attrCache.lru.Has(pathB))
-	suite.assert.True(suite.attrCache.lru.Has(pathC))
+	suite.assert.True(suite.attrCache.lru.Has(pathLast))
 	suite.assert.LessOrEqual(suite.attrCache.lru.Size(), singleEntrySize*2)
 }
 
@@ -1296,14 +1296,14 @@ func (suite *attrCacheTestSuite) TestLRUOrderPreservesRecentlyAccessed() {
 	suite.assert.NoError(err)
 
 	// Add C — this should evict B (now LRU), not A.
-	pathC := "ord_c"
-	itemC := &attrCacheItem{attr: getPathAttr(pathC, defaultSize, fs.FileMode(defaultMode), false), exists: true, cachedAt: time.Now()}
-	suite.attrCache.lru.Put(pathC, itemC)
+	pathLast := "ord_c"
+	itemLast := &attrCacheItem{attr: getPathAttr(pathLast, defaultSize, fs.FileMode(defaultMode), false), exists: true, cachedAt: time.Now()}
+	suite.attrCache.lru.Put(pathLast, itemLast)
 
 	suite.assert.Equal(2, suite.attrCache.lru.Len())
 	suite.assert.True(suite.attrCache.lru.Has(pathA), "A was recently accessed and should survive")
 	suite.assert.False(suite.attrCache.lru.Has(pathB), "B should be evicted (LRU)")
-	suite.assert.True(suite.attrCache.lru.Has(pathC))
+	suite.assert.True(suite.attrCache.lru.Has(pathLast))
 }
 
 // In order for 'go test' to run this suite, we need to create
