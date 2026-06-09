@@ -283,10 +283,10 @@ stages:
               tags: 'debian13'
               depends: 'fuse3'
               container: 'test-cnt-deb-13'
-              AgentName: "blobfuse-deb13"
+              AgentName: "blobfuse-ubn26-x86"
 
         pool:
-          name: "blobfuse-deb-pool"
+          name: "blobfuse-ubn26-pool"
           demands:
             - ImageOverride -equals $(AgentName)
 
