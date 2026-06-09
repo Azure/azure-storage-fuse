@@ -286,7 +286,7 @@ stages:
               AgentName: "blobfuse-debian13"
 
         pool:
-          name: "blobfuse-debian-pool"
+          name: "blobfuse-deb-pool"
           demands:
             - ImageOverride -equals $(AgentName)
 
@@ -865,7 +865,7 @@ stages:
               AgentName: "blobfuse-debian13"
 
         pool:
-          name: "blobfuse-debian-pool"
+          name: "blobfuse-deb-pool"
           demands:
             - ImageOverride -equals $(AgentName)
 

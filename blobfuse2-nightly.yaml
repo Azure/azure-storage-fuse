@@ -636,7 +636,7 @@ stages:
                 Debian-13:
                   distro_version: "Debian-13"
                   distro: debian
-                  poolName: 'blobfuse-debian-pool'
+                  poolName: 'blobfuse-deb-pool'
                   containerName: "test-cnt-deb-13"
                   Description: "Debian 13 (trixie)"
                   AgentName: "blobfuse-debian13"
