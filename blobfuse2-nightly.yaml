@@ -639,7 +639,7 @@ stages:
                   poolName: 'blobfuse-deb-pool'
                   containerName: "test-cnt-deb-13"
                   Description: "Debian 13 (trixie)"
-                  AgentName: "blobfuse-debian13"
+                  AgentName: "blobfuse-deb13"
                   fuselib: 'libfuse3-dev'
                   tags: 'fuse3'
             pool:

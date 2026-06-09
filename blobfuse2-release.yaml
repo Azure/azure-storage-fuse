@@ -283,7 +283,7 @@ stages:
               tags: 'debian13'
               depends: 'fuse3'
               container: 'test-cnt-deb-13'
-              AgentName: "blobfuse-debian13"
+              AgentName: "blobfuse-deb13"
 
         pool:
           name: "blobfuse-deb-pool"
@@ -862,7 +862,7 @@ stages:
               fuselib: 'libfuse3-dev'
               tags: 'debian13'
               container: 'test-cnt-deb-13'
-              AgentName: "blobfuse-debian13"
+              AgentName: "blobfuse-deb13"
 
         pool:
           name: "blobfuse-deb-pool"
