@@ -29,6 +29,11 @@ block_cache:
   prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>
   parallelism: <number of parallel threads downloading the data and writing to disk cache. Default - 3 times number of CPU cores> 
 
+# Attribute cache related configuration
+attr_cache:
+  timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
+  max-size-mb: <maximum memory the attribute cache may use (in MB). Default - 64 MB. Set to 0 for no memory-based eviction (entries are only removed on TTL expiry). Increase for workloads with large directory trees or many distinct file paths to avoid frequent cache misses.>
+
 # Disk cache related configuration
 file_cache:
   # Required

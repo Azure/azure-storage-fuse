@@ -22,6 +22,9 @@ file_cache:
 
 attr_cache:
   timeout-sec: 7200
+  # max-size-mb controls how much memory the attribute cache may use. Default is 64 MB (~70K entries).
+  # Set to 0 to disable memory-based eviction and rely solely on TTL expiry.
+  # max-size-mb: 64
 
 azstorage:
   type: block
