@@ -8,6 +8,7 @@
 
 **Other Changes**
 - CBL-Mariner 2.0 has reached end-of-life; Blobfuse2 packages will no longer be published to Mariner 2.0 repositories.
+- Mirror Go runtime panic/fatal stack traces to the Blobfuse2 log file in addition to the existing per-mount `.trace` file.
 
 ## 2.5.3 (2026-03-25)
 **Features**

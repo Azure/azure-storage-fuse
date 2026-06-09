@@ -91,6 +91,10 @@ var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
 var StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
 
+// SyslogFilePath is where rsyslog routes blobfuse2-tagged messages (see setup/11-blobfuse2.conf).
+// Used as a fallback target for runtime crash dumps when the syslog logger is in use.
+var SyslogFilePath = "/var/log/blobfuse2.log"
+
 var EnableMonitoring = false
 var BfsDisabled = false
 var TransferPipe = "/tmp/transferPipe"

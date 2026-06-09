@@ -480,6 +480,13 @@ var mountCmd = &cobra.Command{
 		log.Crit("Log options: %+v", options.Logging)
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
 
+		// Mirror runtime panic/fatal stack traces to a log file (in addition to stderr, which the daemon library
+		// redirects to the per-mount .trace file). Also re-attaches the fd after in-process rotation and on SIGHUP
+		// from external rotators (logrotate, AKS Blob CSI driver, ...). Captures panics in any goroutine, including
+		// those spawned by libfuse callbacks. Called after the first log.Crit so that in syslog mode rsyslog has
+		// already created /var/log/blobfuse2.log.
+		log.SetupCrashOutput(options.Logging.Type, options.Logging.LogFilePath)
+
 		if directIO {
 			// Direct IO is enabled, so remove the attr-cache from the pipeline
 			for i, name := range options.Components {
