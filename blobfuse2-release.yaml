@@ -278,15 +278,15 @@ stages:
         strategy:
           matrix:
             Debian13:
-              vmImage: 'Debian-13'
+              vmImage: 'ubuntu-26.04'
               fuselib: 'libfuse3-dev'
-              tags: 'debian13'
+              tags: 'fuse3-4'
               depends: 'fuse3'
               container: 'test-cnt-deb-13'
-              AgentName: "blobfuse-ubn26-x86"
+              AgentName: "blobfuse-ubn26-arm64"
 
         pool:
-          name: "blobfuse-ubn26-pool"
+          name: "blobfuse-ubn-arm64-pool"
           demands:
             - ImageOverride -equals $(AgentName)
 
