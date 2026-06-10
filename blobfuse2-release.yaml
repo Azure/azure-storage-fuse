@@ -283,7 +283,7 @@ stages:
               tags: 'fuse3-4'
               depends: 'fuse3'
               container: 'test-cnt-deb-13'
-              AgentName: "blobfuse-ubuntu26"
+              AgentName: "blobfuse-ubn26-x86"
 
         pool:
           name: "blobfuse-ubuntu-pool"
