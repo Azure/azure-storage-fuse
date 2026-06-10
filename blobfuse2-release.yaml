@@ -283,10 +283,10 @@ stages:
               tags: 'fuse3-4'
               depends: 'fuse3'
               container: 'test-cnt-deb-13'
-              AgentName: "blobfuse-ubn26-arm64"
+              AgentName: "blobfuse-ubuntu26"
 
         pool:
-          name: "blobfuse-ubn-arm64-pool"
+          name: "blobfuse-ubuntu-pool"
           demands:
             - ImageOverride -equals $(AgentName)
 
