@@ -349,6 +349,27 @@ func (suite *libfuseTestSuite) TestUtimens() {
 	testUtimens(suite)
 }
 
+func (suite *libfuseTestSuite) TestKernelListCacheDefault() {
+	defer suite.cleanupTest()
+	suite.assert.Equal(uint32(0), suite.libfuse.kernelListCacheTtlInSec)
+}
+
+func (suite *libfuseTestSuite) TestKernelListCacheConfig() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := "libfuse:\n  kernel-list-cache-expiration-sec: 60\n"
+	suite.setupTestHelper(config)
+	suite.assert.Equal(uint32(60), suite.libfuse.kernelListCacheTtlInSec)
+}
+
+func (suite *libfuseTestSuite) TestKernelListCacheDisabledWithDirectIO() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := "libfuse:\n  direct-io: true\n  kernel-list-cache-expiration-sec: 30\n"
+	suite.setupTestHelper(config)
+	suite.assert.Equal(uint32(0), suite.libfuse.kernelListCacheTtlInSec)
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestLibfuseTestSuite(t *testing.T) {
