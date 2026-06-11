@@ -38,6 +38,12 @@ parameters:
 trigger: none
 pr: none
 
+resources:
+  containers:
+    - container: debian13
+      image: debian:trixie
+      options: --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined
+
 stages:
   - stage: BuildArtifacts
     jobs:
@@ -278,17 +284,19 @@ stages:
         strategy:
           matrix:
             Debian13:
-              vmImage: 'ubuntu-26.04'
+              vmImage: 'ubuntu-22.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3-4'
               depends: 'fuse3'
-              container: 'test-cnt-deb-13'
-              AgentName: "blobfuse-ubuntu26"
+              container: 'test-cnt-ubn-22'
+              AgentName: "blobfuse-ubuntu22"
 
         pool:
           name: "blobfuse-ubuntu-pool"
           demands:
             - ImageOverride -equals $(AgentName)
+
+        container: debian13
 
         variables:
           - group: NightlyBlobFuse
@@ -299,6 +307,17 @@ stages:
 
         steps:
           - checkout: none
+
+          - script: |
+              apt-get update --fix-missing
+              apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config cmake gcc g++ ruby ruby-dev rubygems $(fuselib) fuse3
+              gem install fpm -v 1.16
+            displayName: "Bootstrap container"
+
+          - script: |
+              dpkg -l | grep fuse
+            displayName: "Verify fuse version"
+
           - script: |
               git clone https://github.com/Azure/azure-storage-fuse
             displayName: 'Checkout Code'
@@ -309,12 +328,6 @@ stages:
               git --no-pager log --since="12 hours ago" --stat
             displayName: 'List Commits'
             workingDirectory: $(work_dir)
-
-          - script: |
-              sudo apt-get update --fix-missing
-              sudo apt-get install ruby-dev build-essential pkg-config cmake gcc g++ $(fuselib) -y
-              sudo gem install fpm -v 1.16
-            displayName: "Installing Dependencies"
 
           - script: |
              ldd --version
@@ -340,6 +353,7 @@ stages:
               mkdir -p pkgDir/etc/logrotate.d
               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
               cp azure-storage-fuse/setup/blobfuse2-logrotate pkgDir/etc/logrotate.d/blobfuse2
+              ldd ./pkgDir/usr/bin/blobfuse2 | grep libfuse3.so.4
             workingDirectory: $(root_dir)
             displayName: 'Accumulate pkg files'
 
@@ -860,14 +874,16 @@ stages:
               vmImage: 'Debian-13.0'
               fuse-version: 'fuse3'
               fuselib: 'libfuse3-dev'
-              tags: 'debian13'
-              container: 'test-cnt-deb-13'
-              AgentName: "blobfuse-deb13"
+              tags: 'fuse3-4'
+              container: 'test-cnt-ubn-22'
+              AgentName: "blobfuse-ubuntu22"
 
         pool:
-          name: "blobfuse-deb-pool"
+          name: "blobfuse-ubuntu-pool"
           demands:
             - ImageOverride -equals $(AgentName)
+
+        container: debian13
 
         variables:
           - group: NightlyBlobFuse
@@ -882,6 +898,15 @@ stages:
 
         steps:
           - checkout: none
+
+          - script: |
+              apt-get update --fix-missing
+              apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config $(fuse-version) $(fuselib)
+            displayName: "Bootstrap container"
+
+          - script: |
+              dpkg -l | grep fuse
+            displayName: "Verify fuse version"
 
           - script: |
               git clone https://github.com/Azure/azure-storage-fuse
@@ -900,8 +925,6 @@ stages:
             displayName: "GoTool Custom Setup"
 
           - script: |
-             sudo apt update
-             sudo apt --fix-broken install
              ldd --version
             displayName: "GLIBC Version"
 
@@ -928,9 +951,9 @@ stages:
             workingDirectory: $(root_dir)/blobfuse2-signed
 
           - script: |
-              sudo dpkg --info blobfuse2*.deb
-              sudo apt-get install $(fuse-version) build-essential -y
-              sudo dpkg -i blobfuse2*.deb
+              dpkg --info blobfuse2*.deb
+              dpkg -i blobfuse2*.deb
+              ldd $(which blobfuse2) | grep libfuse3.so.4
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
@@ -1856,8 +1879,8 @@ stages:
                   fuse2AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse2.x86_64.rpm`
                   echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
 
-                  debian13AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*debian13.x86_64.deb`
-                  echo "Debian13 AMD DEB ID: $debian13AmdDeb"
+                  fuse34AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3-4.x86_64.deb`
+                  echo "Fuse3-4 AMD DEB ID: $fuse34AmdDeb"
 
                   marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
                   marinerFuse3AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*cm2.x86_64.rpm`

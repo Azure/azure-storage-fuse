@@ -82,6 +82,12 @@ parameters:
     type: boolean
     default: true
 
+resources:
+  containers:
+    - container: debian13
+      image: debian:trixie
+      options: --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined
+
 stages:
 
   - ${{ if eq(parameters.base_test, true) }}:
@@ -633,15 +639,6 @@ stages:
                   AgentName: "blobfuse-mariner2"
                   fuselib: 'libfuse3-dev'
                   tags: 'fuse3'
-                Debian-13:
-                  distro_version: "Debian-13"
-                  distro: debian
-                  poolName: 'blobfuse-deb-pool'
-                  containerName: "test-cnt-deb-13"
-                  Description: "Debian 13 (trixie)"
-                  AgentName: "blobfuse-deb13"
-                  fuselib: 'libfuse3-dev'
-                  tags: 'fuse3'
             pool:
               name: $(poolName)
               demands:
@@ -667,6 +664,94 @@ stages:
                 value: true
 
             steps:
+              # Build the code
+              - template: 'azure-pipeline-templates/build.yml'
+
+              # Block Blob Test
+              - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
+                parameters:
+                  conf_template: azure_key.yaml
+                  config_file: $(BLOBFUSE2_CFG)
+                  idstring: block_blob_key
+                  adls: false
+                  account_name: $(BF2_BLK_ACC_NAME)
+                  account_key: $(BF2_BLK_ACC_KEY)
+                  account_type: block
+                  distro_name: $(distro_version)
+                  quick_test: true
+                  verbose_log: ${{ parameters.verbose_log }}
+                  clone: false
+
+              # ADLS Test
+              - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
+                parameters:
+                  conf_template: azure_key.yaml
+                  config_file: $(BLOBFUSE2_CFG)
+                  idstring: adls_key
+                  adls: true
+                  account_name: $(BF2_ADLS_ACC_NAME)
+                  account_key: $(BF2_ADLS_ACC_KEY)
+                  account_type: adls
+                  distro_name: $(distro_version)
+                  quick_test: true
+                  verbose_log: ${{ parameters.verbose_log }}
+                  clone: false
+
+              # Cleanup
+              - template: 'azure-pipeline-templates/cleanup.yml'
+                parameters:
+                  unmount: true
+                  delete_containers: true
+
+          - job: Set_5_Debian13
+            continueOnError: true
+            timeoutInMinutes: 60
+            strategy:
+              matrix:
+                Debian-13:
+                  distro_version: "Debian-13"
+                  distro: debian
+                  containerName: "test-cnt-ubn-22"
+                  Description: "Debian 13 (trixie)"
+                  fuselib: 'libfuse3-dev'
+                  tags: 'fuse3'
+
+            pool:
+              name: 'blobfuse-ubuntu-pool'
+              demands:
+                - ImageOverride -equals blobfuse-ubuntu22
+
+            container: debian13
+
+            variables:
+              - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
+              - name: ROOT_DIR
+                value: '$(Agent.TempDirectory)'
+              - name: WORK_DIR
+                value: '$(Build.SourcesDirectory)'
+              - name: skipComponentGovernanceDetection
+                value: true
+
+            steps:
+              - script: |
+                  apt-get update --fix-missing
+                  apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config $(fuselib) fuse3
+                displayName: "Bootstrap container"
+
+              - script: |
+                  dpkg -l | grep fuse
+                displayName: "Verify fuse version"
+
               # Build the code
               - template: 'azure-pipeline-templates/build.yml'
 
