@@ -280,6 +280,11 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 
 	log.Info("Libfuse::libfuse2_init : Kernel Caps : %d", conn.capable)
 
+	if fuseFS.kernelListCacheTtlInSec > 0 {
+		log.Warn("Libfuse::libfuse2_init : kernel-list-cache not supported on fuse2, disabling")
+		fuseFS.kernelListCacheTtlInSec = 0
+	}
+
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
 		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_ASYNC_READ")
 		conn.want |= C.FUSE_CAP_ASYNC_READ
