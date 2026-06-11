@@ -76,10 +76,12 @@ func TestFileTruncateShrink(t *testing.T) {
 		{fmt.Sprintf("%s_10M_5K_truncate", filename), 10 * 1024 * 1024, 5 * 1024, truncate},
 		{fmt.Sprintf("%s_20M_5K_truncate", filename), 20 * 1024 * 1024, 5 * 1024, truncate},
 		{fmt.Sprintf("%s_30M_20M_truncate", filename), 30 * 1024 * 1024, 20 * 1024 * 1024, truncate},
+		{fmt.Sprintf("%s_32M_5M_truncate", filename), 32 * 1024 * 1024, 5 * 1024 * 1024, truncate},
 		{fmt.Sprintf("%s_20_5_ftruncate", filename), 20, 5, ftruncate},
 		{fmt.Sprintf("%s_10M_5K_ftruncate", filename), 10 * 1024 * 1024, 5 * 1024, ftruncate},
 		{fmt.Sprintf("%s_20M_5K_ftruncate", filename), 20 * 1024 * 1024, 5 * 1024, ftruncate},
 		{fmt.Sprintf("%s_30M_20M_ftruncate", filename), 30 * 1024 * 1024, 20 * 1024 * 1024, ftruncate},
+		{fmt.Sprintf("%s_32M_5M_ftruncate", filename), 32 * 1024 * 1024, 5 * 1024 * 1024, ftruncate},
 	}
 
 	// Add the number of test cases to the WaitGroup
@@ -352,6 +354,35 @@ func FileTruncate(t *testing.T, filename string, initialSize int, finalSize int,
 			expectedContent = expectedContent[:finalSize]
 		}
 		assert.Equal(t, string(expectedContent), string(readContent))
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
+func TestCreateTruncateWrite(t *testing.T) {
+	t.Parallel()
+
+	filename := "testfile_create_truncate_write.txt"
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file, err := os.Create(filePath)
+		assert.NoError(t, err)
+
+		err = os.Truncate(filePath, 10*1024*1024)
+		assert.NoError(t, err)
+
+		content := []byte("Hello World")
+		written, err := file.Write(content)
+		assert.NoError(t, err)
+		assert.Equal(t, len(content), written)
+
+		err = file.Close()
+		assert.NoError(t, err)
+
+		readContent, err := os.ReadFile(filePath)
+		assert.NoError(t, err)
+		assert.Equal(t, string(content)+string(make([]byte, 10*1024*1024-len(content))), string(readContent))
 	}
 
 	checkFileIntegrity(t, filename)

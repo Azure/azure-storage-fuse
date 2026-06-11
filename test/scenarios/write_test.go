@@ -167,6 +167,69 @@ func TestStripeWritingWithDup(t *testing.T) {
 	removeFiles(t, filename)
 }
 
+// Test append to an existing file.
+func TestFileAppend(t *testing.T) {
+	t.Parallel()
+	filename := "testfile_append.txt"
+	initialContent := []byte("Initial Content.\n")
+	appendContent := []byte("Appended Content.\n")
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		err := os.WriteFile(filePath, initialContent, 0644)
+		assert.NoError(t, err)
+
+		file, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
+		assert.NoError(t, err)
+
+		_, err = file.Write(appendContent)
+		assert.NoError(t, err)
+
+		err = file.Close()
+		assert.NoError(t, err)
+
+		finalContent, err := os.ReadFile(filePath)
+		assert.NoError(t, err)
+
+		expectedContent := append(initialContent, appendContent...)
+		assert.Equal(t, string(expectedContent), string(finalContent))
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
+func TestFilePunchHoleThenWrite(t *testing.T) {
+	t.Parallel()
+	filename := "testfile_punch_hole_then_write.txt"
+	initialContent := make([]byte, 20*1024*1024) // 20MB of data
+	_, err := io.ReadFull(rand.Reader, initialContent)
+	assert.NoError(t, err)
+
+	newData := make([]byte, 1*1024*1024) // 1MB of new data
+	_, err = io.ReadFull(rand.Reader, newData)
+	assert.NoError(t, err)
+
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		err := os.WriteFile(filePath, initialContent, 0644)
+		assert.NoError(t, err)
+
+		file, err := os.OpenFile(filePath, os.O_RDWR, 0644)
+		assert.NoError(t, err)
+
+		// Write new data at 50MB offset, which is beyond the current file size that will create a hole.
+		written, err := file.WriteAt(newData, 50*1024*1024)
+		assert.NoError(t, err)
+		assert.Equal(t, len(newData), written)
+
+		err = file.Close()
+		assert.NoError(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
 // Test rand sparse writing on a file.
 func TestRandSparseWriting(t *testing.T) {
 	t.Parallel()
@@ -185,6 +248,31 @@ func TestRandSparseWriting(t *testing.T) {
 		assert.Equal(t, 5, written)
 
 		written, err = file.WriteAt([]byte("Cosmos"), 30*1024*1024) // Write at 30MB offset, 4th block
+		assert.NoError(t, err)
+		assert.Equal(t, 6, written)
+
+		err = file.Close()
+		assert.NoError(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
+// Test multiple holes sparse writing on a file.
+func TestMultipleHolesSparseWriting(t *testing.T) {
+	t.Parallel()
+	filename := "testfile_multiple_holes_sparse_write.txt"
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file, err := os.Create(filePath)
+		assert.NoError(t, err)
+
+		written, err := file.WriteAt([]byte("Block1"), 0*1024*1024) // Write at 0MB offset, 1st block
+		assert.NoError(t, err)
+		assert.Equal(t, 6, written)
+
+		written, err = file.WriteAt([]byte("Block6"), 5*8*1024*1024) // Write at 40MB offset, 6th block
 		assert.NoError(t, err)
 		assert.Equal(t, 6, written)
 
