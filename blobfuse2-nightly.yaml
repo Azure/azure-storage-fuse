@@ -82,12 +82,6 @@ parameters:
     type: boolean
     default: true
 
-resources:
-  containers:
-    - container: debian13
-      image: debian:trixie
-      options: --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined
-
 stages:
 
   - ${{ if eq(parameters.base_test, true) }}:
@@ -721,8 +715,6 @@ stages:
               demands:
                 - ImageOverride -equals blobfuse-ubuntu22
 
-            container: debian13
-
             variables:
               - group: NightlyBlobFuse
               - name: MOUNT_DIR
@@ -744,16 +736,51 @@ stages:
 
             steps:
               - script: |
-                  apt-get update --fix-missing
-                  apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config $(fuselib) fuse3
-                displayName: "Bootstrap container"
+                  sudo apt-get update --fix-missing
+                  sudo apt-get install -y docker.io
+                  sudo systemctl start docker
+                displayName: "Install Docker"
 
               - script: |
-                  dpkg -l | grep fuse
-                displayName: "Verify fuse version"
+                  sudo docker run --rm debian:trixie bash -c "apt-get update -qq && dpkg -l | grep fuse"
+                displayName: "Verify fuse version in Debian 13"
 
-              # Build the code
-              - template: 'azure-pipeline-templates/build.yml'
+              - script: |
+                  sudo docker run --rm \
+                    --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
+                    -v $(Build.SourcesDirectory):$(Build.SourcesDirectory) \
+                    -v $(Agent.TempDirectory):$(Agent.TempDirectory) \
+                    -v $(Pipeline.Workspace):$(Pipeline.Workspace) \
+                    -w $(Build.SourcesDirectory) \
+                    debian:trixie bash -c "
+                      set -e
+                      apt-get update --fix-missing -qq
+                      apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config libfuse3-dev fuse3
+                      $(Build.SourcesDirectory)/go_installer.sh $(Agent.TempDirectory)/
+                      export GOROOT=$(Agent.TempDirectory)/go
+                      export GOPATH=$(Pipeline.Workspace)/go
+                      export PATH=\$GOROOT/bin:\$PATH
+                      go get -d
+                      chmod 755 build.sh
+                      ./build.sh fuse3
+                      chmod +x ./blobfuse2
+                      ./blobfuse2 --version
+                      ./build.sh health
+                      chmod +x ./bfusemon
+                      ./bfusemon --version
+                    "
+                displayName: "Build inside Debian 13 container"
+
+              - script: |
+                  sudo docker run --rm -v /tmp/deb13libs:/out debian:trixie bash -c "
+                    apt-get update -qq &&
+                    apt-get install -y --no-install-recommends libfuse3-4 &&
+                    cp /usr/lib/x86_64-linux-gnu/libfuse3.so.4* /out/
+                  "
+                  sudo cp /tmp/deb13libs/libfuse3.so.4* /usr/lib/x86_64-linux-gnu/
+                  sudo ldconfig
+                  ldconfig -p | grep libfuse3
+                displayName: "Setup libfuse3.so.4 on host for E2E tests"
 
               # Block Blob Test
               - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'

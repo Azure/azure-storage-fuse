@@ -38,12 +38,6 @@ parameters:
 trigger: none
 pr: none
 
-resources:
-  containers:
-    - container: debian13
-      image: debian:trixie
-      options: --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined
-
 stages:
   - stage: BuildArtifacts
     jobs:
@@ -296,8 +290,6 @@ stages:
           demands:
             - ImageOverride -equals $(AgentName)
 
-        container: debian13
-
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
@@ -307,16 +299,6 @@ stages:
 
         steps:
           - checkout: none
-
-          - script: |
-              apt-get update --fix-missing
-              apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config cmake gcc g++ ruby ruby-dev rubygems $(fuselib) fuse3
-              gem install fpm -v 1.16
-            displayName: "Bootstrap container"
-
-          - script: |
-              dpkg -l | grep fuse
-            displayName: "Verify fuse version"
 
           - script: |
               git clone https://github.com/Azure/azure-storage-fuse
@@ -330,46 +312,67 @@ stages:
             workingDirectory: $(work_dir)
 
           - script: |
-             ldd --version
-            displayName: "GLIBC Version"
-
-          - template: 'azure-pipeline-templates/build-release.yml'
-            parameters:
-              work_dir: $(work_dir)
-              root_dir: $(root_dir)
-              unit_test: ${{ parameters.unit_test }}
-              tags: 'fuse3'
-              container: $(container)
+              sudo apt-get update --fix-missing
+              sudo apt-get install -y docker.io ruby ruby-dev rubygems build-essential
+              sudo systemctl start docker
+              sudo gem install fpm -v 1.16
+            displayName: "Install Docker and packaging tools"
 
           - script: |
-              mkdir -p pkgDir/usr/bin/
-              mkdir -p pkgDir/usr/share/blobfuse2/
-              cp azure-storage-fuse/blobfuse2 pkgDir/usr/bin/blobfuse2
-              cp azure-storage-fuse/bfusemon pkgDir/usr/bin/bfusemon
-              cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
-              cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
-              cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
-              mkdir -p pkgDir/etc/rsyslog.d
-              mkdir -p pkgDir/etc/logrotate.d
-              cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
-              cp azure-storage-fuse/setup/blobfuse2-logrotate pkgDir/etc/logrotate.d/blobfuse2
-              ldd ./pkgDir/usr/bin/blobfuse2 | grep libfuse3.so.4
-            workingDirectory: $(root_dir)
-            displayName: 'Accumulate pkg files'
+              sudo docker run --rm debian:trixie bash -c "apt-get update -qq && dpkg -l | grep fuse"
+            displayName: "Verify fuse version in Debian 13"
 
           - script: |
-              packageName="blobfuse2"
-              if [[ `./pkgDir/usr/bin/blobfuse2 --version` == *"preview"* ]]; then
-                echo "Preview binary package created"
-                packageName="blobfuse2-preview"
-              fi
-              fpm -s dir -t deb -n $packageName -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
-              --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage"
-              mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).x86_64.deb
-              cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
-            workingDirectory: $(root_dir)
-            displayName: 'Make deb Package'
+              mkdir -p $(Build.ArtifactStagingDirectory)
+              sudo docker run --rm \
+                --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
+                -v $(root_dir):$(root_dir) \
+                -v $(Build.ArtifactStagingDirectory):$(Build.ArtifactStagingDirectory) \
+                -w $(work_dir) \
+                debian:trixie bash -c "
+                  set -e
+                  apt-get update --fix-missing -qq
+                  apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config cmake gcc g++ ruby ruby-dev rubygems libfuse3-dev fuse3
+                  gem install fpm -v 1.16
+                  $(work_dir)/go_installer.sh $(root_dir)/
+                  export GOROOT=$(root_dir)/go
+                  export GOPATH=$(root_dir)/gopath
+                  export PATH=\$GOROOT/bin:\$PATH
+                  ldd --version
+                  go get -d
+                  chmod 755 build.sh
+                  ./build.sh fuse3
+                  chmod +x ./blobfuse2
+                  ./blobfuse2 --version
+                  ./build.sh health
+                  chmod +x ./bfusemon
+                  ./bfusemon --version
+                  mkdir -p $(root_dir)/pkgDir/usr/bin/
+                  mkdir -p $(root_dir)/pkgDir/usr/share/blobfuse2/
+                  cp blobfuse2 $(root_dir)/pkgDir/usr/bin/blobfuse2
+                  cp bfusemon $(root_dir)/pkgDir/usr/bin/bfusemon
+                  cp setup/baseConfig.yaml $(root_dir)/pkgDir/usr/share/blobfuse2/
+                  cp sampleFileCacheConfig.yaml $(root_dir)/pkgDir/usr/share/blobfuse2/
+                  cp sampleStreamingConfig.yaml $(root_dir)/pkgDir/usr/share/blobfuse2/
+                  mkdir -p $(root_dir)/pkgDir/etc/rsyslog.d
+                  mkdir -p $(root_dir)/pkgDir/etc/logrotate.d
+                  cp setup/11-blobfuse2.conf $(root_dir)/pkgDir/etc/rsyslog.d
+                  cp setup/blobfuse2-logrotate $(root_dir)/pkgDir/etc/logrotate.d/blobfuse2
+                  ldd $(root_dir)/pkgDir/usr/bin/blobfuse2 | grep libfuse3.so.4
+                  cd $(root_dir)
+                  packageName='blobfuse2'
+                  VERSION=\$(./pkgDir/usr/bin/blobfuse2 --version | cut -d ' ' -f 3)
+                  if [[ \$(./pkgDir/usr/bin/blobfuse2 --version) == *'preview'* ]]; then
+                    packageName='blobfuse2-preview'
+                  fi
+                  fpm -s dir -t deb -n \$packageName -C pkgDir/ -v \$VERSION -d fuse3 \
+                    --maintainer 'Blobfuse v-Team <blobfusevteam@microsoft.com>' \
+                    --url 'https://github.com/Azure/azure-storage-fuse' \
+                    --description 'An user-space filesystem for interacting with Azure Storage'
+                  mv ./blobfuse2*.deb ./blobfuse2-\${VERSION}-fuse3-4.x86_64.deb
+                  cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
+                "
+            displayName: "Build and package inside Debian 13 container"
 
           - task: PublishBuildArtifacts@1
             inputs:
@@ -883,8 +886,6 @@ stages:
           demands:
             - ImageOverride -equals $(AgentName)
 
-        container: debian13
-
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
@@ -898,15 +899,6 @@ stages:
 
         steps:
           - checkout: none
-
-          - script: |
-              apt-get update --fix-missing
-              apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config $(fuse-version) $(fuselib)
-            displayName: "Bootstrap container"
-
-          - script: |
-              dpkg -l | grep fuse
-            displayName: "Verify fuse version"
 
           - script: |
               git clone https://github.com/Azure/azure-storage-fuse
@@ -923,6 +915,24 @@ stages:
               scriptPath: "$(work_dir)/go_installer.sh"
               args: "$(root_dir)/"
             displayName: "GoTool Custom Setup"
+
+          - script: |
+              sudo apt-get update --fix-missing
+              sudo apt-get install -y docker.io
+              sudo systemctl start docker
+              sudo docker run --rm -v /tmp/deb13libs:/out debian:trixie bash -c "
+                apt-get update -qq &&
+                apt-get install -y --no-install-recommends libfuse3-4 libfuse3-dev &&
+                cp /usr/lib/x86_64-linux-gnu/libfuse3.so.4* /out/
+              "
+              sudo cp /tmp/deb13libs/libfuse3.so.4* /usr/lib/x86_64-linux-gnu/
+              sudo ldconfig
+              ldconfig -p | grep libfuse3
+            displayName: "Install Docker and setup libfuse3.so.4 from Debian 13"
+
+          - script: |
+              sudo docker run --rm debian:trixie bash -c "apt-get update -qq && dpkg -l | grep fuse"
+            displayName: "Verify fuse version in Debian 13"
 
           - script: |
              ldd --version
@@ -951,8 +961,9 @@ stages:
             workingDirectory: $(root_dir)/blobfuse2-signed
 
           - script: |
-              dpkg --info blobfuse2*.deb
-              dpkg -i blobfuse2*.deb
+              sudo dpkg --info blobfuse2*.deb
+              sudo apt-get install $(fuse-version) build-essential -y
+              sudo dpkg -i blobfuse2*.deb
               ldd $(which blobfuse2) | grep libfuse3.so.4
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
