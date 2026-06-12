@@ -287,22 +287,31 @@ func (suite *dirTestSuite) TestDirRenameDeepPath() {
 		return
 	}
 
+	// ADLS enforces a maximum path depth of 63 segments from the container root.
+	// Create directories one level at a time until the next level is rejected, so
+	// deepest ends up at the maximum allowed depth.
+	topDir := suite.testPath + "/renamedeep"
+	deepest := topDir
+	err := os.Mkdir(deepest, 0777)
+	suite.NoError(err)
+	for i := 0; i < 70; i++ {
+		next := filepath.Join(deepest, "l")
+		err = os.Mkdir(next, 0777)
+		if err != nil {
+			break
+		}
+		deepest = next
+	}
+	suite.ErrorIs(err, syscall.ENAMETOOLONG)
+
+	// A source directory at a shallow, valid depth.
 	srcDir := suite.testPath + "/renamesrc"
-	err := os.Mkdir(srcDir, 0777)
+	err = os.Mkdir(srcDir, 0777)
 	suite.NoError(err)
 
-	// ADLS enforces a maximum path depth of 63 segments from the container root.
-	// Renaming into a 65-level destination guarantees the limit is exceeded; the
-	// service validates the destination path depth and the rename must surface
-	// ENAMETOOLONG rather than a generic I/O error.
-	const depth = 65
-	topDir := suite.testPath + "/renamedeep"
-	deepPath := topDir
-	for i := range depth {
-		deepPath = filepath.Join(deepPath, fmt.Sprintf("l%d", i))
-	}
-
-	err = os.Rename(srcDir, deepPath)
+	// The destination parent exists and is already at the maximum allowed depth,
+	// so renaming into a child of it fails only because the path is too deep.
+	err = os.Rename(srcDir, filepath.Join(deepest, "child"))
 	suite.Error(err)
 	suite.ErrorIs(err, syscall.ENAMETOOLONG)
 
