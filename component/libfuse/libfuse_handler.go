@@ -1041,6 +1041,9 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		})
 		if err != nil {
 			log.Err("Libfuse::libfuse_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
+			if errors.Is(err, syscall.ENAMETOOLONG) {
+				return -C.ENAMETOOLONG
+			}
 			return -C.EIO
 		}
 
@@ -1056,6 +1059,9 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		})
 		if err != nil {
 			log.Err("Libfuse::libfuse_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
+			if errors.Is(err, syscall.ENAMETOOLONG) {
+				return -C.ENAMETOOLONG
+			}
 			return -C.EIO
 		}
 
