@@ -280,6 +280,35 @@ func (suite *dirTestSuite) TestDirCreateDeepPath() {
 	suite.dirTestCleanup([]string{topDir})
 }
 
+// # Rename a directory to a path exceeding ADLS depth limit
+func (suite *dirTestSuite) TestDirRenameDeepPath() {
+	if !suite.adlsTest {
+		fmt.Println("Skipping TestDirRenameDeepPath: not an ADLS account")
+		return
+	}
+
+	srcDir := suite.testPath + "/renamesrc"
+	err := os.Mkdir(srcDir, 0777)
+	suite.NoError(err)
+
+	// ADLS enforces a maximum path depth of 63 segments from the container root.
+	// Renaming into a 65-level destination guarantees the limit is exceeded; the
+	// service validates the destination path depth and the rename must surface
+	// ENAMETOOLONG rather than a generic I/O error.
+	const depth = 65
+	topDir := suite.testPath + "/renamedeep"
+	deepPath := topDir
+	for i := range depth {
+		deepPath = filepath.Join(deepPath, fmt.Sprintf("l%d", i))
+	}
+
+	err = os.Rename(srcDir, deepPath)
+	suite.Error(err)
+	suite.ErrorIs(err, syscall.ENAMETOOLONG)
+
+	suite.dirTestCleanup([]string{srcDir, topDir})
+}
+
 // # Get stats of a directory
 func (suite *dirTestSuite) TestDirGetStats() {
 	dirName := suite.testPath + "/test3"
