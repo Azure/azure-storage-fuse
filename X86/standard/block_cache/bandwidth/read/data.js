@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780812812859,
+  "lastUpdate": 1781417598114,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1082,6 +1082,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 28.3076171875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "bb288d4754c51255199fa66153b87cc7f35fc68e",
+          "message": "Bump gopkg.in/ini.v1 from 1.67.2 to 1.67.3 (#2247)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: syeleti-msft <syeleti@microsoft.com>",
+          "timestamp": "2026-06-09T04:46:40Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/bb288d4754c51255199fa66153b87cc7f35fc68e"
+        },
+        "date": 1781417596465,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 3475.150390625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 3404.01953125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3019.8466796875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 7.98828125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 7074.265625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 8215.001953125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 30.24609375,
             "unit": "MiB/s"
           }
         ]
