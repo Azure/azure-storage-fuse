@@ -79,7 +79,7 @@ const dirtyTTL = 10 * time.Second
 // dcacheClient abstracts the distributed cache client for testing.
 type dcacheClient interface {
 	Upload(ctx context.Context, filename string, data io.Reader, size int64, opts ...dcache.UploadOption) error
-	DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) ([]dcache.ChunkError, error)
+	DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) (<-chan dcache.ChunkError, func() error, error)
 	DownloadChunk(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 	UploadChunk(ctx context.Context, filename string, offset int64, data []byte, opts ...dcache.UploadOption) error
 	Delete(ctx context.Context, filename string, fileSize int64) error
@@ -237,10 +237,11 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 		return dc.NextComponent().CopyToFile(options)
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Try distributed cache with lock-on-miss enabled, collecting per-chunk misses
-	chunkErrors, err := dc.client.DownloadWithSizePartial(ctx, options.Name, options.Count, options.File,
+	// Start distributed cache download — chunk misses stream to chunkErrCh immediately
+	chunkErrCh, wait, err := dc.client.DownloadWithSizePartial(ctx, options.Name, options.Count, options.File,
 		dcache.WithLock(true))
 	if err != nil {
 		if dc.bypassOnError {
@@ -250,43 +251,64 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 		return err
 	}
 
-	if len(chunkErrors) == 0 {
-		log.Debug("DistCache::CopyToFile : L2 hit %s", options.Name)
-		return nil
-	}
-
-	// Handle per-chunk cache misses in parallel
+	// Handle chunk misses in parallel as they arrive from the channel,
+	// concurrently with remaining downloads still in flight.
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxParallelChunkOps)
 
-	for _, ce := range chunkErrors {
-		ce := ce
-		switch ce.Err {
-		case dcache.ErrNotFoundGotLock:
-			g.Go(func() error {
-				log.Debug("DistCache::CopyToFile : L2 chunk miss (got lock) %s offset=%d", options.Name, ce.Offset)
-				return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, true)
-			})
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		for ce := range chunkErrCh {
+			ce := ce
+			switch ce.Err {
+			case dcache.ErrNotFoundGotLock:
+				g.Go(func() error {
+					log.Debug("DistCache::CopyToFile : L2 chunk miss (got lock) %s offset=%d", options.Name, ce.Offset)
+					return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, true)
+				})
 
-		case dcache.ErrNotFoundAlreadyLocked:
-			g.Go(func() error {
-				log.Debug("DistCache::CopyToFile : L2 chunk miss (locked) %s offset=%d, polling", options.Name, ce.Offset)
-				if err := dc.pollUntilChunkCached(gctx, options, ce.Offset, ce.Size); err != nil {
-					log.Debug("DistCache::CopyToFile : chunk poll timeout %s offset=%d, falling through", options.Name, ce.Offset)
+			case dcache.ErrNotFoundAlreadyLocked:
+				g.Go(func() error {
+					log.Debug("DistCache::CopyToFile : L2 chunk miss (locked) %s offset=%d, polling", options.Name, ce.Offset)
+					if err := dc.pollUntilChunkCached(gctx, options, ce.Offset, ce.Size); err != nil {
+						log.Debug("DistCache::CopyToFile : chunk poll timeout %s offset=%d, falling through", options.Name, ce.Offset)
+						return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, false)
+					}
+					return nil
+				})
+
+			default:
+				g.Go(func() error {
+					log.Debug("DistCache::CopyToFile : L2 chunk miss %s offset=%d", options.Name, ce.Offset)
 					return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, false)
-				}
-				return nil
-			})
-
-		default:
-			g.Go(func() error {
-				log.Debug("DistCache::CopyToFile : L2 chunk miss %s offset=%d", options.Name, ce.Offset)
-				return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, false)
-			})
+				})
+			}
 		}
+	}()
+
+	// Wait for all cache downloads to finish (closes chunkErrCh)
+	if fatalErr := wait(); fatalErr != nil {
+		cancel() // cancel recovery goroutines
+		<-readerDone
+		g.Wait() // drain in-flight recovery work before returning
+		if dc.bypassOnError {
+			log.Warn("DistCache::CopyToFile : fatal download error, bypassing: %v", fatalErr)
+			return dc.NextComponent().CopyToFile(options)
+		}
+		return fatalErr
 	}
 
-	return g.Wait()
+	// Wait for channel reader to finish queueing all recovery work
+	<-readerDone
+
+	// Wait for all miss recovery operations to finish
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	log.Debug("DistCache::CopyToFile : completed %s", options.Name)
+	return nil
 }
 
 // --- Write path (file_cache) ---

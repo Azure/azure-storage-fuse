@@ -39,16 +39,29 @@ func (m *mockDCacheClient) Upload(_ context.Context, filename string, data io.Re
 	return nil
 }
 
-func (m *mockDCacheClient) DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+func (m *mockDCacheClient) DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...dcache.DownloadOption) (<-chan dcache.ChunkError, func() error, error) {
+	var chunkErrors []dcache.ChunkError
+	var fatalErr error
+
 	if m.downloadPartialFn != nil {
-		return m.downloadPartialFn(ctx, filename, fileSize, w, opts...)
+		chunkErrors, fatalErr = m.downloadPartialFn(ctx, filename, fileSize, w, opts...)
+	} else {
+		data, ok := m.store[filename]
+		if !ok {
+			chunkErrors = []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: dcache.ErrNotFound}}
+		} else {
+			w.WriteAt(data, 0)
+		}
 	}
-	data, ok := m.store[filename]
-	if !ok {
-		return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: dcache.ErrNotFound}}, nil
+
+	// Convert slice + error to channel-based API
+	ch := make(chan dcache.ChunkError, len(chunkErrors))
+	for _, ce := range chunkErrors {
+		ch <- ce
 	}
-	w.WriteAt(data, 0)
-	return nil, nil
+	close(ch)
+
+	return ch, func() error { return fatalErr }, nil
 }
 
 func (m *mockDCacheClient) DownloadChunk(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error) {
