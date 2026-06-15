@@ -742,7 +742,7 @@ stages:
                 displayName: "Install Docker"
 
               - script: |
-                  sudo docker run --rm debian:trixie bash -c "apt-get update -qq && dpkg -l | grep fuse"
+                  sudo docker run --rm debian:trixie bash -c "apt-get update -qq && apt-get install -y fuse3 libfuse3-dev && dpkg -l | grep fuse"
                 displayName: "Verify fuse version in Debian 13"
 
               - script: |
