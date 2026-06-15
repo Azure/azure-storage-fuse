@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779613366231,
+  "lastUpdate": 1781514132292,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -511,6 +511,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 1.656506861823,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "bb288d4754c51255199fa66153b87cc7f35fc68e",
+          "message": "Bump gopkg.in/ini.v1 from 1.67.2 to 1.67.3 (#2247)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: syeleti-msft <syeleti@microsoft.com>",
+          "timestamp": "2026-06-09T04:46:40Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/bb288d4754c51255199fa66153b87cc7f35fc68e"
+        },
+        "date": 1781514132026,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.41855414120100004,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 1.6478054766299999,
             "unit": "milliseconds"
           }
         ]
