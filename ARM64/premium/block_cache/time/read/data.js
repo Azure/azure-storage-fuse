@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779613244755,
+  "lastUpdate": 1781514012700,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -911,6 +911,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 64.86767943382,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "bb288d4754c51255199fa66153b87cc7f35fc68e",
+          "message": "Bump gopkg.in/ini.v1 from 1.67.2 to 1.67.3 (#2247)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: syeleti-msft <syeleti@microsoft.com>",
+          "timestamp": "2026-06-09T04:46:40Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/bb288d4754c51255199fa66153b87cc7f35fc68e"
+        },
+        "date": 1781514012441,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.295841004896,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.272073864221,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.281338526504,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 61.978497740206,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.451172289072,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.372185596704,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 66.092753410567,
             "unit": "milliseconds"
           }
         ]
