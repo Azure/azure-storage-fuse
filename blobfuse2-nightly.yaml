@@ -755,7 +755,7 @@ stages:
                     debian:trixie bash -c "
                       set -e
                       apt-get update --fix-missing -qq
-                      apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config libfuse3-dev fuse3
+                      apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config libfuse3-dev fuse3 systemd
                       $(Build.SourcesDirectory)/go_installer.sh $(Agent.TempDirectory)/
                       export GOROOT=$(Agent.TempDirectory)/go
                       export GOPATH=$(Pipeline.Workspace)/go
