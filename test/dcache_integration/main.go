@@ -356,7 +356,7 @@ func main() {
 				fmt.Printf("  %-6s blob fetch FAIL: %v\n", f.label, err)
 				continue
 			}
-			err = client.Upload(ctx, f.cachePath, bytes.NewReader(data), f.size, dcache.WithIgnoreLock(true))
+			err = client.Upload(ctx, f.cachePath, "", bytes.NewReader(data), f.size, dcache.WithIgnoreLock(true))
 			populateDur := time.Since(start)
 			if err != nil {
 				fmt.Printf("  %-6s cache upload FAIL: %v\n", f.label, err)

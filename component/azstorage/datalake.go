@@ -489,7 +489,7 @@ func (dl *Datalake) ReadInBuffer(name string, offset int64, length int64, data [
 }
 
 // WriteFromFile : Upload local file to file
-func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *os.File) (err error) {
+func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *os.File, newEtag *string) (err error) {
 	// File in DataLake may have permissions and ACL set. Just uploading the file will override them.
 	// So, we need to get the existing permissions and ACL and set them back after uploading the file.
 
@@ -507,7 +507,7 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 	}
 
 	// Upload the file, which will override the permissions and ACL
-	retCode := dl.BlockBlob.WriteFromFile(name, metadata, fi)
+	retCode := dl.BlockBlob.WriteFromFile(name, metadata, fi, newEtag)
 
 	if acl != "" {
 		// Cannot set both permissions and ACL in one call. ACL includes permission as well so just setting those back

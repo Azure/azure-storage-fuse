@@ -63,7 +63,7 @@ func TestConsistentHashRingDistribution(t *testing.T) {
 
 	counts := make(map[string]int)
 	for i := 0; i < 10000; i++ {
-		key := GenerateCacheKey("prefix", "file.bin", int64(i)*16*1024*1024, 16*1024*1024)
+		key := GenerateCacheKey("prefix", "file.bin", "", int64(i)*16*1024*1024, 16*1024*1024)
 		server, err := ring.GetServer(key)
 		require.NoError(t, err)
 		counts[server]++
@@ -106,7 +106,7 @@ func TestConsistentHashRingMinimalRemapping(t *testing.T) {
 	const numKeys = 10000
 	initial := make(map[string]string, numKeys)
 	for i := 0; i < numKeys; i++ {
-		key := GenerateCacheKey("p", "f", int64(i)*16*1024*1024, 16*1024*1024)
+		key := GenerateCacheKey("p", "f", "", int64(i)*16*1024*1024, 16*1024*1024)
 		s, _ := ring.GetServer(key)
 		initial[key] = s
 	}
@@ -130,16 +130,16 @@ func TestConsistentHashRingMinimalRemapping(t *testing.T) {
 
 // TestGenerateCacheKeyDeterministic verifies cache keys are deterministic.
 func TestGenerateCacheKeyDeterministic(t *testing.T) {
-	k1 := GenerateCacheKey("acct/container", "path/to/file.bin", 0, 16*1024*1024)
-	k2 := GenerateCacheKey("acct/container", "path/to/file.bin", 0, 16*1024*1024)
+	k1 := GenerateCacheKey("acct/container", "path/to/file.bin", "", 0, 16*1024*1024)
+	k2 := GenerateCacheKey("acct/container", "path/to/file.bin", "", 0, 16*1024*1024)
 	assert.Equal(t, k1, k2)
 	assert.Len(t, k1, 64) // SHA256 hex = 64 chars
 }
 
 // TestGenerateCacheKeyDifferentOffsets verifies different offsets produce different keys.
 func TestGenerateCacheKeyDifferentOffsets(t *testing.T) {
-	k0 := GenerateCacheKey("acct/ctr", "file.bin", 0, 16*1024*1024)
-	k1 := GenerateCacheKey("acct/ctr", "file.bin", 16*1024*1024, 16*1024*1024)
+	k0 := GenerateCacheKey("acct/ctr", "file.bin", "", 0, 16*1024*1024)
+	k1 := GenerateCacheKey("acct/ctr", "file.bin", "", 16*1024*1024, 16*1024*1024)
 	assert.NotEqual(t, k0, k1)
 }
 
@@ -147,11 +147,11 @@ func TestGenerateCacheKeyDifferentOffsets(t *testing.T) {
 // does not include chunk size in the key (matching C++ behavior).
 func TestGenerateCacheKeyDefaultChunkNoSuffix(t *testing.T) {
 	const defaultChunk = 4 * 1024 * 1024
-	k := GenerateCacheKey("acct/ctr", "file.bin", 0, defaultChunk)
+	k := GenerateCacheKey("acct/ctr", "file.bin", "", 0, defaultChunk)
 	assert.Len(t, k, 64)
 
 	// With non-default chunk size, the key should be different
-	kNonDefault := GenerateCacheKey("acct/ctr", "file.bin", 0, 16*1024*1024)
+	kNonDefault := GenerateCacheKey("acct/ctr", "file.bin", "", 0, 16*1024*1024)
 	assert.NotEqual(t, k, kNonDefault)
 }
 

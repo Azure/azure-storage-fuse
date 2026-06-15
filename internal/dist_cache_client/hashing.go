@@ -169,21 +169,21 @@ func foldSHA256(input string) uint64 {
 	return result
 }
 
-// GenerateCacheKey creates a distributed cache chunk key matching the C++
-// RemoteCacheClient::GetCacheKey format:
+// GenerateCacheKey creates a distributed cache chunk key.
+// The etag is included in the key so each blob revision occupies a distinct cache slot.
 //
-//	SHA256(cachePrefix/filePath:offset[:chunkSize])
+//	SHA256(cachePrefix/filePath:etag:offset[:chunkSize])
 //
 // The chunkSize suffix is included only when it differs from the default (4 MiB).
 // Since blobfuse uses 16 MiB (non-default), the suffix is always included.
-func GenerateCacheKey(cachePrefix, filePath string, offset, chunkSize int64) string {
+func GenerateCacheKey(cachePrefix, filePath, etag string, offset, chunkSize int64) string {
 	const defaultServerChunkSize = 4 * 1024 * 1024 // 4 MiB server default
 
 	var keyInput string
 	if chunkSize == defaultServerChunkSize {
-		keyInput = fmt.Sprintf("%s/%s:%d", cachePrefix, filePath, offset)
+		keyInput = fmt.Sprintf("%s/%s:%s:%d", cachePrefix, filePath, etag, offset)
 	} else {
-		keyInput = fmt.Sprintf("%s/%s:%d:%d", cachePrefix, filePath, offset, chunkSize)
+		keyInput = fmt.Sprintf("%s/%s:%s:%d:%d", cachePrefix, filePath, etag, offset, chunkSize)
 	}
 
 	h := sha256.Sum256([]byte(keyInput))

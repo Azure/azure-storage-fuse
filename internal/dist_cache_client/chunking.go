@@ -31,7 +31,7 @@ type chunkPlan struct {
 }
 
 // planChunks divides a file into aligned chunks and assigns each to a server.
-func (c *Client) planChunks(filePath string, fileSize int64) ([]chunkPlan, error) {
+func (c *Client) planChunks(filePath, etag string, fileSize int64) ([]chunkPlan, error) {
 	if fileSize <= 0 {
 		return nil, nil
 	}
@@ -46,7 +46,7 @@ func (c *Client) planChunks(filePath string, fileSize int64) ([]chunkPlan, error
 			size = fileSize - offset
 		}
 
-		cacheKey := GenerateCacheKey(c.cfg.cachePrefix, filePath, offset, c.cfg.chunkSize)
+		cacheKey := GenerateCacheKey(c.cfg.cachePrefix, filePath, etag, offset, c.cfg.chunkSize)
 		server, err := c.disc.getServer(cacheKey)
 		if err != nil {
 			return nil, err
@@ -66,8 +66,8 @@ func (c *Client) planChunks(filePath string, fileSize int64) ([]chunkPlan, error
 
 // uploadChunked splits data from a reader into chunks and uploads each to the
 // appropriate server in parallel.
-func (c *Client) uploadChunked(ctx context.Context, filePath string, r io.Reader, fileSize int64, ucfg *uploadConfig) error {
-	plans, err := c.planChunks(filePath, fileSize)
+func (c *Client) uploadChunked(ctx context.Context, filePath, etag string, r io.Reader, fileSize int64, ucfg *uploadConfig) error {
+	plans, err := c.planChunks(filePath, etag, fileSize)
 	if err != nil {
 		return err
 	}
@@ -164,8 +164,8 @@ func (c *Client) uploadSingleChunk(ctx context.Context, plan chunkPlan, data []b
 // downloadChunked downloads all chunks of a file and writes them in order to w.
 // Chunks are downloaded in parallel and streamed to the writer as soon as
 // each in-order chunk completes, reducing memory from O(file) to O(parallelism * chunk).
-func (c *Client) downloadChunked(ctx context.Context, filePath string, fileSize int64, w io.Writer, dcfg *downloadConfig) (*FileMetadata, error) {
-	plans, err := c.planChunks(filePath, fileSize)
+func (c *Client) downloadChunked(ctx context.Context, filePath, etag string, fileSize int64, w io.Writer, dcfg *downloadConfig) (*FileMetadata, error) {
+	plans, err := c.planChunks(filePath, etag, fileSize)
 	if err != nil {
 		return nil, err
 	}
