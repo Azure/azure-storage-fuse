@@ -19,7 +19,6 @@ import (
 	"time"
 
 	pb "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client/proto"
-	"golang.org/x/sync/errgroup"
 )
 
 // Client is a distributed cache client with chunked storage, connection pooling,
@@ -116,13 +115,18 @@ func (c *Client) DownloadWithSize(ctx context.Context, filename string, fileSize
 	return c.downloadChunked(ctx, filename, fileSize, w, dcfg)
 }
 
-// DownloadWithSizePartial retrieves a file but returns per-chunk miss errors
-// instead of failing on the first cache miss. Successfully downloaded chunks
-// are written to w at their correct offsets. The caller can handle individual
-// failed chunks (e.g., fetch from origin, poll for locked chunks).
-func (c *Client) DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...DownloadOption) ([]ChunkError, error) {
+// DownloadWithSizePartial retrieves a file, streaming per-chunk miss errors
+// to the returned channel as they occur. Successfully downloaded chunks are
+// written to w at their correct offsets. The caller can handle each miss
+// concurrently (e.g., fetch from origin, poll for locked chunks) while
+// remaining downloads continue in parallel.
+//
+// The returned channel is closed when all chunk download attempts complete.
+// Call the returned wait function to block until completion and get any fatal error.
+// A non-nil error return indicates a setup failure (closed client, bad plan).
+func (c *Client) DownloadWithSizePartial(ctx context.Context, filename string, fileSize int64, w io.WriterAt, opts ...DownloadOption) (<-chan ChunkError, func() error, error) {
 	if err := c.checkClosed(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	dcfg := &downloadConfig{}
@@ -132,48 +136,81 @@ func (c *Client) DownloadWithSizePartial(ctx context.Context, filename string, f
 
 	plans, err := c.planChunks(filename, fileSize)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	// Buffered channel so workers don't block on send
+	chunkErrCh := make(chan ChunkError, len(plans))
 
 	if len(plans) == 0 {
-		return nil, nil
+		close(chunkErrCh)
+		return chunkErrCh, func() error { return nil }, nil
 	}
 
-	var mu sync.Mutex
-	var chunkErrors []ChunkError
+	ctx, cancel := context.WithCancel(ctx)
 
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(c.cfg.maxParallelOps)
+	var fatalErr error
+	var fatalOnce sync.Once
+	var wg sync.WaitGroup
 
+	// Semaphore to limit parallelism
+	sem := make(chan struct{}, c.cfg.maxParallelOps)
+
+	// Launch all chunk downloads
 	for i := range plans {
 		plan := plans[i]
-		g.Go(func() error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// Acquire semaphore or bail out on cancellation
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }() // release
+
 			buf := c.getBuffer()
-			n, _, dlErr := c.downloadSingleChunkToBuffer(gctx, plan, buf, dcfg)
+			n, _, dlErr := c.downloadSingleChunkToBuffer(ctx, plan, buf, dcfg)
 			if dlErr != nil {
 				c.putBuffer(buf)
 				if dlErr == ErrNotFoundGotLock || dlErr == ErrNotFoundAlreadyLocked || dlErr == ErrNotFound {
-					mu.Lock()
-					chunkErrors = append(chunkErrors, ChunkError{
+					// Recoverable miss — send to caller for handling
+					chunkErrCh <- ChunkError{
 						Offset: plan.offset,
 						Size:   plan.size,
 						Err:    dlErr,
-					})
-					mu.Unlock()
-					return nil
+					}
+					return
 				}
-				return dlErr
+				// Fatal error — cancel remaining downloads
+				fatalOnce.Do(func() {
+					fatalErr = dlErr
+					cancel()
+				})
+				return
 			}
 			_, writeErr := w.WriteAt(buf[:n], plan.offset)
 			c.putBuffer(buf)
-			return writeErr
-		})
+			if writeErr != nil {
+				fatalOnce.Do(func() {
+					fatalErr = writeErr
+					cancel()
+				})
+			}
+		}()
 	}
 
-	if err := g.Wait(); err != nil {
-		return nil, err
+	// Wait function: blocks until all downloads finish, closes channel, returns fatal error
+	wait := func() error {
+		wg.Wait()
+		cancel() // ensure context resources are released
+		close(chunkErrCh)
+		return fatalErr
 	}
-	return chunkErrors, nil
+
+	return chunkErrCh, wait, nil
 }
 
 // DownloadChunk retrieves a single chunk at the given offset.
