@@ -56,7 +56,7 @@ func profileChunkSize(addrs []string, chunkSize int64, chunkMB int, iters int) {
 	key := fmt.Sprintf("latency-probe/%dMB", chunkMB)
 	data := make([]byte, chunkSize)
 	rand.Read(data)
-	if err := client.Upload(ctx, key, bytes.NewReader(data), chunkSize, dcache.WithIgnoreLock(true)); err != nil {
+	if err := client.Upload(ctx, key, "", bytes.NewReader(data), chunkSize, dcache.WithIgnoreLock(true)); err != nil {
 		fmt.Fprintf(os.Stderr, "upload %dMB failed: %v\n", chunkMB, err)
 		return
 	}
@@ -114,7 +114,7 @@ func profileMultiChunk(addrs []string, fileSize int64, chunkSize int64, parallel
 	// Ensure data exists
 	data := make([]byte, fileSize)
 	rand.Read(data)
-	if err := client.Upload(ctx, key, bytes.NewReader(data), fileSize, dcache.WithIgnoreLock(true)); err != nil {
+	if err := client.Upload(ctx, key, "", bytes.NewReader(data), fileSize, dcache.WithIgnoreLock(true)); err != nil {
 		// May already exist
 		fmt.Fprintf(os.Stderr, "upload 1GB: %v (continuing)\n", err)
 	}

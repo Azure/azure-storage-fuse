@@ -227,7 +227,7 @@ func TestUploadDownloadRoundTrip(t *testing.T) {
 	srv.mu.Unlock()
 
 	// Upload
-	err := client.Upload(ctx, "test/file.txt", bytes.NewReader(data), int64(len(data)))
+	err := client.Upload(ctx, "test/file.txt", "", bytes.NewReader(data), int64(len(data)))
 	require.NoError(t, err)
 
 	// Download
@@ -247,12 +247,12 @@ func TestUploadDownloadChunk(t *testing.T) {
 	data := bytes.Repeat([]byte("A"), 4096)
 
 	// Upload a single chunk
-	err := client.UploadChunk(ctx, "file.bin", 0, data)
+	err := client.UploadChunk(ctx, "file.bin", "", 0, data)
 	require.NoError(t, err)
 
 	// Download the chunk
 	buf := make([]byte, 4096)
-	n, err := client.DownloadChunk(ctx, "file.bin", 0, buf)
+	n, err := client.DownloadChunk(ctx, "file.bin", "", 0, buf)
 	require.NoError(t, err)
 	assert.Equal(t, 4096, n)
 	assert.Equal(t, data, buf[:n])
@@ -265,7 +265,7 @@ func TestDownloadNotFound(t *testing.T) {
 
 	ctx := context.Background()
 	buf := make([]byte, 4096)
-	_, err := client.DownloadChunk(ctx, "nonexistent", 0, buf)
+	_, err := client.DownloadChunk(ctx, "nonexistent", "", 0, buf)
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -278,11 +278,11 @@ func TestDownloadLockProtocol(t *testing.T) {
 	buf := make([]byte, 4096)
 
 	// First download with lock — should get lock
-	_, err := client.DownloadChunk(ctx, "locked-file", 0, buf, WithLock(true))
+	_, err := client.DownloadChunk(ctx, "locked-file", "", 0, buf, WithLock(true))
 	assert.ErrorIs(t, err, ErrNotFoundGotLock)
 
 	// Second download with lock — should see already locked
-	_, err = client.DownloadChunk(ctx, "locked-file", 0, buf, WithLock(true))
+	_, err = client.DownloadChunk(ctx, "locked-file", "", 0, buf, WithLock(true))
 	assert.ErrorIs(t, err, ErrNotFoundAlreadyLocked)
 }
 
@@ -295,7 +295,7 @@ func TestDeleteFile(t *testing.T) {
 	data := bytes.Repeat([]byte("B"), 1024)
 
 	// Upload then delete
-	err := client.UploadChunk(ctx, "file.bin", 0, data)
+	err := client.UploadChunk(ctx, "file.bin", "", 0, data)
 	require.NoError(t, err)
 
 	err = client.Delete(ctx, "file.bin", 1024)
@@ -303,7 +303,7 @@ func TestDeleteFile(t *testing.T) {
 
 	// Verify deleted
 	buf := make([]byte, 1024)
-	_, err = client.DownloadChunk(ctx, "file.bin", 0, buf)
+	_, err = client.DownloadChunk(ctx, "file.bin", "", 0, buf)
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -345,7 +345,7 @@ func TestClientClose(t *testing.T) {
 	client.Close()
 
 	ctx := context.Background()
-	err := client.Upload(ctx, "f", bytes.NewReader(nil), 0)
+	err := client.Upload(ctx, "f", "", bytes.NewReader(nil), 0)
 	assert.ErrorIs(t, err, ErrClosed)
 }
 
@@ -376,7 +376,7 @@ func TestMultiChunkUploadDownload(t *testing.T) {
 	srv.mu.Unlock()
 
 	// Upload
-	err = c.Upload(ctx, "multi-chunk.bin", bytes.NewReader(data), int64(len(data)))
+	err = c.Upload(ctx, "multi-chunk.bin", "", bytes.NewReader(data), int64(len(data)))
 	require.NoError(t, err)
 
 	// Download
@@ -413,7 +413,7 @@ func TestConnectionPoolReuse(t *testing.T) {
 
 	// Perform multiple operations that should reuse connections
 	for i := 0; i < 10; i++ {
-		err := client.UploadChunk(ctx, "reuse-test", 0, data)
+		err := client.UploadChunk(ctx, "reuse-test", "", 0, data)
 		require.NoError(t, err)
 	}
 }

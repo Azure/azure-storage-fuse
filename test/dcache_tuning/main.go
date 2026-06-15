@@ -143,7 +143,7 @@ func main() {
 					fmt.Printf("  chunk=%dMB %s blob fetch FAIL: %v\n", csz, label, err)
 					continue
 				}
-				err = cl.Upload(ctx, cachePath, bytes.NewReader(data), sz, dcache.WithIgnoreLock(true))
+				err = cl.Upload(ctx, cachePath, "", bytes.NewReader(data), sz, dcache.WithIgnoreLock(true))
 				if err != nil {
 					fmt.Printf("  chunk=%dMB %s cache upload FAIL: %v\n", csz, label, err)
 					continue
