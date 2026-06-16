@@ -1405,3 +1405,168 @@ func TestReadUploadNotCancelled_ForDifferentFile(t *testing.T) {
 		"read-path upload for file-a should NOT be cancelled by write to file-b")
 	assert.Equal(t, []byte("file-a-data"), mock.store["test/file-a.bin:0"])
 }
+
+// --- Tests for recoverable network error handling ---
+
+func TestCopyToFile_RecoverableNetErr_FetchesFromStorage(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("data from azure after net error")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	// Simulate a recoverable network error (connection failed) on one chunk
+	mock.downloadPartialFn = func(_ context.Context, _ string, fileSize int64, _ io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: dcache.ErrConnectionFailed}}, nil
+	}
+
+	f, err := os.CreateTemp("", "dcache-neterr-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	err = dc.CopyToFile(internal.CopyToFileOptions{
+		Name:  "test/file.txt",
+		Count: int64(len(azData)),
+		File:  f,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, next.readInBufferCalled, "should fetch from Azure on recoverable network error")
+	assert.Equal(t, 0, next.copyToFileCalled, "should NOT fall back to full CopyToFile")
+}
+
+func TestCopyToFile_RecoverableNetErr_MultipleChunks(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	chunkSize := int64(16 * 1024 * 1024)
+
+	// Return data based on offset in ReadInBuffer
+	next.readInBufferFn = func(options *internal.ReadInBufferOptions) (int, error) {
+		data := fmt.Sprintf("chunk-at-%d", options.Offset)
+		n := copy(options.Data, data)
+		return n, nil
+	}
+
+	// Simulate multiple chunks: one hit, two recoverable network errors
+	mock.downloadPartialFn = func(_ context.Context, _ string, fileSize int64, w io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		// First chunk is a hit
+		w.WriteAt([]byte("cached-chunk-0"), 0)
+		// Second and third chunks have network errors
+		return []dcache.ChunkError{
+			{Offset: chunkSize, Size: chunkSize, Err: dcache.ErrConnectionFailed},
+			{Offset: 2 * chunkSize, Size: chunkSize, Err: io.EOF},
+		}, nil
+	}
+
+	f, err := os.CreateTemp("", "dcache-neterr-multi-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	err = dc.CopyToFile(internal.CopyToFileOptions{
+		Name:  "test/largefile.bin",
+		Count: 3 * chunkSize,
+		File:  f,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 2, next.readInBufferCalled, "should fetch both errored chunks from Azure")
+	assert.Equal(t, 0, next.copyToFileCalled, "should NOT fall back to full CopyToFile")
+}
+
+func TestCopyToFile_RecoverableNetErr_DoesNotPopulateCache(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("data from azure")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	// Simulate a recoverable network error — should fetch from storage
+	// but NOT re-populate cache (populateCache=false for this path)
+	mock.downloadPartialFn = func(_ context.Context, _ string, fileSize int64, _ io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		return []dcache.ChunkError{{Offset: 0, Size: fileSize, Err: dcache.ErrConnectionFailed}}, nil
+	}
+
+	f, err := os.CreateTemp("", "dcache-neterr-nopop-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	err = dc.CopyToFile(internal.CopyToFileOptions{
+		Name:  "test/file.txt",
+		Count: int64(len(azData)),
+		File:  f,
+	})
+
+	assert.NoError(t, err)
+	// Wait briefly for any async uploads
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, 0, mock.uploadChunkCalled, "should NOT populate cache on recoverable net error (no lock held)")
+}
+
+func TestCopyToFile_RecoverableNetErr_MixedWithMisses(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	chunkSize := int64(16 * 1024 * 1024)
+
+	next.readInBufferFn = func(options *internal.ReadInBufferOptions) (int, error) {
+		data := fmt.Sprintf("data-at-%d", options.Offset)
+		n := copy(options.Data, data)
+		return n, nil
+	}
+
+	// Mix of: cache miss with lock, network error, and plain miss
+	mock.downloadPartialFn = func(_ context.Context, _ string, _ int64, _ io.WriterAt, _ ...dcache.DownloadOption) ([]dcache.ChunkError, error) {
+		return []dcache.ChunkError{
+			{Offset: 0, Size: chunkSize, Err: dcache.ErrNotFoundGotLock},
+			{Offset: chunkSize, Size: chunkSize, Err: dcache.ErrConnectionFailed},
+			{Offset: 2 * chunkSize, Size: chunkSize, Err: dcache.ErrNotFound},
+		}, nil
+	}
+
+	f, err := os.CreateTemp("", "dcache-neterr-mixed-*")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	err = dc.CopyToFile(internal.CopyToFileOptions{
+		Name:  "test/largefile.bin",
+		Count: 3 * chunkSize,
+		File:  f,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 3, next.readInBufferCalled, "all three chunks should be fetched from Azure")
+
+	// Wait for async uploads from the GotLock path
+	time.Sleep(50 * time.Millisecond)
+	// Only the GotLock chunk should trigger a cache populate
+	assert.Equal(t, 1, mock.uploadChunkCalled, "only GotLock chunk should populate cache")
+}
+
+func TestReadInBuffer_RecoverableNetErr_BypassesToStorage(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure data after net error")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	// DownloadChunk returns a recoverable network error
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, dcache.ErrConnectionFailed
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should bypass to Azure on recoverable network error")
+}
