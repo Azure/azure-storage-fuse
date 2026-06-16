@@ -89,15 +89,22 @@ func NewLRU[K comparable, V any](maxSize int64, sizeOf func(K, V) int64) *LRU[K,
 
 // Put inserts or updates a key-value pair and promotes it to MRU.
 // After insertion, LRU entries are evicted until currSize <= maxSize.
-func (l *LRU[K, V]) Put(key K, val V) {
+// Returns false (and leaves the cache unchanged) if the entry's size alone
+// exceeds maxSize — oversized entries are rejected upfront so existing entries
+// are never displaced by a key that can never fit.
+func (l *LRU[K, V]) Put(key K, val V) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.put(key, val)
+	return l.put(key, val)
 }
 
 // put is the lock-free inner implementation, called with l.mu write-locked.
-func (l *LRU[K, V]) put(key K, val V) {
+func (l *LRU[K, V]) put(key K, val V) bool {
 	userSize := l.sizeOf(key, val)
+	// Reject entries that can never fit, so existing LRU contents are not displaced.
+	if l.maxSize > 0 && l.perEntryOverhead+userSize > l.maxSize {
+		return false
+	}
 	if elem, ok := l.items[key]; ok {
 		item := elem.Value.(*lruItem[K, V])
 		l.currSize -= item.userSize
@@ -106,13 +113,14 @@ func (l *LRU[K, V]) put(key K, val V) {
 		l.currSize += userSize
 		l.list.MoveToFront(elem)
 		l.evictIfNeeded()
-		return
+		return true
 	}
 	item := &lruItem[K, V]{key: key, val: val, userSize: userSize}
 	elem := l.list.PushFront(item)
 	l.items[key] = elem
 	l.currSize += l.perEntryOverhead + userSize
 	l.evictIfNeeded()
+	return true
 }
 
 // Get retrieves a value and promotes it to MRU.  Returns (zero, false) on miss.

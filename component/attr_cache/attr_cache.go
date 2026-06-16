@@ -510,7 +510,9 @@ func (ac *AttrCache) Chmod(options internal.ChmodOptions) error {
 			newAttr := *item.attr // copy the struct so the old item stays immutable
 			newAttr.Mode = options.Mode
 			newAttr.Ctime = time.Now()
-			ac.lru.Put(truncated, &attrCacheItem{attr: &newAttr, exists: true, cachedAt: time.Now()})
+			if !ac.lru.Put(truncated, &attrCacheItem{attr: &newAttr, exists: true, cachedAt: time.Now()}) {
+				log.Err("AttrCache::Chmod : entry too large for cache, skipping path %s", truncated)
+			}
 		}
 	}
 

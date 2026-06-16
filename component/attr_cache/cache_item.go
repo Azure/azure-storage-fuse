@@ -40,6 +40,7 @@ import (
 	"unsafe"
 
 	cachepolicy "github.com/Azure/azure-storage-fuse/v2/common/cache_policy"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -132,9 +133,10 @@ func (l *attrCacheLRU) Has(key string) bool {
 }
 
 // Put inserts or updates an entry and records cache activity for the idle gate.
-func (l *attrCacheLRU) Put(key string, val *attrCacheItem) {
+// Returns false (without modifying the cache) if the entry's size exceeds maxCacheSize.
+func (l *attrCacheLRU) Put(key string, val *attrCacheItem) bool {
 	l.touch()
-	l.LRU.Put(key, val)
+	return l.LRU.Put(key, val)
 }
 
 // Delete removes an entry and records cache activity for the idle gate.
@@ -152,11 +154,15 @@ func (l *attrCacheLRU) ReplaceIf(pred func(string, *attrCacheItem) bool, newVal 
 }
 
 func (l *attrCacheLRU) cachePositiveEntry(path string, attr *internal.ObjAttr) {
-	l.Put(path, &attrCacheItem{attr: attr, exists: true, cachedAt: time.Now()})
+	if !l.Put(path, &attrCacheItem{attr: attr, exists: true, cachedAt: time.Now()}) {
+		log.Err("attrCacheLRU::cachePositiveEntry : entry too large for cache, skipping path %s", path)
+	}
 }
 
 func (l *attrCacheLRU) cacheNegativeEntry(path string) {
-	l.Put(path, &attrCacheItem{cachedAt: time.Now()})
+	if !l.Put(path, &attrCacheItem{cachedAt: time.Now()}) {
+		log.Err("attrCacheLRU::cacheNegativeEntry : entry too large for cache, skipping path %s", path)
+	}
 }
 
 func (l *attrCacheLRU) cacheAttributes(pathList []*internal.ObjAttr) {
@@ -168,7 +174,9 @@ func (l *attrCacheLRU) cacheAttributes(pathList []*internal.ObjAttr) {
 
 // Marks the entry as negative
 func (l *attrCacheLRU) deletePath(path string, t time.Time) {
-	l.Put(internal.TruncateDirName(path), &attrCacheItem{cachedAt: t})
+	if !l.Put(internal.TruncateDirName(path), &attrCacheItem{cachedAt: t}) {
+		log.Err("attrCacheLRU::deletePath : tombstone too large for cache, skipping path %s", path)
+	}
 }
 
 // Removes the entry from the cache.
@@ -209,6 +217,8 @@ func (l *attrCacheLRU) updateCacheEntry(path string, attr *internal.ObjAttr) {
 			copied.Path = path
 			attr = &copied
 		}
-		l.Put(path, &attrCacheItem{attr: attr, exists: attr != nil, cachedAt: time.Now()})
+		if !l.Put(path, &attrCacheItem{attr: attr, exists: attr != nil, cachedAt: time.Now()}) {
+			log.Err("attrCacheLRU::updateCacheEntry : entry too large for cache, skipping path %s", path)
+		}
 	}
 }

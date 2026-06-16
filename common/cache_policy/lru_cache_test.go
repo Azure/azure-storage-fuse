@@ -266,11 +266,13 @@ func (s *lruCacheTestSuite) TestUpdateIncreasesSize() {
 	lru.Put("ab", "cd") // userSize=4, fits exactly
 	s.assert.Equal(1, lru.Len())
 
-	// Update with larger value — should evict self if no room, or trigger eviction
-	lru.Put("ab", "cdefgh") // userSize=8, exceeds limit
-	// The entry is updated then evictIfNeeded runs; since it's the only entry
-	// the LRU will remove it (degenerate case — maxSize too small for even one entry)
-	s.assert.LessOrEqual(lru.Size(), overhead+4)
+	// Update with a value too large to ever fit — rejected upfront, original entry survives.
+	retained := lru.Put("ab", "cdefgh") // userSize=8, exceeds limit
+	s.assert.False(retained, "entry whose size exceeds maxSize should be rejected")
+	s.assert.Equal(1, lru.Len(), "existing entry must not be displaced")
+	v, ok := lru.Get("ab")
+	s.assert.True(ok)
+	s.assert.Equal("cd", v, "original value must be unchanged")
 }
 
 // ---- Range ----
