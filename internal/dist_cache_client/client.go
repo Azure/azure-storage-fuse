@@ -176,7 +176,7 @@ func (c *Client) DownloadWithSizePartial(ctx context.Context, filename, etag str
 			n, _, dlErr := c.downloadSingleChunkToBuffer(ctx, plan, buf, dcfg)
 			if dlErr != nil {
 				c.putBuffer(buf)
-				if dlErr == ErrNotFoundGotLock || dlErr == ErrNotFoundAlreadyLocked || dlErr == ErrNotFound {
+				if dlErr == ErrNotFoundGotLock || dlErr == ErrNotFoundAlreadyLocked || dlErr == ErrNotFound || IsRecoverableNetErr(dlErr) {
 					// Recoverable miss — send to caller for handling
 					chunkErrCh <- ChunkError{
 						Offset: plan.offset,
