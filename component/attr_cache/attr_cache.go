@@ -161,8 +161,11 @@ func (ac *AttrCache) sweepExpired() {
 	if ac.cacheTimeout <= 0 {
 		return
 	}
+
+	// Only apply the idle gate when the cache is memory-bounded. If MaxSize()==0 (unlimited),
+	// skipping sweeps under continuous traffic can let TTL-expired entries accumulate forever.
 	idleThreshold := ac.cacheTimeout / 2
-	if idleThreshold > 0 {
+	if idleThreshold > 0 && ac.lru.MaxSize() > 0 {
 		if last := ac.lastOp.Load(); last != 0 {
 			if time.Since(time.Unix(last, 0)) < idleThreshold {
 				return
