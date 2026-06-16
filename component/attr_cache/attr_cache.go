@@ -237,9 +237,9 @@ func (ac *AttrCache) Configure(_ bool) error {
 	return nil
 }
 
-// OnConfigChange is a no-op — applying config changes safely requires a component restart.
+// OnConfigChange logs that attr_cache settings cannot be applied safely at runtime.
 func (ac *AttrCache) OnConfigChange() {
-	log.Trace("AttrCache::OnConfigChange : config change ignored; restart required to apply new settings")
+	log.Warn("AttrCache::OnConfigChange : config change detected but not applied; restart required to apply new attr_cache settings")
 }
 
 // ------------------------- Component operations -------------------------------------------
