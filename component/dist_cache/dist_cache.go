@@ -299,7 +299,6 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-
 	etag := options.Etag
 	log.Debug("DistCache::CopyToFile : %s etag=%q size=%d", options.Name, etag, options.Count)
 
@@ -323,14 +322,14 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 		defer close(readerDone)
 		for ce := range chunkErrCh {
 			ce := ce
-			switch ce.Err {
-			case dcache.ErrNotFoundGotLock:
+			switch {
+			case ce.Err == dcache.ErrNotFoundGotLock:
 				g.Go(func() error {
 					log.Debug("DistCache::CopyToFile : L2 chunk miss (got lock) %s offset=%d", options.Name, ce.Offset)
 					return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, true)
 				})
 
-			case dcache.ErrNotFoundAlreadyLocked:
+			case ce.Err == dcache.ErrNotFoundAlreadyLocked:
 				g.Go(func() error {
 					log.Debug("DistCache::CopyToFile : L2 chunk miss (locked) %s offset=%d, polling", options.Name, ce.Offset)
 					if err := dc.pollUntilChunkCached(gctx, options, ce.Offset, ce.Size); err != nil {
@@ -338,6 +337,12 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 						return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, false)
 					}
 					return nil
+				})
+
+			case dcache.IsRecoverableNetErr(ce.Err):
+				g.Go(func() error {
+					log.Warn("DistCache::CopyToFile : L2 chunk network error %s offset=%d err=%v, fetching from storage", options.Name, ce.Offset, ce.Err)
+					return dc.fetchChunkFromRemote(gctx, options, ce.Offset, ce.Size, false)
 				})
 
 			default:
