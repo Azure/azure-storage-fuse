@@ -173,9 +173,10 @@ func (ac *AttrCache) sweepExpired() {
 		}
 	}
 	timeout := ac.cacheTimeout
+	cutoff := time.Now().Add(-timeout)
 	before := ac.lru.Size()
 	ac.lru.DeleteIf(func(_ string, item *attrCacheItem) bool {
-		return time.Since(item.cachedAt) >= timeout
+		return !item.cachedAt.After(cutoff)
 	})
 	maxMB := ac.lru.MaxSize() >> 20
 	if maxMB == 0 {
