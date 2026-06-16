@@ -166,9 +166,17 @@ func (l *attrCacheLRU) cacheNegativeEntry(path string) {
 }
 
 func (l *attrCacheLRU) cacheAttributes(pathList []*internal.ObjAttr) {
+	if len(pathList) == 0 {
+		return
+	}
+	// Bulk caching can involve thousands of entries; avoid a time.Now()/atomic.Store per item.
+	l.touch()
+	currTime := time.Now()
 	for _, attr := range pathList {
 		key := internal.TruncateDirName(attr.Path)
-		l.cachePositiveEntry(key, attr)
+		if !l.LRU.Put(key, &attrCacheItem{attr: attr, exists: true, cachedAt: currTime}) {
+			log.Err("attrCacheLRU::cacheAttributes : entry too large for cache, skipping path %s", key)
+		}
 	}
 }
 
