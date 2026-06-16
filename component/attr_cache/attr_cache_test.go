@@ -1243,14 +1243,13 @@ func (suite *attrCacheTestSuite) TestLRUEvictionOnMemoryLimit() {
 	// setupTestHelper creates and starts the cache.
 	suite.setupTestHelper(emptyConfig)
 
-	// Insert one entry to measure its cost.
+	// Insert one entry to measure its cost, then rebuild the LRU capped at 2 entries.
 	path0 := "measure"
 	item0 := &attrCacheItem{attr: getPathAttr(path0, defaultSize, fs.FileMode(defaultMode), false), exists: true, cachedAt: time.Now()}
 	suite.attrCache.lru.Put(path0, item0)
 	singleEntrySize := suite.attrCache.lru.Size()
-	suite.attrCache.lru.Purge()
 	// Set max to exactly 2 entries.
-	suite.attrCache.lru.SetMaxSize(singleEntrySize * 2)
+	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize*2, nil)
 
 	// Add 3 entries (A, B, C in insertion order: A is LRU).
 	pathA, pathB, pathLast := "lru_a", "lru_b", "lru_c"
@@ -1280,8 +1279,7 @@ func (suite *attrCacheTestSuite) TestLRUOrderPreservesRecentlyAccessed() {
 	item0 := &attrCacheItem{attr: getPathAttr(path0, defaultSize, fs.FileMode(defaultMode), false), exists: true, cachedAt: time.Now()}
 	suite.attrCache.lru.Put(path0, item0)
 	singleEntrySize := suite.attrCache.lru.Size()
-	suite.attrCache.lru.Purge()
-	suite.attrCache.lru.SetMaxSize(singleEntrySize * 2)
+	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize*2, nil)
 
 	// Insert A, then B.  Order: B (MRU) → A (LRU).
 	pathA, pathB := "ord_a", "ord_b"

@@ -65,7 +65,7 @@ type LRU[K comparable, V any] struct {
 	mu               sync.RWMutex
 	items            map[K]*list.Element
 	list             *list.List
-	maxSize          int64 // 0 = no limit
+	maxSize          int64 // 0 = no limit; immutable after construction
 	currSize         int64
 	perEntryOverhead int64
 	sizeOf           func(K, V) int64
@@ -78,13 +78,14 @@ func NewLRU[K comparable, V any](maxSize int64, sizeOf func(K, V) int64) *LRU[K,
 	overhead := int64(unsafe.Sizeof(zeroItem)) +
 		int64(unsafe.Sizeof(list.Element{})) +
 		mapBucketOverhead
-	return &LRU[K, V]{
+	l := &LRU[K, V]{
 		items:            make(map[K]*list.Element),
 		list:             list.New(),
-		maxSize:          maxSize,
 		sizeOf:           sizeOf,
 		perEntryOverhead: overhead,
+		maxSize:          maxSize,
 	}
+	return l
 }
 
 // Put inserts or updates a key-value pair and promotes it to MRU.
@@ -186,9 +187,8 @@ func (l *LRU[K, V]) Size() int64 {
 }
 
 // MaxSize returns the configured memory limit (0 = no limit).
+// This value is immutable after construction and requires no locking.
 func (l *LRU[K, V]) MaxSize() int64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
 	return l.maxSize
 }
 
@@ -196,14 +196,6 @@ func (l *LRU[K, V]) MaxSize() int64 {
 // This value is immutable after construction and requires no locking.
 func (l *LRU[K, V]) PerEntryOverhead() int64 {
 	return l.perEntryOverhead
-}
-
-// SetMaxSize changes the memory limit and immediately evicts LRU entries if over the new limit.
-func (l *LRU[K, V]) SetMaxSize(newMax int64) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.maxSize = newMax
-	l.evictIfNeeded()
 }
 
 // Range calls fn for every entry in MRU→LRU order.

@@ -75,7 +75,6 @@ type AttrCache struct {
 	noSymlinks    bool
 	maxSizeBytes  int64
 	lru           *attrCacheLRU
-	lifecycleMu   sync.Mutex // guards stopCh across Start/Stop/startSweeper
 	stopCh        chan struct{}
 	sweepWg       sync.WaitGroup
 	lastOp        atomic.Int64 // Unix seconds of last LRU operation; 0 = no activity yet
@@ -114,16 +113,10 @@ func (ac *AttrCache) Priority() internal.ComponentPriority {
 	return internal.EComponentPriority.LevelTwo()
 }
 
-// startSweeper stops any running sweeper goroutine and starts a new one using
-// the current cacheTimeout. If cacheTimeout is zero, no sweeper is started.
-func (ac *AttrCache) startSweeper() {
-	ac.lifecycleMu.Lock()
-	defer ac.lifecycleMu.Unlock()
-	if ac.stopCh != nil {
-		close(ac.stopCh)
-		ac.sweepWg.Wait()
-		ac.stopCh = nil
-	}
+// Start initialises the cache and launches the background TTL sweeper.
+func (ac *AttrCache) Start(_ context.Context) error {
+	log.Trace("AttrCache::Start : Starting component %s", ac.Name())
+	ac.lru = newAttrCacheLRU(ac.maxSizeBytes, &ac.lastOp)
 	if ac.cacheTimeout > 0 {
 		ac.stopCh = make(chan struct{})
 		ac.sweepWg.Add(1)
@@ -132,13 +125,6 @@ func (ac *AttrCache) startSweeper() {
 			ac.ttlSweeper()
 		}()
 	}
-}
-
-// Start initialises the cache and launches the background TTL sweeper.
-func (ac *AttrCache) Start(_ context.Context) error {
-	log.Trace("AttrCache::Start : Starting component %s", ac.Name())
-	ac.lru = newAttrCacheLRU(ac.maxSizeBytes, &ac.lastOp)
-	ac.startSweeper()
 	return nil
 }
 
@@ -146,8 +132,6 @@ func (ac *AttrCache) Start(_ context.Context) error {
 // Memory held by expired entries is reclaimed by the GC once the component is released.
 func (ac *AttrCache) Stop() error {
 	log.Trace("AttrCache::Stop : Stopping component %s", ac.Name())
-	ac.lifecycleMu.Lock()
-	defer ac.lifecycleMu.Unlock()
 	if ac.stopCh != nil {
 		close(ac.stopCh)
 		ac.sweepWg.Wait()
@@ -177,9 +161,12 @@ func (ac *AttrCache) sweepExpired() {
 	if ac.cacheTimeout <= 0 {
 		return
 	}
-	if last := ac.lastOp.Load(); last != 0 {
-		if time.Now().Unix()-last < int64(ac.cacheTimeout/(2*time.Second)) {
-			return
+	idleThreshold := ac.cacheTimeout / 2
+	if idleThreshold > 0 {
+		if last := ac.lastOp.Load(); last != 0 {
+			if time.Since(time.Unix(last, 0)) < idleThreshold {
+				return
+			}
 		}
 	}
 	timeout := ac.cacheTimeout
@@ -237,12 +224,6 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.maxSizeBytes = int64(defaultMaxSizeMB) * 1024 * 1024
 	}
 
-	// Propagate the new limit to a running cache (hot-reload support).
-	if ac.lru != nil {
-		ac.lru.SetMaxSize(ac.maxSizeBytes)
-		ac.startSweeper()
-	}
-
 	effectiveMB := uint32(ac.maxSizeBytes / (1024 * 1024))
 	log.Crit("AttrCache::Configure : cache-timeout %v, no-symlinks %t, no-cache-on-list %t, max-size-mb %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.noCacheOnList, effectiveMB)
@@ -250,10 +231,9 @@ func (ac *AttrCache) Configure(_ bool) error {
 	return nil
 }
 
-// OnConfigChange is called when the config file changes at runtime.
+// OnConfigChange is a no-op — applying config changes safely requires a component restart.
 func (ac *AttrCache) OnConfigChange() {
-	log.Trace("AttrCache::OnConfigChange : %s", ac.Name())
-	_ = ac.Configure(true)
+	log.Trace("AttrCache::OnConfigChange : config change ignored; restart required to apply new settings")
 }
 
 // ------------------------- Component operations -------------------------------------------

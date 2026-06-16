@@ -189,8 +189,7 @@ func (s *lruCacheTestSuite) TestEvictionAtCapacity() {
 	// Allow room for exactly 2 entries (overhead + 0 user bytes each)
 	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
 	overhead := lru.PerEntryOverhead()
-
-	lru.SetMaxSize(overhead * 2)
+	lru = NewLRU[string, int](overhead*2, zeroSizeOf[string, int])
 
 	lru.Put("a", 1)
 	lru.Put("b", 2)
@@ -207,7 +206,7 @@ func (s *lruCacheTestSuite) TestEvictionAtCapacity() {
 func (s *lruCacheTestSuite) TestEvictionPromotion() {
 	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
 	overhead := lru.PerEntryOverhead()
-	lru.SetMaxSize(overhead * 2)
+	lru = NewLRU[string, int](overhead*2, zeroSizeOf[string, int])
 
 	lru.Put("a", 1)
 	lru.Put("b", 2) // order: b(MRU), a(LRU)
@@ -226,7 +225,7 @@ func (s *lruCacheTestSuite) TestEvictionPromotion() {
 func (s *lruCacheTestSuite) TestEvictionOrder() {
 	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
 	overhead := lru.PerEntryOverhead()
-	lru.SetMaxSize(overhead * 3)
+	lru = NewLRU[string, int](overhead*3, zeroSizeOf[string, int])
 
 	lru.Put("a", 1) // LRU order: a
 	lru.Put("b", 2) // LRU order: b, a
@@ -242,26 +241,19 @@ func (s *lruCacheTestSuite) TestEvictionOrder() {
 	s.assert.True(lru.Has("e"))
 }
 
-func (s *lruCacheTestSuite) TestSetMaxSizeTriggersEviction() {
-	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
-	overhead := lru.PerEntryOverhead()
+// ---- MaxSize accessor ----
 
-	// Fill with 5 entries (no limit yet)
-	for _, k := range []string{"a", "b", "c", "d", "e"} {
-		lru.Put(k, 1)
-	}
-	s.assert.Equal(5, lru.Len())
-
-	// Shrink to 2 entries
-	lru.SetMaxSize(overhead * 2)
-	s.assert.Equal(2, lru.Len())
-	s.assert.LessOrEqual(lru.Size(), overhead*2)
+func (s *lruCacheTestSuite) TestMaxSizeAccessor() {
+	lru := NewLRU[string, int](1024, zeroSizeOf[string, int])
+	s.assert.Equal(int64(1024), lru.MaxSize())
 }
 
-func (s *lruCacheTestSuite) TestUpdateIncreasesSize() {
+// ---- oversized entry rejection ----
+
+func (s *lruCacheTestSuite) TestOversizedEntryRejected() {
 	lru := NewLRU[string, string](0, strSizeOf)
 	overhead := lru.PerEntryOverhead()
-	lru.SetMaxSize(overhead + 4) // room for 1 entry with 4 user bytes
+	lru = NewLRU[string, string](overhead+4, strSizeOf) // room for 1 entry with 4 user bytes
 
 	lru.Put("ab", "cd") // userSize=4, fits exactly
 	s.assert.Equal(1, lru.Len())
@@ -537,41 +529,6 @@ func (s *lruCacheTestSuite) TestRangeOnEmptyCache() {
 	s.assert.Equal(0, calls)
 }
 
-// ---- SetMaxSize(0) disables eviction ----
-
-func (s *lruCacheTestSuite) TestSetMaxSizeZeroDisablesEviction() {
-	lru := NewLRU[string, int](0, zeroSizeOf[string, int])
-	overhead := lru.PerEntryOverhead()
-	lru.SetMaxSize(overhead * 2)
-
-	lru.Put("a", 1)
-	lru.Put("b", 2)
-	s.assert.Equal(2, lru.Len())
-
-	// Remove the limit
-	lru.SetMaxSize(0)
-	s.assert.Equal(int64(0), lru.MaxSize())
-
-	// Now we can add as many entries as we want without eviction
-	for _, k := range []string{"c", "d", "e", "f"} {
-		lru.Put(k, 1)
-	}
-	s.assert.Equal(6, lru.Len())
-}
-
-// ---- MaxSize accessor ----
-
-func (s *lruCacheTestSuite) TestMaxSizeAccessor() {
-	lru := NewLRU[string, int](1024, zeroSizeOf[string, int])
-	s.assert.Equal(int64(1024), lru.MaxSize())
-
-	lru.SetMaxSize(2048)
-	s.assert.Equal(int64(2048), lru.MaxSize())
-
-	lru.SetMaxSize(0)
-	s.assert.Equal(int64(0), lru.MaxSize())
-}
-
 // ---- Peek on absent key ----
 
 func (s *lruCacheTestSuite) TestPeekAbsent() {
@@ -615,7 +572,7 @@ func (s *lruCacheTestSuite) TestConcurrentAccess() {
 func (s *lruCacheTestSuite) TestConcurrentAccessWithLimit() {
 	lru := NewLRU[int, int](0, zeroSizeOf[int, int])
 	overhead := lru.PerEntryOverhead()
-	lru.SetMaxSize(overhead * 32)
+	lru = NewLRU[int, int](overhead*32, zeroSizeOf[int, int])
 
 	const goroutines = 8
 	const ops = 500

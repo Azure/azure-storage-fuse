@@ -640,19 +640,19 @@ func (suite *attrCacheIntegrationTestSuite) TestCommitDataInvalidatesEntry() {
 // ---- LRU eviction tests -----------------------------------------------------
 
 func (suite *attrCacheIntegrationTestSuite) TestLRUEvictionForcesRefetch() {
-	// Create three files to use as cache entries.
 	for _, name := range []string{"lru_a.txt", "lru_b.txt", "lru_c.txt"} {
 		suite.touchFile(name)
 	}
 
-	// Measure the cost of a single entry.
+	// Measure a single entry's cost, then restart the cache capped at two entries.
 	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "lru_a.txt"})
 	singleSize := suite.attrCache.lru.Size()
 	suite.assert.Positive(singleSize)
+	suite.attrCache.maxSizeBytes = singleSize * 2
+	suite.Require().NoError(suite.attrCache.Stop())
+	suite.Require().NoError(suite.attrCache.Start(context.Background()))
 
-	// Allow exactly two entries.
-	suite.attrCache.lru.SetMaxSize(singleSize * 2)
-
+	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "lru_a.txt"})
 	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "lru_b.txt"})
 	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "lru_c.txt"})
 
@@ -671,16 +671,21 @@ func (suite *attrCacheIntegrationTestSuite) TestLRUEvictionPreservesRecentlyAcce
 		suite.touchFile(name)
 	}
 
-	// Populate A and B.
+	// Measure a single entry's cost, then restart the cache capped at two entries.
 	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "ev_a.txt"})
 	singleSize := suite.attrCache.lru.Size()
+	suite.attrCache.maxSizeBytes = singleSize * 2
+	suite.Require().NoError(suite.attrCache.Stop())
+	suite.Require().NoError(suite.attrCache.Start(context.Background()))
+
+	// Populate A and B.
+	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "ev_a.txt"})
 	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "ev_b.txt"})
 
 	// Promote A to MRU by re-accessing it.
 	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "ev_a.txt"})
 
-	// Restrict to two entries.  Adding C should evict B (LRU).
-	suite.attrCache.lru.SetMaxSize(singleSize * 2)
+	// Adding C should evict B (LRU).
 	_, _ = suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "ev_c.txt"})
 
 	suite.assert.True(suite.attrCache.lru.Has("ev_a.txt"), "recently accessed A should be retained")
