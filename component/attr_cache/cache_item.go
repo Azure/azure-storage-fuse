@@ -68,6 +68,9 @@ func estimateAttrCacheEntrySize(key string, item *attrCacheItem) int64 {
 	sz := int64(len(key))
 
 	if item != nil {
+		// unsafe.Sizeof returns only the struct header size — it does not include
+		// heap-allocated data referenced by pointer fields (strings, slices, maps).
+		// Those are accounted for explicitly below.
 		sz += int64(unsafe.Sizeof(*item))
 
 		if item.attr != nil {
@@ -79,6 +82,8 @@ func estimateAttrCacheEntrySize(key string, item *attrCacheItem) int64 {
 			sz += int64(len(item.attr.MD5))
 
 			for k, v := range item.attr.Metadata {
+				// 32 bytes covers the per-entry overhead of a Go map bucket:
+				// key pointer (8) + value pointer (8) + map internal bookkeeping (~16).
 				sz += 32 + int64(len(k))
 				if v != nil {
 					sz += int64(len(*v))
@@ -118,6 +123,12 @@ func (l *attrCacheLRU) touch() {
 func (l *attrCacheLRU) Get(key string) (*attrCacheItem, bool) {
 	l.touch()
 	return l.LRU.Get(key)
+}
+
+// Has checks whether a key exists and records cache activity for the idle gate.
+func (l *attrCacheLRU) Has(key string) bool {
+	l.touch()
+	return l.LRU.Has(key)
 }
 
 // Put inserts or updates an entry and records cache activity for the idle gate.
@@ -191,6 +202,7 @@ func (l *attrCacheLRU) invalidateDirectory(path string) {
 }
 
 func (l *attrCacheLRU) updateCacheEntry(path string, attr *internal.ObjAttr) {
+	path = internal.TruncateDirName(path)
 	if l.Has(path) {
 		if attr != nil {
 			copied := *attr // copy so we don't mutate the caller's struct
