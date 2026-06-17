@@ -41,7 +41,7 @@ import (
 
 func TestTotalMemoryBytesIsPositive(t *testing.T) {
 	mem := TotalMemoryBytes()
-	assert.Greater(t, mem, uint64(0), "TotalMemoryBytes should return a positive value on Linux")
+	assert.Positive(t, mem, "TotalMemoryBytes should return a positive value on Linux")
 }
 
 func TestTotalMemoryBytesAtLeast1MB(t *testing.T) {

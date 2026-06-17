@@ -32,7 +32,7 @@ block_cache:
 # Attribute cache related configuration
 attr_cache:
   timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
-  max-size-mb: <maximum memory the attribute cache may use (in MB). Default - auto-tuned to 1% of total RAM, clamped to [64 MB, 1 GB]. Set to 0 to use the auto-tuned value. Increase for workloads with large directory trees or many distinct file paths to avoid frequent cache misses.>
+  max-size-mb: <maximum memory the attribute cache may use (in MB). Default - auto-tuned to 1% of total RAM, clamped to [64 MB, 1 GB]. Omit or set to 0 to use the auto-tuned value; set to a value >0 to override. Increase for workloads with large directory trees or many distinct file paths to avoid frequent cache misses.>
 
 # Disk cache related configuration
 file_cache:
