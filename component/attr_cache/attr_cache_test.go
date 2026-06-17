@@ -1034,7 +1034,7 @@ func (suite *attrCacheTestSuite) TestGetAttrEnonetError() {
 			suite.assert.NotNil(item)
 			suite.assert.Nil(item.attr)
 			suite.assert.False(item.exists)
-			suite.assert.NotNil(item.cachedAt)
+			suite.assert.False(item.cachedAt.IsZero())
 		})
 	}
 }
@@ -1325,7 +1325,7 @@ func (s *sweeperTestSuite) SetupTest() {
 // suitable for testing sweepExpired directly.
 func newSweeperCache(timeout time.Duration) *AttrCache {
 	ac := &AttrCache{cacheTimeout: timeout}
-	ac.lru = newAttrCacheLRU(0, &ac.lastOp)
+	ac.lru = newAttrCacheLRU(1*1024*1024, &ac.lastOp)
 	return ac
 }
 

@@ -179,7 +179,7 @@ func (ac *AttrCache) sweepExpired() {
 		return !item.cachedAt.After(cutoff)
 	})
 	maxSize := ac.lru.MaxSize()
-	maxMB := (maxSize + (1<<20) - 1) >> 20
+	maxMB := (maxSize + (1 << 20) - 1) >> 20
 	if maxSize == 0 {
 		log.Debug("AttrCache::sweepExpired : size %d MB (unbounded) (%d entries), reclaimed %d MB",
 			ac.lru.Size()>>20, ac.lru.Len(), (before-ac.lru.Size())>>20)

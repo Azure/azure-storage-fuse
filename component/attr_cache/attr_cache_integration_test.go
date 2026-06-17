@@ -131,7 +131,9 @@ func (suite *attrCacheIntegrationTestSuite) cacheViaGetAttr(path string) *attrCa
 // forceExpire moves the cached item's cachedAt into the past so it is stale.
 func (suite *attrCacheIntegrationTestSuite) forceExpire(path string) {
 	if item, ok := suite.attrCache.lru.Peek(path); ok {
-		item.cachedAt = time.Now().Add(-suite.attrCache.cacheTimeout - time.Second)
+		expired := *item
+		expired.cachedAt = time.Now().Add(-suite.attrCache.cacheTimeout - time.Second)
+		suite.attrCache.lru.Put(path, &expired)
 	}
 }
 
