@@ -229,6 +229,10 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.noCacheOnList = !conf.CacheOnList
 	}
 
+	if config.IsSet(compName + ".max-files") {
+		log.Warn("AttrCache::Configure : 'max-files' is deprecated/ignored; use 'max-size-mb' instead")
+	}
+
 	if config.IsSet(compName + ".max-size-mb") {
 		ac.maxSizeBytes = int64(conf.MaxSizeMB) * 1024 * 1024
 	} else {
