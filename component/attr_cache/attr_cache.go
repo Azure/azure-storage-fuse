@@ -44,6 +44,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -53,8 +54,15 @@ import (
 // defaultAttrCacheTimeout is the default TTL for cached attributes (seconds).
 const defaultAttrCacheTimeout uint32 = 120
 
-// defaultMaxSizeMB is the default memory limit for the attribute cache.
-// Set to 0 to disable memory-based eviction (only TTL-based cleanup applies).
+const (
+	defaultMaxSizeFloorMB   int64 = 64
+	defaultMaxSizeCeilingMB int64 = 1024
+)
+
+// defaultMaxSizeBytes returns the auto-tuned default memory limit for the attribute cache:
+// 1% of total system RAM, clamped to [64 MB, 1 GB].
+// Using total RAM (not free RAM) gives a stable, reproducible value across reboots and
+// concurrent mounts.
 //
 // Rough capacity at 64 MB (52-byte path, 20-byte ETag, 16-byte MD5):
 //   - negative entry (tombstone): ~320 B/entry → ~210 K entries
@@ -62,7 +70,17 @@ const defaultAttrCacheTimeout uint32 = 120
 //
 // See TestNegativeEntryCapacityMatchesEstimate and TestPositiveEntryCapacityMatchesEstimate
 // in cache_item_test.go for exact accounting and how to recalculate for different path lengths.
-const defaultMaxSizeMB uint32 = 64
+func defaultMaxSizeBytes() int64 {
+	totalMB := int64(common.TotalMemoryBytes() / (1024 * 1024))
+	onePct := totalMB / 100
+	if onePct < defaultMaxSizeFloorMB {
+		onePct = defaultMaxSizeFloorMB
+	}
+	if onePct > defaultMaxSizeCeilingMB {
+		onePct = defaultMaxSizeCeilingMB
+	}
+	return onePct * 1024 * 1024
+}
 
 // AttrCache is the pipeline component that caches file/directory attributes.
 // The LRU is thread-safe; no additional locking is needed around individual operations.
@@ -196,7 +214,7 @@ func (ac *AttrCache) GenConfig() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "\n%s:", ac.Name())
 	fmt.Fprintf(&sb, "\n  timeout-sec: %v", defaultAttrCacheTimeout)
-	fmt.Fprintf(&sb, "\n  max-size-mb: %v", defaultMaxSizeMB)
+	fmt.Fprintf(&sb, "\n  max-size-mb: %v", defaultMaxSizeBytes()/(1024*1024))
 
 	return sb.String()
 }
@@ -233,10 +251,10 @@ func (ac *AttrCache) Configure(_ bool) error {
 		log.Warn("AttrCache::Configure : 'max-files' is deprecated/ignored; use 'max-size-mb' instead")
 	}
 
-	if config.IsSet(compName + ".max-size-mb") {
+	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB > 0 {
 		ac.maxSizeBytes = int64(conf.MaxSizeMB) * 1024 * 1024
 	} else {
-		ac.maxSizeBytes = int64(defaultMaxSizeMB) * 1024 * 1024
+		ac.maxSizeBytes = defaultMaxSizeBytes()
 	}
 
 	effectiveMB := uint32(ac.maxSizeBytes / (1024 * 1024))
@@ -558,7 +576,7 @@ func init() {
 	config.BindPFlag(compName+".cache-on-list", cacheOnList)
 	cacheOnList.Hidden = true
 
-	attrCacheMaxSizeMB := config.AddUint32Flag("attr-cache-max-size-mb", defaultMaxSizeMB,
-		"maximum memory in MB that attr-cache can use (0 = no limit)")
+	attrCacheMaxSizeMB := config.AddUint32Flag("attr-cache-max-size-mb", 0,
+		"maximum memory in MB that attr-cache can use (0 = auto-tune to 1% of total RAM, clamped to [64 MB, 1 GB])")
 	config.BindPFlag(compName+".max-size-mb", attrCacheMaxSizeMB)
 }

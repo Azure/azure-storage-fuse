@@ -23,9 +23,10 @@ block_cache:
 
 attr_cache:
   timeout-sec: 7200
-  # max-size-mb controls how much memory the attribute cache may use. Default is 64 MB (~70K entries).
-  # Set to 0 to disable memory-based eviction and rely solely on TTL expiry.
-  # max-size-mb: 64
+  # max-size-mb controls how much memory the attribute cache may use.
+  # Default: auto-tuned to 1% of total RAM, clamped to [64 MB, 1 GB].
+  # Set to 0 or omit to use the auto-tuned value.
+  # max-size-mb: 256
 
 azstorage:
   type: block
