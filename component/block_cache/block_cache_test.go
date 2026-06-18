@@ -219,7 +219,7 @@ func (suite *blockCacheTestSuite) TestMemory() {
 	suite.assert.NoError(err)
 	free, err := strconv.Atoi(strings.TrimSpace(out.String()))
 	suite.assert.NoError(err)
-	expected := uint64(0.8 * float64(free))
+	expected := uint64(0.6 * float64(free))
 	actual := tobj.blockCache.memSize
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
@@ -263,7 +263,7 @@ func (suite *blockCacheTestSuite) TestStatfsMemory() {
 	suite.assert.NoError(err)
 	free, err := strconv.Atoi(strings.TrimSpace(out.String()))
 	suite.assert.NoError(err)
-	expected := uint64(0.8 * float64(free))
+	expected := uint64(0.6 * float64(free))
 	stat, ret, err := tobj.blockCache.StatFs()
 	suite.assert.True(ret)
 	suite.assert.NoError(err)
