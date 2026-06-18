@@ -15,8 +15,7 @@
 
 **Other Changes**
 - CBL-Mariner 2.0 has reached end-of-life; Blobfuse2 packages will no longer be published to Mariner 2.0 repositories.
-- Renamed `max-fuse-threads` configuration parameter to `max-background` to accurately reflect libfuse's `max_background` API, which controls pending background requests rather than thread count.
-
+- Deprecated `max-fuse-threads` configuration parameter in favor of `max-background` to accurately reflect libfuse's `max_background` API (max pending background requests rather than thread count).
 ## 2.5.3 (2026-03-25)
 **Features**
 - Add rate limit functionality for ingress bandwidth (bytes downloaded per second) and operations per second ([PR #2093](https://github.com/Azure/azure-storage-fuse/pull/2093))

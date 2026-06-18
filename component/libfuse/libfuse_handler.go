@@ -257,7 +257,7 @@ func (lf *Libfuse) destroyFuse() error {
 
 //export libfuse_init
 func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Pointer) {
-	log.Trace("Libfuse::libfuse_init : init (max_read : %v, max_write %v, max_readahead %v)", conn.max_read, conn.max_write, conn.max_readahead)
+	log.Trace("Libfuse::libfuse_init : init (max_read: %v, max_write: %v, max_readahead: %v)", conn.max_read, conn.max_write, conn.max_readahead)
 
 	log.Info("Libfuse::NotifyMountToParent : Notifying parent for successful mount")
 	if err := common.NotifyMountToParent(); err != nil {
