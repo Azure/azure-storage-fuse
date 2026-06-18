@@ -364,7 +364,7 @@ func (bc *BlockCache) getDefaultMemSize() uint64 {
 		return uint64(4192) * _1MB
 	}
 
-	return uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
+	return uint64(0.6 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
 }
 
 // CreateFile: Create a new file
