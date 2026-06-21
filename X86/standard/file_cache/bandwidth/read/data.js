@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781418644027,
+  "lastUpdate": 1782023723271,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -779,6 +779,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "filecache_sequential_read_100GB_directio",
             "value": 872.843,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "605ae8144e7cc5175a59bd0037e1a3f847da8f16",
+          "message": "Bump actions/checkout from 6 to 7 (#2259)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-06-19T04:38:46Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/605ae8144e7cc5175a59bd0037e1a3f847da8f16"
+        },
+        "date": 1782023721676,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "filecache_sequential_read_100GB_directio",
+            "value": 794.1061,
             "unit": "MiB/s"
           }
         ]
