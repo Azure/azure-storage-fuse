@@ -105,6 +105,7 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 
 	bb.listDetails = container.ListBlobsInclude{
 		Metadata:    true,
+		Tags:        bb.Config.filterHasTag,
 		Deleted:     false,
 		Snapshots:   false,
 		Permissions: false, //Added to get permissions, acl, group, owner for HNS accounts
@@ -577,23 +578,48 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
 	if bb.Config.virtualDirectory {
-		attr, err = bb.getAttrUsingList(name)
-	} else {
-		attr, err = bb.getAttrUsingRest(name)
+		// getAttrUsingList -> List -> processBlobItems already evaluates the
+		// filter (including tag filters), so a successful return means the blob
+		// passed the filter.
+		return bb.getAttrUsingList(name)
 	}
 
+	attr, err = bb.getAttrUsingRest(name)
 	if bb.Config.filter != nil && attr != nil {
-		if !bb.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
+		filterAttr := blobfilter.BlobAttr{
 			Name:  attr.Name,
 			Mtime: attr.Mtime,
 			Size:  attr.Size,
-		}) {
+		}
+		// GetProperties does not return blob index tags. When the configured
+		// filter references tags, fetch them explicitly before deciding.
+		if bb.Config.filterHasTag && !attr.IsDir() {
+			tags, terr := bb.getBlobTags(name)
+			if terr != nil {
+				log.Warn("BlockBlob::GetAttr : Failed to get tags for %s [%s]", name, terr.Error())
+			} else {
+				filterAttr.Tags = tags
+			}
+		}
+
+		if !bb.Config.filter.IsAcceptable(&filterAttr) {
 			log.Debug("BlockBlob::GetAttr : Filtered out %s", name)
 			return nil, syscall.ENOENT
 		}
 	}
 
 	return attr, err
+}
+
+// getBlobTags fetches blob index tags for the given blob name and returns them
+// as a flat map. Returns nil if the blob has no tags.
+func (bb *BlockBlob) getBlobTags(name string) (map[string]string, error) {
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	resp, err := blobClient.GetTags(context.Background(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return parseBlobTags(&resp.BlobTags), nil
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -685,6 +711,7 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 			filterAttr.Name = blobAttr.Name
 			filterAttr.Mtime = blobAttr.Mtime
 			filterAttr.Size = blobAttr.Size
+			filterAttr.Tags = parseBlobTags(blobInfo.BlobTags)
 
 			if bb.Config.filter.IsAcceptable(&filterAttr) {
 				blobList = append(blobList, blobAttr)
@@ -1846,9 +1873,16 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *stri
 func (bb *BlockBlob) SetFilter(filter string) error {
 	if filter == "" {
 		bb.Config.filter = nil
+		bb.Config.filterHasTag = false
+		bb.listDetails.Tags = false
 		return nil
 	}
 
 	bb.Config.filter = &blobfilter.BlobFilter{}
-	return bb.Config.filter.Configure(filter)
+	if err := bb.Config.filter.Configure(filter); err != nil {
+		return err
+	}
+	bb.Config.filterHasTag = filterReferencesTag(filter)
+	bb.listDetails.Tags = bb.Config.filterHasTag
+	return nil
 }
