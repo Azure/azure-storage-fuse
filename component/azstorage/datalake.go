@@ -457,6 +457,9 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 	}
 
 	if dl.Config.filter != nil {
+		// Blob index tags are not generally available on ADLS Gen2 accounts,
+		// so we do not fetch them here. configureBlobFilter logs a warning when
+		// a tag= filter is configured against an HNS account.
 		if !dl.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
 			Name:  blobAttr.Name,
 			Mtime: blobAttr.Mtime,
