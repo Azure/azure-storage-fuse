@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package cpu_mem_profiler
+package cpumemprofiler
 
 import (
 	"fmt"
@@ -45,21 +45,21 @@ import (
 	hminternal "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/internal"
 )
 
-type CpuMemProfiler struct {
+type CPUMemProfiler struct {
 	name         string
 	pid          string
 	pollInterval int
 }
 
-func (cm *CpuMemProfiler) GetName() string {
+func (cm *CPUMemProfiler) GetName() string {
 	return cm.name
 }
 
-func (cm *CpuMemProfiler) SetName(name string) {
+func (cm *CPUMemProfiler) SetName(name string) {
 	cm.name = name
 }
 
-func (cm *CpuMemProfiler) Monitor() error {
+func (cm *CPUMemProfiler) Monitor() error {
 	err := cm.Validate()
 	if err != nil {
 		log.Err("cpu_mem_monitor::Monitor : [%v]", err)
@@ -71,14 +71,14 @@ func (cm *CpuMemProfiler) Monitor() error {
 	defer ticker.Stop()
 
 	for t := range ticker.C {
-		c, err := cm.getCpuMemoryUsage()
+		c, err := cm.getCPUMemoryUsage()
 		if err != nil {
 			log.Err("cpu_mem_monitor::Monitor : [%v]", err)
 			return err
 		}
 
-		if !hmcommon.NoCpuProf {
-			cm.ExportStats(t.Format(time.RFC3339), c.CpuUsage)
+		if !hmcommon.NoCPUProf {
+			cm.ExportStats(t.Format(time.RFC3339), c.CPUUsage)
 		}
 		if !hmcommon.NoMemProf {
 			cm.ExportStats(t.Format(time.RFC3339), c.MemUsage)
@@ -88,7 +88,7 @@ func (cm *CpuMemProfiler) Monitor() error {
 	return nil
 }
 
-func (cm *CpuMemProfiler) ExportStats(timestamp string, st any) {
+func (cm *CPUMemProfiler) ExportStats(timestamp string, st any) {
 	se, err := hminternal.NewStatsExporter()
 	if err != nil || se == nil {
 		log.Err("cpu_mem_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)
@@ -97,13 +97,13 @@ func (cm *CpuMemProfiler) ExportStats(timestamp string, st any) {
 
 	s := st.(string)
 	if s[len(s)-1] == '%' {
-		se.AddMonitorStats(hmcommon.CpuProfiler, timestamp, st)
+		se.AddMonitorStats(hmcommon.CPUProfiler, timestamp, st)
 	} else {
 		se.AddMonitorStats(hmcommon.MemoryProfiler, timestamp, st)
 	}
 }
 
-func (cm *CpuMemProfiler) Validate() error {
+func (cm *CPUMemProfiler) Validate() error {
 	if len(cm.pid) == 0 {
 		return fmt.Errorf("pid of blobfuse2 is not given")
 	}
@@ -115,34 +115,34 @@ func (cm *CpuMemProfiler) Validate() error {
 	return nil
 }
 
-func (cm *CpuMemProfiler) getCpuMemoryUsage() (*hmcommon.CpuMemStat, error) {
+func (cm *CPUMemProfiler) getCPUMemoryUsage() (*hmcommon.CPUMemStat, error) {
 	topCmd := "top -b -n 1 -d 0.2 -p " + cm.pid + " | tail -2"
 
 	cliOut, err := exec.Command("bash", "-c", topCmd).Output()
 	if err != nil {
-		log.Err("cpu_mem_monitor::getCpuMemoryUsage : Blobfuse2 is not running on pid %v [%v]", cm.pid, err)
+		log.Err("cpu_mem_monitor::getCPUMemoryUsage : Blobfuse2 is not running on pid %v [%v]", cm.pid, err)
 		return nil, err
 	}
 
 	processes := strings.Split(strings.Trim(string(cliOut), "\n"), "\n")
 	if len(processes) < 2 {
-		log.Err("cpu_mem_monitor::getCpuMemoryUsage : Blobfuse2 is not running on pid %v", cm.pid)
+		log.Err("cpu_mem_monitor::getCPUMemoryUsage : Blobfuse2 is not running on pid %v", cm.pid)
 		return nil, fmt.Errorf("blobfuse2 is not running on pid %v", cm.pid)
 	}
 
-	cpuIndex, memIndex := getCpuMemIndex(processes[0])
+	cpuIndex, memIndex := getCPUMemIndex(processes[0])
 	stats := strings.Fields(processes[1])
 	if cpuIndex == -1 || memIndex == -1 || len(stats) <= int(math.Max(float64(cpuIndex), float64(memIndex))) || len(stats[cpuIndex]) == 0 || len(stats[memIndex]) == 0 {
-		log.Debug("cpu_mem_monitor::getCpuMemoryUsage : %v", processes)
-		log.Err("cpu_mem_monitor::getCpuMemoryUsage : Blobfuse2 is not running on pid %v", cm.pid)
+		log.Debug("cpu_mem_monitor::getCPUMemoryUsage : %v", processes)
+		log.Err("cpu_mem_monitor::getCPUMemoryUsage : Blobfuse2 is not running on pid %v", cm.pid)
 		return nil, fmt.Errorf("blobfuse2 is not running on pid %v", cm.pid)
 	}
 
-	cpuMemStat := &hmcommon.CpuMemStat{
-		CpuUsage: stats[cpuIndex],
+	cpuMemStat := &hmcommon.CPUMemStat{
+		CPUUsage: stats[cpuIndex],
 		MemUsage: stats[memIndex],
 	}
-	cpuMemStat.CpuUsage += "%"
+	cpuMemStat.CPUUsage += "%"
 	if cpuMemStat.MemUsage[len(cpuMemStat.MemUsage)-1] >= '0' && cpuMemStat.MemUsage[len(cpuMemStat.MemUsage)-1] <= '9' {
 		cpuMemStat.MemUsage += "k"
 	}
@@ -150,7 +150,7 @@ func (cm *CpuMemProfiler) getCpuMemoryUsage() (*hmcommon.CpuMemStat, error) {
 	return cpuMemStat, nil
 }
 
-func getCpuMemIndex(process string) (int, int) {
+func getCPUMemIndex(process string) (int, int) {
 	cols := strings.Fields(process)
 	var cpuIndex, memIndex = -1, -1
 	for i, col := range cols {
@@ -164,17 +164,17 @@ func getCpuMemIndex(process string) (int, int) {
 	return cpuIndex, memIndex
 }
 
-func NewCpuMemoryMonitor() hminternal.Monitor {
-	cm := &CpuMemProfiler{
+func NewCPUMemoryMonitor() hminternal.Monitor {
+	cm := &CPUMemProfiler{
 		pid:          hmcommon.Pid,
 		pollInterval: hmcommon.ProcMonInterval,
 	}
 
-	cm.SetName(hmcommon.CpuMemoryProfiler)
+	cm.SetName(hmcommon.CPUMemoryProfiler)
 
 	return cm
 }
 
 func init() {
-	hminternal.AddMonitor(hmcommon.CpuMemoryProfiler, NewCpuMemoryMonitor)
+	hminternal.AddMonitor(hmcommon.CPUMemoryProfiler, NewCPUMemoryMonitor)
 }

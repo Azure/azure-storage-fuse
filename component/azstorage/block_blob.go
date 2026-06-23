@@ -58,14 +58,14 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	statsmanager "github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 	"github.com/vibhansa-msft/blobfilter"
 )
 
 const (
-	folderKey           = "hdi_isfolder"
-	symlinkKey          = "is_symlink"
-	max_context_timeout = 5
+	folderKey         = "hdi_isfolder"
+	symlinkKey        = "is_symlink"
+	maxContextTimeout = 5
 )
 
 type BlockBlob struct {
@@ -526,12 +526,12 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	log.Trace("BlockBlob::getAttrUsingList : name %s", name)
 
 	iteration := 0
-	var marker, new_marker *string
+	var marker, newMarker *string
 	var blobs []*internal.ObjAttr
 	blobsRead := 0
 
 	for marker != nil || iteration == 0 {
-		blobs, new_marker, err = bb.List(name, marker, bb.Config.maxResultsForList)
+		blobs, newMarker, err = bb.List(name, marker, bb.Config.maxResultsForList)
 		if err != nil {
 			e := storeBlobErrToErr(err)
 			switch e {
@@ -552,12 +552,12 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 			}
 		}
 
-		marker = new_marker
+		marker = newMarker
 		iteration++
 		blobsRead += len(blobs)
 
 		log.Trace("BlockBlob::getAttrUsingList : So far retrieved %d objects in %d iterations", blobsRead, iteration)
-		if new_marker == nil || *new_marker == "" {
+		if newMarker == nil || *newMarker == "" {
 			break
 		}
 	}
@@ -877,7 +877,7 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 		log.Debug("BlockBlob::ReadToFile : Download complete of blob %v", name)
 
 		// store total bytes downloaded so far
-		azStatsCollector.UpdateStats(stats_manager.Increment, bytesDownloaded, count)
+		azStatsCollector.UpdateStats(statsmanager.Increment, bytesDownloaded, count)
 	}
 
 	if bb.Config.validateMD5 {
@@ -959,7 +959,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 
 	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
-	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), maxContextTimeout*time.Minute)
 	defer cancel()
 
 	opt := &blob.DownloadStreamOptions{
@@ -1137,7 +1137,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 
 		// store total bytes uploaded so far
 		if stat.Size() > 0 {
-			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, stat.Size())
+			azStatsCollector.UpdateStats(statsmanager.Increment, bytesUploaded, stat.Size())
 		}
 	}
 
@@ -1185,7 +1185,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 
 	// if block list empty its a small file
 	if len(storageBlockList.CommittedBlocks) == 0 {
-		blockList.BlockIdLength = common.BlockIDLength
+		blockList.BlockIDLength = common.BlockIDLength
 		return &blockList, nil
 	}
 
@@ -1193,7 +1193,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 
 	for _, block := range storageBlockList.CommittedBlocks {
 		blk := &common.Block{
-			Id:         *block.Name,
+			ID:         *block.Name,
 			StartIndex: int64(blockOffset),
 			EndIndex:   int64(blockOffset) + *block.Size,
 		}
@@ -1201,14 +1201,14 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
 	// blockList.Etag = storageBlockList.ETag()
-	blockList.BlockIdLength = common.GetIdLength(blockList.BlockList[0].Id)
+	blockList.BlockIDLength = common.GetIDLength(blockList.BlockList[0].ID)
 	return &blockList, nil
 }
 
-func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.Block {
-	newBlockId := common.GetBlockID(blockIdLength)
+func (bb *BlockBlob) createBlock(blockIDLength, startIndex, size int64) *common.Block {
+	newBlockID := common.GetBlockID(blockIDLength)
 	newBlock := &common.Block{
-		Id:         newBlockId,
+		ID:         newBlockID,
 		StartIndex: startIndex,
 		EndIndex:   startIndex + size,
 	}
@@ -1218,10 +1218,10 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 	return newBlock
 }
 
-func (bb *BlockBlob) createBlockFromBuffer(blockIdLength, startIndex int64, data []byte) *common.Block {
-	newBlockId := common.GetBlockID(blockIdLength)
+func (bb *BlockBlob) createBlockFromBuffer(blockIDLength, startIndex int64, data []byte) *common.Block {
+	newBlockID := common.GetBlockID(blockIDLength)
 	newBlock := &common.Block{
-		Id:         newBlockId,
+		ID:         newBlockID,
 		StartIndex: startIndex,
 		EndIndex:   startIndex + int64(len(data)),
 		Data:       data,
@@ -1252,7 +1252,7 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	var bufferSize int64
 	for i := prevIndex; i < offset+length; i += blockSize {
 		blkSize := int64(math.Min(float64(blockSize), float64((offset+length)-i)))
-		newBlock := bb.createBlock(blockList.BlockIdLength, i, blkSize)
+		newBlock := bb.createBlock(blockList.BlockIDLength, i, blkSize)
 		blockList.BlockList = append(blockList.BlockList, newBlock)
 		// reset the counter to determine if there are leftovers at the end
 		bufferSize += blkSize
@@ -1312,7 +1312,7 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 				lastBlock.Flags.Set(common.DirtyBlock)
 
 				// create the new block id for this block otherwise it would corrupt the state of the blob.
-				lastBlock.Id = common.GetBlockID(blockList.BlockIdLength)
+				lastBlock.ID = common.GetBlockID(blockList.BlockIDLength)
 
 				err := bb.ReadInBuffer(options.Name, lastBlock.StartIndex, lastBlock.EndIndex-lastBlock.StartIndex, lastBlock.Data, nil)
 				if err != nil {
@@ -1332,7 +1332,7 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 	for i := startIdx; i < options.NewSize; i += blockSize {
 		curBlkSize := min(blockSize, options.NewSize-i)
 
-		newBlock := bb.createBlock(blockList.BlockIdLength, i, curBlkSize)
+		newBlock := bb.createBlock(blockList.BlockIDLength, i, curBlkSize)
 		blockList.BlockList = append(blockList.BlockList, newBlock)
 	}
 
@@ -1368,7 +1368,7 @@ func (bb *BlockBlob) removeBlocksTruncate(blockList *common.BlockOffsetList, opt
 		blk.Flags.Set(common.DirtyBlock)
 
 		// create the new block id for this block otherwise it would corrupt the state of the blob.
-		blk.Id = common.GetBlockID(blockList.BlockIdLength)
+		blk.ID = common.GetBlockID(blockList.BlockIDLength)
 
 		err := bb.ReadInBuffer(options.Name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data, nil)
 		if err != nil {
@@ -1472,7 +1472,7 @@ func (bb *BlockBlob) TruncateFileUsingBlocks(options *internal.TruncateFileOptio
 	// If blob has no blocks, we should convert the blob into blocks first.
 	if blob.HasNoBlocks() && options.OldSize > 0 {
 		if options.OldSize > blockblob.MaxUploadBlobBytes {
-			err = fmt.Errorf("Blob %v has size %d bytes greater than 256MB but has no blocks, inconsistent state",
+			err = fmt.Errorf("blob %v has size %d bytes greater than 256MB but has no blocks, inconsistent state",
 				options.Name, options.OldSize)
 			log.Err("BlockBlob::TruncateFileUsingBlocks : %v", err)
 			return err
@@ -1498,7 +1498,7 @@ func (bb *BlockBlob) TruncateFileUsingBlocks(options *internal.TruncateFileOptio
 
 			for i := int64(0); i < options.OldSize; i += blockSize {
 				blkSize := min(blockSize, options.OldSize-i)
-				newBlock := bb.createBlockFromBuffer(blob.BlockIdLength, i, buf[i:i+blkSize])
+				newBlock := bb.createBlockFromBuffer(blob.BlockIDLength, i, buf[i:i+blkSize])
 				blob.BlockList = append(blob.BlockList, newBlock)
 			}
 		}
@@ -1506,7 +1506,7 @@ func (bb *BlockBlob) TruncateFileUsingBlocks(options *internal.TruncateFileOptio
 	} else {
 		// If blob has blocks, we should validate the block list against the old size.
 		if ok := blob.ValidateBlockListAgainstFileSize(options.OldSize); !ok {
-			err = fmt.Errorf("Blob %v has blocks that do not match the old size %d bytes, inconsistent state",
+			err = fmt.Errorf("blob %v has blocks that do not match the old size %d bytes, inconsistent state",
 				options.Name, options.OldSize)
 			log.Err("BlockBlob::TruncateFileUsingBlocks : %v", err)
 			return err
@@ -1625,10 +1625,10 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 	blockOffset := int64(0)
 	var blockIDList []string
 	for _, blk := range offsetList.BlockList {
-		blockIDList = append(blockIDList, blk.Id)
+		blockIDList = append(blockIDList, blk.ID)
 		if blk.Dirty() {
 			_, err := blobClient.StageBlock(context.Background(),
-				blk.Id,
+				blk.ID,
 				streaming.NopCloser(bytes.NewReader(data[blockOffset:(blk.EndIndex-blk.StartIndex)+blockOffset])),
 				&blockblob.StageBlockOptions{
 					CPKInfo: bb.blobCPKOpt,
@@ -1671,7 +1671,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 	staged := bol.IsBlockListModified()
 
 	for i, blk := range bol.BlockList {
-		blockIDList = append(blockIDList, blk.Id)
+		blockIDList = append(blockIDList, blk.ID)
 
 		if blk.Truncated() {
 			if !truncateBufAllocated {
@@ -1683,7 +1683,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			if len(truncBuf) < int(blk.EndIndex-blk.StartIndex) {
 				// This should not happen since we allocate the buffer once to the max size of block
 				return fmt.Errorf("BlockBlob::StageAndCommit : Truncate buffer size %d is smaller than block size %d for idx: %d, id: %s for blob %s",
-					len(truncBuf), blk.EndIndex-blk.StartIndex, i, blk.Id, name)
+					len(truncBuf), blk.EndIndex-blk.StartIndex, i, blk.ID, name)
 			}
 
 			// Reslice the buffer to the size of the block, as the last block could be smaller than the rest
@@ -1696,13 +1696,13 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 
 		if blk.Dirty() {
 			_, err := blobClient.StageBlock(context.Background(),
-				blk.Id,
+				blk.ID,
 				streaming.NopCloser(bytes.NewReader(data)),
 				&blockblob.StageBlockOptions{
 					CPKInfo: bb.blobCPKOpt,
 				})
 			if err != nil {
-				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s with ID %s at block %v [%s]", name, blk.Id, blk.StartIndex, err.Error())
+				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s with ID %s at block %v [%s]", name, blk.ID, blk.StartIndex, err.Error())
 				return err
 			}
 			staged = true
@@ -1779,7 +1779,7 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 	startOffset := int64(0)
 	for _, block := range storageBlockList.CommittedBlocks {
 		blk := internal.CommittedBlock{
-			Id:     *block.Name,
+			ID:     *block.Name,
 			Offset: startOffset,
 			Size:   uint64(*block.Size),
 		}
@@ -1794,7 +1794,7 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 	log.Trace("BlockBlob::StageBlock : name %s, ID %v, length %v", name, id, len(data))
 
-	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), maxContextTimeout*time.Minute)
 	defer cancel()
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
@@ -1817,7 +1817,7 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *string) error {
 	log.Trace("BlockBlob::CommitBlocks : name %s", name)
 
-	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), maxContextTimeout*time.Minute)
 	defer cancel()
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))

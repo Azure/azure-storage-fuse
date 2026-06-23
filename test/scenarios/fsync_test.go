@@ -139,13 +139,13 @@ func TestParallelFsyncCalls(t *testing.T) {
 		assert.NoError(t, err)
 
 		// for each 1MB writes trigger a flush call from another go routine.
-		trigger_flush := make(chan struct{}, 1)
+		triggerFlush := make(chan struct{}, 1)
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
-				_, ok := <-trigger_flush
+				_, ok := <-triggerFlush
 				if !ok {
 					break
 				}
@@ -159,13 +159,13 @@ func TestParallelFsyncCalls(t *testing.T) {
 		// Write 40M data
 		for i := 0; i < 40*1024*1024; i += 4 * 1024 {
 			if i%(1*1024*1024) == 0 {
-				trigger_flush <- struct{}{}
+				triggerFlush <- struct{}{}
 			}
 			byteswritten, err := file0.Write(databuffer)
 			assert.Equal(t, 4*1024, byteswritten)
 			assert.NoError(t, err)
 		}
-		close(trigger_flush)
+		close(triggerFlush)
 		wg.Wait()
 		err = file0.Close()
 		assert.NoError(t, err)

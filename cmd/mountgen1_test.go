@@ -102,7 +102,7 @@ func (suite *genOneConfigTestSuite) SetupTest() {
 
 func (suite *genOneConfigTestSuite) cleanupTest() {
 	resetCLIFlags(*gen1Cmd)
-	generateJsonOnly = false
+	generateJSONOnly = false
 }
 
 func TestGenOneConfig(t *testing.T) {
@@ -131,18 +131,18 @@ func (suite *genOneConfigTestSuite) TestConfigCreation() {
 	err = config.ReadFromConfigFile(outFile.Name())
 	suite.assert.NoError(err)
 
-	var clientId, tenantId, cacheDir, mountDirTest string
-	err = config.UnmarshalKey("clientid", &clientId)
+	var clientID, tenantID, cacheDir, mountDirTest string
+	err = config.UnmarshalKey("clientid", &clientID)
 	suite.assert.NoError(err)
-	err = config.UnmarshalKey("tenantid", &tenantId)
+	err = config.UnmarshalKey("tenantid", &tenantID)
 	suite.assert.NoError(err)
 	err = config.UnmarshalKey("cachedir", &cacheDir)
 	suite.assert.NoError(err)
 	err = config.UnmarshalKey("mountdir", &mountDirTest)
 	suite.assert.NoError(err)
 
-	suite.assert.Equal("myClientId", clientId)
-	suite.assert.Equal("myTenantId", tenantId)
+	suite.assert.Equal("myClientId", clientID)
+	suite.assert.Equal("myTenantId", tenantID)
 	suite.assert.Contains(cacheDir, "fileCachePath")
 	suite.assert.Equal(mntDir, mountDirTest)
 }
