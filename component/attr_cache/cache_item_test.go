@@ -365,7 +365,7 @@ func (s *cacheMapTestSuite) TestUpdateCacheEntry() {
 
 	newAttr := &internal.ObjAttr{Size: 9999, Mode: 0600}
 	before := time.Now()
-	lru.updateCacheEntry("file", newAttr)
+	lru.refreshEntry("file", newAttr)
 
 	item, ok := lru.Peek("file")
 	s.assert.True(ok)
@@ -378,7 +378,7 @@ func (s *cacheMapTestSuite) TestUpdateCacheEntry() {
 func (s *cacheMapTestSuite) TestUpdateCacheEntryAbsent() {
 	lru := newTestLRU()
 	// Should be a no-op for a path not in cache
-	lru.updateCacheEntry("missing", makeAttr("missing"))
+	lru.refreshEntry("missing", makeAttr("missing"))
 	s.assert.Equal(0, lru.Len())
 }
 

@@ -370,7 +370,7 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 	srcAttr := options.SrcAttr
 	err := ac.NextComponent().RenameFile(options)
 	if err == nil {
-		ac.lru.updateCacheEntry(options.Dst, srcAttr)
+		ac.lru.refreshEntry(options.Dst, srcAttr)
 		ac.lru.deletePath(options.Src, time.Now())
 	}
 

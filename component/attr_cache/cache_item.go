@@ -218,16 +218,19 @@ func (l *attrCacheLRU) invalidateDirectory(path string) {
 	l.invalidatePath(path)
 }
 
-func (l *attrCacheLRU) updateCacheEntry(path string, attr *internal.ObjAttr) {
+func (l *attrCacheLRU) refreshEntry(path string, attr *internal.ObjAttr) {
 	path = internal.TruncateDirName(path)
+	if attr == nil {
+		// Src attributes unavailable — invalidate Dst so the next GetAttr refetches
+		// from the next component rather than poisoning it with a negative entry.
+		l.Delete(path)
+		return
+	}
 	if l.Has(path) {
-		if attr != nil {
-			copied := *attr // copy so we don't mutate the caller's struct
-			copied.Path = path
-			attr = &copied
-		}
-		if !l.Put(path, &attrCacheItem{attr: attr, exists: attr != nil, cachedAt: time.Now()}) {
-			log.Err("attrCacheLRU::updateCacheEntry : entry too large for cache, skipping path %s", path)
+		copied := *attr // copy so we don't mutate the caller's struct
+		copied.Path = path
+		if !l.Put(path, &attrCacheItem{attr: &copied, exists: true, cachedAt: time.Now()}) {
+			log.Err("attrCacheLRU::refreshEntry : entry too large for cache, skipping path %s", path)
 		}
 	}
 }
