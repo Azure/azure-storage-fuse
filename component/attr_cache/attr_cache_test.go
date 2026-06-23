@@ -1249,7 +1249,7 @@ func (suite *attrCacheTestSuite) TestLRUEvictionOnMemoryLimit() {
 	suite.attrCache.lru.Put(path0, item0)
 	singleEntrySize := suite.attrCache.lru.Size()
 	// Set max to exactly 2 entries.
-	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize*2)
+	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize * 2)
 
 	// Add 3 entries (A, B, C in insertion order: A is LRU).
 	pathA, pathB, pathLast := "lru_a", "lru_b", "lru_c"
@@ -1279,7 +1279,7 @@ func (suite *attrCacheTestSuite) TestLRUOrderPreservesRecentlyAccessed() {
 	item0 := &attrCacheItem{attr: getPathAttr(path0, defaultSize, fs.FileMode(defaultMode), false), exists: true, cachedAt: time.Now()}
 	suite.attrCache.lru.Put(path0, item0)
 	singleEntrySize := suite.attrCache.lru.Size()
-	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize*2)
+	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize * 2)
 
 	// Insert A, then B.  Order: B (MRU) → A (LRU).
 	pathA, pathB := "ord_a", "ord_b"
