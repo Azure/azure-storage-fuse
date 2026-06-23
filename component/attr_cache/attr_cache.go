@@ -259,6 +259,12 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.maxSizeBytes = defaultMaxSizeBytes()
 	}
 
+	// When timeout is zero entries are written but immediately considered expired,
+	// so cap the limit to 64 MB to avoid a large idle allocation.
+	if ac.cacheTimeout == 0 && ac.maxSizeBytes > defaultMaxSizeFloorMB*1024*1024 {
+		ac.maxSizeBytes = defaultMaxSizeFloorMB * 1024 * 1024
+	}
+
 	effectiveMB := uint32(ac.maxSizeBytes / (1024 * 1024))
 	log.Crit("AttrCache::Configure : cache-timeout %v, no-symlinks %t, no-cache-on-list %t, max-size-mb %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.noCacheOnList, effectiveMB)
