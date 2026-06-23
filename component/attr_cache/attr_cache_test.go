@@ -1249,7 +1249,7 @@ func (suite *attrCacheTestSuite) TestLRUEvictionOnMemoryLimit() {
 	suite.attrCache.lru.Put(path0, item0)
 	singleEntrySize := suite.attrCache.lru.Size()
 	// Set max to exactly 2 entries.
-	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize*2, nil)
+	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize*2)
 
 	// Add 3 entries (A, B, C in insertion order: A is LRU).
 	pathA, pathB, pathLast := "lru_a", "lru_b", "lru_c"
@@ -1279,7 +1279,7 @@ func (suite *attrCacheTestSuite) TestLRUOrderPreservesRecentlyAccessed() {
 	item0 := &attrCacheItem{attr: getPathAttr(path0, defaultSize, fs.FileMode(defaultMode), false), exists: true, cachedAt: time.Now()}
 	suite.attrCache.lru.Put(path0, item0)
 	singleEntrySize := suite.attrCache.lru.Size()
-	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize*2, nil)
+	suite.attrCache.lru = newAttrCacheLRU(singleEntrySize*2)
 
 	// Insert A, then B.  Order: B (MRU) → A (LRU).
 	pathA, pathB := "ord_a", "ord_b"
@@ -1325,7 +1325,7 @@ func (s *sweeperTestSuite) SetupTest() {
 // suitable for testing sweepExpired directly.
 func newSweeperCache(timeout time.Duration) *AttrCache {
 	ac := &AttrCache{cacheTimeout: timeout}
-	ac.lru = newAttrCacheLRU(1*1024*1024, &ac.lastOp)
+	ac.lru = newAttrCacheLRU(1 * 1024 * 1024)
 	return ac
 }
 
@@ -1381,7 +1381,7 @@ func (s *sweeperTestSuite) TestSweepExpiredSkipsWhenCacheIsActive() {
 	ac.lru.Put("expired", expiredItem())
 
 	// Simulate recent cache activity — well within the cacheTimeout/2 idle gate.
-	ac.lastOp.Store(time.Now().Unix())
+	ac.lru.lastOp.Store(time.Now().Unix())
 
 	ac.sweepExpired()
 
@@ -1395,7 +1395,7 @@ func (s *sweeperTestSuite) TestSweepExpiredRunsWhenCacheIsIdle() {
 	ac.lru.Put("expired", &attrCacheItem{cachedAt: time.Now().Add(-200 * time.Millisecond)})
 
 	// Simulate the cache being idle for 2 hours.
-	ac.lastOp.Store(time.Now().Add(-2 * time.Hour).Unix())
+	ac.lru.lastOp.Store(time.Now().Add(-2 * time.Hour).Unix())
 
 	ac.sweepExpired()
 
@@ -1438,7 +1438,7 @@ func (s *sweeperTestSuite) TestGetAttrUpdatesLastOp() {
 	before := time.Now()
 	_, _ = ac.GetAttr(internal.GetAttrOptions{Name: "any"})
 
-	stored := ac.lastOp.Load()
+	stored := ac.lru.lastOp.Load()
 	s.assert.NotZero(stored)
 	s.assert.GreaterOrEqual(stored, before.Unix(), "lastOp must be updated by GetAttr")
 }

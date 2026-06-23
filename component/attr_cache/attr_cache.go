@@ -40,7 +40,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -95,7 +94,6 @@ type AttrCache struct {
 	lru           *attrCacheLRU
 	stopCh        chan struct{}
 	sweepWg       sync.WaitGroup
-	lastOp        atomic.Int64 // Unix seconds of last LRU operation; 0 = no activity yet
 	noCacheOnList bool
 }
 
@@ -134,7 +132,7 @@ func (ac *AttrCache) Priority() internal.ComponentPriority {
 // Start initialises the cache and launches the background TTL sweeper.
 func (ac *AttrCache) Start(_ context.Context) error {
 	log.Trace("AttrCache::Start : Starting component %s", ac.Name())
-	ac.lru = newAttrCacheLRU(ac.maxSizeBytes, &ac.lastOp)
+	ac.lru = newAttrCacheLRU(ac.maxSizeBytes)
 	if ac.cacheTimeout > 0 {
 		ac.stopCh = make(chan struct{})
 		ac.sweepWg.Add(1)
@@ -184,7 +182,7 @@ func (ac *AttrCache) sweepExpired() {
 	// skipping sweeps under continuous traffic can let TTL-expired entries accumulate forever.
 	idleThreshold := ac.cacheTimeout / 2
 	if idleThreshold > 0 && ac.lru.MaxSize() > 0 {
-		if last := ac.lastOp.Load(); last != 0 {
+		if last := ac.lru.lastOp.Load(); last != 0 {
 			if time.Since(time.Unix(last, 0)) < idleThreshold {
 				return
 			}
