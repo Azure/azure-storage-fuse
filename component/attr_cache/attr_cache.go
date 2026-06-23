@@ -103,6 +103,7 @@ type AttrCacheOptions struct {
 	NoCacheOnList bool   `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
 	NoSymlinks    bool   `config:"no-symlinks"      yaml:"no-symlinks,omitempty"`
 	MaxSizeMB     uint32 `config:"max-size-mb"      yaml:"max-size-mb,omitempty"`
+	MaxFiles      uint32 `config:"max-files"        yaml:"max-files,omitempty"`
 
 	// support v1
 	CacheOnList bool `config:"cache-on-list"`
@@ -245,12 +246,15 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.noCacheOnList = !conf.CacheOnList
 	}
 
-	if config.IsSet(compName + ".max-files") {
-		log.Warn("AttrCache::Configure : 'max-files' is deprecated/ignored; use 'max-size-mb' instead")
-	}
-
 	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB > 0 {
 		ac.maxSizeBytes = int64(conf.MaxSizeMB) * 1024 * 1024
+	} else if config.IsSet(compName+".max-files") && conf.MaxFiles > 0 {
+		// max-files is deprecated; derive an approximate memory limit from the entry count
+		// using the positive-entry size estimate (~964 B/entry) and warn the user.
+		ac.maxSizeBytes = int64(conf.MaxFiles) * positiveEntrySize
+		log.Warn("AttrCache::Configure : 'max-files' is deprecated; derived max-size-mb=%d from max-files=%d. "+
+			"Set 'max-size-mb' explicitly to silence this warning.",
+			ac.maxSizeBytes/(1024*1024), conf.MaxFiles)
 	} else {
 		ac.maxSizeBytes = defaultMaxSizeBytes()
 	}

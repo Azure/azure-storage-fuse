@@ -55,6 +55,11 @@ func (value *attrCacheItem) isNegativeEntry() bool {
 	return !value.exists
 }
 
+// positiveEntrySize is the approximate heap cost of a positive (non-tombstone) cache entry
+// with a typical path (52 bytes), ETag (20 bytes), and MD5 (16 bytes), after GOGC doubling.
+// Used to convert a legacy max-files count into an equivalent max-size-mb value.
+const positiveEntrySize int64 = 964
+
 // estimateAttrCacheEntrySize estimates the heap bytes for one attr-cache key-value pair.
 // The result is doubled to account for Go's GOGC=100 behaviour where RSS ≈ 2× live heap.
 //
