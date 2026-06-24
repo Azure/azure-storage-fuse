@@ -664,3 +664,13 @@ func (suite *utilTestSuite) TestSetFrsize() {
 	SetFrsize(st, val)
 	suite.assert.Equal(int64(val), st.Frsize)
 }
+
+func TestTotalMemoryBytesIsPositive(t *testing.T) {
+	mem := TotalMemoryBytes()
+	assert.Positive(t, mem, "TotalMemoryBytes should return a positive value on Linux")
+}
+
+func TestTotalMemoryBytesAtLeast1MB(t *testing.T) {
+	mem := TotalMemoryBytes()
+	assert.GreaterOrEqual(t, mem, uint64(1<<20), "TotalMemoryBytes should be at least 1 MB")
+}
