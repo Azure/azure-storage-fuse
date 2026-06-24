@@ -982,7 +982,10 @@ stages:
                   cd $(work_dir)
                   go mod download
 
+                  # Check Version
                   blobfuse2 version
+
+                  # Check Help
                   blobfuse2 --help
 
                   export VERBOSE_LOG=false
@@ -990,24 +993,47 @@ stages:
 
                   run_suite() {
                     local name=\$1 adls=\$2
+
+                    # Prepare Blobfuse Directories
                     rm -rf $(mount_dir) $(temp_dir)
                     mkdir -p $(mount_dir) $(temp_dir)
+
+                    # Create /ADLS Config File
                     blobfuse2 gen-test-config --config-file=$(work_dir)/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(temp_dir) --output-file=$(root_dir)/\${name}_config.yaml
+
+                    # Print Block Blob / ADLS Config File
                     cat $(root_dir)/\${name}_config.yaml
+
+                    # Mount Block Blob / ADLS
                     blobfuse2 unmount all || true
                     blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/\${name}_config.yaml
+                    
+                    # Waiting for Mount
                     sleep 10
+
+                    # Verify Mount
                     df | grep blobfuse2
+
+                    # E2E Test: Block Blob / ADLS
                     set +e
                     cd $(work_dir)/test/e2e_tests
                     go test -v -timeout=2h -run 'Test.i.*' -args -mnt-path=$(mount_dir) -adls=\${adls} -clone=false -tmp-path=$(temp_dir) -quick-test=true
+                    
                     rc=\$?
                     cd $(work_dir)
-                    cat blobfuse2-logs.txt || true
+
+                    # View logs
+                    # Commented as it is very verbose. Uncomment if you want to see the logs in the pipeline.
+                    # cat blobfuse2-logs.txt || true
+
+                    # Clear Logs
                     > blobfuse2-logs.txt || true
+
+                    # Unmount Blobfuse2
                     set -e
                     sleep 5
                     blobfuse2 unmount $(mount_dir) || true
+
                     return \$rc
                   }
 
