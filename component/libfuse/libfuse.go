@@ -55,27 +55,29 @@ import (
 // Common structure for Component
 type Libfuse struct {
 	internal.BaseComponent
-	mountPath             string
-	dirPermission         uint
-	filePermission        uint
-	readOnly              bool
-	attributeExpiration   uint32
-	entryExpiration       uint32
-	negativeTimeout       uint32
-	allowOther            bool
-	allowRoot             bool
-	ownerUID              uint32
-	ownerGID              uint32
-	traceEnable           bool
-	extensionPath         string
-	disableWritebackCache bool
-	ignoreOpenFlags       bool
-	nonEmptyMount         bool
-	lsFlags               common.BitMap64
-	directIO              bool
-	umask                 uint32
-	disableKernelCache    bool
-	maxBackground         uint32 // libfuse max_background: max pending background requests
+	mountPath               string
+	dirPermission           uint
+	filePermission          uint
+	readOnly                bool
+	attributeExpiration     uint32
+	entryExpiration         uint32
+	negativeTimeout         uint32
+	allowOther              bool
+	allowRoot               bool
+	ownerUID                uint32
+	ownerGID                uint32
+	traceEnable             bool
+	extensionPath           string
+	disableWritebackCache   bool
+	ignoreOpenFlags         bool
+	nonEmptyMount           bool
+	lsFlags                 common.BitMap64
+	directIO                bool
+	umask                   uint32
+	disableKernelCache      bool
+	maxBackground           uint32 // libfuse max_background: max pending background requests
+	kernelListCacheTtlInSec uint32
+	kernelListCacheTracker  *kernelListCacheTracker
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -106,9 +108,10 @@ type LibfuseOptions struct {
 	Gid                     uint32 `config:"gid" yaml:"gid,omitempty"`
 	// MaxBackground is exposed via config as "max-fuse-threads" for backward compatibility.
 	// Internally renamed to reflect it maps to libfuse max_background (pending I/O requests, not threads).
-	MaxBackground uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
-	DirectIO      bool   `config:"direct-io" yaml:"direct-io,omitempty"`
-	Umask         uint32 `config:"umask" yaml:"umask,omitempty"`
+	MaxBackground           uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
+	DirectIO                bool   `config:"direct-io" yaml:"direct-io,omitempty"`
+	Umask                   uint32 `config:"umask" yaml:"umask,omitempty"`
+	KernelListCacheTtlInSec uint32 `config:"kernel-list-cache-expiration-sec" yaml:"kernel-list-cache-expiration-sec,omitempty"`
 }
 
 const compName = "libfuse"
@@ -167,6 +170,11 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 	// This marks the global fuse object so shall be the first statement
 	fuseFS = lf
 
+	if lf.kernelListCacheTtlInSec > 0 {
+		lf.kernelListCacheTracker = newKernelListCacheTracker(lf.kernelListCacheTtlInSec)
+		lf.kernelListCacheTracker.start()
+	}
+
 	// This starts the libfuse process and hence shall always be the last statement
 	err := lf.initFuse()
 	if err != nil {
@@ -180,6 +188,9 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 // Stop : Stop the component functionality and kill all threads started
 func (lf *Libfuse) Stop() error {
 	log.Trace("Libfuse::Stop : Stopping component %s", lf.Name())
+	if lf.kernelListCacheTracker != nil {
+		lf.kernelListCacheTracker.stop()
+	}
 	_ = lf.destroyFuse()
 	libfuseStatsCollector.Destroy()
 	return nil
@@ -200,6 +211,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.ownerGID = opt.Gid
 	lf.ownerUID = opt.Uid
 	lf.umask = opt.Umask
+	lf.kernelListCacheTtlInSec = opt.KernelListCacheTtlInSec
 
 	if lf.disableKernelCache {
 		opt.DirectIO = true
@@ -243,6 +255,11 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.attributeExpiration = 0
 		lf.entryExpiration = 0
 		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
+	}
+
+	if lf.directIO && lf.kernelListCacheTtlInSec > 0 {
+		log.Crit("Libfuse::Validate : kernel-list-cache incompatible with direct-io, disabling")
+		lf.kernelListCacheTtlInSec = 0
 	}
 
 	if !config.IsSet(compName+".uid") && !config.IsSet(compName+".gid") && !config.IsSet("lfuse.uid") && !config.IsSet("lfuse.gid") {
@@ -353,8 +370,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max_background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v",
-		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxBackground, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask, lf.disableKernelCache)
+	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max_background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v, kernelListCacheExpirationSec %v",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxBackground, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask, lf.disableKernelCache, lf.kernelListCacheTtlInSec)
 
 	return nil
 }
@@ -394,4 +411,7 @@ func init() {
 
 	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", true, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
+
+	kernelListCacheTtl := config.AddUint32Flag("kernel-list-cache-timeout", 0, "Enable kernel caching of directory listings and set TTL in seconds (fuse3 only). 0 = disabled.")
+	config.BindPFlag(compName+".kernel-list-cache-expiration-sec", kernelListCacheTtl)
 }
