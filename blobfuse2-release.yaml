@@ -585,7 +585,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.deb
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags).x86_64.deb
 
           - script: |
               ls -l
@@ -911,40 +911,27 @@ stages:
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
 
-          - task: ShellScript@2
-            inputs:
-              scriptPath: "$(work_dir)/go_installer.sh"
-              args: "$(root_dir)/"
-            displayName: "GoTool Custom Setup"
-
+          # The trixie-built package needs glibc 2.38 + libfuse3.so.4, which the Ubuntu 22
+          # host agent (glibc 2.35) cannot load. The e2e suite therefore runs inside a
+          # debian:trixie container. The job-level container: keyword can't be used because
+          # it is resolved at job init before any step runs and the 1ES agent has no Docker
+          # pre-installed, so Docker is installed here and the suite is launched via docker run.
           - script: |
               sudo apt-get update --fix-missing
               sudo apt-get install -y docker.io
               sudo systemctl start docker
-              sudo docker run --rm -v /tmp/deb13libs:/out debian:trixie bash -c "
-                apt-get update -qq &&
-                apt-get install -y --no-install-recommends libfuse3-4 libfuse3-dev &&
-                cp /usr/lib/x86_64-linux-gnu/libfuse3.so.4* /out/
-              "
-              sudo cp /tmp/deb13libs/libfuse3.so.4* /usr/lib/x86_64-linux-gnu/
-              sudo ldconfig
-              ldconfig -p | grep libfuse3
-            displayName: "Install Docker and setup libfuse3.so.4 from Debian 13"
+            displayName: "Install Docker"
 
           - script: |
               sudo docker run --rm debian:trixie bash -c "apt-get update -qq && apt-get install -y fuse3 libfuse3-dev && dpkg -l | grep fuse"
             displayName: "Verify fuse version in Debian 13"
-
-          - script: |
-             ldd --version
-            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.deb
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags).x86_64.deb
 
           - script: |
               ls -l
@@ -961,21 +948,89 @@ stages:
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-signed
 
+          # Inline equivalent of azure-pipeline-templates/release-distro-tests.yml. That
+          # template is built from host-level ADO task constructs (Go@0) and cannot run
+          # inside `docker run`, so the block-blob + ADLS mount/e2e flow is replicated here.
+          # Storage secrets are mapped into the step environment (env: below) and forwarded
+          # into the container with `docker run -e NAME` (value never appears on the command
+          # line); sudo --preserve-env keeps them across the privileged docker invocation.
           - script: |
-              sudo dpkg --info blobfuse2*.deb
-              sudo apt-get install $(fuse-version) build-essential -y
-              sudo dpkg -i blobfuse2*.deb
-              ldd $(which blobfuse2) | grep libfuse3.so.4
-            displayName: 'Install Package'
-            workingDirectory: $(Build.ArtifactStagingDirectory)
+              sudo --preserve-env=BF2_BLK_ACC_NAME,BF2_BLK_ACC_KEY,BF2_ADLS_ACC_NAME,BF2_ADLS_ACC_KEY \
+                docker run --rm \
+                --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
+                -v $(root_dir):$(root_dir) \
+                -v $(Build.ArtifactStagingDirectory):$(Build.ArtifactStagingDirectory) \
+                -e BF2_BLK_ACC_NAME -e BF2_BLK_ACC_KEY \
+                -e BF2_ADLS_ACC_NAME -e BF2_ADLS_ACC_KEY \
+                -w $(work_dir) \
+                debian:trixie bash -c "
+                  set -e
+                  export DEBIAN_FRONTEND=noninteractive
+                  apt-get update --fix-missing -qq
+                  apt-get install -y sudo ca-certificates curl wget git build-essential pkg-config fuse3 libfuse3-dev
 
-          - template: 'azure-pipeline-templates/release-distro-tests.yml'
-            parameters:
-              root_dir: $(root_dir)
-              work_dir: $(work_dir)
-              mount_dir: $(mount_dir)
-              temp_dir: $(temp_dir)
-              container: $(container)
+                  # Install the Debian 13 package under test and confirm it links libfuse3.so.4
+                  dpkg -i $(Build.ArtifactStagingDirectory)/blobfuse2*$(vmImage)*.deb || apt-get install -f -y
+                  ldd \$(which blobfuse2) | grep libfuse3.so.4
+
+                  # Microsoft Go toolchain to compile the e2e tests
+                  $(work_dir)/go_installer.sh $(root_dir)/
+                  export GOROOT=/usr/local/go
+                  export GOPATH=$(root_dir)/gopath
+                  export PATH=\$GOROOT/bin:\$PATH
+                  git config --global --add safe.directory '*'
+                  cd $(work_dir)
+                  go mod download
+
+                  blobfuse2 version
+                  blobfuse2 --help
+
+                  export VERBOSE_LOG=false
+                  export USE_HTTP=false
+
+                  run_suite() {
+                    local name=\$1 adls=\$2
+                    rm -rf $(mount_dir) $(temp_dir)
+                    mkdir -p $(mount_dir) $(temp_dir)
+                    blobfuse2 gen-test-config --config-file=$(work_dir)/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(temp_dir) --output-file=$(root_dir)/\${name}_config.yaml
+                    cat $(root_dir)/\${name}_config.yaml
+                    blobfuse2 unmount all || true
+                    blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/\${name}_config.yaml
+                    sleep 10
+                    df | grep blobfuse2
+                    set +e
+                    cd $(work_dir)/test/e2e_tests
+                    go test -v -timeout=2h -run 'Test.i.*' -args -mnt-path=$(mount_dir) -adls=\${adls} -clone=false -tmp-path=$(temp_dir) -quick-test=true
+                    rc=\$?
+                    cd $(work_dir)
+                    cat blobfuse2-logs.txt || true
+                    > blobfuse2-logs.txt || true
+                    set -e
+                    sleep 5
+                    blobfuse2 unmount $(mount_dir) || true
+                    return \$rc
+                  }
+
+                  # Block Blob
+                  export STO_ACC_NAME=\$BF2_BLK_ACC_NAME
+                  export STO_ACC_KEY=\$BF2_BLK_ACC_KEY
+                  export STO_ACC_TYPE=block
+                  export STO_ACC_ENDPOINT=https://\$BF2_BLK_ACC_NAME.blob.core.windows.net
+                  run_suite block_blob false
+
+                  # ADLS
+                  export STO_ACC_NAME=\$BF2_ADLS_ACC_NAME
+                  export STO_ACC_KEY=\$BF2_ADLS_ACC_KEY
+                  export STO_ACC_TYPE=adls
+                  export STO_ACC_ENDPOINT=https://\$BF2_ADLS_ACC_NAME.dfs.core.windows.net
+                  run_suite adls true
+                "
+            displayName: "Run E2E distro tests inside Debian 13 container"
+            env:
+              BF2_BLK_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              BF2_BLK_ACC_KEY: $(BF2_BLK_ACC_KEY)
+              BF2_ADLS_ACC_NAME: $(BF2_ADLS_ACC_NAME)
+              BF2_ADLS_ACC_KEY: $(BF2_ADLS_ACC_KEY)
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
