@@ -362,7 +362,7 @@ stages:
                   ldd $(root_dir)/pkgDir/usr/bin/blobfuse2 | grep libfuse3.so.4
                   cd $(root_dir)
                   packageName='blobfuse2'
-                  VERSION=\$(./pkgDir/usr/bin/blobfuse2 --version | cut -d ' ' -f 3)
+                  VERSION=\$(./pkgDir/usr/bin/blobfuse2 --version | grep 'blobfuse2 version' | cut -d ' ' -f 3)
                   if [[ \$(./pkgDir/usr/bin/blobfuse2 --version) == *'preview'* ]]; then
                     packageName='blobfuse2-preview'
                   fi
