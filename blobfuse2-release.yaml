@@ -335,7 +335,7 @@ stages:
                   apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config cmake gcc g++ ruby ruby-dev rubygems libfuse3-dev fuse3
                   gem install fpm -v 1.16
                   $(work_dir)/go_installer.sh $(root_dir)/
-                  export GOROOT=$(root_dir)/go
+                  export GOROOT=/usr/local/go
                   export GOPATH=$(root_dir)/gopath
                   export PATH=\$GOROOT/bin:\$PATH
                   ldd --version
