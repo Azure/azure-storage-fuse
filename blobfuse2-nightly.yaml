@@ -760,7 +760,8 @@ stages:
                       export GOROOT=/usr/local/go
                       export GOPATH=$(Pipeline.Workspace)/go
                       export PATH=\$GOROOT/bin:\$PATH
-                      go get -d
+                      git config --global --add safe.directory '*'
+                      go mod download
                       chmod 755 build.sh
                       ./build.sh fuse3
                       chmod +x ./blobfuse2
