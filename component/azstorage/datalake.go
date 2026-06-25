@@ -356,11 +356,10 @@ func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.O
 	})
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
-		switch serr {
-		case ErrFileNotFound:
+		if serr == ErrFileNotFound {
 			log.Err("Datalake::RenameFile : %s does not exist", source)
 			return syscall.ENOENT
-		default:
+		} else {
 			log.Err("Datalake::RenameFile : Failed to rename file %s to %s [%s]", source, target, err.Error())
 			return err
 		}
