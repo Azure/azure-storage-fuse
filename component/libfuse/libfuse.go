@@ -174,6 +174,11 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 	err := lf.initFuse()
 	if err != nil {
 		log.Err("Libfuse::Start : Failed to init fuse [%s]", err.Error())
+		// Clean up tracker goroutine on init failure to prevent leak
+		if lf.kernelListCacheTracker != nil {
+			lf.kernelListCacheTracker.stop()
+			lf.kernelListCacheTracker = nil
+		}
 		return err
 	}
 
@@ -185,6 +190,7 @@ func (lf *Libfuse) Stop() error {
 	log.Trace("Libfuse::Stop : Stopping component %s", lf.Name())
 	if lf.kernelListCacheTracker != nil {
 		lf.kernelListCacheTracker.stop()
+		lf.kernelListCacheTracker = nil
 	}
 	_ = lf.destroyFuse()
 	libfuseStatsCollector.Destroy()
