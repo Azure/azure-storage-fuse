@@ -212,14 +212,9 @@ func (suite *blockCacheTestSuite) TestMemory() {
 
 	suite.assert.NoError(err)
 	suite.assert.Equal("block_cache", tobj.blockCache.Name())
-	cmd := exec.Command("bash", "-c", "free -b | grep Mem | awk '{print $4}'")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err = cmd.Run()
+	availableMemory, err := common.GetAvailableMemoryBytes()
 	suite.assert.NoError(err)
-	free, err := strconv.Atoi(strings.TrimSpace(out.String()))
-	suite.assert.NoError(err)
-	expected := uint64(0.6 * float64(free))
+	expected := uint64(0.6 * float64(availableMemory))
 	actual := tobj.blockCache.memSize
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
@@ -256,14 +251,9 @@ func (suite *blockCacheTestSuite) TestStatfsMemory() {
 
 	suite.assert.NoError(err)
 	suite.assert.Equal("block_cache", tobj.blockCache.Name())
-	cmd := exec.Command("bash", "-c", "free -b | grep Mem | awk '{print $4}'")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err = cmd.Run()
+	availableMemory, err := common.GetAvailableMemoryBytes()
 	suite.assert.NoError(err)
-	free, err := strconv.Atoi(strings.TrimSpace(out.String()))
-	suite.assert.NoError(err)
-	expected := uint64(0.6 * float64(free))
+	expected := uint64(0.6 * float64(availableMemory))
 	stat, ret, err := tobj.blockCache.StatFs()
 	suite.assert.True(ret)
 	suite.assert.NoError(err)
