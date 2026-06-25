@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client"
+	dcache "github.com/nearora-msft/dist-cache-client-go"
 )
 
 // metricsSnapshot holds aggregated counters from all cache servers.
