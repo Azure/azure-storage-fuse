@@ -16,7 +16,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
-	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client"
+	dcache "github.com/nearora-msft/dist-cache-client-go"
 	"golang.org/x/sync/errgroup"
 )
 

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client"
+	dcache "github.com/nearora-msft/dist-cache-client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
