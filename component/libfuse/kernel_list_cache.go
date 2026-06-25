@@ -134,8 +134,9 @@ func (t *kernelListCacheTracker) ttlSweeper() {
 // The idle gate (identical to AttrCache.sweepExpired) skips the sweep when the cache
 // is under active use to avoid write-lock contention with opendir traffic.
 func (t *kernelListCacheTracker) sweepExpired() {
+	idleThreshold := t.ttl / 2
 	if last := t.lastOp.Load(); last != 0 {
-		if time.Now().Unix()-last < int64(t.ttl/(2*time.Second)) {
+		if time.Since(time.Unix(last, 0)) < idleThreshold {
 			return
 		}
 	}

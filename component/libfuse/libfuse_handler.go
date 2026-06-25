@@ -366,8 +366,15 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 //export libfuse_destroy
 func libfuse_destroy(data unsafe.Pointer) {
 	log.Trace("Libfuse::libfuse_destroy : destroy")
-	// Clear the fuse instance pointer so that any post-unmount call to
-	// fuse_invalidate_path (e.g. from the TTL sweeper) safely returns -1
+	// Stop the TTL sweeper goroutine before clearing g_fuse to eliminate the race
+	// where the sweeper reads a non-nil g_fuse, then calls fuse_invalidate_path
+	// after the FUSE instance has been freed.
+	if fuseFS != nil && fuseFS.kernelListCacheTracker != nil {
+		fuseFS.kernelListCacheTracker.stop()
+		fuseFS.kernelListCacheTracker = nil
+	}
+	// Clear the fuse instance pointer so that any post-destroy call to
+	// fuse_invalidate_path (e.g. from a stale pointer) safely returns -1
 	// instead of dereferencing a freed libfuse struct.
 	C.set_fuse_ptr(nil)
 }
