@@ -285,10 +285,6 @@ func (suite *libfuseTestSuite) TestUnlinkError() {
 
 // rename
 
-func (suite *libfuseTestSuite) TestRenameFileEnametoolong() {
-	testRenameFileEnametoolong(suite)
-}
-
 func (suite *libfuseTestSuite) TestRenameDirEnametoolong() {
 	testRenameDirEnametoolong(suite)
 }

@@ -360,9 +360,6 @@ func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.O
 		case ErrFileNotFound:
 			log.Err("Datalake::RenameFile : %s does not exist", source)
 			return syscall.ENOENT
-		case ErrPathTooDeep:
-			log.Err("Datalake::RenameFile : Path is too deep for %s -> %s [%s]", source, target, err.Error())
-			return syscall.ENAMETOOLONG
 		default:
 			log.Err("Datalake::RenameFile : Failed to rename file %s to %s [%s]", source, target, err.Error())
 			return err
