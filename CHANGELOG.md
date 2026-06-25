@@ -1,6 +1,12 @@
 ## 2.5.4 (Unreleased)
 **Features**
 - Make Blobfuse2 binary FIPS compliant by building with the Microsoft Go toolchain (`systemcrypto` GOEXPERIMENT) and `CGO_ENABLED=1`, routing all `crypto/*` calls through the system OpenSSL FIPS provider ([PR #2226](https://github.com/Azure/azure-storage-fuse/pull/2226))
+- Attribute cache is now memory-bounded. The cache uses a least-recently-used (LRU) eviction policy and a background sweeper that reclaims memory from TTL-expired entries when the cache is idle. A new `max-size-mb` config parameter (or `--attr-cache-max-size-mb` CLI flag) controls the memory limit. By default the limit is auto-tuned to 1% of total system RAM, clamped to [64 MB, 1 GB] (~70 K–1.1 M file entries depending on machine size). Omitting `max-size-mb` or setting it to `0` both use the auto-tuned value. Increase the limit for workloads with large directory trees or many distinct file paths. Example configuration:
+  ```yaml
+  attr_cache:
+    timeout-sec: 120
+    max-size-mb: 256   # set explicitly to override auto-tuning
+  ```
 
 **Bug Fixes**
 - Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
