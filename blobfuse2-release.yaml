@@ -277,12 +277,12 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Debian13:
+            Libfuse3.so.4:
               vmImage: 'ubuntu-22.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3-4'
               depends: 'fuse3'
-              container: 'test-cnt-ubn-22'
+              container: 'test-cnt-deb-13'
               AgentName: "blobfuse-ubuntu22"
 
         pool:
@@ -331,9 +331,16 @@ stages:
                 -w $(work_dir) \
                 debian:trixie bash -c "
                   set -e
+                  export DEBIAN_FRONTEND=noninteractive
+
+                  echo '---------------------------------------------------'
+                  echo 'Installing build, packaging and FUSE dependencies'
                   apt-get update --fix-missing -qq
                   apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config cmake gcc g++ ruby ruby-dev rubygems libfuse3-dev fuse3
                   gem install fpm -v 1.16
+
+                  echo '---------------------------------------------------'
+                  echo 'Installing Microsoft Go toolchain and fetching modules'
                   $(work_dir)/go_installer.sh $(root_dir)/
                   export GOROOT=/usr/local/go
                   export GOPATH=$(root_dir)/gopath
@@ -341,13 +348,22 @@ stages:
                   ldd --version
                   git config --global --add safe.directory '*'
                   go mod download
+
+                  echo '---------------------------------------------------'
+                  echo 'Building blobfuse2 binary'
                   chmod 755 build.sh
                   ./build.sh fuse3
                   chmod +x ./blobfuse2
                   ./blobfuse2 --version
+
+                  echo '---------------------------------------------------'
+                  echo 'Building health-monitor (bfusemon) binary'
                   ./build.sh health
                   chmod +x ./bfusemon
                   ./bfusemon --version
+
+                  echo '---------------------------------------------------'
+                  echo 'Accumulating package files into pkgDir'
                   mkdir -p $(root_dir)/pkgDir/usr/bin/
                   mkdir -p $(root_dir)/pkgDir/usr/share/blobfuse2/
                   cp blobfuse2 $(root_dir)/pkgDir/usr/bin/blobfuse2
@@ -360,6 +376,9 @@ stages:
                   cp setup/11-blobfuse2.conf $(root_dir)/pkgDir/etc/rsyslog.d
                   cp setup/blobfuse2-logrotate $(root_dir)/pkgDir/etc/logrotate.d/blobfuse2
                   ldd $(root_dir)/pkgDir/usr/bin/blobfuse2 | grep libfuse3.so.4
+
+                  echo '---------------------------------------------------'
+                  echo 'Building Debian (fuse3-4) package with fpm'
                   cd $(root_dir)
                   packageName='blobfuse2'
                   VERSION=\$(./pkgDir/usr/bin/blobfuse2 --version | grep 'blobfuse2 version' | cut -d ' ' -f 3)
@@ -879,7 +898,7 @@ stages:
               fuse-version: 'fuse3'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3-4'
-              container: 'test-cnt-ubn-22'
+              container: 'test-cnt-deb-13'
               AgentName: "blobfuse-ubuntu22"
 
         pool:
@@ -966,14 +985,20 @@ stages:
                 debian:trixie bash -c "
                   set -e
                   export DEBIAN_FRONTEND=noninteractive
+
+                  echo '---------------------------------------------------'
+                  echo 'Installing build and FUSE dependencies'
                   apt-get update --fix-missing -qq
                   apt-get install -y sudo ca-certificates curl wget git build-essential pkg-config fuse3 libfuse3-dev
 
+                  echo '---------------------------------------------------'
+                  echo 'Installing the Debian 13 package under test'
                   # Install the Debian 13 package under test and confirm it links libfuse3.so.4
                   dpkg -i $(Build.ArtifactStagingDirectory)/blobfuse2*$(vmImage)*.deb || apt-get install -f -y
                   ldd \$(which blobfuse2) | grep libfuse3.so.4
 
-                  # Microsoft Go toolchain to compile the e2e tests
+                  echo '---------------------------------------------------'
+                  echo 'Installing Microsoft Go toolchain to compile the e2e tests'
                   $(work_dir)/go_installer.sh $(root_dir)/
                   export GOROOT=/usr/local/go
                   export GOPATH=$(root_dir)/gopath
@@ -982,10 +1007,12 @@ stages:
                   cd $(work_dir)
                   go mod download
 
-                  # Check Version
+                  echo '---------------------------------------------------'
+                  echo 'Check Version'
                   blobfuse2 version
 
-                  # Check Help
+                  echo '---------------------------------------------------'
+                  echo 'Check Help'
                   blobfuse2 --help
 
                   export VERBOSE_LOG=false
@@ -994,31 +1021,40 @@ stages:
                   run_suite() {
                     local name=\$1 adls=\$2
 
-                    # Prepare Blobfuse Directories
+                    echo '---------------------------------------------------'
+                    echo \"Running E2E suite : \${name}\"
+
+                    echo '---------------------------------------------------'
+                    echo \"Prepare Blobfuse Directories : \${name}\"
                     rm -rf $(mount_dir) $(temp_dir)
                     mkdir -p $(mount_dir) $(temp_dir)
 
-                    # Create /ADLS Config File
+                    echo '---------------------------------------------------'
+                    echo \"Create Config File : \${name}\"
                     blobfuse2 gen-test-config --config-file=$(work_dir)/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(temp_dir) --output-file=$(root_dir)/\${name}_config.yaml
 
-                    # Print Block Blob / ADLS Config File
+                    echo '---------------------------------------------------'
+                    echo \"Print Config File : \${name}\"
                     cat $(root_dir)/\${name}_config.yaml
 
-                    # Mount Block Blob / ADLS
+                    echo '---------------------------------------------------'
+                    echo \"Mount Blobfuse2 : \${name}\"
                     blobfuse2 unmount all || true
                     blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/\${name}_config.yaml
-                    
+
                     # Waiting for Mount
                     sleep 10
 
-                    # Verify Mount
+                    echo '---------------------------------------------------'
+                    echo \"Verify Mount : \${name}\"
                     df | grep blobfuse2
 
-                    # E2E Test: Block Blob / ADLS
+                    echo '---------------------------------------------------'
+                    echo \"E2E Test : \${name}\"
                     set +e
                     cd $(work_dir)/test/e2e_tests
                     go test -v -timeout=2h -run 'Test.i.*' -args -mnt-path=$(mount_dir) -adls=\${adls} -clone=false -tmp-path=$(temp_dir) -quick-test=true
-                    
+
                     rc=\$?
                     cd $(work_dir)
 
@@ -1029,7 +1065,8 @@ stages:
                     # Clear Logs
                     > blobfuse2-logs.txt || true
 
-                    # Unmount Blobfuse2
+                    echo '---------------------------------------------------'
+                    echo \"Unmount Blobfuse2 : \${name}\"
                     set -e
                     sleep 5
                     blobfuse2 unmount $(mount_dir) || true

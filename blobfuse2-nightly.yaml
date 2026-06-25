@@ -697,7 +697,7 @@ stages:
                   unmount: true
                   delete_containers: true
 
-          - job: Set_5_Debian13
+          - job: Set_6
             continueOnError: true
             timeoutInMinutes: 60
             strategy:
@@ -705,7 +705,7 @@ stages:
                 Debian-13:
                   distro_version: "Debian-13"
                   distro: debian
-                  containerName: "test-cnt-ubn-22"
+                  containerName: "test-cnt-deb-13"
                   Description: "Debian 13 (trixie)"
                   fuselib: 'libfuse3-dev'
                   tags: 'fuse3'
@@ -745,79 +745,121 @@ stages:
                   sudo docker run --rm debian:trixie bash -c "apt-get update -qq && apt-get install -y fuse3 libfuse3-dev && dpkg -l | grep fuse"
                 displayName: "Verify fuse version in Debian 13"
 
+              # The binary built here links trixie's libfuse3.so.4 (needs glibc 2.38), which
+              # the Ubuntu 22 host agent (glibc 2.35) cannot load. So the build AND the e2e
+              # suite both run inside the debian:trixie container. The host-level
+              # e2e-tests-spcl.yml template (Go@0 tasks) cannot run inside `docker run`, so its
+              # gen-test-config -> mount -> go test flow is inlined here. Storage secrets are
+              # mapped via env: and forwarded with `docker run -e NAME` (value never on the
+              # command line); sudo --preserve-env keeps them across the privileged docker call.
               - script: |
-                  sudo docker run --rm \
+                  sudo --preserve-env=BF2_BLK_ACC_NAME,BF2_BLK_ACC_KEY,BF2_ADLS_ACC_NAME,BF2_ADLS_ACC_KEY \
+                    docker run --rm \
                     --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
                     -v $(Build.SourcesDirectory):$(Build.SourcesDirectory) \
                     -v $(Agent.TempDirectory):$(Agent.TempDirectory) \
                     -v $(Pipeline.Workspace):$(Pipeline.Workspace) \
+                    -e BF2_BLK_ACC_NAME -e BF2_BLK_ACC_KEY \
+                    -e BF2_ADLS_ACC_NAME -e BF2_ADLS_ACC_KEY \
                     -w $(Build.SourcesDirectory) \
                     debian:trixie bash -c "
                       set -e
+                      export DEBIAN_FRONTEND=noninteractive
+
+                      echo '---------------------------------------------------'
+                      echo 'Installing build and FUSE dependencies'
                       apt-get update --fix-missing -qq
                       apt-get install -y ca-certificates curl wget git sudo build-essential pkg-config libfuse3-dev fuse3
+
+                      echo '---------------------------------------------------'
+                      echo 'Installing Microsoft Go toolchain and fetching modules'
                       $(Build.SourcesDirectory)/go_installer.sh $(Agent.TempDirectory)/
                       export GOROOT=/usr/local/go
                       export GOPATH=$(Pipeline.Workspace)/go
                       export PATH=\$GOROOT/bin:\$PATH
                       git config --global --add safe.directory '*'
                       go mod download
+
+                      echo '---------------------------------------------------'
+                      echo 'Building blobfuse2 binary and verifying libfuse3.so.4 linkage'
                       chmod 755 build.sh
                       ./build.sh fuse3
                       chmod +x ./blobfuse2
                       ./blobfuse2 --version
+                      ldd ./blobfuse2 | grep libfuse3.so.4
+
+                      echo '---------------------------------------------------'
+                      echo 'Building health-monitor (bfusemon) binary'
                       ./build.sh health
                       chmod +x ./bfusemon
                       ./bfusemon --version
+
+                      run_suite() {
+                        local name=\$1 acctype=\$2 adls=\$3 accname=\$4 acckey=\$5
+
+                        echo '---------------------------------------------------'
+                        echo \"Running E2E suite : \${name}\"
+
+                        echo '---------------------------------------------------'
+                        echo \"Prepare Blobfuse Directories : \${name}\"
+                        rm -rf $(MOUNT_DIR) $(TEMP_DIR)
+                        mkdir -p $(MOUNT_DIR) $(TEMP_DIR)
+
+                        echo '---------------------------------------------------'
+                        echo \"Create Config File : \${name}\"
+                        cd $(Build.SourcesDirectory)
+                        STO_ACC_NAME=\$accname STO_ACC_KEY=\$acckey STO_ACC_TYPE=\$acctype VERBOSE_LOG=false \
+                          ./blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(Pipeline.Workspace)/\${name}.yaml
+
+                        echo '---------------------------------------------------'
+                        echo \"Mount Blobfuse2 : \${name}\"
+                        ./blobfuse2 unmount all || true
+                        ./blobfuse2 mount $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/\${name}.yaml --default-working-dir=$(System.DefaultWorkingDirectory)
+
+                        # Waiting for Mount
+                        sleep 10
+
+                        echo '---------------------------------------------------'
+                        echo \"Verify Mount : \${name}\"
+                        df | grep blobfuse2
+
+                        echo '---------------------------------------------------'
+                        echo \"E2E Test : \${name}\"
+                        set +e
+                        cd $(Build.SourcesDirectory)/test/e2e_tests
+                        go test -v -timeout=2h ./... -args -mnt-path=$(MOUNT_DIR) -adls=\${adls} -clone=false -tmp-path=$(TEMP_DIR) -quick-test=true -distro-name='$(distro_version)'
+
+                        rc=\$?
+                        cd $(Build.SourcesDirectory)
+
+                        # View logs
+                        # Commented as it is very verbose. Uncomment if you want to see the logs in the pipeline.
+                        # tail -n 200 blobfuse2-logs.txt || true
+
+                        # Clear Logs
+                        > blobfuse2-logs.txt || true
+
+                        echo '---------------------------------------------------'
+                        echo \"Unmount Blobfuse2 : \${name}\"
+                        set -e
+                        sleep 5
+                        ./blobfuse2 unmount $(MOUNT_DIR) || true
+
+                        return \$rc
+                      }
+
+                      # Block Blob
+                      run_suite block_blob block false \$BF2_BLK_ACC_NAME \$BF2_BLK_ACC_KEY
+
+                      # ADLS
+                      run_suite adls adls true \$BF2_ADLS_ACC_NAME \$BF2_ADLS_ACC_KEY
                     "
-                displayName: "Build inside Debian 13 container"
-
-              - script: |
-                  sudo docker run --rm -v /tmp/deb13libs:/out debian:trixie bash -c "
-                    apt-get update -qq &&
-                    apt-get install -y --no-install-recommends libfuse3-4 &&
-                    cp /usr/lib/x86_64-linux-gnu/libfuse3.so.4* /out/
-                  "
-                  sudo cp /tmp/deb13libs/libfuse3.so.4* /usr/lib/x86_64-linux-gnu/
-                  sudo ldconfig
-                  ldconfig -p | grep libfuse3
-                displayName: "Setup libfuse3.so.4 on host for E2E tests"
-
-              # Block Blob Test
-              - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
-                parameters:
-                  conf_template: azure_key.yaml
-                  config_file: $(BLOBFUSE2_CFG)
-                  idstring: block_blob_key
-                  adls: false
-                  account_name: $(BF2_BLK_ACC_NAME)
-                  account_key: $(BF2_BLK_ACC_KEY)
-                  account_type: block
-                  distro_name: $(distro_version)
-                  quick_test: true
-                  verbose_log: ${{ parameters.verbose_log }}
-                  clone: false
-
-              # ADLS Test
-              - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
-                parameters:
-                  conf_template: azure_key.yaml
-                  config_file: $(BLOBFUSE2_CFG)
-                  idstring: adls_key
-                  adls: true
-                  account_name: $(BF2_ADLS_ACC_NAME)
-                  account_key: $(BF2_ADLS_ACC_KEY)
-                  account_type: adls
-                  distro_name: $(distro_version)
-                  quick_test: true
-                  verbose_log: ${{ parameters.verbose_log }}
-                  clone: false
-
-              # Cleanup
-              - template: 'azure-pipeline-templates/cleanup.yml'
-                parameters:
-                  unmount: true
-                  delete_containers: true
+                displayName: "Build and run E2E tests inside Debian 13 container"
+                env:
+                  BF2_BLK_ACC_NAME: $(BF2_BLK_ACC_NAME)
+                  BF2_BLK_ACC_KEY: $(BF2_BLK_ACC_KEY)
+                  BF2_ADLS_ACC_NAME: $(BF2_ADLS_ACC_NAME)
+                  BF2_ADLS_ACC_KEY: $(BF2_ADLS_ACC_KEY)
 
 
   - stage: FileCacheValidation
