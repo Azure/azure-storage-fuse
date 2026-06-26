@@ -378,10 +378,14 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 	})
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
-		if serr == ErrFileNotFound {
+		switch serr {
+		case ErrFileNotFound:
 			log.Err("Datalake::RenameDirectory : %s does not exist", source)
 			return syscall.ENOENT
-		} else {
+		case ErrPathTooDeep:
+			log.Err("Datalake::RenameDirectory : Path is too deep for %s -> %s [%s]", source, target, err.Error())
+			return syscall.ENAMETOOLONG
+		default:
 			log.Err("Datalake::RenameDirectory : Failed to rename directory %s to %s [%s]", source, target, err.Error())
 			return err
 		}

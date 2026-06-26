@@ -964,6 +964,9 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 		err := fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
 			log.Err("Libfuse::libfuse2_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
+			if errors.Is(err, syscall.ENAMETOOLONG) {
+				return -C.ENAMETOOLONG
+			}
 			return -C.EIO
 		}
 

@@ -285,6 +285,10 @@ func (suite *libfuseTestSuite) TestUnlinkError() {
 
 // rename
 
+func (suite *libfuseTestSuite) TestRenameDirEnametoolong() {
+	testRenameDirEnametoolong(suite)
+}
+
 func (suite *libfuseTestSuite) TestSymlink() {
 	testSymlink(suite)
 }
