@@ -340,7 +340,6 @@ stages:
           - script: |
               mkdir -p $(Build.ArtifactStagingDirectory)
               sudo docker run --rm \
-                --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
                 -v $(root_dir):$(root_dir) \
                 -v $(Build.ArtifactStagingDirectory):$(Build.ArtifactStagingDirectory) \
                 -w $(work_dir) \
