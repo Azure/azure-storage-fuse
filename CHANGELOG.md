@@ -11,6 +11,7 @@
 **Bug Fixes**
 - Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
 - Return `ENAMETOOLONG` instead of `EIO` when creating a directory path that exceeds the ADLS depth limit of 63 segments ([PR #2221](https://github.com/Azure/azure-storage-fuse/pull/2221))
+- Return `ENAMETOOLONG` instead of `EIO` when renaming a directory to an ADLS path that exceeds the depth limit of 63 segments ([PR #2251](https://github.com/Azure/azure-storage-fuse/pull/2251))
 
 **Other Changes**
 - CBL-Mariner 2.0 has reached end-of-life; Blobfuse2 packages will no longer be published to Mariner 2.0 repositories.
