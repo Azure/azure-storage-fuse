@@ -1,0 +1,65 @@
+# Refer ./setup/baseConfig.yaml for full set of config parameters
+#
+# This sample shows block_cache + dist_cache (distributed cache) configuration.
+# The distributed cache provides a shared L2 cache between local block_cache (L1)
+# and Azure Blob Storage (L3), reducing Azure egress and read latency for
+# multi-node workloads.
+#
+# PREREQUISITE: A running Tachyon cache server cluster is required.
+# See https://github.com/Azure/Tachyon for installation instructions.
+
+logging:
+  type: syslog
+  level: log_warning
+
+components:
+  - libfuse
+  - block_cache
+  - dist_cache
+  - attr_cache
+  - azstorage
+
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 120
+  negative-entry-expiration-sec: 240
+
+block_cache:
+  block-size-mb: 32
+  mem-size-mb: 4096
+  prefetch: 32
+  parallelism: 128
+  prefetch-on-open: true
+
+# Distributed cache configuration
+# At least one discovery method must be configured: discovery-url, k8s-service, or server-list.
+dist_cache:
+  # Option 1: Discovery endpoint (recommended for production)
+  # discovery-url: "cacheserver-discovery.my-namespace.svc.cluster.local:9000"
+
+  # Option 2: Kubernetes DNS discovery
+  # k8s-service: cacheserver
+  # k8s-namespace: my-namespace
+  # port: 9065
+
+  # Option 3: Static server list (comma-separated host:port)
+  server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
+
+  # Graceful degradation: if true, cache errors fall through to Azure Blob Storage
+  bypass-on-error: true
+
+  # Optional: TTL for cached data in seconds (0 = no expiry)
+  # ttl-seconds: 86400
+
+  # Optional: cache key prefix (defaults to account/container from azstorage config)
+  # cache-prefix: "myaccount/mycontainer"
+
+attr_cache:
+  timeout-sec: 120
+
+azstorage:
+  type: block
+  account-name: <ACCOUNT_NAME>
+  account-key: <ACCOUNT_KEY>
+  mode: key
+  container: <CONTAINER_NAME>

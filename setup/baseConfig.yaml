@@ -10,6 +10,7 @@ components:
   - xload
   - block_cache
   - file_cache
+  - dist_cache
   - attr_cache
   - azstorage
 
@@ -41,6 +42,28 @@ file_cache:
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
+
+# Distributed cache configuration (optional, for multi-node shared caching)
+# Requires a running Tachyon cache server cluster (https://github.com/Azure/Tachyon).
+# Requires block_cache or file_cache in the pipeline. Mutually exclusive with xload.
+dist_cache:
+  # Server discovery — at least one method must be configured
+  discovery-url: <discovery endpoint URL for auto-detecting cache servers. Recommended for production>
+  # OR
+  k8s-service: <Kubernetes headless service name for DNS-based discovery>
+  k8s-namespace: <Kubernetes namespace where the cache service runs>
+  # OR
+  server-list: <comma-separated list of cache server addresses, e.g., "host1:9065,host2:9065,host3:9065">
+  # Common options
+  port: <cache server port. Default - 9065>
+  bypass-on-error: <if true, cache errors fall through to Azure Blob Storage. Default - false>
+  ttl-seconds: <TTL for cached data in seconds. Default - 0 (no expiry)>
+  chunk-size-mb: <chunk size in MB, used when block_cache is not present. Default - 16>
+  cache-prefix: <prefix for cache keys. Default - derived from azstorage account/container>
+  max-conns-per-server: <maximum TCP connections per cache server. Default - 8>
+  request-timeout-sec: <timeout for individual cache requests in seconds. Default - 30>
+  auth-account-name: <cache auth account name, if auth is enabled on server>
+  auth-account-key: <cache auth account key, if auth is enabled on server>
   
 # Azure storage configuration
 azstorage:

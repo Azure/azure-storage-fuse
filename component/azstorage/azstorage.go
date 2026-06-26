@@ -515,7 +515,7 @@ func (az *AzStorage) CopyToFile(options internal.CopyToFileOptions) error {
 
 func (az *AzStorage) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("AzStorage::CopyFromFile : Upload file %s", options.Name)
-	return az.storage.WriteFromFile(options.Name, options.Metadata, options.File)
+	return az.storage.WriteFromFile(options.Name, options.Metadata, options.File, options.NewETag)
 }
 
 // Symlink operations

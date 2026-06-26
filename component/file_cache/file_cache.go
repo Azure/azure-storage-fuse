@@ -982,12 +982,17 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 			}
 			// Download/Copy the file from storage to the local file.
+			etag := ""
+			if attr != nil {
+				etag = attr.ETag
+			}
 			err = fc.NextComponent().CopyToFile(
 				internal.CopyToFileOptions{
 					Name:   options.Name,
 					Offset: 0,
 					Count:  fileSize,
 					File:   f,
+					Etag:   etag,
 				})
 			if err != nil {
 				// File was created locally and now download has failed so we need to delete it back from local cache
