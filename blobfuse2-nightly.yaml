@@ -697,6 +697,20 @@ stages:
                   unmount: true
                   delete_containers: true
 
+          # Debian 13 (trixie) and Ubuntu 26.04 ship libfuse3 with the bumped SONAME
+          # libfuse3.so.4 (libfuse 3.17+), while Debian 11/12 and older Ubuntu still ship
+          # libfuse3.so.3. A binary linked against .so.4 cannot load on a .so.3 host and
+          # vice versa, so the Debian 13 binary has to be built in an environment that
+          # provides .so.4 (and the trixie glibc 2.38 it depends on).
+          #
+          # 1ES does not currently offer hosted agent images for Debian 13 or Ubuntu 26.04,
+          # so this job runs on an Ubuntu 22 agent and the build + e2e suite are executed
+          # inside a debian:trixie Docker container. The same binary will also be usable on
+          # Ubuntu 26.04 once an agent image is available.
+          #
+          # TODO: once 1ES publishes a Debian 13 or Ubuntu 26.04 agent image, fold this job
+          # back into the standard host-based pattern used by the other Set_* nightly jobs
+          # (host build + e2e-tests-spcl.yml template) and drop the inline docker run.
           - job: Set_6
             continueOnError: true
             timeoutInMinutes: 60

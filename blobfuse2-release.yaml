@@ -273,6 +273,21 @@ stages:
               artifactName: 'blobfuse2-temp'
             displayName: 'Publish Artifacts'
 
+      # Debian 13 (trixie) and Ubuntu 26.04 ship libfuse3 with the bumped SONAME
+      # libfuse3.so.4 (libfuse 3.17+), while Debian 11/12 and older Ubuntu still ship
+      # libfuse3.so.3. A binary linked against .so.4 cannot load on a .so.3 host and
+      # vice versa, so the Debian 13 package has to be built in an environment that
+      # provides .so.4 (and the trixie glibc 2.38 it depends on).
+      #
+      # 1ES does not currently offer hosted agent images for Debian 13 or Ubuntu 26.04,
+      # so this job runs on an Ubuntu 22 agent and builds the binary inside a
+      # debian:trixie Docker container. The resulting package will also be usable on
+      # Ubuntu 26.04 once a matching agent image is available.
+      #
+      # TODO: once 1ES publishes a Debian 13 or Ubuntu 26.04 agent image, fold this job
+      # back into the standard host-based pattern used by Set_1 / Set_2_ARM (apt-install
+      # build deps, build-release.yml template, fpm on the host) and remove the
+      # Docker-in-step indirection.
       - job: Set_3
         timeoutInMinutes: 120
         strategy:
@@ -889,6 +904,24 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
 
+      # Debian 13 (trixie) and Ubuntu 26.04 ship libfuse3 with the bumped SONAME
+      # libfuse3.so.4 (libfuse 3.17+), while Debian 11/12 and older Ubuntu still ship
+      # libfuse3.so.3. Because the package built for .so.4 cannot run on a .so.3 host,
+      # it has to be tested in an environment that provides .so.4 (and the matching
+      # glibc 2.38).
+      #
+      # 1ES does not currently offer hosted agent images for Debian 13 or Ubuntu 26.04,
+      # so this job runs on an Ubuntu 22 agent and the e2e suite is executed inside a
+      # debian:trixie Docker container. The job-level container: keyword can't be used
+      # because it is resolved at job init before any step runs and the 1ES agent has
+      # no Docker pre-installed; we install Docker here and launch the suite via
+      # docker run. The same package will also be exercised on Ubuntu 26.04 once an
+      # agent image is available.
+      #
+      # TODO: once 1ES publishes a Debian 13 or Ubuntu 26.04 agent image, fold this job
+      # back into the standard host-based pattern used by the other Set_* test jobs
+      # (dpkg -i on the host, release-distro-tests.yml template) and drop the inline
+      # docker run.
       - job: Set_3
         timeoutInMinutes: 120
         strategy:
@@ -931,10 +964,11 @@ stages:
             workingDirectory: $(root_dir)/azure-storage-fuse
 
           # The trixie-built package needs glibc 2.38 + libfuse3.so.4, which the Ubuntu 22
-          # host agent (glibc 2.35) cannot load. The e2e suite therefore runs inside a
-          # debian:trixie container. The job-level container: keyword can't be used because
-          # it is resolved at job init before any step runs and the 1ES agent has no Docker
-          # pre-installed, so Docker is installed here and the suite is launched via docker run.
+          # host agent (glibc 2.35, libfuse3.so.3) cannot load. The e2e suite therefore
+          # runs inside a debian:trixie container. The job-level container: keyword can't
+          # be used because it is resolved at job init before any step runs and the 1ES
+          # agent has no Docker pre-installed, so Docker is installed here and the suite
+          # is launched via docker run.
           - script: |
               sudo apt-get update --fix-missing
               sudo apt-get install -y docker.io
