@@ -353,7 +353,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v",
+	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max_background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v",
 		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxBackground, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask, lf.disableKernelCache)
 
 	return nil
