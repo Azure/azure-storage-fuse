@@ -561,11 +561,6 @@ func configureBlobFilter(azStorage *AzStorage, opt AzStorageOptions) error {
 	}
 	azStorage.stConfig.filterHasTag = filterReferencesTag(opt.Filter)
 
-	if azStorage.stConfig.filterHasTag && azStorage.stConfig.authConfig.AccountType == EAccountType.ADLS() {
-		log.Err("configureBlobFilter : tag= filters are not supported on ADLS Gen2 accounts")
-		return errors.New("tag= filters are not supported on ADLS Gen2 accounts")
-	}
-
 	log.Crit("configureBlobFilter : Blob filter configured %s", opt.Filter)
 	return nil
 }
