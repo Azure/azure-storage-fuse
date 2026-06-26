@@ -826,6 +826,10 @@ stages:
                           ./blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(Pipeline.Workspace)/\${name}.yaml
 
                         echo '---------------------------------------------------'
+                        echo \"Print Config File : \${name}\"
+                        cat $(Pipeline.Workspace)/\${name}.yaml
+
+                        echo '---------------------------------------------------'
                         echo \"Mount Blobfuse2 : \${name}\"
                         ./blobfuse2 unmount all || true
                         ./blobfuse2 mount $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/\${name}.yaml --default-working-dir=$(System.DefaultWorkingDirectory)
