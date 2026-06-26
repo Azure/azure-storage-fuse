@@ -116,7 +116,7 @@ const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
 
-// maxBackground is the libfuse max_background parameter (max pending requests, not threads)
+// defaultMaxBackground is the libfuse max_background parameter default (max pending requests, not threads)
 // It controls how many async I/O requests that fuse kernel module will keep outstanding to fuse userspace.
 const defaultMaxBackground = 128
 
