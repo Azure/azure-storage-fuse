@@ -8,6 +8,9 @@
     max-size-mb: 256   # set explicitly to override auto-tuning
   ```
 
+**Breaking Changes**
+- Reduce the default block-cache memory pool size from 80% of free memory to 60% of available memory when `block_cache.mem-size-mb` is not configured. Users can continue to set the block-cache memory limit explicitly with `block_cache.mem-size-mb` or the `--block-cache-pool-size` CLI option.
+
 **Bug Fixes**
 - Fix CPK-encrypted blob attribute lookup duplicating the prefix path when subdirectory is configured ([PR #2199](https://github.com/Azure/azure-storage-fuse/pull/2199))
 - Return `ENAMETOOLONG` instead of `EIO` when creating a directory path that exceeds the ADLS depth limit of 63 segments ([PR #2221](https://github.com/Azure/azure-storage-fuse/pull/2221))
