@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782022757572,
+  "lastUpdate": 1782627359015,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -671,6 +671,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 2.826686682538,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "eunsang",
+            "username": "CynicDog",
+            "email": "thecynicdog0328@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a4f7af48ea756b39ce90af1d76c003cb291c1d24",
+          "message": "Return ENAMETOOLONG when renaming to a too-deep ADLS path (#2251)",
+          "timestamp": "2026-06-26T04:41:14Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a4f7af48ea756b39ce90af1d76c003cb291c1d24"
+        },
+        "date": 1782627358514,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.413429537881,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 2.8057024534479997,
             "unit": "milliseconds"
           }
         ]
