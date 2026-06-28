@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782022616802,
+  "lastUpdate": 1782627222279,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1196,6 +1196,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 131.091202869139,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "eunsang",
+            "username": "CynicDog",
+            "email": "thecynicdog0328@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a4f7af48ea756b39ce90af1d76c003cb291c1d24",
+          "message": "Return ENAMETOOLONG when renaming to a too-deep ADLS path (#2251)",
+          "timestamp": "2026-06-26T04:41:14Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a4f7af48ea756b39ce90af1d76c003cb291c1d24"
+        },
+        "date": 1782627222026,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.22322121942599998,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.300231902665,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.35993569684599996,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 139.324719851852,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.492037420645,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.394082925415,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 152.220636751899,
             "unit": "milliseconds"
           }
         ]
