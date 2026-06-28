@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782022614942,
+  "lastUpdate": 1782627220338,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1196,6 +1196,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 30.4482421875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "eunsang",
+            "username": "CynicDog",
+            "email": "thecynicdog0328@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a4f7af48ea756b39ce90af1d76c003cb291c1d24",
+          "message": "Return ENAMETOOLONG when renaming to a too-deep ADLS path (#2251)",
+          "timestamp": "2026-06-26T04:41:14Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a4f7af48ea756b39ce90af1d76c003cb291c1d24"
+        },
+        "date": 1782627218615,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 4469.8505859375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 3322.7890625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 2775.89453125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 7.1767578125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 7783.5205078125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 8520.90625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 26.2109375,
             "unit": "MiB/s"
           }
         ]
