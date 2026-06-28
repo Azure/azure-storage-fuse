@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782023725040,
+  "lastUpdate": 1782628291183,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -806,6 +806,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "filecache_sequential_read_100GB_directio",
             "value": 128950.011664,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "eunsang",
+            "username": "CynicDog",
+            "email": "thecynicdog0328@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a4f7af48ea756b39ce90af1d76c003cb291c1d24",
+          "message": "Return ENAMETOOLONG when renaming to a too-deep ADLS path (#2251)",
+          "timestamp": "2026-06-26T04:41:14Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a4f7af48ea756b39ce90af1d76c003cb291c1d24"
+        },
+        "date": 1782628290935,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "filecache_sequential_read_100GB_directio",
+            "value": 113972.858521,
             "unit": "milliseconds"
           }
         ]
