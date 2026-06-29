@@ -791,7 +791,7 @@ stages:
                       export GOROOT=/usr/local/go
                       export GOPATH=$(Pipeline.Workspace)/go
                       export PATH=\$GOROOT/bin:\$PATH
-                      git config --global --add safe.directory '*'
+                      git config --global --add safe.directory $(Build.SourcesDirectory)
                       go mod download
 
                       echo '---------------------------------------------------'

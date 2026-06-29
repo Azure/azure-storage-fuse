@@ -360,7 +360,7 @@ stages:
                   export GOPATH=$(root_dir)/gopath
                   export PATH=\$GOROOT/bin:\$PATH
                   ldd --version
-                  git config --global --add safe.directory '*'
+                  git config --global --add safe.directory $(work_dir)
                   go mod download
 
                   echo '---------------------------------------------------'
@@ -1036,7 +1036,7 @@ stages:
                   export GOROOT=/usr/local/go
                   export GOPATH=$(root_dir)/gopath
                   export PATH=\$GOROOT/bin:\$PATH
-                  git config --global --add safe.directory '*'
+                  git config --global --add safe.directory $(work_dir)
                   cd $(work_dir)
                   go mod download
 
