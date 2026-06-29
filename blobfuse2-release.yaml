@@ -1073,6 +1073,7 @@ stages:
                     echo '---------------------------------------------------'
                     echo \"Mount Blobfuse2 : \${name}\"
                     blobfuse2 unmount all || true
+                    fusermount3 -u $(mount_dir) || true
                     blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/\${name}_config.yaml
 
                     # Waiting for Mount
@@ -1103,6 +1104,7 @@ stages:
                     set -e
                     sleep 5
                     blobfuse2 unmount $(mount_dir) || true
+                    fusermount3 -u $(mount_dir) || true
 
                     return \$rc
                   }

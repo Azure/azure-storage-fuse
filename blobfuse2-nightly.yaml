@@ -832,6 +832,7 @@ stages:
                         echo '---------------------------------------------------'
                         echo \"Mount Blobfuse2 : \${name}\"
                         ./blobfuse2 unmount all || true
+                        fusermount3 -u $(MOUNT_DIR) || true
                         ./blobfuse2 mount $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/\${name}.yaml --default-working-dir=$(System.DefaultWorkingDirectory)
 
                         # Waiting for Mount
@@ -862,6 +863,7 @@ stages:
                         set -e
                         sleep 5
                         ./blobfuse2 unmount $(MOUNT_DIR) || true
+                        fusermount3 -u $(MOUNT_DIR) || true
 
                         return \$rc
                       }
