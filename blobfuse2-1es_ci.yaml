@@ -3,6 +3,7 @@ trigger:
   branches:
     include:
       - pr-mirror/*
+      - feature/tachyon
 
 # Execute this for every PR on main
 pr:
