@@ -84,7 +84,8 @@ type AzStorageConfig struct {
 	cpkEncryptionKeySha256 string
 
 	// Blob filters
-	filter *blobfilter.BlobFilter
+	filter       *blobfilter.BlobFilter
+	filterHasTag bool // true when the configured filter references blob tags
 
 	// Rate limiting
 	capMbpsRead int64
