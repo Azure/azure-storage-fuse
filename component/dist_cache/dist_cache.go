@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+// Copyright (c) 2026 Microsoft Corporation.
 // Licensed under the MIT License.
 
 package dist_cache
@@ -358,7 +358,7 @@ func (dc *DistCache) CopyToFile(options internal.CopyToFileOptions) error {
 	if fatalErr := wait(); fatalErr != nil {
 		cancel() // cancel recovery goroutines
 		<-readerDone
-		g.Wait() // drain in-flight recovery work before returning
+		_ = g.Wait() // drain in-flight recovery work before returning
 		if dc.bypassOnError {
 			log.Warn("DistCache::CopyToFile : fatal download error, bypassing: %v", fatalErr)
 			return dc.NextComponent().CopyToFile(options)

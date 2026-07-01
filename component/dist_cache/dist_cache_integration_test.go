@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+// Copyright (c) 2026 Microsoft Corporation.
 // Licensed under the MIT License.
 
 //go:build unittest
@@ -27,7 +27,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
-	pb "github.com/Azure/azure-storage-fuse/v2/internal/dist_cache_client/proto"
+	pb "github.com/nearora-msft/dist-cache-client-go/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
