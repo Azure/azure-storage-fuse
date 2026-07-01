@@ -16,6 +16,7 @@
 
 **Other Changes**
 - CBL-Mariner 2.0 has reached end-of-life; Blobfuse2 packages will no longer be published to Mariner 2.0 repositories.
+- Reduce the default block-cache memory pool size from 80% of free memory to 60% of available memory when `block_cache.mem-size-mb` is not configured. This change improves mountpoint resilience by leaving more memory headroom for system processes, reducing the risk of out-of-memory conditions when concurrent workloads compete for memory resources. Users can continue to set the block-cache memory limit explicitly with `block_cache.mem-size-mb` or the `--block-cache-pool-size` CLI option. ([PR #2260](https://github.com/Azure/azure-storage-fuse/pull/2260)).
 
 ## 2.5.3 (2026-03-25)
 **Features**
