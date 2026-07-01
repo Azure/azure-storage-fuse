@@ -621,6 +621,16 @@ stages:
             displayName: "Install Go"
 
           # -------------------------------------------------------
+          # Ensure a C compiler is available. The Microsoft Go toolchain builds
+          # with GOEXPERIMENT=systemcrypto (FIPS) + CGO_ENABLED=1, which needs gcc
+          # at build time. Build jobs get gcc from package-install.yml, but this
+          # lightweight cleanup job skips that template. The guard makes this a
+          # no-op when gcc is already present on the agent image.
+          - script: |
+              command -v gcc || (sudo apt-get update && sudo apt-get install -y gcc)
+            displayName: "Ensure C compiler for CGO"
+
+          # -------------------------------------------------------
           # Run the cleanup script to delete all the containers
           # Run the cleanup for Block Blob account.
           - task: Go@0
@@ -631,6 +641,10 @@ stages:
             timeoutInMinutes: 120
             continueOnError: true
             env:
+              # Microsoft Go defaults to GOEXPERIMENT=systemcrypto (FIPS), which
+              # requires CGO_ENABLED=1 to compile crypto. This task runs `go test`
+              # directly instead of through build.sh, so set it here as well.
+              CGO_ENABLED: 1
               STORAGE_ACCOUNT_NAME: $(BF2_BLK_ACC_NAME)
               STORAGE_ACCOUNT_KEY: $(BF2_BLK_ACC_KEY)
 
@@ -643,5 +657,7 @@ stages:
             timeoutInMinutes: 120
             continueOnError: true
             env:
+              # systemcrypto (FIPS) build requires CGO_ENABLED=1, same as above.
+              CGO_ENABLED: 1
               STORAGE_ACCOUNT_NAME: $(BF2_ADLS_ACC_NAME)
               STORAGE_ACCOUNT_KEY: $(BF2_ADLS_ACC_KEY)

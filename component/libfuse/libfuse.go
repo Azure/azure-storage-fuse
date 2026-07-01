@@ -72,10 +72,10 @@ type Libfuse struct {
 	ignoreOpenFlags       bool
 	nonEmptyMount         bool
 	lsFlags               common.BitMap64
-	maxFuseThreads        uint32
 	directIO              bool
 	umask                 uint32
 	disableKernelCache    bool
+	maxBackground         uint32 // libfuse max_background: max pending background requests
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -104,16 +104,21 @@ type LibfuseOptions struct {
 	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
 	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
 	Gid                     uint32 `config:"gid" yaml:"gid,omitempty"`
-	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
-	DirectIO                bool   `config:"direct-io" yaml:"direct-io,omitempty"`
-	Umask                   uint32 `config:"umask" yaml:"umask,omitempty"`
+	// MaxBackground is exposed via config as "max-fuse-threads" for backward compatibility.
+	// Internally renamed to reflect it maps to libfuse max_background (pending I/O requests, not threads).
+	MaxBackground uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
+	DirectIO      bool   `config:"direct-io" yaml:"direct-io,omitempty"`
+	Umask         uint32 `config:"umask" yaml:"umask,omitempty"`
 }
 
 const compName = "libfuse"
 const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
-const defaultMaxFuseThreads = 128
+
+// defaultMaxBackground is the libfuse max_background parameter default (max pending requests, not threads)
+// It controls how many async I/O requests the FUSE kernel module keeps outstanding to FUSE userspace.
+const defaultMaxBackground = 128
 
 var fuseFS *Libfuse
 
@@ -250,9 +255,9 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	}
 
 	if config.IsSet(compName + ".max-fuse-threads") {
-		lf.maxFuseThreads = opt.MaxFuseThreads
+		lf.maxBackground = opt.MaxBackground
 	} else {
-		lf.maxFuseThreads = defaultMaxFuseThreads
+		lf.maxBackground = defaultMaxBackground
 	}
 
 	log.Info("Libfuse::Validate : UID %v, GID %v", lf.ownerUID, lf.ownerGID)
@@ -348,8 +353,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v",
-		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask, lf.disableKernelCache)
+	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max_background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxBackground, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask, lf.disableKernelCache)
 
 	return nil
 }

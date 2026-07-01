@@ -468,6 +468,26 @@ func testUnlinkError(suite *libfuseTestSuite) {
 
 // Rename
 
+func testRenameDirEnametoolong(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	src := "src"
+	dst := "dst"
+	srcPath := C.CString("/" + src)
+	dstPath := C.CString("/" + dst)
+	defer C.free(unsafe.Pointer(srcPath))
+	defer C.free(unsafe.Pointer(dstPath))
+
+	srcAttr := &internal.ObjAttr{Name: src}
+	srcAttr.Flags.Set(internal.PropFlagIsDir)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: src}).Return(srcAttr, nil)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: dst}).Return(nil, syscall.ENOENT)
+	options := internal.RenameDirOptions{Src: src, Dst: dst}
+	suite.mock.EXPECT().RenameDir(options).Return(syscall.ENAMETOOLONG)
+
+	err := libfuse_rename(srcPath, dstPath, 0)
+	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+}
+
 func testSymlink(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
