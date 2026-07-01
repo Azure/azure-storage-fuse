@@ -3,8 +3,6 @@
 # download/extract cannot leave the agent in a half-installed state.
 set -euo pipefail
 
-echo "Installing Go"
-
 work_dir=$(echo "$1" | sed 's:/*$::')
 
 # Microsoft build of Go (FIPS-capable; ships systemcrypto GOEXPERIMENT).
