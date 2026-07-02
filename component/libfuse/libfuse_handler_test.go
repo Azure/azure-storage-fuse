@@ -355,7 +355,7 @@ func (suite *libfuseTestSuite) TestUtimens() {
 
 func (suite *libfuseTestSuite) TestKernelListCacheDefault() {
 	defer suite.cleanupTest()
-	suite.assert.Equal(uint32(0), suite.libfuse.kernelListCacheTtlInSec)
+	suite.assert.Equal(uint32(defaultKernelListCacheTtlInSec), suite.libfuse.kernelListCacheTtlInSec)
 }
 
 func (suite *libfuseTestSuite) TestKernelListCacheConfig() {

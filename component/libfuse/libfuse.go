@@ -118,6 +118,7 @@ const compName = "libfuse"
 const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
+const defaultKernelListCacheTtlInSec = 120
 
 // defaultMaxBackground is the libfuse max_background parameter default (max pending requests, not threads)
 // It controls how many async I/O requests the FUSE kernel module keeps outstanding to FUSE userspace.
@@ -217,7 +218,11 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.ownerGID = opt.Gid
 	lf.ownerUID = opt.Uid
 	lf.umask = opt.Umask
-	lf.kernelListCacheTtlInSec = opt.KernelListCacheTtlInSec
+	if config.IsSet(compName+".kernel-list-cache-expiration-sec") || config.IsSet("lfuse.kernel-list-cache-expiration-sec") {
+		lf.kernelListCacheTtlInSec = opt.KernelListCacheTtlInSec
+	} else {
+		lf.kernelListCacheTtlInSec = defaultKernelListCacheTtlInSec
+	}
 
 	if lf.disableKernelCache {
 		opt.DirectIO = true
@@ -260,12 +265,13 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.negativeTimeout = 0
 		lf.attributeExpiration = 0
 		lf.entryExpiration = 0
-		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
-	}
 
-	if lf.directIO && lf.kernelListCacheTtlInSec > 0 {
-		log.Crit("Libfuse::Validate : kernel-list-cache incompatible with direct-io, disabling")
-		lf.kernelListCacheTtlInSec = 0
+		if lf.kernelListCacheTtlInSec > 0 {
+			log.Crit("Libfuse::Validate : kernel-list-cache incompatible with direct-io, disabling")
+			lf.kernelListCacheTtlInSec = 0
+		}
+
+		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
 	}
 
 	if !config.IsSet(compName+".uid") && !config.IsSet(compName+".gid") && !config.IsSet("lfuse.uid") && !config.IsSet("lfuse.gid") {

@@ -140,6 +140,7 @@ func (t *kernelListCacheTracker) sweepExpired() {
 			return
 		}
 	}
+
 	ttl := t.ttl
 	var expired []string
 	t.lru.DeleteIf(func(path string, item *dirCacheItem) bool {
@@ -149,6 +150,8 @@ func (t *kernelListCacheTracker) sweepExpired() {
 		}
 		return false
 	})
+
+	var failed int
 	for _, path := range expired {
 		// Proactive optimization: evict the kernel's cached listing for this path so
 		// it can reclaim page cache memory sooner.  Correctness does not depend on
@@ -158,8 +161,9 @@ func (t *kernelListCacheTracker) sweepExpired() {
 		// for fresh data.
 		if err := fuseFS.InvalidateKernelListCache("/" + strings.TrimSuffix(path, "/")); err != nil {
 			log.Warn("kernelListCacheTracker::sweepExpired : failed to invalidate %s [%s]", path, err)
+			failed++
 		}
 	}
-	log.Debug("kernelListCacheTracker::sweepExpired : evicted %d entries, lru %d MB / %d MB",
-		len(expired), t.lru.Size()>>20, t.lru.MaxSize()>>20)
+	log.Debug("kernelListCacheTracker::sweepExpired : evicted %d entries (%d invalidation failures), lru %d MB / %d MB",
+		len(expired), failed, t.lru.Size()>>20, t.lru.MaxSize()>>20)
 }

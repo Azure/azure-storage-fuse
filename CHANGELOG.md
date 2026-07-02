@@ -7,10 +7,10 @@
     timeout-sec: 120
     max-size-mb: 256   # set explicitly to override auto-tuning
   ```
-- Kernel directory-listing cache (fuse3 only). When `kernel-list-cache-expiration-sec` is set to a non-zero value in the `libfuse` config section, blobfuse2 instructs the kernel to cache `readdir` results for that many seconds. Repeat `ls` calls within the TTL are served entirely from the kernel's page cache without any userspace round-trip, significantly reducing latency and backend API traffic for read-heavy workloads. After the TTL expires the next `opendir` call signals the kernel to discard the stale listing and issue a fresh `READDIRPLUS`. A background sweeper proactively invalidates entries that were never re-opened, keeping kernel memory usage bounded. Example configuration:
+- Kernel directory-listing cache (fuse3 only). When `kernel-list-cache-expiration-sec` is set in the `libfuse` config section, blobfuse2 instructs the kernel to cache `readdir` results for that many seconds. Repeat `ls` calls within the TTL are served entirely from the kernel's page cache without any userspace round-trip, significantly reducing latency and backend API traffic for read-heavy workloads. After the TTL expires the next `opendir` call signals the kernel to discard the stale listing and issue a fresh `READDIRPLUS`. A background sweeper proactively invalidates entries that were never re-opened, keeping kernel memory usage bounded. The default TTL is **120 seconds** (matching the other libfuse timeouts); set to `0` to disable. Example configuration:
   ```yaml
   libfuse:
-    kernel-list-cache-expiration-sec: 30   # 0 disables kernel caching (default)
+    kernel-list-cache-expiration-sec: 120   # 0 disables kernel list caching
   ```
   Alternatively, pass `--kernel-list-cache-timeout=<seconds>` on the `mount` command line.
 
