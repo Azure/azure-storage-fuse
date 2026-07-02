@@ -265,11 +265,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.negativeTimeout = 0
 		lf.attributeExpiration = 0
 		lf.entryExpiration = 0
-
-		if lf.kernelListCacheTtlInSec > 0 {
-			log.Crit("Libfuse::Validate : kernel-list-cache incompatible with direct-io, disabling")
-			lf.kernelListCacheTtlInSec = 0
-		}
+		lf.kernelListCacheTtlInSec = 0
 
 		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
 	}
