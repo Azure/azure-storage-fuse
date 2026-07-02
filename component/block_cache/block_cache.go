@@ -356,15 +356,13 @@ func (bc *BlockCache) getDefaultDiskSize(path string) uint64 {
 }
 
 func (bc *BlockCache) getDefaultMemSize() uint64 {
-	var sysinfo syscall.Sysinfo_t
-	err := syscall.Sysinfo(&sysinfo)
-
+	availableMemory, err := common.GetAvailableMemoryBytes()
 	if err != nil {
-		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of 4GB.", bc.Name(), err.Error())
+		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of 4192MB (~4GB).", bc.Name(), err.Error())
 		return uint64(4192) * _1MB
 	}
 
-	return uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
+	return uint64(0.6 * float64(availableMemory))
 }
 
 // CreateFile: Create a new file

@@ -257,7 +257,7 @@ func (lf *Libfuse) destroyFuse() error {
 
 //export libfuse_init
 func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Pointer) {
-	log.Trace("Libfuse::libfuse_init : init (read : %v, write %v, read-ahead %v)", conn.max_read, conn.max_write, conn.max_readahead)
+	log.Trace("Libfuse::libfuse_init : init (max_read: %v, max_write: %v, max_readahead: %v)", conn.max_read, conn.max_write, conn.max_readahead)
 
 	log.Info("Libfuse::NotifyMountToParent : Notifying parent for successful mount")
 	if err := common.NotifyMountToParent(); err != nil {
@@ -266,7 +266,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	C.populate_uid_gid()
 
-	log.Info("Libfuse::libfuse_init : Kernel Caps : %d", conn.capable)
+	log.Info("Libfuse::libfuse_init : Kernel FUSE version: %d.%d, Kernel Caps : 0x%x", conn.proto_major, conn.proto_minor, conn.capable)
 
 	// Populate connection information
 	// conn.want |= C.FUSE_CAP_NO_OPENDIR_SUPPORT
@@ -314,8 +314,8 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		conn.want |= C.FUSE_CAP_WRITEBACK_CACHE
 	}
 
-	// Max background thread on the fuse layer for high parallelism
-	conn.max_background = C.uint(fuseFS.maxFuseThreads)
+	// Max background requests on the fuse layer
+	conn.max_background = C.uint(fuseFS.maxBackground)
 
 	// While reading a file let kernel do readahed for better perf
 	conn.max_readahead = (4 * 1024 * 1024)
@@ -337,6 +337,9 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	if fuseFS.directIO {
 		cfg.direct_io = C.int(1)
 	}
+
+	log.Info("Libfuse::libfuse_init : want: 0x%x, max_read: %d, max_write: %d, max_readahead: %d, max_background: %d",
+		conn.want, conn.max_read, conn.max_write, conn.max_readahead, conn.max_background)
 
 	return nil
 }
@@ -445,6 +448,8 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 			return -C.EACCES
 		} else if os.IsExist(err) {
 			return -C.EEXIST
+		} else if errors.Is(err, syscall.ENAMETOOLONG) {
+			return -C.ENAMETOOLONG
 		} else {
 			return -C.EIO
 		}
@@ -1039,6 +1044,9 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		})
 		if err != nil {
 			log.Err("Libfuse::libfuse_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
+			if errors.Is(err, syscall.ENAMETOOLONG) {
+				return -C.ENAMETOOLONG
+			}
 			return -C.EIO
 		}
 

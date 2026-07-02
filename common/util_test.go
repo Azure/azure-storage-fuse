@@ -40,10 +40,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
 
+	"github.com/prometheus/procfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -663,4 +666,101 @@ func (suite *utilTestSuite) TestSetFrsize() {
 	var val uint64 = 4096
 	SetFrsize(st, val)
 	suite.assert.Equal(int64(val), st.Frsize)
+}
+
+func TestTotalMemoryBytesIsPositive(t *testing.T) {
+	mem := TotalMemoryBytes()
+	assert.Positive(t, mem, "TotalMemoryBytes should return a positive value on Linux")
+}
+
+func TestTotalMemoryBytesAtLeast1MB(t *testing.T) {
+	mem := TotalMemoryBytes()
+	assert.GreaterOrEqual(t, mem, uint64(1<<20), "TotalMemoryBytes should be at least 1 MB")
+}
+
+func (suite *utilTestSuite) TestGetAvailableMemoryBytes() {
+	availableMemory, err := GetAvailableMemoryBytes()
+	suite.assert.NoError(err)
+
+	meminfoMemory, err := readAvailableMemoryBytesFromProcMeminfo()
+	suite.assert.NoError(err)
+
+	var difference uint64
+	if availableMemory > meminfoMemory {
+		difference = availableMemory - meminfoMemory
+	} else {
+		difference = meminfoMemory - availableMemory
+	}
+
+	tolerance := meminfoMemory / 100
+	suite.assert.LessOrEqual(difference, tolerance)
+}
+
+func (suite *utilTestSuite) TestGetAvailableMemoryBytesFromMeminfoFallback() {
+	availableMemory := uint64(1024)
+	freeMemory := uint64(512)
+
+	actual, err := getAvailableMemoryBytesFromMeminfo(procfs.Meminfo{
+		MemAvailableBytes: &availableMemory,
+		MemFreeBytes:      &freeMemory,
+	})
+	suite.assert.NoError(err)
+	suite.assert.Equal(availableMemory, actual)
+
+	actual, err = getAvailableMemoryBytesFromMeminfo(procfs.Meminfo{
+		MemFreeBytes: &freeMemory,
+	})
+	suite.assert.NoError(err)
+	suite.assert.Equal(freeMemory, actual)
+
+	zeroMemory := uint64(0)
+	actual, err = getAvailableMemoryBytesFromMeminfo(procfs.Meminfo{
+		MemAvailableBytes: &zeroMemory,
+		MemFreeBytes:      &freeMemory,
+	})
+	suite.assert.NoError(err)
+	suite.assert.Equal(freeMemory, actual)
+
+	actual, err = getAvailableMemoryBytesFromMeminfo(procfs.Meminfo{
+		MemAvailableBytes: &zeroMemory,
+		MemFreeBytes:      &zeroMemory,
+	})
+	suite.assert.Error(err)
+	suite.assert.Equal(uint64(0), actual)
+}
+
+func readAvailableMemoryBytesFromProcMeminfo() (uint64, error) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, err
+	}
+
+	var memFree uint64
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		value, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			return 0, err
+		}
+
+		value *= 1024
+		switch fields[0] {
+		case "MemAvailable:":
+			if value > 0 {
+				return value, nil
+			}
+		case "MemFree:":
+			memFree = value
+		}
+	}
+
+	if memFree > 0 {
+		return memFree, nil
+	}
+
+	return 0, fmt.Errorf("neither MemAvailable nor MemFree found in /proc/meminfo")
 }

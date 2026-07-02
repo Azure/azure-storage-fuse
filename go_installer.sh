@@ -11,7 +11,13 @@ work_dir=$(echo "$1" | sed 's:/*$::')
 # or a major.minor stream like "1.26" which the aka.ms redirector resolves
 # to the latest patch in that line).
 version="${GO_VERSION:-1.26.3}"
-arch=$(hostnamectl | grep "Arch" | rev | cut -d " " -f 1 | rev)
+arch=$(dpkg --print-architecture 2>/dev/null || true)
+if [ -z "$arch" ]; then
+  case "$(uname -m)" in
+    aarch64|arm64) arch="arm64" ;;
+    *) arch="amd64" ;;
+  esac
+fi
 
 if [ "$arch" != "arm64" ]
 then
