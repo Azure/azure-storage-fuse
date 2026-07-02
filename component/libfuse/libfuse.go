@@ -218,7 +218,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.ownerGID = opt.Gid
 	lf.ownerUID = opt.Uid
 	lf.umask = opt.Umask
-	if config.IsSet(compName+".kernel-list-cache-expiration-sec") || config.IsSet("lfuse.kernel-list-cache-expiration-sec") {
+	if config.IsSet(compName + ".kernel-list-cache-expiration-sec") {
 		lf.kernelListCacheTtlInSec = opt.KernelListCacheTtlInSec
 	} else {
 		lf.kernelListCacheTtlInSec = defaultKernelListCacheTtlInSec
