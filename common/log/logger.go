@@ -374,9 +374,18 @@ func setCrashOutput(loggerType, logFilePath string) {
 // sighupOnce ensures the SIGHUP listener goroutine is only started once per process.
 var sighupOnce sync.Once
 
+// sighupCh is the channel signal.Notify writes to; retained at package scope so tests can shut
+// the listener goroutine down cleanly (production never reads it back).
+var sighupCh chan os.Signal
+
 // sighupInstalled reports whether the SIGHUP listener has been installed. Read from tests via
 // sync/atomic; production code has no reason to read it.
 var sighupInstalled atomic.Bool
+
+// sighupHandled counts the number of SIGHUPs the listener goroutine has processed. Used by tests
+// to verify that the crash-output handler actually ran (as opposed to merely observing that the
+// signal was delivered to the process).
+var sighupHandled atomic.Uint64
 
 // installCrashSighupHandler arranges for the crash output fd to be re-attached when the process receives
 // SIGHUP. Intended for the syslog family only: SysLogger has no in-process rotation, so external
@@ -385,12 +394,13 @@ var sighupInstalled atomic.Bool
 // listener is installed at most once per process.
 func installCrashSighupHandler(loggerType, logFilePath string) {
 	sighupOnce.Do(func() {
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, syscall.SIGHUP)
+		sighupCh = make(chan os.Signal, 1)
+		signal.Notify(sighupCh, syscall.SIGHUP)
 		sighupInstalled.Store(true)
 		go func() {
-			for range ch {
+			for range sighupCh {
 				setCrashOutput(loggerType, logFilePath)
+				sighupHandled.Add(1)
 			}
 		}()
 	})

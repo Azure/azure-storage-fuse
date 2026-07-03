@@ -155,14 +155,27 @@ func (lts *LoggerTestSuite) TestNegative() {
 // resetCrashOutputState clears process-global state used by the crash-output / rotation-hook
 // machinery so each test starts from a known baseline. logObj is swapped for a fresh silent logger
 // because earlier tests may have called Destroy() on a base logger, which closes its channel and
-// would cause subsequent Warn/Info calls (e.g. from setCrashOutput) to panic. The previously
-// installed SIGHUP listener goroutine (if any) is orphaned -- harmless for a unit-test process.
+// would cause subsequent Warn/Info calls (e.g. from setCrashOutput) to panic.
+//
+// The previously-installed SIGHUP listener goroutine (if any) is stopped: signal.Stop unregisters
+// the channel from the runtime signal dispatch, and closing the channel lets the "for range"
+// goroutine drain the buffer and exit. Without this, tests that call SetupCrashOutput repeatedly
+// would leak goroutines still registered for SIGHUP, and future SIGHUPs would fan out to all of
+// them, making later tests flaky.
 func resetCrashOutputState() {
 	rotateHooksMu.Lock()
 	rotateHooks = nil
 	rotateHooksMu.Unlock()
+
+	if sighupInstalled.Load() && sighupCh != nil {
+		signal.Stop(sighupCh)
+		close(sighupCh)
+		sighupCh = nil
+	}
 	sighupOnce = sync.Once{}
 	sighupInstalled.Store(false)
+	sighupHandled.Store(0)
+
 	_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
 	logObj = &SilentLogger{}
 }
@@ -376,13 +389,26 @@ func (lts *LoggerTestSuite) TestSetupCrashOutputRegistersHookAndHandler() {
 	assert.NotPanics(func() { SetupCrashOutput("syslog", tmp.Name()) })
 
 	// Signal delivery sanity check: SIGHUP reaches the process (proving signal.Notify was wired).
+	handledBefore := sighupHandled.Load()
 	assert.NoError(syscall.Kill(syscall.Getpid(), syscall.SIGHUP))
 	select {
 	case <-sentinel:
-		// delivered
+		// delivered to the sentinel; our listener may or may not have run yet
 	case <-time.After(2 * time.Second):
 		lts.T().Fatal("SIGHUP was not delivered to the process within 2s")
 	}
+
+	// Also verify that the installed crash-output handler goroutine actually ran, not just that
+	// the signal reached the process. Poll the counter since the handler runs asynchronously.
+	deadline := time.Now().Add(2 * time.Second)
+	for sighupHandled.Load() == handledBefore {
+		if time.Now().After(deadline) {
+			lts.T().Fatalf("crash-output SIGHUP handler did not execute within 2s (before=%d, after=%d)",
+				handledBefore, sighupHandled.Load())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Greater(sighupHandled.Load(), handledBefore, "SIGHUP handler goroutine must run at least once")
 
 	// Clean up runtime crash output so it doesn't leak to other tests.
 	_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
