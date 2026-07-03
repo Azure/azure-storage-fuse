@@ -42,6 +42,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -267,47 +268,90 @@ func invokeRotateHooks() {
 
 // SetupCrashOutput wires the Go runtime crash output (panics, fatal errors from any goroutine) to the
 // Blobfuse2 log file in addition to stderr (which the daemon library redirects to the per-mount
-// .trace file). For "base" logging it uses logFilePath; for "syslog" logging it uses
-// common.SyslogFilePath where rsyslog routes blobfuse2 messages.
+// .trace file). Supported logger modes:
 //
-// It also keeps the crash output fd attached to the live log file across rotations:
-//  1. BaseLogger's in-process size-based rotation invokes the registered rotate hook directly.
-//  2. External rotators (logrotate's postrotate, the AKS Blob CSI driver, ...) signal the process
-//     via SIGHUP after rotating the file aside.
+//   - "base"  -> writes to logFilePath (the configured log file). Skipped when logFilePath is empty
+//     or "stdout".
+//   - "" / "default" / "syslog" -> writes to common.SyslogFilePath (the rsyslog sink for blobfuse2
+//     messages, declared in setup/11-blobfuse2.conf).
 //
-// A no-op for the silent logger or when the target path is not writable. The .trace file still
-// captures the panic in that case.
+// A no-op for the "silent" logger, unknown logger types, and base-with-stdout -- in those cases no
+// rotate hook is registered and no SIGHUP handler is installed.
+//
+// The crash output fd is kept attached to the live log file across rotations via two mechanisms
+// selected per logger mode:
+//  1. "base"   -> BaseLogger's in-process size-based rotation invokes the registered rotate hook.
+//     No SIGHUP handler is installed because BaseLogger owns its file and does not participate in
+//     external rotation.
+//  2. syslog family -> external rotators (logrotate's postrotate, the AKS Blob CSI driver, ...)
+//     signal the process via SIGHUP after rotating /var/log/blobfuse2.log aside. SysLogger has no
+//     in-process rotation, so SIGHUP is the only trigger.
 func SetupCrashOutput(loggerType, logFilePath string) {
+	// Skip the whole setup (crash-output fd, rotate hook, SIGHUP goroutine) when the logger
+	// configuration has no meaningful file target to mirror crash dumps to.
+	if crashOutputTarget(loggerType, logFilePath) == "" {
+		return
+	}
+
 	setCrashOutput(loggerType, logFilePath)
 
-	// Re-attach the crash output fd after log rotation, so dumps land in the live log file rather than the
-	// rotated copy. Covers two rotation paths:
-	//   1. BaseLogger's in-process size-based rotation invokes the registered rotate hook directly. The rename
-	//      moves the original file aside while our dup'd fd stays pinned to the old inode, so we must re-open
-	//      the live file.
-	//   2. External rotators (e.g. logrotate, AKS CSI driver host) that signal the process via SIGHUP after
-	//      rotating /var/log/blobfuse2.log out of the way -- handled below by installCrashSighupHandler.
+	// Re-attach the crash output fd after BaseLogger's in-process size-based rotation. The rename
+	// moves the original file aside while our dup'd fd stays pinned to the old inode, so we must
+	// re-open the live file. Registered unconditionally: it is a no-op for logger types whose
+	// LogRotate() implementations never invoke the hook (SysLogger, SilentLogger).
 	registerLogRotateHook(func() {
 		setCrashOutput(loggerType, logFilePath)
 	})
 
-	installCrashSighupHandler(loggerType, logFilePath)
+	// SIGHUP is only meaningful for the syslog family: SysLogger has no in-process rotation, so
+	// external rotators (logrotate + postrotate, AKS Blob CSI driver, ...) are the only way to
+	// know that /var/log/blobfuse2.log has been rotated. For "base" mode the in-process hook above
+	// already covers rotation and we don't want to hijack SIGHUP for other consumers.
+	if isSyslogFamily(loggerType) {
+		installCrashSighupHandler(loggerType, logFilePath)
+	}
 }
 
-func setCrashOutput(loggerType, logFilePath string) {
-	var crashFilePath string
+// isSyslogFamily reports whether loggerType routes crash output to common.SyslogFilePath and
+// therefore relies on external rotators + SIGHUP for rotation notification.
+func isSyslogFamily(loggerType string) bool {
+	switch loggerType {
+	case "", "default", "syslog":
+		return true
+	default:
+		return false
+	}
+}
+
+// crashOutputTarget returns the filesystem path where runtime crash dumps should be mirrored for
+// the given logger configuration, or "" if the configuration does not support mirroring crash
+// dumps to a log file (silent logger, stdout base logger, unknown types, ...).
+func crashOutputTarget(loggerType, logFilePath string) string {
 	switch loggerType {
 	case "base":
 		// BaseLogger may be configured with "stdout" or no file at all; nothing useful to also write to.
 		if logFilePath == "" || logFilePath == "stdout" {
-			return
+			return ""
 		}
-		crashFilePath = logFilePath
+		return logFilePath
 	case "", "default", "syslog":
 		// syslog can't be redirected to via a file descriptor, so target the rsyslog sink for blobfuse2 messages.
-		crashFilePath = common.SyslogFilePath
+		return common.SyslogFilePath
 	default:
-		// "silent" or unknown logger: skip.
+		// "silent" or unknown logger.
+		return ""
+	}
+}
+
+func setCrashOutput(loggerType, logFilePath string) {
+	// Panic-safe: the SIGHUP handler goroutine outlives log.Destroy(), which closes BaseLogger's
+	// channel. A subsequent Warn() from here would then panic on send-to-closed-channel. Swallow
+	// any panic so a SIGHUP during teardown (or any other edge case) cannot crash the process --
+	// the .trace file still captures runtime panics via stderr redirection.
+	defer func() { _ = recover() }()
+
+	crashFilePath := crashOutputTarget(loggerType, logFilePath)
+	if crashFilePath == "" {
 		return
 	}
 
@@ -330,14 +374,20 @@ func setCrashOutput(loggerType, logFilePath string) {
 // sighupOnce ensures the SIGHUP listener goroutine is only started once per process.
 var sighupOnce sync.Once
 
+// sighupInstalled reports whether the SIGHUP listener has been installed. Read from tests via
+// sync/atomic; production code has no reason to read it.
+var sighupInstalled atomic.Bool
+
 // installCrashSighupHandler arranges for the crash output fd to be re-attached when the process receives
-// SIGHUP. This is the conventional signal external log rotators (logrotate's postrotate, the AKS Blob CSI
-// driver's rotation hook, etc.) send after moving the live log file aside, so the next panic dumps into
-// the freshly-opened file rather than the rotated copy. The listener is installed at most once per process.
+// SIGHUP. Intended for the syslog family only: SysLogger has no in-process rotation, so external
+// rotators (logrotate's postrotate, the AKS Blob CSI driver's rotation hook, etc.) are the only
+// way to be notified that /var/log/blobfuse2.log has been rotated aside. Guarded by sync.Once so the
+// listener is installed at most once per process.
 func installCrashSighupHandler(loggerType, logFilePath string) {
 	sighupOnce.Do(func() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGHUP)
+		sighupInstalled.Store(true)
 		go func() {
 			for range ch {
 				setCrashOutput(loggerType, logFilePath)

@@ -162,6 +162,7 @@ func resetCrashOutputState() {
 	rotateHooks = nil
 	rotateHooksMu.Unlock()
 	sighupOnce = sync.Once{}
+	sighupInstalled.Store(false)
 	_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
 	logObj = &SilentLogger{}
 }
@@ -251,6 +252,101 @@ func (lts *LoggerTestSuite) TestSetCrashOutput() {
 	assert.NotPanics(func() { setCrashOutput("syslog", "") })
 }
 
+func (lts *LoggerTestSuite) TestCrashOutputTarget() {
+	assert := assert.New(lts.T())
+
+	// "base" with a real path returns that path.
+	assert.Equal("/tmp/blobfuse2.log", crashOutputTarget("base", "/tmp/blobfuse2.log"))
+
+	// "base" with empty / stdout returns "" (no file to mirror to).
+	assert.Equal("", crashOutputTarget("base", ""))
+	assert.Equal("", crashOutputTarget("base", "stdout"))
+
+	// syslog family always routes to common.SyslogFilePath regardless of logFilePath.
+	assert.Equal(common.SyslogFilePath, crashOutputTarget("", ""))
+	assert.Equal(common.SyslogFilePath, crashOutputTarget("default", ""))
+	assert.Equal(common.SyslogFilePath, crashOutputTarget("syslog", ""))
+	assert.Equal(common.SyslogFilePath, crashOutputTarget("syslog", "/ignored"))
+
+	// silent and unknown types -- no target.
+	assert.Equal("", crashOutputTarget("silent", "ignored"))
+	assert.Equal("", crashOutputTarget("not-a-real-type", "ignored"))
+}
+
+// TestSetCrashOutputPanicSafeAfterDestroy validates the defer/recover guard in setCrashOutput:
+// the SIGHUP handler goroutine outlives Destroy(), which closes BaseLogger's channel. Any Warn()
+// from setCrashOutput after Destroy would panic on send-to-closed-channel; the recover swallows
+// it so a SIGHUP during teardown cannot crash the process.
+func (lts *LoggerTestSuite) TestSetCrashOutputPanicSafeAfterDestroy() {
+	assert := assert.New(lts.T())
+	resetCrashOutputState()
+
+	// Install a base logger and immediately destroy it -- the channel is now closed.
+	cfg := common.LogConfig{
+		FilePath:    filepath.Join(lts.T().TempDir(), "destroyed.log"),
+		MaxFileSize: 10,
+		FileCount:   3,
+		Level:       common.ELogLevel.LOG_DEBUG(),
+	}
+	assert.NoError(SetDefaultLogger("base", cfg))
+	assert.NoError(Destroy())
+
+	// setCrashOutput's error path calls Warn() -- which would attempt to send on the closed
+	// channel. Point it at a non-existent file so the error path is exercised. The deferred
+	// recover inside setCrashOutput must absorb the panic.
+	assert.NotPanics(func() {
+		setCrashOutput("base", filepath.Join(lts.T().TempDir(), "does-not-exist.log"))
+	})
+
+	// Restore a healthy logger so subsequent tests are not affected.
+	logObj = &SilentLogger{}
+}
+
+// TestSetupCrashOutputSkipsUnsupportedConfigs validates that SetupCrashOutput does not register
+// a rotate hook and does not install the SIGHUP handler for logger configurations that have no
+// meaningful file target to mirror crash dumps to.
+func (lts *LoggerTestSuite) TestSetupCrashOutputSkipsUnsupportedConfigs() {
+	assert := assert.New(lts.T())
+
+	cases := []struct {
+		loggerType, logFilePath string
+	}{
+		{"silent", "ignored"},
+		{"base", ""},
+		{"base", "stdout"},
+		{"unknown-logger", "/tmp/x"},
+	}
+	for _, c := range cases {
+		resetCrashOutputState()
+		before := hookCount()
+		SetupCrashOutput(c.loggerType, c.logFilePath)
+		assert.Equalf(before, hookCount(),
+			"SetupCrashOutput must not register a rotate hook for (%q, %q)", c.loggerType, c.logFilePath)
+		assert.Falsef(sighupInstalled.Load(),
+			"SetupCrashOutput must not install SIGHUP handler for (%q, %q)", c.loggerType, c.logFilePath)
+	}
+}
+
+// TestSetupCrashOutputBaseSkipsSighupHandler validates that "base" mode registers the in-process
+// rotate hook but does not install the SIGHUP handler: BaseLogger owns its file and rotates in
+// process, so hijacking SIGHUP would be inappropriate.
+func (lts *LoggerTestSuite) TestSetupCrashOutputBaseSkipsSighupHandler() {
+	assert := assert.New(lts.T())
+	resetCrashOutputState()
+
+	tmp, err := os.CreateTemp("", "blobfuse2-crash-base-nosighup-*.log")
+	assert.NoError(err)
+	defer os.Remove(tmp.Name())
+	assert.NoError(tmp.Close())
+
+	before := hookCount()
+	SetupCrashOutput("base", tmp.Name())
+	assert.Equal(before+1, hookCount(), "base mode must register exactly one rotate hook")
+	assert.False(sighupInstalled.Load(), "base mode must not install SIGHUP handler")
+
+	_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
+}
+
 func (lts *LoggerTestSuite) TestSetupCrashOutputRegistersHookAndHandler() {
 	assert := assert.New(lts.T())
 	resetCrashOutputState()
@@ -267,15 +363,17 @@ func (lts *LoggerTestSuite) TestSetupCrashOutputRegistersHookAndHandler() {
 	defer signal.Stop(sentinel)
 
 	before := hookCount()
-	SetupCrashOutput("base", tmp.Name())
+	// Use "syslog" so SetupCrashOutput actually installs the SIGHUP handler (base mode skips it).
+	SetupCrashOutput("syslog", tmp.Name())
 	assert.Equal(before+1, hookCount(), "SetupCrashOutput must register exactly one rotate hook")
+	assert.True(sighupInstalled.Load(), "syslog mode must install SIGHUP handler")
 
 	// Invoking rotate hooks must not panic (the registered closure re-runs setCrashOutput).
 	assert.NotPanics(invokeRotateHooks)
 
 	// sighupOnce should now be consumed -- a second call must not register another listener and
 	// must not panic.
-	assert.NotPanics(func() { SetupCrashOutput("base", tmp.Name()) })
+	assert.NotPanics(func() { SetupCrashOutput("syslog", tmp.Name()) })
 
 	// Signal delivery sanity check: SIGHUP reaches the process (proving signal.Notify was wired).
 	assert.NoError(syscall.Kill(syscall.Getpid(), syscall.SIGHUP))
