@@ -150,6 +150,13 @@ static void populate_uid_gid()
     }
 }
 
+// Stable mtime for root (/), set once at mount time so AUTO_INVAL_DATA does not
+// constantly invalidate the kernel's cached directory listing.
+static time_t g_root_mtime = 0;
+static void set_root_mtime() {
+    g_root_mtime = time(NULL);
+}
+
 // Properties for root (/) are static so just hardcoding them here
 static int get_root_properties(stat_t *stbuf)
 {
@@ -160,7 +167,9 @@ static int get_root_properties(stat_t *stbuf)
     stbuf->st_gid = fuse_opts.gid;
     stbuf->st_nlink = 2;
     stbuf->st_size = 4096;
-    stbuf->st_mtime = time(NULL);
+    // Use the stable mount-time mtime if available so AUTO_INVAL_DATA does not
+    // treat every GETATTR as a directory change and discard the cached listing.
+    stbuf->st_mtime = (g_root_mtime != 0) ? g_root_mtime : time(NULL);
     stbuf->st_atime = stbuf->st_mtime;
     stbuf->st_ctime = stbuf->st_mtime;
     return 0;
@@ -173,6 +182,72 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
         ,(fuse_fill_dir_flags_t) fill_dir_plus
     #endif
     );
+}
+
+// Capture the fuse instance pointer from init callback for later use in invalidation
+static struct fuse *g_fuse = NULL;
+static void set_fuse_ptr(struct fuse *f) {
+    g_fuse = f;
+}
+
+/*
+ * Returns 1 if the kernel supports FOPEN_CACHE_DIR (the cache_readdir bit in
+ * fuse_file_info).  There is no FUSE_CAP_* flag for this feature, so we gate
+ * on the negotiated FUSE protocol minor version instead.
+ *
+ * FOPEN_CACHE_DIR was introduced in Linux 5.1 together with FUSE protocol
+ * version 7.28 (FUSE_KERNEL_MINOR_VERSION 28 in include/uapi/linux/fuse.h).
+ * Kernels older than 5.1 negotiate a proto_minor < 28 and silently ignore the
+ * cache_readdir bit, so we disable the feature rather than leaving the user
+ * wondering why their listing cache has no effect.
+ */
+static int kernel_supports_dir_cache(fuse_conn_info_t *conn) {
+#ifdef FUSE_CAP_CACHE_READDIR
+    /* Use the capability bit if a future libfuse version defines it. */
+    return (conn->capable & FUSE_CAP_CACHE_READDIR) != 0;
+#else
+    return conn->proto_minor >= 28;
+#endif
+}
+
+// Set cache_readdir bit in opendir response (fuse3 only)
+static void enable_dir_cache(fuse_file_info_t *fi) {
+#ifndef __FUSE2__
+    fi->cache_readdir = 1;
+    fi->keep_cache = 1;
+#endif
+}
+
+/*
+ * Like enable_dir_cache but sets keep_cache=0, telling the kernel to discard
+ * any previously cached directory listing and fetch fresh data via READDIRPLUS.
+ * Used when the blobfuse TTL for a directory has expired.
+ */
+static void invalidate_and_enable_dir_cache(fuse_file_info_t *fi) {
+#ifndef __FUSE2__
+    fi->cache_readdir = 1;
+    fi->keep_cache = 0;
+#endif
+}
+
+/*
+ * Invalidate the kernel's cached directory listing for the given path.
+ *
+ * -ENOENT is treated as success: it means the kernel had no entry cached for
+ * this path (e.g. it was never seen or was already evicted), so there is
+ * nothing to invalidate.  This matches the guidance in the fuse_invalidate_path
+ * documentation and the pattern used in libfuse's own example code.
+ */
+static int invalidate_dir_cache(const char *path) {
+#ifndef __FUSE2__
+    if (g_fuse == NULL) return -1;
+    int ret = fuse_invalidate_path(g_fuse, path);
+    if (ret == -ENOENT)
+        return 0;
+    return ret;
+#else
+    return -1;
+#endif
 }
 
 #endif //__LIBFUSE_H__
