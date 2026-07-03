@@ -259,8 +259,8 @@ func (lts *LoggerTestSuite) TestCrashOutputTarget() {
 	assert.Equal("/tmp/blobfuse2.log", crashOutputTarget("base", "/tmp/blobfuse2.log"))
 
 	// "base" with empty / stdout returns "" (no file to mirror to).
-	assert.Equal("", crashOutputTarget("base", ""))
-	assert.Equal("", crashOutputTarget("base", "stdout"))
+	assert.Empty(crashOutputTarget("base", ""))
+	assert.Empty(crashOutputTarget("base", "stdout"))
 
 	// syslog family always routes to common.SyslogFilePath regardless of logFilePath.
 	assert.Equal(common.SyslogFilePath, crashOutputTarget("", ""))
@@ -269,8 +269,8 @@ func (lts *LoggerTestSuite) TestCrashOutputTarget() {
 	assert.Equal(common.SyslogFilePath, crashOutputTarget("syslog", "/ignored"))
 
 	// silent and unknown types -- no target.
-	assert.Equal("", crashOutputTarget("silent", "ignored"))
-	assert.Equal("", crashOutputTarget("not-a-real-type", "ignored"))
+	assert.Empty(crashOutputTarget("silent", "ignored"))
+	assert.Empty(crashOutputTarget("not-a-real-type", "ignored"))
 }
 
 // TestSetCrashOutputPanicSafeAfterDestroy validates the defer/recover guard in setCrashOutput:
