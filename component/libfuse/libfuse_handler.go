@@ -265,8 +265,27 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	}
 
 	C.populate_uid_gid()
+	C.set_root_mtime()
 
 	log.Info("Libfuse::libfuse_init : Kernel FUSE version: %d.%d, Kernel Caps : 0x%x", conn.proto_major, conn.proto_minor, conn.capable)
+
+	// Capture fuse instance pointer for later use in kernel list cache invalidation
+	C.set_fuse_ptr(C.fuse_get_context().fuse)
+
+	if fuseFS.kernelListCacheTtlInSec > 0 {
+		if C.kernel_supports_dir_cache(conn) != 0 {
+			log.Info("Libfuse::libfuse_init : Kernel supports FOPEN_CACHE_DIR (fuse proto %d.%d), kernel-list-cache enabled with timeout %d sec",
+				conn.proto_major, conn.proto_minor, fuseFS.kernelListCacheTtlInSec)
+		} else {
+			log.Warn("Libfuse::libfuse_init : Kernel fuse proto %d.%d does not support FOPEN_CACHE_DIR (requires 7.28 / Linux 5.1+), disabling kernel-list-cache",
+				conn.proto_major, conn.proto_minor)
+			fuseFS.kernelListCacheTtlInSec = 0
+			if fuseFS.kernelListCacheTracker != nil {
+				fuseFS.kernelListCacheTracker.stop()
+				fuseFS.kernelListCacheTracker = nil
+			}
+		}
+	}
 
 	// Populate connection information
 	// conn.want |= C.FUSE_CAP_NO_OPENDIR_SUPPORT
@@ -347,6 +366,17 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 //export libfuse_destroy
 func libfuse_destroy(data unsafe.Pointer) {
 	log.Trace("Libfuse::libfuse_destroy : destroy")
+	// Stop the TTL sweeper goroutine before clearing g_fuse to eliminate the race
+	// where the sweeper reads a non-nil g_fuse, then calls fuse_invalidate_path
+	// after the FUSE instance has been freed.
+	if fuseFS != nil && fuseFS.kernelListCacheTracker != nil {
+		fuseFS.kernelListCacheTracker.stop()
+		fuseFS.kernelListCacheTracker = nil
+	}
+	// Clear the fuse instance pointer so that any post-destroy call to
+	// fuse_invalidate_path (e.g. from a stale pointer) safely returns -1
+	// instead of dereferencing a freed libfuse struct.
+	C.set_fuse_ptr(nil)
 }
 
 func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
@@ -487,6 +517,26 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	handlemap.Add(handle)
 	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(handle)))
+
+	if fuseFS.kernelListCacheTtlInSec > 0 {
+		// FUSE_CAP_AUTO_INVAL_DATA (enabled by the kernel by default) causes the kernel
+		// to compare the directory's mtime from GETATTR against the mtime it saw when it
+		// cached the listing.  If the mtime has changed, the kernel discards the cached
+		// readdir result and issues a fresh READDIRPLUS — bypassing cache_readdir entirely.
+		// For our TTL-based caching to work, GETATTR must therefore always return a stable
+		// (unchanging) mtime for every directory.  For root ("/") we achieve this by
+		// recording the mount start time in g_root_mtime (libfuse_wrapper.h) and returning
+		// it on every GETATTR call instead of the current wall-clock time.  The same
+		// invariant must hold for all other directories: their mtime should not change
+		// unless the directory contents have actually changed.
+		if fuseFS.kernelListCacheTracker.trackDir(name) {
+			C.enable_dir_cache(fi)
+			log.Debug("Libfuse::libfuse_opendir : kernel list cache hit for %s", name)
+		} else {
+			C.invalidate_and_enable_dir_cache(fi)
+			log.Debug("Libfuse::libfuse_opendir : kernel list cache expired/new for %s, fetching fresh", name)
+		}
+	}
 
 	return 0
 }
@@ -1214,4 +1264,15 @@ func blobfuse_cache_update(path *C.char) C.int {
 	name = common.NormalizeObjectName(name)
 	go fuseFS.NextComponent().FileUsed(name) //nolint
 	return 0
+}
+
+// InvalidateKernelListCache invalidates the kernel's cached directory listing for the given path.
+func (lf *Libfuse) InvalidateKernelListCache(path string) error {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+	ret := C.invalidate_dir_cache(cPath)
+	if ret != 0 {
+		return fmt.Errorf("failed to invalidate kernel list cache for %s [%d]", path, ret)
+	}
+	return nil
 }
