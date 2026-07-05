@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782026373149,
+  "lastUpdate": 1783234887220,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1139,6 +1139,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 57.26953125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5b0dc873ca1095d728eadf2a8ed1b08afc54440b",
+          "message": "Support kernel list caching with a TTL parameter to configure the staleness (#2250)",
+          "timestamp": "2026-07-03T05:08:48Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/5b0dc873ca1095d728eadf2a8ed1b08afc54440b"
+        },
+        "date": 1783234885508,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 3591.046875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 2775.3740234375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3215.4736328125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 15.693359375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 8299.5615234375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 8978.517578125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 58.8310546875,
             "unit": "MiB/s"
           }
         ]
