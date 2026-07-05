@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782026374879,
+  "lastUpdate": 1783234889206,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1139,6 +1139,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 69.784288920441,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5b0dc873ca1095d728eadf2a8ed1b08afc54440b",
+          "message": "Support kernel list caching with a TTL parameter to configure the staleness (#2250)",
+          "timestamp": "2026-07-03T05:08:48Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/5b0dc873ca1095d728eadf2a8ed1b08afc54440b"
+        },
+        "date": 1783234888953,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.278065029266,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.359396310566,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.310719991045,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 63.707750556263,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.472863248555,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.404472925269,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 67.94481012556601,
             "unit": "milliseconds"
           }
         ]
