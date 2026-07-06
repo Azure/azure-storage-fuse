@@ -600,7 +600,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		if bb.Config.filterHasTag && !attr.IsDir() {
 			tags, terr := bb.getBlobTags(name)
 			if terr != nil {
-				log.Warn("BlockBlob::GetAttr : Failed to get tags for %s [%s]", name, terr.Error())
+				log.Err("BlockBlob::GetAttr : Failed to get tags for %s [%s]", name, terr.Error())
 			} else {
 				filterAttr.Tags = tags
 			}

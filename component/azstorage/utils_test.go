@@ -606,8 +606,13 @@ func (s *utilsTestSuite) TestFilterReferencesTag() {
 		{"tag=domain:optical", true},
 		{"TAG=domain:optical", true},
 		{"  Tag = domain:optical", true},
+		{"tag!=domain:optical", true},
+		{"TAG!=domain:optical", true},
+		{"  Tag != domain:optical", true},
 		{"name=^foo.* && tag=key:value", true},
 		{"name=^foo.* || tag=key:value", true},
+		{"name=^foo.* && tag!=key:value", true},
+		{"name=^foo.* || tag!=key:value", true},
 		{"size>100 && name=^foo.*", false},
 	}
 

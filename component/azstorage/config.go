@@ -570,8 +570,8 @@ func configureBlobFilter(azStorage *AzStorage, opt AzStorageOptions) error {
 // so we inspect the input string ourselves to know whether GetAttr paths must
 // fetch blob index tags before evaluating the filter.
 func filterReferencesTag(filter string) bool {
-	for _, clause := range strings.Split(filter, "||") {
-		for _, sub := range strings.Split(clause, "&&") {
+	for clause := range strings.SplitSeq(filter, "||") {
+		for sub := range strings.SplitSeq(clause, "&&") {
 			token := strings.TrimSpace(sub)
 			lowered := strings.ToLower(strings.Map(func(r rune) rune {
 				if r == ' ' || r == '\t' {
@@ -579,7 +579,7 @@ func filterReferencesTag(filter string) bool {
 				}
 				return r
 			}, token))
-			if strings.HasPrefix(lowered, "tag=") {
+			if strings.HasPrefix(lowered, "tag=") || strings.HasPrefix(lowered, "tag!=") {
 				return true
 			}
 		}
