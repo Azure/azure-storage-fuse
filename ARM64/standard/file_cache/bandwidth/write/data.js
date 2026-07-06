@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782116689943,
+  "lastUpdate": 1783325718764,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -607,6 +607,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 3872.9189453125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5b0dc873ca1095d728eadf2a8ed1b08afc54440b",
+          "message": "Support kernel list caching with a TTL parameter to configure the staleness (#2250)",
+          "timestamp": "2026-07-03T05:08:48Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/5b0dc873ca1095d728eadf2a8ed1b08afc54440b"
+        },
+        "date": 1783325718263,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 619.7939453125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 3892.1484375,
             "unit": "MiB/s"
           }
         ]
