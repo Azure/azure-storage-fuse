@@ -467,9 +467,9 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 			tagResp, err := fileClient.GetTags(context.Background(), nil)
 			if err != nil {
 				log.Err("Datalake::GetAttr : Failed to get tags for %s [%s]", name, err.Error())
-			} else {
-				filterAttr.Tags = parseBlobTags(&tagResp.BlobTags)
+				return blobAttr, syscall.EACCES
 			}
+			filterAttr.Tags = parseBlobTags(&tagResp.BlobTags)
 		}
 		if !dl.Config.filter.IsAcceptable(filterAttr) {
 			log.Debug("Datalake::GetAttr : Filtered out %s", name)

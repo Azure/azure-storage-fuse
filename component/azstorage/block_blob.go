@@ -601,9 +601,9 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			tags, terr := bb.getBlobTags(name)
 			if terr != nil {
 				log.Err("BlockBlob::GetAttr : Failed to get tags for %s [%s]", name, terr.Error())
-			} else {
-				filterAttr.Tags = tags
+				return attr, syscall.EACCES
 			}
+			filterAttr.Tags = tags
 		}
 
 		if !bb.Config.filter.IsAcceptable(&filterAttr) {
@@ -725,10 +725,10 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 				if bb.Config.isHNS {
 					tagResp, err := bb.Container.NewBlockBlobClient(*blobInfo.Name).GetTags(context.Background(), nil)
 					if err != nil {
-						log.Warn("BlockBlob::processBlobItems : Failed to get tags for %s [%s]", *blobInfo.Name, err.Error())
-					} else {
-						filterAttr.Tags = parseBlobTags(&tagResp.BlobTags)
+						log.Err("BlockBlob::processBlobItems : Failed to get tags for %s [%s]", *blobInfo.Name, err.Error())
+						return nil, nil, syscall.EACCES
 					}
+					filterAttr.Tags = parseBlobTags(&tagResp.BlobTags)
 				} else {
 					filterAttr.Tags = parseBlobTags(blobInfo.BlobTags)
 				}
