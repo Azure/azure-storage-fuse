@@ -90,6 +90,7 @@ func transformConfig(dlConfig AzStorageConfig) AzStorageConfig {
 	bbConfig := dlConfig
 	bbConfig.authConfig.AccountType = EAccountType.BLOCK()
 	bbConfig.authConfig.Endpoint = transformAccountEndpoint(dlConfig.authConfig.Endpoint)
+	bbConfig.isHNS = true
 	return bbConfig
 }
 

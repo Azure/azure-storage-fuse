@@ -104,8 +104,12 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	}
 
 	bb.listDetails = container.ListBlobsInclude{
-		Metadata:    true,
-		Tags:        bb.Config.filterHasTag,
+		Metadata: true,
+		// Include.Tags is only honored on Block Blob (flat namespace) accounts.
+		// On HNS (ADLS Gen2), the list endpoint does not populate BlobTags in
+		// the response; tags must be fetched per-blob via GetTags — handled in
+		// processBlobItems.
+		Tags:        bb.Config.filterHasTag && !bb.Config.isHNS,
 		Deleted:     false,
 		Snapshots:   false,
 		Permissions: false, //Added to get permissions, acl, group, owner for HNS accounts
@@ -711,7 +715,24 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 			filterAttr.Name = blobAttr.Name
 			filterAttr.Mtime = blobAttr.Mtime
 			filterAttr.Size = blobAttr.Size
-			filterAttr.Tags = parseBlobTags(blobInfo.BlobTags)
+			filterAttr.Tags = nil
+			if bb.Config.filterHasTag {
+				// HNS (ADLS Gen2) does not return blob index tags in the list response
+				// (BlobTags is nil and BlobTagCount is not populated on list items even
+				// when Include.Tags is requested). Fetch tags per-blob via GetTags so
+				// the tag filter can be evaluated. This N+1 cost only applies when a
+				// tag= filter is configured on an HNS account.
+				if bb.Config.isHNS {
+					tagResp, err := bb.Container.NewBlockBlobClient(*blobInfo.Name).GetTags(context.Background(), nil)
+					if err != nil {
+						log.Warn("BlockBlob::processBlobItems : Failed to get tags for %s [%s]", *blobInfo.Name, err.Error())
+					} else {
+						filterAttr.Tags = parseBlobTags(&tagResp.BlobTags)
+					}
+				} else {
+					filterAttr.Tags = parseBlobTags(blobInfo.BlobTags)
+				}
+			}
 
 			if bb.Config.filter.IsAcceptable(&filterAttr) {
 				blobList = append(blobList, blobAttr)
@@ -1883,6 +1904,8 @@ func (bb *BlockBlob) SetFilter(filter string) error {
 		return err
 	}
 	bb.Config.filterHasTag = filterReferencesTag(filter)
-	bb.listDetails.Tags = bb.Config.filterHasTag
+	// HNS accounts do not populate tags in the list response; leave Include.Tags off
+	// and let processBlobItems fetch tags per-blob when needed.
+	bb.listDetails.Tags = bb.Config.filterHasTag && !bb.Config.isHNS
 	return nil
 }
