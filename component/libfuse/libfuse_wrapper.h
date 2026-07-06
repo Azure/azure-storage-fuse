@@ -53,6 +53,26 @@
 #include <fuse3/fuse.h>
 #endif
 
+/*
+ * cache_readdir in fuse_file_info was added in libfuse 3.5.0.
+ * Older distro packages (e.g. libfuse 3.2 on CentOS 8.5, 3.3 on RHEL 8.6)
+ * do not expose this field, so writing it causes compilation failures.
+ *
+ * NOTE: FUSE_MAJOR_VERSION / FUSE_MINOR_VERSION are the *libfuse library*
+ * version macros (defined in the generated libfuse_config.h, included
+ * transitively through fuse3/fuse.h).  They are NOT the kernel module
+ * protocol version (those are FUSE_KERNEL_VERSION / FUSE_KERNEL_MINOR_VERSION
+ * in linux/fuse.h).  On distros that ship a pre-3.5 libfuse package the
+ * macros will still be present (libfuse_config.h is always generated), so
+ * this check reliably detects the installed library version at build time.
+ */
+#if !defined(__FUSE2__) && defined(FUSE_MAJOR_VERSION) && defined(FUSE_MINOR_VERSION) && \
+    ((FUSE_MAJOR_VERSION > 3) || (FUSE_MAJOR_VERSION == 3 && FUSE_MINOR_VERSION >= 5))
+#define LIBFUSE_HAS_CACHE_READDIR 1
+#else
+#define LIBFUSE_HAS_CACHE_READDIR 0
+#endif
+
 #include "libfuse_defs.h"
 #include "native_file_io.h"
 
@@ -202,18 +222,25 @@ static void set_fuse_ptr(struct fuse *f) {
  * wondering why their listing cache has no effect.
  */
 static int kernel_supports_dir_cache(fuse_conn_info_t *conn) {
+#if !LIBFUSE_HAS_CACHE_READDIR
+    (void)conn;
+    return 0;
+#else
 #ifdef FUSE_CAP_CACHE_READDIR
     /* Use the capability bit if a future libfuse version defines it. */
     return (conn->capable & FUSE_CAP_CACHE_READDIR) != 0;
 #else
     return conn->proto_minor >= 28;
 #endif
+#endif
 }
 
 // Set cache_readdir bit in opendir response (fuse3 only)
 static void enable_dir_cache(fuse_file_info_t *fi) {
 #ifndef __FUSE2__
+#if LIBFUSE_HAS_CACHE_READDIR
     fi->cache_readdir = 1;
+#endif
     fi->keep_cache = 1;
 #endif
 }
@@ -225,7 +252,9 @@ static void enable_dir_cache(fuse_file_info_t *fi) {
  */
 static void invalidate_and_enable_dir_cache(fuse_file_info_t *fi) {
 #ifndef __FUSE2__
+#if LIBFUSE_HAS_CACHE_READDIR
     fi->cache_readdir = 1;
+#endif
     fi->keep_cache = 0;
 #endif
 }
