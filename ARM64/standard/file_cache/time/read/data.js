@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782116349435,
+  "lastUpdate": 1783325330472,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -722,6 +722,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "filecache_sequential_read_100GB_directio",
             "value": 95991.770228,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5b0dc873ca1095d728eadf2a8ed1b08afc54440b",
+          "message": "Support kernel list caching with a TTL parameter to configure the staleness (#2250)",
+          "timestamp": "2026-07-03T05:08:48Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/5b0dc873ca1095d728eadf2a8ed1b08afc54440b"
+        },
+        "date": 1783325329957,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "filecache_sequential_read_100GB_directio",
+            "value": 103506.010797,
             "unit": "milliseconds"
           }
         ]
