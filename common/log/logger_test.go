@@ -175,6 +175,7 @@ func resetCrashOutputState() {
 	sighupOnce = sync.Once{}
 	sighupInstalled.Store(false)
 	sighupHandled.Store(0)
+	setupCrashOutputOnce = sync.Once{}
 
 	_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
 	logObj = &SilentLogger{}
@@ -206,6 +207,23 @@ func (lts *LoggerTestSuite) TestRegisterLogRotateHook() {
 	// Re-invocation must re-run all hooks (they are not one-shot).
 	invokeRotateHooks()
 	assert.Equal([]int{1, 2, 3, 1, 2, 3}, order)
+}
+
+// TestInvokeRotateHooksIsolatesPanics validates that a panicking hook does not prevent later
+// hooks from running and does not propagate out of invokeRotateHooks. This matters because
+// invokeRotateHooks runs inline on BaseLogger's log-rotation path; a bare panic there would
+// take down the log-dumper goroutine and effectively break logging.
+func (lts *LoggerTestSuite) TestInvokeRotateHooksIsolatesPanics() {
+	assert := assert.New(lts.T())
+	resetCrashOutputState()
+
+	var ran []int
+	registerLogRotateHook(func() { ran = append(ran, 1) })
+	registerLogRotateHook(func() { panic("hook 2 exploded") })
+	registerLogRotateHook(func() { ran = append(ran, 3) })
+
+	assert.NotPanics(invokeRotateHooks, "invokeRotateHooks must swallow per-hook panics")
+	assert.Equal([]int{1, 3}, ran, "hooks after a panicking hook must still run")
 }
 
 func (lts *LoggerTestSuite) TestBaseLoggerRotateInvokesHook() {
@@ -384,9 +402,11 @@ func (lts *LoggerTestSuite) TestSetupCrashOutputRegistersHookAndHandler() {
 	// Invoking rotate hooks must not panic (the registered closure re-runs setCrashOutput).
 	assert.NotPanics(invokeRotateHooks)
 
-	// sighupOnce should now be consumed -- a second call must not register another listener and
-	// must not panic.
+	// Idempotence: a second call must not register another rotate hook and must not panic. The
+	// outer sync.Once in SetupCrashOutput ensures repeated invocations are cheap no-ops.
+	hooksAfterFirst := hookCount()
 	assert.NotPanics(func() { SetupCrashOutput("syslog", tmp.Name()) })
+	assert.Equal(hooksAfterFirst, hookCount(), "second SetupCrashOutput must not register another rotate hook")
 
 	// Signal delivery sanity check: SIGHUP reaches the process (proving signal.Notify was wired).
 	handledBefore := sighupHandled.Load()

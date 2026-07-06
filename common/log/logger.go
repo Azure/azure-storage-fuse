@@ -238,9 +238,40 @@ func LogRotate() error {
 	return logObj.LogRotate()
 }
 
-// rotateHooksMu guards rotateHooks against concurrent registration and invocation.
-var rotateHooksMu sync.Mutex
-var rotateHooks []func()
+// ------------------ Runtime crash-output mirroring + rotate hooks ------------------
+//
+// This section wires Go runtime crash dumps (panics, fatal errors from any goroutine) to the
+// Blobfuse2 log file in addition to the per-mount .trace file, and keeps that crash-output fd
+// attached to the live log file across rotations. Entry point: SetupCrashOutput.
+
+var (
+	// rotateHooksMu guards rotateHooks against concurrent registration and invocation.
+	rotateHooksMu sync.Mutex
+
+	// rotateHooks holds the callbacks invoked after each successful log rotation.
+	rotateHooks []func()
+
+	// setupCrashOutputOnce makes SetupCrashOutput idempotent: multiple calls (from tests, or if
+	// the mount entry point ever runs more than once) will not accumulate duplicate rotate hooks.
+	// The first successful call wins; subsequent calls with different arguments are ignored.
+	setupCrashOutputOnce sync.Once
+
+	// sighupOnce ensures the SIGHUP listener goroutine is only started once per process.
+	sighupOnce sync.Once
+
+	// sighupCh is the channel signal.Notify writes to; retained at package scope so tests can
+	// shut the listener goroutine down cleanly (production never reads it back).
+	sighupCh chan os.Signal
+
+	// sighupInstalled reports whether the SIGHUP listener has been installed. Read from tests
+	// via sync/atomic; production code has no reason to read it.
+	sighupInstalled atomic.Bool
+
+	// sighupHandled counts the number of SIGHUPs the listener goroutine has processed. Used by
+	// tests to verify that the crash-output handler actually ran (as opposed to merely observing
+	// that the signal was delivered to the process).
+	sighupHandled atomic.Uint64
+)
 
 // registerLogRotateHook registers fn to be invoked after each successful log rotation performed by the
 // underlying logger. Useful for callers that hold a file descriptor to the log file (e.g. runtime
@@ -256,13 +287,22 @@ func registerLogRotateHook(fn func()) {
 }
 
 // invokeRotateHooks runs all registered post-rotation hooks. Called by logger implementations
-// after a successful rotation.
+// after a successful rotation. Each hook runs under its own defer/recover so a panicking hook
+// cannot take down the log-dumper goroutine or the rotation path -- rotation is a best-effort
+// notification, not a critical correctness path.
 func invokeRotateHooks() {
 	rotateHooksMu.Lock()
 	hooks := append([]func(){}, rotateHooks...)
 	rotateHooksMu.Unlock()
 	for _, fn := range hooks {
-		fn()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Fprintf(os.Stderr, "log: rotate hook panicked [%v]\n", r)
+				}
+			}()
+			fn()
+		}()
 	}
 }
 
@@ -293,23 +333,25 @@ func SetupCrashOutput(loggerType, logFilePath string) {
 		return
 	}
 
-	setCrashOutput(loggerType, logFilePath)
-
-	// Re-attach the crash output fd after BaseLogger's in-process size-based rotation. The rename
-	// moves the original file aside while our dup'd fd stays pinned to the old inode, so we must
-	// re-open the live file. Registered unconditionally: it is a no-op for logger types whose
-	// LogRotate() implementations never invoke the hook (SysLogger, SilentLogger).
-	registerLogRotateHook(func() {
+	setupCrashOutputOnce.Do(func() {
 		setCrashOutput(loggerType, logFilePath)
-	})
 
-	// SIGHUP is only meaningful for the syslog family: SysLogger has no in-process rotation, so
-	// external rotators (logrotate + postrotate, AKS Blob CSI driver, ...) are the only way to
-	// know that /var/log/blobfuse2.log has been rotated. For "base" mode the in-process hook above
-	// already covers rotation and we don't want to hijack SIGHUP for other consumers.
-	if isSyslogFamily(loggerType) {
-		installCrashSighupHandler(loggerType, logFilePath)
-	}
+		// Re-attach the crash output fd after BaseLogger's in-process size-based rotation. The rename
+		// moves the original file aside while our dup'd fd stays pinned to the old inode, so we must
+		// re-open the live file. Registered unconditionally: it is a no-op for logger types whose
+		// LogRotate() implementations never invoke the hook (SysLogger, SilentLogger).
+		registerLogRotateHook(func() {
+			setCrashOutput(loggerType, logFilePath)
+		})
+
+		// SIGHUP is only meaningful for the syslog family: SysLogger has no in-process rotation, so
+		// external rotators (logrotate + postrotate, AKS Blob CSI driver, ...) are the only way to
+		// know that /var/log/blobfuse2.log has been rotated. For "base" mode the in-process hook above
+		// already covers rotation and we don't want to hijack SIGHUP for other consumers.
+		if isSyslogFamily(loggerType) {
+			installCrashSighupHandler(loggerType, logFilePath)
+		}
+	})
 }
 
 // isSyslogFamily reports whether loggerType routes crash output to common.SyslogFilePath and
@@ -344,10 +386,9 @@ func crashOutputTarget(loggerType, logFilePath string) string {
 }
 
 func setCrashOutput(loggerType, logFilePath string) {
-	// Panic-safe: the SIGHUP handler goroutine outlives log.Destroy(), which closes BaseLogger's
-	// channel. A subsequent Warn() from here would then panic on send-to-closed-channel. Swallow
-	// any panic so a SIGHUP during teardown (or any other edge case) cannot crash the process --
-	// the .trace file still captures runtime panics via stderr redirection.
+	// Panic-safe: this can be invoked from the SIGHUP handler goroutine that outlives log.Destroy(),
+	// which closes BaseLogger's channel. Swallow any panic so a signal during teardown cannot crash
+	// the process. The .trace file still captures runtime panics via stderr redirection.
 	defer func() { _ = recover() }()
 
 	crashFilePath := crashOutputTarget(loggerType, logFilePath)
@@ -360,32 +401,20 @@ func setCrashOutput(loggerType, logFilePath string) {
 	// install), let it fail -- the per-mount .trace file still captures the panic via stderr redirection.
 	f, err := os.OpenFile(crashFilePath, os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
-		Warn("log: failed to open %s for crash output [%s]", crashFilePath, err.Error())
+		// Write diagnostics directly to stderr rather than through Warn(). This function runs on the
+		// log-rotation callback path (invokeRotateHooks) and on the SIGHUP handler goroutine; a Warn()
+		// here would go through BaseLogger's buffered channel, which can block if full or panic if the
+		// logger has been destroyed. Stderr is non-blocking and always safe.
+		fmt.Fprintf(os.Stderr, "log: failed to open %s for crash output [%s]\n", crashFilePath, err.Error())
 		return
 	}
 	// SetCrashOutput dups the fd, so the file handle can be closed immediately.
 	defer f.Close()
 
 	if err := debug.SetCrashOutput(f, debug.CrashOptions{}); err != nil {
-		Warn("log: failed to set crash output to %s [%s]", crashFilePath, err.Error())
+		fmt.Fprintf(os.Stderr, "log: failed to set crash output to %s [%s]\n", crashFilePath, err.Error())
 	}
 }
-
-// sighupOnce ensures the SIGHUP listener goroutine is only started once per process.
-var sighupOnce sync.Once
-
-// sighupCh is the channel signal.Notify writes to; retained at package scope so tests can shut
-// the listener goroutine down cleanly (production never reads it back).
-var sighupCh chan os.Signal
-
-// sighupInstalled reports whether the SIGHUP listener has been installed. Read from tests via
-// sync/atomic; production code has no reason to read it.
-var sighupInstalled atomic.Bool
-
-// sighupHandled counts the number of SIGHUPs the listener goroutine has processed. Used by tests
-// to verify that the crash-output handler actually ran (as opposed to merely observing that the
-// signal was delivered to the process).
-var sighupHandled atomic.Uint64
 
 // installCrashSighupHandler arranges for the crash output fd to be re-attached when the process receives
 // SIGHUP. Intended for the syslog family only: SysLogger has no in-process rotation, so external
