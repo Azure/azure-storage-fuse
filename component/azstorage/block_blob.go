@@ -589,6 +589,10 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	}
 
 	attr, err = bb.getAttrUsingRest(name)
+	if err != nil {
+		log.Err("BlockBlob::GetAttr : Failed to get attributes for %s [%s]", name, err.Error())
+		return attr, err
+	}
 	if bb.Config.filter != nil && attr != nil {
 		filterAttr := blobfilter.BlobAttr{
 			Name:  attr.Name,
@@ -621,6 +625,7 @@ func (bb *BlockBlob) getBlobTags(name string) (map[string]string, error) {
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	resp, err := blobClient.GetTags(context.Background(), nil)
 	if err != nil {
+		log.Err("BlockBlob::getBlobTags : Failed to get tags for %s [%s]", name, err.Error())
 		return nil, err
 	}
 	return parseBlobTags(&resp.BlobTags), nil
@@ -723,12 +728,11 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 				// the tag filter can be evaluated. This N+1 cost only applies when a
 				// tag= filter is configured on an HNS account.
 				if bb.Config.isHNS {
-					tagResp, err := bb.Container.NewBlockBlobClient(*blobInfo.Name).GetTags(context.Background(), nil)
+					tags, err := bb.getBlobTags(blobAttr.Path)
 					if err != nil {
-						log.Err("BlockBlob::processBlobItems : Failed to get tags for %s [%s]", *blobInfo.Name, err.Error())
 						return nil, nil, syscall.EACCES
 					}
-					filterAttr.Tags = parseBlobTags(&tagResp.BlobTags)
+					filterAttr.Tags = tags
 				} else {
 					filterAttr.Tags = parseBlobTags(blobInfo.BlobTags)
 				}
