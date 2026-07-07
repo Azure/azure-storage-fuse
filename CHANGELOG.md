@@ -19,6 +19,7 @@
 - Return `ENAMETOOLONG` instead of `EIO` when creating a directory path that exceeds the ADLS depth limit of 63 segments ([PR #2221](https://github.com/Azure/azure-storage-fuse/pull/2221))
 - Return `ENAMETOOLONG` instead of `EIO` when renaming a directory to an ADLS path that exceeds the depth limit of 63 segments ([PR #2251](https://github.com/Azure/azure-storage-fuse/pull/2251))
 - Fix Debian 13 (trixie) release by publishing a dedicated package built against `libfuse3.so.4` (libfuse 3.17+) ([PR #2264](https://github.com/Azure/azure-storage-fuse/pull/2264))
+- Fixed filtering of blobs by blob index tags via the `azstorage.filter` (`--filter`) option. ([PR #2261](https://github.com/Azure/azure-storage-fuse/pull/2261))
 
 **Other Changes**
 - CBL-Mariner 2.0 has reached end-of-life; Blobfuse2 packages will no longer be published to Mariner 2.0 repositories.

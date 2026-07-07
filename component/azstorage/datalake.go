@@ -90,6 +90,7 @@ func transformConfig(dlConfig AzStorageConfig) AzStorageConfig {
 	bbConfig := dlConfig
 	bbConfig.authConfig.AccountType = EAccountType.BLOCK()
 	bbConfig.authConfig.Endpoint = transformAccountEndpoint(dlConfig.authConfig.Endpoint)
+	bbConfig.isHNS = true
 	return bbConfig
 }
 
@@ -457,11 +458,20 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 	}
 
 	if dl.Config.filter != nil {
-		if !dl.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
+		filterAttr := &blobfilter.BlobAttr{
 			Name:  blobAttr.Name,
 			Mtime: blobAttr.Mtime,
 			Size:  blobAttr.Size,
-		}) {
+		}
+		if dl.Config.filterHasTag && !blobAttr.IsDir() {
+			tagResp, err := fileClient.GetTags(context.Background(), nil)
+			if err != nil {
+				log.Err("Datalake::GetAttr : Failed to get tags for %s [%s]", name, err.Error())
+				return blobAttr, syscall.EACCES
+			}
+			filterAttr.Tags = parseBlobTags(&tagResp.BlobTags)
+		}
+		if !dl.Config.filter.IsAcceptable(filterAttr) {
 			log.Debug("Datalake::GetAttr : Filtered out %s", name)
 			return nil, syscall.ENOENT
 		}
@@ -635,12 +645,14 @@ func (dl *Datalake) CommitBlocks(name string, blockList []string, newEtag *strin
 func (dl *Datalake) SetFilter(filter string) error {
 	if filter == "" {
 		dl.Config.filter = nil
+		dl.Config.filterHasTag = false
 	} else {
 		dl.Config.filter = &blobfilter.BlobFilter{}
 		err := dl.Config.filter.Configure(filter)
 		if err != nil {
 			return err
 		}
+		dl.Config.filterHasTag = filterReferencesTag(filter)
 	}
 
 	return dl.BlockBlob.SetFilter(filter)

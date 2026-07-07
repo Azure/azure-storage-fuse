@@ -53,6 +53,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	serviceBfs "github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/service"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -643,20 +644,20 @@ func parseRangeHeader(rangeHeader string) (int64, error) {
 	return end - start + 1, nil
 }
 
-// func parseBlobTags(tags *container.BlobTags) map[string]string {
+// parseBlobTags converts the SDK BlobTags into a flat map suitable for the
+// blobfilter package. Returns nil if no tag set is present.
+func parseBlobTags(tags *container.BlobTags) map[string]string {
+	if tags == nil || len(tags.BlobTagSet) == 0 {
+		return nil
+	}
 
-// 	if tags == nil {
-// 		return nil
-// 	}
+	blobtags := make(map[string]string, len(tags.BlobTagSet))
+	for _, tag := range tags.BlobTagSet {
+		if tag == nil || tag.Key == nil || tag.Value == nil {
+			continue
+		}
+		blobtags[*tag.Key] = *tag.Value
+	}
 
-// 	blobtags := make(map[string]string)
-// 	for _, tag := range tags.BlobTagSet {
-// 		if tag != nil {
-// 			if tag.Key != nil {
-// 				blobtags[*tag.Key] = *tag.Value
-// 			}
-// 		}
-// 	}
-
-// 	return blobtags
-// }
+	return blobtags
+}

@@ -559,9 +559,32 @@ func configureBlobFilter(azStorage *AzStorage, opt AzStorageOptions) error {
 		log.Err("configureBlobFilter : Failed to configure blob filter %s", err.Error())
 		return errors.New("failed to configure blob filter")
 	}
+	azStorage.stConfig.filterHasTag = filterReferencesTag(opt.Filter)
 
 	log.Crit("configureBlobFilter : Blob filter configured %s", opt.Filter)
 	return nil
+}
+
+// filterReferencesTag returns true when the raw filter expression includes a
+// `tag=` clause. The blobfilter package does not expose its parsed filter set,
+// so we inspect the input string ourselves to know whether GetAttr paths must
+// fetch blob index tags before evaluating the filter.
+func filterReferencesTag(filter string) bool {
+	for clause := range strings.SplitSeq(filter, "||") {
+		for sub := range strings.SplitSeq(clause, "&&") {
+			token := strings.TrimSpace(sub)
+			lowered := strings.ToLower(strings.Map(func(r rune) rune {
+				if r == ' ' || r == '\t' {
+					return -1
+				}
+				return r
+			}, token))
+			if strings.HasPrefix(lowered, "tag=") || strings.HasPrefix(lowered, "tag!=") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ParseAndReadDynamicConfig : On config change read only the required config
