@@ -91,6 +91,7 @@ type DistCache struct {
 	client dcacheClient
 
 	chunkSize     int64
+	cachePrefix   string
 	bypassOnError bool
 
 	// dirtyFiles tracks recently invalidated files to avoid serving stale data.
@@ -189,6 +190,30 @@ func (dc *DistCache) Configure(isParent bool) error {
 	dc.conf = conf
 	dc.bypassOnError = conf.BypassOnError
 
+	// Resolve cache prefix. Explicit dist_cache.cache-prefix wins; otherwise
+	// derive from azstorage.account-name/azstorage.container.
+	if conf.CachePrefix != "" {
+		dc.cachePrefix = conf.CachePrefix
+		log.Info("DistCache::Configure : cache-prefix=%s (from explicit config)", dc.cachePrefix)
+	} else {
+		var accountName, container string
+		if config.IsSet("azstorage.account-name") {
+			if err := config.UnmarshalKey("azstorage.account-name", &accountName); err != nil {
+				return fmt.Errorf("dist_cache: failed to read azstorage.account-name: %w", err)
+			}
+		}
+		if config.IsSet("azstorage.container") {
+			if err := config.UnmarshalKey("azstorage.container", &container); err != nil {
+				return fmt.Errorf("dist_cache: failed to read azstorage.container: %w", err)
+			}
+		}
+		if accountName == "" || container == "" {
+			return fmt.Errorf("dist_cache: cache prefix unresolved; set dist_cache.cache-prefix or both azstorage.account-name and azstorage.container")
+		}
+		dc.cachePrefix = accountName + "/" + container
+		log.Info("DistCache::Configure : cache-prefix=%s (derived from azstorage account/container)", dc.cachePrefix)
+	}
+
 	// Resolve chunk size: block_cache.block-size-mb > stream.block-size-mb > dist_cache.chunk-size-mb > default
 	const defaultBlockSizeMB = 16
 	var blockSizeMB float64 = defaultBlockSizeMB
@@ -241,9 +266,7 @@ func (dc *DistCache) Start(ctx context.Context) error {
 	if dc.conf.AuthAccountName != "" {
 		opts = append(opts, dcache.WithAuth(dc.conf.AuthAccountName, dc.conf.AuthAccountKey))
 	}
-	if dc.conf.CachePrefix != "" {
-		opts = append(opts, dcache.WithCachePrefix(dc.conf.CachePrefix))
-	}
+	opts = append(opts, dcache.WithCachePrefix(dc.cachePrefix))
 	if dc.conf.MaxConnsPerSvr > 0 {
 		opts = append(opts, dcache.WithMaxConnsPerServer(dc.conf.MaxConnsPerSvr))
 	}

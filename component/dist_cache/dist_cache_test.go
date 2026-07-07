@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	dcache "github.com/nearora-msft/dist-cache-client-go"
 	"github.com/stretchr/testify/assert"
@@ -1569,4 +1570,163 @@ func TestReadInBuffer_RecoverableNetErr_BypassesToStorage(t *testing.T) {
 	assert.Equal(t, len(azData), n)
 	assert.Equal(t, azData, buf[:n])
 	assert.Equal(t, 1, next.readInBufferCalled, "should bypass to Azure on recoverable network error")
+}
+
+// --- Configure() tests: cache prefix auto-derivation from azstorage config ---
+
+// loadConfig resets viper state and loads the given YAML into config for a test.
+func loadConfig(t *testing.T, yaml string) {
+	t.Helper()
+	config.ResetConfig()
+	err := config.ReadConfigFromReader(strings.NewReader(yaml))
+	require.NoError(t, err)
+}
+
+func TestConfigure_DerivesCachePrefixFromAzStorage(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+dist_cache:
+  server-list: "localhost:9065"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.NoError(t, err)
+	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
+}
+
+func TestConfigure_FailsWhenAccountNameMissing(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  container: mycontainer
+dist_cache:
+  server-list: "localhost:9065"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "azstorage.account-name")
+	assert.Contains(t, err.Error(), "azstorage.container")
+}
+
+func TestConfigure_FailsWhenContainerMissing(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+dist_cache:
+  server-list: "localhost:9065"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "azstorage.container")
+}
+
+func TestConfigure_FailsWhenBothMissing(t *testing.T) {
+	loadConfig(t, `
+dist_cache:
+  server-list: "localhost:9065"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cache prefix")
+}
+
+func TestConfigure_FailsWhenAccountNameEmptyString(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: ""
+  container: mycontainer
+dist_cache:
+  server-list: "localhost:9065"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cache prefix")
+}
+
+func TestConfigure_CachePrefixIsolatesTenants(t *testing.T) {
+	// Two configs with the same filePath in different containers must produce
+	// distinct cache prefixes, preventing key collisions on a shared cluster.
+	loadConfig(t, `
+azstorage:
+  account-name: tenantA
+  container: shared
+dist_cache:
+  server-list: "localhost:9065"
+`)
+	dcA := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dcA.Configure(true))
+
+	loadConfig(t, `
+azstorage:
+  account-name: tenantB
+  container: shared
+dist_cache:
+  server-list: "localhost:9065"
+`)
+	dcB := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dcB.Configure(true))
+
+	assert.NotEqual(t, dcA.cachePrefix, dcB.cachePrefix,
+		"different accounts must yield different prefixes")
+	assert.Equal(t, "tenantA/shared", dcA.cachePrefix)
+	assert.Equal(t, "tenantB/shared", dcB.cachePrefix)
+}
+
+func TestConfigure_ExplicitCachePrefixOverridesAzStorage(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+dist_cache:
+  server-list: "localhost:9065"
+  cache-prefix: "custom/override"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.NoError(t, err)
+	assert.Equal(t, "custom/override", dc.cachePrefix,
+		"explicit cache-prefix must take precedence over azstorage-derived default")
+}
+
+func TestConfigure_ExplicitCachePrefixWithoutAzStorage(t *testing.T) {
+	// An explicit cache-prefix should be accepted even when azstorage.account-name
+	// and azstorage.container are not configured (e.g. loopback / non-Azure tests).
+	loadConfig(t, `
+dist_cache:
+  server-list: "localhost:9065"
+  cache-prefix: "loopback/tests"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.NoError(t, err)
+	assert.Equal(t, "loopback/tests", dc.cachePrefix)
+}
+
+func TestConfigure_EmptyExplicitCachePrefixFallsBackToAzStorage(t *testing.T) {
+	// An empty-string cache-prefix must not shadow the azstorage-derived default.
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+dist_cache:
+  server-list: "localhost:9065"
+  cache-prefix: ""
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.NoError(t, err)
+	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
 }
