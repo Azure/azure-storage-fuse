@@ -590,7 +590,6 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 	attr, err = bb.getAttrUsingRest(name)
 	if err != nil {
-		log.Err("BlockBlob::GetAttr : Failed to get attributes for %s [%s]", name, err.Error())
 		return attr, err
 	}
 	if bb.Config.filter != nil && attr != nil {
