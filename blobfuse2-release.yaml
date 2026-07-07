@@ -1199,6 +1199,17 @@ stages:
               cp ./blobfuse2*RHEL-8*.rpm $(Build.ArtifactStagingDirectory)
               rm -rf ./blobfuse2*RHEL-7.8*.rpm
               rm -rf ./blobfuse2*RHEL-8*.rpm
+
+              # CentOS-7.0 and CentOS-8.0 rpms for the GitHub release are generated here by
+              # renaming the same signed fuse3 x86_64 rpm, as the CentOS 8 image is not
+              # spawning up in 1ES currently.
+              echo "Generating for CentOS-7.0 and CentOS-8.0 for fuse3"
+              cp "$f" $(sed 's:RHEL-7.5:CentOS-7.0:' <<< "$f")
+              cp "$f" $(sed 's:RHEL-7.5:CentOS-8.0:' <<< "$f")
+              cp ./blobfuse2*CentOS-7.0*.rpm $(Build.ArtifactStagingDirectory)
+              cp ./blobfuse2*CentOS-8.0*.rpm $(Build.ArtifactStagingDirectory)
+              rm -rf ./blobfuse2*CentOS-7.0*.rpm
+              rm -rf ./blobfuse2*CentOS-8.0*.rpm
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-signed
 
@@ -1312,130 +1323,6 @@ stages:
               sudo yum groupinstall "Development Tools" -y
               sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
               sudo rpm -i blobfuse2*$(vmImage)*.rpm
-            displayName: 'Install Package'
-            workingDirectory: $(Build.ArtifactStagingDirectory)
-
-          - template: 'azure-pipeline-templates/release-distro-tests.yml'
-            parameters:
-              root_dir: $(root_dir)
-              work_dir: $(work_dir)
-              mount_dir: $(mount_dir)
-              temp_dir: $(temp_dir)
-              container: $(container)
-
-          # publishing the artifacts generated
-          - task: PublishBuildArtifacts@1
-            inputs:
-              artifactName: 'blobfuse2'
-            displayName: 'Publish Artifacts'
-
-      - job: Set_5
-        timeoutInMinutes: 120
-        strategy:
-          matrix:
-            # Commenting as CentOS 7.9 image is not available in the marketplace currently
-            # CentOS-7.9:
-            #   agentName: "blobfuse-centos7"
-            #   vmImage: 'CentOS-7.0'
-            #   fuse-version: 'fuse3'
-            #   tags: 'fuse3'
-            #   container: 'test-cnt-cent-7'
-            CentOS-8.5:
-              agentName: "blobfuse-centos8"
-              vmImage: 'CentOS-8.0'
-              fuse-version: 'fuse3'
-              tags: 'fuse3'
-              container: 'test-cnt-cent-8'
-
-        pool:
-          name: "blobfuse-centos-pool"
-          demands:
-            - ImageOverride -equals $(agentName)
-
-        variables:
-          - group: NightlyBlobFuse
-          - name: root_dir
-            value: '$(System.DefaultWorkingDirectory)'
-          - name: work_dir
-            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-          - name: mount_dir
-            value: '$(System.DefaultWorkingDirectory)/fusetmp'
-          - name: temp_dir
-            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
-
-        steps:
-          - checkout: none
-
-          - script: |
-              sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-              sudo sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-            condition: eq(variables['agentName'], 'blobfuse-centos8')
-            displayName: "Update OS mirrors"
-
-          - script: |
-              sudo yum update -y
-              sudo yum install git -y
-            displayName: 'Install Git'
-
-          - script: |
-              git clone https://github.com/Azure/azure-storage-fuse
-            displayName: 'Checkout Code'
-            workingDirectory: $(root_dir)
-
-          - script: |
-              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-            displayName: 'Checkout Branch'
-            workingDirectory: $(root_dir)/azure-storage-fuse
-
-          # Custom script to install Go-lang
-          - task: ShellScript@2
-            inputs:
-              scriptPath: "$(work_dir)/go_installer.sh"
-              args: "$(root_dir)/"
-            displayName: "GoTool Custom Setup"
-
-          # get glibc version with which build is done
-          - script: |
-             ldd --version
-            displayName: "GLIBC Version"
-
-          - task: DownloadBuildArtifacts@0
-            displayName: 'Download Build Artifacts'
-            inputs:
-              artifactName: 'blobfuse2-signed'
-              downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.rpm
-
-          - script: |
-              ls -l
-              result=$(ls -1 | wc -l)
-              if [ $result -ne 1 ]; then
-                exit 1
-              fi
-            displayName: 'List Downloaded Package'
-            workingDirectory: $(root_dir)/blobfuse2-signed
-
-          - script: |
-              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
-              echo "Generating for CentOS-7.0 for fuse3"
-              f=`ls ./blobfuse2*$(vmImage)*.rpm`
-              cp "$f" $(sed 's:CentOS-8.0:CentOS-7.0:' <<< "$f")
-              cp ./blobfuse2*CentOS-7.0*.rpm $(Build.ArtifactStagingDirectory)
-              rm -rf ./blobfuse2*CentOS-7.0*.rpm
-              cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
-              ls -l $(Build.ArtifactStagingDirectory)
-            displayName: 'Rename Package'
-            workingDirectory: $(root_dir)/blobfuse2-signed
-
-          - script: |
-              sudo rpm -qip blobfuse2*.rpm
-              sudo yum install gcc gcc-c++ make -y
-              if [ $(agentName) == "blobfuse-centos8" ]; then
-                sudo yum install fuse fuse3 fuse3-devel -y --nobest --allowerasing
-              else
-                sudo yum install fuse fuse3 fuse3-devel -y
-              fi
-              sudo rpm -i blobfuse2*.rpm
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
