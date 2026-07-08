@@ -58,7 +58,6 @@ type DistCacheOptions struct {
 	MaxFileSizeMB   int    `config:"max-file-size-mb"  yaml:"max-file-size-mb,omitempty"`
 	AuthAccountName string `config:"auth-account-name" yaml:"auth-account-name,omitempty"`
 	AuthAccountKey  string `config:"auth-account-key"  yaml:"auth-account-key,omitempty"`
-	HashType        string `config:"hash-type"         yaml:"hash-type,omitempty"`
 	BypassOnError   bool   `config:"bypass-on-error"   yaml:"bypass-on-error,omitempty"`
 	CachePrefix     string `config:"cache-prefix"      yaml:"cache-prefix,omitempty"`
 	MaxConnsPerSvr  int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"`
