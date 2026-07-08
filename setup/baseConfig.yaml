@@ -63,8 +63,6 @@ dist_cache:
   cache-prefix: <prefix for cache keys. Default - derived from azstorage account/container>
   max-conns-per-server: <maximum TCP connections per cache server. Default - 8>
   request-timeout-sec: <timeout for individual cache requests in seconds. Default - 30>
-  auth-account-name: <cache server auth account name, if auth is enabled on server>
-  auth-account-key: <cache server auth account key, if auth is enabled on server>
   
 # Azure storage configuration
 azstorage:

@@ -53,14 +53,12 @@ type DistCacheOptions struct {
 	ServerList string `config:"server-list" yaml:"server-list,omitempty"`
 
 	// Common options
-	Port            int    `config:"port"              yaml:"port,omitempty"`
-	TTLSeconds      uint32 `config:"ttl-seconds"       yaml:"ttl-seconds,omitempty"`
-	MaxFileSizeMB   int    `config:"max-file-size-mb"  yaml:"max-file-size-mb,omitempty"`
-	AuthAccountName string `config:"auth-account-name" yaml:"auth-account-name,omitempty"`
-	AuthAccountKey  string `config:"auth-account-key"  yaml:"auth-account-key,omitempty"`
-	BypassOnError   bool   `config:"bypass-on-error"   yaml:"bypass-on-error,omitempty"`
-	CachePrefix     string `config:"cache-prefix"      yaml:"cache-prefix,omitempty"`
-	MaxConnsPerSvr  int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"`
+	Port           int    `config:"port"              yaml:"port,omitempty"`
+	TTLSeconds     uint32 `config:"ttl-seconds"       yaml:"ttl-seconds,omitempty"`
+	MaxFileSizeMB  int    `config:"max-file-size-mb"  yaml:"max-file-size-mb,omitempty"`
+	BypassOnError  bool   `config:"bypass-on-error"   yaml:"bypass-on-error,omitempty"`
+	CachePrefix    string `config:"cache-prefix"      yaml:"cache-prefix,omitempty"`
+	MaxConnsPerSvr int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"`
 
 	// Chunk size for distributed cache operations. When block_cache is present,
 	// this is overridden by block_cache.block-size-mb to keep alignment consistent.
@@ -279,9 +277,6 @@ func (dc *DistCache) Start(ctx context.Context) error {
 	}
 	if dc.conf.Port > 0 {
 		opts = append(opts, dcache.WithPort(dc.conf.Port))
-	}
-	if dc.conf.AuthAccountName != "" {
-		opts = append(opts, dcache.WithAuth(dc.conf.AuthAccountName, dc.conf.AuthAccountKey))
 	}
 	opts = append(opts, dcache.WithCachePrefix(dc.cachePrefix))
 	if dc.conf.MaxConnsPerSvr > 0 {
