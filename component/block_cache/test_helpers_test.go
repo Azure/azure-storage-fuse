@@ -56,6 +56,11 @@ func setupTestFreeList(t *testing.T, bufSize uint64, memSize uint64) {
 }
 
 func destroyFreeList() {
+	if bc != nil && bc.workerPool != nil {
+		bc.workerPool.destroy()
+		bc.workerPool = nil
+	}
+
 	if freeList != nil {
 		freeList.destroy()
 		freeList = nil
