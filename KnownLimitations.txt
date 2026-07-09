@@ -1,3 +1,0 @@
-// Known Limitations of the current implementation :
-
-1. With huge amount of blobs, listing may lead to high mem usage.
