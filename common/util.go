@@ -477,19 +477,12 @@ func GetUsage(path string) (float64, error) {
 // much memory blobfuse can practically use. Obviously if other processes or the kernel use up more memory
 // the available memory will change, caller should be mindful of that.
 func GetAvailableMemoryInMB() (uint64, error) {
-	fs, err := procfs.NewDefaultFS()
+	availBytes, err := GetAvailableMemoryBytes()
 	if err != nil {
-		return 0, fmt.Errorf("GetAvailableMemoryInMB: procfs.NewDefaultFS() failed: %v", err)
+		return 0, fmt.Errorf("GetAvailableMemoryInMB: failed to read available memory: %v", err)
 	}
 
-	// Get memory info.
-	memInfo, err := fs.Meminfo()
-	if err != nil {
-		return 0, fmt.Errorf("GetAvailableMemoryInMB: fs.Meminfo() failed: %v", err)
-	}
-
-	// Convert default memory unit (KB) to MB and return.
-	return *(memInfo.MemAvailable) / 1024, nil
+	return availBytes / MbToBytes, nil
 }
 
 func GetFuseMinorVersion() int {

@@ -76,7 +76,7 @@ run_integrity_test() {
         echo -e "${RED}FAIL (Checksum Mismatch)${NC}"
         echo "  Ref : $ref_md5"
         echo "  FUSE: $fuse_md5"
-        exit 1
+        return 1
     fi
 }
 
@@ -90,11 +90,11 @@ setup
 # Standard sequential writes
 echo -e "${YELLOW}[Scenario 1] Standard Block Sizes${NC}"
 run_integrity_test "std_128k" "128k" "100"  # 12.8 MB
-run_integrity_test "std_128k" "256K" "1000" # 128 MB
+run_integrity_test "std_256k" "256K" "1000" # 256 MB
 run_integrity_test "std_1M"   "1M"   "20"  # 20 MB
 run_integrity_test "std_5M"   "5M"  "10"   # 50 MB
-run_integrity_test "std_10M"  "10M"  "5"   # 50 MB
-run_integrity_test "std_10M" "10M" "100"   # 1000 MB
+run_integrity_test "std_10M_small"  "10M"  "5"   # 50 MB
+run_integrity_test "std_10M_large" "10M" "100"   # 1000 MB
 
 # --- SCENARIO 2: Odd/Unaligned Block Sizes ---
 # FUSE buffers are often 4k aligned. Writing odd bytes tests buffer boundaries.
@@ -188,7 +188,18 @@ for i in {1..50}; do
 done
 
 echo "Waiting for background jobs to finish..."
-wait $pids
+status=0
+for pid in $pids; do
+    if ! wait "$pid"; then
+        status=1
+    fi
+done
+
+if [ "$status" -ne 0 ]; then
+    echo -e "${RED}Concurrency test batch failed.${NC}"
+    exit 1
+fi
+
 echo -e "${GREEN}Concurrency test batch completed.${NC}"
 
 echo -e "\n${GREEN}ALL TESTS COMPLETED SUCCESSFULLY${NC}"

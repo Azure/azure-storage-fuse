@@ -34,6 +34,7 @@
 package block_cache
 
 import (
+	"os"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -100,6 +101,7 @@ func TestBufSizeConsistency(t *testing.T) {
 		buf, err := bufPool.getBuffer()
 		assert.Equal(t, len(buf), bufPool.bufSize)
 		assert.NoError(t, err)
+		bufPool.putBuffer(buf)
 	}
 }
 
@@ -117,7 +119,7 @@ func TestMain(m *testing.M) {
 	bufPool = initBufferPool(8*common.MbToBytes, 64)
 
 	// Run tests
-	m.Run()
+	os.Exit(m.Run())
 
 	// Teardown code if needed
 }
