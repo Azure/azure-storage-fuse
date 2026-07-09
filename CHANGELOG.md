@@ -1,3 +1,10 @@
+## 2.5.5 (Unreleased)
+**Features**
+
+**Bug Fixes**
+
+**Other Changes**
+
 ## 2.5.4 (2026-07-08)
 **Features**
 - Make Blobfuse2 binary FIPS compliant by building with the Microsoft Go toolchain (`systemcrypto` GOEXPERIMENT) and `CGO_ENABLED=1`, routing all `crypto/*` calls through the system OpenSSL FIPS provider ([PR #2226](https://github.com/Azure/azure-storage-fuse/pull/2226))
