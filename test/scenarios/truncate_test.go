@@ -353,7 +353,7 @@ func FileTruncate(t *testing.T, filename string, initialSize int, finalSize int,
 		} else {
 			expectedContent = expectedContent[:finalSize]
 		}
-		assert.Equal(t, string(expectedContent), string(readContent))
+		assert.Equal(t, string(expectedContent), string(readContent), filePath)
 	}
 
 	checkFileIntegrity(t, filename)
