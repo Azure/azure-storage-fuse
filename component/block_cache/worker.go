@@ -123,7 +123,7 @@ func createWorkerPool(workers int, bc *BlockCache) *workerPool {
 	log.Info("BlockCache::startWorkerPool: Starting worker Pool, num workers: %d", wp.workers)
 
 	wp.wg.Add(wp.workers)
-	for range wp.workers {
+	for i := 0; i < wp.workers; i++ {
 		go wp.worker()
 	}
 

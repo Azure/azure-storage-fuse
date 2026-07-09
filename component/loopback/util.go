@@ -40,7 +40,7 @@ import (
 )
 
 func removeAllFilesWithGivenPrefix(prefix string) error {
-	pattern := prefix + "*"
+	pattern := prefix + "_*"
 
 	matches, err := filepath.Glob(pattern)
 	if err != nil {

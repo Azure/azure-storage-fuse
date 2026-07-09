@@ -53,9 +53,15 @@ for BS in "${BLOCK_SIZES[@]}"; do
         exit 1
     fi
 
-    # Optional: Clear pagecache to force read from the FUSE fs, not RAM
-    # (Requires sudo; uncomment if you have permissions and want strict testing)
-    sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
+    # Optional: Clear pagecache to force read from the FUSE fs, not RAM.
+    # Skip when sudo/root isn't available.
+    if [ "$(id -u)" -eq 0 ]; then
+        sh -c 'echo 3 > /proc/sys/vm/drop_caches' || true
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+        sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' || true
+    else
+        echo "   -> Skipping cache drop (no root/passwordless sudo)."
+    fi
 
     # 2. READ TEST
     echo "[READ]  Reading back from FUSE fs with bs=$BS..."
