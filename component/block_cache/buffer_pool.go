@@ -35,6 +35,7 @@ package block_cache
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -97,6 +98,11 @@ type bufferPool struct {
 // size bufSize when the pool is empty. The zero buffer is allocated once
 // and shared for all zero-fill operations.
 func initBufferPool(bufSize uint64, maxBuffers uint64) *bufferPool {
+	if bufSize > uint64(math.MaxInt) {
+		panic(fmt.Sprintf("buffer size too large: %d", bufSize))
+	}
+
+	bufSizeInt := int(bufSize)
 
 	log.Info("bufferPool::initBufferPool: Initialized with buffer size: %d bytes, max buffers: %d, total size: %.2f MB",
 		bufSize, maxBuffers, float64(maxBuffers*bufSize)/(1024.0*1024.0))
@@ -104,11 +110,11 @@ func initBufferPool(bufSize uint64, maxBuffers uint64) *bufferPool {
 	return &bufferPool{
 		pool: sync.Pool{
 			New: func() any {
-				return make([]byte, bufSize)
+				return make([]byte, bufSizeInt)
 			},
 		},
-		zeroBuf:    make([]byte, bufSize),
-		bufSize:    int(bufSize),
+		zeroBuf:    make([]byte, bufSizeInt),
+		bufSize:    bufSizeInt,
 		maxBuffers: int64(maxBuffers),
 	}
 }
@@ -139,21 +145,21 @@ func initBufferPool(bufSize uint64, maxBuffers uint64) *bufferPool {
 //	defer bufPool.putBuffer(buf)
 //	// Use buf for I/O operations...
 func (bufPool *bufferPool) getBuffer() ([]byte, error) {
-	if bufPool.curBuffers.Load() >= bufPool.maxBuffers {
+	newCount := bufPool.curBuffers.Add(1)
+	if newCount > bufPool.maxBuffers {
+		bufPool.curBuffers.Add(-1)
 		return nil, fmt.Errorf("buffers exhausted (%d)", bufPool.curBuffers.Load())
 	}
 
 	buf := bufPool.pool.Get().([]byte)
-
-	bufPool.curBuffers.Add(1)
 
 	//
 	// Track max buffers used at any point of time.
 	// Due to race between multiple threads, this may not be exact value, but that's okay, we just need
 	// rough estimate of whether buffers are being held for long.
 	//
-	if bufPool.curBuffers.Load() > bufPool.maxUsed.Load() {
-		bufPool.maxUsed.Store(bufPool.curBuffers.Load())
+	if newCount > bufPool.maxUsed.Load() {
+		bufPool.maxUsed.Store(newCount)
 		log.Warn("bufferPool::getBuffer: Max buffers used: %d out of %d", bufPool.maxUsed.Load(), bufPool.maxBuffers)
 	}
 	return buf, nil

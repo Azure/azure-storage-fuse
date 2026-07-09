@@ -83,7 +83,7 @@ steps:
             # Mount without direct-io
             $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
 
-    - script:
+     - script: |
       # specify mountpoints in order of test dirs, t1 is local filesystem, MOUNT_DIR is blobfuse2 mount
          for i in $(seq 1 10); do echo "Iteration $i"; go test ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" || { echo "Test failed on iteration $i"; exit 1; }; done
       displayName: 'Run custom Scenarios'
@@ -96,7 +96,7 @@ steps:
             # Mount with direct-io
             $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o direct_io
 
-    - script:
+     - script: |
       # specify mountpoints in order of test dirs, t1 is local filesystem, MOUNT_DIR is blobfuse2 mount
          for i in $(seq 1 10); do echo "Iteration $i"; go test ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" -mount-point-direct-io true || { echo "Test failed on iteration $i"; exit 1; }; done
       displayName: 'Run custom Scenarios'
@@ -133,7 +133,7 @@ steps:
         script: |
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
 
-  - script:
+  - script: |
       # specify mountpoints in order of test dirs, t1 is local filesystem, MOUNT_DIR is blobfuse2 mount
       for i in $(seq 1 10); do echo "Iteration $i"; go test ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" || { echo "Test failed on iteration $i"; exit 1; }; done
     displayName: 'Run custom Scenarios'
@@ -145,27 +145,27 @@ steps:
         script: |
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 -o direct_io
 
-  - script:
+  - script: |
       # specify mountpoints in order of test dirs, t1 is local filesystem, MOUNT_DIR is blobfuse2 mount
       for i in $(seq 1 10); do echo "Iteration $i"; go test ./test/scenarios -mountpoints="$(WORK_DIR)/t1,$(MOUNT_DIR)" -mount-point-direct-io=true || { echo "Test failed on iteration $i"; exit 1; }; done
     displayName: 'Run Scenarios'
 
-  - script:
+  - script: |
        fsx -R -W -N 100000 $(MOUNT_DIR)/fsx.test.file
     displayName: 'fsx-stress-fileSize:256K-ops:100000'
     condition: eq(variables['distro_version'], 'ubuntu_22_x86')
 
-  - script:
+  - script: |
        fsx -R -W -N 100000  -l $((1024*1024*16)) $(MOUNT_DIR)/fsx.test.file
     displayName: 'fsx-stress-fileSize:16M-ops:100000'
     condition: eq(variables['distro_version'], 'ubuntu_22_x86')
 
-  - script:
+  - script: |
        fsx -R -W -N 100000  -l $((1024*1024*100)) $(MOUNT_DIR)/fsx.test.file
     displayName: 'fsx-stress-fileSize:100M-ops:100000'
     condition: eq(variables['distro_version'], 'ubuntu_22_x86')
 
-  - script:
+  - script: |
        fsx -R -W -N 100000  -l $((1024*1024*1024)) $(MOUNT_DIR)/fsx.test.file
     displayName: 'fsx-stress-fileSize:1G-ops:100000'
     condition: eq(variables['distro_version'], 'ubuntu_22_x86')

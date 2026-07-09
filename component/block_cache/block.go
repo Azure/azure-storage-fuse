@@ -182,12 +182,13 @@ func newBlockList() *blockList {
 	}
 }
 
-// validateBlockList validates that a committed block list is compatible with BlockCache.
+// validateBlockList validates that a committed block list is compatible with BlockCache
+// for writing onto the file.
 //
 // This function checks that:
 //  1. All blocks (except possibly the last) have size equal to bc.blockSize
 //  2. The last block has size <= bc.blockSize
-//  3. All block IDs have the correct length (common.BlockIDLenghtBase64)
+//  3. All block IDs have the correct length (common.BlockIDLengthBase64)
 //
 // If validation succeeds, the file's block list is populated with block objects
 // and the state is set to blockListValid.
@@ -210,14 +211,18 @@ func validateBlockList(blkList *internal.CommittedBlockList, f *file, blockSize 
 	newblkList := make([]*block, 0, listLen)
 
 	for idx, blk := range *blkList {
+		expectedOffset := int64(idx) * int64(blockSize)
 		if idx < (listLen-1) && blk.Size != blockSize {
 			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format blk idx : %d is having size %d bytes, while block size set is %d bytes", idx, blk.Size, blockSize)
 			return ErrInvalidBlockList
 		} else if idx == (listLen-1) && blk.Size > blockSize {
 			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d bytes) than block size configured is %d bytes", idx, blk.Size, blockSize)
 			return ErrInvalidBlockList
-		} else if len(blk.Id) != common.BlockIDLenghtBase64 {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block Id length for blk idx : %d is %d bytes is not matching to what blobfuse uses(i.e., %d bytes)", idx, len(blk.Id), common.BlockIDLenghtBase64)
+		} else if len(blk.Id) != common.BlockIDLengthBase64 {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block Id length for blk idx : %d is %d bytes is not matching to what blobfuse uses(i.e., %d bytes)", idx, len(blk.Id), common.BlockIDLengthBase64)
+			return ErrInvalidBlockList
+		} else if blk.Offset != expectedOffset {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block offset for blk idx : %d is %d but expected %d", idx, blk.Offset, expectedOffset)
 			return ErrInvalidBlockList
 		}
 		newblkList = append(newblkList, createBlock(idx, blk.Id, committedBlock, f))
@@ -252,7 +257,7 @@ func updateBlockListForReadOnlyFile(f *file, blockSize int64) {
 	noOfBlocks := (f.size.Load() + blockSize - 1) / blockSize
 	newblkList := make([]*block, 0, noOfBlocks)
 
-	for i := range int(noOfBlocks) {
+	for i := 0; i < int(noOfBlocks); i++ {
 		newblkList = append(newblkList, createBlock(i, "", committedBlock, f))
 	}
 

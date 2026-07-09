@@ -193,8 +193,8 @@ func TestValidateBlockList_Valid(t *testing.T) {
 
 	storageBlockList := &internal.CommittedBlockList{
 		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 0, Size: 1024 * 1024},
-		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 1024*1024 + 1, Size: 1024 * 1024},
-		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 2*1024*1024 + 1, Size: 1024 * 1024},
+		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 1024 * 1024, Size: 1024 * 1024},
+		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 2 * 1024 * 1024, Size: 1024 * 1024},
 	}
 
 	err := validateBlockList(storageBlockList, f, bc.blockSize)
@@ -238,8 +238,8 @@ func TestValidateBlockList_Invalid_BlockIDLen(t *testing.T) {
 
 	storageBlockList := &internal.CommittedBlockList{
 		internal.CommittedBlock{Id: common.GetBlockID(9), Offset: 0, Size: 1024 * 1024},
-		internal.CommittedBlock{Id: common.GetBlockID(9), Offset: 1024*1024 + 1, Size: 1024 * 1024},
-		internal.CommittedBlock{Id: common.GetBlockID(9), Offset: 2*1024*1024 + 1, Size: 1024 * 1024},
+		internal.CommittedBlock{Id: common.GetBlockID(9), Offset: 1024 * 1024, Size: 1024 * 1024},
+		internal.CommittedBlock{Id: common.GetBlockID(9), Offset: 2 * 1024 * 1024, Size: 1024 * 1024},
 	}
 
 	err := validateBlockList(storageBlockList, f, bc.blockSize)
@@ -256,8 +256,8 @@ func TestValidateBlockList_Invalid_BlockSizes(t *testing.T) {
 
 	storageBlockList := &internal.CommittedBlockList{
 		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 0, Size: 1024 * 1024},
-		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 1024*1024 + 1, Size: 2 * 1024 * 1024},
-		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 3*1024*1024 + 1, Size: 10 * 1024},
+		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 1024 * 1024, Size: 2 * 1024 * 1024},
+		internal.CommittedBlock{Id: common.GetBlockID(common.BlockIDLength), Offset: 3 * 1024 * 1024, Size: 10 * 1024},
 	}
 
 	err := validateBlockList(storageBlockList, f, bc.blockSize)
