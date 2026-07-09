@@ -598,12 +598,6 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 		}
 	}
 
-	// Delete all staged block files for the committed blob.
-	err = removeAllFilesWithGivenPrefix(mainFilepath)
-	if err != nil {
-		return err
-	}
-
 	err = blob.Close()
 	if err != nil {
 		return err
