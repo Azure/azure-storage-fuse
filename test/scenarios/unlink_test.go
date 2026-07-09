@@ -67,7 +67,7 @@ func TestUnlinkOnOpen(t *testing.T) {
 		readContent := make([]byte, len(content))
 		_, err = file.ReadAt(readContent, 0)
 		assert.NoError(t, err)
-		assert.Equal(t, string(content), string(readContent))
+		assert.Equal(t, content, readContent)
 
 		// Open the file again
 		_, err = os.Open(filePath)
@@ -86,7 +86,10 @@ func TestUnlinkOnOpen(t *testing.T) {
 		// This read should be served from the newly created file
 		_, err = file2.Read(readContent)
 		assert.NoError(t, err)
-		assert.Equal(t, string(content2), string(readContent))
+		assert.Equal(t, content2, readContent)
+
+		err = file2.Close()
+		assert.NoError(t, err)
 
 		err = file.Close()
 		assert.NoError(t, err)
@@ -101,7 +104,7 @@ func TestUnlinkOnOpen(t *testing.T) {
 func TestUnlinkMultiBlockFile(t *testing.T) {
 	t.Parallel()
 	filename := "testfile_unlink_multi_block.txt"
-	content := make([]byte, 40*1024*1024) // 5 MB content to ensure multi-block upload
+	content := make([]byte, 40*1024*1024) // 40 MB content to ensure multi-block upload
 	_, err := io.ReadFull(rand.Reader, content)
 	assert.NoError(t, err)
 
@@ -123,7 +126,7 @@ func TestUnlinkMultiBlockFile(t *testing.T) {
 		readContent := make([]byte, len(content))
 		_, err = file.ReadAt(readContent, 0)
 		assert.NoError(t, err)
-		assert.Equal(t, string(content), string(readContent))
+		assert.Equal(t, content, readContent)
 
 		// Open the file again
 		_, err = os.Open(filePath)
@@ -144,7 +147,10 @@ func TestUnlinkMultiBlockFile(t *testing.T) {
 		// This read should be served from the newly created file
 		_, err = file2.Read(readContent)
 		assert.NoError(t, err)
-		assert.Equal(t, string(content2), string(readContent))
+		assert.Equal(t, content2, readContent)
+
+		err = file2.Close()
+		assert.NoError(t, err)
 
 		err = file.Close()
 		assert.NoError(t, err)

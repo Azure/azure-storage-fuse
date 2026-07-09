@@ -35,6 +35,7 @@ package loopback
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -488,7 +489,11 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 	if err != nil {
 		log.Err("LoopbackFS::GetAttr : error [%s]", err)
 		// This returns fs.PathError which cannot be handled by the caller, convert to the appropriate fs error code.
-		return &internal.ObjAttr{}, err.(*fs.PathError).Err
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			return &internal.ObjAttr{}, pathErr.Err
+		}
+		return &internal.ObjAttr{}, err
 	}
 	attr := &internal.ObjAttr{
 		Path:  options.Name,
@@ -593,11 +598,11 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 		}
 	}
 
-	// delete the staged files
-	// for _, id := range options.List {
-	// 	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
-	// 	_ = os.Remove(path)
-	// }
+	// Delete all staged block files for the committed blob.
+	err = removeAllFilesWithGivenPrefix(mainFilepath)
+	if err != nil {
+		return err
+	}
 
 	err = blob.Close()
 	if err != nil {
@@ -622,6 +627,11 @@ func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBl
 
 	// Return empty list if file does not exist, this is equivalent to blob with no blocks committed
 	// (blob committed using PutBlob)
+	path := filepath.Join(lfs.path, name)
+	if _, err := os.Lstat(path); err != nil {
+		return nil, err
+	}
+
 	return nil, nil
 }
 

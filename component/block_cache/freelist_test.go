@@ -236,7 +236,7 @@ func TestFreeList_GetVictimBuffer_AllInUse(t *testing.T) {
 	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool, bc.btm)
 	assert.Nil(t, victimBufDesc)
 	assert.Error(t, err)
-	assert.ErrorIs(t, errNoVictimBufferFound, err)
+	assert.ErrorIs(t, err, errNoVictimBufferFound)
 }
 
 func TestFreeList_EvictionCyclesPassed(t *testing.T) {
