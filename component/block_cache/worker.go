@@ -159,7 +159,10 @@ func (wp *workerPool) worker() {
 	defer wp.wg.Done()
 	for {
 		select {
-		case task := <-wp.tasks:
+		case task, ok := <-wp.tasks:
+			if !ok {
+				return
+			}
 			if task.download {
 				wp.downloadBlock(task, wp.bc)
 			} else {

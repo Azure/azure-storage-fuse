@@ -171,8 +171,8 @@ type patternDetector struct {
 //
 // Starting with streak=3 means:
 //   - First sequential access keeps read-ahead enabled
-//   - First random access reduces to streak=2 (still sequential)
-//   - Needs 3 random accesses to disable read-ahead
+//   - First random access resets streak back to 0 (transition/unknown)
+//   - Subsequent accesses build confidence toward sequential (+3) or random (-3)
 //
 // This is appropriate because:
 //   - Many workloads are primarily sequential
