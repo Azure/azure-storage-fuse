@@ -506,8 +506,16 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *bufferTable
 			bufDesc.bufIdx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
 	}
 
-	err := fmt.Errorf("freeList::getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",
+	log.Err("freeList::getVictimBuffer: Scanned through all buffers %d times without finding a victim. This should never happen. numTries: %d, numBuffers: %d",
 		maxRoundsBeforeGivingUp, numTries, maxBuffers)
-	log.Crit("%s", err.Error())
+	// print all the buffer descriptors for debugging.
+	log.Err("freeList::getVictimBuffer: Printing all buffer descriptors for debugging:")
+	for i := range fl.bufDescriptors {
+		bufDesc := fl.bufDescriptors[i]
+		log.Err("BufferIdx: %d, BlockIdx: %d, RefCnt: %d, BytesRead: %d, BytesWritten: %d, Dirty: %t, EvictionCycles: %d, file: %s",
+			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(),
+			bufDesc.bytesWritten.Load(), bufDesc.dirty.Load(), bufDesc.numEvictionCyclesPassed.Load(), bufDesc.block.file.Name)
+	}
+
 	return nil, errNoVictimBufferFound
 }
