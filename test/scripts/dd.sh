@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./test_fuse.sh /path/to/fuse/mountpoint
+# Usage: ./dd.sh /path/to/fuse/mountpoint
 MOUNT_POINT="$1"
 
 if [ -z "$MOUNT_POINT" ]; then

@@ -382,7 +382,9 @@ func TestCreateTruncateWrite(t *testing.T) {
 
 		readContent, err := os.ReadFile(filePath)
 		assert.NoError(t, err)
-		assert.Equal(t, string(content)+string(make([]byte, 10*1024*1024-len(content))), string(readContent))
+		expected := make([]byte, 10*1024*1024)
+		copy(expected, content)
+		assert.Equal(t, expected, readContent)
 	}
 
 	checkFileIntegrity(t, filename)
