@@ -48,6 +48,7 @@ file_cache:
 # Requires block_cache or file_cache in the pipeline. Mutually exclusive with xload.
 dist_cache:
   # Server discovery — at least one method must be configured
+  # Precedence order for server discovery: discovery-url > k8s DNS > server-list, lower-precedence entries will only be used as a fallback
   discovery-url: <discovery endpoint URL for auto-detecting cache servers. Recommended for production>
   # OR
   k8s-service: <Kubernetes headless service name for DNS-based discovery>
@@ -62,8 +63,8 @@ dist_cache:
   cache-prefix: <prefix for cache keys. Default - derived from azstorage account/container>
   max-conns-per-server: <maximum TCP connections per cache server. Default - 8>
   request-timeout-sec: <timeout for individual cache requests in seconds. Default - 30>
-  auth-account-name: <cache auth account name, if auth is enabled on server>
-  auth-account-key: <cache auth account key, if auth is enabled on server>
+  auth-account-name: <cache server auth account name, if auth is enabled on server>
+  auth-account-key: <cache server auth account key, if auth is enabled on server>
   
 # Azure storage configuration
 azstorage:

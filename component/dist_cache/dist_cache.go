@@ -187,6 +187,24 @@ func (dc *DistCache) Configure(isParent bool) error {
 		}
 	}
 
+	// Warn if multiple discovery methods are configured. The dcache client
+	// applies them in precedence order: discovery-url > k8s DNS > server-list;
+	// lower-precedence entries are effectively ignored.
+	var configured []string
+	if conf.DiscoveryURL != "" {
+		configured = append(configured, "discovery-url")
+	}
+	if conf.K8sService != "" {
+		configured = append(configured, "k8s-service")
+	}
+	if conf.ServerList != "" || os.Getenv("DIST_CACHE_SERVER_LIST") != "" {
+		configured = append(configured, "server-list")
+	}
+	if len(configured) > 1 {
+		log.Warn("DistCache::Configure : multiple discovery methods configured (%s); precedence is discovery-url > k8s DNS > server-list, lower-precedence entries will only be used as a fallback",
+			strings.Join(configured, ", "))
+	}
+
 	dc.conf = conf
 	dc.bypassOnError = conf.BypassOnError
 
@@ -461,7 +479,10 @@ func (dc *DistCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	dc.flushMu.Lock()
 	dc.flushCancel[options.Name] = cancel
 	dc.flushMu.Unlock()
-	go dc.populateCache(ctx, options.Name, options.File.Name(), newETag)
+	go func() {
+		defer cancel() // release timer resources on the success path
+		dc.populateCache(ctx, options.Name, options.File.Name(), newETag)
+	}()
 	return nil
 }
 
@@ -599,7 +620,11 @@ func (dc *DistCache) StageData(options internal.StageDataOptions) error {
 	// No need to invalidate L2 here — the committed state hasn't changed, so
 	// existing L2 data is still valid. CommitData will handle invalidation if
 	// and when the write is actually committed.
-	if maxSize > 0 && pf != nil && pf.totalSize+dataLen > maxSize {
+	pendingSize := dataLen
+	if pf != nil {
+		pendingSize = pf.totalSize + dataLen
+	}
+	if maxSize > 0 && pendingSize > maxSize {
 		log.Debug("DistCache::StageData : pending size would exceed %dMB for %s, skipping L2 write-warming",
 			dc.conf.MaxFileSizeMB, options.Name)
 		delete(dc.pendingWrites, options.Name)
@@ -688,7 +713,10 @@ func (dc *DistCache) CommitData(options internal.CommitDataOptions) error {
 		dc.flushMu.Lock()
 		dc.flushCancel[options.Name] = cancel
 		dc.flushMu.Unlock()
-		go dc.flushPendingToL2(ctx, options.Name, pf.chunks, newETag)
+		go func() {
+			defer cancel() // release timer resources on the success path
+			dc.flushPendingToL2(ctx, options.Name, pf.chunks, newETag)
+		}()
 	}
 	return nil
 }
@@ -697,6 +725,9 @@ func (dc *DistCache) CommitData(options internal.CommitDataOptions) error {
 
 func (dc *DistCache) DeleteFile(options internal.DeleteFileOptions) error {
 	if dc.client != nil {
+		// Cancel any in-flight flush/populate goroutine so it cannot re-upload
+		// chunks under the group ID we are about to delete.
+		dc.cancelFlush(options.Name)
 		dc.cancelReadUploads(options.Name)
 		dc.markDirty(options.Name)
 		dc.clearPending(options.Name)
@@ -715,6 +746,9 @@ func (dc *DistCache) DeleteFile(options internal.DeleteFileOptions) error {
 
 func (dc *DistCache) RenameFile(options internal.RenameFileOptions) error {
 	if dc.client != nil {
+		// Cancel any in-flight flush/populate goroutine so it cannot re-upload
+		// chunks under the group ID we are about to delete.
+		dc.cancelFlush(options.Src)
 		dc.cancelReadUploads(options.Src)
 		dc.markDirty(options.Src)
 		dc.clearPending(options.Src)
@@ -733,6 +767,9 @@ func (dc *DistCache) RenameFile(options internal.RenameFileOptions) error {
 
 func (dc *DistCache) TruncateFile(options internal.TruncateFileOptions) error {
 	if dc.client != nil {
+		// Cancel any in-flight flush/populate goroutine so it cannot re-upload
+		// chunks under the group ID we are about to delete.
+		dc.cancelFlush(options.Name)
 		dc.cancelReadUploads(options.Name)
 		dc.markDirty(options.Name)
 		dc.clearPending(options.Name)

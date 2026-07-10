@@ -49,7 +49,9 @@ func (m *mockDCacheClient) Upload(ctx context.Context, filename, etag string, da
 		return m.uploadFn(ctx, filename, data, size, opts...)
 	}
 	buf := make([]byte, size)
-	io.ReadFull(data, buf)
+	if _, err := io.ReadFull(data, buf); err != nil {
+		return err
+	}
 	m.store[filename] = buf
 	return nil
 }
