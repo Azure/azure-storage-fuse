@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783231113331,
+  "lastUpdate": 1783834944145,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1310,6 +1310,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 30.224609375,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "59e3747315bc03af54efa43a51cefebe92b92de0",
+          "message": "chore: remove unused error_search.sh and KnownLimitations.txt (#2284)",
+          "timestamp": "2026-07-10T12:14:33Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/59e3747315bc03af54efa43a51cefebe92b92de0"
+        },
+        "date": 1783834941708,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 3309.3896484375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 3378.787109375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3105.4765625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 7.7568359375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 7579.0087890625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 8968.6875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 31.9404296875,
             "unit": "MiB/s"
           }
         ]
