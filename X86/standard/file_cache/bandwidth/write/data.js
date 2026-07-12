@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783232636755,
+  "lastUpdate": 1783836449014,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -735,6 +735,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 2370.404296875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "59e3747315bc03af54efa43a51cefebe92b92de0",
+          "message": "chore: remove unused error_search.sh and KnownLimitations.txt (#2284)",
+          "timestamp": "2026-07-10T12:14:33Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/59e3747315bc03af54efa43a51cefebe92b92de0"
+        },
+        "date": 1783836448373,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 617.599609375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 2294.9990234375,
             "unit": "MiB/s"
           }
         ]
