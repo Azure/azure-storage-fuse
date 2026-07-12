@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783232212591,
+  "lastUpdate": 1783836033608,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -860,6 +860,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "filecache_sequential_read_100GB_directio",
             "value": 787.5387,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "59e3747315bc03af54efa43a51cefebe92b92de0",
+          "message": "chore: remove unused error_search.sh and KnownLimitations.txt (#2284)",
+          "timestamp": "2026-07-10T12:14:33Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/59e3747315bc03af54efa43a51cefebe92b92de0"
+        },
+        "date": 1783836031972,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "filecache_sequential_read_100GB_directio",
+            "value": 852,
             "unit": "MiB/s"
           }
         ]
