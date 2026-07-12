@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783231115260,
+  "lastUpdate": 1783834946367,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1310,6 +1310,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 131.856160115005,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft",
+            "email": "98318303+souravgupta-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "59e3747315bc03af54efa43a51cefebe92b92de0",
+          "message": "chore: remove unused error_search.sh and KnownLimitations.txt (#2284)",
+          "timestamp": "2026-07-10T12:14:33Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/59e3747315bc03af54efa43a51cefebe92b92de0"
+        },
+        "date": 1783834945863,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.301763468772,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.295364628321,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.321653064502,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 128.90614276824002,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.508372251152,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.359459677039,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 124.96775078794201,
             "unit": "milliseconds"
           }
         ]
