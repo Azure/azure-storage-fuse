@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779707487432,
+  "lastUpdate": 1783932923710,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -566,6 +566,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_directio",
             "value": 3887.9921875,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "17060ed438579f98e5ad4a6db3f0ea789048a8d5",
+          "message": "Bump github.com/montanaflynn/stats from 0.9.0 to 0.10.0 (#2285)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-07-13T04:54:17Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/17060ed438579f98e5ad4a6db3f0ea789048a8d5"
+        },
+        "date": 1783932921417,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write_directio",
+            "value": 3879.7060546875,
             "unit": "MiB/s"
           }
         ]
