@@ -43,6 +43,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -409,6 +410,31 @@ func (suite *FileOperationsTestSuite) TestRead_ConcurrentReads() {
 // ============================================================================
 // WRITE tests
 // ============================================================================
+
+func (suite *FileOperationsTestSuite) TestWrite_InvalidOffset() {
+	handle, f := suite.openWriteFile("test_write_invalid_offset.txt", nil)
+	defer suite.closeFile(handle)
+
+	err := f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: -1,
+		Data:   []byte("data"),
+	})
+	suite.ErrorIs(err, syscall.EINVAL)
+}
+
+func (suite *FileOperationsTestSuite) TestWrite_EmptyDataIsNoOp() {
+	handle, f := suite.openWriteFile("test_write_empty.txt", nil)
+	defer suite.closeFile(handle)
+
+	mtime := f.lmtNano.Load()
+	synced := f.synced
+	err := f.write(suite.blockCache, &internal.WriteFileOptions{Handle: handle, Data: nil})
+
+	suite.NoError(err)
+	suite.Equal(mtime, f.lmtNano.Load())
+	suite.Equal(synced, f.synced)
+}
 
 // Writing data that exceeds the internal max file size limit must return an error.
 func (suite *FileOperationsTestSuite) TestWrite_ExceedsMaxFileSize() {

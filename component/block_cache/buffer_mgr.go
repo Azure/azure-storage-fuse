@@ -328,6 +328,7 @@ func (btm *bufferTableMgr) lookupBufferDescriptor(blk *block, fl *freeListType) 
 		if err := bufDesc.ensureBufferValidForRead(); err != nil {
 			log.Err("bufferTableMgr::lookupBufferDescriptor: BufferIdx: %d for blockIdx: %d has error: %v during lookup, file: %s",
 				bufDesc.bufIdx, blk.idx, bufDesc.downloadErr, blk.file.Name)
+			btm.detachBufferDescriptor(bufDesc, fl)
 			bufDesc.release(fl)
 			return nil, err
 		}
@@ -339,92 +340,34 @@ func (btm *bufferTableMgr) lookupBufferDescriptor(blk *block, fl *freeListType) 
 	return nil, nil
 }
 
-// removeBufferDescriptor removes a buffer descriptor from the buffer table and releases it if no longer in use.
-// If the buffer is removed from the bufferTableMgr, it also drops the reference for the caller, so the caller
-// must not use the buffer descriptor when removal is successful and also caller must not call release() on this
-// buffer descriptor as well, as the reference will be dropped for the caller as well in this function.
+// detachBufferDescriptor removes the exact block-to-buffer mapping from the table.
+// It releases only the reference owned by the table. Callers retain ownership of
+// their own reference and must release it independently.
 //
 // Parameters:
 //   - bufDesc: The buffer descriptor to remove
 //
 // Returns:
-//   - isRemovedFromBufMgr: true if buffer was removed from the table,
-//     false if it was not removed (e.g., due to being dirty or having too many references)
+//   - true if this descriptor was detached from the table
+//   - false if the mapping was absent or now points to another descriptor
 //
-// Reference counting semantics:
-//   - Buffer must not be dirty (flush required first)
-//   - Buffer must have refCnt == 2 (only table + caller reference) to be safely removed, otherwise removal fails.
-//   - refCnt < 2 for the caller means something is sus.
-//   - On successful removal from table, refCnt is decremented to release table's reference & also for caller's reference.
-//     this is done to prevent other users from acquiring reference to this buffer after it's removed from the table and
-//     also our victim selection logic relies on table refCnt to determine if buffer is in use or not.
-func (btm *bufferTableMgr) removeBufferDescriptor(bufDesc *bufferDescriptor, freeList *freeListType) (isRemovedFromBufMgr bool) {
+// Detaching does not require the descriptor to be clean or idle. Existing users
+// keep it alive through their references, while new lookups can no longer acquire it.
+// This is also the cleanup path for terminal I/O errors.
+func (btm *bufferTableMgr) detachBufferDescriptor(bufDesc *bufferDescriptor, freeList *freeListType) bool {
 	blk := bufDesc.block
-	log.Debug("bufferTableMgr::removeBufferDescriptor: Remove blockIdx: %d, bufferIdx: %d for file: %s from buffer table",
+	log.Debug("bufferTableMgr::detachBufferDescriptor: Detach blockIdx: %d, bufferIdx: %d for file: %s from buffer table",
 		bufDesc.block.idx, bufDesc.bufIdx, blk.file.Name)
 
 	btm.mu.Lock()
-	defer btm.mu.Unlock()
-
-	// Check 1: Cannot remove dirty buffers (data not yet uploaded to storage)
-	if bufDesc.dirty.Load() {
-		log.Debug("bufferTableMgr::removeBufferDescriptor: Cannot remove dirty bufferIdx: %d for blockIdx: %d, flush needed before reading block data, file: %s",
-			bufDesc.bufIdx, blk.idx, blk.file.Name)
+	current, ok := btm.table[blk]
+	if !ok || current != bufDesc {
+		btm.mu.Unlock()
 		return false
 	}
+	delete(btm.table, blk)
+	btm.mu.Unlock()
 
-	// Check 2: In strict mode, ensure no extra user references exist (only table reference allowed + one user reference for the caller)
-	// refCnt > 2 means: 1 (table) + (1 + N) (active users), so removal would be unsafe
-	curRefCnt := bufDesc.refCnt.Load()
-	if curRefCnt > refCountTableAndOneUser {
-		log.Debug("bufferTableMgr::removeBufferDescriptor: Cannot remove bufferIdx: %d for blockIdx: %d, refCnt: %d >= refCntTableAndOneUser, file: %s",
-			bufDesc.bufIdx, blk.idx, curRefCnt, blk.file.Name)
-		return false
-	}
-
-	if curRefCnt <= refCountTableOnly {
-		// This should not happen as the caller should be holding a reference to this buffer if this control came here
-		// which means there is a bug in the code where refCnt is being decremented incorrectly somewhere, as the caller
-		// should have at least refCnt>1 for its reference. We log and return false instead of panicking so that a bug
-		// here does not bring down the entire mount.
-		log.Crit("bufferTableMgr::removeBufferDescriptor: BufferIdx: %d[%v] for blockIdx: %d has refCnt: %d which is unexpected, something is wrong, file: %s",
-			bufDesc.bufIdx, bufDesc, blk.idx, curRefCnt, blk.file.Name)
-		return false
-	}
-
-	// Check 3: Verify buffer is still in the table (This cannot happen as we have 2 references to this buffer,
-	// but adding for extra safety)
-	if _, ok := btm.table[bufDesc.block]; !ok {
-		log.Crit("bufferTableMgr::removeBufferDescriptor: BufferIdx: %d[%v] for blockIdx: %d not found in buffer table during removal, something is wrong, file: %s",
-			bufDesc.bufIdx, bufDesc, blk.idx, blk.file.Name)
-		return false
-	}
-
-	// Step 1: Remove buffer from the table (no longer mapped to this block)
-	delete(btm.table, bufDesc.block)
-
-	// Step 2: Release the buffer descriptor reference held by the table and also for the caller's reference.
-
-	if ok := bufDesc.release(freeList); ok {
-		// This should not release the buffer to free list as the caller should also be holding a reference to this buffer,
-		// so refCnt should be 1 after this release, This means bug in the code and refCnt is being decremented incorrectly
-		// somewhere. The buffer is already gone from the table and from the free list at this point; report success so the
-		// caller does not try to use it again, but log loudly so the bug can be caught.
-		log.Crit("bufferTableMgr::removeBufferDescriptor: First release of bufferDescriptor: %v for blockIdx: %d returned to free list unexpectedly, caller reference appears to be missing, file: %s",
-			bufDesc, blk.idx, blk.file.Name)
-		return true
-	}
-
-	if ok := bufDesc.release(freeList); ok {
-		log.Debug("bufferTableMgr::removeBufferDescriptor: Released bufferIdx: %d for blockIdx: %d back to free list after removal from buffer table, file: %s",
-			bufDesc.bufIdx, blk.idx, blk.file.Name)
-		return true
-	}
-
-	// This should not happen as the caller should be holding a reference to this buffer if this control came here which
-	// is not expected. The buffer has been removed from the table; report success but log loudly so the leak can be
-	// diagnosed.
-	log.Crit("bufferTableMgr::removeBufferDescriptor: Final release of bufferDescriptor: %v for blockIdx: %d did not return buffer to free list, possible refcount leak, file: %s",
-		bufDesc, blk.idx, blk.file.Name)
+	bufDesc.release(freeList)
 	return true
 }
