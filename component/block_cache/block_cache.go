@@ -122,6 +122,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 
@@ -181,6 +182,7 @@ type BlockCache struct {
 
 	// File and block management
 	fileLocks *common.LockMap // Per-file locks to coordinate operations (currently unused)
+	openFiles sync.Map        // Path to shared file state for this cache instance
 
 	// Performance and behavior flags
 	maxDiskUsageHit        bool // Flag indicating if disk cache limit was reached (currently unused)
@@ -383,7 +385,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	bc.blockSize = uint64(defaultBlockSize) * common.MbToBytes
 	if config.IsSet(compName + ".block-size-mb") {
+		if conf.BlockSize <= 0 {
+			return fmt.Errorf("config error in %s [block-size-mb must be greater than zero]", bc.Name())
+		}
 		bc.blockSize = uint64(conf.BlockSize * float64(common.MbToBytes))
+		if bc.blockSize == 0 {
+			return fmt.Errorf("config error in %s [block-size-mb is too small]", bc.Name())
+		}
 	}
 
 	bc.maxFileSize = bc.blockSize * MAX_BLOCKS
@@ -453,6 +461,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.workers = uint32(runtime.NumCPU())
 	if config.IsSet(compName + ".parallelism") {
 		bc.workers = conf.Workers
+	}
+	if bc.workers == 0 {
+		return fmt.Errorf("config error in %s [parallelism must be greater than zero]", bc.Name())
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
@@ -528,7 +539,7 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 	}
 
 	// file structure has more updated info than attribute cache/Azure storage, if the file is open
-	file, ok := checkFileExistsInOpen(options.Name)
+	file, ok := checkFileExistsInOpen(bc, options.Name)
 	if ok {
 		fileSize := file.size.Load()
 		lmtNano := file.lmtNano.Load()
@@ -562,8 +573,7 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 // if creation fails.
 func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
-	_, err := bc.NextComponent().CreateFile(options)
-	if err != nil {
+	if err := bc.createFileOnStorage(options); err != nil {
 		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
 		return nil, err
 	}
@@ -573,6 +583,20 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 		Flags: os.O_RDWR | os.O_CREATE,
 		Mode:  options.Mode,
 	})
+}
+
+func (bc *BlockCache) createFileOnStorage(options internal.CreateFileOptions) error {
+	handle, err := bc.NextComponent().CreateFile(options)
+	if err != nil {
+		return err
+	}
+	if handle == nil {
+		return syscall.EIO
+	}
+	if err := bc.NextComponent().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}); err != nil {
+		return fmt.Errorf("release created file %s: %w", options.Name, err)
+	}
+	return nil
 }
 
 // OpenFile opens a file and creates a handle for I/O operations.
@@ -608,10 +632,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		return nil, err
 	}
 
-	handle := createFreshHandleForFile(options.Name, attr.Size, attr.Mtime, options.Flags)
+	handle := createFreshHandleForFile(options.Name, attr.Size, attr.Mtime)
 
 	// Get file object from the map or create a new one for this path.
-	f, firstOpen, err := getFileFromPath(handle)
+	f, firstOpen, err := getFileFromPath(bc, handle)
 	if err != nil {
 		log.Err("BlockCache::OpenFile : Failed to get file object for %s [%v]", options.Name, err)
 		return nil, err
@@ -623,6 +647,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.IFObj = &blockCacheHandle{
 		file:            f,
 		patternDetector: newPatternDetector(),
+		openFlags:       options.Flags,
 	}
 
 	size := f.size.Load()
@@ -635,21 +660,17 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	if options.Flags&os.O_TRUNC != 0 {
 		log.Debug("BlockCache::OpenFile : Truncating file %s on open", options.Name)
 
-		if !firstOpen {
-			// There are some open handles for this file, flush all the data before truncating.
-			err = f.flush(bc, false /* takefilelock */)
-			if err != nil {
-				log.Err("BlockCache::OpenFile : Failed to flush file %s before truncating on open [%v]", options.Name, err)
-				deleteOpenHandleForFile(bc, handle, f, false /* takeFileLock */)
-				return nil, err
-			}
+		f.pendingWriters.Wait()
+		if len(f.blockList.list) > 0 {
 			releaseAllBuffersForFile(bc, f)
-			f.blockList = newBlockList()
 		}
+		f.blockList = newBlockList()
 
 		size = 0
 		f.size.Store(0)
 		f.synced = false
+		f.err.Store(nil)
+		f.lmtNano.Store(time.Now().UnixNano())
 	}
 
 	if size == 0 {
@@ -702,9 +723,8 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 //
 // This method handles read requests from FUSE by:
 //
-//  1. Scheduling read-ahead based on detected access pattern (per-handle)
-//  2. Reading the requested data from cached blocks
-//  3. Fetching blocks from storage if not in cache
+//  1. Reading the requested data from cached blocks or storage
+//  2. Scheduling read-ahead based on detected access pattern (per-handle)
 //
 // Read-ahead:
 //   - Each handle has its own pattern detector to support concurrent reads
@@ -724,21 +744,24 @@ func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, 
 		log.Err("BlockCache::ReadInBuffer : Invalid handle type: %T", options.Handle.IFObj)
 		return 0, fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
 	}
+	if bcHandle.openFlags&syscall.O_ACCMODE == os.O_WRONLY {
+		return 0, syscall.EBADF
+	}
 
 	log.Debug("BlockCache::ReadInBuffer : name: %s, buf size: %d, offset: %d, handle: %d",
 		options.Handle.Path, len(options.Data), options.Offset, options.Handle.ID)
-
-	// we schedule read-ahead per handle, rather than per file, to support multiple handles reading concurrently
-	// on the same file with different access patterns.
-	bcHandle.file.scheduleReadAhead(bc, bcHandle.patternDetector, options.Offset)
 
 	n, err := bcHandle.file.read(bc, options)
 	if err != nil {
 		log.Err("BlockCache::ReadInBuffer : Failed to read file %s at offset %d, size %d [%v]",
 			options.Handle.Path, options.Offset, len(options.Data), err)
+		return n, err
 	}
 
-	return n, err
+	// Pattern detection is per handle because separate opens can have unrelated access patterns.
+	bcHandle.file.scheduleReadAhead(bc, bcHandle.patternDetector, options.Offset, n)
+
+	return n, nil
 }
 
 // WriteFile writes data to a file at the specified offset.
@@ -768,6 +791,9 @@ func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error)
 		log.Err("BlockCache::WriteFile : Invalid handle type: %T", options.Handle.IFObj)
 		return 0, fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
 	}
+	if bcHandle.openFlags&syscall.O_ACCMODE == os.O_RDONLY {
+		return 0, syscall.EBADF
+	}
 
 	log.Debug("BlockCache::WriteFile : name: %s, buf size: %d, offset: %d, handle: %d",
 		options.Handle.Path, len(options.Data), options.Offset, options.Handle.ID)
@@ -776,6 +802,7 @@ func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error)
 	if err != nil {
 		log.Err("BlockCache::WriteFile : Failed to write file %s at offset %d, size %d [%v]",
 			options.Handle.Path, options.Offset, len(options.Data), err)
+		return 0, err
 	}
 
 	return len(options.Data), err
@@ -800,6 +827,13 @@ func (bc *BlockCache) WriteFile(options *internal.WriteFileOptions) (int, error)
 // Returns an error if the truncate operation fails.
 func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("BlockCache::TruncateFile : name: %s, size: %d", options.Name, options.NewSize)
+
+	if options.NewSize < 0 {
+		return syscall.EINVAL
+	}
+	if uint64(options.NewSize) > bc.maxFileSize {
+		return syscall.EFBIG
+	}
 
 	if options.Handle == nil {
 		log.Info("BlockCache::TruncateFile : Handle is nil for file %s, Opening the file", options.Name)
@@ -829,6 +863,9 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 	if !ok {
 		log.Err("BlockCache::TruncateFile : Invalid handle type: %T", options.Handle.IFObj)
 		return fmt.Errorf("invalid handle type: %T", options.Handle.IFObj)
+	}
+	if bcHandle.openFlags&syscall.O_ACCMODE == os.O_RDONLY {
+		return syscall.EBADF
 	}
 
 	log.Debug("BlockCache::TruncateFile : name: %s, size: %d, handle: %d",
@@ -989,34 +1026,13 @@ func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("BlockCache::RenameFile : src: %s -> dst: %s", options.Src, options.Dst)
 
-	// Support deletion of opened files.
-	if common.IsFuseHiddenFile(options.Dst) {
-		// Some file handles are opened to the source file, flush the source file before
-		// renaming to the hidden file name as there may be some dirty data in the cache..
-		file, ok := checkFileExistsInOpen(options.Src)
-		if !ok {
-			// No open file handles for the source file, fail the rename.
-			log.Err("BlockCache::RenameFile : No open file handles for source file %s while renaming to hidden file name",
-				options.Src)
-			return fmt.Errorf("no open file handles for source file %s while renaming to hidden file name", options.Src)
-		}
-
-		log.Info("BlockCache::RenameFile : Renaming file %s to hidden file name %s, flushing the file before renaming",
-			options.Src, options.Dst)
+	file, fileIsOpen := checkFileExistsInOpen(bc, options.Src)
+	if fileIsOpen {
 		err := file.flush(bc, true /* takefilelock */)
 		if err != nil {
-			log.Err("BlockCache::RenameFile : Failed to flush file %s before renaming to hidden file name %s [%v]",
+			log.Err("BlockCache::RenameFile : Failed to flush open file %s before renaming to %s [%v]",
 				options.Src, options.Dst, err)
-			return fmt.Errorf("failed to flush file %s before renaming to hidden file name %s [%v]", options.Src, options.Dst, err)
-		}
-
-		// Change the file name in the file map to the hidden file name, so that subsequent
-		// open calls with the hidden file name can find the file object and open successfully.
-		err = renameFileInFileMap(options.Src, options.Dst)
-		if err != nil {
-			log.Err("BlockCache::RenameFile : Failed to rename file %s in filemap to hidden file name %s [%v]",
-				options.Src, options.Dst, err)
-			return fmt.Errorf("failed to rename file %s in filemap to hidden file name %s [%v]", options.Src, options.Dst, err)
+			return fmt.Errorf("flush file %s before rename: %w", options.Src, err)
 		}
 	}
 
@@ -1024,6 +1040,14 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	if err != nil {
 		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
 		return err
+	}
+
+	if fileIsOpen {
+		if err := renameFileInFileMap(bc, options.Src, options.Dst); err != nil {
+			log.Err("BlockCache::RenameFile : Backend rename succeeded but open-file map update failed for %s -> %s [%v]",
+				options.Src, options.Dst, err)
+			return err
+		}
 	}
 
 	return nil
@@ -1062,6 +1086,7 @@ func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 		log.Err("BlockCache::RenameDir : error %s [%s]", options.Src, err.Error())
 		return err
 	}
+	renameOpenFilesInDirectory(bc, options.Src, options.Dst)
 
 	return nil
 }
