@@ -95,9 +95,9 @@ type task struct {
 type workerPool struct {
 	workers int            // Number of worker goroutines
 	wg      sync.WaitGroup // Tracks active workers for clean shutdown
-	close   chan struct{}  // Closed to signal workers to exit
 	tasks   chan *task     // Buffered channel of pending tasks
 	bc      *BlockCache    // Reference to parent BlockCache for I/O operations
+	stop    sync.Once      // Ensures the task channel is closed exactly once
 }
 
 // createWorkerPool creates and starts a worker pool with the specified number of workers.
@@ -114,7 +114,6 @@ func createWorkerPool(workers int, bc *BlockCache) *workerPool {
 	// Create the worker pool.
 	wp := &workerPool{
 		workers: workers,
-		close:   make(chan struct{}),
 		tasks:   make(chan *task, workers*2),
 		bc:      bc,
 	}
@@ -133,15 +132,12 @@ func createWorkerPool(workers int, bc *BlockCache) *workerPool {
 // destroyWorkerPool shuts down the worker pool and waits for all workers to exit.
 //
 // This method:
-//  1. Closes the close channel to signal workers to exit
-//  2. Waits for all workers to finish their current tasks and exit
+//  1. Closes the task channel so no more work can be accepted
+//  2. Drains all accepted tasks and waits for workers to exit
 //
 // Called during BlockCache.Stop() to clean up resources.
-//
-// Note: Pending tasks in the channel are abandoned. Callers should ensure
-// all important tasks complete before destroying the pool.
 func (wp *workerPool) destroy() {
-	close(wp.close)
+	wp.stop.Do(func() { close(wp.tasks) })
 	wp.wg.Wait()
 }
 
@@ -151,25 +147,17 @@ func (wp *workerPool) destroy() {
 //
 //  1. Waits for tasks on the tasks channel
 //  2. Executes downloads or uploads as appropriate
-//  3. Exits when the close channel is closed
+//  3. Exits after the task channel is closed and drained
 //
 // Workers run continuously, waiting for work. This approach minimizes
 // goroutine creation overhead compared to spawning a goroutine per task.
 func (wp *workerPool) worker() {
 	defer wp.wg.Done()
-	for {
-		select {
-		case task, ok := <-wp.tasks:
-			if !ok {
-				return
-			}
-			if task.download {
-				wp.downloadBlock(task, wp.bc)
-			} else {
-				wp.uploadBlock(task, wp.bc)
-			}
-		case <-wp.close:
-			return
+	for task := range wp.tasks {
+		if task.download {
+			wp.downloadBlock(task, wp.bc)
+		} else {
+			wp.uploadBlock(task, wp.bc)
 		}
 	}
 }
@@ -243,6 +231,7 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 			block.file.Name, block.idx, err)
 
 		bufDesc.downloadErr = err
+		bc.btm.detachBufferDescriptor(bufDesc, bc.freeList)
 	} else {
 		log.Debug("BlockCache::downloadBlock: Successfully downloaded blockIdx: %d into bufferIdx: %d, file: %s",
 			block.idx, bufDesc.bufIdx, block.file.Name)
@@ -332,17 +321,11 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	bufDesc.contentLock.Unlock()
 
 	if !task.sync {
-		if bc.btm.removeBufferDescriptor(bufDesc, bc.freeList) {
+		if err == nil && bc.btm.detachBufferDescriptor(bufDesc, bc.freeList) {
 			log.Debug("BlockCache::uploadBlock: Removed bufferIdx: %d for blockIdx: %d of file: %s from buffer table manager after async upload",
 				bufDesc.bufIdx, block.idx, block.file.Name)
-		} else {
-			// release the buffer
-			if ok := bufDesc.release(bc.freeList); ok {
-				// This should not be released as we did not removed it from buffer table manager yet.
-				log.Err("BlockCache::uploadBlock: Released bufferIdx: %d for blockIdx: %d of file: %s back to free list after async upload",
-					bufDesc.bufIdx, block.idx, block.file.Name)
-			}
 		}
+		bufDesc.release(bc.freeList)
 	}
 
 	close(task.signalOnCompletion)
