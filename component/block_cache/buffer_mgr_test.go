@@ -91,7 +91,7 @@ func Test_bufferTableMgr_lookupBufferDescriptor_Exists(t *testing.T) {
 	blk := createBlock(0, "testId", localBlock, f)
 
 	// Manually add a buffer to the table
-	buf, _ := freeList.bufPool.getBuffer()
+	buf := make([]byte, int(bc.blockSize))
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -113,7 +113,7 @@ func Test_bufferTableMgr_lookupBufferDescriptor_Exists(t *testing.T) {
 	assert.Equal(t, int32(refCountTableAndOneUser), foundBd.refCnt.Load(), "refCnt should be incremented")
 }
 
-func TestBufferTableMgr_RemoveBufferDescriptor_NotInTable(t *testing.T) {
+func TestBufferTableMgr_DetachBufferDescriptor_NotInTable(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
@@ -125,7 +125,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_NotInTable(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.getBuffer()
+	buf := make([]byte, int(bc.blockSize))
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -133,14 +133,12 @@ func TestBufferTableMgr_RemoveBufferDescriptor_NotInTable(t *testing.T) {
 	}
 	bd.refCnt.Store(1)
 
-	// removeBufferDescriptor expects the buffer to be in the table; not being in table is a bug.
-	// We now log.Crit and return false instead of panicking, so that a refactor bug here does not
-	// take down the mount.
-	isRemoved := btm.removeBufferDescriptor(bd, freeList)
-	assert.False(t, isRemoved, "Should not remove buffer that is not in table")
+	isDetached := btm.detachBufferDescriptor(bd, freeList)
+	assert.False(t, isDetached)
+	assert.Equal(t, int32(refCountTableOnly), bd.refCnt.Load())
 }
 
-func TestBufferTableMgr_RemoveBufferDescriptor_Dirty(t *testing.T) {
+func TestBufferTableMgr_DetachBufferDescriptor_Dirty(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
@@ -152,7 +150,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Dirty(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.getBuffer()
+	buf := make([]byte, int(bc.blockSize))
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -165,15 +163,15 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Dirty(t *testing.T) {
 	btm.table[blk] = bd
 	btm.mu.Unlock()
 
-	// Try to remove dirty buffer
-	isRemoved := btm.removeBufferDescriptor(bd, freeList)
+	isDetached := btm.detachBufferDescriptor(bd, freeList)
 
-	assert.False(t, isRemoved, "Should not remove dirty buffer")
+	assert.True(t, isDetached)
+	assert.Equal(t, int32(1), bd.refCnt.Load(), "caller must retain its reference")
+	assert.True(t, bd.dirty.Load(), "detaching must not change buffer state")
+	bd.release(freeList)
 }
 
-// Test that removeBufferDescriptor with strict /*strict*/=true won't remove if there are user references (refCnt > 1)
-// This prevents removing buffers that are still in use by other operations
-func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithRefs(t *testing.T) {
+func TestBufferTableMgr_DetachBufferDescriptor_WithActiveUsers(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
@@ -185,7 +183,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithRefs(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.getBuffer()
+	buf := make([]byte, int(bc.blockSize))
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -198,14 +196,15 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithRefs(t *testing.T) {
 	btm.table[blk] = bd
 	btm.mu.Unlock()
 
-	// Try to remove buffer with strict=true and refCnt > 1
-	isRemoved := btm.removeBufferDescriptor(bd, freeList)
+	isDetached := btm.detachBufferDescriptor(bd, freeList)
 
-	assert.False(t, isRemoved, "Should not remove with extra user refs")
+	assert.True(t, isDetached)
+	assert.Equal(t, int32(2), bd.refCnt.Load(), "active users must keep the descriptor alive")
+	bd.release(freeList)
+	bd.release(freeList)
 }
 
-// Test that removeBufferDescriptor with strict /*strict*/=true WILL remove if only table holds reference (refCnt=1)
-func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithOnlyTableRef(t *testing.T) {
+func TestBufferTableMgr_DetachBufferDescriptor_OnlyTableRef(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
@@ -217,7 +216,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithOnlyTableRef(t *testing
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.getBuffer()
+	buf := make([]byte, int(bc.blockSize))
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -230,14 +229,12 @@ func TestBufferTableMgr_RemoveBufferDescriptor_StrictWithOnlyTableRef(t *testing
 	btm.table[blk] = bd
 	btm.mu.Unlock()
 
-	// removeBufferDescriptor expects the caller to hold a reference too; only table ref is a bug.
-	// We now log.Crit and return false instead of panicking, so that a refactor bug here does not
-	// take down the mount.
-	isRemoved := btm.removeBufferDescriptor(bd, freeList)
-	assert.False(t, isRemoved, "Should not remove buffer when caller does not hold a reference")
+	isDetached := btm.detachBufferDescriptor(bd, freeList)
+	assert.True(t, isDetached)
+	assert.Equal(t, int32(0), bd.refCnt.Load())
 }
 
-func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
+func TestBufferTableMgr_DetachBufferDescriptor_Success(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
@@ -249,7 +246,7 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.getBuffer()
+	buf := make([]byte, int(bc.blockSize))
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
@@ -262,20 +259,20 @@ func TestBufferTableMgr_RemoveBufferDescriptor_Success(t *testing.T) {
 	btm.table[blk] = bd
 	btm.mu.Unlock()
 
-	// Remove buffer successfully
-	isRemoved := btm.removeBufferDescriptor(bd, freeList)
+	isDetached := btm.detachBufferDescriptor(bd, freeList)
 
-	assert.True(t, isRemoved, "Should be removed from table")
-	assert.Equal(t, int32(0), bd.refCnt.Load(), "refCnt should be 0")
+	assert.True(t, isDetached)
+	assert.Equal(t, int32(1), bd.refCnt.Load(), "only the table reference should be released")
 
 	// Verify it's not in table anymore
 	btm.mu.RLock()
 	_, exists := btm.table[blk]
 	btm.mu.RUnlock()
 	assert.False(t, exists, "Should not be in table")
+	bd.release(freeList)
 }
 
-func TestBufferTableMgr_RemoveBufferDescriptor_WithRemainingRefs(t *testing.T) {
+func TestBufferTableMgr_DetachBufferDescriptor_DoesNotRemoveReplacement(t *testing.T) {
 	// Setup
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
@@ -287,24 +284,30 @@ func TestBufferTableMgr_RemoveBufferDescriptor_WithRemainingRefs(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.getBuffer()
-	bd := &bufferDescriptor{
+	buf := make([]byte, int(bc.blockSize))
+	stale := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,
 		buf:    buf,
 	}
-	bd.refCnt.Store(refCountTableAndOneUser + 1)
-	bd.valid.Store(true)
+	stale.refCnt.Store(1)
+	stale.valid.Store(true)
+
+	replacement := &bufferDescriptor{bufIdx: 1, block: blk}
+	replacement.refCnt.Store(refCountTableOnly)
+	replacement.valid.Store(true)
 
 	btm.mu.Lock()
-	btm.table[blk] = bd
+	btm.table[blk] = replacement
 	btm.mu.Unlock()
 
-	// Remove buffer with strict=false (allows removal even with refs)
-	isRemoved := btm.removeBufferDescriptor(bd, freeList)
+	isDetached := btm.detachBufferDescriptor(stale, freeList)
 
-	assert.False(t, isRemoved, "Should not remove with extra refs")
-	assert.Equal(t, int32(refCountTableAndOneUser+1), bd.refCnt.Load(), "refCnt should be unchanged")
+	assert.False(t, isDetached)
+	assert.Equal(t, int32(1), stale.refCnt.Load())
+	btm.mu.RLock()
+	assert.Same(t, replacement, btm.table[blk])
+	btm.mu.RUnlock()
 }
 
 func Test_bufferTableMgr_lookupBufferDescriptor_DownloadError(t *testing.T) {
@@ -318,7 +321,7 @@ func Test_bufferTableMgr_lookupBufferDescriptor_DownloadError(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
 
-	buf, _ := freeList.bufPool.getBuffer()
+	buf := make([]byte, int(bc.blockSize))
 	bd := &bufferDescriptor{
 		bufIdx: 0,
 		block:  blk,

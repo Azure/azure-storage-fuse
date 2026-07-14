@@ -35,7 +35,7 @@ package block_cache
 
 import (
 	"fmt"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -58,6 +58,7 @@ import (
 type blockCacheHandle struct {
 	file            *file            // Shared file object (same for all handles to this path)
 	patternDetector *patternDetector // Per-handle access pattern tracking for read-ahead
+	openFlags       int              // Access mode and other flags supplied to open(2)
 }
 
 // createFreshHandleForFile creates a new handle for a file with initial metadata.
@@ -66,35 +67,22 @@ type blockCacheHandle struct {
 //   - name: File path
 //   - size: Initial file size
 //   - mtime: Last modification time
-//   - flags: Open flags (O_RDONLY, O_RDWR, etc.)
 //
 // Returns a new handle ready for BlockCache operations.
 //
 // This handle will later have its IFObj field populated with a blockCacheHandle.
-func createFreshHandleForFile(name string, size int64, mtime time.Time, flags int) *handlemap.Handle {
+func createFreshHandleForFile(name string, size int64, mtime time.Time) *handlemap.Handle {
 	handle := handlemap.NewHandle(name)
 	handle.Mtime = mtime
 	handle.Size = size
 	return handle
 }
 
-// fileMap is a global map tracking all files with open handles.
-//
-// Map: filepath (string) -> *File
-//
-// Thread Safety: sync.Map provides built-in concurrency safety.
-//
-// Lifecycle:
-//   - File added on first open (via getFileFromPath)
-//   - File shared across multiple opens of the same path
-//   - File removed when last handle closes (via deleteOpenHandleForFile)
-var fileMap sync.Map
-
 // getFileFromPath retrieves or creates a File object for the given handle.
 //
 // This function implements a thread-safe "get or create" pattern:
 //
-//  1. Try to load existing File from fileMap
+//  1. Try to load existing File from the cache instance's openFiles map
 //  2. If not found, create new File and store in map
 //  3. Add handle to File's handle set
 //  4. Handle race condition where File was closed between load and store
@@ -120,12 +108,12 @@ var fileMap sync.Map
 //   - Only one goroutine creates a new File for a given path
 //   - All goroutines correctly add their handles to the File
 //   - No handles are lost due to race conditions
-func getFileFromPath(handle *handlemap.Handle) (*file, bool, error) {
+func getFileFromPath(bc *BlockCache, handle *handlemap.Handle) (*file, bool, error) {
 	const maxRetries = 10
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		f := createFile(handle.Path)
-		existing, loaded := fileMap.LoadOrStore(handle.Path, f)
+		existing, loaded := bc.openFiles.LoadOrStore(handle.Path, f)
 		fileObj, ok := existing.(*file)
 		if !ok {
 			return nil, false, fmt.Errorf("invalid file type in map")
@@ -156,7 +144,7 @@ func getFileFromPath(handle *handlemap.Handle) (*file, bool, error) {
 // This function is called when a handle is released (closed). It performs:
 //
 //  1. Removes handle from file's handle set
-//  2. If last handle: removes file from fileMap and releases all buffers
+//  2. If last handle: removes file from openFiles and releases all buffers
 //  3. If not last handle: file remains for other open handles
 //
 // Parameters:
@@ -185,7 +173,7 @@ func deleteOpenHandleForFile(bc *BlockCache, handle *handlemap.Handle, file *fil
 	delete(file.handles, handle)
 
 	if len(file.handles) == 0 {
-		fileMap.Delete(file.Name)
+		bc.openFiles.CompareAndDelete(file.Name, file)
 		if takeFileLock {
 			file.mu.Unlock()
 		}
@@ -215,7 +203,7 @@ func deleteOpenHandleForFile(bc *BlockCache, handle *handlemap.Handle, file *fil
 // Thread Safety:
 //
 // This function should be called only after all handles are closed and the
-// file is removed from fileMap, ensuring no new operations can start.
+// file is removed from openFiles, ensuring no new operations can start.
 //
 // Panics:
 //
@@ -244,32 +232,11 @@ func releaseAllBuffersForFile(bc *BlockCache, file *file) {
 		log.Debug("releaseAllBuffersForFile: Releasing bufferIdx: %d for blockIdx: %d of file %s from buffer table manager",
 			bufDesc.bufIdx, blk.idx, file.Name)
 
-		if ok := bc.btm.removeBufferDescriptor(bufDesc, bc.freeList); !ok {
-			// This should always succeed because where we are at the release, there shouldn't be any active references
-			// to the buffer (all handles are closed), so it must be present in the buffer table manager and must have
-			// refCnt exactly equal to refCntTableAndOneUser.
-			//
-			// This buffer may get chosen as victim, so max refCnt can be refCntTableAndOneUser+1 (the +1 is for the victim selection algo).
-			// If it's more than that, it indicates a bug in reference counting or buffer lifecycle management. We log
-			// loudly and continue with cleanup rather than panicking, so a stray reference does not bring down the mount.
-			if bufDesc.refCnt.Load() > refCountTableAndOneUser+1 {
-				log.Crit("releaseAllBuffersForFile: Failed to remove buffer: [%v], for blockIdx: %d of file %s from buffer table manager",
-					bufDesc, blk.idx, file.Name)
-			}
-
-			// TODO: force remove such buffers, currently force removal is not present which could cause leak.
-			if bufDesc.dirty.Load() {
-				// This means upload has failed for the buffer, release the buffer for now, this buffer would be collected
-				// by the victim selection algo later.
-				log.Warn("releaseAllBuffersForFile: BufferIdx: %d [%v] for blockIdx: %d of file %s is dirty, which indicates upload failure",
-					bufDesc.bufIdx, bufDesc, blk.idx, file.Name)
-			}
-
-			if ok := bufDesc.release(bc.freeList); ok {
-				log.Debug("releaseAllBuffersForFile: BufferIdx: %d for blockIdx: %d of file %s released to free list",
-					bufDesc.bufIdx, blk.idx, file.Name)
-			}
+		if bc.btm.detachBufferDescriptor(bufDesc, bc.freeList) {
+			log.Debug("releaseAllBuffersForFile: Detached bufferIdx: %d for blockIdx: %d of file %s",
+				bufDesc.bufIdx, blk.idx, file.Name)
 		}
+		bufDesc.release(bc.freeList)
 
 		log.Debug("releaseAllBuffersForFile: Released bufferIdx: %d for blockIdx: %d of file %s",
 			bufDesc.bufIdx, blk.idx, file.Name)
@@ -286,14 +253,14 @@ func releaseAllBuffersForFile(bc *BlockCache, file *file) {
 //
 // Parameters:
 //   - key: File path to check
-func deleteFileIfNoOpenHandles(key string) {
-	file, ok := checkFileExistsInOpen(key)
+func deleteFileIfNoOpenHandles(bc *BlockCache, key string) {
+	file, ok := checkFileExistsInOpen(bc, key)
 	if !ok {
 		return
 	}
 
 	if len(file.handles) == 0 {
-		fileMap.Delete(file.Name)
+		bc.openFiles.CompareAndDelete(file.Name, file)
 		// TODO: Release the buffers held by this file
 	}
 }
@@ -308,16 +275,16 @@ func deleteFileIfNoOpenHandles(key string) {
 //   - bool: true if file exists in map, false otherwise
 //
 // This is useful for checking file state without modifying the map.
-func checkFileExistsInOpen(key string) (*file, bool) {
-	f, ok := fileMap.Load(key)
+func checkFileExistsInOpen(bc *BlockCache, key string) (*file, bool) {
+	f, ok := bc.openFiles.Load(key)
 	if ok {
 		return f.(*file), true
 	}
 	return nil, false
 }
 
-func renameFileInFileMap(oldPath, newPath string) error {
-	value, ok := fileMap.Load(oldPath)
+func renameFileInFileMap(bc *BlockCache, oldPath, newPath string) error {
+	value, ok := bc.openFiles.Load(oldPath)
 	if !ok {
 		return fmt.Errorf("file not found for path: %s", oldPath)
 	}
@@ -327,16 +294,35 @@ func renameFileInFileMap(oldPath, newPath string) error {
 		return fmt.Errorf("invalid file type in map for path: %s", oldPath)
 	}
 
-	// Attempt to store the file with the new path
-	if _, loaded := fileMap.LoadOrStore(newPath, fileObj); loaded {
-		return fmt.Errorf("a file already exists for the new path: %s", newPath)
-	}
-
 	fileObj.mu.Lock()
 	fileObj.Name = newPath
 	fileObj.mu.Unlock()
 
-	// Remove the old path from the map
-	fileMap.Delete(oldPath)
+	bc.openFiles.CompareAndDelete(oldPath, fileObj)
+	bc.openFiles.Store(newPath, fileObj)
 	return nil
+}
+
+func renameOpenFilesInDirectory(bc *BlockCache, oldDir, newDir string) {
+	oldPrefix := strings.TrimSuffix(oldDir, "/") + "/"
+	newPrefix := strings.TrimSuffix(newDir, "/") + "/"
+
+	bc.openFiles.Range(func(key, value any) bool {
+		oldPath, ok := key.(string)
+		if !ok || !strings.HasPrefix(oldPath, oldPrefix) {
+			return true
+		}
+		fileObj, ok := value.(*file)
+		if !ok {
+			return true
+		}
+
+		newPath := newPrefix + strings.TrimPrefix(oldPath, oldPrefix)
+		fileObj.mu.Lock()
+		fileObj.Name = newPath
+		fileObj.mu.Unlock()
+		bc.openFiles.CompareAndDelete(oldPath, fileObj)
+		bc.openFiles.Store(newPath, fileObj)
+		return true
+	})
 }
