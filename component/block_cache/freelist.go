@@ -36,6 +36,7 @@ package block_cache
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -110,8 +111,8 @@ const (
 //  5. Evicted: reused for different block
 //  6. Destroyed during Stop(): all buffers deallocated
 type freeListType struct {
-	bufPool         *bufferPool            // Buffer pool for actual memory allocation
 	bufSize         int64                  // Size of each buffer in bytes (should match block size)
+	zeroBuf         []byte                 // Shared immutable zero block for sparse writes
 	firstFreeBuffer int                    // Index of first buffer in free list (-1 if empty)
 	lastFreeBuffer  int                    // Index of last buffer in free list (-1 if empty)
 	nxtVictimBuffer int                    // Next index to consider for eviction (round-robin)
@@ -155,15 +156,21 @@ type freeListType struct {
 // asynchronously to avoid blocking allocation. Released buffers are
 // queued for reset in a background goroutine.
 func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
+	if bufSize == 0 || bufSize > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("invalid buffer size: %d", bufSize)
+	}
 	//
-	// Size of buffers managed by bufferPool.
+	// Number of fixed-size buffers managed by the free list.
 	// This should be equal to the block size configured by the user.
-	maxBuffers := int(memSize / bufSize)
-
-	if maxBuffers == 0 {
+	bufferCount := memSize / bufSize
+	if bufferCount == 0 {
 		return nil, fmt.Errorf("Buffer Pool: Memory size %d bytes is too small for buffer size %d bytes, resulting in 0 buffers",
 			memSize, bufSize)
 	}
+	if bufferCount > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("buffer count exceeds platform limit: %d", bufferCount)
+	}
+	maxBuffers := int(bufferCount)
 
 	freeList := &freeListType{
 		firstFreeBuffer: 0,
@@ -171,24 +178,14 @@ func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
 		nxtVictimBuffer: 0,
 		bufDescriptors:  make([]*bufferDescriptor, maxBuffers),
 		resetBufferDesc: make(chan *bufferDescriptor, maxBuffers/2),
+		zeroBuf:         make([]byte, int(bufSize)),
 	}
 
-	freeList.bufPool = initBufferPool(bufSize, uint64(maxBuffers))
-
 	for i := range maxBuffers {
-		buf, err := freeList.bufPool.getBuffer()
-		if err != nil {
-			log.Err("freeList::createFreeList: Failed to get buffer from pool: %v", err)
-			// Release already allocated buffers.
-			for j := range i {
-				freeList.bufPool.putBuffer(freeList.bufDescriptors[j].buf)
-			}
-			return nil, err
-		}
 		freeList.bufDescriptors[i] = &bufferDescriptor{
 			bufIdx:        i,
 			nxtFreeBuffer: i + 1,
-			buf:           buf,
+			buf:           make([]byte, int(bufSize)),
 		}
 	}
 
@@ -223,12 +220,11 @@ func (fl *freeListType) destroy() {
 	defer fl.mutex.Unlock()
 
 	for i := range len(fl.bufDescriptors) {
-		fl.bufPool.putBuffer(fl.bufDescriptors[i].buf)
 		fl.bufDescriptors[i].buf = nil
 	}
 
 	fl.bufDescriptors = nil
-	fl.bufPool = nil
+	fl.zeroBuf = nil
 
 	log.Info("freeList::destroy: Free list destroyed")
 }

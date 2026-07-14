@@ -50,10 +50,14 @@ import (
 // errorInjectingComponent delegates all calls to an inner component but can return
 // injected errors for specific operations. Thread-safe via mutex.
 type errorInjectingComponent struct {
-	inner  internal.Component
-	mu     sync.RWMutex
-	errors map[string]error // operation name -> error to return
-	calls  map[string]int   // operation name -> call count
+	inner            internal.Component
+	mu               sync.RWMutex
+	errors           map[string]error // operation name -> error to return
+	calls            map[string]int   // operation name -> call count
+	stageDataGate    <-chan struct{}
+	stageDataStarted chan<- struct{}
+	activeStageData  int
+	maxStageData     int
 }
 
 func newErrorInjectingComponent(inner internal.Component) *errorInjectingComponent {
@@ -78,6 +82,25 @@ func (e *errorInjectingComponent) clearErrors() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.errors = make(map[string]error)
+}
+
+func (e *errorInjectingComponent) callCount(op string) int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.calls[op]
+}
+
+func (e *errorInjectingComponent) setStageDataControl(gate <-chan struct{}, started chan<- struct{}) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.stageDataGate = gate
+	e.stageDataStarted = started
+}
+
+func (e *errorInjectingComponent) maxConcurrentStageData() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.maxStageData
 }
 
 func (e *errorInjectingComponent) checkError(op string) error {
@@ -170,6 +193,9 @@ func (e *errorInjectingComponent) FlushFile(o internal.FlushFileOptions) error {
 	return e.inner.FlushFile(o)
 }
 func (e *errorInjectingComponent) ReleaseFile(o internal.ReleaseFileOptions) error {
+	if err := e.checkError("ReleaseFile"); err != nil {
+		return err
+	}
 	return e.inner.ReleaseFile(o)
 }
 func (e *errorInjectingComponent) RenameFile(o internal.RenameFileOptions) error {
@@ -232,6 +258,26 @@ func (e *errorInjectingComponent) GetCommittedBlockList(name string) (*internal.
 func (e *errorInjectingComponent) StageData(o internal.StageDataOptions) error {
 	if err := e.checkError("StageData"); err != nil {
 		return err
+	}
+	e.mu.Lock()
+	e.activeStageData++
+	if e.activeStageData > e.maxStageData {
+		e.maxStageData = e.activeStageData
+	}
+	gate := e.stageDataGate
+	started := e.stageDataStarted
+	e.mu.Unlock()
+
+	defer func() {
+		e.mu.Lock()
+		e.activeStageData--
+		e.mu.Unlock()
+	}()
+	if started != nil {
+		started <- struct{}{}
+	}
+	if gate != nil {
+		<-gate
 	}
 	return e.inner.StageData(o)
 }
