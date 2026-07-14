@@ -43,6 +43,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -126,6 +127,17 @@ func TestTruncateFile_InvalidHandleType(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid handle type")
 }
 
+func TestTruncateFile_InvalidSize(t *testing.T) {
+	bc := NewBlockCacheComponent().(*BlockCache)
+	bc.maxFileSize = 1024
+
+	err := bc.TruncateFile(internal.TruncateFileOptions{Name: "file", NewSize: -1})
+	assert.ErrorIs(t, err, syscall.EINVAL)
+
+	err = bc.TruncateFile(internal.TruncateFileOptions{Name: "file", NewSize: 1025})
+	assert.ErrorIs(t, err, syscall.EFBIG)
+}
+
 // config file tests
 func TestBlockCacheConfigure_DefaultConfig(t *testing.T) {
 	config.ResetConfig()
@@ -171,6 +183,47 @@ lazy-write: false
 	assert.NoError(t, err)
 	assert.True(t, bc.noPrefetch)
 	assert.Equal(t, uint32(0), bc.prefetch)
+}
+
+func TestBlockCacheConfigure_InvalidBlockSize(t *testing.T) {
+	for _, blockSize := range []string{"0", "-1", "0.0000001"} {
+		t.Run(blockSize, func(t *testing.T) {
+			config.ResetConfig()
+			t.Cleanup(config.ResetConfig)
+
+			cfg := fmt.Sprintf(`
+block_cache:
+  block-size-mb: %s
+  mem-size-mb: 4
+  parallelism: 2
+`, blockSize)
+			assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
+
+			bc := NewBlockCacheComponent().(*BlockCache)
+			err := bc.Configure(true)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "block-size-mb")
+		})
+	}
+}
+
+func TestBlockCacheConfigure_ZeroParallelism(t *testing.T) {
+	config.ResetConfig()
+	t.Cleanup(config.ResetConfig)
+
+	cfg := `
+block_cache:
+  block-size-mb: 1
+  mem-size-mb: 4
+  parallelism: 0
+lazy-write: false
+`
+	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
+
+	bc := NewBlockCacheComponent().(*BlockCache)
+	err := bc.Configure(true)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "parallelism")
 }
 
 func TestBlockCacheConfigure_TmpPathMountPathConflict(t *testing.T) {
@@ -532,6 +585,29 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileRead() {
 	suite.assert.NoError(err)
 }
 
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestHandleAccessMode() {
+	defer suite.TearDownTest()
+
+	fileName := "test_handle_access_mode.txt"
+	suite.writeFileHelper(fileName, []byte("content"))
+
+	readOnly, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_RDONLY, Mode: 0777})
+	suite.Require().NoError(err)
+	n, err := suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: readOnly, Data: []byte("x")})
+	suite.ErrorIs(err, syscall.EBADF)
+	suite.Zero(n)
+	err = suite.blockCache.TruncateFile(internal.TruncateFileOptions{Name: fileName, Handle: readOnly, NewSize: 0})
+	suite.ErrorIs(err, syscall.EBADF)
+	suite.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: readOnly}))
+
+	writeOnly, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_WRONLY, Mode: 0777})
+	suite.Require().NoError(err)
+	n, err = suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: writeOnly, Data: make([]byte, 1)})
+	suite.ErrorIs(err, syscall.EBADF)
+	suite.Zero(n)
+	suite.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: writeOnly}))
+}
+
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestBasicFileWrite() {
 	defer suite.TearDownTest()
 
@@ -781,6 +857,53 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileRename() {
 
 	err = suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	suite.assert.NoError(err)
+}
+
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRenameOpenFile() {
+	defer suite.TearDownTest()
+
+	src := "test_rename_open_src.txt"
+	dst := "test_rename_open_dst.txt"
+	h, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Data: []byte("before")})
+	suite.Require().NoError(err)
+
+	err = suite.blockCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
+	suite.Require().NoError(err)
+	_, err = os.Stat(filepath.Join(suite.testPath, src))
+	suite.ErrorIs(err, os.ErrNotExist)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 6, Data: []byte(" after")})
+	suite.Require().NoError(err)
+	suite.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
+	suite.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+
+	_, err = os.Stat(filepath.Join(suite.testPath, src))
+	suite.ErrorIs(err, os.ErrNotExist)
+	data, err := os.ReadFile(filepath.Join(suite.testPath, dst))
+	suite.NoError(err)
+	suite.Equal("before after", string(data))
+}
+
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRenameDirectoryWithOpenFile() {
+	defer suite.TearDownTest()
+
+	suite.Require().NoError(suite.blockCache.CreateDir(internal.CreateDirOptions{Name: "old-dir", Mode: 0777}))
+	h, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: "old-dir/file.txt", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Data: []byte("before")})
+	suite.Require().NoError(err)
+
+	err = suite.blockCache.RenameDir(internal.RenameDirOptions{Src: "old-dir", Dst: "new-dir"})
+	suite.Require().NoError(err)
+	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 6, Data: []byte(" after")})
+	suite.Require().NoError(err)
+	suite.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
+	suite.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+
+	data, err := os.ReadFile(filepath.Join(suite.testPath, "new-dir/file.txt"))
+	suite.NoError(err)
+	suite.Equal("before after", string(data))
 }
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileDelete() {
@@ -1284,8 +1407,14 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestGetAttr_TruncatedFile()
 	suite.assert.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}))
 	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
 
+	handle, err = suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName, Flags: os.O_RDWR, Mode: 0777})
+	suite.Require().NoError(err)
+	defer func() {
+		suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+	}()
+
 	before := time.Now()
-	err = suite.blockCache.TruncateFile(internal.TruncateFileOptions{Name: fileName, NewSize: 5})
+	err = suite.blockCache.TruncateFile(internal.TruncateFileOptions{Name: fileName, Handle: handle, NewSize: 5})
 	suite.assert.NoError(err)
 	after := time.Now()
 

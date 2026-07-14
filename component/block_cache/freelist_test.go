@@ -58,7 +58,7 @@ func TestCreateFreeList(t *testing.T) {
 	defer destroyFreeList()
 
 	assert.NotNil(t, freeList)
-	assert.NotNil(t, freeList.bufPool)
+	assert.Len(t, freeList.zeroBuf, int(bc.blockSize))
 	assert.NotNil(t, freeList.bufDescriptors)
 	assert.Len(t, freeList.bufDescriptors, 10)
 	assert.Equal(t, 0, freeList.firstFreeBuffer)
@@ -80,6 +80,16 @@ func TestCreateFreeList_ZeroMemSize(t *testing.T) {
 	freeList, err = createFreeList(bc.blockSize, 0)
 	assert.Error(t, err)
 	assert.Nil(t, freeList)
+}
+
+func TestCreateFreeList_InvalidBufferSize(t *testing.T) {
+	fl, err := createFreeList(0, 1024)
+	assert.Error(t, err)
+	assert.Nil(t, fl)
+
+	fl, err = createFreeList(1, ^uint64(0))
+	assert.Error(t, err)
+	assert.Nil(t, fl)
 }
 
 func TestDestroyFreeList(t *testing.T) {

@@ -134,7 +134,7 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 	// This should never happen and indicates a bug in the download logic.
 	err := fmt.Errorf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, valid: %v, downloadErr: %v",
 		bd.bufIdx, bd.valid.Load(), bd.downloadErr)
-	log.Crit("%s", err.Error())
+	log.Err("%v", err)
 
 	return err
 }
@@ -192,8 +192,5 @@ func (bd *bufferDescriptor) reset(fl *freeListType) {
 	bd.dirty.Store(false)
 	bd.downloadErr = nil
 	bd.uploadErr = nil
-	// Clear the buffer
-	// copy(bd.buf, fl.bufPool.getZeroBuffer())
-	// no need to copy zero buffer, just set all bytes to 0
 	clear(bd.buf)
 }

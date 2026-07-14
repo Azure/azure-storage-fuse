@@ -43,7 +43,7 @@ import (
 
 func TestCreateFreshHandleForFile(t *testing.T) {
 	now := time.Now()
-	handle := createFreshHandleForFile("test.txt", 1024, now, 0)
+	handle := createFreshHandleForFile("test.txt", 1024, now)
 
 	assert.NotNil(t, handle)
 	assert.Equal(t, "test.txt", handle.Path)
@@ -52,9 +52,10 @@ func TestCreateFreshHandleForFile(t *testing.T) {
 }
 
 func TestGetFileFromPath_FirstOpen(t *testing.T) {
+	cache := &BlockCache{}
 	handle := handlemap.NewHandle("newfile.txt")
 
-	f, firstOpen, err := getFileFromPath(handle)
+	f, firstOpen, err := getFileFromPath(cache, handle)
 	assert.NoError(t, err)
 
 	assert.NotNil(t, f)
@@ -66,15 +67,16 @@ func TestGetFileFromPath_FirstOpen(t *testing.T) {
 }
 
 func TestGetFileFromPath_SecondOpen(t *testing.T) {
+	cache := &BlockCache{}
 	// First open
 	handle1 := handlemap.NewHandle("existingfile.txt")
-	f1, firstOpen1, err := getFileFromPath(handle1)
+	f1, firstOpen1, err := getFileFromPath(cache, handle1)
 	assert.NoError(t, err)
 	assert.True(t, firstOpen1)
 
 	// Second open
 	handle2 := handlemap.NewHandle("existingfile.txt")
-	f2, firstOpen2, err := getFileFromPath(handle2)
+	f2, firstOpen2, err := getFileFromPath(cache, handle2)
 	assert.NoError(t, err)
 
 	assert.False(t, firstOpen2, "Should not be first open")
@@ -97,7 +99,7 @@ func TestDeleteOpenHandleForFile_LastHandle(t *testing.T) {
 
 	// Create file with one handle
 	handle := handlemap.NewHandle("deleteme.txt")
-	f, _, err := getFileFromPath(handle)
+	f, _, err := getFileFromPath(bc, handle)
 	assert.NoError(t, err)
 
 	handle.IFObj = &blockCacheHandle{
@@ -106,14 +108,14 @@ func TestDeleteOpenHandleForFile_LastHandle(t *testing.T) {
 	}
 
 	// Verify file is in map
-	_, exists := fileMap.Load("deleteme.txt")
+	_, exists := bc.openFiles.Load("deleteme.txt")
 	assert.True(t, exists)
 
 	// Delete the handle
 	deleteOpenHandleForFile(bc, handle, f, true)
 
 	// File should be removed from map
-	_, exists = fileMap.Load("deleteme.txt")
+	_, exists = bc.openFiles.Load("deleteme.txt")
 	assert.False(t, exists, "File should be removed when last handle is closed")
 }
 
@@ -125,11 +127,11 @@ func TestDeleteOpenHandleForFile_NotLastHandle(t *testing.T) {
 
 	// Create file with two handles
 	handle1 := handlemap.NewHandle("multi-handle.txt")
-	f, _, err := getFileFromPath(handle1)
+	f, _, err := getFileFromPath(bc, handle1)
 	assert.NoError(t, err)
 
 	handle2 := handlemap.NewHandle("multi-handle.txt")
-	_, _, err = getFileFromPath(handle2)
+	_, _, err = getFileFromPath(bc, handle2)
 	assert.NoError(t, err)
 
 	handle1.IFObj = &blockCacheHandle{
@@ -141,7 +143,7 @@ func TestDeleteOpenHandleForFile_NotLastHandle(t *testing.T) {
 	deleteOpenHandleForFile(bc, handle1, f, true)
 
 	// File should still be in map
-	_, exists := fileMap.Load("multi-handle.txt")
+	_, exists := bc.openFiles.Load("multi-handle.txt")
 	assert.True(t, exists, "File should remain when other handles are open")
 
 	// Should have one handle left
@@ -149,21 +151,23 @@ func TestDeleteOpenHandleForFile_NotLastHandle(t *testing.T) {
 }
 
 func TestCheckFileExistsInOpen_Exists(t *testing.T) {
+	cache := &BlockCache{}
 	// Create a file
 	handle := handlemap.NewHandle("checkexists.txt")
-	f, _, err := getFileFromPath(handle)
+	f, _, err := getFileFromPath(cache, handle)
 	assert.NoError(t, err)
 
 	// Check it exists
-	foundFile, exists := checkFileExistsInOpen("checkexists.txt")
+	foundFile, exists := checkFileExistsInOpen(cache, "checkexists.txt")
 
 	assert.True(t, exists)
 	assert.Equal(t, f, foundFile)
 }
 
 func TestCheckFileExistsInOpen_NotExists(t *testing.T) {
+	cache := &BlockCache{}
 	// Check non-existent file
-	foundFile, exists := checkFileExistsInOpen("doesnotexist.txt")
+	foundFile, exists := checkFileExistsInOpen(cache, "doesnotexist.txt")
 
 	assert.False(t, exists)
 	assert.Nil(t, foundFile)
@@ -180,7 +184,7 @@ func TestDeleteFileIfNoOpenHandles(t *testing.T) {
 
 	// Create a file
 	handle := handlemap.NewHandle("deleteifno.txt")
-	f, _, err := getFileFromPath(handle)
+	f, _, err := getFileFromPath(bc, handle)
 	assert.NoError(t, err)
 
 	handle.IFObj = &blockCacheHandle{
@@ -192,46 +196,58 @@ func TestDeleteFileIfNoOpenHandles(t *testing.T) {
 	deleteOpenHandleForFile(bc, handle, f, true)
 
 	// File should already be deleted by deleteOpenHandleForFile
-	_, exists := fileMap.Load("deleteifno.txt")
+	_, exists := bc.openFiles.Load("deleteifno.txt")
 	assert.False(t, exists)
 
 	// Call deleteFileIfNoOpenHandles - should be no-op (not in map)
-	deleteFileIfNoOpenHandles("deleteifno.txt")
+	deleteFileIfNoOpenHandles(bc, "deleteifno.txt")
 
 	// Still should not exist
-	_, exists = fileMap.Load("deleteifno.txt")
+	_, exists = bc.openFiles.Load("deleteifno.txt")
 	assert.False(t, exists)
 }
 
 func TestDeleteFileIfNoOpenHandles_WithEmptyHandles(t *testing.T) {
+	cache := &BlockCache{}
 	// Insert a file into the map with zero handles — simulates an orphaned entry
 	f := createFile("orphan.txt")
-	fileMap.Store("orphan.txt", f)
+	cache.openFiles.Store("orphan.txt", f)
 
-	_, exists := fileMap.Load("orphan.txt")
+	_, exists := cache.openFiles.Load("orphan.txt")
 	assert.True(t, exists)
 
 	// This should detect zero handles and remove the file from the map
-	deleteFileIfNoOpenHandles("orphan.txt")
+	deleteFileIfNoOpenHandles(cache, "orphan.txt")
 
-	_, exists = fileMap.Load("orphan.txt")
+	_, exists = cache.openFiles.Load("orphan.txt")
 	assert.False(t, exists, "File with no handles should be removed from map")
 }
 
 func TestDeleteFileIfNoOpenHandles_WithHandles(t *testing.T) {
+	cache := &BlockCache{}
 	// Insert a file into the map with one handle — should NOT delete
 	f := createFile("has_handle.txt")
 	handle := handlemap.NewHandle("has_handle.txt")
 	f.handles[handle] = struct{}{}
-	fileMap.Store("has_handle.txt", f)
+	cache.openFiles.Store("has_handle.txt", f)
 
-	deleteFileIfNoOpenHandles("has_handle.txt")
+	deleteFileIfNoOpenHandles(cache, "has_handle.txt")
 
-	_, exists := fileMap.Load("has_handle.txt")
+	_, exists := cache.openFiles.Load("has_handle.txt")
 	assert.True(t, exists, "File with handles should not be removed")
 
 	// Clean up
-	fileMap.Delete("has_handle.txt")
+	cache.openFiles.Delete("has_handle.txt")
+}
+
+func TestGetFileFromPath_IsolatedByCacheInstance(t *testing.T) {
+	firstCache := &BlockCache{}
+	secondCache := &BlockCache{}
+	first, _, err := getFileFromPath(firstCache, handlemap.NewHandle("same.txt"))
+	assert.NoError(t, err)
+	second, _, err := getFileFromPath(secondCache, handlemap.NewHandle("same.txt"))
+	assert.NoError(t, err)
+	assert.NotSame(t, first, second)
 }
 
 func TestBlockCacheHandle_Structure(t *testing.T) {
@@ -273,7 +289,7 @@ func TestGetFileFromPath_RaceCondition(t *testing.T) {
 			}()
 
 			handle := handlemap.NewHandle("racefile.txt")
-			f, _, err := getFileFromPath(handle)
+			f, _, err := getFileFromPath(bc, handle)
 			assert.NoError(t, err)
 			handle.IFObj = &blockCacheHandle{
 				file:            f,

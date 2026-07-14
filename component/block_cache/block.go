@@ -352,17 +352,7 @@ func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType,
 	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, sync: %v, usageCnt: %d, refCnt: %d",
 		blk.idx, bufDesc.bufIdx, sync, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
 
-	wait := make(chan struct{})
-
-	// Take the exclusive lock on buffer content to prevent further writes while upload is in progress.
-	// This will be released after upload is complete.
-	bufDesc.contentLock.Lock()
-
-	// Increment refCnt for upload
-	bufDesc.refCnt.Add(1)
-
-	// Schedule upload
-	workerPool.queueWork(blk, bufDesc, false /*download*/, wait, sync /*sync*/)
+	wait := blk.queueUpload(workerPool, bufDesc, sync)
 
 	if sync {
 		// Wait for upload to complete.
@@ -372,6 +362,14 @@ func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType,
 				bufDesc.bufIdx, blk.idx)
 		}
 	}
+}
+
+func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor, callerWaits bool) <-chan struct{} {
+	wait := make(chan struct{})
+	bufDesc.contentLock.Lock()
+	bufDesc.refCnt.Add(1)
+	workerPool.queueWork(blk, bufDesc, false /* download */, wait, callerWaits)
+	return wait
 }
 
 // scheduleDownload queues a block download operation to the worker pool.
