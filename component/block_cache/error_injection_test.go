@@ -193,6 +193,18 @@ func (s *ErrorInjectionTestSuite) TestCreateFile_BackendFails() {
 	s.assert.Contains(err.Error(), "CreateFile")
 }
 
+func (s *ErrorInjectionTestSuite) TestCreateFile_ReleasesBackendHandle() {
+	defer s.TearDownTest()
+
+	createCalls := s.mock.callCount("CreateFile")
+	releaseCalls := s.mock.callCount("ReleaseFile")
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "balanced_create.txt", Mode: 0777})
+	s.Require().NoError(err)
+	s.assert.Equal(createCalls+1, s.mock.callCount("CreateFile"))
+	s.assert.Equal(releaseCalls+1, s.mock.callCount("ReleaseFile"))
+	s.assert.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+}
+
 // ============================================================================
 // DeleteFile / RenameFile / DeleteDir / RenameDir error paths
 // ============================================================================
@@ -213,6 +225,26 @@ func (s *ErrorInjectionTestSuite) TestRenameFile_BackendFails() {
 	s.mock.setError("RenameFile", injectedError("RenameFile"))
 	err := s.blockCache.RenameFile(internal.RenameFileOptions{Src: "rename_src.txt", Dst: "rename_dst.txt"})
 	s.assert.Error(err)
+}
+
+func (s *ErrorInjectionTestSuite) TestRenameOpenFile_BackendFailureKeepsBinding() {
+	defer s.TearDownTest()
+
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "rename_open_src.txt", Mode: 0777})
+	s.Require().NoError(err)
+	file := h.IFObj.(*blockCacheHandle).file
+	s.mock.setError("RenameFile", injectedError("RenameFile"))
+	err = s.blockCache.RenameFile(internal.RenameFileOptions{Src: "rename_open_src.txt", Dst: ".fuse_hidden_test"})
+	s.Error(err)
+
+	bound, ok := checkFileExistsInOpen(s.blockCache, "rename_open_src.txt")
+	s.True(ok)
+	s.Same(file, bound)
+	_, hidden := checkFileExistsInOpen(s.blockCache, ".fuse_hidden_test")
+	s.False(hidden)
+	s.Equal("rename_open_src.txt", file.Name)
+	s.mock.clearErrors()
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 }
 
 func (s *ErrorInjectionTestSuite) TestDeleteDir_BackendFails() {
@@ -259,6 +291,43 @@ func (s *ErrorInjectionTestSuite) TestFlush_StageDataFails() {
 	// Release should also propagate error
 	err = s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	s.assert.Error(err)
+	s.blockCache.btm.mu.RLock()
+	s.assert.Empty(s.blockCache.btm.table)
+	s.blockCache.btm.mu.RUnlock()
+}
+
+func (s *ErrorInjectionTestSuite) TestFlush_StagesDirtyBlocksConcurrently() {
+	defer s.TearDownTest()
+
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "parallel_flush.txt", Mode: 0777})
+	s.Require().NoError(err)
+	blockSize := int64(s.blockCache.blockSize)
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("a")})
+	s.Require().NoError(err)
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: blockSize, Data: []byte("b")})
+	s.Require().NoError(err)
+
+	gate := make(chan struct{})
+	started := make(chan struct{}, 2)
+	s.mock.setStageDataControl(gate, started)
+	done := make(chan error, 1)
+	go func() {
+		done <- s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h})
+	}()
+
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			close(gate)
+			s.FailNow("timed out waiting for parallel StageData calls")
+		}
+	}
+	s.GreaterOrEqual(s.mock.maxConcurrentStageData(), 2)
+	close(gate)
+	s.NoError(<-done)
+	s.mock.setStageDataControl(nil, nil)
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 }
 
 // ============================================================================
@@ -301,7 +370,11 @@ func (s *ErrorInjectionTestSuite) TestRead_DownloadFails() {
 	s.assert.Error(err)
 
 	s.mock.clearErrors()
-	_ = s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+	n, err := s.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: buf})
+	s.assert.NoError(err)
+	s.assert.Equal(len("some content here"), n)
+	s.assert.Equal("some content here", string(buf[:n]))
+	s.assert.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 }
 
 // ============================================================================
