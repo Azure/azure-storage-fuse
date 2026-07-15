@@ -178,10 +178,8 @@ func (bd *bufferDescriptor) release(fl *freeListType) bool {
 	return false
 }
 
-// reset clears all fields of the buffer descriptor and zeros the buffer content.
-// This prepares the buffer for reuse by a different block.
-// Called when buffer is returned to free list or when a victim buffer is being reassigned.
-func (bd *bufferDescriptor) reset(fl *freeListType) {
+// resetMetadata clears descriptor state before the buffer is returned to the free list.
+func (bd *bufferDescriptor) resetMetadata() {
 	bd.block = nil
 	bd.nxtFreeBuffer = -1
 	bd.refCnt.Store(0)
@@ -192,5 +190,10 @@ func (bd *bufferDescriptor) reset(fl *freeListType) {
 	bd.dirty.Store(false)
 	bd.downloadErr = nil
 	bd.uploadErr = nil
+}
+
+// reset prepares a victim descriptor for immediate reassignment.
+func (bd *bufferDescriptor) reset() {
+	bd.resetMetadata()
 	clear(bd.buf)
 }

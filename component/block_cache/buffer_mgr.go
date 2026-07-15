@@ -243,7 +243,7 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 	if victim {
 		// Eviction successful: remove victim buffer's old block mapping and reset it for reuse
 		delete(btm.table, bufDesc.block)
-		bufDesc.reset(freeList)
+		bufDesc.reset()
 	}
 
 	// Step 6: Add the new buffer descriptor to the table and initialize it

@@ -289,11 +289,7 @@ func (f *file) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 		log.Debug("File::read: Read %d bytes from file: %s, blockIdx: %d, refCnt: %d, bytesRead: %d, numParallelReaders: %d, took: %v",
 			n, f.Name, blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), f.numPendingReads.Load(), time.Since(stime))
 
-		// Remove this buffer from table as it is fully read.
-		if bufDesc.bytesRead.Add(int32(n)) >= int32(bc.blockSize) && bc.btm.detachBufferDescriptor(bufDesc, bc.freeList) {
-			log.Debug("File::read: Removed bufferIdx: %d for blockIdx: %d from buffer table manager after full read at file: %s, offset: %d",
-				bufDesc.bufIdx, blk.idx, f.Name, options.Offset)
-		}
+		bufDesc.bytesRead.Add(int32(n))
 
 		if bufDesc.release(bc.freeList) {
 			log.Debug("File::read: Released bufferIdx: %d for blockIdx: %d back to free list after read at file: %s, offset: %d",
@@ -419,9 +415,8 @@ func (f *file) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 //  2. Buffer management: Gets or creates buffers for modified blocks
 //  3. Data copying: Copies user data into cached blocks
 //  4. Dirty tracking: Marks modified blocks as dirty
-//  5. Upload scheduling: Triggers async uploads for full blocks
-//  6. Size updates: Extends file size if write extends beyond current EOF
-//  7. Error handling: Implements sticky error semantics
+//  5. Size updates: Extends file size if the write reaches beyond EOF
+//  6. Error handling: Implements sticky error semantics
 //
 // Parameters:
 //   - options: Write options including offset, data buffer, and handle
@@ -438,11 +433,6 @@ func (f *file) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 //   - Blocks are uploaded when full or during flush
 //   - Writes are serialized per file via file mutex
 //   - Write wait group tracks pending writes for flush coordination
-//
-// Performance optimizations:
-//
-//   - Async upload when block is full and no other references exist
-//   - Write-through for completed blocks reduces flush latency
 //
 // Thread Safety:
 // While multiple goroutines can call write concurrently, the file mutex
@@ -562,7 +552,7 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		blk.numWrites.Add(1)
 		bufDesc.dirty.Store(true)
 		n := copy(bufDesc.buf[offsetInsideBlock:bc.blockSize], options.Data[bufOffset:])
-		totBytesWrittenBufDesc := bufDesc.bytesWritten.Add(int32(n))
+		bufDesc.bytesWritten.Add(int32(n))
 		bufDesc.contentLock.Unlock()
 
 		offset += int64(n)
@@ -571,15 +561,8 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		// Update file size if needed
 		f.updateFileSize(offset /* newFileSize */)
 
-		// Schedule upload if buffer is fully written and no other references
-		uploadScheduled := false
-		if totBytesWrittenBufDesc >= int32(bc.blockSize) && bufDesc.refCnt.Load() == refCountTableAndOneUser {
-			blk.scheduleUpload(bc.workerPool, bc.freeList, bufDesc, false /*sync*/)
-			uploadScheduled = true
-		}
-
-		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d, uploadScheduled: %v",
-			n, f.Name, f.size.Load(), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(), uploadScheduled)
+		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d",
+			n, f.Name, f.size.Load(), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load())
 
 		// Release the buffer descriptor
 		if ok := bufDesc.release(bc.freeList); ok {
@@ -830,20 +813,36 @@ func (f *file) flush(bc *BlockCache, takeFileLock bool) error {
 		return scanErr
 	}
 
-	uploads := make([]<-chan struct{}, len(dirtyBuffers))
+	type queuedUpload struct {
+		dirty dirtyBuffer
+		done  <-chan struct{}
+	}
+	uploads := make([]queuedUpload, 0, len(dirtyBuffers))
+	var queueErr error
 	for i, dirty := range dirtyBuffers {
-		uploads[i] = dirty.block.queueUpload(bc.workerPool, dirty.bufDesc, true /* callerWaits */)
+		done, err := dirty.block.queueUpload(bc.workerPool, dirty.bufDesc)
+		if err != nil {
+			queueErr = err
+			for _, unqueued := range dirtyBuffers[i:] {
+				unqueued.bufDesc.release(bc.freeList)
+			}
+			break
+		}
+		uploads = append(uploads, queuedUpload{dirty: dirty, done: done})
 	}
 
 	var uploadErr error
-	for i, done := range uploads {
-		<-done
-		dirty := dirtyBuffers[i]
+	for _, upload := range uploads {
+		<-upload.done
+		dirty := upload.dirty
 		dirty.bufDesc.release(bc.freeList) // task reference
 		if dirty.bufDesc.uploadErr != nil && uploadErr == nil {
 			uploadErr = dirty.bufDesc.uploadErr
 		}
 		dirty.bufDesc.release(bc.freeList) // lookup reference
+	}
+	if queueErr != nil {
+		return queueErr
 	}
 	if uploadErr != nil {
 		return uploadErr

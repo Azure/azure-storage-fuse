@@ -107,19 +107,17 @@ const (
 //  1. Created during Start(): all buffers start in free list
 //  2. Allocated: removed from free list, given to caller
 //  3. In use: held by buffer table manager and/or operations
-//  4. Released: returned to free list (via async goroutine)
+//  4. Released: metadata reset and returned directly to free list
 //  5. Evicted: reused for different block
 //  6. Destroyed during Stop(): all buffers deallocated
 type freeListType struct {
-	bufSize         int64                  // Size of each buffer in bytes (should match block size)
-	zeroBuf         []byte                 // Shared immutable zero block for sparse writes
-	firstFreeBuffer int                    // Index of first buffer in free list (-1 if empty)
-	lastFreeBuffer  int                    // Index of last buffer in free list (-1 if empty)
-	nxtVictimBuffer int                    // Next index to consider for eviction (round-robin)
-	bufDescriptors  []*bufferDescriptor    // Array of all buffer descriptors
-	resetBufferDesc chan *bufferDescriptor // Channel for async buffer reset
-	wg              sync.WaitGroup         // Tracks reset goroutine
-	mutex           sync.Mutex             // Protects free list state
+	bufSize         int64               // Size of each buffer in bytes (should match block size)
+	zeroBuf         []byte              // Shared immutable zero block for sparse writes
+	firstFreeBuffer int                 // Index of first buffer in free list (-1 if empty)
+	lastFreeBuffer  int                 // Index of last buffer in free list (-1 if empty)
+	nxtVictimBuffer int                 // Next index to consider for eviction (round-robin)
+	bufDescriptors  []*bufferDescriptor // Array of all buffer descriptors
+	mutex           sync.Mutex          // Protects free list state
 }
 
 // createFreeList initializes the free list and buffer pool.
@@ -130,7 +128,6 @@ type freeListType struct {
 //  1. Calculates number of buffers based on config or system RAM
 //  2. Allocates buffer descriptors for all buffers
 //  3. Initializes free list linking all buffers
-//  4. Starts async reset goroutine
 //
 // Parameters:
 //   - bufSize: Size of each buffer in bytes (typically equals block size)
@@ -149,12 +146,6 @@ type freeListType struct {
 // The number of buffers is calculated as memSize / bufSize.
 // With large block sizes (e.g., 16 MB), this may result in
 // relatively few buffers (e.g., 1 GB / 16 MB = 64 buffers).
-//
-// Buffer Reset Goroutine:
-//
-// Buffer reset (zero-fill and metadata clear) is expensive and done
-// asynchronously to avoid blocking allocation. Released buffers are
-// queued for reset in a background goroutine.
 func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
 	if bufSize == 0 || bufSize > uint64(math.MaxInt) {
 		return nil, fmt.Errorf("invalid buffer size: %d", bufSize)
@@ -177,7 +168,6 @@ func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
 		lastFreeBuffer:  maxBuffers - 1,
 		nxtVictimBuffer: 0,
 		bufDescriptors:  make([]*bufferDescriptor, maxBuffers),
-		resetBufferDesc: make(chan *bufferDescriptor, maxBuffers/2),
 		zeroBuf:         make([]byte, int(bufSize)),
 	}
 
@@ -192,10 +182,7 @@ func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
 	// Last buffer's next free buffer should be -1.
 	freeList.bufDescriptors[maxBuffers-1].nxtFreeBuffer = -1
 
-	// This is long running goroutine to reset the buffer descriptors released back to free list.
-	freeList.wg.Add(1)
 	freeList.bufSize = int64(bufSize)
-	go freeList.resetBufferDescriptors()
 
 	log.Info("freeList::createFreeList: Free list created with buffer size: %d bytes, max buffers: %d, total size: %.2f MB",
 		bufSize, maxBuffers, float64(uint64(maxBuffers)*bufSize)/(1024.0*1024.0))
@@ -206,16 +193,11 @@ func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
 // destroyFreeList cleans up the free list and releases all resources.
 //
 // This function is called during BlockCache.Stop(). It:
-//  1. Closes the reset channel to signal the reset goroutine to exit
-//  2. Waits for the reset goroutine to finish
-//  3. Returns all buffers to the buffer pool
-//  4. Clears all data structures
+//  1. Releases all buffers
+//  2. Clears all data structures
 //
 // After destroy completes, the free list cannot be used without recreating it.
 func (fl *freeListType) destroy() {
-	close(fl.resetBufferDesc)
-	fl.wg.Wait()
-
 	fl.mutex.Lock()
 	defer fl.mutex.Unlock()
 
@@ -227,58 +209,6 @@ func (fl *freeListType) destroy() {
 	fl.zeroBuf = nil
 
 	log.Info("freeList::destroy: Free list destroyed")
-}
-
-// resetBufferDescriptors is a background goroutine that resets released buffers.
-//
-// This function runs continuously, consuming buffer descriptors from the
-// resetBufferDesc channel and resetting them (clearing data and metadata).
-//
-// Why async reset:
-//
-// Resetting a buffer involves:
-//   - Zeroing the entire buffer (e.g., 16 MB memcpy)
-//   - Clearing metadata fields
-//
-// This is expensive (~1-2 ms per buffer). Doing it synchronously would
-// block the release operation and slow down the critical path. By doing
-// it asynchronously, we can:
-//   - Release buffers immediately
-//   - Perform reset in background
-//   - Batch multiple resets
-//
-// The goroutine exits when the resetBufferDesc channel is closed during
-// destroyFreeList().
-func (fl *freeListType) resetBufferDescriptors() {
-	defer fl.wg.Done()
-	for {
-		bufDesc, ok := <-fl.resetBufferDesc
-		if !ok {
-			// Channel closed, exit the goroutine.
-			return
-		}
-
-		// Reset the buffer descriptor.
-		bufDesc.reset(fl)
-
-		fl.mutex.Lock()
-		if fl.lastFreeBuffer == -1 {
-			// Free list is empty.
-			fl.firstFreeBuffer = bufDesc.bufIdx
-			fl.lastFreeBuffer = bufDesc.bufIdx
-		} else {
-			// Append to the end of free list.
-			// fl.bufDescriptors[fl.lastFreeBuffer].nxtFreeBuffer = bufDesc.bufIdx
-			// fl.lastFreeBuffer = bufDesc.bufIdx
-
-			// Append to start of free list to improve cache locality for recently used buffers.
-			bufDesc.nxtFreeBuffer = fl.firstFreeBuffer
-			fl.firstFreeBuffer = bufDesc.bufIdx
-		}
-		fl.mutex.Unlock()
-
-		log.Debug("freeList::releaseBufferDescriptors: Added bufferIdx: %d back to freelist", bufDesc.bufIdx)
-	}
 }
 
 // allocateBuffer allocates a buffer from the free list.
@@ -307,10 +237,10 @@ func (fl *freeListType) resetBufferDescriptors() {
 // block it belongs to from the start.
 func (fl *freeListType) allocateBuffer(blk *block) (*bufferDescriptor, error) {
 	fl.mutex.Lock()
-	defer fl.mutex.Unlock()
 
 	if fl.firstFreeBuffer == -1 {
 		// No free buffer, need to evict a buffer.
+		fl.mutex.Unlock()
 		return nil, errFreeListFull
 	}
 
@@ -320,7 +250,11 @@ func (fl *freeListType) allocateBuffer(blk *block) (*bufferDescriptor, error) {
 	if fl.firstFreeBuffer == -1 {
 		fl.lastFreeBuffer = -1
 	}
+	fl.mutex.Unlock()
 
+	// Clearing on allocation keeps released descriptors immediately available
+	// without exposing data from their previous block to sparse/local writes.
+	clear(bufDesc.buf)
 	bufDesc.nxtFreeBuffer = -1
 	bufDesc.block = blk
 
@@ -329,25 +263,24 @@ func (fl *freeListType) allocateBuffer(blk *block) (*bufferDescriptor, error) {
 	return bufDesc, nil
 }
 
-// releaseBuffer queues a buffer for reset and return to the free list.
-//
-// This method is called when a buffer's refCnt reaches 0 (no more users).
-// The buffer is queued for async reset via the resetBufferDesc channel.
+// releaseBuffer resets descriptor metadata and returns it directly to the free list.
 //
 // Parameters:
 //   - bufDesc: Buffer descriptor to release
-//
-// The actual reset and free list insertion happens in the background
-// goroutine (resetBufferDescriptors). This avoids blocking the release
-// operation on expensive buffer clearing.
-//
-// Why async:
-//
-// Buffer reset involves zeroing potentially large buffers (e.g., 16 MB).
-// Doing this synchronously would add latency to every buffer release,
-// which happens on the critical path of file operations.
 func (fl *freeListType) releaseBuffer(bufDesc *bufferDescriptor) {
-	fl.resetBufferDesc <- bufDesc
+	bufDesc.resetMetadata()
+
+	fl.mutex.Lock()
+	if fl.lastFreeBuffer == -1 {
+		fl.firstFreeBuffer = bufDesc.bufIdx
+		fl.lastFreeBuffer = bufDesc.bufIdx
+	} else {
+		bufDesc.nxtFreeBuffer = fl.firstFreeBuffer
+		fl.firstFreeBuffer = bufDesc.bufIdx
+	}
+	fl.mutex.Unlock()
+
+	log.Debug("freeList::releaseBuffer: Added bufferIdx: %d back to free list", bufDesc.bufIdx)
 }
 
 // debugListMustBeFull verifies that all buffers are in the free list.
@@ -487,7 +420,10 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *bufferTable
 					if bufDesc.dirty.Load() {
 						log.Debug("freeList::getVictimBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
 							bufDesc.bufIdx, bufDesc.block.idx)
-						bufDesc.block.scheduleUpload(workerPool, fl, bufDesc, true /* sync */)
+						if err := bufDesc.block.scheduleUpload(workerPool, fl, bufDesc); err != nil {
+							bufDesc.release(fl)
+							return nil, err
+						}
 					}
 
 					return bufDesc, nil
@@ -508,9 +444,15 @@ func (fl *freeListType) getVictimBuffer(workerPool *workerPool, btm *bufferTable
 	log.Err("freeList::getVictimBuffer: Printing all buffer descriptors for debugging:")
 	for i := range fl.bufDescriptors {
 		bufDesc := fl.bufDescriptors[i]
+		blockIdx := -1
+		fileName := ""
+		if bufDesc.block != nil {
+			blockIdx = bufDesc.block.idx
+			fileName = bufDesc.block.file.Name
+		}
 		log.Err("BufferIdx: %d, BlockIdx: %d, RefCnt: %d, BytesRead: %d, BytesWritten: %d, Dirty: %t, EvictionCycles: %d, file: %s",
-			bufDesc.bufIdx, bufDesc.block.idx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(),
-			bufDesc.bytesWritten.Load(), bufDesc.dirty.Load(), bufDesc.numEvictionCyclesPassed.Load(), bufDesc.block.file.Name)
+			bufDesc.bufIdx, blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(),
+			bufDesc.bytesWritten.Load(), bufDesc.dirty.Load(), bufDesc.numEvictionCyclesPassed.Load(), fileName)
 	}
 
 	return nil, errNoVictimBufferFound
