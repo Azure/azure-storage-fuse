@@ -1084,6 +1084,36 @@ func (suite *FileOperationsTestSuite) TestConcurrent_ReadWriteFlush() {
 	}
 }
 
+func (suite *FileOperationsTestSuite) TestRead_DoesNotEvictDirtyBuffer() {
+	name := "test_read_dirty_buffer.txt"
+	handle, f := suite.openWriteFile(name, nil)
+	defer suite.closeFile(handle)
+
+	payload := bytes.Repeat([]byte("D"), int(suite.blockCache.blockSize)/2)
+	suite.Require().NoError(f.write(suite.blockCache, &internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   payload,
+	}))
+
+	for range 2 {
+		data := make([]byte, len(payload))
+		n, err := f.read(suite.blockCache, &internal.ReadInBufferOptions{
+			Handle: handle,
+			Offset: 0,
+			Data:   data,
+		})
+		suite.Require().NoError(err)
+		suite.Equal(len(payload), n)
+		suite.Equal(payload, data)
+	}
+
+	suite.Require().NoError(f.flush(suite.blockCache, true))
+	diskData, err := os.ReadFile(filepath.Join(suite.testPath, name))
+	suite.Require().NoError(err)
+	suite.Equal(payload, diskData)
+}
+
 // Truncate then write then flush must produce correct data.
 func (suite *FileOperationsTestSuite) TestTruncate_ThenWrite_ThenFlush() {
 	name := "test_trunc_write_flush.txt"
@@ -1112,8 +1142,8 @@ func (suite *FileOperationsTestSuite) TestTruncate_ThenWrite_ThenFlush() {
 	suite.assert.Equal([]byte("HELLO"), diskData[5:10])
 }
 
-// Write a full block to trigger async upload, then read back to verify.
-func (suite *FileOperationsTestSuite) TestWrite_FullBlockTriggersUpload() {
+// Write a full block, flush it, then read back to verify.
+func (suite *FileOperationsTestSuite) TestWrite_FullBlockFlushesCorrectly() {
 	name := "test_write_full_block.txt"
 	handle, f := suite.openWriteFile(name, nil)
 	defer suite.closeFile(handle)

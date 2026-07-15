@@ -170,7 +170,7 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	}
 
 	// Reset
-	bufDesc.reset(freeList)
+	bufDesc.reset()
 
 	// Verify all fields are reset
 	assert.Nil(t, bufDesc.block)
