@@ -330,6 +330,107 @@ func (s *ErrorInjectionTestSuite) TestFlush_StagesDirtyBlocksConcurrently() {
 	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 }
 
+func (s *ErrorInjectionTestSuite) TestWrite_RepeatedPartialOverwriteWaitsForFlush() {
+	defer s.TearDownTest()
+
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "partial_overwrite.txt", Mode: 0777})
+	s.Require().NoError(err)
+
+	gate := make(chan struct{})
+	var closeGate sync.Once
+	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
+	started := make(chan struct{}, 1)
+	s.mock.setStageDataControl(gate, started)
+
+	chunk := bytes.Repeat([]byte("W"), 4096)
+	for range int(s.blockCache.blockSize) / len(chunk) {
+		_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: chunk})
+		s.Require().NoError(err)
+	}
+
+	select {
+	case <-started:
+		closeGate.Do(func() { close(gate) })
+		s.FailNow("partial overwrites staged data before explicit flush")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h})
+	}()
+	select {
+	case <-started:
+		closeGate.Do(func() { close(gate) })
+	case <-time.After(time.Second):
+		closeGate.Do(func() { close(gate) })
+		s.FailNow("flush did not stage dirty data")
+	}
+	s.NoError(<-done)
+	s.mock.setStageDataControl(nil, nil)
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+}
+
+func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
+	defer s.TearDownTest()
+
+	// A single worker lets the first upload gate the second one in the queue.
+	s.blockCache.workerPool.destroy()
+	s.blockCache.workerPool = createWorkerPool(1, s.blockCache)
+
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "queued_upload_size.txt", Mode: 0777})
+	s.Require().NoError(err)
+	blockSize := int(s.blockCache.blockSize)
+	first := bytes.Repeat([]byte("A"), blockSize)
+	last := bytes.Repeat([]byte("C"), blockSize)
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: first})
+	s.Require().NoError(err)
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: int64(2 * blockSize), Data: last})
+	s.Require().NoError(err)
+
+	file := h.IFObj.(*blockCacheHandle).file
+	firstDesc, err := s.blockCache.btm.lookupBufferDescriptor(file.blockList.list[0], s.blockCache.freeList)
+	s.Require().NoError(err)
+	lastDesc, err := s.blockCache.btm.lookupBufferDescriptor(file.blockList.list[2], s.blockCache.freeList)
+	s.Require().NoError(err)
+
+	gate := make(chan struct{})
+	var closeGate sync.Once
+	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
+	started := make(chan struct{}, 2)
+	s.mock.setStageDataControl(gate, started)
+	firstDone, err := file.blockList.list[0].queueUpload(s.blockCache.workerPool, firstDesc)
+	s.Require().NoError(err)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		closeGate.Do(func() { close(gate) })
+		s.FailNow("first upload did not start")
+	}
+
+	lastDone, err := file.blockList.list[2].queueUpload(s.blockCache.workerPool, lastDesc)
+	s.Require().NoError(err)
+	originalSize := file.size.Load()
+	file.size.Store(int64(blockSize))
+	closeGate.Do(func() { close(gate) })
+	<-firstDone
+	<-lastDone
+
+	firstDesc.release(s.blockCache.freeList) // task reference
+	firstDesc.release(s.blockCache.freeList) // lookup reference
+	lastDesc.release(s.blockCache.freeList)  // task reference
+	lastDesc.release(s.blockCache.freeList)  // lookup reference
+	file.size.Store(originalSize)
+	s.mock.setStageDataControl(nil, nil)
+
+	s.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	data, err := os.ReadFile(filepath.Join(s.testPath, "queued_upload_size.txt"))
+	s.Require().NoError(err)
+	s.Equal(first, data[:blockSize])
+	s.Equal(last, data[2*blockSize:])
+}
+
 // ============================================================================
 // CommitData error path — exercises flush commit failure
 // ============================================================================
@@ -540,18 +641,17 @@ func (s *ErrorInjectionTestSuite) TestConcurrent_WritesWithEvictionAndErrors() {
 }
 
 // ============================================================================
-// Full block write triggers async upload, then read back — exercises
-// scheduleUpload async path and worker uploadBlock cleanup
+// Full block writes remain dirty until sync, then read back with full integrity.
 // ============================================================================
 
-func (s *ErrorInjectionTestSuite) TestAsyncUpload_ThenRead() {
+func (s *ErrorInjectionTestSuite) TestFullBlockWrite_SyncThenRead() {
 	defer s.TearDownTest()
 
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "async_upload.txt", Mode: 0777})
 	s.assert.NoError(err)
 
 	blockSz := int(s.blockCache.blockSize)
-	// Write exactly one full block to trigger async upload
+	// Write exactly one full block; it must remain local until sync.
 	payload := bytes.Repeat([]byte("A"), blockSz)
 	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: payload})
 	s.assert.NoError(err)
@@ -577,11 +677,10 @@ func (s *ErrorInjectionTestSuite) TestAsyncUpload_ThenRead() {
 }
 
 // ============================================================================
-// Read-after-write on uncommitted block — exercises the bufDescStatusNeedsFileFlush
-// retry path in file.read and file.write
+// Read-after-write after sync verifies committed full-block integrity.
 // ============================================================================
 
-func (s *ErrorInjectionTestSuite) TestReadAfterWrite_UncommittedBlock() {
+func (s *ErrorInjectionTestSuite) TestReadAfterWrite_SyncedBlock() {
 	defer s.TearDownTest()
 
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "rw_uncommitted.txt", Mode: 0777})
@@ -592,10 +691,10 @@ func (s *ErrorInjectionTestSuite) TestReadAfterWrite_UncommittedBlock() {
 	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: payload})
 	s.assert.NoError(err)
 
-	// Sync to upload (block becomes uncommitted)
+	// Sync stages and commits the block.
 	s.assert.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
 
-	// Now read — the block is committed after sync, so this should succeed
+	// The committed block must read back exactly.
 	buf := make([]byte, blockSz)
 	n, err := s.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: buf})
 	s.assert.NoError(err)
@@ -784,7 +883,7 @@ func (s *ErrorInjectionTestSuite) TestFlush_EmptyFile_CreateFileFails() {
 	_ = s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 }
 
-// Test write to a block that was previously uploaded and evicted — exercises the
+// Test write to a block that was previously committed and evicted — exercises the
 // bufDescStatusNeedsFileFlush retry path in file.write.
 func (s *ErrorInjectionTestSuite) TestWrite_UncommittedBlockRetry() {
 	defer s.TearDownTest()
@@ -794,7 +893,7 @@ func (s *ErrorInjectionTestSuite) TestWrite_UncommittedBlockRetry() {
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "uncommitted_retry.txt", Mode: 0777})
 	s.assert.NoError(err)
 
-	// Write a full block — triggers async upload, block becomes uncommitted
+	// Write and commit a full block.
 	payload := bytes.Repeat([]byte("U"), blockSz)
 	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: payload})
 	s.assert.NoError(err)
