@@ -34,9 +34,9 @@
 package block_cache
 
 import (
+	"fmt"
 	"sync"
 
-	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
@@ -65,6 +65,10 @@ type task struct {
 	download           bool              // true=download, false=upload
 	sync               bool              // true=synchronous, false=asynchronous
 	signalOnCompletion chan<- struct{}   // Closed when operation completes
+	path               string            // Immutable storage path for this operation
+	fileSize           int64             // File size snapshot for downloads
+	blockID            string            // Block ID snapshot for uploads
+	uploadSize         int               // Validated number of bytes to upload
 }
 
 // workerPool manages a pool of goroutines for async I/O operations.
@@ -162,30 +166,13 @@ func (wp *workerPool) worker() {
 	}
 }
 
-// queueWork submits a task to the worker pool.
-//
-// Parameters:
-//   - block: Block to operate on
-//   - bufDesc: Buffer descriptor for the block
-//   - download: true for download, false for upload
-//   - signalOnCompletion: Channel to close when operation completes
-//   - sync: true if caller will wait, false if fire-and-forget
-//
-// This method creates a task and queues it to the worker pool. A worker will
-// pick up the task and execute it asynchronously.
+// queueTask submits a fully initialized task to the worker pool.
 //
 // Blocking behavior:
 //   - If task channel is full, this method blocks until space is available
 //   - This provides backpressure when workers can't keep up with requests
-func (wp *workerPool) queueWork(block *block, bufDesc *bufferDescriptor, download bool, signalOnCompletion chan<- struct{}, sync bool) {
-	t := &task{
-		block:              block,
-		bufDesc:            bufDesc,
-		download:           download,
-		signalOnCompletion: signalOnCompletion,
-		sync:               sync,
-	}
-	wp.tasks <- t
+func (wp *workerPool) queueTask(task *task) {
+	wp.tasks <- task
 }
 
 // downloadBlock downloads a block from Azure Storage into a buffer.
@@ -221,10 +208,10 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 	bufDesc := task.bufDesc
 
 	_, err = bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
-		Path:   block.file.Name,
+		Path:   task.path,
 		Offset: int64(uint64(block.idx) * bc.blockSize),
 		Data:   bufDesc.buf,
-		Size:   block.file.size.Load(),
+		Size:   task.fileSize,
 	})
 	if err != nil {
 		log.Err("BlockCache::downloadBlock: ReadInBuffer failed for file %s block idx %d: %v",
@@ -238,6 +225,8 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 		bufDesc.valid.Store(true)
 	}
 
+	bufDesc.contentLock.Unlock()
+
 	if !task.sync {
 		if ok := bufDesc.release(bc.freeList); ok {
 			log.Debug("BlockCache::downloadBlock: Released bufferIdx: %d for blockIdx: %d of file: %s back to free list after async download",
@@ -246,8 +235,6 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 		log.Debug("BlockCache::downloadBlock: Async download completed for bufferIdx %d for blockIdx %d, refCnt: %d, file: %s",
 			bufDesc.bufIdx, block.idx, bufDesc.refCnt.Load(), block.file.Name)
 	}
-
-	bufDesc.contentLock.Unlock()
 
 	close(task.signalOnCompletion)
 }
@@ -260,9 +247,8 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 //  3. On success: marks buffer as clean, updates block state to uncommitedBlock
 //  4. On failure: stores error in bufDesc and file error state
 //  5. Resets write count on the block
-//  6. For async uploads: removes buffer from table (cleanup)
-//  7. Releases content lock to allow new writes
-//  8. Signals completion via task.signalOnCompletion channel
+//  6. Releases content lock to allow new writes
+//  7. Signals completion via task.signalOnCompletion channel
 //
 // Parameters:
 //   - task: Task describing the upload operation
@@ -279,37 +265,32 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 // Upload errors are stored in both bufDesc.uploadErr and file.err. This ensures
 // both the buffer-level and file-level operations fail fast after an error.
 //
-// Reference Counting:
-//
-//   - Upload holds a reference during the operation
-//   - Sync uploads: caller releases reference after waiting
-//   - Async uploads: buffer is removed from table (releases table reference)
-//
-// Async Upload Cleanup:
-//
-// For async uploads, the worker removes the buffer from the table after upload
-// completes. This frees cache space for other blocks. The caller doesn't wait,
-// so we can't rely on the caller to release the buffer.
+// Upload holds a task reference during the operation. The caller waits for
+// completion and releases that reference.
 func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	block := task.block
 	bufDesc := task.bufDesc
 
-	block.id = common.GetBlockID(common.BlockIDLength)
-
-	err := bc.NextComponent().StageData(internal.StageDataOptions{
-		Name: block.file.Name,
-		Data: bufDesc.buf[:getBlockSize(block.file.size.Load(), block.idx, int64(bc.blockSize))],
-		Id:   block.id,
-	})
+	var err error
+	if task.uploadSize <= 0 || task.uploadSize > len(bufDesc.buf) {
+		err = fmt.Errorf("invalid upload size %d for block %d of %s", task.uploadSize, block.idx, task.path)
+	} else {
+		err = bc.NextComponent().StageData(internal.StageDataOptions{
+			Name: task.path,
+			Data: bufDesc.buf[:task.uploadSize],
+			Id:   task.blockID,
+		})
+	}
 
 	if err != nil {
 		log.Err("BlockCache::getBlockIDList : Failed to write block for %v, ID: %v, file: %s [%v]",
-			block.file.Name, block.id, block.file.Name, err)
+			task.path, task.blockID, task.path, err)
 		bufDesc.uploadErr = err
 		block.file.err.Store(&err)
 	} else {
 		log.Debug("BlockCache::uploadBlock: Successfully uploaded blockIdx: %d from bufferIdx: %d, file: %s, sync: %t",
-			block.idx, bufDesc.bufIdx, block.file.Name, task.sync)
+			block.idx, bufDesc.bufIdx, task.path, task.sync)
+		block.id = task.blockID
 		bufDesc.dirty.Store(false)
 		// Change the state of the block to uncommitted, to reflect that it is uploaded but not yet committed.
 		block.setState(uncommitedBlock)
@@ -319,14 +300,6 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	block.numWrites.Store(0)
 
 	bufDesc.contentLock.Unlock()
-
-	if !task.sync {
-		if err == nil && bc.btm.detachBufferDescriptor(bufDesc, bc.freeList) {
-			log.Debug("BlockCache::uploadBlock: Removed bufferIdx: %d for blockIdx: %d of file: %s from buffer table manager after async upload",
-				bufDesc.bufIdx, block.idx, block.file.Name)
-		}
-		bufDesc.release(bc.freeList)
-	}
 
 	close(task.signalOnCompletion)
 }

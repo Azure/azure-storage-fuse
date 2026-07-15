@@ -278,6 +278,25 @@ func TestValidateBlockIndex(t *testing.T) {
 	assert.NoError(t, validateBlockIndex(MAX_BLOCKS))
 }
 
+func TestGetUploadSize(t *testing.T) {
+	const blockSize = int64(16 * 1024 * 1024)
+
+	size, err := getUploadSize(3*blockSize, 2, blockSize)
+	assert.NoError(t, err)
+	assert.Equal(t, int(blockSize), size)
+
+	size, err = getUploadSize(2*blockSize+1024, 2, blockSize)
+	assert.NoError(t, err)
+	assert.Equal(t, 1024, size)
+
+	_, err = getUploadSize(blockSize, 2, blockSize)
+	assert.Error(t, err)
+	_, err = getUploadSize(0, 0, blockSize)
+	assert.Error(t, err)
+	_, err = getUploadSize(blockSize, -1, blockSize)
+	assert.Error(t, err)
+}
+
 func TestValidateBlockList_EmptyOrNil(t *testing.T) {
 	blockSize := uint64(1024 * 1024)
 	f := createFile("empty_list.txt")
