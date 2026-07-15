@@ -35,7 +35,6 @@ package block_cache
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -168,19 +167,27 @@ func TestFreeList_ReleaseBuffer(t *testing.T) {
 	// Release it back
 	freeList.releaseBuffer(bufDesc)
 
-	// Give some time for the reset goroutine to process
-	// The buffer should eventually be back in the free list
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if isBufDescExistsInFreeList(freeList, bufDesc.bufIdx) {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
 	// Verify the buffer is back in the free list
 	isBack := isBufDescExistsInFreeList(freeList, bufDesc.bufIdx)
 	assert.True(t, isBack, "Released buffer should be back in the free list")
+}
+
+func TestFreeList_AllocateClearsReleasedBuffer(t *testing.T) {
+	bc = &BlockCache{blockSize: 1024}
+	setupTestFreeList(t, bc.blockSize, bc.blockSize)
+	defer destroyFreeList()
+
+	first, err := freeList.allocateBuffer(createBlock(0, "first", localBlock, createFile("first.txt")))
+	assert.NoError(t, err)
+	for i := range first.buf {
+		first.buf[i] = 0xff
+	}
+	freeList.releaseBuffer(first)
+
+	second, err := freeList.allocateBuffer(createBlock(0, "second", localBlock, createFile("second.txt")))
+	assert.NoError(t, err)
+	assert.Equal(t, first, second)
+	assert.Equal(t, make([]byte, len(second.buf)), second.buf)
 }
 
 func TestFreeList_GetVictimBuffer(t *testing.T) {

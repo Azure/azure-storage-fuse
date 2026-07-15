@@ -2451,6 +2451,81 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRandomWritesAndFullRead
 	suite.assert.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
 }
 
+func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFioStyleRandomWritesUnderMemoryPressure() {
+	defer suite.TearDownTest()
+
+	const (
+		fileCount     = 4
+		blocksPerFile = 8
+		passes        = 2
+	)
+	blockSize := int(suite.blockCache.blockSize)
+	fileSize := blockSize * blocksPerFile
+	expected := make([][]byte, fileCount)
+	var wg sync.WaitGroup
+	errs := make(chan error, fileCount)
+
+	for fileIdx := range fileCount {
+		expected[fileIdx] = make([]byte, fileSize)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			name := fmt.Sprintf("fio_writer_%d.bin", fileIdx)
+			handle, err := suite.blockCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0777})
+			if err != nil {
+				errs <- err
+				return
+			}
+
+			rng := rand.New(rand.NewSource(int64(100 + fileIdx)))
+			for pass := range passes {
+				for _, blockIdx := range rng.Perm(blocksPerFile) {
+					value := byte(1 + fileIdx*passes + pass)
+					payload := bytes.Repeat([]byte{value}, blockSize)
+					offset := blockIdx * blockSize
+					if _, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{
+						Handle: handle,
+						Offset: int64(offset),
+						Data:   payload,
+					}); err != nil {
+						errs <- err
+						_ = suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+						return
+					}
+					copy(expected[fileIdx][offset:offset+blockSize], payload)
+				}
+			}
+
+			if err = suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: handle}); err != nil {
+				errs <- err
+				_ = suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+				return
+			}
+			if err = suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}); err != nil {
+				errs <- err
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		suite.Require().NoError(err)
+	}
+
+	for fileIdx := range fileCount {
+		name := fmt.Sprintf("fio_writer_%d.bin", fileIdx)
+		handle, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: name, Flags: os.O_RDONLY, Mode: 0777})
+		suite.Require().NoError(err)
+		got := make([]byte, fileSize)
+		n, err := suite.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: handle, Data: got})
+		suite.Require().NoError(err)
+		suite.Equal(fileSize, n)
+		suite.Equal(expected[fileIdx], got)
+		suite.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+	}
+}
+
 // ============================================================================
 // Test Suite Runner
 // ============================================================================

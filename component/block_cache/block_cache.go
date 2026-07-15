@@ -772,8 +772,7 @@ func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, 
 //  1. Allocates or reuses blocks to cover the write range
 //  2. Copies data from user buffer to cached blocks
 //  3. Marks modified blocks as dirty
-//  4. May schedule async upload if blocks are full
-//  5. Updates file size if the write extends the file
+//  4. Updates file size if the write extends the file
 //
 // Write Behavior:
 //   - Writes are cached in memory; blocks are uploaded to storage during flush

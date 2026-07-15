@@ -329,47 +329,73 @@ func validateBlockIndex(blockIdx int) error {
 
 // scheduleUpload queues a block upload operation to the worker pool.
 //
-// This method schedules the block data in bufDesc to be uploaded to Azure Storage.
-// Upload can be synchronous (blocks until complete) or asynchronous (returns immediately).
+// This method uploads block data through the worker pool and waits for completion.
 //
 // Parameters:
 //   - bufDesc: Buffer descriptor containing the block data to upload
-//   - sync: If true, waits for upload to complete; if false, returns immediately
 //
 // Behavior:
 //   - Increments buffer refCnt to prevent eviction during upload
 //   - Locks buffer content (exclusively) during upload to prevent concurrent access
-//   - For sync uploads: blocks until upload completes, then releases buffer
-//   - For async uploads: releases buffer after upload completes in worker goroutine
+//   - Blocks until upload completes, then releases the task reference
 //
 // After upload:
 //   - Block state changes to uncommitedBlock
 //   - Block ID is generated and assigned
 //   - Buffer is marked as not dirty
 //   - Any upload errors are captured in bufDesc.uploadErr
-func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor, sync bool) {
-	// This buffer descriptor has reached its maximum usage count, schedule upload.
-	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, sync: %v, usageCnt: %d, refCnt: %d",
-		blk.idx, bufDesc.bufIdx, sync, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
+func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor) error {
+	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, usageCnt: %d, refCnt: %d",
+		blk.idx, bufDesc.bufIdx, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
 
-	wait := blk.queueUpload(workerPool, bufDesc, sync)
-
-	if sync {
-		// Wait for upload to complete.
-		<-wait
-		if ok := bufDesc.release(freeList); ok {
-			log.Debug("BlockCache::scheduleUpload: Released bufferIdx: %d for blockIdx: %d back to free list after sync upload",
-				bufDesc.bufIdx, blk.idx)
-		}
+	wait, err := blk.queueUpload(workerPool, bufDesc)
+	if err != nil {
+		return err
 	}
+
+	<-wait
+	if ok := bufDesc.release(freeList); ok {
+		log.Debug("BlockCache::scheduleUpload: Released bufferIdx: %d for blockIdx: %d back to free list after upload",
+			bufDesc.bufIdx, blk.idx)
+	}
+	return bufDesc.uploadErr
 }
 
-func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor, callerWaits bool) <-chan struct{} {
+func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor) (<-chan struct{}, error) {
 	wait := make(chan struct{})
 	bufDesc.contentLock.Lock()
+	uploadSize, err := getUploadSize(blk.file.size.Load(), blk.idx, int64(len(bufDesc.buf)))
+	if err != nil {
+		bufDesc.contentLock.Unlock()
+		return nil, err
+	}
 	bufDesc.refCnt.Add(1)
-	workerPool.queueWork(blk, bufDesc, false /* download */, wait, callerWaits)
-	return wait
+	workerPool.queueTask(&task{
+		block:              blk,
+		bufDesc:            bufDesc,
+		download:           false,
+		sync:               true,
+		signalOnCompletion: wait,
+		path:               blk.file.Name,
+		blockID:            common.GetBlockID(common.BlockIDLength),
+		uploadSize:         uploadSize,
+	})
+	return wait, nil
+}
+
+func getUploadSize(fileSize int64, blockIdx int, bufferSize int64) (int, error) {
+	if blockIdx < 0 || bufferSize <= 0 {
+		return 0, fmt.Errorf("invalid upload geometry: fileSize=%d blockIdx=%d bufferSize=%d", fileSize, blockIdx, bufferSize)
+	}
+	blockOffset := int64(blockIdx) * bufferSize
+	if blockOffset < 0 || blockOffset >= fileSize {
+		return 0, fmt.Errorf("block %d starts at %d beyond file size %d", blockIdx, blockOffset, fileSize)
+	}
+	uploadSize := min(bufferSize, fileSize-blockOffset)
+	if uploadSize <= 0 || uploadSize > bufferSize {
+		return 0, fmt.Errorf("invalid upload size %d for block %d", uploadSize, blockIdx)
+	}
+	return int(uploadSize), nil
 }
 
 // scheduleDownload queues a block download operation to the worker pool.
@@ -396,7 +422,15 @@ func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListTyp
 	bufDesc.refCnt.Add(1)
 
 	// Schedule download
-	workerPool.queueWork(blk, bufDesc, true, wait, sync)
+	workerPool.queueTask(&task{
+		block:              blk,
+		bufDesc:            bufDesc,
+		download:           true,
+		sync:               sync,
+		signalOnCompletion: wait,
+		path:               blk.file.Name,
+		fileSize:           blk.file.size.Load(),
+	})
 
 	if sync {
 		// Wait for download to complete.
