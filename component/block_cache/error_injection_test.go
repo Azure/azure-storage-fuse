@@ -371,6 +371,54 @@ func (s *ErrorInjectionTestSuite) TestWrite_RepeatedPartialOverwriteWaitsForFlus
 	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 }
 
+func (s *ErrorInjectionTestSuite) TestWrite_FullCoverageQueuesAsyncWriteback() {
+	defer s.TearDownTest()
+
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "full_coverage_writeback.txt", Mode: 0777})
+	s.Require().NoError(err)
+	blockSize := int(s.blockCache.blockSize)
+	chunkSize := blockSize / 4
+
+	gate := make(chan struct{})
+	var closeGate sync.Once
+	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
+	started := make(chan struct{}, 1)
+	s.mock.setStageDataControl(gate, started)
+
+	for chunkIdx := range 3 {
+		_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{
+			Handle: h,
+			Offset: int64(chunkIdx * chunkSize),
+			Data:   bytes.Repeat([]byte{byte(chunkIdx + 1)}, chunkSize),
+		})
+		s.Require().NoError(err)
+		select {
+		case <-started:
+			s.FailNow("incomplete unique coverage started writeback")
+		default:
+		}
+	}
+
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{
+		Handle: h,
+		Offset: int64(3 * chunkSize),
+		Data:   bytes.Repeat([]byte{4}, blockSize-3*chunkSize),
+	})
+	s.Require().NoError(err)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		s.FailNow("full unique coverage did not start async writeback")
+	}
+
+	closeGate.Do(func() { close(gate) })
+	file := h.IFObj.(*blockCacheHandle).file
+	file.generations.wait(file.generations.currentID())
+	s.Equal(uncommitedBlock, file.blockList.list[0].getState())
+	s.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+}
+
 func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 	defer s.TearDownTest()
 
@@ -381,8 +429,8 @@ func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "queued_upload_size.txt", Mode: 0777})
 	s.Require().NoError(err)
 	blockSize := int(s.blockCache.blockSize)
-	first := bytes.Repeat([]byte("A"), blockSize)
-	last := bytes.Repeat([]byte("C"), blockSize)
+	first := bytes.Repeat([]byte("A"), blockSize-1)
+	last := bytes.Repeat([]byte("C"), blockSize-1)
 	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: first})
 	s.Require().NoError(err)
 	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: int64(2 * blockSize), Data: last})
@@ -399,7 +447,7 @@ func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
 	started := make(chan struct{}, 2)
 	s.mock.setStageDataControl(gate, started)
-	firstDone, err := file.blockList.list[0].queueUpload(s.blockCache.workerPool, firstDesc)
+	firstTask, err := file.blockList.list[0].queueUpload(s.blockCache.workerPool, firstDesc)
 	s.Require().NoError(err)
 	select {
 	case <-started:
@@ -408,13 +456,13 @@ func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 		s.FailNow("first upload did not start")
 	}
 
-	lastDone, err := file.blockList.list[2].queueUpload(s.blockCache.workerPool, lastDesc)
+	lastTask, err := file.blockList.list[2].queueUpload(s.blockCache.workerPool, lastDesc)
 	s.Require().NoError(err)
 	originalSize := file.size.Load()
 	file.size.Store(int64(blockSize))
 	closeGate.Do(func() { close(gate) })
-	<-firstDone
-	<-lastDone
+	<-firstTask.signalOnCompletion
+	<-lastTask.signalOnCompletion
 
 	firstDesc.release(s.blockCache.freeList) // task reference
 	firstDesc.release(s.blockCache.freeList) // lookup reference
@@ -427,8 +475,72 @@ func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 	data, err := os.ReadFile(filepath.Join(s.testPath, "queued_upload_size.txt"))
 	s.Require().NoError(err)
-	s.Equal(first, data[:blockSize])
-	s.Equal(last, data[2*blockSize:])
+	s.Equal(first, data[:blockSize-1])
+	s.Equal(last, data[2*blockSize:2*blockSize+len(last)])
+}
+
+func (s *ErrorInjectionTestSuite) TestOpenTruncateInvalidatesStaleUploads() {
+	defer s.TearDownTest()
+
+	s.blockCache.workerPool.destroy()
+	s.blockCache.workerPool = createWorkerPool(1, s.blockCache)
+
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "truncate_generation.txt", Mode: 0777})
+	s.Require().NoError(err)
+	blockSize := int(s.blockCache.blockSize)
+	gate := make(chan struct{})
+	var closeGate sync.Once
+	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
+	started := make(chan struct{}, 1)
+	s.mock.setStageDataControl(gate, started)
+	s.mock.setError("StageData", injectedError("stale StageData"))
+	stageCalls := s.mock.callCount("StageData")
+
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: bytes.Repeat([]byte("A"), blockSize)})
+	s.Require().NoError(err)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		s.FailNow("first upload did not start")
+	}
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: int64(2 * blockSize), Data: bytes.Repeat([]byte("C"), blockSize)})
+	s.Require().NoError(err)
+
+	file := h.IFObj.(*blockCacheHandle).file
+	oldGeneration := file.generations.currentID()
+
+	type openResult struct {
+		handle *handlemap.Handle
+		err    error
+	}
+	opened := make(chan openResult, 1)
+	go func() {
+		handle, openErr := s.blockCache.OpenFile(internal.OpenFileOptions{
+			Name:  "truncate_generation.txt",
+			Flags: os.O_RDWR | os.O_TRUNC,
+			Mode:  0777,
+		})
+		opened <- openResult{handle: handle, err: openErr}
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for file.generations.currentID() == oldGeneration && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	s.Require().Greater(file.generations.currentID(), oldGeneration)
+	closeGate.Do(func() { close(gate) })
+	result := <-opened
+	s.Require().NoError(result.err)
+	s.Require().NotNil(result.handle)
+	s.Equal(stageCalls+1, s.mock.callCount("StageData"), "queued stale upload must skip StageData")
+	s.Nil(file.err.Load(), "stale upload failure must not poison the new generation")
+	s.Zero(file.size.Load())
+
+	s.mock.clearErrors()
+	s.mock.setStageDataControl(nil, nil)
+	s.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: result.handle}))
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: result.handle}))
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 }
 
 // ============================================================================

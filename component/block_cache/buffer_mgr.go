@@ -255,10 +255,11 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 
 	// Step 7: Prepare buffer for download if needed
 	// Lock buffer content before releasing table lock to prevent others from accessing incomplete buffer
+	var contentLease *bufferContentLease
 	if doRead {
 		// Download needed - lock buffer content until download completes
-		// This lock will be released after download completes in the worker goroutine
-		bufDesc.contentLock.Lock()
+		// The lease is transferred to the download task and released by worker cleanup.
+		contentLease = bufDesc.lockContent()
 	} else {
 		// For write operations, buffer doesn't need download - mark as valid and dirty immediately
 		bufDesc.valid.Store(true)
@@ -270,7 +271,11 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 
 	// This is where we should download the blockdata into the buffer, check the blocks flag status.
 	if doRead {
-		blk.scheduleDownload(workerPool, freeList, bufDesc, sync)
+		if err := blk.scheduleDownload(workerPool, freeList, bufDesc, contentLease, sync); err != nil {
+			btm.detachBufferDescriptor(bufDesc, freeList)
+			bufDesc.release(freeList)
+			return nil, bufDescStatusInvalid, err
+		}
 
 		if sync {
 			// Check if there was any error during download, and also blocks here until download is complete.

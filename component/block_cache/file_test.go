@@ -68,6 +68,42 @@ const (
 	fileTestMountPath    = "/tmp/blobfuse_file_test_mount"
 )
 
+func TestGenerationTracker_AdvanceAndDrain(t *testing.T) {
+	tracker := newGenerationTracker()
+	first := tracker.currentID()
+	assert.Equal(t, uint64(1), first)
+	assert.True(t, tracker.begin(first))
+	assert.True(t, tracker.begin(first))
+
+	oldGeneration, currentGeneration := tracker.advance()
+	assert.Equal(t, first, oldGeneration)
+	assert.Equal(t, first+1, currentGeneration)
+	assert.False(t, tracker.begin(oldGeneration))
+	assert.True(t, tracker.begin(currentGeneration))
+
+	drained := make(chan struct{})
+	go func() {
+		tracker.wait(oldGeneration)
+		close(drained)
+	}()
+
+	tracker.finish(oldGeneration)
+	select {
+	case <-drained:
+		t.Fatal("old generation drained before its final task finished")
+	default:
+	}
+
+	tracker.finish(oldGeneration)
+	select {
+	case <-drained:
+	case <-time.After(time.Second):
+		t.Fatal("old generation did not drain")
+	}
+
+	tracker.finish(currentGeneration)
+}
+
 // FileOperationsTestSuite tests read, write, flush, and truncate on File objects
 // directly, exercising corner cases that are hard to reach through the high-level
 // BlockCache API.

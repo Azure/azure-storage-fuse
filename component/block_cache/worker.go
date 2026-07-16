@@ -34,6 +34,7 @@
 package block_cache
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -60,15 +61,18 @@ import (
 //  4. Operation completes (success or failure)
 //  5. signalOnCompletion channel is closed to notify waiter
 type task struct {
-	block              *block            // Block to download/upload
-	bufDesc            *bufferDescriptor // Buffer for block data
-	download           bool              // true=download, false=upload
-	sync               bool              // true=synchronous, false=asynchronous
-	signalOnCompletion chan<- struct{}   // Closed when operation completes
-	path               string            // Immutable storage path for this operation
-	fileSize           int64             // File size snapshot for downloads
-	blockID            string            // Block ID snapshot for uploads
-	uploadSize         int               // Validated number of bytes to upload
+	block              *block              // Block to download/upload
+	bufDesc            *bufferDescriptor   // Buffer for block data
+	download           bool                // true=download, false=upload
+	sync               bool                // true=synchronous, false=asynchronous
+	signalOnCompletion chan struct{}       // Closed when operation completes
+	path               string              // Immutable storage path for this operation
+	fileSize           int64               // File size snapshot for downloads
+	blockID            string              // Block ID snapshot for uploads
+	uploadSize         int                 // Validated number of bytes to upload
+	fileGeneration     uint64              // File contents generation captured at queue time
+	contentLease       *bufferContentLease // Exclusive descriptor content ownership
+	err                error               // Task result, published before completion is signaled
 }
 
 // workerPool manages a pool of goroutines for async I/O operations.
@@ -163,7 +167,23 @@ func (wp *workerPool) worker() {
 		} else {
 			wp.uploadBlock(task, wp.bc)
 		}
+		wp.completeTask(task)
 	}
+}
+
+// completeTask releases all ownership transferred to a worker task before
+// signaling completion. Task implementations never unlock or release directly.
+func (wp *workerPool) completeTask(task *task) {
+	task.contentLease.release()
+	if !task.sync {
+		task.bufDesc.release(wp.bc.freeList)
+	}
+	task.block.file.generations.finish(task.fileGeneration)
+	close(task.signalOnCompletion)
+}
+
+func (task *task) isCurrent() bool {
+	return task.fileGeneration == task.block.file.generations.currentID()
 }
 
 // queueTask submits a fully initialized task to the worker pool.
@@ -200,43 +220,42 @@ func (wp *workerPool) queueTask(task *task) {
 //   - Sync downloads: caller releases reference after waiting
 //   - Async downloads: worker releases reference after completion
 func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
-	var err error
 	// time.Sleep(10 * time.Millisecond) // Simulate download time
 	// err := fmt.Errorf("simulated download error") // Simulate an error
 
 	block := task.block
 	bufDesc := task.bufDesc
 
-	_, err = bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
-		Path:   task.path,
-		Offset: int64(uint64(block.idx) * bc.blockSize),
-		Data:   bufDesc.buf,
-		Size:   task.fileSize,
-	})
-	if err != nil {
+	var err error
+	if !task.isCurrent() {
+		task.err = errStaleTask
+	} else {
+		_, err = bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
+			Path:   task.path,
+			Offset: int64(uint64(block.idx) * bc.blockSize),
+			Data:   bufDesc.buf,
+			Size:   task.fileSize,
+		})
+	}
+	if task.err == nil && !task.isCurrent() {
+		task.err = errStaleTask
+	} else if task.err == nil && err != nil {
+		task.err = err
 		log.Err("BlockCache::downloadBlock: ReadInBuffer failed for file %s block idx %d: %v",
 			block.file.Name, block.idx, err)
 
 		bufDesc.downloadErr = err
 		bc.btm.detachBufferDescriptor(bufDesc, bc.freeList)
-	} else {
+	} else if task.err == nil {
 		log.Debug("BlockCache::downloadBlock: Successfully downloaded blockIdx: %d into bufferIdx: %d, file: %s",
 			block.idx, bufDesc.bufIdx, block.file.Name)
 		bufDesc.valid.Store(true)
 	}
-
-	bufDesc.contentLock.Unlock()
-
-	if !task.sync {
-		if ok := bufDesc.release(bc.freeList); ok {
-			log.Debug("BlockCache::downloadBlock: Released bufferIdx: %d for blockIdx: %d of file: %s back to free list after async download",
-				bufDesc.bufIdx, block.idx, block.file.Name)
-		}
-		log.Debug("BlockCache::downloadBlock: Async download completed for bufferIdx %d for blockIdx %d, refCnt: %d, file: %s",
-			bufDesc.bufIdx, block.idx, bufDesc.refCnt.Load(), block.file.Name)
+	if errors.Is(task.err, errStaleTask) {
+		bufDesc.downloadErr = task.err
+		bc.btm.detachBufferDescriptor(bufDesc, bc.freeList)
 	}
 
-	close(task.signalOnCompletion)
 }
 
 // uploadBlock uploads a block from a buffer to Azure Storage.
@@ -272,7 +291,9 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	bufDesc := task.bufDesc
 
 	var err error
-	if task.uploadSize <= 0 || task.uploadSize > len(bufDesc.buf) {
+	if !task.isCurrent() {
+		task.err = errStaleTask
+	} else if task.uploadSize <= 0 || task.uploadSize > len(bufDesc.buf) {
 		err = fmt.Errorf("invalid upload size %d for block %d of %s", task.uploadSize, block.idx, task.path)
 	} else {
 		err = bc.NextComponent().StageData(internal.StageDataOptions{
@@ -282,7 +303,10 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 		})
 	}
 
-	if err != nil {
+	if !task.isCurrent() {
+		task.err = errStaleTask
+	} else if err != nil {
+		task.err = err
 		log.Err("BlockCache::getBlockIDList : Failed to write block for %v, ID: %v, file: %s [%v]",
 			task.path, task.blockID, task.path, err)
 		bufDesc.uploadErr = err
@@ -292,14 +316,11 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 			block.idx, bufDesc.bufIdx, task.path, task.sync)
 		block.id = task.blockID
 		bufDesc.dirty.Store(false)
+		bufDesc.bytesWritten.Store(0)
+		bufDesc.resetWriteCoverage()
 		// Change the state of the block to uncommitted, to reflect that it is uploaded but not yet committed.
 		block.setState(uncommitedBlock)
+		block.numWrites.Store(0)
 	}
 
-	// Reset the numWrites.
-	block.numWrites.Store(0)
-
-	bufDesc.contentLock.Unlock()
-
-	close(task.signalOnCompletion)
 }

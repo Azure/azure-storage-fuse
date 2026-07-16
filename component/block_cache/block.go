@@ -48,6 +48,7 @@ import (
 // compatible with BlockCache's requirements (e.g., blocks are not aligned to the
 // configured block size).
 var ErrInvalidBlockList = errors.New("invalid block list, not compatible with block cache for write operations")
+var errStaleTask = errors.New("stale block cache task")
 
 // blockState represents the current state of a block in its lifecycle.
 //
@@ -92,6 +93,8 @@ type block struct {
 	id    string       // Azure Storage block ID (base64-encoded, generated during upload)
 	state atomic.Int32 // Current state: localBlock, uncommitedBlock, or committedBlock
 
+	fileGeneration atomic.Uint64 // File contents generation this block belongs to
+
 	// numWrites tracks the number of write operations performed on this block.
 	// Used to detect if a committed block has been modified and needs re-upload.
 	// Reset to 0 after successful upload.
@@ -122,6 +125,7 @@ func createBlock(idx int, id string, state blockState, f *file) *block {
 		id:   id,
 	}
 	blk.state.Store(int32(state))
+	blk.fileGeneration.Store(f.generations.currentID())
 
 	return blk
 }
@@ -348,39 +352,60 @@ func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType,
 	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, usageCnt: %d, refCnt: %d",
 		blk.idx, bufDesc.bufIdx, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
 
-	wait, err := blk.queueUpload(workerPool, bufDesc)
+	task, err := blk.queueUpload(workerPool, bufDesc)
 	if err != nil {
 		return err
 	}
 
-	<-wait
+	<-task.signalOnCompletion
 	if ok := bufDesc.release(freeList); ok {
 		log.Debug("BlockCache::scheduleUpload: Released bufferIdx: %d for blockIdx: %d back to free list after upload",
 			bufDesc.bufIdx, blk.idx)
 	}
-	return bufDesc.uploadErr
+	return task.err
 }
 
-func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor) (<-chan struct{}, error) {
-	wait := make(chan struct{})
-	bufDesc.contentLock.Lock()
-	uploadSize, err := getUploadSize(blk.file.size.Load(), blk.idx, int64(len(bufDesc.buf)))
+func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor) (*task, error) {
+	contentLease := bufDesc.lockContent()
+	task, err := blk.queueUploadLocked(workerPool, bufDesc, contentLease, true)
 	if err != nil {
-		bufDesc.contentLock.Unlock()
+		contentLease.release()
 		return nil, err
 	}
+	return task, nil
+}
+
+// queueUploadLocked transfers contentLease ownership to the worker task.
+// The caller must own the lease and must not release it after a successful call.
+// Keeping this lock through REST completion and result publication prevents a
+// newer write from being marked clean by an older upload.
+func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, callerWaits bool) (*task, error) {
+	if !contentLease.belongsTo(bufDesc) {
+		return nil, fmt.Errorf("invalid content lease for block %d", blk.idx)
+	}
+	uploadSize, err := getUploadSize(blk.file.size.Load(), blk.idx, int64(len(bufDesc.buf)))
+	if err != nil {
+		return nil, err
+	}
+	fileGeneration := blk.fileGeneration.Load()
+	if !blk.file.generations.begin(fileGeneration) {
+		return nil, errStaleTask
+	}
 	bufDesc.refCnt.Add(1)
-	workerPool.queueTask(&task{
+	task := &task{
 		block:              blk,
 		bufDesc:            bufDesc,
 		download:           false,
-		sync:               true,
-		signalOnCompletion: wait,
+		sync:               callerWaits,
+		signalOnCompletion: make(chan struct{}),
 		path:               blk.file.Name,
 		blockID:            common.GetBlockID(common.BlockIDLength),
 		uploadSize:         uploadSize,
-	})
-	return wait, nil
+		fileGeneration:     fileGeneration,
+		contentLease:       contentLease,
+	}
+	workerPool.queueTask(task)
+	return task, nil
 }
 
 func getUploadSize(fileSize int64, blockIdx int, bufferSize int64) (int, error) {
@@ -416,28 +441,40 @@ func getUploadSize(fileSize int64, blockIdx int, bufferSize int64) (int, error) 
 //   - Buffer is marked as valid (or invalid if download failed)
 //   - Any download errors are captured in bufDesc.downloadErr
 //   - Content lock is released allowing reads to proceed
-func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor, sync bool) {
-	wait := make(chan struct{})
+func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor, contentLease *bufferContentLease, sync bool) error {
+	if !contentLease.belongsTo(bufDesc) {
+		return fmt.Errorf("invalid content lease for block %d", blk.idx)
+	}
+	fileGeneration := blk.fileGeneration.Load()
+	if !blk.file.generations.begin(fileGeneration) {
+		contentLease.release()
+		return errStaleTask
+	}
 	// Increment refCnt for download
 	bufDesc.refCnt.Add(1)
 
 	// Schedule download
-	workerPool.queueTask(&task{
+	task := &task{
 		block:              blk,
 		bufDesc:            bufDesc,
 		download:           true,
 		sync:               sync,
-		signalOnCompletion: wait,
+		signalOnCompletion: make(chan struct{}),
 		path:               blk.file.Name,
 		fileSize:           blk.file.size.Load(),
-	})
+		fileGeneration:     fileGeneration,
+		contentLease:       contentLease,
+	}
+	workerPool.queueTask(task)
 
 	if sync {
 		// Wait for download to complete.
-		<-wait
+		<-task.signalOnCompletion
 		if ok := bufDesc.release(freeList); ok {
 			log.Debug("BlockCache::scheduleDownload: Released bufferIdx: %d for blockIdx: %d back to free list after sync download",
 				bufDesc.bufIdx, blk.idx)
 		}
+		return task.err
 	}
+	return nil
 }
