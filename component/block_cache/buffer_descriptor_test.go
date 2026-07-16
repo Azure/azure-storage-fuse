@@ -191,6 +191,9 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 }
 
 func TestBufferDescriptor_WriteCoverage(t *testing.T) {
+	assert.Equal(t, writeCoverageGranularity, 1<<writeCoverageShift)
+	assert.Equal(t, writeCoverageGranularity-1, writeCoveragePageMask)
+
 	bd := &bufferDescriptor{buf: make([]byte, 4*writeCoverageGranularity)}
 
 	assert.False(t, bd.markWriteCoverage(writeCoverageGranularity, 2*writeCoverageGranularity))
@@ -199,10 +202,14 @@ func TestBufferDescriptor_WriteCoverage(t *testing.T) {
 	assert.False(t, bd.markWriteCoverage(writeCoverageGranularity, 2*writeCoverageGranularity), "rewriting a covered region must not complete a gap")
 	assert.True(t, bd.markWriteCoverage(2*writeCoverageGranularity, 3*writeCoverageGranularity))
 	assert.Equal(t, []uint64{0b1111}, bd.writeCoverage)
+	assert.Equal(t, 4, bd.writeRegionCount)
 	assert.Equal(t, 4, bd.coveredRegions)
 
+	bitmap := &bd.writeCoverage[0]
 	bd.resetWriteCoverage()
 	assert.Equal(t, []uint64{0}, bd.writeCoverage)
+	assert.Equal(t, bitmap, &bd.writeCoverage[0], "reset must retain the bitmap allocation")
+	assert.Equal(t, 4, bd.writeRegionCount, "fixed buffer geometry must be cached")
 	assert.Zero(t, bd.coveredRegions)
 	assert.False(t, bd.markWriteCoverage(0, writeCoverageGranularity/2))
 	assert.False(t, bd.markWriteCoverage(writeCoverageGranularity/2, writeCoverageGranularity), "partial writes are not merged within a region")
@@ -218,6 +225,49 @@ func TestBufferDescriptor_WriteCoveragePartialLastRegion(t *testing.T) {
 	assert.False(t, bd.markWriteCoverage(0, 2*writeCoverageGranularity))
 	assert.True(t, bd.markWriteCoverage(2*writeCoverageGranularity, bufferSize))
 	assert.Equal(t, []uint64{0b111}, bd.writeCoverage)
+}
+
+func TestBufferDescriptor_WriteCoverageGeometryIsPerDescriptor(t *testing.T) {
+	small := &bufferDescriptor{buf: make([]byte, writeCoverageGranularity)}
+	large := &bufferDescriptor{buf: make([]byte, 130*writeCoverageGranularity)}
+
+	assert.True(t, small.markWriteCoverage(0, len(small.buf)))
+	assert.True(t, large.markWriteCoverage(0, len(large.buf)))
+	assert.Equal(t, 1, small.writeRegionCount)
+	assert.Equal(t, 130, large.writeRegionCount)
+	assert.Len(t, small.writeCoverage, 1)
+	assert.Len(t, large.writeCoverage, 3)
+}
+
+func TestBufferDescriptor_WriteCoverageKernelWritebackChunks(t *testing.T) {
+	const blockSize = 16 * 1024 * 1024
+	bd := &bufferDescriptor{buf: make([]byte, blockSize)}
+	pageSize := writeCoverageGranularity
+	pagePattern := []int{32, 256, 176, 160, 189, 211}
+
+	type writeChunk struct {
+		start int
+		end   int
+	}
+	chunks := make([]writeChunk, 0)
+	for offset, patternIdx := 0, 0; offset < blockSize; patternIdx++ {
+		length := pagePattern[patternIdx%len(pagePattern)] * pageSize
+		length = min(length, blockSize-offset)
+		chunks = append(chunks, writeChunk{start: offset, end: offset + length})
+		offset += length
+	}
+
+	// Kernel requests can complete out of order. Coverage must depend only on
+	// page ownership, not request order or uniform request size.
+	for left, right := 0, len(chunks)-1; left < right; left, right = left+1, right-1 {
+		chunks[left], chunks[right] = chunks[right], chunks[left]
+	}
+	for idx, chunk := range chunks {
+		complete := bd.markWriteCoverage(chunk.start, chunk.end)
+		assert.Equal(t, idx == len(chunks)-1, complete)
+	}
+
+	assert.Equal(t, blockSize/pageSize, bd.coveredRegions)
 }
 
 func TestBufferContentLease(t *testing.T) {

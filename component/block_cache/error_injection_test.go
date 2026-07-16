@@ -377,7 +377,18 @@ func (s *ErrorInjectionTestSuite) TestWrite_FullCoverageQueuesAsyncWriteback() {
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "full_coverage_writeback.txt", Mode: 0777})
 	s.Require().NoError(err)
 	blockSize := int(s.blockCache.blockSize)
-	chunkSize := blockSize / 4
+	type writeChunk struct {
+		offset int
+		length int
+		value  byte
+	}
+	// Same style of uneven page-aligned requests produced by kernel writeback.
+	// They cover the block fully but arrive out of order.
+	chunks := []writeChunk{
+		{offset: 128 * 1024, length: 720 * 1024, value: 2},
+		{offset: 0, length: 128 * 1024, value: 1},
+		{offset: 848 * 1024, length: blockSize - 848*1024, value: 3},
+	}
 
 	gate := make(chan struct{})
 	var closeGate sync.Once
@@ -385,30 +396,26 @@ func (s *ErrorInjectionTestSuite) TestWrite_FullCoverageQueuesAsyncWriteback() {
 	started := make(chan struct{}, 1)
 	s.mock.setStageDataControl(gate, started)
 
-	for chunkIdx := range 3 {
+	for chunkIdx, chunk := range chunks {
 		_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{
 			Handle: h,
-			Offset: int64(chunkIdx * chunkSize),
-			Data:   bytes.Repeat([]byte{byte(chunkIdx + 1)}, chunkSize),
+			Offset: int64(chunk.offset),
+			Data:   bytes.Repeat([]byte{chunk.value}, chunk.length),
 		})
 		s.Require().NoError(err)
+		if chunkIdx == len(chunks)-1 {
+			break
+		}
 		select {
 		case <-started:
-			s.FailNow("incomplete unique coverage started writeback")
+			s.FailNow("incomplete page coverage started writeback")
 		default:
 		}
 	}
-
-	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{
-		Handle: h,
-		Offset: int64(3 * chunkSize),
-		Data:   bytes.Repeat([]byte{4}, blockSize-3*chunkSize),
-	})
-	s.Require().NoError(err)
 	select {
 	case <-started:
 	case <-time.After(time.Second):
-		s.FailNow("full unique coverage did not start async writeback")
+		s.FailNow("full page coverage did not start async writeback")
 	}
 
 	closeGate.Do(func() { close(gate) })
