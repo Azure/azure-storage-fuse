@@ -35,6 +35,8 @@ package block_cache
 
 import (
 	"fmt"
+	"math/bits"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -43,10 +45,22 @@ import (
 
 const (
 	// Reference counting
-	refCountTableOnly        = 1
-	refCountTableAndOneUser  = 2
-	writeCoverageGranularity = 64 * 1024
+	refCountTableOnly       = 1
+	refCountTableAndOneUser = 2
 )
+
+var (
+	writeCoverageGranularity, writeCoverageShift = writeCoverageGeometry()
+	writeCoveragePageMask                        = writeCoverageGranularity - 1
+)
+
+func writeCoverageGeometry() (pageSize, pageShift int) {
+	pageSize = os.Getpagesize()
+	if pageSize <= 0 || pageSize&(pageSize-1) != 0 {
+		panic(fmt.Sprintf("block cache requires a power-of-two page size, got %d", pageSize))
+	}
+	return pageSize, bits.TrailingZeros(uint(pageSize))
+}
 
 // bufferDescriptor tracks metadata and reference count for a memory buffer that caches block data.
 // Each buffer is associated with a specific block of a file.
@@ -76,12 +90,13 @@ type bufferDescriptor struct {
 	// - Held in shared mode during read operations (multiple readers can proceed concurrently)
 	contentLock sync.RWMutex
 
-	valid          atomic.Bool // True if buffer contains valid data (download completed successfully)
-	dirty          atomic.Bool // True if buffer has been modified and needs to be uploaded
-	downloadErr    error       // Captures any error that occurred during download
-	uploadErr      error       // Captures any error that occurred during upload
-	writeCoverage  []uint64    // One bit per fully written 64 KiB region; protected by contentLock
-	coveredRegions int         // Number of bits set in writeCoverage; protected by contentLock
+	valid            atomic.Bool // True if buffer contains valid data (download completed successfully)
+	dirty            atomic.Bool // True if buffer has been modified and needs to be uploaded
+	downloadErr      error       // Captures any error that occurred during download
+	uploadErr        error       // Captures any error that occurred during upload
+	writeCoverage    []uint64    // One bit per fully written OS page; protected by contentLock
+	writeRegionCount int         // Fixed number of pages represented by this buffer
+	coveredRegions   int         // Number of bits set in writeCoverage; protected by contentLock
 }
 
 // bufferContentLease represents exclusive ownership of a descriptor's content.
@@ -107,40 +122,41 @@ func (lease *bufferContentLease) belongsTo(bd *bufferDescriptor) bool {
 	return lease != nil && lease.bufDesc == bd && !lease.released.Load()
 }
 
-// markWriteCoverage records regions fully covered by [start,end) and reports
-// whether every region in the buffer has been fully written. Partial writes to
-// a region are intentionally not combined; they are uploaded during flush or
-// pressure eviction. The caller must hold contentLock exclusively.
+// markWriteCoverage records OS pages fully covered by [start,end) and reports
+// whether every page in the buffer has been fully written. FUSE writeback sends
+// page-granular requests even when their total sizes vary. Partial page writes
+// are intentionally not combined; they are uploaded during flush or pressure
+// eviction. The caller must hold contentLock exclusively.
 func (bd *bufferDescriptor) markWriteCoverage(start, end int) bool {
 	if start < 0 || end <= start || end > len(bd.buf) {
 		return false
 	}
 
-	regionCount := (len(bd.buf) + writeCoverageGranularity - 1) / writeCoverageGranularity
-	wordCount := (regionCount + 63) / 64
-	if len(bd.writeCoverage) != wordCount {
+	if bd.writeRegionCount == 0 {
+		bd.writeRegionCount = (len(bd.buf) + writeCoveragePageMask) >> writeCoverageShift
+		wordCount := (bd.writeRegionCount + 63) >> 6
 		bd.writeCoverage = make([]uint64, wordCount)
 		bd.coveredRegions = 0
 	}
 
-	firstRegion := start / writeCoverageGranularity
-	lastRegion := (end - 1) / writeCoverageGranularity
+	firstRegion := start >> writeCoverageShift
+	lastRegion := (end - 1) >> writeCoverageShift
 	for region := firstRegion; region <= lastRegion; region++ {
-		regionStart := region * writeCoverageGranularity
+		regionStart := region << writeCoverageShift
 		regionEnd := min(regionStart+writeCoverageGranularity, len(bd.buf))
 		if start > regionStart || end < regionEnd {
 			continue
 		}
 
-		word := region / 64
-		mask := uint64(1) << (region % 64)
+		word := region >> 6
+		mask := uint64(1) << (region & 63)
 		if bd.writeCoverage[word]&mask == 0 {
 			bd.writeCoverage[word] |= mask
 			bd.coveredRegions++
 		}
 	}
 
-	return bd.coveredRegions == regionCount
+	return bd.coveredRegions == bd.writeRegionCount
 }
 
 // resetWriteCoverage starts coverage tracking for a new dirty block version.
@@ -259,8 +275,7 @@ func (bd *bufferDescriptor) resetMetadata() {
 	bd.dirty.Store(false)
 	bd.downloadErr = nil
 	bd.uploadErr = nil
-	bd.writeCoverage = nil
-	bd.coveredRegions = 0
+	bd.resetWriteCoverage()
 }
 
 // reset prepares a victim descriptor for immediate reassignment.
