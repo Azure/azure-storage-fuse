@@ -186,6 +186,13 @@ func (task *task) isCurrent() bool {
 	return task.fileGeneration == task.block.file.generations.currentID()
 }
 
+func (task *task) mode() string {
+	if task.sync {
+		return "sync"
+	}
+	return "async"
+}
+
 // queueTask submits a fully initialized task to the worker pool.
 //
 // Blocking behavior:
@@ -225,6 +232,8 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 
 	block := task.block
 	bufDesc := task.bufDesc
+	log.Debug("BlockCache::downloadBlock: Starting %s download for file: %s, blockIdx: %d, bufferIdx: %d, offset: %d, size: %d",
+		task.mode(), task.path, block.idx, bufDesc.bufIdx, int64(uint64(block.idx)*bc.blockSize), task.fileSize)
 
 	var err error
 	if !task.isCurrent() {
@@ -289,6 +298,8 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	block := task.block
 	bufDesc := task.bufDesc
+	log.Debug("BlockCache::uploadBlock: Starting %s upload for file: %s, blockIdx: %d, bufferIdx: %d, size: %d, blockId: %s",
+		task.mode(), task.path, block.idx, bufDesc.bufIdx, task.uploadSize, task.blockID)
 
 	var err error
 	if !task.isCurrent() {
