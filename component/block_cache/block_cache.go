@@ -661,6 +661,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		log.Debug("BlockCache::OpenFile : Truncating file %s on open", options.Name)
 
 		f.pendingWriters.Wait()
+		oldGeneration, newGeneration := f.generations.advance()
+		f.generations.wait(oldGeneration)
+		log.Debug("BlockCache::OpenFile : Invalidated generation %d and started generation %d for file %s",
+			oldGeneration, newGeneration, options.Name)
 		if len(f.blockList.list) > 0 {
 			releaseAllBuffersForFile(bc, f)
 		}

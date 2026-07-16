@@ -190,6 +190,53 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	}
 }
 
+func TestBufferDescriptor_WriteCoverage(t *testing.T) {
+	bd := &bufferDescriptor{buf: make([]byte, 4*writeCoverageGranularity)}
+
+	assert.False(t, bd.markWriteCoverage(writeCoverageGranularity, 2*writeCoverageGranularity))
+	assert.False(t, bd.markWriteCoverage(0, writeCoverageGranularity))
+	assert.False(t, bd.markWriteCoverage(3*writeCoverageGranularity, 4*writeCoverageGranularity))
+	assert.False(t, bd.markWriteCoverage(writeCoverageGranularity, 2*writeCoverageGranularity), "rewriting a covered region must not complete a gap")
+	assert.True(t, bd.markWriteCoverage(2*writeCoverageGranularity, 3*writeCoverageGranularity))
+	assert.Equal(t, []uint64{0b1111}, bd.writeCoverage)
+	assert.Equal(t, 4, bd.coveredRegions)
+
+	bd.resetWriteCoverage()
+	assert.Equal(t, []uint64{0}, bd.writeCoverage)
+	assert.Zero(t, bd.coveredRegions)
+	assert.False(t, bd.markWriteCoverage(0, writeCoverageGranularity/2))
+	assert.False(t, bd.markWriteCoverage(writeCoverageGranularity/2, writeCoverageGranularity), "partial writes are not merged within a region")
+	assert.Zero(t, bd.coveredRegions)
+	assert.False(t, bd.markWriteCoverage(-1, 4))
+	assert.False(t, bd.markWriteCoverage(0, len(bd.buf)+1))
+}
+
+func TestBufferDescriptor_WriteCoveragePartialLastRegion(t *testing.T) {
+	bufferSize := 2*writeCoverageGranularity + 123
+	bd := &bufferDescriptor{buf: make([]byte, bufferSize)}
+
+	assert.False(t, bd.markWriteCoverage(0, 2*writeCoverageGranularity))
+	assert.True(t, bd.markWriteCoverage(2*writeCoverageGranularity, bufferSize))
+	assert.Equal(t, []uint64{0b111}, bd.writeCoverage)
+}
+
+func TestBufferContentLease(t *testing.T) {
+	bd := &bufferDescriptor{}
+	other := &bufferDescriptor{}
+
+	lease := bd.lockContent()
+	assert.True(t, lease.belongsTo(bd))
+	assert.False(t, lease.belongsTo(other))
+	assert.False(t, bd.contentLock.TryLock(), "lease must own the exclusive content lock")
+
+	lease.release()
+	assert.False(t, lease.belongsTo(bd))
+	assert.True(t, bd.contentLock.TryLock(), "releasing the lease must unlock content")
+	bd.contentLock.Unlock()
+
+	assert.Panics(t, lease.release, "a content lease must be released exactly once")
+}
+
 func TestBufferDescriptor_EnsureBufferValidForRead_Valid(t *testing.T) {
 	f := createFile("test.txt")
 	blk := createBlock(0, "testId", localBlock, f)
