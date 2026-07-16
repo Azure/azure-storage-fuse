@@ -82,6 +82,64 @@ import (
 //
 // TODO: Add global context to the file that can propagate to all the operations
 // on the file, this would simplify cancellations and timeouts easier.
+type generationTracker struct {
+	current atomic.Uint64
+	mu      sync.Mutex
+	cond    *sync.Cond
+	active  map[uint64]int
+}
+
+func newGenerationTracker() *generationTracker {
+	tracker := &generationTracker{active: make(map[uint64]int)}
+	tracker.current.Store(1)
+	tracker.cond = sync.NewCond(&tracker.mu)
+	return tracker
+}
+
+func (tracker *generationTracker) currentID() uint64 {
+	return tracker.current.Load()
+}
+
+// begin admits work only into the current generation. Holding mu across the
+// generation check and count increment prevents advance from missing a task.
+func (tracker *generationTracker) begin(generation uint64) bool {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if generation != tracker.current.Load() {
+		return false
+	}
+	tracker.active[generation]++
+	return true
+}
+
+func (tracker *generationTracker) finish(generation uint64) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if tracker.active[generation] <= 1 {
+		delete(tracker.active, generation)
+	} else {
+		tracker.active[generation]--
+	}
+	tracker.cond.Broadcast()
+}
+
+func (tracker *generationTracker) advance() (oldGeneration, newGeneration uint64) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	oldGeneration = tracker.current.Load()
+	newGeneration = oldGeneration + 1
+	tracker.current.Store(newGeneration)
+	return oldGeneration, newGeneration
+}
+
+func (tracker *generationTracker) wait(generation uint64) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	for tracker.active[generation] > 0 {
+		tracker.cond.Wait()
+	}
+}
+
 type file struct {
 	mu            sync.RWMutex                   // Protects file metadata and block list
 	Name          string                         // File path (absolute)
@@ -104,6 +162,10 @@ type file struct {
 	// Writers increment this before modifying the file, allowing flush to wait
 	// for all pending writes to complete before uploading data.
 	pendingWriters sync.WaitGroup
+
+	// generations identifies the current logical contents and drains work from
+	// invalidated contents before their buffers are released.
+	generations *generationTracker
 
 	// TODO: Optimization flag: if true, the file was uploaded using PutBlob (for small files)
 	// rather than PutBlock + PutBlockList. This tracks the upload method for
@@ -128,10 +190,11 @@ type file struct {
 //   - Synced set to true (no pending changes)
 func createFile(fileName string) *file {
 	f := &file{
-		Name:      fileName,
-		handles:   make(map[*handlemap.Handle]struct{}),
-		blockList: newBlockList(),
-		synced:    true,
+		Name:        fileName,
+		handles:     make(map[*handlemap.Handle]struct{}),
+		blockList:   newBlockList(),
+		synced:      true,
+		generations: newGenerationTracker(),
 	}
 	f.size.Store(-1)
 	f.sizeOnStorage.Store(-1)
@@ -547,13 +610,17 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 
 		// Take the exclusive lock on buffer content to write data
 		// Change the block state to localBlock as it is being modified
-		bufDesc.contentLock.Lock()
+		contentLease := bufDesc.lockContent()
+		if !bufDesc.dirty.Load() {
+			bufDesc.resetWriteCoverage()
+			bufDesc.uploadErr = nil
+		}
 		blk.setState(localBlock)
 		blk.numWrites.Add(1)
 		bufDesc.dirty.Store(true)
 		n := copy(bufDesc.buf[offsetInsideBlock:bc.blockSize], options.Data[bufOffset:])
 		bufDesc.bytesWritten.Add(int32(n))
-		bufDesc.contentLock.Unlock()
+		fullyCovered := bufDesc.markWriteCoverage(int(offsetInsideBlock), int(offsetInsideBlock)+n)
 
 		offset += int64(n)
 		bufOffset += n
@@ -561,8 +628,22 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		// Update file size if needed
 		f.updateFileSize(offset /* newFileSize */)
 
-		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d",
-			n, f.Name, f.size.Load(), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load())
+		uploadQueued := false
+		if fullyCovered {
+			if _, err := blk.queueUploadLocked(bc.workerPool, bufDesc, contentLease, false /* callerWaits */); err != nil {
+				contentLease.release()
+				bufDesc.release(bc.freeList)
+				f.pendingWriters.Done()
+				return err
+			}
+			uploadQueued = true
+		}
+		if !uploadQueued {
+			contentLease.release()
+		}
+
+		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d, writeback: %t",
+			n, f.Name, f.size.Load(), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(), uploadQueued)
 
 		// Release the buffer descriptor
 		if ok := bufDesc.release(bc.freeList); ok {
@@ -815,12 +896,12 @@ func (f *file) flush(bc *BlockCache, takeFileLock bool) error {
 
 	type queuedUpload struct {
 		dirty dirtyBuffer
-		done  <-chan struct{}
+		task  *task
 	}
 	uploads := make([]queuedUpload, 0, len(dirtyBuffers))
 	var queueErr error
 	for i, dirty := range dirtyBuffers {
-		done, err := dirty.block.queueUpload(bc.workerPool, dirty.bufDesc)
+		task, err := dirty.block.queueUpload(bc.workerPool, dirty.bufDesc)
 		if err != nil {
 			queueErr = err
 			for _, unqueued := range dirtyBuffers[i:] {
@@ -828,16 +909,16 @@ func (f *file) flush(bc *BlockCache, takeFileLock bool) error {
 			}
 			break
 		}
-		uploads = append(uploads, queuedUpload{dirty: dirty, done: done})
+		uploads = append(uploads, queuedUpload{dirty: dirty, task: task})
 	}
 
 	var uploadErr error
 	for _, upload := range uploads {
-		<-upload.done
+		<-upload.task.signalOnCompletion
 		dirty := upload.dirty
 		dirty.bufDesc.release(bc.freeList) // task reference
-		if dirty.bufDesc.uploadErr != nil && uploadErr == nil {
-			uploadErr = dirty.bufDesc.uploadErr
+		if upload.task.err != nil && uploadErr == nil {
+			uploadErr = upload.task.err
 		}
 		dirty.bufDesc.release(bc.freeList) // lookup reference
 	}
@@ -971,6 +1052,11 @@ func (f *file) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 	log.Debug("File::truncate: Flushing file: %s before truncation", f.Name)
 	if err := f.flush(bc, false /*takeFileLock*/); err != nil {
 		return err
+	}
+	oldGeneration, newGeneration := f.generations.advance()
+	f.generations.wait(oldGeneration)
+	for _, blk := range f.blockList.list {
+		blk.fileGeneration.Store(newGeneration)
 	}
 
 	// Update the file size
