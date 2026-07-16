@@ -642,8 +642,9 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 			contentLease.release()
 		}
 
-		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d, writeback: %t",
-			n, f.Name, f.size.Load(), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(), uploadQueued)
+		log.Debug("File::write: Wrote %d bytes to file: %s, size: %d, blockIdx: %d, refCnt: %d, usageCnt: %d, pageOffset: %d, pageRemainder: %d, writeback: %t",
+			n, f.Name, f.size.Load(), blockIdx, bufDesc.refCnt.Load(), bufDesc.bytesWritten.Load(),
+			int(offsetInsideBlock)&writeCoveragePageMask, n&writeCoveragePageMask, uploadQueued)
 
 		// Release the buffer descriptor
 		if ok := bufDesc.release(bc.freeList); ok {
