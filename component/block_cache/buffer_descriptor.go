@@ -43,8 +43,9 @@ import (
 
 const (
 	// Reference counting
-	refCountTableOnly       = 1
-	refCountTableAndOneUser = 2
+	refCountTableOnly        = 1
+	refCountTableAndOneUser  = 2
+	writeCoverageGranularity = 64 * 1024
 )
 
 // bufferDescriptor tracks metadata and reference count for a memory buffer that caches block data.
@@ -75,10 +76,78 @@ type bufferDescriptor struct {
 	// - Held in shared mode during read operations (multiple readers can proceed concurrently)
 	contentLock sync.RWMutex
 
-	valid       atomic.Bool // True if buffer contains valid data (download completed successfully)
-	dirty       atomic.Bool // True if buffer has been modified and needs to be uploaded
-	downloadErr error       // Captures any error that occurred during download
-	uploadErr   error       // Captures any error that occurred during upload
+	valid          atomic.Bool // True if buffer contains valid data (download completed successfully)
+	dirty          atomic.Bool // True if buffer has been modified and needs to be uploaded
+	downloadErr    error       // Captures any error that occurred during download
+	uploadErr      error       // Captures any error that occurred during upload
+	writeCoverage  []uint64    // One bit per fully written 64 KiB region; protected by contentLock
+	coveredRegions int         // Number of bits set in writeCoverage; protected by contentLock
+}
+
+// bufferContentLease represents exclusive ownership of a descriptor's content.
+// A lease may be transferred to a worker task, but it must be released exactly once.
+type bufferContentLease struct {
+	bufDesc  *bufferDescriptor
+	released atomic.Bool
+}
+
+func (bd *bufferDescriptor) lockContent() *bufferContentLease {
+	bd.contentLock.Lock()
+	return &bufferContentLease{bufDesc: bd}
+}
+
+func (lease *bufferContentLease) release() {
+	if lease == nil || !lease.released.CompareAndSwap(false, true) {
+		panic("block cache content lease released more than once")
+	}
+	lease.bufDesc.contentLock.Unlock()
+}
+
+func (lease *bufferContentLease) belongsTo(bd *bufferDescriptor) bool {
+	return lease != nil && lease.bufDesc == bd && !lease.released.Load()
+}
+
+// markWriteCoverage records regions fully covered by [start,end) and reports
+// whether every region in the buffer has been fully written. Partial writes to
+// a region are intentionally not combined; they are uploaded during flush or
+// pressure eviction. The caller must hold contentLock exclusively.
+func (bd *bufferDescriptor) markWriteCoverage(start, end int) bool {
+	if start < 0 || end <= start || end > len(bd.buf) {
+		return false
+	}
+
+	regionCount := (len(bd.buf) + writeCoverageGranularity - 1) / writeCoverageGranularity
+	wordCount := (regionCount + 63) / 64
+	if len(bd.writeCoverage) != wordCount {
+		bd.writeCoverage = make([]uint64, wordCount)
+		bd.coveredRegions = 0
+	}
+
+	firstRegion := start / writeCoverageGranularity
+	lastRegion := (end - 1) / writeCoverageGranularity
+	for region := firstRegion; region <= lastRegion; region++ {
+		regionStart := region * writeCoverageGranularity
+		regionEnd := min(regionStart+writeCoverageGranularity, len(bd.buf))
+		if start > regionStart || end < regionEnd {
+			continue
+		}
+
+		word := region / 64
+		mask := uint64(1) << (region % 64)
+		if bd.writeCoverage[word]&mask == 0 {
+			bd.writeCoverage[word] |= mask
+			bd.coveredRegions++
+		}
+	}
+
+	return bd.coveredRegions == regionCount
+}
+
+// resetWriteCoverage starts coverage tracking for a new dirty block version.
+// The caller must hold contentLock exclusively.
+func (bd *bufferDescriptor) resetWriteCoverage() {
+	clear(bd.writeCoverage)
+	bd.coveredRegions = 0
 }
 
 func (bd *bufferDescriptor) String() string {
@@ -190,6 +259,8 @@ func (bd *bufferDescriptor) resetMetadata() {
 	bd.dirty.Store(false)
 	bd.downloadErr = nil
 	bd.uploadErr = nil
+	bd.writeCoverage = nil
+	bd.coveredRegions = 0
 }
 
 // reset prepares a victim descriptor for immediate reassignment.

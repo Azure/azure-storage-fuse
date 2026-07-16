@@ -256,9 +256,7 @@ func (e *errorInjectingComponent) GetCommittedBlockList(name string) (*internal.
 	return e.inner.GetCommittedBlockList(name)
 }
 func (e *errorInjectingComponent) StageData(o internal.StageDataOptions) error {
-	if err := e.checkError("StageData"); err != nil {
-		return err
-	}
+	injectedErr := e.checkError("StageData")
 	e.mu.Lock()
 	e.activeStageData++
 	if e.activeStageData > e.maxStageData {
@@ -278,6 +276,9 @@ func (e *errorInjectingComponent) StageData(o internal.StageDataOptions) error {
 	}
 	if gate != nil {
 		<-gate
+	}
+	if injectedErr != nil {
+		return injectedErr
 	}
 	return e.inner.StageData(o)
 }
