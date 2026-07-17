@@ -1,0 +1,173 @@
+# Template: distributed cache E2E on a local kind + Tachyon cluster.
+#
+# Brings up a kind (Kubernetes IN Docker) cluster, deploys the Tachyon
+# cache-server helm chart (pulled directly from an OCI-enabled ACR), exposes
+# each cacheserver pod on localhost via kubectl port-forward, then iterates
+# over one or more blobfuse2 mount variants. For each variant it generates a
+# config from the given template, mounts blobfuse2, runs the standard Go E2E
+# suite via e2e-tests.yml, and unmounts before the next variant. This lets a
+# single expensive cluster setup amortise across multiple dist_cache modes
+# (block/file cache, direct-io on/off, ...).
+#
+# See test/scripts/dcache/PLAN.md for why kind (rather than the minikube path
+# vienna-tachyon publishes for) is our substrate.
+#
+# Teardown runs unconditionally and publishes cacheserver logs as an artifact
+# so failures are debuggable.
+
+parameters:
+  # Identifier for this cluster invocation. Used to name port-forward PID
+  # files, cluster-log artifacts, and per-cluster step display names.
+  - name: run_idstring
+    type: string
+  # List of mount variants to exercise against the standing cluster. Each
+  # entry is an object with:
+  #   id            - short label used in step display names & artifact names
+  #   conf_template - blobfuse2 gen-test-config template file (in testdata/config)
+  #   config_file   - absolute path where the generated config is written
+  - name: variants
+    type: object
+  - name: distro_name
+    type: string
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: adls
+    type: boolean
+    default: false
+  - name: quick_test
+    type: boolean
+    default: true
+  - name: verbose_log
+    type: boolean
+    default: false
+
+steps:
+  # -------------------------------------------------------------------------
+  # 1. Install kind / kubectl / helm / docker if missing.
+  - script: |
+      set -e
+      chmod +x $(WORK_DIR)/test/scripts/dcache/*.sh
+      $(WORK_DIR)/test/scripts/dcache/install-prereqs.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Install prerequisites'
+    timeoutInMinutes: 15
+
+  # -------------------------------------------------------------------------
+  # 2. Bring up the kind cluster.
+  - script: |
+      set -e
+      $(WORK_DIR)/test/scripts/dcache/setup-kind.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Create kind cluster'
+    timeoutInMinutes: 30
+
+  # -------------------------------------------------------------------------
+  # 3. Deploy Tachyon cache-server via helm (chart pulled from ACR over OCI).
+  - script: |
+      set -e
+      $(WORK_DIR)/test/scripts/dcache/deploy-tachyon.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Deploy Tachyon'
+    timeoutInMinutes: 30
+    env:
+      CACHE_SERVER_IMAGE_REGISTRY: $(CACHE_SERVER_IMAGE_REGISTRY)
+      CACHE_SERVER_IMAGE_REPO: $(CACHE_SERVER_IMAGE_REPO)
+      CACHE_SERVER_IMAGE_TAG: $(CACHE_SERVER_IMAGE_TAG)
+      CACHE_SERVER_CHART_REGISTRY: $(CACHE_SERVER_CHART_REGISTRY)
+      CACHE_SERVER_CHART_REPO: $(CACHE_SERVER_CHART_REPO)
+      CACHE_SERVER_PREREQ_CHART_REPO: $(CACHE_SERVER_PREREQ_CHART_REPO)
+      CACHE_SERVER_CHART_VERSION: $(CACHE_SERVER_CHART_VERSION)
+
+  # -------------------------------------------------------------------------
+  # 4. Start kubectl port-forwards so cacheserver pods are reachable from the
+  #    agent host, and stash the resulting server list in a pipeline variable
+  #    so subsequent gen-test-config runs (which read env vars) can substitute
+  #    { DCACHE_SERVERS } in dist_cache config templates.
+  - script: |
+      set -e
+      $(WORK_DIR)/test/scripts/dcache/expose-cacheserver.sh
+      server_list=$(cat "$DCACHE_SERVER_LIST_FILE")
+      echo "Resolved dist_cache server list: $server_list"
+      echo "##vso[task.setvariable variable=DCACHE_SERVERS]$server_list"
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Expose cacheserver pods'
+    timeoutInMinutes: 5
+    env:
+      DCACHE_SERVER_LIST_FILE: $(Agent.TempDirectory)/dcache_server_list_${{ parameters.run_idstring }}.txt
+      DCACHE_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_portforward_pids_${{ parameters.run_idstring }}.txt
+
+  # -------------------------------------------------------------------------
+  # 5. For each mount variant: gen-config -> mount -> E2E -> unmount.
+  #    The kind cluster is left running across variants; only blobfuse2 is
+  #    remounted between them.
+  - ${{ each variant in parameters.variants }}:
+    - script: |
+        cd $(WORK_DIR)
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=${{ variant.conf_template }} --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ variant.config_file }}
+      displayName: 'DistCache [${{ variant.id }}]: Create config file'
+      env:
+        STO_ACC_NAME: ${{ parameters.account_name }}
+        STO_ACC_KEY: ${{ parameters.account_key }}
+        STO_ACC_TYPE: ${{ parameters.account_type }}
+        STO_ACC_ENDPOINT: 'https://${{ parameters.account_name }}.blob.core.windows.net'
+        USE_HTTP: 'false'
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+        DCACHE_SERVERS: $(DCACHE_SERVERS)
+      continueOnError: false
+
+    - script: |
+        cat ${{ variant.config_file }}
+      displayName: 'DistCache [${{ variant.id }}]: Print config file'
+
+    - template: './e2e-tests.yml'
+      parameters:
+        adls: ${{ parameters.adls }}
+        idstring: 'DistCache_${{ variant.id }}'
+        distro_name: ${{ parameters.distro_name }}
+        quick_test: ${{ parameters.quick_test }}
+        artifact_name: '${{ parameters.distro_name }}_DistCache_${{ variant.id }}.txt'
+        verbose_log: ${{ parameters.verbose_log }}
+        mountStep:
+          script: |
+            $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ variant.config_file }} --default-working-dir=$(System.DefaultWorkingDirectory)
+          displayName: 'DistCache [${{ variant.id }}]: Mount'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+    # Unmount blobfuse2 (but keep the Azure container + kind cluster) so the
+    # next variant starts from a clean mount point.
+    - template: 'cleanup.yml'
+      parameters:
+        unmount: true
+        delete_containers: false
+
+  # -------------------------------------------------------------------------
+  # 6. Collect cacheserver logs before tearing down, then teardown always.
+  - script: |
+      set +e
+      NAMESPACE="${NAMESPACE:-cache-server}"
+      out_dir="$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}"
+      mkdir -p "$out_dir"
+      kubectl get pods -n "$NAMESPACE" -o wide > "$out_dir/pods.txt" 2>&1 || true
+      kubectl describe pods -n "$NAMESPACE" > "$out_dir/pods-describe.txt" 2>&1 || true
+      for pod in $(kubectl get pods -n "$NAMESPACE" -l app=cacheserver -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        kubectl logs -n "$NAMESPACE" "$pod" --all-containers --prefix > "$out_dir/${pod}.log" 2>&1 || true
+      done
+      ls -l "$out_dir" || true
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Collect cacheserver logs'
+    condition: always()
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Publish cacheserver logs'
+    condition: always()
+    inputs:
+      pathToPublish: '$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}'
+      artifactName: 'dcache_logs_${{ parameters.distro_name }}_${{ parameters.run_idstring }}'
+
+  - script: |
+      $(WORK_DIR)/test/scripts/dcache/teardown-kind.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Teardown kind cluster'
+    condition: always()
+    timeoutInMinutes: 15
+    env:
+      DCACHE_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_portforward_pids_${{ parameters.run_idstring }}.txt
