@@ -1,0 +1,19 @@
+# Kind cluster shape for the dist_cache nightly E2E stage.
+#
+# Reference / hand-invocation config. `setup-kind.sh` generates its own
+# equivalent config on the fly from KIND_NODES in config/nightly.config so
+# the shape stays in one place; edit both if you change either.
+#
+# Usage (manual):
+#   kind create cluster --name blobfuse-dcache \
+#       --image kindest/node:v1.31.0 \
+#       --config test/scripts/dcache/kind-cluster.yaml
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: blobfuse-dcache
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+  - role: worker

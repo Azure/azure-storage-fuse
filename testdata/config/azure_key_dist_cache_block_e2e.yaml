@@ -1,0 +1,41 @@
+logging:
+  level: log_debug
+  file-path: "blobfuse2-logs.txt"
+  type: base
+
+components:
+  - libfuse
+  - block_cache
+  - dist_cache
+  - attr_cache
+  - azstorage
+
+libfuse:
+  attribute-expiration-sec: 0
+  entry-expiration-sec: 0
+  negative-entry-expiration-sec: 0
+  ignore-open-flags: true
+
+block_cache:
+  block-size-mb: 16
+  mem-size-mb: 512
+  prefetch: 12
+  parallelism: 32
+
+dist_cache:
+  server-list: "{ DCACHE_SERVERS }"
+  bypass-on-error: true
+  max-file-size-mb: 128
+
+attr_cache:
+  timeout-sec: 3600
+
+azstorage:
+  type: { STO_ACC_TYPE }
+  endpoint: { STO_ACC_ENDPOINT }
+  use-http: { USE_HTTP }
+  account-name: { STO_ACC_NAME }
+  account-key: { STO_ACC_KEY }
+  mode: key
+  container: { 0 }
+  tier: hot
