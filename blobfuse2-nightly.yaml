@@ -82,6 +82,11 @@ parameters:
     type: boolean
     default: true
 
+  - name: dist_cache_test
+    displayName: 'Run distributed cache E2E tests (requires kind + Tachyon image)'
+    type: boolean
+    default: false
+
 stages:
 
   - ${{ if eq(parameters.base_test, true) }}:
@@ -1384,6 +1389,110 @@ stages:
                 verbose_log: ${{ parameters.verbose_log }}
 
             - template: azure-pipeline-templates/cleanup.yml
+              parameters:
+                unmount: true
+                delete_containers: true
+
+  # -----------------------------------------------------------------------
+  # Distributed cache E2E (TEST_PLAN.md §4, items 115-124 / closes item 149).
+  # Gated on the `dist_cache_test` parameter so nightly runs stay green until
+  # the ACR image tag + chart version are populated below. Queue a manual run
+  # with the parameter set to true.
+  - ${{ if eq(parameters.dist_cache_test, true) }}:
+    - stage: DistCacheValidation
+      dependsOn: BuildAndTest
+      jobs:
+        - job: Set_1
+          timeoutInMinutes: 360
+          strategy:
+            matrix:
+              Ubuntu-22-BlockBlob-DistCache:
+                AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          pool:
+            name: 'blobfuse-ubuntu-pool'
+            demands:
+              - ImageOverride -equals $(AgentName)
+          variables:
+            - group: NightlyBlobFuse
+            - name: MOUNT_DIR
+              value: '$(Pipeline.Workspace)/blob_mnt'
+            - name: TEMP_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+            - name: BLOBFUSE2_DCACHE_BLK_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_dcache_block.yaml'
+            - name: BLOBFUSE2_DCACHE_FILE_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_dcache_file.yaml'
+            - name: BLOBFUSE2_DCACHE_BLK_DIO_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_dcache_block_directio.yaml'
+            - name: BLOBFUSE2_DCACHE_FILE_DIO_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_dcache_file_directio.yaml'
+            # TBD: fill these in from a pipeline variable group (NightlyBlobFuse)
+            # once the ACR + Tachyon image tag + chart version are known.
+            - name: CACHE_SERVER_IMAGE_REGISTRY
+              value: ''  # e.g. myacr.azurecr.io
+            - name: CACHE_SERVER_IMAGE_REPO
+              value: 'cache-server'
+            - name: CACHE_SERVER_IMAGE_TAG
+              value: ''  # e.g. 1.2.3
+            # Helm chart is pulled directly from ACR via OCI (no source checkout).
+            # Defaults to the same registry as the image; override only if the
+            # chart lives in a different ACR.
+            - name: CACHE_SERVER_CHART_REGISTRY
+              value: ''  # e.g. myacr.azurecr.io (defaults to CACHE_SERVER_IMAGE_REGISTRY)
+            - name: CACHE_SERVER_CHART_REPO
+              value: 'charts/cache-server'
+            # cache-server-prereq chart is installed first (CRDs / RBAC /
+            # cluster-scoped resources the main chart depends on). Same version
+            # as the main chart.
+            - name: CACHE_SERVER_PREREQ_CHART_REPO
+              value: 'charts/cache-server-prereq'
+            - name: CACHE_SERVER_CHART_VERSION
+              value: ''  # e.g. 1.2.3
+            - name: GOPATH
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(Agent.TempDirectory)'
+            - name: WORK_DIR
+              value: '$(Build.SourcesDirectory)'
+          steps:
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                skip_ut: true
+
+            # dist_cache exercised across 4 mount variants against a single
+            # kind cluster (cluster setup + teardown happens once):
+            #   - block_cache + dist_cache
+            #   - block_cache + dist_cache + direct_io
+            #   - file_cache  + dist_cache
+            #   - file_cache  + dist_cache + direct_io
+            - template: 'azure-pipeline-templates/dist-cache-e2e.yml'
+              parameters:
+                run_idstring: 'DistCache'
+                distro_name: $(AgentName)
+                account_name: $(BF2_BLK_ACC_NAME)
+                account_key: $(BF2_BLK_ACC_KEY)
+                account_type: 'block'
+                adls: false
+                verbose_log: ${{ parameters.verbose_log }}
+                variants:
+                  - id: 'BlockCache_DistCache'
+                    conf_template: 'azure_key_dist_cache_block_e2e.yaml'
+                    config_file: $(BLOBFUSE2_DCACHE_BLK_CFG)
+                  - id: 'BlockCache_DistCache_DirectIO'
+                    conf_template: 'azure_key_dist_cache_block_directio_e2e.yaml'
+                    config_file: $(BLOBFUSE2_DCACHE_BLK_DIO_CFG)
+                  - id: 'FileCache_DistCache'
+                    conf_template: 'azure_key_dist_cache_file_e2e.yaml'
+                    config_file: $(BLOBFUSE2_DCACHE_FILE_CFG)
+                  - id: 'FileCache_DistCache_DirectIO'
+                    conf_template: 'azure_key_dist_cache_file_directio_e2e.yaml'
+                    config_file: $(BLOBFUSE2_DCACHE_FILE_DIO_CFG)
+
+            - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:
                 unmount: true
                 delete_containers: true
