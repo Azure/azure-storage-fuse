@@ -31,17 +31,41 @@
    SOFTWARE
 */
 
-package cmd
+package block_cache
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache_old"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+var bc *BlockCache
+var freeList *freeListType
+var btm *bufferTableMgr
+
+func setupTestFreeList(t *testing.T, bufSize uint64, memSize uint64) {
+	t.Helper()
+	var err error
+	freeList, err = createFreeList(bufSize, memSize)
+	assert.NoError(t, err)
+
+	if bc != nil {
+		bc.freeList = freeList
+		bc.workerPool = createWorkerPool(4, bc) // Example worker pool size
+	}
+}
+
+func destroyFreeList() {
+	if bc != nil && bc.workerPool != nil {
+		bc.workerPool.destroy()
+		bc.workerPool = nil
+	}
+
+	if freeList != nil {
+		freeList.destroy()
+		freeList = nil
+	}
+	if bc != nil {
+		bc.freeList = nil
+	}
+}

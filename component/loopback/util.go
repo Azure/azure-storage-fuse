@@ -31,17 +31,27 @@
    SOFTWARE
 */
 
-package cmd
+package loopback
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache_old"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"errors"
+	"os"
+	"path/filepath"
 )
+
+func removeAllFilesWithGivenPrefix(prefix string) error {
+	pattern := prefix + "_*"
+
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range matches {
+		err1 := os.Remove(file)
+		if err1 != nil {
+			err = errors.Join(err, err1)
+		}
+	}
+	return err
+}

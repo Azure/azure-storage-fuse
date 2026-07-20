@@ -65,10 +65,13 @@ const (
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
 
-	MbToBytes     = 1024 * 1024
-	GbToBytes     = 1024 * MbToBytes
-	BfuseStats    = "blobfuse_stats"
-	BlockIDLength = 16
+	MbToBytes           = 1024 * 1024
+	GbToBytes           = 1024 * MbToBytes
+	BfuseStats          = "blobfuse_stats"
+	BlockIDLength       = 16
+	BlockIDLengthBase64 = 24 // base64 encoded length of 16 bytes
+	// Deprecated: use BlockIDLengthBase64.
+	BlockIDLenghtBase64 = BlockIDLengthBase64
 
 	FuseAllowedFlags = "Invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
