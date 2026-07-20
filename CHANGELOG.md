@@ -2,6 +2,7 @@
 **Features**
 
 **Bug Fixes**
+- Correct kernel list cache compatibility detection. Libfuse 3.5 through 3.15 expose `cache_readdir`, but versions before 3.16.1 do not forward it through the high-level `opendir` path used by blobfuse2. Blobfuse2 now enables the feature only when it was built with compatible headers, the loaded libfuse runtime is 3.16.1 or newer, and the kernel supports FUSE protocol 7.28 or newer. Stock Ubuntu 20.04, 22.04, and 24.04 ship older libfuse runtimes, so kernel list caching remains disabled there. Unsupported environments receive a warning identifying the failing compatibility layer.
 
 **Other Changes**
 

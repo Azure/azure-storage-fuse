@@ -40,6 +40,25 @@ steps:
     workingDirectory: ${{ parameters.work_dir }}
     displayName: "Building Blobfuse2"
 
+  # Verify that fuse3 release headers expose cache_readdir and that blobfuse2's
+  # compatibility check recognizes the libfuse 3.16.1 forwarding boundary.
+  # Older runtimes are supported build targets; blobfuse2 detects them at mount
+  # time and disables kernel list caching with an accurate warning.
+  - script: |
+      if [[ "${{ parameters.tags }}" != "fuse3" ]]; then
+        exit 0
+      fi
+
+      fuse_version=`pkg-config --modversion fuse3`
+      echo "Building with libfuse ${fuse_version}"
+
+      gcc $(pkg-config --cflags fuse3) tools/check_kernel_list_cache.c \
+        $(pkg-config --libs fuse3) \
+        -o /tmp/check-kernel-list-cache
+      /tmp/check-kernel-list-cache
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Verify kernel list cache compatibility detection"
+
   # Verifying whether built binary is correct
   - script: |
       sudo chmod +x ./blobfuse2
