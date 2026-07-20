@@ -111,17 +111,20 @@ func (suite *libfuseTestSuite) TestKernelListCacheKernelSupport() {
 	conn.proto_major = 7
 	conn.proto_minor = 27
 	support := C.kernel_supports_dir_cache(&conn)
-	if support == -1 {
+	switch support {
+	case -1:
 		suite.T().Skip("cache_readdir requires libfuse 3.5 or newer build headers")
-	} else if support == -2 {
+	case -2:
 		suite.T().Skip("kernel list caching requires a libfuse 3.16.1 or newer runtime")
 	}
 
 	suite.assert.Equal(C.int(0), support)
 	conn.proto_minor = 28
-	suite.assert.Equal(C.int(1), C.kernel_supports_dir_cache(&conn))
+	support = C.kernel_supports_dir_cache(&conn)
+	suite.assert.Equal(C.int(1), support)
 	conn.proto_major = 8
-	suite.assert.Equal(C.int(0), C.kernel_supports_dir_cache(&conn))
+	support = C.kernel_supports_dir_cache(&conn)
+	suite.assert.Equal(C.int(0), support)
 }
 
 func testMkDir(suite *libfuseTestSuite) {
