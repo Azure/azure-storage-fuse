@@ -213,13 +213,13 @@ static void set_fuse_ptr(struct fuse *f) {
  * Although the field was added in 3.5, the high-level opendir path did not
  * forward it to the kernel until libfuse 3.16.1. There is no FUSE_CAP_* flag
  * for this feature, so the kernel check uses the negotiated FUSE protocol
- * minor version instead.
+ * version instead.
  *
  * FOPEN_CACHE_DIR was introduced in Linux 5.1 together with FUSE protocol
  * version 7.28 (FUSE_KERNEL_MINOR_VERSION 28 in include/uapi/linux/fuse.h).
- * Kernels older than 5.1 negotiate a proto_minor < 28 and silently ignore the
- * cache_readdir bit, so we disable the feature rather than leaving the user
- * wondering why their listing cache has no effect.
+ * Kernels older than 5.1 negotiate a protocol below 7.28 and silently ignore
+ * the cache_readdir bit, so we disable the feature rather than leaving the
+ * user wondering why their listing cache has no effect.
  */
 static int kernel_supports_dir_cache(fuse_conn_info_t *conn) {
 #if !LIBFUSE_HAS_CACHE_READDIR
@@ -229,7 +229,7 @@ static int kernel_supports_dir_cache(fuse_conn_info_t *conn) {
     if (!libfuse_version_supports_dir_cache(fuse_pkgversion()))
         return -2;
 
-    return conn->proto_minor >= 28;
+    return conn->proto_major == 7 && conn->proto_minor >= 28;
 #endif
 }
 
