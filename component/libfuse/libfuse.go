@@ -420,6 +420,6 @@ func init() {
 	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", true, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
 
-	kernelListCacheTtl := config.AddUint32Flag("kernel-list-cache-timeout", 0, "Enable kernel caching of directory listings and set TTL in seconds (fuse3 only). 0 = disabled.")
+	kernelListCacheTtl := config.AddUint32Flag("kernel-list-cache-timeout", 0, "Enable kernel caching of directory listings and set TTL in seconds (fuse3 only; requires libfuse 3.16.1+ and Linux 5.1+). 0 = disabled.")
 	config.BindPFlag(compName+".kernel-list-cache-expiration-sec", kernelListCacheTtl)
 }
