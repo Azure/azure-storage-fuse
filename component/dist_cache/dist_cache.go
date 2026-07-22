@@ -119,6 +119,13 @@ type DistCache struct {
 
 	// stopCleanup signals the background pending-writes cleanup goroutine to exit.
 	stopCleanup chan struct{}
+
+	// chunkPool recycles chunk-sized byte buffers used on the read/write hot
+	// paths to avoid per-operation allocations. Buffers returned from getBuf
+	// have capacity == chunkSize; callers slice down to the length they need
+	// and must return the buffer via putBuf when ownership ends. Requests
+	// larger than chunkSize bypass the pool.
+	chunkPool sync.Pool
 }
 
 const dirtyTTL = 10 * time.Second
@@ -247,6 +254,15 @@ func (dc *DistCache) Configure(isParent bool) error {
 		blockSizeMB = conf.ChunkSizeMB
 	}
 	dc.chunkSize = int64(blockSizeMB * 1024 * 1024)
+
+	// Initialize the buffer pool sized to the resolved chunk size. New buffers
+	// are allocated at full chunkSize capacity so they can be reused for any
+	// request up to that size without re-allocation.
+	chunkSize := dc.chunkSize
+	dc.chunkPool.New = func() any {
+		buf := make([]byte, chunkSize)
+		return &buf
+	}
 
 	log.Info("DistCache::Configure : chunk-size=%d, bypass-on-error=%v",
 		dc.chunkSize, dc.bypassOnError)
@@ -527,7 +543,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 			return n, err
 		}
 		if n > 0 {
-			dataCopy := make([]byte, n)
+			dataCopy := dc.getBuf(n)
 			copy(dataCopy, options.Data[:n])
 			uploadCtx := dc.getReadUploadCtx(name)
 			go dc.uploadChunkAsync(uploadCtx, name, etag, options.Offset, dataCopy)
@@ -542,7 +558,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		if err != nil {
 			return n, err
 		}
-		dataCopy := make([]byte, n)
+		dataCopy := dc.getBuf(n)
 		copy(dataCopy, options.Data[:n])
 		uploadCtx := dc.getReadUploadCtx(name)
 		go dc.uploadChunkAsync(uploadCtx, name, etag, options.Offset, dataCopy)
@@ -562,7 +578,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		if err != nil {
 			return n, err
 		}
-		dataCopy := make([]byte, n)
+		dataCopy := dc.getBuf(n)
 		copy(dataCopy, options.Data[:n])
 		uploadCtx := dc.getReadUploadCtx(name)
 		go dc.uploadChunkAsync(uploadCtx, name, etag, options.Offset, dataCopy)
@@ -570,17 +586,12 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	}
 
 	if err == dcache.ErrNotFound {
-		// L2 miss — read from Azure
+		// L2 miss without lock semantics — read from Azure but do NOT populate.
+		// Populating here would cause a thundering herd: every reader that
+		// races on a cold chunk would also write. Cache population is reserved
+		// for the client that explicitly holds the miss-lock (ErrNotFoundGotLock).
 		log.Debug("DistCache::ReadInBuffer : L2 miss %s offset=%d", name, options.Offset)
-		n, err = dc.NextComponent().ReadInBuffer(options)
-		if err != nil {
-			return n, err
-		}
-		dataCopy := make([]byte, n)
-		copy(dataCopy, options.Data[:n])
-		uploadCtx := dc.getReadUploadCtx(name)
-		go dc.uploadChunkAsync(uploadCtx, name, etag, options.Offset, dataCopy)
-		return n, nil
+		return dc.NextComponent().ReadInBuffer(options)
 	}
 
 	if dc.bypassOnError {
@@ -606,7 +617,7 @@ func (dc *DistCache) StageData(options internal.StageDataOptions) error {
 	dataLen := int64(len(options.Data))
 	maxSize := int64(dc.conf.MaxFileSizeMB) * 1024 * 1024
 
-	dataCopy := make([]byte, dataLen)
+	dataCopy := dc.getBuf(int(dataLen))
 	copy(dataCopy, options.Data)
 
 	dc.pendingMu.Lock()
@@ -626,6 +637,13 @@ func (dc *DistCache) StageData(options internal.StageDataOptions) error {
 			dc.conf.MaxFileSizeMB, options.Name)
 		delete(dc.pendingWrites, options.Name)
 		dc.pendingMu.Unlock()
+		// Return the dropped buffer and any prior pending buffers to the pool.
+		dc.putBuf(dataCopy)
+		if pf != nil {
+			for _, c := range pf.chunks {
+				dc.putBuf(c.data)
+			}
+		}
 		return nil
 	}
 
@@ -791,7 +809,7 @@ func (dc *DistCache) fetchChunkFromRemote(ctx context.Context, options internal.
 	default:
 	}
 
-	buf := make([]byte, size)
+	buf := dc.getBuf(int(size))
 	readOpts := &internal.ReadInBufferOptions{
 		Path:   options.Name,
 		Offset: offset,
@@ -800,16 +818,20 @@ func (dc *DistCache) fetchChunkFromRemote(ctx context.Context, options internal.
 	}
 	n, err := dc.NextComponent().ReadInBuffer(readOpts)
 	if err != nil {
+		dc.putBuf(buf)
 		return err
 	}
 	if _, err := options.File.WriteAt(buf[:n], offset); err != nil {
+		dc.putBuf(buf)
 		return err
 	}
 	if populateCache {
-		dataCopy := make([]byte, n)
-		copy(dataCopy, buf[:n])
+		// Transfer buffer ownership to the upload goroutine; uploadChunkAsync
+		// returns it to the pool via its deferred putBuf.
 		uploadCtx := dc.getReadUploadCtx(options.Name)
-		go dc.uploadChunkAsync(uploadCtx, options.Name, options.Etag, offset, dataCopy)
+		go dc.uploadChunkAsync(uploadCtx, options.Name, options.Etag, offset, buf[:n])
+	} else {
+		dc.putBuf(buf)
 	}
 	return nil
 }
@@ -817,7 +839,8 @@ func (dc *DistCache) fetchChunkFromRemote(ctx context.Context, options internal.
 // pollUntilChunkCached waits for a single chunk to become available in the
 // distributed cache and writes it to the file. Returns nil on success.
 func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.CopyToFileOptions, offset, size int64) error {
-	buf := make([]byte, size)
+	buf := dc.getBuf(int(size))
+	defer dc.putBuf(buf)
 	n, err := dc.pollChunkIntoBuffer(ctx, options.Name, options.Etag, offset, buf)
 	if err != nil {
 		return err
@@ -926,11 +949,52 @@ func resolveETag(options *internal.ReadInBufferOptions) string {
 	return ""
 }
 
-// clearPending discards any buffered chunks for a file (e.g. on delete/truncate).
+// getBuf returns a byte slice of length n backed by a pooled chunk buffer.
+// If n exceeds chunkSize, or the pool has not been initialized (e.g. in
+// tests that construct DistCache directly), a fresh allocation is used
+// instead and putBuf becomes a no-op for that slice. Callers must not
+// grow the returned slice beyond its capacity.
+func (dc *DistCache) getBuf(n int) []byte {
+	if n <= 0 {
+		return nil
+	}
+	if dc.chunkSize == 0 || int64(n) > dc.chunkSize {
+		return make([]byte, n)
+	}
+	v := dc.chunkPool.Get()
+	if v == nil {
+		return make([]byte, n)
+	}
+	bufp := v.(*[]byte)
+	return (*bufp)[:n]
+}
+
+// putBuf returns a buffer previously obtained from getBuf to the pool.
+// Safe to call on nil or on slices whose capacity does not match chunkSize
+// (over-sized fallbacks) — those are simply dropped for the GC.
+func (dc *DistCache) putBuf(b []byte) {
+	if b == nil || dc.chunkSize == 0 {
+		return
+	}
+	if int64(cap(b)) != dc.chunkSize {
+		return
+	}
+	buf := b[:cap(b)]
+	dc.chunkPool.Put(&buf)
+}
+
+// clearPending discards any buffered chunks for a file (e.g. on delete/truncate)
+// and returns their buffers to the pool.
 func (dc *DistCache) clearPending(name string) {
 	dc.pendingMu.Lock()
+	pf := dc.pendingWrites[name]
 	delete(dc.pendingWrites, name)
 	dc.pendingMu.Unlock()
+	if pf != nil {
+		for _, c := range pf.chunks {
+			dc.putBuf(c.data)
+		}
+	}
 }
 
 // cancelFlush cancels any in-flight flush goroutine for the given file.
@@ -956,6 +1020,10 @@ func (dc *DistCache) flushPendingToL2(ctx context.Context, name string, chunks [
 	for i := range chunks {
 		chunk := chunks[i]
 		g.Go(func() error {
+			// Always return the pooled buffer, whether we early-cancel,
+			// succeed, or the upload fails.
+			defer dc.putBuf(chunk.data)
+
 			select {
 			case <-gctx.Done():
 				return gctx.Err()
@@ -1019,6 +1087,9 @@ func (dc *DistCache) evictStalePending() {
 		if now.Sub(pf.lastActivity) > pendingWriteTTL {
 			log.Debug("DistCache::evictStalePending : evicting %d stale chunks for %s (idle %v)",
 				len(pf.chunks), name, now.Sub(pf.lastActivity))
+			for _, c := range pf.chunks {
+				dc.putBuf(c.data)
+			}
 			delete(dc.pendingWrites, name)
 		}
 	}
@@ -1110,6 +1181,8 @@ func (dc *DistCache) cancelReadUploads(name string) {
 }
 
 func (dc *DistCache) uploadChunkAsync(ctx context.Context, name, etag string, offset int64, data []byte) {
+	defer dc.putBuf(data)
+
 	// Respect cancellation from write path
 	select {
 	case <-ctx.Done():

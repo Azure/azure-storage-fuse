@@ -1261,9 +1261,11 @@ func TestReadUploadCancelled_OnCopyFromFile(t *testing.T) {
 		return ctx.Err()
 	}
 
-	// Simulate a read-path cache miss that triggers uploadChunkAsync
+	// Simulate a read-path cache miss that triggers uploadChunkAsync.
+	// ErrNotFoundGotLock is used because plain ErrNotFound intentionally
+	// does NOT populate the cache (thundering-herd avoidance).
 	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
-		return 0, dcache.ErrNotFound
+		return 0, dcache.ErrNotFoundGotLock
 	}
 	next.readInBufferData = []byte("old file content")
 
