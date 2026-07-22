@@ -606,6 +606,9 @@ func (dc *DistCache) StageData(options internal.StageDataOptions) error {
 	dataLen := int64(len(options.Data))
 	maxSize := int64(dc.conf.MaxFileSizeMB) * 1024 * 1024
 
+	dataCopy := make([]byte, dataLen)
+	copy(dataCopy, options.Data)
+
 	dc.pendingMu.Lock()
 	pf := dc.pendingWrites[options.Name]
 
@@ -625,10 +628,6 @@ func (dc *DistCache) StageData(options internal.StageDataOptions) error {
 		dc.pendingMu.Unlock()
 		return nil
 	}
-
-	// Buffer the chunk for deferred L2 population at commit time.
-	dataCopy := make([]byte, dataLen)
-	copy(dataCopy, options.Data)
 
 	if pf == nil {
 		pf = &pendingFile{}
