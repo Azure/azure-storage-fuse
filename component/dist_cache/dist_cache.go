@@ -853,8 +853,8 @@ func (dc *DistCache) pollUntilChunkCached(ctx context.Context, options internal.
 // distributed cache and copies it into buf. Returns the number of bytes read.
 func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string, offset int64, buf []byte) (int, error) {
 	const (
-		maxPollDuration = 30 * time.Second
-		maxBackoff      = 5 * time.Second
+		maxPollDuration = 10 * time.Second
+		maxBackoff      = 2 * time.Second
 	)
 
 	deadline := time.Now().Add(maxPollDuration)
