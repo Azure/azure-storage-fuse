@@ -298,6 +298,11 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "file_cache")
 			}
 
+			// dist_cache sits between local cache (L1) and azstorage (L3)
+			if config.IsSet("dist_cache") {
+				pipeline = append(pipeline, "dist_cache")
+			}
+
 			// by default attr-cache is enable in v2
 			// only way to disable is to pass cli param and set it to false
 			if options.AttrCache {
