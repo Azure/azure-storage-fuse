@@ -127,7 +127,7 @@ type AzConnection interface {
 	ReadBuffer(name string, offset int64, length int64) ([]byte, error)
 	ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error
 
-	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
+	WriteFromFile(name string, metadata map[string]*string, fi *os.File, newEtag *string) error
 	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
 	Write(options *internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)

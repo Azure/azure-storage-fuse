@@ -2706,7 +2706,7 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	s.assert.NoError(err)
 	_, _ = f.Seek(0, 0)
 
-	err = s.az.storage.WriteFromFile(name1, nil, f)
+	err = s.az.storage.WriteFromFile(name1, nil, f, nil)
 	s.assert.NoError(err)
 
 	// Blob should have updated data
