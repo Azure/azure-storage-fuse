@@ -4,6 +4,7 @@
 **Bug Fixes**
 
 **Other Changes**
+- Reduce Azure Storage REST calls for single-page directory listings by avoiding per-directory marker lookups for markerless virtual directories.
 
 ## 2.5.4 (2026-07-08)
 **Features**
