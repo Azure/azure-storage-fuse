@@ -51,23 +51,19 @@
 #include <fuse.h>
 #else
 #include <fuse3/fuse.h>
+#include "libfuse_compat.h"
 #endif
 
 /*
- * cache_readdir in fuse_file_info was added in libfuse 3.5.0.
- * Older distro packages (e.g. libfuse 3.2 on CentOS 8.5, 3.3 on RHEL 8.6)
- * do not expose this field, so writing it causes compilation failures.
+ * cache_readdir and FUSE_CAP_NO_OPENDIR_SUPPORT were both added in libfuse
+ * 3.5.0. Older distro packages do not expose the field, so writing it causes
+ * compilation failures.
  *
- * NOTE: FUSE_MAJOR_VERSION / FUSE_MINOR_VERSION are the *libfuse library*
- * version macros (defined in the generated libfuse_config.h, included
- * transitively through fuse3/fuse.h).  They are NOT the kernel module
- * protocol version (those are FUSE_KERNEL_VERSION / FUSE_KERNEL_MINOR_VERSION
- * in linux/fuse.h).  On distros that ship a pre-3.5 libfuse package the
- * macros will still be present (libfuse_config.h is always generated), so
- * this check reliably detects the installed library version at build time.
+ * Do not use FUSE_MAJOR_VERSION / FUSE_MINOR_VERSION here. Before libfuse
+ * 3.10, those macros described the public interface version rather than the
+ * package version; libfuse 3.5 through 3.9 therefore reported version 3.2.
  */
-#if !defined(__FUSE2__) && defined(FUSE_MAJOR_VERSION) && defined(FUSE_MINOR_VERSION) && \
-    ((FUSE_MAJOR_VERSION > 3) || (FUSE_MAJOR_VERSION == 3 && FUSE_MINOR_VERSION >= 5))
+#if !defined(__FUSE2__) && defined(FUSE_CAP_NO_OPENDIR_SUPPORT)
 #define LIBFUSE_HAS_CACHE_READDIR 1
 #else
 #define LIBFUSE_HAS_CACHE_READDIR 0
@@ -211,27 +207,29 @@ static void set_fuse_ptr(struct fuse *f) {
 }
 
 /*
- * Returns 1 if the kernel supports FOPEN_CACHE_DIR (the cache_readdir bit in
- * fuse_file_info).  There is no FUSE_CAP_* flag for this feature, so we gate
- * on the negotiated FUSE protocol minor version instead.
+ * Returns 1 when FOPEN_CACHE_DIR is supported, 0 when the kernel does not
+ * support it, -1 when the build headers do not expose cache_readdir, and -2
+ * when the loaded libfuse runtime predates high-level cache_readdir support.
+ * Although the field was added in 3.5, the high-level opendir path did not
+ * forward it to the kernel until libfuse 3.16.1. There is no FUSE_CAP_* flag
+ * for this feature, so the kernel check uses the negotiated FUSE protocol
+ * version instead.
  *
  * FOPEN_CACHE_DIR was introduced in Linux 5.1 together with FUSE protocol
  * version 7.28 (FUSE_KERNEL_MINOR_VERSION 28 in include/uapi/linux/fuse.h).
- * Kernels older than 5.1 negotiate a proto_minor < 28 and silently ignore the
- * cache_readdir bit, so we disable the feature rather than leaving the user
- * wondering why their listing cache has no effect.
+ * Kernels older than 5.1 negotiate a protocol below 7.28 and silently ignore
+ * the cache_readdir bit, so we disable the feature rather than leaving the
+ * user wondering why their listing cache has no effect.
  */
 static int kernel_supports_dir_cache(fuse_conn_info_t *conn) {
 #if !LIBFUSE_HAS_CACHE_READDIR
     (void)conn;
-    return 0;
+    return -1;
 #else
-#ifdef FUSE_CAP_CACHE_READDIR
-    /* Use the capability bit if a future libfuse version defines it. */
-    return (conn->capable & FUSE_CAP_CACHE_READDIR) != 0;
-#else
-    return conn->proto_minor >= 28;
-#endif
+    if (!libfuse_version_supports_dir_cache(fuse_pkgversion()))
+        return -2;
+
+    return conn->proto_major == 7 && conn->proto_minor >= 28;
 #endif
 }
 

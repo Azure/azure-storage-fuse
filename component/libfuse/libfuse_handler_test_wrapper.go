@@ -106,6 +106,27 @@ func (suite *libfuseTestSuite) cleanupTest() {
 	suite.mockCtrl.Finish()
 }
 
+func (suite *libfuseTestSuite) TestKernelListCacheKernelSupport() {
+	conn := C.fuse_conn_info_t{}
+	conn.proto_major = 7
+	conn.proto_minor = 27
+	support := C.kernel_supports_dir_cache(&conn)
+	switch support {
+	case -1:
+		suite.T().Skip("cache_readdir requires libfuse 3.5 or newer build headers")
+	case -2:
+		suite.T().Skip("kernel list caching requires a libfuse 3.16.1 or newer runtime")
+	}
+
+	suite.assert.Equal(C.int(0), support)
+	conn.proto_minor = 28
+	support = C.kernel_supports_dir_cache(&conn)
+	suite.assert.Equal(C.int(1), support)
+	conn.proto_major = 8
+	support = C.kernel_supports_dir_cache(&conn)
+	suite.assert.Equal(C.int(0), support)
+}
+
 func testMkDir(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"

@@ -370,6 +370,13 @@ stages:
                   ./blobfuse2 --version
 
                   echo '---------------------------------------------------'
+                  echo 'Verifying kernel list cache compatibility detection'
+                  echo 'Building with libfuse:'
+                  pkg-config --modversion fuse3
+                  gcc \$(pkg-config --cflags fuse3) tools/check_kernel_list_cache.c \$(pkg-config --libs fuse3) -o /tmp/check-kernel-list-cache
+                  /tmp/check-kernel-list-cache
+
+                  echo '---------------------------------------------------'
                   echo 'Building health-monitor (bfusemon) binary'
                   ./build.sh health
                   chmod +x ./bfusemon

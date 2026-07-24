@@ -273,12 +273,25 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	C.set_fuse_ptr(C.fuse_get_context().fuse)
 
 	if fuseFS.kernelListCacheTtlInSec > 0 {
-		if C.kernel_supports_dir_cache(conn) != 0 {
+		kernelListCacheSupport := C.kernel_supports_dir_cache(conn)
+		kernelListCacheSupported := true
+		if kernelListCacheSupport < 0 {
+			if kernelListCacheSupport == -2 {
+				log.Warn("Libfuse::libfuse_init : Loaded libfuse runtime does not forward cache_readdir through the high-level API (requires libfuse 3.16.1+), disabling kernel-list-cache")
+			} else {
+				log.Warn("Libfuse::libfuse_init : blobfuse2 was built against libfuse headers without cache_readdir (requires libfuse 3.5+), disabling kernel-list-cache")
+			}
+			kernelListCacheSupported = false
+		} else if kernelListCacheSupport == 0 {
+			log.Warn("Libfuse::libfuse_init : Kernel fuse proto %d.%d does not support FOPEN_CACHE_DIR (requires 7.28 / Linux 5.1+), disabling kernel-list-cache",
+				conn.proto_major, conn.proto_minor)
+			kernelListCacheSupported = false
+		}
+
+		if kernelListCacheSupported {
 			log.Info("Libfuse::libfuse_init : Kernel supports FOPEN_CACHE_DIR (fuse proto %d.%d), kernel-list-cache enabled with timeout %d sec",
 				conn.proto_major, conn.proto_minor, fuseFS.kernelListCacheTtlInSec)
 		} else {
-			log.Warn("Libfuse::libfuse_init : Kernel fuse proto %d.%d does not support FOPEN_CACHE_DIR (requires 7.28 / Linux 5.1+), disabling kernel-list-cache",
-				conn.proto_major, conn.proto_minor)
 			fuseFS.kernelListCacheTtlInSec = 0
 			if fuseFS.kernelListCacheTracker != nil {
 				fuseFS.kernelListCacheTracker.stop()
