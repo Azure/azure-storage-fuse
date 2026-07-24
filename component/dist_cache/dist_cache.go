@@ -7,11 +7,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/block_cache"
@@ -22,28 +24,39 @@ import (
 
 const compName = "dist_cache"
 
-// readUploadTimeout bounds a single async L2 populate upload initiated from the read path.
-const readUploadTimeout = 60 * time.Second
-
 // Async upload memory budget policy. See resolveMemBudget for how these combine.
 const (
-	// distCacheSharePct is the share of "total memory" reserved for the async
-	// upload buffer pool when block_cache.mem-size-mb is not configured.
+	// distCacheSharePct is the share of block_cache's reference memory
+	// budget (block_cache.MemShareFraction × free RAM) reserved for the
+	// async upload buffer pool when block_cache.mem-size-mb is not
+	// configured. Taking a slice of block_cache's actual footprint keeps
+	// the two components from independently laying claim to the same RAM.
 	distCacheSharePct = 10
 
 	// distCacheMinBuffers is the smallest buffer count the pool will use when
-	// enabled. Fewer than this and async populate serializes to the point of
-	// being counter-productive under any real workload.
+	// enabled. schedulePopulate never blocks — it drops the populate if no
+	// buffer is free — so a too-small pool doesn't hurt read latency, but it
+	// does collapse the L2 hit rate: any burst of concurrent misses, or a
+	// single stuck upload holding a buffer for up to the dcache client's
+	// per-request timeout, leaves nothing for the next populate and the
+	// feature stops paying for itself. Four buffers absorb a small burst and
+	// tolerate one stuck upload while still being tiny in absolute terms
+	// (e.g. 4 × 16 MiB = 64 MiB at the default block size).
 	distCacheMinBuffers = 4
 
-	// distCacheDefaultFuseThreads mirrors libfuse's defaultMaxFuseThreads.
-	// Duplicated here to avoid importing libfuse (which would create a cycle
-	// on some pipelines).
-	distCacheDefaultFuseThreads = 128
+	// distCacheDemandMultiplier scales the arrival-side concurrency
+	// (block_cache.parallelism) into an expected in-flight count for the
+	// async upload pool.
+	// A multiplier of 4 tolerates upload latency up to ~4× the azstorage
+	// read latency without dropping populates, while keeping the ceiling
+	// meaningful on large-memory hosts (where fair-share alone would over-
+	// provision — e.g. 128 GiB free RAM ⇒ ~10 GiB pool if uncapped).
+	distCacheDemandMultiplier = 4
 
-	// distCacheFallbackMemMiB is used only if syscall.Sysinfo fails when
-	// computing the default "total memory" reference.
-	distCacheFallbackMemMiB = 4096
+	// distCacheMemFallbackBytes is used as the assumed available memory when
+	// /proc/meminfo cannot be read. Mirrors block_cache's 4 GiB fallback so
+	// the two components remain consistent when the OS memory probe fails.
+	distCacheMemFallbackBytes uint64 = 4192 * 1024 * 1024
 
 	_1MiB = 1024 * 1024
 )
@@ -93,6 +106,11 @@ type DistCache struct {
 	// inflight tracks in-flight upload goroutines so Stop can wait for them
 	// to finish before closing the dcache client.
 	inflight sync.WaitGroup
+
+	// nilClientLogOnce ensures the "client is nil, bypassing" warning is
+	// emitted at most once per mount when bypassOnError is true, so a broken
+	// dist_cache is still visible in the log without flooding on every read.
+	nilClientLogOnce sync.Once
 }
 
 // dcacheClient abstracts the distributed cache client for testing.
@@ -269,6 +287,7 @@ func (dc *DistCache) Start(ctx context.Context) error {
 			log.Warn("DistCache::Start : Failed to connect to distributed cache, bypassing: %v", err)
 			return nil
 		}
+		log.Err("DistCache::Start : Failed to connect to distributed cache: %v", err)
 		return fmt.Errorf("dist_cache: failed to start: %w", err)
 	}
 
@@ -306,6 +325,15 @@ func resolveReadPath(options *internal.ReadInBufferOptions) string {
 
 func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	if dc.client == nil {
+		if !dc.bypassOnError {
+			dc.nilClientLogOnce.Do(func() {
+				log.Err("DistCache::ReadInBuffer : client not initialized and bypass-on-error=false; failing reads")
+			})
+			return 0, syscall.EIO
+		}
+		dc.nilClientLogOnce.Do(func() {
+			log.Warn("DistCache::ReadInBuffer : client not initialized, bypassing to next component (bypass-on-error=true)")
+		})
 		return dc.NextComponent().ReadInBuffer(options)
 	}
 
@@ -447,37 +475,31 @@ func resolveETag(options *internal.ReadInBufferOptions) string {
 	return ""
 }
 
-// getTotalMemBytes returns the reference "total memory" figure used for the
-// fair-share portion of the async-upload budget. Uses the same source
-// block_cache uses for its own default (Freeram × Unit, no scaling — the
-// share percentage is applied by the caller). Falls back to a fixed default
-// if the syscall fails.
-func getTotalMemBytes() int64 {
-	var si syscall.Sysinfo_t
-	if err := syscall.Sysinfo(&si); err != nil {
-		log.Warn("DistCache: syscall.Sysinfo failed [%s], using %d MiB fallback",
-			err.Error(), distCacheFallbackMemMiB)
-		return int64(distCacheFallbackMemMiB) * _1MiB
-	}
-	return int64(float64(si.Freeram) * float64(si.Unit))
-}
-
-// getConfiguredFuseThreads returns libfuse.max-fuse-threads if configured,
-// else the libfuse default. We read it via config rather than importing
-// libfuse to avoid dragging in its transitive dependencies.
-func getConfiguredFuseThreads() int {
-	if config.IsSet("libfuse.max-fuse-threads") {
+// getBlockCacheWorkers returns the number of concurrent downloads block_cache
+// is configured to run (block_cache.parallelism). This is the true ceiling on
+// concurrent callers into dist_cache: FUSE threads enqueue work onto
+// block_cache's thread pool and then block on a channel — they do not call
+// down into dist_cache themselves. Prefetches share the same pool, so they
+// don't raise the ceiling either.
+//
+// Mirrors block_cache's own default of 3 * runtime.NumCPU() when the knob is
+// unset. Read via config rather than reaching into block_cache's state so we
+// don't depend on component start ordering.
+func getBlockCacheWorkers() int {
+	if config.IsSet("block_cache.parallelism") {
 		var n uint32
-		if err := config.UnmarshalKey("libfuse.max-fuse-threads", &n); err == nil && n > 0 {
+		if err := config.UnmarshalKey("block_cache.parallelism", &n); err == nil && n > 0 {
 			return int(n)
 		}
 	}
-	return distCacheDefaultFuseThreads
+	return 3 * runtime.NumCPU()
 }
 
 // resolveMemBudget returns the total bytes dist_cache will preallocate for its
-// async-upload buffer pool. Zero means "async populate disabled" (caller
-// should skip buffer allocation and treat the L2 populate as a no-op).
+// async-upload buffer pool. The result may be smaller than a single chunk
+// (e.g. an explicit block_cache.mem-size-mb that is undersized relative to
+// the chunk size); the caller (Configure) skips pool allocation in that
+// case and async populate becomes a no-op.
 //
 // dist_cache does not expose its own mem-size-mb knob. When the user has
 // explicitly sized block_cache via block_cache.mem-size-mb we reuse that
@@ -485,15 +507,21 @@ func getConfiguredFuseThreads() int {
 // Otherwise we auto-compute:
 //
 //  1. Pick min(fair-share, demand-ceiling), where
-//     fair-share    = distCacheSharePct% of total free RAM,
-//     demand-ceiling = max-fuse-threads × chunkSize
-//     (there can't be more concurrent misses than FUSE reader threads).
+//     fair-share    = distCacheSharePct% of block_cache's reference budget
+//     (block_cache.MemShareFraction × free RAM — i.e. what
+//     block_cache would itself grab by default),
+//     demand-ceiling = distCacheDemandMultiplier × block_cache.parallelism ×
+//     chunkSize. block_cache's worker pool bounds the *arrival* rate of
+//     new populates (FUSE threads enqueue and block, they don't reach
+//     dist_cache), but populates are fire-and-forget goroutines, so
+//     in-flight uploads scale with upload/read latency ratio.
+//     The multiplier turns arrival concurrency into
+//     expected in-flight capacity. dist_cache is enforced to sit below
+//     block_cache in the pipeline (see common.ValidatePipeline), so
+//     block_cache.parallelism is always available.
 //  2. Floor at distCacheMinBuffers × chunkSize so async populate is functional
 //     when enabled. Then re-cap at the demand ceiling so the floor never
 //     inflates a naturally-tiny budget.
-//  3. If the result can't hold even one chunk, disable (return 0).
-//  4. Log a warning if the budget exceeds 25% of total, so ops teams notice
-//     when the floor dominates on small hosts.
 func (dc *DistCache) resolveMemBudget() int64 {
 	if config.IsSet("block_cache.mem-size-mb") {
 		var n uint64
@@ -502,9 +530,14 @@ func (dc *DistCache) resolveMemBudget() int64 {
 		}
 	}
 
-	total := getTotalMemBytes()
-	demand := int64(getConfiguredFuseThreads()) * dc.chunkSize
-	fair := total * distCacheSharePct / 100
+	availableMemory, err := common.GetAvailableMemoryBytes()
+	if err != nil {
+		availableMemory = distCacheMemFallbackBytes
+		log.Warn("DistCache::resolveMemBudget : failed to read available memory [%s], using %d MiB fallback", err.Error(), availableMemory/_1MiB)
+	}
+	bcRef := int64(block_cache.MemShareFraction * float64(availableMemory))
+	demand := int64(distCacheDemandMultiplier) * int64(getBlockCacheWorkers()) * dc.chunkSize
+	fair := bcRef * distCacheSharePct / 100
 
 	budget := min(fair, demand)
 	if floor := int64(distCacheMinBuffers) * dc.chunkSize; budget < floor {
@@ -512,13 +545,6 @@ func (dc *DistCache) resolveMemBudget() int64 {
 	}
 	if budget > demand {
 		budget = demand
-	}
-	if budget < dc.chunkSize {
-		return 0
-	}
-	if budget*4 > total {
-		log.Warn("DistCache::resolveMemBudget : using %d MiB (%.1f%% of total %d MiB); consider setting block_cache.mem-size-mb explicitly",
-			budget/_1MiB, float64(budget)*100/float64(total), total/_1MiB)
 	}
 	return budget
 }
@@ -554,13 +580,12 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 }
 
 // doUpload runs a single populate. It always returns the borrowed buffer to
-// the pool, even on error or timeout.
+// the pool, even on error. The per-request timeout is enforced by the dcache
+// client (see WithRequestTimeout; default 30s), which applies a socket-level
+// deadline covering both send and receive.
 func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, length int) {
 	defer dc.inflight.Done()
 	defer func() { dc.bufs <- buf }()
-
-	ctx, cancel := context.WithTimeout(context.Background(), readUploadTimeout)
-	defer cancel()
 
 	gid := fileGroupID(name, etag)
 	log.Debug("DistCache::doUpload : uploading chunk %s offset=%d with group %q", name, offset, string(gid))
@@ -574,11 +599,7 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, leng
 	}
 
 	data := (*buf)[:length]
-	if err := dc.client.UploadChunk(ctx, name, etag, offset, data, opts...); err != nil {
-		if ctx.Err() != nil {
-			log.Debug("DistCache::doUpload : timed out for %s offset=%d", name, offset)
-			return
-		}
+	if err := dc.client.UploadChunk(context.Background(), name, etag, offset, data, opts...); err != nil {
 		log.Warn("DistCache::doUpload : upload failed: %v", err)
 	}
 }

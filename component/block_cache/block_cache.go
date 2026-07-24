@@ -115,6 +115,12 @@ const (
 	MIN_RANDREAD            = 10
 	MAX_FAIL_CNT            = 3
 	MAX_BLOCKS              = 50000
+
+	// MemShareFraction is the fraction of free RAM block_cache reserves for
+	// its block pool when block_cache.mem-size-mb is not explicitly set.
+	// Exported so other components (e.g. dist_cache) can compute their share
+	// relative to block_cache's actual footprint rather than raw free RAM.
+	MemShareFraction = 0.6
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -362,7 +368,7 @@ func (bc *BlockCache) getDefaultMemSize() uint64 {
 		return uint64(4192) * _1MB
 	}
 
-	return uint64(0.6 * float64(availableMemory))
+	return uint64(MemShareFraction * float64(availableMemory))
 }
 
 // CreateFile: Create a new file

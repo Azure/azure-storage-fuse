@@ -9,7 +9,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -446,4 +448,109 @@ dist_cache:
 	err := dc.Configure(true)
 	require.NoError(t, err)
 	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
+}
+
+// --- Tests for async-upload buffer pool: memory-budget & drop paths ---
+
+// TestSchedulePopulate_PayloadTooLarge_Drops verifies that populates whose
+// payload exceeds chunkSize are rejected before consuming a buffer.
+func TestSchedulePopulate_PayloadTooLarge_Drops(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return nil
+	}
+
+	poolBefore := len(dc.bufs)
+	oversize := make([]byte, dc.chunkSize+1)
+	dc.schedulePopulate("f", "e", 0, oversize)
+	dc.inflight.Wait()
+
+	assert.Equal(t, int32(0), uploads.Load(), "oversize payload must not trigger an upload")
+	assert.Equal(t, poolBefore, len(dc.bufs), "oversize drop must not consume a buffer")
+}
+
+// TestSchedulePopulate_PoolExhausted_Drops verifies the core memory-safety
+// invariant: once all buffers are held by in-flight uploads, additional
+// populates are dropped (non-blocking select) rather than allocating more
+// memory or blocking the caller.
+func TestSchedulePopulate_PoolExhausted_Drops(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next) // 4-buffer pool
+
+	release := make(chan struct{})
+	var started atomic.Int32
+	var completed atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		started.Add(1)
+		<-release
+		completed.Add(1)
+		return nil
+	}
+
+	// Fill the pool and wait until every upload is actively holding a buffer.
+	for i := 0; i < 4; i++ {
+		dc.schedulePopulate("f", "e", int64(i), []byte("data"))
+	}
+	require.Eventually(t, func() bool { return started.Load() == 4 },
+		time.Second, 5*time.Millisecond, "expected all 4 initial uploads to start")
+
+	// Schedule many more populates while the pool is empty. Each must return
+	// immediately without blocking and without incrementing started.
+	const extras = 50
+	for i := 0; i < extras; i++ {
+		dc.schedulePopulate("f", "e", int64(1000+i), []byte("data"))
+	}
+
+	// Give any (incorrectly) scheduled extras time to appear.
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, int32(4), started.Load(),
+		"pool exhaustion must drop populates, not queue them")
+
+	// Release the four in-flight uploads and drain.
+	close(release)
+	dc.inflight.Wait()
+	assert.Equal(t, int32(4), completed.Load(), "exactly the 4 buffered uploads should complete")
+}
+
+// TestSchedulePopulate_BufferReturnedAfterUpload verifies that doUpload
+// returns its borrowed buffer to the pool on success, so subsequent
+// populates can succeed once earlier uploads drain.
+func TestSchedulePopulate_BufferReturnedAfterUpload(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := &DistCache{
+		client:        mock,
+		chunkSize:     16 * 1024 * 1024,
+		bypassOnError: true,
+	}
+	dc.SetName(compName)
+	dc.SetNextComponent(next)
+	// 1-buffer pool so we can prove recycling.
+	dc.bufs = make(chan *[]byte, 1)
+	b := make([]byte, dc.chunkSize)
+	dc.bufs <- &b
+
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return nil
+	}
+
+	// First populate consumes the only buffer.
+	dc.schedulePopulate("f", "e", 0, []byte("data"))
+	dc.inflight.Wait()
+	require.Equal(t, int32(1), uploads.Load())
+	require.Equal(t, 1, len(dc.bufs), "buffer must be returned after upload completes")
+
+	// Second populate re-uses the returned buffer.
+	dc.schedulePopulate("f", "e", 1, []byte("more"))
+	dc.inflight.Wait()
+	assert.Equal(t, int32(2), uploads.Load())
+	assert.Equal(t, 1, len(dc.bufs), "buffer must be returned again after second upload")
 }
