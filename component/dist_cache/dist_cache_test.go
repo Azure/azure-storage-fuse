@@ -96,6 +96,17 @@ func newTestDistCache(mock *mockDCacheClient, next *mockNextComponent) *DistCach
 	}
 	dc.SetName(compName)
 	dc.SetNextComponent(next)
+
+	// Preallocate a small bounded upload pool so tests exercise the real
+	// schedulePopulate / doUpload path. Spawn-on-demand goroutines are
+	// tracked by dc.inflight; tests don't call Stop but the goroutines exit
+	// on their own after each upload.
+	const testBuffers = 4
+	dc.bufs = make(chan *[]byte, testBuffers)
+	for i := 0; i < testBuffers; i++ {
+		b := make([]byte, dc.chunkSize)
+		dc.bufs <- &b
+	}
 	return dc
 }
 

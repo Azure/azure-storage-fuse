@@ -107,7 +107,7 @@ type BlockCacheOptions struct {
 const (
 	compName                = "block_cache"
 	defaultTimeout          = 120
-	defaultBlockSize        = 16
+	DefaultBlockSize        = 16
 	MAX_POOL_USAGE   uint32 = 80
 	MIN_POOL_USAGE   uint32 = 50
 	MIN_PREFETCH            = 5
@@ -194,14 +194,14 @@ func (bc *BlockCache) GenConfig() string {
 
 	prefetch := uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	memSize := uint32(bc.getDefaultMemSize() / _1MB)
-	if (prefetch * defaultBlockSize) > memSize {
+	if (prefetch * DefaultBlockSize) > memSize {
 		prefetch = (MIN_PREFETCH * 2) + 1
 	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "\n%s:", bc.Name())
 
-	fmt.Fprintf(&sb, "\n  block-size-mb: %v", defaultBlockSize)
+	fmt.Fprintf(&sb, "\n  block-size-mb: %v", DefaultBlockSize)
 	fmt.Fprintf(&sb, "\n  mem-size-mb: %v", memSize)
 	fmt.Fprintf(&sb, "\n  prefetch: %v", prefetch)
 	fmt.Fprintf(&sb, "\n  parallelism: %v", uint32(3*runtime.NumCPU()))
@@ -237,7 +237,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 	}
 
-	bc.blockSize = uint64(defaultBlockSize) * _1MB
+	bc.blockSize = uint64(DefaultBlockSize) * _1MB
 	if config.IsSet(compName + ".block-size-mb") {
 		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
