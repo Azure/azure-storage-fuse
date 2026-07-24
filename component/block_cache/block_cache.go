@@ -115,6 +115,12 @@ const (
 	MIN_RANDREAD            = 10
 	MAX_FAIL_CNT            = 3
 	MAX_BLOCKS              = 50000
+
+	// MemShareFraction is the fraction of free RAM block_cache reserves for
+	// its block pool when block_cache.mem-size-mb is not explicitly set.
+	// Exported so other components (e.g. dist_cache) can compute their share
+	// relative to block_cache's actual footprint rather than raw free RAM.
+	MemShareFraction = 0.8
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -356,15 +362,12 @@ func (bc *BlockCache) getDefaultDiskSize(path string) uint64 {
 }
 
 func (bc *BlockCache) getDefaultMemSize() uint64 {
-	var sysinfo syscall.Sysinfo_t
-	err := syscall.Sysinfo(&sysinfo)
-
-	if err != nil {
-		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of 4GB.", bc.Name(), err.Error())
-		return uint64(4192) * _1MB
+	free, usedFallback := common.FreeMemoryBytesOrDefault()
+	if usedFallback {
+		log.Info("BlockCache::getDefaultMemSize : failed to read free memory for %s. Assigning a pre-defined value of %d MB.", bc.Name(), free/_1MB)
+		return free
 	}
-
-	return uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
+	return uint64(MemShareFraction * float64(free))
 }
 
 // CreateFile: Create a new file

@@ -63,6 +63,11 @@ var RootMount bool
 var ForegroundMount bool
 var IsStream bool
 
+// DefaultMemoryFallbackBytes is the value returned by FreeMemoryBytesOrDefault
+// when the underlying sysinfo call fails. Kept at 4 GiB (4192 MiB) to match
+// the historical fallback used by block_cache
+const DefaultMemoryFallbackBytes uint64 = 4192 * 1024 * 1024
+
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
 	mntList, err := os.ReadFile("/etc/mtab")
@@ -674,4 +679,26 @@ func TotalMemoryBytes() uint64 {
 		return 0
 	}
 	return uint64(info.Totalram) * uint64(info.Unit)
+}
+
+// FreeMemoryBytes returns the currently free RAM of the system in bytes.
+// Returns 0 if the syscall fails.
+func FreeMemoryBytes() uint64 {
+	var info syscall.Sysinfo_t
+	if err := syscall.Sysinfo(&info); err != nil {
+		return 0
+	}
+	return uint64(info.Freeram) * uint64(info.Unit)
+}
+
+// FreeMemoryBytesOrDefault returns free RAM in bytes, falling back to
+// DefaultMemoryFallbackBytes if the sysinfo call fails. The second return
+// value is true when the fallback was used, so callers can log the event
+// with their own component tag / severity (common cannot import common/log
+// due to an import cycle).
+func FreeMemoryBytesOrDefault() (uint64, bool) {
+	if free := FreeMemoryBytes(); free > 0 {
+		return free, false
+	}
+	return DefaultMemoryFallbackBytes, true
 }

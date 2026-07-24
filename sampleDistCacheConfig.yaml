@@ -35,7 +35,7 @@ block_cache:
 # At least one discovery method must be configured: discovery-url, k8s-service, or server-list.
 dist_cache:
   # Option 1: Discovery endpoint (recommended for production)
-  # discovery-url: "cacheserver-discovery.my-namespace.svc.cluster.local:9000"
+  discovery-url: "cacheserver-discovery.my-namespace.svc.cluster.local:9065"
 
   # Option 2: Kubernetes DNS discovery
   # k8s-service: cacheserver
@@ -43,7 +43,7 @@ dist_cache:
   # port: 9065
 
   # Option 3: Static server list (comma-separated host:port)
-  server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
+  # server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
 
   # Graceful degradation: if true, cache errors fall through to Azure Blob Storage
   bypass-on-error: true
