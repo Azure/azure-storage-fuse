@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784441364208,
+  "lastUpdate": 1785046335245,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -941,6 +941,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "filecache_sequential_read_100GB_directio",
             "value": 114567.974755,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d302f13072d7af5d6777ebe5e06f46d66bb5b316",
+          "message": "Add handle ID to log in opendir libfuse handler (#2294)",
+          "timestamp": "2026-07-24T06:54:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d302f13072d7af5d6777ebe5e06f46d66bb5b316"
+        },
+        "date": 1785046334712,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "filecache_sequential_read_100GB_directio",
+            "value": 125601.792139,
             "unit": "milliseconds"
           }
         ]
