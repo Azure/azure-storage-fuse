@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784440310494,
+  "lastUpdate": 1785045300133,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1481,6 +1481,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 133.255388719027,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d302f13072d7af5d6777ebe5e06f46d66bb5b316",
+          "message": "Add handle ID to log in opendir libfuse handler (#2294)",
+          "timestamp": "2026-07-24T06:54:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d302f13072d7af5d6777ebe5e06f46d66bb5b316"
+        },
+        "date": 1785045299596,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.217435762394,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.289700146946,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read",
+            "value": 0.312701865176,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 127.46827384321999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.529014998848,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.468585293152,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 137.785725190367,
             "unit": "milliseconds"
           }
         ]
