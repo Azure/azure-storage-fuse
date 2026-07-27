@@ -367,7 +367,7 @@ func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType,
 
 func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor) (*task, error) {
 	contentLease := bufDesc.lockContent()
-	task, err := blk.queueUploadLocked(workerPool, bufDesc, contentLease, true)
+	task, err := blk.queueUploadLocked(workerPool, bufDesc, contentLease, true, nil)
 	if err != nil {
 		contentLease.release()
 		return nil, err
@@ -375,11 +375,11 @@ func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor)
 	return task, nil
 }
 
-// queueUploadLocked transfers contentLease ownership to the worker task.
+// queueUploadLocked transfers contentLease and optional writeback ownership to the worker task.
 // The caller must own the lease and must not release it after a successful call.
 // Keeping this lock through REST completion and result publication prevents a
 // newer write from being marked clean by an older upload.
-func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, callerWaits bool) (*task, error) {
+func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, callerWaits bool, writeback *writebackLimiter) (*task, error) {
 	if !contentLease.belongsTo(bufDesc) {
 		return nil, fmt.Errorf("invalid content lease for block %d", blk.idx)
 	}
@@ -403,6 +403,7 @@ func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescr
 		uploadSize:         uploadSize,
 		fileGeneration:     fileGeneration,
 		contentLease:       contentLease,
+		writeback:          writeback,
 	}
 	workerPool.queueTask(task)
 	return task, nil

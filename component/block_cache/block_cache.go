@@ -248,13 +248,14 @@ type BlockCacheOptions struct {
 
 // Component configuration constants
 const (
-	compName             = "block_cache" // Component name used in configuration and logs
-	defaultTimeout       = 120           // Default disk cache timeout in seconds
-	defaultBlockSize     = 16            // Default block size in megabytes
-	MIN_PREFETCH         = 5             // Minimum number of blocks for prefetch
-	MAX_BLOCKS           = 50000         // Maximum number of blocks per file (limits file size)
-	defaultMemoryPercent = 50            // Available memory used when mem-size-mb is omitted
-	maxMemoryPercent     = 80            // Maximum available memory accepted for an explicit pool
+	compName              = "block_cache" // Component name used in configuration and logs
+	defaultTimeout        = 120           // Default disk cache timeout in seconds
+	defaultBlockSize      = 16            // Default block size in megabytes
+	MIN_PREFETCH          = 5             // Minimum number of blocks for prefetch
+	MAX_BLOCKS            = 50000         // Maximum number of blocks per file (limits file size)
+	defaultMemoryPercent  = 50            // Available memory used when mem-size-mb is omitted
+	maxMemoryPercent      = 80            // Maximum available memory accepted for an explicit pool
+	maxFileWritebackTasks = 4             // Maximum asynchronous full-block uploads per file
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -314,6 +315,13 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	bc.btm = newBufferTableMgr()
 
 	return nil
+}
+
+func (bc *BlockCache) writebackLimit() int {
+	bufferCount := bc.memSize / bc.blockSize
+	workerLimit := (uint64(bc.workers) + 3) / 4
+	poolLimit := bufferCount / 8
+	return int(max(uint64(1), min(uint64(maxFileWritebackTasks), workerLimit, poolLimit)))
 }
 
 // Stop shuts down the BlockCache component and releases all resources.

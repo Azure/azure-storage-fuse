@@ -72,6 +72,7 @@ type task struct {
 	uploadSize         int                 // Validated number of bytes to upload
 	fileGeneration     uint64              // File contents generation captured at queue time
 	contentLease       *bufferContentLease // Exclusive descriptor content ownership
+	writeback          *writebackLimiter   // Per-file asynchronous writeback permit
 	err                error               // Task result, published before completion is signaled
 }
 
@@ -177,6 +178,9 @@ func (wp *workerPool) completeTask(task *task) {
 		task.bufDesc.release(wp.bc.freeList)
 	}
 	task.block.file.generations.finish(task.fileGeneration)
+	if task.writeback != nil {
+		task.writeback.release()
+	}
 	close(task.signalOnCompletion)
 }
 

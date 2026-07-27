@@ -315,6 +315,24 @@ func TestCreateWorkerPool_UsesQueueSize(t *testing.T) {
 	wp.destroy()
 }
 
+func TestBlockCache_WritebackLimit(t *testing.T) {
+	tests := []struct {
+		buffers uint64
+		workers uint32
+		want    int
+	}{
+		{buffers: 4, workers: 2, want: 1},
+		{buffers: 20, workers: 10, want: 2},
+		{buffers: 64, workers: 16, want: 4},
+		{buffers: 128, workers: 64, want: 4},
+	}
+
+	for _, test := range tests {
+		bc := &BlockCache{blockSize: 1, memSize: test.buffers, workers: test.workers}
+		assert.Equal(t, test.want, bc.writebackLimit(), "buffers=%d workers=%d", test.buffers, test.workers)
+	}
+}
+
 func TestBlockCacheConfigure_TmpPathMountPathConflict(t *testing.T) {
 	config.ResetConfig()
 	t.Cleanup(config.ResetConfig)
