@@ -47,6 +47,7 @@ const (
 	// Reference counting
 	refCountTableOnly       = 1
 	refCountTableAndOneUser = 2
+	maxBufferUsageCount     = 5
 )
 
 var (
@@ -81,9 +82,9 @@ type bufferDescriptor struct {
 	refCnt atomic.Int32
 
 	// Track buffer usage for eviction decisions
-	bytesRead               atomic.Int32 // # of bytes read from this buffer (helps determine if buffer was used)
-	bytesWritten            atomic.Int32 // # of bytes written to this buffer (helps determine if upload is needed)
-	numEvictionCyclesPassed atomic.Int32 // # of eviction cycles this buffer has survived, heuristic used in victim selection
+	bytesRead    atomic.Int32  // # of bytes read from this buffer (telemetry only)
+	bytesWritten atomic.Int32  // # of bytes written to this buffer (telemetry only)
+	usageCount   atomic.Uint32 // Clock-sweep usage count, bounded by maxBufferUsageCount
 
 	// Content synchronization lock for buffer data access
 	// - Held exclusively during download/upload operations (modifying buffer content)
@@ -97,6 +98,30 @@ type bufferDescriptor struct {
 	writeCoverage    []uint64    // One bit per fully written OS page; protected by contentLock
 	writeRegionCount int         // Fixed number of pages represented by this buffer
 	coveredRegions   int         // Number of bits set in writeCoverage; protected by contentLock
+}
+
+func (bd *bufferDescriptor) recordAccess(kind bufferAccessKind) {
+	if kind != accessDemand && kind != accessWrite {
+		return
+	}
+	for {
+		current := bd.usageCount.Load()
+		if current >= maxBufferUsageCount || bd.usageCount.CompareAndSwap(current, current+1) {
+			return
+		}
+	}
+}
+
+func (bd *bufferDescriptor) ageUsage() bool {
+	for {
+		current := bd.usageCount.Load()
+		if current == 0 {
+			return false
+		}
+		if bd.usageCount.CompareAndSwap(current, current-1) {
+			return true
+		}
+	}
 }
 
 // bufferContentLease represents exclusive ownership of a descriptor's content.
@@ -167,13 +192,13 @@ func (bd *bufferDescriptor) resetWriteCoverage() {
 }
 
 func (bd *bufferDescriptor) String() string {
-	return fmt.Sprintf("BufferDescriptor{bufIdx: %d, blockIdx: %d, refCnt: %d, bytesRead: %d, bytesWritten: %d, numEvictionCyclesPassed: %d, valid: %v, dirty: %v, downloadErr: %v, uploadErr: %v, file: %s}",
+	return fmt.Sprintf("BufferDescriptor{bufIdx: %d, blockIdx: %d, refCnt: %d, bytesRead: %d, bytesWritten: %d, usageCount: %d, valid: %v, dirty: %v, downloadErr: %v, uploadErr: %v, file: %s}",
 		bd.bufIdx,
 		bd.block.idx,
 		bd.refCnt.Load(),
 		bd.bytesRead.Load(),
 		bd.bytesWritten.Load(),
-		bd.numEvictionCyclesPassed.Load(),
+		bd.usageCount.Load(),
 		bd.valid.Load(),
 		bd.dirty.Load(),
 		bd.downloadErr,
@@ -250,6 +275,8 @@ func (bd *bufferDescriptor) release(fl *freeListType) bool {
 			bd.bufIdx, bd.block.idx, bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
 		fl.releaseBuffer(bd)
 		return true
+	} else if newRefCnt == refCountTableOnly {
+		fl.notifyAvailability()
 	} else if newRefCnt < 0 {
 		// Negative refCnt indicates a bug: release() called more times than acquire.
 		// This should never happen and represents a serious reference counting error.
@@ -270,7 +297,7 @@ func (bd *bufferDescriptor) resetMetadata() {
 	bd.refCnt.Store(0)
 	bd.bytesRead.Store(0)
 	bd.bytesWritten.Store(0)
-	bd.numEvictionCyclesPassed.Store(0)
+	bd.usageCount.Store(0)
 	bd.valid.Store(false)
 	bd.dirty.Store(false)
 	bd.downloadErr = nil

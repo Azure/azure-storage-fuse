@@ -233,7 +233,7 @@ func (f *file) updateFileSize(size int64) {
 //  2. Cache management: Gets or creates buffer descriptors for blocks
 //  3. Download coordination: Triggers downloads for uncached blocks
 //  4. Flush handling: Flushes uncommitted blocks before reading
-//  5. Buffer cleanup: Removes fully-read buffers to free cache space
+//  5. Usage accounting: Demand reads promote retained buffers for clock-sweep eviction
 //
 // Parameters:
 //   - options: Read options including offset, data buffer, and handle
@@ -248,8 +248,8 @@ func (f *file) updateFileSize(size int64) {
 //   - Reads may block waiting for downloads to complete
 //
 // Performance optimization:
-//   - Removes buffers from cache after they are fully read
-//   - This frees space for more useful blocks (prefetch, write buffers)
+//   - Sequential reads schedule demand-first prefetch
+//   - Demand reads promote buffers while prefetch alone does not
 //
 // Thread Safety:
 // Safe to call concurrently from multiple goroutines, even for the same file.
@@ -312,7 +312,7 @@ func (f *file) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 				bc.freeList,
 				bc.workerPool,
 				blk,
-				true, /*sync*/
+				accessDemand,
 			)
 			if err != nil {
 				log.Err("File::read: Failed to get buffer descriptor for file: %s, blockIdx: %d, [%v]", f.Name, blockIdx, err)
@@ -441,7 +441,7 @@ func (f *file) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 			bc.freeList,
 			bc.workerPool,
 			blk,
-			false, /* sync */
+			accessPrefetch,
 		)
 		if err != nil {
 			pd.nxtReadAheadBlockIdx.CompareAndSwap(nextBlockIdx+1, nextBlockIdx)
@@ -571,7 +571,7 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 				bc.freeList,
 				bc.workerPool,
 				blk,
-				true, /*sync*/
+				accessWrite,
 			)
 			if err != nil {
 				// Decrement the write wait group on error
@@ -795,7 +795,7 @@ func (f *file) flush(bc *BlockCache, takeFileLock bool) error {
 				bc.freeList,
 				bc.workerPool,
 				lastBlock,
-				true, /*sync*/
+				accessMaintenance,
 			)
 			if err != nil {
 				log.Err("File::flush: Failed to get buffer descriptor for last blockIdx: %d during flush at file: %s, [%v]",
@@ -1094,7 +1094,7 @@ func (f *file) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 			bc.freeList,
 			bc.workerPool,
 			lastBlock,
-			true, /*sync*/
+			accessWrite,
 		)
 		if err != nil {
 			log.Err("File::truncate: Failed to get buffer descriptor for last blockIdx: %d during truncate at file: %s, [%v]",

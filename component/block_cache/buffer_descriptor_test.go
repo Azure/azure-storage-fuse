@@ -50,7 +50,7 @@ func TestBufferDescriptor_String(t *testing.T) {
 	bd.refCnt.Store(2)
 	bd.bytesRead.Store(100)
 	bd.bytesWritten.Store(200)
-	bd.numEvictionCyclesPassed.Store(1)
+	bd.usageCount.Store(1)
 	bd.valid.Store(true)
 	bd.dirty.Store(false)
 
@@ -60,6 +60,7 @@ func TestBufferDescriptor_String(t *testing.T) {
 	assert.Contains(t, str, "refCnt: 2")
 	assert.Contains(t, str, "bytesRead: 100")
 	assert.Contains(t, str, "bytesWritten: 200")
+	assert.Contains(t, str, "usageCount: 1")
 	assert.Contains(t, str, "test.txt")
 }
 
@@ -158,7 +159,7 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	bufDesc.refCnt.Store(5)
 	bufDesc.bytesRead.Store(100)
 	bufDesc.bytesWritten.Store(200)
-	bufDesc.numEvictionCyclesPassed.Store(3)
+	bufDesc.usageCount.Store(3)
 	bufDesc.valid.Store(true)
 	bufDesc.dirty.Store(true)
 	bufDesc.downloadErr = assert.AnError
@@ -178,7 +179,7 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	assert.Equal(t, int32(0), bufDesc.refCnt.Load())
 	assert.Equal(t, int32(0), bufDesc.bytesRead.Load())
 	assert.Equal(t, int32(0), bufDesc.bytesWritten.Load())
-	assert.Equal(t, int32(0), bufDesc.numEvictionCyclesPassed.Load())
+	assert.Equal(t, uint32(0), bufDesc.usageCount.Load())
 	assert.False(t, bufDesc.valid.Load())
 	assert.False(t, bufDesc.dirty.Load())
 	assert.NoError(t, bufDesc.downloadErr)
@@ -374,8 +375,8 @@ func TestBufferDescriptor_AtomicFields(t *testing.T) {
 	bd.bytesWritten.Store(30)
 	assert.Equal(t, int32(30), bd.bytesWritten.Load())
 
-	bd.numEvictionCyclesPassed.Store(5)
-	assert.Equal(t, int32(5), bd.numEvictionCyclesPassed.Load())
+	bd.usageCount.Store(5)
+	assert.Equal(t, uint32(5), bd.usageCount.Load())
 
 	bd.valid.Store(true)
 	assert.True(t, bd.valid.Load())

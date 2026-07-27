@@ -112,22 +112,20 @@ type workerPool struct {
 //
 // Parameters:
 //   - workers: Number of worker goroutines to create
+//   - queueSize: Number of tasks that may wait for a worker
 //
 // This function is called during BlockCache.Start() to initialize the worker pool.
 // Workers start immediately and wait for tasks to arrive on the tasks channel.
-//
-// The task channel is buffered (workers*2) to allow some queueing of pending
-// operations without blocking the submitter.
-func createWorkerPool(workers int, bc *BlockCache) *workerPool {
+func createWorkerPool(workers int, queueSize int, bc *BlockCache) *workerPool {
 	// Create the worker pool.
 	wp := &workerPool{
 		workers: workers,
-		tasks:   make(chan *task, workers*2),
+		tasks:   make(chan *task, queueSize),
 		bc:      bc,
 	}
 
 	// Start the workers.
-	log.Info("BlockCache::startWorkerPool: Starting worker Pool, num workers: %d", wp.workers)
+	log.Info("BlockCache::startWorkerPool: Starting worker Pool, num workers: %d, task queue size: %d", wp.workers, queueSize)
 
 	wp.wg.Add(wp.workers)
 	for i := 0; i < wp.workers; i++ {

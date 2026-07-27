@@ -107,7 +107,7 @@
 // - **Read-ahead**: Sequential access patterns trigger automatic prefetching
 // - **Write coalescing**: Multiple writes to the same block are batched
 // - **Lazy write**: Dirty blocks are uploaded asynchronously when possible
-// - **Eviction policy**: LRU-based eviction prioritizes frequently accessed blocks
+// - **Eviction policy**: Bounded clock sweep protects repeatedly demanded blocks
 //
 // # Thread Safety
 //
@@ -119,7 +119,6 @@ package block_cache
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"runtime"
 	"sync"
@@ -208,7 +207,8 @@ type BlockCacheOptions struct {
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 
 	// MemSize is the total memory allocated for the buffer pool in megabytes.
-	// If not specified, a default based on available system RAM is used.
+	// If not specified, 50% of available memory is used. Explicit values may use
+	// at most 80% of available memory.
 	MemSize uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 
 	// TmpPath is the directory path for disk-based caching (currently unused).
@@ -221,12 +221,12 @@ type BlockCacheOptions struct {
 	// DiskTimeout is the duration in seconds that disk-cached blocks remain valid (currently unused).
 	DiskTimeout uint32 `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
 
-	// PrefetchCount is the maximum number of blocks to prefetch for sequential reads.
-	// Set to 0 to disable prefetching. Default: calculated based on CPU count.
+	// PrefetchCount is the maximum number of blocks to prefetch per sequential stream.
+	// Set to 0 to disable prefetching. It may not exceed half the buffer pool.
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
 
 	// Workers is the number of goroutines in the worker pool for async I/O operations.
-	// Default: 3 * number of CPUs. Higher values increase parallelism but use more resources.
+	// Default: number of CPUs, capped by the number of buffers.
 	Workers uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
 
 	// PrefetchOnOpen enables immediate prefetching when a file is opened.
@@ -248,11 +248,13 @@ type BlockCacheOptions struct {
 
 // Component configuration constants
 const (
-	compName         = "block_cache" // Component name used in configuration and logs
-	defaultTimeout   = 120           // Default disk cache timeout in seconds
-	defaultBlockSize = 16            // Default block size in megabytes
-	MIN_PREFETCH     = 5             // Minimum number of blocks for prefetch
-	MAX_BLOCKS       = 50000         // Maximum number of blocks per file (limits file size)
+	compName             = "block_cache" // Component name used in configuration and logs
+	defaultTimeout       = 120           // Default disk cache timeout in seconds
+	defaultBlockSize     = 16            // Default block size in megabytes
+	MIN_PREFETCH         = 5             // Minimum number of blocks for prefetch
+	MAX_BLOCKS           = 50000         // Maximum number of blocks per file (limits file size)
+	defaultMemoryPercent = 50            // Available memory used when mem-size-mb is omitted
+	maxMemoryPercent     = 80            // Maximum available memory accepted for an explicit pool
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -290,6 +292,15 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
 
+	if bc.blockSize == 0 || bc.memSize/bc.blockSize < 2 {
+		return fmt.Errorf("failed to start %s [buffer pool must contain at least 2 blocks]", bc.Name())
+	}
+	bufferCount := bc.memSize / bc.blockSize
+	if bc.workers == 0 || uint64(bc.workers) >= bufferCount {
+		return fmt.Errorf("failed to start %s [invalid parallelism %d for %d buffers]", bc.Name(), bc.workers, bufferCount)
+	}
+	queueSize := min(uint64(bc.workers)*2, bufferCount-uint64(bc.workers)-1)
+
 	var err error
 	var fl *freeListType
 
@@ -299,7 +310,7 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	}
 
 	bc.freeList = fl
-	bc.workerPool = createWorkerPool(int(bc.workers), bc)
+	bc.workerPool = createWorkerPool(int(bc.workers), int(queueSize), bc)
 	bc.btm = newBufferTableMgr()
 
 	return nil
@@ -353,9 +364,9 @@ func (bc *BlockCache) GenConfig() string {
 //
 // Configuration validation:
 //   - Block size must be positive
-//   - Memory size defaults to system RAM percentage if not specified
-//   - Prefetch count defaults based on CPU count
-//   - Worker count defaults to 3x CPU count
+//   - Memory must hold at least two whole blocks and stay within available-memory limits
+//   - Prefetch may use at most half the buffer pool per sequential stream
+//   - Workers must leave at least one foreground buffer
 //
 // Returns an error if configuration is invalid, which will cause the pipeline
 // to fail initialization and exit.
@@ -396,32 +407,35 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	bc.maxFileSize = bc.blockSize * MAX_BLOCKS
 
-	if config.IsSet(compName + ".mem-size-mb") {
+	memSizeConfigured := config.IsSet(compName+".mem-size-mb") && conf.MemSize != 0
+	if memSizeConfigured {
+		if conf.MemSize > ^uint64(0)/common.MbToBytes {
+			return fmt.Errorf("config error in %s [mem-size-mb is too large]", bc.Name())
+		}
 		bc.memSize = conf.MemSize * common.MbToBytes
 	}
 
-	if bc.memSize == 0 {
-		//
-		// How much percennt of the system RAM (available memory to be precise) are we allowed to use?
-		//
-		// TODO: This can be config value.
-		//
-		// In the older block cache, we set this to 80% usable memory which is very aggressive, and can cause
-		// OOM on the system. Setting this to 50% for now, and we can increase this later based on telemetry
-		// and testing.
-		usablePercentSystemRAM := 50
-
-		//
-		// Allow higher number of maxBuffers if system can afford.
-		//
-		ramMB, err := common.GetAvailableMemoryInMB()
-		if err != nil {
-			return fmt.Errorf("createFreeList: %v", err)
-		}
-
-		// usableMemory in bytes capped by usablePercentSystemRAM.
-		bc.memSize = (ramMB * 1024 * 1024 * uint64(usablePercentSystemRAM)) / 100
+	availableMemory, err := common.GetAvailableMemoryBytes()
+	if err != nil {
+		return fmt.Errorf("config error in %s [failed to determine available memory: %v]", bc.Name(), err)
 	}
+	if memSizeConfigured {
+		maxConfiguredMemory := availableMemory * maxMemoryPercent / 100
+		if bc.memSize > maxConfiguredMemory {
+			return fmt.Errorf("config error in %s [mem-size-mb requests %d bytes; maximum is %d bytes (%d%% of available memory)]",
+				bc.Name(), bc.memSize, maxConfiguredMemory, maxMemoryPercent)
+		}
+	} else {
+		bc.memSize = availableMemory * defaultMemoryPercent / 100
+	}
+
+	bufferCount := bc.memSize / bc.blockSize
+	if bufferCount < 2 {
+		return fmt.Errorf("config error in %s [memory pool must hold at least 2 blocks: mem-size=%d block-size=%d]",
+			bc.Name(), bc.memSize, bc.blockSize)
+	}
+	// The free list allocates whole blocks, so expose the actual allocation size.
+	bc.memSize = bufferCount * bc.blockSize
 
 	bc.diskTimeout = defaultTimeout
 	if config.IsSet(compName + ".disk-timeout-sec") {
@@ -431,12 +445,21 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.consistency = conf.Consistency
 
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
-	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(runtime.NumCPU())))
-	bc.noPrefetch = false
-
-	if (!config.IsSet(compName + ".mem-size-mb")) && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
-		bc.prefetch = (MIN_PREFETCH * 2) + 1
+	prefetchConfigured := config.IsSet(compName + ".prefetch")
+	if prefetchConfigured {
+		bc.prefetch = conf.PrefetchCount
+	} else {
+		bc.prefetch = uint32(max((MIN_PREFETCH*2)+1, runtime.NumCPU()))
 	}
+	maxPrefetch := bufferCount / 2
+	if uint64(bc.prefetch) > maxPrefetch {
+		if prefetchConfigured {
+			return fmt.Errorf("config error in %s [prefetch %d exceeds half of the %d-buffer pool; maximum is %d]",
+				bc.Name(), bc.prefetch, bufferCount, maxPrefetch)
+		}
+		bc.prefetch = uint32(maxPrefetch)
+	}
+	bc.noPrefetch = bc.prefetch == 0
 
 	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
 	if err != nil {
@@ -444,26 +467,24 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 	}
 
-	if config.IsSet(compName + ".prefetch") {
-		bc.prefetch = conf.PrefetchCount
-		if bc.prefetch == 0 {
-			bc.noPrefetch = true
-		}
-		// This seems aggressive from the old code. User can set the prefetch to 2/3 blocks which is a valid use case.
-		// else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
-		// 	log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MIN_PREFETCH*2)+1)
-		// 	return fmt.Errorf("config error in %s [invalid prefetch count]", bc.Name())
-		// }
-	}
-
 	bc.maxDiskUsageHit = false
 
-	bc.workers = uint32(runtime.NumCPU())
-	if config.IsSet(compName + ".parallelism") {
+	workersConfigured := config.IsSet(compName + ".parallelism")
+	if workersConfigured {
 		bc.workers = conf.Workers
+	} else {
+		bc.workers = uint32(runtime.NumCPU())
 	}
 	if bc.workers == 0 {
 		return fmt.Errorf("config error in %s [parallelism must be greater than zero]", bc.Name())
+	}
+	maxWorkers := bufferCount - 1
+	if uint64(bc.workers) > maxWorkers {
+		if workersConfigured {
+			return fmt.Errorf("config error in %s [parallelism %d leaves no foreground buffer in a %d-buffer pool; maximum is %d]",
+				bc.Name(), bc.workers, bufferCount, maxWorkers)
+		}
+		bc.workers = uint32(maxWorkers)
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
@@ -511,8 +532,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 	// }
 	// }
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, buffers %v, workers %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
+		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
 
 	return nil
 }
@@ -1175,7 +1196,7 @@ func init() {
 	blockCachePrefetch := config.AddUint32Flag("block-cache-prefetch", 0, "Max number of blocks to prefetch.")
 	config.BindPFlag(compName+".prefetch", blockCachePrefetch)
 
-	blockParallelism := config.AddUint32Flag("block-cache-parallelism", 128, "Number of worker thread responsible for upload/download jobs.")
+	blockParallelism := config.AddUint32Flag("block-cache-parallelism", 0, "Number of worker threads responsible for upload/download jobs. Default: auto-tuned to the buffer pool.")
 	config.BindPFlag(compName+".parallelism", blockParallelism)
 
 	blockCachePrefetchOnOpen := config.AddBoolFlag("block-cache-prefetch-on-open", false, "Start prefetching on open or wait for first read.")

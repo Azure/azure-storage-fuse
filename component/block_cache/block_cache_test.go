@@ -226,6 +226,95 @@ lazy-write: false
 	assert.Contains(t, err.Error(), "parallelism")
 }
 
+func TestBlockCacheConfigure_ResourceGuardrails(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    string
+		errorText string
+	}{
+		{
+			name: "memory holds only one block",
+			config: `
+block_cache:
+  block-size-mb: 2
+  mem-size-mb: 2
+lazy-write: false
+`,
+			errorText: "at least 2 blocks",
+		},
+		{
+			name: "parallelism consumes foreground headroom",
+			config: `
+block_cache:
+  block-size-mb: 1
+  mem-size-mb: 4
+  parallelism: 4
+lazy-write: false
+`,
+			errorText: "parallelism",
+		},
+		{
+			name: "prefetch exceeds half pool",
+			config: `
+block_cache:
+  block-size-mb: 1
+  mem-size-mb: 4
+  prefetch: 3
+lazy-write: false
+`,
+			errorText: "prefetch",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config.ResetConfig()
+			t.Cleanup(config.ResetConfig)
+			assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(test.config)))
+
+			bc := NewBlockCacheComponent().(*BlockCache)
+			err := bc.Configure(true)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), test.errorText)
+		})
+	}
+}
+
+func TestBlockCacheConfigure_NormalizesAndDerivesResources(t *testing.T) {
+	config.ResetConfig()
+	t.Cleanup(config.ResetConfig)
+
+	cfg := `
+block_cache:
+  block-size-mb: 2
+  mem-size-mb: 9
+  prefetch: 2
+  parallelism: 2
+lazy-write: false
+`
+	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
+
+	bc := NewBlockCacheComponent().(*BlockCache)
+	assert.NoError(t, bc.Configure(true))
+	assert.Equal(t, uint64(8*common.MbToBytes), bc.memSize)
+	assert.Equal(t, uint32(2), bc.workers)
+	assert.Equal(t, uint32(2), bc.prefetch)
+}
+
+func TestBlockCacheStart_RejectsNoWorkers(t *testing.T) {
+	bc := &BlockCache{
+		blockSize: common.MbToBytes,
+		memSize:   4 * common.MbToBytes,
+	}
+	assert.Error(t, bc.Start(context.Background()))
+}
+
+func TestCreateWorkerPool_UsesQueueSize(t *testing.T) {
+	wp := createWorkerPool(2, 3, &BlockCache{})
+	assert.Equal(t, 3, cap(wp.tasks))
+	wp.destroy()
+}
+
 func TestBlockCacheConfigure_TmpPathMountPathConflict(t *testing.T) {
 	config.ResetConfig()
 	t.Cleanup(config.ResetConfig)
@@ -383,7 +472,7 @@ func TestBlockCacheConfigure_AllOptions(t *testing.T) {
 	cfg := `
 block_cache:
   block-size-mb: 2
-  mem-size-mb: 8
+  mem-size-mb: 20
   prefetch: 3
   parallelism: 5
   disk-timeout-sec: 30
@@ -398,7 +487,7 @@ lazy-write: true
 	err := bc.Configure(true)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2*1024*1024), bc.blockSize)
-	assert.Equal(t, uint64(8*1024*1024), bc.memSize)
+	assert.Equal(t, uint64(20*1024*1024), bc.memSize)
 	assert.Equal(t, uint32(3), bc.prefetch)
 	assert.Equal(t, uint32(5), bc.workers)
 	assert.Equal(t, uint32(30), bc.diskTimeout)
@@ -454,7 +543,7 @@ loopbackfs:
 block_cache:
   block-size-mb: 1
   mem-size-mb: 20
-  prefetch: 12
+  prefetch: 10
   parallelism: 10
   path: %s
   disk-size-mb: 50
