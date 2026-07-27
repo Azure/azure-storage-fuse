@@ -35,6 +35,7 @@ package block_cache
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -190,9 +191,7 @@ func TestFreeList_AllocateClearsReleasedBuffer(t *testing.T) {
 	assert.Equal(t, make([]byte, len(second.buf)), second.buf)
 }
 
-func TestFreeList_GetVictimBuffer(t *testing.T) {
-	// This test is complex due to the blocking nature of getVictimBuffer
-	// Just verify the basic structure exists
+func TestFreeList_EvictBuffer(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 10*bc.blockSize)
 	bc.btm = newBufferTableMgr()
@@ -203,7 +202,8 @@ func TestFreeList_GetVictimBuffer(t *testing.T) {
 
 	// Allocate all buffers and pin 9 buffers and leave 1 buffer unpinned to be selected as victim
 	for i := range 10 {
-		bufDesc, err := freeList.allocateBuffer(createBlock(int(i), "testId", localBlock, createFile("test.txt")))
+		blk := createBlock(int(i), "testId", localBlock, createFile("test.txt"))
+		bufDesc, err := freeList.allocateBuffer(blk)
 		assert.NoError(t, err)
 		assert.NotNil(t, bufDesc)
 		assert.Equal(t, i, bufDesc.bufIdx)
@@ -211,21 +211,24 @@ func TestFreeList_GetVictimBuffer(t *testing.T) {
 		assert.Equal(t, int32(0), bufDesc.refCnt.Load(), "Newly allocated buffer should have refCnt 0")
 
 		bufDesc.refCnt.Store(refCountTableOnly) // Pin the buffer for buffer table manager.
+		bc.btm.table[blk] = bufDesc
 		if i < 9 {
 			bufDesc.refCnt.Add(1) // Pin the buffer to indicate it's in use and should not be selected as victim
 		}
 	}
 
-	// Get victim buffer - should return the unpinned buffer
-	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool, bc.btm)
+	// Eviction returns the unpinned buffer detached and reset for reuse.
+	victimBufDesc, err := freeList.evictBuffer(bc.workerPool, bc.btm)
 	assert.NoError(t, err)
 	assert.NotNil(t, victimBufDesc)
 	assert.Equal(t, 9, victimBufDesc.bufIdx)
 	assert.Equal(t, 0, freeList.nxtVictimBuffer) // Should advance victim pointer
-	assert.Equal(t, int32(2), victimBufDesc.refCnt.Load(), "Victim buffer should be pinned to count 2 after selection")
+	assert.Zero(t, victimBufDesc.refCnt.Load())
+	assert.Nil(t, victimBufDesc.block)
+	assert.Len(t, bc.btm.table, 9)
 }
 
-func TestFreeList_GetVictimBuffer_AllInUse(t *testing.T) {
+func TestFreeList_EvictBuffer_AllInUse(t *testing.T) {
 	// In production, FUSE limits threads so buffers eventually release
 	// Testing this so that the error is getting thrown in this edge case
 
@@ -239,7 +242,8 @@ func TestFreeList_GetVictimBuffer_AllInUse(t *testing.T) {
 
 	// Allocate all buffers and pin 9 buffers and leave 1 buffer unpinned to be selected as victim
 	for i := range 10 {
-		bufDesc, err := freeList.allocateBuffer(createBlock(int(i), "testId", localBlock, createFile("test.txt")))
+		blk := createBlock(int(i), "testId", localBlock, createFile("test.txt"))
+		bufDesc, err := freeList.allocateBuffer(blk)
 		assert.NoError(t, err)
 		assert.NotNil(t, bufDesc)
 		assert.Equal(t, i, bufDesc.bufIdx)
@@ -247,33 +251,121 @@ func TestFreeList_GetVictimBuffer_AllInUse(t *testing.T) {
 		assert.Equal(t, int32(0), bufDesc.refCnt.Load(), "Newly allocated buffer should have refCnt 0")
 
 		bufDesc.refCnt.Store(refCountTableAndOneUser) // Pin the buffer for buffer table manager.
+		bc.btm.table[blk] = bufDesc
 	}
 
 	// Get victim buffer - should return nil, as all the buffers are in use.
-	victimBufDesc, err := freeList.getVictimBuffer(bc.workerPool, bc.btm)
+	victimBufDesc, err := freeList.evictBuffer(bc.workerPool, bc.btm)
 	assert.Nil(t, victimBufDesc)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, errNoVictimBufferFound)
 }
 
-func TestFreeList_EvictionCyclesPassed(t *testing.T) {
-	// Test that eviction cycles counter exists and can be incremented
+func TestBufferDescriptor_UsageCount(t *testing.T) {
 	bd := &bufferDescriptor{}
 
-	assert.Equal(t, int32(0), bd.numEvictionCyclesPassed.Load())
-	bd.numEvictionCyclesPassed.Add(1)
-	assert.Equal(t, int32(1), bd.numEvictionCyclesPassed.Load())
+	bd.recordAccess(accessPrefetch)
+	bd.recordAccess(accessMaintenance)
+	assert.Zero(t, bd.usageCount.Load())
+	bd.recordAccess(accessDemand)
+	bd.recordAccess(accessWrite)
+	assert.Equal(t, uint32(2), bd.usageCount.Load())
+	for range maxBufferUsageCount * 2 {
+		bd.recordAccess(accessDemand)
+	}
+	assert.Equal(t, uint32(maxBufferUsageCount), bd.usageCount.Load())
+	assert.True(t, bd.ageUsage())
+	assert.Equal(t, uint32(maxBufferUsageCount-1), bd.usageCount.Load())
+	bd.recordAccess(bufferAccessKind(255))
+	assert.Equal(t, uint32(maxBufferUsageCount-1), bd.usageCount.Load())
 }
 
-func TestFreeList_VictimSelection_FullyRead(t *testing.T) {
-	// Test the bytesRead threshold for victim selection
+func TestFreeList_ClockSweepPrefersColdBuffer(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
+	setupTestFreeList(t, bc.blockSize, 3*bc.blockSize)
+	bc.btm = newBufferTableMgr()
+	defer destroyFreeList()
 
-	bd := &bufferDescriptor{}
-	bd.bytesRead.Store(int32(bc.blockSize))
+	f := createFile("clock.txt")
+	descriptors := make([]*bufferDescriptor, 3)
+	for i := range descriptors {
+		blk := createBlock(i, "id", localBlock, f)
+		bd, err := freeList.allocateBuffer(blk)
+		assert.NoError(t, err)
+		bd.refCnt.Store(refCountTableOnly)
+		bd.dirty.Store(false)
+		bc.btm.table[blk] = bd
+		descriptors[i] = bd
+	}
+	descriptors[0].usageCount.Store(3)
+	descriptors[1].usageCount.Store(0)
+	descriptors[2].usageCount.Store(1)
 
-	// Verify the buffer is marked as fully read (used in victim selection)
-	assert.Equal(t, int32(bc.blockSize), bd.bytesRead.Load())
+	victim, err := freeList.evictBuffer(bc.workerPool, bc.btm)
+	assert.NoError(t, err)
+	assert.Same(t, descriptors[1], victim)
+	assert.Nil(t, victim.block)
+	assert.Equal(t, uint32(2), descriptors[0].usageCount.Load())
+}
+
+func TestFreeList_ClockSweepPrefersPrefetchOverDemand(t *testing.T) {
+	bc = &BlockCache{blockSize: 1024 * 1024}
+	setupTestFreeList(t, bc.blockSize, 2*bc.blockSize)
+	bc.btm = newBufferTableMgr()
+	defer destroyFreeList()
+
+	f := createFile("prefetch.txt")
+	prefetchBlock := createBlock(0, "prefetch", localBlock, f)
+	demandBlock := createBlock(1, "demand", localBlock, f)
+	prefetched, _, err := bc.btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, prefetchBlock, accessPrefetch)
+	assert.NoError(t, err)
+	demand, _, err := bc.btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, demandBlock, accessDemand)
+	assert.NoError(t, err)
+	prefetched.dirty.Store(false)
+	demand.dirty.Store(false)
+	prefetched.release(freeList)
+	demand.release(freeList)
+
+	victim, err := freeList.evictBuffer(bc.workerPool, bc.btm)
+	assert.NoError(t, err)
+	assert.Same(t, prefetched, victim)
+	assert.Nil(t, victim.block)
+	assert.Equal(t, uint32(1), demand.usageCount.Load())
+}
+
+func TestFreeList_AvailabilityNotificationBeforeWait(t *testing.T) {
+	bc = &BlockCache{blockSize: 1024 * 1024}
+	setupTestFreeList(t, bc.blockSize, bc.blockSize)
+	defer destroyFreeList()
+
+	changed, err := freeList.watchAvailability()
+	assert.NoError(t, err)
+	freeList.notifyAvailability()
+
+	select {
+	case <-changed:
+	case <-time.After(time.Second):
+		t.Fatal("availability notification was lost before wait")
+	}
+}
+
+func TestFreeList_DestroyWakesAvailabilityWaiter(t *testing.T) {
+	fl, err := createFreeList(1024, 1024)
+	assert.NoError(t, err)
+	changed, err := fl.watchAvailability()
+	assert.NoError(t, err)
+
+	fl.destroy()
+
+	select {
+	case <-changed:
+	case <-time.After(time.Second):
+		t.Fatal("availability waiter did not wake during buffer-pool shutdown")
+	}
+	_, err = fl.watchAvailability()
+	assert.ErrorIs(t, err, errFreeListClosed)
+	_, err = fl.allocateBuffer(createBlock(0, "closed", localBlock, createFile("closed.txt")))
+	assert.ErrorIs(t, err, errFreeListClosed)
 }
 
 func TestFreeList_CircularVictimSelection(t *testing.T) {
