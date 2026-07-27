@@ -162,6 +162,7 @@ type file struct {
 	// Writers increment this before modifying the file, allowing flush to wait
 	// for all pending writes to complete before uploading data.
 	pendingWriters sync.WaitGroup
+	writeback      writebackLimiter
 
 	// generations identifies the current logical contents and drains work from
 	// invalidated contents before their buffers are released.
@@ -176,6 +177,23 @@ type file struct {
 	// Updated atomically on write and truncate, read by GetAttr to return
 	// correct mtime while the file is open and modified.
 	lmtNano atomic.Int64
+}
+
+// writebackLimiter bounds asynchronous full-block uploads for one file.
+type writebackLimiter struct {
+	once  sync.Once
+	slots chan struct{}
+}
+
+func (limiter *writebackLimiter) acquire(limit int) {
+	limiter.once.Do(func() {
+		limiter.slots = make(chan struct{}, limit)
+	})
+	limiter.slots <- struct{}{}
+}
+
+func (limiter *writebackLimiter) release() {
+	<-limiter.slots
 }
 
 // createFile creates a new File instance with default values.
@@ -630,7 +648,16 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 
 		uploadQueued := false
 		if fullyCovered {
-			if _, err := blk.queueUploadLocked(bc.workerPool, bufDesc, contentLease, false /* callerWaits */); err != nil {
+			f.writeback.acquire(bc.writebackLimit())
+			if e := f.err.Load(); e != nil {
+				f.writeback.release()
+				contentLease.release()
+				bufDesc.release(bc.freeList)
+				f.pendingWriters.Done()
+				return fmt.Errorf("previous write error: %w", *e)
+			}
+			if _, err := blk.queueUploadLocked(bc.workerPool, bufDesc, contentLease, false /* callerWaits */, &f.writeback); err != nil {
+				f.writeback.release()
 				contentLease.release()
 				bufDesc.release(bc.freeList)
 				f.pendingWriters.Done()
