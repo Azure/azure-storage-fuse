@@ -97,6 +97,24 @@ steps:
       DCACHE_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_portforward_pids_${{ parameters.run_idstring }}.txt
 
   # -------------------------------------------------------------------------
+  # 4b. Also expose each cacheserver pod's Prometheus metrics endpoint so
+  #     the dist_cache-focused Go tests (test/dcache_e2e/) can scrape hit /
+  #     upload counters. This is intentionally a separate step / PID file
+  #     from expose-cacheserver.sh so the existing wire-port forwarding is
+  #     untouched, and teardown-kind.sh can kill both PID lists uniformly.
+  - script: |
+      set -e
+      $(WORK_DIR)/test/scripts/dcache/expose-metrics.sh
+      endpoints=$(cat "$DCACHE_METRICS_ENDPOINTS_FILE")
+      echo "Resolved dist_cache metrics endpoints: $endpoints"
+      echo "##vso[task.setvariable variable=DCACHE_METRICS_ENDPOINTS]$endpoints"
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Expose cacheserver metrics'
+    timeoutInMinutes: 5
+    env:
+      DCACHE_METRICS_ENDPOINTS_FILE: $(Agent.TempDirectory)/dcache_metrics_endpoints_${{ parameters.run_idstring }}.txt
+      DCACHE_METRICS_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_metrics_portforward_pids_${{ parameters.run_idstring }}.txt
+
+  # -------------------------------------------------------------------------
   # 5. For each mount variant: gen-config -> mount -> E2E -> unmount.
   #    The kind cluster is left running across variants; only blobfuse2 is
   #    remounted between them.
@@ -141,6 +159,32 @@ steps:
         unmount: true
         delete_containers: false
 
+    # -----------------------------------------------------------------------
+    # 5b. dist_cache-focused Go E2E tests (test/dcache_e2e/).
+    #
+    # These tests own their own mount lifecycle -- they mount blobfuse2
+    # --read-only, seed test payloads via the Azure SDK (writes never
+    # traverse dist_cache in the read-only integration), and remount
+    # between reads to distinguish L2-miss from L2-hit. Runs after the
+    # cleanup.yml above so it starts from an unmounted state.
+    - script: |
+        set -e
+        cd $(WORK_DIR)
+        go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... -args \
+          -blobfuse-bin=$(WORK_DIR)/blobfuse2 \
+          -config-file=${{ variant.config_file }} \
+          -mnt-path=$(MOUNT_DIR) \
+          -tmp-path=$(TEMP_DIR) \
+          -dcache-metrics-endpoints=$(DCACHE_METRICS_ENDPOINTS) \
+          -storage-account=${{ parameters.account_name }} \
+          -storage-key=${{ parameters.account_key }} \
+          -storage-endpoint=https://${{ parameters.account_name }}.blob.core.windows.net \
+          -storage-container=$(containerName) \
+          -quick-test=${{ parameters.quick_test }}
+      displayName: 'DistCache [${{ variant.id }}]: dcache_e2e Go tests'
+      timeoutInMinutes: 60
+      continueOnError: false
+
   # -------------------------------------------------------------------------
   # 6. Collect cacheserver logs before tearing down, then teardown always.
   - script: |
@@ -171,3 +215,4 @@ steps:
     timeoutInMinutes: 15
     env:
       DCACHE_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_portforward_pids_${{ parameters.run_idstring }}.txt
+      DCACHE_METRICS_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_metrics_portforward_pids_${{ parameters.run_idstring }}.txt
