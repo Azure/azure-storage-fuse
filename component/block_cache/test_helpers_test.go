@@ -51,7 +51,7 @@ func setupTestFreeList(t *testing.T, bufSize uint64, memSize uint64) {
 
 	if bc != nil {
 		bc.freeList = freeList
-		bc.workerPool = createWorkerPool(4, bc) // Example worker pool size
+		bc.workerPool = createWorkerPool(4, 8, bc) // Example worker pool size
 	}
 }
 
