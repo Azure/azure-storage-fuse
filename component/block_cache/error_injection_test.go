@@ -426,6 +426,68 @@ func (s *ErrorInjectionTestSuite) TestWrite_FullCoverageQueuesAsyncWriteback() {
 	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 }
 
+func (s *ErrorInjectionTestSuite) TestWrite_PerFileWritebackLimitBlocksUntilUploadCompletes() {
+	defer s.TearDownTest()
+
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "writeback_pressure.txt", Mode: 0777})
+	s.Require().NoError(err)
+	s.Equal(1, s.blockCache.writebackLimit())
+	blockSize := int(s.blockCache.blockSize)
+
+	gate := make(chan struct{})
+	var closeGate sync.Once
+	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
+	started := make(chan struct{}, 2)
+	s.mock.setStageDataControl(gate, started)
+
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{
+		Handle: h,
+		Offset: 0,
+		Data:   bytes.Repeat([]byte("A"), blockSize),
+	})
+	s.Require().NoError(err)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		s.FailNow("first asynchronous upload did not start")
+	}
+
+	secondWrite := make(chan error, 1)
+	go func() {
+		_, err := s.blockCache.WriteFile(&internal.WriteFileOptions{
+			Handle: h,
+			Offset: int64(blockSize),
+			Data:   bytes.Repeat([]byte("B"), blockSize),
+		})
+		secondWrite <- err
+	}()
+
+	select {
+	case err := <-secondWrite:
+		s.FailNow("second write bypassed per-file writeback pressure", "err=%v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	closeGate.Do(func() { close(gate) })
+	select {
+	case err := <-secondWrite:
+		s.NoError(err)
+	case <-time.After(time.Second):
+		s.FailNow("second write did not resume after upload completion")
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		s.FailNow("second asynchronous upload did not start")
+	}
+
+	file := h.IFObj.(*blockCacheHandle).file
+	file.generations.wait(file.generations.currentID())
+	s.mock.setStageDataControl(nil, nil)
+	s.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+}
+
 func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 	defer s.TearDownTest()
 
@@ -491,6 +553,9 @@ func (s *ErrorInjectionTestSuite) TestOpenTruncateInvalidatesStaleUploads() {
 
 	s.blockCache.workerPool.destroy()
 	s.blockCache.workerPool = createWorkerPool(1, 2, s.blockCache)
+	// This test needs two uploads queued behind one worker to verify that the
+	// second stale task is discarded before it reaches StageData.
+	s.blockCache.workers = 8
 
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "truncate_generation.txt", Mode: 0777})
 	s.Require().NoError(err)
