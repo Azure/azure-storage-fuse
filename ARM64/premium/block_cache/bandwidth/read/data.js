@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783940043457,
+  "lastUpdate": 1785142526508,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1025,6 +1025,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 62.0751953125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d302f13072d7af5d6777ebe5e06f46d66bb5b316",
+          "message": "Add handle ID to log in opendir libfuse handler (#2294)",
+          "timestamp": "2026-07-24T06:54:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d302f13072d7af5d6777ebe5e06f46d66bb5b316"
+        },
+        "date": 1785142524141,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 3511.349609375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 3724.4755859375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 3364.767578125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 15.279296875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 7980.6708984375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 8116.515625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 56.9208984375,
             "unit": "MiB/s"
           }
         ]
