@@ -431,7 +431,7 @@ func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 
 	// A single worker lets the first upload gate the second one in the queue.
 	s.blockCache.workerPool.destroy()
-	s.blockCache.workerPool = createWorkerPool(1, s.blockCache)
+	s.blockCache.workerPool = createWorkerPool(1, 2, s.blockCache)
 
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "queued_upload_size.txt", Mode: 0777})
 	s.Require().NoError(err)
@@ -490,7 +490,7 @@ func (s *ErrorInjectionTestSuite) TestOpenTruncateInvalidatesStaleUploads() {
 	defer s.TearDownTest()
 
 	s.blockCache.workerPool.destroy()
-	s.blockCache.workerPool = createWorkerPool(1, s.blockCache)
+	s.blockCache.workerPool = createWorkerPool(1, 2, s.blockCache)
 
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "truncate_generation.txt", Mode: 0777})
 	s.Require().NoError(err)
