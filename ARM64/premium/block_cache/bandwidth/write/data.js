@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783940163091,
+  "lastUpdate": 1785142645003,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -575,6 +575,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 6784.5458984375,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d302f13072d7af5d6777ebe5e06f46d66bb5b316",
+          "message": "Add handle ID to log in opendir libfuse handler (#2294)",
+          "timestamp": "2026-07-24T06:54:45Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d302f13072d7af5d6777ebe5e06f46d66bb5b316"
+        },
+        "date": 1785142644090,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 2481.16015625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 6838.6337890625,
             "unit": "MiB/s"
           }
         ]
