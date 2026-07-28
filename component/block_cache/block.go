@@ -337,14 +337,14 @@ func validateBlockIndex(blockIdx int) error {
 // Behavior:
 //   - Increments buffer refCnt to prevent eviction during upload
 //   - Locks buffer content (exclusively) during upload to prevent concurrent access
-//   - Blocks until upload completes, then releases the task reference
+//   - Blocks until upload completes
 //
 // After upload:
 //   - Block state changes to uncommitedBlock
 //   - Block ID is generated and assigned
 //   - Buffer is marked as not dirty
 //   - Any upload errors are captured in bufDesc.uploadErr
-func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor) error {
+func (blk *block) scheduleUpload(workerPool *workerPool, bufDesc *bufferDescriptor) error {
 	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, usageCnt: %d, refCnt: %d",
 		blk.idx, bufDesc.bufIdx, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
 
@@ -354,16 +354,12 @@ func (blk *block) scheduleUpload(workerPool *workerPool, freeList *freeListType,
 	}
 
 	<-task.signalOnCompletion
-	if ok := bufDesc.release(freeList); ok {
-		log.Debug("BlockCache::scheduleUpload: Released bufferIdx: %d for blockIdx: %d back to free list after upload",
-			bufDesc.bufIdx, blk.idx)
-	}
 	return task.err
 }
 
 func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor) (*task, error) {
 	contentLease := bufDesc.lockContent()
-	task, err := blk.queueUploadLocked(workerPool, bufDesc, contentLease, true, nil)
+	task, err := blk.queueUploadLocked(workerPool, bufDesc, contentLease, nil)
 	if err != nil {
 		contentLease.release()
 		return nil, err
@@ -375,7 +371,7 @@ func (blk *block) queueUpload(workerPool *workerPool, bufDesc *bufferDescriptor)
 // The caller must own the lease and must not release it after a successful call.
 // Keeping this lock through REST completion and result publication prevents a
 // newer write from being marked clean by an older upload.
-func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, callerWaits bool, writeback *writebackLimiter) (*task, error) {
+func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, writeback *writebackLimiter) (*task, error) {
 	if !contentLease.belongsTo(bufDesc) {
 		return nil, fmt.Errorf("invalid content lease for block %d", blk.idx)
 	}
@@ -388,7 +384,6 @@ func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescr
 		block:              blk,
 		bufDesc:            bufDesc,
 		download:           false,
-		sync:               callerWaits,
 		signalOnCompletion: make(chan struct{}),
 		path:               blk.file.Name,
 		blockID:            common.GetBlockID(common.BlockIDLength),
@@ -426,14 +421,15 @@ func getUploadSize(fileSize int64, blockIdx int, bufferSize int64) (int, error) 
 //
 // Behavior:
 //   - Increments buffer refCnt to prevent eviction during download
-//   - For sync downloads: blocks until download completes, then releases buffer
-//   - For async downloads: releases buffer after download completes in worker goroutine
+//   - For sync downloads: blocks until the worker completes
+//   - For async downloads: returns after queueing
+//   - Worker completion releases the task-owned buffer reference in both cases
 //
 // After download:
 //   - Buffer is marked as valid (or invalid if download failed)
 //   - Any download errors are captured in bufDesc.downloadErr
 //   - Content lock is released allowing reads to proceed
-func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListType, bufDesc *bufferDescriptor, contentLease *bufferContentLease, sync bool) error {
+func (blk *block) scheduleDownload(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, sync bool) error {
 	if !contentLease.belongsTo(bufDesc) {
 		return fmt.Errorf("invalid content lease for block %d", blk.idx)
 	}
@@ -445,7 +441,6 @@ func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListTyp
 		block:              blk,
 		bufDesc:            bufDesc,
 		download:           true,
-		sync:               sync,
 		signalOnCompletion: make(chan struct{}),
 		path:               blk.file.Name,
 		fileSize:           blk.file.size.Load(),
@@ -456,10 +451,6 @@ func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListTyp
 	if sync {
 		// Wait for download to complete.
 		<-task.signalOnCompletion
-		if ok := bufDesc.release(freeList); ok {
-			log.Debug("BlockCache::scheduleDownload: Released bufferIdx: %d for blockIdx: %d back to free list after sync download",
-				bufDesc.bufIdx, blk.idx)
-		}
 		return task.err
 	}
 	return nil
