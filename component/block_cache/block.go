@@ -48,7 +48,6 @@ import (
 // compatible with BlockCache's requirements (e.g., blocks are not aligned to the
 // configured block size).
 var ErrInvalidBlockList = errors.New("invalid block list, not compatible with block cache for write operations")
-var errStaleTask = errors.New("stale block cache task")
 
 // blockState represents the current state of a block in its lifecycle.
 //
@@ -93,8 +92,6 @@ type block struct {
 	id    string       // Azure Storage block ID (base64-encoded, generated during upload)
 	state atomic.Int32 // Current state: localBlock, uncommitedBlock, or committedBlock
 
-	fileGeneration atomic.Uint64 // File contents generation this block belongs to
-
 	// numWrites tracks the number of write operations performed on this block.
 	// Used to detect if a committed block has been modified and needs re-upload.
 	// Reset to 0 after successful upload.
@@ -125,7 +122,6 @@ func createBlock(idx int, id string, state blockState, f *file) *block {
 		id:   id,
 	}
 	blk.state.Store(int32(state))
-	blk.fileGeneration.Store(f.generations.currentID())
 
 	return blk
 }
@@ -387,10 +383,6 @@ func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescr
 	if err != nil {
 		return nil, err
 	}
-	fileGeneration := blk.fileGeneration.Load()
-	if !blk.file.generations.begin(fileGeneration) {
-		return nil, errStaleTask
-	}
 	bufDesc.refCnt.Add(1)
 	task := &task{
 		block:              blk,
@@ -401,7 +393,6 @@ func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescr
 		path:               blk.file.Name,
 		blockID:            common.GetBlockID(common.BlockIDLength),
 		uploadSize:         uploadSize,
-		fileGeneration:     fileGeneration,
 		contentLease:       contentLease,
 		writeback:          writeback,
 	}
@@ -446,11 +437,6 @@ func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListTyp
 	if !contentLease.belongsTo(bufDesc) {
 		return fmt.Errorf("invalid content lease for block %d", blk.idx)
 	}
-	fileGeneration := blk.fileGeneration.Load()
-	if !blk.file.generations.begin(fileGeneration) {
-		contentLease.release()
-		return errStaleTask
-	}
 	// Increment refCnt for download
 	bufDesc.refCnt.Add(1)
 
@@ -463,7 +449,6 @@ func (blk *block) scheduleDownload(workerPool *workerPool, freeList *freeListTyp
 		signalOnCompletion: make(chan struct{}),
 		path:               blk.file.Name,
 		fileSize:           blk.file.size.Load(),
-		fileGeneration:     fileGeneration,
 		contentLease:       contentLease,
 	}
 	workerPool.queueTask(task)
