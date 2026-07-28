@@ -45,14 +45,8 @@ dist_cache:
   # Option 3: Static server list (comma-separated host:port)
   # server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
 
-  # Graceful degradation: if true, cache errors fall through to Azure Blob Storage
-  bypass-on-error: true
-
   # Optional: TTL for cached data in seconds (0 = no expiry)
   # ttl-seconds: 86400
-
-  # Optional: cache key prefix (defaults to account/container from azstorage config)
-  # cache-prefix: "myaccount/mycontainer"
 
 attr_cache:
   timeout-sec: 120

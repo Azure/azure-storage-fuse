@@ -16,7 +16,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/block_cache"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	dcache "github.com/nearora-msft/dist-cache-client-go"
@@ -52,11 +51,6 @@ const (
 	// meaningful on large-memory hosts (where fair-share alone would over-
 	// provision — e.g. 128 GiB free RAM ⇒ ~10 GiB pool if uncapped).
 	distCacheDemandMultiplier = 4
-
-	// distCacheMemFallbackBytes is used as the assumed available memory when
-	// /proc/meminfo cannot be read. Mirrors block_cache's 4 GiB fallback so
-	// the two components remain consistent when the OS memory probe fails.
-	distCacheMemFallbackBytes uint64 = 4192 * 1024 * 1024
 
 	_1MiB = 1024 * 1024
 )
@@ -129,21 +123,6 @@ func NewDistCacheComponent() internal.Component {
 	return comp
 }
 
-func init() {
-	internal.AddComponent(compName, NewDistCacheComponent)
-
-	discoveryFlag := config.AddStringFlag("dist-cache-discovery-url", "",
-		"distributed cache discovery endpoint (recommended)")
-	config.BindPFlag(compName+".discovery-url", discoveryFlag)
-
-	serverListFlag := config.AddStringFlag("dist-cache-server-list", "",
-		"comma-separated list of distributed cache server addresses (fallback)")
-	config.BindPFlag(compName+".server-list", serverListFlag)
-
-	// Support DIST_CACHE_SERVER_LIST env var
-	config.BindEnv(compName+".server-list", "DIST_CACHE_SERVER_LIST")
-}
-
 func (dc *DistCache) Configure(isParent bool) error {
 	log.Trace("DistCache::Configure")
 
@@ -207,17 +186,17 @@ func (dc *DistCache) Configure(isParent bool) error {
 	}
 
 	// Resolve chunk size: block_cache.block-size-mb > stream.block-size-mb > dist_cache.chunk-size-mb > block_cache default
-	var blockSizeMB float64 = block_cache.DefaultBlockSize
+	var blockSizeMB float64 = common.DefaultBlockSize
 	if config.IsSet("block_cache.block-size-mb") {
 		err = config.UnmarshalKey("block_cache.block-size-mb", &blockSizeMB)
 		if err != nil {
-			log.Warn("DistCache::Configure : Failed to read block-size-mb, using default %d MB", block_cache.DefaultBlockSize)
-			blockSizeMB = block_cache.DefaultBlockSize
+			log.Warn("DistCache::Configure : Failed to read block-size-mb, using default %d MB", common.DefaultBlockSize)
+			blockSizeMB = common.DefaultBlockSize
 		}
 	} else if config.IsSet("stream.block-size-mb") {
 		err = config.UnmarshalKey("stream.block-size-mb", &blockSizeMB)
 		if err != nil {
-			blockSizeMB = block_cache.DefaultBlockSize
+			blockSizeMB = common.DefaultBlockSize
 		}
 	} else if conf.ChunkSizeMB > 0 {
 		blockSizeMB = conf.ChunkSizeMB
@@ -496,10 +475,8 @@ func getBlockCacheWorkers() int {
 }
 
 // resolveMemBudget returns the total bytes dist_cache will preallocate for its
-// async-upload buffer pool. The result may be smaller than a single chunk
-// (e.g. an explicit block_cache.mem-size-mb that is undersized relative to
-// the chunk size); the caller (Configure) skips pool allocation in that
-// case and async populate becomes a no-op.
+// async-upload buffer pool. Zero means "async populate disabled" (caller
+// should skip buffer allocation and treat the L2 populate as a no-op).
 //
 // dist_cache does not expose its own mem-size-mb knob. When the user has
 // explicitly sized block_cache via block_cache.mem-size-mb we reuse that
@@ -530,12 +507,12 @@ func (dc *DistCache) resolveMemBudget() int64 {
 		}
 	}
 
-	availableMemory, err := common.GetAvailableMemoryBytes()
+	free, err := common.GetAvailableMemoryBytes()
 	if err != nil {
-		availableMemory = distCacheMemFallbackBytes
-		log.Warn("DistCache::resolveMemBudget : failed to read available memory [%s], using %d MiB fallback", err.Error(), availableMemory/_1MiB)
+		free = common.DefaultMemFallbackBytes
+		log.Warn("DistCache::resolveMemBudget : failed to read available memory [%s], using %d MiB fallback", err.Error(), free/_1MiB)
 	}
-	bcRef := int64(block_cache.MemShareFraction * float64(availableMemory))
+	bcRef := int64(common.DefaultMemShareFraction * float64(free))
 	demand := int64(distCacheDemandMultiplier) * int64(getBlockCacheWorkers()) * dc.chunkSize
 	fair := bcRef * distCacheSharePct / 100
 
@@ -602,4 +579,19 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, leng
 	if err := dc.client.UploadChunk(context.Background(), name, etag, offset, data, opts...); err != nil {
 		log.Warn("DistCache::doUpload : upload failed: %v", err)
 	}
+}
+
+func init() {
+	internal.AddComponent(compName, NewDistCacheComponent)
+
+	discoveryFlag := config.AddStringFlag("dist-cache-discovery-url", "",
+		"distributed cache discovery endpoint (recommended)")
+	config.BindPFlag(compName+".discovery-url", discoveryFlag)
+
+	serverListFlag := config.AddStringFlag("dist-cache-server-list", "",
+		"comma-separated list of distributed cache server addresses (fallback)")
+	config.BindPFlag(compName+".server-list", serverListFlag)
+
+	// Support DIST_CACHE_SERVER_LIST env var
+	config.BindEnv(compName+".server-list", "DIST_CACHE_SERVER_LIST")
 }
