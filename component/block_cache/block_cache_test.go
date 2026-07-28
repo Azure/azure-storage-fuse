@@ -1002,15 +1002,18 @@ func (suite *BlockCacheLoopbackIntegrationTestSuite) TestRenameDirectoryWithOpen
 	suite.Require().NoError(err)
 
 	err = suite.blockCache.RenameDir(internal.RenameDirOptions{Src: "old-dir", Dst: "new-dir"})
-	suite.Require().NoError(err)
-	_, err = suite.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 6, Data: []byte(" after")})
-	suite.Require().NoError(err)
-	suite.NoError(suite.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
+	suite.ErrorIs(err, syscall.EBUSY)
+	_, err = os.Stat(filepath.Join(suite.testPath, "old-dir/file.txt"))
+	suite.NoError(err)
+	_, err = os.Stat(filepath.Join(suite.testPath, "new-dir"))
+	suite.ErrorIs(err, os.ErrNotExist)
+
 	suite.NoError(suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	suite.NoError(suite.blockCache.RenameDir(internal.RenameDirOptions{Src: "old-dir", Dst: "new-dir"}))
 
 	data, err := os.ReadFile(filepath.Join(suite.testPath, "new-dir/file.txt"))
 	suite.NoError(err)
-	suite.Equal("before after", string(data))
+	suite.Equal("before", string(data))
 }
 
 func (suite *BlockCacheLoopbackIntegrationTestSuite) TestFileDelete() {

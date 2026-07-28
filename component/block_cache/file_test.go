@@ -1334,17 +1334,6 @@ func TestFile_PendingReads(t *testing.T) {
 	assert.Equal(t, int32(0), f.numPendingReads.Load())
 }
 
-func TestFile_SingleBlockFilePersisted(t *testing.T) {
-	f := createFile("test.txt")
-
-	// Test initial state
-	assert.False(t, f.singleBlockFilePersisted)
-
-	// Simulate persisting as single block
-	f.singleBlockFilePersisted = true
-	assert.True(t, f.singleBlockFilePersisted)
-}
-
 func TestFile_BlockListInitialization(t *testing.T) {
 	f := createFile("test.txt")
 
