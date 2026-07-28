@@ -420,7 +420,11 @@ func (s *ErrorInjectionTestSuite) TestWrite_FullCoverageQueuesAsyncWriteback() {
 
 	closeGate.Do(func() { close(gate) })
 	file := h.IFObj.(*blockCacheHandle).file
-	file.generations.wait(file.generations.currentID())
+	bufDesc, err := s.blockCache.btm.lookupBufferDescriptor(file.blockList.list[0], s.blockCache.freeList)
+	s.Require().NoError(err)
+	bufDesc.contentLock.Lock()
+	bufDesc.contentLock.Unlock()
+	bufDesc.release(s.blockCache.freeList)
 	s.Equal(uncommitedBlock, file.blockList.list[0].getState())
 	s.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
 	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
@@ -481,8 +485,6 @@ func (s *ErrorInjectionTestSuite) TestWrite_PerFileWritebackLimitBlocksUntilUplo
 		s.FailNow("second asynchronous upload did not start")
 	}
 
-	file := h.IFObj.(*blockCacheHandle).file
-	file.generations.wait(file.generations.currentID())
 	s.mock.setStageDataControl(nil, nil)
 	s.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: h}))
 	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
@@ -548,25 +550,24 @@ func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 	s.Equal(last, data[2*blockSize:2*blockSize+len(last)])
 }
 
-func (s *ErrorInjectionTestSuite) TestOpenTruncateInvalidatesStaleUploads() {
+func (s *ErrorInjectionTestSuite) TestOpenTruncateFlushesInFlightUploads() {
 	defer s.TearDownTest()
 
 	s.blockCache.workerPool.destroy()
 	s.blockCache.workerPool = createWorkerPool(1, 2, s.blockCache)
-	// This test needs two uploads queued behind one worker to verify that the
-	// second stale task is discarded before it reaches StageData.
+	// Allow two writeback tasks while one worker keeps their execution ordered.
 	s.blockCache.workers = 8
 
-	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "truncate_generation.txt", Mode: 0777})
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "truncate_flush.txt", Mode: 0777})
 	s.Require().NoError(err)
 	blockSize := int(s.blockCache.blockSize)
 	gate := make(chan struct{})
 	var closeGate sync.Once
 	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
-	started := make(chan struct{}, 1)
+	started := make(chan struct{}, 3)
 	s.mock.setStageDataControl(gate, started)
-	s.mock.setError("StageData", injectedError("stale StageData"))
 	stageCalls := s.mock.callCount("StageData")
+	commitCalls := s.mock.callCount("CommitData")
 
 	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: bytes.Repeat([]byte("A"), blockSize)})
 	s.Require().NoError(err)
@@ -579,7 +580,6 @@ func (s *ErrorInjectionTestSuite) TestOpenTruncateInvalidatesStaleUploads() {
 	s.Require().NoError(err)
 
 	file := h.IFObj.(*blockCacheHandle).file
-	oldGeneration := file.generations.currentID()
 
 	type openResult struct {
 		handle *handlemap.Handle
@@ -588,27 +588,32 @@ func (s *ErrorInjectionTestSuite) TestOpenTruncateInvalidatesStaleUploads() {
 	opened := make(chan openResult, 1)
 	go func() {
 		handle, openErr := s.blockCache.OpenFile(internal.OpenFileOptions{
-			Name:  "truncate_generation.txt",
+			Name:  "truncate_flush.txt",
 			Flags: os.O_RDWR | os.O_TRUNC,
 			Mode:  0777,
 		})
 		opened <- openResult{handle: handle, err: openErr}
 	}()
 
-	deadline := time.Now().Add(time.Second)
-	for file.generations.currentID() == oldGeneration && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
+	select {
+	case result := <-opened:
+		s.FailNow("O_TRUNC returned before in-flight upload completed", "err=%v", result.err)
+	case <-time.After(50 * time.Millisecond):
 	}
-	s.Require().Greater(file.generations.currentID(), oldGeneration)
 	closeGate.Do(func() { close(gate) })
-	result := <-opened
+	var result openResult
+	select {
+	case result = <-opened:
+	case <-time.After(time.Second):
+		s.FailNow("O_TRUNC did not return after uploads completed")
+	}
 	s.Require().NoError(result.err)
 	s.Require().NotNil(result.handle)
-	s.Equal(stageCalls+1, s.mock.callCount("StageData"), "queued stale upload must skip StageData")
-	s.Nil(file.err.Load(), "stale upload failure must not poison the new generation")
+	s.Equal(stageCalls+3, s.mock.callCount("StageData"), "O_TRUNC must stage both old blocks and their sparse middle block")
+	s.Equal(commitCalls+1, s.mock.callCount("CommitData"), "O_TRUNC must commit old contents before clearing them")
+	s.Nil(file.err.Load())
 	s.Zero(file.size.Load())
 
-	s.mock.clearErrors()
 	s.mock.setStageDataControl(nil, nil)
 	s.NoError(s.blockCache.SyncFile(internal.SyncFileOptions{Handle: result.handle}))
 	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: result.handle}))

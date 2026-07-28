@@ -34,7 +34,6 @@
 package block_cache
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
@@ -70,7 +69,6 @@ type task struct {
 	fileSize           int64               // File size snapshot for downloads
 	blockID            string              // Block ID snapshot for uploads
 	uploadSize         int                 // Validated number of bytes to upload
-	fileGeneration     uint64              // File contents generation captured at queue time
 	contentLease       *bufferContentLease // Exclusive descriptor content ownership
 	writeback          *writebackLimiter   // Per-file asynchronous writeback permit
 	err                error               // Task result, published before completion is signaled
@@ -177,15 +175,10 @@ func (wp *workerPool) completeTask(task *task) {
 	if !task.sync {
 		task.bufDesc.release(wp.bc.freeList)
 	}
-	task.block.file.generations.finish(task.fileGeneration)
 	if task.writeback != nil {
 		task.writeback.release()
 	}
 	close(task.signalOnCompletion)
-}
-
-func (task *task) isCurrent() bool {
-	return task.fileGeneration == task.block.file.generations.currentID()
 }
 
 func (task *task) mode() string {
@@ -237,36 +230,24 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 	log.Debug("BlockCache::downloadBlock: Starting %s download for file: %s, blockIdx: %d, bufferIdx: %d, offset: %d, size: %d",
 		task.mode(), task.path, block.idx, bufDesc.bufIdx, int64(uint64(block.idx)*bc.blockSize), task.fileSize)
 
-	var err error
-	if !task.isCurrent() {
-		task.err = errStaleTask
-	} else {
-		_, err = bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
-			Path:   task.path,
-			Offset: int64(uint64(block.idx) * bc.blockSize),
-			Data:   bufDesc.buf,
-			Size:   task.fileSize,
-		})
-	}
-	if task.err == nil && !task.isCurrent() {
-		task.err = errStaleTask
-	} else if task.err == nil && err != nil {
+	_, err := bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   task.path,
+		Offset: int64(uint64(block.idx) * bc.blockSize),
+		Data:   bufDesc.buf,
+		Size:   task.fileSize,
+	})
+	if err != nil {
 		task.err = err
 		log.Err("BlockCache::downloadBlock: ReadInBuffer failed for file %s block idx %d: %v",
 			block.file.Name, block.idx, err)
 
 		bufDesc.downloadErr = err
 		bc.btm.detachBufferDescriptor(bufDesc, bc.freeList)
-	} else if task.err == nil {
+	} else {
 		log.Debug("BlockCache::downloadBlock: Successfully downloaded blockIdx: %d into bufferIdx: %d, file: %s",
 			block.idx, bufDesc.bufIdx, block.file.Name)
 		bufDesc.valid.Store(true)
 	}
-	if errors.Is(task.err, errStaleTask) {
-		bufDesc.downloadErr = task.err
-		bc.btm.detachBufferDescriptor(bufDesc, bc.freeList)
-	}
-
 }
 
 // uploadBlock uploads a block from a buffer to Azure Storage.
@@ -304,9 +285,7 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 		task.mode(), task.path, block.idx, bufDesc.bufIdx, task.uploadSize, task.blockID)
 
 	var err error
-	if !task.isCurrent() {
-		task.err = errStaleTask
-	} else if task.uploadSize <= 0 || task.uploadSize > len(bufDesc.buf) {
+	if task.uploadSize <= 0 || task.uploadSize > len(bufDesc.buf) {
 		err = fmt.Errorf("invalid upload size %d for block %d of %s", task.uploadSize, block.idx, task.path)
 	} else {
 		err = bc.NextComponent().StageData(internal.StageDataOptions{
@@ -316,9 +295,7 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 		})
 	}
 
-	if !task.isCurrent() {
-		task.err = errStaleTask
-	} else if err != nil {
+	if err != nil {
 		task.err = err
 		log.Err("BlockCache::getBlockIDList : Failed to write block for %v, ID: %v, file: %s [%v]",
 			task.path, task.blockID, task.path, err)

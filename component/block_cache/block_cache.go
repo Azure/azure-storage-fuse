@@ -689,11 +689,12 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	if options.Flags&os.O_TRUNC != 0 {
 		log.Debug("BlockCache::OpenFile : Truncating file %s on open", options.Name)
 
-		f.pendingWriters.Wait()
-		oldGeneration, newGeneration := f.generations.advance()
-		f.generations.wait(oldGeneration)
-		log.Debug("BlockCache::OpenFile : Invalidated generation %d and started generation %d for file %s",
-			oldGeneration, newGeneration, options.Name)
+		// Flush while holding f.mu so no new writes can start before the old
+		// contents and any asynchronous uploads are fully drained.
+		if err := f.flush(bc, false /* takeFileLock */); err != nil {
+			deleteOpenHandleForFile(bc, handle, f, false /* takeFileLock */)
+			return nil, fmt.Errorf("failed to flush %s before O_TRUNC: %w", options.Name, err)
+		}
 		if len(f.blockList.list) > 0 {
 			releaseAllBuffersForFile(bc, f)
 		}
