@@ -46,27 +46,7 @@ extends:
         os: windows  # OS of the image. Allowed values: windows, linux, macOS
 
     stages:
-    - stage: TestUbuntu26Image
-      displayName: 'Test Ubuntu 26 Image Spawn'
-      jobs:
-      - job: spawn_test
-        displayName: 'Verify Ubuntu 26 image comes up'
-        pool:
-          name: blobfuse-ubuntu-pool
-          os: linux
-          demands:
-            - ImageOverride -equals blobfuse-ubuntu26
-
-        steps:
-          - script: |
-              echo "Ubuntu 26 image spawned successfully"
-              uname -a
-              cat /etc/os-release
-              lscpu
-            displayName: 'Print image details'
-
     - stage: CI
-      dependsOn: TestUbuntu26Image
       jobs:
 
       - job: test
