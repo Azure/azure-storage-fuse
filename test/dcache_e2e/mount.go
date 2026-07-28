@@ -125,8 +125,13 @@ func remountBlobfuse(t *testing.T) {
 
 // unmountBestEffort is called from TestMain to sweep any stray mount left
 // behind by a prior aborted run. It never fails the process; anything
-// interesting is logged to stderr.
+// interesting is logged to stderr. Only meaningful in host driver mode:
+// pod-mode has no host mount to clean up, and the Deployment is not owned
+// by the test process.
 func unmountBestEffort() {
+	if testCfg.driver != "" && testCfg.driver != "host" {
+		return
+	}
 	if testCfg.mntPath == "" {
 		return
 	}
