@@ -103,6 +103,25 @@ var testCfg struct {
 	// "true" / "false". When true, expensive or long-running tests are
 	// skipped. Mirrors the existing test/e2e_tests convention.
 	quickTest string
+
+	// driver selects how the tests drive the blobfuse2 mount:
+	//   "host" (default) — spawn blobfuse2 as a child process on the host
+	//                       and read from the local FUSE mount. Matches the
+	//                       existing dist-cache-e2e.yml pipeline behaviour.
+	//   "pod"            — target a pre-existing Deployment in a Kubernetes
+	//                       cluster, cycle the pod with kubectl rollout
+	//                       restart between reads, and stream file content
+	//                       via kubectl exec. Required to exercise
+	//                       dist_cache.discovery-url / k8s-service code
+	//                       paths, which need in-cluster DNS.
+	driver string
+
+	// Pod-driver-specific configuration. Ignored when driver=host.
+	podNamespace  string
+	podDeployment string
+	podSelector   string
+	podMountPath  string
+	kubectlBin    string
 }
 
 func registerFlags() {
@@ -146,6 +165,30 @@ func registerFlags() {
 		flag.StringVar(&testCfg.quickTest, "quick-test", "true",
 			"Skip long-running scenarios when true")
 	}
+	if flag.Lookup("driver") == nil {
+		flag.StringVar(&testCfg.driver, "driver", "host",
+			"Mount driver: 'host' (spawn blobfuse2 locally, default) or 'pod' (drive a blobfuse2 Deployment via kubectl)")
+	}
+	if flag.Lookup("pod-namespace") == nil {
+		flag.StringVar(&testCfg.podNamespace, "pod-namespace", "blobfuse2-dist-cache",
+			"pod driver: Kubernetes namespace containing the blobfuse2 Deployment")
+	}
+	if flag.Lookup("pod-deployment") == nil {
+		flag.StringVar(&testCfg.podDeployment, "pod-deployment", "blobfuse2-dist-cache",
+			"pod driver: name of the Deployment the test should cycle between reads")
+	}
+	if flag.Lookup("pod-selector") == nil {
+		flag.StringVar(&testCfg.podSelector, "pod-selector", "app=blobfuse2-dist-cache",
+			"pod driver: label selector used to resolve the current Ready pod after each rollout")
+	}
+	if flag.Lookup("pod-mount-path") == nil {
+		flag.StringVar(&testCfg.podMountPath, "pod-mount-path", "/mnt/blobfuse_mnt",
+			"pod driver: absolute path inside the container where blobfuse2 is mounted")
+	}
+	if flag.Lookup("kubectl-bin") == nil {
+		flag.StringVar(&testCfg.kubectlBin, "kubectl-bin", "kubectl",
+			"pod driver: path to the kubectl binary")
+	}
 }
 
 // envDefault returns v if it is non-empty, otherwise os.Getenv(k).
@@ -176,17 +219,21 @@ func resolveCfg() error {
 		testCfg.storageContainer = os.Getenv("DCACHE_E2E_CONTAINER")
 	}
 
-	if testCfg.configFile == "" {
-		return fmt.Errorf("dist_cache config file not set (pass -config-file or DCACHE_E2E_CONFIG)")
-	}
-	if testCfg.mntPath == "" {
-		return fmt.Errorf("mount path not set (pass -mnt-path or MOUNT_DIR)")
-	}
-	if testCfg.tmpPath == "" {
-		return fmt.Errorf("temp path not set (pass -tmp-path or TEMP_DIR)")
-	}
-	if _, err := os.Stat(testCfg.configFile); err != nil {
-		return fmt.Errorf("config file %q not accessible: %w", testCfg.configFile, err)
+	// Driver selection is validated separately: host mode and pod mode
+	// require different flag sets, and forcing a host-mode user to supply
+	// pod-mode flags (or vice versa) would be noise.
+	switch testCfg.driver {
+	case "", "host":
+		testCfg.driver = "host"
+		if err := ensureHostMountArgs(); err != nil {
+			return err
+		}
+	case "pod":
+		if err := ensurePodMountArgs(); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown -driver=%q (want 'host' or 'pod')", testCfg.driver)
 	}
 
 	if testCfg.metricsEndpointsRaw != "" {
@@ -209,24 +256,39 @@ func TestMain(m *testing.M) {
 		os.Exit(2)
 	}
 
+	drv, err := selectMounter()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "dist_cache E2E setup failed: %v\n", err)
+		os.Exit(2)
+	}
+	activeMounter = drv
+
 	fmt.Printf("dist_cache E2E config:\n"+
+		"  driver             = %s\n"+
 		"  blobfuse-bin       = %s\n"+
 		"  config-file        = %s\n"+
 		"  mnt-path           = %s\n"+
 		"  tmp-path           = %s\n"+
+		"  pod-namespace      = %s\n"+
+		"  pod-deployment     = %s\n"+
+		"  pod-selector       = %s\n"+
+		"  pod-mount-path     = %s\n"+
 		"  metrics-endpoints  = %v\n"+
 		"  storage-account    = %s\n"+
 		"  storage-endpoint   = %s\n"+
 		"  storage-container  = %s\n"+
 		"  quick-test         = %s\n",
-		testCfg.blobfuseBin, testCfg.configFile, testCfg.mntPath,
-		testCfg.tmpPath, testCfg.metricsEndpoints,
+		testCfg.driver,
+		testCfg.blobfuseBin, testCfg.configFile, testCfg.mntPath, testCfg.tmpPath,
+		testCfg.podNamespace, testCfg.podDeployment, testCfg.podSelector, testCfg.podMountPath,
+		testCfg.metricsEndpoints,
 		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer,
 		testCfg.quickTest)
 
-	// Best-effort: ensure we start from a clean, unmounted state so a leaked
-	// mount from a prior interrupted run does not poison the first test.
-	// Errors here are informational only; unmountBestEffort logs details.
+	// Best-effort cleanup only applies to host mode: a pod-mode Deployment
+	// is owned by the operator, not the test binary, so we must not touch
+	// it just because a prior process bailed. unmountBestEffort itself
+	// checks testCfg.mntPath and does nothing when the driver is pod.
 	unmountBestEffort()
 
 	code := m.Run()

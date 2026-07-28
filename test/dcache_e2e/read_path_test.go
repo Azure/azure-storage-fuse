@@ -39,7 +39,6 @@ package dcache_e2e
 import (
 	"bytes"
 	"path"
-	"path/filepath"
 	"testing"
 )
 
@@ -97,13 +96,15 @@ func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
 	// Step 2: mount blobfuse2 --read-only with dist_cache in the
 	// pipeline. Fresh mount -> cold local block_cache -> the first
 	// read will *have* to consult dist_cache (which is also cold).
+	//
+	// In host driver mode this spawns a local blobfuse2 process. In pod
+	// driver mode this cycles the Deployment so its container starts
+	// with a fresh block_cache (image side-loaded, no pull cost).
 	// ------------------------------------------------------------------
-	mountBlobfuse(t)
-	t.Cleanup(func() { _ = runUnmount(testCfg.mntPath) })
+	activeMounter.Mount(t)
+	t.Cleanup(func() { activeMounter.Unmount(t) })
 
-	// filepath.Join is correct here: this path is consumed by os.Open,
-	// which uses the host FS separator. blobPath itself uses '/'.
-	remotePath := filepath.Join(testCfg.mntPath, blobPath)
+	t.Logf("driver=%s: reading %s via %s", activeMounter.Kind(), blobPath, activeMounter.Kind())
 
 	// ------------------------------------------------------------------
 	// Step 3: first read after mount -- L2 miss. dist_cache fetches
@@ -111,7 +112,7 @@ func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
 	// background) uploads the fetched chunks to L2.
 	// ------------------------------------------------------------------
 	beforeMiss, haveMetrics := scrapeMetrics(t)
-	firstRead := readAllFile(t, remotePath)
+	firstRead := activeMounter.ReadFile(t, blobPath)
 
 	if len(firstRead) != len(original) {
 		t.Fatalf("L2-miss read: size mismatch: got %d want %d", len(firstRead), len(original))
@@ -150,9 +151,10 @@ func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
 	// RAM keyed on the (inode, handle) pair; without a remount the next
 	// read is very likely served from RAM and never reaches dist_cache.
 	// Remounting is the only way to guarantee we exercise the dist_cache
-	// hit path.
+	// hit path. Host driver: unmount + wipe temp + mount. Pod driver:
+	// kubectl rollout restart (container FS is fresh on each Ready pod).
 	// ------------------------------------------------------------------
-	remountBlobfuse(t)
+	activeMounter.Remount(t)
 
 	// ------------------------------------------------------------------
 	// Step 5: second read after remount -- L2 hit. Bytes come from
@@ -161,7 +163,7 @@ func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
 	// corruption, no ETag mix-up, no truncation on the wire).
 	// ------------------------------------------------------------------
 	beforeHit, _ := scrapeMetrics(t)
-	secondRead := readAllFile(t, remotePath)
+	secondRead := activeMounter.ReadFile(t, blobPath)
 
 	if len(secondRead) != len(original) {
 		t.Fatalf("L2-hit read: size mismatch: got %d want %d", len(secondRead), len(original))
