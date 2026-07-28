@@ -79,67 +79,6 @@ import (
 // Note: We store references to open handles (rather than just counting them)
 // to support deferred file removal. When a file is deleted while handles are
 // still open, we can iterate through handles to mark them appropriately.
-//
-// TODO: Add global context to the file that can propagate to all the operations
-// on the file, this would simplify cancellations and timeouts easier.
-type generationTracker struct {
-	current atomic.Uint64
-	mu      sync.Mutex
-	cond    *sync.Cond
-	active  map[uint64]int
-}
-
-func newGenerationTracker() *generationTracker {
-	tracker := &generationTracker{active: make(map[uint64]int)}
-	tracker.current.Store(1)
-	tracker.cond = sync.NewCond(&tracker.mu)
-	return tracker
-}
-
-func (tracker *generationTracker) currentID() uint64 {
-	return tracker.current.Load()
-}
-
-// begin admits work only into the current generation. Holding mu across the
-// generation check and count increment prevents advance from missing a task.
-func (tracker *generationTracker) begin(generation uint64) bool {
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	if generation != tracker.current.Load() {
-		return false
-	}
-	tracker.active[generation]++
-	return true
-}
-
-func (tracker *generationTracker) finish(generation uint64) {
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	if tracker.active[generation] <= 1 {
-		delete(tracker.active, generation)
-	} else {
-		tracker.active[generation]--
-	}
-	tracker.cond.Broadcast()
-}
-
-func (tracker *generationTracker) advance() (oldGeneration, newGeneration uint64) {
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	oldGeneration = tracker.current.Load()
-	newGeneration = oldGeneration + 1
-	tracker.current.Store(newGeneration)
-	return oldGeneration, newGeneration
-}
-
-func (tracker *generationTracker) wait(generation uint64) {
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	for tracker.active[generation] > 0 {
-		tracker.cond.Wait()
-	}
-}
-
 type file struct {
 	mu            sync.RWMutex                   // Protects file metadata and block list
 	Name          string                         // File path (absolute)
@@ -163,10 +102,6 @@ type file struct {
 	// for all pending writes to complete before uploading data.
 	pendingWriters sync.WaitGroup
 	writeback      writebackLimiter
-
-	// generations identifies the current logical contents and drains work from
-	// invalidated contents before their buffers are released.
-	generations *generationTracker
 
 	// TODO: Optimization flag: if true, the file was uploaded using PutBlob (for small files)
 	// rather than PutBlock + PutBlockList. This tracks the upload method for
@@ -208,11 +143,10 @@ func (limiter *writebackLimiter) release() {
 //   - Synced set to true (no pending changes)
 func createFile(fileName string) *file {
 	f := &file{
-		Name:        fileName,
-		handles:     make(map[*handlemap.Handle]struct{}),
-		blockList:   newBlockList(),
-		synced:      true,
-		generations: newGenerationTracker(),
+		Name:      fileName,
+		handles:   make(map[*handlemap.Handle]struct{}),
+		blockList: newBlockList(),
+		synced:    true,
 	}
 	f.size.Store(-1)
 	f.sizeOnStorage.Store(-1)
@@ -1081,12 +1015,6 @@ func (f *file) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 	if err := f.flush(bc, false /*takeFileLock*/); err != nil {
 		return err
 	}
-	oldGeneration, newGeneration := f.generations.advance()
-	f.generations.wait(oldGeneration)
-	for _, blk := range f.blockList.list {
-		blk.fileGeneration.Store(newGeneration)
-	}
-
 	// Update the file size
 	currentSize := f.size.Load()
 	isFileShrinking := currentSize > options.NewSize
