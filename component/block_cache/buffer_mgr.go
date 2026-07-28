@@ -220,7 +220,7 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 
 	// This is where we should download the blockdata into the buffer, check the blocks flag status.
 	if doRead {
-		if err := blk.scheduleDownload(workerPool, freeList, bufDesc, contentLease, sync); err != nil {
+		if err := blk.scheduleDownload(workerPool, bufDesc, contentLease, sync); err != nil {
 			btm.detachBufferDescriptor(bufDesc, freeList)
 			bufDesc.release(freeList)
 			return nil, bufDescStatusInvalid, err

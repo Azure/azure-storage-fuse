@@ -247,6 +247,69 @@ func (s *ErrorInjectionTestSuite) TestRenameOpenFile_BackendFailureKeepsBinding(
 	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 }
 
+func (s *ErrorInjectionTestSuite) TestRenameOpenFileWaitsForWriteback() {
+	defer s.TearDownTest()
+
+	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "rename_writeback_src.txt", Mode: 0777})
+	s.Require().NoError(err)
+	blockSize := int(s.blockCache.blockSize)
+
+	gate := make(chan struct{})
+	var closeGate sync.Once
+	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
+	started := make(chan struct{}, 1)
+	s.mock.setStageDataControl(gate, started)
+
+	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{
+		Handle: h,
+		Offset: 0,
+		Data:   bytes.Repeat([]byte("R"), blockSize),
+	})
+	s.Require().NoError(err)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		s.FailNow("asynchronous upload did not start")
+	}
+
+	renamed := make(chan error, 1)
+	go func() {
+		renamed <- s.blockCache.RenameFile(internal.RenameFileOptions{
+			Src: "rename_writeback_src.txt",
+			Dst: "rename_writeback_dst.txt",
+		})
+	}()
+	select {
+	case err := <-renamed:
+		s.FailNow("rename returned before writeback completed", "err=%v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	closeGate.Do(func() { close(gate) })
+	select {
+	case err := <-renamed:
+		s.NoError(err)
+	case <-time.After(time.Second):
+		s.FailNow("rename did not return after writeback completed")
+	}
+
+	file := h.IFObj.(*blockCacheHandle).file
+	s.Equal("rename_writeback_dst.txt", file.Name)
+	bound, ok := checkFileExistsInOpen(s.blockCache, "rename_writeback_dst.txt")
+	s.True(ok)
+	s.Same(file, bound)
+	_, oldBound := checkFileExistsInOpen(s.blockCache, "rename_writeback_src.txt")
+	s.False(oldBound)
+
+	s.mock.setStageDataControl(nil, nil)
+	s.NoError(s.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	_, err = os.Stat(filepath.Join(s.testPath, "rename_writeback_src.txt"))
+	s.ErrorIs(err, os.ErrNotExist)
+	data, err := os.ReadFile(filepath.Join(s.testPath, "rename_writeback_dst.txt"))
+	s.Require().NoError(err)
+	s.Equal(bytes.Repeat([]byte("R"), blockSize), data)
+}
+
 func (s *ErrorInjectionTestSuite) TestDeleteDir_BackendFails() {
 	defer s.TearDownTest()
 
@@ -535,9 +598,7 @@ func (s *ErrorInjectionTestSuite) TestQueuedUploadUsesSizeSnapshot() {
 	<-firstTask.signalOnCompletion
 	<-lastTask.signalOnCompletion
 
-	firstDesc.release(s.blockCache.freeList) // task reference
 	firstDesc.release(s.blockCache.freeList) // lookup reference
-	lastDesc.release(s.blockCache.freeList)  // task reference
 	lastDesc.release(s.blockCache.freeList)  // lookup reference
 	file.size.Store(originalSize)
 	s.mock.setStageDataControl(nil, nil)

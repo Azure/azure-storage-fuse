@@ -312,49 +312,6 @@ func (fl *freeListType) watchAvailability() (<-chan struct{}, error) {
 	return fl.changed, nil
 }
 
-// debugListMustBeFull verifies that all buffers are in the free list.
-//
-// This is a debugging function used during testing to ensure no buffer
-// leaks have occurred. It:
-//  1. Walks the free list counting buffers
-//  2. Verifies count equals total buffer descriptors
-//  3. Panics if counts don't match (indicates leak)
-//
-// This should only be called when all handles are closed and all buffers
-// are expected to be free.
-//
-// Why this is important:
-//
-// Buffer leaks are serious bugs that can:
-//   - Exhaust the buffer pool over time
-//   - Cause performance degradation
-//   - Lead to operation failures
-//
-// This function helps catch such leaks during development and testing.
-func (fl *freeListType) debugListMustBeFull() {
-	fl.mutex.Lock()
-	defer fl.mutex.Unlock()
-
-	log.Debug("freeList::debugListMustBeFull: Checking if free list is full")
-
-	count := 0
-	next := fl.firstFreeBuffer
-	for next != -1 {
-		count++
-		next = fl.bufDescriptors[next].nxtFreeBuffer
-	}
-
-	if count != len(fl.bufDescriptors) {
-		err := fmt.Sprintf("freeList::debugListMustBeFull: Free list is not full, count: %d, expected: %d",
-			count, len(fl.bufDescriptors))
-		log.Err("%s", err)
-		panic(err)
-	}
-
-	log.Debug("freeList::debugListMustBeFull:  free list is indeed full!")
-
-}
-
 // evictBuffer finds, detaches, and resets a buffer suitable for reuse.
 //
 // This method implements the buffer eviction policy. It scans through
@@ -440,7 +397,7 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr)
 					if bufDesc.dirty.Load() {
 						log.Debug("freeList::evictBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
 							bufDesc.bufIdx, bufDesc.block.idx)
-						if err := bufDesc.block.scheduleUpload(workerPool, fl, bufDesc); err != nil {
+						if err := bufDesc.block.scheduleUpload(workerPool, bufDesc); err != nil {
 							bufDesc.release(fl)
 							return nil, err
 						}
