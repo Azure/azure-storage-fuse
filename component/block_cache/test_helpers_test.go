@@ -34,10 +34,24 @@
 package block_cache
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func (fl *freeListType) debugListMustBeFull() {
+	fl.mutex.Lock()
+	defer fl.mutex.Unlock()
+
+	count := 0
+	for next := fl.firstFreeBuffer; next != -1; next = fl.bufDescriptors[next].nxtFreeBuffer {
+		count++
+	}
+	if count != len(fl.bufDescriptors) {
+		panic(fmt.Sprintf("free list contains %d buffers, expected %d", count, len(fl.bufDescriptors)))
+	}
+}
 
 var bc *BlockCache
 var freeList *freeListType

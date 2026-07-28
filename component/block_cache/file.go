@@ -103,11 +103,6 @@ type file struct {
 	pendingWriters sync.WaitGroup
 	writeback      writebackLimiter
 
-	// TODO: Optimization flag: if true, the file was uploaded using PutBlob (for small files)
-	// rather than PutBlock + PutBlockList. This tracks the upload method for
-	// consistency during subsequent flushes.
-	singleBlockFilePersisted bool
-
 	// lmtNano stores the last modification time as Unix nanoseconds.
 	// Updated atomically on write and truncate, read by GetAttr to return
 	// correct mtime while the file is open and modified.
@@ -590,7 +585,7 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 				f.pendingWriters.Done()
 				return fmt.Errorf("previous write error: %w", *e)
 			}
-			if _, err := blk.queueUploadLocked(bc.workerPool, bufDesc, contentLease, false /* callerWaits */, &f.writeback); err != nil {
+			if _, err := blk.queueUploadLocked(bc.workerPool, bufDesc, contentLease, &f.writeback); err != nil {
 				f.writeback.release()
 				contentLease.release()
 				bufDesc.release(bc.freeList)
@@ -878,7 +873,6 @@ func (f *file) flush(bc *BlockCache, takeFileLock bool) error {
 	for _, upload := range uploads {
 		<-upload.task.signalOnCompletion
 		dirty := upload.dirty
-		dirty.bufDesc.release(bc.freeList) // task reference
 		if upload.task.err != nil && uploadErr == nil {
 			uploadErr = upload.task.err
 		}

@@ -180,11 +180,10 @@ type BlockCache struct {
 	prefetch uint32 // Number of blocks to prefetch for sequential reads
 
 	// File and block management
-	fileLocks *common.LockMap // Per-file locks to coordinate operations (currently unused)
-	openFiles sync.Map        // Path to shared file state for this cache instance
+	openFiles   sync.Map     // Path to shared file state for this cache instance
+	namespaceMu sync.RWMutex // Prevents opens from racing with namespace renames
 
 	// Performance and behavior flags
-	maxDiskUsageHit        bool // Flag indicating if disk cache limit was reached (currently unused)
 	noPrefetch             bool // If true, disables read-ahead prefetching
 	prefetchOnOpen         bool // If true, start prefetching immediately on file open
 	consistency            bool // If true, ensures strong consistency with storage
@@ -207,8 +206,7 @@ type BlockCacheOptions struct {
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 
 	// MemSize is the total memory allocated for the buffer pool in megabytes.
-	// If not specified, 50% of available memory is used. Explicit values may use
-	// at most 80% of available memory.
+	// If not specified, 50% of available memory is used.
 	MemSize uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 
 	// TmpPath is the directory path for disk-based caching (currently unused).
@@ -254,7 +252,6 @@ const (
 	MIN_PREFETCH          = 5             // Minimum number of blocks for prefetch
 	MAX_BLOCKS            = 50000         // Maximum number of blocks per file (limits file size)
 	defaultMemoryPercent  = 50            // Available memory used when mem-size-mb is omitted
-	maxMemoryPercent      = 80            // Maximum available memory accepted for an explicit pool
 	maxFileWritebackTasks = 4             // Maximum asynchronous full-block uploads per file
 )
 
@@ -421,19 +418,11 @@ func (bc *BlockCache) Configure(_ bool) error {
 			return fmt.Errorf("config error in %s [mem-size-mb is too large]", bc.Name())
 		}
 		bc.memSize = conf.MemSize * common.MbToBytes
-	}
-
-	availableMemory, err := common.GetAvailableMemoryBytes()
-	if err != nil {
-		return fmt.Errorf("config error in %s [failed to determine available memory: %v]", bc.Name(), err)
-	}
-	if memSizeConfigured {
-		maxConfiguredMemory := availableMemory * maxMemoryPercent / 100
-		if bc.memSize > maxConfiguredMemory {
-			return fmt.Errorf("config error in %s [mem-size-mb requests %d bytes; maximum is %d bytes (%d%% of available memory)]",
-				bc.Name(), bc.memSize, maxConfiguredMemory, maxMemoryPercent)
-		}
 	} else {
+		availableMemory, err := common.GetAvailableMemoryBytes()
+		if err != nil {
+			return fmt.Errorf("config error in %s [failed to determine available memory: %v]", bc.Name(), err)
+		}
 		bc.memSize = availableMemory * defaultMemoryPercent / 100
 	}
 
@@ -474,8 +463,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 		log.Err("BlockCache::Configure : config error [unable to obtain lazy-write]")
 		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 	}
-
-	bc.maxDiskUsageHit = false
 
 	workersConfigured := config.IsSet(compName + ".parallelism")
 	if workersConfigured {
@@ -540,8 +527,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 	// }
 	// }
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, buffers %v, workers %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
-		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, buffers %v, workers %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
+		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
 
 	return nil
 }
@@ -602,12 +589,15 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 // if creation fails.
 func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
+	bc.namespaceMu.RLock()
+	defer bc.namespaceMu.RUnlock()
+
 	if err := bc.createFileOnStorage(options); err != nil {
 		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
 		return nil, err
 	}
 
-	return bc.OpenFile(internal.OpenFileOptions{
+	return bc.openFile(internal.OpenFileOptions{
 		Name:  options.Name,
 		Flags: os.O_RDWR | os.O_CREATE,
 		Mode:  options.Mode,
@@ -653,6 +643,12 @@ func (bc *BlockCache) createFileOnStorage(options internal.CreateFileOptions) er
 //
 // Returns a handle for I/O operations, or an error if open fails.
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	bc.namespaceMu.RLock()
+	defer bc.namespaceMu.RUnlock()
+	return bc.openFile(options)
+}
+
+func (bc *BlockCache) openFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::OpenFile : name=%s, flags=%s, mode=%s", options.Name, common.PrettyOpenFlags(options.Flags), options.Mode)
 
 	attr, err := bc.GetAttr(internal.GetAttrOptions{Name: options.Name})
@@ -1048,39 +1044,53 @@ func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 
 // RenameFile renames a file in storage.
 //
-// This method forwards the rename operation to the next component (storage layer).
-// Since the block cache is purely in-memory and keyed by file path, no explicit
-// cache invalidation is needed.
-//
-// If the file is currently open under the old name, it remains open and accessible.
-// New opens must use the new name.
+// If the file is open, writes are blocked while its dirty data and asynchronous
+// writeback are flushed. The backend rename and in-memory path rebinding then
+// occur before new writes or opens may proceed.
 //
 // Returns an error if the rename operation fails in storage.
 func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("BlockCache::RenameFile : src: %s -> dst: %s", options.Src, options.Dst)
+	bc.namespaceMu.Lock()
+	defer bc.namespaceMu.Unlock()
 
 	file, fileIsOpen := checkFileExistsInOpen(bc, options.Src)
 	if fileIsOpen {
-		err := file.flush(bc, true /* takefilelock */)
+		file.mu.Lock()
+		current, stillOpen := bc.openFiles.Load(options.Src)
+		if !stillOpen || current != file || len(file.handles) == 0 || file.blockList == nil {
+			file.mu.Unlock()
+			return bc.renameClosedFile(options)
+		}
+		defer file.mu.Unlock()
+
+		if destination, exists := checkFileExistsInOpen(bc, options.Dst); exists && destination != file {
+			return syscall.EBUSY
+		}
+
+		err := file.flush(bc, false /* takeFileLock */)
 		if err != nil {
 			log.Err("BlockCache::RenameFile : Failed to flush open file %s before renaming to %s [%v]",
 				options.Src, options.Dst, err)
 			return fmt.Errorf("flush file %s before rename: %w", options.Src, err)
 		}
-	}
 
-	err := bc.NextComponent().RenameFile(options)
-	if err != nil {
-		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
-		return err
-	}
-
-	if fileIsOpen {
-		if err := renameFileInFileMap(bc, options.Src, options.Dst); err != nil {
-			log.Err("BlockCache::RenameFile : Backend rename succeeded but open-file map update failed for %s -> %s [%v]",
-				options.Src, options.Dst, err)
+		if err := bc.NextComponent().RenameFile(options); err != nil {
+			log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
 			return err
 		}
+
+		renameFileInFileMapLocked(bc, file, options.Src, options.Dst)
+		return nil
+	}
+
+	return bc.renameClosedFile(options)
+}
+
+func (bc *BlockCache) renameClosedFile(options internal.RenameFileOptions) error {
+	if err := bc.NextComponent().RenameFile(options); err != nil {
+		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
+		return err
 	}
 
 	return nil
@@ -1106,21 +1116,25 @@ func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
 
 // RenameDir renames a directory in storage.
 //
-// This method forwards the rename operation to the next component (storage layer).
-// No cache invalidation is needed as the cache is purely in-memory and keyed
-// by full file paths.
+// Directory rename is rejected with EBUSY while any descendant file is open.
+// Supporting that case safely would require draining and locking multiple files.
 //
 // Returns an error if the rename operation fails in storage.
 func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("BlockCache::RenameDir : src: %s -> dst: %s", options.Src, options.Dst)
+	bc.namespaceMu.Lock()
+	defer bc.namespaceMu.Unlock()
+
+	if hasOpenFileInDirectory(bc, options.Src) {
+		log.Warn("BlockCache::RenameDir : refusing to rename directory %s with open files", options.Src)
+		return syscall.EBUSY
+	}
 
 	err := bc.NextComponent().RenameDir(options)
 	if err != nil {
 		log.Err("BlockCache::RenameDir : error %s [%s]", options.Src, err.Error())
 		return err
 	}
-	renameOpenFilesInDirectory(bc, options.Src, options.Dst)
-
 	return nil
 }
 
@@ -1155,9 +1169,7 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 //
 // Returns a new BlockCache component implementing the internal.Component interface.
 func NewBlockCacheComponent() internal.Component {
-	comp := &BlockCache{
-		fileLocks: common.NewLockMap(),
-	}
+	comp := &BlockCache{}
 	comp.SetName(compName)
 	return comp
 }

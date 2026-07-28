@@ -246,25 +246,6 @@ func releaseAllBuffersForFile(bc *BlockCache, file *file) {
 	file.blockList = nil
 }
 
-// deleteFileIfNoOpenHandles removes a file from the map if it has no open handles.
-//
-// This is a utility function for cleanup. Currently not actively used but
-// provided for completeness.
-//
-// Parameters:
-//   - key: File path to check
-func deleteFileIfNoOpenHandles(bc *BlockCache, key string) {
-	file, ok := checkFileExistsInOpen(bc, key)
-	if !ok {
-		return
-	}
-
-	if len(file.handles) == 0 {
-		bc.openFiles.CompareAndDelete(file.Name, file)
-		// TODO: Release the buffers held by this file
-	}
-}
-
 // checkFileExistsInOpen checks if a file has any open handles.
 //
 // Parameters:
@@ -283,46 +264,22 @@ func checkFileExistsInOpen(bc *BlockCache, key string) (*file, bool) {
 	return nil, false
 }
 
-func renameFileInFileMap(bc *BlockCache, oldPath, newPath string) error {
-	value, ok := bc.openFiles.Load(oldPath)
-	if !ok {
-		return fmt.Errorf("file not found for path: %s", oldPath)
-	}
-
-	fileObj, ok := value.(*file)
-	if !ok {
-		return fmt.Errorf("invalid file type in map for path: %s", oldPath)
-	}
-
-	fileObj.mu.Lock()
+func renameFileInFileMapLocked(bc *BlockCache, fileObj *file, oldPath, newPath string) {
 	fileObj.Name = newPath
-	fileObj.mu.Unlock()
-
-	bc.openFiles.CompareAndDelete(oldPath, fileObj)
 	bc.openFiles.Store(newPath, fileObj)
-	return nil
+	bc.openFiles.CompareAndDelete(oldPath, fileObj)
 }
 
-func renameOpenFilesInDirectory(bc *BlockCache, oldDir, newDir string) {
-	oldPrefix := strings.TrimSuffix(oldDir, "/") + "/"
-	newPrefix := strings.TrimSuffix(newDir, "/") + "/"
-
-	bc.openFiles.Range(func(key, value any) bool {
-		oldPath, ok := key.(string)
-		if !ok || !strings.HasPrefix(oldPath, oldPrefix) {
-			return true
+func hasOpenFileInDirectory(bc *BlockCache, dir string) bool {
+	prefix := strings.TrimSuffix(dir, "/") + "/"
+	found := false
+	bc.openFiles.Range(func(key, _ any) bool {
+		path, ok := key.(string)
+		if ok && strings.HasPrefix(path, prefix) {
+			found = true
+			return false
 		}
-		fileObj, ok := value.(*file)
-		if !ok {
-			return true
-		}
-
-		newPath := newPrefix + strings.TrimPrefix(oldPath, oldPrefix)
-		fileObj.mu.Lock()
-		fileObj.Name = newPath
-		fileObj.mu.Unlock()
-		bc.openFiles.CompareAndDelete(oldPath, fileObj)
-		bc.openFiles.Store(newPath, fileObj)
 		return true
 	})
+	return found
 }
