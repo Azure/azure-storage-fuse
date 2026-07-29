@@ -124,6 +124,10 @@ dist_cache:
   # OR
   server-list: <comma-separated list of cache server addresses, e.g., "host1:9065,host2:9065,host3:9065">
   ttl-seconds: <TTL for cached data in seconds. Default - 0 (no expiry)>
+  block-size-mb: <size of each chunk to be read from cache). Default - 16 MB>
+  mem-size-mb: <total amount of memory to be preallocated for distributed cache (in MB). Default - 60% of free memory>
+  prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>
+  parallelism: <number of parallel threads downloading the data and writing to cache. Default - 3 times number of CPU cores>
 
 # Loopback configuration
 loopbackfs:

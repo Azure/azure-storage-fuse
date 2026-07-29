@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -500,12 +501,21 @@ func TestSchedulePopulate_PoolExhausted_Drops(t *testing.T) {
 	require.Eventually(t, func() bool { return started.Load() == 4 },
 		time.Second, 5*time.Millisecond, "expected all 4 initial uploads to start")
 
-	// Schedule many more populates while the pool is empty. Each must return
-	// immediately without blocking and without incrementing started.
+	// Schedule many more populates while the pool is empty, from concurrent
+	// goroutines to mimic FUSE worker threads racing on dc.bufs. Each call
+	// must return immediately without blocking and without incrementing
+	// started. Running in parallel (rather than serially) gives `-race` a
+	// real chance to catch any unsafe access to the buffer pool.
 	const extras = 50
+	var extrasWG sync.WaitGroup
+	extrasWG.Add(extras)
 	for i := 0; i < extras; i++ {
-		dc.schedulePopulate("f", "e", int64(1000+i), []byte("data"))
+		go func(offset int64) {
+			defer extrasWG.Done()
+			dc.schedulePopulate("f", "e", offset, []byte("data"))
+		}(int64(1000 + i))
 	}
+	extrasWG.Wait()
 
 	// Give any (incorrectly) scheduled extras time to appear.
 	time.Sleep(50 * time.Millisecond)
@@ -553,4 +563,318 @@ func TestSchedulePopulate_BufferReturnedAfterUpload(t *testing.T) {
 	dc.inflight.Wait()
 	assert.Equal(t, int32(2), uploads.Load())
 	assert.Equal(t, 1, len(dc.bufs), "buffer must be returned again after second upload")
+}
+
+// --- Tests for resolveMemBudget ---
+//
+// resolveMemBudget applies a fair-share / demand-ceiling / floor pipeline on
+// top of a reference budget (bcRef). bcRef is block_cache.mem-size-mb when
+// set, else block_cache.MemShareFraction × free RAM. The tests below fix
+// block_cache.mem-size-mb and block_cache.parallelism so the arithmetic is
+// deterministic; separate tests cover the free-RAM fallback path.
+
+// TestResolveMemBudget_MemSize_DemandCeilingBinds verifies that when
+// block_cache.mem-size-mb yields a fair share larger than the demand ceiling,
+// the demand ceiling wins.
+func TestResolveMemBudget_MemSize_DemandCeilingBinds(t *testing.T) {
+	loadConfig(t, `
+block_cache:
+  mem-size-mb: 10240
+  parallelism: 2
+`)
+
+	dc := &DistCache{chunkSize: 16 * _1MiB}
+	got := dc.resolveMemBudget()
+
+	// bcRef  = 10240 MiB
+	// fair   = 10240 × 10%       = 1024 MiB
+	// demand = 4 × 2 × 16 MiB    = 128 MiB
+	// budget = min(fair, demand) = 128 MiB (floor 64 MiB does not raise)
+	assert.Equal(t, int64(128)*_1MiB, got)
+}
+
+// TestResolveMemBudget_MemSize_FairShareBinds verifies that when the demand
+// ceiling is larger than the fair share, the fair share wins (and the floor
+// does not raise it).
+func TestResolveMemBudget_MemSize_FairShareBinds(t *testing.T) {
+	loadConfig(t, `
+block_cache:
+  mem-size-mb: 100
+  parallelism: 100
+`)
+
+	dc := &DistCache{chunkSize: 1 * _1MiB}
+	got := dc.resolveMemBudget()
+
+	// bcRef  = 100 MiB
+	// fair   = 100 × 10%         = 10 MiB
+	// demand = 4 × 100 × 1 MiB   = 400 MiB
+	// budget = min(fair, demand) = 10 MiB (floor 4 MiB does not raise)
+	assert.Equal(t, int64(10)*_1MiB, got)
+}
+
+// TestResolveMemBudget_MemSize_FloorRaisesTinyBudget verifies that a fair
+// share too small to be useful is raised to the min-buffers floor, and that
+// the re-cap step keeps the floor from exceeding the demand ceiling.
+func TestResolveMemBudget_MemSize_FloorRaisesTinyBudget(t *testing.T) {
+	loadConfig(t, `
+block_cache:
+  mem-size-mb: 100
+  parallelism: 2
+`)
+
+	dc := &DistCache{chunkSize: 16 * _1MiB}
+	got := dc.resolveMemBudget()
+
+	// bcRef  = 100 MiB
+	// fair   = 100 × 10%          = 10 MiB
+	// demand = 4 × 2 × 16 MiB     = 128 MiB
+	// budget = min(fair, demand)  = 10 MiB
+	// floor  = 4 × 16 MiB         = 64 MiB → budget raised to 64 MiB
+	// re-cap = min(64, 128)       = 64 MiB
+	assert.Equal(t, int64(64)*_1MiB, got)
+}
+
+// TestResolveMemBudget_MemSizeUnset_UsesFreeRAM verifies that when
+// block_cache.mem-size-mb is absent, the reference budget is derived from
+// available system memory (which produces a fair share substantially larger
+// than the floor on any realistic host).
+func TestResolveMemBudget_MemSizeUnset_UsesFreeRAM(t *testing.T) {
+	loadConfig(t, `
+block_cache:
+  parallelism: 1000
+`)
+
+	dc := &DistCache{chunkSize: 1 * _1MiB}
+	got := dc.resolveMemBudget()
+
+	// demand = 4 × 1000 × 1 MiB = 4000 MiB (deliberately large so demand does
+	// not clip the fair share on hosts with a few GiB of free RAM).
+	// fair from the free-RAM fallback path is bounded below by
+	// DefaultMemFallbackBytes × MemShareFraction × 10% ≈ 251 MiB even if
+	// /proc/meminfo cannot be read, which is well above the floor.
+	floor := int64(distCacheMinBuffers) * dc.chunkSize
+	assert.Greater(t, got, floor,
+		"free-RAM fallback should produce a fair share above the floor")
+}
+
+// TestResolveMemBudget_MemSizeZero_FallsBackToFreeRAM verifies that
+// block_cache.mem-size-mb=0 is treated the same as unset (guarded by the
+// n > 0 check inside resolveMemBudget), rather than pinning bcRef to zero
+// and collapsing the fair share.
+func TestResolveMemBudget_MemSizeZero_FallsBackToFreeRAM(t *testing.T) {
+	loadConfig(t, `
+block_cache:
+  mem-size-mb: 0
+  parallelism: 1000
+`)
+
+	dc := &DistCache{chunkSize: 1 * _1MiB}
+	got := dc.resolveMemBudget()
+
+	// Same reasoning as the "unset" case: an explicit zero must not silently
+	// disable async populate.
+	floor := int64(distCacheMinBuffers) * dc.chunkSize
+	assert.Greater(t, got, floor,
+		"mem-size-mb=0 must fall back to the free-RAM path, not zero-out bcRef")
+}
+
+// --- Test: Stop() drains in-flight uploads before closing the dcache client ---
+
+// blockingUploadClient is a controllable dcacheClient used to prove Stop()
+// waits for in-flight populates before invoking client.Close(). UploadChunk
+// and Close both run test-supplied hooks so the test can gate upload
+// completion and observe the exact ordering of the two events.
+type blockingUploadClient struct {
+	onUpload func()
+	onClose  func()
+}
+
+func (c *blockingUploadClient) DownloadChunk(_ context.Context, _, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+	return 0, dcache.ErrNotFound
+}
+
+func (c *blockingUploadClient) UploadChunk(_ context.Context, _, _ string, _ int64, _ []byte, _ ...dcache.UploadOption) error {
+	if c.onUpload != nil {
+		c.onUpload()
+	}
+	return nil
+}
+
+func (c *blockingUploadClient) Close() error {
+	if c.onClose != nil {
+		c.onClose()
+	}
+	return nil
+}
+
+// TestStop_WaitsForInflightUploads verifies the Stop() contract: it must
+// block on dc.inflight until every async populate has returned, then invoke
+// client.Close(). If Close ran before an in-flight UploadChunk completed,
+// doUpload could observe a torn-down client mid-request.
+func TestStop_WaitsForInflightUploads(t *testing.T) {
+	release := make(chan struct{})
+	uploadStarted := make(chan struct{})
+	var startOnce sync.Once
+
+	var (
+		mu             sync.Mutex
+		uploadFinished time.Time
+		closedAt       time.Time
+	)
+
+	client := &blockingUploadClient{
+		onUpload: func() {
+			startOnce.Do(func() { close(uploadStarted) })
+			<-release
+			mu.Lock()
+			uploadFinished = time.Now()
+			mu.Unlock()
+		},
+		onClose: func() {
+			mu.Lock()
+			closedAt = time.Now()
+			mu.Unlock()
+		},
+	}
+
+	// Wire a minimal DistCache directly to the mock client, skipping
+	// Configure/Start so we exercise Stop()'s ordering contract in isolation.
+	dc := &DistCache{
+		client:    client,
+		chunkSize: 1024,
+	}
+	dc.SetName(compName)
+	dc.bufs = make(chan *[]byte, 1)
+	b := make([]byte, dc.chunkSize)
+	dc.bufs <- &b
+
+	// Schedule an async populate. schedulePopulate borrows the buffer and
+	// spawns doUpload, which enters UploadChunk and blocks on `release`.
+	dc.schedulePopulate("file.bin", "etag", 0, []byte("hello"))
+
+	// Wait until UploadChunk is actually running before calling Stop, so the
+	// test measures Stop's wait rather than a race where the goroutine hadn't
+	// entered UploadChunk yet.
+	select {
+	case <-uploadStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("UploadChunk was not entered within 2s")
+	}
+
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- dc.Stop() }()
+
+	// Stop must remain blocked while the upload is still in flight.
+	select {
+	case err := <-stopDone:
+		t.Fatalf("Stop() returned before in-flight upload finished: err=%v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Release the upload; Stop() should now drain and Close the client.
+	close(release)
+
+	select {
+	case err := <-stopDone:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop() did not return within 2s after upload released")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.False(t, uploadFinished.IsZero(), "UploadChunk never recorded a finish time")
+	require.False(t, closedAt.IsZero(), "Close() was never called on the client")
+	assert.False(t, closedAt.Before(uploadFinished),
+		"Close() ran before UploadChunk finished: closedAt=%v uploadFinished=%v",
+		closedAt, uploadFinished)
+}
+
+// --- Tests for doUpload failure semantics ---
+
+// TestDoUpload_UploadChunkError_ReturnsBufferToPool verifies the load-bearing
+// invariant that doUpload's `defer` returns the borrowed buffer to the pool
+// even when UploadChunk fails. Without this, a run of failing populates
+// would drain the pool permanently and silently disable async populate for
+// the lifetime of the mount.
+func TestDoUpload_UploadChunkError_ReturnsBufferToPool(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next) // 4-buffer pool
+
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return fmt.Errorf("simulated dcache upload failure")
+	}
+
+	poolBefore := len(dc.bufs)
+
+	// Schedule more populates than the pool can hold in parallel. If failed
+	// uploads leaked their buffer, later populates would be dropped by the
+	// non-blocking select and uploads.Load() would fall short of the total.
+	const total = 20
+	for i := 0; i < total; i++ {
+		dc.schedulePopulate("f", "e", int64(i), []byte("data"))
+		dc.inflight.Wait() // serialize so each upload can recycle its buffer
+	}
+
+	assert.Equal(t, int32(total), uploads.Load(),
+		"every scheduled populate must reach UploadChunk (buffer must be recycled after failure)")
+	assert.Equal(t, poolBefore, len(dc.bufs),
+		"pool must be fully restored after failed uploads drain")
+}
+
+// TestDoUpload_UploadsExactPayloadBytes verifies that doUpload sends exactly
+// len(src) bytes matching the source, not the full chunk-sized buffer. This
+// guards two invariants at once:
+//   - the `data := (*buf)[:length]` slice in doUpload correctly bounds the
+//     upload to the payload length (a regression to `(*buf)` would ship
+//     chunkSize bytes of trailing junk for every short populate);
+//   - buffer recycling does not leak stale bytes from a previous upload into
+//     a later, shorter one.
+func TestDoUpload_UploadsExactPayloadBytes(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := &DistCache{
+		client:        mock,
+		chunkSize:     16 * 1024 * 1024,
+		bypassOnError: true,
+	}
+	dc.SetName(compName)
+	dc.SetNextComponent(next)
+	// 1-buffer pool forces the second populate to reuse the first's buffer.
+	dc.bufs = make(chan *[]byte, 1)
+	b := make([]byte, dc.chunkSize)
+	dc.bufs <- &b
+
+	var (
+		mu   sync.Mutex
+		seen [][]byte
+	)
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, data []byte) error {
+		// Copy defensively: doUpload's slice aliases the pooled buffer and
+		// will be reused after this call returns.
+		snapshot := append([]byte(nil), data...)
+		mu.Lock()
+		seen = append(seen, snapshot)
+		mu.Unlock()
+		return nil
+	}
+
+	long := []byte(strings.Repeat("A", 4096))
+	short := []byte("XYZ")
+
+	dc.schedulePopulate("f", "e", 0, long)
+	dc.inflight.Wait()
+	dc.schedulePopulate("f", "e", 1, short)
+	dc.inflight.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, seen, 2)
+	assert.Equal(t, long, seen[0], "first upload must ship exactly the long payload")
+	assert.Equal(t, short, seen[1],
+		"second upload must ship exactly the short payload — no leftover 'A' bytes from the recycled buffer")
 }

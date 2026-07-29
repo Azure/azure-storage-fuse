@@ -26,10 +26,12 @@ const compName = "dist_cache"
 // Async upload memory budget policy. See resolveMemBudget for how these combine.
 const (
 	// distCacheSharePct is the share of block_cache's reference memory
-	// budget (block_cache.MemShareFraction × free RAM) reserved for the
-	// async upload buffer pool when block_cache.mem-size-mb is not
-	// configured. Taking a slice of block_cache's actual footprint keeps
-	// the two components from independently laying claim to the same RAM.
+	// budget reserved for the async upload buffer pool. The reference
+	// budget is block_cache.mem-size-mb when set, else
+	// block_cache.MemShareFraction × free RAM (what block_cache itself
+	// would grab by default). Taking a slice of block_cache's footprint
+	// keeps the two components from independently laying claim to the
+	// same RAM.
 	distCacheSharePct = 10
 
 	// distCacheMinBuffers is the smallest buffer count the pool will use when
@@ -185,7 +187,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 		log.Info("DistCache::Configure : cache-prefix=%s (derived from azstorage account/container)", dc.cachePrefix)
 	}
 
-	// Resolve chunk size: block_cache.block-size-mb > stream.block-size-mb > dist_cache.chunk-size-mb > block_cache default
+	// Resolve chunk size: dist_cache.chunk-size-mb > block_cache default
 	var blockSizeMB float64 = common.DefaultBlockSize
 	if config.IsSet("block_cache.block-size-mb") {
 		err = config.UnmarshalKey("block_cache.block-size-mb", &blockSizeMB)
@@ -196,6 +198,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 	} else if config.IsSet("stream.block-size-mb") {
 		err = config.UnmarshalKey("stream.block-size-mb", &blockSizeMB)
 		if err != nil {
+			log.Warn("DistCache::Configure : Failed to read block-size-mb, using default %d MB", common.DefaultBlockSize)
 			blockSizeMB = common.DefaultBlockSize
 		}
 	} else if conf.ChunkSizeMB > 0 {
@@ -279,7 +282,9 @@ func (dc *DistCache) Start(ctx context.Context) error {
 func (dc *DistCache) Stop() error {
 	log.Trace("Stopping component : %s", dc.Name())
 	// Wait for any in-flight populates to finish before closing the client so
-	// they don't observe a nil/closed client mid-upload.
+	// they don't observe a nil/closed client mid-upload. The wait is bounded
+	// implicitly: cap(dc.bufs) caps concurrency and the dcache client enforces
+	// a per-request timeout (~30s) that covers any stuck upload.
 	dc.inflight.Wait()
 	if dc.client != nil {
 		return dc.client.Close()
@@ -401,13 +406,15 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 		maxBackoff      = 2 * time.Second
 	)
 
-	deadline := time.Now().Add(maxPollDuration)
+	ctx, cancel := context.WithTimeout(ctx, maxPollDuration)
+	defer cancel()
+
 	backoff := 200 * time.Millisecond
 
-	for time.Now().Before(deadline) {
+	for {
 		select {
 		case <-ctx.Done():
-			return 0, ctx.Err()
+			return 0, fmt.Errorf("dist_cache: chunk poll timeout for %s offset=%d: %w", name, offset, ctx.Err())
 		case <-time.After(backoff):
 		}
 
@@ -425,8 +432,6 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 			backoff = maxBackoff
 		}
 	}
-
-	return 0, fmt.Errorf("dist_cache: chunk poll timeout for %s offset=%d", name, offset)
 }
 
 // fileGroupID returns a versioned group ID for a file. All chunks uploaded in
@@ -478,15 +483,16 @@ func getBlockCacheWorkers() int {
 // async-upload buffer pool. Zero means "async populate disabled" (caller
 // should skip buffer allocation and treat the L2 populate as a no-op).
 //
-// dist_cache does not expose its own mem-size-mb knob. When the user has
-// explicitly sized block_cache via block_cache.mem-size-mb we reuse that
-// value verbatim so the two caches stay coordinated under one memory budget.
-// Otherwise we auto-compute:
+// dist_cache does not expose its own mem-size-mb knob. It sizes the pool as a
+// fraction of block_cache's reference budget so the two caches stay
+// coordinated under one memory budget:
 //
-//  1. Pick min(fair-share, demand-ceiling), where
-//     fair-share    = distCacheSharePct% of block_cache's reference budget
-//     (block_cache.MemShareFraction × free RAM — i.e. what
-//     block_cache would itself grab by default),
+//  1. Establish block_cache's reference budget (bcRef):
+//     - block_cache.mem-size-mb when set (explicit user sizing), else
+//     - block_cache.MemShareFraction × free RAM (what block_cache would
+//     itself grab by default).
+//  2. Pick min(fair-share, demand-ceiling), where
+//     fair-share    = distCacheSharePct% of bcRef,
 //     demand-ceiling = distCacheDemandMultiplier × block_cache.parallelism ×
 //     chunkSize. block_cache's worker pool bounds the *arrival* rate of
 //     new populates (FUSE threads enqueue and block, they don't reach
@@ -496,23 +502,25 @@ func getBlockCacheWorkers() int {
 //     expected in-flight capacity. dist_cache is enforced to sit below
 //     block_cache in the pipeline (see common.ValidatePipeline), so
 //     block_cache.parallelism is always available.
-//  2. Floor at distCacheMinBuffers × chunkSize so async populate is functional
+//  3. Floor at distCacheMinBuffers × chunkSize so async populate is functional
 //     when enabled. Then re-cap at the demand ceiling so the floor never
 //     inflates a naturally-tiny budget.
 func (dc *DistCache) resolveMemBudget() int64 {
+	var bcRef int64
 	if config.IsSet("block_cache.mem-size-mb") {
 		var n uint64
 		if err := config.UnmarshalKey("block_cache.mem-size-mb", &n); err == nil && n > 0 {
-			return int64(n) * _1MiB
+			bcRef = int64(n) * _1MiB
 		}
 	}
-
-	free, err := common.GetAvailableMemoryBytes()
-	if err != nil {
-		free = common.DefaultMemFallbackBytes
-		log.Warn("DistCache::resolveMemBudget : failed to read available memory [%s], using %d MiB fallback", err.Error(), free/_1MiB)
+	if bcRef == 0 {
+		free, err := common.GetAvailableMemoryBytes()
+		if err != nil {
+			free = common.DefaultMemFallbackBytes
+			log.Warn("DistCache::resolveMemBudget : failed to read available memory [%s], using %d MiB fallback", err.Error(), free/_1MiB)
+		}
+		bcRef = int64(common.DefaultMemShareFraction * float64(free))
 	}
-	bcRef := int64(common.DefaultMemShareFraction * float64(free))
 	demand := int64(distCacheDemandMultiplier) * int64(getBlockCacheWorkers()) * dc.chunkSize
 	fair := bcRef * distCacheSharePct / 100
 
