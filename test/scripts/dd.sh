@@ -2,6 +2,12 @@
 
 # Usage: ./dd.sh /path/to/fuse/mountpoint
 MOUNT_POINT="$1"
+METRICS_FILE="${IO_METRICS_FILE:-}"
+METRICS_PREFIX="${IO_METRICS_PREFIX:-dd}"
+
+if [ -n "$METRICS_FILE" ]; then
+    source "$(dirname "$0")/io_metrics.sh"
+fi
 
 if [ -z "$MOUNT_POINT" ]; then
     echo "Error: Please provide the FUSE mount point."
@@ -32,6 +38,7 @@ echo "========================================================"
 echo "Generating random source data..."
 dd if=/dev/urandom of="$SOURCE_FILE" bs=1M count="$FILE_SIZE_MB" status=none
 SOURCE_CHECKSUM=$(md5sum "$SOURCE_FILE" | awk '{print $1}')
+SOURCE_SIZE=$(stat -c %s "$SOURCE_FILE")
 echo "Source MD5: $SOURCE_CHECKSUM"
 echo ""
 
@@ -46,7 +53,15 @@ for BS in "${BLOCK_SIZES[@]}"; do
     # 1. WRITE TEST
     echo "[WRITE] Writing to FUSE fs with bs=$BS..."
     # conv=fsync ensures data is physically written before dd exits
-    if dd if="$SOURCE_FILE" of="$FUSE_FILE" bs="$BS" conv=fsync status=none; then
+    if [ -n "$METRICS_FILE" ]; then
+        measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: bs=$BS write" write "$SOURCE_SIZE" \
+            dd if="$SOURCE_FILE" of="$FUSE_FILE" bs="$BS" conv=fsync status=none
+        result=$?
+    else
+        dd if="$SOURCE_FILE" of="$FUSE_FILE" bs="$BS" conv=fsync status=none
+        result=$?
+    fi
+    if [ "$result" -eq 0 ]; then
         echo "   -> Write successful."
     else
         echo "   -> Write FAILED."
@@ -65,7 +80,15 @@ for BS in "${BLOCK_SIZES[@]}"; do
 
     # 2. READ TEST
     echo "[READ]  Reading back from FUSE fs with bs=$BS..."
-    if dd if="$FUSE_FILE" of="$READ_BACK_FILE" bs="$BS" status=none; then
+    if [ -n "$METRICS_FILE" ]; then
+        measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: bs=$BS read" read "$SOURCE_SIZE" \
+            dd if="$FUSE_FILE" of="$READ_BACK_FILE" bs="$BS" status=none
+        result=$?
+    else
+        dd if="$FUSE_FILE" of="$READ_BACK_FILE" bs="$BS" status=none
+        result=$?
+    fi
+    if [ "$result" -eq 0 ]; then
         echo "   -> Read successful."
     else
         echo "   -> Read FAILED."

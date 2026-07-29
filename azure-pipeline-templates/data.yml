@@ -10,6 +10,12 @@ parameters:
   - name: check_consistency
     type: boolean
     default: false
+  - name: metrics_file
+    type: string
+    default: ''
+  - name: metrics_prefix
+    type: string
+    default: ''
 
 steps:
   - ${{ if eq(parameters.generate_data, true) }}:
@@ -82,41 +88,104 @@ steps:
       workingDirectory: $(DATA_DIR)
 
   - ${{ if eq(parameters.copy_data, true) }}:
-    - script: |
-        cp -v $(DATA_DIR)/* $(MOUNT_DIR)/
+    - bash: |
+        source $(WORK_DIR)/test/scripts/io_metrics.sh
+        copy_files() {
+          cp -v $(DATA_DIR)/* $(MOUNT_DIR)/
+        }
+        bytes=$(find $(DATA_DIR) -maxdepth 1 -type f -printf '%s\n' | awk '{total += $1} END {print total + 0}')
+        if [ -n "${METRICS_FILE}" ]; then
+          measure_io_case "$METRICS_FILE" "${METRICS_PREFIX}: Local -> Mountpoint (sequential)" write "$bytes" copy_files
+        else
+          copy_files
+        fi
       displayName: "Sequential Copy of Files [Local -> Mountpoint]"
+      env:
+        METRICS_FILE: ${{ parameters.metrics_file }}
+        METRICS_PREFIX: ${{ parameters.metrics_prefix }}
 
-    - script: |
-        for file in $(MOUNT_DIR)/*; do
-          cp -v "$file" "$(MOUNT_DIR)/$(basename "$file").SEQ"
-        done
+    - bash: |
+        source $(WORK_DIR)/test/scripts/io_metrics.sh
+        copy_files() {
+          for file in $(MOUNT_DIR)/*; do
+            cp -v "$file" "$(MOUNT_DIR)/$(basename "$file").SEQ"
+          done
+        }
+        bytes=$(find $(MOUNT_DIR) -maxdepth 1 -type f -printf '%s\n' | awk '{total += $1} END {print total + 0}')
+        if [ -n "${METRICS_FILE}" ]; then
+          measure_io_case "$METRICS_FILE" "${METRICS_PREFIX}: Mountpoint -> Mountpoint (sequential)" read+write "$bytes" copy_files
+        else
+          copy_files
+        fi
       displayName: "Sequential Copy of Files [Mountpoint -> Mountpoint]"
+      env:
+        METRICS_FILE: ${{ parameters.metrics_file }}
+        METRICS_PREFIX: ${{ parameters.metrics_prefix }}
 
-    - script: |
-        find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v {} $(MOUNT_DIR)/$(basename {}).TPAR'
+    - bash: |
+        source $(WORK_DIR)/test/scripts/io_metrics.sh
+        copy_files() {
+          find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v {} $(MOUNT_DIR)/$(basename {}).TPAR'
+        }
+        bytes=$(find $(DATA_DIR) -type f -printf '%s\n' | awk '{total += $1} END {print total + 0}')
+        if [ -n "${METRICS_FILE}" ]; then
+          measure_io_case "$METRICS_FILE" "${METRICS_PREFIX}: Local -> Mountpoint (parallel)" write "$bytes" copy_files
+        else
+          copy_files
+        fi
       displayName: "Parallel Copy of Files [Local -> Mountpoint]"
+      env:
+        METRICS_FILE: ${{ parameters.metrics_file }}
+        METRICS_PREFIX: ${{ parameters.metrics_prefix }}
 
-    - script: |
-        find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v $(MOUNT_DIR)/$(basename {}) $(MOUNT_DIR)/$(basename {}).APAR'
+    - bash: |
+        source $(WORK_DIR)/test/scripts/io_metrics.sh
+        copy_files() {
+          find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v $(MOUNT_DIR)/$(basename {}) $(MOUNT_DIR)/$(basename {}).APAR'
+        }
+        bytes=$(find $(DATA_DIR) -type f -printf '%s\n' | awk '{total += $1} END {print total + 0}')
+        if [ -n "${METRICS_FILE}" ]; then
+          measure_io_case "$METRICS_FILE" "${METRICS_PREFIX}: Mountpoint -> Mountpoint (parallel)" read+write "$bytes" copy_files
+        else
+          copy_files
+        fi
       displayName: "Parallel Copy of Files [Mountpoint -> Mountpoint]"
+      env:
+        METRICS_FILE: ${{ parameters.metrics_file }}
+        METRICS_PREFIX: ${{ parameters.metrics_prefix }}
 
   # drop kernel page cache before getting the md5sums as copy might happened just now
   - ${{ if eq(parameters.check_consistency, true) }}:
-    - script: |
+    - bash: |
+        source $(WORK_DIR)/test/scripts/io_metrics.sh
         sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
         rm -v ~/mc*
-        for file in $(DATA_DIR)/*; do
-          md5sum "$(MOUNT_DIR)/$(basename "$file")" | tee -a ~/mc1.chk
-        done
-        for file in $(DATA_DIR)/*; do
-          md5sum "$(MOUNT_DIR)/$(basename "$file").SEQ" | tee -a ~/mc2.chk
-        done
-        for file in $(DATA_DIR)/*; do
-          md5sum "$(MOUNT_DIR)/$(basename "$file").TPAR" | tee -a ~/mc3.chk
-        done
-        for file in $(DATA_DIR)/*; do
-          md5sum "$(MOUNT_DIR)/$(basename "$file").APAR" | tee -a ~/mc4.chk
-        done
+
+        checksum_files() {
+          local suffix="$1"
+          local output="$2"
+          for file in $(DATA_DIR)/*; do
+            md5sum "$(MOUNT_DIR)/$(basename "$file")${suffix}" | tee -a "$output"
+          done
+        }
+
+        measure_checksums() {
+          local suffix="$1"
+          local output="$2"
+          local label="$3"
+          local bytes
+          bytes=$(find $(DATA_DIR) -maxdepth 1 -type f -printf '%s\n' | awk '{total += $1} END {print total + 0}')
+          if [ -n "${METRICS_FILE}" ]; then
+            measure_io_case "$METRICS_FILE" "${METRICS_PREFIX}: ${label}" read "$bytes" checksum_files "$suffix" "$output"
+          else
+            checksum_files "$suffix" "$output"
+          fi
+        }
+
+        measure_checksums "" ~/mc1.chk "Read original files"
+        measure_checksums ".SEQ" ~/mc2.chk "Read sequential copies"
+        measure_checksums ".TPAR" ~/mc3.chk "Read parallel local copies"
+        measure_checksums ".APAR" ~/mc4.chk "Read parallel mount copies"
 
         cat ~/mc1.chk | cut -d " " -f1 > ~/mc1.chk1
         cat ~/mc2.chk | cut -d " " -f1 > ~/mc2.chk1
@@ -137,3 +206,6 @@ steps:
         compare_md5sum ~/mc4.chk1
       displayName: "Compare the MD5sum of the Mount point with Local filesystem"
       workingDirectory: $(MOUNT_DIR)
+      env:
+        METRICS_FILE: ${{ parameters.metrics_file }}
+        METRICS_PREFIX: ${{ parameters.metrics_prefix }}

@@ -6,6 +6,12 @@
 MOUNT_POINT="${FUSE_MOUNT_POINT:-/tmp/fuse_mount}"
 TEST_DIR="$MOUNT_POINT/test_stress_$(date +%s)"
 REF_DIR="/tmp/fuse_test_refs_$(date +%s)"
+METRICS_FILE="${IO_METRICS_FILE:-}"
+METRICS_PREFIX="${IO_METRICS_PREFIX:-extended-dd}"
+
+if [ -n "$METRICS_FILE" ]; then
+    source "$(dirname "$0")/io_metrics.sh"
+fi
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -48,6 +54,7 @@ run_integrity_test() {
     local bs="$2"
     local count="$3"
     local extra_args="$4"
+    local collect_metrics="${5:-true}"
     
     local filename="${name}.dat"
     local ref_file="$REF_DIR/$filename"
@@ -57,18 +64,42 @@ run_integrity_test() {
 
     # 1. Generate random source data on local disk
     dd if=/dev/urandom of="$ref_file" bs="$bs" count="$count" status=none
+    local bytes
+    bytes=$(stat -c %s "$ref_file")
 
     # 2. Write to FUSE
-    dd if="$ref_file" of="$fuse_file" bs="$bs" count="$count" $extra_args status=none conv=fsync
-    if [ $? -ne 0 ]; then
+    if [ -n "$METRICS_FILE" ] && [ "$collect_metrics" = "true" ]; then
+        measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: $name write" write "$bytes" \
+            dd if="$ref_file" of="$fuse_file" bs="$bs" count="$count" $extra_args status=none conv=fsync
+        result=$?
+    else
+        dd if="$ref_file" of="$fuse_file" bs="$bs" count="$count" $extra_args status=none conv=fsync
+        result=$?
+    fi
+    if [ "$result" -ne 0 ]; then
         echo -e "${RED}WRITE FAILED${NC}"
         return 1
     fi
 
     # 3. Read back from FUSE to check integrity
     # We compare the MD5 of the reference file vs the file on FUSE
-    local ref_md5=$(md5sum "$ref_file" | awk '{print $1}')
-    local fuse_md5=$(md5sum "$fuse_file" | awk '{print $1}')
+    local ref_md5
+    local fuse_md5
+    local fuse_md5_file="$REF_DIR/${name}.fuse.md5"
+    ref_md5=$(md5sum "$ref_file" | awk '{print $1}')
+    if [ -n "$METRICS_FILE" ] && [ "$collect_metrics" = "true" ]; then
+        measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: $name read" read "$bytes" \
+            md5sum "$fuse_file" > "$fuse_md5_file"
+        result=$?
+    else
+        md5sum "$fuse_file" > "$fuse_md5_file"
+        result=$?
+    fi
+    if [ "$result" -ne 0 ]; then
+        echo -e "${RED}READ FAILED${NC}"
+        return 1
+    fi
+    fuse_md5=$(awk '{print $1}' "$fuse_md5_file")
 
     if [ "$ref_md5" == "$fuse_md5" ]; then
         echo -e "${GREEN}PASS${NC}"
@@ -121,7 +152,6 @@ echo -n "TEST: Overwriting middle of file ... "
 
 # Create base file (10MB)
 dd if=/dev/urandom of="$REF_FILE" bs=1M count=10 status=none
-cp "$REF_FILE" "$FUSE_FILE"
 
 # Create a patch (1MB)
 dd if=/dev/urandom of="$REF_DIR/patch.dat" bs=1M count=1 status=none
@@ -129,12 +159,27 @@ dd if=/dev/urandom of="$REF_DIR/patch.dat" bs=1M count=1 status=none
 # Apply patch to middle of REF file (using seek=5)
 dd if="$REF_DIR/patch.dat" of="$REF_FILE" bs=1M seek=5 count=1 conv=notrunc status=none
 
-# Apply patch to middle of FUSE file
-dd if="$REF_DIR/patch.dat" of="$FUSE_FILE" bs=1M seek=5 count=1 conv=notrunc status=none
+seek_write() {
+    cp "$REF_FILE" "$FUSE_FILE"
+    dd if="$REF_DIR/patch.dat" of="$FUSE_FILE" bs=1M seek=5 count=1 conv=notrunc status=none
+}
+
+# Apply the base file and patch to FUSE.
+if [ -n "$METRICS_FILE" ]; then
+    measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: seek_overwrite write" write "$((11 * 1024 * 1024))" seek_write
+else
+    seek_write
+fi
 
 # Verify
 ref_md5=$(md5sum "$REF_FILE" | awk '{print $1}')
-fuse_md5=$(md5sum "$FUSE_FILE" | awk '{print $1}')
+if [ -n "$METRICS_FILE" ]; then
+    measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: seek_overwrite read" read "$((10 * 1024 * 1024))" \
+        md5sum "$FUSE_FILE" > "$REF_DIR/seek_overwrite.fuse.md5"
+else
+    md5sum "$FUSE_FILE" > "$REF_DIR/seek_overwrite.fuse.md5"
+fi
+fuse_md5=$(awk '{print $1}' "$REF_DIR/seek_overwrite.fuse.md5")
 
 if [ "$ref_md5" == "$fuse_md5" ]; then
     echo -e "${GREEN}PASS${NC}"
@@ -153,9 +198,10 @@ FUSE_FILE="$TEST_DIR/${TEST_NAME}.dat"
 
 echo -n "TEST: Appending to file ... "
 
-# Initial write
-dd if=/dev/urandom of="$REF_FILE" bs=1M count=1 status=none
-cp "$REF_FILE" "$FUSE_FILE"
+# Initial reference data
+APPEND_BASE_FILE="$REF_DIR/append_base.dat"
+dd if=/dev/urandom of="$APPEND_BASE_FILE" bs=1M count=1 status=none
+cp "$APPEND_BASE_FILE" "$REF_FILE"
 
 # Generate data to append
 dd if=/dev/urandom of="$REF_DIR/append.dat" bs=1M count=1 status=none
@@ -163,12 +209,27 @@ dd if=/dev/urandom of="$REF_DIR/append.dat" bs=1M count=1 status=none
 # Append to REF
 cat "$REF_DIR/append.dat" >> "$REF_FILE"
 
-# Append to FUSE using dd conv=notrunc oflag=append
-dd if="$REF_DIR/append.dat" of="$FUSE_FILE" bs=1M count=1 oflag=append conv=notrunc status=none
+append_write() {
+    cp "$APPEND_BASE_FILE" "$FUSE_FILE"
+    dd if="$REF_DIR/append.dat" of="$FUSE_FILE" bs=1M count=1 oflag=append conv=notrunc status=none
+}
+
+# Write and append on FUSE.
+if [ -n "$METRICS_FILE" ]; then
+    measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: append write" write "$((2 * 1024 * 1024))" append_write
+else
+    append_write
+fi
 
 # Verify
 ref_md5=$(md5sum "$REF_FILE" | awk '{print $1}')
-fuse_md5=$(md5sum "$FUSE_FILE" | awk '{print $1}')
+if [ -n "$METRICS_FILE" ]; then
+    measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: append read" read "$((2 * 1024 * 1024))" \
+        md5sum "$FUSE_FILE" > "$REF_DIR/append.fuse.md5"
+else
+    md5sum "$FUSE_FILE" > "$REF_DIR/append.fuse.md5"
+fi
+fuse_md5=$(awk '{print $1}' "$REF_DIR/append.fuse.md5")
 
 if [ "$ref_md5" == "$fuse_md5" ]; then
     echo -e "${GREEN}PASS${NC}"
@@ -181,19 +242,30 @@ fi
 # Runs multiple writes in parallel to check for thread safety/locking issues.
 echo -e "\n${YELLOW}[Scenario 6] Concurrency Stress Test${NC}"
 
-pids=""
-for i in {1..50}; do
-    run_integrity_test "conc_job_$i" "1M" "100" &
-    pids="$pids $!"
-done
+run_concurrency_batch() {
+    local pids=""
+    local status=0
+    for i in {1..50}; do
+        run_integrity_test "conc_job_$i" "1M" "100" "" false &
+        pids="$pids $!"
+    done
 
-echo "Waiting for background jobs to finish..."
-status=0
-for pid in $pids; do
-    if ! wait "$pid"; then
-        status=1
-    fi
-done
+    echo "Waiting for background jobs to finish..."
+    for pid in $pids; do
+        if ! wait "$pid"; then
+            status=1
+        fi
+    done
+    return "$status"
+}
+
+if [ -n "$METRICS_FILE" ]; then
+    measure_io_case "$METRICS_FILE" "$METRICS_PREFIX: 50-file concurrency batch" read+write "$((50 * 100 * 1024 * 1024))" run_concurrency_batch
+    status=$?
+else
+    run_concurrency_batch
+    status=$?
+fi
 
 if [ "$status" -ne 0 ]; then
     echo -e "${RED}Concurrency test batch failed.${NC}"
