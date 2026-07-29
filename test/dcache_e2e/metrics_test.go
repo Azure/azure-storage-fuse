@@ -92,6 +92,71 @@ func scrapeMetrics(t *testing.T) (*metricSnapshot, bool) {
 	return snap, true
 }
 
+// scrapePerEndpoint returns one counter map per endpoint in
+// testCfg.metricsEndpoints, preserving order. A failed scrape yields nil
+// for that endpoint's slot (not an error) -- callers that assert against a
+// specific endpoint interpret nil as "endpoint silent", which is the
+// natural outcome after a pod has been force-deleted and its
+// `kubectl port-forward` has torn down.
+//
+// Returns (nil, false) when no metric endpoints were configured -- the
+// caller should skip per-endpoint assertions in that case, exactly like
+// scrapeMetrics does for aggregated ones.
+func scrapePerEndpoint(t *testing.T) ([]map[string]float64, bool) {
+	t.Helper()
+	if len(testCfg.metricsEndpoints) == 0 {
+		return nil, false
+	}
+	out := make([]map[string]float64, len(testCfg.metricsEndpoints))
+	client := &http.Client{Timeout: metricsHTTPTimeout}
+	for i, ep := range testCfg.metricsEndpoints {
+		url := strings.TrimRight(ep, "/") + "/metrics"
+		values := make(map[string]float64)
+		if err := scrapeInto(client, url, values); err != nil {
+			t.Logf("metrics scrape %s failed: %v (endpoint treated as silent)", url, err)
+			out[i] = nil
+			continue
+		}
+		out[i] = values
+	}
+	return out, true
+}
+
+// deltaOne computes after - before for two per-endpoint snapshots. Either
+// side may be nil (endpoint was silent for that scrape); nil is treated
+// as "all counters at zero" for the purposes of the diff, so a nil→nil
+// endpoint produces an empty (all-zero) delta and the survivor/victim
+// assertions can be uniformly expressed as "hit-family sum > 0" vs "<= 0".
+func deltaOne(before, after map[string]float64) map[string]float64 {
+	if before == nil && after == nil {
+		return map[string]float64{}
+	}
+	if before == nil {
+		out := make(map[string]float64, len(after))
+		for k, v := range after {
+			out[k] = v
+		}
+		return out
+	}
+	if after == nil {
+		out := make(map[string]float64, len(before))
+		for k, v := range before {
+			out[k] = -v
+		}
+		return out
+	}
+	out := make(map[string]float64, len(after))
+	for k, v := range after {
+		out[k] = v - before[k]
+	}
+	for k, v := range before {
+		if _, ok := after[k]; !ok {
+			out[k] = -v
+		}
+	}
+	return out
+}
+
 // scrapeInto fetches a single endpoint's metrics and folds every numeric
 // sample it exposes into `into`, summing across label combinations.
 func scrapeInto(client *http.Client, url string, into map[string]float64) error {
@@ -166,9 +231,8 @@ func parseMetricLine(line string) (string, float64, bool) {
 }
 
 // delta returns after - before for every metric present in either snapshot.
-// Positive-only counter behaviour is not assumed; if a cache-server pod
-// restarts between scrapes the value can drop, and we surface that as a
-// negative delta rather than pretending it is zero.
+// A cache-server pod restart between scrapes can drop a counter's value;
+// that shows up as a negative delta.
 func delta(before, after *metricSnapshot) map[string]float64 {
 	out := make(map[string]float64, len(after.values))
 	for k, v := range after.values {
@@ -183,12 +247,8 @@ func delta(before, after *metricSnapshot) map[string]float64 {
 }
 
 // sumMatching returns the sum of counter deltas whose name contains any of
-// `substrings` (case-insensitive). Substring matching -- rather than exact
-// names -- is deliberate: the Tachyon cache-server metric naming has
-// changed several times and pinning to exact names would make this test
-// silently pass when the metric it *thinks* it is watching stops emitting.
-// Callers should assert `sum > 0` and log the matching metric names for
-// diagnosability.
+// `substrings` (case-insensitive). Callers should assert `sum > 0` and log
+// the matching metric names for diagnosability.
 func sumMatching(d map[string]float64, substrings ...string) (float64, []string) {
 	var total float64
 	var matched []string
