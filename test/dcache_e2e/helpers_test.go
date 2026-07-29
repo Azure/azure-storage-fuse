@@ -37,14 +37,11 @@
 package dcache_e2e
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"os"
 	"testing"
 	"time"
 
@@ -69,24 +66,6 @@ func generateRandomBytes(t *testing.T, n int) []byte {
 		t.Fatalf("rand.Read: %v", err)
 	}
 	return buf
-}
-
-// readAllFile reads `path` in full and returns the bytes. The read uses a
-// fresh os.Open so the FUSE handle is new: this exercises the OpenFile
-// -> ReadInBuffer path we care about (i.e. the same code path a real
-// consumer would hit), not a re-read from an already-warm handle.
-func readAllFile(t *testing.T, path string) []byte {
-	t.Helper()
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatalf("open %s: %v", path, err)
-	}
-	defer f.Close()
-	data, err := io.ReadAll(f)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	return data
 }
 
 // md5Sum returns the hex MD5 of `data`. Only used for equality assertions
@@ -176,28 +155,4 @@ func deleteBlob(t *testing.T, blobPath string) {
 	if _, err := client.Delete(ctx, nil); err != nil {
 		t.Logf("cleanup: delete %s: %v", blobPath, err)
 	}
-}
-
-// downloadBlob reads a blob's full content via the SDK. Not used by the
-// canonical read-path test (which reads through the mount) -- exposed as
-// a helper for future tests that want to compare mount-side reads against
-// a direct-from-storage baseline.
-func downloadBlob(t *testing.T, blobPath string) []byte {
-	t.Helper()
-	client, err := newBlockBlobClient(blobPath)
-	if err != nil {
-		t.Fatalf("download %s: %v", blobPath, err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), azSDKTimeout)
-	defer cancel()
-	resp, err := client.DownloadStream(ctx, nil)
-	if err != nil {
-		t.Fatalf("download %s: %v", blobPath, err)
-	}
-	defer resp.Body.Close()
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, resp.Body); err != nil {
-		t.Fatalf("download %s: read body: %v", blobPath, err)
-	}
-	return buf.Bytes()
 }
