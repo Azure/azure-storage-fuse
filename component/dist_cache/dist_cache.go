@@ -76,10 +76,6 @@ type DistCacheOptions struct {
 	BypassOnError  bool   `config:"bypass-on-error"   yaml:"bypass-on-error,omitempty"`
 	CachePrefix    string `config:"cache-prefix"      yaml:"cache-prefix,omitempty"`
 	MaxConnsPerSvr int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"`
-
-	// Chunk size for distributed cache operations. When block_cache is present,
-	// this is overridden by block_cache.block-size-mb to keep alignment consistent.
-	ChunkSizeMB float64 `config:"chunk-size-mb" yaml:"chunk-size-mb,omitempty"`
 }
 
 // DistCache is the blobfuse component that sits between the local cache and azstorage,
@@ -187,22 +183,16 @@ func (dc *DistCache) Configure(isParent bool) error {
 		log.Info("DistCache::Configure : cache-prefix=%s (derived from azstorage account/container)", dc.cachePrefix)
 	}
 
-	// Resolve chunk size: dist_cache.chunk-size-mb > block_cache default
+	// L1 (block_cache) and L2 (dist_cache) must align on chunk size.
+	// block_cache.block-size-mb is the single source — either set directly
+	// by the user or fanned out from dist_cache.block-size-mb by
+	// normalizeDistCacheConfig at mount time.
 	var blockSizeMB float64 = common.DefaultBlockSize
 	if config.IsSet("block_cache.block-size-mb") {
-		err = config.UnmarshalKey("block_cache.block-size-mb", &blockSizeMB)
-		if err != nil {
+		if err = config.UnmarshalKey("block_cache.block-size-mb", &blockSizeMB); err != nil {
 			log.Warn("DistCache::Configure : Failed to read block-size-mb, using default %d MB", common.DefaultBlockSize)
 			blockSizeMB = common.DefaultBlockSize
 		}
-	} else if config.IsSet("stream.block-size-mb") {
-		err = config.UnmarshalKey("stream.block-size-mb", &blockSizeMB)
-		if err != nil {
-			log.Warn("DistCache::Configure : Failed to read block-size-mb, using default %d MB", common.DefaultBlockSize)
-			blockSizeMB = common.DefaultBlockSize
-		}
-	} else if conf.ChunkSizeMB > 0 {
-		blockSizeMB = conf.ChunkSizeMB
 	}
 	dc.chunkSize = int64(blockSizeMB * 1024 * 1024)
 
@@ -282,9 +272,7 @@ func (dc *DistCache) Start(ctx context.Context) error {
 func (dc *DistCache) Stop() error {
 	log.Trace("Stopping component : %s", dc.Name())
 	// Wait for any in-flight populates to finish before closing the client so
-	// they don't observe a nil/closed client mid-upload. The wait is bounded
-	// implicitly: cap(dc.bufs) caps concurrency and the dcache client enforces
-	// a per-request timeout (~30s) that covers any stuck upload.
+	// they don't observe a nil/closed client mid-upload.
 	dc.inflight.Wait()
 	if dc.client != nil {
 		return dc.client.Close()

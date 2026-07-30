@@ -285,9 +285,11 @@ func (suite *distCacheIntegSuite) SetupTest() {
 	// Start embedded mock cache server
 	suite.srv = newIntegMockServer(suite.T())
 
-	// Build config: dist_cache → loopbackfs (no file_cache, test dist_cache directly)
+	// Build config: dist_cache → loopbackfs (no file_cache, test dist_cache directly).
+	// block_cache.block-size-mb is the single source of chunk size, even when
+	// block_cache isn't in the pipeline for this suite.
 	suite.configString = fmt.Sprintf(
-		"loopbackfs:\n  path: %s\n\ndist_cache:\n  server-list: %s\n  bypass-on-error: true\n  chunk-size-mb: 1\n  cache-prefix: test/container\n",
+		"loopbackfs:\n  path: %s\n\nblock_cache:\n  block-size-mb: 1\n\ndist_cache:\n  server-list: %s\n  bypass-on-error: true\n  cache-prefix: test/container\n",
 		suite.storagePath, suite.srv.addr)
 
 	err = config.ReadConfigFromReader(strings.NewReader(suite.configString))
@@ -331,7 +333,7 @@ func TestDistCacheIntegration(t *testing.T) {
 
 func (suite *distCacheIntegSuite) TestReadInBuffer_L2MissThenHit() {
 	fileName := "test_block_read.bin"
-	// Create data that's exactly one chunk (1 MB = chunk-size-mb in config)
+	// Create data that's exactly one chunk (1 MB = block_cache.block-size-mb in config)
 	chunkSize := 1 * 1024 * 1024
 	testData := make([]byte, chunkSize)
 	rand.Read(testData)
@@ -537,7 +539,7 @@ func TestStart_BypassOnError_False_UnreachableServers_ReturnsError(t *testing.T)
 // --- Test: Chunk size resolution from config ---
 
 func (suite *distCacheIntegSuite) TestChunkSize_FromConfig() {
-	// The suite uses chunk-size-mb: 1
+	// The suite uses block_cache.block-size-mb: 1
 	suite.assert.Equal(int64(1*1024*1024), suite.distCache.chunkSize)
 }
 
@@ -584,7 +586,7 @@ func (suite *blockCacheDistCacheSuite) SetupTest() {
 	cfg := fmt.Sprintf(
 		"read-only: true\n\n"+
 			"block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  path: %s\n  disk-size-mb: 50\n  disk-timeout-sec: 20\n\n"+
-			"dist_cache:\n  server-list: %s\n  bypass-on-error: true\n  chunk-size-mb: 1\n  cache-prefix: test/container\n\n"+
+			"dist_cache:\n  server-list: %s\n  bypass-on-error: true\n  cache-prefix: test/container\n\n"+
 			"loopbackfs:\n  path: %s\n",
 		suite.diskPath, suite.srv.addr, suite.storagePath)
 

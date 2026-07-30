@@ -1,9 +1,13 @@
 # Refer ./setup/baseConfig.yaml for full set of config parameters
 #
-# This sample shows block_cache + dist_cache (distributed cache) configuration.
-# The distributed cache provides a shared L2 cache between local block_cache (L1)
-# and Azure Blob Storage (L3), reducing Azure egress and read latency for
-# multi-node workloads.
+# This sample shows dist_cache (distributed cache) configuration.
+# The distributed cache provides a shared L2 cache between a local in-memory
+# L1 (block_cache) and Azure Blob Storage (L3), reducing Azure egress and
+# read latency for multi-node workloads.
+#
+# block_cache is added to the pipeline automatically as the L1 layer;
+# users only configure dist_cache. Do not add block_cache to components:
+# or a block_cache: section — mount will fail with a mutual-exclusion error.
 #
 # PREREQUISITE: A running Tachyon cache server cluster is required.
 # See https://github.com/Azure/Tachyon for installation instructions.
@@ -14,7 +18,6 @@ logging:
 
 components:
   - libfuse
-  - block_cache
   - dist_cache
   - attr_cache
   - azstorage
@@ -23,13 +26,6 @@ libfuse:
   attribute-expiration-sec: 120
   entry-expiration-sec: 120
   negative-entry-expiration-sec: 240
-
-block_cache:
-  block-size-mb: 32
-  mem-size-mb: 4096
-  prefetch: 32
-  parallelism: 128
-  prefetch-on-open: true
 
 # Distributed cache configuration
 # At least one discovery method must be configured: discovery-url, k8s-service, or server-list.
@@ -44,6 +40,12 @@ dist_cache:
 
   # Option 3: Static server list (comma-separated host:port)
   # server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
+
+  # Optional: L1 tuning (applied to the auto-inserted block_cache component)
+  # block-size-mb: 32
+  # mem-size-mb: 4096
+  # prefetch: 32
+  # parallelism: 128
 
   # Optional: TTL for cached data in seconds (0 = no expiry)
   # ttl-seconds: 86400

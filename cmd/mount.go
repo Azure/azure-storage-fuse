@@ -285,6 +285,13 @@ var mountCmd = &cobra.Command{
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 		}
 
+		// Reject mixed dist_cache/L1 configs and fan out dist_cache tuning
+		// knobs onto block_cache. Runs before synthesis so it sees the user's
+		// original components list.
+		if err = normalizeDistCacheConfig(options.Components); err != nil {
+			return err
+		}
+
 		if !configFileExists || len(options.Components) == 0 {
 			pipeline := []string{"libfuse"}
 
@@ -294,7 +301,9 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "block_cache")
 			} else if options.Preload {
 				pipeline = append(pipeline, "xload")
-			} else {
+			} else if !config.IsSet("dist_cache") {
+				// dist_cache brings its own L1 (block_cache), so skip
+				// the file_cache default.
 				pipeline = append(pipeline, "file_cache")
 			}
 
@@ -312,6 +321,10 @@ var mountCmd = &cobra.Command{
 			pipeline = append(pipeline, "azstorage")
 			options.Components = pipeline
 		}
+
+		// Splice block_cache in before dist_cache if the user listed
+		// dist_cache in components: without block_cache. Idempotent.
+		options.Components = injectBlockCacheForDistCache(options.Components)
 
 		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
 			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
@@ -787,6 +800,72 @@ func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
 	}
 
 	return nil
+}
+
+// normalizeDistCacheConfig enforces the single-surface UX for dist_cache:
+// it rejects sibling L1 caches (block_cache/file_cache/xload/stream) and
+// fans dist_cache tuning knobs onto block_cache, which is auto-added as
+// the L1 for dist_cache. userComponents is the components list as parsed
+// from the config file, before any synthesis or auto-injection.
+func normalizeDistCacheConfig(userComponents []string) error {
+	// Only act when dist_cache will actually be in the resulting pipeline:
+	// listed in components:, or components: omitted so synthesis will add
+	// it. A stray dist_cache: section alongside an explicit components:
+	// that omits dist_cache is silently ignored (matching how the codebase
+	// treats stray block_cache:/file_cache: sections).
+	userWantsDistCache := common.ComponentInPipeline(userComponents, "dist_cache") ||
+		(len(userComponents) == 0 && config.IsSet("dist_cache"))
+	if !userWantsDistCache {
+		return nil
+	}
+
+	// Reject any sibling L1 cache signal, whether in components: or as a
+	// top-level section.
+	incompatible := []string{"block_cache", "file_cache", "xload", "stream"}
+	for _, name := range incompatible {
+		if common.ComponentInPipeline(userComponents, name) || config.IsSet(name) {
+			return fmt.Errorf("mount: dist_cache is incompatible with %s; dist_cache uses block_cache as its L1 and cannot coexist with another L1 cache. Remove %s from components: and any %s: section", name, name, name)
+		}
+	}
+
+	// Copy user-set knobs onto block_cache; unset keys fall through to
+	// block_cache defaults. Round-tripping through string relies on viper's
+	// weak-typed coercion when BlockCache reads its config.
+	fanout := []struct{ src, dst string }{
+		{"dist_cache.block-size-mb", "block_cache.block-size-mb"},
+		{"dist_cache.mem-size-mb", "block_cache.mem-size-mb"},
+		{"dist_cache.prefetch", "block_cache.prefetch"},
+		{"dist_cache.parallelism", "block_cache.parallelism"},
+	}
+	for _, m := range fanout {
+		if !config.IsSet(m.src) {
+			continue
+		}
+		var v string
+		if err := config.UnmarshalKey(m.src, &v); err != nil {
+			return fmt.Errorf("mount: failed to read %s: %s", m.src, err.Error())
+		}
+		config.Set(m.dst, v)
+	}
+	return nil
+}
+
+// injectBlockCacheForDistCache splices block_cache in immediately before
+// dist_cache. Idempotent: no-op if block_cache is already present or
+// dist_cache is absent.
+func injectBlockCacheForDistCache(components []string) []string {
+	distIdx := slices.Index(components, "dist_cache")
+	if distIdx < 0 {
+		return components
+	}
+	if slices.Contains(components, "block_cache") {
+		return components
+	}
+	out := make([]string, 0, len(components)+1)
+	out = append(out, components[:distIdx]...)
+	out = append(out, "block_cache")
+	out = append(out, components[distIdx:]...)
+	return out
 }
 
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
