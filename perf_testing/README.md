@@ -24,12 +24,14 @@ On initial rollout, a developer-only weekday run adds `/developer/` but preserve
 
 ## Migrate D96 runner pools
 
-Use these benchmark profiles:
+The workflows currently use these benchmark profiles while the Gen2 X86 image is prepared:
 
 | Architecture | Azure VM SKU | vCPUs | Memory | Local temporary storage | Expected network ceiling |
 | --- | --- | ---: | ---: | --- | ---: |
-| X86 | `Standard_D192ds_v6` | 192 | 768 GiB | 6 x 1,760 GiB NVMe | 82,000 Mbps |
+| X86 | `Standard_D96ds_v5` | 96 | 384 GiB | 1 x 3,600 GiB temporary disk | 35,000 Mbps |
 | ARM64 | `Standard_D96pds_v6` | 96 | 384 GiB | 6 x 880 GiB NVMe | 60,000 Mbps |
+
+The planned X86 target remains `Standard_D192ds_v6`: 192 vCPUs, 768 GiB memory, six 1,760 GiB temporary NVMe devices, and up to 82,000 Mbps networking. Switch the workflow SKU and CPU guards only after the new generalized Gen2 image provisions successfully in `1ES.Pool=blobfuse2-benchmark`.
 
 Azure Cobalt ARM `Dpdsv6` and `Dpldsv6` currently stop at 96 vCPUs. There is no `Standard_D192pds_v6`, so “D192 for both architectures” is not a supported one-to-one migration. Keep ARM on D96 for architecture coverage. Running two ARM D96 VMs would be a distributed benchmark with different semantics and must use separate workload IDs and history.
 
@@ -65,7 +67,7 @@ sudo -v
 sudo -n true
 ```
 
-An X86 `Standard_D192ds_v6` should report 192 online CPUs. Scheduled X86 and branch-comparison jobs fail before setup when the SKU or `nproc` does not match, preventing a mislabeled D96 runner from entering D192 history. The ARM profile is checked separately as `Standard_D96pds_v6` with 96 online CPUs. The runner also records Azure VM SKU and region from Instance Metadata Service; set `AZURE_VM_SIZE` and `AZURE_REGION` only when IMDS is unavailable for a manual run.
+The temporary X86 `Standard_D96ds_v5` profile must report 96 online CPUs. Scheduled X86 and branch-comparison jobs fail before setup when the SKU or `nproc` does not match. Change both guards to `Standard_D192ds_v6` and 192 CPUs as part of the eventual pool migration, never before it. The ARM profile is checked separately as `Standard_D96pds_v6` with 96 online CPUs. The runner also records Azure VM SKU and region from Instance Metadata Service; set `AZURE_VM_SIZE` and `AZURE_REGION` only when IMDS is unavailable for a manual run.
 
 The runner drops the kernel page cache before every mount using non-interactive `sudo`, so `sudo -n true` must succeed for the entire run. The cache directory is recursively emptied; it must be a dedicated benchmark directory. File-cache regression tests should use a local SSD path with at least 200 GiB free. Public tests use block cache only and need little local scratch space, but their persistent Azure fixtures consume 640 GiB in the benchmark container.
 
@@ -244,7 +246,7 @@ Open `http://localhost:8000/` for the public results and `http://localhost:8000/
 
 Before merging, verify these repository settings:
 
-- The X86 self-hosted runner label resolves only to `Standard_D192ds_v6` hosts exposing 192 online CPUs; the ARM64 label resolves only to `Standard_D96pds_v6` hosts exposing 96 online CPUs.
+- The X86 self-hosted runner label currently resolves only to `Standard_D96ds_v5` hosts exposing 96 online CPUs; after the Gen2 image migration, update this guard and the pool together to `Standard_D192ds_v6` with 192 CPUs. The ARM64 label resolves only to `Standard_D96pds_v6` hosts exposing 96 online CPUs.
 - `STANDARD_ACCOUNT`, `STANDARD_KEY`, `PREMIUM_ACCOUNT`, `PREMIUM_KEY`, `STANDARD_HNS_ACCOUNT`, `STANDARD_HNS_KEY`, `PREMIUM_HNS_ACCOUNT`, `PREMIUM_HNS_KEY`, and `BENCH_CONTAINER` secrets are present.
 - Every account has a dedicated container named by `BENCH_CONTAINER`, in the same region as its runner.
 - The `performance-benchmark-compare` environment exists with required reviewers. Only trusted same-repository refs should be approved because candidate binaries receive benchmark credentials.
