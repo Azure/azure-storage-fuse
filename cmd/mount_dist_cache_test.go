@@ -61,16 +61,6 @@ func TestInjectBlockCacheForDistCache(t *testing.T) {
 			want: []string{"libfuse", "file_cache", "block_cache", "dist_cache", "attr_cache", "azstorage"},
 		},
 		{
-			name: "both present: idempotent, no re-insert",
-			in:   []string{"libfuse", "block_cache", "dist_cache", "attr_cache", "azstorage"},
-			want: []string{"libfuse", "block_cache", "dist_cache", "attr_cache", "azstorage"},
-		},
-		{
-			name: "block_cache present but not adjacent: still idempotent",
-			in:   []string{"libfuse", "block_cache", "file_cache", "dist_cache", "azstorage"},
-			want: []string{"libfuse", "block_cache", "file_cache", "dist_cache", "azstorage"},
-		},
-		{
 			name: "dist_cache at index 0: block_cache prepended",
 			in:   []string{"dist_cache", "azstorage"},
 			want: []string{"block_cache", "dist_cache", "azstorage"},
@@ -324,7 +314,7 @@ dist_cache:
 	// All four fan-out targets should be populated and typed correctly.
 	var blockSize float64
 	assert.NoError(t, config.UnmarshalKey("block_cache.block-size-mb", &blockSize))
-	assert.Equal(t, float64(32), blockSize)
+	assert.InDelta(t, float64(32), blockSize, 0)
 
 	var memSize uint64
 	assert.NoError(t, config.UnmarshalKey("block_cache.mem-size-mb", &memSize))

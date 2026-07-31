@@ -301,15 +301,10 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "block_cache")
 			} else if options.Preload {
 				pipeline = append(pipeline, "xload")
-			} else if !config.IsSet("dist_cache") {
-				// dist_cache brings its own L1 (block_cache), so skip
-				// the file_cache default.
-				pipeline = append(pipeline, "file_cache")
-			}
-
-			// dist_cache sits between local cache (L1) and azstorage (L3)
-			if config.IsSet("dist_cache") {
+			} else if config.IsSet("dist_cache") {
 				pipeline = append(pipeline, "dist_cache") // L2 cache
+			} else {
+				pipeline = append(pipeline, "file_cache")
 			}
 
 			// by default attr-cache is enable in v2
@@ -851,14 +846,10 @@ func normalizeDistCacheConfig(userComponents []string) error {
 }
 
 // injectBlockCacheForDistCache splices block_cache in immediately before
-// dist_cache. Idempotent: no-op if block_cache is already present or
-// dist_cache is absent.
+// dist_cache. No-op if dist_cache is absent.
 func injectBlockCacheForDistCache(components []string) []string {
 	distIdx := slices.Index(components, "dist_cache")
 	if distIdx < 0 {
-		return components
-	}
-	if slices.Contains(components, "block_cache") {
 		return components
 	}
 	out := make([]string, 0, len(components)+1)
