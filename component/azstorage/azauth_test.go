@@ -76,6 +76,7 @@ type storageTestConfiguration struct {
 	SkipMsi         bool   `json:"skip-msi"`
 	SkipAzCLI       bool   `json:"skip-azcli"`
 	ProxyAddress    string `json:"proxy-address"`
+	UsePreprod      bool   `json:"use-preprod"`
 }
 
 var storageTestConfigurationParameters storageTestConfiguration
@@ -142,11 +143,18 @@ func generateEndpoint(useHttp bool, accountName string, accountType AccountType)
 	}
 	endpoint += accountName
 	if accountType == EAccountType.ADLS() {
-		endpoint += ".dfs."
-	} else if accountType == EAccountType.BLOCK() {
-		endpoint += ".blob."
+		if storageTestConfigurationParameters.UsePreprod {
+			endpoint += ".dfs.preprod.core.windows.net/"
+		} else {
+			endpoint += ".dfs.core.windows.net/"
+		}
+	} else {
+		if storageTestConfigurationParameters.UsePreprod {
+			endpoint += ".blob.preprod.core.windows.net/"
+		} else {
+			endpoint += ".blob.core.windows.net/"
+		}
 	}
-	endpoint += "core.windows.net/"
 	return endpoint
 }
 

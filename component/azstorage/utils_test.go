@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -47,6 +48,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
+
+// blobEndpoint returns the full Azure Blob Storage endpoint URL for the given account,
+// using the preprod endpoint when "use-preprod": true is set in azuretest.json.
+func blobEndpoint(account string) string {
+	if storageTestConfigurationParameters.UsePreprod {
+		return fmt.Sprintf("https://%s.blob.preprod.core.windows.net/", account)
+	}
+	return fmt.Sprintf("https://%s.blob.core.windows.net/", account)
+}
+
+// dfsEndpoint returns the full Azure Data Lake Storage endpoint URL for the given account,
+// using the preprod endpoint when "use-preprod": true is set in azuretest.json.
+func dfsEndpoint(account string) string {
+	if storageTestConfigurationParameters.UsePreprod {
+		return fmt.Sprintf("https://%s.dfs.preprod.core.windows.net/", account)
+	}
+	return fmt.Sprintf("https://%s.dfs.core.windows.net/", account)
+}
 
 type utilsTestSuite struct {
 	suite.Suite

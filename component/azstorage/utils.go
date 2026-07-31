@@ -111,6 +111,10 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 
 	perCallPolicies := []policy.Policy{telemetryPolicy}
 
+	if conf.isBlobLayoutAwareRoutingEnabled {
+		perCallPolicies = append(perCallPolicies, NewLayoutPolicy())
+	}
+
 	serviceApiVersion := os.Getenv("AZURE_STORAGE_SERVICE_API_VERSION")
 	if serviceApiVersion != "" {
 		// We need to override the service version
