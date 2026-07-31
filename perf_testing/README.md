@@ -71,6 +71,8 @@ The runner drops the kernel page cache before every mount using non-interactive 
 
 For Actions file-cache jobs, `/mnt/localssd` must be a mounted dedicated filesystem. The workflow now fails instead of silently creating that path on the OS disk. D192 local-disk count and device names are otherwise not assumed by the X86 workflow; provision and mount the desired local SSD/RAID in the runner image before benchmarking.
 
+The scheduled ARM64 profiles use block cache only and do not use the VM's local NVMe array. The workflow leaves any image-provisioned ARM temporary-disk mount, such as `/mnt/azure_nvme_temp`, unchanged.
+
 The benchmark config intentionally keeps `max-fuse-threads=256`, block-cache `prefetch=128`, `parallelism=128`, and `mem-size-mb=16384` on D192. These are fixed workload/configuration controls, not formulas derived from a D96 CPU count. Keep them unchanged when establishing the D192 series. If a separate scaling experiment proves higher values improve D192, introduce a new configuration profile and workload/history identity instead of silently changing the existing series.
 
 Likewise, the public multi-file case remains 16 FIO jobs on D192; it does not automatically scale to the VM CPU count. Before declaring it the D192 maximum, run an unpublished concurrency sweep at 8, 16, 32, and 64 independent files while keeping total bytes and all cache settings fixed. Choose the smallest concurrency at the throughput knee. If that is not 16, change the public workload deliberately, bump its IDs/fixture version, and establish a fresh series rather than mixing it with the 16-file history.
