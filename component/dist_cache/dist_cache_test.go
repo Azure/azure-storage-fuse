@@ -451,7 +451,56 @@ dist_cache:
 	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
 }
 
+// TestConfigure_TinyFairShare_DisablesPool verifies the wiring from
+// resolveMemBudget → Configure: when the fair-share signal is below
+// distCacheMinBuffers × chunkSize, Configure must succeed but leave dc.bufs
+// nil so the L2 populate path is inert for the mount.
+func TestConfigure_TinyFairShare_DisablesPool(t *testing.T) {
+	// bcRef  = 100 MiB → fair = 10 MiB
+	// chunk  = 16 MiB → floor = 64 MiB
+	// fair < floor → resolveMemBudget returns 0, pool must not be allocated.
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+block_cache:
+  mem-size-mb: 100
+  block-size-mb: 16
+  parallelism: 2
+dist_cache:
+  server-list: "localhost:9065"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.NoError(t, err, "Configure must not fail just because the pool is disabled")
+	assert.Nil(t, dc.bufs, "tiny fair-share must leave the buffer pool unallocated")
+}
+
 // --- Tests for async-upload buffer pool: memory-budget & drop paths ---
+
+// TestSchedulePopulate_NilBufs_Drops verifies that when the buffer pool is
+// disabled (dc.bufs == nil, i.e. resolveMemBudget returned 0 at Configure),
+// schedulePopulate is a no-op: no upload is issued and no goroutine is
+// spawned, so the L2 populate path stays fully off.
+func TestSchedulePopulate_NilBufs_Drops(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+	dc.bufs = nil // simulate the disabled-pool Configure outcome
+
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return nil
+	}
+
+	dc.schedulePopulate("f", "e", 0, []byte("data"))
+	dc.inflight.Wait()
+
+	assert.Equal(t, int32(0), uploads.Load(),
+		"schedulePopulate must not issue an upload when the pool is disabled")
+}
 
 // TestSchedulePopulate_PayloadTooLarge_Drops verifies that populates whose
 // payload exceeds chunkSize are rejected before consuming a buffer.
@@ -567,9 +616,11 @@ func TestSchedulePopulate_BufferReturnedAfterUpload(t *testing.T) {
 
 // --- Tests for resolveMemBudget ---
 //
-// resolveMemBudget applies a fair-share / demand-ceiling / floor pipeline on
-// top of a reference budget (bcRef). bcRef is block_cache.mem-size-mb when
-// set, else block_cache.MemShareFraction × free RAM. The tests below fix
+// resolveMemBudget picks min(fair-share, demand-ceiling) on top of a
+// reference budget (bcRef), but only if the fair-share signal covers at
+// least distCacheMinBuffers × chunkSize; below that it returns 0 to
+// disable async populate. bcRef is block_cache.mem-size-mb when set, else
+// block_cache.MemShareFraction × free RAM. The tests below fix
 // block_cache.mem-size-mb and block_cache.parallelism so the arithmetic is
 // deterministic; separate tests cover the free-RAM fallback path.
 
@@ -587,15 +638,14 @@ block_cache:
 	got := dc.resolveMemBudget()
 
 	// bcRef  = 10240 MiB
-	// fair   = 10240 × 10%       = 1024 MiB
+	// fair   = 10240 × 10%       = 1024 MiB (≥ floor 64 MiB, pool enabled)
 	// demand = 4 × 2 × 16 MiB    = 128 MiB
-	// budget = min(fair, demand) = 128 MiB (floor 64 MiB does not raise)
+	// budget = min(fair, demand) = 128 MiB
 	assert.Equal(t, int64(128)*_1MiB, got)
 }
 
 // TestResolveMemBudget_MemSize_FairShareBinds verifies that when the demand
-// ceiling is larger than the fair share, the fair share wins (and the floor
-// does not raise it).
+// ceiling is larger than the fair share, the fair share wins.
 func TestResolveMemBudget_MemSize_FairShareBinds(t *testing.T) {
 	loadConfig(t, `
 block_cache:
@@ -607,16 +657,17 @@ block_cache:
 	got := dc.resolveMemBudget()
 
 	// bcRef  = 100 MiB
-	// fair   = 100 × 10%         = 10 MiB
+	// fair   = 100 × 10%         = 10 MiB (≥ floor 4 MiB, pool enabled)
 	// demand = 4 × 100 × 1 MiB   = 400 MiB
-	// budget = min(fair, demand) = 10 MiB (floor 4 MiB does not raise)
+	// budget = min(fair, demand) = 10 MiB
 	assert.Equal(t, int64(10)*_1MiB, got)
 }
 
-// TestResolveMemBudget_MemSize_FloorRaisesTinyBudget verifies that a fair
-// share too small to be useful is raised to the min-buffers floor, and that
-// the re-cap step keeps the floor from exceeding the demand ceiling.
-func TestResolveMemBudget_MemSize_FloorRaisesTinyBudget(t *testing.T) {
+// TestResolveMemBudget_MemSize_FairShareBelowFloor_DisablesPool verifies
+// that when the fair-share signal cannot cover distCacheMinBuffers chunks,
+// resolveMemBudget returns 0 so Configure will skip pool allocation and
+// L2 populate stays disabled for the mount.
+func TestResolveMemBudget_MemSize_FairShareBelowFloor_DisablesPool(t *testing.T) {
 	loadConfig(t, `
 block_cache:
   mem-size-mb: 100
@@ -627,12 +678,10 @@ block_cache:
 	got := dc.resolveMemBudget()
 
 	// bcRef  = 100 MiB
-	// fair   = 100 × 10%          = 10 MiB
-	// demand = 4 × 2 × 16 MiB     = 128 MiB
-	// budget = min(fair, demand)  = 10 MiB
-	// floor  = 4 × 16 MiB         = 64 MiB → budget raised to 64 MiB
-	// re-cap = min(64, 128)       = 64 MiB
-	assert.Equal(t, int64(64)*_1MiB, got)
+	// fair   = 100 × 10%         = 10 MiB
+	// floor  = 4 × 16 MiB        = 64 MiB
+	// fair < floor  → return 0 (async populate disabled).
+	assert.Equal(t, int64(0), got)
 }
 
 // TestResolveMemBudget_MemSizeUnset_UsesFreeRAM verifies that when
@@ -877,4 +926,82 @@ func TestDoUpload_UploadsExactPayloadBytes(t *testing.T) {
 	assert.Equal(t, long, seen[0], "first upload must ship exactly the long payload")
 	assert.Equal(t, short, seen[1],
 		"second upload must ship exactly the short payload — no leftover 'A' bytes from the recycled buffer")
+}
+
+// --- RegisterEnvVariables: env-var → config binding for discovery keys ---
+//
+// config.ResetConfig() (called by loadConfig) wipes the envTree, so each test
+// must re-install the bindings via RegisterEnvVariables() after loading YAML.
+// Env values are set with t.Setenv so cleanup is automatic.
+
+// TestRegisterEnvVariables_BindsDiscoveryURL verifies that
+// DIST_CACHE_DISCOVERY_URL flows into conf.DiscoveryURL when YAML omits it.
+func TestRegisterEnvVariables_BindsDiscoveryURL(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+dist_cache: {}
+`)
+	RegisterEnvVariables()
+	t.Setenv(EnvDistCacheDiscoveryURL, "127.0.0.1:9000")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dc.Configure(true))
+	assert.Equal(t, "127.0.0.1:9000", dc.conf.DiscoveryURL)
+}
+
+// TestRegisterEnvVariables_BindsK8sServiceAndNamespace verifies that both
+// K8s discovery env vars land in conf.
+func TestRegisterEnvVariables_BindsK8sServiceAndNamespace(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+dist_cache: {}
+`)
+	RegisterEnvVariables()
+	t.Setenv(EnvDistCacheK8sService, "dcache-svc")
+	t.Setenv(EnvDistCacheK8sNamespace, "cache-ns")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dc.Configure(true))
+	assert.Equal(t, "dcache-svc", dc.conf.K8sService)
+	assert.Equal(t, "cache-ns", dc.conf.K8sNamespace)
+}
+
+// TestRegisterEnvVariables_BindsServerList verifies the env-only path for
+// server-list: no YAML entry, only the env var, Configure must succeed.
+func TestRegisterEnvVariables_BindsServerList(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+dist_cache: {}
+`)
+	RegisterEnvVariables()
+	t.Setenv(EnvDistCacheServerList, "host1:9065,host2:9065")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dc.Configure(true))
+	assert.Equal(t, "host1:9065,host2:9065", dc.conf.ServerList)
+}
+
+// TestRegisterEnvVariables_EnvOverridesYAML verifies viper precedence:
+// env value wins over an unchanged YAML value for the same key.
+func TestRegisterEnvVariables_EnvOverridesYAML(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+dist_cache:
+  server-list: "yaml-host:9065"
+`)
+	RegisterEnvVariables()
+	t.Setenv(EnvDistCacheServerList, "env-host:9065")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dc.Configure(true))
+	assert.Equal(t, "env-host:9065", dc.conf.ServerList,
+		"env var must override YAML for bound keys")
 }

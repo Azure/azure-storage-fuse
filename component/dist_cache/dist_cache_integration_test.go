@@ -434,22 +434,18 @@ func TestConfigure_NoServers_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "no server discovery configured")
 }
 
-// --- Test: Start() bypass semantics on unreachable servers ---
+// --- Test: Start() fails fast on unreachable servers, regardless of bypass ---
 //
-// bypass-on-error is checked in Start() (dcache.New() connect failure) and in
-// ReadInBuffer() (nil-client runtime path). These two standalone tests cover
-// both bypass=true (Start returns nil, subsequent reads pass through to the
-// next component) and bypass=false (Start returns a wrapped error).
+// dcache.New() failure means dist_cache is misconfigured, so Start() must
+// return a wrapped error even with bypass-on-error=true. bypass-on-error
+// only governs the runtime nil-client path in ReadInBuffer().
 //
-// The failure is driven by pointing dist_cache at an unroutable discovery-url
-// (loopback port 1 -> immediate ECONNREFUSED). With no server-list / env
-// fallback, resolveServers() returns ErrNoServers and dcache.New() fails.
+// Failure is driven by an unroutable discovery-url (loopback port 1 ->
+// ECONNREFUSED); with no fallback, dcache.New() fails.
 //
-// They are standalone (not suite-based) to avoid corrupting the shared
-// distCacheIntegSuite config state, matching the pattern used by
-// TestConfigure_NoServers_ReturnsError above.
+// Standalone (not suite-based) to avoid corrupting shared config state.
 
-func TestStart_BypassOnError_True_UnreachableServers_Succeeds(t *testing.T) {
+func TestStart_BypassOnError_True_UnreachableServers_FailsFast(t *testing.T) {
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
 	require.NoError(t, err)
 
@@ -477,28 +473,11 @@ func TestStart_BypassOnError_True_UnreachableServers_Succeeds(t *testing.T) {
 	dc.SetNextComponent(lb)
 	require.NoError(t, dc.Configure(true))
 
-	// Start must swallow the connect failure and return nil.
+	// Start must surface the connect failure even with bypass-on-error=true.
 	err = dc.Start(context.Background())
-	require.NoError(t, err, "Start() must succeed when bypass-on-error=true and servers are unreachable")
-	defer func() { _ = dc.Stop() }()
-
-	assert.Nil(t, dc.client, "client should remain nil after failed connect")
-
-	// Subsequent ReadInBuffer must transparently forward to loopbackfs.
-	fileName := "bypass_start_read.bin"
-	testData := []byte("hello from loopback via bypass path")
-	require.NoError(t, os.WriteFile(filepath.Join(storagePath, fileName), testData, 0644))
-
-	buf := make([]byte, len(testData))
-	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
-		Path:   fileName,
-		Offset: 0,
-		Data:   buf,
-		Size:   int64(len(testData)),
-	})
-	require.NoError(t, err, "ReadInBuffer should bypass to loopback when client is nil and bypass=true")
-	assert.Equal(t, len(testData), n)
-	assert.Equal(t, testData, buf[:n])
+	require.Error(t, err, "Start() must fail fast when servers are unreachable, even with bypass-on-error=true")
+	assert.Contains(t, err.Error(), "dist_cache: failed to start")
+	assert.Nil(t, dc.client, "client should remain nil after failed Start()")
 }
 
 func TestStart_BypassOnError_False_UnreachableServers_ReturnsError(t *testing.T) {
@@ -582,10 +561,14 @@ func (suite *blockCacheDistCacheSuite) SetupTest() {
 	suite.srv = newIntegMockServer(suite.T())
 
 	// Build config: block_cache → dist_cache → loopbackfs
-	// block-size-mb: 1 to match loopback's GetCommittedBlockList (hardcoded 1MB)
+	// block-size-mb: 1 to match loopback's GetCommittedBlockList (hardcoded 1MB).
+	// mem-size-mb sized so dist_cache's fair-share (10% of bcRef) covers
+	// distCacheMinBuffers × chunkSize and async populate is enabled — this
+	// suite exercises the L2 population path, so we must stay above the
+	// disable threshold in resolveMemBudget.
 	cfg := fmt.Sprintf(
 		"read-only: true\n\n"+
-			"block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  path: %s\n  disk-size-mb: 50\n  disk-timeout-sec: 20\n\n"+
+			"block_cache:\n  block-size-mb: 1\n  mem-size-mb: 100\n  prefetch: 12\n  parallelism: 10\n  path: %s\n  disk-size-mb: 50\n  disk-timeout-sec: 20\n\n"+
 			"dist_cache:\n  server-list: %s\n  bypass-on-error: true\n  cache-prefix: test/container\n\n"+
 			"loopbackfs:\n  path: %s\n",
 		suite.diskPath, suite.srv.addr, suite.storagePath)

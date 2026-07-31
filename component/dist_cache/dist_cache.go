@@ -6,7 +6,6 @@ package dist_cache
 import (
 	"context"
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -34,15 +33,14 @@ const (
 	// same RAM.
 	distCacheSharePct = 10
 
-	// distCacheMinBuffers is the smallest buffer count the pool will use when
-	// enabled. schedulePopulate never blocks — it drops the populate if no
-	// buffer is free — so a too-small pool doesn't hurt read latency, but it
-	// does collapse the L2 hit rate: any burst of concurrent misses, or a
-	// single stuck upload holding a buffer for up to the dcache client's
-	// per-request timeout, leaves nothing for the next populate and the
-	// feature stops paying for itself. Four buffers absorb a small burst and
-	// tolerate one stuck upload while still being tiny in absolute terms
-	// (e.g. 4 × 16 MiB = 64 MiB at the default block size).
+	// distCacheMinBuffers is the enable threshold for the async upload pool.
+	// If the fair-share memory signal is below distCacheMinBuffers × chunkSize,
+	// resolveMemBudget returns 0 and async populate stays disabled for the
+	// mount. Below this size the pool doesn't pay for itself: schedulePopulate
+	// drops on exhaustion, so any small burst of misses or one stuck upload
+	// collapses the L2 hit rate. Four buffers is tiny in absolute terms
+	// (e.g. 4 × 16 MiB = 64 MiB at the default block size); hosts that can't
+	// spare that are better off skipping the pool than forcing the allocation.
 	distCacheMinBuffers = 4
 
 	// distCacheDemandMultiplier scales the arrival-side concurrency
@@ -56,6 +54,25 @@ const (
 
 	_1MiB = 1024 * 1024
 )
+
+// Environment variables recognized by dist_cache. Only server-discovery
+// keys are exposed; behavioral tuning stays YAML/CLI-only, matching the
+// identity-vs-tuning split used by azstorage.
+const (
+	EnvDistCacheDiscoveryURL = "DIST_CACHE_DISCOVERY_URL"
+	EnvDistCacheK8sService   = "DIST_CACHE_K8S_SERVICE"
+	EnvDistCacheK8sNamespace = "DIST_CACHE_K8S_NAMESPACE"
+	EnvDistCacheServerList   = "DIST_CACHE_SERVER_LIST"
+)
+
+// RegisterEnvVariables binds dist_cache discovery keys to env vars.
+// Precedence via viper: CLI flag > env > YAML > default.
+func RegisterEnvVariables() {
+	config.BindEnv(compName+".discovery-url", EnvDistCacheDiscoveryURL)
+	config.BindEnv(compName+".k8s-service", EnvDistCacheK8sService)
+	config.BindEnv(compName+".k8s-namespace", EnvDistCacheK8sNamespace)
+	config.BindEnv(compName+".server-list", EnvDistCacheServerList)
+}
 
 // DistCacheOptions holds configuration for the distributed cache component.
 type DistCacheOptions struct {
@@ -71,11 +88,11 @@ type DistCacheOptions struct {
 	ServerList string `config:"server-list" yaml:"server-list,omitempty"`
 
 	// Common options
-	Port           int    `config:"port"              yaml:"port,omitempty"`
-	TTLSeconds     uint32 `config:"ttl-seconds"       yaml:"ttl-seconds,omitempty"`
-	BypassOnError  bool   `config:"bypass-on-error"   yaml:"bypass-on-error,omitempty"`
-	CachePrefix    string `config:"cache-prefix"      yaml:"cache-prefix,omitempty"`
-	MaxConnsPerSvr int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"`
+	Port           int    `config:"port"              yaml:"port,omitempty"`                    // Default 9065
+	TTLSeconds     uint32 `config:"ttl-seconds"       yaml:"ttl-seconds,omitempty"`             // Default 0 (no TTL)
+	BypassOnError  bool   `config:"bypass-on-error"   yaml:"bypass-on-error,omitempty"`         //Default true
+	CachePrefix    string `config:"cache-prefix"      yaml:"cache-prefix,omitempty"`            // (derived from azstorage.account-name/azstorage.container)
+	MaxConnsPerSvr int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"` // Default 64
 }
 
 // DistCache is the blobfuse component that sits between the local cache and azstorage,
@@ -91,8 +108,8 @@ type DistCache struct {
 
 	// Bounded async-upload buffer pool. Preallocated in Configure and never
 	// grown. cap(bufs) * chunkSize is the hard ceiling on memory dist_cache
-	// holds for in-flight L2 populates. A nil bufs channel means async
-	// populate is disabled (chunk size didn't fit in the budget).
+	// holds for in-flight L2 populates. Nil means async populate was disabled
+	// (resolveMemBudget returned 0); ReadInBuffer then runs as passthrough.
 	bufs chan *[]byte
 
 	// inflight tracks in-flight upload goroutines so Stop can wait for them
@@ -131,11 +148,9 @@ func (dc *DistCache) Configure(isParent bool) error {
 		return fmt.Errorf("dist_cache: config error: %w", err)
 	}
 
-	// Validate that at least one server discovery method is configured
+	// At least one discovery method must be set (YAML, CLI flag, or env).
 	if conf.DiscoveryURL == "" && conf.K8sService == "" && conf.ServerList == "" {
-		if os.Getenv("DIST_CACHE_SERVER_LIST") == "" {
-			return fmt.Errorf("dist_cache: no server discovery configured (set discovery-url, k8s-service, server-list, or DIST_CACHE_SERVER_LIST)")
-		}
+		return fmt.Errorf("dist_cache: no server discovery configured (set discovery-url, k8s-service, or server-list)")
 	}
 
 	// Warn if multiple discovery methods are configured. The dcache client
@@ -148,7 +163,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 	if conf.K8sService != "" {
 		configured = append(configured, "k8s-service")
 	}
-	if conf.ServerList != "" || os.Getenv("DIST_CACHE_SERVER_LIST") != "" {
+	if conf.ServerList != "" {
 		configured = append(configured, "server-list")
 	}
 	if len(configured) > 1 {
@@ -194,13 +209,13 @@ func (dc *DistCache) Configure(isParent bool) error {
 			blockSizeMB = common.DefaultBlockSize
 		}
 	}
-	dc.chunkSize = int64(blockSizeMB * 1024 * 1024)
+	dc.chunkSize = int64(blockSizeMB * _1MiB)
 
 	// Resolve the async-upload memory budget and preallocate the buffer pool.
-	// A nil pool means async populate is disabled (caller memory budget is
-	// smaller than a single chunk); reads still work as pure passthrough.
+	// Budget 0 means async populate is disabled; ReadInBuffer still services
+	// L2 lookups and falls through to azstorage on miss.
 	budget := dc.resolveMemBudget()
-	if budget >= dc.chunkSize {
+	if budget > 0 {
 		numBuffers := int(budget / dc.chunkSize)
 		dc.bufs = make(chan *[]byte, numBuffers)
 		for i := 0; i < numBuffers; i++ {
@@ -210,8 +225,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 		log.Info("DistCache::Configure : async upload pool = %d buffers × %d bytes = %d MiB",
 			numBuffers, dc.chunkSize, int64(numBuffers)*dc.chunkSize/_1MiB)
 	} else {
-		log.Warn("DistCache::Configure : async upload disabled (budget %d < chunk size %d); L2 populate skipped",
-			budget, dc.chunkSize)
+		log.Warn("DistCache::Configure : async upload disabled; L2 populate skipped, reads run as passthrough")
 	}
 
 	log.Info("DistCache::Configure : chunk-size=%d, bypass-on-error=%v",
@@ -255,10 +269,9 @@ func (dc *DistCache) Start(ctx context.Context) error {
 
 	client, err := dcache.New(opts...)
 	if err != nil {
-		if dc.bypassOnError {
-			log.Warn("DistCache::Start : Failed to connect to distributed cache, bypassing: %v", err)
-			return nil
-		}
+		// Fail fast regardless of bypass-on-error: a failed client build
+		// means dist_cache is misconfigured. bypass-on-error only covers
+		// runtime I/O failures against a working client.
 		log.Err("DistCache::Start : Failed to connect to distributed cache: %v", err)
 		return fmt.Errorf("dist_cache: failed to start: %w", err)
 	}
@@ -298,9 +311,7 @@ func resolveReadPath(options *internal.ReadInBufferOptions) string {
 func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	if dc.client == nil {
 		if !dc.bypassOnError {
-			dc.nilClientLogOnce.Do(func() {
-				log.Err("DistCache::ReadInBuffer : client not initialized and bypass-on-error=false; failing reads")
-			})
+			log.Err("DistCache::ReadInBuffer : client not initialized and bypass-on-error=false; failing reads")
 			return 0, syscall.EIO
 		}
 		dc.nilClientLogOnce.Do(func() {
@@ -490,9 +501,10 @@ func getBlockCacheWorkers() int {
 //     expected in-flight capacity. dist_cache is enforced to sit below
 //     block_cache in the pipeline (see common.ValidatePipeline), so
 //     block_cache.parallelism is always available.
-//  3. Floor at distCacheMinBuffers × chunkSize so async populate is functional
-//     when enabled. Then re-cap at the demand ceiling so the floor never
-//     inflates a naturally-tiny budget.
+//  3. If fair-share < distCacheMinBuffers × chunkSize, return 0 (async
+//     populate disabled). See distCacheMinBuffers for the rationale.
+//     Otherwise both fair and demand are ≥ floor, so min(fair, demand) is
+//     a valid budget with no further clamping.
 func (dc *DistCache) resolveMemBudget() int64 {
 	var bcRef int64
 	if config.IsSet("block_cache.mem-size-mb") {
@@ -511,15 +523,14 @@ func (dc *DistCache) resolveMemBudget() int64 {
 	}
 	demand := int64(distCacheDemandMultiplier) * int64(getBlockCacheWorkers()) * dc.chunkSize
 	fair := bcRef * distCacheSharePct / 100
+	floor := int64(distCacheMinBuffers) * dc.chunkSize
 
-	budget := min(fair, demand)
-	if floor := int64(distCacheMinBuffers) * dc.chunkSize; budget < floor {
-		budget = floor
+	if fair < floor {
+		log.Warn("DistCache::resolveMemBudget : fair-share %d < floor %d (chunk=%d, bcRef=%d); async populate disabled",
+			fair, floor, dc.chunkSize, bcRef)
+		return 0
 	}
-	if budget > demand {
-		budget = demand
-	}
-	return budget
+	return min(fair, demand)
 }
 
 // schedulePopulate spawns an async upload for the given chunk. It never
@@ -588,6 +599,5 @@ func init() {
 		"comma-separated list of distributed cache server addresses (fallback)")
 	config.BindPFlag(compName+".server-list", serverListFlag)
 
-	// Support DIST_CACHE_SERVER_LIST env var
-	config.BindEnv(compName+".server-list", "DIST_CACHE_SERVER_LIST")
+	RegisterEnvVariables()
 }
