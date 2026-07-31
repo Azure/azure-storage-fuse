@@ -100,8 +100,8 @@ jobs:
         run: |
           set -euo pipefail
           actual_cpu_count="$(nproc)"
-          if [[ "$actual_cpu_count" != "192" ]]; then
-            echo "D192 comparison runner must expose 192 online CPUs; found ${actual_cpu_count}" >&2
+          if [[ "$actual_cpu_count" != "96" ]]; then
+            echo "D96 comparison runner must expose 96 online CPUs; found ${actual_cpu_count}" >&2
             exit 1
           fi
           sudo -n systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
@@ -114,8 +114,8 @@ jobs:
           fi
           actual_vm_size="$(curl --noproxy '*' -fsS -H Metadata:true \
             'http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01' | jq -r '.vmSize')"
-          if [[ "$actual_vm_size" != "Standard_D192ds_v6" ]]; then
-            echo "Comparison runner must be Standard_D192ds_v6; found ${actual_vm_size}" >&2
+          if [[ "$actual_vm_size" != "Standard_D96ds_v5" ]]; then
+            echo "Comparison runner must be Standard_D96ds_v5; found ${actual_vm_size}" >&2
             exit 1
           fi
           ./benchmark-harness/go_installer.sh "$RUNNER_TEMP" >/dev/null

@@ -151,6 +151,9 @@ class WorkflowShapeTests(unittest.TestCase):
 
         self.assertEqual(workflow.count("runner: 1ES.Pool=blobfuse2-benchmark\n"), 1)
         self.assertEqual(workflow.count("runner: 1ES.Pool=blobfuse2-benchmark-arm\n"), 1)
+        self.assertIn("expected_vm_size: Standard_D96ds_v5", workflow)
+        self.assertNotIn("expected_cpu_count: 192", workflow)
+        self.assertNotIn("expected_vm_size: Standard_D192ds_v6", workflow)
         self.assertEqual(workflow.count("uses: ./.github/actions/perftesting"), 9)
         self.assertEqual(workflow.count('SETUP_HOST: "true"'), 1)
         self.assertEqual(workflow.count('SETUP_HOST: "false"'), 8)

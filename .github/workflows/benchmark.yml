@@ -40,8 +40,8 @@ jobs:
         include:
           - arch: X86
             runner: 1ES.Pool=blobfuse2-benchmark
-            expected_cpu_count: 192
-            expected_vm_size: Standard_D192ds_v6
+            expected_cpu_count: 96
+            expected_vm_size: Standard_D96ds_v5
           - arch: ARM64
             runner: 1ES.Pool=blobfuse2-benchmark-arm
             expected_cpu_count: 96
