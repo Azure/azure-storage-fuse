@@ -15,6 +15,8 @@ parameters:
     type: string
   - name: cache_mode
     type: string
+  - name: endpoint
+    type: string
 
 steps:
   # Generate Data in the local filesystem, This step is only required once to create files of different sizes that can be used for the tests.
@@ -36,6 +38,7 @@ steps:
         STO_ACC_NAME: ${{ parameters.account_name }}
         STO_ACC_KEY: ${{ parameters.account_key }}
         STO_ACC_TYPE: ${{ parameters.account_type }}
+        STO_ACC_ENDPOINT: ${{ parameters.endpoint }}
         VERBOSE_LOG: ${{ parameters.verbose_log }}
       continueOnError: false
   
@@ -50,6 +53,11 @@ steps:
       parameters:
         copy_data: true
         check_consistency: true
+
+    - script: |
+        tail -n 10000 blobfuse2-logs.txt
+      displayName: 'View Logs'
+
   
     # Mount in File cache with direct-io
     - template: 'mount.yml'
@@ -75,6 +83,7 @@ steps:
         STO_ACC_NAME: ${{ parameters.account_name }}
         STO_ACC_KEY: ${{ parameters.account_key }}
         STO_ACC_TYPE: ${{ parameters.account_type }}
+        STO_ACC_ENDPOINT: ${{ parameters.endpoint }}
         VERBOSE_LOG: ${{ parameters.verbose_log }}
   
     # Mount in Block Cache.
@@ -114,7 +123,11 @@ steps:
       parameters:
         copy_data: false
         check_consistency: true
-  
+
+    - script: |
+        tail -n 10000 blobfuse2-logs.txt
+      displayName: 'View Logs'
+
     # Mount in Block Cache with Disk path
     - template: 'mount.yml'
       parameters:
@@ -146,6 +159,7 @@ steps:
         STO_ACC_NAME: ${{ parameters.account_name }}
         STO_ACC_KEY: ${{ parameters.account_key }}
         STO_ACC_TYPE: ${{ parameters.account_type }}
+        STO_ACC_ENDPOINT: ${{ parameters.endpoint }}
         VERBOSE_LOG: ${{ parameters.verbose_log }}
 
     # Mount using stream config.
