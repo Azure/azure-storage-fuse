@@ -1,0 +1,4 @@
+self-hosted-runner:
+  labels:
+    - 1ES.Pool=blobfuse2-benchmark
+    - 1ES.Pool=blobfuse2-benchmark-arm

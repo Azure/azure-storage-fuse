@@ -1,248 +1,233 @@
-name: perftesting
-description: "Execute perf testing scripts and generate the pages"
+name: Blobfuse2 performance test
+description: Build Blobfuse2 and run reproducible FIO benchmark suites
 
 inputs:
   ARCH:
+    description: Runner architecture label
     required: true
-    description: "Type of architecture"
-  STANDARD_ACCOUNT:
+  EXPECTED_CPU_COUNT:
+    description: Required online CPU count for this benchmark profile
     required: true
-    description: "Standard Storage Account"
-  STANDARD_KEY:
+  EXPECTED_VM_SIZE:
+    description: Required Azure VM SKU for this benchmark profile
     required: true
-    description: "Standard Storage Account Key"
-  PREMIUM_ACCOUNT:
+  SETUP_HOST:
+    description: Install dependencies, build Blobfuse2, and prepare local storage
+    required: false
+    default: "true"
+  RUN_PROFILE:
+    description: Generate configuration and run the selected account/cache profile
+    required: false
+    default: "true"
+  ACCOUNT_NAME:
+    description: Azure Storage account name
     required: true
-    description: "Premium Storage Account"  
-  PREMIUM_KEY:  
+  ACCOUNT_KEY:
+    description: Azure Storage account key
     required: true
-    description: "Premium Storage Account Key"  
-  STANDARD_HNS_ACCOUNT:
+  ACCOUNT_TYPE:
+    description: Public benchmark account dimension
     required: true
-    description: "Standard HNS Storage Account" 
-  STANDARD_HNS_KEY: 
-    required: true
-    description: "Standard HNS Storage Account Key"
-  PREMIUM_HNS_ACCOUNT:
-    required: true
-    description: "Premium HNS Storage Account"  
-  PREMIUM_HNS_KEY:
-    required: true
-    description: "Premium HNS Storage Account Key"  
   BENCH_CONTAINER:
+    description: Existing container reserved for performance tests
     required: true
-    description: "Container for benchmarking" 
-  GITHUB_TOKEN:
-    required: true
-    description: "GitHub Token"
   CACHE_MODE:
+    description: Cache component under test
     required: true
-    description: "Cache mode for testing"
+  RUN_PUBLIC:
+    description: Run the curated public suite
+    required: false
+    default: "false"
+  RUN_REGRESSION:
+    description: Run the developer regression suite
+    required: false
+    default: "true"
+  RUN_ID:
+    description: Stable identifier for this workflow run
+    required: true
+  COMMIT:
+    description: Commit being benchmarked
+    required: true
+  REF:
+    description: Git ref being benchmarked
+    required: true
 
 runs:
-  using: "composite"
-
+  using: composite
   steps:
-    # Print the host info
-    - name: 'Host info'
-      shell: bash
-      run: hostnamectl
-        
-    # Install Fuse3
-    - name: "Install Fuse3"
+    - name: Record benchmark host
+      if: ${{ inputs.SETUP_HOST == 'true' }}
       shell: bash
       run: |
-        sleep 30
-        sudo systemctl stop apt-daily.timer || true
-        echo "Add Lock Timeout for apt package manager"
-        sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
-        sudo ps -aux | grep -iE "apt"
-        sudo killall apt apt-get || true
-        yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock || true
-        echo "Released any lock if some other process has acquired"
-        sudo dpkg --configure -a
-        echo "Starting Updates and Installation of Packages"
-        sudo apt-get update --fix-missing &> /dev/null
-        sudo apt-get install -y fuse3 libfuse3-dev gcc &> /dev/null
-
-    # Install Tools
-    - name: "Install Tools"
-      shell: bash
-      run: |
-        sudo apt-get install jq python3 mdadm bc -y &> /dev/null
-        # Install fio from source
-        ./tools/install_fio.sh
-
-    # Install GoLang
-    - name: "Install Go"
-      shell: bash
-      run: |
-        ./go_installer.sh ../ &> /dev/null
-        go version
-
-    # Build Blobfuse2
-    - name: "Build Blobfuse2"
-      shell: bash
-      run: |
-        ./build.sh &> /dev/null
-
-    # Run binary and validate the version
-    - name: "Validate Version"
-      shell: bash
-      run: |
-        sudo cp ./blobfuse2 /usr/bin/
-        which blobfuse2
-        blobfuse2 --version
-
-    - name: "Create Env variables for account name and key"
-      shell: bash
-      run: |
-        if [ "${{ matrix.TestType }}" == "standard" ]; then
-          echo "Create standard account env"
-          echo "AZURE_STORAGE_ACCOUNT=${{ inputs.STANDARD_ACCOUNT }}" >> $GITHUB_ENV
-          echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.STANDARD_KEY }}" >> $GITHUB_ENV
-        elif [ "${{ matrix.TestType }}" == "premium" ]; then
-          echo "Create premium account env"
-          echo "AZURE_STORAGE_ACCOUNT=${{ inputs.PREMIUM_ACCOUNT }}" >> $GITHUB_ENV
-          echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.PREMIUM_KEY }}" >> $GITHUB_ENV
-        elif [ "${{ matrix.TestType }}" == "standard_hns" ]; then
-          echo "Create standard hns account env"
-          echo "AZURE_STORAGE_ACCOUNT=${{ inputs.STANDARD_HNS_ACCOUNT }}" >> $GITHUB_ENV
-          echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.STANDARD_HNS_KEY }}" >> $GITHUB_ENV
-        elif [ "${{ matrix.TestType }}" == "premium_hns" ]; then
-          echo "Create premium hns account env"
-          echo "AZURE_STORAGE_ACCOUNT=${{ inputs.PREMIUM_HNS_ACCOUNT }}" >> $GITHUB_ENV
-          echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.PREMIUM_HNS_KEY }}" >> $GITHUB_ENV
+        set -euo pipefail
+        hostnamectl || true
+        lscpu | sed -n '1,24p'
+        free -h
+        lsblk -o NAME,MODEL,SIZE,TYPE,MOUNTPOINT
+        actual_cpu_count="$(nproc)"
+        if [[ "$actual_cpu_count" != "${{ inputs.EXPECTED_CPU_COUNT }}" ]]; then
+          echo "Expected ${{ inputs.EXPECTED_CPU_COUNT }} online CPUs, found ${actual_cpu_count}" >&2
+          exit 1
         fi
 
-    # Create the block_cache config file for testing
-    - name: "Create config file for account type: ${{ matrix.TestType }}"
-      if : ${{ inputs.CACHE_MODE == 'block_cache' }}
+    - name: Install benchmark dependencies
+      if: ${{ inputs.SETUP_HOST == 'true' }}
       shell: bash
       run: |
-        blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ inputs.BENCH_CONTAINER }}  --output-file=./config.yaml
-        cat ./config.yaml
+        set -euo pipefail
+        sudo -n systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+        sudo -n sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99blobfuse-benchmark-timeout'
+        sudo -n dpkg --configure -a
+        sudo -n apt-get update -qq
+        sudo -n apt-get install -y -qq fuse3 libfuse3-dev gcc jq python3 mdadm bc libaio-dev build-essential curl git iproute2
+        if ! command -v fio >/dev/null || [[ "$(fio --version)" != "fio-3.36" ]]; then
+          ./tools/install_fio.sh
+        fi
+        fio --version
+        actual_vm_size="$(curl --noproxy '*' -fsS -H Metadata:true \
+          'http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01' | jq -r '.vmSize')"
+        if [[ "$actual_vm_size" != "${{ inputs.EXPECTED_VM_SIZE }}" ]]; then
+          echo "Expected Azure VM ${{ inputs.EXPECTED_VM_SIZE }}, found ${actual_vm_size}" >&2
+          exit 1
+        fi
 
-    - name: "Create config file for account type: ${{ matrix.TestType }}"
-      if : ${{ inputs.CACHE_MODE == 'file_cache' }}
+    - name: Install Go and build candidate
+      if: ${{ inputs.SETUP_HOST == 'true' }}
       shell: bash
       run: |
-        blobfuse2 gen-test-config --config-file=azure_key_perf.yaml --container-name=${{ inputs.BENCH_CONTAINER }} --temp-path=/mnt/localssd/tempcache --output-file=./config.yaml
-        cat ./config.yaml
+        set -euo pipefail
+        ./go_installer.sh ../ >/dev/null
+        go version
+        ./build.sh >/dev/null
+        ./blobfuse2 --version
 
-    - name: "Mount the disk"
-      if : ${{ inputs.ARCH == 'ARM64' }}
+    - name: Prepare local benchmark storage
+      if: ${{ inputs.SETUP_HOST == 'true' }}
       shell: bash
       run: |
-        df -h
-        lsblk -o NAME,MODEL,SIZE,TYPE,MOUNTPOINT
-        # Unmount any of the drives if they are currently mounted
-        sudo umount /dev/nvme*p1 || true
+        set -euo pipefail
+        if [[ "${{ inputs.ARCH }}" == "ARM64" ]] && ! mountpoint -q /mnt/localssd; then
+          devices=(
+            /dev/nvme0n1p1 /dev/nvme1n1p1 /dev/nvme2n1p1
+            /dev/nvme3n1p1 /dev/nvme4n1p1 /dev/nvme5n1p1
+          )
+          for device in "${devices[@]}"; do
+            [[ -b "$device" ]] || { echo "Missing ARM benchmark device: $device" >&2; exit 1; }
+            sudo -n umount "$device" 2>/dev/null || true
+          done
+          sudo -n mdadm --stop /dev/md0 2>/dev/null || true
+          sudo -n mdadm --create /dev/md0 --level=0 --raid-devices=6 --force "${devices[@]}"
+          sudo -n mkfs.ext4 -F /dev/md0 >/dev/null
+          sudo -n mkdir -p /mnt/localssd
+          sudo -n mount /dev/md0 /mnt/localssd
+        fi
+        sudo -n mkdir -p /mnt/localssd
+        sudo -n chmod 0777 /mnt/localssd
+        df -h /mnt/localssd
 
-        # Create the RAID 0 array without interactive prompts
-        sudo mdadm --create --verbose /dev/md0 \
-        --level=0 \
-        --raid-devices=6 \
-        --force \
-        /dev/nvme0n1p1 /dev/nvme1n1p1 /dev/nvme2n1p1 /dev/nvme3n1p1 /dev/nvme4n1p1 /dev/nvme5n1p1
-
-        sudo mkfs.ext4 -F /dev/md0
-        sudo mkdir -p /mnt/localssd
-        sudo mount /dev/md0 /mnt/localssd
-        sudo chmod 777 /mnt/localssd
-
-        # Verify the new filesystem is mounted
-        echo "RAID array created and mounted successfully:"
-        df -h
-
-    # Run this test only once for the entire matrix.
-    - name: "Run Disk Benchmark tests"
-      if : ${{ matrix.TestType == 'premium' && matrix.CacheMode == 'file_cache' }}
-      uses: ./.github/actions/disk-benchmark
-      with:
-        ARCH: ${{ inputs.ARCH }}
-        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
-
-    # Create the config file for testing
-    - name: "Create mount path"
+    - name: Validate profile storage
+      if: ${{ inputs.RUN_PROFILE == 'true' }}
       shell: bash
       run: |
-        df -h
-        sudo mkdir -p /mnt/blob_mnt
-        sudo mkdir -p /mnt/localssd/tempcache
-        sudo chmod 777 /mnt/blob_mnt
-        sudo chmod 777 /mnt/localssd
-        sudo chmod 777 /mnt/localssd/tempcache
+        set -euo pipefail
+        if [[ "${{ inputs.CACHE_MODE }}" == "file_cache" ]] && ! mountpoint -q /mnt/localssd; then
+          echo "File-cache benchmarks require a dedicated filesystem mounted at /mnt/localssd" >&2
+          exit 1
+        fi
 
-    # ---------------------------------------------------------------------------------------------------------------------------------------------------
-    # Run the basic tests using FIO
+    - name: Configure benchmark paths and credentials
+      if: ${{ inputs.RUN_PROFILE == 'true' }}
+      shell: bash
+      env:
+        PERF_ACCOUNT_NAME_INPUT: ${{ inputs.ACCOUNT_NAME }}
+        PERF_ACCOUNT_KEY_INPUT: ${{ inputs.ACCOUNT_KEY }}
+      run: |
+        set -euo pipefail
+        suffix="${{ inputs.RUN_ID }}-${{ inputs.ARCH }}-${{ inputs.ACCOUNT_TYPE }}-${{ inputs.CACHE_MODE }}"
+        printf 'AZURE_STORAGE_ACCOUNT=%s\n' "$PERF_ACCOUNT_NAME_INPUT" >> "$GITHUB_ENV"
+        printf 'AZURE_STORAGE_ACCESS_KEY=%s\n' "$PERF_ACCOUNT_KEY_INPUT" >> "$GITHUB_ENV"
+        echo "PERF_MOUNT_DIR=/mnt/blobfuse-benchmark-${suffix}" >> "$GITHUB_ENV"
+        echo "PERF_CACHE_DIR=/mnt/localssd/blobfuse-benchmark-cache/${suffix}" >> "$GITHUB_ENV"
+        echo "PERF_CONFIG=${RUNNER_TEMP}/blobfuse-benchmark-${suffix}.yaml" >> "$GITHUB_ENV"
+        echo "PERF_RESULTS=${GITHUB_WORKSPACE}/benchmark-results/${{ inputs.ARCH }}/${{ inputs.ACCOUNT_TYPE }}/${{ inputs.CACHE_MODE }}" >> "$GITHUB_ENV"
 
-    # Run the Read tests on blobfuse mountpoint
-    - name: "Read Test"
+    - name: Generate benchmark mount configuration
+      if: ${{ inputs.RUN_PROFILE == 'true' }}
+      shell: bash
+      env:
+        PERF_CONTAINER_INPUT: ${{ inputs.BENCH_CONTAINER }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$PERF_RESULTS" "$PERF_CACHE_DIR"
+        if [[ "${{ inputs.CACHE_MODE }}" == "block_cache" ]]; then
+          ./blobfuse2 gen-test-config \
+            --config-file=azure_block_benchmark.yaml \
+            --container-name="$PERF_CONTAINER_INPUT" \
+            --output-file="$PERF_CONFIG"
+        elif [[ "${{ inputs.CACHE_MODE }}" == "file_cache" ]]; then
+          ./blobfuse2 gen-test-config \
+            --config-file=azure_file_benchmark.yaml \
+            --container-name="$PERF_CONTAINER_INPUT" \
+            --temp-path="$PERF_CACHE_DIR" \
+            --output-file="$PERF_CONFIG"
+        else
+          echo "Unsupported cache mode: ${{ inputs.CACHE_MODE }}" >&2
+          exit 1
+        fi
+        if grep -q 'direct-io: true' "$PERF_CONFIG"; then
+          echo "Benchmark config must not enable mount-wide direct I/O" >&2
+          exit 1
+        fi
+
+    - name: Run public sustained-throughput suite
+      if: ${{ inputs.RUN_PROFILE == 'true' && inputs.RUN_PUBLIC == 'true' }}
       shell: bash
       run: |
-        rm -rf /mnt/blob_mnt/*
-        rm -rf /mnt/localssd/tempcache/*
-        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt read ${{ matrix.CacheMode }}
+        set -euo pipefail
+        [[ "${{ inputs.CACHE_MODE }}" == "block_cache" ]] || { echo "Public suite only supports block cache" >&2; exit 1; }
+        [[ "${{ inputs.ACCOUNT_TYPE }}" == "standard" || "${{ inputs.ACCOUNT_TYPE }}" == "premium" ]] || { echo "Public suite only supports non-HNS accounts" >&2; exit 1; }
+        python3 perf_testing/scripts/run_benchmark.py \
+          --binary ./blobfuse2 \
+          --config "$PERF_CONFIG" \
+          --suite public \
+          --mount-dir "$PERF_MOUNT_DIR" \
+          --cache-dir "$PERF_CACHE_DIR" \
+          --output-dir "$PERF_RESULTS/public" \
+          --run-id "${{ inputs.RUN_ID }}" \
+          --label main \
+          --commit "${{ inputs.COMMIT }}" \
+          --ref "${{ inputs.REF }}" \
+          --architecture "${{ inputs.ARCH }}" \
+          --account-type "${{ inputs.ACCOUNT_TYPE }}" \
+          --cache-mode "${{ inputs.CACHE_MODE }}"
 
-    - name: "Update Bandwidth Results : Read"
-      if: ${{ github.ref == 'refs/heads/main' }}
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        output-file-path: read/bandwidth_results.json
-        tool: 'customBiggerIsBetter'
-        max-items-in-chart: 100
-        github-token: ${{ inputs.GITHUB_TOKEN }}
-        auto-push: true
-        comment-on-alert: true
-        gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/bandwidth/read
-
-    - name: "Update Latency Results : Read"
-      if: ${{ github.ref == 'refs/heads/main' }}
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        output-file-path: read/latency_results.json
-        tool: 'customSmallerIsBetter'
-        max-items-in-chart: 100
-        github-token: ${{ inputs.GITHUB_TOKEN }}
-        auto-push: true
-        comment-on-alert: true
-        gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/time/read
-
-    # Run the Write tests on blobfuse mountpoint
-    - name: "Write Test"
+    - name: Run developer regression suite
+      if: ${{ inputs.RUN_PROFILE == 'true' && inputs.RUN_REGRESSION == 'true' }}
       shell: bash
       run: |
-        rm -rf /mnt/blob_mnt/*
-        rm -rf /mnt/localssd/tempcache/*
-        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt write ${{ matrix.CacheMode }}
+        set -euo pipefail
+        python3 perf_testing/scripts/run_benchmark.py \
+          --binary ./blobfuse2 \
+          --config "$PERF_CONFIG" \
+          --suite regression \
+          --mount-dir "$PERF_MOUNT_DIR" \
+          --cache-dir "$PERF_CACHE_DIR" \
+          --output-dir "$PERF_RESULTS/regression" \
+          --run-id "${{ inputs.RUN_ID }}" \
+          --label main \
+          --commit "${{ inputs.COMMIT }}" \
+          --ref "${{ inputs.REF }}" \
+          --architecture "${{ inputs.ARCH }}" \
+          --account-type "${{ inputs.ACCOUNT_TYPE }}" \
+          --cache-mode "${{ inputs.CACHE_MODE }}"
 
-    - name: "Update Bandwidth Results : Write"
-      if: ${{ github.ref == 'refs/heads/main' }}
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        output-file-path: write/bandwidth_results.json
-        tool: 'customBiggerIsBetter'
-        max-items-in-chart: 100
-        github-token: ${{ inputs.GITHUB_TOKEN }}
-        auto-push: true
-        comment-on-alert: true
-        gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/bandwidth/write
-
-    - name: "Update Latency Results : Write"
-      if: ${{ github.ref == 'refs/heads/main' }}
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        output-file-path: write/latency_results.json
-        tool: 'customSmallerIsBetter'
-        max-items-in-chart: 100
-        github-token: ${{ inputs.GITHUB_TOKEN }}
-        auto-push: true
-        comment-on-alert: true
-        gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.ARCH }}/${{ matrix.TestType }}/${{ matrix.CacheMode }}/time/write
-
-    # ---------------------------------------------------------------------------------------
+    - name: Remove generated secrets and mounts
+      if: ${{ always() && inputs.RUN_PROFILE == 'true' }}
+      shell: bash
+      run: |
+        set +e
+        ./blobfuse2 unmount "$PERF_MOUNT_DIR" >/dev/null 2>&1
+        fusermount3 -u -z "$PERF_MOUNT_DIR" >/dev/null 2>&1
+        rm -f "$PERF_CONFIG"
+        rm -rf "$PERF_CACHE_DIR"
+        rmdir "$PERF_MOUNT_DIR" >/dev/null 2>&1 || true
