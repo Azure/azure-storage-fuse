@@ -157,6 +157,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertEqual(workflow.count("continue-on-error: true"), len(profiles))
         for profile in profiles:
             self.assertEqual(workflow.count(f"Run {profile} profile"), 1)
+        self.assertIn("always() && steps.host_setup.outcome == 'success'", workflow)
         self.assertIn('"$required" == "true" && "$outcome" != "success"', workflow)
         self.assertIn("name: perf-${{ matrix.arch }}", workflow)
         self.assertNotIn("matrix.account_type", workflow)
@@ -172,6 +173,8 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn(result_path, action)
         self.assertIn("RUN_PROFILE:", action)
         self.assertIn("inputs.RUN_PROFILE == 'true'", action)
+        self.assertNotIn("/dev/nvme", action)
+        self.assertNotIn("mdadm", action)
 
 
 class FioResultTests(unittest.TestCase):

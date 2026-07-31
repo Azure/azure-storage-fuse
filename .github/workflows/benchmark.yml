@@ -240,7 +240,7 @@ jobs:
           REF: ${{ github.ref }}
 
       - name: Require all selected profiles to pass
-        if: ${{ always() }}
+        if: ${{ always() && steps.host_setup.outcome == 'success' }}
         shell: bash
         env:
           STANDARD_BLOCK_OUTCOME: ${{ steps.standard_block.outcome }}
