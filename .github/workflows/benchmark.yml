@@ -1,61 +1,366 @@
-name: Benchmark
+name: Blobfuse2 Performance
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
     inputs:
-      run:
-        description: 'Run the workflow'
+      suite:
+        description: Benchmark suite to execute
         required: true
-        default: true
-        type: boolean 
+        default: all
+        type: choice
+        options:
+          - all
+          - public
+          - regression
+      publish:
+        description: Publish a complete main-branch run to the benchmark site
+        required: true
+        default: false
+        type: boolean
   schedule:
-    - cron: '0 4 * * SUN'
+    - cron: "0 4 * * 1-6"
+    - cron: "0 4 * * 0"
+
+concurrency:
+  group: blobfuse2-performance-storage
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
-  PerfTesting:
-    name: ${{ matrix.config.arch }} - ${{ matrix.TestType }} - ${{ matrix.CacheMode }}
-    # Dynamically select the runner based on the matrix configuration
-    runs-on: [self-hosted, "${{ matrix.config.runner }}"]
-    timeout-minutes: 400
-
-    permissions:
-      id-token: write
-      contents: write
-      pages: write
-
+  benchmark:
+    name: ${{ matrix.arch }}
+    runs-on: [self-hosted, "${{ matrix.runner }}"]
+    timeout-minutes: 480
     strategy:
-      # Run one at a time to avoid impacting storage performance during benchmarks
-      max-parallel: 1
       fail-fast: false
+      max-parallel: 1
       matrix:
-        # Define the hardware/runner configurations
-        config:
-          - { arch: "X86", runner: "1ES.Pool=blobfuse2-benchmark" }
-          - { arch: "ARM64", runner: "1ES.Pool=blobfuse2-benchmark-arm" }
-        # Define the storage account types to test
-        # Note: 'TestType' variable name MUST remain as-is; the perftesting action relies on it.
-        TestType: ["standard", "premium"]
-        CacheMode: ["block_cache", "file_cache"]
+        include:
+          - arch: X86
+            runner: 1ES.Pool=blobfuse2-benchmark
+            expected_cpu_count: 192
+            expected_vm_size: Standard_D192ds_v6
+          - arch: ARM64
+            runner: 1ES.Pool=blobfuse2-benchmark-arm
+            expected_cpu_count: 96
+            expected_vm_size: Standard_D96pds_v6
 
     steps:
-      - name: 'Checkout Blobfuse2'
+      - name: Checkout benchmark source
+        uses: actions/checkout@v7
+
+      - name: Prepare benchmark host
+        id: host_setup
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "true"
+          RUN_PROFILE: "false"
+          ACCOUNT_NAME: ${{ secrets.STANDARD_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.STANDARD_KEY }}
+          ACCOUNT_TYPE: standard
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: block_cache
+          RUN_PUBLIC: "false"
+          RUN_REGRESSION: "false"
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Run standard block-cache profile
+        id: standard_block
+        if: ${{ steps.host_setup.outcome == 'success' }}
+        continue-on-error: true
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "false"
+          ACCOUNT_NAME: ${{ secrets.STANDARD_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.STANDARD_KEY }}
+          ACCOUNT_TYPE: standard
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: block_cache
+          RUN_PUBLIC: ${{ (github.event_name == 'schedule' && github.event.schedule == '0 4 * * 0') || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'public')) }}
+          RUN_REGRESSION: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'regression')) }}
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Run premium block-cache profile
+        id: premium_block
+        if: ${{ steps.host_setup.outcome == 'success' }}
+        continue-on-error: true
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "false"
+          ACCOUNT_NAME: ${{ secrets.PREMIUM_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.PREMIUM_KEY }}
+          ACCOUNT_TYPE: premium
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: block_cache
+          RUN_PUBLIC: ${{ (github.event_name == 'schedule' && github.event.schedule == '0 4 * * 0') || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'public')) }}
+          RUN_REGRESSION: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'regression')) }}
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Run standard file-cache profile
+        id: standard_file
+        if: ${{ steps.host_setup.outcome == 'success' && matrix.arch == 'X86' && (github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'regression') }}
+        continue-on-error: true
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "false"
+          ACCOUNT_NAME: ${{ secrets.STANDARD_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.STANDARD_KEY }}
+          ACCOUNT_TYPE: standard
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: file_cache
+          RUN_PUBLIC: "false"
+          RUN_REGRESSION: "true"
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Run premium file-cache profile
+        id: premium_file
+        if: ${{ steps.host_setup.outcome == 'success' && matrix.arch == 'X86' && (github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'regression') }}
+        continue-on-error: true
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "false"
+          ACCOUNT_NAME: ${{ secrets.PREMIUM_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.PREMIUM_KEY }}
+          ACCOUNT_TYPE: premium
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: file_cache
+          RUN_PUBLIC: "false"
+          RUN_REGRESSION: "true"
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Run standard HNS block-cache profile
+        id: standard_hns_block
+        if: ${{ steps.host_setup.outcome == 'success' && matrix.arch == 'X86' && (github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'regression') }}
+        continue-on-error: true
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "false"
+          ACCOUNT_NAME: ${{ secrets.STANDARD_HNS_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.STANDARD_HNS_KEY }}
+          ACCOUNT_TYPE: standard_hns
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: block_cache
+          RUN_PUBLIC: "false"
+          RUN_REGRESSION: "true"
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Run premium HNS block-cache profile
+        id: premium_hns_block
+        if: ${{ steps.host_setup.outcome == 'success' && matrix.arch == 'X86' && (github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'regression') }}
+        continue-on-error: true
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "false"
+          ACCOUNT_NAME: ${{ secrets.PREMIUM_HNS_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
+          ACCOUNT_TYPE: premium_hns
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: block_cache
+          RUN_PUBLIC: "false"
+          RUN_REGRESSION: "true"
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Run standard HNS file-cache profile
+        id: standard_hns_file
+        if: ${{ steps.host_setup.outcome == 'success' && matrix.arch == 'X86' && (github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'regression') }}
+        continue-on-error: true
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "false"
+          ACCOUNT_NAME: ${{ secrets.STANDARD_HNS_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.STANDARD_HNS_KEY }}
+          ACCOUNT_TYPE: standard_hns
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: file_cache
+          RUN_PUBLIC: "false"
+          RUN_REGRESSION: "true"
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Run premium HNS file-cache profile
+        id: premium_hns_file
+        if: ${{ steps.host_setup.outcome == 'success' && matrix.arch == 'X86' && (github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'regression') }}
+        continue-on-error: true
+        uses: ./.github/actions/perftesting
+        with:
+          ARCH: ${{ matrix.arch }}
+          EXPECTED_CPU_COUNT: ${{ matrix.expected_cpu_count }}
+          EXPECTED_VM_SIZE: ${{ matrix.expected_vm_size }}
+          SETUP_HOST: "false"
+          ACCOUNT_NAME: ${{ secrets.PREMIUM_HNS_ACCOUNT }}
+          ACCOUNT_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
+          ACCOUNT_TYPE: premium_hns
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
+          CACHE_MODE: file_cache
+          RUN_PUBLIC: "false"
+          RUN_REGRESSION: "true"
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref }}
+
+      - name: Require all selected profiles to pass
+        if: ${{ always() }}
+        shell: bash
+        env:
+          STANDARD_BLOCK_OUTCOME: ${{ steps.standard_block.outcome }}
+          PREMIUM_BLOCK_OUTCOME: ${{ steps.premium_block.outcome }}
+          STANDARD_FILE_OUTCOME: ${{ steps.standard_file.outcome }}
+          PREMIUM_FILE_OUTCOME: ${{ steps.premium_file.outcome }}
+          STANDARD_HNS_BLOCK_OUTCOME: ${{ steps.standard_hns_block.outcome }}
+          PREMIUM_HNS_BLOCK_OUTCOME: ${{ steps.premium_hns_block.outcome }}
+          STANDARD_HNS_FILE_OUTCOME: ${{ steps.standard_hns_file.outcome }}
+          PREMIUM_HNS_FILE_OUTCOME: ${{ steps.premium_hns_file.outcome }}
+          REQUIRE_X86_REGRESSION_PROFILES: ${{ matrix.arch == 'X86' && (github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'regression') }}
+        run: |
+          set -euo pipefail
+          outcomes=(
+            "standard block-cache|${STANDARD_BLOCK_OUTCOME:-skipped}|true"
+            "premium block-cache|${PREMIUM_BLOCK_OUTCOME:-skipped}|true"
+            "standard file-cache|${STANDARD_FILE_OUTCOME:-skipped}|${REQUIRE_X86_REGRESSION_PROFILES}"
+            "premium file-cache|${PREMIUM_FILE_OUTCOME:-skipped}|${REQUIRE_X86_REGRESSION_PROFILES}"
+            "standard HNS block-cache|${STANDARD_HNS_BLOCK_OUTCOME:-skipped}|${REQUIRE_X86_REGRESSION_PROFILES}"
+            "premium HNS block-cache|${PREMIUM_HNS_BLOCK_OUTCOME:-skipped}|${REQUIRE_X86_REGRESSION_PROFILES}"
+            "standard HNS file-cache|${STANDARD_HNS_FILE_OUTCOME:-skipped}|${REQUIRE_X86_REGRESSION_PROFILES}"
+            "premium HNS file-cache|${PREMIUM_HNS_FILE_OUTCOME:-skipped}|${REQUIRE_X86_REGRESSION_PROFILES}"
+          )
+          failed=0
+          for entry in "${outcomes[@]}"; do
+            IFS='|' read -r profile outcome required <<< "$entry"
+            echo "${profile}: ${outcome}"
+            if [[ "$required" == "true" && "$outcome" != "success" ]]; then
+              echo "::error title=Benchmark profile failed::${profile}: ${outcome}"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Upload raw and summarized results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ matrix.arch }}
+          path: benchmark-results
+          if-no-files-found: warn
+          retention-days: 30
+
+  publish:
+    name: Publish complete benchmark run
+    needs: benchmark
+    if: >-
+      ${{
+        always() &&
+        needs.benchmark.result == 'success' &&
+        github.ref == 'refs/heads/main' &&
+        (
+          github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.publish)
+        )
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout publisher source
+        uses: actions/checkout@v7
+
+      - name: Download complete matrix
+        uses: actions/download-artifact@v4
+        with:
+          pattern: perf-*
+          path: benchmark-artifacts
+
+      - name: Checkout benchmark site
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: benchmarks
+          path: benchmark-site
+          fetch-depth: 0
 
-      - name: "Run Perf Testing"
-        uses: "./.github/actions/perftesting"
+      - name: Check new results against rolling history
+        run: |
+          set -euo pipefail
+          python3 perf_testing/scripts/check_regressions.py \
+            --history benchmark-site/data/developer/history.json \
+            --results-dir benchmark-artifacts \
+            --output-dir benchmark-regression-check
+          cat benchmark-regression-check/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update compact histories and dashboards
+        run: |
+          set -euo pipefail
+          python3 perf_testing/scripts/publish_benchmarks.py \
+            --results-dir benchmark-artifacts \
+            --site-dir benchmark-site
+
+      - name: Commit benchmark site atomically
+        working-directory: benchmark-site
+        run: |
+          set -euo pipefail
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No benchmark site changes to publish"
+            exit 0
+          fi
+          git commit -m "Publish complete performance run ${GITHUB_RUN_ID}"
+          git pull --rebase origin benchmarks
+          git push origin HEAD:benchmarks
+
+      - name: Upload regression diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
         with:
-          # Pass the arch type from our config matrix
-          ARCH: ${{ matrix.config.arch }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STANDARD_ACCOUNT: ${{ secrets.STANDARD_ACCOUNT }}
-          PREMIUM_ACCOUNT: ${{ secrets.PREMIUM_ACCOUNT }}
-          STANDARD_HNS_ACCOUNT: ${{ secrets.STANDARD_HNS_ACCOUNT }}
-          PREMIUM_HNS_ACCOUNT: ${{ secrets.PREMIUM_HNS_ACCOUNT }}
-          STANDARD_KEY: ${{ secrets.STANDARD_KEY }}
-          PREMIUM_KEY: ${{ secrets.PREMIUM_KEY }}
-          STANDARD_HNS_KEY: ${{ secrets.STANDARD_HNS_KEY }}
-          PREMIUM_HNS_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
-          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
-          CACHE_MODE: ${{ matrix.CacheMode }}
+          name: scheduled-regression-check-${{ github.run_id }}-${{ github.run_attempt }}
+          path: benchmark-regression-check
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail on confirmed regression
+        run: |
+          set -euo pipefail
+          if [[ "$(jq -r '.overall_status' benchmark-regression-check/regression-check.json)" == "regression" ]]; then
+            echo "Confirmed performance regression detected" >&2
+            exit 1
+          fi

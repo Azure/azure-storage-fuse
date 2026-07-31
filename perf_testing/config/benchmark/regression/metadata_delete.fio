@@ -1,0 +1,12 @@
+[global]
+ioengine=filedelete
+rw=write
+filesize=4K
+nrfiles=1000
+numjobs=8
+filename_format=metadata.$jobnum.$filenum
+group_reporting=1
+lat_percentiles=1
+percentile_list=50:95:99:99.9
+
+[metadata-delete]

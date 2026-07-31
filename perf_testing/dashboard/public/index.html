@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Single-file and multi-file FIO direct-I/O throughput benchmarks for Blobfuse2 block cache.">
+  <title>Blobfuse2 Performance</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+    :root {
+      --ink: #18212a;
+      --muted: #66727e;
+      --paper: #f7f9fa;
+      --panel: #ffffff;
+      --line: #d9e0e5;
+      --azure: #0078d4;
+      --green: #16825d;
+      --amber: #d97706;
+      --grid: rgba(24, 33, 42, 0.045);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background-color: var(--paper);
+      background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 36px 36px;
+      font-family: 'IBM Plex Sans', sans-serif;
+      letter-spacing: 0;
+    }
+    .shell { width: min(1180px, calc(100% - 36px)); margin: 0 auto; }
+    .topbar { border-bottom: 1px solid var(--line); background: rgba(247, 249, 250, 0.94); }
+    .topbar .shell { display: flex; align-items: center; justify-content: space-between; min-height: 68px; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 18px; }
+    .brand-mark { width: 12px; height: 32px; background: var(--azure); box-shadow: 7px 7px 0 var(--green); }
+    .tested { color: var(--muted); font-size: 13px; text-align: right; }
+    main { padding: 44px 0 72px; }
+    .intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px; align-items: end; margin-bottom: 32px; }
+    h1 { max-width: 760px; margin: 0 0 12px; font-size: clamp(34px, 5vw, 58px); line-height: 1.02; font-weight: 600; }
+    .intro p { max-width: 720px; margin: 0; color: var(--muted); font-size: 17px; line-height: 1.55; }
+    .filters { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    select { min-width: 150px; height: 42px; border: 1px solid var(--line); border-radius: 4px; padding: 0 34px 0 12px; color: var(--ink); background: var(--panel); font: inherit; }
+    .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .result-group + .result-group { margin-top: 26px; }
+    .result-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 12px; }
+    .result-heading h2 { margin: 0; font-size: 24px; }
+    .result-heading p { margin: 4px 0 0; color: var(--muted); }
+    .scaling { padding: 6px 9px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); color: var(--muted); font: 500 12px 'IBM Plex Mono', monospace; white-space: nowrap; }
+    .metric { position: relative; overflow: hidden; min-height: 250px; padding: 24px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+    .metric::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--azure); }
+    .metric.write::before { background: var(--green); }
+    .metric-header { display: flex; justify-content: space-between; align-items: start; gap: 20px; }
+    .metric h2 { margin: 0; font-size: 18px; font-weight: 600; }
+    .tag { padding: 4px 7px; border-radius: 3px; color: #075985; background: #e0f2fe; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .metric.write .tag { color: #166534; background: #dcfce7; }
+    .number { margin-top: 28px; font-family: 'IBM Plex Mono', monospace; font-size: clamp(42px, 7vw, 72px); line-height: 1; white-space: nowrap; }
+    .number small { font-family: 'IBM Plex Sans', sans-serif; color: var(--muted); font-size: 17px; font-weight: 500; }
+    .metric-details { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+    .metric-details strong { display: block; margin-top: 3px; color: var(--ink); font-size: 15px; }
+    .method { display: grid; grid-template-columns: 190px 1fr; gap: 28px; margin: 18px 0 38px; padding: 21px 24px; border-left: 5px solid var(--amber); background: #fff8e8; }
+    .method strong { font-size: 15px; }
+    .method p { margin: 0; color: #6b5a35; line-height: 1.5; }
+    .environment { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0 0 38px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); overflow: hidden; }
+    .environment-item { min-width: 0; padding: 17px 18px; border-left: 1px solid var(--line); }
+    .environment-item:first-child { border-left: 0; }
+    .environment-item span { display: block; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .environment-item strong { display: block; margin-top: 5px; overflow: hidden; color: var(--ink); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+    .history { border-top: 1px solid var(--line); padding-top: 34px; }
+    .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+    .section-heading h2 { margin: 0; font-size: 25px; }
+    .section-heading p { margin: 0; color: var(--muted); }
+    .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .chart { padding: 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+    .chart h3 { margin: 0 0 16px; font-size: 15px; }
+    canvas { display: block; width: 100%; height: 240px; }
+    .empty { padding: 44px; border: 1px dashed var(--line); background: var(--panel); color: var(--muted); text-align: center; }
+    footer { border-top: 1px solid var(--line); padding: 24px 0 38px; color: var(--muted); font-size: 13px; }
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 20px, 1180px); }
+      .intro, .metrics, .charts, .environment { grid-template-columns: 1fr; }
+      .result-heading { align-items: flex-start; flex-direction: column; }
+      .scaling { white-space: normal; }
+      .filters { justify-content: flex-start; }
+      .method { grid-template-columns: 1fr; gap: 8px; }
+      .environment-item, .environment-item:first-child { border-top: 1px solid var(--line); border-left: 0; }
+      .environment-item:first-child { border-top: 0; }
+      .number { white-space: normal; }
+      .tested { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="topbar">
+    <div class="shell">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Blobfuse2 Performance</span></div>
+      <div class="tested" id="tested">Loading benchmark history...</div>
+    </div>
+  </nav>
+  <main class="shell">
+    <section class="intro">
+      <div>
+        <h1>Sustained sequential throughput</h1>
+        <p>Block-cache performance over Azure Blob Storage, separating one-file throughput from aggregate throughput across multiple files.</p>
+      </div>
+      <div class="filters">
+        <label>Architecture<select id="architecture"></select></label>
+        <label>Storage tier<select id="account"></select></label>
+        <label>Compute profile<select id="compute"></select></label>
+      </div>
+    </section>
+    <div id="content"><div class="empty">Loading results...</div></div>
+  </main>
+  <footer><div class="shell">Results are medians of three isolated trials. Public history contains only the stable block-cache sustained-throughput suite.</div></footer>
+  <script>
+    const state = { runs: [], selected: { architecture: '', account: '', compute: '' } };
+    const colors = { read: '#0078d4', write: '#16825d', grid: '#d9e0e5', text: '#66727e' };
+
+    const formatNumber = value => new Intl.NumberFormat('en-US', { maximumFractionDigits: value >= 1000 ? 0 : 1 }).format(value);
+    const metricValue = (benchmark, name) => benchmark?.metrics?.[name]?.median;
+    const metricMad = (benchmark, name) => benchmark?.metrics?.[name]?.mad;
+    const prettyDate = value => new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(value)) + ' UTC';
+    const titleCase = value => value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    const escapeHtml = value => String(value ?? 'Not recorded').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
+    const computeProfile = run => run.run.compute_profile || run.environment?.compute_profile || run.environment?.vm_size || `${run.environment?.cpu_count ?? 'Unknown'} CPUs`;
+
+    function setOptions(select, values, preferred) {
+      select.innerHTML = values.map(value => `<option value="${value}">${titleCase(value)}</option>`).join('');
+      select.value = values.includes(preferred) ? preferred : values[0] || '';
+      return select.value;
+    }
+
+    function selectedRuns() {
+      return state.runs.filter(item => item.run.architecture === state.selected.architecture && item.run.account_type === state.selected.account && computeProfile(item) === state.selected.compute);
+    }
+
+    function refreshCompute(preferred = '') {
+      const profiles = [...new Set(state.runs.filter(item => item.run.architecture === state.selected.architecture && item.run.account_type === state.selected.account).map(computeProfile))].sort();
+      state.selected.compute = setOptions(document.getElementById('compute'), profiles, preferred);
+    }
+
+    function latestRun() {
+      return selectedRuns().at(-1);
+    }
+
+    function benchmarkById(run, id) {
+      return run?.benchmarks.find(item => item.id === id);
+    }
+
+    function metricCard(benchmark, operation) {
+      if (!benchmark) return '';
+      const throughput = metricValue(benchmark, 'throughput_mib_s') || 0;
+      const mad = metricMad(benchmark, 'throughput_mib_s') || 0;
+      const latency = metricValue(benchmark, 'latency_p99_ms');
+      const syncLatency = metricValue(benchmark, 'sync_latency_p99_ms');
+      const transferred = metricValue(benchmark, 'io_gib');
+      return `<article class="metric ${operation}">
+        <div class="metric-header"><h2>${escapeHtml(benchmark.name)}</h2><span class="tag">FIO direct=1</span></div>
+        <div class="number">${formatNumber(throughput)} <small>MiB/s</small></div>
+        <div class="metric-details">
+          <span>Trial MAD<strong>${formatNumber(mad)} MiB/s</strong></span>
+          ${latency !== undefined ? `<span>p99 I/O latency<strong>${formatNumber(latency)} ms</strong></span>` : ''}
+          ${syncLatency !== undefined ? `<span>p99 sync latency<strong>${formatNumber(syncLatency)} ms</strong></span>` : ''}
+          ${transferred !== undefined ? `<span>Data per trial<strong>${formatNumber(transferred)} GiB</strong></span>` : ''}
+        </div>
+      </article>`;
+    }
+
+    function scalingRatio(singleBenchmark, multiBenchmark) {
+      const single = metricValue(singleBenchmark, 'throughput_mib_s');
+      const multi = metricValue(multiBenchmark, 'throughput_mib_s');
+      return Number.isFinite(single) && single > 0 && Number.isFinite(multi)
+        ? `${formatNumber(multi / single)}x aggregate scaling`
+        : 'Scaling unavailable';
+    }
+
+    function chartPoints(id) {
+      return selectedRuns().map(run => {
+        const benchmark = benchmarkById(run, id);
+        return { date: run.generated_at, value: metricValue(benchmark, 'throughput_mib_s') };
+      }).filter(point => Number.isFinite(point.value)).slice(-40);
+    }
+
+    function drawChart(canvas, points, color) {
+      const ratio = window.devicePixelRatio || 1;
+      const width = Math.max(canvas.clientWidth, 280);
+      const height = 240;
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      const context = canvas.getContext('2d');
+      context.scale(ratio, ratio);
+      context.clearRect(0, 0, width, height);
+      const padding = { left: 54, right: 16, top: 14, bottom: 32 };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+      if (!points.length) return;
+      let minimum = Math.min(...points.map(point => point.value));
+      let maximum = Math.max(...points.map(point => point.value));
+      const range = maximum - minimum || Math.max(maximum * 0.1, 1);
+      minimum = Math.max(0, minimum - range * 0.18);
+      maximum += range * 0.18;
+      context.font = '11px IBM Plex Sans';
+      context.strokeStyle = colors.grid;
+      context.fillStyle = colors.text;
+      context.lineWidth = 1;
+      for (let index = 0; index <= 4; index++) {
+        const y = padding.top + chartHeight * index / 4;
+        context.beginPath(); context.moveTo(padding.left, y); context.lineTo(width - padding.right, y); context.stroke();
+        const label = maximum - (maximum - minimum) * index / 4;
+        context.fillText(formatNumber(label), 5, y + 4);
+      }
+      const x = index => padding.left + (points.length === 1 ? chartWidth / 2 : chartWidth * index / (points.length - 1));
+      const y = value => padding.top + chartHeight - ((value - minimum) / (maximum - minimum)) * chartHeight;
+      context.strokeStyle = color; context.lineWidth = 2.5; context.beginPath();
+      points.forEach((point, index) => index ? context.lineTo(x(index), y(point.value)) : context.moveTo(x(index), y(point.value)));
+      context.stroke();
+      context.fillStyle = color;
+      points.forEach((point, index) => { context.beginPath(); context.arc(x(index), y(point.value), 3.2, 0, Math.PI * 2); context.fill(); });
+      context.fillStyle = colors.text;
+      context.fillText(new Date(points[0].date).toLocaleDateString(), padding.left, height - 8);
+      const lastLabel = new Date(points.at(-1).date).toLocaleDateString();
+      context.fillText(lastLabel, width - padding.right - context.measureText(lastLabel).width, height - 8);
+    }
+
+    function render() {
+      const run = latestRun();
+      const content = document.getElementById('content');
+      if (!run) {
+        content.innerHTML = '<div class="empty">No complete public benchmark exists for this selection.</div>';
+        return;
+      }
+      document.getElementById('tested').textContent = `Latest complete run · ${prettyDate(run.generated_at)}`;
+      const readSingle = benchmarkById(run, 'sequential-read-single-file');
+      const readMulti = benchmarkById(run, 'sequential-read-multi-file');
+      const writeSingle = benchmarkById(run, 'sequential-write-single-file');
+      const writeMulti = benchmarkById(run, 'sequential-write-multi-file');
+      const environment = run.environment || {};
+      content.innerHTML = `<section class="result-group"><div class="result-heading"><div><h2>Sequential read</h2><p>One file compared with aggregate throughput across sixteen files.</p></div><span class="scaling">${scalingRatio(readSingle, readMulti)}</span></div><div class="metrics">${metricCard(readSingle, 'read')}${metricCard(readMulti, 'read')}</div></section>
+        <section class="result-group"><div class="result-heading"><div><h2>Durable sequential write</h2><p>Wall-clock throughput includes the final flush for every file.</p></div><span class="scaling">${scalingRatio(writeSingle, writeMulti)}</span></div><div class="metrics">${metricCard(writeSingle, 'write')}${metricCard(writeMulti, 'write')}</div></section>
+        <section class="method"><strong>Application-level direct I/O</strong><p>FIO opens every measured file with <code>direct=1</code>; the Blobfuse mount does not enable mount-wide <code>libfuse.direct-io</code>. Every case transfers 320 GiB once using 10 MiB application I/O units, which the kernel/FUSE path may split internally. Single-file cases use one synchronous FIO job; multi-file cases use sixteen jobs against independent files. Reads use immutable fixtures and reject unexpectedly low network transfer. Writes include an end fsync and reject unexpectedly low upload traffic.</p></section>
+        <section class="environment" aria-label="Measured environment"><div class="environment-item"><span>Blobfuse2</span><strong title="${escapeHtml(environment.blobfuse_version)}">${escapeHtml(environment.blobfuse_version)}</strong></div><div class="environment-item"><span>FIO</span><strong>${escapeHtml(environment.fio_version)}</strong></div><div class="environment-item"><span>Compute</span><strong title="${escapeHtml(environment.cpu_model)}">${escapeHtml(environment.cpu_count)} CPUs · ${escapeHtml(environment.memory_gib)} GiB</strong></div><div class="environment-item"><span>VM / region</span><strong title="${escapeHtml(environment.vm_size)} · ${escapeHtml(environment.azure_region)}">${escapeHtml(environment.vm_size)} · ${escapeHtml(environment.azure_region)}</strong></div><div class="environment-item"><span>Kernel</span><strong title="${escapeHtml(environment.kernel)}">${escapeHtml(environment.kernel)}</strong></div></section>
+        <section class="history"><div class="section-heading"><div><h2>Recent sustained throughput</h2><p>Up to 40 complete main-branch runs.</p></div></div>
+        <div class="charts"><div class="chart"><h3>Read · 1 thread, 1 file</h3><canvas id="read-single-chart" aria-label="Single-file sequential read history"></canvas></div><div class="chart"><h3>Read · 16 threads, 16 files</h3><canvas id="read-multi-chart" aria-label="Multi-file sequential read history"></canvas></div><div class="chart"><h3>Write · 1 thread, 1 file</h3><canvas id="write-single-chart" aria-label="Single-file sequential write history"></canvas></div><div class="chart"><h3>Write · 16 threads, 16 files</h3><canvas id="write-multi-chart" aria-label="Multi-file sequential write history"></canvas></div></div></section>`;
+      requestAnimationFrame(() => {
+        drawChart(document.getElementById('read-single-chart'), chartPoints('sequential-read-single-file'), colors.read);
+        drawChart(document.getElementById('read-multi-chart'), chartPoints('sequential-read-multi-file'), colors.read);
+        drawChart(document.getElementById('write-single-chart'), chartPoints('sequential-write-single-file'), colors.write);
+        drawChart(document.getElementById('write-multi-chart'), chartPoints('sequential-write-multi-file'), colors.write);
+      });
+    }
+
+    async function start() {
+      try {
+        const response = await fetch('data/public/history.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const history = await response.json();
+        state.runs = history.runs.filter(item => item.run.suite === 'public' && item.run.cache_mode === 'block_cache');
+        const architectures = [...new Set(state.runs.map(item => item.run.architecture))].sort();
+        const accounts = [...new Set(state.runs.map(item => item.run.account_type))].sort();
+        state.selected.architecture = setOptions(document.getElementById('architecture'), architectures, 'X86');
+        state.selected.account = setOptions(document.getElementById('account'), accounts, 'premium');
+        const preferredRun = [...state.runs].reverse().find(item => item.run.architecture === state.selected.architecture && item.run.account_type === state.selected.account);
+        refreshCompute(computeProfile(preferredRun || state.runs.at(-1)));
+        document.getElementById('architecture').addEventListener('change', event => { state.selected.architecture = event.target.value; refreshCompute(); render(); });
+        document.getElementById('account').addEventListener('change', event => { state.selected.account = event.target.value; refreshCompute(); render(); });
+        document.getElementById('compute').addEventListener('change', event => { state.selected.compute = event.target.value; render(); });
+        window.addEventListener('resize', render);
+        render();
+      } catch (error) {
+        document.getElementById('content').innerHTML = `<div class="empty">Benchmark data is unavailable: ${error.message}</div>`;
+      }
+    }
+    start();
+  </script>
+</body>
+</html>
