@@ -471,6 +471,166 @@ func (s *configTestSuite) TestRateLimitConfig() {
 	assert.Equal(int64(-1), az.stConfig.capIOps)
 }
 
+func (s *configTestSuite) TestUseSessionDisabled() {
+	// UseSession=false: useSession must remain false regardless of account type or auth mode.
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName: "testaccount",
+		Container:   "testcontainer",
+		AuthMode:    "msi",
+		UseSession:  false,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.useSession)
+}
+
+func (s *configTestSuite) TestUseSessionWithOAuthBlockAccount() {
+	// UseSession=true with a block account and OAuth-based auth (MSI) must enable useSession.
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+
+	for _, authMode := range []string{"msi", "azcli"} {
+		az := &AzStorage{}
+		opt := AzStorageOptions{
+			AccountName: "testaccount",
+			Container:   "testcontainer",
+			AccountType: "block",
+			AuthMode:    authMode,
+			UseSession:  true,
+		}
+
+		err := ParseAndValidateConfig(az, opt)
+		assert.NoError(err, "auth mode: %s", authMode)
+		assert.True(az.stConfig.useSession, "expected useSession=true for auth mode: %s", authMode)
+	}
+}
+
+func (s *configTestSuite) TestUseSessionWithSPNAuth() {
+	// UseSession=true with SPN (OAuth) on a block account must enable useSession.
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName:  "testaccount",
+		Container:    "testcontainer",
+		AccountType:  "block",
+		AuthMode:     "spn",
+		ClientID:     "clientid",
+		ClientSecret: "secret",
+		TenantID:     "tenantid",
+		UseSession:   true,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.True(az.stConfig.useSession)
+}
+
+func (s *configTestSuite) TestUseSessionIgnoredForAdls() {
+	// UseSession=true on a DFS/ADLS account must be silently ignored (useSession stays false)
+	// and a warning must be logged
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName: "testaccount",
+		Container:   "testcontainer",
+		AccountType: "adls",
+		AuthMode:    "msi",
+		UseSession:  true,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.useSession)
+}
+
+func (s *configTestSuite) TestUseSessionIgnoredForKeyAuth() {
+	// UseSession=true with shared key authentication must be silently ignored (useSession stays false)
+	// and a warning must be logged
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName: "testaccount",
+		Container:   "testcontainer",
+		AccountType: "block",
+		AuthMode:    "key",
+		AccountKey:  "dGVzdGtleQ==",
+		UseSession:  true,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.useSession)
+}
+
+func (s *configTestSuite) TestUseSessionIgnoredForSasAuth() {
+	// UseSession=true with SAS token authentication must be silently ignored (useSession stays false)
+	// and a warning must be logged
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName: "testaccount",
+		Container:   "testcontainer",
+		AccountType: "block",
+		AuthMode:    "sas",
+		SaSKey:      "?sv=2020-08-04&ss=b&srt=sco&sp=rwdlacuptfx&se=2099-01-01T00:00:00Z&st=2021-01-01T00:00:00Z&spr=https&sig=abc",
+		UseSession:  true,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.useSession)
+}
+
+func (s *configTestSuite) TestUseSessionIgnoredForMountAllContainers() {
+	// UseSession=true when mount-all-containers is enabled must be silently ignored,
+	// because the Session API requires a single explicitly specified container.
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+
+	config.SetBool("mount-all-containers", true)
+
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName: "testaccount",
+		AccountType: "block",
+		AuthMode:    "msi",
+		UseSession:  true,
+		// Container intentionally empty: mount-all-containers mode allows this.
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.useSession)
+}
+
+func (s *configTestSuite) TestUseSessionIgnoredForWhitespaceContainer() {
+	// UseSession=true with a whitespace-only container name must be silently ignored.
+	// A whitespace-only name passes the non-empty string check but is effectively empty
+	// after trimming, so the Session API cannot target a valid container.
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName: "testaccount",
+		AccountType: "block",
+		AuthMode:    "msi",
+		Container:   "   ",
+		UseSession:  true,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.useSession)
+}
+
 func TestConfigTestSuite(t *testing.T) {
 	suite.Run(t, new(configTestSuite))
 }
