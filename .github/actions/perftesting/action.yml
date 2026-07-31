@@ -79,7 +79,7 @@ runs:
         sudo -n sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99blobfuse-benchmark-timeout'
         sudo -n dpkg --configure -a
         sudo -n apt-get update -qq
-        sudo -n apt-get install -y -qq fuse3 libfuse3-dev gcc jq python3 mdadm bc libaio-dev build-essential curl git iproute2
+        sudo -n apt-get install -y -qq fuse3 libfuse3-dev gcc jq python3 bc libaio-dev build-essential curl git iproute2
         if ! command -v fio >/dev/null || [[ "$(fio --version)" != "fio-3.36" ]]; then
           ./tools/install_fio.sh
         fi
@@ -106,21 +106,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        if [[ "${{ inputs.ARCH }}" == "ARM64" ]] && ! mountpoint -q /mnt/localssd; then
-          devices=(
-            /dev/nvme0n1p1 /dev/nvme1n1p1 /dev/nvme2n1p1
-            /dev/nvme3n1p1 /dev/nvme4n1p1 /dev/nvme5n1p1
-          )
-          for device in "${devices[@]}"; do
-            [[ -b "$device" ]] || { echo "Missing ARM benchmark device: $device" >&2; exit 1; }
-            sudo -n umount "$device" 2>/dev/null || true
-          done
-          sudo -n mdadm --stop /dev/md0 2>/dev/null || true
-          sudo -n mdadm --create /dev/md0 --level=0 --raid-devices=6 --force "${devices[@]}"
-          sudo -n mkfs.ext4 -F /dev/md0 >/dev/null
-          sudo -n mkdir -p /mnt/localssd
-          sudo -n mount /dev/md0 /mnt/localssd
-        fi
         sudo -n mkdir -p /mnt/localssd
         sudo -n chmod 0777 /mnt/localssd
         df -h /mnt/localssd
