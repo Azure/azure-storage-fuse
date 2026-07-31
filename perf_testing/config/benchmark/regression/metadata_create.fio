@@ -1,0 +1,14 @@
+[global]
+ioengine=filecreate
+rw=write
+filesize=4K
+nrfiles=1000
+numjobs=8
+filename_format=metadata.$jobnum.$filenum
+create_on_open=1
+fallocate=none
+group_reporting=1
+lat_percentiles=1
+percentile_list=50:95:99:99.9
+
+[metadata-create]

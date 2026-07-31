@@ -1,0 +1,307 @@
+{
+  "schema_version": 1,
+  "fixture_version": "v3",
+  "suites": {
+    "public": {
+      "description": "Sustained single-stream and aggregate sequential throughput published to the public dashboard.",
+      "trials": 3,
+      "fixture_jobs": ["setup/public_single_read.fio", "setup/public_multi_read.fio"],
+      "workloads": [
+        {
+          "id": "sequential-read-single-file",
+          "name": "Sequential read: 1 thread, 1 file",
+          "job_file": "public/seq_read_single.fio",
+          "direction": "read",
+          "primary_metric": "throughput_mib_s",
+          "higher_is_better": true,
+          "target": "fixture",
+          "expected_network_ratio": 0.75,
+          "parameters": {
+            "pattern": "sequential",
+            "block_size": "10 MiB",
+            "concurrency": 1,
+            "files": 1,
+            "file_size": "320 GiB",
+            "working_set": "320 GiB",
+            "cache_state": "cold",
+            "durability": "not applicable"
+          }
+        },
+        {
+          "id": "sequential-read-multi-file",
+          "name": "Sequential read: 16 threads, 16 files",
+          "job_file": "public/seq_read_multi.fio",
+          "direction": "read",
+          "primary_metric": "throughput_mib_s",
+          "higher_is_better": true,
+          "target": "fixture",
+          "expected_network_ratio": 0.75,
+          "parameters": {
+            "pattern": "sequential",
+            "block_size": "10 MiB",
+            "concurrency": 16,
+            "files": 16,
+            "file_size": "20 GiB",
+            "working_set": "320 GiB",
+            "cache_state": "cold",
+            "durability": "not applicable"
+          }
+        },
+        {
+          "id": "sequential-write-single-file",
+          "name": "Sequential write: 1 thread, 1 file",
+          "job_file": "public/seq_write_single.fio",
+          "direction": "write",
+          "primary_metric": "throughput_mib_s",
+          "higher_is_better": true,
+          "target": "ephemeral",
+          "expected_network_ratio": 0.75,
+          "parameters": {
+            "pattern": "sequential",
+            "block_size": "10 MiB",
+            "concurrency": 1,
+            "files": 1,
+            "file_size": "320 GiB",
+            "working_set": "320 GiB",
+            "cache_state": "cold",
+            "durability": "end fsync"
+          }
+        },
+        {
+          "id": "sequential-write-multi-file",
+          "name": "Sequential write: 16 threads, 16 files",
+          "job_file": "public/seq_write_multi.fio",
+          "direction": "write",
+          "primary_metric": "throughput_mib_s",
+          "higher_is_better": true,
+          "target": "ephemeral",
+          "expected_network_ratio": 0.75,
+          "parameters": {
+            "pattern": "sequential",
+            "block_size": "10 MiB",
+            "concurrency": 16,
+            "files": 16,
+            "file_size": "20 GiB",
+            "working_set": "320 GiB",
+            "cache_state": "cold",
+            "durability": "end fsync"
+          }
+        }
+      ]
+    },
+    "regression": {
+      "description": "Broad component and filesystem regression coverage for maintainers.",
+      "trials": 3,
+      "fixture_jobs": ["setup/max_read.fio", "setup/warm_read.fio"],
+      "workloads": [
+        {
+          "id": "cold-sequential-read-4-stream",
+          "name": "Cold sequential read, 4 streams",
+          "job_file": "regression/seq_read_4stream.fio",
+          "direction": "read",
+          "primary_metric": "throughput_mib_s",
+          "higher_is_better": true,
+          "target": "fixture",
+          "expected_network_ratio": 0.75,
+          "parameters": {
+            "pattern": "sequential",
+            "block_size": "1 MiB",
+            "concurrency": 4,
+            "working_set": "32 GiB",
+            "cache_state": "cold"
+          }
+        },
+        {
+          "id": "warm-sequential-read",
+          "name": "Warm sequential read",
+          "job_file": "regression/warm_read.fio",
+          "direction": "read",
+          "primary_metric": "throughput_mib_s",
+          "higher_is_better": true,
+          "target": "fixture",
+          "warmup": true,
+          "parameters": {
+            "pattern": "sequential",
+            "block_size": "1 MiB",
+            "concurrency": 1,
+            "working_set": "512 MiB",
+            "cache_state": "warm"
+          }
+        },
+        {
+          "id": "cold-random-read-4k",
+          "name": "Cold random read, 4 KiB",
+          "job_file": "regression/rand_read_4k.fio",
+          "direction": "read",
+          "primary_metric": "iops",
+          "higher_is_better": true,
+          "target": "fixture",
+          "cache_modes": ["block_cache"],
+          "parameters": {
+            "pattern": "random",
+            "block_size": "4 KiB",
+            "concurrency": 16,
+            "working_set": "128 GiB",
+            "cache_state": "cold"
+          }
+        },
+        {
+          "id": "cold-random-read-64k",
+          "name": "Cold random read, 64 KiB",
+          "job_file": "regression/rand_read_64k.fio",
+          "direction": "read",
+          "primary_metric": "iops",
+          "higher_is_better": true,
+          "target": "fixture",
+          "cache_modes": ["block_cache"],
+          "parameters": {
+            "pattern": "random",
+            "block_size": "64 KiB",
+            "concurrency": 16,
+            "working_set": "128 GiB",
+            "cache_state": "cold"
+          }
+        },
+        {
+          "id": "shared-random-read-64-stream",
+          "name": "Shared-set random read, 64 streams",
+          "job_file": "regression/shared_rand_read_64stream.fio",
+          "direction": "read",
+          "primary_metric": "throughput_mib_s",
+          "higher_is_better": true,
+          "target": "fixture",
+          "cache_modes": ["block_cache"],
+          "parameters": {
+            "pattern": "shared-set random",
+            "block_size": "1 MiB",
+            "concurrency": 64,
+            "working_set": "128 GiB",
+            "cache_state": "cold"
+          }
+        },
+        {
+          "id": "durable-sequential-write",
+          "name": "Durable sequential write",
+          "job_file": "regression/seq_write.fio",
+          "direction": "write",
+          "primary_metric": "throughput_mib_s",
+          "higher_is_better": true,
+          "target": "ephemeral",
+          "parameters": {
+            "pattern": "sequential",
+            "block_size": "1 MiB",
+            "concurrency": 1,
+            "working_set": "16 GiB",
+            "cache_state": "cold",
+            "durability": "end fsync"
+          }
+        },
+        {
+          "id": "durable-random-write-64k",
+          "name": "Durable random write, 64 KiB",
+          "job_file": "regression/rand_write_64k.fio",
+          "direction": "write",
+          "primary_metric": "iops",
+          "higher_is_better": true,
+          "target": "ephemeral",
+          "parameters": {
+            "pattern": "random",
+            "block_size": "64 KiB",
+            "concurrency": 4,
+            "working_set": "8 GiB",
+            "cache_state": "cold",
+            "durability": "end fsync"
+          }
+        },
+        {
+          "id": "mixed-random-rw-64k",
+          "name": "Mixed random read/write, 64 KiB",
+          "job_file": "regression/mixed_64k.fio",
+          "prepare_job": "setup/mixed.fio",
+          "direction": "mixed",
+          "primary_metric": "iops",
+          "higher_is_better": true,
+          "target": "ephemeral",
+          "parameters": {
+            "pattern": "70% random read / 30% random write",
+            "block_size": "64 KiB",
+            "concurrency": 8,
+            "working_set": "8 GiB",
+            "cache_state": "warm",
+            "durability": "end fsync"
+          }
+        },
+        {
+          "id": "metadata-create",
+          "name": "Parallel file create",
+          "job_file": "regression/metadata_create.fio",
+          "direction": "write",
+          "primary_metric": "iops",
+          "higher_is_better": true,
+          "target": "ephemeral",
+          "parameters": {
+            "pattern": "file create",
+            "file_size": "4 KiB",
+            "concurrency": 8,
+            "operations": 8000
+          }
+        },
+        {
+          "id": "metadata-stat",
+          "name": "Parallel file stat",
+          "job_file": "regression/metadata_stat.fio",
+          "direction": "read",
+          "primary_metric": "iops",
+          "higher_is_better": true,
+          "target": "ephemeral",
+          "parameters": {
+            "pattern": "file stat",
+            "file_size": "4 KiB",
+            "concurrency": 8,
+            "operations": 8000
+          }
+        },
+        {
+          "id": "metadata-delete",
+          "name": "Parallel file delete",
+          "job_file": "regression/metadata_delete.fio",
+          "direction": "write",
+          "primary_metric": "iops",
+          "higher_is_better": true,
+          "target": "ephemeral",
+          "parameters": {
+            "pattern": "file delete",
+            "file_size": "4 KiB",
+            "concurrency": 8,
+            "operations": 8000
+          }
+        }
+      ]
+    },
+    "quick": {
+      "description": "Representative pre-PR comparison suite for one stable X86 runner.",
+      "trials": 3,
+      "fixture_jobs": ["setup/max_read.fio", "setup/warm_read.fio"],
+      "workloads": [
+        {
+          "ref": "cold-sequential-read-4-stream"
+        },
+        {
+          "ref": "warm-sequential-read"
+        },
+        {
+          "ref": "cold-random-read-64k"
+        },
+        {
+          "ref": "durable-sequential-write"
+        },
+        {
+          "ref": "mixed-random-rw-64k"
+        },
+        {
+          "ref": "metadata-create"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,30 @@
+logging:
+  level: log_err
+  file-path: "blobfuse2-benchmark.log"
+  type: base
+
+components:
+  - libfuse
+  - file_cache
+  - attr_cache
+  - azstorage
+
+libfuse:
+  ignore-open-flags: true
+  max-fuse-threads: 256
+
+file_cache:
+  path: { 1 }
+  timeout-sec: 120
+  allow-non-empty-temp: true
+  cleanup-on-start: true
+  sync-to-flush: true
+
+attr_cache:
+  timeout-sec: 7200
+
+azstorage:
+  mode: key
+  container: { 0 }
+  account-name: { AZURE_STORAGE_ACCOUNT }
+  account-key: { AZURE_STORAGE_ACCESS_KEY }
