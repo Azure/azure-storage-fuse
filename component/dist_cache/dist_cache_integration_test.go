@@ -26,6 +26,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
+	dcache "github.com/nearora-msft/dist-cache-client-go"
 	pb "github.com/nearora-msft/dist-cache-client-go/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,7 +46,10 @@ type integMockServer struct {
 	attrs    map[string]*pb.FileAttribute
 	groups   map[string]map[string]bool // groupID -> set of cacheKeys
 	locks    map[string]bool            // cacheKey -> locked
-	closed   bool
+	// zeroByteHits[key]=true → Download returns SUCCESS Filesize=0 (simulates
+	// a corrupt/empty entry). Checked before store/lock.
+	zeroByteHits map[string]bool
+	closed       bool
 }
 
 func newIntegMockServer(t *testing.T) *integMockServer {
@@ -54,12 +58,13 @@ func newIntegMockServer(t *testing.T) *integMockServer {
 	require.NoError(t, err)
 
 	s := &integMockServer{
-		listener: l,
-		addr:     l.Addr().String(),
-		store:    make(map[string][]byte),
-		attrs:    make(map[string]*pb.FileAttribute),
-		groups:   make(map[string]map[string]bool),
-		locks:    make(map[string]bool),
+		listener:     l,
+		addr:         l.Addr().String(),
+		store:        make(map[string][]byte),
+		attrs:        make(map[string]*pb.FileAttribute),
+		groups:       make(map[string]map[string]bool),
+		locks:        make(map[string]bool),
+		zeroByteHits: make(map[string]bool),
 	}
 
 	go s.serve()
@@ -142,6 +147,13 @@ func (s *integMockServer) handleRequest(req *pb.Request, uploadData []byte) (pro
 
 	case *pb.Request_Downloadrequest:
 		key := p.Downloadrequest.Filename
+		// zeroByteHits override wins over store/lock.
+		if s.zeroByteHits[key] {
+			return &pb.DownloadResponse{
+				Result:   pb.DownloadResponse_SUCCESS,
+				Filesize: 0,
+			}, nil
+		}
 		data, ok := s.store[key]
 		if !ok {
 			if p.Downloadrequest.Enablelock {
@@ -235,6 +247,34 @@ func (s *integMockServer) chunkCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.store)
+}
+
+// primeLock marks a key as locked by a phantom peer.
+func (s *integMockServer) primeLock(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.locks[key] = true
+}
+
+// primeChunk seeds the store as if a peer finished populating.
+func (s *integMockServer) primeChunk(key string, data []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.store[key] = append([]byte(nil), data...)
+}
+
+// expireLock clears the lock, simulating the peer's server-side TTL firing.
+func (s *integMockServer) expireLock(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.locks, key)
+}
+
+// primeZeroByteHit makes Downloads for key return SUCCESS Filesize=0.
+func (s *integMockServer) primeZeroByteHit(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.zeroByteHits[key] = true
 }
 
 func (s *integMockServer) close() {
@@ -370,6 +410,198 @@ func (suite *distCacheIntegSuite) TestReadInBuffer_L2MissThenHit() {
 	suite.assert.NoError(err)
 	suite.assert.Equal(chunkSize, n2)
 	suite.assert.Equal(testData, buf2[:n2], "second read should serve from L2 cache")
+}
+
+// --- Test: poll observes L2 hit after peer populates ---
+
+// AlreadyLocked → poll → L2 hit: prime lock, start reader, prime chunk
+// mid-poll. Reader's next iteration observes SUCCESS.
+func (suite *distCacheIntegSuite) TestReadInBuffer_Poll_HitsL2AfterPeerPopulates() {
+	fileName := "test_poll_hit.bin"
+	chunkSize := 1 * 1024 * 1024 // matches block_cache.block-size-mb=1
+	peerData := make([]byte, chunkSize)
+	rand.Read(peerData)
+
+	// Different payload on loopback proves the read came from L2.
+	loopbackData := make([]byte, chunkSize)
+	rand.Read(loopbackData)
+	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), loopbackData, 0644)
+	suite.assert.NoError(err)
+
+	cacheKey := dcache.GenerateCacheKey("test/container", fileName, "", 0, int64(chunkSize))
+	suite.srv.primeLock(cacheKey)
+
+	buf := make([]byte, chunkSize)
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
+			Path:   fileName,
+			Offset: 0,
+			Data:   buf,
+			Size:   int64(chunkSize),
+		})
+		done <- result{n, err}
+	}()
+
+	// Sleep past the first poll iteration (backoff=200ms), then prime chunk.
+	time.Sleep(300 * time.Millisecond)
+	suite.srv.primeChunk(cacheKey, peerData)
+
+	select {
+	case r := <-done:
+		suite.assert.NoError(r.err)
+		suite.assert.Equal(chunkSize, r.n)
+		suite.assert.Equal(peerData, buf[:r.n], "read must be served from L2, not from loopback storage")
+	case <-time.After(5 * time.Second):
+		suite.T().Fatal("reader did not complete within 5s (poll should have observed the primed chunk)")
+	}
+}
+
+// --- Test: poll times out and falls through to storage without populating ---
+
+// AlreadyLocked → poll → timeout: permanent lock so poll never sees the
+// chunk. Reader falls through to loopback and must NOT populate.
+func (suite *distCacheIntegSuite) TestReadInBuffer_Poll_TimeoutFallsThroughNoPopulate() {
+	fileName := "test_poll_timeout.bin"
+	chunkSize := 1 * 1024 * 1024
+	testData := make([]byte, chunkSize)
+	rand.Read(testData)
+	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), testData, 0644)
+	suite.assert.NoError(err)
+
+	cacheKey := dcache.GenerateCacheKey("test/container", fileName, "", 0, int64(chunkSize))
+	suite.srv.primeLock(cacheKey)
+
+	chunksBefore := suite.srv.chunkCount()
+
+	buf := make([]byte, chunkSize)
+	start := time.Now()
+	n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   fileName,
+		Offset: 0,
+		Data:   buf,
+		Size:   int64(chunkSize),
+	})
+	elapsed := time.Since(start)
+
+	suite.assert.NoError(err)
+	suite.assert.Equal(chunkSize, n)
+	suite.assert.Equal(testData, buf[:n], "read must fall through to loopback on poll timeout")
+
+	// maxPollDuration is 3s; the call cannot return earlier.
+	suite.assert.GreaterOrEqual(elapsed, 3*time.Second, "poll should have run to its full deadline")
+
+	// Drain any in-flight populate before checking no upload happened.
+	suite.distCache.inflight.Wait()
+	suite.assert.Equal(chunksBefore, suite.srv.chunkCount(),
+		"must NOT populate on poll timeout: peer still owns the lock")
+}
+
+// --- Test: poll inherits the miss-lock and populates L2 ---
+
+// AlreadyLocked → poll → GotLock: prime lock, start reader, expire lock
+// mid-poll. Next iteration re-acquires the lock; caller fetches loopback
+// and populates.
+func (suite *distCacheIntegSuite) TestReadInBuffer_Poll_InheritsLockPopulatesL2() {
+	fileName := "test_poll_inherit.bin"
+	chunkSize := 1 * 1024 * 1024
+	testData := make([]byte, chunkSize)
+	rand.Read(testData)
+	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), testData, 0644)
+	suite.assert.NoError(err)
+
+	cacheKey := dcache.GenerateCacheKey("test/container", fileName, "", 0, int64(chunkSize))
+	suite.srv.primeLock(cacheKey)
+	chunksBefore := suite.srv.chunkCount()
+
+	buf := make([]byte, chunkSize)
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
+			Path:   fileName,
+			Offset: 0,
+			Data:   buf,
+			Size:   int64(chunkSize),
+		})
+		done <- result{n, err}
+	}()
+
+	// Sleep past the first poll iteration, then expire the peer's lock.
+	time.Sleep(300 * time.Millisecond)
+	suite.srv.expireLock(cacheKey)
+
+	select {
+	case r := <-done:
+		suite.assert.NoError(r.err)
+		suite.assert.Equal(chunkSize, r.n)
+		suite.assert.Equal(testData, buf[:r.n], "read must fetch from loopback after inheriting the miss-lock")
+	case <-time.After(5 * time.Second):
+		suite.T().Fatal("reader did not complete within 5s (poll should have inherited the lock)")
+	}
+
+	// Inheriting the lock means we must populate.
+	suite.distCache.inflight.Wait()
+	suite.assert.Greater(suite.srv.chunkCount(), chunksBefore,
+		"L2 must be populated after inheriting the miss-lock via poll")
+}
+
+// --- Test: poll observes a zero-byte cache entry, falls through, no populate ---
+
+// AlreadyLocked → poll → zero-byte hit: prime lock, start reader, prime
+// zero-byte SUCCESS mid-poll. Poll returns errPollCorruptHit; caller falls
+// through to loopback and must NOT populate (no lock ownership).
+func (suite *distCacheIntegSuite) TestReadInBuffer_Poll_ZeroByteHitFallsThroughNoPopulate() {
+	fileName := "test_poll_zerobyte.bin"
+	chunkSize := 1 * 1024 * 1024
+	testData := make([]byte, chunkSize)
+	rand.Read(testData)
+	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), testData, 0644)
+	suite.assert.NoError(err)
+
+	cacheKey := dcache.GenerateCacheKey("test/container", fileName, "", 0, int64(chunkSize))
+	suite.srv.primeLock(cacheKey)
+	chunksBefore := suite.srv.chunkCount()
+
+	buf := make([]byte, chunkSize)
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
+			Path:   fileName,
+			Offset: 0,
+			Data:   buf,
+			Size:   int64(chunkSize),
+		})
+		done <- result{n, err}
+	}()
+
+	// Sleep past the first poll iteration, then flip to zero-byte SUCCESS.
+	time.Sleep(300 * time.Millisecond)
+	suite.srv.primeZeroByteHit(cacheKey)
+
+	select {
+	case r := <-done:
+		suite.assert.NoError(r.err)
+		suite.assert.Equal(chunkSize, r.n)
+		suite.assert.Equal(testData, buf[:r.n], "read must fall through to loopback on zero-byte poll hit")
+	case <-time.After(5 * time.Second):
+		suite.T().Fatal("reader did not complete within 5s")
+	}
+
+	suite.distCache.inflight.Wait()
+	suite.assert.Equal(chunksBefore, suite.srv.chunkCount(),
+		"must NOT populate on zero-byte poll hit: no lock ownership")
 }
 
 // --- Test: ReadInBuffer graceful degradation ---

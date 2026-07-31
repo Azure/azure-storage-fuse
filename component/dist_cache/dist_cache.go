@@ -5,6 +5,7 @@ package dist_cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -21,6 +22,11 @@ import (
 )
 
 const compName = "dist_cache"
+
+// errPollCorruptHit signals that pollChunkIntoBuffer observed a zero-byte
+// cache entry. The caller should treat it like a timeout: fetch from Azure
+// but skip populate (we don't hold the miss-lock).
+var errPollCorruptHit = errors.New("dist_cache: poll saw zero-byte cache entry")
 
 // Async upload memory budget policy. See resolveMemBudget for how these combine.
 const (
@@ -361,21 +367,22 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	}
 
 	if err == dcache.ErrNotFoundAlreadyLocked {
-		// Another node is fetching this chunk — poll until cached
+		// Poll until L2 hit, inherited lock, or timeout.
 		log.Debug("DistCache::ReadInBuffer : L2 miss (locked) %s offset=%d, polling", name, options.Offset)
 		n, pollErr := dc.pollChunkIntoBuffer(ctx, name, etag, options.Offset, options.Data)
 		if pollErr == nil {
-			return n, nil
+			return n, nil // L2 hit during poll
 		}
-		// Poll timed out — fall through to Azure
-		log.Debug("DistCache::ReadInBuffer : chunk poll timeout %s offset=%d, falling through", name, options.Offset)
 		n, err = dc.NextComponent().ReadInBuffer(options)
 		if err != nil {
 			return n, err
 		}
-		if n > 0 {
+		if pollErr == dcache.ErrNotFoundGotLock && n > 0 {
+			// Inherited the miss-lock mid-poll; safe to populate.
 			dc.schedulePopulate(name, etag, options.Offset, options.Data[:n])
 		}
+		// Timeout (or other poll error): peer still owns the lock; skip
+		// populate to avoid racing its write.
 		return n, nil
 	}
 
@@ -397,11 +404,15 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 
 // --- Internal helpers ---
 
-// pollChunkIntoBuffer waits for a single chunk to become available in the
-// distributed cache and copies it into buf. Returns the number of bytes read.
+// pollChunkIntoBuffer waits for a chunk to land in the cache. Polls with
+// WithLock(true) so we can inherit the miss-lock if the peer's expires.
+// Returns (n, nil) on L2 hit, (0, ErrNotFoundGotLock) if we inherited the
+// lock (caller must fetch and populate), (0, timeout err) if the peer still
+// holds the lock at deadline (caller should fetch without populating), or
+// (0, err) on other client errors.
 func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string, offset int64, buf []byte) (int, error) {
 	const (
-		maxPollDuration = 10 * time.Second
+		maxPollDuration = 3 * time.Second
 		maxBackoff      = 2 * time.Second
 	)
 
@@ -417,12 +428,23 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 		case <-time.After(backoff):
 		}
 
-		n, err := dc.client.DownloadChunk(ctx, name, etag, offset, buf)
-		if err == nil {
-			return n, nil
-		}
-
-		if err != dcache.ErrNotFoundAlreadyLocked && err != dcache.ErrNotFound {
+		n, err := dc.client.DownloadChunk(ctx, name, etag, offset, buf, dcache.WithLock(true))
+		switch err {
+		case nil:
+			if n == 0 {
+				// Corrupt/empty cache entry — treat like a miss but
+				// skip populate since we don't hold the lock.
+				log.Warn("DistCache::pollChunkIntoBuffer : L2 zero-byte hit %s offset=%d, falling through to storage", name, offset)
+				return 0, errPollCorruptHit
+			}
+			return n, nil // L2 hit
+		case dcache.ErrNotFoundGotLock:
+			// Peer's lock expired; we now own the miss. No server-side
+			// release API, so a dropped populate leaks the lock until TTL.
+			return 0, dcache.ErrNotFoundGotLock
+		case dcache.ErrNotFoundAlreadyLocked, dcache.ErrNotFound:
+			// Keep waiting.
+		default:
 			return 0, err
 		}
 
@@ -538,6 +560,14 @@ func (dc *DistCache) resolveMemBudget() int64 {
 // logged. This is intentional — read latency must not depend on dcache
 // cluster health. Memory is bounded by cap(dc.bufs) since every in-flight
 // upload holds exactly one buffer for its lifetime.
+//
+// Drop caveat: the caller implicitly holds the miss-lock, and dcache has
+// no lock-release API. A dropped populate leaks the lock until its
+// server-side TTL expires; other readers polling this chunk will either
+// inherit it on TTL (ErrNotFoundGotLock) or fall through to Azure on
+// their own poll deadline. Impact is bounded by min(lock TTL, poll
+// deadline). Mitigation: grow the fair-share cap in resolveMemBudget.
+// Drops are logged at Warn.
 func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byte) {
 	if dc.bufs == nil {
 		return // async populate disabled at Configure time
@@ -552,7 +582,7 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 	select {
 	case buf = <-dc.bufs:
 	default:
-		log.Debug("DistCache::schedulePopulate : buffer pool exhausted, dropping populate for %s offset=%d", name, offset)
+		log.Warn("DistCache::schedulePopulate : buffer pool exhausted, dropping populate for %s offset=%d; miss-lock will linger until TTL", name, offset)
 		return
 	}
 

@@ -248,6 +248,12 @@ func TestReadInBuffer_AlreadyLocked_PollTimeout_FallsThrough(t *testing.T) {
 		return 0, dcache.ErrNotFoundAlreadyLocked
 	}
 
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return nil
+	}
+
 	buf := make([]byte, 1024)
 	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   "test/file.bin",
@@ -259,6 +265,103 @@ func TestReadInBuffer_AlreadyLocked_PollTimeout_FallsThrough(t *testing.T) {
 	assert.Equal(t, len(azData), n)
 	assert.Equal(t, azData, buf[:n])
 	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to Azure after poll timeout")
+
+	// Peer still holds the lock at timeout, so populating from this
+	// reader would race the peer's write. Confirm we skipped populate.
+	dc.inflight.Wait()
+	assert.Equal(t, int32(0), uploads.Load(),
+		"must NOT populate on poll timeout: peer holds lock, populate would thundering-herd")
+}
+
+// TestReadInBuffer_AlreadyLocked_PollInheritsLock_DownloadsAndPopulates verifies
+// the recovery path when the peer's miss-lock expires mid-poll. The polling
+// DownloadChunk (with WithLock) returns ErrNotFoundGotLock, transferring
+// lock ownership to us; ReadInBuffer must then fetch from Azure AND populate
+// the cache since we now own the miss.
+func TestReadInBuffer_AlreadyLocked_PollInheritsLock_DownloadsAndPopulates(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure data via inherited lock")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	// First DownloadChunk (from ReadInBuffer's initial attempt): locked → poll.
+	// Second DownloadChunk (first poll tick): peer's lock TTL'd out → we own it.
+	callCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		callCount++
+		if callCount == 1 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
+		}
+		return 0, dcache.ErrNotFoundGotLock
+	}
+
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return nil
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fetch from Azure after inheriting the miss-lock")
+
+	// We own the lock now, so populate must run.
+	dc.inflight.Wait()
+	assert.Equal(t, int32(1), uploads.Load(),
+		"must populate after inheriting the miss-lock via poll")
+}
+
+// TestReadInBuffer_AlreadyLocked_PollZeroByteHit_FallsThroughWithoutPopulate
+// verifies that a corrupt (zero-byte) cache entry observed during polling is
+// treated as a miss: read is served from Azure, but populate is skipped
+// because we don't hold the miss-lock.
+func TestReadInBuffer_AlreadyLocked_PollZeroByteHit_FallsThroughWithoutPopulate(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure data after corrupt L2 hit")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	// First DownloadChunk (from ReadInBuffer): locked → poll.
+	// Second DownloadChunk (from poll): zero-byte hit → treat as miss.
+	callCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		callCount++
+		if callCount == 1 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
+		}
+		return 0, nil // zero-byte hit
+	}
+
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return nil
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fetch from Azure on zero-byte L2 hit during poll")
+
+	// We don't hold the lock, so populate must NOT run.
+	dc.inflight.Wait()
+	assert.Equal(t, int32(0), uploads.Load(),
+		"must NOT populate on zero-byte poll hit: no lock ownership")
 }
 
 func TestPriority(t *testing.T) {
