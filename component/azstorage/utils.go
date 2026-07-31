@@ -133,12 +133,33 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 	}, err
 }
 
-// getAzBlobServiceClientOptions : Create azblob service client options based on the config
+// getAzBlobServiceClientOptions : Create azblob service client options based on the config.
+// If the config has useSession enabled, SessionOptions are populated to activate the Session API
+// for the specified blob (fns) account and container. Session API requires OAuth-based
+// authentication (MSI, SPN, Azure CLI, Workload Identity); it is not supported with shared key
+// or SAS token authentication, and must not be used with DFS/ADLS accounts.
+// Note: the Session API is currently limited to Get Blob requests (HTTP GET on blob URLs without
+// a comp query parameter). All other requests fall back to standard bearer token authentication.
 func getAzBlobServiceClientOptions(conf *AzStorageConfig) (*service.ClientOptions, error) {
 	opts, err := getAzStorageClientOptions(conf)
-	return &service.ClientOptions{
+	svcOpts := &service.ClientOptions{
 		ClientOptions: opts,
-	}, err
+	}
+
+	if conf.useSession {
+		// Enable Session API for the blob (fns) account. This sets the session mode to
+		// SingleSpecifiedContainer, which scopes the session to the configured container.
+		// The account name and container name are required by the SDK to establish the session.
+		svcOpts.SessionOptions = service.SessionOptions{
+			Mode:          service.SessionModeSingleSpecifiedContainer,
+			AccountName:   conf.authConfig.AccountName,
+			ContainerName: conf.container,
+		}
+		log.Info("getAzBlobServiceClientOptions : Session API enabled for account %s, container %s",
+			conf.authConfig.AccountName, conf.container)
+	}
+
+	return svcOpts, err
 }
 
 // getAzDatalakeServiceClientOptions : Create azdatalake service client options based on the config

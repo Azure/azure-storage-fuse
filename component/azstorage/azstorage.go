@@ -699,6 +699,20 @@ func init() {
 	capIOps := config.AddInt64Flag("cap-iops", -1, "Limit the total storage operations per second. Default is -1 (no limit)")
 	config.BindPFlag(compName+".cap-iops", capIOps)
 
+	// use-session enables the Session API for Azure Blob Storage (fns/block) accounts.
+	// Requirements and limitations:
+	//   - Only supported with OAuth-based authentication (MSI, SPN, Azure CLI, Workload Identity).
+	//   - Ignored when using shared key or SAS token authentication.
+	//   - Not applicable to DFS/ADLS accounts; the flag is ignored when use-adls is set.
+	//   - Currently limited to Get Blob requests (HTTP GET on blob URLs without a comp query
+	//     parameter). All other requests fall back to standard bearer token authentication.
+	useSession := config.AddBoolFlag("use-session", false,
+		"Enables Session API for Azure Blob Storage (fns) accounts. "+
+			"Only supported with OAuth-based authentication (MSI/SPN/AzCLI/WorkloadIdentity). "+
+			"Ignored for key/SAS authentication and DFS/ADLS accounts. "+
+			"Currently limited to Get Blob requests; other requests use bearer token authentication.")
+	config.BindPFlag(compName+".use-session", useSession)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
