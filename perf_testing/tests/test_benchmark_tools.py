@@ -115,9 +115,22 @@ class PublicBenchmarkContractTests(unittest.TestCase):
         job_files.extend(suite["fixture_jobs"])
         for relative_path in job_files:
             job = runner.BENCHMARK_CONFIG_DIR / relative_path
+            lines = job.read_text(encoding="utf-8").splitlines()
+            section_headers = [line.strip() for line in lines if line.strip().startswith("[")]
+            self.assertTrue(section_headers, relative_path)
+            self.assertTrue(
+                all(
+                    header.startswith("[")
+                    and not header.startswith("[[")
+                    and header.endswith("]")
+                    and not header.endswith("]]")
+                    for header in section_headers
+                ),
+                relative_path,
+            )
             options = {
                 line.strip()
-                for line in job.read_text(encoding="utf-8").splitlines()
+                for line in lines
                 if line and not line.startswith("[")
             }
             self.assertIn("direct=1", options)
