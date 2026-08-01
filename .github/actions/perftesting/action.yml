@@ -207,6 +207,41 @@ runs:
           --account-type "${{ inputs.ACCOUNT_TYPE }}" \
           --cache-mode "${{ inputs.CACHE_MODE }}"
 
+    - name: Collect benchmark failure diagnostics
+      if: ${{ failure() && inputs.RUN_PROFILE == 'true' }}
+      shell: bash
+      run: |
+        set +e
+        diagnostics="$PERF_RESULTS/diagnostics"
+        mkdir -p "$diagnostics"
+
+        if [[ -f "$PERF_CONFIG" ]]; then
+          sed -E 's/^([[:space:]]*account-key:).*/\1 <redacted>/' \
+            "$PERF_CONFIG" > "$diagnostics/mount-config.redacted.yaml"
+        fi
+
+        {
+          date -u
+          uname -a
+          echo
+          echo "--- memory ---"
+          free -h
+          echo
+          echo "--- filesystems ---"
+          df -h
+          echo
+          echo "--- mounts ---"
+          findmnt
+          echo
+          echo "--- block devices ---"
+          lsblk -o NAME,MODEL,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+          echo
+          echo "--- benchmark result files ---"
+          find "$PERF_RESULTS" -maxdepth 4 -type f -printf '%P %s bytes\n' | sort
+        } > "$diagnostics/host-state.txt" 2>&1
+
+        sudo -n dmesg --ctime 2>&1 | tail -n 500 > "$diagnostics/kernel.log"
+
     - name: Remove generated secrets and mounts
       if: ${{ always() && inputs.RUN_PROFILE == 'true' }}
       shell: bash

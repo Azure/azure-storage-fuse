@@ -2,8 +2,8 @@
 ioengine=sync
 rw=write
 bs=10M
-size=20G
-numjobs=16
+size=80G
+numjobs=4
 filename_format=public-multi-read.$jobnum
 direct=1
 fallocate=none
