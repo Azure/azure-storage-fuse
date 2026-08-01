@@ -2,8 +2,8 @@
 ioengine=sync
 rw=read
 bs=10M
-size=20G
-numjobs=16
+size=80G
+numjobs=4
 filename_format=public-multi-read.$jobnum
 direct=1
 allow_file_create=0
@@ -12,4 +12,4 @@ group_reporting=1
 lat_percentiles=1
 percentile_list=50:95:99:99.9
 
-[sequential-read-multi-file]
+[sequential-read-four-file]

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "fixture_version": "v3",
+  "fixture_version": "v4",
   "suites": {
     "public": {
       "description": "Sustained single-stream and aggregate sequential throughput published to the public dashboard.",
@@ -28,8 +28,8 @@
           }
         },
         {
-          "id": "sequential-read-multi-file",
-          "name": "Sequential read: 16 threads, 16 files",
+          "id": "sequential-read-four-file",
+          "name": "Sequential read: 4 threads, 4 files",
           "job_file": "public/seq_read_multi.fio",
           "direction": "read",
           "primary_metric": "throughput_mib_s",
@@ -39,9 +39,9 @@
           "parameters": {
             "pattern": "sequential",
             "block_size": "10 MiB",
-            "concurrency": 16,
-            "files": 16,
-            "file_size": "20 GiB",
+            "concurrency": 4,
+            "files": 4,
+            "file_size": "80 GiB",
             "working_set": "320 GiB",
             "cache_state": "cold",
             "durability": "not applicable"
@@ -68,8 +68,8 @@
           }
         },
         {
-          "id": "sequential-write-multi-file",
-          "name": "Sequential write: 16 threads, 16 files",
+          "id": "sequential-write-four-file",
+          "name": "Sequential write: 4 threads, 4 files",
           "job_file": "public/seq_write_multi.fio",
           "direction": "write",
           "primary_metric": "throughput_mib_s",
@@ -79,9 +79,9 @@
           "parameters": {
             "pattern": "sequential",
             "block_size": "10 MiB",
-            "concurrency": 16,
-            "files": 16,
-            "file_size": "20 GiB",
+            "concurrency": 4,
+            "files": 4,
+            "file_size": "80 GiB",
             "working_set": "320 GiB",
             "cache_state": "cold",
             "durability": "end fsync"
