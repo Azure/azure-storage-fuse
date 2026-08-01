@@ -176,6 +176,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn(result_path, action)
         self.assertIn("RUN_PROFILE:", action)
         self.assertIn("inputs.RUN_PROFILE == 'true'", action)
+        self.assertIn('sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$PERF_MOUNT_DIR"', action)
         self.assertNotIn("/dev/nvme", action)
         self.assertNotIn("mdadm", action)
 

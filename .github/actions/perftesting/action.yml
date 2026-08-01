@@ -143,6 +143,7 @@ runs:
         PERF_CONTAINER_INPUT: ${{ inputs.BENCH_CONTAINER }}
       run: |
         set -euo pipefail
+        sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$PERF_MOUNT_DIR"
         mkdir -p "$PERF_RESULTS" "$PERF_CACHE_DIR"
         if [[ "${{ inputs.CACHE_MODE }}" == "block_cache" ]]; then
           ./blobfuse2 gen-test-config \
