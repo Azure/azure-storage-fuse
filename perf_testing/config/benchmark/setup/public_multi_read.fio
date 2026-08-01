@@ -1,4 +1,4 @@
-[[global]
+[global]
 ioengine=sync
 rw=write
 bs=10M
@@ -11,4 +11,4 @@ create_on_open=1
 end_fsync=1
 group_reporting=1
 
-[prepare-public-multi-read]]
+[prepare-public-multi-read]
