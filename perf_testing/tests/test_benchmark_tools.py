@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -88,14 +89,14 @@ class PublicBenchmarkContractTests(unittest.TestCase):
         public = manifest["suites"]["public"]
         workloads = {workload["id"]: workload for workload in public["workloads"]}
 
-        self.assertEqual(manifest["fixture_version"], "v3")
+        self.assertEqual(manifest["fixture_version"], "v4")
         self.assertEqual(
             set(workloads),
             {
                 "sequential-read-single-file",
-                "sequential-read-multi-file",
+                "sequential-read-four-file",
                 "sequential-write-single-file",
-                "sequential-write-multi-file",
+                "sequential-write-four-file",
             },
         )
         for workload in workloads.values():
@@ -105,9 +106,9 @@ class PublicBenchmarkContractTests(unittest.TestCase):
 
         for operation in ("read", "write"):
             single = workloads[f"sequential-{operation}-single-file"]["parameters"]
-            multi = workloads[f"sequential-{operation}-multi-file"]["parameters"]
+            multi = workloads[f"sequential-{operation}-four-file"]["parameters"]
             self.assertEqual((single["concurrency"], single["files"], single["file_size"]), (1, 1, "320 GiB"))
-            self.assertEqual((multi["concurrency"], multi["files"], multi["file_size"]), (16, 16, "20 GiB"))
+            self.assertEqual((multi["concurrency"], multi["files"], multi["file_size"]), (4, 4, "80 GiB"))
 
     def test_public_jobs_use_fio_direct_without_mount_wide_direct_io(self):
         suite, _ = runner.load_suite("public")
@@ -138,14 +139,31 @@ class PublicBenchmarkContractTests(unittest.TestCase):
             self.assertIn("group_reporting=1", options)
             if "single" in relative_path:
                 self.assertIn("size=320G", options)
-                self.assertNotIn("numjobs=16", options)
+                self.assertNotIn("numjobs=4", options)
             else:
-                self.assertIn("size=20G", options)
-                self.assertIn("numjobs=16", options)
+                self.assertIn("size=80G", options)
+                self.assertIn("numjobs=4", options)
 
         for config_name in ("azure_block_benchmark.yaml", "azure_file_benchmark.yaml"):
             config = (REPO_ROOT / "testdata/config" / config_name).read_text(encoding="utf-8")
             self.assertNotIn("direct-io:", config)
+
+        block_config = (REPO_ROOT / "testdata/config/azure_block_benchmark.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("max-fuse-threads:", block_config)
+        self.assertNotIn("block_cache:", block_config)
+        for setting in ("block-size-mb:", "mem-size-mb:", "prefetch:", "parallelism:"):
+            self.assertNotIn(setting, block_config)
+        self.assertIn("timeout-sec: 7200", block_config)
+
+        dashboard = (REPO_ROOT / "perf_testing/dashboard/public/index.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("sequential-read-four-file", dashboard)
+        self.assertIn("sequential-write-four-file", dashboard)
+        self.assertNotIn("sequential-read-multi-file", dashboard)
+        self.assertNotIn("sequential-write-multi-file", dashboard)
 
 
 class WorkflowShapeTests(unittest.TestCase):
@@ -181,6 +199,9 @@ class WorkflowShapeTests(unittest.TestCase):
 
     def test_profile_results_are_isolated_below_architecture_artifacts(self):
         action = (REPO_ROOT / ".github/actions/perftesting/action.yml").read_text(encoding="utf-8")
+        runner_source = (REPO_ROOT / "perf_testing/scripts/run_benchmark.py").read_text(
+            encoding="utf-8"
+        )
         result_path = (
             "benchmark-results/${{ inputs.ARCH }}/"
             "${{ inputs.ACCOUNT_TYPE }}/${{ inputs.CACHE_MODE }}"
@@ -190,11 +211,42 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn("RUN_PROFILE:", action)
         self.assertIn("inputs.RUN_PROFILE == 'true'", action)
         self.assertIn('sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$PERF_MOUNT_DIR"', action)
+        self.assertIn("Collect benchmark failure diagnostics", action)
+        self.assertIn("mount-config.redacted.yaml", action)
+        self.assertIn("$PERF_RESULTS/diagnostics", action)
+        self.assertIn('self.output_dir / "blobfuse2.log"', runner_source)
+        self.assertIn('f"--log-file-path={self.blobfuse_log_path}"', runner_source)
         self.assertNotIn("/dev/nvme", action)
         self.assertNotIn("mdadm", action)
 
 
 class FioResultTests(unittest.TestCase):
+    def test_mount_writes_blobfuse_log_to_the_suite_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
+            benchmark_runner.binary = root / "blobfuse2"
+            benchmark_runner.config = root / "config.yaml"
+            benchmark_runner.mount_dir = root / "mount"
+            benchmark_runner.output_dir = root / "results"
+            benchmark_runner.blobfuse_log_path = benchmark_runner.output_dir / "blobfuse2.log"
+            benchmark_runner.mounted = False
+            benchmark_runner.output_dir.mkdir()
+            benchmark_runner.unmount = mock.Mock()
+            benchmark_runner.clear_local_state = mock.Mock()
+            benchmark_runner.is_mounted = mock.Mock(return_value=True)
+
+            command_result = mock.Mock(returncode=0, stdout="")
+            with mock.patch.object(runner, "run_command", return_value=command_result) as run:
+                benchmark_runner.mount()
+
+            command = run.call_args.args[0]
+            self.assertIn(
+                f"--log-file-path={benchmark_runner.blobfuse_log_path}",
+                command,
+            )
+            self.assertEqual(run.call_args.kwargs["cwd"], benchmark_runner.output_dir)
+
     def test_azure_instance_metadata_extracts_vm_size_and_region(self):
         class Response:
             def __enter__(self):
@@ -352,6 +404,33 @@ class ScheduledRegressionTests(unittest.TestCase):
         )
         self.assertEqual(len(report["checks"]), 1)
         self.assertEqual(report["checks"][0]["run"]["suite"], "public")
+
+    def test_four_file_candidate_does_not_use_legacy_sixteen_file_history(self):
+        candidate = make_summary(suite="public")
+        candidate["benchmarks"][0]["id"] = "sequential-read-four-file"
+        history_runs = []
+        for index in range(5):
+            historical = make_summary(suite="public")
+            historical["key"] = str(index)
+            historical["generated_at"] = f"2026-07-{20 + index:02d}T00:00:00Z"
+            historical["benchmarks"][0]["id"] = "sequential-read-multi-file"
+            historical["benchmarks"] = [
+                {key: value for key, value in benchmark.items() if key != "samples"}
+                for benchmark in historical["benchmarks"]
+            ]
+            history_runs.append(historical)
+
+        report = regression_checker.evaluate_results(
+            {"schema_version": 1, "runs": history_runs},
+            [candidate],
+            window=5,
+            minimum_baselines=3,
+            primary_threshold=10.0,
+            latency_threshold=20.0,
+        )
+
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertEqual(report["checks"][0]["benchmarks"][0]["status"], "insufficient-baseline")
 
     def test_d192_candidate_does_not_use_d96_history(self):
         candidate = make_summary(value=850.0, vm_size="Standard_D192ds_v5")

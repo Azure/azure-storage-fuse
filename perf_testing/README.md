@@ -45,7 +45,7 @@ Migrate X86 without resizing the only active runner in place:
 6. Run public and regression workflows with `publish=false`, inspect artifacts, local-disk capacity, network ratios, and MAD, then run the D192 concurrency sweep described below.
 7. Publish only after no-publish runs pass. Keep the D96 runner available for rollback until at least three matching D192 runs establish the rolling baseline.
 
-Reuse the same Azure accounts, containers, regions, and benchmark configuration during the migration so the VM is the only intentional variable. Existing correctly sized `v3` read fixtures are stored in Azure and can be reused by D192. Clear local caches before every run as usual.
+Reuse the same Azure accounts, containers, regions, and benchmark configuration during the migration so the VM is the only intentional variable. Existing correctly sized `v4` read fixtures can be reused by D192. Clear local caches before every run as usual.
 
 The dashboards retain D96 and D192 as separate compute profiles. Regression checks also require the same VM SKU, Azure region, and configuration hash; initial D192 results show `insufficient-baseline` rather than comparing against D96.
 
@@ -75,9 +75,9 @@ For Actions file-cache jobs, `/mnt/localssd` must be a mounted dedicated filesys
 
 The scheduled ARM64 profiles use block cache only and do not use the VM's local NVMe array. The workflow leaves any image-provisioned ARM temporary-disk mount, such as `/mnt/azure_nvme_temp`, unchanged.
 
-The benchmark config intentionally keeps `max-fuse-threads=256`, block-cache `prefetch=128`, `parallelism=128`, and `mem-size-mb=16384` on D192. These are fixed workload/configuration controls, not formulas derived from a D96 CPU count. Keep them unchanged when establishing the D192 series. If a separate scaling experiment proves higher values improve D192, introduce a new configuration profile and workload/history identity instead of silently changing the existing series.
+The block-cache benchmark template does not set `max-fuse-threads` or any `block_cache` options. Blobfuse therefore resolves its runtime defaults for block size, memory pool, prefetch, worker parallelism, prefetch-on-open, and FUSE background requests on each measured host. The template still fixes component selection, authentication mode, error logging, `ignore-open-flags=true`, and a 7,200-second attribute-cache timeout. The secret-redacted generated-config hash is a history boundary, so default-config results are not compared with the earlier explicitly tuned profile.
 
-Likewise, the public multi-file case remains 16 FIO jobs on D192; it does not automatically scale to the VM CPU count. Before declaring it the D192 maximum, run an unpublished concurrency sweep at 8, 16, 32, and 64 independent files while keeping total bytes and all cache settings fixed. Choose the smallest concurrency at the throughput knee. If that is not 16, change the public workload deliberately, bump its IDs/fixture version, and establish a fresh series rather than mixing it with the 16-file history.
+The public aggregate case is fixed at four FIO jobs and does not scale with VM CPU count. It is a representative comparison point, not a statement that four streams are required to saturate the network. Any future concurrency change must use new workload IDs and a new fixture version rather than mixing different application-concurrency contracts in one history series.
 
 A cached `sudo -v` ticket may expire during fixture creation. Configure the dedicated benchmark user for the required non-interactive cache-drop operation according to your VM security policy; do not weaken sudo policy on a shared machine.
 
@@ -131,7 +131,7 @@ Before transferring data, append `--validate-only` to a runner command to check 
 If you invoke the public read FIO files directly instead of using `run_benchmark.py`, prepare their immutable files once in the same directory that will be passed to the read jobs:
 
 ```bash
-FIXTURE_DIR="${MOUNT_DIR}/.blobfuse-benchmark-fixtures/v3"
+FIXTURE_DIR="${MOUNT_DIR}/.blobfuse-benchmark-fixtures/v4"
 mkdir -p "$FIXTURE_DIR"
 
 fio --directory="$FIXTURE_DIR" \
@@ -140,9 +140,9 @@ fio --directory="$FIXTURE_DIR" \
 	perf_testing/config/benchmark/setup/public_multi_read.fio
 
 test "$(stat -c %s "$FIXTURE_DIR/public-single-read.data")" -eq $((320 * 1024 * 1024 * 1024))
-test "$(find "$FIXTURE_DIR" -maxdepth 1 -type f -name 'public-multi-read.*' | wc -l)" -eq 16
+test "$(find "$FIXTURE_DIR" -maxdepth 1 -type f -name 'public-multi-read.*' | wc -l)" -eq 4
 test -z "$(find "$FIXTURE_DIR" -maxdepth 1 -type f -name 'public-multi-read.*' \
-	! -size $((20 * 1024 * 1024 * 1024))c -print -quit)"
+	! -size $((80 * 1024 * 1024 * 1024))c -print -quit)"
 ```
 
 After fixture creation completes, unmount Blobfuse, clear kernel and local cache state, remount, and run the reads against that same directory:
@@ -159,7 +159,7 @@ fio --directory="$FIXTURE_DIR" \
 	perf_testing/config/benchmark/public/seq_read_multi.fio
 ```
 
-The expected fixture names are `public-single-read.data` at 320 GiB and `public-multi-read.0` through `public-multi-read.15` at 20 GiB each. Do not remove `allow_file_create=0` from the read jobs and do not recreate fixtures inside the measured read command. The benchmark runner performs this preparation, validation, unmount, cache clearing, and remount sequence automatically.
+The expected fixture names are `public-single-read.data` at 320 GiB and `public-multi-read.0` through `public-multi-read.3` at 80 GiB each. Do not remove `allow_file_create=0` from the read jobs and do not recreate fixtures inside the measured read command. The benchmark runner performs this preparation, validation, unmount, cache clearing, and remount sequence automatically.
 
 Run a one-trial public smoke test first. Fixture creation is automatic; the first public run uploads 640 GiB of persistent read fixtures:
 
@@ -218,7 +218,7 @@ python3 perf_testing/scripts/run_benchmark.py \
 	--architecture X86 --account-type "$ACCOUNT_TYPE" --cache-mode file_cache
 ```
 
-Each successful output directory contains `summary.json` and a `raw/` tree with per-trial FIO JSON. A failed invocation writes `failure.json`. Print the primary medians and MAD values with:
+Each output directory contains `blobfuse2.log`; successful runs also contain `summary.json` and a `raw/` tree with per-trial FIO JSON. A failed invocation writes `failure.json`, and Actions adds `diagnostics/host-state.txt`, `diagnostics/kernel.log`, and a secret-redacted mount config to the same profile artifact. Print the primary medians and MAD values with:
 
 ```bash
 jq -r '.benchmarks[] | . as $b | [
@@ -333,7 +333,7 @@ git ls-tree --name-only origin/benchmarks:release/latest
 
 The new workload IDs deliberately start new history series; old generated chart data is not converted. Rolling regression checks report `insufficient-baseline` until at least three matching runs exist. Do not lower the gate just to make the transition green. Establish baselines with repeated runs on unchanged code and unchanged infrastructure, then investigate any high MAD before trusting automatic regression failures.
 
-Fixture schema `v3` starts a new persistent fixture namespace for the 320 GiB public workload. Keep older fixture versions until successful public and developer runs verify `v3` on every account. Then remove only obsolete `.blobfuse-benchmark-fixtures/v1/` and `.blobfuse-benchmark-fixtures/v2/` paths from each dedicated benchmark container to reclaim space. Never run broad container cleanup against a container containing unrelated data.
+Fixture schema `v4` starts a new persistent fixture namespace for the four-file public workload. Keep older fixture versions until successful public and developer runs verify `v4` on every account. Then remove only obsolete `.blobfuse-benchmark-fixtures/v1/`, `v2/`, and `v3/` paths from each dedicated benchmark container to reclaim space. Never run broad container cleanup against a container containing unrelated data.
 
 If the site migration must be rolled back, use a clean checkout to revert the generated publication commit on the `benchmarks` branch:
 
@@ -359,19 +359,19 @@ The public page is generated from the `public` suite and accepts only these dime
 | Operation | FIO jobs | Files | Size per file | Total data | FIO block size |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Sequential read | 1 | 1 | 320 GiB | 320 GiB | 10 MiB |
-| Sequential read | 16 | 16 | 20 GiB | 320 GiB | 10 MiB |
+| Sequential read | 4 | 4 | 80 GiB | 320 GiB | 10 MiB |
 | Durable sequential write | 1 | 1 | 320 GiB | 320 GiB | 10 MiB |
-| Durable sequential write | 16 | 16 | 20 GiB | 320 GiB | 10 MiB |
+| Durable sequential write | 4 | 4 | 80 GiB | 320 GiB | 10 MiB |
 
 Every measured FIO job uses `direct=1`, so FIO requests `O_DIRECT` when it opens each benchmark file. The mount configuration deliberately does **not** enable mount-wide `libfuse.direct-io`; normal mount behavior is retained so the kernel can schedule concurrent FUSE requests. In FIO's default unit mode, `bs=10M` means a 10 MiB **application I/O unit**. The kernel and FUSE protocol may split that unit into smaller requests before Blobfuse receives it. The dashboard consistently reports MiB/s and GiB.
 
-All four jobs use FIO's synchronous engine. The single-file cases therefore have one FIO job with one application I/O in flight. The multi-file cases have sixteen independent FIO jobs, each with one application I/O in flight against its own file. “Single stream” describes the application workload; it does not disable Blobfuse prefetching, Azure SDK concurrency, or other internal parallelism.
+All four cases use FIO's synchronous engine. The single-file cases therefore have one FIO job with one application I/O in flight. The aggregate cases have four independent FIO jobs, each with one application I/O in flight against its own file. “Single stream” describes the application workload; it does not disable Blobfuse prefetching, Azure SDK concurrency, or other internal parallelism.
 
 The public read fixtures are remounted with local and kernel cache state cleared before every measured trial. Application direct I/O bypasses buffered application access, while Blobfuse block cache remains the component under test. The network-transfer invariant ensures a supposedly cold read did not become a local-cache result.
 
 Reads use immutable pre-created objects and reject a trial when received network bytes are unexpectedly low. Writes use `end_fsync=1` and reject a trial when transmitted network bytes are unexpectedly low. Displayed throughput is total bytes divided by wall-clock test time, so read open time and write durable-completion time are included. Each result is the median of three isolated trials, with MAD shown as the run-to-run variability signal.
 
-Interpret the single-file result as sustained throughput for one application stream over one file. Interpret the multi-file result as aggregate throughput when independent application streams access independent files concurrently. The ratio between them shows scaling for this fixed benchmark setup; it is not a storage-account SLA or a guarantee for every VM, network path, cache configuration, or workload.
+Interpret the single-file result as sustained throughput for one application stream over one file. Interpret the four-file result as aggregate throughput when four independent application streams access four independent files concurrently. The ratio between them shows scaling for this fixed benchmark setup; it neither specifies the concurrency required to saturate a network nor guarantees performance for every VM, network path, cache configuration, or workload.
 
 The public page records the exact Blobfuse2 version, FIO version, kernel, CPU model, CPU count, memory size, Azure VM SKU and region, architecture, account tier, and a secret-redacted mount-configuration hash with every run. VM SKU, region, and configuration are history boundaries: D192 is not compared with D96. Storage-account region, network configuration, and account limits should also be recorded in repository or runner documentation because they can cap throughput independently of Blobfuse2.
 

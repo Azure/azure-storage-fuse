@@ -27,7 +27,7 @@ FIXTURE_LAYOUTS = {
     "setup/warm_read.fio": [("warm-read.data", 512 * 1024**2)],
     "setup/public_single_read.fio": [("public-single-read.data", 320 * GIB)],
     "setup/public_multi_read.fio": [
-        (f"public-multi-read.{index}", 20 * GIB) for index in range(16)
+        (f"public-multi-read.{index}", 80 * GIB) for index in range(4)
     ],
 }
 
@@ -252,6 +252,7 @@ class BenchmarkRunner:
         self.config = Path(args.config).resolve()
         self.output_dir = Path(args.output_dir).resolve()
         self.raw_dir = self.output_dir / "raw"
+        self.blobfuse_log_path = self.output_dir / "blobfuse2.log"
         self.suite, fixture_version = load_suite(args.suite)
         self.suite["workloads"] = [
             workload
@@ -355,6 +356,7 @@ class BenchmarkRunner:
                 "mount",
                 str(self.mount_dir),
                 f"--config-file={self.config}",
+                f"--log-file-path={self.blobfuse_log_path}",
             ],
             cwd=self.output_dir,
             timeout=120,
