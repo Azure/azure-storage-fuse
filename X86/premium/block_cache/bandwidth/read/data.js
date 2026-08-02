@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785049046894,
+  "lastUpdate": 1785654366999,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1310,6 +1310,63 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 51.6376953125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1b873fc786059598311350804a94e5c9a46896aa",
+          "message": "Bump github/codeql-action from 4 to 4.37.3 (#2299)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Sourav Gupta <98318303+souravgupta-msft@users.noreply.github.com>",
+          "timestamp": "2026-07-31T08:18:30Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/1b873fc786059598311350804a94e5c9a46896aa"
+        },
+        "date": 1785654365100,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read_small_file",
+            "value": 3489.0498046875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 4243.291015625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read",
+            "value": 2716.900390625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 8.0078125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 3403.0107421875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3484.7705078125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 33.1533203125,
             "unit": "MiB/s"
           }
         ]
