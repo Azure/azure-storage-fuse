@@ -17,7 +17,6 @@ file_cache:
   path: { 1 }
   timeout-sec: 120
   allow-non-empty-temp: true
-  cleanup-on-start: true
   sync-to-flush: true
 
 attr_cache:

@@ -253,6 +253,9 @@ class BenchmarkRunner:
         self.output_dir = Path(args.output_dir).resolve()
         self.raw_dir = self.output_dir / "raw"
         self.blobfuse_log_path = self.output_dir / "blobfuse2.log"
+        self.blobfuse_work_dir = self.output_dir / "blobfuse-work"
+        pid_name = str(self.mount_dir).replace("/", "_") + ".pid"
+        self.blobfuse_pid_path = self.blobfuse_work_dir / pid_name
         self.suite, fixture_version = load_suite(args.suite)
         self.suite["workloads"] = [
             workload
@@ -331,25 +334,39 @@ class BenchmarkRunner:
         result = run_command(["findmnt", "-rn", "-T", str(self.mount_dir)], check=False)
         return result.returncode == 0 and str(self.mount_dir) in result.stdout
 
+    def wait_for_blobfuse_exit(self, timeout: int = 120) -> None:
+        deadline = time.monotonic() + timeout
+        while self.blobfuse_pid_path.exists():
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Blobfuse2 did not finish shutdown for {self.mount_dir}; "
+                    f"PID file remains at {self.blobfuse_pid_path}"
+                )
+            time.sleep(0.2)
+
     def unmount(self) -> None:
         if not self.is_mounted():
             self.mounted = False
+            self.wait_for_blobfuse_exit()
             return
         run_command([str(self.binary), "unmount", str(self.mount_dir)], timeout=90, check=False)
         for _ in range(30):
             if not self.is_mounted():
                 self.mounted = False
+                self.wait_for_blobfuse_exit()
                 return
             time.sleep(1)
         run_command(["fusermount3", "-u", "-z", str(self.mount_dir)], timeout=30, check=False)
         if self.is_mounted():
             raise RuntimeError(f"Unable to unmount {self.mount_dir}")
         self.mounted = False
+        self.wait_for_blobfuse_exit()
 
     def mount(self) -> None:
         self.unmount()
         self.clear_local_state()
         self.mount_dir.mkdir(parents=True, exist_ok=True)
+        self.blobfuse_work_dir.mkdir(parents=True, exist_ok=True)
         result = run_command(
             [
                 str(self.binary),
@@ -357,6 +374,7 @@ class BenchmarkRunner:
                 str(self.mount_dir),
                 f"--config-file={self.config}",
                 f"--log-file-path={self.blobfuse_log_path}",
+                f"--default-working-dir={self.blobfuse_work_dir}",
             ],
             cwd=self.output_dir,
             timeout=120,
