@@ -2,11 +2,11 @@
 ioengine=filestat
 rw=read
 filesize=4K
-nrfiles=1000
+nrfiles=125
 numjobs=8
 filename_format=metadata.$jobnum.$filenum
 group_reporting=1
 lat_percentiles=1
-percentile_list=50:95:99:99.9
+percentile_list=50:95:99
 
-[metadata-stat]
+[metadata-stat-1k]
