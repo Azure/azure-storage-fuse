@@ -4,7 +4,7 @@
   "suites": {
     "public": {
       "description": "Sustained single-stream and aggregate sequential throughput published to the public dashboard.",
-      "trials": 3,
+      "trials": 5,
       "fixture_jobs": ["setup/public_single_read.fio", "setup/public_multi_read.fio"],
       "workloads": [
         {
@@ -91,7 +91,7 @@
     },
     "regression": {
       "description": "Broad component and filesystem regression coverage for maintainers.",
-      "trials": 3,
+      "trials": 5,
       "fixture_jobs": ["setup/max_read.fio", "setup/warm_read.fio"],
       "workloads": [
         {
@@ -280,7 +280,7 @@
     },
     "quick": {
       "description": "Representative pre-PR comparison suite for one stable X86 runner.",
-      "trials": 3,
+      "trials": 5,
       "fixture_jobs": ["setup/max_read.fio", "setup/warm_read.fio"],
       "workloads": [
         {

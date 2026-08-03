@@ -21,7 +21,7 @@ def load_json(path: Path) -> dict[str, Any]:
         return json.load(json_file)
 
 
-def environment_key(result: dict[str, Any]) -> tuple[str, str, str]:
+def environment_key(result: dict[str, Any]) -> tuple[str, str, str, str]:
     run = result.get("run", {})
     environment = result.get("environment", {})
     profile = run.get("compute_profile") or environment.get("compute_profile")
@@ -34,6 +34,7 @@ def environment_key(result: dict[str, Any]) -> tuple[str, str, str]:
         str(profile),
         str(environment.get("azure_region", "unknown")),
         str(environment.get("config_sha256", "unknown")),
+        str(run.get("trials", "unknown")),
     )
 
 

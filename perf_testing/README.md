@@ -47,7 +47,7 @@ Migrate X86 without resizing the only active runner in place:
 
 Reuse the same Azure accounts, containers, regions, and benchmark configuration during the migration so the VM is the only intentional variable. Existing correctly sized `v4` read fixtures can be reused by D192. Clear local caches before every run as usual.
 
-The dashboards retain D96 and D192 as separate compute profiles. Regression checks also require the same VM SKU, Azure region, and configuration hash; initial D192 results show `insufficient-baseline` rather than comparing against D96.
+The dashboards retain D96 and D192 as separate compute profiles. Regression checks also require the same VM SKU, Azure region, configuration hash, and trial count; initial D192 or five-trial results show `insufficient-baseline` rather than comparing against a different profile or three-trial history.
 
 ## Run on a standalone benchmark VM
 
@@ -175,7 +175,7 @@ python3 perf_testing/scripts/run_benchmark.py \
 
 The runner deletes each transient write trial immediately after collecting its metrics. Budget approximately 960 GiB peak container usage for 640 GiB of persistent fixtures plus one 320 GiB write trial, excluding developer fixtures, deletion lag, or old fixture versions. `--keep-data` disables this cleanup and requires substantially more capacity.
 
-If the smoke test succeeds, run the publishable three-trial public suite by omitting `--trials`:
+If the smoke test succeeds, run the publishable five-trial public suite by omitting `--trials`:
 
 ```bash
 python3 perf_testing/scripts/run_benchmark.py \
@@ -266,7 +266,7 @@ Test Actions without changing Pages first:
 
 1. Run **Blobfuse2 Performance** manually on `main` with `suite=public` and `publish=false`.
 2. Confirm both architecture jobs succeed and download `perf-X86` and `perf-ARM64`. Together they must contain four public summaries: standard and premium block cache for both architectures.
-3. Verify each public `summary.json` has four benchmarks, three samples per benchmark, positive throughput, approximately 320 GiB per trial, and a network/I/O ratio of at least 0.75.
+3. Verify each public `summary.json` has four benchmarks, five samples per benchmark, positive throughput, approximately 320 GiB per trial, and a network/I/O ratio of at least 0.75.
 4. Run `suite=regression` with `publish=false`. The X86 artifact must contain eight regression summaries and the ARM64 artifact two, covering X86 block/file cache, HNS, and ARM64 block cache before unattended publication is enabled.
 
 Useful artifact checks after extracting them under `benchmark-artifacts/`:
@@ -282,7 +282,7 @@ for summary in "${public_summaries[@]}"; do
 		.run.suite == "public" and
 		(.benchmarks | length == 4) and
 		all(.benchmarks[];
-			(.samples | length == 3) and
+			(.samples | length == 5) and
 			(.metrics[.primary_metric].median > 0) and
 			(.metrics.io_gib.median > 319.9) and
 			(.metrics.network_to_io_ratio.median >= 0.75)
@@ -369,11 +369,11 @@ All four cases use FIO's synchronous engine. The single-file cases therefore hav
 
 The public read fixtures are remounted with local and kernel cache state cleared before every measured trial. Application direct I/O bypasses buffered application access, while Blobfuse block cache remains the component under test. The network-transfer invariant ensures a supposedly cold read did not become a local-cache result.
 
-Reads use immutable pre-created objects and reject a trial when received network bytes are unexpectedly low. Writes use `end_fsync=1` and reject a trial when transmitted network bytes are unexpectedly low. Displayed throughput is total bytes divided by wall-clock test time, so read open time and write durable-completion time are included. Each result is the median of three isolated trials, with MAD shown as the run-to-run variability signal.
+Reads use immutable pre-created objects and reject a trial when received network bytes are unexpectedly low. Writes use `end_fsync=1` and reject a trial when transmitted network bytes are unexpectedly low. Displayed throughput is total bytes divided by wall-clock test time, so read open time and write durable-completion time are included. Each result is the median of five isolated trials, with MAD shown as the run-to-run variability signal.
 
 Interpret the single-file result as sustained throughput for one application stream over one file. Interpret the four-file result as aggregate throughput when four independent application streams access four independent files concurrently. The ratio between them shows scaling for this fixed benchmark setup; it neither specifies the concurrency required to saturate a network nor guarantees performance for every VM, network path, cache configuration, or workload.
 
-The public page records the exact Blobfuse2 version, FIO version, kernel, CPU model, CPU count, memory size, Azure VM SKU and region, architecture, account tier, and a secret-redacted mount-configuration hash with every run. VM SKU, region, and configuration are history boundaries: D192 is not compared with D96. Storage-account region, network configuration, and account limits should also be recorded in repository or runner documentation because they can cap throughput independently of Blobfuse2.
+The public page records the exact Blobfuse2 version, FIO version, kernel, CPU model, CPU count, memory size, Azure VM SKU and region, architecture, account tier, trial count, and a secret-redacted mount-configuration hash with every run. VM SKU, region, configuration, and trial count are history boundaries: D192 is not compared with D96, and five-trial runs are not compared with three-trial runs. Storage-account region, network configuration, and account limits should also be recorded in repository or runner documentation because they can cap throughput independently of Blobfuse2.
 
 Do not add diagnostic or narrow microbenchmarks to the public suite. Public series should remain small, understandable, and comparable across releases.
 
@@ -424,7 +424,7 @@ Follow these rules:
 4. Durable writes must use `end_fsync=1`; keep sync latency separate from I/O latency.
 5. Use `group_reporting=1` for cloned FIO jobs and unique files or explicit offsets when workers must not overlap.
 6. Public data-path jobs must use FIO `direct=1`; benchmark mount profiles must not enable mount-wide `libfuse.direct-io`.
-7. Keep at least three trials in scheduled suites and publish median plus MAD rather than a single result or best run.
+7. Keep five trials in scheduled suites and publish median plus MAD rather than a single result or best run.
 8. Bump `fixture_version` when fixture names, sizes, or content assumptions change.
 9. Start a new workload ID when semantics change. Reusing an ID for a different workload creates a misleading historical series.
 
