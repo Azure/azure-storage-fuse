@@ -196,7 +196,6 @@ func OnConfigChange() {
 		MaxFileSize: newLogOptions.MaxLogFileSize,
 		FileCount:   newLogOptions.LogFileCount,
 		TimeTracker: newLogOptions.TimeTracker,
-		LogCompress: newLogOptions.LogCompress,
 	})
 
 	if err != nil {

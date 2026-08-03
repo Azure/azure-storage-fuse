@@ -70,6 +70,8 @@ type BaseLogger struct {
 
 	fileConfig LogFileConfig
 	compressWg sync.WaitGroup
+	rotateMu   sync.Mutex
+	rotationID uint64
 }
 
 func newBaseLogger(config LogFileConfig) (*BaseLogger, error) {
@@ -146,7 +148,6 @@ func (l *BaseLogger) SetLogFile(name string) error {
 				l.fileConfig.currentLogSize = uint64(fi.Size())
 			}
 		}
-		l.logger.SetOutput(l.logFileHandle)
 	}
 	return nil
 }
@@ -175,7 +176,7 @@ func (l *BaseLogger) init() error {
 		}
 	}
 	if l.fileConfig.LogLevel == common.ELogLevel.INVALID() {
-		l.fileConfig.LogLevel = common.ELogLevel.LOG_DEBUG()
+		l.SetLogLevel(common.ELogLevel.LOG_DEBUG())
 	}
 	if l.fileConfig.LogSize == 0 {
 		l.SetMaxLogSize(common.DefaultMaxLogFileSize)
@@ -268,47 +269,35 @@ func (l *BaseLogger) LogRotate() error {
 		return nil
 	}
 
-	// ensure any previous async compression has finished before shifting files
-	l.compressWg.Wait()
+	l.rotateMu.Lock()
+	defer l.rotateMu.Unlock()
 
 	if err := l.logFileHandle.Close(); err != nil {
 		return err
 	}
 
-	var fname, fnameNew string
+	l.rotationID++
+	rotationID := l.rotationID
+	logFile := l.fileConfig.LogFile
+	fileCount := l.fileConfig.LogFileCount
 
-	// delete the oldest file (plain or compressed)
-	fname = fmt.Sprintf("%s.%d.gz", l.fileConfig.LogFile, l.fileConfig.LogFileCount-1)
-	os.Remove(fname)
-	fname = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, l.fileConfig.LogFileCount-1)
-	os.Remove(fname)
+	// Delete the oldest file, then shift each completed archive independently.
+	os.Remove(fmt.Sprintf("%s.%d.gz", logFile, fileCount-1))
+	os.Remove(fmt.Sprintf("%s.%d", logFile, fileCount-1))
 
-	// shift .N-1 → .N, preferring .gz variant
-	for i := l.fileConfig.LogFileCount - 2; i > 0; i-- {
-		fname = fmt.Sprintf("%s.%d.gz", l.fileConfig.LogFile, i)
-		fnameNew = fmt.Sprintf("%s.%d.gz", l.fileConfig.LogFile, i+1)
-		if _, err := os.Stat(fname); err == nil {
-			_ = os.Rename(fname, fnameNew)
-		} else {
-			fname = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, i)
-			fnameNew = fmt.Sprintf("%s.%d", l.fileConfig.LogFile, i+1)
-			_ = os.Rename(fname, fnameNew)
-		}
+	for i := fileCount - 2; i > 0; i-- {
+		_ = os.Rename(fmt.Sprintf("%s.%d.gz", logFile, i), fmt.Sprintf("%s.%d.gz", logFile, i+1))
+		_ = os.Rename(fmt.Sprintf("%s.%d", logFile, i), fmt.Sprintf("%s.%d", logFile, i+1))
 	}
 
-	_ = os.Rename(l.fileConfig.LogFile, l.fileConfig.LogFile+".1")
-
+	rotatedFile := logFile + ".1"
 	if l.fileConfig.LogCompress {
-		src := l.fileConfig.LogFile + ".1"
-		l.compressWg.Add(1)
-		go func() {
-			defer l.compressWg.Done()
-			_ = l.compressFile(src)
-		}()
+		rotatedFile = fmt.Sprintf("%s.%d.%d.tmp", logFile, l.procPID, rotationID)
 	}
+	rotateErr := os.Rename(logFile, rotatedFile)
 
 	var err error
-	l.logFileHandle, err = os.OpenFile(l.fileConfig.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	l.logFileHandle, err = os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		l.logFileHandle = os.Stdout
 	}
@@ -319,7 +308,38 @@ func (l *BaseLogger) LogRotate() error {
 	// Notify post-rotation hooks (e.g. runtime crash output) that the underlying file has changed.
 	invokeRotateHooks()
 
+	if l.fileConfig.LogCompress && rotateErr == nil {
+		l.compressWg.Add(1)
+		go l.compressRotatedFile(rotatedFile, logFile, rotationID, fileCount)
+	}
+
 	return nil
+}
+
+func (l *BaseLogger) compressRotatedFile(fname string, logFile string, rotationID uint64, fileCount int) {
+	defer l.compressWg.Done()
+
+	if err := l.compressFile(fname); err != nil {
+		l.rotateMu.Lock()
+		l.logger.Printf("Failed to compress rotated log file %s: %v", fname, err)
+		l.rotateMu.Unlock()
+		return
+	}
+
+	l.rotateMu.Lock()
+	defer l.rotateMu.Unlock()
+
+	age := l.rotationID - rotationID + 1
+	compressedFile := fname + ".gz"
+	if fileCount > 1 && age >= uint64(fileCount) {
+		_ = os.Remove(compressedFile)
+		return
+	}
+
+	destination := fmt.Sprintf("%s.%d.gz", logFile, age)
+	if err := os.Rename(compressedFile, destination); err != nil {
+		l.logger.Printf("Failed to finalize compressed log file %s: %v", fname, err)
+	}
 }
 
 // compressFile gzip-compresses src to src+".gz" and removes src on success.
