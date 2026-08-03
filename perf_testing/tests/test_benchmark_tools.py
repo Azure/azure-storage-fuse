@@ -171,6 +171,37 @@ class PublicBenchmarkContractTests(unittest.TestCase):
         self.assertNotIn("sequential-write-multi-file", dashboard)
 
 
+class DeveloperBenchmarkContractTests(unittest.TestCase):
+    def test_metadata_workloads_use_one_thousand_operations(self):
+        manifest = runner.load_manifest()
+        regression = manifest["suites"]["regression"]
+        workloads = {workload["id"]: workload for workload in regression["workloads"]}
+        metadata_jobs = {
+            "metadata-create-1k": "metadata_create.fio",
+            "metadata-stat-1k": "metadata_stat.fio",
+            "metadata-delete-1k": "metadata_delete.fio",
+        }
+
+        for workload_id, filename in metadata_jobs.items():
+            workload = workloads[workload_id]
+            self.assertEqual(workload["parameters"]["concurrency"], 8)
+            self.assertEqual(workload["parameters"]["operations"], 1000)
+            job = (
+                runner.BENCHMARK_CONFIG_DIR / "regression" / filename
+            ).read_text(encoding="utf-8")
+            self.assertIn("nrfiles=125", job)
+            self.assertIn("numjobs=8", job)
+            self.assertIn("percentile_list=50:95:99", job)
+            self.assertNotIn("99.9", job)
+            self.assertIn(f"[{workload_id}]", job)
+
+        quick_refs = {
+            item["ref"] for item in manifest["suites"]["quick"]["workloads"]
+        }
+        self.assertIn("metadata-create-1k", quick_refs)
+        self.assertNotIn("metadata-create", quick_refs)
+
+
 class WorkflowShapeTests(unittest.TestCase):
     def test_scheduled_workflow_acquires_one_runner_per_architecture(self):
         workflow = (REPO_ROOT / ".github/workflows/benchmark.yml").read_text(encoding="utf-8")
