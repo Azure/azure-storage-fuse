@@ -27,7 +27,7 @@ steps:
   - script: |
       sudo apt-get update
       sudo apt-get install jq python3-setuptools python3-pip -y
-      sudo pip3 install pandas numpy pyarrow fastparquet
+      sudo pip3 install pandas numpy pyarrow fastparquet --break-system-packages
     displayName: 'Install dependencies'
 
   - script: |
