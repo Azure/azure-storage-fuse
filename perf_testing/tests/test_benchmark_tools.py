@@ -28,6 +28,7 @@ def make_summary(
     cache_mode="block_cache",
     value=1000.0,
     vm_size="Standard_D96ds_v5",
+    trials=5,
 ):
     return {
         "schema_version": 1,
@@ -42,6 +43,7 @@ def make_summary(
             "account_type": "premium",
             "cache_mode": cache_mode,
             "compute_profile": vm_size,
+            "trials": trials,
         },
         "environment": {
             "architecture": "X86",
@@ -90,6 +92,9 @@ class PublicBenchmarkContractTests(unittest.TestCase):
         workloads = {workload["id"]: workload for workload in public["workloads"]}
 
         self.assertEqual(manifest["fixture_version"], "v4")
+        self.assertTrue(
+            all(suite["trials"] == 5 for suite in manifest["suites"].values())
+        )
         self.assertEqual(
             set(workloads),
             {
@@ -169,6 +174,9 @@ class PublicBenchmarkContractTests(unittest.TestCase):
 class WorkflowShapeTests(unittest.TestCase):
     def test_scheduled_workflow_acquires_one_runner_per_architecture(self):
         workflow = (REPO_ROOT / ".github/workflows/benchmark.yml").read_text(encoding="utf-8")
+        comparison_workflow = (
+            REPO_ROOT / ".github/workflows/benchmark-compare.yml"
+        ).read_text(encoding="utf-8")
         profiles = (
             "standard block-cache",
             "premium block-cache",
@@ -196,6 +204,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn("name: perf-${{ matrix.arch }}", workflow)
         self.assertNotIn("matrix.account_type", workflow)
         self.assertNotIn("matrix.cache_mode", workflow)
+        self.assertIn('default: "5"', comparison_workflow)
 
     def test_profile_results_are_isolated_below_architecture_artifacts(self):
         action = (REPO_ROOT / ".github/actions/perftesting/action.yml").read_text(encoding="utf-8")
@@ -221,6 +230,37 @@ class WorkflowShapeTests(unittest.TestCase):
 
 
 class FioResultTests(unittest.TestCase):
+    def test_run_records_resolved_trial_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
+            benchmark_runner.output_dir = Path(temporary) / "results"
+            benchmark_runner.raw_dir = benchmark_runner.output_dir / "raw"
+            benchmark_runner.suite = {"trials": 5, "workloads": []}
+            benchmark_runner.args = argparse.Namespace(
+                trials=None,
+                validate_only=False,
+                prepare_only=False,
+                run_id="run-1",
+                label="main",
+                suite="public",
+                commit="a" * 40,
+                ref="refs/heads/main",
+                architecture="X86",
+                account_type="premium",
+                cache_mode="block_cache",
+            )
+            benchmark_runner.validate = mock.Mock()
+            benchmark_runner.environment = mock.Mock(
+                return_value={"compute_profile": "Standard_D96ds_v5"}
+            )
+            benchmark_runner.ensure_fixtures = mock.Mock()
+            benchmark_runner.unmount = mock.Mock()
+            benchmark_runner.cleanup_remote_run = mock.Mock()
+
+            result = benchmark_runner.run()
+
+        self.assertEqual(result["run"]["trials"], 5)
+
     def test_mount_writes_blobfuse_log_to_the_suite_output(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -414,6 +454,31 @@ class ScheduledRegressionTests(unittest.TestCase):
             historical["key"] = str(index)
             historical["generated_at"] = f"2026-07-{20 + index:02d}T00:00:00Z"
             historical["benchmarks"][0]["id"] = "sequential-read-multi-file"
+            historical["benchmarks"] = [
+                {key: value for key, value in benchmark.items() if key != "samples"}
+                for benchmark in historical["benchmarks"]
+            ]
+            history_runs.append(historical)
+
+        report = regression_checker.evaluate_results(
+            {"schema_version": 1, "runs": history_runs},
+            [candidate],
+            window=5,
+            minimum_baselines=3,
+            primary_threshold=10.0,
+            latency_threshold=20.0,
+        )
+
+        self.assertEqual(report["overall_status"], "pass")
+        self.assertEqual(report["checks"][0]["benchmarks"][0]["status"], "insufficient-baseline")
+
+    def test_five_trial_candidate_does_not_use_three_trial_history(self):
+        candidate = make_summary(trials=5)
+        history_runs = []
+        for index in range(5):
+            historical = make_summary(trials=3)
+            historical["key"] = str(index)
+            historical["generated_at"] = f"2026-07-{20 + index:02d}T00:00:00Z"
             historical["benchmarks"] = [
                 {key: value for key, value in benchmark.items() if key != "samples"}
                 for benchmark in historical["benchmarks"]

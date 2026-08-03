@@ -111,7 +111,7 @@
     </section>
     <div id="content"><div class="empty">Loading results...</div></div>
   </main>
-  <footer><div class="shell">Results are medians of three isolated trials. Public history contains only the stable block-cache sustained-throughput suite.</div></footer>
+  <footer><div class="shell">Results are medians of five isolated trials. Public history contains only the stable block-cache sustained-throughput suite.</div></footer>
   <script>
     const state = { runs: [], selected: { architecture: '', account: '', compute: '' } };
     const colors = { read: '#0078d4', write: '#16825d', grid: '#d9e0e5', text: '#66727e' };
@@ -123,6 +123,7 @@
     const titleCase = value => value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
     const escapeHtml = value => String(value ?? 'Not recorded').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
     const computeProfile = run => run.run.compute_profile || run.environment?.compute_profile || run.environment?.vm_size || `${run.environment?.cpu_count ?? 'Unknown'} CPUs`;
+    const trialCount = run => run?.run?.trials ?? 'unknown';
 
     function setOptions(select, values, preferred) {
       select.innerHTML = values.map(value => `<option value="${value}">${titleCase(value)}</option>`).join('');
@@ -131,7 +132,9 @@
     }
 
     function selectedRuns() {
-      return state.runs.filter(item => item.run.architecture === state.selected.architecture && item.run.account_type === state.selected.account && computeProfile(item) === state.selected.compute);
+      const matching = state.runs.filter(item => item.run.architecture === state.selected.architecture && item.run.account_type === state.selected.account && computeProfile(item) === state.selected.compute);
+      const latestTrials = trialCount(matching.at(-1));
+      return matching.filter(item => trialCount(item) === latestTrials);
     }
 
     function refreshCompute(preferred = '') {

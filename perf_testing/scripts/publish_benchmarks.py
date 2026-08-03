@@ -50,6 +50,7 @@ def result_key(result: dict[str, Any]) -> str:
         run["account_type"],
         run["cache_mode"],
         run.get("compute_profile", "unknown"),
+        str(run.get("trials", "unknown")),
     )
     return ":".join(fields)
 

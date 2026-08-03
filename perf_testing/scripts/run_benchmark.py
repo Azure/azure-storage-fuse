@@ -592,6 +592,7 @@ class BenchmarkRunner:
                 "account_type": self.args.account_type,
                 "cache_mode": self.args.cache_mode,
                 "compute_profile": environment["compute_profile"],
+                "trials": trials,
             },
             "environment": environment,
             "benchmarks": benchmarks,
