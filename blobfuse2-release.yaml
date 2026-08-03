@@ -1549,10 +1549,10 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Mariner2:
-              agentName: "blobfuse-mariner2"
-              DistroVer: "Mariner2"
-              Description: "CBL-Mariner2 Linux"
+            AzureLinux4:
+              agentName: "blobfuse-azurelinux4"
+              DistroVer: "AzureLinux4"
+              Description: "Azure Linux 4"
               fuselib: 'libfuse3-dev'
               fuse-version: 'fuse3'
               tags: 'fuse3'
