@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -121,11 +120,6 @@ type DistCache struct {
 	// inflight tracks in-flight upload goroutines so Stop can wait for them
 	// to finish before closing the dcache client.
 	inflight sync.WaitGroup
-
-	// nilClientLogOnce ensures the "client is nil, bypassing" warning is
-	// emitted at most once per mount when bypassOnError is true, so a broken
-	// dist_cache is still visible in the log without flooding on every read.
-	nilClientLogOnce sync.Once
 }
 
 // dcacheClient abstracts the distributed cache client for testing.
@@ -315,17 +309,6 @@ func resolveReadPath(options *internal.ReadInBufferOptions) string {
 }
 
 func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
-	if dc.client == nil {
-		if !dc.bypassOnError {
-			log.Err("DistCache::ReadInBuffer : client not initialized and bypass-on-error=false; failing reads")
-			return 0, syscall.EIO
-		}
-		dc.nilClientLogOnce.Do(func() {
-			log.Warn("DistCache::ReadInBuffer : client not initialized, bypassing to next component (bypass-on-error=true)")
-		})
-		return dc.NextComponent().ReadInBuffer(options)
-	}
-
 	name := resolveReadPath(options)
 
 	// Resolve ETag from handle (pinned at open time by block_cache)

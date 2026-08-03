@@ -670,7 +670,7 @@ func TestConfigure_NoServers_ReturnsError(t *testing.T) {
 //
 // dcache.New() failure means dist_cache is misconfigured, so Start() must
 // return a wrapped error even with bypass-on-error=true. bypass-on-error
-// only governs the runtime nil-client path in ReadInBuffer().
+// only governs runtime I/O errors after the client starts successfully.
 //
 // Failure is driven by an unroutable discovery-url (loopback port 1 ->
 // ECONNREFUSED); with no fallback, dcache.New() fails.
