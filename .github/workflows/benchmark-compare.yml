@@ -31,7 +31,7 @@ on:
       trials:
         description: Trials per workload and revision
         required: true
-        default: "3"
+        default: "5"
         type: choice
         options:
           - "1"

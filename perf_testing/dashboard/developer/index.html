@@ -67,6 +67,7 @@
     const number = value => new Intl.NumberFormat('en-US',{ maximumFractionDigits:value >= 1000 ? 0 : 2 }).format(value);
     const metricUnit = name => ({throughput_mib_s:'MiB/s',iops:'IOPS',latency_p99_ms:'ms',sync_latency_p99_ms:'ms'})[name] || '';
     const computeProfile = run => run.run.compute_profile || run.environment?.compute_profile || run.environment?.vm_size || `${run.environment?.cpu_count ?? 'Unknown'} CPUs`;
+    const trialCount = run => run?.run?.trials ?? 'unknown';
 
     function unique(values) { return [...new Set(values)].filter(Boolean).sort(); }
     function setOptions(id, values, preferred) {
@@ -76,7 +77,7 @@
     }
     function runsBeforeCompute() { return state.runs.filter(item=>item.run.suite===state.filters.suite&&item.run.architecture===state.filters.architecture&&item.run.account_type===state.filters.account&&item.run.cache_mode===state.filters.cache); }
     function refreshCompute(preferred='') { setOptions('compute',unique(runsBeforeCompute().map(computeProfile)),preferred); }
-    function dimensionRuns() { return runsBeforeCompute().filter(item=>computeProfile(item)===state.filters.compute); }
+    function dimensionRuns() { const matching=runsBeforeCompute().filter(item=>computeProfile(item)===state.filters.compute),latestTrials=trialCount(matching.at(-1));return matching.filter(item=>trialCount(item)===latestTrials); }
     function benchmark(run,id) { return run?.benchmarks.find(item=>item.id===id); }
     function series() { return dimensionRuns().map(run=>({run,benchmark:benchmark(run,state.filters.workload)})).filter(item=>item.benchmark); }
     function rollingBaseline(items,index,metric) {
