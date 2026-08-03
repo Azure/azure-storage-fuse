@@ -93,11 +93,11 @@ type DistCacheOptions struct {
 	ServerList string `config:"server-list" yaml:"server-list,omitempty"`
 
 	// Common options
-	Port           int    `config:"port"              yaml:"port,omitempty"`                    // Default 9065
-	TTLSeconds     uint32 `config:"ttl-seconds"       yaml:"ttl-seconds,omitempty"`             // Default 0 (no TTL)
-	BypassOnError  bool   `config:"bypass-on-error"   yaml:"bypass-on-error,omitempty"`         //Default true
-	CachePrefix    string `config:"cache-prefix"      yaml:"cache-prefix,omitempty"`            // (derived from azstorage.account-name/azstorage.container)
-	MaxConnsPerSvr int    `config:"max-conns-per-server" yaml:"max-conns-per-server,omitempty"` // Default 64
+	Port       int    `config:"port"        yaml:"port,omitempty"`        // Default 9065
+	TTLSeconds uint32 `config:"ttl-seconds" yaml:"ttl-seconds,omitempty"` // Default 0 (no TTL)
+
+	// Internal knob, no YAML/CLI surface. Wire up later if a caller needs it.
+	BypassOnError bool `config:"bypass-on-error" yaml:"-"` //Default true (skip L2 on client error)
 }
 
 // DistCache is the blobfuse component that sits between the local cache and azstorage,
@@ -141,7 +141,7 @@ func NewDistCacheComponent() internal.Component {
 func (dc *DistCache) Configure(isParent bool) error {
 	log.Trace("DistCache::Configure")
 
-	conf := DistCacheOptions{}
+	conf := DistCacheOptions{BypassOnError: true}
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("DistCache: config error [invalid config attributes]")
@@ -174,29 +174,24 @@ func (dc *DistCache) Configure(isParent bool) error {
 	dc.conf = conf
 	dc.bypassOnError = conf.BypassOnError
 
-	// Resolve cache prefix. Explicit dist_cache.cache-prefix wins; otherwise
-	// derive from azstorage.account-name/azstorage.container.
-	if conf.CachePrefix != "" {
-		dc.cachePrefix = conf.CachePrefix
-		log.Info("DistCache::Configure : cache-prefix=%s (from explicit config)", dc.cachePrefix)
-	} else {
-		var accountName, container string
-		if config.IsSet("azstorage.account-name") {
-			if err := config.UnmarshalKey("azstorage.account-name", &accountName); err != nil {
-				return fmt.Errorf("dist_cache: failed to read azstorage.account-name: %w", err)
-			}
+	// Derive the cache namespace from the storage identity so mounts for
+	// different accounts or containers cannot collide.
+	var accountName, container string
+	if config.IsSet("azstorage.account-name") {
+		if err := config.UnmarshalKey("azstorage.account-name", &accountName); err != nil {
+			return fmt.Errorf("dist_cache: failed to read azstorage.account-name: %w", err)
 		}
-		if config.IsSet("azstorage.container") {
-			if err := config.UnmarshalKey("azstorage.container", &container); err != nil {
-				return fmt.Errorf("dist_cache: failed to read azstorage.container: %w", err)
-			}
-		}
-		if accountName == "" || container == "" {
-			return fmt.Errorf("dist_cache: cache prefix unresolved; set dist_cache.cache-prefix or both azstorage.account-name and azstorage.container")
-		}
-		dc.cachePrefix = accountName + "/" + container
-		log.Info("DistCache::Configure : cache-prefix=%s (derived from azstorage account/container)", dc.cachePrefix)
 	}
+	if config.IsSet("azstorage.container") {
+		if err := config.UnmarshalKey("azstorage.container", &container); err != nil {
+			return fmt.Errorf("dist_cache: failed to read azstorage.container: %w", err)
+		}
+	}
+	if accountName == "" || container == "" {
+		return fmt.Errorf("dist_cache: cache prefix unresolved; set both azstorage.account-name and azstorage.container")
+	}
+	dc.cachePrefix = accountName + "/" + container
+	log.Info("DistCache::Configure : cache-prefix=%s (derived from azstorage account/container)", dc.cachePrefix)
 
 	// L1 (block_cache) and L2 (dist_cache) must align on chunk size.
 	// block_cache.block-size-mb is the single source — either set directly
@@ -228,8 +223,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 		log.Warn("DistCache::Configure : async upload disabled; L2 populate skipped, reads run as passthrough")
 	}
 
-	log.Info("DistCache::Configure : chunk-size=%d, bypass-on-error=%v",
-		dc.chunkSize, dc.bypassOnError)
+	log.Info("DistCache::Configure : chunk-size=%d", dc.chunkSize)
 
 	return nil
 }
@@ -259,9 +253,6 @@ func (dc *DistCache) Start(ctx context.Context) error {
 		opts = append(opts, dcache.WithPort(dc.conf.Port))
 	}
 	opts = append(opts, dcache.WithCachePrefix(dc.cachePrefix))
-	if dc.conf.MaxConnsPerSvr > 0 {
-		opts = append(opts, dcache.WithMaxConnsPerServer(dc.conf.MaxConnsPerSvr))
-	}
 	if dc.conf.DiscoveryRefreshSec > 0 {
 		opts = append(opts, dcache.WithDiscoveryRefresh(
 			time.Duration(dc.conf.DiscoveryRefreshSec)*time.Second))
@@ -269,9 +260,6 @@ func (dc *DistCache) Start(ctx context.Context) error {
 
 	client, err := dcache.New(opts...)
 	if err != nil {
-		// Fail fast regardless of bypass-on-error: a failed client build
-		// means dist_cache is misconfigured. bypass-on-error only covers
-		// runtime I/O failures against a working client.
 		log.Err("DistCache::Start : Failed to connect to distributed cache: %v", err)
 		return fmt.Errorf("dist_cache: failed to start: %w", err)
 	}

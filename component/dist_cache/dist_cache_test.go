@@ -505,55 +505,6 @@ dist_cache:
 	assert.Equal(t, "tenantB/shared", dcB.cachePrefix)
 }
 
-func TestConfigure_ExplicitCachePrefixOverridesAzStorage(t *testing.T) {
-	loadConfig(t, `
-azstorage:
-  account-name: myacct
-  container: mycontainer
-dist_cache:
-  server-list: "localhost:9065"
-  cache-prefix: "custom/override"
-`)
-
-	dc := NewDistCacheComponent().(*DistCache)
-	err := dc.Configure(true)
-	require.NoError(t, err)
-	assert.Equal(t, "custom/override", dc.cachePrefix,
-		"explicit cache-prefix must take precedence over azstorage-derived default")
-}
-
-func TestConfigure_ExplicitCachePrefixWithoutAzStorage(t *testing.T) {
-	// An explicit cache-prefix should be accepted even when azstorage.account-name
-	// and azstorage.container are not configured (e.g. loopback / non-Azure tests).
-	loadConfig(t, `
-dist_cache:
-  server-list: "localhost:9065"
-  cache-prefix: "loopback/tests"
-`)
-
-	dc := NewDistCacheComponent().(*DistCache)
-	err := dc.Configure(true)
-	require.NoError(t, err)
-	assert.Equal(t, "loopback/tests", dc.cachePrefix)
-}
-
-func TestConfigure_EmptyExplicitCachePrefixFallsBackToAzStorage(t *testing.T) {
-	// An empty-string cache-prefix must not shadow the azstorage-derived default.
-	loadConfig(t, `
-azstorage:
-  account-name: myacct
-  container: mycontainer
-dist_cache:
-  server-list: "localhost:9065"
-  cache-prefix: ""
-`)
-
-	dc := NewDistCacheComponent().(*DistCache)
-	err := dc.Configure(true)
-	require.NoError(t, err)
-	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
-}
-
 // TestConfigure_TinyFairShare_DisablesPool verifies the wiring from
 // resolveMemBudget → Configure: when the fair-share signal is below
 // distCacheMinBuffers × chunkSize, Configure must succeed but leave dc.bufs
@@ -687,9 +638,8 @@ func TestSchedulePopulate_BufferReturnedAfterUpload(t *testing.T) {
 	mock := newMockDCacheClient()
 	next := &mockNextComponent{}
 	dc := &DistCache{
-		client:        mock,
-		chunkSize:     16 * 1024 * 1024,
-		bypassOnError: true,
+		client:    mock,
+		chunkSize: 16 * 1024 * 1024,
 	}
 	dc.SetName(compName)
 	dc.SetNextComponent(next)
@@ -990,9 +940,8 @@ func TestDoUpload_UploadsExactPayloadBytes(t *testing.T) {
 	mock := newMockDCacheClient()
 	next := &mockNextComponent{}
 	dc := &DistCache{
-		client:        mock,
-		chunkSize:     16 * 1024 * 1024,
-		bypassOnError: true,
+		client:    mock,
+		chunkSize: 16 * 1024 * 1024,
 	}
 	dc.SetName(compName)
 	dc.SetNextComponent(next)

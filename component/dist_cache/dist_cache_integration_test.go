@@ -329,7 +329,7 @@ func (suite *distCacheIntegSuite) SetupTest() {
 	// block_cache.block-size-mb is the single source of chunk size, even when
 	// block_cache isn't in the pipeline for this suite.
 	suite.configString = fmt.Sprintf(
-		"loopbackfs:\n  path: %s\n\nblock_cache:\n  block-size-mb: 1\n\ndist_cache:\n  server-list: %s\n  bypass-on-error: true\n  cache-prefix: test/container\n",
+		"loopbackfs:\n  path: %s\n\nazstorage:\n  account-name: test\n  container: container\n\nblock_cache:\n  block-size-mb: 1\n\ndist_cache:\n  server-list: %s\n",
 		suite.storagePath, suite.srv.addr)
 
 	err = config.ReadConfigFromReader(strings.NewReader(suite.configString))
@@ -650,7 +650,7 @@ func TestConfigure_NoServers_ReturnsError(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(storagePath)
 
-	badConfig := fmt.Sprintf("loopbackfs:\n  path: %s\n\ndist_cache:\n  bypass-on-error: true\n", storagePath)
+	badConfig := fmt.Sprintf("loopbackfs:\n  path: %s\n\ndist_cache:\n", storagePath)
 	err = config.ReadConfigFromReader(strings.NewReader(badConfig))
 	require.NoError(t, err)
 
@@ -666,18 +666,14 @@ func TestConfigure_NoServers_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "no server discovery configured")
 }
 
-// --- Test: Start() fails fast on unreachable servers, regardless of bypass ---
-//
-// dcache.New() failure means dist_cache is misconfigured, so Start() must
-// return a wrapped error even with bypass-on-error=true. bypass-on-error
-// only governs runtime I/O errors after the client starts successfully.
+// --- Test: Start() fails fast on unreachable servers ---
 //
 // Failure is driven by an unroutable discovery-url (loopback port 1 ->
 // ECONNREFUSED); with no fallback, dcache.New() fails.
 //
 // Standalone (not suite-based) to avoid corrupting shared config state.
 
-func TestStart_BypassOnError_True_UnreachableServers_FailsFast(t *testing.T) {
+func TestStart_UnreachableServers_FailsFast(t *testing.T) {
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
 	require.NoError(t, err)
 
@@ -692,7 +688,7 @@ func TestStart_BypassOnError_True_UnreachableServers_FailsFast(t *testing.T) {
 	defer os.RemoveAll(storagePath)
 
 	cfg := fmt.Sprintf(
-		"loopbackfs:\n  path: %s\n\ndist_cache:\n  discovery-url: 127.0.0.1:1\n  cache-prefix: test/container\n  bypass-on-error: true\n",
+		"loopbackfs:\n  path: %s\n\nazstorage:\n  account-name: test\n  container: container\n\ndist_cache:\n  discovery-url: 127.0.0.1:1\n",
 		storagePath)
 	require.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -705,44 +701,8 @@ func TestStart_BypassOnError_True_UnreachableServers_FailsFast(t *testing.T) {
 	dc.SetNextComponent(lb)
 	require.NoError(t, dc.Configure(true))
 
-	// Start must surface the connect failure even with bypass-on-error=true.
 	err = dc.Start(context.Background())
-	require.Error(t, err, "Start() must fail fast when servers are unreachable, even with bypass-on-error=true")
-	assert.Contains(t, err.Error(), "dist_cache: failed to start")
-	assert.Nil(t, dc.client, "client should remain nil after failed Start()")
-}
-
-func TestStart_BypassOnError_False_UnreachableServers_ReturnsError(t *testing.T) {
-	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
-	require.NoError(t, err)
-
-	config.ResetConfig()
-
-	oldEnv := os.Getenv("DIST_CACHE_SERVER_LIST")
-	os.Unsetenv("DIST_CACHE_SERVER_LIST")
-	defer os.Setenv("DIST_CACHE_SERVER_LIST", oldEnv)
-
-	storagePath := filepath.Join(os.TempDir(), "dcache_integ_bypass_false_"+randomStr(8))
-	require.NoError(t, os.MkdirAll(storagePath, 0777))
-	defer os.RemoveAll(storagePath)
-
-	cfg := fmt.Sprintf(
-		"loopbackfs:\n  path: %s\n\ndist_cache:\n  discovery-url: 127.0.0.1:1\n  cache-prefix: test/container\n  bypass-on-error: false\n",
-		storagePath)
-	require.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
-
-	lb := loopback.NewLoopbackFSComponent()
-	require.NoError(t, lb.Configure(true))
-	require.NoError(t, lb.Start(context.Background()))
-	defer func() { _ = lb.Stop() }()
-
-	dc := NewDistCacheComponent().(*DistCache)
-	dc.SetNextComponent(lb)
-	require.NoError(t, dc.Configure(true))
-
-	// Start must surface the connect failure as a wrapped error.
-	err = dc.Start(context.Background())
-	require.Error(t, err, "Start() must fail when bypass-on-error=false and servers are unreachable")
+	require.Error(t, err, "Start() must fail fast when servers are unreachable")
 	assert.Contains(t, err.Error(), "dist_cache: failed to start")
 	assert.Nil(t, dc.client, "client should remain nil after failed Start()")
 }
@@ -800,8 +760,9 @@ func (suite *blockCacheDistCacheSuite) SetupTest() {
 	// disable threshold in resolveMemBudget.
 	cfg := fmt.Sprintf(
 		"read-only: true\n\n"+
+			"azstorage:\n  account-name: test\n  container: container\n\n"+
 			"block_cache:\n  block-size-mb: 1\n  mem-size-mb: 100\n  prefetch: 12\n  parallelism: 10\n  path: %s\n  disk-size-mb: 50\n  disk-timeout-sec: 20\n\n"+
-			"dist_cache:\n  server-list: %s\n  bypass-on-error: true\n  cache-prefix: test/container\n\n"+
+			"dist_cache:\n  server-list: %s\n\n"+
 			"loopbackfs:\n  path: %s\n",
 		suite.diskPath, suite.srv.addr, suite.storagePath)
 
