@@ -232,8 +232,8 @@
           }
         },
         {
-          "id": "metadata-create",
-          "name": "Parallel file create",
+          "id": "metadata-create-1k",
+          "name": "Parallel file create, 1,000 files",
           "job_file": "regression/metadata_create.fio",
           "direction": "write",
           "primary_metric": "iops",
@@ -243,12 +243,12 @@
             "pattern": "file create",
             "file_size": "4 KiB",
             "concurrency": 8,
-            "operations": 8000
+            "operations": 1000
           }
         },
         {
-          "id": "metadata-stat",
-          "name": "Parallel file stat",
+          "id": "metadata-stat-1k",
+          "name": "Parallel file stat, 1,000 files",
           "job_file": "regression/metadata_stat.fio",
           "direction": "read",
           "primary_metric": "iops",
@@ -258,12 +258,12 @@
             "pattern": "file stat",
             "file_size": "4 KiB",
             "concurrency": 8,
-            "operations": 8000
+            "operations": 1000
           }
         },
         {
-          "id": "metadata-delete",
-          "name": "Parallel file delete",
+          "id": "metadata-delete-1k",
+          "name": "Parallel file delete, 1,000 files",
           "job_file": "regression/metadata_delete.fio",
           "direction": "write",
           "primary_metric": "iops",
@@ -273,7 +273,7 @@
             "pattern": "file delete",
             "file_size": "4 KiB",
             "concurrency": 8,
-            "operations": 8000
+            "operations": 1000
           }
         }
       ]
@@ -299,7 +299,7 @@
           "ref": "mixed-random-rw-64k"
         },
         {
-          "ref": "metadata-create"
+          "ref": "metadata-create-1k"
         }
       ]
     }

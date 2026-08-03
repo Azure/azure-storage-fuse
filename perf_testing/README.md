@@ -391,6 +391,8 @@ The `regression` suite covers:
 - File cache on the canonical X86 runner
 - Standard, premium, standard HNS, and premium HNS accounts on X86
 
+The create, stat, and delete workloads retain eight-way concurrency but are bounded to 1,000 measured operations per trial: 125 files per worker across five trials. FIO's `filestat` and `filedelete` engines create their required files during setup; that setup is not part of the reported operation IOPS, but it does consume workflow wall time. The bounded `-1k` workload IDs keep p99 meaningful while avoiding the old 8,000-file setup and cleanup cost, and deliberately start new history series.
+
 Each benchmark publishes its median, median absolute deviation, minimum, maximum, p99 latency, sync latency when present, network traffic, and workload parameters. Raw per-trial FIO JSON remains in the workflow artifact and is not copied to GitHub Pages.
 
 Before publication, each new result is compared with the last five matching `main` runs. This includes the weekly public sustained-throughput suite. At least three historical runs are required. The default gate is 10% for throughput/IOPS and 20% for p99 latency, widened to three times observed MAD when necessary. A confirmed regression is published, attached as a 30-day diagnostic artifact, and then fails the workflow so repository notifications identify it.
