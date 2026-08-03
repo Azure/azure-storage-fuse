@@ -1995,6 +1995,9 @@ stages:
                   fuse34AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3-4.x86_64.deb`
                   echo "Fuse3-4 AMD DEB ID: $fuse34AmdDeb"
 
+                  fuse34ArmDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3-4.arm64.deb`
+                  echo "Fuse3-4 ARM DEB ID: $fuse34ArmDeb"
+
                   marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
                   marinerFuse3AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*cm2.x86_64.rpm`
                   echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"

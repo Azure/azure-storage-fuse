@@ -6,6 +6,8 @@ Ubuntu-22.04,fuse3AmdDeb,microsoft-ubuntu-jammy-prod-apt,jammy
 Ubuntu-22.04,fuse3ArmDeb,microsoft-ubuntu-jammy-prod-apt,jammy
 Ubuntu-24.04,fuse3AmdDeb,microsoft-ubuntu-noble-prod-apt,noble
 Ubuntu-24.04,fuse3ArmDeb,microsoft-ubuntu-noble-prod-apt,noble
+Ubuntu-26.04,fuse34AmdDeb,microsoft-ubuntu-resolute-prod-apt,resolute
+Ubuntu-26.04,fuse34ArmDeb,microsoft-ubuntu-resolute-prod-apt,resolute
 Debian-9.0,fuse2AmdDeb,microsoft-debian-stretch-prod-apt,stretch
 Debian-10.0,fuse2AmdDeb,microsoft-debian-buster-prod-apt,buster
 Debian-11.0,fuse3AmdDeb,microsoft-debian-bullseye-prod-apt,bullseye
