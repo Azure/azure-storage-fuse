@@ -29,6 +29,9 @@ stages:
             Ubuntu-26:
               AgentName: 'blobfuse-ubuntu26'
               poolName: 'blobfuse-ubuntu-pool'
+            Ubuntu-26-ARM64:
+              AgentName: 'blobfuse-ubn26-arm64'
+              poolName: 'blobfuse-ubn-arm64-pool'
             AzureLinux-4:
               AgentName: 'blobfuse-azurelinux4'
               poolName: 'blobfuse-mariner-pool'
