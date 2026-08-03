@@ -39,7 +39,7 @@ Migrate X86 without resizing the only active runner in place:
 
 1. Check regional `Standard_D192ds_v6` availability and quota for 192 vCPUs, six local NVMe devices, and MANA/accelerated networking.
 2. Create a new runner from the same OS image family and keep kernel, FUSE, FIO 3.36, Microsoft Go, Blobfuse build flags, sysctls, and network settings aligned with the old runner.
-3. Build RAID0 from the six temporary NVMe devices, format it, mount it at `/mnt/localssd`, and make the benchmark user its owner. This storage is ephemeral and must be recreated after host replacement. The workflow deliberately refuses file-cache tests when `/mnt/localssd` is not a mountpoint.
+3. Build RAID0 from the six temporary NVMe devices, format it, mount it under `/mnt` (preferably at `/mnt/localssd`), and make the benchmark user its owner. This storage is ephemeral and must be recreated after host replacement. The workflow accepts a cache directory beneath a dedicated non-root filesystem and requires at least 200 GiB free.
 4. Register the new VM in `1ES.Pool=blobfuse2-benchmark` without removing the D96 runner yet. Ensure benchmark scheduling selects only the D192 runner; do not leave mixed D96/D192 hosts behind the same label.
 5. Verify `nproc` returns 192 and IMDS returns exactly `Standard_D192ds_v6`. The workflow enforces both. The ARM pool remains `1ES.Pool=blobfuse2-benchmark-arm` and is enforced as `Standard_D96pds_v6` with 96 CPUs.
 6. Run public and regression workflows with `publish=false`, inspect artifacts, local-disk capacity, network ratios, and MAD, then run the D192 concurrency sweep described below.
@@ -71,7 +71,7 @@ The temporary X86 `Standard_D96ds_v5` profile must report 96 online CPUs. Schedu
 
 The runner drops the kernel page cache before every mount using non-interactive `sudo`, so `sudo -n true` must succeed for the entire run. The cache directory is recursively emptied; it must be a dedicated benchmark directory. File-cache regression tests should use a local SSD path with at least 200 GiB free. Public tests use block cache only and need little local scratch space, but their persistent Azure fixtures consume 640 GiB in the benchmark container.
 
-For Actions file-cache jobs, `/mnt/localssd` must be a mounted dedicated filesystem. The workflow now fails instead of silently creating that path on the OS disk. D192 local-disk count and device names are otherwise not assumed by the X86 workflow; provision and mount the desired local SSD/RAID in the runner image before benchmarking.
+For Actions file-cache jobs, the workflow discovers `/mnt/localssd`, `/mnt/azure_nvme_temp`, or `/mnt/resource` when the path is backed by a non-root filesystem with at least 200 GiB free. A subdirectory such as `/mnt/localssd` is valid when its backing mount is `/mnt`; the directory itself does not need to be a mountpoint. The workflow still rejects an OS-disk fallback. D192 local-disk count and device names are otherwise not assumed by the X86 workflow; provision and mount the desired local SSD/RAID in the runner image before benchmarking.
 
 The scheduled ARM64 profiles use block cache only and do not use the VM's local NVMe array. The workflow leaves any image-provisioned ARM temporary-disk mount, such as `/mnt/azure_nvme_temp`, unchanged.
 
