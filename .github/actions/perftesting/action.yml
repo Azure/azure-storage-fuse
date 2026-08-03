@@ -108,16 +108,27 @@ runs:
         set -euo pipefail
         sudo -n mkdir -p /mnt/localssd
         sudo -n chmod 0777 /mnt/localssd
-        df -h /mnt/localssd
-
-    - name: Validate profile storage
-      if: ${{ inputs.RUN_PROFILE == 'true' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        if [[ "${{ inputs.CACHE_MODE }}" == "file_cache" ]] && ! mountpoint -q /mnt/localssd; then
-          echo "File-cache benchmarks require a dedicated filesystem mounted at /mnt/localssd" >&2
-          exit 1
+        minimum_free_bytes=$((200 * 1024 * 1024 * 1024))
+        cache_root=""
+        for candidate in /mnt/localssd /mnt/azure_nvme_temp /mnt/resource; do
+          [[ -d "$candidate" ]] || continue
+          mount_target="$(findmnt -rn -o TARGET -T "$candidate" 2>/dev/null || true)"
+          mount_source="$(findmnt -rn -o SOURCE -T "$candidate" 2>/dev/null || true)"
+          available_bytes="$(df --output=avail -B1 "$candidate" 2>/dev/null | tail -n 1 | tr -d ' ' || true)"
+          [[ "$available_bytes" =~ ^[0-9]+$ ]] || available_bytes=0
+          echo "Local cache candidate ${candidate}: target=${mount_target:-none}, source=${mount_source:-none}, available=${available_bytes}"
+          if [[ -n "$mount_target" && "$mount_target" != "/" && "$available_bytes" -ge "$minimum_free_bytes" ]]; then
+            cache_root="$candidate"
+            break
+          fi
+        done
+        echo "PERF_LOCAL_CACHE_ROOT=$cache_root" >> "$GITHUB_ENV"
+        if [[ -n "$cache_root" ]]; then
+          sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$cache_root/blobfuse-benchmark-cache"
+          echo "Selected local cache root: $cache_root"
+          df -h "$cache_root"
+        else
+          echo "::warning::No non-root local filesystem with at least 200 GiB free was found; file-cache profiles will be rejected"
         fi
 
     - name: Configure benchmark paths and credentials
@@ -131,10 +142,30 @@ runs:
         suffix="${{ inputs.RUN_ID }}-${{ inputs.ARCH }}-${{ inputs.ACCOUNT_TYPE }}-${{ inputs.CACHE_MODE }}"
         printf 'AZURE_STORAGE_ACCOUNT=%s\n' "$PERF_ACCOUNT_NAME_INPUT" >> "$GITHUB_ENV"
         printf 'AZURE_STORAGE_ACCESS_KEY=%s\n' "$PERF_ACCOUNT_KEY_INPUT" >> "$GITHUB_ENV"
+        cache_root="${PERF_LOCAL_CACHE_ROOT:-/mnt/localssd}"
         echo "PERF_MOUNT_DIR=/mnt/blobfuse-benchmark-${suffix}" >> "$GITHUB_ENV"
-        echo "PERF_CACHE_DIR=/mnt/localssd/blobfuse-benchmark-cache/${suffix}" >> "$GITHUB_ENV"
+        echo "PERF_CACHE_DIR=${cache_root}/blobfuse-benchmark-cache/${suffix}" >> "$GITHUB_ENV"
         echo "PERF_CONFIG=${RUNNER_TEMP}/blobfuse-benchmark-${suffix}.yaml" >> "$GITHUB_ENV"
         echo "PERF_RESULTS=${GITHUB_WORKSPACE}/benchmark-results/${{ inputs.ARCH }}/${{ inputs.ACCOUNT_TYPE }}/${{ inputs.CACHE_MODE }}" >> "$GITHUB_ENV"
+
+    - name: Validate profile storage
+      if: ${{ inputs.RUN_PROFILE == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.CACHE_MODE }}" == "file_cache" ]]; then
+          if [[ -z "${PERF_LOCAL_CACHE_ROOT:-}" ]]; then
+            echo "File-cache benchmarks require a non-root local filesystem with at least 200 GiB free" >&2
+            exit 1
+          fi
+          mount_target="$(findmnt -rn -o TARGET -T "$PERF_LOCAL_CACHE_ROOT" 2>/dev/null || true)"
+          mount_source="$(findmnt -rn -o SOURCE -T "$PERF_LOCAL_CACHE_ROOT" 2>/dev/null || true)"
+          if [[ -z "$mount_target" || "$mount_target" == "/" ]]; then
+            echo "File-cache path $PERF_LOCAL_CACHE_ROOT is not backed by a dedicated local filesystem" >&2
+            exit 1
+          fi
+          echo "Using file-cache storage $PERF_LOCAL_CACHE_ROOT (target=$mount_target, source=$mount_source)"
+        fi
 
     - name: Generate benchmark mount configuration
       if: ${{ inputs.RUN_PROFILE == 'true' }}

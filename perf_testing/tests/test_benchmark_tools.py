@@ -239,6 +239,9 @@ class WorkflowShapeTests(unittest.TestCase):
 
     def test_profile_results_are_isolated_below_architecture_artifacts(self):
         action = (REPO_ROOT / ".github/actions/perftesting/action.yml").read_text(encoding="utf-8")
+        comparison_workflow = (
+            REPO_ROOT / ".github/workflows/benchmark-compare.yml"
+        ).read_text(encoding="utf-8")
         runner_source = (REPO_ROOT / "perf_testing/scripts/run_benchmark.py").read_text(
             encoding="utf-8"
         )
@@ -251,6 +254,13 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn("RUN_PROFILE:", action)
         self.assertIn("inputs.RUN_PROFILE == 'true'", action)
         self.assertIn('sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$PERF_MOUNT_DIR"', action)
+        self.assertIn("findmnt -rn -o TARGET -T", action)
+        self.assertIn("PERF_LOCAL_CACHE_ROOT", action)
+        self.assertIn("200 * 1024 * 1024 * 1024", action)
+        self.assertIn('$cache_root/blobfuse-benchmark-cache', action)
+        self.assertNotIn("mountpoint -q /mnt/localssd", action)
+        self.assertIn("findmnt -rn -o TARGET -T", comparison_workflow)
+        self.assertNotIn("mountpoint -q /mnt/localssd", comparison_workflow)
         self.assertIn("Collect benchmark failure diagnostics", action)
         self.assertIn("mount-config.redacted.yaml", action)
         self.assertIn("$PERF_RESULTS/diagnostics", action)

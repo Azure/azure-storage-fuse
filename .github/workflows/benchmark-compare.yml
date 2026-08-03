@@ -157,13 +157,27 @@ jobs:
           fi
           suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-compare"
           echo "PERF_CONFIG=${RUNNER_TEMP}/blobfuse-${suffix}.yaml" >> "$GITHUB_ENV"
-          echo "PERF_ROOT=/mnt/localssd/blobfuse-${suffix}" >> "$GITHUB_ENV"
           sudo -n mkdir -p /mnt/localssd
           sudo -n chmod 0777 /mnt/localssd
-          if [[ "$CACHE_MODE_INPUT" == "file_cache" ]] && ! mountpoint -q /mnt/localssd; then
-            echo "File-cache comparison requires a dedicated filesystem mounted at /mnt/localssd" >&2
+          minimum_free_bytes=$((200 * 1024 * 1024 * 1024))
+          cache_root=""
+          for candidate in /mnt/localssd /mnt/azure_nvme_temp /mnt/resource; do
+            [[ -d "$candidate" ]] || continue
+            mount_target="$(findmnt -rn -o TARGET -T "$candidate" 2>/dev/null || true)"
+            available_bytes="$(df --output=avail -B1 "$candidate" 2>/dev/null | tail -n 1 | tr -d ' ' || true)"
+            [[ "$available_bytes" =~ ^[0-9]+$ ]] || available_bytes=0
+            if [[ -n "$mount_target" && "$mount_target" != "/" && "$available_bytes" -ge "$minimum_free_bytes" ]]; then
+              cache_root="$candidate"
+              break
+            fi
+          done
+          if [[ "$CACHE_MODE_INPUT" == "file_cache" && -z "$cache_root" ]]; then
+            echo "File-cache comparison requires a non-root local filesystem with at least 200 GiB free" >&2
             exit 1
           fi
+          cache_root="${cache_root:-/mnt/localssd}"
+          sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "${cache_root}/blobfuse-${suffix}"
+          echo "PERF_ROOT=${cache_root}/blobfuse-${suffix}" >> "$GITHUB_ENV"
 
       - name: Generate comparison mount config
         working-directory: benchmark-harness
