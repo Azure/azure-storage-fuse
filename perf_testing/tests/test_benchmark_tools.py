@@ -1,7 +1,10 @@
 import argparse
 import importlib.util
 import json
+import os
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -266,8 +269,15 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn("$PERF_RESULTS/diagnostics", action)
         self.assertIn('self.output_dir / "blobfuse2.log"', runner_source)
         self.assertIn('f"--log-file-path={self.blobfuse_log_path}"', runner_source)
+        self.assertIn('f"--default-working-dir={self.blobfuse_work_dir}"', runner_source)
+        self.assertIn("wait_for_blobfuse_exit", runner_source)
         self.assertNotIn("/dev/nvme", action)
         self.assertNotIn("mdadm", action)
+
+        file_cache_config = (
+            REPO_ROOT / "testdata/config/azure_file_benchmark.yaml"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("cleanup-on-start:", file_cache_config)
 
 
 class FioResultTests(unittest.TestCase):
@@ -311,6 +321,8 @@ class FioResultTests(unittest.TestCase):
             benchmark_runner.mount_dir = root / "mount"
             benchmark_runner.output_dir = root / "results"
             benchmark_runner.blobfuse_log_path = benchmark_runner.output_dir / "blobfuse2.log"
+            benchmark_runner.blobfuse_work_dir = benchmark_runner.output_dir / "blobfuse-work"
+            benchmark_runner.blobfuse_pid_path = benchmark_runner.blobfuse_work_dir / "mount.pid"
             benchmark_runner.mounted = False
             benchmark_runner.output_dir.mkdir()
             benchmark_runner.unmount = mock.Mock()
@@ -326,7 +338,29 @@ class FioResultTests(unittest.TestCase):
                 f"--log-file-path={benchmark_runner.blobfuse_log_path}",
                 command,
             )
+            self.assertIn(
+                f"--default-working-dir={benchmark_runner.blobfuse_work_dir}",
+                command,
+            )
             self.assertEqual(run.call_args.kwargs["cwd"], benchmark_runner.output_dir)
+
+    def test_wait_for_blobfuse_exit_waits_for_pid_file_removal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
+            benchmark_runner.mount_dir = Path(temporary) / "mount"
+            benchmark_runner.blobfuse_pid_path = Path(temporary) / "blobfuse.pid"
+            benchmark_runner.blobfuse_pid_path.touch()
+
+            def remove_pid_file():
+                time.sleep(0.1)
+                os.remove(benchmark_runner.blobfuse_pid_path)
+
+            remover = threading.Thread(target=remove_pid_file)
+            remover.start()
+            benchmark_runner.wait_for_blobfuse_exit(timeout=2)
+            remover.join()
+
+        self.assertFalse(benchmark_runner.blobfuse_pid_path.exists())
 
     def test_azure_instance_metadata_extracts_vm_size_and_region(self):
         class Response:
