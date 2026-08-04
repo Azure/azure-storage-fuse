@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 
+// Kernel list caching through the high-level API requires libfuse 3.16.1 or newer.
 static int libfuse_version_supports_dir_cache(const char *version)
 {
     unsigned int major = 0;
