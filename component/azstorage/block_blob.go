@@ -680,8 +680,10 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// over BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
 	// dirList contains all dirs for which we got 0 byte meta file in this iteration, so exclude those and add rest to the list
 	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
-	// cases we manually call GetAttr to check the existence of the marker file.
-	err = bb.processBlobPrefixes(listBlob.Segment.BlobPrefixes, dirList, &blobList)
+	// cases we manually call GetAttr to check the existence of the marker file. A single-page listing already contains every possible
+	// marker, so it does not need the additional REST calls.
+	err = bb.processBlobPrefixes(listBlob.Segment.BlobPrefixes, dirList, &blobList,
+		isSinglePageListing(marker, listBlob.NextMarker))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -695,6 +697,10 @@ func (bb *BlockBlob) getListPath(prefix string) string {
 		listPath += "/"
 	}
 	return listPath
+}
+
+func isSinglePageListing(marker, nextMarker *string) bool {
+	return (marker == nil || *marker == "") && (nextMarker == nil || *nextMarker == "")
 }
 
 func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*internal.ObjAttr, map[string]bool, error) {
@@ -798,7 +804,7 @@ func (bb *BlockBlob) dereferenceTime(input *time.Time, defaultTime time.Time) ti
 	return *input
 }
 
-func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, dirList map[string]bool, blobList *[]*internal.ObjAttr) error {
+func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, dirList map[string]bool, blobList *[]*internal.ObjAttr, singlePageListing bool) error {
 	for _, blobInfo := range blobPrefixes {
 		if _, ok := dirList[*blobInfo.Name]; ok {
 			// marker file found in current iteration, skip adding the directory
@@ -812,6 +818,12 @@ func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, d
 				}
 				*blobList = append(*blobList, attr)
 			} else {
+				if singlePageListing {
+					attr := bb.createDirAttr(*blobInfo.Name)
+					*blobList = append(*blobList, attr)
+					continue
+				}
+
 				// marker file not found in current iteration, so we need to manually check attributes via REST
 				_, err := bb.getAttrUsingRest(*blobInfo.Name)
 				// marker file also not found via manual check, safe to add to list
