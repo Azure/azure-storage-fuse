@@ -229,7 +229,7 @@ static int kernel_supports_dir_cache(fuse_conn_info_t *conn) {
     if (!libfuse_version_supports_dir_cache(fuse_pkgversion()))
         return -2;
 
-    return conn->proto_major == 7 && conn->proto_minor >= 28;
+    return conn->proto_major > 7 || (conn->proto_major == 7 && conn->proto_minor >= 28);
 #endif
 }
 
