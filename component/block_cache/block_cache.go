@@ -224,7 +224,7 @@ type BlockCacheOptions struct {
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
 
 	// Workers is the number of goroutines in the worker pool for async I/O operations.
-	// Default: number of CPUs, capped by the number of buffers.
+	// Default: three times the number of CPUs, capped by the number of buffers.
 	Workers uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
 
 	// PrefetchOnOpen enables immediate prefetching when a file is opened.
@@ -468,7 +468,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	if workersConfigured {
 		bc.workers = conf.Workers
 	} else {
-		bc.workers = uint32(runtime.NumCPU())
+		bc.workers = uint32(runtime.NumCPU() * 3)
 	}
 	if bc.workers == 0 {
 		return fmt.Errorf("config error in %s [parallelism must be greater than zero]", bc.Name())
