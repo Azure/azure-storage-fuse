@@ -342,7 +342,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 			return n, err
 		}
 		if n > 0 {
-			dc.schedulePopulate(name, etag, options.Offset, options.Data[:n])
+			dc.populateAfterStorageRead(name, etag, options, options.Data[:n])
 		}
 		return n, nil
 	}
@@ -355,7 +355,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 			return n, err
 		}
 		if n > 0 {
-			dc.schedulePopulate(name, etag, options.Offset, options.Data[:n])
+			dc.populateAfterStorageRead(name, etag, options, options.Data[:n])
 		}
 		return n, nil
 	}
@@ -377,7 +377,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		}
 		if pollErr == dcache.ErrNotFoundGotLock && n > 0 {
 			// Inherited the miss-lock mid-poll; safe to populate.
-			dc.schedulePopulate(name, etag, options.Offset, options.Data[:n])
+			dc.populateAfterStorageRead(name, etag, options, options.Data[:n])
 		}
 		// Timeout (or other poll error): peer still owns the lock; skip
 		// populate to avoid racing its write.
@@ -477,21 +477,30 @@ func fileGroupID(name string, etag string) []byte {
 	return []byte(fmt.Sprintf("%s\x00v%s", name, etag))
 }
 
-// resolveETag extracts the ETag from a ReadInBufferOptions, preferring the
-// handle's stored value (pinned at open time by block_cache).
+// resolveETag returns the caller-supplied ETag from ReadInBufferOptions.
+// On the lookup path block_cache seeds it with the handle-pinned ETag; on the
+// populate path storage overwrites it with the observed ETag. Either way we
+// just read the pointer, so we never touch handle.values (which is racy off
+// the FUSE thread).
 func resolveETag(options *internal.ReadInBufferOptions) string {
-	if options.Etag != nil && *options.Etag != "" {
+	if options.Etag != nil {
 		return *options.Etag
 	}
-	if options.Handle != nil {
-		if v, ok := options.Handle.GetValue("ETAG"); ok {
-			if etag, ok := v.(string); ok && etag != "" {
-				return etag
-			}
-		}
-	}
-	log.Debug("DistCache::resolveETag : no etag found (Etag field nil/empty, handle missing or no ETAG key)")
 	return ""
+}
+
+// populateAfterStorageRead schedules an L2 populate using the ETag that
+// storage returned on the completed read, and logs when that ETag disagrees
+// with the one we used for the L2 lookup (blob rewritten under an open
+// handle). block_cache will still fail the read on the mismatch; we cache
+// the newer version anyway so future opens don't have to redownload it.
+func (dc *DistCache) populateAfterStorageRead(name, lookupETag string, options *internal.ReadInBufferOptions, data []byte) {
+	observed := resolveETag(options)
+	if observed != "" && lookupETag != "" && observed != lookupETag {
+		log.Info("DistCache::populateAfterStorageRead : blob etag changed for %s offset=%d: lookup=%q observed=%q; populating L2 under observed version",
+			name, options.Offset, lookupETag, observed)
+	}
+	dc.schedulePopulate(name, observed, options.Offset, data)
 }
 
 // getBlockCacheWorkers returns the number of concurrent downloads block_cache
@@ -585,6 +594,12 @@ func (dc *DistCache) resolveMemBudget() int64 {
 func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byte) {
 	if dc.bufs == nil {
 		return // async populate disabled at Configure time
+	}
+	if etag == "" {
+		// Never populate under an unknown ETag: the pre-lookup ETag may be
+		// stale, and an empty group ID collides across versions.
+		log.Warn("DistCache::schedulePopulate : missing storage ETag for %s offset=%d, skipping populate", name, offset)
+		return
 	}
 	if int64(len(src)) > dc.chunkSize {
 		log.Warn("DistCache::schedulePopulate : payload %d > chunk size %d, dropping populate for %s offset=%d",

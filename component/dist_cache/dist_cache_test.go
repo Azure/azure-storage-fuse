@@ -18,6 +18,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	dcache "github.com/nearora-msft/dist-cache-client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,11 @@ type mockDCacheClient struct {
 	chunkFn           func(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 	uploadChunkFn     func(ctx context.Context, filename string, offset int64, data []byte) error
 	uploadChunkCalled int
+
+	// uploadEtags captures the etag passed to each UploadChunk call in
+	// invocation order. Populated regardless of whether uploadChunkFn is set.
+	uploadMu    sync.Mutex
+	uploadEtags []string
 }
 
 func newMockDCacheClient() *mockDCacheClient {
@@ -51,6 +57,9 @@ func (m *mockDCacheClient) DownloadChunk(ctx context.Context, filename, etag str
 }
 
 func (m *mockDCacheClient) UploadChunk(ctx context.Context, filename, etag string, offset int64, data []byte, _ ...dcache.UploadOption) error {
+	m.uploadMu.Lock()
+	m.uploadEtags = append(m.uploadEtags, etag)
+	m.uploadMu.Unlock()
 	if m.uploadChunkFn != nil {
 		return m.uploadChunkFn(ctx, filename, offset, data)
 	}
@@ -58,6 +67,15 @@ func (m *mockDCacheClient) UploadChunk(ctx context.Context, filename, etag strin
 	key := fmt.Sprintf("%s:%d", filename, offset)
 	m.store[key] = append([]byte(nil), data...)
 	return nil
+}
+
+// uploadedEtags returns a snapshot of etags recorded so far.
+func (m *mockDCacheClient) uploadedEtags() []string {
+	m.uploadMu.Lock()
+	defer m.uploadMu.Unlock()
+	out := make([]string, len(m.uploadEtags))
+	copy(out, m.uploadEtags)
+	return out
 }
 
 func (m *mockDCacheClient) Close() error {
@@ -72,6 +90,11 @@ type mockNextComponent struct {
 	readInBufferData []byte // data returned by ReadInBuffer
 	readInBufferFn   func(options *internal.ReadInBufferOptions) (int, error)
 	getAttrETag      string // ETag returned by GetAttr (empty = new file)
+
+	// writeReturnedETag, if non-empty, is written into *options.Etag before
+	// ReadInBuffer returns. Mirrors azstorage.BlockBlob.ReadInBuffer, which
+	// sets *options.Etag to the observed blob ETag on success.
+	writeReturnedETag string
 }
 
 func (m *mockNextComponent) GetAttr(_ internal.GetAttrOptions) (*internal.ObjAttr, error) {
@@ -83,6 +106,9 @@ func (m *mockNextComponent) GetAttr(_ internal.GetAttrOptions) (*internal.ObjAtt
 
 func (m *mockNextComponent) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	m.readInBufferCalled++
+	if m.writeReturnedETag != "" && options.Etag != nil {
+		*options.Etag = m.writeReturnedETag
+	}
 	if m.readInBufferFn != nil {
 		return m.readInBufferFn(options)
 	}
@@ -283,7 +309,9 @@ func TestReadInBuffer_AlreadyLocked_PollTimeout_FallsThrough(t *testing.T) {
 func TestReadInBuffer_AlreadyLocked_PollInheritsLock_DownloadsAndPopulates(t *testing.T) {
 	mock := newMockDCacheClient()
 	azData := []byte("azure data via inherited lock")
-	next := &mockNextComponent{readInBufferData: azData}
+	// writeReturnedETag mirrors azstorage.BlockBlob.ReadInBuffer, which
+	// sets *options.Etag on success. Populate is skipped without it.
+	next := &mockNextComponent{readInBufferData: azData, writeReturnedETag: "az-etag"}
 	dc := newTestDistCache(mock, next)
 
 	// First DownloadChunk (from ReadInBuffer's initial attempt): locked → poll.
@@ -304,10 +332,13 @@ func TestReadInBuffer_AlreadyLocked_PollInheritsLock_DownloadsAndPopulates(t *te
 	}
 
 	buf := make([]byte, 1024)
+	// block_cache always passes a non-nil pointer so azstorage can stamp it.
+	etag := ""
 	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   "test/file.bin",
 		Offset: 0,
 		Data:   buf,
+		Etag:   &etag,
 	})
 
 	assert.NoError(t, err)
@@ -1209,4 +1240,161 @@ dist_cache:
 	require.NoError(t, dc.Configure(true))
 	assert.Equal(t, "env-host:9065", dc.conf.ServerList,
 		"env var must override YAML for bound keys")
+}
+
+// --- resolveETag: only the storage-returned etag drives L2 population ---
+//
+// azstorage.BlockBlob.ReadInBuffer writes the observed blob ETag into
+// *options.Etag on success. dist_cache must key the L2 populate on that
+// returned value so the chunk lands under the blob's current version. When
+// storage does not set it (nil pointer or empty string), resolveETag returns
+// "" and schedulePopulate skips the upload rather than falling back to a
+// possibly stale ETag or an ambiguous empty group ID.
+
+func TestResolveETag_ReturnsStorageETagWhenNonEmpty(t *testing.T) {
+	returned := "etag-from-storage"
+	opts := &internal.ReadInBufferOptions{Etag: &returned}
+	got := resolveETag(opts)
+	assert.Equal(t, "etag-from-storage", got,
+		"must return the storage-observed etag verbatim")
+}
+
+func TestResolveETag_ReturnsEmptyWhenPointerNil(t *testing.T) {
+	opts := &internal.ReadInBufferOptions{Etag: nil}
+	got := resolveETag(opts)
+	assert.Equal(t, "", got,
+		"must return \"\" when storage didn't set options.Etag")
+}
+
+func TestResolveETag_ReturnsEmptyWhenPointerEmpty(t *testing.T) {
+	empty := ""
+	opts := &internal.ReadInBufferOptions{Etag: &empty}
+	got := resolveETag(opts)
+	assert.Equal(t, "", got,
+		"must return \"\" when storage left *options.Etag empty")
+}
+
+// TestReadInBuffer_GotLock_PopulateUsesReturnedETag verifies that when
+// azstorage returns a newer ETag on the miss-lock download path, the L2
+// populate is keyed on the returned ETag, not the pre-lookup one.
+func TestReadInBuffer_GotLock_PopulateUsesReturnedETag(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{
+		readInBufferData:  []byte("azure chunk"),
+		writeReturnedETag: "new-etag",
+	}
+	dc := newTestDistCache(mock, next)
+
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, dcache.ErrNotFoundGotLock
+	}
+
+	lookupETag := "old-etag"
+	buf := make([]byte, 1024)
+	_, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+		Etag:   &lookupETag,
+	})
+	require.NoError(t, err)
+
+	dc.inflight.Wait()
+	assert.Equal(t, []string{"new-etag"}, mock.uploadedEtags(),
+		"populate must key on the ETag returned by storage, not the lookup ETag")
+}
+
+// TestReadInBuffer_ZeroByteHit_PopulateUsesReturnedETag verifies the same
+// invariant on the corrupt/zero-byte L2 fallthrough path.
+func TestReadInBuffer_ZeroByteHit_PopulateUsesReturnedETag(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{
+		readInBufferData:  []byte("azure chunk"),
+		writeReturnedETag: "new-etag",
+	}
+	dc := newTestDistCache(mock, next)
+
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, nil // zero-byte hit
+	}
+
+	lookupETag := "old-etag"
+	buf := make([]byte, 1024)
+	_, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+		Etag:   &lookupETag,
+	})
+	require.NoError(t, err)
+
+	dc.inflight.Wait()
+	assert.Equal(t, []string{"new-etag"}, mock.uploadedEtags(),
+		"zero-byte-hit populate must key on the storage-returned ETag")
+}
+
+// TestReadInBuffer_AlreadyLocked_InheritedLock_PopulateUsesReturnedETag verifies
+// that inheriting the miss-lock via poll also routes populate through the
+// storage-returned ETag.
+func TestReadInBuffer_AlreadyLocked_InheritedLock_PopulateUsesReturnedETag(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{
+		readInBufferData:  []byte("azure chunk"),
+		writeReturnedETag: "new-etag",
+	}
+	dc := newTestDistCache(mock, next)
+
+	callCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		callCount++
+		if callCount == 1 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
+		}
+		return 0, dcache.ErrNotFoundGotLock
+	}
+
+	lookupETag := "old-etag"
+	buf := make([]byte, 1024)
+	_, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+		Etag:   &lookupETag,
+	})
+	require.NoError(t, err)
+
+	dc.inflight.Wait()
+	assert.Equal(t, []string{"new-etag"}, mock.uploadedEtags(),
+		"inherited-lock populate must key on the storage-returned ETag")
+}
+
+// TestReadInBuffer_GotLock_EmptyReturnedETag_SkipsPopulate verifies that when
+// storage does not update options.Etag (empty pointer preserved), populate is
+// skipped entirely rather than falling back to a possibly stale lookup ETag.
+func TestReadInBuffer_GotLock_EmptyReturnedETag_SkipsPopulate(t *testing.T) {
+	mock := newMockDCacheClient()
+	// writeReturnedETag left empty — mimics a storage layer that returns no
+	// ETag header (sanitizeEtag maps a nil ETag to "").
+	next := &mockNextComponent{readInBufferData: []byte("azure chunk")}
+	dc := newTestDistCache(mock, next)
+
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, dcache.ErrNotFoundGotLock
+	}
+
+	h := handlemap.NewHandle("test/file.bin")
+
+	empty := ""
+	buf := make([]byte, 1024)
+	_, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Handle: h,
+		Offset: 0,
+		Data:   buf,
+		Etag:   &empty,
+	})
+	require.NoError(t, err)
+
+	dc.inflight.Wait()
+	assert.Empty(t, mock.uploadedEtags(),
+		"populate must be skipped when storage returned no ETag; falling back to the lookup ETag would risk a stale-version write")
 }

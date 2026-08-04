@@ -436,15 +436,18 @@ func (suite *distCacheIntegSuite) TestReadInBuffer_L2MissThenHit() {
 
 	// First read: L2 miss → reads from loopback → populates L2
 	buf := make([]byte, chunkSize)
+	firstEtag := ""
 	n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   fileName,
 		Offset: 0,
 		Data:   buf,
 		Size:   int64(chunkSize),
+		Etag:   &firstEtag,
 	})
 	suite.assert.NoError(err)
 	suite.assert.Equal(chunkSize, n)
 	suite.assert.Equal(testData, buf[:n])
+	suite.assert.NotEmpty(firstEtag, "loopback must stamp *Etag on success")
 
 	// Wait for async L2 population
 	time.Sleep(200 * time.Millisecond)
@@ -452,13 +455,16 @@ func (suite *distCacheIntegSuite) TestReadInBuffer_L2MissThenHit() {
 	// Delete source to prove second read is from L2
 	os.Remove(filepath.Join(suite.storagePath, fileName))
 
-	// Second read: should hit L2
+	// Second read: pass the same ETag as lookup key so L2 hits under the
+	// version we populated. In production block_cache pins this via GetAttr.
 	buf2 := make([]byte, chunkSize)
+	lookupEtag := firstEtag
 	n2, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   fileName,
 		Offset: 0,
 		Data:   buf2,
 		Size:   int64(chunkSize),
+		Etag:   &lookupEtag,
 	})
 	suite.assert.NoError(err)
 	suite.assert.Equal(chunkSize, n2)
@@ -578,11 +584,13 @@ func (suite *distCacheIntegSuite) TestReadInBuffer_Poll_InheritsLockPopulatesL2(
 	}
 	done := make(chan result, 1)
 	go func() {
+		etag := ""
 		n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
 			Path:   fileName,
 			Offset: 0,
 			Data:   buf,
 			Size:   int64(chunkSize),
+			Etag:   &etag,
 		})
 		done <- result{n, err}
 	}()
