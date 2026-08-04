@@ -41,6 +41,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -299,6 +300,24 @@ lazy-write: false
 	assert.Equal(t, uint64(8*common.MbToBytes), bc.memSize)
 	assert.Equal(t, uint32(2), bc.workers)
 	assert.Equal(t, uint32(2), bc.prefetch)
+}
+
+func TestBlockCacheConfigure_DefaultParallelism(t *testing.T) {
+	config.ResetConfig()
+	t.Cleanup(config.ResetConfig)
+
+	expectedWorkers := runtime.NumCPU() * 3
+	cfg := fmt.Sprintf(`
+block_cache:
+  block-size-mb: 1
+  mem-size-mb: %d
+lazy-write: false
+`, expectedWorkers+1)
+	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
+
+	bc := NewBlockCacheComponent().(*BlockCache)
+	assert.NoError(t, bc.Configure(true))
+	assert.Equal(t, uint32(expectedWorkers), bc.workers)
 }
 
 func TestBlockCacheStart_RejectsNoWorkers(t *testing.T) {
