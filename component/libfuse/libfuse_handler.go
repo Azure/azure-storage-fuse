@@ -501,8 +501,6 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 		name = name + "/"
 	}
 
-	log.Trace("Libfuse::libfuse_opendir : %s", name)
-
 	handle := handlemap.NewHandle(name)
 
 	// For each handle created using opendir we create
@@ -517,6 +515,8 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	handlemap.Add(handle)
 	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(handle)))
+
+	log.Trace("Libfuse::libfuse_opendir : %s, handle: %d", name, handle.ID)
 
 	if fuseFS.kernelListCacheTtlInSec > 0 {
 		// FUSE_CAP_AUTO_INVAL_DATA (enabled by the kernel by default) causes the kernel

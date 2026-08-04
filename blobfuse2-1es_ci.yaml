@@ -9,7 +9,6 @@ pr:
   branches:
     include:
     - main
-    - feature/tachyon
   paths:
     exclude:
     - README.md
