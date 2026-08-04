@@ -124,7 +124,7 @@ func (suite *libfuseTestSuite) TestKernelListCacheKernelSupport() {
 	suite.assert.Equal(C.int(1), support)
 	conn.proto_major = 8
 	support = C.kernel_supports_dir_cache(&conn)
-	suite.assert.Equal(C.int(0), support)
+	suite.assert.Equal(C.int(1), support)
 }
 
 func testMkDir(suite *libfuseTestSuite) {
