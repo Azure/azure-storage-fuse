@@ -19,37 +19,6 @@ parameters:
 
 
 stages:
-  - stage: TestImageSpawn
-    displayName: 'Test New Image Spawn'
-    jobs:
-      - job: SpawnCheck
-        timeoutInMinutes: 30
-        strategy:
-          matrix:
-            Ubuntu-26:
-              AgentName: 'blobfuse-ubuntu26'
-              poolName: 'blobfuse-ubuntu-pool'
-            Ubuntu-26-ARM64:
-              AgentName: 'blobfuse-ubn26-arm64'
-              poolName: 'blobfuse-ubn-arm64-pool'
-            AzureLinux-4:
-              AgentName: 'blobfuse-azurelinux4'
-              poolName: 'blobfuse-mariner-pool'
-
-        pool:
-          name: $(poolName)
-          demands:
-            - ImageOverride -equals $(AgentName)
-
-        steps:
-          - checkout: none
-          - script: |
-              echo "$(AgentName) image spawned successfully"
-              uname -a
-              cat /etc/os-release
-              lscpu
-            displayName: 'Print image details'
-
   - stage: BuildAndTest
     condition: ${{ eq(parameters.coverage_test, true) }}
     jobs:
@@ -67,6 +36,12 @@ stages:
               AgentName: 'blobfuse-ubuntu22'
               distro: 'ubuntu'
               distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-26:
+              AgentName: 'blobfuse-ubuntu26'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_26_x86'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
 

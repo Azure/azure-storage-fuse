@@ -77,6 +77,9 @@ extends:
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+            # TODO: Add Ubuntu 26 (both AMD and ARM) once the 1ES template based
+            # image for Ubuntu 26 becomes available. It is currently not available,
+            # so Ubuntu 26 is not added here.
 
         pool:
           name: $(poolName)
