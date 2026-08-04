@@ -1151,7 +1151,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*arm64.deb
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags).arm64.deb
 
           - script: |
               ls -l
