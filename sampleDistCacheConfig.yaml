@@ -50,6 +50,11 @@ dist_cache:
   # Optional: TTL for cached data in seconds (0 = no expiry)
   # ttl-seconds: 86400
 
+  # Optional: per-chunk CRC32 verification on the L2 client. Default true.
+  # On mismatch, bypass-on-error=true (default) falls through to azstorage;
+  # otherwise EIO is returned to the caller.
+  # verify-checksum: true
+
 attr_cache:
   timeout-sec: 120
 

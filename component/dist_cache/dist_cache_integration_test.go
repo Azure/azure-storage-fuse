@@ -9,13 +9,16 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -42,7 +45,9 @@ type integMockServer struct {
 	listener net.Listener
 	addr     string
 	mu       sync.Mutex
-	store    map[string][]byte // cacheKey -> data
+	store    map[string][]byte            // cacheKey -> data
+	meta     map[string]map[string][]byte // cacheKey -> metadata (persisted on upload)
+	uploads  int                          // count of Uploadrequest messages received
 	attrs    map[string]*pb.FileAttribute
 	groups   map[string]map[string]bool // groupID -> set of cacheKeys
 	locks    map[string]bool            // cacheKey -> locked
@@ -61,6 +66,7 @@ func newIntegMockServer(t *testing.T) *integMockServer {
 		listener:     l,
 		addr:         l.Addr().String(),
 		store:        make(map[string][]byte),
+		meta:         make(map[string]map[string][]byte),
 		attrs:        make(map[string]*pb.FileAttribute),
 		groups:       make(map[string]map[string]bool),
 		locks:        make(map[string]bool),
@@ -133,8 +139,18 @@ func (s *integMockServer) handleRequest(req *pb.Request, uploadData []byte) (pro
 
 	switch p := req.Payload.(type) {
 	case *pb.Request_Uploadrequest:
+		s.uploads++
 		key := p.Uploadrequest.Filename
 		s.store[key] = append([]byte(nil), uploadData...)
+		if md := p.Uploadrequest.GetMetadata(); len(md) > 0 {
+			copyMd := make(map[string][]byte, len(md))
+			for k, v := range md {
+				copyMd[k] = append([]byte(nil), v...)
+			}
+			s.meta[key] = copyMd
+		} else {
+			delete(s.meta, key)
+		}
 		// Track group membership
 		if gid := p.Uploadrequest.GetGroupid(); len(gid) > 0 {
 			gidStr := string(gid)
@@ -188,10 +204,21 @@ func (s *integMockServer) handleRequest(req *pb.Request, uploadData []byte) (pro
 			Result:   pb.DownloadResponse_SUCCESS,
 			Filesize: uint64(len(slice)),
 		}
-		// Include gid metadata if tracked
+		// Echo persisted metadata so the client's checksum verification passes.
+		if md, ok := s.meta[key]; ok && len(md) > 0 {
+			out := make(map[string][]byte, len(md))
+			for k, v := range md {
+				out[k] = append([]byte(nil), v...)
+			}
+			resp.Metadata = out
+		}
+		// Include gid metadata if tracked (adds to whatever the client sent).
 		for gid, keys := range s.groups {
 			if keys[key] {
-				resp.Metadata = map[string][]byte{"gid": []byte(gid)}
+				if resp.Metadata == nil {
+					resp.Metadata = map[string][]byte{}
+				}
+				resp.Metadata["gid"] = []byte(gid)
 				break
 			}
 		}
@@ -249,6 +276,14 @@ func (s *integMockServer) chunkCount() int {
 	return len(s.store)
 }
 
+// uploadCount returns the number of Upload requests the server has received
+// (independent of priming writes that touch s.store directly).
+func (s *integMockServer) uploadCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.uploads
+}
+
 // primeLock marks a key as locked by a phantom peer.
 func (s *integMockServer) primeLock(key string) {
 	s.mu.Lock()
@@ -256,11 +291,29 @@ func (s *integMockServer) primeLock(key string) {
 	s.locks[key] = true
 }
 
-// primeChunk seeds the store as if a peer finished populating.
+// primeChunk seeds the store as if a peer finished populating. It also
+// records the CRC32 checksum metadata the real client expects so that
+// downloads pass checksum verification.
 func (s *integMockServer) primeChunk(key string, data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.store[key] = append([]byte(nil), data...)
+	if s.meta[key] == nil {
+		s.meta[key] = make(map[string][]byte)
+	}
+	s.meta[key]["CHUNK_CHECKSUM"] = []byte(strconv.FormatUint(uint64(crc32.ChecksumIEEE(data)), 10))
+}
+
+// primeCorruptChunk seeds the store with a checksum that does NOT match the
+// data, simulating in-flight corruption of an L2 chunk.
+func (s *integMockServer) primeCorruptChunk(key string, data []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.store[key] = append([]byte(nil), data...)
+	if s.meta[key] == nil {
+		s.meta[key] = make(map[string][]byte)
+	}
+	s.meta[key]["CHUNK_CHECKSUM"] = []byte(strconv.FormatUint(uint64(crc32.ChecksumIEEE(data))^0xDEADBEEF, 10))
 }
 
 // expireLock clears the lock, simulating the peer's server-side TTL firing.
@@ -602,6 +655,165 @@ func (suite *distCacheIntegSuite) TestReadInBuffer_Poll_ZeroByteHitFallsThroughN
 	suite.distCache.inflight.Wait()
 	suite.assert.Equal(chunksBefore, suite.srv.chunkCount(),
 		"must NOT populate on zero-byte poll hit: no lock ownership")
+}
+
+// --- Tests: checksum-mismatch handling (initial download + poll) ---
+
+// Corrupt L2 chunk + bypass-on-error=true (suite default): must fall through
+// to loopback and NOT populate (peer still owns the entry).
+func (suite *distCacheIntegSuite) TestReadInBuffer_ChecksumMismatch_BypassFallsThroughToStorage() {
+	fileName := "test_checksum_bypass.bin"
+	chunkSize := 1 * 1024 * 1024
+	loopbackData := make([]byte, chunkSize)
+	rand.Read(loopbackData)
+	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), loopbackData, 0644)
+	suite.assert.NoError(err)
+
+	corruptData := make([]byte, chunkSize)
+	rand.Read(corruptData)
+	cacheKey := dcache.GenerateCacheKey("test/container", fileName, "", 0, int64(chunkSize))
+	suite.srv.primeCorruptChunk(cacheKey, corruptData)
+	uploadsBefore := suite.srv.uploadCount()
+
+	buf := make([]byte, chunkSize)
+	n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   fileName,
+		Offset: 0,
+		Data:   buf,
+		Size:   int64(chunkSize),
+	})
+
+	suite.assert.NoError(err)
+	suite.assert.Equal(chunkSize, n)
+	suite.assert.Equal(loopbackData, buf[:n], "read must fall through to loopback on L2 checksum mismatch")
+
+	suite.distCache.inflight.Wait()
+	suite.assert.Equal(uploadsBefore, suite.srv.uploadCount(),
+		"must NOT populate on L2 checksum mismatch: peer still owns the entry")
+}
+
+// Corrupt L2 chunk + bypass-on-error=false: must return EIO without falling
+// through to loopback.
+func (suite *distCacheIntegSuite) TestReadInBuffer_ChecksumMismatch_StrictReturnsEIO() {
+	fileName := "test_checksum_strict.bin"
+	chunkSize := 1 * 1024 * 1024
+	loopbackData := make([]byte, chunkSize)
+	rand.Read(loopbackData)
+	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), loopbackData, 0644)
+	suite.assert.NoError(err)
+
+	corruptData := make([]byte, chunkSize)
+	rand.Read(corruptData)
+	cacheKey := dcache.GenerateCacheKey("test/container", fileName, "", 0, int64(chunkSize))
+	suite.srv.primeCorruptChunk(cacheKey, corruptData)
+
+	suite.distCache.bypassOnError = false
+	defer func() { suite.distCache.bypassOnError = true }()
+
+	buf := make([]byte, chunkSize)
+	n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   fileName,
+		Offset: 0,
+		Data:   buf,
+		Size:   int64(chunkSize),
+	})
+
+	suite.assert.ErrorIs(err, syscall.EIO)
+	suite.assert.Equal(0, n)
+}
+
+// Poll observes a corrupt chunk + bypass-on-error=true: fall through to
+// loopback, no populate.
+func (suite *distCacheIntegSuite) TestReadInBuffer_Poll_ChecksumMismatch_BypassFallsThrough() {
+	fileName := "test_poll_checksum_bypass.bin"
+	chunkSize := 1 * 1024 * 1024
+	loopbackData := make([]byte, chunkSize)
+	rand.Read(loopbackData)
+	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), loopbackData, 0644)
+	suite.assert.NoError(err)
+
+	cacheKey := dcache.GenerateCacheKey("test/container", fileName, "", 0, int64(chunkSize))
+	suite.srv.primeLock(cacheKey)
+	uploadsBefore := suite.srv.uploadCount()
+
+	buf := make([]byte, chunkSize)
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
+			Path:   fileName,
+			Offset: 0,
+			Data:   buf,
+			Size:   int64(chunkSize),
+		})
+		done <- result{n, err}
+	}()
+
+	corruptData := make([]byte, chunkSize)
+	rand.Read(corruptData)
+	time.Sleep(300 * time.Millisecond)
+	suite.srv.primeCorruptChunk(cacheKey, corruptData)
+
+	select {
+	case r := <-done:
+		suite.assert.NoError(r.err)
+		suite.assert.Equal(chunkSize, r.n)
+		suite.assert.Equal(loopbackData, buf[:r.n], "poll checksum mismatch must fall through to loopback")
+	case <-time.After(5 * time.Second):
+		suite.T().Fatal("reader did not complete within 5s")
+	}
+
+	suite.distCache.inflight.Wait()
+	suite.assert.Equal(uploadsBefore, suite.srv.uploadCount(),
+		"must NOT populate on poll checksum mismatch: no lock ownership")
+}
+
+// Poll observes a corrupt chunk + bypass-on-error=false: return EIO.
+func (suite *distCacheIntegSuite) TestReadInBuffer_Poll_ChecksumMismatch_StrictReturnsEIO() {
+	fileName := "test_poll_checksum_strict.bin"
+	chunkSize := 1 * 1024 * 1024
+	loopbackData := make([]byte, chunkSize)
+	rand.Read(loopbackData)
+	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), loopbackData, 0644)
+	suite.assert.NoError(err)
+
+	cacheKey := dcache.GenerateCacheKey("test/container", fileName, "", 0, int64(chunkSize))
+	suite.srv.primeLock(cacheKey)
+
+	suite.distCache.bypassOnError = false
+	defer func() { suite.distCache.bypassOnError = true }()
+
+	buf := make([]byte, chunkSize)
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := suite.distCache.ReadInBuffer(&internal.ReadInBufferOptions{
+			Path:   fileName,
+			Offset: 0,
+			Data:   buf,
+			Size:   int64(chunkSize),
+		})
+		done <- result{n, err}
+	}()
+
+	corruptData := make([]byte, chunkSize)
+	rand.Read(corruptData)
+	time.Sleep(300 * time.Millisecond)
+	suite.srv.primeCorruptChunk(cacheKey, corruptData)
+
+	select {
+	case r := <-done:
+		suite.assert.ErrorIs(r.err, syscall.EIO)
+		suite.assert.Equal(0, r.n)
+	case <-time.After(5 * time.Second):
+		suite.T().Fatal("reader did not complete within 5s")
+	}
 }
 
 // --- Test: ReadInBuffer graceful degradation ---

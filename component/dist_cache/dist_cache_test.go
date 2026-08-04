@@ -7,10 +7,12 @@ package dist_cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -362,6 +364,157 @@ func TestReadInBuffer_AlreadyLocked_PollZeroByteHit_FallsThroughWithoutPopulate(
 	dc.inflight.Wait()
 	assert.Equal(t, int32(0), uploads.Load(),
 		"must NOT populate on zero-byte poll hit: no lock ownership")
+}
+
+// --- Tests for checksum mismatch handling ---
+
+// wrappedChecksumErr mimics how the real client wraps the sentinel via fmt.Errorf.
+func wrappedChecksumErr() error {
+	return fmt.Errorf("download chunk foo: %w: expected 1 calculated 2", dcache.ErrChecksumMismatch)
+}
+
+func TestReadInBuffer_ChecksumMismatch_BypassFallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure data after checksum mismatch")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+	dc.bypassOnError = true
+
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, wrappedChecksumErr()
+	}
+
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return nil
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to azstorage on checksum mismatch when bypass-on-error=true")
+
+	dc.inflight.Wait()
+	assert.Equal(t, int32(0), uploads.Load(), "must NOT populate on checksum mismatch: peer still owns the entry")
+}
+
+func TestReadInBuffer_ChecksumMismatch_StrictReturnsEIO(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{readInBufferData: []byte("should not be read")}
+	dc := newTestDistCache(mock, next)
+	dc.bypassOnError = false
+
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, wrappedChecksumErr()
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.Equal(t, 0, n)
+	assert.ErrorIs(t, err, syscall.EIO)
+	assert.Equal(t, 0, next.readInBufferCalled, "must NOT fall through to azstorage when bypass-on-error=false")
+}
+
+// Poll observes a checksum mismatch. bypass-on-error=true → fall through to
+// azstorage without populating (peer still owns the miss-lock).
+func TestReadInBuffer_AlreadyLocked_PollChecksumMismatch_BypassFallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure data after poll checksum mismatch")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+	dc.bypassOnError = true
+
+	callCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		callCount++
+		if callCount == 1 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
+		}
+		return 0, wrappedChecksumErr()
+	}
+
+	var uploads atomic.Int32
+	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
+		uploads.Add(1)
+		return nil
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to azstorage on poll checksum mismatch when bypass-on-error=true")
+
+	dc.inflight.Wait()
+	assert.Equal(t, int32(0), uploads.Load(), "must NOT populate on poll checksum mismatch: no lock ownership")
+}
+
+// Poll observes a checksum mismatch, strict mode → EIO (no azstorage fallback).
+func TestReadInBuffer_AlreadyLocked_PollChecksumMismatch_StrictReturnsEIO(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{readInBufferData: []byte("should not be read")}
+	dc := newTestDistCache(mock, next)
+	dc.bypassOnError = false
+
+	callCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		callCount++
+		if callCount == 1 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
+		}
+		return 0, wrappedChecksumErr()
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.Equal(t, 0, n)
+	assert.ErrorIs(t, err, syscall.EIO)
+	assert.Equal(t, 0, next.readInBufferCalled, "must NOT fall through to azstorage when bypass-on-error=false")
+}
+
+// pollChunkIntoBuffer maps a wrapped ErrChecksumMismatch to errPollChecksumMismatch,
+// keeping it distinct from the zero-byte errPollCorruptHit so the caller can enforce policy.
+func TestPollChunkIntoBuffer_ChecksumMismatch_ReturnsDistinctSentinel(t *testing.T) {
+	mock := newMockDCacheClient()
+	dc := newTestDistCache(mock, &mockNextComponent{})
+
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, wrappedChecksumErr()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	buf := make([]byte, 1024)
+	n, err := dc.pollChunkIntoBuffer(ctx, "test/file.bin", "", 0, buf)
+
+	assert.Equal(t, 0, n)
+	assert.True(t, errors.Is(err, errPollChecksumMismatch), "poll must return errPollChecksumMismatch, got %v", err)
+	assert.False(t, errors.Is(err, errPollCorruptHit), "checksum mismatch must NOT be conflated with zero-byte hit")
 }
 
 func TestPriority(t *testing.T) {

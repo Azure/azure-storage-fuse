@@ -55,6 +55,8 @@ github.com/montanaflynn/stats v0.12.2 h1:qHR+IveGjTbO+lnrz1nKR+xpIcOtovJ5Xu0cst9
 github.com/montanaflynn/stats v0.12.2/go.mod h1:etXPPgVO6n31NxCd9KQUMvCM+ve0ruNzt6R8Bnaayow=
 github.com/nearora-msft/dist-cache-client-go v0.1.1-0.20260724174910-dc0c60759231 h1:KFHyXslxINR/S7ABMTBZRGKadjPnro42jSL/Frwd4W0=
 github.com/nearora-msft/dist-cache-client-go v0.1.1-0.20260724174910-dc0c60759231/go.mod h1:MEEXqkSQUzi/nArhEm7wJqcMhDYkLROmI28+6O4AVQ0=
+github.com/nearora-msft/dist-cache-client-go v0.1.1-0.20260803230709-f185a58df051 h1:8llKtq/N4yi8IjG4ZVMxgvWlNb94nDTIbonYbzb3LHw=
+github.com/nearora-msft/dist-cache-client-go v0.1.1-0.20260803230709-f185a58df051/go.mod h1:MEEXqkSQUzi/nArhEm7wJqcMhDYkLROmI28+6O4AVQ0=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 h1:onHthvaw9LFnH4t2DcNVpwGmV9E1BkGknEliJkfwQj0=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58/go.mod h1:DXv8WO4yhMYhSNPKjeNKa5WY9YCIEBRbNzFFPJbWO6Y=
 github.com/pelletier/go-toml/v2 v2.2.4 h1:mye9XuhQ6gvn5h28+VilKrrPoQVanw5PMw/TB0t5Ec4=

@@ -124,6 +124,7 @@ dist_cache:
   # OR
   server-list: <comma-separated list of cache server addresses, e.g., "host1:9065,host2:9065,host3:9065">
   ttl-seconds: <TTL for cached data in seconds. Default - 0 (no expiry)>
+  verify-checksum: <true|false, per-chunk CRC32 verification on the L2 client. On mismatch: with bypass-on-error=true (default) fall through to azstorage, otherwise return EIO. Default - true>
   block-size-mb: <size of each chunk to be read from cache). Default - 16 MB>
   mem-size-mb: <total amount of memory to be preallocated for distributed cache (in MB). Default - 60% of free memory>
   prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>

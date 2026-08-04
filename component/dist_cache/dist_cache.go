@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -26,6 +27,10 @@ const compName = "dist_cache"
 // cache entry. The caller should treat it like a timeout: fetch from Azure
 // but skip populate (we don't hold the miss-lock).
 var errPollCorruptHit = errors.New("dist_cache: poll saw zero-byte cache entry")
+
+// errPollChecksumMismatch signals a checksum failure during polling. The
+// caller decides whether to fall through (bypass-on-error) or surface EIO.
+var errPollChecksumMismatch = errors.New("dist_cache: poll saw checksum mismatch")
 
 // Async upload memory budget policy. See resolveMemBudget for how these combine.
 const (
@@ -96,6 +101,9 @@ type DistCacheOptions struct {
 	Port       int    `config:"port"        yaml:"port,omitempty"`        // Default 9065
 	TTLSeconds uint32 `config:"ttl-seconds" yaml:"ttl-seconds,omitempty"` // Default 0 (no TTL)
 
+	// Per-chunk CRC verification on the L2 client. Default true.
+	VerifyChecksum bool `config:"verify-checksum" yaml:"verify-checksum,omitempty"`
+
 	// Internal knob, no YAML/CLI surface. Wire up later if a caller needs it.
 	BypassOnError bool `config:"bypass-on-error" yaml:"-"` //Default true (skip L2 on client error)
 }
@@ -141,7 +149,7 @@ func NewDistCacheComponent() internal.Component {
 func (dc *DistCache) Configure(isParent bool) error {
 	log.Trace("DistCache::Configure")
 
-	conf := DistCacheOptions{BypassOnError: true}
+	conf := DistCacheOptions{BypassOnError: true, VerifyChecksum: true}
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("DistCache: config error [invalid config attributes]")
@@ -224,6 +232,15 @@ func (dc *DistCache) Configure(isParent bool) error {
 	}
 
 	log.Info("DistCache::Configure : chunk-size=%d", dc.chunkSize)
+	log.Info("DistCache::Configure : discovery-url=%s", dc.conf.DiscoveryURL)
+	log.Info("DistCache::Configure : discovery-refresh-sec=%d", dc.conf.DiscoveryRefreshSec)
+	log.Info("DistCache::Configure : k8s-service=%s", dc.conf.K8sService)
+	log.Info("DistCache::Configure : k8s-namespace=%s", dc.conf.K8sNamespace)
+	log.Info("DistCache::Configure : server-list=%s", dc.conf.ServerList)
+	log.Info("DistCache::Configure : port=%d", dc.conf.Port)
+	log.Info("DistCache::Configure : ttl-seconds=%d", dc.conf.TTLSeconds)
+	log.Info("DistCache::Configure : verify-checksum=%t", dc.conf.VerifyChecksum)
+	log.Info("DistCache::Configure : bypass-on-error=%t", dc.bypassOnError)
 
 	return nil
 }
@@ -234,6 +251,12 @@ func (dc *DistCache) Start(ctx context.Context) error {
 	// Build client options
 	opts := []dcache.Option{
 		dcache.WithChunkSize(dc.chunkSize),
+	}
+
+	if dc.conf.VerifyChecksum {
+		// Per-chunk CRC on upload, validated on download; mismatches
+		// surface as ErrChecksumMismatch and fall through to azstorage.
+		opts = append(opts, dcache.WithChecksumVerification(true))
 	}
 
 	if dc.conf.DiscoveryURL != "" {
@@ -344,6 +367,10 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		if pollErr == nil {
 			return n, nil // L2 hit during poll
 		}
+		if pollErr == errPollChecksumMismatch && !dc.bypassOnError {
+			log.Err("DistCache::ReadInBuffer : L2 checksum mismatch during poll %s offset=%d, returning EIO", name, options.Offset)
+			return 0, syscall.EIO
+		}
 		n, err = dc.NextComponent().ReadInBuffer(options)
 		if err != nil {
 			return n, err
@@ -364,6 +391,18 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		// for the client that explicitly holds the miss-lock (ErrNotFoundGotLock).
 		log.Debug("DistCache::ReadInBuffer : L2 miss %s offset=%d", name, options.Offset)
 		return dc.NextComponent().ReadInBuffer(options)
+	}
+
+	if errors.Is(err, dcache.ErrChecksumMismatch) {
+		// Corrupt L2 chunk. Populate would race the peer's write, so
+		// always skip it; bypass-on-error decides whether we mask the
+		// corruption by falling through or surface it as EIO.
+		if dc.bypassOnError {
+			log.Warn("DistCache::ReadInBuffer : L2 checksum mismatch %s offset=%d, falling through to storage: %v", name, options.Offset, err)
+			return dc.NextComponent().ReadInBuffer(options)
+		}
+		log.Err("DistCache::ReadInBuffer : L2 checksum mismatch %s offset=%d, returning EIO: %v", name, options.Offset, err)
+		return 0, syscall.EIO
 	}
 
 	if dc.bypassOnError {
@@ -400,8 +439,8 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 		}
 
 		n, err := dc.client.DownloadChunk(ctx, name, etag, offset, buf, dcache.WithLock(true))
-		switch err {
-		case nil:
+		switch {
+		case err == nil:
 			if n == 0 {
 				// Corrupt/empty cache entry — treat like a miss but
 				// skip populate since we don't hold the lock.
@@ -409,11 +448,15 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 				return 0, errPollCorruptHit
 			}
 			return n, nil // L2 hit
-		case dcache.ErrNotFoundGotLock:
+		case err == dcache.ErrNotFoundGotLock:
 			// Peer's lock expired; we now own the miss. No server-side
 			// release API, so a dropped populate leaks the lock until TTL.
 			return 0, dcache.ErrNotFoundGotLock
-		case dcache.ErrNotFoundAlreadyLocked, dcache.ErrNotFound:
+		case errors.Is(err, dcache.ErrChecksumMismatch):
+			// Peer wrote a corrupt chunk; caller decides fall-through vs EIO.
+			log.Warn("DistCache::pollChunkIntoBuffer : L2 checksum mismatch %s offset=%d: %v", name, offset, err)
+			return 0, errPollChecksumMismatch
+		case err == dcache.ErrNotFoundAlreadyLocked, err == dcache.ErrNotFound:
 			// Keep waiting.
 		default:
 			return 0, err
