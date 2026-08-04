@@ -1,5 +1,6 @@
 ## 2.5.5 (Unreleased)
 **Features**
+- Added support for Ubuntu 26 on both AMD64 and ARM64 architectures.
 
 **Bug Fixes**
 
