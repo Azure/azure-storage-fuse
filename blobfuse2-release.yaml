@@ -829,7 +829,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*arm64.deb
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags).arm64.deb
 
           - script: |
               ls -l
@@ -1684,7 +1684,7 @@ stages:
 
           - script: |
               sudo rpm -qip blobfuse2*.rpm
-              sudo tdnf install gcc build-essential fuse3 fuse3-devel -y
+              sudo tdnf install gcc kernel-headers binutils glibc-devel make fuse3 fuse3-devel -y
               sudo rpm -i blobfuse2*.rpm
             displayName: 'Install Package'
             workingDirectory: $(root_dir)/blobfuse2-signed/mariner

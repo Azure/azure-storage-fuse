@@ -27,7 +27,14 @@ steps:
   - script: |
       sudo apt-get update
       sudo apt-get install jq python3-setuptools python3-pip -y
-      sudo pip3 install pandas numpy pyarrow fastparquet --break-system-packages
+      # Newer distros (e.g. Ubuntu 26 / Python 3.14) enforce PEP 668 and require
+      # --break-system-packages to install packages system-wide, but older pip
+      # versions on Ubuntu 20/22 don't support that flag. Use it only when available.
+      if sudo pip3 install --help | grep -q -- '--break-system-packages'; then
+        sudo pip3 install pandas numpy pyarrow fastparquet --break-system-packages
+      else
+        sudo pip3 install pandas numpy pyarrow fastparquet
+      fi
     displayName: 'Install dependencies'
 
   - script: |
