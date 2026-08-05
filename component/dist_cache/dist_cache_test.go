@@ -604,6 +604,35 @@ dist_cache:
 	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
 }
 
+func TestConfigure_VerifyChecksumDefaultAndOverride(t *testing.T) {
+	tests := []struct {
+		name       string
+		setting    string
+		wantVerify bool
+	}{
+		{name: "defaults to true", wantVerify: true},
+		{name: "explicit false overrides default", setting: "  verify-checksum: false\n", wantVerify: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+block_cache:
+  mem-size-mb: 100
+dist_cache:
+  server-list: "localhost:9065"
+`+test.setting)
+
+			dc := NewDistCacheComponent().(*DistCache)
+			require.NoError(t, dc.Configure(true))
+			assert.Equal(t, test.wantVerify, dc.conf.VerifyChecksum)
+		})
+	}
+}
+
 func TestConfigure_FailsWhenAccountNameMissing(t *testing.T) {
 	loadConfig(t, `
 azstorage:
@@ -1304,9 +1333,9 @@ func TestReadInBuffer_GotLock_PopulateUsesReturnedETag(t *testing.T) {
 		"populate must key on the ETag returned by storage, not the lookup ETag")
 }
 
-// TestReadInBuffer_ZeroByteHit_PopulateUsesReturnedETag verifies the same
-// invariant on the corrupt/zero-byte L2 fallthrough path.
-func TestReadInBuffer_ZeroByteHit_PopulateUsesReturnedETag(t *testing.T) {
+// TestReadInBuffer_ZeroByteHit_DoesNotPopulate verifies that a corrupt L2 hit
+// falls through without uploading because the caller does not own a miss-lock.
+func TestReadInBuffer_ZeroByteHit_DoesNotPopulate(t *testing.T) {
 	mock := newMockDCacheClient()
 	next := &mockNextComponent{
 		readInBufferData:  []byte("azure chunk"),
@@ -1329,8 +1358,8 @@ func TestReadInBuffer_ZeroByteHit_PopulateUsesReturnedETag(t *testing.T) {
 	require.NoError(t, err)
 
 	dc.inflight.Wait()
-	assert.Equal(t, []string{"new-etag"}, mock.uploadedEtags(),
-		"zero-byte-hit populate must key on the storage-returned ETag")
+	assert.Empty(t, mock.uploadedEtags(),
+		"zero-byte hit must not populate without owning the miss-lock")
 }
 
 // TestReadInBuffer_AlreadyLocked_InheritedLock_PopulateUsesReturnedETag verifies

@@ -87,8 +87,7 @@ func RegisterEnvVariables() {
 // DistCacheOptions holds configuration for the distributed cache component.
 type DistCacheOptions struct {
 	// Discovery (preferred — auto-detects servers)
-	DiscoveryURL        string `config:"discovery-url"        yaml:"discovery-url,omitempty"`
-	DiscoveryRefreshSec int    `config:"discovery-refresh-sec" yaml:"discovery-refresh-sec,omitempty"`
+	DiscoveryURL string `config:"discovery-url" yaml:"discovery-url,omitempty"`
 
 	// Kubernetes DNS discovery
 	K8sService   string `config:"k8s-service"   yaml:"k8s-service,omitempty"`
@@ -231,9 +230,8 @@ func (dc *DistCache) Configure(isParent bool) error {
 		log.Warn("DistCache::Configure : async upload disabled; L2 populate skipped, reads run as passthrough")
 	}
 
-	log.Info("DistCache::Configure : chunk-size=%d", dc.chunkSize)
+	log.Info("DistCache::Configure : block-size=%d", dc.chunkSize)
 	log.Info("DistCache::Configure : discovery-url=%s", dc.conf.DiscoveryURL)
-	log.Info("DistCache::Configure : discovery-refresh-sec=%d", dc.conf.DiscoveryRefreshSec)
 	log.Info("DistCache::Configure : k8s-service=%s", dc.conf.K8sService)
 	log.Info("DistCache::Configure : k8s-namespace=%s", dc.conf.K8sNamespace)
 	log.Info("DistCache::Configure : server-list=%s", dc.conf.ServerList)
@@ -276,10 +274,6 @@ func (dc *DistCache) Start(ctx context.Context) error {
 		opts = append(opts, dcache.WithPort(dc.conf.Port))
 	}
 	opts = append(opts, dcache.WithCachePrefix(dc.cachePrefix))
-	if dc.conf.DiscoveryRefreshSec > 0 {
-		opts = append(opts, dcache.WithDiscoveryRefresh(
-			time.Duration(dc.conf.DiscoveryRefreshSec)*time.Second))
-	}
 
 	client, err := dcache.New(opts...)
 	if err != nil {
@@ -335,16 +329,10 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		return n, nil
 	}
 	if err == nil && n == 0 {
-		// Zero-byte hit means corrupt/empty cache entry — treat as miss
+		// Zero-byte hit means corrupt/empty cache entry. Fall through without
+		// populating because this response does not grant us the miss-lock.
 		log.Warn("DistCache::ReadInBuffer : L2 zero-byte hit %s offset=%d, falling through to storage", name, options.Offset)
-		n, err = dc.NextComponent().ReadInBuffer(options)
-		if err != nil {
-			return n, err
-		}
-		if n > 0 {
-			dc.populateAfterStorageRead(name, etag, options, options.Data[:n])
-		}
-		return n, nil
+		return dc.NextComponent().ReadInBuffer(options)
 	}
 
 	if err == dcache.ErrNotFoundGotLock {
@@ -434,7 +422,7 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 	for {
 		select {
 		case <-ctx.Done():
-			return 0, fmt.Errorf("dist_cache: chunk poll timeout for %s offset=%d: %w", name, offset, ctx.Err())
+			return 0, fmt.Errorf("dist_cache: block poll timeout for %s offset=%d: %w", name, offset, ctx.Err())
 		case <-time.After(backoff):
 		}
 
@@ -571,7 +559,7 @@ func (dc *DistCache) resolveMemBudget() int64 {
 	floor := int64(distCacheMinBuffers) * dc.chunkSize
 
 	if fair < floor {
-		log.Warn("DistCache::resolveMemBudget : fair-share %d < floor %d (chunk=%d, bcRef=%d); async populate disabled",
+		log.Warn("DistCache::resolveMemBudget : fair-share %d < floor %d (block=%d, bcRef=%d); async populate disabled",
 			fair, floor, dc.chunkSize, bcRef)
 		return 0
 	}
@@ -602,7 +590,7 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 		return
 	}
 	if int64(len(src)) > dc.chunkSize {
-		log.Warn("DistCache::schedulePopulate : payload %d > chunk size %d, dropping populate for %s offset=%d",
+		log.Warn("DistCache::schedulePopulate : payload %d > block size %d, dropping populate for %s offset=%d",
 			len(src), dc.chunkSize, name, offset)
 		return
 	}
@@ -631,9 +619,9 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, leng
 	defer func() { dc.bufs <- buf }()
 
 	gid := fileGroupID(name, etag)
-	log.Debug("DistCache::doUpload : uploading chunk %s offset=%d with group %q", name, offset, string(gid))
+	log.Debug("DistCache::doUpload : uploading block %s offset=%d with group %q", name, offset, string(gid))
 	opts := []dcache.UploadOption{
-		dcache.WithIgnoreLock(true),
+		dcache.WithIgnoreLock(false),
 		dcache.WithGroupID(gid),
 		dcache.WithMetadata(map[string][]byte{"gid": gid}),
 	}
@@ -653,10 +641,6 @@ func init() {
 	discoveryFlag := config.AddStringFlag("dist-cache-discovery-url", "",
 		"distributed cache discovery endpoint (recommended)")
 	config.BindPFlag(compName+".discovery-url", discoveryFlag)
-
-	serverListFlag := config.AddStringFlag("dist-cache-server-list", "",
-		"comma-separated list of distributed cache server addresses (fallback)")
-	config.BindPFlag(compName+".server-list", serverListFlag)
 
 	RegisterEnvVariables()
 }
