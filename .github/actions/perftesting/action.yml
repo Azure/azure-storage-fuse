@@ -79,7 +79,7 @@ runs:
         sudo -n sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99blobfuse-benchmark-timeout'
         sudo -n dpkg --configure -a
         sudo -n apt-get update -qq
-        sudo -n apt-get install -y -qq fuse3 libfuse3-dev gcc jq python3 bc libaio-dev build-essential curl git iproute2
+        sudo -n apt-get install -y -qq fuse3 libfuse3-dev gcc jq python3 bc libaio-dev build-essential curl git iproute2 zip unzip
         if ! command -v fio >/dev/null || [[ "$(fio --version)" != "fio-3.36" ]]; then
           ./tools/install_fio.sh
         fi
@@ -246,11 +246,6 @@ runs:
         diagnostics="$PERF_RESULTS/diagnostics"
         mkdir -p "$diagnostics"
 
-        if [[ -f "$PERF_CONFIG" ]]; then
-          sed -E 's/^([[:space:]]*account-key:).*/\1 <redacted>/' \
-            "$PERF_CONFIG" > "$diagnostics/mount-config.redacted.yaml"
-        fi
-
         {
           date -u
           uname -a
@@ -272,6 +267,18 @@ runs:
         } > "$diagnostics/host-state.txt" 2>&1
 
         sudo -n dmesg --ctime 2>&1 | tail -n 500 > "$diagnostics/kernel.log"
+
+    - name: Archive redacted benchmark configuration
+      if: ${{ always() && inputs.RUN_PROFILE == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        diagnostics="$PERF_RESULTS/diagnostics"
+        mkdir -p "$diagnostics"
+        if [[ -f "$PERF_CONFIG" ]]; then
+          sed -E 's/^([[:space:]]*account-key:).*/\1 <redacted>/' \
+            "$PERF_CONFIG" > "$diagnostics/mount-config.redacted.yaml"
+        fi
 
     - name: Remove generated secrets and mounts
       if: ${{ always() && inputs.RUN_PROFILE == 'true' }}

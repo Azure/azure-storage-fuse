@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Single-file and multi-file FIO direct-I/O throughput benchmarks for Blobfuse2 block cache.">
+  <meta name="description" content="Single-file and multi-file end-to-end FIO direct-I/O throughput benchmarks for Blobfuse2 block cache.">
   <title>Blobfuse2 Performance</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
@@ -100,8 +100,8 @@
   <main class="shell">
     <section class="intro">
       <div>
-        <h1>Sustained sequential throughput</h1>
-        <p>Block-cache performance over Azure Blob Storage, separating one-file throughput from aggregate throughput across multiple files.</p>
+        <h1>End-to-end sequential throughput</h1>
+        <p>Block-cache performance over Azure Blob Storage, including application open, I/O, sync, and close time.</p>
       </div>
       <div class="filters">
         <label>Architecture<select id="architecture"></select></label>
@@ -119,6 +119,8 @@
     const formatNumber = value => new Intl.NumberFormat('en-US', { maximumFractionDigits: value >= 1000 ? 0 : 1 }).format(value);
     const metricValue = (benchmark, name) => benchmark?.metrics?.[name]?.median;
     const metricMad = (benchmark, name) => benchmark?.metrics?.[name]?.mad;
+    const throughputValue = benchmark => metricValue(benchmark, 'end_to_end_throughput_mib_s') ?? metricValue(benchmark, 'throughput_mib_s');
+    const throughputMad = benchmark => metricMad(benchmark, 'end_to_end_throughput_mib_s') ?? metricMad(benchmark, 'throughput_mib_s');
     const prettyDate = value => new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(value)) + ' UTC';
     const titleCase = value => value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
     const escapeHtml = value => String(value ?? 'Not recorded').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
@@ -152,8 +154,8 @@
 
     function metricCard(benchmark, operation) {
       if (!benchmark) return '';
-      const throughput = metricValue(benchmark, 'throughput_mib_s') || 0;
-      const mad = metricMad(benchmark, 'throughput_mib_s') || 0;
+      const throughput = throughputValue(benchmark) || 0;
+      const mad = throughputMad(benchmark) || 0;
       const latency = metricValue(benchmark, 'latency_p99_ms');
       const syncLatency = metricValue(benchmark, 'sync_latency_p99_ms');
       const transferred = metricValue(benchmark, 'io_gib');
@@ -170,8 +172,8 @@
     }
 
     function scalingRatio(singleBenchmark, multiBenchmark) {
-      const single = metricValue(singleBenchmark, 'throughput_mib_s');
-      const multi = metricValue(multiBenchmark, 'throughput_mib_s');
+      const single = throughputValue(singleBenchmark);
+      const multi = throughputValue(multiBenchmark);
       return Number.isFinite(single) && single > 0 && Number.isFinite(multi)
         ? `${formatNumber(multi / single)}x aggregate scaling`
         : 'Scaling unavailable';
@@ -180,7 +182,7 @@
     function chartPoints(id) {
       return selectedRuns().map(run => {
         const benchmark = benchmarkById(run, id);
-        return { date: run.generated_at, value: metricValue(benchmark, 'throughput_mib_s') };
+        return { date: run.generated_at, value: throughputValue(benchmark) };
       }).filter(point => Number.isFinite(point.value)).slice(-40);
     }
 
@@ -240,7 +242,7 @@
       const environment = run.environment || {};
       content.innerHTML = `<section class="result-group"><div class="result-heading"><div><h2>Sequential read</h2><p>One file compared with aggregate throughput across four files.</p></div><span class="scaling">${scalingRatio(readSingle, readMulti)}</span></div><div class="metrics">${metricCard(readSingle, 'read')}${metricCard(readMulti, 'read')}</div></section>
         <section class="result-group"><div class="result-heading"><div><h2>Durable sequential write</h2><p>Wall-clock throughput includes the final flush for every file.</p></div><span class="scaling">${scalingRatio(writeSingle, writeMulti)}</span></div><div class="metrics">${metricCard(writeSingle, 'write')}${metricCard(writeMulti, 'write')}</div></section>
-        <section class="method"><strong>Application-level direct I/O</strong><p>FIO opens every measured file with <code>direct=1</code>; the Blobfuse mount does not enable mount-wide <code>libfuse.direct-io</code>. Every case transfers 320 GiB once using 10 MiB application I/O units, which the kernel/FUSE path may split internally. Single-file cases use one synchronous FIO job; aggregate cases use four jobs against independent files. Four streams are a fixed comparison point, not a claim that four streams are required to reach the network limit. Reads use immutable fixtures and reject unexpectedly low network transfer. Writes include an end fsync and reject unexpectedly low upload traffic.</p></section>
+        <section class="method"><strong>Application-level direct I/O</strong><p>FIO opens every measured file with <code>direct=1</code>; the Blobfuse mount does not enable mount-wide <code>libfuse.direct-io</code>. Every case transfers 320 GiB once using 10 MiB application I/O units, which the kernel/FUSE path may split internally. End-to-end throughput uses the parent process timer from FIO launch through exit, including file open and close. Writes issue an end fsync before close, so pending uploads and commit work are inside the result. Mount and fixture preparation time are excluded. Single-file cases use one synchronous FIO job; aggregate cases use four jobs against independent files.</p></section>
         <section class="environment" aria-label="Measured environment"><div class="environment-item"><span>Blobfuse2</span><strong title="${escapeHtml(environment.blobfuse_version)}">${escapeHtml(environment.blobfuse_version)}</strong></div><div class="environment-item"><span>FIO</span><strong>${escapeHtml(environment.fio_version)}</strong></div><div class="environment-item"><span>Compute</span><strong title="${escapeHtml(environment.cpu_model)}">${escapeHtml(environment.cpu_count)} CPUs · ${escapeHtml(environment.memory_gib)} GiB</strong></div><div class="environment-item"><span>VM / region</span><strong title="${escapeHtml(environment.vm_size)} · ${escapeHtml(environment.azure_region)}">${escapeHtml(environment.vm_size)} · ${escapeHtml(environment.azure_region)}</strong></div><div class="environment-item"><span>Kernel</span><strong title="${escapeHtml(environment.kernel)}">${escapeHtml(environment.kernel)}</strong></div></section>
         <section class="history"><div class="section-heading"><div><h2>Recent sustained throughput</h2><p>Up to 40 complete main-branch runs.</p></div></div>
         <div class="charts"><div class="chart"><h3>Read · 1 thread, 1 file</h3><canvas id="read-single-chart" aria-label="Single-file sequential read history"></canvas></div><div class="chart"><h3>Read · 4 threads, 4 files</h3><canvas id="read-multi-chart" aria-label="Four-file sequential read history"></canvas></div><div class="chart"><h3>Write · 1 thread, 1 file</h3><canvas id="write-single-chart" aria-label="Single-file sequential write history"></canvas></div><div class="chart"><h3>Write · 4 threads, 4 files</h3><canvas id="write-multi-chart" aria-label="Four-file sequential write history"></canvas></div></div></section>`;

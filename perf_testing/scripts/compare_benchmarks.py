@@ -11,8 +11,10 @@ from typing import Any
 
 
 METRIC_LABELS = {
-    "throughput_mib_s": ("Throughput", "MiB/s"),
+    "throughput_mib_s": ("End-to-end throughput", "MiB/s"),
+    "end_to_end_throughput_mib_s": ("End-to-end throughput", "MiB/s"),
     "iops": ("IOPS", "IOPS"),
+    "operations_per_second": ("Operation rate", "ops/s"),
     "latency_p99_ms": ("p99 latency", "ms"),
     "sync_latency_p99_ms": ("p99 sync latency", "ms"),
 }

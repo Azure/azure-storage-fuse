@@ -4,9 +4,8 @@ rw=read
 filesize=4K
 nrfiles=125
 numjobs=8
+loops=100
 filename_format=metadata.$jobnum.$filenum
 group_reporting=1
-lat_percentiles=1
-percentile_list=50:95:99
 
-[metadata-stat-1k]
+[metadata-stat-100k]

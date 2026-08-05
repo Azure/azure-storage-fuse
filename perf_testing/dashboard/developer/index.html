@@ -65,7 +65,7 @@
     const colors = { line:'#0067b8', grid:'#d7dee3', text:'#65717e' };
     const titleCase = value => value.replaceAll('_',' ').replace(/\b\w/g, letter => letter.toUpperCase());
     const number = value => new Intl.NumberFormat('en-US',{ maximumFractionDigits:value >= 1000 ? 0 : 2 }).format(value);
-    const metricUnit = name => ({throughput_mib_s:'MiB/s',iops:'IOPS',latency_p99_ms:'ms',sync_latency_p99_ms:'ms'})[name] || '';
+    const metricUnit = name => ({throughput_mib_s:'MiB/s',end_to_end_throughput_mib_s:'MiB/s',iops:'IOPS',operations_per_second:'ops/s',latency_p99_ms:'ms',sync_latency_p99_ms:'ms'})[name] || '';
     const computeProfile = run => run.run.compute_profile || run.environment?.compute_profile || run.environment?.vm_size || `${run.environment?.cpu_count ?? 'Unknown'} CPUs`;
     const trialCount = run => run?.run?.trials ?? 'unknown';
 
