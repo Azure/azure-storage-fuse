@@ -91,6 +91,14 @@ runs:
           exit 1
         fi
 
+    - name: Validate Python runtime
+      if: ${{ inputs.SETUP_HOST == 'true' || inputs.RUN_PROFILE == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -c 'import sys; sys.version_info >= (3, 10) or sys.exit("Python 3.10+ required, found {}".format(sys.version))'
+        python3 --version
+
     - name: Install Go and build candidate
       if: ${{ inputs.SETUP_HOST == 'true' }}
       shell: bash

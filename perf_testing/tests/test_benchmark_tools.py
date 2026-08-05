@@ -205,6 +205,24 @@ class PublicBenchmarkContractTests(unittest.TestCase):
 
 
 class DeveloperBenchmarkContractTests(unittest.TestCase):
+    def test_missing_workload_reference_has_actionable_error(self):
+        manifest = {
+            "fixture_version": "test",
+            "suites": {
+                "regression": {"workloads": [{"id": "known-workload"}]},
+                "quick": {"workloads": [{"ref": "missing-workload"}]},
+            },
+        }
+        with (
+            mock.patch.object(runner, "load_manifest", return_value=manifest),
+            self.assertRaisesRegex(
+                ValueError,
+                "Suite 'quick' references unknown regression workload "
+                "'missing-workload' at index 0",
+            ),
+        ):
+            runner.load_suite("quick")
+
     def test_metadata_workloads_use_larger_operation_samples(self):
         manifest = runner.load_manifest()
         regression = manifest["suites"]["regression"]
@@ -295,6 +313,15 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertNotIn("matrix.account_type", workflow)
         self.assertNotIn("matrix.cache_mode", workflow)
         self.assertIn('default: "5"', comparison_workflow)
+        python_check = "sys.version_info >= (3, 10)"
+        self.assertIn(python_check, comparison_workflow)
+        self.assertIn(python_check, workflow)
+        self.assertIn(
+            python_check,
+            (REPO_ROOT / ".github/actions/perftesting/action.yml").read_text(
+                encoding="utf-8"
+            ),
+        )
 
     def test_profile_results_are_isolated_below_architecture_artifacts(self):
         action = (REPO_ROOT / ".github/actions/perftesting/action.yml").read_text(encoding="utf-8")
@@ -374,6 +401,53 @@ class WorkflowShapeTests(unittest.TestCase):
 
 
 class FioResultTests(unittest.TestCase):
+    def test_cache_path_validation_rejects_destructive_locations(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            safe_cache = root / "blobfuse-benchmark" / "cache"
+            common = {
+                "mount_dir": root / "mount",
+                "output_dir": root / "results",
+                "binary": root / "bin" / "blobfuse2",
+                "config": root / "config" / "mount.yaml",
+            }
+            runner.validate_cache_path(safe_cache, **common)
+
+            unsafe_paths = (
+                Path("/"),
+                Path("/mnt"),
+                Path("/var/lib/application/cache"),
+                common["mount_dir"],
+                common["mount_dir"] / "cache",
+                common["output_dir"].parent,
+                runner.REPO_ROOT,
+                runner.REPO_ROOT.parent,
+            )
+            for unsafe_path in unsafe_paths:
+                with self.subTest(cache_dir=unsafe_path):
+                    with self.assertRaisesRegex(ValueError, "Unsafe cache directory"):
+                        runner.validate_cache_path(unsafe_path, **common)
+
+            repository_link = root / "blobfuse-repository-link"
+            repository_link.symlink_to(runner.REPO_ROOT, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "repository checkout"):
+                runner.validate_cache_path(repository_link, **common)
+
+    def test_clear_local_state_checks_cache_path_before_deleting(self):
+        benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
+        benchmark_runner.cache_dir = Path("/mnt")
+        benchmark_runner.mount_dir = Path("/mnt/blobfuse-benchmark")
+        benchmark_runner.output_dir = runner.REPO_ROOT / "benchmark-results"
+        benchmark_runner.binary = runner.REPO_ROOT / "blobfuse2"
+        benchmark_runner.config = Path("/tmp/blobfuse/config.yaml")
+
+        with (
+            mock.patch.object(runner.shutil, "rmtree") as rmtree,
+            self.assertRaisesRegex(ValueError, "Unsafe cache directory"),
+        ):
+            benchmark_runner.clear_local_state()
+        rmtree.assert_not_called()
+
     def test_run_fio_times_the_complete_fio_process(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -406,6 +480,9 @@ class FioResultTests(unittest.TestCase):
             benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
             benchmark_runner.binary = binary
             benchmark_runner.config = config
+            benchmark_runner.cache_dir = root / "blobfuse-test" / "cache"
+            benchmark_runner.mount_dir = root / "mount"
+            benchmark_runner.output_dir = root / "results"
             benchmark_runner.args = argparse.Namespace(cache_mode="file_cache", suite="regression")
             benchmark_runner.suite = {"workloads": [], "fixture_jobs": []}
 
@@ -430,6 +507,9 @@ class FioResultTests(unittest.TestCase):
             benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
             benchmark_runner.binary = binary
             benchmark_runner.config = config
+            benchmark_runner.cache_dir = root / "blobfuse-test" / "cache"
+            benchmark_runner.mount_dir = root / "mount"
+            benchmark_runner.output_dir = root / "results"
             benchmark_runner.args = argparse.Namespace(cache_mode="block_cache", suite="regression")
             benchmark_runner.suite = {
                 "workloads": [
