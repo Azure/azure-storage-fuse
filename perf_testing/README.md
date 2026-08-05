@@ -106,7 +106,7 @@ ACCOUNT_TYPE=premium # or standard
 RUN_ID="manual-$(date -u +%Y%m%dT%H%M%SZ)"
 COMMIT="$(git rev-parse HEAD)"
 REF="$(git symbolic-ref --short -q HEAD || git rev-parse --short HEAD)"
-SCRATCH_ROOT=/mnt/localssd/blobfuse-benchmark # choose a dedicated local path
+SCRATCH_ROOT=/mnt/localssd/blobfuse-benchmark # required dedicated blobfuse-* path
 MOUNT_DIR="/mnt/blobfuse-benchmark-${RUN_ID}"
 CACHE_DIR="${SCRATCH_ROOT}/cache"
 RESULT_ROOT="${SCRATCH_ROOT}/results/${RUN_ID}"
@@ -115,6 +115,8 @@ sudo mkdir -p "$SCRATCH_ROOT"
 sudo chown "$(id -u):$(id -g)" "$SCRATCH_ROOT"
 mkdir -p "$CACHE_DIR" "$RESULT_ROOT"
 ```
+
+The runner recursively clears `--cache-dir` between mounts. It rejects filesystem roots, shallow paths, paths without a dedicated `blobfuse-` component, and paths overlapping the mount, output, repository, current working directory, binary, or config. Never reuse a directory containing unrelated data.
 
 Generate the normal-mount block-cache configuration. Mount-wide direct I/O must remain absent:
 
