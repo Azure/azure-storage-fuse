@@ -2,3 +2,5 @@
 # Format of the file : <Distro Name>,<Fuse Version, Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
 Ubuntu-26.04,fuse34AmdDeb,microsoft-ubuntu-resolute-prod-apt,resolute
 Ubuntu-26.04,fuse34ArmDeb,microsoft-ubuntu-resolute-prod-apt,resolute
+AzureLinux-4.0-x86_64,marinerFuse3AmdRpm,azurelinux-4.0-prod-microsoft-x86_64-yum,
+AzureLinux-4.0-aarch64,marinerFuse3AarchRpm,azurelinux-4.0-prod-microsoft-aarch64-yum,

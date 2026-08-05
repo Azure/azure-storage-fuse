@@ -1957,7 +1957,7 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  # pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload blobfuse2-signed
+                  pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload blobfuse2-signed
                 workingDirectory: $(Build.ArtifactStagingDirectory)/
 
             - script: |
@@ -2018,14 +2018,20 @@ stages:
                   while IFS=, read -r distro fuseArchType repoName releaseName; do
 
                     # If the package is preview, publish to mariner preview package
-                    if [[ $distro == *"Mariner-"* ]]; then
+                    if [[ $distro == *"Mariner-"* || $distro == *"AzureLinux-"* ]]; then
                       if [ $is_preview = "true" ]; then
-                        repoName=$(echo $repoName | sed 's/prod/preview/')
+                        # Azure Linux 4 uses "beta" as its preview channel while
+                        # Azure Linux 3 (and earlier) use "preview".
+                        if [[ $distro == *"AzureLinux-4"* ]]; then
+                          repoName=$(echo $repoName | sed 's/prod/beta/')
+                        else
+                          repoName=$(echo $repoName | sed 's/prod/preview/')
+                        fi
                       fi
                     fi
 
                     echo "Uploading packages for $distro"
-                    # pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!fuseArchType} $repoName $releaseName
+                    pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!fuseArchType} $repoName $releaseName
                   done < <(tail -n +3 ../packages.csv)
                 workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
@@ -2042,9 +2048,15 @@ stages:
                     then
                       echo "Skipping for ARM type on $distro"
                     else
-                      if [[ $distro == *"Mariner-"* ]]; then
+                      if [[ $distro == *"Mariner-"* || $distro == *"AzureLinux-"* ]]; then
                           if [ "$(is_preview)" = "true" ]; then
-                            repoName=$(echo $repoName | sed 's/prod/preview/')
+                            # Azure Linux 4 uses "beta" as its preview channel while
+                            # Azure Linux 3 (and earlier) use "preview".
+                            if [[ $distro == *"AzureLinux-4"* ]]; then
+                              repoName=$(echo $repoName | sed 's/prod/beta/')
+                            else
+                              repoName=$(echo $repoName | sed 's/prod/preview/')
+                            fi
                           fi
                       fi
                       echo "Repository Name: $repoName"
