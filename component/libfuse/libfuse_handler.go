@@ -272,7 +272,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// Capture fuse instance pointer for later use in kernel list cache invalidation
 	C.set_fuse_ptr(C.fuse_get_context().fuse)
 
-	if fuseFS.kernelListCacheTtlInSec > 0 {
+	if fuseFS.kernelListCacheTTLInSec > 0 {
 		kernelListCacheSupport := C.kernel_supports_dir_cache(conn)
 		kernelListCacheSupported := true
 		if kernelListCacheSupport < 0 {
@@ -290,9 +290,9 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 		if kernelListCacheSupported {
 			log.Info("Libfuse::libfuse_init : Kernel supports FOPEN_CACHE_DIR (fuse proto %d.%d), kernel-list-cache enabled with timeout %d sec",
-				conn.proto_major, conn.proto_minor, fuseFS.kernelListCacheTtlInSec)
+				conn.proto_major, conn.proto_minor, fuseFS.kernelListCacheTTLInSec)
 		} else {
-			fuseFS.kernelListCacheTtlInSec = 0
+			fuseFS.kernelListCacheTTLInSec = 0
 			if fuseFS.kernelListCacheTracker != nil {
 				fuseFS.kernelListCacheTracker.stop()
 				fuseFS.kernelListCacheTracker = nil
@@ -531,7 +531,7 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	log.Trace("Libfuse::libfuse_opendir : %s, handle: %d", name, handle.ID)
 
-	if fuseFS.kernelListCacheTtlInSec > 0 {
+	if fuseFS.kernelListCacheTTLInSec > 0 {
 		// FUSE_CAP_AUTO_INVAL_DATA (enabled by the kernel by default) causes the kernel
 		// to compare the directory's mtime from GETATTR against the mtime it saw when it
 		// cached the listing.  If the mtime has changed, the kernel discards the cached

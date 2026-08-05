@@ -280,9 +280,9 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 
 	log.Info("Libfuse::libfuse2_init : Kernel FUSE version: %d.%d, Kernel Caps : 0x%x", conn.proto_major, conn.proto_minor, conn.capable)
 
-	if fuseFS.kernelListCacheTtlInSec > 0 {
+	if fuseFS.kernelListCacheTTLInSec > 0 {
 		log.Warn("Libfuse::libfuse2_init : kernel-list-cache not supported on fuse2, disabling")
-		fuseFS.kernelListCacheTtlInSec = 0
+		fuseFS.kernelListCacheTTLInSec = 0
 		if fuseFS.kernelListCacheTracker != nil {
 			fuseFS.kernelListCacheTracker.stop()
 			fuseFS.kernelListCacheTracker = nil
