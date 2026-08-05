@@ -42,7 +42,7 @@ Migrate X86 without resizing the only active runner in place:
 3. Build RAID0 from the six temporary NVMe devices, format it, mount it under `/mnt` (preferably at `/mnt/localssd`), and make the benchmark user its owner. This storage is ephemeral and must be recreated after host replacement. The workflow accepts a cache directory beneath a dedicated non-root filesystem and requires at least 200 GiB free.
 4. Register the new VM in `1ES.Pool=blobfuse2-benchmark` without removing the D96 runner yet. Ensure benchmark scheduling selects only the D192 runner; do not leave mixed D96/D192 hosts behind the same label.
 5. Verify `nproc` returns 192 and IMDS returns exactly `Standard_D192ds_v6`. The workflow enforces both. The ARM pool remains `1ES.Pool=blobfuse2-benchmark-arm` and is enforced as `Standard_D96pds_v6` with 96 CPUs.
-6. Run public and regression workflows with `publish=false`, inspect artifacts, local-disk capacity, network ratios, and MAD, then run the D192 concurrency sweep described below.
+6. Run public and regression workflows with `publish=false`, inspect the private ZIPs, local-disk capacity, network ratios, and MAD, then run the D192 concurrency sweep described below.
 7. Publish only after no-publish runs pass. Keep the D96 runner available for rollback until at least three matching D192 runs establish the rolling baseline.
 
 Reuse the same Azure accounts, containers, regions, and benchmark configuration during the migration so the VM is the only intentional variable. Existing correctly sized `v4` read fixtures can be reused by D192. Clear local caches before every run as usual.
@@ -218,7 +218,9 @@ python3 perf_testing/scripts/run_benchmark.py \
 	--architecture X86 --account-type "$ACCOUNT_TYPE" --cache-mode file_cache
 ```
 
-Each output directory contains `blobfuse2.log`; successful runs also contain `summary.json` and a `raw/` tree with per-trial FIO JSON. A failed invocation writes `failure.json`, and Actions adds `diagnostics/host-state.txt`, `diagnostics/kernel.log`, and a secret-redacted mount config to the same profile artifact. Print the primary medians and MAD values with:
+Each output directory contains `blobfuse2.log`; successful runs also contain `summary.json` and a `raw/` tree with per-trial FIO JSON. A failed invocation writes `failure.json`, and Actions adds `diagnostics/host-state.txt`, `diagnostics/kernel.log`, and a secret-redacted mount config to the same profile directory. The complete architecture result tree is stored as a private ZIP in the separate results account. The original generated config, including its account key, is deleted and is never archived. Print the primary medians and MAD values with:
+
+Private ZIP uploads and downloads mount the `results` container through Blobfuse file cache. Each transfer uses an isolated cache below a mode-0700 temporary directory, enables `sync-to-flush`, waits for Blobfuse to stop, and then removes the temporary cache and credential-bearing config.
 
 ```bash
 jq -r '.benchmarks[] | . as $b | [
@@ -247,7 +249,8 @@ Open `http://localhost:8000/` for the public results and `http://localhost:8000/
 Before merging, verify these repository settings:
 
 - The X86 self-hosted runner label currently resolves only to `Standard_D96ds_v5` hosts exposing 96 online CPUs; after the Gen2 image migration, update this guard and the pool together to `Standard_D192ds_v6` with 192 CPUs. The ARM64 label resolves only to `Standard_D96pds_v6` hosts exposing 96 online CPUs.
-- `STANDARD_ACCOUNT`, `STANDARD_KEY`, `PREMIUM_ACCOUNT`, `PREMIUM_KEY`, `STANDARD_HNS_ACCOUNT`, `STANDARD_HNS_KEY`, `PREMIUM_HNS_ACCOUNT`, `PREMIUM_HNS_KEY`, and `BENCH_CONTAINER` secrets are present.
+- `STANDARD_ACCOUNT`, `STANDARD_KEY`, `PREMIUM_ACCOUNT`, `PREMIUM_KEY`, `STANDARD_HNS_ACCOUNT`, `STANDARD_HNS_KEY`, `PREMIUM_HNS_ACCOUNT`, `PREMIUM_HNS_KEY`, `BENCH_CONTAINER`, `PERF_RESULTS_ACCOUNT`, and `PERF_RESULTS_KEY` secrets are present.
+- `PERF_RESULTS_ACCOUNT` and `PERF_RESULTS_KEY` identify a separate private account with a container named `results`. Disable anonymous access to this account and container.
 - Every account has a dedicated container named by `BENCH_CONTAINER`, in the same region as its runner.
 - The `performance-benchmark-compare` environment exists with required reviewers. Only trusted same-repository refs should be approved because candidate binaries receive benchmark credentials.
 - GitHub Pages still serves the `benchmarks` branch from its root.
@@ -265,11 +268,34 @@ echo "Rollback branch: $BACKUP_BRANCH"
 Test Actions without changing Pages first:
 
 1. Run **Blobfuse2 Performance** manually on `main` with `suite=public` and `publish=false`.
-2. Confirm both architecture jobs succeed and download `perf-X86` and `perf-ARM64`. Together they must contain four public summaries: standard and premium block cache for both architectures.
+2. Confirm both architecture jobs succeed and retrieve their complete private ZIPs from the `results` container. Together they must contain four public summaries: standard and premium block cache for both architectures.
 3. Verify each public `summary.json` has four benchmarks, five samples per benchmark, positive throughput, approximately 320 GiB per trial, and a network/I/O ratio of at least 0.75.
-4. Run `suite=regression` with `publish=false`. The X86 artifact must contain eight regression summaries and the ARM64 artifact two, covering X86 block/file cache, HNS, and ARM64 block cache before unattended publication is enabled.
+4. Run `suite=regression` with `publish=false`. The X86 ZIP must contain eight regression summaries and the ARM64 ZIP two, covering X86 block/file cache, HNS, and ARM64 block cache before unattended publication is enabled.
 
-Useful artifact checks after extracting them under `benchmark-artifacts/`:
+Scheduled ZIPs use this searchable layout:
+
+```text
+results/benchmark-runs/run-<run-id>-attempt-<attempt>/<arch>/blobfuse2-perf-<arch>-suite-<all|public|regression|scheduled>-status-<success|failure>-run-<run-id>-attempt-<attempt>-sha-<12-char-sha>.zip
+```
+
+For example, retrieve a successful X86 bundle after setting `PERF_RESULTS_ACCOUNT` and `PERF_RESULTS_KEY` in the shell:
+
+```bash
+RUN_ID=<github-run-id>
+ATTEMPT=<attempt>
+SHORT_SHA=<12-character-workflow-commit>
+ARCH=X86
+STATUS=success
+SUITE=public
+BUNDLE="blobfuse2-perf-${ARCH}-suite-${SUITE}-status-${STATUS}-run-${RUN_ID}-attempt-${ATTEMPT}-sha-${SHORT_SHA}.zip"
+REMOTE="benchmark-runs/run-${RUN_ID}-attempt-${ATTEMPT}/${ARCH}/${BUNDLE}"
+
+mkdir -p benchmark-artifacts/perf-${ARCH}
+./perf_testing/scripts/blob_results.sh download ./blobfuse2 "/tmp/${BUNDLE}" "$REMOTE"
+unzip -q "/tmp/${BUNDLE}" -d "benchmark-artifacts/perf-${ARCH}"
+```
+
+Useful checks after extracting the ZIPs under `benchmark-artifacts/`:
 
 ```bash
 find benchmark-artifacts -name failure.json -print
@@ -369,7 +395,9 @@ All four cases use FIO's synchronous engine. The single-file cases therefore hav
 
 The public read fixtures are remounted with local and kernel cache state cleared before every measured trial. Application direct I/O bypasses buffered application access, while Blobfuse block cache remains the component under test. The network-transfer invariant ensures a supposedly cold read did not become a local-cache result.
 
-Reads use immutable pre-created objects and reject a trial when received network bytes are unexpectedly low. Writes use `end_fsync=1` and reject a trial when transmitted network bytes are unexpectedly low. Displayed throughput is total bytes divided by wall-clock test time, so read open time and write durable-completion time are included. Each result is the median of five isolated trials, with MAD shown as the run-to-run variability signal.
+Reads use immutable pre-created objects and reject a trial when received network bytes are unexpectedly low. Writes use `end_fsync=1` and reject a trial when transmitted network bytes are unexpectedly low. File-cache profiles require `file_cache.sync-to-flush: true`, so that final fsync uploads the current file; block cache likewise completes pending block uploads and commits the block list on sync.
+
+`end_to_end_throughput_mib_s` is total completed FIO bytes divided by the parent harness timer. The timer starts immediately before launching FIO and stops only after the FIO process exits, so it includes process startup, file open, I/O, final fsync, file close, and process exit. It deliberately excludes Blobfuse mount time, immutable fixture creation, and inter-trial cleanup. `throughput_mib_s` remains an identical compatibility key and the regression primary metric, while `fio_throughput_mib_s` preserves FIO's internal transfer-only rate for diagnostics; FIO's rate is not used for throughput regression decisions. Each result is the median of five isolated trials, with MAD shown as the run-to-run variability signal.
 
 Interpret the single-file result as sustained throughput for one application stream over one file. Interpret the four-file result as aggregate throughput when four independent application streams access four independent files concurrently. The ratio between them shows scaling for this fixed benchmark setup; it neither specifies the concurrency required to saturate a network nor guarantees performance for every VM, network path, cache configuration, or workload.
 
@@ -391,11 +419,13 @@ The `regression` suite covers:
 - File cache on the canonical X86 runner
 - Standard, premium, standard HNS, and premium HNS accounts on X86
 
-The create, stat, and delete workloads retain eight-way concurrency but are bounded to 1,000 measured operations per trial: 125 files per worker across five trials. FIO's `filestat` and `filedelete` engines create their required files during setup; that setup is not part of the reported operation IOPS, but it does consume workflow wall time. The bounded `-1k` workload IDs keep p99 meaningful while avoiding the old 8,000-file setup and cleanup cost, and deliberately start new history series.
+Metadata workloads use operation rate rather than data throughput. Create and delete each perform 2,000 unique operations per trial (250 files per worker at eight-way concurrency). Warm stat performs 100,000 measured operations by repeating stat 100 times over 1,000 files. FIO creates the stat and delete files during unmeasured setup, which still consumes workflow wall time. Every trial must complete its declared operation count and report a positive rate before it can be summarized.
 
-Each benchmark publishes its median, median absolute deviation, minimum, maximum, p99 latency, sync latency when present, network traffic, and workload parameters. Raw per-trial FIO JSON remains in the workflow artifact and is not copied to GitHub Pages.
+The metadata primary metric is `operations_per_second`, displayed as ops/s. `operation_duration_seconds` records measured operation time separately from FIO process/setup wall time. FIO's `filecreate`, `filestat`, and `filedelete` engines do not emit operation latency samples, so the metadata jobs deliberately omit percentile settings and are not p99-gated. The `metadata-create-2k`, `metadata-stat-100k`, and `metadata-delete-2k` IDs start new history series rather than mixing these samples with the former 1,000-operation workloads.
 
-Before publication, each new result is compared with the last five matching `main` runs. This includes the weekly public sustained-throughput suite. At least three historical runs are required. The default gate is 10% for throughput/IOPS and 20% for p99 latency, widened to three times observed MAD when necessary. A confirmed regression is published, attached as a 30-day diagnostic artifact, and then fails the workflow so repository notifications identify it.
+Each benchmark publishes its median, median absolute deviation, minimum, maximum, p99 latency, sync latency when present, network traffic, and workload parameters. Raw per-trial FIO JSON, Blobfuse logs, and redacted configs remain in private ZIPs in the results account and are not copied to GitHub Pages.
+
+Before publication, each new result is compared with the last five matching `main` runs. This includes the weekly public sustained-throughput suite. At least three historical runs are required. The default gate is 10% for throughput, IOPS, or operation rate and 20% for p99 latency when that metric exists, widened to three times observed MAD when necessary. A confirmed regression is published, stored with private publisher diagnostics, and then fails the workflow so repository notifications identify it.
 
 ## Compare a branch before a PR
 
@@ -408,9 +438,15 @@ The workflow:
 3. Runs the representative `quick` suite for both binaries on the same X86 host and storage account.
 4. Alternates baseline-first and candidate-first ordering between workflow runs.
 5. Writes a comparison table to the job summary.
-6. Uploads a standalone `comparison.html`, compact JSON, summaries, and raw FIO output for 30 days.
+6. Stores one private ZIP containing `comparison.html`, compact JSON, summaries, raw FIO output, Blobfuse logs, metadata, and a redacted mount config.
 
-The comparison defaults to a 10% throughput/IOPS threshold and a 20% p99-latency threshold. A metric's effective threshold expands to three times the observed median absolute deviation to avoid classifying noisy samples as regressions. Enable `fail_on_regression` when the workflow should act as a gate.
+Comparison ZIPs use this layout:
+
+```text
+results/benchmark-comparisons/run-<run-id>-attempt-<attempt>/blobfuse2-compare-X86-<account-type>-<cache-mode>-status-<pass|regression|failure>-run-<run-id>-attempt-<attempt>-sha-<12-char-candidate-sha>.zip
+```
+
+The comparison defaults to a 10% throughput, IOPS, or operation-rate threshold and a 20% p99-latency threshold when available. A metric's effective threshold expands to three times the observed median absolute deviation to avoid classifying noisy samples as regressions. Enable `fail_on_regression` when the workflow should act as a gate.
 
 Candidate binaries receive benchmark account credentials. Create the `performance-benchmark-compare` GitHub environment, configure required reviewers on it, and approve only trusted revisions. Scheduled `main` benchmarks do not use this environment, so they remain unattended.
 
@@ -423,7 +459,7 @@ Follow these rules:
 1. Give every workload a stable ID, explicit primary metric, comparison direction, cache state, block size, concurrency, and working-set description.
 2. Read workloads must use an immutable fixture and `allow_file_create=0`.
 3. Cold workloads must remount between trials. Warm workloads must declare `warmup: true`.
-4. Durable writes must use `end_fsync=1`; keep sync latency separate from I/O latency.
+4. Durable writes must use `end_fsync=1`; keep sync latency separate from I/O latency. File-cache profiles must set `file_cache.sync-to-flush: true` so end fsync includes the upload.
 5. Use `group_reporting=1` for cloned FIO jobs and unique files or explicit offsets when workers must not overlap.
 6. Public data-path jobs must use FIO `direct=1`; benchmark mount profiles must not enable mount-wide `libfuse.direct-io`.
 7. Keep five trials in scheduled suites and publish median plus MAD rather than a single result or best run.
@@ -442,7 +478,7 @@ python3 -m py_compile perf_testing/scripts/*.py
 
 - Public compact history: 730 days
 - Developer compact history: 400 days
-- Raw scheduled and comparison artifacts: 30 days
+- Raw scheduled and comparison ZIPs: private `results` container; configure Azure lifecycle management to delete blobs below `benchmark-runs/` and `benchmark-comparisons/` after 30 days
 - Persistent fixtures: versioned under `.blobfuse-benchmark-fixtures/` in the reserved benchmark container
 - Per-run writes and metadata: removed after each suite
 

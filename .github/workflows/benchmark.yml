@@ -240,6 +240,7 @@ jobs:
           REF: ${{ github.ref }}
 
       - name: Require all selected profiles to pass
+        id: profile_gate
         if: ${{ always() && steps.host_setup.outcome == 'success' }}
         shell: bash
         env:
@@ -275,14 +276,37 @@ jobs:
           done
           exit "$failed"
 
-      - name: Upload raw and summarized results
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: perf-${{ matrix.arch }}
-          path: benchmark-results
-          if-no-files-found: warn
-          retention-days: 30
+      - name: Store complete benchmark ZIP privately
+        if: ${{ always() && steps.host_setup.outcome == 'success' }}
+        env:
+          PERF_RESULTS_ACCOUNT: ${{ secrets.PERF_RESULTS_ACCOUNT }}
+          PERF_RESULTS_KEY: ${{ secrets.PERF_RESULTS_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p benchmark-results
+          profile_status="${{ steps.profile_gate.outcome }}"
+          requested_suite="${{ inputs.suite || 'scheduled' }}"
+          short_sha="${GITHUB_SHA:0:12}"
+          bundle_name="blobfuse2-perf-${{ matrix.arch }}-suite-${requested_suite}-status-${profile_status}-run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}-sha-${short_sha}.zip"
+          remote_path="benchmark-runs/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}/${{ matrix.arch }}/${bundle_name}"
+          cat > benchmark-results/run-metadata.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          architecture=${{ matrix.arch }}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF}
+          event=${GITHUB_EVENT_NAME}
+          requested_suite=${requested_suite}
+          profile_status=${profile_status}
+          created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          blob_path=${remote_path}
+          EOF
+          bundle="${RUNNER_TEMP}/${bundle_name}"
+          zip -q -r "$bundle" benchmark-results
+          ./perf_testing/scripts/blob_results.sh upload ./blobfuse2 "$bundle" "$remote_path"
+          echo "Private benchmark bundle: results/${remote_path}" >> "$GITHUB_STEP_SUMMARY"
 
   publish:
     name: Publish complete benchmark run
@@ -304,11 +328,33 @@ jobs:
       - name: Checkout publisher source
         uses: actions/checkout@v7
 
-      - name: Download complete matrix
-        uses: actions/download-artifact@v4
-        with:
-          pattern: perf-*
-          path: benchmark-artifacts
+      - name: Build Blobfuse2 for private results access
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fuse3 libfuse3-dev gcc zip unzip
+          ./go_installer.sh "$RUNNER_TEMP" >/dev/null
+          ./build.sh >/dev/null
+          ./blobfuse2 --version
+
+      - name: Download complete benchmark ZIPs privately
+        env:
+          PERF_RESULTS_ACCOUNT: ${{ secrets.PERF_RESULTS_ACCOUNT }}
+          PERF_RESULTS_KEY: ${{ secrets.PERF_RESULTS_KEY }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA:0:12}"
+          requested_suite="${{ inputs.suite || 'scheduled' }}"
+          mkdir -p benchmark-artifacts
+          for arch in X86 ARM64; do
+            bundle_name="blobfuse2-perf-${arch}-suite-${requested_suite}-status-success-run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}-sha-${short_sha}.zip"
+            remote_path="benchmark-runs/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}/${arch}/${bundle_name}"
+            bundle="${RUNNER_TEMP}/${bundle_name}"
+            ./perf_testing/scripts/blob_results.sh download ./blobfuse2 "$bundle" "$remote_path"
+            mkdir -p "benchmark-artifacts/perf-${arch}"
+            unzip -q "$bundle" -d "benchmark-artifacts/perf-${arch}"
+          done
+          test "$(find benchmark-artifacts -name summary.json -type f | wc -l)" -gt 0
 
       - name: Checkout benchmark site
         uses: actions/checkout@v7
@@ -348,14 +394,31 @@ jobs:
           git pull --rebase origin benchmarks
           git push origin HEAD:benchmarks
 
-      - name: Upload regression diagnostics
+      - name: Store publisher diagnostics privately
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: scheduled-regression-check-${{ github.run_id }}-${{ github.run_attempt }}
-          path: benchmark-regression-check
-          if-no-files-found: warn
-          retention-days: 30
+        env:
+          PERF_RESULTS_ACCOUNT: ${{ secrets.PERF_RESULTS_ACCOUNT }}
+          PERF_RESULTS_KEY: ${{ secrets.PERF_RESULTS_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ ! -x ./blobfuse2 ]]; then
+            echo "::warning::Publisher Blobfuse2 binary was not built; diagnostics cannot be stored privately"
+            exit 0
+          fi
+          mkdir -p benchmark-regression-check
+          diagnostic_status="unavailable"
+          if [[ -f benchmark-regression-check/regression-check.json ]]; then
+            diagnostic_status="$(jq -r '.overall_status' benchmark-regression-check/regression-check.json)"
+          else
+            echo "Regression diagnostics were not generated" > benchmark-regression-check/unavailable.txt
+          fi
+          short_sha="${GITHUB_SHA:0:12}"
+          bundle_name="blobfuse2-publisher-diagnostics-${diagnostic_status}-run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}-sha-${short_sha}.zip"
+          remote_path="benchmark-runs/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}/publisher/${bundle_name}"
+          bundle="${RUNNER_TEMP}/${bundle_name}"
+          (cd benchmark-regression-check && zip -q -r "$bundle" .)
+          ./perf_testing/scripts/blob_results.sh upload ./blobfuse2 "$bundle" "$remote_path"
+          echo "Private publisher diagnostics: results/${remote_path}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail on confirmed regression
         run: |

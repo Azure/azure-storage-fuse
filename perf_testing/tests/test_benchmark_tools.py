@@ -75,6 +75,24 @@ def make_summary(
                         "min": value - 20,
                         "max": value + 20,
                     },
+                    "end_to_end_throughput_mib_s": {
+                        "median": value,
+                        "mad": 10.0,
+                        "min": value - 20,
+                        "max": value + 20,
+                    },
+                    "end_to_end_seconds": {
+                        "median": 10.0,
+                        "mad": 0.5,
+                        "min": 9.5,
+                        "max": 10.5,
+                    },
+                    "fio_throughput_mib_s": {
+                        "median": value * 1.1,
+                        "mad": 10.0,
+                        "min": value,
+                        "max": value * 1.2,
+                    },
                     "network_rx_mib": {
                         "median": 100.0,
                         "mad": 0.0,
@@ -111,6 +129,12 @@ class PublicBenchmarkContractTests(unittest.TestCase):
             self.assertEqual(workload["parameters"]["block_size"], "10 MiB")
             self.assertEqual(workload["parameters"]["working_set"], "320 GiB")
             self.assertEqual(workload["primary_metric"], "throughput_mib_s")
+
+            job = (
+                runner.BENCHMARK_CONFIG_DIR / workload["job_file"]
+            ).read_text(encoding="utf-8")
+            if workload["parameters"]["durability"] == "end fsync":
+                self.assertIn("end_fsync=1", job)
 
         for operation in ("read", "write"):
             single = workloads[f"sequential-{operation}-single-file"]["parameters"]
@@ -159,6 +183,10 @@ class PublicBenchmarkContractTests(unittest.TestCase):
         block_config = (REPO_ROOT / "testdata/config/azure_block_benchmark.yaml").read_text(
             encoding="utf-8"
         )
+        file_config = (REPO_ROOT / "testdata/config/azure_file_benchmark.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("sync-to-flush: true", file_config)
         self.assertNotIn("max-fuse-threads:", block_config)
         self.assertNotIn("block_cache:", block_config)
         for setting in ("block-size-mb:", "mem-size-mb:", "prefetch:", "parallelism:"):
@@ -168,6 +196,8 @@ class PublicBenchmarkContractTests(unittest.TestCase):
         dashboard = (REPO_ROOT / "perf_testing/dashboard/public/index.html").read_text(
             encoding="utf-8"
         )
+        self.assertIn("end_to_end_throughput_mib_s", dashboard)
+        self.assertIn("including file open and close", dashboard)
         self.assertIn("sequential-read-four-file", dashboard)
         self.assertIn("sequential-write-four-file", dashboard)
         self.assertNotIn("sequential-read-multi-file", dashboard)
@@ -175,34 +205,50 @@ class PublicBenchmarkContractTests(unittest.TestCase):
 
 
 class DeveloperBenchmarkContractTests(unittest.TestCase):
-    def test_metadata_workloads_use_one_thousand_operations(self):
+    def test_metadata_workloads_use_larger_operation_samples(self):
         manifest = runner.load_manifest()
         regression = manifest["suites"]["regression"]
         workloads = {workload["id"]: workload for workload in regression["workloads"]}
         metadata_jobs = {
-            "metadata-create-1k": "metadata_create.fio",
-            "metadata-stat-1k": "metadata_stat.fio",
-            "metadata-delete-1k": "metadata_delete.fio",
+            "metadata-create-2k": ("metadata_create.fio", 2000, "nrfiles=250", None),
+            "metadata-stat-100k": ("metadata_stat.fio", 100000, "nrfiles=125", "loops=100"),
+            "metadata-delete-2k": ("metadata_delete.fio", 2000, "nrfiles=250", None),
         }
 
-        for workload_id, filename in metadata_jobs.items():
+        for workload_id, (filename, operations, file_count, loops) in metadata_jobs.items():
             workload = workloads[workload_id]
             self.assertEqual(workload["parameters"]["concurrency"], 8)
-            self.assertEqual(workload["parameters"]["operations"], 1000)
+            self.assertEqual(workload["parameters"]["operations"], operations)
+            self.assertEqual(workload["primary_metric"], "operations_per_second")
             job = (
                 runner.BENCHMARK_CONFIG_DIR / "regression" / filename
             ).read_text(encoding="utf-8")
-            self.assertIn("nrfiles=125", job)
+            self.assertIn(file_count, job)
             self.assertIn("numjobs=8", job)
-            self.assertIn("percentile_list=50:95:99", job)
-            self.assertNotIn("99.9", job)
+            self.assertNotIn("lat_percentiles", job)
+            self.assertNotIn("percentile_list", job)
+            if loops is not None:
+                self.assertIn(loops, job)
             self.assertIn(f"[{workload_id}]", job)
+
+        stat_parameters = workloads["metadata-stat-100k"]["parameters"]
+        self.assertEqual(stat_parameters["cache_state"], "warm")
+        self.assertEqual(stat_parameters["unique_files"], 1000)
+        self.assertEqual(stat_parameters["repetitions_per_file"], 100)
+        dashboard = (
+            REPO_ROOT / "perf_testing/dashboard/developer/index.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("operations_per_second:'ops/s'", dashboard)
+        self.assertEqual(
+            comparator.METRIC_LABELS["operations_per_second"],
+            ("Operation rate", "ops/s"),
+        )
 
         quick_refs = {
             item["ref"] for item in manifest["suites"]["quick"]["workloads"]
         }
-        self.assertIn("metadata-create-1k", quick_refs)
-        self.assertNotIn("metadata-create", quick_refs)
+        self.assertIn("metadata-create-2k", quick_refs)
+        self.assertNotIn("metadata-create-1k", quick_refs)
 
 
 class WorkflowShapeTests(unittest.TestCase):
@@ -235,7 +281,17 @@ class WorkflowShapeTests(unittest.TestCase):
             self.assertEqual(workflow.count(f"Run {profile} profile"), 1)
         self.assertIn("always() && steps.host_setup.outcome == 'success'", workflow)
         self.assertIn('"$required" == "true" && "$outcome" != "success"', workflow)
-        self.assertIn("name: perf-${{ matrix.arch }}", workflow)
+        self.assertNotIn("actions/upload-artifact", workflow)
+        self.assertNotIn("actions/download-artifact", workflow)
+        self.assertNotIn("actions/upload-artifact", comparison_workflow)
+        self.assertNotIn("actions/download-artifact", comparison_workflow)
+        self.assertIn("blobfuse2-perf-${{ matrix.arch }}-suite-${requested_suite}-status-${profile_status}", workflow)
+        self.assertIn("benchmark-runs/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}", workflow)
+        self.assertIn("benchmark-comparisons/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}", comparison_workflow)
+        self.assertIn("PERF_RESULTS_ACCOUNT", workflow)
+        self.assertIn("PERF_RESULTS_KEY", workflow)
+        self.assertIn("PERF_RESULTS_ACCOUNT", comparison_workflow)
+        self.assertIn("PERF_RESULTS_KEY", comparison_workflow)
         self.assertNotIn("matrix.account_type", workflow)
         self.assertNotIn("matrix.cache_mode", workflow)
         self.assertIn('default: "5"', comparison_workflow)
@@ -265,6 +321,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn("findmnt -rn -o TARGET -T", comparison_workflow)
         self.assertNotIn("mountpoint -q /mnt/localssd", comparison_workflow)
         self.assertIn("Collect benchmark failure diagnostics", action)
+        self.assertIn("Archive redacted benchmark configuration", action)
         self.assertIn("mount-config.redacted.yaml", action)
         self.assertIn("$PERF_RESULTS/diagnostics", action)
         self.assertIn('self.output_dir / "blobfuse2.log"', runner_source)
@@ -279,8 +336,123 @@ class WorkflowShapeTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("cleanup-on-start:", file_cache_config)
 
+    def test_private_zip_transport_keeps_credentials_out_of_archives(self):
+        scheduled = (REPO_ROOT / ".github/workflows/benchmark.yml").read_text(
+            encoding="utf-8"
+        )
+        comparison = (
+            REPO_ROOT / ".github/workflows/benchmark-compare.yml"
+        ).read_text(encoding="utf-8")
+        helper = (REPO_ROOT / "perf_testing/scripts/blob_results.sh").read_text(
+            encoding="utf-8"
+        )
+        results_config = (
+            REPO_ROOT / "testdata/config/azure_results_storage.yaml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('zip -q -r "$bundle" benchmark-results', scheduled)
+        self.assertIn("for directory in report results", comparison)
+        self.assertNotIn('cp -a "$PERF_ROOT/cache', comparison)
+        self.assertIn("mount-config.redacted.yaml", comparison)
+        self.assertIn("<redacted>", comparison)
+        self.assertIn("container-name=results", helper)
+        self.assertIn('cache_dir="$transfer_root/cache"', helper)
+        self.assertIn('--temp-path="$cache_dir"', helper)
+        self.assertIn('chmod 0600 "$config_file"', helper)
+        self.assertIn("umask 077", helper)
+        self.assertIn("sha256sum", helper)
+        self.assertIn("checksum verification failed", helper)
+        self.assertIn("trap cleanup EXIT", helper)
+        self.assertNotIn("block_cache", results_config)
+        self.assertIn("  - file_cache", results_config)
+        self.assertIn("file_cache:", results_config)
+        self.assertIn("  path: { 1 }", results_config)
+        self.assertIn("  sync-to-flush: true", results_config)
+        self.assertIn('sync "$remote_file"', helper)
+        self.assertIn('sync "$checksum_file"', helper)
+        self.assertIn("  - azstorage", results_config)
+
 
 class FioResultTests(unittest.TestCase):
+    def test_run_fio_times_the_complete_fio_process(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
+            benchmark_runner.output_dir = root / "output"
+            benchmark_runner.output_dir.mkdir()
+            result_path = root / "raw" / "result.json"
+            work_dir = root / "work"
+            command_result = mock.Mock(returncode=0, stdout="")
+
+            with (
+                mock.patch.object(runner, "run_command", return_value=command_result) as run,
+                mock.patch.object(runner.time, "monotonic", side_effect=(10.0, 14.5)),
+            ):
+                elapsed = benchmark_runner.run_fio(
+                    "public/seq_write_single.fio", work_dir, result_path
+                )
+
+        self.assertEqual(elapsed, 4.5)
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "fio")
+        self.assertIn(f"--output={result_path}", command)
+
+    def test_file_cache_validation_requires_sync_to_flush(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary = root / "blobfuse2"
+            binary.touch()
+            config = root / "config.yaml"
+            benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
+            benchmark_runner.binary = binary
+            benchmark_runner.config = config
+            benchmark_runner.args = argparse.Namespace(cache_mode="file_cache", suite="regression")
+            benchmark_runner.suite = {"workloads": [], "fixture_jobs": []}
+
+            with mock.patch.object(runner.shutil, "which", return_value="/usr/bin/fio"):
+                config.write_text("file_cache:\n  path: /tmp/cache\n")
+                with self.assertRaisesRegex(ValueError, "sync-to-flush"):
+                    benchmark_runner.validate()
+
+                config.write_text("file_cache:\n  path: /tmp/cache\n  sync-to-flush: true\n")
+                benchmark_runner.validate()
+
+    def test_durable_workload_validation_requires_end_fsync(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary = root / "blobfuse2"
+            binary.touch()
+            config = root / "config.yaml"
+            config.write_text("components:\n  - libfuse\n")
+            jobs = root / "jobs"
+            jobs.mkdir()
+            job = jobs / "write.fio"
+            benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
+            benchmark_runner.binary = binary
+            benchmark_runner.config = config
+            benchmark_runner.args = argparse.Namespace(cache_mode="block_cache", suite="regression")
+            benchmark_runner.suite = {
+                "workloads": [
+                    {
+                        "id": "durable-write",
+                        "job_file": "write.fio",
+                        "parameters": {"durability": "end fsync"},
+                    }
+                ],
+                "fixture_jobs": [],
+            }
+
+            with (
+                mock.patch.object(runner, "BENCHMARK_CONFIG_DIR", jobs),
+                mock.patch.object(runner.shutil, "which", return_value="/usr/bin/fio"),
+            ):
+                job.write_text("[global]\nrw=write\n\n[durable-write]\n")
+                with self.assertRaisesRegex(ValueError, "end_fsync=1"):
+                    benchmark_runner.validate()
+
+                job.write_text("[global]\nrw=write\nend_fsync=1\n\n[durable-write]\n")
+                benchmark_runner.validate()
+
     def test_run_records_resolved_trial_count(self):
         with tempfile.TemporaryDirectory() as temporary:
             benchmark_runner = runner.BenchmarkRunner.__new__(runner.BenchmarkRunner)
@@ -415,9 +587,46 @@ class FioResultTests(unittest.TestCase):
             metrics = runner.parse_fio_result(result_path, "write", wall_seconds=4.0)
 
         self.assertEqual(metrics["throughput_mib_s"], 2.0)
+        self.assertEqual(metrics["end_to_end_throughput_mib_s"], 2.0)
+        self.assertEqual(metrics["end_to_end_seconds"], 4.0)
         self.assertEqual(metrics["fio_throughput_mib_s"], 4.0)
+        self.assertEqual(metrics["completed_operations"], 8.0)
+        self.assertEqual(metrics["operations_per_second"], 4.0)
+        self.assertEqual(metrics["operation_duration_seconds"], 2.0)
         self.assertEqual(metrics["latency_p99_ms"], 5.0)
         self.assertEqual(metrics["sync_latency_p99_ms"], 20.0)
+
+    def test_parser_ignores_zero_sample_metadata_percentiles(self):
+        fio_result = {
+            "jobs": [
+                {
+                    "jobname": "metadata-create-2k",
+                    "error": 0,
+                    "write": {
+                        "total_ios": 2000,
+                        "io_bytes": 0,
+                        "iops": 125.0,
+                        "lat_ns": {
+                            "mean": 0,
+                            "N": 0,
+                            "percentile": {"99.000000": 0},
+                        },
+                        "clat_ns": {
+                            "N": 0,
+                            "percentile": {"99.000000": 0},
+                        },
+                    },
+                }
+            ]
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            result_path = Path(temporary) / "fio.json"
+            result_path.write_text(json.dumps(fio_result))
+            metrics = runner.parse_fio_result(result_path, "write", wall_seconds=20.0)
+
+        self.assertEqual(metrics["operations_per_second"], 125.0)
+        self.assertEqual(metrics["completed_operations"], 2000.0)
+        self.assertNotIn("latency_p99_ms", metrics)
 
     def test_summary_reports_median_and_mad(self):
         samples = [
@@ -435,6 +644,24 @@ class FioResultTests(unittest.TestCase):
         self.assertEqual(runner.network_to_io_ratio("read", 1024.0, 10.0, 1.0), 1.0)
         self.assertEqual(runner.network_to_io_ratio("write", 10.0, 1024.0, 1.0), 1.0)
         self.assertEqual(runner.network_to_io_ratio("mixed", 512.0, 512.0, 1.0), 1.0)
+
+    def test_metadata_operation_count_and_rate_are_required(self):
+        workload = {"id": "metadata-create-2k", "parameters": {"operations": 2000}}
+        runner.validate_operation_metrics(
+            workload,
+            {"completed_operations": 2000.0, "operations_per_second": 125.0},
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "completed 1999, expected 2000"):
+            runner.validate_operation_metrics(
+                workload,
+                {"completed_operations": 1999.0, "operations_per_second": 125.0},
+            )
+        with self.assertRaisesRegex(RuntimeError, "0.0 ops/s"):
+            runner.validate_operation_metrics(
+                workload,
+                {"completed_operations": 2000.0, "operations_per_second": 0.0},
+            )
 
     def test_only_ephemeral_non_keep_trial_data_is_removed(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -456,6 +683,28 @@ class FioResultTests(unittest.TestCase):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_metadata_operation_rate_regression_uses_ops_per_second(self):
+        baseline = make_summary(value=1000.0)
+        candidate = make_summary(value=1000.0)
+        for summary, value in ((baseline, 1000.0), (candidate, 850.0)):
+            benchmark = summary["benchmarks"][0]
+            benchmark["id"] = "metadata-create-2k"
+            benchmark["name"] = "Parallel file create, 2,000 operations"
+            benchmark["primary_metric"] = "operations_per_second"
+            benchmark["metrics"] = {
+                "operations_per_second": {
+                    "median": value,
+                    "mad": 10.0,
+                    "min": value - 20.0,
+                    "max": value + 20.0,
+                }
+            }
+
+        comparison = comparator.compare_summaries(baseline, candidate, 10.0, 20.0)
+        self.assertEqual(comparison["overall_status"], "regression")
+        self.assertEqual(comparison["benchmarks"][0]["status"], "regression")
+        self.assertIn("1,000 ops/s", comparator.render_markdown(comparison))
+
     def test_clear_regression_is_detected(self):
         baseline = make_summary(value=1000.0)
         candidate = make_summary(value=850.0)
@@ -666,6 +915,9 @@ class PublicationTests(unittest.TestCase):
         public_benchmark = public_history["runs"][0]["benchmarks"][0]
         self.assertNotIn("samples", public_benchmark)
         self.assertNotIn("network_rx_mib", public_benchmark["metrics"])
+        self.assertIn("end_to_end_throughput_mib_s", public_benchmark["metrics"])
+        self.assertIn("end_to_end_seconds", public_benchmark["metrics"])
+        self.assertNotIn("fio_throughput_mib_s", public_benchmark["metrics"])
         self.assertNotIn("runner", public_history["runs"][0]["environment"])
         self.assertEqual(public_history["runs"][0]["environment"]["vm_size"], "Standard_D96ds_v5")
         self.assertEqual(public_history["runs"][0]["environment"]["azure_region"], "eastus2")
