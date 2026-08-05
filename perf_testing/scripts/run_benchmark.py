@@ -85,7 +85,19 @@ def load_suite(name: str) -> tuple[dict[str, Any], str]:
         referenced = {
             workload["id"]: workload for workload in suites["regression"]["workloads"]
         }
-        suite["workloads"] = [copy.deepcopy(referenced[item["ref"]]) for item in suite["workloads"]]
+        resolved_workloads = []
+        for index, workload in enumerate(suite["workloads"]):
+            reference = workload.get("ref")
+            if reference is None:
+                resolved_workloads.append(workload)
+                continue
+            if reference not in referenced:
+                raise ValueError(
+                    f"Suite {name!r} references unknown regression workload "
+                    f"{reference!r} at index {index}"
+                )
+            resolved_workloads.append(copy.deepcopy(referenced[reference]))
+        suite["workloads"] = resolved_workloads
     return suite, manifest["fixture_version"]
 
 
@@ -288,6 +300,45 @@ def remove_trial_data(work_dir: Path, target: str, keep_data: bool) -> None:
         shutil.rmtree(work_dir)
 
 
+def paths_overlap(first: Path, second: Path) -> bool:
+    return first == second or first in second.parents or second in first.parents
+
+
+def validate_cache_path(
+    cache_dir: Path,
+    *,
+    mount_dir: Path,
+    output_dir: Path,
+    binary: Path,
+    config: Path,
+) -> None:
+    cache_dir = cache_dir.resolve()
+    protected_paths = {
+        "mount directory": mount_dir.resolve(),
+        "output directory": output_dir.resolve(),
+        "repository checkout": REPO_ROOT,
+        "current working directory": Path.cwd().resolve(),
+        "Blobfuse2 binary": binary.resolve(),
+        "mount config": config.resolve(),
+    }
+    for label, protected_path in protected_paths.items():
+        if paths_overlap(cache_dir, protected_path):
+            raise ValueError(
+                f"Unsafe cache directory {cache_dir}: it overlaps the {label} "
+                f"{protected_path}"
+            )
+    if cache_dir == Path(cache_dir.anchor) or len(cache_dir.parts) < 4:
+        raise ValueError(
+            f"Unsafe cache directory {cache_dir}: use a dedicated directory at least "
+            "three levels below the filesystem root"
+        )
+    if not any(part.startswith("blobfuse-") for part in cache_dir.parts):
+        raise ValueError(
+            f"Unsafe cache directory {cache_dir}: a dedicated path component must "
+            "begin with 'blobfuse-'"
+        )
+
+
 class BenchmarkRunner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -313,6 +364,13 @@ class BenchmarkRunner:
         self.mounted = False
 
     def validate(self) -> None:
+        validate_cache_path(
+            self.cache_dir,
+            mount_dir=self.mount_dir,
+            output_dir=self.output_dir,
+            binary=self.binary,
+            config=self.config,
+        )
         if not self.binary.is_file():
             raise FileNotFoundError(f"Blobfuse2 binary not found: {self.binary}")
         if not self.config.is_file():
@@ -377,6 +435,13 @@ class BenchmarkRunner:
         return int((base / "rx_bytes").read_text()), int((base / "tx_bytes").read_text())
 
     def clear_local_state(self) -> None:
+        validate_cache_path(
+            self.cache_dir,
+            mount_dir=self.mount_dir,
+            output_dir=self.output_dir,
+            binary=self.binary,
+            config=self.config,
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         for child in self.cache_dir.iterdir():
             if child.is_dir() and not child.is_symlink():
@@ -616,9 +681,9 @@ class BenchmarkRunner:
         return environment
 
     def run(self) -> dict[str, Any]:
+        self.validate()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.raw_dir.mkdir(parents=True, exist_ok=True)
-        self.validate()
         environment = self.environment()
         if self.args.validate_only:
             return {"environment": environment, "validated": True}

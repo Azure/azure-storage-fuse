@@ -109,6 +109,8 @@ jobs:
           sudo -n dpkg --configure -a
           sudo -n apt-get update -qq
           sudo -n apt-get install -y -qq fuse3 libfuse3-dev gcc jq python3 bc libaio-dev build-essential curl git iproute2 zip unzip
+          python3 -c 'import sys; sys.version_info >= (3, 10) or sys.exit("Python 3.10+ required, found {}".format(sys.version))'
+          python3 --version
           if ! command -v fio >/dev/null || [[ "$(fio --version)" != "fio-3.36" ]]; then
             ./benchmark-harness/tools/install_fio.sh
           fi

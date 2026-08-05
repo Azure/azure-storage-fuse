@@ -333,6 +333,8 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq fuse3 libfuse3-dev gcc zip unzip
+          python3 -c 'import sys; sys.version_info >= (3, 10) or sys.exit("Python 3.10+ required, found {}".format(sys.version))'
+          python3 --version
           ./go_installer.sh "$RUNNER_TEMP" >/dev/null
           ./build.sh >/dev/null
           ./blobfuse2 --version
