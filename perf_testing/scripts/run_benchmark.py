@@ -106,6 +106,22 @@ def direction_stats(job: dict[str, Any], direction: str) -> list[dict[str, Any]]
     return []
 
 
+def config_option_enabled(config_text: str, section: str, option: str) -> bool:
+    in_section = False
+    for raw_line in config_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if raw_line == raw_line.lstrip():
+            in_section = line == f"{section}:"
+            continue
+        if in_section and ":" in line:
+            key, value = line.split(":", 1)
+            if key.strip() == option:
+                return value.strip().lower() == "true"
+    return False
+
+
 def parse_fio_result(result_path: Path, direction: str, wall_seconds: float) -> dict[str, float]:
     with result_path.open(encoding="utf-8") as result_file:
         fio_result = json.load(result_file)
@@ -121,6 +137,7 @@ def parse_fio_result(result_path: Path, direction: str, wall_seconds: float) -> 
     io_bytes = 0.0
     fio_bandwidth_mib = 0.0
     iops = 0.0
+    completed_operations = 0.0
     latency_sum = 0.0
     latency_count = 0.0
     latency_percentiles: dict[str, list[float]] = {"50.000000": [], "95.000000": [], "99.000000": [], "99.900000": []}
@@ -131,6 +148,7 @@ def parse_fio_result(result_path: Path, direction: str, wall_seconds: float) -> 
         if not stats_groups:
             raise ValueError(f"FIO job {job.get('jobname')} has no {direction} statistics")
         for stats in stats_groups:
+            completed_operations += float(stats.get("total_ios", 0))
             io_bytes += float(stats.get("io_bytes", 0))
             if "bw_bytes" in stats:
                 fio_bandwidth_mib += float(stats["bw_bytes"]) / 1024**2
@@ -144,23 +162,32 @@ def parse_fio_result(result_path: Path, direction: str, wall_seconds: float) -> 
                 latency_sum += float(latency["mean"]) * count
                 latency_count += count
 
-            completion = stats.get("lat_ns", {}).get("percentile", {})
-            if not completion:
-                completion = stats.get("clat_ns", {}).get("percentile", {})
-            for percentile in latency_percentiles:
-                if percentile in completion:
-                    latency_percentiles[percentile].append(float(completion[percentile]) / 1_000_000)
+            if count > 0:
+                completion = stats.get("lat_ns", {}).get("percentile", {})
+                if not completion:
+                    completion = stats.get("clat_ns", {}).get("percentile", {})
+                for percentile in latency_percentiles:
+                    if percentile in completion:
+                        latency_percentiles[percentile].append(float(completion[percentile]) / 1_000_000)
 
         sync_p99 = percentile_value(job.get("sync", {}).get("lat_ns", {}), "99.000000")
         if sync_p99 is not None:
             sync_percentiles.append(sync_p99)
 
+    end_to_end_throughput_mib_s = (
+        (io_bytes / 1024**2) / wall_seconds if io_bytes and wall_seconds else 0.0
+    )
     metrics = {
         "io_gib": io_bytes / GIB,
         "elapsed_seconds": wall_seconds,
-        "throughput_mib_s": (io_bytes / 1024**2) / wall_seconds if io_bytes and wall_seconds else 0.0,
+        "end_to_end_seconds": wall_seconds,
+        "throughput_mib_s": end_to_end_throughput_mib_s,
+        "end_to_end_throughput_mib_s": end_to_end_throughput_mib_s,
         "fio_throughput_mib_s": fio_bandwidth_mib,
         "iops": iops,
+        "completed_operations": completed_operations,
+        "operations_per_second": iops,
+        "operation_duration_seconds": completed_operations / iops if iops else 0.0,
     }
     if latency_count:
         metrics["latency_mean_ms"] = (latency_sum / latency_count) / 1_000_000
@@ -196,6 +223,24 @@ def summarize_samples(samples: list[dict[str, Any]]) -> dict[str, dict[str, floa
             "max": max(values),
         }
     return summary
+
+
+def validate_operation_metrics(workload: dict[str, Any], metrics: dict[str, float]) -> None:
+    expected_operations = workload.get("parameters", {}).get("operations")
+    if expected_operations is None:
+        return
+
+    completed_operations = int(metrics.get("completed_operations", 0))
+    if completed_operations != int(expected_operations):
+        raise RuntimeError(
+            f"Operation count invariant failed for {workload['id']}: "
+            f"completed {completed_operations}, expected {expected_operations}"
+        )
+    if metrics.get("operations_per_second", 0) <= 0:
+        raise RuntimeError(
+            f"Operation rate invariant failed for {workload['id']}: "
+            f"{metrics.get('operations_per_second', 0)} ops/s"
+        )
 
 
 def network_to_io_ratio(direction: str, rx_mib: float, tx_mib: float, io_gib: float) -> float:
@@ -277,12 +322,28 @@ class BenchmarkRunner:
         config_text = self.config.read_text(encoding="utf-8")
         if "direct-io: true" in config_text:
             raise ValueError("Benchmark mount config must not enable mount-wide libfuse direct-io")
+        if self.args.cache_mode == "file_cache" and not config_option_enabled(
+            config_text, "file_cache", "sync-to-flush"
+        ):
+            raise ValueError("File-cache benchmark config must enable file_cache.sync-to-flush")
         for workload in self.suite["workloads"]:
             for field in ("job_file", "prepare_job"):
                 if field in workload and not (BENCHMARK_CONFIG_DIR / workload[field]).is_file():
                     raise FileNotFoundError(f"Missing FIO job: {workload[field]}")
+            job_lines = (BENCHMARK_CONFIG_DIR / workload["job_file"]).read_text().splitlines()
+            job_options = {
+                line.strip()
+                for line in job_lines
+                if line.strip() and not line.strip().startswith("[")
+            }
+            if (
+                workload.get("parameters", {}).get("durability") == "end fsync"
+                and "end_fsync=1" not in job_options
+            ):
+                raise ValueError(
+                    f"Durable workload {workload['id']} must set FIO end_fsync=1"
+                )
             if self.args.suite == "public":
-                job_lines = (BENCHMARK_CONFIG_DIR / workload["job_file"]).read_text().splitlines()
                 if not any(line.strip() == "direct=1" for line in job_lines):
                     raise ValueError(
                         f"Public workload {workload['id']} must open files with FIO direct=1"
@@ -472,6 +533,7 @@ class BenchmarkRunner:
             end_rx, end_tx = self.network_bytes()
 
             metrics = parse_fio_result(result_path, workload["direction"], wall_seconds)
+            validate_operation_metrics(workload, metrics)
             metrics["network_rx_mib"] = (end_rx - start_rx) / 1024**2
             metrics["network_tx_mib"] = (end_tx - start_tx) / 1024**2
             metrics["network_to_io_ratio"] = network_to_io_ratio(

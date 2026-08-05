@@ -232,48 +232,53 @@
           }
         },
         {
-          "id": "metadata-create-1k",
-          "name": "Parallel file create, 1,000 files",
+          "id": "metadata-create-2k",
+          "name": "Parallel file create, 2,000 operations",
           "job_file": "regression/metadata_create.fio",
           "direction": "write",
-          "primary_metric": "iops",
+          "primary_metric": "operations_per_second",
           "higher_is_better": true,
           "target": "ephemeral",
           "parameters": {
             "pattern": "file create",
             "file_size": "4 KiB",
             "concurrency": 8,
-            "operations": 1000
+            "operations": 2000,
+            "unique_files": 2000
           }
         },
         {
-          "id": "metadata-stat-1k",
-          "name": "Parallel file stat, 1,000 files",
+          "id": "metadata-stat-100k",
+          "name": "Warm parallel file stat, 100,000 operations",
           "job_file": "regression/metadata_stat.fio",
           "direction": "read",
-          "primary_metric": "iops",
+          "primary_metric": "operations_per_second",
           "higher_is_better": true,
           "target": "ephemeral",
           "parameters": {
             "pattern": "file stat",
             "file_size": "4 KiB",
             "concurrency": 8,
-            "operations": 1000
+            "operations": 100000,
+            "unique_files": 1000,
+            "repetitions_per_file": 100,
+            "cache_state": "warm"
           }
         },
         {
-          "id": "metadata-delete-1k",
-          "name": "Parallel file delete, 1,000 files",
+          "id": "metadata-delete-2k",
+          "name": "Parallel file delete, 2,000 operations",
           "job_file": "regression/metadata_delete.fio",
           "direction": "write",
-          "primary_metric": "iops",
+          "primary_metric": "operations_per_second",
           "higher_is_better": true,
           "target": "ephemeral",
           "parameters": {
             "pattern": "file delete",
             "file_size": "4 KiB",
             "concurrency": 8,
-            "operations": 1000
+            "operations": 2000,
+            "unique_files": 2000
           }
         }
       ]
@@ -299,7 +304,7 @@
           "ref": "mixed-random-rw-64k"
         },
         {
-          "ref": "metadata-create-1k"
+          "ref": "metadata-create-2k"
         }
       ]
     }

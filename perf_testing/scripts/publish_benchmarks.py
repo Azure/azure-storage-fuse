@@ -11,6 +11,8 @@ from typing import Any
 
 PUBLIC_METRICS = {
     "throughput_mib_s",
+    "end_to_end_throughput_mib_s",
+    "end_to_end_seconds",
     "latency_p99_ms",
     "sync_latency_p99_ms",
     "io_gib",
