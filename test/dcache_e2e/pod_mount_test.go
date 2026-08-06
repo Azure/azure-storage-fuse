@@ -46,31 +46,18 @@ import (
 	"time"
 )
 
-// podMounter drives a blobfuse2 pod inside a Kubernetes cluster. The pod is
-// expected to already be Running (typically deployed from
-// docker/k8s/blobfuse2-dist-cache-deployment.yaml). This driver never
-// creates or deletes the Deployment — that is the operator's job — it only
-// cycles the pod between reads so block_cache in the pod's container starts
-// cold.
+// podMounter drives a pre-existing blobfuse2 Deployment.
 type podMounter struct{}
 
-// podRolloutTimeout bounds how long we wait for a Deployment rollout to
-// finish after Remount. Kept in sync with the livenessProbe on
-// blobfuse2-dist-cache-deployment.yaml (initialDelaySeconds=30 +
-// periodSeconds=30 + a safety margin for slow FUSE init).
+// podRolloutTimeout includes the deployment's probe delay.
 const podRolloutTimeout = 120 * time.Second
 
-// podReadTimeout bounds a single read from the mount via kubectl exec.
-// A 32 MiB payload streams in ~1-2s on a local kind cluster; give it a
-// generous margin to accommodate slow discovery-URL fallback on the cache
-// server side without turning a genuine hang into an eternal wait.
+// podReadTimeout bounds a mount read through kubectl exec.
 const podReadTimeout = 5 * time.Minute
 
 func (*podMounter) Kind() string { return "pod" }
 
-// resolvePod returns the name of the currently-Ready pod for the target
-// Deployment. It re-resolves on every call because rollouts change pod
-// names, so caching would be a footgun after Remount.
+// resolvePod re-resolves the current pod because rollouts change its name.
 func (m *podMounter) resolvePod(t *testing.T) string {
 	t.Helper()
 	out, err := exec.Command(testCfg.kubectlBin,
@@ -91,29 +78,15 @@ func (m *podMounter) resolvePod(t *testing.T) string {
 	return name
 }
 
-// Mount cycles the Deployment so the first read after Mount is guaranteed
-// to hit a cold local cache — otherwise a pod that has been up for a while
-// may already have prefetched blocks from a prior interactive session,
-// which would defeat the L2-miss assertion.
+// Mount restarts the Deployment to guarantee a cold local cache.
 func (m *podMounter) Mount(t *testing.T) {
 	m.Remount(t)
 }
 
-// Unmount is deliberately a no-op. The Deployment lifecycle is owned by
-// the operator; the test only cycles pods within it. Tearing it down on
-// every test teardown would surprise anyone running the suite twice in a
-// row (image would still be side-loaded, but the config Secret would
-// re-apply, etc.).
+// Unmount is a no-op because the suite does not own the Deployment.
 func (m *podMounter) Unmount(t *testing.T) {}
 
-// Remount triggers a rollout restart and waits for the new pod to become
-// Ready. In practice this drops:
-//   - block_cache's in-memory blocks (pod restart destroys the container FS)
-//   - any file_cache backing store held in the container's overlay
-//   - any open FUSE handles from prior reads
-//
-// which is exactly the guarantee the host driver provides via
-// unmount+mount and directory wipe.
+// Remount restarts the pod, clearing local caches and open FUSE handles.
 func (m *podMounter) Remount(t *testing.T) {
 	t.Helper()
 
@@ -127,10 +100,7 @@ func (m *podMounter) Remount(t *testing.T) {
 		t.Fatalf("pod: kubectl rollout restart: %v (out: %s)", err, strings.TrimSpace(string(out)))
 	}
 
-	// Block on the new ReplicaSet reaching Ready. This subsumes both the
-	// image pull (no-op on kind because we side-load) and blobfuse2's own
-	// mount time (the livenessProbe checks /proc/mounts, so Ready implies
-	// the FUSE mount is live).
+	// Readiness implies the liveness probe sees the FUSE mount.
 	statusArgs := []string{
 		"-n", testCfg.podNamespace,
 		"rollout", "status", "deployment/" + testCfg.podDeployment,
@@ -143,16 +113,12 @@ func (m *podMounter) Remount(t *testing.T) {
 	t.Logf("pod: rollout complete (%s)", strings.TrimSpace(string(out)))
 }
 
-// ReadFile streams a mount-relative file out of the pod over
-// `kubectl exec ... -- cat`. kubectl's exec transport is binary-safe
-// (raw byte streams via SPDY / websocket), so this works for arbitrary
-// payloads including random binary content.
+// ReadFile streams a mount-relative file over binary-safe kubectl exec.
 func (m *podMounter) ReadFile(t *testing.T, blobPath string) []byte {
 	t.Helper()
 
 	pod := m.resolvePod(t)
-	// path.Join, not filepath.Join: the destination is a linux path inside
-	// the container regardless of the host OS running the test.
+	// The destination is always a Linux path inside the container.
 	full := path.Join(testCfg.podMountPath, blobPath)
 
 	cmd := exec.Command(testCfg.kubectlBin,
@@ -165,9 +131,7 @@ func (m *podMounter) ReadFile(t *testing.T, blobPath string) []byte {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	// Enforce a per-read deadline so a stuck FUSE mount in the pod (e.g.
-	// dist_cache client hung waiting on a dead cacheserver) does not tie
-	// up the entire `go test` timeout budget.
+	// Bound hangs without consuming the package test timeout.
 	done := make(chan error, 1)
 	start := time.Now()
 	if err := cmd.Start(); err != nil {

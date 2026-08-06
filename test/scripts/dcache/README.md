@@ -23,6 +23,7 @@ targets minikube).
 | `kind-cluster.yaml`         | Reference kind `Cluster` config (setup-kind.sh regenerates its own from `KIND_NODES` at runtime). |
 | `deploy-tachyon.sh`         | Install the `cache-server-prereq` chart, then the `cache-server` chart, both pulled directly from an OCI-enabled ACR (`oci://...`); side-loads the image with `kind load docker-image`. |
 | `expose-cacheserver.sh`     | Start `kubectl port-forward` for each cacheserver pod on sequential localhost ports and emit a comma-separated server list. |
+| `deploy-blobfuse2.sh`       | Render `docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl` with storage credentials + image ref, side-load the blobfuse2 image into every kind node, apply, and wait for rollout. Only needed by the `dcache_e2e` Go tests. |
 | `teardown-kind.sh`          | Kill port-forwards, uninstall the helm release, and delete the cluster. Best-effort (runs under `set +e`). |
 
 ## Local usage
@@ -66,6 +67,14 @@ export DCACHE_SERVERS=$(cat "$DCACHE_SERVER_LIST_FILE")
     --temp-path=/tmp/blobfuse2_tmp \
     --output-file=/tmp/blobfuse2_dcache.yaml
 ./blobfuse2 mount /tmp/mnt --config-file=/tmp/blobfuse2_dcache.yaml
+
+# 5b. (Optional; only for dcache_e2e Go tests) Deploy the in-cluster
+#     blobfuse2 pod that test/dcache_e2e/... drives via kubectl.
+export BLOBFUSE2_IMAGE=<registry>/azure-blobfuse2:<tag>
+export STO_ACC_NAME=<account>
+export STO_ACC_KEY=<key>
+export containerName=<container>
+./test/scripts/dcache/deploy-blobfuse2.sh
 
 # 6. Teardown.
 ./test/scripts/dcache/teardown-kind.sh

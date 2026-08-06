@@ -20,21 +20,10 @@ package dcache_e2e
 
 import "fmt"
 
-// activeMounter is the pod-driver mount instance used by every test that
-// needs to talk to the mount. Kept as a package-global (rather than
-// threaded through every test) to keep call sites tight — each test still
-// receives its own *testing.T.
-//
-// The suite is pod-only for now: dist_cache's discovery-url / k8s-service
-// code paths only resolve inside a cluster, and standing up a second
-// (host-driver) path just to run the same assertions off-cluster would
-// double the surface area of this first E2E PR without adding coverage.
+// activeMounter drives the pod-only test mount.
 var activeMounter *podMounter
 
-// ensurePodMountArgs validates that the pod driver has all the inputs it
-// needs before any test runs. Failing here (rather than deep inside the
-// first kubectl call) turns a misconfigured pipeline into a clear TestMain
-// error instead of a stack trace from the first test.
+// ensurePodMountArgs validates pod configuration before tests run.
 func ensurePodMountArgs() error {
 	if testCfg.podNamespace == "" {
 		return fmt.Errorf("pod driver requires -pod-namespace")

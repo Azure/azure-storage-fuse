@@ -97,22 +97,19 @@ steps:
       DCACHE_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_portforward_pids_${{ parameters.run_idstring }}.txt
 
   # -------------------------------------------------------------------------
-  # 4b. Also expose each cacheserver pod's Prometheus metrics endpoint so
-  #     the dist_cache-focused Go tests (test/dcache_e2e/) can scrape hit /
-  #     upload counters. This is intentionally a separate step / PID file
-  #     from expose-cacheserver.sh so the existing wire-port forwarding is
-  #     untouched, and teardown-kind.sh can kill both PID lists uniformly.
+  # 4b. Deploy the in-cluster blobfuse2 pod driven by dcache_e2e (step 5b).
+  #     Host-mount variants in step 5 don't use it.
   - script: |
       set -e
-      $(WORK_DIR)/test/scripts/dcache/expose-metrics.sh
-      endpoints=$(cat "$DCACHE_METRICS_ENDPOINTS_FILE")
-      echo "Resolved dist_cache metrics endpoints: $endpoints"
-      echo "##vso[task.setvariable variable=DCACHE_METRICS_ENDPOINTS]$endpoints"
-    displayName: 'DistCache [${{ parameters.run_idstring }}]: Expose cacheserver metrics'
-    timeoutInMinutes: 5
+      $(WORK_DIR)/test/scripts/dcache/deploy-blobfuse2.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Deploy blobfuse2 pod'
+    timeoutInMinutes: 10
     env:
-      DCACHE_METRICS_ENDPOINTS_FILE: $(Agent.TempDirectory)/dcache_metrics_endpoints_${{ parameters.run_idstring }}.txt
-      DCACHE_METRICS_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_metrics_portforward_pids_${{ parameters.run_idstring }}.txt
+      BLOBFUSE2_IMAGE: $(BLOBFUSE2_IMAGE)
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_ENDPOINT: 'https://${{ parameters.account_name }}.blob.core.windows.net'
+      STO_ACC_CONTAINER: $(containerName)
 
   # -------------------------------------------------------------------------
   # 5. For each mount variant: gen-config -> mount -> E2E -> unmount.
@@ -171,11 +168,11 @@ steps:
         set -e
         cd $(WORK_DIR)
         go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... -args \
-          -blobfuse-bin=$(WORK_DIR)/blobfuse2 \
-          -config-file=${{ variant.config_file }} \
-          -mnt-path=$(MOUNT_DIR) \
-          -tmp-path=$(TEMP_DIR) \
-          -dcache-metrics-endpoints=$(DCACHE_METRICS_ENDPOINTS) \
+          -pod-namespace=blobfuse2-dist-cache \
+          -pod-deployment=blobfuse2-dist-cache \
+          -pod-selector=app=blobfuse2-dist-cache \
+          -pod-mount-path=/mnt/blobfuse_mnt \
+          -kubectl-bin=kubectl \
           -storage-account=${{ parameters.account_name }} \
           -storage-key=${{ parameters.account_key }} \
           -storage-endpoint=https://${{ parameters.account_name }}.blob.core.windows.net \
@@ -215,4 +212,3 @@ steps:
     timeoutInMinutes: 15
     env:
       DCACHE_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_portforward_pids_${{ parameters.run_idstring }}.txt
-      DCACHE_METRICS_PORTFORWARD_PIDS_FILE: $(Agent.TempDirectory)/dcache_metrics_portforward_pids_${{ parameters.run_idstring }}.txt

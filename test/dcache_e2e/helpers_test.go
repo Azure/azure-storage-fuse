@@ -42,23 +42,56 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 )
 
-// azSDKTimeout bounds a single SDK operation (upload / delete). Keep it
-// generous enough to accommodate a 100+ MiB payload upload from a slow
-// pipeline agent, but tight enough that a genuine hang is caught before the
-// per-test `go test` timeout fires.
+// azSDKTimeout bounds one Azure SDK operation.
 const azSDKTimeout = 5 * time.Minute
 
-// generateRandomBytes returns a slice of n cryptographically random bytes.
-// Using crypto/rand rather than math/rand ensures that dist_cache chunk
-// payloads are not accidentally identical across tests, which would defeat
-// per-chunk cache-key isolation.
+// Shared per-container client; the SDK pipeline is safe for concurrent use.
+var (
+	containerClientOnce sync.Once
+	containerClient     *container.Client
+	containerClientErr  error
+)
+
+// getContainerClient lazily builds one container client shared across helpers.
+func getContainerClient() (*container.Client, error) {
+	containerClientOnce.Do(func() {
+		if testCfg.storageAccount == "" || testCfg.storageKey == "" {
+			containerClientErr = fmt.Errorf(
+				"azstorage credentials not set (need STO_ACC_NAME + STO_ACC_KEY, " +
+					"or -storage-account / -storage-key)")
+			return
+		}
+		if testCfg.storageContainer == "" {
+			containerClientErr = fmt.Errorf(
+				"azstorage container not set (need containerName / DCACHE_E2E_CONTAINER)")
+			return
+		}
+		cred, err := azblob.NewSharedKeyCredential(testCfg.storageAccount, testCfg.storageKey)
+		if err != nil {
+			containerClientErr = fmt.Errorf("shared key credential: %w", err)
+			return
+		}
+		url := fmt.Sprintf("%s/%s",
+			trimTrailingSlash(testCfg.storageEndpoint),
+			testCfg.storageContainer)
+		containerClient, containerClientErr = container.NewClientWithSharedKeyCredential(url, cred, nil)
+		if containerClientErr != nil {
+			containerClientErr = fmt.Errorf("container client: %w", containerClientErr)
+		}
+	})
+	return containerClient, containerClientErr
+}
+
+// generateRandomBytes returns unique test payload data.
 func generateRandomBytes(t *testing.T, n int) []byte {
 	t.Helper()
 	buf := make([]byte, n)
@@ -68,15 +101,13 @@ func generateRandomBytes(t *testing.T, n int) []byte {
 	return buf
 }
 
-// md5Sum returns the hex MD5 of `data`. Only used for equality assertions
-// between what we uploaded and what we read; not a security boundary.
+// md5Sum returns a checksum for data-integrity assertions.
 func md5Sum(data []byte) string {
 	sum := md5.Sum(data)
 	return hex.EncodeToString(sum[:])
 }
 
-// randomTestDirName returns a short random hex string suitable for isolating
-// concurrent test runs within the same container.
+// randomTestDirName returns a short random hex suffix.
 func randomTestDirName(t *testing.T, n int) string {
 	t.Helper()
 	b := make([]byte, (n+1)/2)
@@ -86,32 +117,13 @@ func randomTestDirName(t *testing.T, n int) string {
 	return fmt.Sprintf("%x", b)[:n]
 }
 
-// newBlockBlobClient constructs an azblob block-blob client for the given
-// blob path (relative to the container root). Every test that seeds data
-// goes through this: the read-only dist_cache design forbids writing
-// through the FUSE mount, so all writes must reach azstorage out-of-band.
+// newBlockBlobClient returns a per-blob client that shares the container-level pipeline.
 func newBlockBlobClient(blobPath string) (*blockblob.Client, error) {
-	if testCfg.storageAccount == "" || testCfg.storageKey == "" {
-		return nil, fmt.Errorf(
-			"azstorage credentials not set (need STO_ACC_NAME + STO_ACC_KEY, " +
-				"or -storage-account / -storage-key)")
-	}
-	if testCfg.storageContainer == "" {
-		return nil, fmt.Errorf("azstorage container not set (need containerName / DCACHE_E2E_CONTAINER)")
-	}
-	cred, err := azblob.NewSharedKeyCredential(testCfg.storageAccount, testCfg.storageKey)
+	c, err := getContainerClient()
 	if err != nil {
-		return nil, fmt.Errorf("shared key credential: %w", err)
+		return nil, err
 	}
-	url := fmt.Sprintf("%s/%s/%s",
-		trimTrailingSlash(testCfg.storageEndpoint),
-		testCfg.storageContainer,
-		blobPath)
-	client, err := blockblob.NewClientWithSharedKeyCredential(url, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("block blob client: %w", err)
-	}
-	return client, nil
+	return c.NewBlockBlobClient(blobPath), nil
 }
 
 func trimTrailingSlash(s string) string {
@@ -121,11 +133,7 @@ func trimTrailingSlash(s string) string {
 	return s
 }
 
-// uploadBlob writes `data` to the given container-relative blob path via
-// the Azure SDK. This is the *only* legitimate write path for these tests:
-// the FUSE mount is opened read-only, so we cannot (and must not) write
-// through it. UploadBuffer chunks large payloads into multiple staged
-// blocks internally; the resulting blob is a single object.
+// uploadBlob seeds data outside the read-only FUSE mount.
 func uploadBlob(t *testing.T, blobPath string, data []byte) {
 	t.Helper()
 	client, err := newBlockBlobClient(blobPath)
@@ -139,10 +147,7 @@ func uploadBlob(t *testing.T, blobPath string, data []byte) {
 	}
 }
 
-// deleteBlob removes a blob from azstorage. Used from t.Cleanup hooks so
-// tests do not pollute the container across runs. Failures are logged, not
-// fatal: masking a real assertion failure with a cleanup error is worse
-// than leaking a test blob whose name is already random-suffixed.
+// deleteBlob logs cleanup failures to preserve the original test result.
 func deleteBlob(t *testing.T, blobPath string) {
 	t.Helper()
 	client, err := newBlockBlobClient(blobPath)
