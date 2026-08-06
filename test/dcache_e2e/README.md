@@ -30,6 +30,7 @@ we wrote, cache-server metrics move in the expected direction.
 | `helpers.go` | Random payload + MD5 + Azure SDK upload / delete / download. |
 | `metrics_test.go` | In-pod Prometheus scraper (`kubectl exec ... curl`) and `CacheServerMetrics` delta helpers. |
 | `read_path_test.go` | `TestReadPath_L2MissPopulatesAndHits` — the canonical L2 miss → populate → hit test. |
+| `node_failure_test.go` | Stops a kind worker hosting one cache-server, verifies mixed L2/Azure fallback, then restores the node. |
 
 ## Running locally
 
@@ -84,6 +85,10 @@ go test -v -tags=fuse3 ./test/dcache_e2e/... \
 Flags fall back to the environment variables shown above (matching the
 names the existing e2e pipeline already sets), so a fully-populated env
 lets you drop most of the `-args` list.
+
+The node-failure scenario requires access to the Docker daemon. It only kills
+a container carrying kind's `io.x-k8s.kind.cluster` label, avoids the worker
+hosting the active blobfuse2 pod, and restarts the node in `t.Cleanup`.
 
 If pod discovery or the in-pod `curl` fails, the metric-based
 assertions are skipped and only data integrity is enforced. Override the

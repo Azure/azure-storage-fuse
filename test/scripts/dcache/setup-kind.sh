@@ -4,10 +4,9 @@
 #
 # Design notes:
 #   * We generate the kind Cluster config on the fly from KIND_NODES so the
-#     shape stays in one place (config/nightly.config). The static skeleton at
-#     kind-cluster.yaml is retained as a reference / for hand-invocation.
+#     shape stays in one place (config/nightly.config).
 #   * After the cluster is up we:
-#       1. Label every node with the two `processing-unit` labels that the
+#       1. Label worker nodes with the two `processing-unit` labels that the
 #          vienna-tachyon Helm chart's nodeSelector expects.
 #       2. Prepare /var/lib/ssd/cacheserver on every node container. The
 #          Helm chart's `useHostPath: true` value points here and the pod
@@ -30,7 +29,8 @@ fi
 
 CLUSTER_NAME="${CLUSTER_NAME:-blobfuse-dcache}"
 KIND_NODES="${KIND_NODES:-4}"
-KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.31.0}"
+# Fallback used when nightly.config isn't sourced; keep in sync with it.
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.36.1}"
 
 if [[ "$KIND_NODES" -lt 2 ]]; then
     echo "ERROR: KIND_NODES=$KIND_NODES; need at least 1 control-plane + 1 worker" >&2
@@ -79,10 +79,10 @@ echo "Cluster created successfully!"
 echo "Waiting for all nodes to reach Ready..."
 kubectl wait --for=condition=Ready node --all --timeout=120s
 
-# --- Label nodes for cache-server scheduling ------------------------------
+# --- Label worker nodes for cache-server scheduling -----------------------
 echo ""
-echo "Labeling nodes for cache-server scheduling..."
-for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+echo "Labeling worker nodes for cache-server scheduling..."
+for node in $(kubectl get nodes -l '!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[*].metadata.name}'); do
     kubectl label node "$node" singularity.azure.com/processing-unit=system --overwrite
     kubectl label node "$node" nexus.azure.com/processing-unit=cpu --overwrite
     echo "Labeled $node with system and cpu labels"

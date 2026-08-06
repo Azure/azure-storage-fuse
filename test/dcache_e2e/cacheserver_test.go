@@ -47,8 +47,9 @@ import (
 // cacheserverRolloutTimeout allows for startup and readiness probes.
 const cacheserverRolloutTimeout = 3 * time.Minute
 
-// cacheserverTerminateTimeout bounds removal from the Ready set.
-const cacheserverTerminateTimeout = 30 * time.Second
+// kindNodeStateTimeout allows the kubelet heartbeat lease to expire after a
+// kind node container is stopped.
+const kindNodeStateTimeout = 2 * time.Minute
 
 // listCacheserverPods returns cache-server pod names in kubectl order.
 func listCacheserverPods(t *testing.T) []string {
@@ -70,49 +71,67 @@ func listCacheserverPods(t *testing.T) []string {
 	return strings.Fields(name)
 }
 
-// killCacheserverPod force-deletes a pod to approximate a node failure.
-func killCacheserverPod(t *testing.T, pod string) {
-	t.Helper()
+func getPodNode(namespace, pod string) (string, error) {
 	out, err := exec.Command(testCfg.kubectlBin,
-		"-n", testCfg.cacheserverNamespace,
-		"delete", "pod", pod,
-		"--grace-period=0",
-		"--force",
-		"--wait=false",
+		"-n", namespace,
+		"get", "pod", pod,
+		"-o", "jsonpath={.spec.nodeName}",
 	).CombinedOutput()
 	if err != nil {
-		t.Fatalf("cacheserver: delete pod %s: %v (out: %s)", pod, err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("get pod %s node: %w (out: %s)", pod, err, strings.TrimSpace(string(out)))
 	}
-	t.Logf("cacheserver: kill %s: %s", pod, strings.TrimSpace(string(out)))
+	return strings.TrimSpace(string(out)), nil
 }
 
-// waitCacheserverPodGone waits until the pod is absent or not Ready.
-func waitCacheserverPodGone(t *testing.T, pod string) {
+func killKindNode(t *testing.T, node string) {
 	t.Helper()
-	deadline := time.Now().Add(cacheserverTerminateTimeout)
+	label, err := exec.Command(testCfg.dockerBin, "inspect",
+		"--format", `{{index .Config.Labels "io.x-k8s.kind.cluster"}}`, node,
+	).CombinedOutput()
+	if err != nil {
+		t.Fatalf("kind: inspect node container %s: %v (out: %s)", node, err, strings.TrimSpace(string(label)))
+	}
+	if strings.TrimSpace(string(label)) == "" {
+		t.Fatalf("kind: refusing to kill Docker container %s: missing io.x-k8s.kind.cluster label", node)
+	}
+	out, err := exec.Command(testCfg.dockerBin, "kill", node).CombinedOutput()
+	if err != nil {
+		t.Fatalf("kind: kill node %s: %v (out: %s)", node, err, strings.TrimSpace(string(out)))
+	}
+	t.Logf("kind: killed node container %s", node)
+}
+
+func restoreKindNode(t *testing.T, node string) {
+	t.Helper()
+	out, err := exec.Command(testCfg.dockerBin, "start", node).CombinedOutput()
+	if err != nil {
+		t.Logf("cleanup: start kind node %s: %v (out: %s)", node, err, strings.TrimSpace(string(out)))
+		return
+	}
+	if err := waitKindNodeReady(node, true); err != nil {
+		t.Logf("cleanup: %v", err)
+		return
+	}
+	t.Logf("cleanup: kind node %s is Ready", node)
+	waitCacheserverStatefulSetReady(t)
+}
+
+func waitKindNodeReady(node string, wantReady bool) error {
+	deadline := time.Now().Add(kindNodeStateTimeout)
 	for time.Now().Before(deadline) {
 		out, err := exec.Command(testCfg.kubectlBin,
-			"-n", testCfg.cacheserverNamespace,
-			"get", "pod", pod,
-			"-o", "jsonpath={.status.conditions[?(@.type==\"Ready\")].status}",
+			"get", "node", node,
+			"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`,
 		).CombinedOutput()
-		if err != nil {
-			// Any API error means the pod is not observable as Ready.
-			t.Logf("cacheserver: %s no longer observable as Ready: %s",
-				pod, strings.TrimSpace(string(out)))
-			return
+		if err == nil {
+			ready := strings.TrimSpace(string(out)) == "True"
+			if ready == wantReady {
+				return nil
+			}
 		}
-		status := strings.TrimSpace(string(out))
-		if status != "True" {
-			t.Logf("cacheserver: %s Ready=%q (no longer serving)", pod, status)
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(time.Second)
 	}
-	// A fast same-name replacement has an empty cache, so it is still valid.
-	t.Logf("cacheserver: pod %s appeared to stay Ready within %s; continuing "+
-		"(a StatefulSet-scheduled replacement starts with an empty store, "+
-		"which still exercises the fall-back path)", pod, cacheserverTerminateTimeout)
+	return fmt.Errorf("kind node %s did not become Ready=%t within %s", node, wantReady, kindNodeStateTimeout)
 }
 
 // waitCacheserverStatefulSetReady restores cluster health after fault tests.

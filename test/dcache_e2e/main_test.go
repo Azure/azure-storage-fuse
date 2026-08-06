@@ -53,15 +53,13 @@ var testCfg struct {
 	storageEndpoint  string
 	storageContainer string
 
-	// Mirrors the existing E2E quick-test setting.
-	quickTest string
-
 	// Coordinates of the pre-existing blobfuse2 Deployment.
 	podNamespace  string
 	podDeployment string
 	podSelector   string
 	podMountPath  string
 	kubectlBin    string
+	dockerBin     string
 
 	// Coordinates used for cache-server fault injection, recovery, and
 	// in-pod Prometheus scrapes.
@@ -88,10 +86,6 @@ func registerFlags() {
 		flag.StringVar(&testCfg.storageContainer, "storage-container", "",
 			"Azure Storage container name (falls back to containerName / DCACHE_E2E_CONTAINER)")
 	}
-	if flag.Lookup("quick-test") == nil {
-		flag.StringVar(&testCfg.quickTest, "quick-test", "true",
-			"Skip long-running scenarios when true")
-	}
 	if flag.Lookup("pod-namespace") == nil {
 		flag.StringVar(&testCfg.podNamespace, "pod-namespace", "blobfuse2-dist-cache",
 			"pod driver: Kubernetes namespace containing the blobfuse2 Deployment")
@@ -112,6 +106,10 @@ func registerFlags() {
 		flag.StringVar(&testCfg.kubectlBin, "kubectl-bin", "kubectl",
 			"pod driver: path to the kubectl binary")
 	}
+	if flag.Lookup("docker-bin") == nil {
+		flag.StringVar(&testCfg.dockerBin, "docker-bin", "docker",
+			"kind fault injection: path to the docker binary")
+	}
 	if flag.Lookup("cacheserver-namespace") == nil {
 		flag.StringVar(&testCfg.cacheserverNamespace, "cacheserver-namespace", "cache-server",
 			"cache-server: Kubernetes namespace containing the Tachyon StatefulSet")
@@ -121,7 +119,7 @@ func registerFlags() {
 			"cache-server: label selector used to enumerate cache-server pods")
 	}
 	if flag.Lookup("cacheserver-statefulset") == nil {
-		flag.StringVar(&testCfg.cacheserverStatefulSet, "cacheserver-statefulset", "cache-server",
+		flag.StringVar(&testCfg.cacheserverStatefulSet, "cacheserver-statefulset", "cacheserver",
 			"cache-server: name of the Tachyon StatefulSet (waited on after a pod is deleted)")
 	}
 	if flag.Lookup("cacheserver-metrics-port") == nil {
@@ -155,7 +153,6 @@ func resolveCfg() error {
 }
 
 func TestMain(m *testing.M) {
-	registerFlags()
 	flag.Parse()
 
 	if err := resolveCfg(); err != nil {
@@ -163,24 +160,22 @@ func TestMain(m *testing.M) {
 		os.Exit(2)
 	}
 
-	activeMounter = &podMounter{}
-
 	fmt.Printf("dist_cache E2E config:\n"+
 		"  pod-namespace           = %s\n"+
 		"  pod-deployment          = %s\n"+
 		"  pod-selector            = %s\n"+
 		"  pod-mount-path          = %s\n"+
+		"  docker-bin              = %s\n"+
 		"  cacheserver-namespace   = %s\n"+
 		"  cacheserver-selector    = %s\n"+
 		"  cacheserver-metrics-port= %d\n"+
 		"  storage-account         = %s\n"+
 		"  storage-endpoint        = %s\n"+
-		"  storage-container       = %s\n"+
-		"  quick-test              = %s\n",
+		"  storage-container       = %s\n",
 		testCfg.podNamespace, testCfg.podDeployment, testCfg.podSelector, testCfg.podMountPath,
+		testCfg.dockerBin,
 		testCfg.cacheserverNamespace, testCfg.cacheserverSelector, testCfg.cacheserverMetricsPort,
-		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer,
-		testCfg.quickTest)
+		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer)
 
 	os.Exit(m.Run())
 }

@@ -156,31 +156,29 @@ steps:
         unmount: true
         delete_containers: false
 
-    # -----------------------------------------------------------------------
-    # 5b. dist_cache-focused Go E2E tests (test/dcache_e2e/).
-    #
-    # These tests own their own mount lifecycle -- they mount blobfuse2
-    # --read-only, seed test payloads via the Azure SDK (writes never
-    # traverse dist_cache in the read-only integration), and remount
-    # between reads to distinguish L2-miss from L2-hit. Runs after the
-    # cleanup.yml above so it starts from an unmounted state.
-    - script: |
-        set -e
-        cd $(WORK_DIR)
-        go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... -args \
-          -pod-namespace=blobfuse2-dist-cache \
-          -pod-deployment=blobfuse2-dist-cache \
-          -pod-selector=app=blobfuse2-dist-cache \
-          -pod-mount-path=/mnt/blobfuse_mnt \
-          -kubectl-bin=kubectl \
-          -storage-account=${{ parameters.account_name }} \
-          -storage-key=${{ parameters.account_key }} \
-          -storage-endpoint=https://${{ parameters.account_name }}.blob.core.windows.net \
-          -storage-container=$(containerName) \
-          -quick-test=${{ parameters.quick_test }}
-      displayName: 'DistCache [${{ variant.id }}]: dcache_e2e Go tests'
-      timeoutInMinutes: 60
-      continueOnError: false
+  # -------------------------------------------------------------------------
+  # 5b. Run the pod-focused suite once after all host-mount variants. Its pod
+  # uses the fixed discovery-based block-cache config deployed in step 4b, so
+  # rerunning it per host variant would not add variant coverage. Running it
+  # last also ensures its kind-node fault test cannot break a port-forward
+  # needed by a later host mount.
+  - script: |
+      set -e
+      cd $(WORK_DIR)
+      go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... -args \
+        -pod-namespace=blobfuse2-dist-cache \
+        -pod-deployment=blobfuse2-dist-cache \
+        -pod-selector=app=blobfuse2-dist-cache \
+        -pod-mount-path=/mnt/blobfuse_mnt \
+        -kubectl-bin=kubectl \
+        -docker-bin=docker \
+        -storage-account=${{ parameters.account_name }} \
+        -storage-key=${{ parameters.account_key }} \
+        -storage-endpoint=https://${{ parameters.account_name }}.blob.core.windows.net \
+        -storage-container=$(containerName)
+    displayName: 'DistCache: dcache_e2e Go tests'
+    timeoutInMinutes: 60
+    continueOnError: false
 
   # -------------------------------------------------------------------------
   # 6. Collect cacheserver logs before tearing down, then teardown always.
