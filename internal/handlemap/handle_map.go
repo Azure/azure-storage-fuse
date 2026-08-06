@@ -40,7 +40,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
-	"github.com/Azure/azure-storage-fuse/v2/common/cache_policy"
+	cachepolicy "github.com/Azure/azure-storage-fuse/v2/common/cache_policy"
 
 	"go.uber.org/atomic"
 )
@@ -60,7 +60,7 @@ const (
 // Structure to hold in memory cache for streaming layer
 type Cache struct {
 	sync.RWMutex
-	*cache_policy.LRUCache
+	*cachepolicy.LRUCache
 	*common.BlockOffsetList
 	StreamOnly  bool
 	HandleCount int64
@@ -179,7 +179,7 @@ func Delete(key HandleID) {
 func CreateCacheObject(capacity int64, handle *Handle) {
 	handle.CacheObj = &Cache{
 		sync.RWMutex{},
-		cache_policy.NewLRUCache(capacity),
+		cachepolicy.NewLRUCache(capacity),
 		&common.BlockOffsetList{},
 		false,
 		0,

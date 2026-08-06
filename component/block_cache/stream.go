@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package block_cache
+package blockcache
 
 import (
 	"errors"

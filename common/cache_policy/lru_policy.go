@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package cache_policy
+package cachepolicy
 
 import (
 	"container/list"

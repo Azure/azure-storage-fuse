@@ -47,13 +47,13 @@ import (
 )
 
 const (
-	MAX_WORKER_COUNT         = 300
-	MAX_DATA_SPLITTER        = 16
-	MAX_LISTER               = 16
-	MB                uint64 = (1024 * 1024)
-	LISTER            string = "LISTER"
-	SPLITTER          string = "SPLITTER"
-	DATA_MANAGER      string = "DATA_MANAGER"
+	MaxWorkerCount         = 300
+	MaxDataSplitter        = 16
+	MaxLister              = 16
+	MB              uint64 = (1024 * 1024)
+	ListerComp      string = "LISTER"
+	SplitterComp    string = "SPLITTER"
+	DataManagerComp string = "DATA_MANAGER"
 )
 
 // One workitem to be processed
@@ -79,6 +79,7 @@ type Mode int
 
 var EMode = Mode(0).INVALID_MODE()
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (Mode) INVALID_MODE() Mode {
 	return Mode(0)
 }

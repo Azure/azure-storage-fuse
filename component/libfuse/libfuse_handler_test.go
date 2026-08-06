@@ -355,7 +355,7 @@ func (suite *libfuseTestSuite) TestUtimens() {
 
 func (suite *libfuseTestSuite) TestKernelListCacheDefault() {
 	defer suite.cleanupTest()
-	suite.assert.Equal(uint32(defaultKernelListCacheTtlInSec), suite.libfuse.kernelListCacheTtlInSec)
+	suite.assert.Equal(uint32(defaultKernelListCacheTTLInSec), suite.libfuse.kernelListCacheTTLInSec)
 }
 
 func (suite *libfuseTestSuite) TestKernelListCacheConfig() {
@@ -363,7 +363,7 @@ func (suite *libfuseTestSuite) TestKernelListCacheConfig() {
 	suite.cleanupTest()
 	config := "libfuse:\n  kernel-list-cache-expiration-sec: 60\n"
 	suite.setupTestHelper(config)
-	suite.assert.Equal(uint32(60), suite.libfuse.kernelListCacheTtlInSec)
+	suite.assert.Equal(uint32(60), suite.libfuse.kernelListCacheTTLInSec)
 }
 
 func (suite *libfuseTestSuite) TestKernelListCacheDisabledWithDirectIO() {
@@ -371,7 +371,7 @@ func (suite *libfuseTestSuite) TestKernelListCacheDisabledWithDirectIO() {
 	suite.cleanupTest()
 	config := "libfuse:\n  direct-io: true\n  kernel-list-cache-expiration-sec: 30\n"
 	suite.setupTestHelper(config)
-	suite.assert.Equal(uint32(0), suite.libfuse.kernelListCacheTtlInSec)
+	suite.assert.Equal(uint32(0), suite.libfuse.kernelListCacheTTLInSec)
 }
 
 // In order for 'go test' to run this suite, we need to create

@@ -60,7 +60,7 @@ type splitterTestSuite struct {
 }
 
 var remote internal.Component
-var remote_path string
+var remotePath string
 
 func (suite *splitterTestSuite) SetupSuite() {
 	suite.assert = assert.New(suite.T())
@@ -68,11 +68,11 @@ func (suite *splitterTestSuite) SetupSuite() {
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
 	suite.assert.NoError(err)
 
-	remote_path = filepath.Join("/tmp/", "xload_"+randomString(8))
-	err = os.MkdirAll(remote_path, 0777)
+	remotePath = filepath.Join("/tmp/", "xload_"+randomString(8))
+	err = os.MkdirAll(remotePath, 0777)
 	suite.assert.NoError(err)
 
-	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", remote_path)
+	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", remotePath)
 	err = config.ReadConfigFromReader(strings.NewReader(cfg))
 	suite.assert.NoError(err)
 
@@ -80,11 +80,11 @@ func (suite *splitterTestSuite) SetupSuite() {
 	err = remote.Configure(true)
 	suite.assert.NoError(err)
 
-	createTestDirsAndFiles(remote_path, suite.assert)
+	createTestDirsAndFiles(remotePath, suite.assert)
 }
 
 func (suite *splitterTestSuite) TearDownSuite() {
-	err := os.RemoveAll(remote_path)
+	err := os.RemoveAll(remotePath)
 	suite.assert.NoError(err)
 }
 
@@ -203,7 +203,7 @@ func (suite *splitterTestSuite) TestProcessFilePresent() {
 	suite.assert.Equal(-1, n)
 
 	fileName := "file_4"
-	cpCmd := exec.Command("cp", filepath.Join(remote_path, fileName), ts.path)
+	cpCmd := exec.Command("cp", filepath.Join(remotePath, fileName), ts.path)
 	_, err = cpCmd.Output()
 	suite.assert.NoError(err)
 
@@ -258,7 +258,7 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	// stop comoponents
 	rl.Stop()
 
-	validateMD5(ts.path, remote_path, suite.assert)
+	validateMD5(ts.path, remotePath, suite.assert)
 }
 
 func (suite *splitterTestSuite) TestSplitterConsistency() {
@@ -310,7 +310,7 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 	// stop comoponents
 	rl.Stop()
 
-	validateMD5(ts.path, remote_path, suite.assert)
+	validateMD5(ts.path, remotePath, suite.assert)
 }
 
 func validateMD5(localPath string, remotePath string, assert *assert.Assertions) {
