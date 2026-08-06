@@ -8,10 +8,6 @@
 #                              the main chart.
 #   2. cache-server         - the actual StatefulSet + Service.
 #
-# We intentionally do NOT check out the vienna-tachyon source repo, because
-# both charts are published to the ACR that also hosts the cache-server image.
-# Helm 3.8+ has OCI support built in; install-prereqs.sh installs a fresh
-# enough Helm.
 #
 # Overrides we set on top of the main chart's baked-in values.yaml:
 #   * cacheServer.image.repository / .tag  - use the ACR-hosted image
@@ -214,13 +210,29 @@ kubectl delete pods -n "$NAMESPACE" --all --wait=false >/dev/null || true
 
 # --- Wait for pods to come up ---------------------------------------------
 
-echo "Waiting for cacheserver pods to reach Running..."
+# Bounded wait so an ImagePull / scheduling failure surfaces instead of hanging.
+CACHE_SERVER_READY_TIMEOUT="${CACHE_SERVER_READY_TIMEOUT:-600}"
+echo "Waiting up to ${CACHE_SERVER_READY_TIMEOUT}s for cacheserver pods to reach Running..."
+deadline=$(( $(date +%s) + CACHE_SERVER_READY_TIMEOUT ))
 while true; do
     ready_pods=$(kubectl get pods -n "$NAMESPACE" -l app=cacheserver --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
     total_pods=$(kubectl get pods -n "$NAMESPACE" -l app=cacheserver --no-headers 2>/dev/null | wc -l)
     if [[ "$ready_pods" -eq "$total_pods" && "$total_pods" -gt 0 ]]; then
         echo "All $total_pods cacheserver pod(s) are Running."
         break
+    fi
+    if [[ $(date +%s) -ge $deadline ]]; then
+        echo "ERROR: cacheserver pods did not reach Running within ${CACHE_SERVER_READY_TIMEOUT}s" \
+             "($ready_pods / $total_pods)." >&2
+        echo "--- pods in namespace '$NAMESPACE' ---" >&2
+        kubectl get pods -n "$NAMESPACE" -o wide >&2 || true
+        echo "--- describe non-Running pods ---" >&2
+        for pod in $(kubectl get pods -n "$NAMESPACE" -l app=cacheserver \
+                     --field-selector=status.phase!=Running \
+                     -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+            kubectl describe pod -n "$NAMESPACE" "$pod" >&2 || true
+        done
+        exit 1
     fi
     echo "  $ready_pods / $total_pods pods Running; sleeping 5s..."
     sleep 5

@@ -78,10 +78,9 @@ Files created under this branch (`nearora/e2eTests`):
 
 | File | Purpose |
 |---|---|
-| [test/scripts/dcache/config/nightly.config](config/nightly.config) | Shared bash config (cluster size, image coords, ports, replica count) |
-| [test/scripts/dcache/install-prereqs.sh](install-prereqs.sh) | Idempotent installer for docker-ce / kind / kubectl / helm |
-| [test/scripts/dcache/setup-kind.sh](setup-kind.sh) | Create a 4-node kind cluster from a declarative `kind-cluster.yaml`, label all nodes, prepare `/var/lib/ssd/cacheserver` on each node via `docker exec` |
-| [test/scripts/dcache/kind-cluster.yaml](kind-cluster.yaml) | `kind` `Cluster` config: 1 control-plane + 3 workers, kubeadm patches if needed |
+| [test/scripts/dcache/config/nightly.config](config/nightly.config) | Shared bash config (kind and Kubernetes versions, cluster size, image coords, ports, replica count) |
+| [test/scripts/dcache/install-prereqs.sh](install-prereqs.sh) | Idempotent installer for docker-ce / configured kind version / kubectl / helm |
+| [test/scripts/dcache/setup-kind.sh](setup-kind.sh) | Create a 4-node kind cluster (config generated in-place from `KIND_NODES`), label worker nodes, prepare `/var/lib/ssd/cacheserver` on each node via `docker exec` |
 | [test/scripts/dcache/deploy-tachyon.sh](deploy-tachyon.sh) | `docker pull` + `kind load docker-image` + `helm install` of `cache-server-prereq` then `cache-server` from `oci://<CACHE_SERVER_CHART_REGISTRY>/...` |
 | [test/scripts/dcache/expose-cacheserver.sh](expose-cacheserver.sh) | Per-pod `kubectl port-forward` on 9065/9066/9067; writes server list + PID file |
 | [test/scripts/dcache/teardown-kind.sh](teardown-kind.sh) | Best-effort cleanup (kill port-forwards, `helm uninstall`, `kind delete cluster`) |
@@ -101,7 +100,7 @@ Files modified:
 ```mermaid
 flowchart TD
     A[build.yml: build blobfuse2 binary] --> C[install-prereqs.sh]
-    C --> D[setup-kind.sh<br/>kind create cluster --config=kind-cluster.yaml]
+    C --> D[setup-kind.sh<br/>kind create cluster --config=&lt;generated&gt;]
     D --> E[deploy-tachyon.sh<br/>docker pull + kind load docker-image<br/>+ helm install cache-server-prereq<br/>+ helm install cache-server]
     E --> F[expose-cacheserver.sh<br/>port-forward pods → :9065-9067]
     F --> G[gen-test-config with DCACHE_SERVERS env]

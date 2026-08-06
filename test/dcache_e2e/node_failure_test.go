@@ -37,9 +37,9 @@
 package dcache_e2e
 
 import (
-	"bytes"
 	"path"
 	"testing"
+	"time"
 )
 
 // TestNodeFailure_L2PartialLossFallsBackToBlob verifies that losing an L2
@@ -48,6 +48,9 @@ import (
 func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	// Eight chunks make it very likely that each of three servers owns data.
 	const fileSize = 128 * 1024 * 1024
+	const chunkSize = 16 * 1024 * 1024
+	const expectedChunks = fileSize / chunkSize
+	const populateTimeout = 60 * time.Second
 
 	testDirName := "dcache_e2e_" + randomTestDirName(t, 10)
 	blobPath := path.Join(testDirName, "payload.bin")
@@ -59,50 +62,100 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	uploadBlob(t, blobPath, original)
 	t.Cleanup(func() { deleteBlob(t, blobPath) })
 
-	activeMounter.Mount(t)
-	t.Cleanup(func() { activeMounter.Unmount(t) })
+	m := newTestPodMounter(t)
+	m.Mount(t)
+	t.Cleanup(func() { m.Unmount(t) })
+
+	beforePopulate, haveMetrics := scrapeCacheServerMetrics(t)
+	if !haveMetrics {
+		t.Fatal("node-failure test requires cache-server metrics to verify initial L2 population")
+	}
 
 	// Populate L2 from a cold local cache.
-	firstRead := activeMounter.ReadFile(t, blobPath)
+	firstRead := m.ReadFile(t, blobPath)
 	if len(firstRead) != len(original) {
 		t.Fatalf("populate read: size mismatch: got %d want %d", len(firstRead), len(original))
 	}
-	if !bytes.Equal(firstRead, original) {
+	if firstReadMD5 := md5Sum(firstRead); firstReadMD5 != originalMD5 {
 		t.Fatalf("populate read: content mismatch (md5 got=%s want=%s)",
-			md5Sum(firstRead), originalMD5)
+			firstReadMD5, originalMD5)
 	}
 	t.Logf("populate read: %d bytes, md5 matches", len(firstRead))
 
-	// Ordinal zero is the victim. Register recovery before deletion so a
-	// failed assertion cannot leave the cluster unhealthy.
+	deadline := time.Now().Add(populateTimeout)
+	for {
+		afterPopulate, ok := scrapeCacheServerMetrics(t)
+		if ok && deltaCacheMetrics(beforePopulate, afterPopulate).UploadSuccess >= expectedChunks {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("initial read did not populate all %d chunks within %s", expectedChunks, populateTimeout)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	clientPod := m.resolvePod(t)
+	clientNode, err := getPodNode(m.namespace, clientPod)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	pods := listCacheserverPods(t)
-	victim := testCfg.cacheserverStatefulSet + "-0"
-	t.Logf("cacheserver: victim pod = %s (of %d total pods: %v)", victim, len(pods), pods)
+	if len(pods) < 2 {
+		t.Fatalf("node-failure test requires at least 2 cache-server pods, found %d", len(pods))
+	}
+	victimPod, victimNode := "", ""
+	for _, pod := range pods {
+		node, err := getPodNode(testCfg.cacheserverNamespace, pod)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if node != clientNode {
+			victimPod, victimNode = pod, node
+			break
+		}
+	}
+	if victimNode == "" {
+		t.Fatalf("no cache-server worker can be failed without also killing blobfuse pod %s on %s", clientPod, clientNode)
+	}
+	t.Logf("node failure: killing kind node %s hosting %s; blobfuse pod %s remains on %s",
+		victimNode, victimPod, clientPod, clientNode)
 
-	t.Cleanup(func() { waitCacheserverStatefulSetReady(t) })
-
-	killCacheserverPod(t, victim)
-	waitCacheserverPodGone(t, victim)
+	t.Cleanup(func() { restoreKindNode(t, victimNode) })
+	killKindNode(t, victimNode)
+	if err := waitKindNodeReady(victimNode, false); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("node failure: %s is NotReady", victimNode)
 
 	// Drop the local cache so the next read must consult L2.
-	activeMounter.Remount(t)
+	m.Remount(t)
 
-	// Aggregate scrape captures survivor L2 traffic. The victim's counters
-	// are gone with the pod, so per-endpoint attribution would be
-	// tautological here.
+	// Aggregate scrape captures traffic from the cache-server pods that remain
+	// reachable after the node loss.
 	before, haveMetrics := scrapeCacheServerMetrics(t)
 
-	secondRead := activeMounter.ReadFile(t, blobPath)
+	secondRead := m.ReadFile(t, blobPath)
 	if len(secondRead) != len(original) {
-		t.Fatalf("post-kill read: size mismatch: got %d want %d", len(secondRead), len(original))
+		t.Fatalf("post-node-loss read: size mismatch: got %d want %d", len(secondRead), len(original))
 	}
-	if !bytes.Equal(secondRead, original) {
-		t.Fatalf("post-kill read: content mismatch (md5 got=%s want=%s) -- "+
+	if secondReadMD5 := md5Sum(secondRead); secondReadMD5 != originalMD5 {
+		t.Fatalf("post-node-loss read: content mismatch (md5 got=%s want=%s) -- "+
 			"data integrity broken across the L2-hit / blob-fallback boundary",
-			md5Sum(secondRead), originalMD5)
+			secondReadMD5, originalMD5)
 	}
-	t.Logf("post-kill read: %d bytes, md5 matches (mixed L2-hit + blob-fallback served identical bytes)",
+	t.Logf("post-node-loss read: %d bytes, md5 matches (mixed L2-hit + blob-fallback served identical bytes)",
 		len(secondRead))
+
+	readerPod := m.resolvePod(t)
+	azureGETs, err := grepAzureGETsInPod(readerPod, blobPath)
+	if err != nil {
+		t.Fatalf("verify Azure fallback on %s: %v", readerPod, err)
+	}
+	if azureGETs == 0 {
+		t.Fatalf("node loss produced no Azure GET for %s; test did not observe blob fallback", blobPath)
+	}
+	t.Logf("post-node-loss: blobfuse pod %s issued %d Azure GET(s) for %s", readerPod, azureGETs, blobPath)
 
 	if !haveMetrics {
 		t.Log("metrics scrape unavailable; skipping survivor-hit invariant (data integrity still verified)")
@@ -110,13 +163,13 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	}
 	after, ok := scrapeCacheServerMetrics(t)
 	if !ok {
-		t.Log("metrics: post-kill scrape returned no data; skipping survivor-hit invariant")
+		t.Log("metrics: post-node-loss scrape returned no data; skipping survivor-hit invariant")
 		return
 	}
 
 	d := deltaCacheMetrics(before, after)
 	hits, misses, ratio := hitMissRatio(d)
-	t.Logf("post-kill aggregate: Download hits=%d misses=%d ratio=%.3f, Upload/Success populates=%d (dup-populates=%d)",
+	t.Logf("post-node-loss aggregate: Download hits=%d misses=%d ratio=%.3f, Upload/Success populates=%d (dup-populates=%d)",
 		hits, misses, ratio, d.UploadSuccess, d.UploadInvalidTransition)
 
 	// A multi-pod cluster with a killed peer must still serve some chunk
@@ -125,7 +178,5 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 		t.Errorf("no surviving cache-server registered a Download/Success delta; "+
 			"expected at least one chunk to be served from L2 (hits=%d misses=%d)",
 			hits, misses)
-	} else if len(pods) == 1 {
-		t.Log("single-pod cluster: no survivors to check; skipping survivor-hit invariant")
 	}
 }

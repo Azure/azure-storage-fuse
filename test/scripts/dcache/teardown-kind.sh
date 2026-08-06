@@ -34,17 +34,10 @@ kill_pids_from_file() {
 
 kill_pids_from_file "$DCACHE_PORTFORWARD_PIDS_FILE"
 
-# --- Helm uninstall --------------------------------------------------------
-echo "Uninstalling helm release '$RELEASE_NAME' from namespace '$NAMESPACE'..."
-helm uninstall "$RELEASE_NAME" -n "$NAMESPACE" || true
-echo "Uninstalling helm release '$PREREQ_RELEASE_NAME' from namespace '$NAMESPACE'..."
-helm uninstall "$PREREQ_RELEASE_NAME" -n "$NAMESPACE" || true
-
-# --- Delete namespace ------------------------------------------------------
-echo "Deleting namespace '$NAMESPACE' (async)..."
-kubectl delete namespace "$NAMESPACE" --wait=false || true
-
 # --- Delete cluster --------------------------------------------------------
+# `kind delete cluster` destroys the node containers wholesale, so per-release
+# `helm uninstall` and namespace deletion are redundant. Skipping them saves
+# ~30-60s on the always()-conditioned teardown path.
 echo "Deleting kind cluster '$CLUSTER_NAME'..."
 kind delete cluster --name "$CLUSTER_NAME" || true
 

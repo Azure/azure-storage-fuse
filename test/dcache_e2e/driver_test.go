@@ -20,9 +20,6 @@ package dcache_e2e
 
 import "fmt"
 
-// activeMounter drives the pod-only test mount.
-var activeMounter *podMounter
-
 // ensurePodMountArgs validates pod configuration before tests run.
 func ensurePodMountArgs() error {
 	if testCfg.podNamespace == "" {
@@ -39,6 +36,9 @@ func ensurePodMountArgs() error {
 	}
 	if testCfg.kubectlBin == "" {
 		return fmt.Errorf("pod driver requires -kubectl-bin")
+	}
+	if testCfg.dockerBin == "" {
+		return fmt.Errorf("kind fault injection requires -docker-bin")
 	}
 	return nil
 }

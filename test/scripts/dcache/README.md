@@ -9,18 +9,13 @@ They are invoked from `azure-pipeline-templates/dist-cache-e2e.yml` in the
 nightly build, but are self-contained enough to run locally for iterative
 debugging.
 
-See [PLAN.md](PLAN.md) for the design rationale (in particular §1 on why we
-chose kind over minikube even though the upstream vienna-tachyon tooling
-targets minikube).
-
 ## Files
 
 | File | Purpose |
 |---|---|
-| `config/nightly.config`     | Shared bash config: cluster shape, image coordinates, namespace. Every value is overridable via env var. |
-| `install-prereqs.sh`        | Idempotently install docker-ce, kind, kubectl, helm, netcat. |
-| `setup-kind.sh`             | Create the kind cluster, label nodes for cache-server scheduling, prepare `/var/lib/ssd/cacheserver` on every node container via `docker exec`. |
-| `kind-cluster.yaml`         | Reference kind `Cluster` config (setup-kind.sh regenerates its own from `KIND_NODES` at runtime). |
+| `config/nightly.config`     | Shared bash config: kind and Kubernetes versions, cluster shape, image coordinates, and namespace. Every value is overridable via env var. |
+| `install-prereqs.sh`        | Idempotently install docker-ce, the configured kind version, kubectl, helm, and netcat. |
+| `setup-kind.sh`             | Create the kind cluster, label worker nodes for cache-server scheduling, and prepare `/var/lib/ssd/cacheserver` on every node container via `docker exec`. |
 | `deploy-tachyon.sh`         | Install the `cache-server-prereq` chart, then the `cache-server` chart, both pulled directly from an OCI-enabled ACR (`oci://...`); side-loads the image with `kind load docker-image`. |
 | `expose-cacheserver.sh`     | Start `kubectl port-forward` for each cacheserver pod on sequential localhost ports and emit a comma-separated server list. |
 | `deploy-blobfuse2.sh`       | Render `docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl` with storage credentials + image ref, side-load the blobfuse2 image into every kind node, apply, and wait for rollout. Only needed by the `dcache_e2e` Go tests. |
@@ -85,8 +80,10 @@ export containerName=<container>
 - The kind cluster shape (4 nodes: 1 control-plane + 3 workers) is set by
   `KIND_NODES` in `config/nightly.config`. `setup-kind.sh` generates the
   `kind create cluster --config=...` file on the fly from that value.
-- The kind node image is pinned by `KIND_NODE_IMAGE` (default
-  `kindest/node:v1.31.0`); bump when you want a newer Kubernetes.
+- The kind binary and node image are pinned by `KIND_VERSION` (default
+  `v0.32.0`) and `KIND_NODE_IMAGE` (default `kindest/node:v1.36.1`). Update
+  them together when upgrading Kubernetes. k8s 1.35+ requires cgroup v2 on
+  the host.
 - `deploy-tachyon.sh` sets `cacheServer.scheduler.enabled=false` because
   blobfuse2 E2E tests do not need the scheduler component.
 - `expose-cacheserver.sh` runs `kubectl port-forward` in the background and
