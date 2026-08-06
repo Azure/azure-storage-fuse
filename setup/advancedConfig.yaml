@@ -70,6 +70,8 @@ libfuse:
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
   extension: <physical path to extension library>
   direct-io: true|false <enable to bypass the kernel cache. It also disables blobfuse2 data and metadata caching. Default - false>
+  # Requires libfuse 3.16.1+ and FUSE protocol 7.28 / Linux 5.1+.
+  # Stock Ubuntu 20.04, 22.04, and 24.04 ship older libfuse versions.
   kernel-list-cache-expiration-sec: <enable kernel caching of directory listings and set TTL in seconds (fuse3 only). 0 = disabled. Default - 120 sec>
 
 # Entry Cache configuration
