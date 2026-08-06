@@ -28,62 +28,67 @@ we wrote, cache-server metrics move in the expected direction.
 | `main_test.go` | `TestMain`, flag registration, per-run config. |
 | `mount.go` | Mount / unmount / remount helpers (owns the FUSE lifecycle). |
 | `helpers.go` | Random payload + MD5 + Azure SDK upload / delete / download. |
-| `metrics.go` | Prometheus text-format scraper and delta helpers. |
+| `metrics_test.go` | In-pod Prometheus scraper (`kubectl exec ... curl`) and `CacheServerMetrics` delta helpers. |
 | `read_path_test.go` | `TestReadPath_L2MissPopulatesAndHits` — the canonical L2 miss → populate → hit test. |
 
 ## Running locally
 
 Prerequisites (in addition to the standard `blobfuse2` build):
 
-1. A kind cluster with Tachyon deployed and its pods reachable on
+1. A kind cluster with Tachyon deployed and its wire port reachable on
    `localhost` via `kubectl port-forward`. Use
    [test/scripts/dcache/setup-kind.sh](../scripts/dcache/setup-kind.sh) +
    [deploy-tachyon.sh](../scripts/dcache/deploy-tachyon.sh) +
-   [expose-cacheserver.sh](../scripts/dcache/expose-cacheserver.sh) +
-   [expose-metrics.sh](../scripts/dcache/expose-metrics.sh).
-2. An Azure Storage account + container the test can seed data into.
-3. A generated blobfuse2 config file with `DCACHE_SERVERS` and storage
-   credentials substituted (see the
-   [dist-cache-e2e.yml](../../azure-pipeline-templates/dist-cache-e2e.yml)
-   pipeline template for the `gen-test-config` invocation).
+   [expose-cacheserver.sh](../scripts/dcache/expose-cacheserver.sh).
+   Prometheus scrapes are done in-cluster via `kubectl exec ... curl`,
+   so no separate metrics port-forward is required.
+2. A running blobfuse2 Deployment in the kind cluster. Deploy it with
+   [test/scripts/dcache/deploy-blobfuse2.sh](../scripts/dcache/deploy-blobfuse2.sh),
+   which renders
+   [docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl](../../docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl)
+   with your storage credentials + image ref, side-loads the image into
+   every kind node, and waits for rollout. The defaults expect deployment
+   `blobfuse2-dist-cache` in namespace `blobfuse2-dist-cache`, selected
+   by `app=blobfuse2-dist-cache`, with its FUSE mount at
+   `/mnt/blobfuse_mnt` inside the container.
+3. An Azure Storage account + container the test can seed data into.
 
 ```bash
 # From the repo root, with blobfuse2 already built.
 
 export DCACHE_SERVERS=$(cat /tmp/dcache_server_list.txt)
-export DCACHE_METRICS_ENDPOINTS=$(cat /tmp/dcache_metrics_endpoints.txt)
 
-# Seed the credentials the test uses to upload payloads out-of-band.
+# Seed the credentials the test uses to upload payloads out-of-band AND
+# that deploy-blobfuse2.sh bakes into the pod's config Secret.
 export STO_ACC_NAME=<account>
 export STO_ACC_KEY=<key>
 export STO_ACC_ENDPOINT=https://<account>.blob.core.windows.net
 export containerName=<container>
 
-# Generate a dist_cache blobfuse2 config from the template.
-./blobfuse2 gen-test-config \
-    --config-file=testdata/config/azure_key_dist_cache_block_e2e.yaml \
-    --container-name="$containerName" \
-    --temp-path=/tmp/blobfuse2_tmp \
-    --output-file=/tmp/blobfuse2_dcache.yaml
-
-mkdir -p /tmp/blob_mnt /tmp/blobfuse2_tmp
+# Build (or pull) the blobfuse2 container image, then point the deploy
+# script at it. For a locally-built image, set BLOBFUSE2_IMAGE_PULL=false
+# to skip the `docker pull` step.
+export BLOBFUSE2_IMAGE=<registry>/azure-blobfuse2:<tag>
+./test/scripts/dcache/deploy-blobfuse2.sh
 
 # Run the read-path test.
-go test -v -tags=fuse3 ./test/dcache_e2e/... -args \
-    -blobfuse-bin="$PWD/blobfuse2" \
-    -config-file=/tmp/blobfuse2_dcache.yaml \
-    -mnt-path=/tmp/blob_mnt \
-    -tmp-path=/tmp/blobfuse2_tmp
+go test -v -tags=fuse3 ./test/dcache_e2e/... \
+  -run '^TestReadPath_L2MissPopulatesAndHits$' -args \
+  -pod-namespace=blobfuse2-dist-cache \
+  -pod-deployment=blobfuse2-dist-cache \
+  -pod-selector=app=blobfuse2-dist-cache \
+  -pod-mount-path=/mnt/blobfuse_mnt \
+  -kubectl-bin=kubectl
 ```
 
 Flags fall back to the environment variables shown above (matching the
 names the existing e2e pipeline already sets), so a fully-populated env
 lets you drop most of the `-args` list.
 
-If `-dcache-metrics-endpoints` is empty, the metric-based assertions
-are skipped and only data integrity is enforced. That mode is useful for
-local iteration when you want to validate the mount / SDK plumbing
-without also standing up the metrics port-forwards.
+If pod discovery or the in-pod `curl` fails, the metric-based
+assertions are skipped and only data integrity is enforced. Override the
+pod-local Prometheus port with `-cacheserver-metrics-port` if your
+Tachyon Helm chart exposes it somewhere other than 9096.
 
 ## Pipeline integration
 

@@ -37,281 +37,179 @@
 package dcache_e2e
 
 import (
-	"bufio"
+	"bytes"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
-// metricsHTTPTimeout bounds a single scrape. Cache-server metric endpoints
-// are lightweight; anything over a second is a symptom of a broken
-// port-forward rather than a slow server.
-const metricsHTTPTimeout = 3 * time.Second
+// metricsScrapeTimeout bounds one kubectl-exec scrape of a single pod.
+const metricsScrapeTimeout = 5 * time.Second
 
-// metricSnapshot is the aggregate value of every counter/gauge exposed by
-// every cache-server endpoint at a point in time. Keys are metric names
-// (labels stripped and values summed across label combinations). Values are
-// the sum across all endpoints. This shape lets us compute a delta between
-// two snapshots without caring about label cardinality or which server
-// received which chunk -- both of which vary across runs because of the
-// consistent-hash ring.
-type metricSnapshot struct {
-	values map[string]float64
-	// timestamps used only for debug logging
-	scrapedAt time.Time
-	source    []string // endpoints that contributed to this snapshot
+// cacheServerContainerName is the container inside a cacheserver pod that
+// exposes the Prometheus port.
+const cacheServerContainerName = "cacheserver"
+
+// cacheServerRequestCounter is the Tachyon Prometheus counter name.
+const cacheServerRequestCounter = "cache_server_request_counter"
+
+// CacheServerMetrics aggregates cache_server_request_counter samples across
+// every cacheserver pod, keyed by the labels that distinguish L2 outcomes.
+type CacheServerMetrics struct {
+	DownloadSuccess           int // L2 hits
+	DownloadInvalidTransition int // L2 misses (chunk absent)
+	UploadSuccess             int // L2 populates
+	UploadInvalidTransition   int // duplicate populates (FILE_EXISTS)
 }
 
-// scrapeMetrics fetches Prometheus text-format output from every endpoint
-// in testCfg.metricsEndpoints and returns their aggregated snapshot. It
-// returns (nil, false) when the pipeline did not expose metrics -- the
-// caller should treat that as "skip metric assertions" rather than "fail".
-func scrapeMetrics(t *testing.T) (*metricSnapshot, bool) {
+// scrapeCacheServerMetrics discovers cacheserver pods via kubectl and scrapes
+// each pod's /metrics endpoint via `kubectl exec ... curl` (no port-forward).
+// Returns false when scraping is not viable (no pods found).
+func scrapeCacheServerMetrics(t *testing.T) (CacheServerMetrics, bool) {
 	t.Helper()
-	if len(testCfg.metricsEndpoints) == 0 {
-		return nil, false
+	pods, err := scrapePodNames(context.Background())
+	if err != nil {
+		t.Logf("metrics: pod discovery failed: %v", err)
+		return CacheServerMetrics{}, false
 	}
-	snap := &metricSnapshot{
-		values:    make(map[string]float64),
-		scrapedAt: time.Now(),
-		source:    testCfg.metricsEndpoints,
+	if len(pods) == 0 {
+		t.Log("metrics: no cacheserver pods found; skipping scrape")
+		return CacheServerMetrics{}, false
 	}
-	client := &http.Client{Timeout: metricsHTTPTimeout}
-	for _, ep := range testCfg.metricsEndpoints {
-		url := strings.TrimRight(ep, "/") + "/metrics"
-		if err := scrapeInto(client, url, snap.values); err != nil {
-			// Metrics are diagnostic; a single bad endpoint should not
-			// tank the whole test. Log and continue.
-			t.Logf("metrics scrape %s failed: %v", url, err)
-		}
-	}
-	return snap, true
-}
-
-// scrapePerEndpoint returns one counter map per endpoint in
-// testCfg.metricsEndpoints, preserving order. A failed scrape yields nil
-// for that endpoint's slot (not an error) -- callers that assert against a
-// specific endpoint interpret nil as "endpoint silent", which is the
-// natural outcome after a pod has been force-deleted and its
-// `kubectl port-forward` has torn down.
-//
-// Returns (nil, false) when no metric endpoints were configured -- the
-// caller should skip per-endpoint assertions in that case, exactly like
-// scrapeMetrics does for aggregated ones.
-func scrapePerEndpoint(t *testing.T) ([]map[string]float64, bool) {
-	t.Helper()
-	if len(testCfg.metricsEndpoints) == 0 {
-		return nil, false
-	}
-	out := make([]map[string]float64, len(testCfg.metricsEndpoints))
-	client := &http.Client{Timeout: metricsHTTPTimeout}
-	for i, ep := range testCfg.metricsEndpoints {
-		url := strings.TrimRight(ep, "/") + "/metrics"
-		values := make(map[string]float64)
-		if err := scrapeInto(client, url, values); err != nil {
-			t.Logf("metrics scrape %s failed: %v (endpoint treated as silent)", url, err)
-			out[i] = nil
+	var total CacheServerMetrics
+	for _, pod := range pods {
+		m, err := scrapeCacheServerPod(context.Background(), pod)
+		if err != nil {
+			// Silent pods are treated as zero-contribution; tests only assert
+			// on aggregate deltas.
+			t.Logf("metrics: pod %s scrape failed: %v (treated as zero)", pod, err)
 			continue
 		}
-		out[i] = values
+		total.DownloadSuccess += m.DownloadSuccess
+		total.DownloadInvalidTransition += m.DownloadInvalidTransition
+		total.UploadSuccess += m.UploadSuccess
+		total.UploadInvalidTransition += m.UploadInvalidTransition
 	}
-	return out, true
+	return total, true
 }
 
-// deltaOne computes after - before for two per-endpoint snapshots. Either
-// side may be nil (endpoint was silent for that scrape); nil is treated
-// as "all counters at zero" for the purposes of the diff, so a nil→nil
-// endpoint produces an empty (all-zero) delta and the survivor/victim
-// assertions can be uniformly expressed as "hit-family sum > 0" vs "<= 0".
-func deltaOne(before, after map[string]float64) map[string]float64 {
-	if before == nil && after == nil {
-		return map[string]float64{}
+// scrapePodNames lists cacheserver pod names using the configured selector.
+func scrapePodNames(ctx context.Context) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, metricsScrapeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, testCfg.kubectlBin, "get", "pods",
+		"-n", testCfg.cacheserverNamespace,
+		"-l", testCfg.cacheserverSelector,
+		"-o", `jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}`,
+	)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("kubectl get pods: %w (stderr=%s)", err, strings.TrimSpace(errBuf.String()))
 	}
-	if before == nil {
-		out := make(map[string]float64, len(after))
-		for k, v := range after {
-			out[k] = v
-		}
-		return out
-	}
-	if after == nil {
-		out := make(map[string]float64, len(before))
-		for k, v := range before {
-			out[k] = -v
-		}
-		return out
-	}
-	out := make(map[string]float64, len(after))
-	for k, v := range after {
-		out[k] = v - before[k]
-	}
-	for k, v := range before {
-		if _, ok := after[k]; !ok {
-			out[k] = -v
+	var pods []string
+	for _, line := range strings.Split(out.String(), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			pods = append(pods, line)
 		}
 	}
-	return out
+	return pods, nil
 }
 
-// scrapeInto fetches a single endpoint's metrics and folds every numeric
-// sample it exposes into `into`, summing across label combinations.
-func scrapeInto(client *http.Client, url string, into map[string]float64) error {
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
+// scrapeCacheServerPod runs curl inside the target pod against its own
+// /metrics endpoint and parses the response.
+func scrapeCacheServerPod(ctx context.Context, pod string) (CacheServerMetrics, error) {
+	ctx, cancel := context.WithTimeout(ctx, metricsScrapeTimeout)
+	defer cancel()
+	url := fmt.Sprintf("http://localhost:%d/metrics", testCfg.cacheserverMetricsPort)
+	cmd := exec.CommandContext(ctx, testCfg.kubectlBin, "exec",
+		"-n", testCfg.cacheserverNamespace, pod,
+		"-c", cacheServerContainerName, "--",
+		"curl", "-fsS", "--max-time", "3", url,
+	)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return CacheServerMetrics{}, fmt.Errorf("kubectl exec curl: %w (stderr=%s)", err, strings.TrimSpace(errBuf.String()))
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	sc := bufio.NewScanner(resp.Body)
-	// Prometheus exposition lines can be long (label-heavy). Bump the
-	// scanner buffer to accommodate them without triggering ErrTooLong.
-	sc.Buffer(make([]byte, 64*1024), 1024*1024)
-	for sc.Scan() {
-		name, val, ok := parseMetricLine(sc.Text())
+	return parseCacheServerMetrics(out.String()), nil
+}
+
+// parseCacheServerMetrics extracts labeled cache_server_request_counter
+// samples from a Prometheus exposition body.
+func parseCacheServerMetrics(body string) CacheServerMetrics {
+	var m CacheServerMetrics
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if !strings.HasPrefix(line, cacheServerRequestCounter+"{") {
+			continue
+		}
+		val, ok := lastFieldInt(line)
 		if !ok {
 			continue
 		}
-		into[name] += val
-	}
-	return sc.Err()
-}
-
-// parseMetricLine parses one non-comment line of the Prometheus text
-// exposition format. Returns the metric's base name (label set stripped),
-// its numeric value, and whether the line was a sample.
-//
-// The spec allows an optional trailing timestamp; we ignore it because we
-// only diff counter/gauge values, never observe rate over wall time inside
-// the process. See:
-//
-//	https://github.com/prometheus/docs/blob/main/content/docs/instrumenting/exposition_formats.md#text-based-format
-func parseMetricLine(line string) (string, float64, bool) {
-	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "#") {
-		return "", 0, false
-	}
-	// Split base name from the rest. The name ends at the first space, '{',
-	// or end of line.
-	end := len(line)
-	for i, r := range line {
-		if r == '{' || r == ' ' || r == '\t' {
-			end = i
-			break
-		}
-	}
-	name := line[:end]
-	rest := strings.TrimSpace(line[end:])
-	// Skip over labels if present.
-	if strings.HasPrefix(rest, "{") {
-		close := strings.Index(rest, "}")
-		if close < 0 {
-			return "", 0, false
-		}
-		rest = strings.TrimSpace(rest[close+1:])
-	}
-	// The value token is the first whitespace-separated field.
-	fields := strings.Fields(rest)
-	if len(fields) == 0 {
-		return "", 0, false
-	}
-	v, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil {
-		// Prometheus permits +Inf / -Inf / NaN literals -- treat as
-		// non-samples for our aggregation purposes.
-		return "", 0, false
-	}
-	return name, v, true
-}
-
-// delta returns after - before for every metric present in either snapshot.
-// A cache-server pod restart between scrapes can drop a counter's value;
-// that shows up as a negative delta.
-func delta(before, after *metricSnapshot) map[string]float64 {
-	out := make(map[string]float64, len(after.values))
-	for k, v := range after.values {
-		out[k] = v - before.values[k]
-	}
-	for k, v := range before.values {
-		if _, ok := after.values[k]; !ok {
-			out[k] = -v
-		}
-	}
-	return out
-}
-
-// sumMatching returns the sum of counter deltas whose name contains any of
-// `substrings` (case-insensitive). Callers should assert `sum > 0` and log
-// the matching metric names for diagnosability.
-func sumMatching(d map[string]float64, substrings ...string) (float64, []string) {
-	var total float64
-	var matched []string
-	lower := make([]string, len(substrings))
-	for i, s := range substrings {
-		lower[i] = strings.ToLower(s)
-	}
-	for name, v := range d {
-		nl := strings.ToLower(name)
-		for _, s := range lower {
-			if strings.Contains(nl, s) {
-				total += v
-				matched = append(matched, fmt.Sprintf("%s=%g", name, v))
-				break
-			}
-		}
-	}
-	return total, matched
-}
-
-// logTopDeltas prints the k metrics with the largest absolute delta between
-// two snapshots. Diagnostic helper used from failing tests so an operator
-// can see whether *some* counter moved even if it did not match the
-// substring filter.
-func logTopDeltas(t *testing.T, d map[string]float64, k int) {
-	t.Helper()
-	type kv struct {
-		name string
-		val  float64
-	}
-	kvs := make([]kv, 0, len(d))
-	for n, v := range d {
-		if v == 0 {
+		isDownload := strings.Contains(line, `request_type="Download"`)
+		isUpload := strings.Contains(line, `request_type="Upload"`)
+		if !isDownload && !isUpload {
 			continue
 		}
-		kvs = append(kvs, kv{n, v})
-	}
-	// Simple partial sort: not worth pulling in sort for k=20.
-	for i := 0; i < len(kvs); i++ {
-		for j := i + 1; j < len(kvs); j++ {
-			if absVal(kvs[j].val) > absVal(kvs[i].val) {
-				kvs[i], kvs[j] = kvs[j], kvs[i]
-			}
+		isSuccess := strings.Contains(line, `status="Success"`)
+		isInvalidTransition := strings.Contains(line, `status="InvalidTransition"`)
+		switch {
+		case isDownload && isSuccess:
+			m.DownloadSuccess += val
+		case isDownload && isInvalidTransition:
+			m.DownloadInvalidTransition += val
+		case isUpload && isSuccess:
+			m.UploadSuccess += val
+		case isUpload && isInvalidTransition:
+			m.UploadInvalidTransition += val
 		}
 	}
-	if k > len(kvs) {
-		k = len(kvs)
-	}
-	if k == 0 {
-		t.Logf("metric delta: no counters moved")
-		return
-	}
-	var sb strings.Builder
-	sb.WriteString("top metric deltas:")
-	for i := 0; i < k; i++ {
-		fmt.Fprintf(&sb, "\n  %s = %g", kvs[i].name, kvs[i].val)
-	}
-	t.Log(sb.String())
+	return m
 }
 
-func absVal(f float64) float64 {
-	if f < 0 {
-		return -f
+// lastFieldInt returns the integer value of the trailing field of a
+// Prometheus sample line. Fractional Prometheus literals are truncated.
+func lastFieldInt(line string) (int, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return 0, false
 	}
-	return f
+	s := fields[len(fields)-1]
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return int(f), true
+	}
+	return 0, false
+}
+
+// deltaCacheMetrics returns after minus before, field by field.
+func deltaCacheMetrics(before, after CacheServerMetrics) CacheServerMetrics {
+	return CacheServerMetrics{
+		DownloadSuccess:           after.DownloadSuccess - before.DownloadSuccess,
+		DownloadInvalidTransition: after.DownloadInvalidTransition - before.DownloadInvalidTransition,
+		UploadSuccess:             after.UploadSuccess - before.UploadSuccess,
+		UploadInvalidTransition:   after.UploadInvalidTransition - before.UploadInvalidTransition,
+	}
+}
+
+// hitMissRatio returns L2 Download hits, misses, and hit-ratio in [0, 1].
+// ratio is 0 when hits+misses == 0.
+func hitMissRatio(d CacheServerMetrics) (hits, misses int, ratio float64) {
+	hits = d.DownloadSuccess
+	misses = d.DownloadInvalidTransition
+	total := hits + misses
+	if total > 0 {
+		ratio = float64(hits) / float64(total)
+	}
+	return hits, misses, ratio
 }

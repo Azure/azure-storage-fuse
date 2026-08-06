@@ -18,7 +18,6 @@ fi
 CLUSTER_NAME="${CLUSTER_NAME:-blobfuse-dcache}"
 DEFAULT_OUTPUT_DIR="${AGENT_TEMPDIRECTORY:-/tmp}"
 DCACHE_PORTFORWARD_PIDS_FILE="${DCACHE_PORTFORWARD_PIDS_FILE:-$DEFAULT_OUTPUT_DIR/dcache_portforward_pids.txt}"
-DCACHE_METRICS_PORTFORWARD_PIDS_FILE="${DCACHE_METRICS_PORTFORWARD_PIDS_FILE:-$DEFAULT_OUTPUT_DIR/dcache_metrics_portforward_pids.txt}"
 
 # --- Kill port-forwards ----------------------------------------------------
 kill_pids_from_file() {
@@ -34,7 +33,6 @@ kill_pids_from_file() {
 }
 
 kill_pids_from_file "$DCACHE_PORTFORWARD_PIDS_FILE"
-kill_pids_from_file "$DCACHE_METRICS_PORTFORWARD_PIDS_FILE"
 
 # --- Helm uninstall --------------------------------------------------------
 echo "Uninstalling helm release '$RELEASE_NAME' from namespace '$NAMESPACE'..."

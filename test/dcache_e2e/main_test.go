@@ -34,83 +34,44 @@
    SOFTWARE
 */
 
-// Package dcache_e2e drives dist_cache-focused blobfuse2 E2E tests against a
-// kind + Tachyon cluster stood up by test/scripts/dcache/*.
-//
-// Unlike test/e2e_tests, this package owns the blobfuse2 mount lifecycle:
-// most scenarios need a *fresh* mount between reads to guarantee the local
-// block_cache is empty, so that an L2-miss (dist_cache) code path is actually
-// exercised rather than being served from the local in-memory cache.
+// Package dcache_e2e tests dist_cache against a kind and Tachyon cluster.
+// Tests restart the blobfuse2 pod when they require a cold local cache.
 package dcache_e2e
 
 import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 )
 
-// testCfg is populated in TestMain from CLI flags and env vars. It is
-// deliberately global (rather than passed through every helper) to keep the
-// per-test call sites readable; each test still receives its own *testing.T.
+// testCfg holds flag and environment configuration resolved by TestMain.
 var testCfg struct {
-	// Comma-separated list of Prometheus scrape URLs, one per cacheserver
-	// pod, e.g. "http://localhost:9096,http://localhost:9097". Produced by
-	// test/scripts/dcache/expose-metrics.sh.
-	//
-	// When empty, tests that require metric-based assertions will be
-	// skipped rather than failed -- this lets the suite still run in a
-	// minimal local iteration mode where only behavioural assertions are
-	// meaningful.
-	metricsEndpointsRaw string
-	metricsEndpoints    []string
-
-	// Azure Storage credentials for out-of-band blob seeding. Required
-	// because the FUSE mount is opened read-only -- test payloads have to
-	// reach azstorage through the SDK, not through blobfuse2.
-	//
-	// storageEndpoint is the account-level URL, e.g.
-	//   https://myacct.blob.core.windows.net
-	// storageContainer is the container name (no leading '/'). These
-	// mirror the STO_ACC_* + containerName variables the existing e2e
-	// pipeline already provides; we accept the same names here to avoid
-	// introducing new ADO variable group entries.
+	// Azure credentials seed blobs outside the read-only mount.
 	storageAccount   string
 	storageKey       string
 	storageEndpoint  string
 	storageContainer string
 
-	// "true" / "false". When true, expensive or long-running tests are
-	// skipped. Mirrors the existing test/e2e_tests convention.
+	// Mirrors the existing E2E quick-test setting.
 	quickTest string
 
-	// Pod-driver configuration. The suite drives blobfuse2 exclusively as
-	// a pre-existing Kubernetes Deployment, cycling the pod between reads
-	// so block_cache starts cold. Required to exercise dist_cache's
-	// discovery-url / k8s-service code paths, which need in-cluster DNS.
+	// Coordinates of the pre-existing blobfuse2 Deployment.
 	podNamespace  string
 	podDeployment string
 	podSelector   string
 	podMountPath  string
 	kubectlBin    string
 
-	// Cache-server (Tachyon) StatefulSet coordinates. Needed by tests
-	// that intentionally disrupt an L2 node -- they delete a cacheserver
-	// pod and then wait for the StatefulSet to reconcile in cleanup so
-	// the cluster is left healthy for subsequent tests. Defaults mirror
-	// test/scripts/dcache/config/nightly.config (NAMESPACE=cache-server,
-	// app=cacheserver label, StatefulSet named cache-server).
+	// Coordinates used for cache-server fault injection, recovery, and
+	// in-pod Prometheus scrapes.
 	cacheserverNamespace   string
 	cacheserverSelector    string
 	cacheserverStatefulSet string
+	cacheserverMetricsPort int
 }
 
 func registerFlags() {
-	if flag.Lookup("dcache-metrics-endpoints") == nil {
-		flag.StringVar(&testCfg.metricsEndpointsRaw, "dcache-metrics-endpoints", "",
-			"Comma-separated Prometheus scrape URLs, one per cacheserver pod (e.g. http://localhost:9096,http://localhost:9097)")
-	}
 	if flag.Lookup("storage-account") == nil {
 		flag.StringVar(&testCfg.storageAccount, "storage-account", "",
 			"Azure Storage account name (falls back to STO_ACC_NAME)")
@@ -163,6 +124,10 @@ func registerFlags() {
 		flag.StringVar(&testCfg.cacheserverStatefulSet, "cacheserver-statefulset", "cache-server",
 			"cache-server: name of the Tachyon StatefulSet (waited on after a pod is deleted)")
 	}
+	if flag.Lookup("cacheserver-metrics-port") == nil {
+		flag.IntVar(&testCfg.cacheserverMetricsPort, "cacheserver-metrics-port", 9096,
+			"cache-server: pod-local Prometheus port scraped via kubectl exec curl")
+	}
 }
 
 // envDefault returns v if it is non-empty, otherwise os.Getenv(k).
@@ -173,11 +138,8 @@ func envDefault(v, k string) string {
 	return os.Getenv(k)
 }
 
-// resolveCfg fills in unset flag values from environment variables and
-// splits the metrics endpoints list. It is called once by TestMain, after
-// flag.Parse().
+// resolveCfg applies environment fallbacks.
 func resolveCfg() error {
-	testCfg.metricsEndpointsRaw = envDefault(testCfg.metricsEndpointsRaw, "DCACHE_METRICS_ENDPOINTS")
 	testCfg.storageAccount = envDefault(testCfg.storageAccount, "STO_ACC_NAME")
 	testCfg.storageKey = envDefault(testCfg.storageKey, "STO_ACC_KEY")
 	testCfg.storageEndpoint = envDefault(testCfg.storageEndpoint, "STO_ACC_ENDPOINT")
@@ -188,15 +150,6 @@ func resolveCfg() error {
 
 	if err := ensurePodMountArgs(); err != nil {
 		return err
-	}
-
-	if testCfg.metricsEndpointsRaw != "" {
-		for _, ep := range strings.Split(testCfg.metricsEndpointsRaw, ",") {
-			ep = strings.TrimSpace(ep)
-			if ep != "" {
-				testCfg.metricsEndpoints = append(testCfg.metricsEndpoints, ep)
-			}
-		}
 	}
 	return nil
 }
@@ -213,23 +166,21 @@ func TestMain(m *testing.M) {
 	activeMounter = &podMounter{}
 
 	fmt.Printf("dist_cache E2E config:\n"+
-		"  pod-namespace      = %s\n"+
-		"  pod-deployment     = %s\n"+
-		"  pod-selector       = %s\n"+
-		"  pod-mount-path     = %s\n"+
-		"  metrics-endpoints  = %v\n"+
-		"  storage-account    = %s\n"+
-		"  storage-endpoint   = %s\n"+
-		"  storage-container  = %s\n"+
-		"  quick-test         = %s\n",
+		"  pod-namespace           = %s\n"+
+		"  pod-deployment          = %s\n"+
+		"  pod-selector            = %s\n"+
+		"  pod-mount-path          = %s\n"+
+		"  cacheserver-namespace   = %s\n"+
+		"  cacheserver-selector    = %s\n"+
+		"  cacheserver-metrics-port= %d\n"+
+		"  storage-account         = %s\n"+
+		"  storage-endpoint        = %s\n"+
+		"  storage-container       = %s\n"+
+		"  quick-test              = %s\n",
 		testCfg.podNamespace, testCfg.podDeployment, testCfg.podSelector, testCfg.podMountPath,
-		testCfg.metricsEndpoints,
+		testCfg.cacheserverNamespace, testCfg.cacheserverSelector, testCfg.cacheserverMetricsPort,
 		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer,
 		testCfg.quickTest)
-
-	// The Deployment lifecycle is owned by the operator, not the test
-	// binary — tests only cycle pods within it — so there is no host-side
-	// mount to sweep here.
 
 	os.Exit(m.Run())
 }

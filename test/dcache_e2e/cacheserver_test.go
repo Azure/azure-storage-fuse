@@ -44,23 +44,13 @@ import (
 	"time"
 )
 
-// cacheserverRolloutTimeout bounds how long we wait for the Tachyon
-// StatefulSet to become fully Ready after we deliberately kill one of its
-// pods. Kept large enough to accommodate a fresh container start plus the
-// cache-server's own readiness/liveness probes.
+// cacheserverRolloutTimeout allows for startup and readiness probes.
 const cacheserverRolloutTimeout = 3 * time.Minute
 
-// cacheserverTerminateTimeout bounds how long we wait for a deleted
-// cache-server pod to actually leave the Ready set. This is deliberately
-// short: `kubectl delete --grace-period=0 --force` returns almost
-// immediately, and the endpoint drop should follow within a few seconds.
+// cacheserverTerminateTimeout bounds removal from the Ready set.
 const cacheserverTerminateTimeout = 30 * time.Second
 
-// listCacheserverPods returns the names of every cache-server pod in the
-// configured namespace, in the order kubectl reports them. Order is not
-// guaranteed to be stable across calls, but it does not need to be: the
-// caller picks one pod, and consistent-hashing means any choice exercises
-// the same code path.
+// listCacheserverPods returns cache-server pod names in kubectl order.
 func listCacheserverPods(t *testing.T) []string {
 	t.Helper()
 	out, err := exec.Command(testCfg.kubectlBin,
@@ -80,12 +70,7 @@ func listCacheserverPods(t *testing.T) []string {
 	return strings.Fields(name)
 }
 
-// killCacheserverPod force-deletes the named pod. --grace-period=0 +
-// --force skips the SIGTERM window, matching a "node crash" as closely as
-// kubectl allows -- the pod object is removed immediately and the
-// StatefulSet controller will schedule a replacement. The replacement
-// starts with an empty local L2 store, which is precisely what we want
-// for a "some chunks fall back to blob" assertion.
+// killCacheserverPod force-deletes a pod to approximate a node failure.
 func killCacheserverPod(t *testing.T, pod string) {
 	t.Helper()
 	out, err := exec.Command(testCfg.kubectlBin,
@@ -101,10 +86,7 @@ func killCacheserverPod(t *testing.T, pod string) {
 	t.Logf("cacheserver: kill %s: %s", pod, strings.TrimSpace(string(out)))
 }
 
-// waitCacheserverPodGone polls until either the named pod is missing from
-// the API, or it exists but is not Ready. Either state is sufficient to
-// prove the L2 owner of some chunks is temporarily unreachable. A short
-// timeout is fine: `delete --grace-period=0 --force` completes quickly.
+// waitCacheserverPodGone waits until the pod is absent or not Ready.
 func waitCacheserverPodGone(t *testing.T, pod string) {
 	t.Helper()
 	deadline := time.Now().Add(cacheserverTerminateTimeout)
@@ -115,9 +97,7 @@ func waitCacheserverPodGone(t *testing.T, pod string) {
 			"-o", "jsonpath={.status.conditions[?(@.type==\"Ready\")].status}",
 		).CombinedOutput()
 		if err != nil {
-			// Most likely NotFound -- the pod object has been removed.
-			// Anything else (RBAC, transient API error) still counts as
-			// "not observable as Ready", which is what we care about.
+			// Any API error means the pod is not observable as Ready.
 			t.Logf("cacheserver: %s no longer observable as Ready: %s",
 				pod, strings.TrimSpace(string(out)))
 			return
@@ -129,18 +109,13 @@ func waitCacheserverPodGone(t *testing.T, pod string) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	// Even if the API keeps reporting Ready=True (fast reschedule with the
-	// same name is possible under a StatefulSet), the *new* pod's cache
-	// store is empty, which still satisfies the "some chunks fall back to
-	// blob" invariant. Log and continue.
+	// A fast same-name replacement has an empty cache, so it is still valid.
 	t.Logf("cacheserver: pod %s appeared to stay Ready within %s; continuing "+
 		"(a StatefulSet-scheduled replacement starts with an empty store, "+
 		"which still exercises the fall-back path)", pod, cacheserverTerminateTimeout)
 }
 
-// waitCacheserverStatefulSetReady blocks until the StatefulSet reports
-// that every replica is Ready again. Used in t.Cleanup so the next test
-// in the suite sees a healthy Tachyon cluster.
+// waitCacheserverStatefulSetReady restores cluster health after fault tests.
 func waitCacheserverStatefulSetReady(t *testing.T) {
 	t.Helper()
 	args := []string{
@@ -150,10 +125,7 @@ func waitCacheserverStatefulSetReady(t *testing.T) {
 	}
 	out, err := exec.Command(testCfg.kubectlBin, args...).CombinedOutput()
 	if err != nil {
-		// t.Logf, not Fatalf: this runs from t.Cleanup, so failing here
-		// would mask the real test outcome. The subsequent test that
-		// actually needs cache-server will fail loudly if the cluster is
-		// still broken.
+		// Cleanup must not mask the original test result.
 		t.Logf("cacheserver: rollout status failed: %v (out: %s)",
 			err, strings.TrimSpace(string(out)))
 		return
