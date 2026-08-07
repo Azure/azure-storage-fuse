@@ -69,16 +69,16 @@ const (
 // keys are exposed; behavioral tuning stays YAML/CLI-only, matching the
 // identity-vs-tuning split used by azstorage.
 const (
-	EnvDistCacheDiscoveryURL = "DIST_CACHE_DISCOVERY_URL"
-	EnvDistCacheK8sService   = "DIST_CACHE_K8S_SERVICE"
-	EnvDistCacheK8sNamespace = "DIST_CACHE_K8S_NAMESPACE"
-	EnvDistCacheServerList   = "DIST_CACHE_SERVER_LIST"
+	EnvDistCacheDiscoveryEndpoint = "DIST_CACHE_DISCOVERY_ENDPOINT"
+	EnvDistCacheK8sService        = "DIST_CACHE_K8S_SERVICE"
+	EnvDistCacheK8sNamespace      = "DIST_CACHE_K8S_NAMESPACE"
+	EnvDistCacheServerList        = "DIST_CACHE_SERVER_LIST"
 )
 
 // RegisterEnvVariables binds dist_cache discovery keys to env vars.
 // Precedence via viper: CLI flag > env > YAML > default.
 func RegisterEnvVariables() {
-	config.BindEnv(compName+".discovery-url", EnvDistCacheDiscoveryURL)
+	config.BindEnv(compName+".discovery-endpoint", EnvDistCacheDiscoveryEndpoint)
 	config.BindEnv(compName+".k8s-service", EnvDistCacheK8sService)
 	config.BindEnv(compName+".k8s-namespace", EnvDistCacheK8sNamespace)
 	config.BindEnv(compName+".server-list", EnvDistCacheServerList)
@@ -87,7 +87,7 @@ func RegisterEnvVariables() {
 // DistCacheOptions holds configuration for the distributed cache component.
 type DistCacheOptions struct {
 	// Discovery (preferred — auto-detects servers)
-	DiscoveryURL string `config:"discovery-url" yaml:"discovery-url,omitempty"`
+	DiscoveryEndpoint string `config:"discovery-endpoint" yaml:"discovery-endpoint,omitempty"`
 
 	// Kubernetes DNS discovery
 	K8sService   string `config:"k8s-service"   yaml:"k8s-service,omitempty"`
@@ -156,16 +156,16 @@ func (dc *DistCache) Configure(isParent bool) error {
 	}
 
 	// At least one discovery method must be set (YAML, CLI flag, or env).
-	if conf.DiscoveryURL == "" && conf.K8sService == "" && conf.ServerList == "" {
-		return fmt.Errorf("dist_cache: no server discovery configured (set discovery-url, k8s-service, or server-list)")
+	if conf.DiscoveryEndpoint == "" && conf.K8sService == "" && conf.ServerList == "" {
+		return fmt.Errorf("dist_cache: no server discovery configured (set discovery-endpoint, k8s-service, or server-list)")
 	}
 
 	// Warn if multiple discovery methods are configured. The dcache client
-	// applies them in precedence order: discovery-url > k8s DNS > server-list;
+	// applies them in precedence order: discovery-endpoint > k8s DNS > server-list;
 	// lower-precedence entries are effectively ignored.
 	var configured []string
-	if conf.DiscoveryURL != "" {
-		configured = append(configured, "discovery-url")
+	if conf.DiscoveryEndpoint != "" {
+		configured = append(configured, "discovery-endpoint")
 	}
 	if conf.K8sService != "" {
 		configured = append(configured, "k8s-service")
@@ -174,7 +174,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 		configured = append(configured, "server-list")
 	}
 	if len(configured) > 1 {
-		log.Warn("DistCache::Configure : multiple discovery methods configured (%s); precedence is discovery-url > k8s DNS > server-list, lower-precedence entries will only be used as a fallback",
+		log.Warn("DistCache::Configure : multiple discovery methods configured (%s); precedence is discovery-endpoint > k8s DNS > server-list, lower-precedence entries will only be used as a fallback",
 			strings.Join(configured, ", "))
 	}
 
@@ -231,7 +231,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 	}
 
 	log.Info("DistCache::Configure : block-size=%d", dc.chunkSize)
-	log.Info("DistCache::Configure : discovery-url=%s", dc.conf.DiscoveryURL)
+	log.Info("DistCache::Configure : discovery-endpoint=%s", dc.conf.DiscoveryEndpoint)
 	log.Info("DistCache::Configure : k8s-service=%s", dc.conf.K8sService)
 	log.Info("DistCache::Configure : k8s-namespace=%s", dc.conf.K8sNamespace)
 	log.Info("DistCache::Configure : server-list=%s", dc.conf.ServerList)
@@ -257,8 +257,8 @@ func (dc *DistCache) Start(ctx context.Context) error {
 		opts = append(opts, dcache.WithChecksumVerification(true))
 	}
 
-	if dc.conf.DiscoveryURL != "" {
-		opts = append(opts, dcache.WithDiscoveryURL(dc.conf.DiscoveryURL))
+	if dc.conf.DiscoveryEndpoint != "" {
+		opts = append(opts, dcache.WithDiscoveryURL(dc.conf.DiscoveryEndpoint))
 	}
 	if dc.conf.K8sService != "" && dc.conf.K8sNamespace != "" {
 		opts = append(opts, dcache.WithK8sDiscovery(dc.conf.K8sService, dc.conf.K8sNamespace))
@@ -638,9 +638,9 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, leng
 func init() {
 	internal.AddComponent(compName, NewDistCacheComponent)
 
-	discoveryFlag := config.AddStringFlag("dist-cache-discovery-url", "",
+	discoveryFlag := config.AddStringFlag("dist-cache-discovery-endpoint", "",
 		"distributed cache discovery endpoint (recommended)")
-	config.BindPFlag(compName+".discovery-url", discoveryFlag)
+	config.BindPFlag(compName+".discovery-endpoint", discoveryFlag)
 
 	RegisterEnvVariables()
 }

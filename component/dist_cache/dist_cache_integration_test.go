@@ -888,7 +888,7 @@ func TestConfigure_NoServers_ReturnsError(t *testing.T) {
 
 // --- Test: Start() fails fast on unreachable servers ---
 //
-// Failure is driven by an unroutable discovery-url (loopback port 1 ->
+// Failure is driven by an unroutable discovery-endpoint (loopback port 1 ->
 // ECONNREFUSED); with no fallback, dcache.New() fails.
 //
 // Standalone (not suite-based) to avoid corrupting shared config state.
@@ -908,7 +908,7 @@ func TestStart_UnreachableServers_FailsFast(t *testing.T) {
 	defer os.RemoveAll(storagePath)
 
 	cfg := fmt.Sprintf(
-		"loopbackfs:\n  path: %s\n\nazstorage:\n  account-name: test\n  container: container\n\ndist_cache:\n  discovery-url: 127.0.0.1:1\n",
+		"loopbackfs:\n  path: %s\n\nazstorage:\n  account-name: test\n  container: container\n\ndist_cache:\n  discovery-endpoint: 127.0.0.1:1\n",
 		storagePath)
 	require.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 

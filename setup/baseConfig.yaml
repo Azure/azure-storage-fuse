@@ -47,7 +47,7 @@ file_cache:
 # Requires a running Tachyon cache server cluster (https://github.com/Azure/Tachyon).
 # When dist_cache is configured, block_cache is auto-added as the L1 layer.
 dist_cache:
-  discovery-url: <discovery endpoint URL for auto-detecting cache servers. Recommended for production>
+  discovery-endpoint: <discovery endpoint for auto-detecting cache servers. Recommended for production>
 
 # Azure storage configuration
 azstorage:

@@ -1199,9 +1199,9 @@ func TestDoUpload_UploadsExactPayloadBytes(t *testing.T) {
 // must re-install the bindings via RegisterEnvVariables() after loading YAML.
 // Env values are set with t.Setenv so cleanup is automatic.
 
-// TestRegisterEnvVariables_BindsDiscoveryURL verifies that
-// DIST_CACHE_DISCOVERY_URL flows into conf.DiscoveryURL when YAML omits it.
-func TestRegisterEnvVariables_BindsDiscoveryURL(t *testing.T) {
+// TestRegisterEnvVariables_BindsDiscoveryEndpoint verifies that
+// DIST_CACHE_DISCOVERY_ENDPOINT flows into conf.DiscoveryEndpoint when YAML omits it.
+func TestRegisterEnvVariables_BindsDiscoveryEndpoint(t *testing.T) {
 	loadConfig(t, `
 azstorage:
   account-name: myacct
@@ -1209,11 +1209,11 @@ azstorage:
 dist_cache: {}
 `)
 	RegisterEnvVariables()
-	t.Setenv(EnvDistCacheDiscoveryURL, "127.0.0.1:9000")
+	t.Setenv(EnvDistCacheDiscoveryEndpoint, "127.0.0.1:9000")
 
 	dc := NewDistCacheComponent().(*DistCache)
 	require.NoError(t, dc.Configure(true))
-	assert.Equal(t, "127.0.0.1:9000", dc.conf.DiscoveryURL)
+	assert.Equal(t, "127.0.0.1:9000", dc.conf.DiscoveryEndpoint)
 }
 
 // TestRegisterEnvVariables_BindsK8sServiceAndNamespace verifies that both

@@ -140,7 +140,7 @@ func TestNormalizeDistCacheConfig_DistCacheSectionWithoutComponents(t *testing.T
 	// dist_cache: set but components: omitted — the synthesis-path case.
 	setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 `)
 	defer viper.Reset()
 
@@ -155,7 +155,7 @@ dist_cache:
 func TestNormalizeDistCacheConfig_StaleSectionWithOtherL1IsNoop(t *testing.T) {
 	setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 file_cache:
   path: /tmp/fc
 components:
@@ -175,7 +175,7 @@ func TestNormalizeDistCacheConfig_StaleSectionNoL1IsNoop(t *testing.T) {
 	// Explicit components: without dist_cache; stray section ignored.
 	setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
   block-size-mb: 32
 components:
   - libfuse
@@ -191,7 +191,7 @@ components:
 func TestNormalizeDistCacheConfig_RejectsBlockCacheInComponents(t *testing.T) {
 	setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 `)
 	defer viper.Reset()
 
@@ -203,7 +203,7 @@ dist_cache:
 func TestNormalizeDistCacheConfig_RejectsBlockCacheSection(t *testing.T) {
 	setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 block_cache:
   block-size-mb: 8
 `)
@@ -217,7 +217,7 @@ block_cache:
 func TestNormalizeDistCacheConfig_RejectsBothSurfaces(t *testing.T) {
 	setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 block_cache:
   block-size-mb: 8
 components:
@@ -241,7 +241,7 @@ func TestNormalizeDistCacheConfig_RejectsOtherL1InComponents(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 `)
 			defer viper.Reset()
 
@@ -261,7 +261,7 @@ func TestNormalizeDistCacheConfig_RejectsOtherL1Sections(t *testing.T) {
 			name: "file_cache",
 			yaml: `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 file_cache:
   path: /tmp/fc
 `,
@@ -270,7 +270,7 @@ file_cache:
 			name: "xload",
 			yaml: `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 xload:
   path: /tmp/xl
 `,
@@ -279,7 +279,7 @@ xload:
 			name: "stream",
 			yaml: `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 stream:
   block-size-mb: 16
 `,
@@ -300,7 +300,7 @@ stream:
 func TestNormalizeDistCacheConfig_FansOutTuningKnobs(t *testing.T) {
 	setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
   block-size-mb: 32
   mem-size-mb: 4096
   prefetch: 24
@@ -334,7 +334,7 @@ func TestNormalizeDistCacheConfig_UnsetKnobsAreNotForwarded(t *testing.T) {
 	// so block_cache falls back to its own defaults.
 	setDistCacheYAML(t, `
 dist_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
   block-size-mb: 32
 `)
 	defer viper.Reset()
