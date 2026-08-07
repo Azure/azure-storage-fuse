@@ -1,9 +1,7 @@
 #!/bin/bash
 #
 # Install docker-ce, kind, kubectl and helm on the ADO agent, idempotently.
-# The dist_cache nightly E2E stage runs on `kind` (Kubernetes IN Docker); see
-# test/scripts/dcache/PLAN.md for the rationale for choosing kind over the
-# minikube path that vienna-tachyon publishes for.
+# The dist_cache nightly E2E stage runs on kind (Kubernetes IN Docker).
 
 set -e
 

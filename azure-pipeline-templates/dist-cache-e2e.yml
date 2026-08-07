@@ -4,9 +4,6 @@
 # cache-server helm chart (pulled directly from an OCI-enabled ACR), deploys
 # blobfuse2 in-cluster, and runs the dedicated dcache_e2e Go suite.
 #
-# See test/scripts/dcache/PLAN.md for why kind (rather than the minikube path
-# vienna-tachyon publishes for) is our substrate.
-#
 # Teardown runs unconditionally and publishes cacheserver logs as an artifact
 # so failures are debuggable.
 

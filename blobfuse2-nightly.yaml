@@ -1563,7 +1563,7 @@ stages:
                 delete_containers: true
 
   # -----------------------------------------------------------------------
-  # Distributed cache E2E (TEST_PLAN.md §4, items 115-124 / closes item 149).
+  # Distributed cache E2E.
   # Gated on the `dist_cache_test` parameter so nightly runs stay green until
   # the ACR image tag + chart version are populated below. Queue a manual run
   # with the parameter set to true.
