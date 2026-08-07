@@ -151,7 +151,6 @@ block_cache:
   prefetch: 2
   parallelism: 2
   disk-timeout-sec: 10
-lazy-write: false
 `
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -162,7 +161,6 @@ lazy-write: false
 	assert.Equal(t, uint64(4*1024*1024), bc.memSize)
 	assert.Equal(t, uint32(2), bc.workers)
 	assert.Equal(t, uint32(2), bc.prefetch)
-	assert.False(t, bc.lazyWrite)
 }
 
 func TestBlockCacheConfigure_NoPrefetch(t *testing.T) {
@@ -175,7 +173,6 @@ block_cache:
   mem-size-mb: 4
   prefetch: 0
   parallelism: 2
-lazy-write: false
 `
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -217,7 +214,6 @@ block_cache:
   block-size-mb: 1
   mem-size-mb: 4
   parallelism: 0
-lazy-write: false
 `
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -239,7 +235,6 @@ func TestBlockCacheConfigure_ResourceGuardrails(t *testing.T) {
 block_cache:
   block-size-mb: 2
   mem-size-mb: 2
-lazy-write: false
 `,
 			errorText: "at least 2 blocks",
 		},
@@ -250,7 +245,6 @@ block_cache:
   block-size-mb: 1
   mem-size-mb: 4
   parallelism: 4
-lazy-write: false
 `,
 			errorText: "parallelism",
 		},
@@ -261,7 +255,6 @@ block_cache:
   block-size-mb: 1
   mem-size-mb: 4
   prefetch: 3
-lazy-write: false
 `,
 			errorText: "prefetch",
 		},
@@ -291,7 +284,6 @@ block_cache:
   mem-size-mb: 9
   prefetch: 2
   parallelism: 2
-lazy-write: false
 `
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -311,7 +303,6 @@ func TestBlockCacheConfigure_DefaultParallelism(t *testing.T) {
 block_cache:
   block-size-mb: 1
   mem-size-mb: %d
-lazy-write: false
 `, expectedWorkers+1)
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -336,20 +327,31 @@ func TestCreateWorkerPool_UsesQueueSize(t *testing.T) {
 
 func TestBlockCache_WritebackLimit(t *testing.T) {
 	tests := []struct {
-		buffers uint64
-		workers uint32
-		want    int
+		memoryMB uint64
+		workers  uint32
+		want     int
 	}{
-		{buffers: 4, workers: 2, want: 1},
-		{buffers: 20, workers: 10, want: 2},
-		{buffers: 64, workers: 16, want: 4},
-		{buffers: 128, workers: 64, want: 4},
+		{memoryMB: 4, workers: 2, want: 1},
+		{memoryMB: 20, workers: 10, want: 2},
+		{memoryMB: 64, workers: 16, want: 4},
+		{memoryMB: 128, workers: 64, want: 4},
 	}
 
 	for _, test := range tests {
-		bc := &BlockCache{blockSize: 1, memSize: test.buffers, workers: test.workers}
-		assert.Equal(t, test.want, bc.writebackLimit(), "buffers=%d workers=%d", test.buffers, test.workers)
+		config.ResetConfig()
+		cfg := fmt.Sprintf(`
+block_cache:
+  block-size-mb: 1
+  mem-size-mb: %d
+  parallelism: %d
+`, test.memoryMB, test.workers)
+		assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
+
+		bc := NewBlockCacheComponent().(*BlockCache)
+		assert.NoError(t, bc.Configure(true))
+		assert.Equal(t, test.want, bc.writebackLimit, "buffers=%d workers=%d", test.memoryMB, test.workers)
 	}
+	config.ResetConfig()
 }
 
 func TestBlockCacheConfigure_TmpPathMountPathConflict(t *testing.T) {
@@ -364,7 +366,6 @@ block_cache:
   tmp-path: %s
   block-size-mb: 1
   mem-size-mb: 4
-lazy-write: false
 `, tmpDir)
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 	// mount-path is read via UnmarshalKey so we must set it in viper directly.
@@ -391,7 +392,6 @@ block_cache:
   tmp-path: %s
   block-size-mb: 1
   mem-size-mb: 4
-lazy-write: false
 `, tmpDir)
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 	config.Set("mount-path", "/tmp/blobfuse_config_test_mount")
@@ -414,7 +414,6 @@ block_cache:
   block-size-mb: 1
   mem-size-mb: 4
   disk-size-mb: 10
-lazy-write: false
 `, tmpDir)
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 	config.Set("mount-path", "/tmp/blobfuse_config_test_mount")
@@ -432,7 +431,6 @@ func TestBlockCacheConfigure_AutoMemSize(t *testing.T) {
 block_cache:
   block-size-mb: 1
   parallelism: 2
-lazy-write: false
 `
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -454,7 +452,6 @@ block_cache:
   tmp-path: %s
   block-size-mb: 1
   mem-size-mb: 4
-lazy-write: false
 mount-path: /tmp/blobfuse_config_noexist_test
 `, tmpDir)
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
@@ -473,7 +470,6 @@ block_cache:
   block-size-mb: 1
   mem-size-mb: 4
   defer-empty-blob-creation: false
-lazy-write: false
 `
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -481,25 +477,6 @@ lazy-write: false
 	err := bc.Configure(true)
 	assert.NoError(t, err)
 	assert.False(t, bc.deferEmptyBlobCreation)
-}
-
-func TestBlockCacheConfigure_PrefetchOnOpen(t *testing.T) {
-	config.ResetConfig()
-	t.Cleanup(config.ResetConfig)
-
-	cfg := `
-block_cache:
-  block-size-mb: 1
-  mem-size-mb: 4
-  prefetch-on-open: true
-lazy-write: false
-`
-	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
-
-	bc := NewBlockCacheComponent().(*BlockCache)
-	err := bc.Configure(true)
-	assert.NoError(t, err)
-	assert.True(t, bc.prefetchOnOpen)
 }
 
 func TestBlockCacheConfigure_AllOptions(t *testing.T) {
@@ -514,9 +491,7 @@ block_cache:
   parallelism: 5
   disk-timeout-sec: 30
   defer-empty-blob-creation: true
-  prefetch-on-open: false
   consistency: true
-lazy-write: true
 `
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -530,8 +505,6 @@ lazy-write: true
 	assert.Equal(t, uint32(30), bc.diskTimeout)
 	assert.True(t, bc.deferEmptyBlobCreation)
 	assert.True(t, bc.consistency)
-	assert.True(t, bc.lazyWrite)
-	assert.False(t, bc.prefetchOnOpen)
 	assert.False(t, bc.noPrefetch)
 }
 

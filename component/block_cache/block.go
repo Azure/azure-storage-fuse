@@ -321,8 +321,8 @@ func validateBlockIndex(blockIdx int) error {
 	if blockIdx < 0 {
 		return fmt.Errorf("negative block index: %d", blockIdx)
 	}
-	if blockIdx > MAX_BLOCKS {
-		return fmt.Errorf("block index exceeds maximum: %d > %d", blockIdx, MAX_BLOCKS)
+	if blockIdx > maxBlocks {
+		return fmt.Errorf("block index exceeds maximum: %d > %d", blockIdx, maxBlocks)
 	}
 	return nil
 }

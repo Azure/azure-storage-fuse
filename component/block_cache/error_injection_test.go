@@ -498,7 +498,7 @@ func (s *ErrorInjectionTestSuite) TestWrite_PerFileWritebackLimitBlocksUntilUplo
 
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "writeback_pressure.txt", Mode: 0777})
 	s.Require().NoError(err)
-	s.Equal(1, s.blockCache.writebackLimit())
+	s.Equal(1, s.blockCache.writebackLimit)
 	blockSize := int(s.blockCache.blockSize)
 
 	gate := make(chan struct{})
@@ -617,7 +617,7 @@ func (s *ErrorInjectionTestSuite) TestOpenTruncateFlushesInFlightUploads() {
 	s.blockCache.workerPool.destroy()
 	s.blockCache.workerPool = createWorkerPool(1, 2, s.blockCache)
 	// Allow two writeback tasks while one worker keeps their execution ordered.
-	s.blockCache.workers = 8
+	s.blockCache.writebackLimit = 2
 
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "truncate_flush.txt", Mode: 0777})
 	s.Require().NoError(err)

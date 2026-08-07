@@ -64,6 +64,9 @@ func setupTestFreeList(t *testing.T, bufSize uint64, memSize uint64) {
 	assert.NoError(t, err)
 
 	if bc != nil {
+		if bc.writebackLimit == 0 {
+			bc.writebackLimit = 1
+		}
 		bc.freeList = freeList
 		bc.workerPool = createWorkerPool(4, 8, bc) // Example worker pool size
 	}
