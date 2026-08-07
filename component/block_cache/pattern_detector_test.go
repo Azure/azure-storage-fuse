@@ -45,6 +45,7 @@ func TestNewPatternDetector(t *testing.T) {
 	assert.NotNil(t, pd)
 	assert.Equal(t, int32(3), pd.streak.Load(), "Initial streak should be 3 for sequential access")
 	assert.Equal(t, int64(0), pd.prevOffset.Load(), "Initial prevOffset should be 0")
+	assert.Equal(t, int64(-1), pd.lastReadAheadDemandBlockIdx.Load())
 }
 
 func TestUpdateAccessPattern_Sequential(t *testing.T) {

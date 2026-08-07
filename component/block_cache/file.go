@@ -250,8 +250,7 @@ func (f *file) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 
 			if blk == nil {
 				log.Err("File::read: Block not found for file %s blockIdx %d", f.Name, blockIdx)
-				// TODO: is this the right error to return? or EIO is better?
-				return 0, io.EOF
+				return 0, syscall.EIO
 			}
 
 			var err error
@@ -329,7 +328,8 @@ func (f *file) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 //
 // Behavior:
 //   - Only schedules read-ahead for sequential patterns
-//   - Prefetches up to bc.prefetch blocks ahead
+//   - Keeps a window of up to bc.prefetch blocks ahead
+//   - Schedules at most maxReadAheadScheduleBurst blocks per demand block
 //   - Tracks next read-ahead block index to avoid duplicate prefetches
 //   - Skips blocks that are already in cache
 //   - Stops when reaching end of file
@@ -352,9 +352,13 @@ func (f *file) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 		return
 	}
 
-	numReadAheadBlocks := int(bc.prefetch)
-	lastDemandBlockIdx := getBlockIndex(offset+int64(length)-1, int64(bc.blockSize))
-	firstReadAheadBlockIdx := int64(lastDemandBlockIdx + 1)
+	lastDemandBlockIdx := int64(getBlockIndex(offset+int64(length)-1, int64(bc.blockSize)))
+	previousDemandBlockIdx := pd.lastReadAheadDemandBlockIdx.Swap(lastDemandBlockIdx)
+	if previousDemandBlockIdx == lastDemandBlockIdx {
+		return
+	}
+
+	firstReadAheadBlockIdx := lastDemandBlockIdx + 1
 	for {
 		next := pd.nxtReadAheadBlockIdx.Load()
 		if next >= firstReadAheadBlockIdx || pd.nxtReadAheadBlockIdx.CompareAndSwap(next, firstReadAheadBlockIdx) {
@@ -362,14 +366,22 @@ func (f *file) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 		}
 	}
 
-	for range numReadAheadBlocks {
+	targetBlockIdx := lastDemandBlockIdx + int64(bc.prefetch)
+	nextBlockIdx := pd.nxtReadAheadBlockIdx.Load()
+	if nextBlockIdx > targetBlockIdx {
+		return
+	}
+	scheduleCount := min(maxReadAheadScheduleBurst, int(targetBlockIdx-nextBlockIdx+1))
+
+	for scheduled := 0; scheduled < scheduleCount; {
 		nextBlockIdx := pd.nxtReadAheadBlockIdx.Load()
-		if int(nextBlockIdx) > lastDemandBlockIdx+numReadAheadBlocks {
+		if nextBlockIdx > targetBlockIdx {
 			return
 		}
 		if !pd.nxtReadAheadBlockIdx.CompareAndSwap(nextBlockIdx, nextBlockIdx+1) {
 			continue
 		}
+		scheduled++
 
 		var blk *block
 
@@ -392,6 +404,12 @@ func (f *file) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 		)
 		if err != nil {
 			pd.nxtReadAheadBlockIdx.CompareAndSwap(nextBlockIdx+1, nextBlockIdx)
+			pd.lastReadAheadDemandBlockIdx.CompareAndSwap(lastDemandBlockIdx, previousDemandBlockIdx)
+			if err == errBuffersExhausted {
+				log.Debug("File::scheduleReadAhead: No speculative capacity available for file: %s, blockIdx: %d; read-ahead will retry on the next read",
+					f.Name, blk.idx)
+				return
+			}
 			log.Err("File::scheduleReadAhead: Failed to get buffer descriptor for file: %s, blockIdx: %d during read-ahead, [%v]",
 				f.Name, blk.idx, err)
 			return
