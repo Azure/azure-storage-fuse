@@ -820,6 +820,29 @@ class ComparisonTests(unittest.TestCase):
 
 
 class ScheduledRegressionTests(unittest.TestCase):
+    def test_comparator_loader_reports_missing_spec_or_loader(self):
+        comparator_path = Path("/missing/compare_benchmarks.py")
+        for spec in (None, mock.Mock(loader=None)):
+            with (
+                self.subTest(spec=spec),
+                mock.patch.object(
+                    regression_checker.importlib.util,
+                    "spec_from_file_location",
+                    return_value=spec,
+                ),
+                mock.patch.object(
+                    regression_checker.importlib.util,
+                    "module_from_spec",
+                ) as module_from_spec,
+                self.assertRaisesRegex(
+                    ImportError,
+                    "Unable to load benchmark comparator from "
+                    "/missing/compare_benchmarks.py",
+                ),
+            ):
+                regression_checker.load_comparator(comparator_path)
+            module_from_spec.assert_not_called()
+
     def test_initial_history_is_insufficient_but_does_not_fail(self):
         candidate = make_summary()
         report = regression_checker.evaluate_results(
