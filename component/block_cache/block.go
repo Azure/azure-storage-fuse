@@ -429,7 +429,7 @@ func getUploadSize(fileSize int64, blockIdx int, bufferSize int64) (int, error) 
 //   - Buffer is marked as valid (or invalid if download failed)
 //   - Any download errors are captured in bufDesc.downloadErr
 //   - Content lock is released allowing reads to proceed
-func (blk *block) scheduleDownload(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, sync bool) error {
+func (blk *block) scheduleDownload(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, sync bool, prefetch *prefetchPermit) error {
 	if !contentLease.belongsTo(bufDesc) {
 		return fmt.Errorf("invalid content lease for block %d", blk.idx)
 	}
@@ -445,8 +445,17 @@ func (blk *block) scheduleDownload(workerPool *workerPool, bufDesc *bufferDescri
 		path:               blk.file.Name,
 		fileSize:           blk.file.size.Load(),
 		contentLease:       contentLease,
+		prefetch:           prefetch,
 	}
-	workerPool.queueTask(task)
+	if prefetch != nil {
+		if !workerPool.tryQueuePrefetch(task) {
+			contentLease.release()
+			bufDesc.release(workerPool.bc.freeList)
+			return errBuffersExhausted
+		}
+	} else {
+		workerPool.queueTask(task)
+	}
 
 	if sync {
 		// Wait for download to complete.

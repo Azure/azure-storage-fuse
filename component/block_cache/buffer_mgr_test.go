@@ -416,8 +416,8 @@ func Test_getOrCreateBufferDescriptor_UncommittedBlock(t *testing.T) {
 	assert.Equal(t, bufDescStatusNeedsFileFlush, status)
 }
 
-// Test async allocation with free list full returns errBuffersExhausted.
-func Test_getOrCreateBufferDescriptor_AsyncFreeListFull(t *testing.T) {
+// Prefetch must not wait when every descriptor is actively pinned.
+func Test_getOrCreateBufferDescriptor_PrefetchFullWithPinnedBuffers(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024 * 1024}
 	setupTestFreeList(t, bc.blockSize, 2*bc.blockSize) // Only 2 buffers
 	defer destroyFreeList()
@@ -444,6 +444,133 @@ func Test_getOrCreateBufferDescriptor_AsyncFreeListFull(t *testing.T) {
 	// Clean up
 	bd0.release(freeList)
 	bd1.release(freeList)
+}
+
+func Test_getOrCreateBufferDescriptor_PrefetchEvictsCleanColdBuffer(t *testing.T) {
+	bc = &BlockCache{blockSize: 1024 * 1024}
+	setupTestFreeList(t, bc.blockSize, 2*bc.blockSize)
+	defer destroyFreeList()
+
+	btm = newBufferTableMgr()
+	bc.btm = btm
+	f := createFile("prefetch_clean_eviction.txt")
+
+	oldBlocks := []*block{
+		createBlock(0, "old0", localBlock, f),
+		createBlock(1, "old1", localBlock, f),
+	}
+	for _, blk := range oldBlocks {
+		bufDesc, _, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk, accessPrefetch)
+		assert.NoError(t, err)
+		bufDesc.dirty.Store(false)
+		bufDesc.release(freeList)
+	}
+
+	newBlock := createBlock(2, "new", localBlock, f)
+	bufDesc, status, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, newBlock, accessPrefetch)
+	assert.NoError(t, err)
+	assert.Equal(t, bufDescStatusVictim, status)
+	assert.NotNil(t, bufDesc)
+	assert.Zero(t, bufDesc.usageCount.Load())
+
+	btm.mu.RLock()
+	_, firstMapped := btm.table[oldBlocks[0]]
+	_, secondMapped := btm.table[oldBlocks[1]]
+	btm.mu.RUnlock()
+	assert.NotEqual(t, firstMapped, secondMapped, "exactly one old clean block should be evicted")
+	bufDesc.release(freeList)
+}
+
+func Test_getOrCreateBufferDescriptor_PrefetchSkipsDirtyVictim(t *testing.T) {
+	bc = &BlockCache{blockSize: 1024 * 1024}
+	setupTestFreeList(t, bc.blockSize, bc.blockSize)
+	defer destroyFreeList()
+
+	btm = newBufferTableMgr()
+	bc.btm = btm
+	f := createFile("prefetch_dirty_skip.txt")
+	oldBlock := createBlock(0, "old", localBlock, f)
+	dirty, _, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, oldBlock, accessPrefetch)
+	assert.NoError(t, err)
+	dirty.release(freeList)
+
+	bufDesc, status, err := btm.getOrCreateBufferDescriptor(
+		freeList,
+		bc.workerPool,
+		createBlock(1, "new", localBlock, f),
+		accessPrefetch,
+	)
+	assert.ErrorIs(t, err, errBuffersExhausted)
+	assert.Nil(t, bufDesc)
+	assert.Equal(t, bufDescStatusInvalid, status)
+	assert.True(t, dirty.dirty.Load())
+	assert.Equal(t, int32(refCountTableOnly), dirty.refCnt.Load())
+	btm.mu.RLock()
+	assert.Same(t, dirty, btm.table[oldBlock])
+	btm.mu.RUnlock()
+}
+
+func Test_getOrCreateBufferDescriptor_PrefetchAgesOnePassPerRequest(t *testing.T) {
+	bc = &BlockCache{blockSize: 1024 * 1024}
+	setupTestFreeList(t, bc.blockSize, bc.blockSize)
+	defer destroyFreeList()
+
+	btm = newBufferTableMgr()
+	bc.btm = btm
+	f := createFile("prefetch_gradual_age.txt")
+	oldBlock := createBlock(0, "old", localBlock, f)
+	protected, _, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, oldBlock, accessDemand)
+	assert.NoError(t, err)
+	protected.dirty.Store(false)
+	protected.release(freeList)
+	assert.Equal(t, uint32(1), protected.usageCount.Load())
+
+	newBlock := createBlock(1, "new", localBlock, f)
+	bufDesc, status, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, newBlock, accessPrefetch)
+	assert.ErrorIs(t, err, errBuffersExhausted)
+	assert.Nil(t, bufDesc)
+	assert.Equal(t, bufDescStatusInvalid, status)
+	assert.Zero(t, protected.usageCount.Load())
+
+	bufDesc, status, err = btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, newBlock, accessPrefetch)
+	assert.NoError(t, err)
+	assert.Equal(t, bufDescStatusVictim, status)
+	assert.Same(t, protected, bufDesc)
+	bufDesc.release(freeList)
+}
+
+func Test_getOrCreateBufferDescriptor_PrefetchQueueFullRollsBackAllocation(t *testing.T) {
+	bc = &BlockCache{
+		blockSize:         1024 * 1024,
+		prefetchTaskLimit: 1,
+	}
+	setupTestFreeList(t, bc.blockSize, bc.blockSize)
+	defer destroyFreeList()
+
+	bc.workerPool.destroy()
+	bc.workerPool = &workerPool{
+		tasks:         make(chan *task),
+		prefetchSlots: make(chan struct{}, 1),
+		bc:            bc,
+	}
+	btm = newBufferTableMgr()
+	bc.btm = btm
+	f := createFile("prefetch_queue_full.txt")
+	f.size.Store(int64(bc.blockSize))
+	blk := createBlock(0, "committed", committedBlock, f)
+
+	bufDesc, status, err := btm.getOrCreateBufferDescriptor(freeList, bc.workerPool, blk, accessPrefetch)
+	assert.ErrorIs(t, err, errBuffersExhausted)
+	assert.Nil(t, bufDesc)
+	assert.Equal(t, bufDescStatusInvalid, status)
+	assert.Empty(t, btm.table)
+	assert.Zero(t, len(bc.workerPool.prefetchSlots))
+	assert.Equal(t, 0, freeList.firstFreeBuffer)
+	assert.Zero(t, freeList.bufDescriptors[0].refCnt.Load())
+	assert.Nil(t, freeList.bufDescriptors[0].block)
+
+	freeList.bufDescriptors[0].contentLock.Lock()
+	freeList.bufDescriptors[0].contentLock.Unlock()
 }
 
 func Test_getOrCreateBufferDescriptor_DemandHitPromotesPrefetch(t *testing.T) {
