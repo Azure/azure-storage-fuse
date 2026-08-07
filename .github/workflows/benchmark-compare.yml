@@ -1,0 +1,339 @@
+name: Compare Branch Performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: Trusted same-repository branch, tag, or commit to benchmark
+        required: true
+        type: string
+      baseline_ref:
+        description: Baseline branch, tag, or commit
+        required: true
+        default: main
+        type: string
+      account_type:
+        description: Storage tier for the comparison
+        required: true
+        default: premium
+        type: choice
+        options:
+          - premium
+          - standard
+      cache_mode:
+        description: Cache implementation for the comparison
+        required: true
+        default: block_cache
+        type: choice
+        options:
+          - block_cache
+          - file_cache
+      trials:
+        description: Trials per workload and revision
+        required: true
+        default: "5"
+        type: choice
+        options:
+          - "1"
+          - "3"
+          - "5"
+      primary_threshold:
+        description: Minimum throughput, IOPS, or operation-rate regression percentage
+        required: true
+        default: 10
+        type: number
+      latency_threshold:
+        description: Minimum p99 latency regression percentage
+        required: true
+        default: 20
+        type: number
+      fail_on_regression:
+        description: Fail after uploading the report when a regression is detected
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: blobfuse2-performance-storage
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: ${{ inputs.target_ref }} vs ${{ inputs.baseline_ref }}
+    runs-on: [self-hosted, "1ES.Pool=blobfuse2-benchmark"]
+    timeout-minutes: 240
+    environment: performance-benchmark-compare
+    env:
+      BASELINE_REF_INPUT: ${{ inputs.baseline_ref }}
+      TARGET_REF_INPUT: ${{ inputs.target_ref }}
+      ACCOUNT_TYPE_INPUT: ${{ inputs.account_type }}
+      CACHE_MODE_INPUT: ${{ inputs.cache_mode }}
+      TRIALS_INPUT: ${{ inputs.trials }}
+      PRIMARY_THRESHOLD_INPUT: ${{ inputs.primary_threshold }}
+      LATENCY_THRESHOLD_INPUT: ${{ inputs.latency_threshold }}
+      BENCH_CONTAINER_INPUT: ${{ secrets.BENCH_CONTAINER }}
+    steps:
+      - name: Checkout stable benchmark harness
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: benchmark-harness
+
+      - name: Checkout baseline source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          path: baseline-source
+          fetch-depth: 0
+
+      - name: Checkout candidate source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.target_ref }}
+          path: candidate-source
+          fetch-depth: 0
+
+      - name: Install benchmark dependencies
+        run: |
+          set -euo pipefail
+          actual_cpu_count="$(nproc)"
+          if [[ "$actual_cpu_count" != "96" ]]; then
+            echo "D96 comparison runner must expose 96 online CPUs; found ${actual_cpu_count}" >&2
+            exit 1
+          fi
+          sudo -n systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+          sudo -n sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99blobfuse-benchmark-timeout'
+          sudo -n dpkg --configure -a
+          sudo -n apt-get update -qq
+          sudo -n apt-get install -y -qq fuse3 libfuse3-dev gcc jq python3 bc libaio-dev build-essential curl git iproute2 zip unzip
+          python3 -c 'import sys; sys.version_info >= (3, 10) or sys.exit("Python 3.10+ required, found {}".format(sys.version))'
+          python3 --version
+          if ! command -v fio >/dev/null || [[ "$(fio --version)" != "fio-3.36" ]]; then
+            ./benchmark-harness/tools/install_fio.sh
+          fi
+          actual_vm_size="$(curl --noproxy '*' -fsS -H Metadata:true \
+            'http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01' | jq -r '.vmSize')"
+          if [[ "$actual_vm_size" != "Standard_D96ds_v5" ]]; then
+            echo "Comparison runner must be Standard_D96ds_v5; found ${actual_vm_size}" >&2
+            exit 1
+          fi
+          ./benchmark-harness/go_installer.sh "$RUNNER_TEMP" >/dev/null
+          fio --version
+          go version
+
+      - name: Build baseline and candidate binaries
+        run: |
+          set -euo pipefail
+          export CGO_ENABLED=1
+          export GOTOOLCHAIN=local
+          (
+            cd baseline-source
+            go build -o "$RUNNER_TEMP/blobfuse2-baseline" .
+          )
+          (
+            cd candidate-source
+            go build -o "$RUNNER_TEMP/blobfuse2-candidate" .
+          )
+          echo "BASELINE_SHA=$(git -C baseline-source rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "CANDIDATE_SHA=$(git -C candidate-source rev-parse HEAD)" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/blobfuse2-baseline" --version
+          "$RUNNER_TEMP/blobfuse2-candidate" --version
+
+      - name: Select benchmark account and paths
+        env:
+          STANDARD_ACCOUNT: ${{ secrets.STANDARD_ACCOUNT }}
+          STANDARD_KEY: ${{ secrets.STANDARD_KEY }}
+          PREMIUM_ACCOUNT: ${{ secrets.PREMIUM_ACCOUNT }}
+          PREMIUM_KEY: ${{ secrets.PREMIUM_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ "$ACCOUNT_TYPE_INPUT" == "premium" ]]; then
+            echo "AZURE_STORAGE_ACCOUNT=$PREMIUM_ACCOUNT" >> "$GITHUB_ENV"
+            echo "AZURE_STORAGE_ACCESS_KEY=$PREMIUM_KEY" >> "$GITHUB_ENV"
+          else
+            echo "AZURE_STORAGE_ACCOUNT=$STANDARD_ACCOUNT" >> "$GITHUB_ENV"
+            echo "AZURE_STORAGE_ACCESS_KEY=$STANDARD_KEY" >> "$GITHUB_ENV"
+          fi
+          suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-compare"
+          echo "PERF_CONFIG=${RUNNER_TEMP}/blobfuse-${suffix}.yaml" >> "$GITHUB_ENV"
+          sudo -n mkdir -p /mnt/localssd
+          sudo -n chmod 0777 /mnt/localssd
+          minimum_free_bytes=$((200 * 1024 * 1024 * 1024))
+          cache_root=""
+          for candidate in /mnt/localssd /mnt/azure_nvme_temp /mnt/resource; do
+            [[ -d "$candidate" ]] || continue
+            mount_target="$(findmnt -rn -o TARGET -T "$candidate" 2>/dev/null || true)"
+            available_bytes="$(df --output=avail -B1 "$candidate" 2>/dev/null | tail -n 1 | tr -d ' ' || true)"
+            [[ "$available_bytes" =~ ^[0-9]+$ ]] || available_bytes=0
+            if [[ -n "$mount_target" && "$mount_target" != "/" && "$available_bytes" -ge "$minimum_free_bytes" ]]; then
+              cache_root="$candidate"
+              break
+            fi
+          done
+          if [[ "$CACHE_MODE_INPUT" == "file_cache" && -z "$cache_root" ]]; then
+            echo "File-cache comparison requires a non-root local filesystem with at least 200 GiB free" >&2
+            exit 1
+          fi
+          cache_root="${cache_root:-/mnt/localssd}"
+          sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "${cache_root}/blobfuse-${suffix}"
+          echo "PERF_ROOT=${cache_root}/blobfuse-${suffix}" >> "$GITHUB_ENV"
+
+      - name: Generate comparison mount config
+        working-directory: benchmark-harness
+        run: |
+          set -euo pipefail
+          mkdir -p "$PERF_ROOT/cache"
+          if [[ "$CACHE_MODE_INPUT" == "block_cache" ]]; then
+            "$RUNNER_TEMP/blobfuse2-baseline" gen-test-config \
+              --config-file=azure_block_benchmark.yaml \
+              --container-name="$BENCH_CONTAINER_INPUT" \
+              --output-file="$PERF_CONFIG"
+          else
+            "$RUNNER_TEMP/blobfuse2-baseline" gen-test-config \
+              --config-file=azure_file_benchmark.yaml \
+              --container-name="$BENCH_CONTAINER_INPUT" \
+              --temp-path="$PERF_ROOT/cache" \
+              --output-file="$PERF_CONFIG"
+          fi
+          if grep -q 'direct-io: true' "$PERF_CONFIG"; then
+            echo "Comparison config must not enable mount-wide direct I/O" >&2
+            exit 1
+          fi
+
+      - name: Run baseline and candidate on the same host
+        working-directory: benchmark-harness
+        run: |
+          set -euo pipefail
+          python3 perf_testing/scripts/run_benchmark.py \
+            --binary "$RUNNER_TEMP/blobfuse2-baseline" \
+            --config "$PERF_CONFIG" \
+            --suite quick \
+            --mount-dir "/mnt/blobfuse-benchmark-${GITHUB_RUN_ID}-fixture-setup" \
+            --cache-dir "$PERF_ROOT/cache-fixture-setup" \
+            --output-dir "$PERF_ROOT/results/fixture-setup" \
+            --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --label fixture-setup \
+            --commit "$BASELINE_SHA" \
+            --ref "$BASELINE_REF_INPUT" \
+            --architecture X86 \
+            --account-type "$ACCOUNT_TYPE_INPUT" \
+            --cache-mode "$CACHE_MODE_INPUT" \
+            --prepare-only
+          if (( GITHUB_RUN_ID % 2 == 0 )); then
+            order=(baseline candidate)
+          else
+            order=(candidate baseline)
+          fi
+          for label in "${order[@]}"; do
+            if [[ "$label" == "baseline" ]]; then
+              binary="$RUNNER_TEMP/blobfuse2-baseline"
+              commit="$BASELINE_SHA"
+              ref="$BASELINE_REF_INPUT"
+            else
+              binary="$RUNNER_TEMP/blobfuse2-candidate"
+              commit="$CANDIDATE_SHA"
+              ref="$TARGET_REF_INPUT"
+            fi
+            python3 perf_testing/scripts/run_benchmark.py \
+              --binary "$binary" \
+              --config "$PERF_CONFIG" \
+              --suite quick \
+              --mount-dir "/mnt/blobfuse-benchmark-${GITHUB_RUN_ID}-${label}" \
+              --cache-dir "$PERF_ROOT/cache-${label}" \
+              --output-dir "$PERF_ROOT/results/${label}" \
+              --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --label "$label" \
+              --commit "$commit" \
+              --ref "$ref" \
+              --architecture X86 \
+              --account-type "$ACCOUNT_TYPE_INPUT" \
+              --cache-mode "$CACHE_MODE_INPUT" \
+              --trials "$TRIALS_INPUT"
+          done
+
+      - name: Generate graphical comparison
+        working-directory: benchmark-harness
+        run: |
+          set -euo pipefail
+          python3 perf_testing/scripts/compare_benchmarks.py \
+            --baseline "$PERF_ROOT/results/baseline/summary.json" \
+            --candidate "$PERF_ROOT/results/candidate/summary.json" \
+            --output-dir "$PERF_ROOT/report" \
+            --primary-threshold "$PRIMARY_THRESHOLD_INPUT" \
+            --latency-threshold "$LATENCY_THRESHOLD_INPUT"
+          cat "$PERF_ROOT/report/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Store complete comparison ZIP privately
+        if: ${{ always() }}
+        env:
+          PERF_RESULTS_ACCOUNT: ${{ secrets.PERF_RESULTS_ACCOUNT }}
+          PERF_RESULTS_KEY: ${{ secrets.PERF_RESULTS_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ ! -x "$RUNNER_TEMP/blobfuse2-baseline" ]]; then
+            echo "::warning::Comparison binary was not built; no private ZIP can be stored"
+            exit 0
+          fi
+          staging="${RUNNER_TEMP}/private-comparison"
+          rm -rf "$staging"
+          mkdir -p "$staging/diagnostics"
+          if [[ -n "${PERF_ROOT:-}" ]]; then
+            for directory in report results; do
+              if [[ -d "$PERF_ROOT/$directory" ]]; then
+                cp -a "$PERF_ROOT/$directory" "$staging/$directory"
+              fi
+            done
+          fi
+          if [[ -f "${PERF_CONFIG:-}" ]]; then
+            sed -E 's/^([[:space:]]*account-key:).*/\1 <redacted>/' \
+              "$PERF_CONFIG" > "$staging/diagnostics/mount-config.redacted.yaml"
+          fi
+          comparison_status="${{ job.status }}"
+          if [[ -f "$staging/report/comparison.json" ]]; then
+            comparison_status="$(jq -r '.overall_status' "$staging/report/comparison.json")"
+          fi
+          candidate_sha="${CANDIDATE_SHA:-$GITHUB_SHA}"
+          short_sha="${candidate_sha:0:12}"
+          bundle_name="blobfuse2-compare-X86-${ACCOUNT_TYPE_INPUT}-${CACHE_MODE_INPUT}-status-${comparison_status}-run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}-sha-${short_sha}.zip"
+          remote_path="benchmark-comparisons/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}/${bundle_name}"
+          cat > "$staging/run-metadata.txt" <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          baseline_ref=${BASELINE_REF_INPUT}
+          baseline_sha=${BASELINE_SHA:-unavailable}
+          candidate_ref=${TARGET_REF_INPUT}
+          candidate_sha=${candidate_sha}
+          account_type=${ACCOUNT_TYPE_INPUT}
+          cache_mode=${CACHE_MODE_INPUT}
+          trials=${TRIALS_INPUT}
+          comparison_status=${comparison_status}
+          created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          blob_path=${remote_path}
+          EOF
+          bundle="${RUNNER_TEMP}/${bundle_name}"
+          (cd "$staging" && zip -q -r "$bundle" .)
+          ./benchmark-harness/perf_testing/scripts/blob_results.sh upload \
+            "$RUNNER_TEMP/blobfuse2-baseline" "$bundle" "$remote_path"
+          echo "Private comparison bundle: results/${remote_path}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply optional regression gate
+        if: ${{ inputs.fail_on_regression }}
+        run: |
+          set -euo pipefail
+          if [[ "$(jq -r '.overall_status' "$PERF_ROOT/report/comparison.json")" == "regression" ]]; then
+            echo "Confirmed performance regression detected" >&2
+            exit 1
+          fi
+
+      - name: Remove generated secrets and mounts
+        if: ${{ always() }}
+        run: |
+          set +e
+          "$RUNNER_TEMP/blobfuse2-baseline" unmount all >/dev/null 2>&1
+          "$RUNNER_TEMP/blobfuse2-candidate" unmount all >/dev/null 2>&1
+          rm -f "${PERF_CONFIG:-}"
