@@ -273,9 +273,9 @@ func TestBlockListStateString(t *testing.T) {
 
 func TestValidateBlockIndex(t *testing.T) {
 	assert.Error(t, validateBlockIndex(-1))
-	assert.Error(t, validateBlockIndex(MAX_BLOCKS+1))
+	assert.Error(t, validateBlockIndex(maxBlocks+1))
 	assert.NoError(t, validateBlockIndex(0))
-	assert.NoError(t, validateBlockIndex(MAX_BLOCKS))
+	assert.NoError(t, validateBlockIndex(maxBlocks))
 }
 
 func TestGetUploadSize(t *testing.T) {
