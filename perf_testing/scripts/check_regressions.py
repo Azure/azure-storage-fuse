@@ -11,9 +11,18 @@ from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 COMPARATOR_PATH = SCRIPT_DIR / "compare_benchmarks.py"
-SPEC = importlib.util.spec_from_file_location("benchmark_comparator", COMPARATOR_PATH)
-comparator = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(comparator)
+
+
+def load_comparator(path: Path) -> Any:
+    spec = importlib.util.spec_from_file_location("benchmark_comparator", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load benchmark comparator from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+comparator = load_comparator(COMPARATOR_PATH)
 
 
 def load_json(path: Path) -> dict[str, Any]:
