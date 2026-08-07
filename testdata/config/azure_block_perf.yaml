@@ -22,7 +22,6 @@ block_cache:
   prefetch: 100
   parallelism: 128
   disk-timeout-sec: 200
-  prefetch-on-open: true
 
 attr_cache:
   timeout-sec: 7200

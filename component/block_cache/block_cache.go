@@ -176,8 +176,9 @@ type BlockCache struct {
 	diskTimeout uint32 // Timeout for disk-cached blocks (in seconds)
 
 	// Worker pool configuration
-	workers  uint32 // Number of worker threads for async download/upload operations
-	prefetch uint32 // Number of blocks to prefetch for sequential reads
+	workers        uint32 // Number of worker threads for async download/upload operations
+	prefetch       uint32 // Number of blocks to prefetch for sequential reads
+	writebackLimit int    // Maximum asynchronous full-block uploads per file
 
 	// File and block management
 	openFiles   sync.Map     // Path to shared file state for this cache instance
@@ -185,9 +186,7 @@ type BlockCache struct {
 
 	// Performance and behavior flags
 	noPrefetch             bool // If true, disables read-ahead prefetching
-	prefetchOnOpen         bool // If true, start prefetching immediately on file open
 	consistency            bool // If true, ensures strong consistency with storage
-	lazyWrite              bool // If true, enables lazy write mode (write buffering)
 	deferEmptyBlobCreation bool // If true, defers creation of empty files until data is written
 
 	// Synchronization
@@ -227,10 +226,6 @@ type BlockCacheOptions struct {
 	// Default: three times the number of CPUs, capped by the number of buffers.
 	Workers uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
 
-	// PrefetchOnOpen enables immediate prefetching when a file is opened.
-	// If false, prefetching starts after the first read operation.
-	PrefetchOnOpen bool `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
-
 	// Consistency enables strong data consistency mode.
 	// When true, ensures reads always reflect the latest data from storage.
 	Consistency bool `config:"consistency" yaml:"consistency,omitempty"`
@@ -249,8 +244,8 @@ const (
 	compName              = "block_cache" // Component name used in configuration and logs
 	defaultTimeout        = 120           // Default disk cache timeout in seconds
 	defaultBlockSize      = 16            // Default block size in megabytes
-	MIN_PREFETCH          = 5             // Minimum number of blocks for prefetch
-	MAX_BLOCKS            = 50000         // Maximum number of blocks per file (limits file size)
+	minPrefetch           = 5             // Minimum number of blocks for prefetch
+	maxBlocks             = 50000         // Maximum number of blocks per file (limits file size)
 	defaultMemoryPercent  = 50            // Available memory used when mem-size-mb is omitted
 	maxFileWritebackTasks = 4             // Maximum asynchronous full-block uploads per file
 )
@@ -297,6 +292,9 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	if bc.workers == 0 || uint64(bc.workers) >= bufferCount {
 		return fmt.Errorf("failed to start %s [invalid parallelism %d for %d buffers]", bc.Name(), bc.workers, bufferCount)
 	}
+	if bc.writebackLimit <= 0 {
+		return fmt.Errorf("failed to start %s [invalid writeback limit %d]", bc.Name(), bc.writebackLimit)
+	}
 	queueSize := min(uint64(bc.workers)*2, bufferCount-uint64(bc.workers)-1)
 
 	var err error
@@ -312,13 +310,6 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	bc.btm = newBufferTableMgr()
 
 	return nil
-}
-
-func (bc *BlockCache) writebackLimit() int {
-	bufferCount := bc.memSize / bc.blockSize
-	workerLimit := (uint64(bc.workers) + 3) / 4
-	poolLimit := bufferCount / 8
-	return int(max(uint64(1), min(uint64(maxFileWritebackTasks), workerLimit, poolLimit)))
 }
 
 // Stop shuts down the BlockCache component and releases all resources.
@@ -410,7 +401,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	bc.maxFileSize = bc.blockSize * MAX_BLOCKS
+	bc.maxFileSize = bc.blockSize * maxBlocks
 
 	memSizeConfigured := config.IsSet(compName+".mem-size-mb") && conf.MemSize != 0
 	if memSizeConfigured {
@@ -441,12 +432,11 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	bc.consistency = conf.Consistency
 
-	bc.prefetchOnOpen = conf.PrefetchOnOpen
 	prefetchConfigured := config.IsSet(compName + ".prefetch")
 	if prefetchConfigured {
 		bc.prefetch = conf.PrefetchCount
 	} else {
-		bc.prefetch = uint32(max((MIN_PREFETCH*2)+1, runtime.NumCPU()))
+		bc.prefetch = uint32(max((minPrefetch*2)+1, runtime.NumCPU()))
 	}
 	maxPrefetch := bufferCount / 2
 	if uint64(bc.prefetch) > maxPrefetch {
@@ -457,12 +447,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.prefetch = uint32(maxPrefetch)
 	}
 	bc.noPrefetch = bc.prefetch == 0
-
-	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
-	if err != nil {
-		log.Err("BlockCache::Configure : config error [unable to obtain lazy-write]")
-		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
-	}
 
 	workersConfigured := config.IsSet(compName + ".parallelism")
 	if workersConfigured {
@@ -481,6 +465,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 		bc.workers = uint32(maxWorkers)
 	}
+	workerWritebackLimit := (uint64(bc.workers) + 3) / 4
+	poolWritebackLimit := bufferCount / 8
+	bc.writebackLimit = int(max(uint64(1), min(uint64(maxFileWritebackTasks), workerWritebackLimit, poolWritebackLimit)))
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
 
@@ -527,8 +514,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 	// }
 	// }
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, buffers %v, workers %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
-		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, buffers %v, workers %v, writeback limit %v, prefetch %v, disk path %v, max size %v, disk timeout %v, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
+		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.writebackLimit, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
 
 	return nil
 }
@@ -1191,7 +1178,6 @@ func NewBlockCacheComponent() internal.Component {
 //   - --block-cache-disk-timeout: Disk cache timeout in seconds (future feature)
 //   - --block-cache-prefetch: Number of blocks to prefetch
 //   - --block-cache-parallelism: Number of worker threads
-//   - --block-cache-prefetch-on-open: Enable prefetch on file open
 //   - --block-cache-strong-consistency: Enable strong consistency mode
 //   - --block-cache-defer-empty-file-creation: Defer empty file creation to close
 //
@@ -1219,9 +1205,6 @@ func init() {
 
 	blockParallelism := config.AddUint32Flag("block-cache-parallelism", 0, "Number of worker threads responsible for upload/download jobs. Default: auto-tuned to the buffer pool.")
 	config.BindPFlag(compName+".parallelism", blockParallelism)
-
-	blockCachePrefetchOnOpen := config.AddBoolFlag("block-cache-prefetch-on-open", false, "Start prefetching on open or wait for first read.")
-	config.BindPFlag(compName+".prefetch-on-open", blockCachePrefetchOnOpen)
 
 	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
 	config.BindPFlag(compName+".consistency", strongConsistency)
