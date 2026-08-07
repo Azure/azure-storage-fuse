@@ -30,13 +30,11 @@ However the **Helm chart itself** (`~/vienna-tachyon/helm/cache-server/values.ya
 
 The adapter surface we own for this divergence is ~40 lines across `setup-kind.sh` and one line in `deploy-tachyon.sh`. This is a smaller ongoing tax than pulling in the full minikube toolchain on every agent and living with its startup races.
 
-### 2. Topology: cluster in kind, blobfuse2 mount on the pipeline host
+### 2. Topology: cluster and blobfuse2 mount in kind
 
 - Cache pods run inside a kind cluster on the existing `blobfuse-ubuntu-pool` VM agent. Kind node containers run under the agent's Docker daemon; no extra VM.
-- blobfuse2 mounts on the **host**, not in a pod. This lets the existing `test/e2e_tests` Go suite run unchanged via the existing [azure-pipeline-templates/e2e-tests.yml](../../../azure-pipeline-templates/e2e-tests.yml).
-- Reachability from host → cache pods: one `kubectl port-forward pod/<name> <local>:9065` per cacheserver replica, mapped to ports `9065`, `9066`, `9067`. This yields a static `server-list: "localhost:9065,localhost:9066,localhost:9067"` — the exact pattern already used by [testdata/config/azure_key_dist_cache_block.yaml](../../../testdata/config/azure_key_dist_cache_block.yaml).
-- Per-pod forwarding (not a single `svc` port-forward) is intentional so the client-side consistent-hash ring is genuinely exercised.
-- kind exposes the API server on `127.0.0.1:<random>`; `kubectl port-forward` works identically to the minikube-docker-driver case, so no host-networking gymnastics are needed.
+- blobfuse2 runs in a Kubernetes pod with a read-only FUSE mount and discovers cache servers through the in-cluster discovery service.
+- The nightly stage runs only `test/dcache_e2e`, whose tests clone and control isolated blobfuse2 Deployments through `kubectl`.
 
 ### 3. Dry-run first
 
@@ -62,12 +60,10 @@ Scripts fail fast with a clear error if any of the TBDs are empty. Consuming the
 ## Scope
 
 **In this PR**
-- TEST_PLAN §4.1 (items 115–119) — `block_cache + dist_cache + azstorage` mount, existing E2E suite
-- TEST_PLAN §4.2 (items 120–124) — `file_cache + dist_cache + azstorage` mount, existing E2E suite
+- TEST_PLAN §5 — pod-focused read-path, concurrency, warm-cache, and node-failure scenarios
 - Closes TEST_PLAN §7 item 149
 
 **Out of scope (follow-ups)**
-- TEST_PLAN §5 (E2E-1 … E2E-27) — needs a new `test/dcache_e2e/` Go package for cross-node / fault-injection scenarios
 - TEST_PLAN §6 (perf benchmarks) — belongs in `blobfuse2-perf.yaml`, needs real hardware for meaningful numbers
 - TEST_PLAN §7 item 150 (perf regression) — depends on §6
 - TEST_PLAN §7 item 151 ARM64 for dist_cache E2E — additive matrix row later
@@ -81,13 +77,11 @@ Files created under this branch (`nearora/e2eTests`):
 | [test/scripts/dcache/config/nightly.config](config/nightly.config) | Shared bash config (kind and Kubernetes versions, cluster size, image coords, ports, replica count) |
 | [test/scripts/dcache/install-prereqs.sh](install-prereqs.sh) | Idempotent installer for docker-ce / configured kind version / kubectl / helm |
 | [test/scripts/dcache/setup-kind.sh](setup-kind.sh) | Create a 4-node kind cluster (config generated in-place from `KIND_NODES`), label worker nodes, prepare `/var/lib/ssd/cacheserver` on each node via `docker exec` |
-| [test/scripts/dcache/deploy-tachyon.sh](deploy-tachyon.sh) | `docker pull` + `kind load docker-image` + `helm install` of `cache-server-prereq` then `cache-server` from `oci://<CACHE_SERVER_CHART_REGISTRY>/...` |
-| [test/scripts/dcache/expose-cacheserver.sh](expose-cacheserver.sh) | Per-pod `kubectl port-forward` on 9065/9066/9067; writes server list + PID file |
-| [test/scripts/dcache/teardown-kind.sh](teardown-kind.sh) | Best-effort cleanup (kill port-forwards, `helm uninstall`, `kind delete cluster`) |
+| [test/scripts/dcache/deploy-tachyon.sh](deploy-tachyon.sh) | `docker pull` + direct containerd image import + `helm install` of `cache-server-prereq` then `cache-server` from `oci://<CACHE_SERVER_CHART_REGISTRY>/...` |
+| [test/scripts/dcache/deploy-blobfuse2.sh](deploy-blobfuse2.sh) | Render and deploy the in-cluster blobfuse2 pod used by `test/dcache_e2e` |
+| [test/scripts/dcache/teardown-kind.sh](teardown-kind.sh) | Best-effort kind cluster deletion |
 | [test/scripts/dcache/README.md](README.md) | Local run instructions for operators |
-| [testdata/config/azure_key_dist_cache_block_e2e.yaml](../../../testdata/config/azure_key_dist_cache_block_e2e.yaml) | `gen-test-config` template for `block_cache + dist_cache` |
-| [testdata/config/azure_key_dist_cache_file_e2e.yaml](../../../testdata/config/azure_key_dist_cache_file_e2e.yaml) | `gen-test-config` template for `file_cache + dist_cache` |
-| [azure-pipeline-templates/dist-cache-e2e.yml](../../../azure-pipeline-templates/dist-cache-e2e.yml) | ADO template: prereqs → cluster → deploy → expose → generate config → delegate to `e2e-tests.yml` → teardown (always) |
+| [azure-pipeline-templates/dist-cache-e2e.yml](../../../azure-pipeline-templates/dist-cache-e2e.yml) | ADO template: prereqs → cluster → deploy Tachyon and blobfuse2 → run `test/dcache_e2e` → teardown (always) |
 
 Files modified:
 
@@ -101,12 +95,10 @@ Files modified:
 flowchart TD
     A[build.yml: build blobfuse2 binary] --> C[install-prereqs.sh]
     C --> D[setup-kind.sh<br/>kind create cluster --config=&lt;generated&gt;]
-    D --> E[deploy-tachyon.sh<br/>docker pull + kind load docker-image<br/>+ helm install cache-server-prereq<br/>+ helm install cache-server]
-    E --> F[expose-cacheserver.sh<br/>port-forward pods → :9065-9067]
-    F --> G[gen-test-config with DCACHE_SERVERS env]
-    G --> H[e2e-tests.yml: mount + run test/e2e_tests<br/>block_cache + dist_cache config]
-    H --> I[e2e-tests.yml: mount + run test/e2e_tests<br/>file_cache + dist_cache config]
-    I --> J[cleanup.yml + teardown-kind.sh<br/>always]
+    D --> E[deploy-tachyon.sh<br/>docker pull + containerd import<br/>+ helm install cache-server-prereq<br/>+ helm install cache-server]
+    E --> J[deploy-blobfuse2.sh<br/>in-cluster read-only mount]
+    J --> K[go test ./test/dcache_e2e/...]
+    K --> L[cleanup.yml + teardown-kind.sh<br/>always]
 ```
 
 ## Prerequisites Before First Manual Run

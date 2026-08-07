@@ -56,7 +56,6 @@ var testCfg struct {
 	// Coordinates of the pre-existing blobfuse2 Deployment.
 	podNamespace  string
 	podDeployment string
-	podSelector   string
 	podMountPath  string
 	kubectlBin    string
 	dockerBin     string
@@ -93,10 +92,6 @@ func registerFlags() {
 	if flag.Lookup("pod-deployment") == nil {
 		flag.StringVar(&testCfg.podDeployment, "pod-deployment", "blobfuse2-dist-cache",
 			"pod driver: name of the Deployment the test should cycle between reads")
-	}
-	if flag.Lookup("pod-selector") == nil {
-		flag.StringVar(&testCfg.podSelector, "pod-selector", "app=blobfuse2-dist-cache",
-			"pod driver: label selector used to resolve the current Ready pod after each rollout")
 	}
 	if flag.Lookup("pod-mount-path") == nil {
 		flag.StringVar(&testCfg.podMountPath, "pod-mount-path", "/mnt/blobfuse_mnt",
@@ -136,6 +131,25 @@ func envDefault(v, k string) string {
 	return os.Getenv(k)
 }
 
+func ensurePodMountArgs() error {
+	if testCfg.podNamespace == "" {
+		return fmt.Errorf("pod driver requires -pod-namespace")
+	}
+	if testCfg.podDeployment == "" {
+		return fmt.Errorf("pod driver requires -pod-deployment")
+	}
+	if testCfg.podMountPath == "" {
+		return fmt.Errorf("pod driver requires -pod-mount-path")
+	}
+	if testCfg.kubectlBin == "" {
+		return fmt.Errorf("pod driver requires -kubectl-bin")
+	}
+	if testCfg.dockerBin == "" {
+		return fmt.Errorf("kind fault injection requires -docker-bin")
+	}
+	return nil
+}
+
 // resolveCfg applies environment fallbacks.
 func resolveCfg() error {
 	testCfg.storageAccount = envDefault(testCfg.storageAccount, "STO_ACC_NAME")
@@ -163,7 +177,6 @@ func TestMain(m *testing.M) {
 	fmt.Printf("dist_cache E2E config:\n"+
 		"  pod-namespace           = %s\n"+
 		"  pod-deployment          = %s\n"+
-		"  pod-selector            = %s\n"+
 		"  pod-mount-path          = %s\n"+
 		"  docker-bin              = %s\n"+
 		"  cacheserver-namespace   = %s\n"+
@@ -172,7 +185,7 @@ func TestMain(m *testing.M) {
 		"  storage-account         = %s\n"+
 		"  storage-endpoint        = %s\n"+
 		"  storage-container       = %s\n",
-		testCfg.podNamespace, testCfg.podDeployment, testCfg.podSelector, testCfg.podMountPath,
+		testCfg.podNamespace, testCfg.podDeployment, testCfg.podMountPath,
 		testCfg.dockerBin,
 		testCfg.cacheserverNamespace, testCfg.cacheserverSelector, testCfg.cacheserverMetricsPort,
 		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer)

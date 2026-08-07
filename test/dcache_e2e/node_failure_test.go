@@ -63,8 +63,6 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	t.Cleanup(func() { deleteBlob(t, blobPath) })
 
 	m := newTestPodMounter(t)
-	m.Mount(t)
-	t.Cleanup(func() { m.Unmount(t) })
 
 	beforePopulate, haveMetrics := scrapeCacheServerMetrics(t)
 	if !haveMetrics {

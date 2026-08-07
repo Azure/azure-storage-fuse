@@ -82,6 +82,7 @@ func newTestPodMounter(t *testing.T) *podMounter {
 	cloneReferenceDeployment(t, testCfg.podDeployment, name)
 	t.Cleanup(func() { m.deleteDeployment(t) })
 	m.WaitDeploymentReady(t)
+	m.assertMountReadOnly(t)
 	return m
 }
 
@@ -196,8 +197,6 @@ func (m *podMounter) deleteDeployment(t *testing.T) {
 	t.Logf("cleanup: delete deployment %s: %s", m.deployment, strings.TrimSpace(string(out)))
 }
 
-func (*podMounter) Kind() string { return "pod" }
-
 // resolvePod returns a live (non-terminating) Running pod. During a rollout,
 // both new and old pods can report status.phase=Running, so the terminating
 // filter is essential — reading from the old pod would serve stale block_cache.
@@ -214,11 +213,34 @@ func (m *podMounter) resolvePod(t *testing.T) string {
 	return pods[0]
 }
 
-// Mount is a no-op; newTestPodMounter already provisioned a fresh Deployment.
-func (m *podMounter) Mount(t *testing.T) {}
-
-// Unmount is a no-op because t.Cleanup deletes the per-test Deployment.
-func (m *podMounter) Unmount(t *testing.T) {}
+func (m *podMounter) assertMountReadOnly(t *testing.T) {
+	t.Helper()
+	pod := m.resolvePod(t)
+	out, err := exec.Command(testCfg.kubectlBin,
+		"-n", m.namespace,
+		"exec", pod,
+		"--", "cat", "/proc/mounts",
+	).CombinedOutput()
+	if err != nil {
+		t.Fatalf("pod: inspect mount options on %s: %v (out: %s)",
+			pod, err, strings.TrimSpace(string(out)))
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[1] != m.mountPath {
+			continue
+		}
+		for _, option := range strings.Split(fields[3], ",") {
+			if option == "ro" {
+				t.Logf("pod: verified read-only mount %s on %s", m.mountPath, pod)
+				return
+			}
+		}
+		t.Fatalf("pod: mount %s on %s is not read-only (options: %s)",
+			m.mountPath, pod, fields[3])
+	}
+	t.Fatalf("pod: mount %s not found in /proc/mounts on %s", m.mountPath, pod)
+}
 
 // Remount restarts the pod, clearing local caches and open FUSE handles.
 func (m *podMounter) Remount(t *testing.T) {
@@ -379,27 +401,8 @@ func (m *podMounter) readFileFromPodE(pod, blobPath string) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
-// CurrentReplicas returns the Deployment's .spec.replicas.
-func (m *podMounter) CurrentReplicas(t *testing.T) int {
-	t.Helper()
-	out, err := exec.Command(testCfg.kubectlBin,
-		"-n", m.namespace,
-		"get", "deployment", m.deployment,
-		"-o", "jsonpath={.spec.replicas}",
-	).CombinedOutput()
-	if err != nil {
-		t.Fatalf("pod: get replicas: %v (out: %s)", err, strings.TrimSpace(string(out)))
-	}
-	s := strings.TrimSpace(string(out))
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		t.Fatalf("pod: parse replicas %q: %v", s, err)
-	}
-	return n
-}
-
-// ScaleTo sets the Deployment's replica count; readiness is caller's problem.
-func (m *podMounter) ScaleTo(t *testing.T, replicas int) {
+// ScaleWaitTo scales the Deployment and blocks until it is ready.
+func (m *podMounter) ScaleWaitTo(t *testing.T, replicas int) {
 	t.Helper()
 	t.Logf("pod: scale deployment/%s to %d replicas", m.deployment, replicas)
 	out, err := exec.Command(testCfg.kubectlBin,
@@ -411,12 +414,6 @@ func (m *podMounter) ScaleTo(t *testing.T, replicas int) {
 		t.Fatalf("pod: kubectl scale to %d: %v (out: %s)",
 			replicas, err, strings.TrimSpace(string(out)))
 	}
-}
-
-// ScaleWaitTo scales the Deployment and blocks until it is ready.
-func (m *podMounter) ScaleWaitTo(t *testing.T, replicas int) {
-	t.Helper()
-	m.ScaleTo(t, replicas)
 	m.WaitDeploymentReady(t)
 }
 
