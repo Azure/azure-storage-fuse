@@ -577,7 +577,7 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 
 		uploadQueued := false
 		if fullyCovered {
-			f.writeback.acquire(bc.writebackLimit())
+			f.writeback.acquire(bc.writebackLimit)
 			if e := f.err.Load(); e != nil {
 				f.writeback.release()
 				contentLease.release()
