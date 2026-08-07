@@ -122,6 +122,16 @@ func (b bufDescStatus) String() string {
 func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, workerPool *workerPool, blk *block, access bufferAccessKind) (*bufferDescriptor, bufDescStatus, error) {
 	stime := time.Now()
 	sync := access.synchronous()
+	var prefetch *prefetchPermit
+	if access == accessPrefetch {
+		prefetch = workerPool.tryAcquirePrefetch()
+		if prefetch == nil {
+			return nil, bufDescStatusInvalid, errBuffersExhausted
+		}
+		defer func() {
+			prefetch.release()
+		}()
+	}
 
 	log.Debug("bufferTableMgr::getOrCreateBufferDescriptor: Requesting buffer for blockIdx: %d, sync: %v, file: %s",
 		blk.idx, sync, blk.file.Name)
@@ -220,10 +230,13 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 
 	// This is where we should download the blockdata into the buffer, check the blocks flag status.
 	if doRead {
-		if err := blk.scheduleDownload(workerPool, bufDesc, contentLease, sync); err != nil {
+		if err := blk.scheduleDownload(workerPool, bufDesc, contentLease, sync, prefetch); err != nil {
 			btm.detachBufferDescriptor(bufDesc, freeList)
 			bufDesc.release(freeList)
 			return nil, bufDescStatusInvalid, err
+		}
+		if prefetch != nil {
+			prefetch = nil
 		}
 
 		if sync {
@@ -263,16 +276,15 @@ func (btm *bufferTableMgr) acquireBuffer(freeList *freeListType, workerPool *wor
 		if !errors.Is(err, errFreeListFull) {
 			return nil, bufDescStatusInvalid, err
 		}
-		if access == accessPrefetch {
-			return nil, bufDescStatusInvalid, errBuffersExhausted
-		}
-
-		bufDesc, err = freeList.evictBuffer(workerPool, btm)
+		bufDesc, err = freeList.evictBuffer(workerPool, btm, access)
 		if err == nil {
 			return bufDesc, bufDescStatusVictim, nil
 		}
 		if !errors.Is(err, errNoVictimBufferFound) {
 			return nil, bufDescStatusInvalid, err
+		}
+		if access == accessPrefetch {
+			return nil, bufDescStatusInvalid, errBuffersExhausted
 		}
 
 		log.Debug("bufferTableMgr::acquireBuffer: All buffers remain pinned for blockIdx: %d, waiting for availability, file: %s",
