@@ -4,8 +4,8 @@
 # cache-server helm chart (pulled directly from an OCI-enabled ACR), deploys
 # blobfuse2 in-cluster, and runs the dedicated dcache_e2e Go suite.
 #
-# Teardown runs unconditionally and publishes cacheserver logs as an artifact
-# so failures are debuggable.
+# Teardown runs unconditionally and publishes cache-server and per-test
+# blobfuse2 logs as an artifact so failures are debuggable.
 
 parameters:
   # Identifier for this cluster invocation. Used to name cluster-log
@@ -85,9 +85,11 @@ steps:
     displayName: 'DistCache: dcache_e2e Go tests'
     timeoutInMinutes: 60
     continueOnError: false
+    env:
+      DCACHE_LOG_DIR: '$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}'
 
   # -------------------------------------------------------------------------
-  # 6. Collect cacheserver logs before tearing down, then teardown always.
+  # 6. Collect surviving pod logs before tearing down, then teardown always.
   - script: |
       set +e
       NAMESPACE="${NAMESPACE:-cache-server}"
@@ -98,12 +100,19 @@ steps:
       for pod in $(kubectl get pods -n "$NAMESPACE" -l app=cacheserver -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
         kubectl logs -n "$NAMESPACE" "$pod" --all-containers --prefix > "$out_dir/${pod}.log" 2>&1 || true
       done
-      ls -l "$out_dir" || true
-    displayName: 'DistCache [${{ parameters.run_idstring }}]: Collect cacheserver logs'
+      blobfuse_dir="$out_dir/blobfuse2/surviving-pods"
+      mkdir -p "$blobfuse_dir"
+      for pod in $(kubectl get pods -n blobfuse2-dist-cache -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        kubectl exec -n blobfuse2-dist-cache "$pod" -- \
+          cat /var/log/blobfuse2/blobfuse2-block-logs.txt \
+          > "$blobfuse_dir/${pod}.log" 2>&1 || true
+      done
+      find "$out_dir" -maxdepth 4 -type f -print || true
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Collect distributed cache logs'
     condition: always()
 
   - task: PublishBuildArtifacts@1
-    displayName: 'DistCache [${{ parameters.run_idstring }}]: Publish cacheserver logs'
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Publish distributed cache logs'
     condition: always()
     inputs:
       pathToPublish: '$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}'

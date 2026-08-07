@@ -40,8 +40,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -52,11 +54,14 @@ import (
 // mount clones the reference Deployment via newTestPodMounter(t), giving
 // concurrent tests fully isolated pod fleets.
 type podMounter struct {
-	namespace  string
-	deployment string
-	selector   string
-	mountPath  string
+	namespace   string
+	deployment  string
+	selector    string
+	mountPath   string
+	logSequence int
 }
+
+const blobfuseDiagnosticLogPath = "/var/log/blobfuse2/blobfuse2-block-logs.txt"
 
 // podRolloutTimeout includes the deployment's probe delay.
 const podRolloutTimeout = 120 * time.Second
@@ -80,10 +85,54 @@ func newTestPodMounter(t *testing.T) *podMounter {
 		mountPath:  testCfg.podMountPath,
 	}
 	cloneReferenceDeployment(t, testCfg.podDeployment, name)
-	t.Cleanup(func() { m.deleteDeployment(t) })
+	t.Cleanup(func() {
+		m.collectBlobfuseLogs(t, "cleanup")
+		m.deleteDeployment(t)
+	})
 	m.WaitDeploymentReady(t)
 	m.assertMountReadOnly(t)
 	return m
+}
+
+// collectBlobfuseLogs copies each live pod's file log to the pipeline artifact
+// staging directory. Collection is best-effort and disabled outside CI unless
+// DCACHE_LOG_DIR is set explicitly.
+func (m *podMounter) collectBlobfuseLogs(t *testing.T, phase string) {
+	t.Helper()
+	logRoot := os.Getenv("DCACHE_LOG_DIR")
+	if logRoot == "" {
+		return
+	}
+
+	pods, err := m.listLivePodsE()
+	if err != nil {
+		t.Logf("logs: list blobfuse2 pods before %s: %v", phase, err)
+		return
+	}
+
+	m.logSequence++
+	outDir := filepath.Join(logRoot, "blobfuse2", m.deployment)
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		t.Logf("logs: create artifact directory %s: %v", outDir, err)
+		return
+	}
+
+	for _, pod := range pods {
+		out, err := exec.Command(testCfg.kubectlBin,
+			"-n", m.namespace,
+			"exec", pod,
+			"--", "cat", blobfuseDiagnosticLogPath,
+		).CombinedOutput()
+		fileName := fmt.Sprintf("%02d-%s-%s.log", m.logSequence, phase, pod)
+		filePath := filepath.Join(outDir, fileName)
+		if err != nil {
+			filePath += ".error"
+			t.Logf("logs: collect blobfuse2 log from %s before %s: %v", pod, phase, err)
+		}
+		if writeErr := os.WriteFile(filePath, out, 0644); writeErr != nil {
+			t.Logf("logs: write %s: %v", filePath, writeErr)
+		}
+	}
 }
 
 // uniqueDeploymentName returns a DNS-1123 label derived from t.Name plus a
@@ -245,6 +294,7 @@ func (m *podMounter) assertMountReadOnly(t *testing.T) {
 // Remount restarts the pod, clearing local caches and open FUSE handles.
 func (m *podMounter) Remount(t *testing.T) {
 	t.Helper()
+	m.collectBlobfuseLogs(t, "before-remount")
 
 	t.Logf("pod: rollout restart deployment/%s in namespace %s",
 		m.deployment, m.namespace)
@@ -404,6 +454,9 @@ func (m *podMounter) readFileFromPodE(pod, blobPath string) ([]byte, error) {
 // ScaleWaitTo scales the Deployment and blocks until it is ready.
 func (m *podMounter) ScaleWaitTo(t *testing.T, replicas int) {
 	t.Helper()
+	if pods, err := m.listLivePodsE(); err == nil && replicas < len(pods) {
+		m.collectBlobfuseLogs(t, "before-scale-down")
+	}
 	t.Logf("pod: scale deployment/%s to %d replicas", m.deployment, replicas)
 	out, err := exec.Command(testCfg.kubectlBin,
 		"-n", m.namespace,
