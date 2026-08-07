@@ -115,7 +115,22 @@ attr_cache:
   timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
   no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
   max-size-mb: <maximum memory the attribute cache may use (in MB). Default - auto-tuned to 1% of total RAM, clamped to [64 MB, 1 GB]. Omit or set to 0 to use the auto-tuned value; set to a value >0 to override. Increase for workloads with large directory trees or many distinct file paths to avoid frequent cache misses.>
-  
+
+# Distributed cache advanced configuration
+# See setup/baseConfig.yaml for the base dist_cache options (e.g. discovery-endpoint).
+dist_cache:
+  k8s-service: <Kubernetes headless service name for DNS-based discovery>
+  k8s-namespace: <Kubernetes namespace where the cache service runs>
+  port: <cache server port used when Kubernetes DNS falls back from SRV to A records and for discovery responses that omit a port. SRV records provide their own port. Default - 9065. The discovery-endpoint and each server-list entry must include their own port>
+  # OR
+  server-list: <comma-separated list of cache server addresses, e.g., "host1:9065,host2:9065,host3:9065">
+  ttl-seconds: <TTL for cached data in seconds. Default - 0 (no expiry)>
+  verify-checksum: <true|false, per-chunk CRC32 verification on the L2 client. On mismatch: with bypass-on-error=true (default) fall through to azstorage, otherwise return EIO. Default - true>
+  block-size-mb: <size of each chunk to be read from cache). Default - 16 MB>
+  mem-size-mb: <total amount of memory to be preallocated for distributed cache (in MB). Default - 60% of free memory>
+  prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>
+  parallelism: <number of parallel threads downloading the data and writing to cache. Default - 3 times number of CPU cores>
+
 # Loopback configuration
 loopbackfs:
   path: <path to local directory>

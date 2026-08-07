@@ -1,0 +1,66 @@
+# Refer ./setup/baseConfig.yaml for full set of config parameters
+#
+# This sample shows dist_cache (distributed cache) configuration.
+# The distributed cache provides a shared L2 cache between a local in-memory
+# L1 (block_cache) and Azure Blob Storage (L3), reducing Azure egress and
+# read latency for multi-node workloads.
+#
+# block_cache is added to the pipeline automatically as the L1 layer;
+# users only configure dist_cache. Do not add block_cache to components:
+# or a block_cache: section — mount will fail with a mutual-exclusion error.
+#
+# PREREQUISITE: A running Tachyon cache server cluster is required.
+# See https://github.com/Azure/Tachyon for installation instructions.
+
+logging:
+  type: syslog
+  level: log_warning
+
+components:
+  - libfuse
+  - dist_cache
+  - attr_cache
+  - azstorage
+
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 120
+  negative-entry-expiration-sec: 240
+
+# Distributed cache configuration
+# At least one discovery method must be configured: discovery-endpoint, k8s-service, or server-list.
+dist_cache:
+  # Option 1: Discovery endpoint (recommended for production)
+  discovery-endpoint: "cacheserver-discovery.my-namespace.svc.cluster.local:9065"
+
+  # Option 2: Kubernetes DNS discovery
+  # k8s-service: cacheserver
+  # k8s-namespace: my-namespace
+  # port: 9065
+
+  # Option 3: Static server list (comma-separated host:port)
+  # server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
+
+  # Optional: L1 tuning (applied to the auto-inserted block_cache component)
+  # block-size-mb: 32
+  # mem-size-mb: 4096
+  # prefetch: 32
+  # parallelism: 128
+
+  # Optional: TTL for cached data in seconds (0 = no expiry)
+  # ttl-seconds: 86400
+
+  # Optional: per-chunk CRC32 verification on the L2 client. Default true.
+  # On mismatch, bypass-on-error=true (default) falls through to azstorage;
+  # otherwise EIO is returned to the caller.
+  # verify-checksum: true
+
+attr_cache:
+  timeout-sec: 120
+
+azstorage:
+  type: block
+  account-name: <ACCOUNT_NAME>
+  account-key: <ACCOUNT_KEY>
+  mode: key
+  container: <CONTAINER_NAME>
