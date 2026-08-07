@@ -31,17 +31,61 @@
    SOFTWARE
 */
 
-package cmd
+package block_cache
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache_old"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+func (fl *freeListType) debugListMustBeFull() {
+	fl.mutex.Lock()
+	defer fl.mutex.Unlock()
+
+	count := 0
+	for next := fl.firstFreeBuffer; next != -1; next = fl.bufDescriptors[next].nxtFreeBuffer {
+		count++
+	}
+	if count != len(fl.bufDescriptors) {
+		panic(fmt.Sprintf("free list contains %d buffers, expected %d", count, len(fl.bufDescriptors)))
+	}
+}
+
+var bc *BlockCache
+var freeList *freeListType
+var btm *bufferTableMgr
+
+func setupTestFreeList(t *testing.T, bufSize uint64, memSize uint64) {
+	t.Helper()
+	var err error
+	freeList, err = createFreeList(bufSize, memSize)
+	assert.NoError(t, err)
+
+	if bc != nil {
+		if bc.writebackLimit == 0 {
+			bc.writebackLimit = 1
+		}
+		if bc.prefetchTaskLimit == 0 {
+			bc.prefetchTaskLimit = 1
+		}
+		bc.freeList = freeList
+		bc.workerPool = createWorkerPool(4, 8, bc) // Example worker pool size
+	}
+}
+
+func destroyFreeList() {
+	if bc != nil && bc.workerPool != nil {
+		bc.workerPool.destroy()
+		bc.workerPool = nil
+	}
+
+	if freeList != nil {
+		freeList.destroy()
+		freeList = nil
+	}
+	if bc != nil {
+		bc.freeList = nil
+	}
+}
