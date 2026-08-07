@@ -339,24 +339,29 @@ func (fl *freeListType) watchAvailability() (<-chan struct{}, error) {
 // it's uploaded synchronously before being evicted. This ensures no
 // data loss but may block the allocation request.
 //
-// If every descriptor remains pinned for the bounded scan, this method returns
-// errNoVictimBufferFound. Prefetch allocation never enters the eviction path.
+// Foreground allocation may make multiple passes and upload dirty victims.
+// Prefetch makes one pass, evicts only clean buffers already at usageCount zero,
+// and returns errNoVictimBufferFound instead of waiting or performing writeback.
 //
 // Thread Safety:
 //
 // This method can be called concurrently by multiple allocators.
 // Candidate pinning and final detachment are validated under btm.mu. The
 // returned descriptor is no longer visible through either table or free list.
-func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr) (*bufferDescriptor, error) {
+func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr, access bufferAccessKind) (*bufferDescriptor, error) {
 	log.Debug("freeList::evictBuffer: Starting to look for victim buffer")
 
 	maxBuffers := len(fl.bufDescriptors)
+	maxTries := maxBuffers * int(maxSweepPasses)
+	if access == accessPrefetch {
+		maxTries = maxBuffers
+	}
 	numTries := 0
 
 	for {
 		log.Debug("freeList::evictBuffer: Trying to find victim buffer, try number: %d", numTries+1)
 
-		if numTries >= maxBuffers*int(maxSweepPasses) {
+		if numTries >= maxTries {
 			// A bounded scan fully ages any unpinned descriptor. Reaching this
 			// limit means every descriptor remained pinned or changed concurrently.
 			break
@@ -381,7 +386,8 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr)
 				btm.mu.Lock()
 				// Check for the refCnt again after acquiring the lock to make sure the buffer is still a valid victim before pinning it.
 				current, mapped := btm.table[bufDesc.block]
-				if bufDesc.refCnt.Load() != refCountTableOnly || bufDesc.usageCount.Load() != 0 || !mapped || current != bufDesc {
+				if bufDesc.refCnt.Load() != refCountTableOnly || bufDesc.usageCount.Load() != 0 || !mapped || current != bufDesc ||
+					(access == accessPrefetch && bufDesc.dirty.Load()) {
 					log.Debug("freeList::evictBuffer: Victim bufferIdx: %d is no longer a valid victim after acquiring lock, refCnt: %d, giving it another chance",
 						bufDesc.bufIdx, bufDesc.refCnt.Load())
 				} else {
@@ -395,6 +401,10 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr)
 				if pinnedBuffer {
 					// If the block is dirty, we should need to upload it before reusing it.
 					if bufDesc.dirty.Load() {
+						if access == accessPrefetch {
+							bufDesc.release(fl)
+							continue
+						}
 						log.Debug("freeList::evictBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
 							bufDesc.bufIdx, bufDesc.block.idx)
 						if err := bufDesc.block.scheduleUpload(workerPool, bufDesc); err != nil {
@@ -420,8 +430,8 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr)
 			bufDesc.bufIdx, bufDesc.refCnt.Load(), bufDesc.usageCount.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
 	}
 
-	log.Debug("freeList::evictBuffer: Scanned through all buffers %d times without finding an unpinned victim, numTries: %d, numBuffers: %d",
-		maxSweepPasses, numTries, maxBuffers)
+	log.Debug("freeList::evictBuffer: Scanned %d candidates without finding a reusable victim, numBuffers: %d, access: %d",
+		numTries, maxBuffers, access)
 	log.Debug("freeList::evictBuffer: Printing buffer descriptors for debugging:")
 	for i := range fl.bufDescriptors {
 		bufDesc := fl.bufDescriptors[i]

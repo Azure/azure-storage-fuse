@@ -325,6 +325,52 @@ func TestCreateWorkerPool_UsesQueueSize(t *testing.T) {
 	wp.destroy()
 }
 
+func TestWorkerPool_PrefetchAdmission(t *testing.T) {
+	bc := &BlockCache{prefetchTaskLimit: 1}
+	wp := createWorkerPool(2, 2, bc)
+	defer wp.destroy()
+
+	first := wp.tryAcquirePrefetch()
+	assert.NotNil(t, first)
+	assert.Nil(t, wp.tryAcquirePrefetch(), "prefetch admission must not block past the limit")
+
+	first.release()
+	second := wp.tryAcquirePrefetch()
+	assert.NotNil(t, second, "completion must return the global prefetch permit")
+	second.release()
+}
+
+func TestBlockCacheConfigure_PrefetchTaskLimit(t *testing.T) {
+	tests := []struct {
+		workers  uint32
+		prefetch uint32
+		want     int
+	}{
+		{workers: 1, prefetch: 32, want: 1},
+		{workers: 4, prefetch: 32, want: 2},
+		{workers: 16, prefetch: 32, want: 8},
+		{workers: 64, prefetch: 64, want: 32},
+		{workers: 16, prefetch: 2, want: 2},
+	}
+
+	for _, test := range tests {
+		config.ResetConfig()
+		cfg := fmt.Sprintf(`
+block_cache:
+  block-size-mb: 1
+  mem-size-mb: 256
+  parallelism: %d
+  prefetch: %d
+`, test.workers, test.prefetch)
+		assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
+
+		bc := NewBlockCacheComponent().(*BlockCache)
+		assert.NoError(t, bc.Configure(true))
+		assert.Equal(t, test.want, bc.prefetchTaskLimit, "workers=%d prefetch=%d", test.workers, test.prefetch)
+	}
+	config.ResetConfig()
+}
+
 func TestBlockCache_WritebackLimit(t *testing.T) {
 	tests := []struct {
 		memoryMB uint64
