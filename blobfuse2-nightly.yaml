@@ -1591,14 +1591,6 @@ stages:
               value: '$(Pipeline.Workspace)/blob_mnt'
             - name: TEMP_DIR
               value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            - name: BLOBFUSE2_DCACHE_BLK_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_dcache_block.yaml'
-            - name: BLOBFUSE2_DCACHE_FILE_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_dcache_file.yaml'
-            - name: BLOBFUSE2_DCACHE_BLK_DIO_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_dcache_block_directio.yaml'
-            - name: BLOBFUSE2_DCACHE_FILE_DIO_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_dcache_file_directio.yaml'
             # TBD: fill these in from a pipeline variable group (NightlyBlobFuse)
             # once the ACR + Tachyon image tag + chart version are known.
             - name: CACHE_SERVER_IMAGE_REGISTRY
@@ -1632,34 +1624,14 @@ stages:
               parameters:
                 skip_ut: true
 
-            # dist_cache exercised across 4 mount variants against a single
-            # kind cluster (cluster setup + teardown happens once):
-            #   - block_cache + dist_cache
-            #   - block_cache + dist_cache + direct_io
-            #   - file_cache  + dist_cache
-            #   - file_cache  + dist_cache + direct_io
+            # Run the dedicated dist_cache pod tests against a single kind
+            # cluster (cluster setup + teardown happens once).
             - template: 'azure-pipeline-templates/dist-cache-e2e.yml'
               parameters:
                 run_idstring: 'DistCache'
                 distro_name: $(AgentName)
                 account_name: $(BF2_BLK_ACC_NAME)
                 account_key: $(BF2_BLK_ACC_KEY)
-                account_type: 'block'
-                adls: false
-                verbose_log: ${{ parameters.verbose_log }}
-                variants:
-                  - id: 'BlockCache_DistCache'
-                    conf_template: 'azure_key_dist_cache_block_e2e.yaml'
-                    config_file: $(BLOBFUSE2_DCACHE_BLK_CFG)
-                  - id: 'BlockCache_DistCache_DirectIO'
-                    conf_template: 'azure_key_dist_cache_block_directio_e2e.yaml'
-                    config_file: $(BLOBFUSE2_DCACHE_BLK_DIO_CFG)
-                  - id: 'FileCache_DistCache'
-                    conf_template: 'azure_key_dist_cache_file_e2e.yaml'
-                    config_file: $(BLOBFUSE2_DCACHE_FILE_CFG)
-                  - id: 'FileCache_DistCache_DirectIO'
-                    conf_template: 'azure_key_dist_cache_file_directio_e2e.yaml'
-                    config_file: $(BLOBFUSE2_DCACHE_FILE_DIO_CFG)
 
             - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:

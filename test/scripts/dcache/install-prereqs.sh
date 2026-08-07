@@ -119,12 +119,3 @@ if ! check_command helm; then
 else
   echo "Helm is already installed."
 fi
-
-# netcat is used by expose-cacheserver.sh to poll port-forward readiness.
-if ! check_command nc; then
-  echo "Installing netcat (nc)..."
-  sudo apt-get update
-  sudo apt-get install -y netcat-openbsd
-else
-  echo "nc is already installed."
-fi

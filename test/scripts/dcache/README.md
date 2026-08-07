@@ -2,24 +2,23 @@
 
 These scripts stand up a local [kind](https://kind.sigs.k8s.io/) cluster,
 deploy the [Tachyon](https://github.com/Azure/Tachyon) cache-server via its
-Helm chart, and expose the cacheserver pods on localhost so blobfuse2 running
-on the same host can point `dist_cache.server-list` at them.
+Helm chart, and deploy blobfuse2 in-cluster for the dedicated `dcache_e2e`
+suite.
 
-They are invoked from `azure-pipeline-templates/dist-cache-e2e.yml` in the
-nightly build, but are self-contained enough to run locally for iterative
-debugging.
+The required subset is invoked from `azure-pipeline-templates/dist-cache-e2e.yml`
+in the nightly build, but the scripts are self-contained enough to run locally
+for iterative debugging.
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `config/nightly.config`     | Shared bash config: kind and Kubernetes versions, cluster shape, image coordinates, and namespace. Every value is overridable via env var. |
-| `install-prereqs.sh`        | Idempotently install docker-ce, the configured kind version, kubectl, helm, and netcat. |
+| `install-prereqs.sh`        | Idempotently install docker-ce, the configured kind version, kubectl, and helm. |
 | `setup-kind.sh`             | Create the kind cluster, label worker nodes for cache-server scheduling, and prepare `/var/lib/ssd/cacheserver` on every node container via `docker exec`. |
-| `deploy-tachyon.sh`         | Install the `cache-server-prereq` chart, then the `cache-server` chart, both pulled directly from an OCI-enabled ACR (`oci://...`); side-loads the image with `kind load docker-image`. |
-| `expose-cacheserver.sh`     | Start `kubectl port-forward` for each cacheserver pod on sequential localhost ports and emit a comma-separated server list. |
-| `deploy-blobfuse2.sh`       | Render `docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl` with storage credentials + image ref, side-load the blobfuse2 image into every kind node, apply, and wait for rollout. Only needed by the `dcache_e2e` Go tests. |
-| `teardown-kind.sh`          | Kill port-forwards, uninstall the helm release, and delete the cluster. Best-effort (runs under `set +e`). |
+| `deploy-tachyon.sh`         | Install the `cache-server-prereq` chart, then the `cache-server` chart, both pulled directly from an OCI-enabled ACR (`oci://...`); imports the image directly into each kind node's containerd store. |
+| `deploy-blobfuse2.sh`       | Render `docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl` with storage credentials + image ref, side-load the blobfuse2 image into every kind node, apply, and wait for rollout. |
+| `teardown-kind.sh`          | Delete the cluster. Best-effort (runs under `set +e`). |
 
 ## Local usage
 
@@ -49,29 +48,17 @@ export CACHE_SERVER_CHART_VERSION=<chart-version>
 ./test/scripts/dcache/setup-kind.sh
 ./test/scripts/dcache/deploy-tachyon.sh
 
-# 4. Expose cacheserver pods on localhost:9065, 9066, 9067, ...
-export DCACHE_SERVER_LIST_FILE=/tmp/dcache_server_list.txt
-export DCACHE_PORTFORWARD_PIDS_FILE=/tmp/dcache_portforward_pids.txt
-./test/scripts/dcache/expose-cacheserver.sh
-export DCACHE_SERVERS=$(cat "$DCACHE_SERVER_LIST_FILE")
-
-# 5. Generate a blobfuse2 config and mount.
-./blobfuse2 gen-test-config \
-    --config-file=testdata/config/azure_key_dist_cache_block_e2e.yaml \
-    --container-name=<container> \
-    --temp-path=/tmp/blobfuse2_tmp \
-    --output-file=/tmp/blobfuse2_dcache.yaml
-./blobfuse2 mount /tmp/mnt --config-file=/tmp/blobfuse2_dcache.yaml
-
-# 5b. (Optional; only for dcache_e2e Go tests) Deploy the in-cluster
-#     blobfuse2 pod that test/dcache_e2e/... drives via kubectl.
+# 4. Deploy the in-cluster blobfuse2 pod driven by test/dcache_e2e/.
 export BLOBFUSE2_IMAGE=<registry>/azure-blobfuse2:<tag>
 export STO_ACC_NAME=<account>
 export STO_ACC_KEY=<key>
 export containerName=<container>
 ./test/scripts/dcache/deploy-blobfuse2.sh
 
-# 6. Teardown.
+# 5. Run the distributed-cache-specific tests.
+go test -v -tags=fuse3 ./test/dcache_e2e/...
+
+# 6. Teardown the cluster.
 ./test/scripts/dcache/teardown-kind.sh
 ```
 
@@ -86,9 +73,6 @@ export containerName=<container>
   the host.
 - `deploy-tachyon.sh` sets `cacheServer.scheduler.enabled=false` because
   blobfuse2 E2E tests do not need the scheduler component.
-- `expose-cacheserver.sh` runs `kubectl port-forward` in the background and
-  polls the local port with `nc -z` before returning, so callers can assume the
-  ports are actually listening once the script exits.
 - Nothing here needs `MINIKUBE_HOME` or `/mnt/minikube`. kind stores node
   container state under Docker's data-root -- if `/` is tight on the agent,
   point Docker's data-root at `/mnt/docker` via `/etc/docker/daemon.json`.

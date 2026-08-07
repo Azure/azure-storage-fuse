@@ -67,7 +67,7 @@ type CacheServerMetrics struct {
 }
 
 // scrapeCacheServerMetrics discovers cacheserver pods via kubectl and scrapes
-// each pod's /metrics endpoint via `kubectl exec ... curl` (no port-forward).
+// each pod's /metrics endpoint via `kubectl exec ... curl`.
 // Returns false when scraping is not viable (no pods found).
 func scrapeCacheServerMetrics(t *testing.T) (CacheServerMetrics, bool) {
 	t.Helper()

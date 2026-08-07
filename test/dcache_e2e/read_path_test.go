@@ -66,10 +66,6 @@ func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
 	t.Cleanup(func() { deleteBlob(t, blobPath) })
 
 	m := newTestPodMounter(t)
-	m.Mount(t)
-	t.Cleanup(func() { m.Unmount(t) })
-
-	t.Logf("driver=%s: reading %s via %s", m.Kind(), blobPath, m.Kind())
 
 	// A cold read falls back to Azure and populates L2 asynchronously.
 	beforeMiss, haveMetrics := scrapeCacheServerMetrics(t)
