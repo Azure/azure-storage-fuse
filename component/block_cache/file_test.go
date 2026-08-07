@@ -68,6 +68,39 @@ const (
 	fileTestMountPath    = "/tmp/blobfuse_file_test_mount"
 )
 
+func TestScheduleReadAhead_RefillsIncrementallyPerDemandBlock(t *testing.T) {
+	bc = &BlockCache{
+		blockSize:         1024,
+		prefetch:          100,
+		prefetchTaskLimit: 1,
+	}
+	setupTestFreeList(t, bc.blockSize, 20*bc.blockSize)
+	defer destroyFreeList()
+
+	btm = newBufferTableMgr()
+	bc.btm = btm
+	f := createFile("incremental_readahead.txt")
+	f.size.Store(20 * int64(bc.blockSize))
+	f.blockList.state = blockListValid
+	for blockIdx := range 20 {
+		f.blockList.list = append(f.blockList.list, createBlock(blockIdx, "id", localBlock, f))
+	}
+	pd := newPatternDetector()
+
+	f.scheduleReadAhead(bc, pd, 0, 1)
+	assert.Len(t, btm.table, maxReadAheadScheduleBurst)
+	assert.Equal(t, int64(maxReadAheadScheduleBurst+1), pd.nxtReadAheadBlockIdx.Load())
+	assert.Equal(t, int64(0), pd.lastReadAheadDemandBlockIdx.Load())
+
+	f.scheduleReadAhead(bc, pd, int64(bc.blockSize/2), 1)
+	assert.Len(t, btm.table, maxReadAheadScheduleBurst, "same demand block must not refill")
+
+	f.scheduleReadAhead(bc, pd, int64(bc.blockSize), 1)
+	assert.Len(t, btm.table, maxReadAheadScheduleBurst*2)
+	assert.Equal(t, int64(maxReadAheadScheduleBurst*2+1), pd.nxtReadAheadBlockIdx.Load())
+	assert.Equal(t, int64(1), pd.lastReadAheadDemandBlockIdx.Load())
+}
+
 // FileOperationsTestSuite tests read, write, flush, and truncate on File objects
 // directly, exercising corner cases that are hard to reach through the high-level
 // BlockCache API.

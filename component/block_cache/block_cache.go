@@ -176,9 +176,10 @@ type BlockCache struct {
 	diskTimeout uint32 // Timeout for disk-cached blocks (in seconds)
 
 	// Worker pool configuration
-	workers        uint32 // Number of worker threads for async download/upload operations
-	prefetch       uint32 // Number of blocks to prefetch for sequential reads
-	writebackLimit int    // Maximum asynchronous full-block uploads per file
+	workers           uint32 // Number of worker threads for async download/upload operations
+	prefetch          uint32 // Number of blocks to prefetch for sequential reads
+	writebackLimit    int    // Maximum asynchronous full-block uploads per file
+	prefetchTaskLimit int    // Maximum queued or active prefetch downloads
 
 	// File and block management
 	openFiles   sync.Map     // Path to shared file state for this cache instance
@@ -294,6 +295,9 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	}
 	if bc.writebackLimit <= 0 {
 		return fmt.Errorf("failed to start %s [invalid writeback limit %d]", bc.Name(), bc.writebackLimit)
+	}
+	if bc.prefetch > 0 && bc.prefetchTaskLimit <= 0 {
+		return fmt.Errorf("failed to start %s [invalid prefetch task limit %d]", bc.Name(), bc.prefetchTaskLimit)
 	}
 	queueSize := min(uint64(bc.workers)*2, bufferCount-uint64(bc.workers)-1)
 
@@ -468,6 +472,12 @@ func (bc *BlockCache) Configure(_ bool) error {
 	workerWritebackLimit := (uint64(bc.workers) + 3) / 4
 	poolWritebackLimit := bufferCount / 8
 	bc.writebackLimit = int(max(uint64(1), min(uint64(maxFileWritebackTasks), workerWritebackLimit, poolWritebackLimit)))
+	if bc.prefetch > 0 {
+		workerPrefetchLimit := max(1, int(bc.workers)/2)
+		bc.prefetchTaskLimit = min(int(bc.prefetch), workerPrefetchLimit)
+	} else {
+		bc.prefetchTaskLimit = 0
+	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
 
@@ -514,8 +524,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 	// }
 	// }
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, buffers %v, workers %v, writeback limit %v, prefetch %v, disk path %v, max size %v, disk timeout %v, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
-		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.writebackLimit, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, buffers %v, workers %v, writeback limit %v, prefetch %v, prefetch task limit %v, disk path %v, max size %v, disk timeout %v, noPrefetch %v, consistency %v, cleanup-on-start %t, defer-empty-blob-creation %v",
+		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.writebackLimit, bc.prefetch, bc.prefetchTaskLimit, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.noPrefetch, bc.consistency, conf.CleanupOnStart, bc.deferEmptyBlobCreation)
 
 	return nil
 }

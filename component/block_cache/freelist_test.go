@@ -218,7 +218,7 @@ func TestFreeList_EvictBuffer(t *testing.T) {
 	}
 
 	// Eviction returns the unpinned buffer detached and reset for reuse.
-	victimBufDesc, err := freeList.evictBuffer(bc.workerPool, bc.btm)
+	victimBufDesc, err := freeList.evictBuffer(bc.workerPool, bc.btm, accessDemand)
 	assert.NoError(t, err)
 	assert.NotNil(t, victimBufDesc)
 	assert.Equal(t, 9, victimBufDesc.bufIdx)
@@ -255,7 +255,7 @@ func TestFreeList_EvictBuffer_AllInUse(t *testing.T) {
 	}
 
 	// Get victim buffer - should return nil, as all the buffers are in use.
-	victimBufDesc, err := freeList.evictBuffer(bc.workerPool, bc.btm)
+	victimBufDesc, err := freeList.evictBuffer(bc.workerPool, bc.btm, accessDemand)
 	assert.Nil(t, victimBufDesc)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, errNoVictimBufferFound)
@@ -301,7 +301,7 @@ func TestFreeList_ClockSweepPrefersColdBuffer(t *testing.T) {
 	descriptors[1].usageCount.Store(0)
 	descriptors[2].usageCount.Store(1)
 
-	victim, err := freeList.evictBuffer(bc.workerPool, bc.btm)
+	victim, err := freeList.evictBuffer(bc.workerPool, bc.btm, accessDemand)
 	assert.NoError(t, err)
 	assert.Same(t, descriptors[1], victim)
 	assert.Nil(t, victim.block)
@@ -326,7 +326,7 @@ func TestFreeList_ClockSweepPrefersPrefetchOverDemand(t *testing.T) {
 	prefetched.release(freeList)
 	demand.release(freeList)
 
-	victim, err := freeList.evictBuffer(bc.workerPool, bc.btm)
+	victim, err := freeList.evictBuffer(bc.workerPool, bc.btm, accessDemand)
 	assert.NoError(t, err)
 	assert.Same(t, prefetched, victim)
 	assert.Nil(t, victim.block)
