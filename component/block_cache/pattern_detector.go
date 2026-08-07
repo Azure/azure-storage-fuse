@@ -43,6 +43,7 @@ const (
 	sequentialWindowBlocks    = 2
 	minStreakForSeqPattern    = 3
 	maxStreakForRandomPattern = -3
+	maxReadAheadScheduleBurst = 4
 )
 
 // patternDetector analyzes file access patterns to optimize read-ahead behavior.
@@ -129,6 +130,7 @@ func (pt patternType) String() string {
 //   - prevOffset: Last read offset (for calculating access delta)
 //   - streak: Confidence counter (-3 to +3, indicates pattern strength)
 //   - nxtReadAheadBlockIdx: Next block index to prefetch (for sequential access)
+//   - lastReadAheadDemandBlockIdx: Last demand block that refilled the window
 //   - fileName: File name (for debugging/logging)
 //
 // Algorithm Details:
@@ -159,6 +161,10 @@ type patternDetector struct {
 	// prefetched to avoid duplicate prefetch requests.
 	nxtReadAheadBlockIdx atomic.Int64
 
+	// Last demand block that triggered a read-ahead refill. Repeated sub-block
+	// reads do not enqueue additional speculative work.
+	lastReadAheadDemandBlockIdx atomic.Int64
+
 	// Debug info - file name for logging
 	fileName string
 }
@@ -183,6 +189,7 @@ func newPatternDetector() *patternDetector {
 
 	//We start with sequential access pattern
 	pd.streak.Store(int32(3))
+	pd.lastReadAheadDemandBlockIdx.Store(-1)
 
 	return pd
 }

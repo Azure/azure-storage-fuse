@@ -69,7 +69,22 @@ type task struct {
 	uploadSize         int                 // Validated number of bytes to upload
 	contentLease       *bufferContentLease // Exclusive descriptor content ownership
 	writeback          *writebackLimiter   // Per-file asynchronous writeback permit
+	prefetch           *prefetchPermit     // Global speculative-download permit
 	err                error               // Task result, published before completion is signaled
+}
+
+type prefetchPermit struct {
+	pool *workerPool
+	once sync.Once
+}
+
+func (permit *prefetchPermit) release() {
+	if permit == nil {
+		return
+	}
+	permit.once.Do(func() {
+		<-permit.pool.prefetchSlots
+	})
 }
 
 // workerPool manages a pool of goroutines for async I/O operations.
@@ -83,6 +98,7 @@ type task struct {
 //
 //   - Fixed number of workers (configured via parallelism parameter)
 //   - Buffered task channel allows queueing pending operations
+//   - Prefetch admission reserves only a bounded fraction of worker capacity
 //   - Workers run continuously until pool is destroyed
 //   - Each worker handles both downloads and uploads
 //
@@ -96,13 +112,15 @@ type task struct {
 // Thread Safety:
 //
 // The worker pool is thread-safe. Multiple goroutines can queue tasks
-// concurrently without synchronization.
+// concurrently without synchronization. Demand work applies queue backpressure;
+// speculative work uses nonblocking admission.
 type workerPool struct {
-	workers int            // Number of worker goroutines
-	wg      sync.WaitGroup // Tracks active workers for clean shutdown
-	tasks   chan *task     // Buffered channel of pending tasks
-	bc      *BlockCache    // Reference to parent BlockCache for I/O operations
-	stop    sync.Once      // Ensures the task channel is closed exactly once
+	workers       int            // Number of worker goroutines
+	wg            sync.WaitGroup // Tracks active workers for clean shutdown
+	tasks         chan *task     // Buffered channel of pending tasks
+	prefetchSlots chan struct{}  // Limits queued and active speculative downloads
+	bc            *BlockCache    // Reference to parent BlockCache for I/O operations
+	stop          sync.Once      // Ensures the task channel is closed exactly once
 }
 
 // createWorkerPool creates and starts a worker pool with the specified number of workers.
@@ -116,13 +134,15 @@ type workerPool struct {
 func createWorkerPool(workers int, queueSize int, bc *BlockCache) *workerPool {
 	// Create the worker pool.
 	wp := &workerPool{
-		workers: workers,
-		tasks:   make(chan *task, queueSize),
-		bc:      bc,
+		workers:       workers,
+		tasks:         make(chan *task, queueSize),
+		prefetchSlots: make(chan struct{}, bc.prefetchTaskLimit),
+		bc:            bc,
 	}
 
 	// Start the workers.
-	log.Info("BlockCache::startWorkerPool: Starting worker Pool, num workers: %d, task queue size: %d", wp.workers, queueSize)
+	log.Info("BlockCache::startWorkerPool: Starting worker Pool, num workers: %d, task queue size: %d, prefetch task limit: %d",
+		wp.workers, queueSize, cap(wp.prefetchSlots))
 
 	wp.wg.Add(wp.workers)
 	for i := 0; i < wp.workers; i++ {
@@ -174,7 +194,26 @@ func (wp *workerPool) completeTask(task *task) {
 	if task.writeback != nil {
 		task.writeback.release()
 	}
+	task.prefetch.release()
 	close(task.signalOnCompletion)
+}
+
+func (wp *workerPool) tryAcquirePrefetch() *prefetchPermit {
+	select {
+	case wp.prefetchSlots <- struct{}{}:
+		return &prefetchPermit{pool: wp}
+	default:
+		return nil
+	}
+}
+
+func (wp *workerPool) tryQueuePrefetch(task *task) bool {
+	select {
+	case wp.tasks <- task:
+		return true
+	default:
+		return false
+	}
 }
 
 // queueTask submits a fully initialized task to the worker pool.
