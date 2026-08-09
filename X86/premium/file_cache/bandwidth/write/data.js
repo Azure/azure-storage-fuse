@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783933756967,
+  "lastUpdate": 1786258815228,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -543,6 +543,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "seq_write_parallel_16_files",
             "value": 2355.41015625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]",
+            "email": "49699333+dependabot[bot]@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4611f02a2df42ccbe44d0a0222ed81e99176443e",
+          "message": "Bump github/codeql-action from 4.37.5 to 4.37.6 (#2307)\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-07T05:14:42Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4611f02a2df42ccbe44d0a0222ed81e99176443e"
+        },
+        "date": 1786258814161,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 855.8359375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_write_parallel_16_files",
+            "value": 2358.0546875,
             "unit": "MiB/s"
           }
         ]
