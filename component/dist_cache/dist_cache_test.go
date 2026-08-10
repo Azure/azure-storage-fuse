@@ -133,10 +133,9 @@ func newTestDistCache(mock *mockDCacheClient, next *mockNextComponent) *DistCach
 	// tracked by dc.inflight; tests don't call Stop but the goroutines exit
 	// on their own after each upload.
 	const testBuffers = 4
-	dc.bufs = make(chan *[]byte, testBuffers)
+	dc.bufs = make(chan []byte, testBuffers)
 	for i := 0; i < testBuffers; i++ {
-		b := make([]byte, dc.chunkSize)
-		dc.bufs <- &b
+		dc.bufs <- make([]byte, dc.chunkSize)
 	}
 	return dc
 }
@@ -857,9 +856,9 @@ func TestSchedulePopulate_BufferReturnedAfterUpload(t *testing.T) {
 	dc.SetName(compName)
 	dc.SetNextComponent(next)
 	// 1-buffer pool so we can prove recycling.
-	dc.bufs = make(chan *[]byte, 1)
+	dc.bufs = make(chan []byte, 1)
 	b := make([]byte, dc.chunkSize)
-	dc.bufs <- &b
+	dc.bufs <- b
 
 	var uploads atomic.Int32
 	mock.uploadChunkFn = func(_ context.Context, _ string, _ int64, _ []byte) error {
@@ -1060,9 +1059,9 @@ func TestStop_WaitsForInflightUploads(t *testing.T) {
 		chunkSize: 1024,
 	}
 	dc.SetName(compName)
-	dc.bufs = make(chan *[]byte, 1)
+	dc.bufs = make(chan []byte, 1)
 	b := make([]byte, dc.chunkSize)
-	dc.bufs <- &b
+	dc.bufs <- b
 
 	// Schedule an async populate. schedulePopulate borrows the buffer and
 	// spawns doUpload, which enters UploadChunk and blocks on `release`.
@@ -1159,9 +1158,9 @@ func TestDoUpload_UploadsExactPayloadBytes(t *testing.T) {
 	dc.SetName(compName)
 	dc.SetNextComponent(next)
 	// 1-buffer pool forces the second populate to reuse the first's buffer.
-	dc.bufs = make(chan *[]byte, 1)
+	dc.bufs = make(chan []byte, 1)
 	b := make([]byte, dc.chunkSize)
-	dc.bufs <- &b
+	dc.bufs <- b
 
 	var (
 		mu   sync.Mutex

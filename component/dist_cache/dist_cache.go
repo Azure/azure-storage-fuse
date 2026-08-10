@@ -122,7 +122,7 @@ type DistCache struct {
 	// grown. cap(bufs) * chunkSize is the hard ceiling on memory dist_cache
 	// holds for in-flight L2 populates. Nil means async populate was disabled
 	// (resolveMemBudget returned 0); ReadInBuffer then runs as passthrough.
-	bufs chan *[]byte
+	bufs chan []byte
 
 	// inflight tracks in-flight upload goroutines so Stop can wait for them
 	// to finish before closing the dcache client.
@@ -219,10 +219,9 @@ func (dc *DistCache) Configure(isParent bool) error {
 	budget := dc.resolveMemBudget()
 	if budget > 0 {
 		numBuffers := int(budget / dc.chunkSize)
-		dc.bufs = make(chan *[]byte, numBuffers)
+		dc.bufs = make(chan []byte, numBuffers)
 		for i := 0; i < numBuffers; i++ {
-			b := make([]byte, dc.chunkSize)
-			dc.bufs <- &b
+			dc.bufs <- make([]byte, dc.chunkSize)
 		}
 		log.Info("DistCache::Configure : async upload pool = %d buffers × %d bytes = %d MiB",
 			numBuffers, dc.chunkSize, int64(numBuffers)*dc.chunkSize/_1MiB)
@@ -595,7 +594,7 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 		return
 	}
 
-	var buf *[]byte
+	var buf []byte
 	select {
 	case buf = <-dc.bufs:
 	default:
@@ -603,8 +602,8 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 		return
 	}
 
-	*buf = (*buf)[:len(src)]
-	copy(*buf, src)
+	buf = buf[:len(src)]
+	copy(buf, src)
 
 	dc.inflight.Add(1)
 	go dc.doUpload(name, etag, offset, buf, len(src))
@@ -614,7 +613,7 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 // the pool, even on error. The per-request timeout is enforced by the dcache
 // client (see WithRequestTimeout; default 30s), which applies a socket-level
 // deadline covering both send and receive.
-func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, length int) {
+func (dc *DistCache) doUpload(name, etag string, offset int64, buf []byte, length int) {
 	defer dc.inflight.Done()
 	defer func() { dc.bufs <- buf }()
 
@@ -629,7 +628,7 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, leng
 		opts = append(opts, dcache.WithTTL(dc.conf.TTLSeconds))
 	}
 
-	data := (*buf)[:length]
+	data := buf[:length]
 	if err := dc.client.UploadChunk(context.Background(), name, etag, offset, data, opts...); err != nil {
 		log.Warn("DistCache::doUpload : upload failed: %v", err)
 	}
