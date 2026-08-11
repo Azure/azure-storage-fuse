@@ -37,9 +37,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
-
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 var (
@@ -120,7 +117,6 @@ func (b bufDescStatus) String() string {
 //
 // Thread-safety: Uses block-level locking to prevent concurrent creation for the same block
 func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, workerPool *workerPool, blk *block, access bufferAccessKind) (*bufferDescriptor, bufDescStatus, error) {
-	stime := time.Now()
 	sync := access.synchronous()
 	var prefetch *prefetchPermit
 	if access == accessPrefetch {
@@ -133,15 +129,10 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 		}()
 	}
 
-	log.Debug("bufferTableMgr::getOrCreateBufferDescriptor: Requesting buffer for blockIdx: %d, sync: %v, file: %s",
-		blk.idx, sync, blk.file.Name)
-
 	// Step 1: Check if buffer already exists for this block (fast path)
 	bufDesc, err := btm.lookupBufferDescriptorForAccess(blk, freeList, access)
 	if bufDesc != nil {
 		// Buffer exists, refCnt already incremented by LookUp
-		log.Debug("bufferTableMgr::getOrCreateBufferDescriptor: Found existing bufferIdx: %d, blockIdx: %d, took: %v, refCnt: %d, bytesRead: %d, bytesWritten: %d, sync: %v",
-			bufDesc.bufIdx, blk.idx, time.Since(stime), bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load(), sync)
 		return bufDesc, bufDescStatusExists, nil
 	}
 	if err != nil {
@@ -162,8 +153,6 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 		// Another goroutine created the buffer, increment refCnt and use it
 		bufDesc.refCnt.Add(1)
 		bufDesc.recordAccess(access)
-		log.Debug("bufferTableMgr::getOrCreateBufferDescriptor: (Double Check) Found existing bufferIdx: %d, blockIdx: %d, refCnt: %d, bytesRead: %d, bytesWritten: %d, sync: %v",
-			bufDesc.bufIdx, blk.idx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load(), sync)
 
 		btm.mu.Unlock()
 
@@ -172,14 +161,8 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 			return bufDesc, bufDescStatusExists, nil
 		} else {
 			// Buffer has download error, release our reference and return error
-			log.Err("bufferTableMgr::getOrCreateBufferDescriptor: Existing bufferIdx: %d, blockIdx: %d, sync: %v, has error: %v",
-				bufDesc.bufIdx, blk.idx, sync, err)
-
-			if ok := bufDesc.release(freeList); ok {
-				log.Debug("bufferTableMgr::getOrCreateBufferDescriptor: Released bufferIdx: %d for blockIdx: %d back to free list after error: %v",
-					bufDesc.bufIdx, blk.idx, err)
-			}
-			return nil, bufDescStatusInvalid, err
+			bufDesc.release(freeList)
+			return nil, bufDescStatusInvalid, fmt.Errorf("block %d download: %w", blk.idx, err)
 		}
 	}
 
@@ -188,9 +171,6 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 	if blk.getState() == uncommitedBlock {
 		// Release the lock on buffer table manager.
 		btm.mu.Unlock()
-		log.Debug("bufferTableMgr::getOrCreateBufferDescriptor: Cannot create buffer for blockIdx: %d in uncommitedBlock state, file: %s flush needed",
-			blk.idx, blk.file.Name)
-
 		return nil, bufDescStatusNeedsFileFlush, nil
 	}
 
@@ -242,21 +222,10 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 		if sync {
 			// Check if there was any error during download, and also blocks here until download is complete.
 			if err := bufDesc.ensureBufferValidForRead(); err != nil {
-				log.Err("bufferTableMgr::getOrCreateBufferDescriptor: Download block failed for file: %s, blockIdx: %d: %v, err: %v",
-					blk.file.Name, blk.idx, bufDesc.downloadErr, err)
-
-				if ok := bufDesc.release(freeList); ok {
-					log.Debug("bufferTableMgr::getOrCreateBufferDescriptor: Released bufferIdx: %d for blockIdx: %d back to free list after download failure: %v",
-						bufDesc.bufIdx, blk.idx, err)
-				}
-				return nil, bufDescStatusInvalid, err
+				bufDesc.release(freeList)
+				return nil, bufDescStatusInvalid, fmt.Errorf("block %d download: %w", blk.idx, err)
 			}
 		}
-	}
-
-	if !sync {
-		log.Debug("bufferTableMgr::getOrCreateBufferDescriptor: Async scheduling download for bufferIdx: %d, blockIdx: %d took %v, file: %s",
-			bufDesc.bufIdx, blk.idx, time.Since(stime), blk.file.Name)
 	}
 
 	return bufDesc, status, nil
@@ -287,8 +256,6 @@ func (btm *bufferTableMgr) acquireBuffer(freeList *freeListType, workerPool *wor
 			return nil, bufDescStatusInvalid, errBuffersExhausted
 		}
 
-		log.Debug("bufferTableMgr::acquireBuffer: All buffers remain pinned for blockIdx: %d, waiting for availability, file: %s",
-			blk.idx, blk.file.Name)
 		<-changed
 	}
 }
@@ -330,18 +297,14 @@ func (btm *bufferTableMgr) lookupBufferDescriptorForAccess(blk *block, fl *freeL
 	if exists {
 		bufDesc.refCnt.Add(1)
 		bufDesc.recordAccess(access)
-		log.Debug("bufferTableMgr::lookupBufferDescriptor: Looked up bufferIdx: %d, blockIdx: %d, refCnt: %d, bytesRead: %d, bytesWritten: %d",
-			bufDesc.bufIdx, blk.idx, bufDesc.refCnt.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
 
 		// Release the read lock on buffer table manager.
 		btm.mu.RUnlock()
 
 		if err := bufDesc.ensureBufferValidForRead(); err != nil {
-			log.Err("bufferTableMgr::lookupBufferDescriptor: BufferIdx: %d for blockIdx: %d has error: %v during lookup, file: %s",
-				bufDesc.bufIdx, blk.idx, bufDesc.downloadErr, blk.file.Name)
 			btm.detachBufferDescriptor(bufDesc, fl)
 			bufDesc.release(fl)
-			return nil, err
+			return nil, fmt.Errorf("block %d download: %w", blk.idx, err)
 		}
 
 		return bufDesc, nil
@@ -367,9 +330,6 @@ func (btm *bufferTableMgr) lookupBufferDescriptorForAccess(blk *block, fl *freeL
 // This is also the cleanup path for terminal I/O errors.
 func (btm *bufferTableMgr) detachBufferDescriptor(bufDesc *bufferDescriptor, freeList *freeListType) bool {
 	blk := bufDesc.block
-	log.Debug("bufferTableMgr::detachBufferDescriptor: Detach blockIdx: %d, bufferIdx: %d for file: %s from buffer table",
-		bufDesc.block.idx, bufDesc.bufIdx, blk.file.Name)
-
 	btm.mu.Lock()
 	current, ok := btm.table[blk]
 	if !ok || current != bufDesc {
