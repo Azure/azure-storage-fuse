@@ -1049,8 +1049,7 @@ func (bc *BlockCache) download(item *workItem) {
 		}
 	}
 
-	var etag string
-	// If file does not exists then download the block from the container
+	etag := item.ETag
 	n, err := bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 		Handle: item.handle,
 		Offset: int64(item.block.offset),

@@ -846,7 +846,7 @@ func normalizeDistCacheConfig(userComponents []string) error {
 		{"distributed_cache.parallelism", "block_cache.parallelism"},
 		// Native dist_cache knobs — user writes them under distributed_cache:
 		// but the component reads them from dist_cache.*.
-		{"distributed_cache.discovery-url", "dist_cache.discovery-url"},
+		{"distributed_cache.discovery-endpoint", "dist_cache.discovery-endpoint"},
 		{"distributed_cache.k8s-service", "dist_cache.k8s-service"},
 		{"distributed_cache.k8s-namespace", "dist_cache.k8s-namespace"},
 		{"distributed_cache.servers", "dist_cache.server-list"},

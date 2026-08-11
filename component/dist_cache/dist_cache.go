@@ -69,16 +69,16 @@ const (
 // keys are exposed; behavioral tuning stays YAML/CLI-only, matching the
 // identity-vs-tuning split used by azstorage.
 const (
-	EnvDistCacheDiscoveryURL = "DIST_CACHE_DISCOVERY_URL"
-	EnvDistCacheK8sService   = "DIST_CACHE_K8S_SERVICE"
-	EnvDistCacheK8sNamespace = "DIST_CACHE_K8S_NAMESPACE"
-	EnvDistCacheServerList   = "DIST_CACHE_SERVER_LIST"
+	EnvDistCacheDiscoveryEndpoint = "DIST_CACHE_DISCOVERY_ENDPOINT"
+	EnvDistCacheK8sService        = "DIST_CACHE_K8S_SERVICE"
+	EnvDistCacheK8sNamespace      = "DIST_CACHE_K8S_NAMESPACE"
+	EnvDistCacheServerList        = "DIST_CACHE_SERVER_LIST"
 )
 
 // RegisterEnvVariables binds dist_cache discovery keys to env vars.
 // Precedence via viper: CLI flag > env > YAML > default.
 func RegisterEnvVariables() {
-	config.BindEnv(compName+".discovery-url", EnvDistCacheDiscoveryURL)
+	config.BindEnv(compName+".discovery-endpoint", EnvDistCacheDiscoveryEndpoint)
 	config.BindEnv(compName+".k8s-service", EnvDistCacheK8sService)
 	config.BindEnv(compName+".k8s-namespace", EnvDistCacheK8sNamespace)
 	config.BindEnv(compName+".server-list", EnvDistCacheServerList)
@@ -87,15 +87,14 @@ func RegisterEnvVariables() {
 // DistCacheOptions holds configuration for the distributed cache component.
 type DistCacheOptions struct {
 	// Discovery (preferred — auto-detects servers)
-	DiscoveryURL        string `config:"discovery-url"        yaml:"discovery-url,omitempty"`
-	DiscoveryRefreshSec int    `config:"discovery-refresh-sec" yaml:"discovery-refresh-sec,omitempty"`
+	DiscoveryEndpoint string `config:"discovery-endpoint" yaml:"discovery-endpoint,omitempty"`
 
 	// Kubernetes DNS discovery
 	K8sService   string `config:"k8s-service"   yaml:"k8s-service,omitempty"`
 	K8sNamespace string `config:"k8s-namespace" yaml:"k8s-namespace,omitempty"`
 
 	// Static fallback
-	ServerList string `config:"server-list" yaml:"servers,omitempty"`
+	ServerList string `config:"server-list" yaml:"server-list,omitempty"`
 
 	// Common options
 	Port       int    `config:"port"        yaml:"port,omitempty"`        // Default 9065
@@ -114,7 +113,6 @@ type DistCache struct {
 	internal.BaseComponent
 	conf   DistCacheOptions
 	client dcacheClient
-
 	chunkSize     int64
 	cachePrefix   string
 	bypassOnError bool
@@ -123,7 +121,7 @@ type DistCache struct {
 	// grown. cap(bufs) * chunkSize is the hard ceiling on memory dist_cache
 	// holds for in-flight L2 populates. Nil means async populate was disabled
 	// (resolveMemBudget returned 0); ReadInBuffer then runs as passthrough.
-	bufs chan *[]byte
+	bufs chan []byte
 
 	// inflight tracks in-flight upload goroutines so Stop can wait for them
 	// to finish before closing the dcache client.
@@ -157,16 +155,16 @@ func (dc *DistCache) Configure(isParent bool) error {
 	}
 
 	// At least one discovery method must be set (YAML, CLI flag, or env).
-	if conf.DiscoveryURL == "" && conf.K8sService == "" && conf.ServerList == "" {
-		return fmt.Errorf("distributed_cache: no server discovery configured (set endpoint, k8s-service, or server-list)")
+	if conf.DiscoveryEndpoint == "" && conf.K8sService == "" && conf.ServerList == "" {
+		return fmt.Errorf("dist_cache: no server discovery configured (set discovery-endpoint, k8s-service, or server-list)")
 	}
 
 	// Warn if multiple discovery methods are configured. The dcache client
-	// applies them in precedence order: discovery-url > k8s DNS > server-list;
+	// applies them in precedence order: discovery-endpoint > k8s DNS > server-list;
 	// lower-precedence entries are effectively ignored.
 	var configured []string
-	if conf.DiscoveryURL != "" {
-		configured = append(configured, "discovery-url")
+	if conf.DiscoveryEndpoint != "" {
+		configured = append(configured, "discovery-endpoint")
 	}
 	if conf.K8sService != "" {
 		configured = append(configured, "k8s-service")
@@ -175,7 +173,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 		configured = append(configured, "server-list")
 	}
 	if len(configured) > 1 {
-		log.Warn("DistCache::Configure : multiple discovery methods configured (%s); precedence is discovery-url > k8s DNS > server-list, lower-precedence entries will only be used as a fallback",
+		log.Warn("DistCache::Configure : multiple discovery methods configured (%s); precedence is discovery-endpoint > k8s DNS > server-list, lower-precedence entries will only be used as a fallback",
 			strings.Join(configured, ", "))
 	}
 
@@ -220,10 +218,9 @@ func (dc *DistCache) Configure(isParent bool) error {
 	budget := dc.resolveMemBudget()
 	if budget > 0 {
 		numBuffers := int(budget / dc.chunkSize)
-		dc.bufs = make(chan *[]byte, numBuffers)
+		dc.bufs = make(chan []byte, numBuffers)
 		for i := 0; i < numBuffers; i++ {
-			b := make([]byte, dc.chunkSize)
-			dc.bufs <- &b
+			dc.bufs <- make([]byte, dc.chunkSize)
 		}
 		log.Info("DistCache::Configure : async upload pool = %d buffers × %d bytes = %d MiB",
 			numBuffers, dc.chunkSize, int64(numBuffers)*dc.chunkSize/_1MiB)
@@ -231,9 +228,8 @@ func (dc *DistCache) Configure(isParent bool) error {
 		log.Warn("DistCache::Configure : async upload disabled; L2 populate skipped, reads run as passthrough")
 	}
 
-	log.Info("DistCache::Configure : chunk-size=%d", dc.chunkSize)
-	log.Info("DistCache::Configure : discovery-url=%s", dc.conf.DiscoveryURL)
-	log.Info("DistCache::Configure : discovery-refresh-sec=%d", dc.conf.DiscoveryRefreshSec)
+	log.Info("DistCache::Configure : block-size=%d", dc.chunkSize)
+	log.Info("DistCache::Configure : discovery-endpoint=%s", dc.conf.DiscoveryEndpoint)
 	log.Info("DistCache::Configure : k8s-service=%s", dc.conf.K8sService)
 	log.Info("DistCache::Configure : k8s-namespace=%s", dc.conf.K8sNamespace)
 	log.Info("DistCache::Configure : server-list=%s", dc.conf.ServerList)
@@ -259,8 +255,8 @@ func (dc *DistCache) Start(ctx context.Context) error {
 		opts = append(opts, dcache.WithChecksumVerification(true))
 	}
 
-	if dc.conf.DiscoveryURL != "" {
-		opts = append(opts, dcache.WithDiscoveryURL(dc.conf.DiscoveryURL))
+	if dc.conf.DiscoveryEndpoint != "" {
+		opts = append(opts, dcache.WithDiscoveryURL(dc.conf.DiscoveryEndpoint))
 	}
 	if dc.conf.K8sService != "" && dc.conf.K8sNamespace != "" {
 		opts = append(opts, dcache.WithK8sDiscovery(dc.conf.K8sService, dc.conf.K8sNamespace))
@@ -276,10 +272,6 @@ func (dc *DistCache) Start(ctx context.Context) error {
 		opts = append(opts, dcache.WithPort(dc.conf.Port))
 	}
 	opts = append(opts, dcache.WithCachePrefix(dc.cachePrefix))
-	if dc.conf.DiscoveryRefreshSec > 0 {
-		opts = append(opts, dcache.WithDiscoveryRefresh(
-			time.Duration(dc.conf.DiscoveryRefreshSec)*time.Second))
-	}
 
 	client, err := dcache.New(opts...)
 	if err != nil {
@@ -335,16 +327,10 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		return n, nil
 	}
 	if err == nil && n == 0 {
-		// Zero-byte hit means corrupt/empty cache entry — treat as miss
+		// Zero-byte hit means corrupt/empty cache entry. Fall through without
+		// populating because this response does not grant us the miss-lock.
 		log.Warn("DistCache::ReadInBuffer : L2 zero-byte hit %s offset=%d, falling through to storage", name, options.Offset)
-		n, err = dc.NextComponent().ReadInBuffer(options)
-		if err != nil {
-			return n, err
-		}
-		if n > 0 {
-			dc.schedulePopulate(name, etag, options.Offset, options.Data[:n])
-		}
-		return n, nil
+		return dc.NextComponent().ReadInBuffer(options)
 	}
 
 	if err == dcache.ErrNotFoundGotLock {
@@ -355,7 +341,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 			return n, err
 		}
 		if n > 0 {
-			dc.schedulePopulate(name, etag, options.Offset, options.Data[:n])
+			dc.populateAfterStorageRead(name, etag, options, options.Data[:n])
 		}
 		return n, nil
 	}
@@ -377,7 +363,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		}
 		if pollErr == dcache.ErrNotFoundGotLock && n > 0 {
 			// Inherited the miss-lock mid-poll; safe to populate.
-			dc.schedulePopulate(name, etag, options.Offset, options.Data[:n])
+			dc.populateAfterStorageRead(name, etag, options, options.Data[:n])
 		}
 		// Timeout (or other poll error): peer still owns the lock; skip
 		// populate to avoid racing its write.
@@ -434,7 +420,7 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 	for {
 		select {
 		case <-ctx.Done():
-			return 0, fmt.Errorf("dist_cache: chunk poll timeout for %s offset=%d: %w", name, offset, ctx.Err())
+			return 0, fmt.Errorf("dist_cache: block poll timeout for %s offset=%d: %w", name, offset, ctx.Err())
 		case <-time.After(backoff):
 		}
 
@@ -477,21 +463,30 @@ func fileGroupID(name string, etag string) []byte {
 	return []byte(fmt.Sprintf("%s\x00v%s", name, etag))
 }
 
-// resolveETag extracts the ETag from a ReadInBufferOptions, preferring the
-// handle's stored value (pinned at open time by block_cache).
+// resolveETag returns the caller-supplied ETag from ReadInBufferOptions.
+// On the lookup path block_cache seeds it with the handle-pinned ETag; on the
+// populate path storage overwrites it with the observed ETag. Either way we
+// just read the pointer, so we never touch handle.values (which is racy off
+// the FUSE thread).
 func resolveETag(options *internal.ReadInBufferOptions) string {
-	if options.Etag != nil && *options.Etag != "" {
+	if options.Etag != nil {
 		return *options.Etag
 	}
-	if options.Handle != nil {
-		if v, ok := options.Handle.GetValue("ETAG"); ok {
-			if etag, ok := v.(string); ok && etag != "" {
-				return etag
-			}
-		}
-	}
-	log.Debug("DistCache::resolveETag : no etag found (Etag field nil/empty, handle missing or no ETAG key)")
 	return ""
+}
+
+// populateAfterStorageRead schedules an L2 populate using the ETag that
+// storage returned on the completed read, and logs when that ETag disagrees
+// with the one we used for the L2 lookup (blob rewritten under an open
+// handle). block_cache will still fail the read on the mismatch; we cache
+// the newer version anyway so future opens don't have to redownload it.
+func (dc *DistCache) populateAfterStorageRead(name, lookupETag string, options *internal.ReadInBufferOptions, data []byte) {
+	observed := resolveETag(options)
+	if observed != "" && lookupETag != "" && observed != lookupETag {
+		log.Info("DistCache::populateAfterStorageRead : blob etag changed for %s offset=%d: lookup=%q observed=%q; populating L2 under observed version",
+			name, options.Offset, lookupETag, observed)
+	}
+	dc.schedulePopulate(name, observed, options.Offset, data)
 }
 
 // getBlockCacheWorkers returns the number of concurrent downloads block_cache
@@ -562,7 +557,7 @@ func (dc *DistCache) resolveMemBudget() int64 {
 	floor := int64(distCacheMinBuffers) * dc.chunkSize
 
 	if fair < floor {
-		log.Warn("DistCache::resolveMemBudget : fair-share %d < floor %d (chunk=%d, bcRef=%d); async populate disabled",
+		log.Warn("DistCache::resolveMemBudget : fair-share %d < floor %d (block=%d, bcRef=%d); async populate disabled",
 			fair, floor, dc.chunkSize, bcRef)
 		return 0
 	}
@@ -586,13 +581,19 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 	if dc.bufs == nil {
 		return // async populate disabled at Configure time
 	}
+	if etag == "" {
+		// Never populate under an unknown ETag: the pre-lookup ETag may be
+		// stale, and an empty group ID collides across versions.
+		log.Warn("DistCache::schedulePopulate : missing storage ETag for %s offset=%d, skipping populate", name, offset)
+		return
+	}
 	if int64(len(src)) > dc.chunkSize {
-		log.Warn("DistCache::schedulePopulate : payload %d > chunk size %d, dropping populate for %s offset=%d",
+		log.Warn("DistCache::schedulePopulate : payload %d > block size %d, dropping populate for %s offset=%d",
 			len(src), dc.chunkSize, name, offset)
 		return
 	}
 
-	var buf *[]byte
+	var buf []byte
 	select {
 	case buf = <-dc.bufs:
 	default:
@@ -600,8 +601,8 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 		return
 	}
 
-	*buf = (*buf)[:len(src)]
-	copy(*buf, src)
+	buf = buf[:len(src)]
+	copy(buf, src)
 
 	dc.inflight.Add(1)
 	go dc.doUpload(name, etag, offset, buf, len(src))
@@ -611,14 +612,14 @@ func (dc *DistCache) schedulePopulate(name, etag string, offset int64, src []byt
 // the pool, even on error. The per-request timeout is enforced by the dcache
 // client (see WithRequestTimeout; default 30s), which applies a socket-level
 // deadline covering both send and receive.
-func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, length int) {
+func (dc *DistCache) doUpload(name, etag string, offset int64, buf []byte, length int) {
 	defer dc.inflight.Done()
 	defer func() { dc.bufs <- buf }()
 
 	gid := fileGroupID(name, etag)
-	log.Debug("DistCache::doUpload : uploading chunk %s offset=%d with group %q", name, offset, string(gid))
+	log.Debug("DistCache::doUpload : uploading block %s offset=%d with group %q", name, offset, string(gid))
 	opts := []dcache.UploadOption{
-		dcache.WithIgnoreLock(true),
+		dcache.WithIgnoreLock(false),
 		dcache.WithGroupID(gid),
 		dcache.WithMetadata(map[string][]byte{"gid": gid}),
 	}
@@ -626,7 +627,7 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, leng
 		opts = append(opts, dcache.WithTTL(dc.conf.TTLSeconds))
 	}
 
-	data := (*buf)[:length]
+	data := buf[:length]
 	if err := dc.client.UploadChunk(context.Background(), name, etag, offset, data, opts...); err != nil {
 		log.Warn("DistCache::doUpload : upload failed: %v", err)
 	}
@@ -635,32 +636,30 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, leng
 func init() {
 	internal.AddComponent(compName, NewDistCacheComponent)
 
-	discoveryFlag := config.AddStringFlag("distributed-cache-discovery-url", "",
-	"distributed cache discovery URL")
-	config.BindPFlag(compName+".discovery-url", discoveryFlag)
+	discoveryFlag := config.AddStringFlag("dist-cache-discovery-endpoint", "",
+		"distributed cache discovery endpoint (recommended)")
+	config.BindPFlag(compName+".discovery-endpoint", discoveryFlag)
 
 	ttlFlag := config.AddUint32Flag("distributed-cache-ttl", 0,
-		"distributed cache entry TTL in seconds (0 = no TTL)")
-	config.BindPFlag(compName+".ttl-seconds", ttlFlag)
+                "distributed cache entry TTL in seconds (0 = no TTL)")
+        config.BindPFlag(compName+".ttl-seconds", ttlFlag)
 
-	// L1 (block_cache) knobs surfaced under the distributed-cache name; the
-	// fan-out in cmd/mount.go copies these onto block_cache when dist_cache
-	// is active in the pipeline.
-	blockSizeFlag := config.AddUint32Flag("distributed-cache-block-size", 0,
-		"block size in MB for the distributed cache L1 (block_cache)")
-	config.BindPFlag("block_cache.block-size-mb", blockSizeFlag)
+blockSizeFlag := config.AddUint32Flag("distributed-cache-block-size", 0,
+    "block size in MB for the distributed cache L1 (block_cache)")
+config.BindPFlag("block_cache.block-size-mb", blockSizeFlag)
 
-	memFlag := config.AddUint32Flag("distributed-cache-memory", 0,
-		"memory size in MB for the distributed cache L1 (block_cache)")
-	config.BindPFlag("block_cache.mem-size-mb", memFlag)
+memFlag := config.AddUint32Flag("distributed-cache-memory", 0,
+    "memory size in MB for the distributed cache L1 (block_cache)")
+config.BindPFlag("block_cache.mem-size-mb", memFlag)
 
-	prefetchFlag := config.AddUint32Flag("distributed-cache-prefetch", 0,
-		"prefetch block count for the distributed cache L1 (block_cache)")
-	config.BindPFlag("block_cache.prefetch", prefetchFlag)
+prefetchFlag := config.AddUint32Flag("distributed-cache-prefetch", 0,
+    "prefetch block count for the distributed cache L1 (block_cache)")
+config.BindPFlag("block_cache.prefetch", prefetchFlag)
 
-	parallelismFlag := config.AddUint32Flag("distributed-cache-parallelism", 0,
-		"download parallelism for the distributed cache L1 (block_cache)")
-	config.BindPFlag("block_cache.parallelism", parallelismFlag)
+parallelismFlag := config.AddUint32Flag("distributed-cache-parallelism", 0,
+    "download parallelism for the distributed cache L1 (block_cache)")
+config.BindPFlag("block_cache.parallelism", parallelismFlag)
 
 	RegisterEnvVariables()
+
 }

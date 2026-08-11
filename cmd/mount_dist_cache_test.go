@@ -102,7 +102,6 @@ func setDistCacheYAML(t *testing.T, yaml string) {
 
 func TestNormalizeDistCacheConfig_NoDistCacheSignal(t *testing.T) {
 	setDistCacheYAML(t, `
-read-only: true
 azstorage:
   account-name: acct
   container: c
@@ -122,8 +121,8 @@ components:
 }
 
 func TestNormalizeDistCacheConfig_DistCacheOnlyInComponents(t *testing.T) {
-	// dist_cache in components: but no distributed_cache: section. Normalize
-	// should succeed and touch no block_cache keys.
+	// dist_cache in components: but no distributed_cache: section.
+	// Normalize should succeed and touch no block_cache keys.
 	setDistCacheYAML(t, `
 read-only: true
 components:
@@ -138,30 +137,103 @@ components:
 	assert.False(t, viper.IsSet("block_cache.block-size-mb"))
 }
 
-func TestNormalizeDistCacheConfig_DistCacheSectionWithoutComponents(t *testing.T) {
-	// distributed_cache: set but components: omitted — the synthesis-path case.
-	// The CLI flag "distributed-cache" is the activation signal checked here.
+func TestNormalizeDistCacheConfig_DistCacheViaCLIFlagWithoutComponents(t *testing.T) {
+	// components: omitted and the --distributed-cache CLI flag is set:
+	// synthesis path in mount.go adds dist_cache to the pipeline, so
+	// normalize must run its checks and fanout.
 	setDistCacheYAML(t, `
 read-only: true
-distributed-cache: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 `)
 	defer viper.Reset()
+	config.Set("distributed-cache", "true")
 
 	err := normalizeDistCacheConfig(nil)
 	assert.NoError(t, err)
 }
 
-// A distributed_cache: section alongside an explicit components: that omits
-// dist_cache is silently ignored, matching how the codebase treats stray
-// block_cache:/file_cache: sections. Normalize must not raise a
+// --- read-only gating --------------------------------------------------------
+
+func TestNormalizeDistCacheConfig_RejectsWhenReadOnlyUnset(t *testing.T) {
+	setDistCacheYAML(t, `
+distributed_cache:
+  discovery-endpoint: d
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
+}
+
+func TestNormalizeDistCacheConfig_RejectsWhenReadOnlyFalse(t *testing.T) {
+	setDistCacheYAML(t, `
+read-only: false
+distributed_cache:
+  discovery-endpoint: d
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
+}
+
+func TestNormalizeDistCacheConfig_RejectsWhenReadOnlyFalseViaCLIFlag(t *testing.T) {
+	// CLI-flag synthesis path with read-only explicitly false.
+	setDistCacheYAML(t, `
+read-only: false
+distributed_cache:
+  discovery-endpoint: d
+`)
+	defer viper.Reset()
+	config.Set("distributed-cache", "true")
+
+	err := normalizeDistCacheConfig(nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
+}
+
+func TestNormalizeDistCacheConfig_ReadOnlyNotCheckedWhenDistCacheAbsent(t *testing.T) {
+	// No dist_cache signal at all: read-only being unset must not error
+	// on a plain file_cache mount.
+	setDistCacheYAML(t, `
+components:
+  - libfuse
+  - file_cache
+  - azstorage
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "file_cache", "azstorage"})
+	assert.NoError(t, err)
+}
+
+func TestNormalizeDistCacheConfig_ReadOnlyGateRunsBeforeIncompatibility(t *testing.T) {
+	// Both a sibling L1 AND read-only unset: the read-only gate runs
+	// first, so the error should mention read-only, not block_cache.
+	setDistCacheYAML(t, `
+distributed_cache:
+  discovery-endpoint: d
+block_cache:
+  block-size-mb: 8
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
+}
+
+// A distributed_cache: section alongside an explicit components: that
+// omits dist_cache is silently ignored, matching how the codebase treats
+// stray block_cache:/file_cache: sections. Normalize must not raise a
 // misleading "incompatible" error against the L1 the user actually chose.
 func TestNormalizeDistCacheConfig_StaleSectionWithOtherL1IsNoop(t *testing.T) {
 	setDistCacheYAML(t, `
-read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 file_cache:
   path: /tmp/fc
 components:
@@ -180,9 +252,8 @@ components:
 func TestNormalizeDistCacheConfig_StaleSectionNoL1IsNoop(t *testing.T) {
 	// Explicit components: without dist_cache; stray section ignored.
 	setDistCacheYAML(t, `
-read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
   block-size-mb: 32
 components:
   - libfuse
@@ -199,7 +270,7 @@ func TestNormalizeDistCacheConfig_RejectsBlockCacheInComponents(t *testing.T) {
 	setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 `)
 	defer viper.Reset()
 
@@ -212,7 +283,7 @@ func TestNormalizeDistCacheConfig_RejectsBlockCacheSection(t *testing.T) {
 	setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 block_cache:
   block-size-mb: 8
 `)
@@ -227,13 +298,13 @@ func TestNormalizeDistCacheConfig_RejectsBothSurfaces(t *testing.T) {
 	setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 block_cache:
   block-size-mb: 8
 components:
   - libfuse
   - block_cache
-  - dist_cache
+  - distributed_cache
   - azstorage
 `)
 	defer viper.Reset()
@@ -252,7 +323,7 @@ func TestNormalizeDistCacheConfig_RejectsOtherL1InComponents(t *testing.T) {
 			setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 `)
 			defer viper.Reset()
 
@@ -273,7 +344,7 @@ func TestNormalizeDistCacheConfig_RejectsOtherL1Sections(t *testing.T) {
 			yaml: `
 read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 file_cache:
   path: /tmp/fc
 `,
@@ -283,7 +354,7 @@ file_cache:
 			yaml: `
 read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 xload:
   path: /tmp/xl
 `,
@@ -293,7 +364,7 @@ xload:
 			yaml: `
 read-only: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
 stream:
   block-size-mb: 16
 `,
@@ -312,11 +383,12 @@ stream:
 }
 
 func TestNormalizeDistCacheConfig_FansOutTuningKnobs(t *testing.T) {
+	// User writes tuning under distributed_cache:; normalize fans out to
+	// block_cache.* (the auto-injected L1).
 	setDistCacheYAML(t, `
 read-only: true
-distributed-cache: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
   block-size-mb: 32
   mem-size-mb: 4096
   prefetch: 24
@@ -324,7 +396,7 @@ distributed_cache:
 `)
 	defer viper.Reset()
 
-	err := normalizeDistCacheConfig(nil)
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
 	assert.NoError(t, err)
 
 	// All four fan-out targets should be populated and typed correctly.
@@ -345,19 +417,51 @@ distributed_cache:
 	assert.Equal(t, uint32(128), parallelism)
 }
 
+func TestNormalizeDistCacheConfig_FansOutNativeKnobs(t *testing.T) {
+	// Native dist_cache knobs are written under distributed_cache: but
+	// the component reads them from dist_cache.*. servers is a
+	// comma-separated scalar, not a YAML list.
+	setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  discovery-endpoint: https://d.example
+  k8s-service: svc
+  k8s-namespace: ns
+  servers: node1.internal:9000,node2.internal:9000
+  port: 9999
+  ttl-seconds: 300
+  verify-checksum: true
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
+	assert.NoError(t, err)
+
+	assert.True(t, viper.IsSet("dist_cache.discovery-endpoint"))
+	assert.True(t, viper.IsSet("dist_cache.k8s-service"))
+	assert.True(t, viper.IsSet("dist_cache.k8s-namespace"))
+	assert.True(t, viper.IsSet("dist_cache.server-list"))
+	assert.True(t, viper.IsSet("dist_cache.port"))
+	assert.True(t, viper.IsSet("dist_cache.ttl-seconds"))
+	assert.True(t, viper.IsSet("dist_cache.verify-checksum"))
+
+	var servers string
+	assert.NoError(t, config.UnmarshalKey("dist_cache.server-list", &servers))
+	assert.Equal(t, "node1.internal:9000,node2.internal:9000", servers)
+}
+
 func TestNormalizeDistCacheConfig_UnsetKnobsAreNotForwarded(t *testing.T) {
 	// Only block-size-mb is set; the other three targets must remain unset
 	// so block_cache falls back to its own defaults.
 	setDistCacheYAML(t, `
 read-only: true
-distributed-cache: true
 distributed_cache:
-  discovery-url: http://d
+  discovery-endpoint: d
   block-size-mb: 32
 `)
 	defer viper.Reset()
 
-	err := normalizeDistCacheConfig(nil)
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
 	assert.NoError(t, err)
 
 	assert.True(t, viper.IsSet("block_cache.block-size-mb"))
@@ -366,34 +470,40 @@ distributed_cache:
 	assert.False(t, viper.IsSet("block_cache.parallelism"))
 }
 
-func TestNormalizeDistCache_RequiresReadOnly(t *testing.T) {
-	setDistCacheYAML(t, `
-components:
-  - libfuse
-  - dist_cache
-  - azstorage
-distributed_cache:
-  discovery-url: http://foo:9065
-`)
-	defer viper.Reset()
+// --- aliasDistributedCacheComponent ------------------------------------------
 
-	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read-only")
-}
+func TestAliasDistributedCacheComponent(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{
+			name: "distributed_cache rewritten to dist_cache",
+			in:   []string{"libfuse", "distributed_cache", "azstorage"},
+			want: []string{"libfuse", "dist_cache", "azstorage"},
+		},
+		{
+			name: "no distributed_cache: unchanged",
+			in:   []string{"libfuse", "file_cache", "azstorage"},
+			want: []string{"libfuse", "file_cache", "azstorage"},
+		},
+		{
+			name: "already dist_cache: unchanged",
+			in:   []string{"libfuse", "dist_cache", "azstorage"},
+			want: []string{"libfuse", "dist_cache", "azstorage"},
+		},
+		{
+			name: "empty input: unchanged",
+			in:   []string{},
+			want: []string{},
+		},
+	}
 
-func TestNormalizeDistCache_ReadOnlyPasses(t *testing.T) {
-	setDistCacheYAML(t, `
-read-only: true
-components:
-  - libfuse
-  - dist_cache
-  - azstorage
-distributed_cache:
-  discovery-url: http://foo:9065
-`)
-	defer viper.Reset()
-
-	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
-	assert.NoError(t, err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := aliasDistributedCacheComponent(slices.Clone(tc.in))
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }
