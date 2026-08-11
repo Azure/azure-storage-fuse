@@ -138,7 +138,7 @@ components:
 }
 
 func TestNormalizeDistCacheConfig_DistCacheSectionWithoutComponents(t *testing.T) {
-       // dist_cache: set but components: omitted — the synthesis-path case.
+	// dist_cache: set but components: omitted — the synthesis-path case.
 	setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
@@ -149,6 +149,7 @@ distributed_cache:
 	err := normalizeDistCacheConfig(nil)
 	assert.NoError(t, err)
 }
+
 // A distributed_cache: section alongside an explicit components: that omits
 // distributed_cache is silently ignored, matching how the codebase treats stray
 // block_cache:/file_cache: sections. Normalize must not raise a
@@ -461,7 +462,7 @@ distributed_cache:
 `)
 	defer viper.Reset()
 
-	err := normalizeDistCacheConfig(nil)
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
 	assert.NoError(t, err)
 
 	assert.True(t, viper.IsSet("block_cache.block-size-mb"))
