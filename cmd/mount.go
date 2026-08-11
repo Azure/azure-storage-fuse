@@ -287,7 +287,7 @@ var mountCmd = &cobra.Command{
 		}
 
 		// Accept "distributed_cache" as an alias for "dist_cache" in components:
-                options.Components = aliasDistributedCacheComponent(options.Components)
+		options.Components = aliasDistributedCacheComponent(options.Components)
 
 		// Reject mixed dist_cache/L1 configs and fan out dist_cache tuning
 		// knobs onto block_cache. Runs before synthesis so it sees the user's
@@ -867,18 +867,17 @@ func normalizeDistCacheConfig(userComponents []string) error {
 	return nil
 }
 
-
 // aliasDistributedCacheComponent rewrites any "distributed_cache" entry in
 // the user's components list to the internal component name "dist_cache".
 // The registry only knows "dist_cache"; accepting "distributed_cache" here
 // keeps the user-facing YAML consistent with the section name.
 func aliasDistributedCacheComponent(components []string) []string {
-    for i, c := range components {
-        if c == "distributed_cache" {
-            components[i] = "dist_cache"
-        }
-    }
-    return components
+	for i, c := range components {
+		if c == "distributed_cache" {
+			components[i] = "dist_cache"
+		}
+	}
+	return components
 }
 
 // injectBlockCacheForDistCache splices block_cache in immediately before
