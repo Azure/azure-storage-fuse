@@ -121,7 +121,7 @@ components:
 }
 
 func TestNormalizeDistCacheConfig_DistCacheOnlyInComponents(t *testing.T) {
-	// dist_cache in components: but no distributed_cache: section.
+	// distributed_cache in components: but no distributed_cache: section.
 	// Normalize should succeed and touch no block_cache keys.
 	setDistCacheYAML(t, `
 read-only: true
@@ -137,21 +137,21 @@ components:
 	assert.False(t, viper.IsSet("block_cache.block-size-mb"))
 }
 
-func TestNormalizeDistCacheConfig_DistCacheViaCLIFlagWithoutComponents(t *testing.T) {
-	// components: omitted and the --distributed-cache CLI flag is set:
-	// synthesis path in mount.go adds dist_cache to the pipeline, so
-	// normalize must run its checks and fanout.
+func TestNormalizeDistCacheConfig_DistCacheSectionWithoutComponents(t *testing.T) {
+       // dist_cache: set but components: omitted — the synthesis-path case.
 	setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
   discovery-endpoint: d
 `)
 	defer viper.Reset()
-	config.Set("distributed-cache", "true")
 
 	err := normalizeDistCacheConfig(nil)
 	assert.NoError(t, err)
 }
+// A distributed_cache: section alongside an explicit components: that omits
+// distributed_cache is silently ignored, matching how the codebase treats stray
+// block_cache:/file_cache: sections. Normalize must not raise a
 
 // --- read-only gating --------------------------------------------------------
 
@@ -461,7 +461,7 @@ distributed_cache:
 `)
 	defer viper.Reset()
 
-	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
+	err := normalizeDistCacheConfig(nil)
 	assert.NoError(t, err)
 
 	assert.True(t, viper.IsSet("block_cache.block-size-mb"))
