@@ -1,4 +1,4 @@
-## 2.5.5 (Unreleased)
+## 2.5.5 (2026-08-11)
 **Features**
 - Added support for Ubuntu 26.04 on both AMD64 and ARM64 architectures.
 - Add gzip compression of rolled-over log files for the base logger. Enable with `compress: true` under the `logging` section in config, or via the `--log-compress` CLI flag.
