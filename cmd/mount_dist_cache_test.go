@@ -102,6 +102,7 @@ func setDistCacheYAML(t *testing.T, yaml string) {
 
 func TestNormalizeDistCacheConfig_NoDistCacheSignal(t *testing.T) {
 	setDistCacheYAML(t, `
+read-only: true
 azstorage:
   account-name: acct
   container: c
@@ -121,9 +122,10 @@ components:
 }
 
 func TestNormalizeDistCacheConfig_DistCacheOnlyInComponents(t *testing.T) {
-	// dist_cache in components: but no dist_cache: section. Normalize
+	// dist_cache in components: but no distributed_cache: section. Normalize
 	// should succeed and touch no block_cache keys.
 	setDistCacheYAML(t, `
+read-only: true
 components:
   - libfuse
   - dist_cache
@@ -137,9 +139,12 @@ components:
 }
 
 func TestNormalizeDistCacheConfig_DistCacheSectionWithoutComponents(t *testing.T) {
-	// dist_cache: set but components: omitted — the synthesis-path case.
+	// distributed_cache: set but components: omitted — the synthesis-path case.
+	// The CLI flag "distributed-cache" is the activation signal checked here.
 	setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed-cache: true
+distributed_cache:
   discovery-url: http://d
 `)
 	defer viper.Reset()
@@ -148,13 +153,14 @@ dist_cache:
 	assert.NoError(t, err)
 }
 
-// A dist_cache: section alongside an explicit components: that omits
+// A distributed_cache: section alongside an explicit components: that omits
 // dist_cache is silently ignored, matching how the codebase treats stray
 // block_cache:/file_cache: sections. Normalize must not raise a
 // misleading "incompatible" error against the L1 the user actually chose.
 func TestNormalizeDistCacheConfig_StaleSectionWithOtherL1IsNoop(t *testing.T) {
 	setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
 file_cache:
   path: /tmp/fc
@@ -174,7 +180,8 @@ components:
 func TestNormalizeDistCacheConfig_StaleSectionNoL1IsNoop(t *testing.T) {
 	// Explicit components: without dist_cache; stray section ignored.
 	setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
   block-size-mb: 32
 components:
@@ -190,19 +197,21 @@ components:
 
 func TestNormalizeDistCacheConfig_RejectsBlockCacheInComponents(t *testing.T) {
 	setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
 `)
 	defer viper.Reset()
 
 	err := normalizeDistCacheConfig([]string{"libfuse", "block_cache", "dist_cache", "azstorage"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "incompatible with block_cache")
+	assert.Contains(t, err.Error(), "block_cache")
 }
 
 func TestNormalizeDistCacheConfig_RejectsBlockCacheSection(t *testing.T) {
 	setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
 block_cache:
   block-size-mb: 8
@@ -211,12 +220,13 @@ block_cache:
 
 	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "incompatible with block_cache")
+	assert.Contains(t, err.Error(), "block_cache")
 }
 
 func TestNormalizeDistCacheConfig_RejectsBothSurfaces(t *testing.T) {
 	setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
 block_cache:
   block-size-mb: 8
@@ -230,7 +240,7 @@ components:
 
 	err := normalizeDistCacheConfig([]string{"libfuse", "block_cache", "dist_cache", "azstorage"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "incompatible with block_cache")
+	assert.Contains(t, err.Error(), "block_cache")
 }
 
 // Other L1 caches (file_cache, xload, stream) are incompatible because
@@ -240,14 +250,15 @@ func TestNormalizeDistCacheConfig_RejectsOtherL1InComponents(t *testing.T) {
 	for _, name := range []string{"file_cache", "xload", "stream"} {
 		t.Run(name, func(t *testing.T) {
 			setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
 `)
 			defer viper.Reset()
 
 			err := normalizeDistCacheConfig([]string{"libfuse", name, "dist_cache", "azstorage"})
 			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "incompatible with "+name)
+			assert.Contains(t, err.Error(), name)
 		})
 	}
 }
@@ -260,7 +271,8 @@ func TestNormalizeDistCacheConfig_RejectsOtherL1Sections(t *testing.T) {
 		{
 			name: "file_cache",
 			yaml: `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
 file_cache:
   path: /tmp/fc
@@ -269,7 +281,8 @@ file_cache:
 		{
 			name: "xload",
 			yaml: `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
 xload:
   path: /tmp/xl
@@ -278,7 +291,8 @@ xload:
 		{
 			name: "stream",
 			yaml: `
-dist_cache:
+read-only: true
+distributed_cache:
   discovery-url: http://d
 stream:
   block-size-mb: 16
@@ -292,14 +306,16 @@ stream:
 
 			err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
 			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "incompatible with "+tc.name)
+			assert.Contains(t, err.Error(), tc.name)
 		})
 	}
 }
 
 func TestNormalizeDistCacheConfig_FansOutTuningKnobs(t *testing.T) {
 	setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed-cache: true
+distributed_cache:
   discovery-url: http://d
   block-size-mb: 32
   mem-size-mb: 4096
@@ -333,7 +349,9 @@ func TestNormalizeDistCacheConfig_UnsetKnobsAreNotForwarded(t *testing.T) {
 	// Only block-size-mb is set; the other three targets must remain unset
 	// so block_cache falls back to its own defaults.
 	setDistCacheYAML(t, `
-dist_cache:
+read-only: true
+distributed-cache: true
+distributed_cache:
   discovery-url: http://d
   block-size-mb: 32
 `)
@@ -346,4 +364,36 @@ dist_cache:
 	assert.False(t, viper.IsSet("block_cache.mem-size-mb"))
 	assert.False(t, viper.IsSet("block_cache.prefetch"))
 	assert.False(t, viper.IsSet("block_cache.parallelism"))
+}
+
+func TestNormalizeDistCache_RequiresReadOnly(t *testing.T) {
+	setDistCacheYAML(t, `
+components:
+  - libfuse
+  - dist_cache
+  - azstorage
+distributed_cache:
+  discovery-url: http://foo:9065
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
+}
+
+func TestNormalizeDistCache_ReadOnlyPasses(t *testing.T) {
+	setDistCacheYAML(t, `
+read-only: true
+components:
+  - libfuse
+  - dist_cache
+  - azstorage
+distributed_cache:
+  discovery-url: http://foo:9065
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "dist_cache", "azstorage"})
+	assert.NoError(t, err)
 }

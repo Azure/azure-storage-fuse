@@ -95,7 +95,7 @@ type DistCacheOptions struct {
 	K8sNamespace string `config:"k8s-namespace" yaml:"k8s-namespace,omitempty"`
 
 	// Static fallback
-	ServerList string `config:"server-list" yaml:"server-list,omitempty"`
+	ServerList string `config:"server-list" yaml:"servers,omitempty"`
 
 	// Common options
 	Port       int    `config:"port"        yaml:"port,omitempty"`        // Default 9065
@@ -158,7 +158,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 
 	// At least one discovery method must be set (YAML, CLI flag, or env).
 	if conf.DiscoveryURL == "" && conf.K8sService == "" && conf.ServerList == "" {
-		return fmt.Errorf("dist_cache: no server discovery configured (set discovery-url, k8s-service, or server-list)")
+		return fmt.Errorf("distributed_cache: no server discovery configured (set endpoint, k8s-service, or server-list)")
 	}
 
 	// Warn if multiple discovery methods are configured. The dcache client
@@ -635,13 +635,32 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf *[]byte, leng
 func init() {
 	internal.AddComponent(compName, NewDistCacheComponent)
 
-	discoveryFlag := config.AddStringFlag("dist-cache-discovery-url", "",
-		"distributed cache discovery endpoint (recommended)")
+	discoveryFlag := config.AddStringFlag("distributed-cache-discovery-url", "",
+	"distributed cache discovery URL")
 	config.BindPFlag(compName+".discovery-url", discoveryFlag)
 
-	serverListFlag := config.AddStringFlag("dist-cache-server-list", "",
-		"comma-separated list of distributed cache server addresses (fallback)")
-	config.BindPFlag(compName+".server-list", serverListFlag)
+	ttlFlag := config.AddUint32Flag("distributed-cache-ttl", 0,
+		"distributed cache entry TTL in seconds (0 = no TTL)")
+	config.BindPFlag(compName+".ttl-seconds", ttlFlag)
+
+	// L1 (block_cache) knobs surfaced under the distributed-cache name; the
+	// fan-out in cmd/mount.go copies these onto block_cache when dist_cache
+	// is active in the pipeline.
+	blockSizeFlag := config.AddUint32Flag("distributed-cache-block-size", 0,
+		"block size in MB for the distributed cache L1 (block_cache)")
+	config.BindPFlag("block_cache.block-size-mb", blockSizeFlag)
+
+	memFlag := config.AddUint32Flag("distributed-cache-memory", 0,
+		"memory size in MB for the distributed cache L1 (block_cache)")
+	config.BindPFlag("block_cache.mem-size-mb", memFlag)
+
+	prefetchFlag := config.AddUint32Flag("distributed-cache-prefetch", 0,
+		"prefetch block count for the distributed cache L1 (block_cache)")
+	config.BindPFlag("block_cache.prefetch", prefetchFlag)
+
+	parallelismFlag := config.AddUint32Flag("distributed-cache-parallelism", 0,
+		"download parallelism for the distributed cache L1 (block_cache)")
+	config.BindPFlag("block_cache.parallelism", parallelismFlag)
 
 	RegisterEnvVariables()
 }

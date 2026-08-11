@@ -94,6 +94,7 @@ type mountOptions struct {
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
+	DistributedCache  bool     `config:"distributed-cache"`
 	AttrCache         bool     `config:"use-attr-cache"`
 	LibfuseOptions    []string `config:"libfuse-options"`
 	BlockCache        bool     `config:"block-cache"`
@@ -285,6 +286,9 @@ var mountCmd = &cobra.Command{
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 		}
 
+		// Accept "distributed_cache" as an alias for "dist_cache" in components:
+                options.Components = aliasDistributedCacheComponent(options.Components)
+
 		// Reject mixed dist_cache/L1 configs and fan out dist_cache tuning
 		// knobs onto block_cache. Runs before synthesis so it sees the user's
 		// original components list.
@@ -301,7 +305,7 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "block_cache")
 			} else if options.Preload {
 				pipeline = append(pipeline, "xload")
-			} else if config.IsSet("dist_cache") {
+			} else if config.IsSet("distributed-cache") && options.DistributedCache {
 				pipeline = append(pipeline, "dist_cache") // L2 cache
 			} else {
 				pipeline = append(pipeline, "file_cache")
@@ -809,17 +813,25 @@ func normalizeDistCacheConfig(userComponents []string) error {
 	// that omits dist_cache is silently ignored (matching how the codebase
 	// treats stray block_cache:/file_cache: sections).
 	userWantsDistCache := common.ComponentInPipeline(userComponents, "dist_cache") ||
-		(len(userComponents) == 0 && config.IsSet("dist_cache"))
+		(len(userComponents) == 0 && config.IsSet("distributed-cache"))
 	if !userWantsDistCache {
 		return nil
 	}
 
+	//readonly check
+	var readOnly bool
+	if err := config.UnmarshalKey("read-only", &readOnly); err != nil {
+		return fmt.Errorf("mount: failed to read read-only flag: %w", err)
+	}
+	if !readOnly {
+		return fmt.Errorf("mount: distributed cache is allowed only for read-only mounts; pass --read-only or set read-only: true in the config file")
+	}
 	// Reject any sibling L1 cache signal, whether in components: or as a
 	// top-level section.
 	incompatible := []string{"block_cache", "file_cache", "xload", "stream"}
 	for _, name := range incompatible {
 		if common.ComponentInPipeline(userComponents, name) || config.IsSet(name) {
-			return fmt.Errorf("mount: dist_cache is incompatible with %s; dist_cache uses block_cache as its L1 and cannot coexist with another L1 cache. Remove %s from components: and any %s: section", name, name, name)
+			return fmt.Errorf("mount: distributed_cache is a single configuration surface, remove %s from components: and any %s: section", name, name)
 		}
 	}
 
@@ -827,10 +839,20 @@ func normalizeDistCacheConfig(userComponents []string) error {
 	// block_cache defaults. Round-tripping through string relies on viper's
 	// weak-typed coercion when BlockCache reads its config.
 	fanout := []struct{ src, dst string }{
-		{"dist_cache.block-size-mb", "block_cache.block-size-mb"},
-		{"dist_cache.mem-size-mb", "block_cache.mem-size-mb"},
-		{"dist_cache.prefetch", "block_cache.prefetch"},
-		{"dist_cache.parallelism", "block_cache.parallelism"},
+		// L1 tuning fanned out to block_cache
+		{"distributed_cache.block-size-mb", "block_cache.block-size-mb"},
+		{"distributed_cache.mem-size-mb", "block_cache.mem-size-mb"},
+		{"distributed_cache.prefetch", "block_cache.prefetch"},
+		{"distributed_cache.parallelism", "block_cache.parallelism"},
+		// Native dist_cache knobs — user writes them under distributed_cache:
+		// but the component reads them from dist_cache.*.
+		{"distributed_cache.discovery-url", "dist_cache.discovery-url"},
+		{"distributed_cache.k8s-service", "dist_cache.k8s-service"},
+		{"distributed_cache.k8s-namespace", "dist_cache.k8s-namespace"},
+		{"distributed_cache.servers", "dist_cache.server-list"},
+		{"distributed_cache.port", "dist_cache.port"},
+		{"distributed_cache.ttl-seconds", "dist_cache.ttl-seconds"},
+		{"distributed_cache.verify-checksum", "dist_cache.verify-checksum"},
 	}
 	for _, m := range fanout {
 		if !config.IsSet(m.src) {
@@ -843,6 +865,20 @@ func normalizeDistCacheConfig(userComponents []string) error {
 		config.Set(m.dst, v)
 	}
 	return nil
+}
+
+
+// aliasDistributedCacheComponent rewrites any "distributed_cache" entry in
+// the user's components list to the internal component name "dist_cache".
+// The registry only knows "dist_cache"; accepting "distributed_cache" here
+// keeps the user-facing YAML consistent with the section name.
+func aliasDistributedCacheComponent(components []string) []string {
+    for i, c := range components {
+        if c == "distributed_cache" {
+            components[i] = "dist_cache"
+        }
+    }
+    return components
 }
 
 // injectBlockCacheForDistCache splices block_cache in immediately before
@@ -978,6 +1014,9 @@ func init() {
 	mountCmd.Flags().BoolVar(&options.Streaming, "streaming", false, "Enable Streaming.")
 	config.BindPFlag("streaming", mountCmd.Flags().Lookup("streaming"))
 	mountCmd.Flags().Lookup("streaming").Hidden = true
+
+	mountCmd.Flags().BoolVar(&options.DistributedCache, "distributed-cache", false, "Enable Distributed-Cache.")
+	config.BindPFlag("distributed-cache", mountCmd.Flags().Lookup("distributed-cache"))
 
 	mountCmd.Flags().BoolVar(&options.BlockCache, "block-cache", false, "Enable Block-Cache.")
 	config.BindPFlag("block-cache", mountCmd.Flags().Lookup("block-cache"))
