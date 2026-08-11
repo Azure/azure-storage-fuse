@@ -43,7 +43,7 @@ const (
 	sequentialWindowBlocks    = 2
 	minStreakForSeqPattern    = 3
 	maxStreakForRandomPattern = -3
-	maxReadAheadScheduleBurst = 4
+	maxReadAheadScheduleBurst = 5
 )
 
 // patternDetector analyzes file access patterns to optimize read-ahead behavior.
