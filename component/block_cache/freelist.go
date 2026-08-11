@@ -38,8 +38,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 // errFreeListFull indicates that all buffers are currently in use.
@@ -180,9 +178,6 @@ func createFreeList(bufSize uint64, memSize uint64) (*freeListType, error) {
 
 	freeList.bufSize = int64(bufSize)
 
-	log.Info("freeList::createFreeList: Free list created with buffer size: %d bytes, max buffers: %d, total size: %.2f MB",
-		bufSize, maxBuffers, float64(uint64(maxBuffers)*bufSize)/(1024.0*1024.0))
-
 	return freeList, nil
 }
 
@@ -207,8 +202,6 @@ func (fl *freeListType) destroy() {
 
 	fl.bufDescriptors = nil
 	fl.zeroBuf = nil
-
-	log.Info("freeList::destroy: Free list destroyed")
 }
 
 // allocateBuffer allocates a buffer from the free list.
@@ -263,8 +256,6 @@ func (fl *freeListType) allocateBuffer(blk *block) (*bufferDescriptor, error) {
 	bufDesc.nxtFreeBuffer = -1
 	bufDesc.block = blk
 
-	log.Debug("freeList::allocateBuffer: Allocated bufferIdx: %d for blockIdx: %d", bufDesc.bufIdx, blk.idx)
-
 	return bufDesc, nil
 }
 
@@ -285,8 +276,6 @@ func (fl *freeListType) releaseBuffer(bufDesc *bufferDescriptor) {
 	}
 	fl.notifyAvailabilityLocked()
 	fl.mutex.Unlock()
-
-	log.Debug("freeList::releaseBuffer: Added bufferIdx: %d back to free list", bufDesc.bufIdx)
 }
 
 func (fl *freeListType) notifyAvailability() {
@@ -349,8 +338,6 @@ func (fl *freeListType) watchAvailability() (<-chan struct{}, error) {
 // Candidate pinning and final detachment are validated under btm.mu. The
 // returned descriptor is no longer visible through either table or free list.
 func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr, access bufferAccessKind) (*bufferDescriptor, error) {
-	log.Debug("freeList::evictBuffer: Starting to look for victim buffer")
-
 	maxBuffers := len(fl.bufDescriptors)
 	maxTries := maxBuffers * int(maxSweepPasses)
 	if access == accessPrefetch {
@@ -359,8 +346,6 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr,
 	numTries := 0
 
 	for {
-		log.Debug("freeList::evictBuffer: Trying to find victim buffer, try number: %d", numTries+1)
-
 		if numTries >= maxTries {
 			// A bounded scan fully ages any unpinned descriptor. Reaching this
 			// limit means every descriptor remained pinned or changed concurrently.
@@ -378,21 +363,13 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr,
 		if bufDesc.refCnt.Load() == refCountTableOnly {
 			if !bufDesc.ageUsage() {
 				// Found a victim buffer. pin the buffer by increasing refCnt.
-				log.Debug("freeList::evictBuffer: Found candidate bufferIdx: %d after %d tries",
-					bufDesc.bufIdx, numTries)
-
 				pinnedBuffer := false
 
 				btm.mu.Lock()
 				// Check for the refCnt again after acquiring the lock to make sure the buffer is still a valid victim before pinning it.
 				current, mapped := btm.table[bufDesc.block]
-				if bufDesc.refCnt.Load() != refCountTableOnly || bufDesc.usageCount.Load() != 0 || !mapped || current != bufDesc ||
-					(access == accessPrefetch && bufDesc.dirty.Load()) {
-					log.Debug("freeList::evictBuffer: Victim bufferIdx: %d is no longer a valid victim after acquiring lock, refCnt: %d, giving it another chance",
-						bufDesc.bufIdx, bufDesc.refCnt.Load())
-				} else {
-					log.Debug("freeList::evictBuffer: Victim bufferIdx: %d for blockIdx: %d of file: %s is still a valid victim after acquiring lock, pinning it for eviction",
-						bufDesc.bufIdx, bufDesc.block.idx, bufDesc.block.file.Name)
+				if bufDesc.refCnt.Load() == refCountTableOnly && bufDesc.usageCount.Load() == 0 && mapped && current == bufDesc &&
+					(access != accessPrefetch || !bufDesc.dirty.Load()) {
 					bufDesc.refCnt.Add(1)
 					pinnedBuffer = true
 				}
@@ -405,8 +382,6 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr,
 							bufDesc.release(fl)
 							continue
 						}
-						log.Debug("freeList::evictBuffer: Victim bufferIdx: %d for blockIdx: %d is dirty, scheduling upload before reuse",
-							bufDesc.bufIdx, bufDesc.block.idx)
 						if err := bufDesc.block.scheduleUpload(workerPool, bufDesc); err != nil {
 							bufDesc.release(fl)
 							return nil, err
@@ -425,25 +400,6 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr,
 				}
 			}
 		}
-
-		log.Debug("freeList::evictBuffer: bufferIdx: %d is in use or protected, refCnt: %d, usageCount: %d, bytesRead: %d, bytesWritten: %d",
-			bufDesc.bufIdx, bufDesc.refCnt.Load(), bufDesc.usageCount.Load(), bufDesc.bytesRead.Load(), bufDesc.bytesWritten.Load())
-	}
-
-	log.Debug("freeList::evictBuffer: Scanned %d candidates without finding a reusable victim, numBuffers: %d, access: %d",
-		numTries, maxBuffers, access)
-	log.Debug("freeList::evictBuffer: Printing buffer descriptors for debugging:")
-	for i := range fl.bufDescriptors {
-		bufDesc := fl.bufDescriptors[i]
-		blockIdx := -1
-		fileName := ""
-		if bufDesc.block != nil {
-			blockIdx = bufDesc.block.idx
-			fileName = bufDesc.block.file.Name
-		}
-		log.Debug("BufferIdx: %d, BlockIdx: %d, RefCnt: %d, UsageCount: %d, BytesRead: %d, BytesWritten: %d, Dirty: %t, file: %s",
-			bufDesc.bufIdx, blockIdx, bufDesc.refCnt.Load(), bufDesc.usageCount.Load(), bufDesc.bytesRead.Load(),
-			bufDesc.bytesWritten.Load(), bufDesc.dirty.Load(), fileName)
 	}
 
 	return nil, errNoVictimBufferFound

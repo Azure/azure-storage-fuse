@@ -40,7 +40,6 @@ import (
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -205,7 +204,7 @@ func newBlockList() *blockList {
 // which would break BlockCache's offset calculations and read/write operations.
 func validateBlockList(blkList *internal.CommittedBlockList, f *file, blockSize uint64) error {
 	if blkList == nil || len(*blkList) == 0 {
-		return ErrInvalidBlockList
+		return fmt.Errorf("%w: list is empty", ErrInvalidBlockList)
 	}
 	listLen := len(*blkList)
 	newblkList := make([]*block, 0, listLen)
@@ -213,17 +212,13 @@ func validateBlockList(blkList *internal.CommittedBlockList, f *file, blockSize 
 	for idx, blk := range *blkList {
 		expectedOffset := int64(idx) * int64(blockSize)
 		if idx < (listLen-1) && blk.Size != blockSize {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format blk idx : %d is having size %d bytes, while block size set is %d bytes", idx, blk.Size, blockSize)
-			return ErrInvalidBlockList
+			return fmt.Errorf("%w: block %d has size %d, expected %d", ErrInvalidBlockList, idx, blk.Size, blockSize)
 		} else if idx == (listLen-1) && blk.Size > blockSize {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d bytes) than block size configured is %d bytes", idx, blk.Size, blockSize)
-			return ErrInvalidBlockList
+			return fmt.Errorf("%w: final block %d has size %d, maximum is %d", ErrInvalidBlockList, idx, blk.Size, blockSize)
 		} else if len(blk.Id) != common.BlockIDLengthBase64 {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block Id length for blk idx : %d is %d bytes is not matching to what blobfuse uses(i.e., %d bytes)", idx, len(blk.Id), common.BlockIDLengthBase64)
-			return ErrInvalidBlockList
+			return fmt.Errorf("%w: block %d ID length is %d, expected %d", ErrInvalidBlockList, idx, len(blk.Id), common.BlockIDLengthBase64)
 		} else if blk.Offset != expectedOffset {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block offset for blk idx : %d is %d but expected %d", idx, blk.Offset, expectedOffset)
-			return ErrInvalidBlockList
+			return fmt.Errorf("%w: block %d offset is %d, expected %d", ErrInvalidBlockList, idx, blk.Offset, expectedOffset)
 		}
 		newblkList = append(newblkList, createBlock(idx, blk.Id, committedBlock, f))
 	}
@@ -345,9 +340,6 @@ func validateBlockIndex(blockIdx int) error {
 //   - Buffer is marked as not dirty
 //   - Any upload errors are captured in bufDesc.uploadErr
 func (blk *block) scheduleUpload(workerPool *workerPool, bufDesc *bufferDescriptor) error {
-	log.Debug("block::scheduleUpload: Scheduling upload for blockIdx: %d, bufferIdx: %d, usageCnt: %d, refCnt: %d",
-		blk.idx, bufDesc.bufIdx, bufDesc.bytesWritten.Load(), bufDesc.refCnt.Load())
-
 	task, err := blk.queueUpload(workerPool, bufDesc)
 	if err != nil {
 		return err
