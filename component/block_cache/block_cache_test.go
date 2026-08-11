@@ -380,7 +380,8 @@ func TestBlockCache_WritebackLimit(t *testing.T) {
 		{memoryMB: 4, workers: 2, want: 1},
 		{memoryMB: 20, workers: 10, want: 2},
 		{memoryMB: 64, workers: 16, want: 4},
-		{memoryMB: 128, workers: 64, want: 4},
+		{memoryMB: 128, workers: 64, want: 16},
+		{memoryMB: 1024, workers: 288, want: 64},
 	}
 
 	for _, test := range tests {

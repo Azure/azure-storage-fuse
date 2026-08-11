@@ -69,6 +69,8 @@ const (
 )
 
 func TestScheduleReadAhead_RefillsIncrementallyPerDemandBlock(t *testing.T) {
+	const expectedScheduleBurst = 5
+
 	bc = &BlockCache{
 		blockSize:         1024,
 		prefetch:          100,
@@ -88,16 +90,16 @@ func TestScheduleReadAhead_RefillsIncrementallyPerDemandBlock(t *testing.T) {
 	pd := newPatternDetector()
 
 	f.scheduleReadAhead(bc, pd, 0, 1)
-	assert.Len(t, btm.table, maxReadAheadScheduleBurst)
-	assert.Equal(t, int64(maxReadAheadScheduleBurst+1), pd.nxtReadAheadBlockIdx.Load())
+	assert.Len(t, btm.table, expectedScheduleBurst)
+	assert.Equal(t, int64(expectedScheduleBurst+1), pd.nxtReadAheadBlockIdx.Load())
 	assert.Equal(t, int64(0), pd.lastReadAheadDemandBlockIdx.Load())
 
 	f.scheduleReadAhead(bc, pd, int64(bc.blockSize/2), 1)
-	assert.Len(t, btm.table, maxReadAheadScheduleBurst, "same demand block must not refill")
+	assert.Len(t, btm.table, expectedScheduleBurst, "same demand block must not refill")
 
 	f.scheduleReadAhead(bc, pd, int64(bc.blockSize), 1)
-	assert.Len(t, btm.table, maxReadAheadScheduleBurst*2)
-	assert.Equal(t, int64(maxReadAheadScheduleBurst*2+1), pd.nxtReadAheadBlockIdx.Load())
+	assert.Len(t, btm.table, expectedScheduleBurst*2)
+	assert.Equal(t, int64(expectedScheduleBurst*2+1), pd.nxtReadAheadBlockIdx.Load())
 	assert.Equal(t, int64(1), pd.lastReadAheadDemandBlockIdx.Load())
 }
 

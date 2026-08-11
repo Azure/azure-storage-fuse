@@ -248,7 +248,7 @@ const (
 	minPrefetch           = 5             // Minimum number of blocks for prefetch
 	maxBlocks             = 50000         // Maximum number of blocks per file (limits file size)
 	defaultMemoryPercent  = 50            // Available memory used when mem-size-mb is omitted
-	maxFileWritebackTasks = 4             // Maximum asynchronous full-block uploads per file
+	maxFileWritebackTasks = 64            // Maximum asynchronous full-block uploads per file
 )
 
 // Verification to check satisfaction criteria with Component Interface
