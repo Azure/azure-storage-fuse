@@ -38,7 +38,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
@@ -164,8 +163,6 @@ func getFileFromPath(bc *BlockCache, handle *handlemap.Handle) (*file, bool, err
 // Important: This function must be called for every handle, exactly once,
 // to prevent buffer leaks and maintain correct reference counts.
 func deleteOpenHandleForFile(bc *BlockCache, handle *handlemap.Handle, file *file, takeFileLock bool) {
-	log.Debug("deleteOpenHandleForFile: Deleting handle: %d for file %s", handle.ID, file.Name)
-
 	if takeFileLock {
 		file.mu.Lock()
 	}
@@ -214,7 +211,6 @@ func deleteOpenHandleForFile(bc *BlockCache, handle *handlemap.Handle, file *fil
 // These panics indicate serious bugs in reference counting or buffer lifecycle
 // management and help catch correctness issues during development.
 func releaseAllBuffersForFile(bc *BlockCache, file *file) {
-	log.Debug("releaseAllBuffersForFile: Releasing all buffers for file %s", file.Name)
 	// Release all buffers held by this file
 	for _, blk := range file.blockList.list {
 		bufDesc, _ := bc.btm.lookupBufferDescriptor(blk, bc.freeList)
@@ -223,23 +219,10 @@ func releaseAllBuffersForFile(bc *BlockCache, file *file) {
 		}
 
 		// Ensure the buffer is valid for read before releasing, if read-ahead is in progress, wait for it to complete.
-		if err := bufDesc.ensureBufferValidForRead(); err != nil {
-			log.Warn("releaseAllBuffersForFile: BufferIdx: %d for blockIdx: %d of file %s is not valid for read",
-				bufDesc.bufIdx, blk.idx, file.Name)
-			// Continue with releasing the buffer, this buffer would be collected by the victim selection algo later.
-		}
+		_ = bufDesc.ensureBufferValidForRead()
 
-		log.Debug("releaseAllBuffersForFile: Releasing bufferIdx: %d for blockIdx: %d of file %s from buffer table manager",
-			bufDesc.bufIdx, blk.idx, file.Name)
-
-		if bc.btm.detachBufferDescriptor(bufDesc, bc.freeList) {
-			log.Debug("releaseAllBuffersForFile: Detached bufferIdx: %d for blockIdx: %d of file %s",
-				bufDesc.bufIdx, blk.idx, file.Name)
-		}
+		bc.btm.detachBufferDescriptor(bufDesc, bc.freeList)
 		bufDesc.release(bc.freeList)
-
-		log.Debug("releaseAllBuffersForFile: Released bufferIdx: %d for blockIdx: %d of file %s",
-			bufDesc.bufIdx, blk.idx, file.Name)
 	}
 
 	// Clear the block list

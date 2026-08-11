@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -139,10 +138,6 @@ func createWorkerPool(workers int, queueSize int, bc *BlockCache) *workerPool {
 		prefetchSlots: make(chan struct{}, bc.prefetchTaskLimit),
 		bc:            bc,
 	}
-
-	// Start the workers.
-	log.Info("BlockCache::startWorkerPool: Starting worker Pool, num workers: %d, task queue size: %d, prefetch task limit: %d",
-		wp.workers, queueSize, cap(wp.prefetchSlots))
 
 	wp.wg.Add(wp.workers)
 	for i := 0; i < wp.workers; i++ {
@@ -255,8 +250,6 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 
 	block := task.block
 	bufDesc := task.bufDesc
-	log.Debug("BlockCache::downloadBlock: Starting download for file: %s, blockIdx: %d, bufferIdx: %d, offset: %d, size: %d",
-		task.path, block.idx, bufDesc.bufIdx, int64(uint64(block.idx)*bc.blockSize), task.fileSize)
 
 	_, err := bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   task.path,
@@ -266,14 +259,9 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 	})
 	if err != nil {
 		task.err = err
-		log.Err("BlockCache::downloadBlock: ReadInBuffer failed for file %s block idx %d: %v",
-			block.file.Name, block.idx, err)
-
 		bufDesc.downloadErr = err
 		bc.btm.detachBufferDescriptor(bufDesc, bc.freeList)
 	} else {
-		log.Debug("BlockCache::downloadBlock: Successfully downloaded blockIdx: %d into bufferIdx: %d, file: %s",
-			block.idx, bufDesc.bufIdx, block.file.Name)
 		bufDesc.valid.Store(true)
 	}
 }
@@ -309,12 +297,10 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 	block := task.block
 	bufDesc := task.bufDesc
-	log.Debug("BlockCache::uploadBlock: Starting upload for file: %s, blockIdx: %d, bufferIdx: %d, size: %d, blockId: %s",
-		task.path, block.idx, bufDesc.bufIdx, task.uploadSize, task.blockID)
 
 	var err error
 	if task.uploadSize <= 0 || task.uploadSize > len(bufDesc.buf) {
-		err = fmt.Errorf("invalid upload size %d for block %d of %s", task.uploadSize, block.idx, task.path)
+		err = fmt.Errorf("invalid upload size %d for block %d", task.uploadSize, block.idx)
 	} else {
 		err = bc.NextComponent().StageData(internal.StageDataOptions{
 			Name: task.path,
@@ -325,13 +311,9 @@ func (wp *workerPool) uploadBlock(task *task, bc *BlockCache) {
 
 	if err != nil {
 		task.err = err
-		log.Err("BlockCache::getBlockIDList : Failed to write block for %v, ID: %v, file: %s [%v]",
-			task.path, task.blockID, task.path, err)
 		bufDesc.uploadErr = err
 		block.file.err.Store(&err)
 	} else {
-		log.Debug("BlockCache::uploadBlock: Successfully uploaded blockIdx: %d from bufferIdx: %d, file: %s",
-			block.idx, bufDesc.bufIdx, task.path)
 		block.id = task.blockID
 		bufDesc.dirty.Store(false)
 		bufDesc.bytesWritten.Store(0)

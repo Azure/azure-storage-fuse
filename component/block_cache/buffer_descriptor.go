@@ -39,8 +39,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 const (
@@ -242,11 +240,7 @@ func (bd *bufferDescriptor) ensureBufferValidForRead() error {
 
 	// Inconsistent state: buffer is not valid but also has no error.
 	// This should never happen and indicates a bug in the download logic.
-	err := fmt.Errorf("bufferDescriptor::ensureBufferValidForRead: Inconsistent state for bufferIdx: %d, valid: %v, downloadErr: %v",
-		bd.bufIdx, bd.valid.Load(), bd.downloadErr)
-	log.Err("%v", err)
-
-	return err
+	return fmt.Errorf("buffer %d is invalid without a download error", bd.bufIdx)
 }
 
 // release decrements the reference count for this buffer descriptor.
@@ -271,8 +265,6 @@ func (bd *bufferDescriptor) release(fl *freeListType) bool {
 	if newRefCnt == 0 {
 		// No more references exist (table removed it and all users released).
 		// Safe to return buffer to free list for reuse.
-		log.Debug("bufferDescriptor::release: Releasing bufferIdx: %d for blockIdx: %d back to free list, bytesRead: %d, bytesWritten: %d, file: %s",
-			bd.bufIdx, bd.block.idx, bd.bytesRead.Load(), bd.bytesWritten.Load(), bd.block.file.Name)
 		fl.releaseBuffer(bd)
 		return true
 	} else if newRefCnt == refCountTableOnly {
@@ -280,9 +272,7 @@ func (bd *bufferDescriptor) release(fl *freeListType) bool {
 	} else if newRefCnt < 0 {
 		// Negative refCnt indicates a bug: release() called more times than acquire.
 		// This should never happen and represents a serious reference counting error.
-		err := fmt.Sprintf("bufferDescriptor::release: bufferIdx: %d has negative refCount: %d, bytesRead: %d, bytesWritten: %d",
-			bd.bufIdx, bd.refCnt.Load(), bd.bytesRead.Load(), bd.bytesWritten.Load())
-		log.Err("%s", err)
+		err := fmt.Sprintf("buffer %d has negative reference count %d", bd.bufIdx, bd.refCnt.Load())
 		panic(err)
 	}
 

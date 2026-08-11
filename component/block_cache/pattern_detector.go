@@ -33,11 +33,7 @@
 
 package block_cache
 
-import (
-	"sync/atomic"
-
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
-)
+import "sync/atomic"
 
 const (
 	sequentialWindowBlocks    = 2
@@ -131,7 +127,6 @@ func (pt patternType) String() string {
 //   - streak: Confidence counter (-3 to +3, indicates pattern strength)
 //   - nxtReadAheadBlockIdx: Next block index to prefetch (for sequential access)
 //   - lastReadAheadDemandBlockIdx: Last demand block that refilled the window
-//   - fileName: File name (for debugging/logging)
 //
 // Algorithm Details:
 //
@@ -164,9 +159,6 @@ type patternDetector struct {
 	// Last demand block that triggered a read-ahead refill. Repeated sub-block
 	// reads do not enqueue additional speculative work.
 	lastReadAheadDemandBlockIdx atomic.Int64
-
-	// Debug info - file name for logging
-	fileName string
 }
 
 // newPatternDetector creates a new pattern detector with default settings.
@@ -252,8 +244,6 @@ func (pd *patternDetector) updateAccessPattern(currentOffset int64, blockSize in
 			return patternSequential
 		} else if newStreak < 0 {
 			// Reset streak
-			log.Debug("PatternDetector::updateAccessPattern: Access pattern changed from Random to Sequential for file %s",
-				pd.fileName)
 			pd.streak.Store(0)
 		}
 	} else {
@@ -263,8 +253,6 @@ func (pd *patternDetector) updateAccessPattern(currentOffset int64, blockSize in
 			return patternRandom
 		} else if newStreak > 0 {
 			// Reset streak
-			log.Debug("PatternDetector::updateAccessPattern: Access pattern changed from Sequential to Random for file %s",
-				pd.fileName)
 			pd.streak.Store(0)
 		}
 	}
