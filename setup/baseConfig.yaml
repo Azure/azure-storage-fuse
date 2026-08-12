@@ -10,6 +10,7 @@ components:
   - xload
   - block_cache
   - file_cache
+  - dist_cache
   - attr_cache
   - azstorage
 
@@ -41,7 +42,13 @@ file_cache:
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
-  
+
+# Distributed cache configuration (optional, for multi-node shared caching)
+# Requires a running Tachyon cache server cluster (https://github.com/Azure/Tachyon).
+# When dist_cache is configured, block_cache is auto-added as the L1 layer.
+dist_cache:
+  discovery-endpoint: <discovery endpoint for auto-detecting cache servers. Recommended for production>
+
 # Azure storage configuration
 azstorage:
 # Required

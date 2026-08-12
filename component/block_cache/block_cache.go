@@ -105,16 +105,15 @@ type BlockCacheOptions struct {
 }
 
 const (
-	compName                = "block_cache"
-	defaultTimeout          = 120
-	defaultBlockSize        = 16
-	MAX_POOL_USAGE   uint32 = 80
-	MIN_POOL_USAGE   uint32 = 50
-	MIN_PREFETCH            = 5
-	MIN_WRITE_BLOCK         = 3
-	MIN_RANDREAD            = 10
-	MAX_FAIL_CNT            = 3
-	MAX_BLOCKS              = 50000
+	compName               = "block_cache"
+	defaultTimeout         = 120
+	MAX_POOL_USAGE  uint32 = 80
+	MIN_POOL_USAGE  uint32 = 50
+	MIN_PREFETCH           = 5
+	MIN_WRITE_BLOCK        = 3
+	MIN_RANDREAD           = 10
+	MAX_FAIL_CNT           = 3
+	MAX_BLOCKS             = 50000
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -194,14 +193,14 @@ func (bc *BlockCache) GenConfig() string {
 
 	prefetch := uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	memSize := uint32(bc.getDefaultMemSize() / _1MB)
-	if (prefetch * defaultBlockSize) > memSize {
+	if (prefetch * common.DefaultBlockSize) > memSize {
 		prefetch = (MIN_PREFETCH * 2) + 1
 	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "\n%s:", bc.Name())
 
-	fmt.Fprintf(&sb, "\n  block-size-mb: %v", defaultBlockSize)
+	fmt.Fprintf(&sb, "\n  block-size-mb: %v", common.DefaultBlockSize)
 	fmt.Fprintf(&sb, "\n  mem-size-mb: %v", memSize)
 	fmt.Fprintf(&sb, "\n  prefetch: %v", prefetch)
 	fmt.Fprintf(&sb, "\n  parallelism: %v", uint32(3*runtime.NumCPU()))
@@ -237,7 +236,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 	}
 
-	bc.blockSize = uint64(defaultBlockSize) * _1MB
+	bc.blockSize = uint64(common.DefaultBlockSize) * _1MB
 	if config.IsSet(compName + ".block-size-mb") {
 		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
@@ -358,11 +357,11 @@ func (bc *BlockCache) getDefaultDiskSize(path string) uint64 {
 func (bc *BlockCache) getDefaultMemSize() uint64 {
 	availableMemory, err := common.GetAvailableMemoryBytes()
 	if err != nil {
-		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of 4192MB (~4GB).", bc.Name(), err.Error())
-		return uint64(4192) * _1MB
+		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of %d MB.", bc.Name(), err.Error(), common.DefaultMemFallbackBytes/_1MB)
+		return common.DefaultMemFallbackBytes
 	}
 
-	return uint64(0.6 * float64(availableMemory))
+	return uint64(common.DefaultMemShareFraction * float64(availableMemory))
 }
 
 // CreateFile: Create a new file
@@ -1050,8 +1049,7 @@ func (bc *BlockCache) download(item *workItem) {
 		}
 	}
 
-	var etag string
-	// If file does not exists then download the block from the container
+	etag := item.ETag
 	n, err := bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 		Handle: item.handle,
 		Offset: int64(item.block.offset),

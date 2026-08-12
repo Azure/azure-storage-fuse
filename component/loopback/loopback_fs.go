@@ -221,6 +221,12 @@ func computeMD5(path string) ([]byte, error) {
 	return common.GetMD5(fh)
 }
 
+// loopbackETag returns a stable per-revision ETag derived from mtime+size,
+// so downstream components (dist_cache) can key L2 populates on a version.
+func loopbackETag(info os.FileInfo) string {
+	return fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size())
+}
+
 func (lfs *LoopbackFS) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("LoopbackFS::RenameDir : %s -> %s", options.Src, options.Dst)
 	oldPath := filepath.Join(lfs.path, options.Src)
@@ -345,7 +351,8 @@ func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int,
 	f := options.Handle.GetFileObject()
 
 	if f == nil {
-		f1, err := os.OpenFile(filepath.Join(lfs.path, options.Handle.Path), os.O_RDONLY, 0777)
+		fullPath := filepath.Join(lfs.path, options.Handle.Path)
+		f1, err := os.OpenFile(fullPath, os.O_RDONLY, 0777)
 		if err != nil {
 			return 0, nil
 		}
@@ -354,6 +361,11 @@ func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int,
 		f1.Close()
 		if err == io.EOF {
 			err = nil
+		}
+		if err == nil && options.Etag != nil {
+			if info, statErr := os.Lstat(fullPath); statErr == nil {
+				*options.Etag = loopbackETag(info)
+			}
 		}
 		return n, err
 	}
@@ -364,6 +376,11 @@ func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int,
 	n, err := f.ReadAt(options.Data, options.Offset)
 	if err == io.EOF {
 		err = nil
+	}
+	if err == nil && options.Etag != nil {
+		if info, statErr := f.Stat(); statErr == nil {
+			*options.Etag = loopbackETag(info)
+		}
 	}
 	return n, err
 }
@@ -457,6 +474,7 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 		Size:  info.Size(),
 		Mode:  info.Mode(),
 		Mtime: info.ModTime(),
+		ETag:  loopbackETag(info),
 	}
 	attr.Flags.Set(internal.PropFlagModeDefault)
 

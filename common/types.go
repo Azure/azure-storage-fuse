@@ -70,6 +70,24 @@ const (
 	BfuseStats    = "blobfuse_stats"
 	BlockIDLength = 16
 
+	// DefaultBlockSize is the default block size (in MB) used by block_cache
+	// and referenced by other components (e.g. dist_cache) to keep chunk
+	// alignment consistent when block_cache.block-size-mb is not configured.
+	DefaultBlockSize = 16
+
+	// DefaultMemShareFraction is the fraction of free RAM block_cache reserves
+	// for its block pool when block_cache.mem-size-mb is not explicitly set.
+	// Lives in common so other components (e.g. dist_cache) can compute their
+	// share relative to block_cache's reference footprint without importing
+	// component/block_cache.
+	DefaultMemShareFraction = 0.6
+
+	// DefaultMemFallbackBytes is the assumed available system memory when
+	// /proc/meminfo cannot be read. 4 GiB (4192 MiB) matches the historical
+	// value used by block_cache and keeps block_cache and dist_cache aligned
+	// on the same fallback when the OS memory probe fails.
+	DefaultMemFallbackBytes uint64 = 4192 * MbToBytes
+
 	FuseAllowedFlags = "Invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
 	UserAgentHeader = "User-Agent"
