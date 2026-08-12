@@ -84,7 +84,10 @@ func TestStampedePrevention_ConcurrentColdReadCoalesces(t *testing.T) {
 	}
 	t.Logf("stampede: %d blobfuse pods will race on %s: %v", len(pods), blobPath, pods)
 
-	before, haveMetrics := scrapeCacheServerMetrics(t)
+	before, ok := scrapeCacheServerMetrics(t)
+	if !ok {
+		t.Fatal("stampede: pre-read cache-server metrics scrape unavailable; cannot verify UploadSuccess invariant")
+	}
 
 	results := m.ConcurrentReadFile(t, pods, blobPath)
 
@@ -129,14 +132,9 @@ func TestStampedePrevention_ConcurrentColdReadCoalesces(t *testing.T) {
 			azurePods[0], blobPath, len(pods)-1)
 	}
 
-	if !haveMetrics {
-		t.Log("metrics scrape unavailable; skipping UploadSuccess assertion (log evidence still ran)")
-		return
-	}
 	after, ok := scrapeCacheServerMetrics(t)
 	if !ok {
-		t.Log("metrics: post-read scrape returned no data; skipping UploadSuccess assertion")
-		return
+		t.Fatal("stampede: post-read cache-server metrics scrape unavailable; cannot verify UploadSuccess invariant")
 	}
 	d := deltaCacheMetrics(before, after)
 	hits, misses, ratio := hitMissRatio(d)

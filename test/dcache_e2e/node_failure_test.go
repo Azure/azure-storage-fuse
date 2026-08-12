@@ -131,7 +131,10 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 
 	// Aggregate scrape captures traffic from the cache-server pods that remain
 	// reachable after the node loss.
-	before, haveMetrics := scrapeCacheServerMetrics(t)
+	before, ok := scrapeCacheServerMetrics(t)
+	if !ok {
+		t.Fatal("node-failure: pre-restore cache-server metrics scrape unavailable; cannot verify survivor-hit invariant")
+	}
 
 	secondRead := m.ReadFile(t, blobPath)
 	if len(secondRead) != len(original) {
@@ -155,14 +158,9 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	}
 	t.Logf("post-node-loss: blobfuse pod %s issued %d Azure GET(s) for %s", readerPod, azureGETs, blobPath)
 
-	if !haveMetrics {
-		t.Log("metrics scrape unavailable; skipping survivor-hit invariant (data integrity still verified)")
-		return
-	}
 	after, ok := scrapeCacheServerMetrics(t)
 	if !ok {
-		t.Log("metrics: post-node-loss scrape returned no data; skipping survivor-hit invariant")
-		return
+		t.Fatal("node-failure: post-node-loss cache-server metrics scrape unavailable; cannot verify survivor-hit invariant")
 	}
 
 	d := deltaCacheMetrics(before, after)

@@ -87,7 +87,10 @@ func TestWarmCache_LateJoinerPodsReadFromL2(t *testing.T) {
 	warmerPod := warmerPods[0]
 	t.Logf("warm-cache: warmer pod = %s", warmerPod)
 
-	beforeWarm, haveMetrics := scrapeCacheServerMetrics(t)
+	beforeWarm, ok := scrapeCacheServerMetrics(t)
+	if !ok {
+		t.Fatal("warm-cache: pre-warmer cache-server metrics scrape unavailable; cannot verify populate")
+	}
 
 	warmerData, err := m.readFileFromPodE(warmerPod, blobPath)
 	if err != nil {
@@ -103,42 +106,37 @@ func TestWarmCache_LateJoinerPodsReadFromL2(t *testing.T) {
 	}
 	t.Logf("warm-cache: warmer read %d bytes, md5 matches", len(warmerData))
 
-	if haveMetrics {
-		// Poll until the warmer's async L2 populate has landed on cache-server,
-		// otherwise late-joiners may race the warmer and re-populate themselves,
-		// flipping both the warmer-phase and late-joiner-phase assertions.
-		deadline := time.Now().Add(warmerPopulateTimeout)
-		var d CacheServerMetrics
-		var lastOK bool
-		for {
-			after, ok := scrapeCacheServerMetrics(t)
-			if ok {
-				lastOK = true
-				d = deltaCacheMetrics(beforeWarm, after)
-				if d.UploadSuccess >= expectedChunks {
-					break
-				}
-			}
-			if time.Now().After(deadline) {
+	// Poll until the warmer's async L2 populate has landed on cache-server,
+	// otherwise late-joiners may race the warmer and re-populate themselves,
+	// flipping both the warmer-phase and late-joiner-phase assertions.
+	deadline := time.Now().Add(warmerPopulateTimeout)
+	var d CacheServerMetrics
+	var lastOK bool
+	for {
+		after, ok := scrapeCacheServerMetrics(t)
+		if ok {
+			lastOK = true
+			d = deltaCacheMetrics(beforeWarm, after)
+			if d.UploadSuccess >= expectedChunks {
 				break
 			}
-			time.Sleep(warmerPopulatePollInterval)
 		}
-		if !lastOK {
-			t.Log("warm-cache: post-warmer metrics scrape returned no data; skipping populate assertion")
-		} else {
-			t.Logf("warm-cache: warm window delta: UploadSuccess=%d UploadInvalidTransition=%d "+
-				"DownloadSuccess=%d DownloadInvalidTransition=%d",
-				d.UploadSuccess, d.UploadInvalidTransition,
-				d.DownloadSuccess, d.DownloadInvalidTransition)
-			if d.UploadSuccess < expectedChunks {
-				t.Errorf("warm-cache: warmer did not populate L2 within %s: "+
-					"UploadSuccess delta = %d (expected >= %d, one per %d-byte chunk)",
-					warmerPopulateTimeout, d.UploadSuccess, expectedChunks, chunkSize)
-			}
+		if time.Now().After(deadline) {
+			break
 		}
-	} else {
-		t.Log("warm-cache: metrics unavailable; skipping populate assertion")
+		time.Sleep(warmerPopulatePollInterval)
+	}
+	if !lastOK {
+		t.Fatalf("warm-cache: no successful cache-server metrics scrape within %s; cannot verify populate", warmerPopulateTimeout)
+	}
+	t.Logf("warm-cache: warm window delta: UploadSuccess=%d UploadInvalidTransition=%d "+
+		"DownloadSuccess=%d DownloadInvalidTransition=%d",
+		d.UploadSuccess, d.UploadInvalidTransition,
+		d.DownloadSuccess, d.DownloadInvalidTransition)
+	if d.UploadSuccess < expectedChunks {
+		t.Errorf("warm-cache: warmer did not populate L2 within %s: "+
+			"UploadSuccess delta = %d (expected >= %d, one per %d-byte chunk)",
+			warmerPopulateTimeout, d.UploadSuccess, expectedChunks, chunkSize)
 	}
 
 	// Phase 2: add late-joiner pods without disturbing the warmer.
@@ -205,23 +203,22 @@ func TestWarmCache_LateJoinerPodsReadFromL2(t *testing.T) {
 
 	afterHit, ok := scrapeCacheServerMetrics(t)
 	if !ok {
-		t.Log("warm-cache: post-hit metrics scrape returned no data; skipping L2-hit assertions")
-		return
+		t.Fatal("warm-cache: post-hit cache-server metrics scrape unavailable; cannot verify L2-hit invariant")
 	}
-	d := deltaCacheMetrics(beforeHit, afterHit)
-	hits, misses, ratio := hitMissRatio(d)
+	dHit := deltaCacheMetrics(beforeHit, afterHit)
+	hits, misses, ratio := hitMissRatio(dHit)
 	t.Logf("warm-cache: hit window delta: DownloadSuccess=%d DownloadInvalidTransition=%d "+
 		"UploadSuccess=%d UploadInvalidTransition=%d (hits=%d misses=%d ratio=%.3f)",
-		d.DownloadSuccess, d.DownloadInvalidTransition,
-		d.UploadSuccess, d.UploadInvalidTransition,
+		dHit.DownloadSuccess, dHit.DownloadInvalidTransition,
+		dHit.UploadSuccess, dHit.UploadInvalidTransition,
 		hits, misses, ratio)
 	if hits <= 0 {
 		t.Errorf("warm-cache: late-joiners produced no L2 hits: DownloadSuccess delta = %d "+
-			"(misses=%d)", d.DownloadSuccess, d.DownloadInvalidTransition)
+			"(misses=%d)", dHit.DownloadSuccess, dHit.DownloadInvalidTransition)
 	}
-	if d.UploadSuccess > 0 {
+	if dHit.UploadSuccess > 0 {
 		t.Errorf("warm-cache: L2 was repopulated during the hit window: UploadSuccess delta = %d "+
 			"(expected 0; late-joiners should have found chunks already present)",
-			d.UploadSuccess)
+			dHit.UploadSuccess)
 	}
 }

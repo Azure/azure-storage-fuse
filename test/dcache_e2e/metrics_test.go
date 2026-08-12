@@ -81,25 +81,19 @@ func scrapeCacheServerMetrics(t *testing.T) (CacheServerMetrics, bool) {
 		return CacheServerMetrics{}, false
 	}
 	var total CacheServerMetrics
-	var okPods int
 	for _, pod := range pods {
 		m, err := scrapeCacheServerPod(context.Background(), pod)
 		if err != nil {
+			// Any per-pod failure invalidates the aggregate: a partial sum
+			// cannot be compared against another scrape's sum without silently
+			// producing wrong deltas.
 			t.Logf("metrics: pod %s scrape failed: %v", pod, err)
-			continue
+			return CacheServerMetrics{}, false
 		}
-		okPods++
 		total.DownloadSuccess += m.DownloadSuccess
 		total.DownloadInvalidTransition += m.DownloadInvalidTransition
 		total.UploadSuccess += m.UploadSuccess
 		total.UploadInvalidTransition += m.UploadInvalidTransition
-	}
-	if okPods == 0 {
-		// Distinguish a broken scraper from a real all-zero delta so
-		// downstream assertions can skip instead of failing.
-		t.Logf("metrics: all %d cacheserver pod(s) failed to scrape; skipping",
-			len(pods))
-		return CacheServerMetrics{}, false
 	}
 	return total, true
 }

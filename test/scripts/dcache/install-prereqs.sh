@@ -3,7 +3,7 @@
 # Install docker-ce, kind, kubectl and helm on the ADO agent, idempotently.
 # The dist_cache nightly E2E stage runs on kind (Kubernetes IN Docker).
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config/nightly.config"
@@ -72,7 +72,8 @@ fi
 # Install the configured kind version.
 INSTALLED_KIND_VERSION=""
 if check_command kind; then
-  INSTALLED_KIND_VERSION="$(kind --version 2>/dev/null | awk '
+  KIND_VERSION_OUTPUT="$(kind --version 2>/dev/null || true)"
+  INSTALLED_KIND_VERSION="$(awk '
     {
       for (i = 1; i <= NF; i++) {
         if ($i ~ /^v?[0-9]+\.[0-9]+\.[0-9]+$/) {
@@ -82,7 +83,7 @@ if check_command kind; then
         }
       }
     }
-  ')"
+  ' <<< "$KIND_VERSION_OUTPUT")"
 fi
 if [[ "$INSTALLED_KIND_VERSION" != "$KIND_VERSION" ]]; then
   if [[ -n "$INSTALLED_KIND_VERSION" ]]; then
