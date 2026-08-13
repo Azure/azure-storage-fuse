@@ -82,6 +82,7 @@ parameters:
     type: boolean
     default: true
 
+  # TODO Enable this test once the Tachyon ACR is accessible from the 1ES hosted agents.
   - name: dist_cache_test
     displayName: 'Run distributed cache E2E tests (requires kind + Tachyon image)'
     type: boolean
