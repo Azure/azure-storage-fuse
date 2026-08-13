@@ -46,11 +46,12 @@ import (
 )
 
 type genConfigParams struct {
-	blockCache bool   `config:"block-cache" yaml:"block-cache,omitempty"`
-	directIO   bool   `config:"direct-io" yaml:"direct-io,omitempty"`
-	readOnly   bool   `config:"ro" yaml:"ro,omitempty"`
-	tmpPath    string `config:"tmp-path" yaml:"tmp-path,omitempty"`
-	outputFile string `config:"o" yaml:"o,omitempty"`
+	blockCache       bool   `config:"block-cache" yaml:"block-cache,omitempty"`
+	distributedCache bool   `config:"distributed-cache" yaml:"distributed-cache,omitempty"`
+	directIO         bool   `config:"direct-io" yaml:"direct-io,omitempty"`
+	readOnly         bool   `config:"ro" yaml:"ro,omitempty"`
+	tmpPath          string `config:"tmp-path" yaml:"tmp-path,omitempty"`
+	outputFile       string `config:"o" yaml:"o,omitempty"`
 }
 
 var optsGenCfg genConfigParams
@@ -69,8 +70,22 @@ var generatedConfig = &cobra.Command{
 			return cmd.Help()
 		}
 
-		// Check if configTmp is not provided when component is fc
-		if (!optsGenCfg.blockCache) && optsGenCfg.tmpPath == "" {
+		// distributed-cache is mutually exclusive with the L1-only modes and
+		// implies read-only. It does not require a tmp-path.
+		if optsGenCfg.distributedCache {
+			if optsGenCfg.blockCache {
+				return fmt.Errorf("--distributed-cache cannot be combined with --block-cache")
+			}
+			if optsGenCfg.directIO {
+				return fmt.Errorf("--distributed-cache cannot be combined with --direct-io")
+			}
+			if optsGenCfg.tmpPath != "" {
+				return fmt.Errorf("--distributed-cache does not use --tmp-path")
+			}
+			// Distributed cache is read-only only.
+			optsGenCfg.readOnly = true
+		} else if (!optsGenCfg.blockCache) && optsGenCfg.tmpPath == "" {
+			// tmp-path is required for file-cache mode.
 			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
 		}
 
@@ -87,7 +102,10 @@ var generatedConfig = &cobra.Command{
 
 		// Create the pipeline
 		pipeline := []string{"libfuse"}
-		if optsGenCfg.blockCache {
+		if optsGenCfg.distributedCache {
+			// dist_cache requires block_cache as its L1.
+			pipeline = append(pipeline, "block_cache", "dist_cache")
+		} else if optsGenCfg.blockCache {
 			pipeline = append(pipeline, "block_cache")
 		} else {
 			pipeline = append(pipeline, "file_cache")
@@ -159,6 +177,7 @@ func init() {
 	rootCmd.AddCommand(generatedConfig)
 
 	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Generate config file for streaming with block-cache mode")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.distributedCache, "distributed-cache", false, "Generate config file for distributed-cache (L2) mode; implies read-only")
 	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Generate config file for file-cache mode, string specifies temp cache path")
 	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Generate config file for direct-io mode without any caching")
 	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Specifies location for generated config file, default is current directory")

@@ -114,6 +114,78 @@ components:
   - azstorage
 `
 
+// --- distributed-cache fixtures ---------------------------------------------
+
+// Distributed-cache mount fixtures. Each carries a minimal azstorage stanza
+// so mount reaches the pipeline stage; the fake backend then makes mount
+// fail (as it does in every other test in this file). The dist_cache-specific
+// state is what the assertions verify. Users write "distributed_cache" in
+// components:; mount aliases it to the internal "dist_cache" name.
+
+var configDistCacheFanOut string = `
+read-only: true
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+  max-retries: 1
+distributed_cache:
+  discovery-endpoint: https://d.example
+  block-size-mb: 32
+  mem-size-mb: 4096
+  prefetch: 24
+  parallelism: 128
+components:
+  - libfuse
+  - distributed_cache
+  - azstorage
+`
+
+var configDistCacheMissingDiscovery string = `
+read-only: true
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+  max-retries: 1
+components:
+  - libfuse
+  - distributed_cache
+  - azstorage
+`
+
+var configDistCacheReadOnlyViaCLI string = `
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+  max-retries: 1
+distributed_cache:
+  discovery-endpoint: d.example
+components:
+  - libfuse
+  - distributed_cache
+  - azstorage
+`
+
+var configDistCacheCLISynthesis string = `
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+  max-retries: 1
+distributed_cache:
+  discovery-endpoint: d.example
+`
+
 var confFileMntTest, confFilePriorityTest string
 
 type mountTestSuite struct {
