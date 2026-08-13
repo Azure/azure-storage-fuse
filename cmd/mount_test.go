@@ -118,9 +118,8 @@ components:
 
 // Distributed-cache mount fixtures. Each carries a minimal azstorage stanza
 // so mount reaches the pipeline stage; the fake backend then makes mount
-// fail (as it does in every other test in this file). The dist_cache-specific
-// state is what the assertions verify. Users write "distributed_cache" in
-// components:; mount aliases it to the internal "dist_cache" name.
+// fail (as it does in every other test in this file). The distributed_cache
+// state is what the assertions verify.
 
 var configDistCacheFanOut string = `
 read-only: true

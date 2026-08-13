@@ -200,7 +200,7 @@ func (suite *genConfig) TestConsoleOutput() {
 // --- distributed-cache -------------------------------------------------------
 
 // Mirrors TestBlockCacheConfigGen: gen-config with --distributed-cache emits a
-// pipeline that includes dist_cache (with block_cache spliced in as its L1),
+// pipeline that includes distributed_cache (with block_cache spliced in as its L1),
 // enables read-only, and does not include file_cache.
 func (suite *genConfig) TestDistributedCacheConfigGen() {
 	defer suite.cleanupTest()
@@ -216,7 +216,7 @@ func (suite *genConfig) TestDistributedCacheConfigGen() {
 	suite.assert.NotEmpty(file)
 
 	out := string(file)
-	suite.assert.Contains(out, "dist_cache")
+	suite.assert.Contains(out, "distributed_cache")
 	suite.assert.Contains(out, "block_cache")
 	suite.assert.NotContains(out, "file_cache")
 	// distributed cache is read-only only.
@@ -232,8 +232,8 @@ func (suite *genConfig) TestDistributedCacheRejectsBlockCache() {
 	suite.assert.Error(err)
 }
 
-// Rejects --distributed-cache combined with --tmp-path (dist_cache does not
-// use a local temp path).
+// Rejects --distributed-cache combined with --tmp-path (distributed_cache does
+// not use a local temp path).
 func (suite *genConfig) TestDistributedCacheRejectsTmpPath() {
 	defer suite.cleanupTest()
 

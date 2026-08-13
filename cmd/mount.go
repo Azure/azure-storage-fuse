@@ -286,12 +286,9 @@ var mountCmd = &cobra.Command{
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 		}
 
-		// Accept "distributed_cache" as an alias for "dist_cache" in components:
-		options.Components = aliasDistributedCacheComponent(options.Components)
-
-		// Reject mixed dist_cache/L1 configs and fan out dist_cache tuning
-		// knobs onto block_cache. Runs before synthesis so it sees the user's
-		// original components list.
+		// Reject mixed distributed_cache/L1 configs and fan out distributed_cache
+		// tuning knobs onto block_cache. Runs before synthesis so it sees the
+		// user's original components list.
 		if err = normalizeDistCacheConfig(options.Components); err != nil {
 			return err
 		}
@@ -306,7 +303,7 @@ var mountCmd = &cobra.Command{
 			} else if options.Preload {
 				pipeline = append(pipeline, "xload")
 			} else if config.IsSet("distributed-cache") && options.DistributedCache {
-				pipeline = append(pipeline, "dist_cache") // L2 cache
+				pipeline = append(pipeline, "distributed_cache") // L2 cache
 			} else {
 				pipeline = append(pipeline, "file_cache")
 			}
@@ -321,8 +318,8 @@ var mountCmd = &cobra.Command{
 			options.Components = pipeline
 		}
 
-		// Splice block_cache in before dist_cache if the user listed
-		// dist_cache in components: without block_cache. Idempotent.
+		// Splice block_cache in before distributed_cache if the user listed
+		// distributed_cache in components: without block_cache. Idempotent.
 		options.Components = injectBlockCacheForDistCache(options.Components)
 
 		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
@@ -801,18 +798,18 @@ func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
 	return nil
 }
 
-// normalizeDistCacheConfig enforces the single-surface UX for dist_cache:
+// normalizeDistCacheConfig enforces the single-surface UX for distributed_cache:
 // it rejects sibling L1 caches (block_cache/file_cache/xload/stream) and
-// fans dist_cache tuning knobs onto block_cache, which is auto-added as
-// the L1 for dist_cache. userComponents is the components list as parsed
+// fans distributed_cache tuning knobs onto block_cache, which is auto-added as
+// the L1 for distributed_cache. userComponents is the components list as parsed
 // from the config file, before any synthesis or auto-injection.
 func normalizeDistCacheConfig(userComponents []string) error {
-	// Only act when dist_cache will actually be in the resulting pipeline:
+	// Only act when distributed_cache will actually be in the resulting pipeline:
 	// listed in components:, or components: omitted so synthesis will add
-	// it. A stray dist_cache: section alongside an explicit components:
-	// that omits dist_cache is silently ignored (matching how the codebase
+	// it. A stray distributed_cache: section alongside an explicit components:
+	// that omits distributed_cache is silently ignored (matching how the codebase
 	// treats stray block_cache:/file_cache: sections).
-	userWantsDistCache := common.ComponentInPipeline(userComponents, "dist_cache") ||
+	userWantsDistCache := common.ComponentInPipeline(userComponents, "distributed_cache") ||
 		(len(userComponents) == 0 && config.IsSet("distributed-cache"))
 	if !userWantsDistCache {
 		return nil
@@ -844,15 +841,6 @@ func normalizeDistCacheConfig(userComponents []string) error {
 		{"distributed_cache.mem-size-mb", "block_cache.mem-size-mb"},
 		{"distributed_cache.prefetch", "block_cache.prefetch"},
 		{"distributed_cache.parallelism", "block_cache.parallelism"},
-		// Native dist_cache knobs — user writes them under distributed_cache:
-		// but the component reads them from dist_cache.*.
-		{"distributed_cache.discovery-endpoint", "dist_cache.discovery-endpoint"},
-		{"distributed_cache.k8s-service", "dist_cache.k8s-service"},
-		{"distributed_cache.k8s-namespace", "dist_cache.k8s-namespace"},
-		{"distributed_cache.servers", "dist_cache.server-list"},
-		{"distributed_cache.port", "dist_cache.port"},
-		{"distributed_cache.ttl-seconds", "dist_cache.ttl-seconds"},
-		{"distributed_cache.verify-checksum", "dist_cache.verify-checksum"},
 	}
 	for _, m := range fanout {
 		if !config.IsSet(m.src) {
@@ -867,23 +855,10 @@ func normalizeDistCacheConfig(userComponents []string) error {
 	return nil
 }
 
-// aliasDistributedCacheComponent rewrites any "distributed_cache" entry in
-// the user's components list to the internal component name "dist_cache".
-// The registry only knows "dist_cache"; accepting "distributed_cache" here
-// keeps the user-facing YAML consistent with the section name.
-func aliasDistributedCacheComponent(components []string) []string {
-	for i, c := range components {
-		if c == "distributed_cache" {
-			components[i] = "dist_cache"
-		}
-	}
-	return components
-}
-
 // injectBlockCacheForDistCache splices block_cache in immediately before
-// dist_cache. No-op if dist_cache is absent.
+// distributed_cache. No-op if distributed_cache is absent.
 func injectBlockCacheForDistCache(components []string) []string {
-	distIdx := slices.Index(components, "dist_cache")
+	distIdx := slices.Index(components, "distributed_cache")
 	if distIdx < 0 {
 		return components
 	}

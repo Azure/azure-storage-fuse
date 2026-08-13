@@ -103,8 +103,8 @@ var generatedConfig = &cobra.Command{
 		// Create the pipeline
 		pipeline := []string{"libfuse"}
 		if optsGenCfg.distributedCache {
-			// dist_cache requires block_cache as its L1.
-			pipeline = append(pipeline, "block_cache", "dist_cache")
+			// distributed_cache requires block_cache as its L1.
+			pipeline = append(pipeline, "block_cache", "distributed_cache")
 		} else if optsGenCfg.blockCache {
 			pipeline = append(pipeline, "block_cache")
 		} else {
