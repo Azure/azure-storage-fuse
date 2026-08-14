@@ -1,0 +1,12 @@
+[global]
+ioengine=filecreate
+rw=write
+filesize=4K
+nrfiles=250
+numjobs=8
+filename_format=metadata.$jobnum.$filenum
+create_on_open=1
+fallocate=none
+group_reporting=1
+
+[metadata-create-2k]

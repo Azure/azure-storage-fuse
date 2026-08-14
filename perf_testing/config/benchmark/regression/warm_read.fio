@@ -1,0 +1,16 @@
+[global]
+ioengine=sync
+rw=read
+bs=1M
+size=512M
+filename=warm-read.data
+direct=1
+allow_file_create=0
+invalidate=0
+runtime=20s
+time_based=1
+group_reporting=1
+lat_percentiles=1
+percentile_list=50:95:99:99.9
+
+[warm-sequential-read]
