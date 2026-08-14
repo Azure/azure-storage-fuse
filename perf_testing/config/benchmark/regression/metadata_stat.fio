@@ -1,0 +1,11 @@
+[global]
+ioengine=filestat
+rw=read
+filesize=4K
+nrfiles=125
+numjobs=8
+loops=100
+filename_format=metadata.$jobnum.$filenum
+group_reporting=1
+
+[metadata-stat-100k]

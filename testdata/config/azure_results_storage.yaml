@@ -1,0 +1,23 @@
+logging:
+  level: log_err
+  file-path: "blobfuse2-results-storage.log"
+  type: base
+
+components:
+  - libfuse
+  - file_cache
+  - azstorage
+
+libfuse:
+  ignore-open-flags: true
+
+file_cache:
+  path: { 1 }
+  timeout-sec: 120
+  sync-to-flush: true
+
+azstorage:
+  mode: key
+  container: { 0 }
+  account-name: { AZURE_STORAGE_ACCOUNT }
+  account-key: { AZURE_STORAGE_ACCESS_KEY }
