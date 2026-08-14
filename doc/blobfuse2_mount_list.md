@@ -33,6 +33,7 @@ blobfuse2 mount list
       --config-file string           Configures the path for the file where the account credentials are provided. Default is config.yaml in current directory.
       --container-name string        Configures the name of the container to be mounted
       --disable-compression          Disable transport layer compression.
+      --disable-kernel-cache         Disable the kernel cache while retaining Blobfuse caches. Required when blobs can be modified outside Blobfuse; use --attr-cache-timeout to configure attribute freshness.
       --disable-version-check        To disable version check that is performed automatically
       --disable-writeback-cache      Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
       --entry-timeout uint32         The entry timeout in seconds.

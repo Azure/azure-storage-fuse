@@ -25,6 +25,9 @@
 #      flag to false in mount command.
 #   9. If you are using 'file_cache' component then make sure you have enough disk space available for cache.
 #  10. 'sdk-trace' has been removed with v2.3.0 release and setting log level to log_debug will auto enable these logs.
+#  11. If blobs can be modified outside Blobfuse2, set 'disable-kernel-cache: true' and configure
+#      'attr_cache.timeout-sec' for the required attribute freshness. FUSE writeback caching otherwise
+#      retains the kernel's size, mtime, and ctime values even when Blobfuse2 returns updated attributes.
 # -----------------------------------------------------------------------------------------------------------------------
 
 
@@ -34,7 +37,7 @@ foreground: true|false <run blobfuse2 in foreground or background>
 # Common configurations
 allow-other: true|false <allow other users to access the mounted directory - used for FUSE and File Cache>
 nonempty: true|false <allow mounting on non-empty directory>
-disable-kernel-cache: true|false <disable kernel cache but keep blobfuse2 cache. Default - false>
+disable-kernel-cache: true|false <disable kernel cache but keep Blobfuse2 cache. Required when blobs can be modified outside Blobfuse2; configure attr_cache.timeout-sec for attribute freshness. Default - false>
 
 # Dynamic profiler related configuration. This helps to root-cause high memory/cpu usage related issues.
 dynamic-profile: true|false <allows to turn on dynamic profiler for cpu/memory usage monitoring. Only for debugging, shall not be used in production>

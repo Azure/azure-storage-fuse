@@ -251,22 +251,28 @@ To make it work with writeback-cache : Add `ignore-open-flags: true` under libfu
 
 For non-HNS accounts blobfuse expects special directory marker files to exist in container to identify a directory. If these files do not exist then `virtual-directory: true` in `azstorage` section is required.
 
-**10. File size and LMT are updated but file contents are not refreshed**
+**10. Blobs modified outside Blobfuse2 show stale attributes or contents**
 
-Blobfuse2 supports both fuse2 and fuse3 compatible linux distros. In all linux distros kernel cached contents of file in its page-cache. As long as cache is valid read/write are served from cache and calls will not reach to file-system drivers (blobfuse in our case). This page-cache is invalidated when page is swapped-out, manually cleared by user through cli or file-system driver requests for it.
+Blobfuse2 enables FUSE writeback caching by default. For regular files, Linux preserves the kernel's `size`, `mtime`, and `ctime` values while writeback caching is enabled because local buffered writes may be newer than the values returned by the filesystem. As a result, even when the libfuse attribute timeout expires and Blobfuse2 returns attributes refreshed from storage, `stat` may continue to report the kernel's values. Setting `--attr-timeout` or `libfuse.attribute-expiration-sec` alone does not provide attribute freshness for blobs modified by another client or service. See the [Linux FUSE implementation](https://github.com/torvalds/linux/blob/3d6d817622b0a9721e3cc404df3469171582be13/fs/fuse/inode.c#L326) for details.
 
-In case of fuse2 compliant distros, libfuse does not support invalidating the page cache. Contents once cached will remain with kernel until user manually clears the page-cache or kernel decides to swap it out. This means even if the file size or LMT has changed and blobfuse decided to refresh the content by redownloading the file, on read user will still get the stale contents.
+When blobs can be modified by an entity other than Blobfuse2, mount with `--disable-kernel-cache` and configure the Blobfuse2 attribute-cache timeout:
 
-In case of fuse3 compliant distros, blobfuse configures libfuse to invalidate the page cache on file size or LMT change so this issue will not be hit.
+```bash
+blobfuse2 mount <mount-path> --disable-kernel-cache --attr-cache-timeout=<seconds> [other options]
+```
 
-If user is observing that list or stat call to file shows updated time or size but contents are not reflecting accordingly, first confirm with blobfuse logs that file was indeed downloaded afresh. If file-cache-timeout has not expired then blobfuse will keep using the current version of file persisted on temp cache and contents will not be refreshed. If blobfuse has downloaded the latest file and user still observes stale contents then clear the kernel page-cache manually using ```sysctl -w vm.drop_caches=3``` command.
-    
-If your workflow involves updating the file directly on container (not using blobfuse) and you wish to get latest contents on blobfuse mount then do the following (for fuse3 compliant linux distro only):
-    
-    - set all timeouts in libfuse section to 0 (entry, attribute, negative)
-    - remove attr_cache from your pipeline section in config
-    - set file-cache-timeout to 0
-    - in libfuse section of you config file add "disable-writeback-cache: true"
+`--disable-kernel-cache` bypasses the kernel file cache and sets the libfuse entry, attribute, and negative-entry timeouts to `0`. `--attr-cache-timeout` then controls how long the Blobfuse2 `attr_cache` component may retain attributes. Set it to `0` to refresh attributes on every `GetAttr` request, or use a positive value to choose the acceptable metadata staleness window.
+
+The equivalent configuration is:
+
+```yaml
+disable-kernel-cache: true
+
+attr_cache:
+    timeout-sec: <seconds>
+```
+
+File content caching is separate from attribute caching. If `file_cache` is enabled, configure `file_cache.timeout-sec` (or `--file-cache-timeout`) for the required content freshness; use `0` when cached file contents must be revalidated immediately.
 
 # Problems with build
 Make sure you have correctly setup your GO dev environment. Ensure you have installed fuse3/2 for example:
