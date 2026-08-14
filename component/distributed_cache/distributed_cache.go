@@ -144,6 +144,19 @@ func NewDistCacheComponent() internal.Component {
 	return comp
 }
 
+func (dc *DistCache) GenConfig() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "\ndistributed_cache:")
+
+	endpoint := ""
+	_ = config.UnmarshalKey(compName+".discovery-endpoint", &endpoint)
+	if endpoint != "" {
+		fmt.Fprintf(&sb, "\n  discovery-endpoint: %s", endpoint)
+	}
+
+	return sb.String()
+}
+
 func (dc *DistCache) Configure(isParent bool) error {
 	log.Trace("DistCache::Configure")
 

@@ -205,7 +205,7 @@ func (suite *genConfig) TestConsoleOutput() {
 func (suite *genConfig) TestDistributedCacheConfigGen() {
 	defer suite.cleanupTest()
 
-	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache")
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", "--distributed-cache-discovery-endpoint=example.com:9065")
 	suite.assert.NoError(err)
 
 	logFilePath := suite.getDefaultLogLocation()
@@ -217,10 +217,18 @@ func (suite *genConfig) TestDistributedCacheConfigGen() {
 
 	out := string(file)
 	suite.assert.Contains(out, "distributed_cache")
-	suite.assert.Contains(out, "block_cache")
+	suite.assert.NotContains(out, "block_cache")
 	suite.assert.NotContains(out, "file_cache")
 	// distributed cache is read-only only.
 	suite.assert.Contains(out, "read-only: true")
+	suite.assert.Contains(out, "discovery-endpoint: example.com:9065")
+}
+
+func (suite *genConfig) TestDistributedCacheRequiresDiscoveryEndpoint() {
+	defer suite.cleanupTest()
+
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache")
+	suite.assert.Error(err)
 }
 
 // Rejects --distributed-cache combined with --block-cache (mutually exclusive
@@ -241,14 +249,6 @@ func (suite *genConfig) TestDistributedCacheRejectsTmpPath() {
 	defer os.RemoveAll(tempDir)
 
 	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", fmt.Sprintf("--tmp-path=%s", tempDir))
-	suite.assert.Error(err)
-}
-
-// Rejects --distributed-cache combined with --direct-io.
-func (suite *genConfig) TestDistributedCacheRejectsDirectIO() {
-	defer suite.cleanupTest()
-
-	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", "--direct-io")
 	suite.assert.Error(err)
 }
 
