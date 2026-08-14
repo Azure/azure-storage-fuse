@@ -222,7 +222,7 @@ func computeMD5(path string) ([]byte, error) {
 }
 
 // loopbackETag returns a stable per-revision ETag derived from mtime+size,
-// so downstream components (dist_cache) can key L2 populates on a version.
+// so downstream components (distributed_cache) can key L2 populates on a version.
 func loopbackETag(info os.FileInfo) string {
 	return fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size())
 }

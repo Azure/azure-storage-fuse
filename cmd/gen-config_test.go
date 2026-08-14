@@ -197,6 +197,61 @@ func (suite *genConfig) TestConsoleOutput() {
 	suite.assert.Empty(op)
 }
 
+// --- distributed-cache -------------------------------------------------------
+
+// Mirrors TestBlockCacheConfigGen: gen-config with --distributed-cache emits a
+// pipeline that includes distributed_cache (with block_cache spliced in as its L1),
+// enables read-only, and does not include file_cache.
+func (suite *genConfig) TestDistributedCacheConfigGen() {
+	defer suite.cleanupTest()
+
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", "--distributed-cache-discovery-endpoint=example.com:9065")
+	suite.assert.NoError(err)
+
+	logFilePath := suite.getDefaultLogLocation()
+	suite.assert.FileExists(logFilePath)
+
+	file, err := os.ReadFile(logFilePath)
+	suite.assert.NoError(err)
+	suite.assert.NotEmpty(file)
+
+	out := string(file)
+	suite.assert.Contains(out, "distributed_cache")
+	suite.assert.NotContains(out, "block_cache")
+	suite.assert.NotContains(out, "file_cache")
+	// distributed cache is read-only only.
+	suite.assert.Contains(out, "read-only: true")
+	suite.assert.Contains(out, "discovery-endpoint: example.com:9065")
+}
+
+func (suite *genConfig) TestDistributedCacheRequiresDiscoveryEndpoint() {
+	defer suite.cleanupTest()
+
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache")
+	suite.assert.Error(err)
+}
+
+// Rejects --distributed-cache combined with --block-cache (mutually exclusive
+// L1/L2 mode selectors).
+func (suite *genConfig) TestDistributedCacheRejectsBlockCache() {
+	defer suite.cleanupTest()
+
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", "--block-cache")
+	suite.assert.Error(err)
+}
+
+// Rejects --distributed-cache combined with --tmp-path (distributed_cache does
+// not use a local temp path).
+func (suite *genConfig) TestDistributedCacheRejectsTmpPath() {
+	defer suite.cleanupTest()
+
+	tempDir, _ := os.MkdirTemp("", "TestTempDir")
+	defer os.RemoveAll(tempDir)
+
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", fmt.Sprintf("--tmp-path=%s", tempDir))
+	suite.assert.Error(err)
+}
+
 func TestGenConfig(t *testing.T) {
 	suite.Run(t, new(genConfig))
 }
