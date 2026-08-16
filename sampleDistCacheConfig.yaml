@@ -11,6 +11,12 @@
 #
 # PREREQUISITE: A running Tachyon cache server cluster is required.
 # See https://github.com/Azure/Tachyon for installation instructions.
+#
+# READ-ONLY REQUIREMENT: distributed_cache is supported only for read-only
+# mounts. You must set `read-only: true` below (or pass --read-only on the
+# mount command line); otherwise the mount will fail.
+
+read-only: true
 
 logging:
   type: syslog

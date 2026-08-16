@@ -46,6 +46,9 @@ file_cache:
 # Distributed cache configuration (optional, for multi-node shared caching)
 # Requires a running Tachyon cache server cluster (https://github.com/Azure/Tachyon).
 # When distributed_cache is configured, block_cache is auto-added as the L1 layer.
+# NOTE: distributed_cache is supported only for read-only mounts; set
+# `read-only: true` at the top of this file (or pass --read-only on the mount
+# command line), otherwise mount will fail.
 distributed_cache:
   discovery-endpoint: <discovery endpoint for auto-detecting cache servers. Recommended for production>
 
