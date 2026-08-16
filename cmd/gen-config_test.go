@@ -205,7 +205,7 @@ func (suite *genConfig) TestConsoleOutput() {
 func (suite *genConfig) TestDistributedCacheConfigGen() {
 	defer suite.cleanupTest()
 
-	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", "--distributed-cache-discovery-endpoint=example.com:9065")
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", "--distributed-cache-discovery-endpoint=example.com:9065", "--ro")
 	suite.assert.NoError(err)
 
 	logFilePath := suite.getDefaultLogLocation()
@@ -227,7 +227,16 @@ func (suite *genConfig) TestDistributedCacheConfigGen() {
 func (suite *genConfig) TestDistributedCacheRequiresDiscoveryEndpoint() {
 	defer suite.cleanupTest()
 
-	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache")
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", "--ro")
+	suite.assert.Error(err)
+}
+
+// --distributed-cache must be paired with --ro; otherwise gen-config errors out
+// because distributed cache is supported only for read-only mounts.
+func (suite *genConfig) TestDistributedCacheRequiresReadOnly() {
+	defer suite.cleanupTest()
+
+	_, err := executeCommandC(rootCmd, "gen-config", "--distributed-cache", "--distributed-cache-discovery-endpoint=example.com:9065")
 	suite.assert.Error(err)
 }
 
