@@ -114,6 +114,56 @@ components:
   - azstorage
 `
 
+var configDistCacheCLIBase string = `
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+  max-retries: 1
+`
+
+var configDistCacheWithBlockCache string = `
+read-only: true
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+components:
+  - libfuse
+  - block_cache
+  - distributed_cache
+  - attr_cache
+  - azstorage
+block_cache:
+  block-size-mb: 4
+distributed_cache:
+  discovery-endpoint: "example.com:9065"
+`
+
+var configDistCacheWithFileCache string = `
+read-only: true
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+components:
+  - libfuse
+  - file_cache
+  - distributed_cache
+  - attr_cache
+  - azstorage
+file_cache:
+  path: /tmp/fileCachePath
+distributed_cache:
+  discovery-endpoint: "example.com:9065"
+`
+
 var confFileMntTest, confFilePriorityTest string
 
 type mountTestSuite struct {
@@ -769,6 +819,268 @@ components:
 	// Case: LOG_INFO -> expect false
 	gidInfo, _ := run(cfgInfo)
 	suite.False(gidInfo)
+}
+
+func (suite *mountTestSuite) TestDistributedCacheCLIRequiresReadOnly() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache")
+	suite.assert.Error(err)
+	suite.assert.Contains(op, "distributed cache is allowed only for read-only mounts")
+}
+
+func (suite *mountTestSuite) TestDistributedCacheCLIWithReadOnlyFalse() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache", "--read-only=false")
+	suite.assert.Error(err)
+	suite.assert.Contains(op, "distributed cache is allowed only for read-only mounts")
+}
+
+func (suite *mountTestSuite) TestDistributedCacheCLIWithReadOnlyPasses() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache", "--read-only")
+	suite.assert.Error(err)
+	suite.assert.NotContains(op, "distributed cache is allowed only for read-only mounts")
+	suite.assert.True(options.DistributedCache)
+}
+
+func (suite *mountTestSuite) TestDistributedCacheCLIWithBlockCache() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheWithBlockCache)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
+	suite.assert.Error(err)
+	suite.assert.Contains(op, "distributed_cache is a single configuration surface")
+}
+
+func (suite *mountTestSuite) TestDistributedCacheCLIWithFileCache() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheWithFileCache)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
+	suite.assert.Error(err)
+	suite.assert.Contains(op, "distributed_cache is a single configuration surface")
+}
+
+func (suite *mountTestSuite) TestDistributedCacheDiscoveryEndpointCLI() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
+		"--distributed-cache", "--distributed-cache-discovery-endpoint=cli.example.com:9065")
+	suite.assert.Error(err)
+
+	var endpoint string
+	err = config.UnmarshalKey("distributed_cache.discovery-endpoint", &endpoint)
+	suite.assert.NoError(err)
+	suite.assert.Equal("cli.example.com:9065", endpoint)
+}
+
+func (suite *mountTestSuite) TestDistributedCacheTTLCLI() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
+		"--distributed-cache", "--distributed-cache-ttl=120")
+	suite.assert.Error(err)
+
+	var ttl uint32
+	err = config.UnmarshalKey("distributed_cache.ttl-seconds", &ttl)
+	suite.assert.NoError(err)
+	suite.assert.Equal(uint32(120), ttl)
+}
+
+func (suite *mountTestSuite) TestDistributedCacheBlockSizeCLI() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
+		"--distributed-cache", "--distributed-cache-block-size=32")
+	suite.assert.Error(err)
+
+	var blockSize uint32
+	err = config.UnmarshalKey("block_cache.block-size-mb", &blockSize)
+	suite.assert.NoError(err)
+	suite.assert.Equal(uint32(32), blockSize)
+}
+
+func (suite *mountTestSuite) TestDistributedCacheMemoryCLI() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
+		"--distributed-cache", "--distributed-cache-memory=512")
+	suite.assert.Error(err)
+
+	var memSize uint32
+	err = config.UnmarshalKey("block_cache.mem-size-mb", &memSize)
+	suite.assert.NoError(err)
+	suite.assert.Equal(uint32(512), memSize)
+}
+
+func (suite *mountTestSuite) TestDistributedCachePrefetchCLI() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
+		"--distributed-cache", "--distributed-cache-prefetch=16")
+	suite.assert.Error(err)
+
+	var prefetch uint32
+	err = config.UnmarshalKey("block_cache.prefetch", &prefetch)
+	suite.assert.NoError(err)
+	suite.assert.Equal(uint32(16), prefetch)
+}
+
+func (suite *mountTestSuite) TestDistributedCacheParallelismCLI() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
+		"--distributed-cache", "--distributed-cache-parallelism=24")
+	suite.assert.Error(err)
+
+	var parallelism uint32
+	err = config.UnmarshalKey("block_cache.parallelism", &parallelism)
+	suite.assert.NoError(err)
+	suite.assert.Equal(uint32(24), parallelism)
 }
 
 func TestMountCommand(t *testing.T) {
