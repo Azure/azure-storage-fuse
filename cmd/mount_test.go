@@ -885,6 +885,53 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithReadOnlyPasses() {
 	suite.assert.True(options.DistributedCache)
 }
 
+func (suite *mountTestSuite) TestDistributedCacheCLIWithFuseRoOptionPasses() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	// Users should be able to satisfy the distributed_cache read-only gate
+	// with the FUSE-style `-o ro` option, not just `--read-only`.
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache", "-o", "ro")
+	suite.assert.Error(err)
+	suite.assert.NotContains(op, "distributed cache is allowed only for read-only mounts")
+	suite.assert.True(options.DistributedCache)
+}
+
+func (suite *mountTestSuite) TestDistributedCacheCLIWithFuseRoTrueOptionPasses() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	// `-o ro=true` is the equivalent long form of `-o ro`.
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache", "-o", "ro=true")
+	suite.assert.Error(err)
+	suite.assert.NotContains(op, "distributed cache is allowed only for read-only mounts")
+	suite.assert.True(options.DistributedCache)
+}
+
 func (suite *mountTestSuite) TestDistributedCacheCLIWithBlockCache() {
 	defer suite.cleanupTest()
 

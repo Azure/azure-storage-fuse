@@ -286,6 +286,13 @@ var mountCmd = &cobra.Command{
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 		}
 
+		// Translate the FUSE-style `-o ro` (also `ro=true`) into the blobfuse2
+		// `read-only` config key early, so downstream checks (e.g. the
+		// distributed_cache read-only requirement) see it regardless of whether
+		// the user used --read-only or -o ro. The full libfuse-options loop
+		// below still handles the remaining options.
+		applyLibfuseReadOnlyOption(options.LibfuseOptions)
+
 		// Reject mixed distributed_cache/L1 configs and fan out distributed_cache
 		// tuning knobs onto block_cache. Runs before synthesis so it sees the
 		// user's original components list.
@@ -798,6 +805,21 @@ func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
 	return nil
 }
 
+// applyLibfuseReadOnlyOption translates the FUSE-style `-o ro` (or `-o ro=true`)
+// libfuse option into the blobfuse2 `read-only` config key. This runs before the
+// main libfuse-options loop so early checks (e.g. the distributed_cache
+// read-only gate in normalizeDistCacheConfig) treat `-o ro` equivalently to
+// `--read-only`. It is a no-op when neither variant is present.
+func applyLibfuseReadOnlyOption(libfuseOpts []string) {
+	for _, v := range libfuseOpts {
+		v = strings.TrimSpace(v)
+		if v == "ro" || v == "ro=true" {
+			config.Set("read-only", "true")
+			return
+		}
+	}
+}
+
 // normalizeDistCacheConfig enforces the single-surface UX for distributed_cache:
 // it rejects sibling L1 caches (block_cache/file_cache/xload/stream) and
 // fans distributed_cache tuning knobs onto block_cache, which is auto-added as
@@ -821,7 +843,7 @@ func normalizeDistCacheConfig(userComponents []string) error {
 		return fmt.Errorf("mount: failed to read read-only flag: %w", err)
 	}
 	if !readOnly {
-		return fmt.Errorf("mount: distributed cache is allowed only for read-only mounts; pass --read-only or set read-only: true in the config file")
+		return fmt.Errorf("mount: distributed cache is allowed only for read-only mounts; pass --read-only, -o ro, or set read-only: true in the config file")
 	}
 	// Reject any sibling L1 cache signal, whether in components: or as a
 	// top-level section.

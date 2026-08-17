@@ -437,3 +437,96 @@ distributed_cache:
 	assert.False(t, viper.IsSet("block_cache.prefetch"))
 	assert.False(t, viper.IsSet("block_cache.parallelism"))
 }
+
+// --- applyLibfuseReadOnlyOption ----------------------------------------------
+
+func TestApplyLibfuseReadOnlyOption_RoSetsReadOnly(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	applyLibfuseReadOnlyOption([]string{"ro"})
+
+	var ro bool
+	assert.NoError(t, config.UnmarshalKey("read-only", &ro))
+	assert.True(t, ro)
+}
+
+func TestApplyLibfuseReadOnlyOption_RoTrueSetsReadOnly(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	applyLibfuseReadOnlyOption([]string{"ro=true"})
+
+	var ro bool
+	assert.NoError(t, config.UnmarshalKey("read-only", &ro))
+	assert.True(t, ro)
+}
+
+func TestApplyLibfuseReadOnlyOption_RoWithWhitespaceSetsReadOnly(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	applyLibfuseReadOnlyOption([]string{"  ro  "})
+
+	var ro bool
+	assert.NoError(t, config.UnmarshalKey("read-only", &ro))
+	assert.True(t, ro)
+}
+
+func TestApplyLibfuseReadOnlyOption_RoAmongOtherOptionsSetsReadOnly(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	applyLibfuseReadOnlyOption([]string{"allow_other", "attr_timeout=120", "ro"})
+
+	var ro bool
+	assert.NoError(t, config.UnmarshalKey("read-only", &ro))
+	assert.True(t, ro)
+}
+
+func TestApplyLibfuseReadOnlyOption_NoRoLeavesReadOnlyUnset(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	applyLibfuseReadOnlyOption([]string{"allow_other", "attr_timeout=120"})
+
+	assert.False(t, viper.IsSet("read-only"))
+}
+
+func TestApplyLibfuseReadOnlyOption_EmptyOptionsIsNoop(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	applyLibfuseReadOnlyOption(nil)
+
+	assert.False(t, viper.IsSet("read-only"))
+}
+
+func TestApplyLibfuseReadOnlyOption_UnrelatedRoPrefixDoesNotMatch(t *testing.T) {
+	// e.g. `root=...` or `rootmode=...` should not be treated as `ro`.
+	viper.Reset()
+	defer viper.Reset()
+
+	applyLibfuseReadOnlyOption([]string{"rootmode=755", "root_squash"})
+
+	assert.False(t, viper.IsSet("read-only"))
+}
+
+// End-to-end: `-o ro` satisfies the distributed_cache read-only gate.
+func TestApplyLibfuseReadOnlyOption_SatisfiesDistCacheReadOnlyGate(t *testing.T) {
+	setDistCacheYAML(t, `
+distributed_cache:
+  discovery-endpoint: d
+`)
+	defer viper.Reset()
+
+	// Without -o ro, the gate must reject.
+	err := normalizeDistCacheConfig([]string{"libfuse", "distributed_cache", "azstorage"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
+
+	// Applying -o ro flips read-only=true, so the gate must now pass.
+	applyLibfuseReadOnlyOption([]string{"ro"})
+	err = normalizeDistCacheConfig([]string{"libfuse", "distributed_cache", "azstorage"})
+	assert.NoError(t, err)
+}
