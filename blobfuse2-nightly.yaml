@@ -82,7 +82,10 @@ parameters:
     type: boolean
     default: true
 
-  # TODO Enable this test once the Tachyon ACR is accessible from the 1ES hosted agents.
+  # Distributed cache E2E: runs kind + Tachyon (image + chart pulled from
+  # the configured ACR, both auto-resolved to the newest published tag) on
+  # an amd64 nightly agent. Off by default; queue the pipeline with this
+  # parameter set to true to opt in.
   - name: dist_cache_test
     displayName: 'Run distributed cache E2E tests (requires kind + Tachyon image)'
     type: boolean
@@ -1592,28 +1595,31 @@ stages:
               value: '$(Pipeline.Workspace)/blob_mnt'
             - name: TEMP_DIR
               value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            # TBD: fill these in from a pipeline variable group (NightlyBlobFuse)
-            # once the ACR + Tachyon image tag + chart version are known.
+            # Tachyon image + chart coordinates. Both _TAG and _CHART_VERSION
+            # are left empty on purpose: deploy-tachyon.sh auto-resolves the
+            # newest pushed tag from ACR via `az acr repository show-tags`
+            # (symmetrical for image and chart). Override any of these via
+            # the NightlyBlobFuse variable group to pin.
             - name: CACHE_SERVER_IMAGE_REGISTRY
-              value: ''  # e.g. myacr.azurecr.io
+              value: 'tachyonpodacr.azurecr.io'
             - name: CACHE_SERVER_IMAGE_REPO
               value: 'cache-server'
             - name: CACHE_SERVER_IMAGE_TAG
-              value: ''  # e.g. 1.2.3
-            # Helm chart is pulled directly from ACR via OCI (no source checkout).
-            # Defaults to the same registry as the image; override only if the
-            # chart lives in a different ACR.
+              value: ''  # auto-resolved by deploy-tachyon.sh when empty
+            # Helm chart is pulled directly from ACR via OCI. Defaults to the
+            # same registry as the image; override only if the chart lives in
+            # a different ACR.
             - name: CACHE_SERVER_CHART_REGISTRY
-              value: ''  # e.g. myacr.azurecr.io (defaults to CACHE_SERVER_IMAGE_REGISTRY)
+              value: 'tachyonpodacr.azurecr.io'
             - name: CACHE_SERVER_CHART_REPO
               value: 'charts/cache-server'
             # cache-server-prereq chart is installed first (CRDs / RBAC /
-            # cluster-scoped resources the main chart depends on). Same version
-            # as the main chart.
+            # cluster-scoped resources the main chart depends on). Same
+            # version as the main chart.
             - name: CACHE_SERVER_PREREQ_CHART_REPO
               value: 'charts/cache-server-prereq'
             - name: CACHE_SERVER_CHART_VERSION
-              value: ''  # e.g. 1.2.3
+              value: ''  # auto-resolved by deploy-tachyon.sh when empty
             - name: GOPATH
               value: '$(Pipeline.Workspace)/go'
             - name: ROOT_DIR
@@ -1626,7 +1632,9 @@ stages:
                 skip_ut: true
 
             # Run the dedicated dist_cache pod tests against a single kind
-            # cluster (cluster setup + teardown happens once).
+            # cluster (cluster setup + teardown happens once). The template
+            # builds the in-cluster blobfuse2 container image itself from
+            # the code under test.
             - template: 'azure-pipeline-templates/dist-cache-e2e.yml'
               parameters:
                 run_idstring: 'DistCache'

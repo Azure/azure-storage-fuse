@@ -38,26 +38,69 @@ fi
 
 if [[ -z "${CACHE_SERVER_IMAGE_REGISTRY:-}" ]]; then
     echo "ERROR: CACHE_SERVER_IMAGE_REGISTRY is empty." >&2
-    echo "       Set CACHE_SERVER_IMAGE_REGISTRY / _REPO / _TAG and" >&2
-    echo "       CACHE_SERVER_CHART_REGISTRY / _REPO / _VERSION (typically via" >&2
-    echo "       the NightlyBlobFuse pipeline variable group) before running." >&2
+    echo "       Set CACHE_SERVER_IMAGE_REGISTRY / _REPO (typically via the" >&2
+    echo "       NightlyBlobFuse pipeline variable group) before running." >&2
     exit 1
 fi
 
+# Image tag auto-resolution: when unset, pick the most recently pushed tag
+# under $CACHE_SERVER_IMAGE_REPO in the image ACR. Symmetrical with the chart
+# resolver below so callers can leave both blank to always get the newest
+# published bits.
 if [[ -z "${CACHE_SERVER_IMAGE_TAG:-}" ]]; then
-    echo "ERROR: CACHE_SERVER_IMAGE_TAG is empty." >&2
-    exit 1
-fi
-
-if [[ -z "${CACHE_SERVER_CHART_VERSION:-}" ]]; then
-    echo "ERROR: CACHE_SERVER_CHART_VERSION is empty." >&2
-    echo "       Set the exact chart version (e.g. 1.2.3) published to the ACR." >&2
-    exit 1
+    if ! command -v az >/dev/null 2>&1; then
+        echo "ERROR: CACHE_SERVER_IMAGE_TAG is empty and az CLI not found." >&2
+        echo "       Either set CACHE_SERVER_IMAGE_TAG or install az + run 'az login'." >&2
+        exit 1
+    fi
+    IMAGE_ACR_NAME="${CACHE_SERVER_IMAGE_REGISTRY%%.*}"
+    echo "Resolving latest image tag from ACR '$IMAGE_ACR_NAME' repo '$CACHE_SERVER_IMAGE_REPO' ..."
+    CACHE_SERVER_IMAGE_TAG="$(
+        az acr repository show-tags \
+            --name "$IMAGE_ACR_NAME" \
+            --repository "$CACHE_SERVER_IMAGE_REPO" \
+            --orderby time_desc \
+            --top 1 \
+            --output tsv 2>/dev/null | head -n1 | tr -d '\r' || true
+    )"
+    if [[ -z "$CACHE_SERVER_IMAGE_TAG" ]]; then
+        echo "ERROR: could not resolve latest image tag from ACR." >&2
+        echo "       Confirm 'az acr repository show-tags --name $IMAGE_ACR_NAME --repository $CACHE_SERVER_IMAGE_REPO' works." >&2
+        exit 1
+    fi
+    echo "Resolved CACHE_SERVER_IMAGE_TAG=$CACHE_SERVER_IMAGE_TAG"
 fi
 
 CACHE_SERVER_IMAGE="${CACHE_SERVER_IMAGE_REGISTRY}/${CACHE_SERVER_IMAGE_REPO}:${CACHE_SERVER_IMAGE_TAG}"
 CACHE_SERVER_CHART_REF="oci://${CACHE_SERVER_CHART_REGISTRY}/${CACHE_SERVER_CHART_REPO}"
 CACHE_SERVER_PREREQ_CHART_REF="oci://${CACHE_SERVER_CHART_REGISTRY}/${CACHE_SERVER_PREREQ_CHART_REPO}"
+
+# Chart version auto-resolution: when unset, pick the most recently pushed tag
+# under $CACHE_SERVER_CHART_REPO in the chart ACR. The prereq chart is pinned
+# to the same version, so we resolve once against the main chart only.
+if [[ -z "${CACHE_SERVER_CHART_VERSION:-}" ]]; then
+    if ! command -v az >/dev/null 2>&1; then
+        echo "ERROR: CACHE_SERVER_CHART_VERSION is empty and az CLI not found." >&2
+        echo "       Either set CACHE_SERVER_CHART_VERSION or install az + run 'az login'." >&2
+        exit 1
+    fi
+    CHART_ACR_NAME="${CACHE_SERVER_CHART_REGISTRY%%.*}"
+    echo "Resolving latest chart tag from ACR '$CHART_ACR_NAME' repo '$CACHE_SERVER_CHART_REPO' ..."
+    CACHE_SERVER_CHART_VERSION="$(
+        az acr repository show-tags \
+            --name "$CHART_ACR_NAME" \
+            --repository "$CACHE_SERVER_CHART_REPO" \
+            --orderby time_desc \
+            --top 1 \
+            --output tsv 2>/dev/null | head -n1 | tr -d '\r' || true
+    )"
+    if [[ -z "$CACHE_SERVER_CHART_VERSION" ]]; then
+        echo "ERROR: could not resolve latest chart version from ACR." >&2
+        echo "       Confirm 'az acr repository show-tags --name $CHART_ACR_NAME --repository $CACHE_SERVER_CHART_REPO' works." >&2
+        exit 1
+    fi
+    echo "Resolved CACHE_SERVER_CHART_VERSION=$CACHE_SERVER_CHART_VERSION"
+fi
 
 echo "Using cache-server image: $CACHE_SERVER_IMAGE"
 echo "Using prereq chart       : $CACHE_SERVER_PREREQ_CHART_REF (version $CACHE_SERVER_CHART_VERSION)"
@@ -69,7 +112,7 @@ echo "Replicas                 : $CACHE_SERVER_REPLICAS"
 
 # --- Pull + side-load the image -------------------------------------------
 
-echo "Pulling image..."
+echo "Pulling image ..."
 docker pull "$CACHE_SERVER_IMAGE"
 
 # Side-load the image into every kind node manually rather than using

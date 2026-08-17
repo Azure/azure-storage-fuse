@@ -26,30 +26,33 @@ for iterative debugging.
 # 1. Install prerequisites (one-time).
 ./test/scripts/dcache/install-prereqs.sh
 
-# 2. Set the image + chart coordinates. The chart is pulled from an
-#    OCI-enabled ACR; no source checkout of vienna-tachyon is required.
-export CACHE_SERVER_IMAGE_REGISTRY=<acr-name>.azurecr.io
-export CACHE_SERVER_IMAGE_REPO=cache-server
-export CACHE_SERVER_IMAGE_TAG=<image-tag>
-
-# Chart registry defaults to CACHE_SERVER_IMAGE_REGISTRY; override if the
-# chart is in a different ACR.
+# 2. (Optional) override Tachyon image + chart coordinates. Defaults live in
+#    config/nightly.config (registry + repo pre-populated, tags left blank);
+#    deploy-tachyon.sh auto-resolves the newest image tag AND chart version
+#    via `az acr repository show-tags` when the respective env var is unset.
+#    Override any of these to pin.
+# export CACHE_SERVER_IMAGE_REGISTRY=<acr-name>.azurecr.io
+# export CACHE_SERVER_IMAGE_REPO=cache-server
+# export CACHE_SERVER_IMAGE_TAG=<image-tag>
 # export CACHE_SERVER_CHART_REGISTRY=<other-acr>.azurecr.io
-export CACHE_SERVER_CHART_REPO=charts/cache-server
-export CACHE_SERVER_PREREQ_CHART_REPO=charts/cache-server-prereq
-export CACHE_SERVER_CHART_VERSION=<chart-version>
+# export CACHE_SERVER_CHART_REPO=charts/cache-server
+# export CACHE_SERVER_PREREQ_CHART_REPO=charts/cache-server-prereq
+# export CACHE_SERVER_CHART_VERSION=<chart-version>
 
-# If the ACR is private, log in first (deploy-tachyon.sh does NOT do this):
-#   az acr login --name <acr-name>
-# or
-#   helm registry login <acr-name>.azurecr.io -u <user> -p <password>
+# ACR access: deploy-tachyon.sh calls `az acr login --expose-token` to mint
+# an in-cluster pull secret, so `az login` must already have succeeded with
+# an identity that has AcrPull on the registry.
 
 # 3. Bring up the cluster and deploy Tachyon.
 ./test/scripts/dcache/setup-kind.sh
 ./test/scripts/dcache/deploy-tachyon.sh
 
-# 4. Deploy the in-cluster blobfuse2 pod driven by test/dcache_e2e/.
-export BLOBFUSE2_IMAGE=<registry>/azure-blobfuse2:<tag>
+# 4. Build the in-cluster blobfuse2 image from the current tree, then deploy
+#    the pod driven by test/dcache_e2e/. deploy-blobfuse2.sh does NOT pull;
+#    the image must already exist in the local docker daemon.
+(cd docker && ./buildcontainer.sh Dockerfile x86_64)
+ver=$(./blobfuse2 --version | cut -d ' ' -f 3)
+export BLOBFUSE2_IMAGE="azure-blobfuse2-x86_64.${ver}"
 export STO_ACC_NAME=<account>
 export STO_ACC_KEY=<key>
 export containerName=<container>

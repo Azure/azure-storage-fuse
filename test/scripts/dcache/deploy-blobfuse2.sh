@@ -5,10 +5,14 @@
 # side-loads the image into every kind node, applies, waits for rollout.
 # Shared entry point for the ADO pipeline and local runs.
 #
+# The image referenced by BLOBFUSE2_IMAGE must already be present in the
+# local docker daemon (built via docker/buildcontainer.sh); this script does
+# not pull it from any registry.
+#
 # Required env: BLOBFUSE2_IMAGE, STO_ACC_NAME, STO_ACC_KEY,
 #               STO_ACC_CONTAINER (or $containerName from the pipeline).
 # Optional env: BLOBFUSE2_NAMESPACE, BLOBFUSE2_DEPLOYMENT, STO_ACC_ENDPOINT,
-#               DCACHE_DISCOVERY_URL, BLOBFUSE2_IMAGE_PULL (default true),
+#               DCACHE_DISCOVERY_URL,
 #               BLOBFUSE2_IMAGE_LOAD (default true; set false for non-kind),
 #               MANIFEST_TEMPLATE.
 
@@ -44,7 +48,6 @@ BLOBFUSE2_NAMESPACE="${BLOBFUSE2_NAMESPACE:-blobfuse2-dist-cache}"
 BLOBFUSE2_DEPLOYMENT="${BLOBFUSE2_DEPLOYMENT:-blobfuse2-dist-cache}"
 STO_ACC_ENDPOINT="${STO_ACC_ENDPOINT:-https://${STO_ACC_NAME}.blob.core.windows.net}"
 DCACHE_DISCOVERY_URL="${DCACHE_DISCOVERY_URL:-cacheserver-discovery.${NAMESPACE:-cache-server}.svc.cluster.local:${CACHE_SERVER_PORT:-9065}}"
-BLOBFUSE2_IMAGE_PULL="${BLOBFUSE2_IMAGE_PULL:-true}"
 BLOBFUSE2_IMAGE_LOAD="${BLOBFUSE2_IMAGE_LOAD:-true}"
 MANIFEST_TEMPLATE="${MANIFEST_TEMPLATE:-$REPO_ROOT/docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl}"
 
@@ -62,14 +65,14 @@ echo "Storage account            : $STO_ACC_NAME"
 echo "Storage container          : $STO_ACC_CONTAINER"
 echo "Storage endpoint           : $STO_ACC_ENDPOINT"
 echo "Manifest template          : $MANIFEST_TEMPLATE"
-echo "Pull image before load     : $BLOBFUSE2_IMAGE_PULL"
 echo "Side-load into kind nodes  : $BLOBFUSE2_IMAGE_LOAD"
 
-# --- Optional docker pull --------------------------------------------------
+# --- Validate the image is present locally --------------------------------
 
-if [[ "$BLOBFUSE2_IMAGE_PULL" == "true" ]]; then
-    echo "Pulling image $BLOBFUSE2_IMAGE ..."
-    docker pull "$BLOBFUSE2_IMAGE"
+if ! docker image inspect "$BLOBFUSE2_IMAGE" >/dev/null 2>&1; then
+    echo "ERROR: image '$BLOBFUSE2_IMAGE' not found in the local docker daemon." >&2
+    echo "       Build it first via docker/buildcontainer.sh (see test/scripts/dcache/README.md)." >&2
+    exit 1
 fi
 
 IMAGE_TAR=""

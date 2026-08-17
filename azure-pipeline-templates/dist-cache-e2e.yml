@@ -1,8 +1,13 @@
 # Template: distributed cache E2E on a local kind + Tachyon cluster.
 #
 # Brings up a kind (Kubernetes IN Docker) cluster, deploys the Tachyon
-# cache-server helm chart (pulled directly from an OCI-enabled ACR), deploys
-# blobfuse2 in-cluster, and runs the dedicated dcache_e2e Go suite.
+# cache-server helm chart (pulled directly from an OCI-enabled ACR), builds
+# the in-cluster blobfuse2 container image from the code under test, deploys
+# it, and runs the dedicated dcache_e2e Go suite.
+#
+# The caller must run azure-pipeline-templates/build.yml (or otherwise
+# provision Go + libfuse3 + docker) before including this template, since
+# the blobfuse2 build step invokes docker/buildcontainer.sh.
 #
 # Teardown runs unconditionally and publishes cache-server and per-test
 # blobfuse2 logs as an artifact so failures are debuggable.
@@ -54,7 +59,25 @@ steps:
       CACHE_SERVER_CHART_VERSION: $(CACHE_SERVER_CHART_VERSION)
 
   # -------------------------------------------------------------------------
-  # 4. Deploy the in-cluster blobfuse2 pod driven by dcache_e2e.
+  # 4. Build the in-cluster blobfuse2 container image from the code under
+  #    test. buildcontainer.sh runs ./build.sh and tags the image as
+  #    azure-blobfuse2-x86_64.<ver>; we expose the tag as pipeline variable
+  #    BLOBFUSE2_IMAGE so the deploy step below picks it up. The image lives
+  #    only in the local Docker daemon; deploy-blobfuse2.sh does not pull.
+  - script: |
+      set -euo pipefail
+      cd $(WORK_DIR)/docker
+      ./buildcontainer.sh Dockerfile x86_64
+      ver=$($(WORK_DIR)/blobfuse2 --version | cut -d ' ' -f 3)
+      tag="azure-blobfuse2-x86_64.${ver}"
+      echo "Built blobfuse2 container image: ${tag}"
+      docker images "${tag}"
+      echo "##vso[task.setvariable variable=BLOBFUSE2_IMAGE]${tag}"
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Build blobfuse2 container image'
+    timeoutInMinutes: 20
+
+  # -------------------------------------------------------------------------
+  # 5. Deploy the in-cluster blobfuse2 pod driven by dcache_e2e.
   - script: |
       set -e
       $(WORK_DIR)/test/scripts/dcache/deploy-blobfuse2.sh
@@ -68,7 +91,7 @@ steps:
       STO_ACC_CONTAINER: $(containerName)
 
   # -------------------------------------------------------------------------
-  # 5. Run only the distributed-cache-specific pod suite.
+  # 6. Run only the distributed-cache-specific pod suite.
   - script: |
       set -e
       cd $(WORK_DIR)
@@ -89,7 +112,7 @@ steps:
       DCACHE_LOG_DIR: '$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}'
 
   # -------------------------------------------------------------------------
-  # 6. Collect surviving pod logs before tearing down, then teardown always.
+  # 7. Collect surviving pod logs before tearing down, then teardown always.
   - script: |
       set +e
       NAMESPACE="${NAMESPACE:-cache-server}"
