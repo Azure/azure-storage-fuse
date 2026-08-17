@@ -196,15 +196,11 @@ func (dc *DistCache) Configure(isParent bool) error {
 	// Derive the cache namespace from the storage identity so mounts for
 	// different accounts or containers cannot collide.
 	var accountName, container string
-	if config.IsSet("azstorage.account-name") {
-		if err := config.UnmarshalKey("azstorage.account-name", &accountName); err != nil {
-			return fmt.Errorf("distributed_cache: failed to read azstorage.account-name: %w", err)
-		}
+	if err := config.UnmarshalKey("azstorage.account-name", &accountName); err != nil {
+		return fmt.Errorf("distributed_cache: failed to read azstorage.account-name: %w", err)
 	}
-	if config.IsSet("azstorage.container") {
-		if err := config.UnmarshalKey("azstorage.container", &container); err != nil {
-			return fmt.Errorf("distributed_cache: failed to read azstorage.container: %w", err)
-		}
+	if err := config.UnmarshalKey("azstorage.container", &container); err != nil {
+		return fmt.Errorf("distributed_cache: failed to read azstorage.container: %w", err)
 	}
 	if accountName == "" || container == "" {
 		return fmt.Errorf("distributed_cache: cache prefix unresolved; set both azstorage.account-name and azstorage.container")

@@ -603,6 +603,22 @@ distributed_cache:
 	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
 }
 
+func TestConfigure_DerivesCachePrefixFromEnvironment(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  container: mycontainer
+distributed_cache:
+  server-list: "localhost:9065"
+`)
+	config.BindEnv("azstorage.account-name", "AZURE_STORAGE_ACCOUNT")
+	t.Setenv("AZURE_STORAGE_ACCOUNT", "envacct")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.NoError(t, err)
+	assert.Equal(t, "envacct/mycontainer", dc.cachePrefix)
+}
+
 func TestConfigure_VerifyChecksumDefaultAndOverride(t *testing.T) {
 	tests := []struct {
 		name       string
