@@ -12,7 +12,7 @@
 # Required env: BLOBFUSE2_IMAGE, STO_ACC_NAME, STO_ACC_KEY,
 #               STO_ACC_CONTAINER (or $containerName from the pipeline).
 # Optional env: BLOBFUSE2_NAMESPACE, BLOBFUSE2_DEPLOYMENT, STO_ACC_ENDPOINT,
-#               DCACHE_DISCOVERY_URL,
+#               DCACHE_DISCOVERY_ENDPOINT,
 #               BLOBFUSE2_IMAGE_LOAD (default true; set false for non-kind),
 #               MANIFEST_TEMPLATE.
 
@@ -47,7 +47,7 @@ fi
 BLOBFUSE2_NAMESPACE="${BLOBFUSE2_NAMESPACE:-blobfuse2-dist-cache}"
 BLOBFUSE2_DEPLOYMENT="${BLOBFUSE2_DEPLOYMENT:-blobfuse2-dist-cache}"
 STO_ACC_ENDPOINT="${STO_ACC_ENDPOINT:-https://${STO_ACC_NAME}.blob.core.windows.net}"
-DCACHE_DISCOVERY_URL="${DCACHE_DISCOVERY_URL:-cacheserver-discovery.${NAMESPACE:-cache-server}.svc.cluster.local:${CACHE_SERVER_PORT:-9065}}"
+DCACHE_DISCOVERY_ENDPOINT="${DCACHE_DISCOVERY_ENDPOINT:-cacheserver-discovery.${NAMESPACE:-cache-server}.svc.cluster.local:${CACHE_SERVER_PORT:-9065}}"
 BLOBFUSE2_IMAGE_LOAD="${BLOBFUSE2_IMAGE_LOAD:-true}"
 MANIFEST_TEMPLATE="${MANIFEST_TEMPLATE:-$REPO_ROOT/docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl}"
 
@@ -60,7 +60,7 @@ fi
 echo "Using blobfuse2 image      : $BLOBFUSE2_IMAGE"
 echo "Namespace                  : $BLOBFUSE2_NAMESPACE"
 echo "Deployment                 : $BLOBFUSE2_DEPLOYMENT"
-echo "Discovery URL              : $DCACHE_DISCOVERY_URL"
+echo "Discovery endpoint         : $DCACHE_DISCOVERY_ENDPOINT"
 echo "Storage account            : $STO_ACC_NAME"
 echo "Storage container          : $STO_ACC_CONTAINER"
 echo "Storage endpoint           : $STO_ACC_ENDPOINT"
@@ -117,13 +117,13 @@ if ! command -v envsubst >/dev/null 2>&1; then
 fi
 
 export BLOBFUSE2_IMAGE BLOBFUSE2_NAMESPACE BLOBFUSE2_DEPLOYMENT \
-    DCACHE_DISCOVERY_URL STO_ACC_NAME STO_ACC_KEY STO_ACC_CONTAINER \
+    DCACHE_DISCOVERY_ENDPOINT STO_ACC_NAME STO_ACC_KEY STO_ACC_CONTAINER \
     STO_ACC_ENDPOINT
 
 RENDERED="$(mktemp --suffix=.yaml)"
 
 # Allow-list keeps future ${...} additions from being silently blanked.
-envsubst '$BLOBFUSE2_IMAGE $BLOBFUSE2_NAMESPACE $BLOBFUSE2_DEPLOYMENT $DCACHE_DISCOVERY_URL $STO_ACC_NAME $STO_ACC_KEY $STO_ACC_CONTAINER $STO_ACC_ENDPOINT' \
+envsubst '$BLOBFUSE2_IMAGE $BLOBFUSE2_NAMESPACE $BLOBFUSE2_DEPLOYMENT $DCACHE_DISCOVERY_ENDPOINT $STO_ACC_NAME $STO_ACC_KEY $STO_ACC_CONTAINER $STO_ACC_ENDPOINT' \
     < "$MANIFEST_TEMPLATE" > "$RENDERED"
 
 echo "Applying rendered manifest ..."

@@ -110,6 +110,32 @@ echo "Prereq release           : $PREREQ_RELEASE_NAME"
 echo "Release                  : $RELEASE_NAME"
 echo "Replicas                 : $CACHE_SERVER_REPLICAS"
 
+# --- Registry auth (host docker) -------------------------------------------
+#
+# `az login` alone does not populate ~/.docker/config.json; `az acr login`
+# does, and Helm 3.10+ falls back to that file for OCI creds. The second
+# call uses --expose-token to get the raw AAD token for the in-cluster
+# pull secret minted below.
+
+if ! command -v az >/dev/null 2>&1; then
+    echo "ERROR: az CLI not found; cannot authenticate to ACR." >&2
+    echo "       Install az and run 'az login' before invoking this script." >&2
+    exit 1
+fi
+
+ACR_NAME="${CACHE_SERVER_IMAGE_REGISTRY%%.*}"
+
+echo "Logging docker into ACR '$ACR_NAME' ..."
+az acr login --name "$ACR_NAME" >/dev/null
+
+echo "Fetching ACR access token for registry '$ACR_NAME' ..."
+ACR_TOKEN="$(az acr login --name "$ACR_NAME" --expose-token --output tsv --query accessToken)"
+if [[ -z "$ACR_TOKEN" ]]; then
+    echo "ERROR: failed to obtain ACR access token for '$ACR_NAME'." >&2
+    echo "       Run 'az login' and confirm you have AcrPull on the registry." >&2
+    exit 1
+fi
+
 # --- Pull + side-load the image -------------------------------------------
 
 echo "Pulling image ..."
@@ -165,21 +191,6 @@ kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -
 # every ServiceAccount the charts create, right after each helm install
 # (see `attach_pull_secret_to_all_sas` below).
 ACR_PULL_SECRET_NAME="${ACR_PULL_SECRET_NAME:-acr-pull}"
-ACR_NAME="${CACHE_SERVER_IMAGE_REGISTRY%%.*}"
-
-if ! command -v az >/dev/null 2>&1; then
-    echo "ERROR: az CLI not found; cannot mint ACR pull secret." >&2
-    echo "       Install az and run 'az login' before invoking this script." >&2
-    exit 1
-fi
-
-echo "Fetching ACR access token for registry '$ACR_NAME' ..."
-ACR_TOKEN="$(az acr login --name "$ACR_NAME" --expose-token --output tsv --query accessToken)"
-if [[ -z "$ACR_TOKEN" ]]; then
-    echo "ERROR: failed to obtain ACR access token for '$ACR_NAME'." >&2
-    echo "       Run 'az login' and confirm you have AcrPull on the registry." >&2
-    exit 1
-fi
 
 kubectl delete secret "$ACR_PULL_SECRET_NAME" -n "$NAMESPACE" --ignore-not-found
 kubectl create secret docker-registry "$ACR_PULL_SECRET_NAME" \

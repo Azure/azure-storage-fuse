@@ -1601,7 +1601,7 @@ stages:
             # (symmetrical for image and chart). Override any of these via
             # the NightlyBlobFuse variable group to pin.
             - name: CACHE_SERVER_IMAGE_REGISTRY
-              value: 'tachyonpodacr.azurecr.io'
+              value: 'tachyonprodacr.azurecr.io'
             - name: CACHE_SERVER_IMAGE_REPO
               value: 'cache-server'
             - name: CACHE_SERVER_IMAGE_TAG
@@ -1610,7 +1610,7 @@ stages:
             # same registry as the image; override only if the chart lives in
             # a different ACR.
             - name: CACHE_SERVER_CHART_REGISTRY
-              value: 'tachyonpodacr.azurecr.io'
+              value: 'tachyonprodacr.azurecr.io'
             - name: CACHE_SERVER_CHART_REPO
               value: 'charts/cache-server'
             # cache-server-prereq chart is installed first (CRDs / RBAC /
@@ -1630,6 +1630,17 @@ stages:
             - template: 'azure-pipeline-templates/build.yml'
               parameters:
                 skip_ut: true
+
+            # Log the az CLI in as the user-assigned MSI attached to this
+            # agent VM. deploy-tachyon.sh below uses `az acr repository
+            # show-tags` and `az acr login --expose-token` against
+            # TachyonProdACR; both pick up this login from ~/.azure.
+            - script: |
+                set -e
+                az --version
+                az login --identity --client-id $(BF2_MSI_CLIENT_ID)
+                az account show --query '{name:name, user:user}' -o json
+              displayName: 'DistCache: az login via user-assigned MSI'
 
             # Run the dedicated dist_cache pod tests against a single kind
             # cluster (cluster setup + teardown happens once). The template

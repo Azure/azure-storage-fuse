@@ -70,11 +70,33 @@ type CacheServerMetrics struct {
 // each pod's /metrics endpoint via `kubectl exec ... curl`.
 // Returns false when scraping is not viable (no pods found).
 func scrapeCacheServerMetrics(t *testing.T) (CacheServerMetrics, bool) {
+	return scrapeCacheServerMetricsExcluding(t)
+}
+
+// scrapeCacheServerMetricsExcluding is scrapeCacheServerMetrics with the
+// given pods skipped. Fault tests pass the victim pod so a `kubectl exec`
+// against a killed kubelet doesn't invalidate the aggregate.
+func scrapeCacheServerMetricsExcluding(t *testing.T, excludePods ...string) (CacheServerMetrics, bool) {
 	t.Helper()
 	pods, err := scrapePodNames(context.Background())
 	if err != nil {
 		t.Logf("metrics: pod discovery failed: %v", err)
 		return CacheServerMetrics{}, false
+	}
+	if len(excludePods) > 0 {
+		skip := make(map[string]struct{}, len(excludePods))
+		for _, p := range excludePods {
+			skip[p] = struct{}{}
+		}
+		kept := pods[:0]
+		for _, p := range pods {
+			if _, drop := skip[p]; drop {
+				t.Logf("metrics: excluding pod %s from scrape", p)
+				continue
+			}
+			kept = append(kept, p)
+		}
+		pods = kept
 	}
 	if len(pods) == 0 {
 		t.Log("metrics: no cacheserver pods found; skipping scrape")

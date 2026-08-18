@@ -129,9 +129,10 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	// Drop the local cache so the next read must consult L2.
 	m.Remount(t)
 
-	// Aggregate scrape captures traffic from the cache-server pods that remain
-	// reachable after the node loss.
-	before, ok := scrapeCacheServerMetrics(t)
+	// The victim pod's kubelet is gone; a kubectl-exec scrape against it
+	// hangs and invalidates the whole aggregate. Excluding it keeps the
+	// before/after delta on the same survivor set.
+	before, ok := scrapeCacheServerMetricsExcluding(t, victimPod)
 	if !ok {
 		t.Fatal("node-failure: pre-restore cache-server metrics scrape unavailable; cannot verify survivor-hit invariant")
 	}
@@ -158,7 +159,7 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	}
 	t.Logf("post-node-loss: blobfuse pod %s issued %d Azure GET(s) for %s", readerPod, azureGETs, blobPath)
 
-	after, ok := scrapeCacheServerMetrics(t)
+	after, ok := scrapeCacheServerMetricsExcluding(t, victimPod)
 	if !ok {
 		t.Fatal("node-failure: post-node-loss cache-server metrics scrape unavailable; cannot verify survivor-hit invariant")
 	}

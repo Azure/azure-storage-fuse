@@ -39,7 +39,7 @@ stringData:
       ignore-open-flags: true
 
     dist_cache:
-      discovery-url: "${DCACHE_DISCOVERY_URL}"
+      discovery-endpoint: "${DCACHE_DISCOVERY_ENDPOINT}"
       # block_cache is auto-injected as dist_cache's L1. Tune it here;
       # normalizeDistCacheConfig fans these onto block_cache.* at mount time.
       block-size-mb: 16
