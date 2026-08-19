@@ -180,22 +180,6 @@ var workflowDefaults = map[string]WorkflowConfig{
 		},
 
 		Settings: map[string]string{
-			// Good balance between throughput and memory efficiency
-			// for sequential and semi-sequential training reads.
-			"block_cache.block-size-mb": "16",
-
-			// Provides enough memory to cache frequently accessed
-			// dataset blocks across multiple training epochs.
-			"block_cache.mem-size-mb": "4096",
-
-			// Provides sufficient read concurrency for training
-			// workloads without creating excessive backend pressure.
-			"block_cache.parallelism": "16",
-
-			// Improves sequential dataset access by preloading
-			// upcoming blocks during training.
-			"block_cache.prefetch": "32",
-
 			// Reduce repeated metadata lookups for stable
 			// training datasets accessed repeatedly.
 			"attr_cache.timeout-sec": "7200",
@@ -284,24 +268,7 @@ var workflowDefaults = map[string]WorkflowConfig{
 			"azstorage",
 		},
 
-		Settings: map[string]string{
-			// Larger blocks improve sequential checkpoint
-			// upload and download throughput.
-			"block_cache.block-size-mb": "32",
-
-			// Larger in-memory cache helps stage checkpoint
-			// data efficiently during large transfers.
-			"block_cache.mem-size-mb": "8192",
-
-			// Higher concurrency improves checkpoint transfer
-			// throughput without overwhelming backend storage.
-			"block_cache.parallelism": "32",
-
-			// Checkpoint directories may update frequently
-			// during training and recovery operations.
-			"libfuse.attribute-expiration-sec": "60",
-			"libfuse.entry-expiration-sec":     "60",
-		},
+		Settings: map[string]string{},
 
 		// If user configured custom pipeline but forgot block-cache,
 		// inject lightweight fallback.
