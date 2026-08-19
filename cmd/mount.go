@@ -826,13 +826,16 @@ func applyLibfuseReadOnlyOption(libfuseOpts []string) {
 // the L1 for distributed_cache. userComponents is the components list as parsed
 // from the config file, before any synthesis or auto-injection.
 func normalizeDistCacheConfig(userComponents []string) error {
-	// Only act when distributed_cache will actually be in the resulting pipeline:
-	// listed in components:, or components: omitted so synthesis will add
-	// it. A stray distributed_cache: section alongside an explicit components:
-	// that omits distributed_cache is silently ignored (matching how the codebase
-	// treats stray block_cache:/file_cache: sections).
+	// distributed_cache is "wanted" whenever either surface signals it:
+	// either it is listed in components:, or --distributed-cache /
+	// distributed-cache: is set. Both surfaces are authoritative, so the
+	// incompatible-L1 check below runs whichever one the user chose. This
+	// prevents the case where --distributed-cache is silently ignored
+	// because a components: pipeline was also configured (e.g. with
+	// file_cache), which would otherwise run the sibling L1 with no
+	// dist-cache and no error.
 	userWantsDistCache := common.ComponentInPipeline(userComponents, "distributed_cache") ||
-		(len(userComponents) == 0 && config.IsSet("distributed-cache"))
+		config.IsSet("distributed-cache")
 	if !userWantsDistCache {
 		return nil
 	}

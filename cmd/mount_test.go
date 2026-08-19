@@ -885,6 +885,55 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithReadOnlyPasses() {
 	suite.assert.True(options.DistributedCache)
 }
 
+// If the config file already specifies a non-empty components: pipeline (here
+// with file_cache), passing --distributed-cache on the CLI must not silently
+// leave file_cache in place — the resulting pipeline must either error out
+// with the mutual-exclusion message, or reflect the CLI intent by containing
+// distributed_cache + block_cache and dropping file_cache.
+func (suite *mountTestSuite) TestDistributedCacheCLIOverridesExplicitFileCachePipeline() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(`
+read-only: true
+components:
+  - libfuse
+  - file_cache
+  - attr_cache
+  - azstorage
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+`)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	op, _ := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
+		"--distributed-cache", "--distributed-cache-discovery-endpoint=example.com:9065")
+
+	// Either the mutual-exclusion gate fires (preferred, explicit user
+	// signal), or the CLI override wins. Silently keeping file_cache in the
+	// pipeline while --distributed-cache was requested is the bug we're
+	// guarding against.
+	if strings.Contains(op, "distributed_cache is a single configuration surface") {
+		return
+	}
+	suite.assert.Contains(options.Components, "block_cache")
+	suite.assert.Contains(options.Components, "distributed_cache")
+	suite.assert.NotContains(options.Components, "file_cache")
+}
+
 func (suite *mountTestSuite) TestDistributedCacheCLIWithFuseRoOptionPasses() {
 	defer suite.cleanupTest()
 
