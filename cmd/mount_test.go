@@ -790,9 +790,9 @@ func TestMountCommand(t *testing.T) {
 
 // TestConfigureWorkflow tests the workflow auto-configuration function
 func TestConfigureWorkflow(t *testing.T) {
-	assert := assert.New(t)
-
 	t.Run("TrainingWorkflow", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper for clean test
 		config.ResetConfig()
 
@@ -803,19 +803,23 @@ func TestConfigureWorkflow(t *testing.T) {
 		components := viper.GetStringSlice("components")
 		assert.Equal([]string{"libfuse", "block_cache", "attr_cache", "azstorage"}, components)
 
-		// Verify training-specific settings (non-default values)
-		assert.Equal("16", viper.GetString("block_cache.block-size-mb"))
-		assert.Equal("4096", viper.GetString("block_cache.mem-size-mb"))
-		assert.Equal("16", viper.GetString("block_cache.parallelism"))
-		assert.Equal("32", viper.GetString("block_cache.prefetch"))
+		// Training only overrides the attr_cache timeout
 		assert.Equal("7200", viper.GetString("attr_cache.timeout-sec"))
 
-		// Verify default values are NOT set
+		// The workflow does not tune block_cache; those must remain unset
+		assert.Equal("", viper.GetString("block_cache.block-size-mb"))
+		assert.Equal("", viper.GetString("block_cache.mem-size-mb"))
+		assert.Equal("", viper.GetString("block_cache.parallelism"))
+		assert.Equal("", viper.GetString("block_cache.prefetch"))
+
+		// Verify libfuse defaults are NOT set
 		assert.Equal("", viper.GetString("libfuse.attribute-expiration-sec"))
 		assert.Equal("", viper.GetString("libfuse.entry-expiration-sec"))
 	})
 
 	t.Run("ServingWorkflow", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper for clean test
 		config.ResetConfig()
 
@@ -836,6 +840,8 @@ func TestConfigureWorkflow(t *testing.T) {
 	})
 
 	t.Run("CheckpointingWorkflow", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper for clean test
 		config.ResetConfig()
 
@@ -846,18 +852,18 @@ func TestConfigureWorkflow(t *testing.T) {
 		components := viper.GetStringSlice("components")
 		assert.Equal([]string{"libfuse", "block_cache", "attr_cache", "azstorage"}, components)
 
-		// Verify checkpointing-specific settings (non-default values)
-		assert.Equal("32", viper.GetString("block_cache.block-size-mb"))
-		assert.Equal("8192", viper.GetString("block_cache.mem-size-mb"))
-		assert.Equal("32", viper.GetString("block_cache.parallelism"))
-		assert.Equal("60", viper.GetString("libfuse.attribute-expiration-sec"))
-		assert.Equal("60", viper.GetString("libfuse.entry-expiration-sec"))
-
-		// Verify default attr_cache timeout is NOT set (120 is the default)
+		// Checkpointing has an empty settings map - only the pipeline is configured
+		assert.Equal("", viper.GetString("block_cache.block-size-mb"))
+		assert.Equal("", viper.GetString("block_cache.mem-size-mb"))
+		assert.Equal("", viper.GetString("block_cache.parallelism"))
 		assert.Equal("", viper.GetString("attr_cache.timeout-sec"))
+		assert.Equal("", viper.GetString("libfuse.attribute-expiration-sec"))
+		assert.Equal("", viper.GetString("libfuse.entry-expiration-sec"))
 	})
 
 	t.Run("InvalidWorkflow", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper for clean test
 		config.ResetConfig()
 
@@ -867,6 +873,8 @@ func TestConfigureWorkflow(t *testing.T) {
 	})
 
 	t.Run("UserOverrideRespected", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper for clean test
 		config.ResetConfig()
 
@@ -883,29 +891,79 @@ func TestConfigureWorkflow(t *testing.T) {
 	})
 
 	t.Run("UserOverrideConfigValues", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper for clean test
 		config.ResetConfig()
 
-		// User sets explicit cache timeout
-		config.Set("block_cache.mem-size-mb", "16384")
+		// User sets the only value the training workflow also manages
+		config.Set("attr_cache.timeout-sec", "300")
 
 		// Apply training workflow
 		err := configureWorkflow("training")
 		assert.NoError(err)
 
-		// Verify workflow did NOT override user's memory size
-		assert.Equal("16384", viper.GetString("block_cache.mem-size-mb"))
+		// Verify workflow did NOT override the user's value
+		assert.Equal("300", viper.GetString("attr_cache.timeout-sec"))
 
-		// Verify workflow DID set values that user didn't specify
-		assert.Equal("16", viper.GetString("block_cache.block-size-mb"))
+		// Verify workflow still configured the pipeline
+		assert.Equal([]string{"libfuse", "block_cache", "attr_cache", "azstorage"},
+			viper.GetStringSlice("components"))
+	})
+
+	t.Run("TrainingSkipsFallbackWhenPipelineHasCache", func(t *testing.T) {
+		assert := assert.New(t)
+
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		// User supplies a custom pipeline with a cache component, but not the
+		// one training recommends. This emits an advisory warning.
+		viper.Set("components", []string{"libfuse", "file_cache", "azstorage"})
+
+		err := configureWorkflow("training")
+		assert.NoError(err)
+
+		// applyFallback returns early once any cache component is present,
+		// so the pipeline is untouched...
+		assert.Equal([]string{"libfuse", "file_cache", "azstorage"},
+			viper.GetStringSlice("components"))
+
+		// ...and no workflow settings or fallback settings are applied.
+		assert.Equal("", viper.GetString("attr_cache.timeout-sec"))
+		assert.Equal("", viper.GetString("block-cache"))
+	})
+
+	t.Run("ServingSkipsFallbackWhenPipelineHasCache", func(t *testing.T) {
+		assert := assert.New(t)
+
+		// Reset viper for clean test
+		config.ResetConfig()
+
+		// User supplies a custom pipeline with a cache component, but not the
+		// one serving recommends. This emits an advisory warning.
+		viper.Set("components", []string{"libfuse", "block_cache", "azstorage"})
+
+		err := configureWorkflow("serving")
+		assert.NoError(err)
+
+		// applyFallback returns early once any cache component is present,
+		// so the pipeline is untouched...
+		assert.Equal([]string{"libfuse", "block_cache", "azstorage"},
+			viper.GetStringSlice("components"))
+
+		// ...and no workflow settings or fallback settings are applied.
+		assert.Equal("", viper.GetString("file_cache.timeout-sec"))
+		assert.Equal("", viper.GetString("attr_cache.timeout-sec"))
+		assert.Equal("", viper.GetString("read-only"))
 	})
 }
 
 // TestWorkflowWithMountOptions tests workflow integration with mount options
 func TestWorkflowWithMountOptions(t *testing.T) {
-	assert := assert.New(t)
-
 	t.Run("TrainingWorkflowOptions", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper and options for clean test
 		config.ResetConfig()
 		options = mountOptions{}
@@ -926,6 +984,8 @@ func TestWorkflowWithMountOptions(t *testing.T) {
 	})
 
 	t.Run("ServingWorkflowOptions", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper and options for clean test
 		config.ResetConfig()
 		options = mountOptions{}
@@ -946,6 +1006,8 @@ func TestWorkflowWithMountOptions(t *testing.T) {
 	})
 
 	t.Run("CheckpointingWorkflowOptions", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Reset viper and options for clean test
 		config.ResetConfig()
 		options = mountOptions{}
@@ -1008,7 +1070,8 @@ func TestEmptyWorkflow(t *testing.T) {
 }
 
 // TestWorkflowIdempotency verifies that configuring the same
-// workflow multiple times does not duplicate pipeline components.
+// workflow multiple times does not duplicate pipeline components
+// or alter the applied settings.
 func TestWorkflowIdempotency(t *testing.T) {
 	assert := assert.New(t)
 
@@ -1031,34 +1094,37 @@ func TestWorkflowIdempotency(t *testing.T) {
 		[]string{"libfuse", "block_cache", "attr_cache", "azstorage"},
 		components,
 	)
+
+	// Verify settings remain stable across repeated configuration
+	assert.Equal("7200", viper.GetString("attr_cache.timeout-sec"))
 }
 
 // TestPartialUserOverride verifies that workflow configuration
-// does not overwrite explicitly user-defined config values.
+// does not overwrite explicitly user-defined config values while
+// still applying the remaining workflow defaults.
 func TestPartialUserOverride(t *testing.T) {
 	assert := assert.New(t)
 
 	// Reset config for clean test execution
 	config.ResetConfig()
 
-	// User overrides one workflow config value
-	viper.Set("block_cache.mem-size-mb", "16384")
+	// User overrides one of the serving workflow config values
+	config.Set("file_cache.max-size-mb", "32768")
 
-	// Configure training workflow
-	err := configureWorkflow("training")
+	// Configure serving workflow
+	err := configureWorkflow("serving")
 	assert.NoError(err)
 
 	// Verify user-defined value is preserved
 	assert.Equal(
-		"16384",
-		viper.GetString("block_cache.mem-size-mb"),
+		"32768",
+		viper.GetString("file_cache.max-size-mb"),
 	)
 
 	// Verify workflow still configures remaining defaults
-	assert.Equal(
-		"16",
-		viper.GetString("block_cache.block-size-mb"),
-	)
+	assert.Equal("900", viper.GetString("file_cache.timeout-sec"))
+	assert.Equal("900", viper.GetString("attr_cache.timeout-sec"))
+	assert.Equal("true", viper.GetString("read-only"))
 }
 
 // TestMountOptionsComponentOrder verifies that workflow pipeline
@@ -1101,8 +1167,8 @@ func TestWorkflowIsolation(t *testing.T) {
 
 	// Verify training-specific config exists
 	assert.Equal(
-		"4096",
-		viper.GetString("block_cache.mem-size-mb"),
+		"7200",
+		viper.GetString("attr_cache.timeout-sec"),
 	)
 
 	// Reset config before configuring next workflow
@@ -1112,16 +1178,22 @@ func TestWorkflowIsolation(t *testing.T) {
 	err = configureWorkflow("serving")
 	assert.NoError(err)
 
-	// Verify training config does not leak
+	// Verify training config does not leak - serving value applies instead
 	assert.Equal(
-		"",
-		viper.GetString("block_cache.mem-size-mb"),
+		"900",
+		viper.GetString("attr_cache.timeout-sec"),
 	)
 
 	// Verify serving-specific config exists
 	assert.Equal(
 		"true",
 		viper.GetString("read-only"),
+	)
+
+	// Verify the pipeline is the serving one, not the training one
+	assert.Equal(
+		[]string{"libfuse", "file_cache", "attr_cache", "azstorage"},
+		viper.GetStringSlice("components"),
 	)
 }
 
