@@ -141,13 +141,19 @@ func TestNormalizeDistCacheConfig_DistCacheSectionWithoutComponents(t *testing.T
 	// distributed_cache: set but components: omitted — the synthesis-path case.
 	setDistCacheYAML(t, `
 read-only: true
+distributed-cache: true
 distributed_cache:
   discovery-endpoint: d
+  block-size-mb: 32
 `)
 	defer viper.Reset()
 
 	err := normalizeDistCacheConfig(nil)
 	assert.NoError(t, err)
+
+	var blockSize uint32
+	assert.NoError(t, config.UnmarshalKey("block_cache.block-size-mb", &blockSize))
+	assert.Equal(t, uint32(32), blockSize)
 }
 
 // A distributed_cache: section alongside an explicit components: that omits
