@@ -4,6 +4,7 @@
 config.yaml
 testcnf.yaml
 blobfuse2.log
+blobfuse2.log.*
 blobfuse2.test
 azuretest.json
 blobfuse2

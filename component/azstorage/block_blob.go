@@ -104,7 +104,12 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	}
 
 	bb.listDetails = container.ListBlobsInclude{
-		Metadata:    true,
+		Metadata: true,
+		// Include.Tags is only honored on Block Blob (flat namespace) accounts.
+		// On HNS (ADLS Gen2), the list endpoint does not populate BlobTags in
+		// the response; tags must be fetched per-blob via GetTags — handled in
+		// processBlobItems.
+		Tags:        bb.Config.filterHasTag && !bb.Config.isHNS,
 		Deleted:     false,
 		Snapshots:   false,
 		Permissions: false, //Added to get permissions, acl, group, owner for HNS accounts
@@ -577,23 +582,52 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
 	if bb.Config.virtualDirectory {
-		attr, err = bb.getAttrUsingList(name)
-	} else {
-		attr, err = bb.getAttrUsingRest(name)
+		// getAttrUsingList -> List -> processBlobItems already evaluates the
+		// filter (including tag filters), so a successful return means the blob
+		// passed the filter.
+		return bb.getAttrUsingList(name)
 	}
 
+	attr, err = bb.getAttrUsingRest(name)
+	if err != nil {
+		return attr, err
+	}
 	if bb.Config.filter != nil && attr != nil {
-		if !bb.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
+		filterAttr := blobfilter.BlobAttr{
 			Name:  attr.Name,
 			Mtime: attr.Mtime,
 			Size:  attr.Size,
-		}) {
+		}
+		// GetProperties does not return blob index tags. When the configured
+		// filter references tags, fetch them explicitly before deciding.
+		if bb.Config.filterHasTag && !attr.IsDir() {
+			tags, terr := bb.getBlobTags(name)
+			if terr != nil {
+				log.Err("BlockBlob::GetAttr : Failed to get tags for %s [%s]", name, terr.Error())
+				return attr, syscall.EACCES
+			}
+			filterAttr.Tags = tags
+		}
+
+		if !bb.Config.filter.IsAcceptable(&filterAttr) {
 			log.Debug("BlockBlob::GetAttr : Filtered out %s", name)
 			return nil, syscall.ENOENT
 		}
 	}
 
 	return attr, err
+}
+
+// getBlobTags fetches blob index tags for the given blob name and returns them
+// as a flat map. Returns nil if the blob has no tags.
+func (bb *BlockBlob) getBlobTags(name string) (map[string]string, error) {
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	resp, err := blobClient.GetTags(context.Background(), nil)
+	if err != nil {
+		log.Err("BlockBlob::getBlobTags : Failed to get tags for %s [%s]", name, err.Error())
+		return nil, err
+	}
+	return parseBlobTags(&resp.BlobTags), nil
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -646,8 +680,10 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// over BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
 	// dirList contains all dirs for which we got 0 byte meta file in this iteration, so exclude those and add rest to the list
 	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
-	// cases we manually call GetAttr to check the existence of the marker file.
-	err = bb.processBlobPrefixes(listBlob.Segment.BlobPrefixes, dirList, &blobList)
+	// cases we manually call GetAttr to check the existence of the marker file. A single-page listing already contains every possible
+	// marker, so it does not need the additional REST calls.
+	err = bb.processBlobPrefixes(listBlob.Segment.BlobPrefixes, dirList, &blobList,
+		isSinglePageListing(marker, listBlob.NextMarker))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -661,6 +697,10 @@ func (bb *BlockBlob) getListPath(prefix string) string {
 		listPath += "/"
 	}
 	return listPath
+}
+
+func isSinglePageListing(marker, nextMarker *string) bool {
+	return (marker == nil || *marker == "") && (nextMarker == nil || *nextMarker == "")
 }
 
 func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*internal.ObjAttr, map[string]bool, error) {
@@ -685,6 +725,23 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 			filterAttr.Name = blobAttr.Name
 			filterAttr.Mtime = blobAttr.Mtime
 			filterAttr.Size = blobAttr.Size
+			filterAttr.Tags = nil
+			if bb.Config.filterHasTag {
+				// HNS (ADLS Gen2) does not return blob index tags in the list response
+				// (BlobTags is nil and BlobTagCount is not populated on list items even
+				// when Include.Tags is requested). Fetch tags per-blob via GetTags so
+				// the tag filter can be evaluated. This N+1 cost only applies when a
+				// tag= filter is configured on an HNS account.
+				if bb.Config.isHNS {
+					tags, err := bb.getBlobTags(blobAttr.Path)
+					if err != nil {
+						return nil, nil, syscall.EACCES
+					}
+					filterAttr.Tags = tags
+				} else {
+					filterAttr.Tags = parseBlobTags(blobInfo.BlobTags)
+				}
+			}
 
 			if bb.Config.filter.IsAcceptable(&filterAttr) {
 				blobList = append(blobList, blobAttr)
@@ -747,7 +804,7 @@ func (bb *BlockBlob) dereferenceTime(input *time.Time, defaultTime time.Time) ti
 	return *input
 }
 
-func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, dirList map[string]bool, blobList *[]*internal.ObjAttr) error {
+func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, dirList map[string]bool, blobList *[]*internal.ObjAttr, singlePageListing bool) error {
 	for _, blobInfo := range blobPrefixes {
 		if _, ok := dirList[*blobInfo.Name]; ok {
 			// marker file found in current iteration, skip adding the directory
@@ -761,6 +818,12 @@ func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, d
 				}
 				*blobList = append(*blobList, attr)
 			} else {
+				if singlePageListing {
+					attr := bb.createDirAttr(*blobInfo.Name)
+					*blobList = append(*blobList, attr)
+					continue
+				}
+
 				// marker file not found in current iteration, so we need to manually check attributes via REST
 				_, err := bb.getAttrUsingRest(*blobInfo.Name)
 				// marker file also not found via manual check, safe to add to list
@@ -1846,9 +1909,18 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *stri
 func (bb *BlockBlob) SetFilter(filter string) error {
 	if filter == "" {
 		bb.Config.filter = nil
+		bb.Config.filterHasTag = false
+		bb.listDetails.Tags = false
 		return nil
 	}
 
 	bb.Config.filter = &blobfilter.BlobFilter{}
-	return bb.Config.filter.Configure(filter)
+	if err := bb.Config.filter.Configure(filter); err != nil {
+		return err
+	}
+	bb.Config.filterHasTag = filterReferencesTag(filter)
+	// HNS accounts do not populate tags in the list response; leave Include.Tags off
+	// and let processBlobItems fetch tags per-blob when needed.
+	bb.listDetails.Tags = bb.Config.filterHasTag && !bb.Config.isHNS
+	return nil
 }

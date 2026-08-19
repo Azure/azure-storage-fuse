@@ -114,6 +114,20 @@ stages:
                 poolName: 'blobfuse-ubn-arm64-pool'
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
+              Ubuntu-26-BlockBlob:
+                AgentName: 'blobfuse-ubuntu26'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_26_x86'
+                poolName: 'blobfuse-ubuntu-pool'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+              Ubuntu-26-ARM64-BlockBlob:
+                AgentName: 'blobfuse-ubn26-arm64'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_26_arm64'
+                poolName: 'blobfuse-ubn-arm64-pool'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
 
           pool:
             name: $(poolName)
@@ -216,6 +230,20 @@ stages:
                 AgentName: 'blobfuse-ubn22-arm64'
                 distro: 'ubuntu'
                 distro_version: 'ubuntu_22_arm64'
+                poolName: 'blobfuse-ubn-arm64-pool'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+              Ubuntu-26-ADLS:
+                AgentName: 'blobfuse-ubuntu26'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_26_x86'
+                poolName: 'blobfuse-ubuntu-pool'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+              Ubuntu-26-ARM64-ADLS:
+                AgentName: 'blobfuse-ubn26-arm64'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_26_arm64'
                 poolName: 'blobfuse-ubn-arm64-pool'
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
@@ -579,21 +607,6 @@ stages:
                   Description: 'Red Hat Enterprise Linux 9.0'
                   AgentName: 'blobfuse-rhel9'
                   tags: 'fuse3'
-                # Commenting as CentOS 7.9 image is not available in the marketplace currently
-                # CentOS-7.9:
-                #   distro_version: "CentOS-7.9"
-                #   distro: centos
-                #   poolName: 'blobfuse-centos-pool'
-                #   containerName: "test-cnt-cent-7"
-                #   Description: "CentOS 7.9"
-                #   AgentName: "blobfuse-centos7"
-                CentOS-8.5:
-                  distro_version: "CentOS-8.5"
-                  distro: centos
-                  poolName: 'blobfuse-centos-pool'
-                  containerName: "test-cnt-cent-8"
-                  Description: "CentOS 8.5"
-                  AgentName: "blobfuse-centos8"
                 Oracle-8.1:
                   distro_version: "Oracle-8.1"
                   distro: oracle
@@ -624,13 +637,13 @@ stages:
                   containerName: "test-cnt-suse-15"
                   Description: "SUSE Enterprise Linux 15"
                   AgentName: "blobfuse-suse15"
-                Mariner2:
-                  distro_version: "Mariner2"
+                AzureLinux4:
+                  distro_version: "AzureLinux4"
                   distro: mariner
                   poolName: 'blobfuse-mariner-pool'
                   containerName: "test-cnt-mari-2"
-                  Description: "CBL-Mariner2 Linux"
-                  AgentName: "blobfuse-mariner2"
+                  Description: "Azure Linux 4"
+                  AgentName: "blobfuse-azurelinux4"
                   fuselib: 'libfuse3-dev'
                   tags: 'fuse3'
             pool:
@@ -711,6 +724,12 @@ stages:
               distro_version: 'ubuntu_22_x86'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
+            Ubuntu-26:
+              AgentName: 'blobfuse-ubuntu26'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_26_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
             Ubuntu-20:
               AgentName: 'blobfuse-ubuntu20'
               distro: 'ubuntu'
@@ -772,6 +791,12 @@ stages:
               AgentName: 'blobfuse-ubuntu22'
               distro: 'ubuntu'
               distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-26:
+              AgentName: 'blobfuse-ubuntu26'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_26_x86'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
             Ubuntu-20:
@@ -841,6 +866,12 @@ stages:
               distro_version: 'ubuntu_22_x86'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
+            Ubuntu-26:
+              AgentName: 'blobfuse-ubuntu26'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_26_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
             Ubuntu-20:
               AgentName: 'blobfuse-ubuntu20'
               distro: 'ubuntu'
@@ -902,6 +933,12 @@ stages:
               AgentName: 'blobfuse-ubuntu22'
               distro: 'ubuntu'
               distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-26:
+              AgentName: 'blobfuse-ubuntu26'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_26_x86'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
             Ubuntu-20:
@@ -977,6 +1014,12 @@ stages:
               AgentName: 'blobfuse-ubuntu22'
               distro: 'ubuntu'
               distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-26:
+              AgentName: 'blobfuse-ubuntu26'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_26_x86'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
 
@@ -1106,6 +1149,12 @@ stages:
                 distro_version: 'ubuntu_22_x86'
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
+              Ubuntu-26:
+                AgentName: 'blobfuse-ubuntu26'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_26_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
 
           pool:
             name: "blobfuse-ubuntu-pool"
@@ -1180,6 +1229,12 @@ stages:
                 AgentName: 'blobfuse-ubuntu22'
                 distro: 'ubuntu'
                 distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+              Ubuntu-26:
+                AgentName: 'blobfuse-ubuntu26'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_26_x86'
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
 

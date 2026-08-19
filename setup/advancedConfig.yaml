@@ -49,6 +49,7 @@ logging:
   max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
   file-count: <maximum number of files to be rotated to preserve old logs. Default - 10>
   goroutine-id: <true|false enable goroutine id in logs for better debugging. Default - true if log level is log_debug, else false>
+  compress: <true|false enable gzip compression of rolled-over log files. Only applies when type is 'base'. Default - false>
 
 # Pipeline configuration. Choose components to be engaged. The order below is the priority order that needs to be followed.
 components:
@@ -70,6 +71,9 @@ libfuse:
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
   extension: <physical path to extension library>
   direct-io: true|false <enable to bypass the kernel cache. It also disables blobfuse2 data and metadata caching. Default - false>
+  # Requires libfuse 3.16.1+ and FUSE protocol 7.28 / Linux 5.1+.
+  # Stock Ubuntu 20.04, 22.04, and 24.04 ship older libfuse versions.
+  kernel-list-cache-expiration-sec: <enable kernel caching of directory listings and set TTL in seconds (fuse3 only). 0 = disabled. Default - 120 sec>
 
 # Entry Cache configuration
 entry_cache:
@@ -113,6 +117,7 @@ file_cache:
 attr_cache:
   timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
   no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
+  max-size-mb: <maximum memory the attribute cache may use (in MB). Default - auto-tuned to 1% of total RAM, clamped to [64 MB, 1 GB]. Omit or set to 0 to use the auto-tuned value; set to a value >0 to override. Increase for workloads with large directory trees or many distinct file paths to avoid frequent cache misses.>
   
 # Loopback configuration
 loopbackfs:

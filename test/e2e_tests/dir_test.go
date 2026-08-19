@@ -45,6 +45,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -254,6 +255,68 @@ func (suite *dirTestSuite) TestDirDeleteNonEmpty() {
 
 // 	suite.dirTestCleanup([]string{dirName})
 // }
+
+// # Create directory path exceeding ADLS depth limit
+func (suite *dirTestSuite) TestDirCreateDeepPath() {
+	if !suite.adlsTest {
+		fmt.Println("Skipping TestDirCreateDeepPath: not an ADLS account")
+		return
+	}
+
+	// ADLS enforces a maximum path depth of 63 segments from the container root.
+	// Build 65 nested levels from testPath to guarantee the limit is exceeded.
+	const depth = 65
+	topDir := suite.testPath + "/deep"
+	deepPath := topDir
+	for i := range depth {
+		deepPath = filepath.Join(deepPath, fmt.Sprintf("l%d", i))
+	}
+
+	err := os.MkdirAll(deepPath, 0777)
+	suite.Error(err)
+	suite.ErrorIs(err, syscall.ENAMETOOLONG)
+
+	// cleanup any intermediate directories created before the limit was hit
+	suite.dirTestCleanup([]string{topDir})
+}
+
+// # Rename a directory to a path exceeding ADLS depth limit
+func (suite *dirTestSuite) TestDirRenameDeepPath() {
+	if !suite.adlsTest {
+		fmt.Println("Skipping TestDirRenameDeepPath: not an ADLS account")
+		return
+	}
+
+	// ADLS enforces a maximum path depth of 63 segments from the container root.
+	// Create directories one level at a time until the next level is rejected, so
+	// deepest ends up at the maximum allowed depth.
+	topDir := suite.testPath + "/renamedeep"
+	deepest := topDir
+	err := os.Mkdir(deepest, 0777)
+	suite.NoError(err)
+	for i := 0; i < 70; i++ {
+		next := filepath.Join(deepest, "l")
+		err = os.Mkdir(next, 0777)
+		if err != nil {
+			break
+		}
+		deepest = next
+	}
+	suite.ErrorIs(err, syscall.ENAMETOOLONG)
+
+	// A source directory at a shallow, valid depth.
+	srcDir := suite.testPath + "/renamesrc"
+	err = os.Mkdir(srcDir, 0777)
+	suite.NoError(err)
+
+	// The destination parent exists and is already at the maximum allowed depth,
+	// so renaming into a child of it fails only because the path is too deep.
+	err = os.Rename(srcDir, filepath.Join(deepest, "child"))
+	suite.Error(err)
+	suite.ErrorIs(err, syscall.ENAMETOOLONG)
+
+	suite.dirTestCleanup([]string{srcDir, topDir})
+}
 
 // # Get stats of a directory
 func (suite *dirTestSuite) TestDirGetStats() {

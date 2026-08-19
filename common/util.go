@@ -56,6 +56,7 @@ import (
 	"syscall"
 
 	"github.com/petermattis/goid"
+	"github.com/prometheus/procfs"
 	"gopkg.in/ini.v1"
 )
 
@@ -648,4 +649,42 @@ func PrettyOpenFlags(f int) string {
 // runtime.Stack calls.
 func GetGoroutineID() uint64 {
 	return (uint64)(goid.Get())
+}
+
+// TotalMemoryBytes returns the total physical RAM of the system in bytes.
+// Returns 0 if the syscall fails.
+func TotalMemoryBytes() uint64 {
+	var info syscall.Sysinfo_t
+	if err := syscall.Sysinfo(&info); err != nil {
+		return 0
+	}
+	return uint64(info.Totalram) * uint64(info.Unit)
+}
+
+// GetAvailableMemoryBytes returns the available system memory in bytes.
+// It uses MemAvailable from /proc/meminfo and falls back to MemFree when MemAvailable is unavailable.
+func GetAvailableMemoryBytes() (uint64, error) {
+	fs, err := procfs.NewDefaultFS()
+	if err != nil {
+		return 0, err
+	}
+
+	memInfo, err := fs.Meminfo()
+	if err != nil {
+		return 0, err
+	}
+
+	return getAvailableMemoryBytesFromMeminfo(memInfo)
+}
+
+func getAvailableMemoryBytesFromMeminfo(memInfo procfs.Meminfo) (uint64, error) {
+	if memInfo.MemAvailableBytes != nil && *memInfo.MemAvailableBytes > 0 {
+		return *memInfo.MemAvailableBytes, nil
+	}
+
+	if memInfo.MemFreeBytes != nil && *memInfo.MemFreeBytes > 0 {
+		return *memInfo.MemFreeBytes, nil
+	}
+
+	return 0, fmt.Errorf("neither MemAvailable nor MemFree found in /proc/meminfo")
 }

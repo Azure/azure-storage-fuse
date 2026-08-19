@@ -47,7 +47,7 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.5.4"
+	blobfuse2Version_ = "2.5.6"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
@@ -90,6 +90,10 @@ func Blobfuse2Version_() string {
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
 var StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
+
+// SyslogFilePath is where rsyslog routes blobfuse2-tagged messages (see setup/11-blobfuse2.conf).
+// Used as a fallback target for runtime crash dumps when the syslog logger is in use.
+var SyslogFilePath = "/var/log/blobfuse2.log"
 
 var EnableMonitoring = false
 var BfsDisabled = false
@@ -155,6 +159,7 @@ type LogConfig struct {
 	TimeTracker    bool
 	Tag            string // logging tag which can be either blobfuse2 or bfusemon
 	LogGoroutineID bool   // whether to log goroutine id in each log line
+	LogCompress    bool   // compress rolled-over log files (base logger only)
 }
 
 // Flags for block

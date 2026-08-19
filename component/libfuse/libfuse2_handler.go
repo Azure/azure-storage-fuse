@@ -278,7 +278,16 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 
 	C.populate_uid_gid()
 
-	log.Info("Libfuse::libfuse2_init : Kernel Caps : %d", conn.capable)
+	log.Info("Libfuse::libfuse2_init : Kernel FUSE version: %d.%d, Kernel Caps : 0x%x", conn.proto_major, conn.proto_minor, conn.capable)
+
+	if fuseFS.kernelListCacheTtlInSec > 0 {
+		log.Warn("Libfuse::libfuse2_init : kernel-list-cache not supported on fuse2, disabling")
+		fuseFS.kernelListCacheTtlInSec = 0
+		if fuseFS.kernelListCacheTracker != nil {
+			fuseFS.kernelListCacheTracker.stop()
+			fuseFS.kernelListCacheTracker = nil
+		}
+	}
 
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
 		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_ASYNC_READ")
@@ -296,11 +305,14 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 		conn.want |= C.FUSE_CAP_SPLICE_WRITE
 	}
 
-	// Max background thread on the fuse layer for high parallelism
-	conn.max_background = C.uint(fuseFS.maxFuseThreads)
+	// Max background requests on the fuse layer
+	conn.max_background = C.uint(fuseFS.maxBackground)
 
 	// While reading a file let kernel do readahed for better perf
 	conn.max_readahead = (4 * 1024 * 1024)
+
+	log.Info("Libfuse::libfuse2_init : want: 0x%x, max_readahead: %d, max_background: %d",
+		conn.want, conn.max_readahead, conn.max_background)
 
 	return nil
 }
@@ -441,6 +453,8 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 			return -C.EACCES
 		} else if os.IsExist(err) {
 			return -C.EEXIST
+		} else if errors.Is(err, syscall.ENAMETOOLONG) {
+			return -C.ENAMETOOLONG
 		} else {
 			return -C.EIO
 		}
@@ -962,6 +976,9 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 		err := fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
 			log.Err("Libfuse::libfuse2_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
+			if errors.Is(err, syscall.ENAMETOOLONG) {
+				return -C.ENAMETOOLONG
+			}
 			return -C.EIO
 		}
 

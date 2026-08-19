@@ -71,6 +71,7 @@ type LogOptions struct {
 	LogFileCount   uint64 `config:"file-count" yaml:"file-count,omitempty"`
 	LogGoroutineID bool   `config:"goroutine-id" yaml:"goroutine-id,omitempty"`
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
+	LogCompress    bool   `config:"compress" yaml:"compress,omitempty"`
 }
 
 type mountOptions struct {
@@ -902,6 +903,7 @@ var mountCmd = &cobra.Command{
 			Level:          logLevel,
 			TimeTracker:    options.Logging.TimeTracker,
 			LogGoroutineID: options.Logging.LogGoroutineID,
+			LogCompress:    options.Logging.LogCompress,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
@@ -946,6 +948,13 @@ var mountCmd = &cobra.Command{
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Crit("Log options: %+v", options.Logging)
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
+
+		// Mirror runtime panic/fatal stack traces to a log file (in addition to stderr, which the daemon library
+		// redirects to the per-mount .trace file). Also re-attaches the fd after in-process rotation and on SIGHUP
+		// from external rotators (logrotate, AKS Blob CSI driver, ...). Captures panics in any goroutine, including
+		// those spawned by libfuse callbacks. Called after the first log.Crit so that in syslog mode rsyslog has
+		// already created /var/log/blobfuse2.log.
+		log.SetupCrashOutput(options.Logging.Type, options.Logging.LogFilePath)
 
 		if directIO {
 			// Direct IO is enabled, so remove the attr-cache from the pipeline
@@ -1351,6 +1360,10 @@ func init() {
 	mountCmd.PersistentFlags().Bool("log-goroutine-id",
 		false, "Enable logging of goroutine IDs. Default is true for LOG_DEBUG level, false otherwise.")
 	config.BindPFlag("logging.goroutine-id", mountCmd.PersistentFlags().Lookup("log-goroutine-id"))
+
+	mountCmd.PersistentFlags().Bool("log-compress",
+		false, "Enable gzip compression of rolled-over log files. Only applies to base logger.")
+	config.BindPFlag("logging.compress", mountCmd.PersistentFlags().Lookup("log-compress"))
 
 	mountCmd.PersistentFlags().Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
 	config.BindPFlag("foreground", mountCmd.PersistentFlags().Lookup("foreground"))

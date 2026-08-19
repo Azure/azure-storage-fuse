@@ -100,6 +100,6 @@ steps:
 
   # MARINER PACKAGE INSTALLATION
   - script: |
-      sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
+      sudo tdnf install gcc gcc-c++ make git fuse3 fuse3-devel python3 -y
     displayName: 'Libfuse Setup ${{ parameters.distro_version }} for mariner'
     condition: eq(variables['distro'], 'mariner')

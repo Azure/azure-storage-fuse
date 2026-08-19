@@ -75,7 +75,7 @@ jobs:
           exit 1
 
       - name: Checkout repo (no fork code)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 

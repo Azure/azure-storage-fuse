@@ -2954,6 +2954,81 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 	s.assert.NoError(err)
 }
 
+func (s *datalakeTestSuite) TestBlobTagFilter() {
+	defer s.cleanupTest()
+	dl := s.az.storage.(*Datalake)
+
+	name := generateDirectoryName()
+	err := s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	s.assert.NoError(err)
+
+	type blobSpec struct {
+		path string
+		tags map[string]string
+	}
+	specs := []blobSpec{
+		{name + "/a.txt", map[string]string{"domain": "optical"}},
+		{name + "/b.txt", map[string]string{"domain": "optical", "owner": "team-a"}},
+		{name + "/c.txt", map[string]string{"domain": "radar"}},
+		{name + "/d.txt", nil},
+	}
+	for _, sp := range specs {
+		_, err = s.az.CreateFile(internal.CreateFileOptions{Name: sp.path})
+		s.assert.NoError(err)
+		if sp.tags != nil {
+			_, err = dl.Filesystem.NewFileClient(sp.path).SetTags(ctx, sp.tags, nil)
+			s.assert.NoError(err)
+		}
+	}
+
+	listAll := func() []*internal.ObjAttr {
+		out := make([]*internal.ObjAttr, 0)
+		marker := ""
+		for {
+			page, next, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+			s.assert.NoError(err)
+			out = append(out, page...)
+			marker = next
+			if marker == "" {
+				return out
+			}
+		}
+	}
+
+	s.assert.Len(listAll(), 4)
+
+	err = dl.SetFilter("tag=domain:optical")
+	s.assert.NoError(err)
+	s.assert.True(dl.Config.filterHasTag)
+	s.assert.True(dl.BlockBlob.Config.filterHasTag)
+
+	blobs := listAll()
+	s.assert.Len(blobs, 2)
+
+	got := map[string]bool{}
+	for _, b := range blobs {
+		got[filepath.Base(b.Path)] = true
+	}
+	s.assert.True(got["a.txt"])
+	s.assert.True(got["b.txt"])
+
+	_, err = dl.GetAttr(name + "/c.txt")
+	s.assert.Equal(syscall.ENOENT, err)
+
+	attr, err := dl.GetAttr(name + "/a.txt")
+	s.assert.NoError(err)
+	s.assert.NotNil(attr)
+
+	err = dl.SetFilter("name=^a.*")
+	s.assert.NoError(err)
+	s.assert.False(dl.Config.filterHasTag)
+	s.assert.False(dl.BlockBlob.Config.filterHasTag)
+
+	err = dl.SetFilter("")
+	s.assert.NoError(err)
+	s.assert.False(dl.Config.filterHasTag)
+}
+
 func (s *datalakeTestSuite) TestList() {
 	defer s.cleanupTest()
 	// Setup

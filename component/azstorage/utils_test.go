@@ -42,6 +42,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/datalakeerror"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
@@ -477,6 +479,38 @@ func (s *utilsTestSuite) TestRemoveLeadingSlashes() {
 	}
 }
 
+func (s *utilsTestSuite) TestStoreDatalakeErrToErr() {
+	assert := assert.New(s.T())
+
+	type testCase struct {
+		name     string
+		code     datalakeerror.StorageErrorCode
+		expected uint16
+	}
+
+	inputs := []testCase{
+		{name: "PathAlreadyExists", code: datalakeerror.PathAlreadyExists, expected: ErrFileAlreadyExists},
+		{name: "PathNotFound", code: datalakeerror.PathNotFound, expected: ErrFileNotFound},
+		{name: "SourcePathNotFound", code: datalakeerror.SourcePathNotFound, expected: ErrFileNotFound},
+		{name: "LeaseIDMissing", code: datalakeerror.LeaseIDMissing, expected: BlobIsUnderLease},
+		{name: "AuthorizationPermissionMismatch", code: datalakeerror.AuthorizationPermissionMismatch, expected: InvalidPermission},
+		{name: "PathIsTooDeep", code: datalakeerror.PathIsTooDeep, expected: ErrPathTooDeep},
+		{name: "Unknown", code: datalakeerror.StorageErrorCode("UnknownCode"), expected: ErrUnknown},
+	}
+
+	for _, i := range inputs {
+		s.Run(i.name, func() {
+			respErr := &azcore.ResponseError{ErrorCode: string(i.code)}
+			result := storeDatalakeErrToErr(respErr)
+			assert.Equal(i.expected, result)
+		})
+	}
+
+	// nil error returns ErrNoErr
+	result := storeDatalakeErrToErr(nil)
+	assert.Equal(uint16(ErrNoErr), result)
+}
+
 func (s *utilsTestSuite) TestRemovePrefixPath() {
 	assert := assert.New(s.T())
 
@@ -531,6 +565,59 @@ func (s *utilsTestSuite) TestParseRangeHeader() {
 			assert.NoError(err)
 			assert.Equal(test.expected, size)
 		}
+	}
+}
+
+func (s *utilsTestSuite) TestParseBlobTags() {
+	assert := assert.New(s.T())
+
+	// nil tags
+	assert.Nil(parseBlobTags(nil))
+
+	// empty tag set
+	assert.Nil(parseBlobTags(&container.BlobTags{}))
+
+	// nil key/value entries are skipped, valid entries preserved
+	k1, v1 := "domain", "optical"
+	k2, v2 := "owner", "team-a"
+	tags := &container.BlobTags{
+		BlobTagSet: []*container.BlobTag{
+			{Key: &k1, Value: &v1},
+			nil,
+			{Key: nil, Value: &v1},
+			{Key: &k2, Value: nil},
+			{Key: &k2, Value: &v2},
+		},
+	}
+	got := parseBlobTags(tags)
+	assert.Equal(map[string]string{"domain": "optical", "owner": "team-a"}, got)
+}
+
+func (s *utilsTestSuite) TestFilterReferencesTag() {
+	assert := assert.New(s.T())
+
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"", false},
+		{"name=^foo.*", false},
+		{"size>100", false},
+		{"tag=domain:optical", true},
+		{"TAG=domain:optical", true},
+		{"  Tag = domain:optical", true},
+		{"tag!=domain:optical", true},
+		{"TAG!=domain:optical", true},
+		{"  Tag != domain:optical", true},
+		{"name=^foo.* && tag=key:value", true},
+		{"name=^foo.* || tag=key:value", true},
+		{"name=^foo.* && tag!=key:value", true},
+		{"name=^foo.* || tag!=key:value", true},
+		{"size>100 && name=^foo.*", false},
+	}
+
+	for _, c := range cases {
+		assert.Equal(c.want, filterReferencesTag(c.in), "input %q", c.in)
 	}
 }
 

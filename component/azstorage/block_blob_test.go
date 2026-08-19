@@ -807,6 +807,47 @@ func (s *blockBlobTestSuite) TestStreamDirSmallCountNoDuplicates() {
 	s.assert.Len(blobList, 5)
 }
 
+func TestIsSinglePageListing(t *testing.T) {
+	tests := []struct {
+		name       string
+		marker     *string
+		nextMarker *string
+		expected   bool
+	}{
+		{name: "nil markers", expected: true},
+		{name: "empty markers", marker: to.Ptr(""), nextMarker: to.Ptr(""), expected: true},
+		{name: "first page", nextMarker: to.Ptr("next")},
+		{name: "middle page", marker: to.Ptr("current"), nextMarker: to.Ptr("next")},
+		{name: "last page", marker: to.Ptr("current")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expected, isSinglePageListing(test.marker, test.nextMarker))
+		})
+	}
+}
+
+func TestProcessBlobPrefixesSinglePageSkipsMarkerLookups(t *testing.T) {
+	bb := &BlockBlob{}
+	blobPrefixes := make([]*container.BlobPrefix, 0, 201)
+	for index := 0; index < 200; index++ {
+		blobPrefixes = append(blobPrefixes, &container.BlobPrefix{Name: to.Ptr(fmt.Sprintf("virtual-%03d/", index))})
+	}
+	blobPrefixes = append(blobPrefixes, &container.BlobPrefix{Name: to.Ptr("directory-with-marker/")})
+
+	dirList := map[string]bool{"directory-with-marker/": true}
+	blobList := make([]*internal.ObjAttr, 0)
+	err := bb.processBlobPrefixes(blobPrefixes, dirList, &blobList, true)
+
+	assert.NoError(t, err)
+	assert.Len(t, blobList, 200)
+	for _, attr := range blobList {
+		assert.True(t, attr.IsDir())
+		assert.NotEqual(t, "directory-with-marker", attr.Path)
+	}
+}
+
 func (s *blockBlobTestSuite) TestRenameDir() {
 	defer s.cleanupTest()
 	// Test handling "dir" and "dir/"
@@ -3701,6 +3742,86 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	s.assert.Len(blobList, 1)
 	err = s.az.storage.(*BlockBlob).SetFilter("")
 	s.assert.NoError(err)
+}
+
+func (s *blockBlobTestSuite) TestBlobTagFilter() {
+	defer s.cleanupTest()
+	// Setup: create files and stamp blob index tags on a subset
+	bb := s.az.storage.(*BlockBlob)
+
+	name := generateDirectoryName()
+	err := s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	s.assert.NoError(err)
+
+	type blobSpec struct {
+		path string
+		tags map[string]string
+	}
+	specs := []blobSpec{
+		{name + "/a.txt", map[string]string{"domain": "optical"}},
+		{name + "/b.txt", map[string]string{"domain": "optical", "owner": "team-a"}},
+		{name + "/c.txt", map[string]string{"domain": "radar"}},
+		{name + "/d.txt", nil},
+	}
+	for _, sp := range specs {
+		_, err = s.az.CreateFile(internal.CreateFileOptions{Name: sp.path})
+		s.assert.NoError(err)
+		if sp.tags != nil {
+			client := bb.Container.NewBlockBlobClient(sp.path)
+			_, err = client.SetTags(ctx, sp.tags, nil)
+			s.assert.NoError(err)
+		}
+	}
+
+	// list should return all entries when no filter is applied
+	listAll := func() []*internal.ObjAttr {
+		out := make([]*internal.ObjAttr, 0)
+		marker := ""
+		for {
+			page, next, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+			s.assert.NoError(err)
+			out = append(out, page...)
+			marker = next
+			if marker == "" {
+				return out
+			}
+		}
+	}
+
+	s.assert.Len(listAll(), 4)
+
+	// Filter by an existing tag - should match the two blobs tagged optical
+	err = bb.SetFilter("tag=domain:optical")
+	s.assert.NoError(err)
+	s.assert.True(bb.Config.filterHasTag)
+
+	blobs := listAll()
+	s.assert.Len(blobs, 2)
+
+	got := map[string]bool{}
+	for _, b := range blobs {
+		got[filepath.Base(b.Path)] = true
+	}
+	s.assert.True(got["a.txt"])
+	s.assert.True(got["b.txt"])
+
+	// GetAttr on a non-matching blob should report ENOENT via the filter,
+	// while a matching one should succeed.
+	_, err = bb.GetAttr(name + "/c.txt")
+	s.assert.Equal(syscall.ENOENT, err)
+
+	attr, err := bb.GetAttr(name + "/a.txt")
+	s.assert.NoError(err)
+	s.assert.NotNil(attr)
+
+	// Filter that does not reference tags should not flip filterHasTag.
+	err = bb.SetFilter("name=^a.*")
+	s.assert.NoError(err)
+	s.assert.False(bb.Config.filterHasTag)
+
+	err = bb.SetFilter("")
+	s.assert.NoError(err)
+	s.assert.False(bb.Config.filterHasTag)
 }
 
 func (s *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, truncatedLength int) {
