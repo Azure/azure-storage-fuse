@@ -22,7 +22,7 @@ xload:
 # Block cache related configuration
 block_cache:
   block-size-mb: <size of each block to be cached in memory (in MB). Default - 16 MB>
-  mem-size-mb: <total amount of memory to be preallocated for block cache (in MB). Default - 80% of free memory>
+  mem-size-mb: <total amount of memory to be preallocated for block cache (in MB). Default - 60% of available memory>
   path: <path to local disk cache where downloaded blocks will be stored>
   disk-size-mb: <maximum disk cache size allowed. Default - 80% of free disk space>
   disk-timeout-sec: <default disk cache eviction timeout (in sec). Default - 120 sec>
