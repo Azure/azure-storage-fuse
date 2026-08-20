@@ -62,8 +62,7 @@ export STO_ACC_ENDPOINT=https://<account>.blob.core.windows.net
 export containerName=<container>
 
 # Build (or pull) the blobfuse2 container image, then point the deploy
-# script at it. For a locally-built image, set BLOBFUSE2_IMAGE_PULL=false
-# to skip the `docker pull` step.
+# script at it.
 export BLOBFUSE2_IMAGE=<registry>/azure-blobfuse2:<tag>
 ./test/scripts/dcache/deploy-blobfuse2.sh
 

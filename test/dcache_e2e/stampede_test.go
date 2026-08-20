@@ -209,7 +209,6 @@ func grepAzureGETsInPod(pod, blobPath string) (int, error) {
 	}
 
 	line := strings.TrimSpace(stdout.String())
-	// grep -c prints one number; `|| echo 0` guarantees a well-formed int.
 	n, err := strconv.Atoi(line)
 	if err != nil {
 		return 0, fmt.Errorf("parse grep count %q on %s: %w", line, pod, err)

@@ -103,7 +103,7 @@ done
 # --- Debug dump -----------------------------------------------------------
 echo ""
 echo "Node labels:"
-kubectl get nodes --show-labels | grep -E "(nexus\.azure\.com/processing-unit|singularity\.azure\.com/processing-unit)"
+kubectl get nodes --show-labels | grep -E "(nexus\.azure\.com/processing-unit|singularity\.azure\.com/processing-unit)" || true
 
 echo ""
 echo "Cluster setup complete!"
