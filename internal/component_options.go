@@ -36,6 +36,7 @@ package internal
 import (
 	"os"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
@@ -113,6 +114,7 @@ type ReadInBufferOptions struct {
 	Data   []byte
 	Path   string
 	Size   int64
+	Layout *common.Layout
 }
 
 type WriteFileOptions struct {

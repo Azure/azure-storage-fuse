@@ -31,4 +31,4 @@ azstorage:
   account-key: { STO_ACC_KEY }
   mode: key
   container: { 0 }
-  tier: hot
+  # tier: hot

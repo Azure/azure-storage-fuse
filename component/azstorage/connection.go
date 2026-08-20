@@ -89,6 +89,15 @@ type AzStorageConfig struct {
 	// Rate limiting
 	capMbpsRead int64
 	capIOps     int64
+
+	// Blob layout aware routing, for improved read performance.
+	isBlobLayoutAwareRoutingEnabled bool
+	// useSession enables the Session API for Azure Blob Storage (fns/block) accounts.
+	// Only active when OAuth-based authentication is used (MSI, SPN, Azure CLI, Workload Identity).
+	// Ignored for shared key and SAS token authentication, and for DFS/ADLS accounts.
+	// Currently limited to Get Blob requests (HTTP GET on blob URLs without a comp query
+	// parameter); all other requests fall back to standard bearer token authentication.
+	useSession bool
 }
 
 type AzStorageConnection struct {
@@ -125,7 +134,7 @@ type AzConnection interface {
 
 	ReadToFile(name string, offset int64, count int64, fi *os.File) error
 	ReadBuffer(name string, offset int64, length int64) ([]byte, error)
-	ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error
+	ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string, layout *common.Layout) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
 	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
