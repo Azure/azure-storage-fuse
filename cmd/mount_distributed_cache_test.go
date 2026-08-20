@@ -273,6 +273,50 @@ components:
 	assert.False(t, viper.IsSet("block_cache.block-size-mb"))
 }
 
+// distributed-cache: false in a YAML file must not be misread as an opt-in.
+// config.IsSet only checks whether the key was provided, so this guards
+// against treating an explicit disable as an enable and then colliding with
+// a legitimate L1 like file_cache.
+func TestNormalizeDistCacheConfig_DisabledFlagDoesNotConflictWithFileCache(t *testing.T) {
+	setDistCacheYAML(t, `
+read-only: true
+distributed-cache: false
+components:
+  - libfuse
+  - file_cache
+  - azstorage
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig(
+		[]string{"libfuse", "file_cache", "azstorage"},
+	)
+
+	assert.NoError(t, err)
+}
+
+// End-to-end CLI variant: `--distributed-cache=false` on the command line
+// (simulated via config.Set, matching TestNormalizeDistCacheConfig_
+// RejectsWhenReadOnlyFalseViaCLIFlag) must behave the same as omitting the
+// flag entirely — a plain file_cache pipeline must not be rejected.
+func TestNormalizeDistCacheConfig_DisabledCLIFlagDoesNotConflictWithFileCache(t *testing.T) {
+	setDistCacheYAML(t, `
+read-only: true
+components:
+  - libfuse
+  - file_cache
+  - azstorage
+`)
+	defer viper.Reset()
+	config.Set("distributed-cache", "false")
+
+	err := normalizeDistCacheConfig(
+		[]string{"libfuse", "file_cache", "azstorage"},
+	)
+
+	assert.NoError(t, err)
+}
+
 func TestNormalizeDistCacheConfig_RejectsBlockCacheInComponents(t *testing.T) {
 	setDistCacheYAML(t, `
 read-only: true

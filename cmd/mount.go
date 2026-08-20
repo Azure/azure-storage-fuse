@@ -828,14 +828,26 @@ func applyLibfuseReadOnlyOption(libfuseOpts []string) {
 func normalizeDistCacheConfig(userComponents []string) error {
 	// distributed_cache is "wanted" whenever either surface signals it:
 	// either it is listed in components:, or --distributed-cache /
-	// distributed-cache: is set. Both surfaces are authoritative, so the
-	// incompatible-L1 check below runs whichever one the user chose. This
-	// prevents the case where --distributed-cache is silently ignored
+	// distributed-cache: is set *to true*. Both surfaces are authoritative,
+	// so the incompatible-L1 check below runs whichever one the user chose.
+	// This prevents the case where --distributed-cache is silently ignored
 	// because a components: pipeline was also configured (e.g. with
 	// file_cache), which would otherwise run the sibling L1 with no
 	// dist-cache and no error.
+	//
+	// Crucially, we check the *value* of the enable flag, not merely
+	// whether it was provided: config.IsSet returns true for both
+	// `distributed-cache: false` and `distributed-cache: true`, so gating
+	// on IsSet alone would treat an explicit opt-out as an opt-in and
+	// then reject a legitimate file_cache pipeline as "incompatible".
+	distCacheFlag := false
+	if config.IsSet("distributed-cache") {
+		if err := config.UnmarshalKey("distributed-cache", &distCacheFlag); err != nil {
+			return fmt.Errorf("mount: failed to read distributed-cache flag: %w", err)
+		}
+	}
 	userWantsDistCache := common.ComponentInPipeline(userComponents, "distributed_cache") ||
-		config.IsSet("distributed-cache")
+		distCacheFlag
 	if !userWantsDistCache {
 		return nil
 	}
