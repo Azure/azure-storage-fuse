@@ -82,6 +82,15 @@ parameters:
     type: boolean
     default: true
 
+  # Distributed cache E2E: runs kind + Tachyon (image + chart pulled from
+  # the configured ACR, both auto-resolved to the newest published tag) on
+  # an amd64 nightly agent. Off by default; queue the pipeline with this
+  # parameter set to true to opt in.
+  - name: dist_cache_test
+    displayName: 'Run distributed cache E2E tests (requires kind + Tachyon image)'
+    type: boolean
+    default: false
+
 stages:
 
   - ${{ if eq(parameters.base_test, true) }}:
@@ -1553,6 +1562,98 @@ stages:
                 verbose_log: ${{ parameters.verbose_log }}
 
             - template: azure-pipeline-templates/cleanup.yml
+              parameters:
+                unmount: true
+                delete_containers: true
+
+  # -----------------------------------------------------------------------
+  # Distributed cache E2E.
+  # Gated on the `dist_cache_test` parameter so nightly runs stay green until
+  # the ACR image tag + chart version are populated below. Queue a manual run
+  # with the parameter set to true.
+  - ${{ if eq(parameters.dist_cache_test, true) }}:
+    - stage: DistCacheValidation
+      dependsOn: BuildAndTest
+      jobs:
+        - job: Set_1
+          timeoutInMinutes: 360
+          strategy:
+            matrix:
+              Ubuntu-22-BlockBlob-DistCache:
+                AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          pool:
+            name: 'blobfuse-ubuntu-pool'
+            demands:
+              - ImageOverride -equals $(AgentName)
+          variables:
+            - group: NightlyBlobFuse
+            - name: MOUNT_DIR
+              value: '$(Pipeline.Workspace)/blob_mnt'
+            - name: TEMP_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+            # Tachyon image + chart coordinates. Both _TAG and _CHART_VERSION
+            # are left empty on purpose: deploy-tachyon.sh auto-resolves the
+            # newest pushed tag from ACR via `az acr repository show-tags`
+            # (symmetrical for image and chart). Override any of these via
+            # the NightlyBlobFuse variable group to pin.
+            - name: CACHE_SERVER_IMAGE_REGISTRY
+              value: 'tachyonprodacr.azurecr.io'
+            - name: CACHE_SERVER_IMAGE_REPO
+              value: 'cache-server'
+            - name: CACHE_SERVER_IMAGE_TAG
+              value: ''  # auto-resolved by deploy-tachyon.sh when empty
+            # Helm chart is pulled directly from ACR via OCI. Defaults to the
+            # same registry as the image; override only if the chart lives in
+            # a different ACR.
+            - name: CACHE_SERVER_CHART_REGISTRY
+              value: 'tachyonprodacr.azurecr.io'
+            - name: CACHE_SERVER_CHART_REPO
+              value: 'charts/cache-server'
+            # cache-server-prereq chart is installed first (CRDs / RBAC /
+            # cluster-scoped resources the main chart depends on). Same
+            # version as the main chart.
+            - name: CACHE_SERVER_PREREQ_CHART_REPO
+              value: 'charts/cache-server-prereq'
+            - name: CACHE_SERVER_CHART_VERSION
+              value: ''  # auto-resolved by deploy-tachyon.sh when empty
+            - name: GOPATH
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(Agent.TempDirectory)'
+            - name: WORK_DIR
+              value: '$(Build.SourcesDirectory)'
+          steps:
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                skip_ut: true
+
+            # Log the az CLI in as the user-assigned MSI attached to this
+            # agent VM. deploy-tachyon.sh below uses `az acr repository
+            # show-tags` and `az acr login --expose-token` against
+            # TachyonProdACR; both pick up this login from ~/.azure.
+            - script: |
+                set -e
+                az --version
+                az login --identity --client-id $(BF2_MSI_CLIENT_ID)
+                az account show --query '{name:name, user:user}' -o json
+              displayName: 'DistCache: az login via user-assigned MSI'
+
+            # Run the dedicated dist_cache pod tests against a single kind
+            # cluster (cluster setup + teardown happens once). The template
+            # builds the in-cluster blobfuse2 container image itself from
+            # the code under test.
+            - template: 'azure-pipeline-templates/dist-cache-e2e.yml'
+              parameters:
+                run_idstring: 'DistCache'
+                distro_name: $(AgentName)
+                account_name: $(BF2_BLK_ACC_NAME)
+                account_key: $(BF2_BLK_ACC_KEY)
+
+            - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:
                 unmount: true
                 delete_containers: true

@@ -1,0 +1,148 @@
+# Template: distributed cache E2E on a local kind + Tachyon cluster.
+#
+# Brings up a kind (Kubernetes IN Docker) cluster, deploys the Tachyon
+# cache-server helm chart (pulled directly from an OCI-enabled ACR), builds
+# the in-cluster blobfuse2 container image from the code under test, deploys
+# it, and runs the dedicated dcache_e2e Go suite.
+#
+# The caller must run azure-pipeline-templates/build.yml (or otherwise
+# provision Go + libfuse3 + docker) before including this template, since
+# the blobfuse2 build step invokes docker/buildcontainer.sh.
+#
+# Teardown runs unconditionally and publishes cache-server and per-test
+# blobfuse2 logs as an artifact so failures are debuggable.
+
+parameters:
+  # Identifier for this cluster invocation. Used to name cluster-log
+  # artifacts and per-cluster step display names.
+  - name: run_idstring
+    type: string
+  - name: distro_name
+    type: string
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+
+steps:
+  # -------------------------------------------------------------------------
+  # 1. Install kind / kubectl / helm / docker if missing.
+  - script: |
+      set -e
+      chmod +x $(WORK_DIR)/test/scripts/dcache/*.sh
+      $(WORK_DIR)/test/scripts/dcache/install-prereqs.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Install prerequisites'
+    timeoutInMinutes: 15
+
+  # -------------------------------------------------------------------------
+  # 2. Bring up the kind cluster.
+  - script: |
+      set -e
+      $(WORK_DIR)/test/scripts/dcache/setup-kind.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Create kind cluster'
+    timeoutInMinutes: 30
+
+  # -------------------------------------------------------------------------
+  # 3. Deploy Tachyon cache-server via helm (chart pulled from ACR over OCI).
+  - script: |
+      set -e
+      $(WORK_DIR)/test/scripts/dcache/deploy-tachyon.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Deploy Tachyon'
+    timeoutInMinutes: 30
+    env:
+      CACHE_SERVER_IMAGE_REGISTRY: $(CACHE_SERVER_IMAGE_REGISTRY)
+      CACHE_SERVER_IMAGE_REPO: $(CACHE_SERVER_IMAGE_REPO)
+      CACHE_SERVER_IMAGE_TAG: $(CACHE_SERVER_IMAGE_TAG)
+      CACHE_SERVER_CHART_REGISTRY: $(CACHE_SERVER_CHART_REGISTRY)
+      CACHE_SERVER_CHART_REPO: $(CACHE_SERVER_CHART_REPO)
+      CACHE_SERVER_PREREQ_CHART_REPO: $(CACHE_SERVER_PREREQ_CHART_REPO)
+      CACHE_SERVER_CHART_VERSION: $(CACHE_SERVER_CHART_VERSION)
+
+  # -------------------------------------------------------------------------
+  # 4. Build the in-cluster blobfuse2 container image from the code under
+  #    test. buildcontainer.sh runs ./build.sh and tags the image as
+  #    azure-blobfuse2-x86_64.<ver>; we expose the tag as pipeline variable
+  #    BLOBFUSE2_IMAGE so the deploy step below picks it up. The image lives
+  #    only in the local Docker daemon; deploy-blobfuse2.sh does not pull.
+  - script: |
+      set -euo pipefail
+      cd $(WORK_DIR)/docker
+      ./buildcontainer.sh Dockerfile x86_64
+      ver=$($(WORK_DIR)/blobfuse2 --version | cut -d ' ' -f 3)
+      tag="azure-blobfuse2-x86_64.${ver}"
+      echo "Built blobfuse2 container image: ${tag}"
+      docker images "${tag}"
+      echo "##vso[task.setvariable variable=BLOBFUSE2_IMAGE]${tag}"
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Build blobfuse2 container image'
+    timeoutInMinutes: 20
+
+  # -------------------------------------------------------------------------
+  # 5. Deploy the in-cluster blobfuse2 pod driven by dcache_e2e.
+  - script: |
+      set -e
+      $(WORK_DIR)/test/scripts/dcache/deploy-blobfuse2.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Deploy blobfuse2 pod'
+    timeoutInMinutes: 10
+    env:
+      BLOBFUSE2_IMAGE: $(BLOBFUSE2_IMAGE)
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_ENDPOINT: 'https://${{ parameters.account_name }}.blob.core.windows.net'
+      STO_ACC_CONTAINER: $(containerName)
+
+  # -------------------------------------------------------------------------
+  # 6. Run only the distributed-cache-specific pod suite.
+  - script: |
+      set -e
+      cd $(WORK_DIR)
+      go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... -args \
+        -pod-namespace=blobfuse2-dist-cache \
+        -pod-deployment=blobfuse2-dist-cache \
+        -pod-mount-path=/mnt/blobfuse_mnt \
+        -kubectl-bin=kubectl \
+        -docker-bin=docker \
+        -storage-account=${{ parameters.account_name }} \
+        -storage-key=${{ parameters.account_key }} \
+        -storage-endpoint=https://${{ parameters.account_name }}.blob.core.windows.net \
+        -storage-container=$(containerName)
+    displayName: 'DistCache: dcache_e2e Go tests'
+    timeoutInMinutes: 60
+    continueOnError: false
+    env:
+      DCACHE_LOG_DIR: '$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}'
+
+  # -------------------------------------------------------------------------
+  # 7. Collect surviving pod logs before tearing down, then teardown always.
+  - script: |
+      set +e
+      NAMESPACE="${NAMESPACE:-cache-server}"
+      out_dir="$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}"
+      mkdir -p "$out_dir"
+      kubectl get pods -n "$NAMESPACE" -o wide > "$out_dir/pods.txt" 2>&1 || true
+      kubectl describe pods -n "$NAMESPACE" > "$out_dir/pods-describe.txt" 2>&1 || true
+      for pod in $(kubectl get pods -n "$NAMESPACE" -l app=cacheserver -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        kubectl logs -n "$NAMESPACE" "$pod" --all-containers --prefix > "$out_dir/${pod}.log" 2>&1 || true
+      done
+      blobfuse_dir="$out_dir/blobfuse2/surviving-pods"
+      mkdir -p "$blobfuse_dir"
+      for pod in $(kubectl get pods -n blobfuse2-dist-cache -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        kubectl exec -n blobfuse2-dist-cache "$pod" -- \
+          cat /var/log/blobfuse2/blobfuse2-block-logs.txt \
+          > "$blobfuse_dir/${pod}.log" 2>&1 || true
+      done
+      find "$out_dir" -maxdepth 4 -type f -print || true
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Collect distributed cache logs'
+    condition: always()
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Publish distributed cache logs'
+    condition: always()
+    inputs:
+      pathToPublish: '$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}'
+      artifactName: 'dcache_logs_${{ parameters.distro_name }}_${{ parameters.run_idstring }}'
+
+  - script: |
+      $(WORK_DIR)/test/scripts/dcache/teardown-kind.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Teardown kind cluster'
+    condition: always()
+    timeoutInMinutes: 15
