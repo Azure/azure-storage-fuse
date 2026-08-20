@@ -224,6 +224,11 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.kernelListCacheTtlInSec = defaultKernelListCacheTtlInSec
 	}
 
+	// With FUSE writeback caching, Linux retains the kernel's size, mtime, and ctime for
+	// regular files even when Blobfuse2 returns refreshed attributes. External blob updates
+	// therefore require --disable-kernel-cache; direct I/O sets the libfuse timeouts to zero,
+	// leaving attr_cache.timeout-sec as the configurable attribute TTL.
+	// See https://github.com/torvalds/linux/blob/3d6d817622b0a9721e3cc404df3469171582be13/fs/fuse/inode.c#L326
 	if lf.disableKernelCache {
 		opt.DirectIO = true
 		lf.directIO = true
