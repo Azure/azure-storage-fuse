@@ -691,7 +691,7 @@ func init() {
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
 
 	// TODO: Remove this flag once the feature is merged to main. This is an internal config option.
-	blobLayoutAwareRouting := config.AddBoolFlag("blob-layout-aware-routing", false, "Uses GetBlobLayout API to route read requests to the optimal endpoint based on the layout of the blob. Default: False")
+	blobLayoutAwareRouting := config.AddBoolFlag("blob-layout-aware-routing", true, "Uses GetBlobLayout API to route read requests to the optimal endpoint based on the layout of the blob. Default: False")
 	config.BindPFlag(compName+".blob-layout-aware-routing", blobLayoutAwareRouting)
 
 	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
