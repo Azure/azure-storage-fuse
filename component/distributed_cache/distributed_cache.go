@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Microsoft Corporation.
 // Licensed under the MIT License.
 
-package dist_cache
+package distributed_cache
 
 import (
 	"context"
@@ -21,16 +21,16 @@ import (
 	dcache "github.com/nearora-msft/dist-cache-client-go"
 )
 
-const compName = "dist_cache"
+const compName = "distributed_cache"
 
 // errPollCorruptHit signals that pollChunkIntoBuffer observed a zero-byte
 // cache entry. The caller should treat it like a timeout: fetch from Azure
 // but skip populate (we don't hold the miss-lock).
-var errPollCorruptHit = errors.New("dist_cache: poll saw zero-byte cache entry")
+var errPollCorruptHit = errors.New("distributed_cache: poll saw zero-byte cache entry")
 
 // errPollChecksumMismatch signals a checksum failure during polling. The
 // caller decides whether to fall through (bypass-on-error) or surface EIO.
-var errPollChecksumMismatch = errors.New("dist_cache: poll saw checksum mismatch")
+var errPollChecksumMismatch = errors.New("distributed_cache: poll saw checksum mismatch")
 
 // Async upload memory budget policy. See resolveMemBudget for how these combine.
 const (
@@ -65,17 +65,17 @@ const (
 	_1MiB = 1024 * 1024
 )
 
-// Environment variables recognized by dist_cache. Only server-discovery
+// Environment variables recognized by distributed_cache. Only server-discovery
 // keys are exposed; behavioral tuning stays YAML/CLI-only, matching the
 // identity-vs-tuning split used by azstorage.
 const (
-	EnvDistCacheDiscoveryEndpoint = "DIST_CACHE_DISCOVERY_ENDPOINT"
-	EnvDistCacheK8sService        = "DIST_CACHE_K8S_SERVICE"
-	EnvDistCacheK8sNamespace      = "DIST_CACHE_K8S_NAMESPACE"
-	EnvDistCacheServerList        = "DIST_CACHE_SERVER_LIST"
+	EnvDistCacheDiscoveryEndpoint = "DISTRIBUTED_CACHE_DISCOVERY_ENDPOINT"
+	EnvDistCacheK8sService        = "DISTRIBUTED_CACHE_K8S_SERVICE"
+	EnvDistCacheK8sNamespace      = "DISTRIBUTED_CACHE_K8S_NAMESPACE"
+	EnvDistCacheServerList        = "DISTRIBUTED_CACHE_SERVER_LIST"
 )
 
-// RegisterEnvVariables binds dist_cache discovery keys to env vars.
+// RegisterEnvVariables binds distributed_cache discovery keys to env vars.
 // Precedence via viper: CLI flag > env > YAML > default.
 func RegisterEnvVariables() {
 	config.BindEnv(compName+".discovery-endpoint", EnvDistCacheDiscoveryEndpoint)
@@ -111,15 +111,14 @@ type DistCacheOptions struct {
 // providing a shared distributed cache layer across nodes.
 type DistCache struct {
 	internal.BaseComponent
-	conf   DistCacheOptions
-	client dcacheClient
-
+	conf          DistCacheOptions
+	client        dcacheClient
 	chunkSize     int64
 	cachePrefix   string
 	bypassOnError bool
 
 	// Bounded async-upload buffer pool. Preallocated in Configure and never
-	// grown. cap(bufs) * chunkSize is the hard ceiling on memory dist_cache
+	// grown. cap(bufs) * chunkSize is the hard ceiling on memory distributed_cache
 	// holds for in-flight L2 populates. Nil means async populate was disabled
 	// (resolveMemBudget returned 0); ReadInBuffer then runs as passthrough.
 	bufs chan []byte
@@ -145,6 +144,19 @@ func NewDistCacheComponent() internal.Component {
 	return comp
 }
 
+func (dc *DistCache) GenConfig() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "\ndistributed_cache:")
+
+	endpoint := ""
+	_ = config.UnmarshalKey(compName+".discovery-endpoint", &endpoint)
+	if endpoint != "" {
+		fmt.Fprintf(&sb, "\n  discovery-endpoint: %s", endpoint)
+	}
+
+	return sb.String()
+}
+
 func (dc *DistCache) Configure(isParent bool) error {
 	log.Trace("DistCache::Configure")
 
@@ -152,12 +164,12 @@ func (dc *DistCache) Configure(isParent bool) error {
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("DistCache: config error [invalid config attributes]")
-		return fmt.Errorf("dist_cache: config error: %w", err)
+		return fmt.Errorf("distributed_cache: config error: %w", err)
 	}
 
 	// At least one discovery method must be set (YAML, CLI flag, or env).
 	if conf.DiscoveryEndpoint == "" && conf.K8sService == "" && conf.ServerList == "" {
-		return fmt.Errorf("dist_cache: no server discovery configured (set discovery-endpoint, k8s-service, or server-list)")
+		return fmt.Errorf("distributed_cache: no server discovery configured (set discovery-endpoint, k8s-service, or server-list)")
 	}
 
 	// Warn if multiple discovery methods are configured. The dcache client
@@ -184,25 +196,21 @@ func (dc *DistCache) Configure(isParent bool) error {
 	// Derive the cache namespace from the storage identity so mounts for
 	// different accounts or containers cannot collide.
 	var accountName, container string
-	if config.IsSet("azstorage.account-name") {
-		if err := config.UnmarshalKey("azstorage.account-name", &accountName); err != nil {
-			return fmt.Errorf("dist_cache: failed to read azstorage.account-name: %w", err)
-		}
+	if err := config.UnmarshalKey("azstorage.account-name", &accountName); err != nil {
+		return fmt.Errorf("distributed_cache: failed to read azstorage.account-name: %w", err)
 	}
-	if config.IsSet("azstorage.container") {
-		if err := config.UnmarshalKey("azstorage.container", &container); err != nil {
-			return fmt.Errorf("dist_cache: failed to read azstorage.container: %w", err)
-		}
+	if err := config.UnmarshalKey("azstorage.container", &container); err != nil {
+		return fmt.Errorf("distributed_cache: failed to read azstorage.container: %w", err)
 	}
 	if accountName == "" || container == "" {
-		return fmt.Errorf("dist_cache: cache prefix unresolved; set both azstorage.account-name and azstorage.container")
+		return fmt.Errorf("distributed_cache: cache prefix unresolved; set both azstorage.account-name and azstorage.container")
 	}
 	dc.cachePrefix = accountName + "/" + container
 	log.Info("DistCache::Configure : cache-prefix=%s (derived from azstorage account/container)", dc.cachePrefix)
 
-	// L1 (block_cache) and L2 (dist_cache) must align on chunk size.
+	// L1 (block_cache) and L2 (distributed_cache) must align on chunk size.
 	// block_cache.block-size-mb is the single source — either set directly
-	// by the user or fanned out from dist_cache.block-size-mb by
+	// by the user or fanned out from distributed_cache.block-size-mb by
 	// normalizeDistCacheConfig at mount time.
 	var blockSizeMB float64 = common.DefaultBlockSize
 	if config.IsSet("block_cache.block-size-mb") {
@@ -277,7 +285,7 @@ func (dc *DistCache) Start(ctx context.Context) error {
 	client, err := dcache.New(opts...)
 	if err != nil {
 		log.Err("DistCache::Start : Failed to connect to distributed cache: %v", err)
-		return fmt.Errorf("dist_cache: failed to start: %w", err)
+		return fmt.Errorf("distributed_cache: failed to start: %w", err)
 	}
 
 	dc.client = client
@@ -421,7 +429,7 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 	for {
 		select {
 		case <-ctx.Done():
-			return 0, fmt.Errorf("dist_cache: block poll timeout for %s offset=%d: %w", name, offset, ctx.Err())
+			return 0, fmt.Errorf("distributed_cache: block poll timeout for %s offset=%d: %w", name, offset, ctx.Err())
 		case <-time.After(backoff):
 		}
 
@@ -492,9 +500,9 @@ func (dc *DistCache) populateAfterStorageRead(name, lookupETag string, options *
 
 // getBlockCacheWorkers returns the number of concurrent downloads block_cache
 // is configured to run (block_cache.parallelism). This is the true ceiling on
-// concurrent callers into dist_cache: FUSE threads enqueue work onto
+// concurrent callers into distributed_cache: FUSE threads enqueue work onto
 // block_cache's thread pool and then block on a channel — they do not call
-// down into dist_cache themselves. Prefetches share the same pool, so they
+// down into distributed_cache themselves. Prefetches share the same pool, so they
 // don't raise the ceiling either.
 //
 // Mirrors block_cache's own default of 3 * runtime.NumCPU() when the knob is
@@ -510,11 +518,11 @@ func getBlockCacheWorkers() int {
 	return 3 * runtime.NumCPU()
 }
 
-// resolveMemBudget returns the total bytes dist_cache will preallocate for its
+// resolveMemBudget returns the total bytes distributed_cache will preallocate for its
 // async-upload buffer pool. Zero means "async populate disabled" (caller
 // should skip buffer allocation and treat the L2 populate as a no-op).
 //
-// dist_cache does not expose its own mem-size-mb knob. It sizes the pool as a
+// distributed_cache does not expose its own mem-size-mb knob. It sizes the pool as a
 // fraction of block_cache's reference budget so the two caches stay
 // coordinated under one memory budget:
 //
@@ -527,10 +535,10 @@ func getBlockCacheWorkers() int {
 //     demand-ceiling = distCacheDemandMultiplier × block_cache.parallelism ×
 //     chunkSize. block_cache's worker pool bounds the *arrival* rate of
 //     new populates (FUSE threads enqueue and block, they don't reach
-//     dist_cache), but populates are fire-and-forget goroutines, so
+//     distributed_cache), but populates are fire-and-forget goroutines, so
 //     in-flight uploads scale with upload/read latency ratio.
 //     The multiplier turns arrival concurrency into
-//     expected in-flight capacity. dist_cache is enforced to sit below
+//     expected in-flight capacity. distributed_cache is enforced to sit below
 //     block_cache in the pipeline (see common.ValidatePipeline), so
 //     block_cache.parallelism is always available.
 //  3. If fair-share < distCacheMinBuffers × chunkSize, return 0 (async
@@ -637,9 +645,30 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf []byte, lengt
 func init() {
 	internal.AddComponent(compName, NewDistCacheComponent)
 
-	discoveryFlag := config.AddStringFlag("dist-cache-discovery-endpoint", "",
+	discoveryFlag := config.AddStringFlag("distributed-cache-discovery-endpoint", "",
 		"distributed cache discovery endpoint (recommended)")
 	config.BindPFlag(compName+".discovery-endpoint", discoveryFlag)
 
+	ttlFlag := config.AddUint32Flag("distributed-cache-ttl", 0,
+		"distributed cache entry TTL in seconds (0 = no TTL)")
+	config.BindPFlag(compName+".ttl-seconds", ttlFlag)
+
+	blockSizeFlag := config.AddUint32Flag("distributed-cache-block-size", 0,
+		"block size in MB for the distributed cache L1 (block_cache)")
+	config.BindPFlag("block_cache.block-size-mb", blockSizeFlag)
+
+	memFlag := config.AddUint32Flag("distributed-cache-memory", 0,
+		"memory size in MB for the distributed cache L1 (block_cache)")
+	config.BindPFlag("block_cache.mem-size-mb", memFlag)
+
+	prefetchFlag := config.AddUint32Flag("distributed-cache-prefetch", 0,
+		"prefetch block count for the distributed cache L1 (block_cache)")
+	config.BindPFlag("block_cache.prefetch", prefetchFlag)
+
+	parallelismFlag := config.AddUint32Flag("distributed-cache-parallelism", 0,
+		"download parallelism for the distributed cache L1 (block_cache)")
+	config.BindPFlag("block_cache.parallelism", parallelismFlag)
+
 	RegisterEnvVariables()
+
 }
