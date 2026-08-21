@@ -62,6 +62,13 @@ type AzStorage struct {
 
 const compName = "azstorage"
 
+func defaultAzStorageOptions() AzStorageOptions {
+	return AzStorageOptions{
+		BlobLayoutAwareRouting: true,
+		UseSession:             true,
+	}
+}
+
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AzStorage{}
 
@@ -83,7 +90,7 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
 
-	conf := AzStorageOptions{}
+	conf := defaultAzStorageOptions()
 	err := config.UnmarshalKey(az.Name(), &conf)
 	if err != nil {
 		log.Err("AzStorage::Configure : config error [invalid config attributes]")
@@ -691,7 +698,7 @@ func init() {
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
 
 	// TODO: Remove this flag once the feature is merged to main. This is an internal config option.
-	blobLayoutAwareRouting := config.AddBoolFlag("blob-layout-aware-routing", true, "Uses GetBlobLayout API to route read requests to the optimal endpoint based on the layout of the blob. Default: False")
+	blobLayoutAwareRouting := config.AddBoolFlag("blob-layout-aware-routing", true, "Uses GetBlobLayout API to route read requests to the optimal endpoint based on the layout of the blob.")
 	config.BindPFlag(compName+".blob-layout-aware-routing", blobLayoutAwareRouting)
 
 	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
@@ -710,7 +717,7 @@ func init() {
 	//   - Not applicable to DFS/ADLS accounts; the flag is ignored when use-adls is set.
 	//   - Currently limited to Get Blob requests (HTTP GET on blob URLs without a comp query
 	//     parameter). All other requests fall back to standard bearer token authentication.
-	useSession := config.AddBoolFlag("use-session", false,
+	useSession := config.AddBoolFlag("use-session", true,
 		"Enables Session API for Azure Blob Storage (fns) accounts. "+
 			"Only supported with OAuth-based authentication (MSI/SPN/AzCLI/WorkloadIdentity). "+
 			"Ignored for key/SAS authentication and DFS/ADLS accounts. "+

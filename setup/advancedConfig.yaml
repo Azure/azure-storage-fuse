@@ -1,7 +1,7 @@
 # MUST READ : 
 #   If you are creating a blobfuse2 config file using this kindly take care of below points 
-#   1. All boolean configs (true|false config) (except ignore-open-flags, virtual-directory) are set to 'false' by default. 
-#      No need to mention them in your config file unless you are setting them to true.
+#   1. Boolean configs default to false except ignore-open-flags, virtual-directory, blob-layout-aware-routing, and use-session,
+#      which default to true. No need to mention boolean configs unless you are overriding their defaults.
 #   2. 'loopbackfs' is purely for testing and shall not be used in production configuration.
 #   3. 'block-cache' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
 #   4. By default log level is set to 'log_warning' level and are redirected to syslog. 

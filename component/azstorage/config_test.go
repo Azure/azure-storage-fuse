@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
@@ -46,6 +47,41 @@ import (
 
 type configTestSuite struct {
 	suite.Suite
+}
+
+func (s *configTestSuite) TestPrivatePreviewDefaults() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+
+	err := config.ReadConfigFromReader(strings.NewReader("azstorage:\n  account-name: testaccount\n  container: testcontainer\n  mode: msi"))
+	assert.NoError(err)
+
+	opt := defaultAzStorageOptions()
+	err = config.UnmarshalKey(compName, &opt)
+	assert.NoError(err)
+	assert.True(opt.BlobLayoutAwareRouting)
+	assert.True(opt.UseSession)
+
+	az := &AzStorage{}
+	err = ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.True(az.stConfig.isBlobLayoutAwareRoutingEnabled)
+	assert.True(az.stConfig.useSession)
+
+	err = config.ReadConfigFromReader(strings.NewReader("azstorage:\n  account-name: testaccount\n  container: testcontainer\n  mode: msi\n  blob-layout-aware-routing: false\n  use-session: false"))
+	assert.NoError(err)
+
+	opt = defaultAzStorageOptions()
+	err = config.UnmarshalKey(compName, &opt)
+	assert.NoError(err)
+	assert.False(opt.BlobLayoutAwareRouting)
+	assert.False(opt.UseSession)
+
+	az = &AzStorage{}
+	err = ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.isBlobLayoutAwareRoutingEnabled)
+	assert.False(az.stConfig.useSession)
 }
 
 func (s *configTestSuite) SetupTest() {
@@ -471,8 +507,8 @@ func (s *configTestSuite) TestRateLimitConfig() {
 	assert.Equal(int64(-1), az.stConfig.capIOps)
 }
 
-func (s *configTestSuite) TestUseSessionDisabled() {
-	// UseSession=false: useSession must remain false regardless of account type or auth mode.
+func (s *configTestSuite) TestUseSessionExplicitlyDisabled() {
+	// An explicit UseSession=false must remain false regardless of account type or auth mode.
 	defer config.ResetConfig()
 	assert := assert.New(s.T())
 	az := &AzStorage{}
