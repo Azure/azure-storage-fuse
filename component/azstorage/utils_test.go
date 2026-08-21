@@ -42,8 +42,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
@@ -315,18 +315,17 @@ func (s *utilsTestSuite) TestBlockProxyOptions() {
 }
 
 func (s *utilsTestSuite) TestBlockBlobOptionsSessionDisabled() {
-	// useSession=false: SessionOptions must remain at default (empty mode, no account/container).
+	// useSession=false: Session must remain at its zero value.
 	assert := assert.New(s.T())
 	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{useSession: false})
 	assert.NoError(err)
-	assert.Equal(service.SessionModeDefault, opt.SessionOptions.Mode)
-	assert.Empty(opt.SessionOptions.AccountName)
-	assert.Empty(opt.SessionOptions.ContainerName)
+	assert.Equal(azblob.SessionModeDefault, opt.Session.Mode)
+	assert.Empty(opt.Session.AccountName)
+	assert.Nil(opt.Session.Provider)
 }
 
 func (s *utilsTestSuite) TestBlockBlobOptionsSessionEnabled() {
-	// useSession=true: SessionOptions must be populated with SingleSpecifiedContainer mode and
-	// the account/container names from the config.
+	// A nil provider makes the SDK create its default container-scoped session provider.
 	assert := assert.New(s.T())
 	conf := &AzStorageConfig{
 		useSession: true,
@@ -335,9 +334,9 @@ func (s *utilsTestSuite) TestBlockBlobOptionsSessionEnabled() {
 	}
 	opt, err := getAzBlobServiceClientOptions(conf)
 	assert.NoError(err)
-	assert.Equal(service.SessionModeSingleSpecifiedContainer, opt.SessionOptions.Mode)
-	assert.Equal("testaccount", opt.SessionOptions.AccountName)
-	assert.Equal("testcontainer", opt.SessionOptions.ContainerName)
+	assert.Equal(azblob.SessionModeEnabled, opt.Session.Mode)
+	assert.Equal("testaccount", opt.Session.AccountName)
+	assert.Nil(opt.Session.Provider)
 }
 
 func (s *utilsTestSuite) TestBfsNonProxyOptions() {
