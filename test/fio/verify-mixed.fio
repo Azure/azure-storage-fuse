@@ -1,0 +1,24 @@
+[global]
+ioengine=libaio
+direct=0
+rw=randrw
+rwmixread=70
+bs=128k
+size=1g
+numjobs=8
+nrfiles=32
+iodepth=8
+time_based=1
+runtime=180
+group_reporting=1
+
+verify=crc32c
+do_verify=1
+verify_fatal=1
+exitall_on_error=1
+continue_on_error=none
+
+; Encourage more flush points
+fsync_on_close=1
+
+[job1]
