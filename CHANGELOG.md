@@ -15,6 +15,7 @@
 
 **Other Changes**
 - Reduce Azure Storage REST calls for single-page directory listings by avoiding per-directory marker lookups for markerless virtual directories.
+- Enable Staticcheck ST1003 and ST1005 checks across the codebase. ([PR #2237](https://github.com/Azure/azure-storage-fuse/pull/2237))
 
 ## 2.5.4 (2026-07-08)
 **Features**

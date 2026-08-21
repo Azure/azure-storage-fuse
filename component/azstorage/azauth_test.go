@@ -67,11 +67,11 @@ type storageTestConfiguration struct {
 	AdlsSas            string `json:"adls-sas"`
 	// AdlsDirSasUbn18    string `json:"adls-dir-sas-ubn-18"`
 	// AdlsDirSasUbn20    string `json:"adls-dir-sas-ubn-20"`
-	MsiAppId        string `json:"msi-appid"`
-	MsiResId        string `json:"msi-resid"`
-	MsiObjId        string `json:"msi-objid"`
-	SpnClientId     string `json:"spn-client"`
-	SpnTenantId     string `json:"spn-tenant"`
+	MsiAppID        string `json:"msi-appid"`
+	MsiResID        string `json:"msi-resid"`
+	MsiObjID        string `json:"msi-objid"`
+	SpnClientID     string `json:"spn-client"`
+	SpnTenantID     string `json:"spn-tenant"`
 	SpnClientSecret string `json:"spn-secret"`
 	SkipMsi         bool   `json:"skip-msi"`
 	SkipAzCLI       bool   `json:"skip-azcli"`
@@ -133,9 +133,9 @@ func (suite *authTestSuite) validateStorageTest(testName string, stgConfig AzSto
 	}
 }
 
-func generateEndpoint(useHttp bool, accountName string, accountType AccountType) string {
+func generateEndpoint(useHTTP bool, accountName string, accountType AccountType) string {
 	endpoint := ""
-	if useHttp {
+	if useHTTP {
 		endpoint += "http://"
 	} else {
 		endpoint += "https://"
@@ -614,7 +614,7 @@ func (suite *authTestSuite) TestBlockMsiAppId() {
 				AuthMode:      EAuthType.MSI(),
 				AccountType:   EAccountType.BLOCK(),
 				AccountName:   storageTestConfigurationParameters.BlockAccount,
-				ApplicationID: storageTestConfigurationParameters.MsiAppId,
+				ApplicationID: storageTestConfigurationParameters.MsiAppID,
 				Endpoint:      generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
 			},
 		}
@@ -630,7 +630,7 @@ func (suite *authTestSuite) TestBlockMsiResId() {
 				AuthMode:    EAuthType.MSI(),
 				AccountType: EAccountType.BLOCK(),
 				AccountName: storageTestConfigurationParameters.BlockAccount,
-				ResourceID:  storageTestConfigurationParameters.MsiResId,
+				ResourceID:  storageTestConfigurationParameters.MsiResID,
 				Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
 			},
 		}
@@ -647,7 +647,7 @@ func (suite *authTestSuite) TestBlockMsiObjId() {
 				AuthMode:    EAuthType.MSI(),
 				AccountType: EAccountType.BLOCK(),
 				AccountName: storageTestConfigurationParameters.BlockAccount,
-				ObjectID:    storageTestConfigurationParameters.MsiObjId,
+				ObjectID:    storageTestConfigurationParameters.MsiObjID,
 				Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
 			},
 		}
@@ -665,7 +665,7 @@ func (suite *authTestSuite) TestAdlsMsiAppId() {
 				AuthMode:      EAuthType.MSI(),
 				AccountType:   EAccountType.ADLS(),
 				AccountName:   storageTestConfigurationParameters.AdlsAccount,
-				ApplicationID: storageTestConfigurationParameters.MsiAppId,
+				ApplicationID: storageTestConfigurationParameters.MsiAppID,
 				Endpoint:      generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
 			},
 		}
@@ -682,7 +682,7 @@ func (suite *authTestSuite) TestAdlskMsiResId() {
 				AuthMode:    EAuthType.MSI(),
 				AccountType: EAccountType.ADLS(),
 				AccountName: storageTestConfigurationParameters.AdlsAccount,
-				ResourceID:  storageTestConfigurationParameters.MsiResId,
+				ResourceID:  storageTestConfigurationParameters.MsiResID,
 				Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
 			},
 		}

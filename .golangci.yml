@@ -21,7 +21,10 @@ linters:
         - require-error
         - suite-thelper
     staticcheck:
-      checks: ["all", "-ST1003", "-ST1005"]
+      checks: ["all"]
+    govet:
+      disable:
+        - inline
 
   exclusions:
     generated: lax
@@ -30,6 +33,12 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # cgo generates helper names with underscores; staticcheck reports them
+      # against the source file using `import "C"` which we cannot rename.
+      - linters:
+          - staticcheck
+        text: "ST1003: should not use underscores in Go names; (var|func) (_cgo|__cgofn)"
     paths:
       - third_party$
       - builtin$
