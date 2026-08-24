@@ -1023,6 +1023,36 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithFileCache() {
 	suite.assert.Contains(op, "distributed_cache is a single configuration surface")
 }
 
+// --distributed-cache combined with a sibling L1 enable-flag on the CLI
+// (--streaming, --block-cache, --preload) must be rejected instead of
+// silently picking one via the pipeline-synthesis else-if chain.
+func (suite *mountTestSuite) TestDistributedCacheCLIWithSiblingL1Flags() {
+	for _, siblingFlag := range []string{"--streaming", "--block-cache", "--preload"} {
+		suite.Run(siblingFlag, func() {
+			defer suite.cleanupTest()
+
+			mntDir, err := os.MkdirTemp("", "mntdir")
+			suite.assert.NoError(err)
+			defer os.RemoveAll(mntDir)
+
+			confFile, err := os.CreateTemp("", "conf*.yaml")
+			suite.assert.NoError(err)
+			confFileName := confFile.Name()
+			defer os.Remove(confFileName)
+
+			_, err = confFile.WriteString(configDistCacheCLIBase)
+			suite.assert.NoError(err)
+			confFile.Close()
+
+			op, err := executeCommandC(rootCmd, "mount", mntDir,
+				fmt.Sprintf("--config-file=%s", confFileName),
+				"--distributed-cache", "--read-only", siblingFlag)
+			suite.assert.Error(err)
+			suite.assert.Contains(op, "distributed_cache is a single configuration surface")
+		})
+	}
+}
+
 func (suite *mountTestSuite) TestDistributedCacheDiscoveryEndpointCLI() {
 	defer suite.cleanupTest()
 

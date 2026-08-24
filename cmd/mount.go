@@ -869,6 +869,22 @@ func normalizeDistCacheConfig(userComponents []string) error {
 		}
 	}
 
+	// Also reject sibling L1 enable *flags* — the hyphenated CLI keys (or
+	// their YAML equivalents). Value-based check so an explicit `false`
+	// does not reject.
+	incompatibleFlags := []string{"streaming", "block-cache", "preload"}
+	for _, key := range incompatibleFlags {
+		enabled := false
+		if config.IsSet(key) {
+			if err := config.UnmarshalKey(key, &enabled); err != nil {
+				return fmt.Errorf("mount: failed to read %s flag: %w", key, err)
+			}
+		}
+		if enabled {
+			return fmt.Errorf("mount: distributed_cache is a single configuration surface, remove --%s", key)
+		}
+	}
+
 	// Copy user-set knobs onto block_cache; unset keys fall through to
 	// block_cache defaults. Round-tripping through string relies on viper's
 	// weak-typed coercion when BlockCache reads its config.

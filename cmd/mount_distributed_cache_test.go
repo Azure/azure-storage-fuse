@@ -433,6 +433,188 @@ stream:
 	}
 }
 
+// The CLI-flag entry path (`distributed-cache: true`) combined with a
+// sibling L1 already present in components: must be rejected for every
+// incompatible L1 — block_cache, file_cache, xload, stream. Mirrors the
+// components-list entry path (RejectsBlockCacheInComponents /
+// RejectsOtherL1InComponents), but exercises the flag-driven activation
+// so we catch regressions where the gate only fires when
+// distributed_cache is spelled out in components:.
+func TestNormalizeDistCacheConfig_RejectsSiblingL1InComponentsViaCLIFlag(t *testing.T) {
+	for _, name := range []string{"block_cache", "file_cache", "xload", "stream"} {
+		t.Run(name, func(t *testing.T) {
+			setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+`)
+			defer viper.Reset()
+			config.Set("distributed-cache", "true")
+
+			err := normalizeDistCacheConfig([]string{"libfuse", name, "azstorage"})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), name)
+		})
+	}
+}
+
+// Same as above but the sibling L1 is signalled via its top-level YAML
+// section (e.g. `block_cache:` / `file_cache:`) rather than a components:
+// entry, again with distributed_cache activated through the CLI flag.
+func TestNormalizeDistCacheConfig_RejectsSiblingL1SectionViaCLIFlag(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+	}{
+		{
+			name: "block_cache",
+			yaml: `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+block_cache:
+  block-size-mb: 8
+`,
+		},
+		{
+			name: "file_cache",
+			yaml: `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+file_cache:
+  path: /tmp/fc
+`,
+		},
+		{
+			name: "xload",
+			yaml: `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+xload:
+  path: /tmp/xl
+`,
+		},
+		{
+			name: "stream",
+			yaml: `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+stream:
+  block-size-mb: 16
+`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setDistCacheYAML(t, tc.yaml)
+			defer viper.Reset()
+			config.Set("distributed-cache", "true")
+
+			err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.name)
+		})
+	}
+}
+
+// A sibling L1 tuning knob passed on the CLI (e.g.
+// `--block-cache-block-size=80`, which binds to `block_cache.block-size-mb`)
+// alongside `--distributed-cache` must be rejected — the user likely meant
+// `--distributed-cache-block-size`. The gate fires because viper's IsSet on
+// the parent key ("block_cache") returns true once any nested key is set.
+func TestNormalizeDistCacheConfig_RejectsSiblingL1TuningKnobsViaCLI(t *testing.T) {
+	cases := []struct {
+		name    string
+		key     string
+		value   string
+		wantSub string
+	}{
+		{
+			name:    "block_cache block-size-mb",
+			key:     "block_cache.block-size-mb",
+			value:   "80",
+			wantSub: "block_cache",
+		},
+		{
+			name:    "block_cache mem-size-mb",
+			key:     "block_cache.mem-size-mb",
+			value:   "4096",
+			wantSub: "block_cache",
+		},
+		{
+			name:    "file_cache path",
+			key:     "file_cache.path",
+			value:   "/tmp/fc",
+			wantSub: "file_cache",
+		},
+		{
+			name:    "file_cache timeout-sec",
+			key:     "file_cache.timeout-sec",
+			value:   "120",
+			wantSub: "file_cache",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+`)
+			defer viper.Reset()
+			config.Set("distributed-cache", "true")
+			config.Set(tc.key, tc.value)
+
+			err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantSub)
+		})
+	}
+}
+
+// Sibling L1 CLI enable-flags must be rejected when combined with
+// --distributed-cache.
+func TestNormalizeDistCacheConfig_RejectsSiblingL1CLIFlags(t *testing.T) {
+	for _, key := range []string{"streaming", "block-cache", "preload"} {
+		t.Run(key, func(t *testing.T) {
+			setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+`)
+			defer viper.Reset()
+			config.Set("distributed-cache", "true")
+			config.Set(key, "true")
+
+			err := normalizeDistCacheConfig(nil)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), key)
+		})
+	}
+}
+
+// An explicit `--<flag>=false` alongside --distributed-cache=true must NOT reject.
+func TestNormalizeDistCacheConfig_DisabledSiblingL1CLIFlagsAreOK(t *testing.T) {
+	for _, key := range []string{"streaming", "block-cache", "preload"} {
+		t.Run(key, func(t *testing.T) {
+			setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+`)
+			defer viper.Reset()
+			config.Set("distributed-cache", "true")
+			config.Set(key, "false")
+
+			err := normalizeDistCacheConfig(nil)
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestNormalizeDistCacheConfig_FansOutTuningKnobs(t *testing.T) {
 	// User writes tuning under distributed_cache:; normalize fans out to
 	// block_cache.* (the auto-injected L1).
