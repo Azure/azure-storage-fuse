@@ -87,6 +87,7 @@ var generatedConfig = &cobra.Command{
 			if !optsGenCfg.readOnly {
 				return fmt.Errorf("--distributed-cache requires --ro to be set explicitly; distributed cache is supported only for read-only mounts")
 			}
+			config.Set("distributed_cache.discovery-endpoint", optsGenCfg.distributedCacheDiscoveryEndpoint)
 		} else if (!optsGenCfg.blockCache) && optsGenCfg.tmpPath == "" {
 			// tmp-path is required for file-cache mode.
 			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
@@ -99,10 +100,6 @@ var generatedConfig = &cobra.Command{
 
 		if optsGenCfg.directIO {
 			config.Set("direct-io", "true")
-		}
-
-		if optsGenCfg.distributedCache {
-			config.Set("distributed_cache.discovery-endpoint", optsGenCfg.distributedCacheDiscoveryEndpoint)
 		}
 
 		config.Set("tmp-path", optsGenCfg.tmpPath)
