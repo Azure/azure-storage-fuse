@@ -77,20 +77,20 @@ jobs:
       BENCH_CONTAINER_INPUT: ${{ secrets.BENCH_CONTAINER }}
     steps:
       - name: Checkout stable benchmark harness
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           path: benchmark-harness
 
       - name: Checkout baseline source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.baseline_ref }}
           path: baseline-source
           fetch-depth: 0
 
       - name: Checkout candidate source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.target_ref }}
           path: candidate-source
