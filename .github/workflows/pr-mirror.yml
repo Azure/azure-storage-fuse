@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: React to triggering comment
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             await github.rest.reactions.createForIssueComment({
@@ -56,7 +56,7 @@ jobs:
 
       - name: Resolve PR head SHA
         id: pr
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const pr = await github.rest.pulls.get({
@@ -75,7 +75,7 @@ jobs:
           exit 1
 
       - name: Checkout repo (no fork code)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
@@ -104,7 +104,7 @@ jobs:
             "${PR_SHA}:refs/heads/pr-mirror/${PR_NUMBER}"
 
       - name: Comment with mirror branch details
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const sha = '${{ steps.pr.outputs.sha }}';
@@ -128,7 +128,7 @@ jobs:
             });
 
       - name: Set pending commit status
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             await github.rest.repos.createCommitStatus({
