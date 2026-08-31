@@ -110,6 +110,26 @@ func main() {
 		hmcommon.OutputPath = currDir
 	}
 
+	// Report files may contain sensitive path information from the monitored
+	// process, so the output directory should not be accessible to other users.
+	// Create it with owner-only access (0700) when it does not already exist.
+	// If it already exists, do not silently change its permissions (the user
+	// may have intentionally chosen a shared/existing directory); only warn
+	// when the existing permissions are broader than owner-only.
+	if info, err := os.Stat(hmcommon.OutputPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(hmcommon.OutputPath, 0700); err != nil {
+			fmt.Printf("health-monitor : failed to create output directory [%s]\n", err.Error())
+			log.Err("main::main : failed to create output directory [%s]\n", err.Error())
+			return
+		}
+	} else if err != nil {
+		fmt.Printf("health-monitor : failed to stat output directory [%s]\n", err.Error())
+		log.Err("main::main : failed to stat output directory [%s]\n", err.Error())
+		return
+	} else if info.Mode().Perm()&0077 != 0 {
+		log.Warn("main::main : output directory %v is accessible by other users (mode %#o); report files may contain sensitive path information", hmcommon.OutputPath, info.Mode().Perm())
+	}
+
 	common.TransferPipe += "_" + hmcommon.Pid
 	common.PollingPipe += "_" + hmcommon.Pid
 
