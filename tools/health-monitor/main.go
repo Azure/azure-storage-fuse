@@ -104,7 +104,7 @@ func main() {
 		currDir, err := os.Getwd()
 		if err != nil {
 			fmt.Printf("health-monitor : failed to get current directory [%s]\n", err.Error())
-			log.Err("main::main : failed to get current directory [%s]\n", err.Error())
+			log.Err("main::main : failed to get current directory [%s]", err.Error())
 			return
 		}
 		hmcommon.OutputPath = currDir
@@ -119,12 +119,12 @@ func main() {
 	if info, err := os.Stat(hmcommon.OutputPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(hmcommon.OutputPath, 0700); err != nil {
 			fmt.Printf("health-monitor : failed to create output directory [%s]\n", err.Error())
-			log.Err("main::main : failed to create output directory [%s]\n", err.Error())
+			log.Err("main::main : failed to create output directory [%s]", err.Error())
 			return
 		}
 	} else if err != nil {
 		fmt.Printf("health-monitor : failed to stat output directory [%s]\n", err.Error())
-		log.Err("main::main : failed to stat output directory [%s]\n", err.Error())
+		log.Err("main::main : failed to stat output directory [%s]", err.Error())
 		return
 	} else if !info.IsDir() {
 		fmt.Printf("health-monitor : output path is not a directory [%s]\n", hmcommon.OutputPath)
