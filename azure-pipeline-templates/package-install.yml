@@ -33,10 +33,10 @@ steps:
       curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash || true
       if ! command -v az >/dev/null 2>&1; then
         echo "AzCli deb install failed (likely unsupported distro codename), falling back to pip install"
-        sudo apt-get install python3 python3-venv -y
-        python3 -m venv /opt/azure-cli
-        /opt/azure-cli/bin/pip install --upgrade pip
-        /opt/azure-cli/bin/pip install azure-cli
+        sudo apt-get install -y python3 python3-venv
+        sudo python3 -m venv /opt/azure-cli
+        sudo /opt/azure-cli/bin/pip install --upgrade pip
+        sudo /opt/azure-cli/bin/pip install azure-cli
         sudo ln -sf /opt/azure-cli/bin/az /usr/local/bin/az
       fi
       az --version
