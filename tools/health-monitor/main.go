@@ -126,6 +126,10 @@ func main() {
 		fmt.Printf("health-monitor : failed to stat output directory [%s]\n", err.Error())
 		log.Err("main::main : failed to stat output directory [%s]\n", err.Error())
 		return
+	} else if !info.IsDir() {
+		fmt.Printf("health-monitor : output path is not a directory [%s]\n", hmcommon.OutputPath)
+		log.Err("main::main : output path is not a directory [%s]", hmcommon.OutputPath)
+		return
 	} else if info.Mode().Perm()&0077 != 0 {
 		log.Warn("main::main : output directory %v is accessible by other users (mode %#o); report files may contain sensitive path information", hmcommon.OutputPath, info.Mode().Perm())
 	}
