@@ -34,7 +34,7 @@ steps:
       if ! command -v az >/dev/null 2>&1; then
         echo "AzCli deb install failed (likely unsupported distro codename), falling back to pip install"
         sudo apt-get install -y python3 python3-venv
-        sudo python3 -m venv /opt/azure-cli
+        sudo python3 -m venv --clear /opt/azure-cli
         sudo /opt/azure-cli/bin/pip install --upgrade pip
         sudo /opt/azure-cli/bin/pip install azure-cli
         sudo ln -sf /opt/azure-cli/bin/az /usr/local/bin/az
