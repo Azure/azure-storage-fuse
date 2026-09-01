@@ -116,10 +116,11 @@ func (permit *prefetchPermit) release() {
 type workerPool struct {
 	workers       int            // Number of worker goroutines
 	wg            sync.WaitGroup // Tracks active workers for clean shutdown
-	tasks         chan *task     // Buffered channel of pending tasks
+	tasks         chan *task     // Buffered channel of foreground and writeback tasks
+	prefetchTasks chan *task     // Lower-priority speculative downloads
 	prefetchSlots chan struct{}  // Limits queued and active speculative downloads
 	bc            *BlockCache    // Reference to parent BlockCache for I/O operations
-	stop          sync.Once      // Ensures the task channel is closed exactly once
+	stop          sync.Once      // Ensures task channels are closed exactly once
 }
 
 // createWorkerPool creates and starts a worker pool with the specified number of workers.
@@ -135,6 +136,7 @@ func createWorkerPool(workers int, queueSize int, bc *BlockCache) *workerPool {
 	wp := &workerPool{
 		workers:       workers,
 		tasks:         make(chan *task, queueSize),
+		prefetchTasks: make(chan *task, queueSize),
 		prefetchSlots: make(chan struct{}, bc.prefetchTaskLimit),
 		bc:            bc,
 	}
@@ -155,7 +157,14 @@ func createWorkerPool(workers int, queueSize int, bc *BlockCache) *workerPool {
 //
 // Called during BlockCache.Stop() to clean up resources.
 func (wp *workerPool) destroy() {
-	wp.stop.Do(func() { close(wp.tasks) })
+	wp.stop.Do(func() {
+		if wp.tasks != nil {
+			close(wp.tasks)
+		}
+		if wp.prefetchTasks != nil {
+			close(wp.prefetchTasks)
+		}
+	})
 	wp.wg.Wait()
 }
 
@@ -171,7 +180,59 @@ func (wp *workerPool) destroy() {
 // goroutine creation overhead compared to spawning a goroutine per task.
 func (wp *workerPool) worker() {
 	defer wp.wg.Done()
-	for task := range wp.tasks {
+	foreground := wp.tasks
+	prefetch := wp.prefetchTasks
+	for foreground != nil || prefetch != nil {
+		var task *task
+
+		// Prefer demand downloads and uploads. A demand cache miss must not sit
+		// behind an already queued read-ahead window.
+		if foreground != nil {
+			select {
+			case next, ok := <-foreground:
+				if !ok {
+					foreground = nil
+					continue
+				}
+				task = next
+			default:
+			}
+		}
+
+		if task == nil {
+			switch {
+			case foreground == nil:
+				next, ok := <-prefetch
+				if !ok {
+					prefetch = nil
+					continue
+				}
+				task = next
+			case prefetch == nil:
+				next, ok := <-foreground
+				if !ok {
+					foreground = nil
+					continue
+				}
+				task = next
+			default:
+				select {
+				case next, ok := <-foreground:
+					if !ok {
+						foreground = nil
+						continue
+					}
+					task = next
+				case next, ok := <-prefetch:
+					if !ok {
+						prefetch = nil
+						continue
+					}
+					task = next
+				}
+			}
+		}
+
 		if task.download {
 			wp.downloadBlock(task, wp.bc)
 		} else {
@@ -203,8 +264,11 @@ func (wp *workerPool) tryAcquirePrefetch() *prefetchPermit {
 }
 
 func (wp *workerPool) tryQueuePrefetch(task *task) bool {
+	if wp.prefetchTasks == nil {
+		return false
+	}
 	select {
-	case wp.tasks <- task:
+	case wp.prefetchTasks <- task:
 		return true
 	default:
 		return false
@@ -251,17 +315,25 @@ func (wp *workerPool) downloadBlock(task *task, bc *BlockCache) {
 	block := task.block
 	bufDesc := task.bufDesc
 
-	_, err := bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
+	// The descriptor may contain bytes from an earlier mapping. A full download
+	// overwrites them without a redundant block-sized clear; only the unused tail
+	// of the final block needs zeroing.
+	bufDesc.hasData.Store(true)
+	n, err := bc.NextComponent().ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   task.path,
 		Offset: int64(uint64(block.idx) * bc.blockSize),
 		Data:   bufDesc.buf,
 		Size:   task.fileSize,
 	})
+	if err == nil && (n < 0 || n > len(bufDesc.buf)) {
+		err = fmt.Errorf("invalid download size %d for block %d", n, block.idx)
+	}
 	if err != nil {
 		task.err = err
 		bufDesc.downloadErr = err
 		bc.btm.detachBufferDescriptor(bufDesc, bc.freeList)
 	} else {
+		clear(bufDesc.buf[n:])
 		bufDesc.valid.Store(true)
 	}
 }

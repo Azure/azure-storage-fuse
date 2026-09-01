@@ -182,6 +182,9 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 	if err != nil {
 		return nil, bufDescStatusInvalid, err
 	}
+	if !doRead {
+		bufDesc.prepareForLocalWrite()
+	}
 	btm.mu.Lock()
 
 	// Step 6: Add the new buffer descriptor to the table and initialize it
@@ -233,31 +236,44 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 
 func (btm *bufferTableMgr) acquireBuffer(freeList *freeListType, workerPool *workerPool, blk *block, access bufferAccessKind) (*bufferDescriptor, bufDescStatus, error) {
 	for {
-		changed, err := freeList.watchAvailability()
-		if err != nil {
-			return nil, bufDescStatusInvalid, err
-		}
-
-		bufDesc, err := freeList.allocateBuffer(blk)
-		if err == nil {
-			return bufDesc, bufDescStatusAllocated, nil
-		}
-		if !errors.Is(err, errFreeListFull) {
-			return nil, bufDescStatusInvalid, err
-		}
-		bufDesc, err = freeList.evictBuffer(workerPool, btm, access)
-		if err == nil {
-			return bufDesc, bufDescStatusVictim, nil
-		}
-		if !errors.Is(err, errNoVictimBufferFound) {
-			return nil, bufDescStatusInvalid, err
+		bufDesc, status, err := btm.tryAcquireBuffer(freeList, workerPool, blk, access)
+		if err == nil || !errors.Is(err, errNoVictimBufferFound) {
+			return bufDesc, status, err
 		}
 		if access == accessPrefetch {
 			return nil, bufDescStatusInvalid, errBuffersExhausted
 		}
 
+		// Register before retrying so a descriptor transition cannot be lost
+		// between the failed scan and the wait.
+		changed, err := freeList.watchAvailability()
+		if err != nil {
+			return nil, bufDescStatusInvalid, err
+		}
+		bufDesc, status, err = btm.tryAcquireBuffer(freeList, workerPool, blk, access)
+		if err == nil || !errors.Is(err, errNoVictimBufferFound) {
+			freeList.stopWatchingAvailability()
+			return bufDesc, status, err
+		}
 		<-changed
+		freeList.stopWatchingAvailability()
 	}
+}
+
+func (btm *bufferTableMgr) tryAcquireBuffer(freeList *freeListType, workerPool *workerPool, blk *block, access bufferAccessKind) (*bufferDescriptor, bufDescStatus, error) {
+	bufDesc, err := freeList.allocateBuffer(blk)
+	if err == nil {
+		return bufDesc, bufDescStatusAllocated, nil
+	}
+	if !errors.Is(err, errFreeListFull) {
+		return nil, bufDescStatusInvalid, err
+	}
+
+	bufDesc, err = freeList.evictBuffer(workerPool, btm, access)
+	if err == nil {
+		return bufDesc, bufDescStatusVictim, nil
+	}
+	return nil, bufDescStatusInvalid, err
 }
 
 // isReusableVictimLocked verifies that a selected descriptor did not become

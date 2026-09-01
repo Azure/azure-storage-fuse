@@ -93,6 +93,7 @@ type bufferDescriptor struct {
 	dirty            atomic.Bool // True if buffer has been modified and needs to be uploaded
 	downloadErr      error       // Captures any error that occurred during download
 	uploadErr        error       // Captures any error that occurred during upload
+	hasData          atomic.Bool // Buffer needs clearing before it can represent a new local block
 	writeCoverage    []uint64    // One bit per fully written OS page; protected by contentLock
 	writeRegionCount int         // Fixed number of pages represented by this buffer
 	coveredRegions   int         // Number of bits set in writeCoverage; protected by contentLock
@@ -162,21 +163,29 @@ func (bd *bufferDescriptor) markWriteCoverage(start, end int) bool {
 		bd.coveredRegions = 0
 	}
 
-	firstRegion := start >> writeCoverageShift
-	lastRegion := (end - 1) >> writeCoverageShift
-	for region := firstRegion; region <= lastRegion; region++ {
-		regionStart := region << writeCoverageShift
-		regionEnd := min(regionStart+writeCoverageGranularity, len(bd.buf))
-		if start > regionStart || end < regionEnd {
-			continue
+	firstRegion := (start + writeCoveragePageMask) >> writeCoverageShift
+	lastRegionExclusive := end >> writeCoverageShift
+	if end == len(bd.buf) && end&writeCoveragePageMask != 0 {
+		lastRegionExclusive++
+	}
+	if firstRegion >= lastRegionExclusive {
+		return bd.coveredRegions == bd.writeRegionCount
+	}
+
+	firstWord := firstRegion >> 6
+	lastWord := (lastRegionExclusive - 1) >> 6
+	for word := firstWord; word <= lastWord; word++ {
+		mask := ^uint64(0)
+		if word == firstWord {
+			mask <<= uint(firstRegion & 63)
+		}
+		if word == lastWord && lastRegionExclusive&63 != 0 {
+			mask &= (uint64(1) << uint(lastRegionExclusive&63)) - 1
 		}
 
-		word := region >> 6
-		mask := uint64(1) << (region & 63)
-		if bd.writeCoverage[word]&mask == 0 {
-			bd.writeCoverage[word] |= mask
-			bd.coveredRegions++
-		}
+		newRegions := mask &^ bd.writeCoverage[word]
+		bd.writeCoverage[word] |= mask
+		bd.coveredRegions += bits.OnesCount64(newRegions)
 	}
 
 	return bd.coveredRegions == bd.writeRegionCount
@@ -187,6 +196,15 @@ func (bd *bufferDescriptor) markWriteCoverage(start, end int) bool {
 func (bd *bufferDescriptor) resetWriteCoverage() {
 	clear(bd.writeCoverage)
 	bd.coveredRegions = 0
+}
+
+// prepareForLocalWrite gives a new local block zero-filled contents without
+// clearing freshly allocated or already-zero buffers. The descriptor must be
+// exclusively owned and not visible through the buffer table.
+func (bd *bufferDescriptor) prepareForLocalWrite() {
+	if bd.hasData.Swap(false) {
+		clear(bd.buf)
+	}
 }
 
 func (bd *bufferDescriptor) String() string {
@@ -295,8 +313,9 @@ func (bd *bufferDescriptor) resetMetadata() {
 	bd.resetWriteCoverage()
 }
 
-// reset prepares a victim descriptor for immediate reassignment.
+// reset prepares a victim descriptor for immediate reassignment. Buffer bytes
+// are initialized lazily according to the next access type so committed-block
+// downloads do not pay for a redundant whole-buffer clear.
 func (bd *bufferDescriptor) reset() {
 	bd.resetMetadata()
-	clear(bd.buf)
 }

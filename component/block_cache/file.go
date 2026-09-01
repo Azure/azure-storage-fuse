@@ -534,6 +534,7 @@ func (f *file) write(bc *BlockCache, options *internal.WriteFileOptions) error {
 		blk.numWrites.Add(1)
 		bufDesc.dirty.Store(true)
 		n := copy(bufDesc.buf[offsetInsideBlock:bc.blockSize], options.Data[bufOffset:])
+		bufDesc.hasData.Store(true)
 		bufDesc.bytesWritten.Add(int32(n))
 		fullyCovered := bufDesc.markWriteCoverage(int(offsetInsideBlock), int(offsetInsideBlock)+n)
 

@@ -169,6 +169,7 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	for i := range bufDesc.buf {
 		bufDesc.buf[i] = 0xFF
 	}
+	bufDesc.hasData.Store(true)
 
 	// Reset
 	bufDesc.reset()
@@ -185,9 +186,15 @@ func TestBufferDescriptor_Reset(t *testing.T) {
 	assert.NoError(t, bufDesc.downloadErr)
 	assert.NoError(t, bufDesc.uploadErr)
 
-	// Verify buffer is zeroed
+	// Victim reset leaves bytes untouched so a subsequent download can overwrite
+	// them without paying for a redundant whole-buffer clear.
 	for i := range bufDesc.buf {
-		assert.Equal(t, byte(0), bufDesc.buf[i], "Buffer should be zeroed at index %d", i)
+		assert.Equal(t, byte(0xFF), bufDesc.buf[i], "Buffer should be cleared lazily at index %d", i)
+	}
+
+	bufDesc.prepareForLocalWrite()
+	for i := range bufDesc.buf {
+		assert.Equal(t, byte(0), bufDesc.buf[i], "Local block buffer should be zeroed at index %d", i)
 	}
 }
 

@@ -550,6 +550,7 @@ func Test_getOrCreateBufferDescriptor_PrefetchQueueFullRollsBackAllocation(t *te
 	bc.workerPool.destroy()
 	bc.workerPool = &workerPool{
 		tasks:         make(chan *task),
+		prefetchTasks: make(chan *task),
 		prefetchSlots: make(chan struct{}, 1),
 		bc:            bc,
 	}
