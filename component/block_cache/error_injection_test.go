@@ -498,54 +498,57 @@ func (s *ErrorInjectionTestSuite) TestWrite_PerFileWritebackLimitBlocksUntilUplo
 
 	h, err := s.blockCache.CreateFile(internal.CreateFileOptions{Name: "writeback_pressure.txt", Mode: 0777})
 	s.Require().NoError(err)
-	s.Equal(1, s.blockCache.writebackLimit)
+	writebackLimit := s.blockCache.writebackLimit
+	s.Require().Positive(writebackLimit)
 	blockSize := int(s.blockCache.blockSize)
 
 	gate := make(chan struct{})
 	var closeGate sync.Once
-	s.T().Cleanup(func() { closeGate.Do(func() { close(gate) }) })
-	started := make(chan struct{}, 2)
+	defer closeGate.Do(func() { close(gate) })
+	started := make(chan struct{}, writebackLimit+1)
 	s.mock.setStageDataControl(gate, started)
 
-	_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{
-		Handle: h,
-		Offset: 0,
-		Data:   bytes.Repeat([]byte("A"), blockSize),
-	})
-	s.Require().NoError(err)
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		s.FailNow("first asynchronous upload did not start")
+	for i := range writebackLimit {
+		_, err = s.blockCache.WriteFile(&internal.WriteFileOptions{
+			Handle: h,
+			Offset: int64(i * blockSize),
+			Data:   bytes.Repeat([]byte{byte('A' + i%26)}, blockSize),
+		})
+		s.Require().NoError(err)
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			s.FailNow("asynchronous upload did not start", "index=%d limit=%d", i, writebackLimit)
+		}
 	}
 
-	secondWrite := make(chan error, 1)
+	blockedWrite := make(chan error, 1)
 	go func() {
 		_, err := s.blockCache.WriteFile(&internal.WriteFileOptions{
 			Handle: h,
-			Offset: int64(blockSize),
-			Data:   bytes.Repeat([]byte("B"), blockSize),
+			Offset: int64(writebackLimit * blockSize),
+			Data:   bytes.Repeat([]byte("Z"), blockSize),
 		})
-		secondWrite <- err
+		blockedWrite <- err
 	}()
 
 	select {
-	case err := <-secondWrite:
-		s.FailNow("second write bypassed per-file writeback pressure", "err=%v", err)
+	case err := <-blockedWrite:
+		s.FailNow("write bypassed per-file writeback pressure", "limit=%d err=%v", writebackLimit, err)
 	case <-time.After(50 * time.Millisecond):
 	}
 
 	closeGate.Do(func() { close(gate) })
 	select {
-	case err := <-secondWrite:
+	case err := <-blockedWrite:
 		s.NoError(err)
 	case <-time.After(time.Second):
-		s.FailNow("second write did not resume after upload completion")
+		s.FailNow("blocked write did not resume after upload completion")
 	}
 	select {
 	case <-started:
 	case <-time.After(time.Second):
-		s.FailNow("second asynchronous upload did not start")
+		s.FailNow("resumed asynchronous upload did not start")
 	}
 
 	s.mock.setStageDataControl(nil, nil)

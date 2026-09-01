@@ -311,6 +311,24 @@ block_cache:
 	assert.Equal(t, uint32(expectedWorkers), bc.workers)
 }
 
+func TestBlockCacheConfigure_DefaultPrefetch(t *testing.T) {
+	config.ResetConfig()
+	t.Cleanup(config.ResetConfig)
+
+	expectedPrefetch := max((minPrefetch*2)+1, defaultPrefetchPerCPU*runtime.NumCPU())
+	cfg := fmt.Sprintf(`
+block_cache:
+  block-size-mb: 1
+  mem-size-mb: %d
+  parallelism: %d
+`, expectedPrefetch*2, expectedPrefetch+1)
+	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
+
+	bc := NewBlockCacheComponent().(*BlockCache)
+	assert.NoError(t, bc.Configure(true))
+	assert.Equal(t, uint32(expectedPrefetch), bc.prefetch)
+}
+
 func TestBlockCacheStart_RejectsNoWorkers(t *testing.T) {
 	bc := &BlockCache{
 		blockSize: common.MbToBytes,
@@ -340,6 +358,18 @@ func TestWorkerPool_PrefetchAdmission(t *testing.T) {
 	second.release()
 }
 
+func TestWorkerPool_PrefetchUsesDedicatedQueue(t *testing.T) {
+	wp := &workerPool{
+		tasks:         make(chan *task, 1),
+		prefetchTasks: make(chan *task, 1),
+	}
+	task := &task{}
+
+	assert.True(t, wp.tryQueuePrefetch(task))
+	assert.Empty(t, wp.tasks)
+	assert.Same(t, task, <-wp.prefetchTasks)
+}
+
 func TestBlockCacheConfigure_PrefetchTaskLimit(t *testing.T) {
 	tests := []struct {
 		workers  uint32
@@ -347,9 +377,9 @@ func TestBlockCacheConfigure_PrefetchTaskLimit(t *testing.T) {
 		want     int
 	}{
 		{workers: 1, prefetch: 32, want: 1},
-		{workers: 4, prefetch: 32, want: 2},
-		{workers: 16, prefetch: 32, want: 8},
-		{workers: 64, prefetch: 64, want: 32},
+		{workers: 4, prefetch: 32, want: 3},
+		{workers: 16, prefetch: 32, want: 11},
+		{workers: 64, prefetch: 64, want: 43},
 		{workers: 16, prefetch: 2, want: 2},
 	}
 
@@ -379,9 +409,9 @@ func TestBlockCache_WritebackLimit(t *testing.T) {
 	}{
 		{memoryMB: 4, workers: 2, want: 1},
 		{memoryMB: 20, workers: 10, want: 2},
-		{memoryMB: 64, workers: 16, want: 4},
+		{memoryMB: 64, workers: 16, want: 8},
 		{memoryMB: 128, workers: 64, want: 16},
-		{memoryMB: 1024, workers: 288, want: 64},
+		{memoryMB: 4096, workers: 288, want: 192},
 	}
 
 	for _, test := range tests {

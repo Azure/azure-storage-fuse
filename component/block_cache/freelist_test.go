@@ -34,6 +34,7 @@
 package block_cache
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -173,7 +174,7 @@ func TestFreeList_ReleaseBuffer(t *testing.T) {
 	assert.True(t, isBack, "Released buffer should be back in the free list")
 }
 
-func TestFreeList_AllocateClearsReleasedBuffer(t *testing.T) {
+func TestFreeList_LocalWriteClearsReleasedBufferLazily(t *testing.T) {
 	bc = &BlockCache{blockSize: 1024}
 	setupTestFreeList(t, bc.blockSize, bc.blockSize)
 	defer destroyFreeList()
@@ -183,11 +184,15 @@ func TestFreeList_AllocateClearsReleasedBuffer(t *testing.T) {
 	for i := range first.buf {
 		first.buf[i] = 0xff
 	}
+	first.hasData.Store(true)
 	freeList.releaseBuffer(first)
 
 	second, err := freeList.allocateBuffer(createBlock(0, "second", localBlock, createFile("second.txt")))
 	assert.NoError(t, err)
 	assert.Equal(t, first, second)
+	assert.Equal(t, bytes.Repeat([]byte{0xff}, len(second.buf)), second.buf)
+
+	second.prepareForLocalWrite()
 	assert.Equal(t, make([]byte, len(second.buf)), second.buf)
 }
 
@@ -347,6 +352,22 @@ func TestFreeList_AvailabilityNotificationBeforeWait(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("availability notification was lost before wait")
 	}
+	freeList.stopWatchingAvailability()
+}
+
+func TestFreeList_NoNotificationWithoutWaiter(t *testing.T) {
+	fl, err := createFreeList(1024, 1024)
+	assert.NoError(t, err)
+	defer fl.destroy()
+
+	changed := fl.changed
+	fl.notifyAvailability()
+	assert.Equal(t, changed, fl.changed, "idle releases must not allocate a replacement channel")
+	select {
+	case <-changed:
+		t.Fatal("idle release unexpectedly signaled availability")
+	default:
+	}
 }
 
 func TestFreeList_DestroyWakesAvailabilityWaiter(t *testing.T) {
@@ -362,6 +383,7 @@ func TestFreeList_DestroyWakesAvailabilityWaiter(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("availability waiter did not wake during buffer-pool shutdown")
 	}
+	fl.stopWatchingAvailability()
 	_, err = fl.watchAvailability()
 	assert.ErrorIs(t, err, errFreeListClosed)
 	_, err = fl.allocateBuffer(createBlock(0, "closed", localBlock, createFile("closed.txt")))

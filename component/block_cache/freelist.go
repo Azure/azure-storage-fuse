@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 )
 
 // errFreeListFull indicates that all buffers are currently in use.
@@ -112,6 +113,7 @@ type freeListType struct {
 	bufDescriptors  []*bufferDescriptor // Array of all buffer descriptors
 	mutex           sync.Mutex          // Protects free list state
 	changed         chan struct{}       // Closed and replaced whenever descriptor availability changes
+	waiters         atomic.Int32        // Foreground allocators waiting for descriptor availability
 	closed          bool                // Stops allocation waits during shutdown
 }
 
@@ -132,7 +134,7 @@ type freeListType struct {
 //
 // Memory Calculation:
 //
-// Configure resolves memSize before creating the pool. By default it uses 50%
+// Configure resolves memSize before creating the pool. By default it uses 60%
 // of available memory and rounds down to a whole number of buffers.
 //
 // Why maxBuffers can be large:
@@ -250,9 +252,6 @@ func (fl *freeListType) allocateBuffer(blk *block) (*bufferDescriptor, error) {
 	}
 	fl.mutex.Unlock()
 
-	// Clearing on allocation keeps released descriptors immediately available
-	// without exposing data from their previous block to sparse/local writes.
-	clear(bufDesc.buf)
 	bufDesc.nxtFreeBuffer = -1
 	bufDesc.block = blk
 
@@ -279,13 +278,16 @@ func (fl *freeListType) releaseBuffer(bufDesc *bufferDescriptor) {
 }
 
 func (fl *freeListType) notifyAvailability() {
+	if fl.waiters.Load() == 0 {
+		return
+	}
 	fl.mutex.Lock()
 	fl.notifyAvailabilityLocked()
 	fl.mutex.Unlock()
 }
 
 func (fl *freeListType) notifyAvailabilityLocked() {
-	if fl.closed {
+	if fl.closed || fl.waiters.Load() == 0 {
 		return
 	}
 	close(fl.changed)
@@ -298,7 +300,14 @@ func (fl *freeListType) watchAvailability() (<-chan struct{}, error) {
 	if fl.closed {
 		return nil, errFreeListClosed
 	}
+	fl.waiters.Add(1)
 	return fl.changed, nil
+}
+
+func (fl *freeListType) stopWatchingAvailability() {
+	if fl.waiters.Add(-1) < 0 {
+		panic("block cache availability waiter count is negative")
+	}
 }
 
 // evictBuffer finds, detaches, and resets a buffer suitable for reuse.
@@ -345,13 +354,9 @@ func (fl *freeListType) evictBuffer(workerPool *workerPool, btm *bufferTableMgr,
 	}
 	numTries := 0
 
-	for {
-		if numTries >= maxTries {
-			// A bounded scan fully ages any unpinned descriptor. Reaching this
-			// limit means every descriptor remained pinned or changed concurrently.
-			break
-		}
-
+	// A bounded scan fully ages any unpinned descriptor. Reaching the limit
+	// means every descriptor remained pinned or changed concurrently.
+	for numTries < maxTries {
 		fl.mutex.Lock()
 		bufDesc := fl.bufDescriptors[fl.nxtVictimBuffer]
 		fl.nxtVictimBuffer = (fl.nxtVictimBuffer + 1) % maxBuffers

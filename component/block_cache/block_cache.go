@@ -208,7 +208,7 @@ type BlockCacheOptions struct {
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 
 	// MemSize is the total memory allocated for the buffer pool in megabytes.
-	// If not specified, 50% of available memory is used.
+	// If not specified, 60% of available memory is used.
 	MemSize uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 
 	// TmpPath is the directory path for disk-based caching (currently unused).
@@ -248,9 +248,10 @@ const (
 	defaultTimeout        = 120           // Default disk cache timeout in seconds
 	defaultBlockSize      = 16            // Default block size in megabytes
 	minPrefetch           = 5             // Minimum number of blocks for prefetch
+	defaultPrefetchPerCPU = 2             // Match the established main-branch sequential read-ahead depth
 	maxBlocks             = 50000         // Maximum number of blocks per file (limits file size)
-	defaultMemoryPercent  = 50            // Available memory used when mem-size-mb is omitted
-	maxFileWritebackTasks = 64            // Maximum asynchronous full-block uploads per file
+	defaultMemoryPercent  = 60            // Available memory used when mem-size-mb is omitted
+	maxFileWritebackTasks = 256           // Maximum asynchronous full-block uploads per file
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -429,7 +430,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	if prefetchConfigured {
 		bc.prefetch = conf.PrefetchCount
 	} else {
-		bc.prefetch = uint32(max((minPrefetch*2)+1, runtime.NumCPU()))
+		bc.prefetch = uint32(max((minPrefetch*2)+1, defaultPrefetchPerCPU*runtime.NumCPU()))
 	}
 	maxPrefetch := bufferCount / 2
 	if uint64(bc.prefetch) > maxPrefetch {
@@ -458,11 +459,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 		bc.workers = uint32(maxWorkers)
 	}
-	workerWritebackLimit := (uint64(bc.workers) + 3) / 4
+	// Keep one third of the workers available for foreground and mixed I/O while
+	// allowing a sequential stream enough in-flight requests to saturate storage.
+	workerWritebackLimit := (uint64(bc.workers)*2 + 2) / 3
 	poolWritebackLimit := bufferCount / 8
 	bc.writebackLimit = int(max(uint64(1), min(uint64(maxFileWritebackTasks), workerWritebackLimit, poolWritebackLimit)))
 	if bc.prefetch > 0 {
-		workerPrefetchLimit := max(1, int(bc.workers)/2)
+		workerPrefetchLimit := max(1, (int(bc.workers)*2+2)/3)
 		bc.prefetchTaskLimit = min(int(bc.prefetch), workerPrefetchLimit)
 	} else {
 		bc.prefetchTaskLimit = 0
@@ -630,12 +633,11 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 }
 
 func (bc *BlockCache) openFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	attr, err := bc.GetAttr(internal.GetAttrOptions{Name: options.Name})
-	if err != nil {
-		return nil, fmt.Errorf("get attributes: %w", err)
-	}
-
-	handle := createFreshHandleForFile(options.Name, attr.Size, attr.Mtime)
+	// Join the shared file generation before retrieving attributes. This keeps a
+	// concurrent last-handle release from removing the file between GetAttr and
+	// handle registration, which could initialize a new generation with stale
+	// size information.
+	handle := createFreshHandleForFile(options.Name, 0, time.Time{})
 
 	// Get file object from the map or create a new one for this path.
 	f, _, err := getFileFromPath(bc, handle)
@@ -645,6 +647,14 @@ func (bc *BlockCache) openFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	attr, err := bc.GetAttr(internal.GetAttrOptions{Name: options.Name})
+	if err != nil {
+		deleteOpenHandleForFile(bc, handle, f, false /* takeFileLock */)
+		return nil, fmt.Errorf("get attributes: %w", err)
+	}
+	handle.Size = attr.Size
+	handle.Mtime = attr.Mtime
 
 	handle.IFObj = &blockCacheHandle{
 		file:            f,
@@ -747,6 +757,15 @@ func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, 
 		return 0, syscall.EBADF
 	}
 
+	// Start speculative downloads before waiting for the demand block. Dedicated
+	// admission and queueing keep foreground capacity available while removing
+	// the first-read pipeline bubble for sequential workloads.
+	fileSize := bcHandle.file.size.Load()
+	if options.Offset >= 0 && options.Offset < fileSize && len(options.Data) > 0 {
+		readAheadLength := min(int64(len(options.Data)), fileSize-options.Offset)
+		bcHandle.file.scheduleReadAhead(bc, bcHandle.patternDetector, options.Offset, int(readAheadLength))
+	}
+
 	n, err := bcHandle.file.read(bc, options)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
@@ -755,9 +774,6 @@ func (bc *BlockCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, 
 		}
 		return n, err
 	}
-
-	// Pattern detection is per handle because separate opens can have unrelated access patterns.
-	bcHandle.file.scheduleReadAhead(bc, bcHandle.patternDetector, options.Offset, n)
 
 	return n, nil
 }
