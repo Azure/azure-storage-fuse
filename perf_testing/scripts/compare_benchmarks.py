@@ -85,6 +85,13 @@ def compare_summaries(
     primary_threshold: float,
     latency_threshold: float,
 ) -> dict[str, Any]:
+    baseline_suite = str(baseline["run"]["suite"])
+    candidate_suite = str(candidate["run"]["suite"])
+    if baseline_suite != candidate_suite:
+        raise ValueError(
+            f"Cannot compare baseline suite {baseline_suite!r} with "
+            f"candidate suite {candidate_suite!r}"
+        )
     baseline_benchmarks = {item["id"]: item for item in baseline["benchmarks"]}
     candidate_benchmarks = {item["id"]: item for item in candidate["benchmarks"]}
     shared_ids = sorted(set(baseline_benchmarks) & set(candidate_benchmarks))
@@ -92,6 +99,7 @@ def compare_summaries(
         raise ValueError("Baseline and candidate have no benchmarks in common")
 
     results = []
+    suite = baseline_suite
     for benchmark_id in shared_ids:
         baseline_benchmark = baseline_benchmarks[benchmark_id]
         candidate_benchmark = candidate_benchmarks[benchmark_id]
@@ -128,6 +136,7 @@ def compare_summaries(
         results.append(
             {
                 "id": benchmark_id,
+                "suite": suite,
                 "name": baseline_benchmark["name"],
                 "primary_metric": primary_metric,
                 "status": status,
@@ -141,6 +150,7 @@ def compare_summaries(
         "schema_version": 1,
         "generated_at": utc_now(),
         "overall_status": overall,
+        "suites": [suite],
         "baseline": baseline["run"],
         "candidate": candidate["run"],
         "environment": {
@@ -153,6 +163,73 @@ def compare_summaries(
             "noise_multiplier": 3,
         },
         "benchmarks": results,
+    }
+
+
+def revision_key(run: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(
+        str(run.get(field, "unknown"))
+        for field in (
+            "id",
+            "label",
+            "ref",
+            "commit",
+            "architecture",
+            "account_type",
+            "cache_mode",
+            "compute_profile",
+            "trials",
+        )
+    )
+
+
+def combine_comparisons(comparisons: list[dict[str, Any]]) -> dict[str, Any]:
+    if not comparisons:
+        raise ValueError("No benchmark comparisons were provided")
+
+    first = comparisons[0]
+    baseline_key = revision_key(first["baseline"])
+    candidate_key = revision_key(first["candidate"])
+    suites = []
+    benchmarks = []
+    seen_suites = set()
+    seen_benchmarks = set()
+    for comparison in comparisons:
+        if revision_key(comparison["baseline"]) != baseline_key:
+            raise ValueError("Baseline suite summaries describe different revisions or dimensions")
+        if revision_key(comparison["candidate"]) != candidate_key:
+            raise ValueError("Candidate suite summaries describe different revisions or dimensions")
+        if comparison["thresholds"] != first["thresholds"]:
+            raise ValueError("Suite comparisons use different thresholds")
+
+        suite = str(comparison["baseline"]["suite"])
+        if suite in seen_suites:
+            raise ValueError(f"Duplicate suite comparison: {suite}")
+        seen_suites.add(suite)
+        suites.append(suite)
+        for benchmark in comparison["benchmarks"]:
+            benchmark_key = (suite, benchmark["id"])
+            if benchmark_key in seen_benchmarks:
+                raise ValueError(f"Duplicate benchmark comparison: {suite}/{benchmark['id']}")
+            seen_benchmarks.add(benchmark_key)
+            benchmarks.append({**benchmark, "suite": suite})
+
+    baseline = {**first["baseline"], "suite": "+".join(suites)}
+    candidate = {**first["candidate"], "suite": "+".join(suites)}
+    return {
+        "schema_version": 1,
+        "generated_at": utc_now(),
+        "overall_status": (
+            "regression"
+            if any(item["status"] == "regression" for item in benchmarks)
+            else "pass"
+        ),
+        "suites": suites,
+        "baseline": baseline,
+        "candidate": candidate,
+        "environment": first["environment"],
+        "thresholds": first["thresholds"],
+        "benchmarks": benchmarks,
     }
 
 
@@ -185,6 +262,7 @@ def comparison_rows(comparison: dict[str, Any]) -> str:
         rows.append(
             f"""
             <tr>
+              <td><span class="suite">{html.escape(str(benchmark.get('suite', 'unknown')))}</span></td>
               <td><strong>{html.escape(benchmark['name'])}</strong><small>{html.escape(parameter_text)}</small></td>
               <td>{html.escape(format_value(primary['baseline'], primary_name))}</td>
               <td>{html.escape(format_value(primary['candidate'], primary_name))}</td>
@@ -237,6 +315,7 @@ def render_html(comparison: dict[str, Any]) -> str:
     .delta-bar {{ display:block; height:4px; width:100px; margin-top:7px; background:#e8edf1; }}
     .delta-bar span {{ display:block; height:100%; }} .delta-bar .positive {{ background:var(--green); }} .delta-bar .negative {{ background:var(--red); }}
     .status {{ display:inline-block; padding:4px 8px; border-radius:3px; font-size:12px; font-weight:600; text-transform:uppercase; }}
+    .suite {{ display:inline-block; color:var(--blue); font-family:'IBM Plex Mono',monospace; font-size:12px; text-transform:uppercase; }}
     .status.stable {{ color:var(--blue); background:#e6f2fa; }} .status.improvement {{ color:var(--green); background:#e7f4ec; }}
     .status.regression {{ color:var(--red); background:#feeceb; }} .status.noisy {{ color:var(--amber); background:#fff4ce; }}
     footer {{ margin-top:18px; color:var(--muted); font-size:13px; }}
@@ -254,7 +333,7 @@ def render_html(comparison: dict[str, Any]) -> str:
     <div class="ref"><span>Candidate</span><code>{html.escape(candidate['ref'])} · {html.escape(candidate['commit'][:12])}</code></div>
   </section>
   <div class="table-wrap"><table>
-    <thead><tr><th>Workload</th><th>Baseline</th><th>Candidate</th><th>Change</th><th>Assessment</th></tr></thead>
+        <thead><tr><th>Suite</th><th>Workload</th><th>Baseline</th><th>Candidate</th><th>Change</th><th>Assessment</th></tr></thead>
     <tbody>{comparison_rows(comparison)}</tbody>
   </table></div>
   <footer>Thresholds expand to three times observed median absolute deviation when trial noise exceeds the configured limit. Review raw FIO artifacts for any noisy result.</footer>
@@ -266,7 +345,7 @@ def render_html(comparison: dict[str, Any]) -> str:
 
 def render_markdown(comparison: dict[str, Any]) -> str:
     chart_labels = [
-        benchmark["name"].replace('"', "'")[:28]
+        f"{benchmark.get('suite', 'unknown')}: {benchmark['name']}".replace('"', "'")[:28]
         for benchmark in comparison["benchmarks"]
     ]
     candidate_percentages = [
@@ -301,8 +380,8 @@ def render_markdown(comparison: dict[str, Any]) -> str:
         f"    bar [{', '.join(str(value) for value in candidate_percentages)}]",
         "```",
         "",
-        "| Workload | Baseline | Candidate | Change | Status |",
-        "| --- | ---: | ---: | ---: | --- |",
+        "| Suite | Workload | Baseline | Candidate | Change | Status |",
+        "| --- | --- | ---: | ---: | ---: | --- |",
     ]
     for benchmark in comparison["benchmarks"]:
         metric_name = benchmark["primary_metric"]
@@ -314,7 +393,8 @@ def render_markdown(comparison: dict[str, Any]) -> str:
         )
         status = benchmark["status"] if not secondary else f"{benchmark['status']}; {secondary}"
         lines.append(
-            f"| {benchmark['name']} | {format_value(metric['baseline'], metric_name)} | "
+            f"| {benchmark.get('suite', 'unknown')} | {benchmark['name']} | "
+            f"{format_value(metric['baseline'], metric_name)} | "
             f"{format_value(metric['candidate'], metric_name)} | {metric['delta_percent']:+.1f}% | "
             f"{status} |"
         )
@@ -330,9 +410,9 @@ def render_markdown(comparison: dict[str, Any]) -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compare two Blobfuse2 benchmark summaries")
-    parser.add_argument("--baseline", type=Path, required=True)
-    parser.add_argument("--candidate", type=Path, required=True)
+    parser = argparse.ArgumentParser(description="Compare Blobfuse2 benchmark summary pairs")
+    parser.add_argument("--baseline", type=Path, action="append", required=True)
+    parser.add_argument("--candidate", type=Path, action="append", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--primary-threshold", type=float, default=10.0)
     parser.add_argument("--latency-threshold", type=float, default=20.0)
@@ -342,12 +422,18 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        comparison = compare_summaries(
-            load_summary(args.baseline),
-            load_summary(args.candidate),
-            args.primary_threshold,
-            args.latency_threshold,
-        )
+        if len(args.baseline) != len(args.candidate):
+            raise ValueError("Each --baseline summary requires one --candidate summary")
+        comparisons = [
+            compare_summaries(
+                load_summary(baseline),
+                load_summary(candidate),
+                args.primary_threshold,
+                args.latency_threshold,
+            )
+            for baseline, candidate in zip(args.baseline, args.candidate)
+        ]
+        comparison = combine_comparisons(comparisons)
         args.output_dir.mkdir(parents=True, exist_ok=True)
         (args.output_dir / "comparison.json").write_text(
             json.dumps(comparison, indent=2) + "\n", encoding="utf-8"

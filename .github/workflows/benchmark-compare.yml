@@ -64,7 +64,7 @@ jobs:
   compare:
     name: ${{ inputs.target_ref }} vs ${{ inputs.baseline_ref }}
     runs-on: [self-hosted, "1ES.Pool=blobfuse2-benchmark"]
-    timeout-minutes: 240
+    timeout-minutes: 480
     environment: performance-benchmark-compare
     env:
       BASELINE_REF_INPUT: ${{ inputs.baseline_ref }}
@@ -161,7 +161,7 @@ jobs:
           echo "PERF_CONFIG=${RUNNER_TEMP}/blobfuse-${suffix}.yaml" >> "$GITHUB_ENV"
           sudo -n mkdir -p /mnt/localssd
           sudo -n chmod 0777 /mnt/localssd
-          minimum_free_bytes=$((200 * 1024 * 1024 * 1024))
+          minimum_free_bytes=$((1024 * 1024 * 1024 * 1024))
           cache_root=""
           for candidate in /mnt/localssd /mnt/azure_nvme_temp /mnt/resource; do
             [[ -d "$candidate" ]] || continue
@@ -174,7 +174,7 @@ jobs:
             fi
           done
           if [[ "$CACHE_MODE_INPUT" == "file_cache" && -z "$cache_root" ]]; then
-            echo "File-cache comparison requires a non-root local filesystem with at least 200 GiB free" >&2
+            echo "File-cache comparison requires a non-root local filesystem with at least 1 TiB free" >&2
             exit 1
           fi
           cache_root="${cache_root:-/mnt/localssd}"
@@ -209,25 +209,28 @@ jobs:
             exit 1
           fi
 
-      - name: Run baseline and candidate on the same host
+      - name: Run quick and public suites on the same host
         working-directory: benchmark-harness
         run: |
           set -euo pipefail
-          python3 perf_testing/scripts/run_benchmark.py \
-            --binary "$RUNNER_TEMP/blobfuse2-baseline" \
-            --config "$PERF_CONFIG" \
-            --suite quick \
-            --mount-dir "${PERF_MOUNT_PREFIX}-fixture-setup" \
-            --cache-dir "$PERF_ROOT/cache-fixture-setup" \
-            --output-dir "$PERF_ROOT/results/fixture-setup" \
-            --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            --label fixture-setup \
-            --commit "$BASELINE_SHA" \
-            --ref "$BASELINE_REF_INPUT" \
-            --architecture X86 \
-            --account-type "$ACCOUNT_TYPE_INPUT" \
-            --cache-mode "$CACHE_MODE_INPUT" \
-            --prepare-only
+          suites=(quick public)
+          for suite in "${suites[@]}"; do
+            python3 perf_testing/scripts/run_benchmark.py \
+              --binary "$RUNNER_TEMP/blobfuse2-baseline" \
+              --config "$PERF_CONFIG" \
+              --suite "$suite" \
+              --mount-dir "${PERF_MOUNT_PREFIX}-fixture-setup" \
+              --cache-dir "$PERF_ROOT/cache" \
+              --output-dir "$PERF_ROOT/results/fixture-setup/${suite}" \
+              --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --label fixture-setup \
+              --commit "$BASELINE_SHA" \
+              --ref "$BASELINE_REF_INPUT" \
+              --architecture X86 \
+              --account-type "$ACCOUNT_TYPE_INPUT" \
+              --cache-mode "$CACHE_MODE_INPUT" \
+              --prepare-only
+          done
           if (( GITHUB_RUN_ID % 2 == 0 )); then
             order=(baseline candidate)
           else
@@ -243,21 +246,23 @@ jobs:
               commit="$CANDIDATE_SHA"
               ref="$TARGET_REF_INPUT"
             fi
-            python3 perf_testing/scripts/run_benchmark.py \
-              --binary "$binary" \
-              --config "$PERF_CONFIG" \
-              --suite quick \
-              --mount-dir "${PERF_MOUNT_PREFIX}-${label}" \
-              --cache-dir "$PERF_ROOT/cache-${label}" \
-              --output-dir "$PERF_ROOT/results/${label}" \
-              --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-              --label "$label" \
-              --commit "$commit" \
-              --ref "$ref" \
-              --architecture X86 \
-              --account-type "$ACCOUNT_TYPE_INPUT" \
-              --cache-mode "$CACHE_MODE_INPUT" \
-              --trials "$TRIALS_INPUT"
+            for suite in "${suites[@]}"; do
+              python3 perf_testing/scripts/run_benchmark.py \
+                --binary "$binary" \
+                --config "$PERF_CONFIG" \
+                --suite "$suite" \
+                --mount-dir "${PERF_MOUNT_PREFIX}-${label}" \
+                --cache-dir "$PERF_ROOT/cache" \
+                --output-dir "$PERF_ROOT/results/${label}/${suite}" \
+                --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                --label "$label" \
+                --commit "$commit" \
+                --ref "$ref" \
+                --architecture X86 \
+                --account-type "$ACCOUNT_TYPE_INPUT" \
+                --cache-mode "$CACHE_MODE_INPUT" \
+                --trials "$TRIALS_INPUT"
+            done
           done
 
       - name: Generate graphical comparison
@@ -265,8 +270,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 perf_testing/scripts/compare_benchmarks.py \
-            --baseline "$PERF_ROOT/results/baseline/summary.json" \
-            --candidate "$PERF_ROOT/results/candidate/summary.json" \
+            --baseline "$PERF_ROOT/results/baseline/quick/summary.json" \
+            --candidate "$PERF_ROOT/results/candidate/quick/summary.json" \
+            --baseline "$PERF_ROOT/results/baseline/public/summary.json" \
+            --candidate "$PERF_ROOT/results/candidate/public/summary.json" \
             --output-dir "$PERF_ROOT/report" \
             --primary-threshold "$PRIMARY_THRESHOLD_INPUT" \
             --latency-threshold "$LATENCY_THRESHOLD_INPUT"
@@ -316,6 +323,7 @@ jobs:
           candidate_sha=${candidate_sha}
           account_type=${ACCOUNT_TYPE_INPUT}
           cache_mode=${CACHE_MODE_INPUT}
+          suites=quick,public
           trials=${TRIALS_INPUT}
           comparison_status=${comparison_status}
           created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)

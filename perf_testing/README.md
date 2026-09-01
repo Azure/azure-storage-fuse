@@ -437,10 +437,11 @@ The workflow:
 
 1. Checks out the stable harness from `main`.
 2. Builds baseline and candidate directly with `go build`.
-3. Runs the representative `quick` suite for both binaries on the same X86 host and storage account.
-4. Alternates baseline-first and candidate-first ordering between workflow runs.
-5. Writes a comparison table to the job summary.
-6. Stores one private ZIP containing `comparison.html`, compact JSON, summaries, raw FIO output, Blobfuse logs, metadata, and a redacted mount config.
+3. Prepares the `quick` and `public` fixture sets once with the baseline binary.
+4. Runs both suites for both binaries on the same X86 host, storage account, and selected cache mode.
+5. Alternates baseline-first and candidate-first ordering between workflow runs.
+6. Writes one suite-labeled comparison table containing six quick workloads and four public workloads to the job summary.
+7. Stores one private ZIP containing the combined `comparison.html`, compact JSON, all four suite summaries, raw FIO output, Blobfuse logs, metadata, and a redacted mount config.
 
 Comparison ZIPs use this layout:
 
@@ -449,6 +450,8 @@ results/benchmark-comparisons/run-<run-id>-attempt-<attempt>/blobfuse2-compare-X
 ```
 
 The comparison defaults to a 10% throughput, IOPS, or operation-rate threshold and a 20% p99-latency threshold when available. A metric's effective threshold expands to three times the observed median absolute deviation to avoid classifying noisy samples as regressions. Enable `fail_on_regression` when the workflow should act as a gate.
+
+The public workload comparison uses the selected comparison cache mode; it does not publish branch results to GitHub Pages. With the default five trials, its four 320 GiB cases move approximately 6.4 TiB per revision, or 12.8 TiB across baseline and candidate, in addition to the quick suite. Use one trial for an initial workflow smoke test. File-cache comparison requires at least 1 TiB free on a dedicated non-root local filesystem because initial public fixture preparation can cache up to 640 GiB.
 
 Candidate binaries receive benchmark account credentials. Create the `performance-benchmark-compare` GitHub environment, configure required reviewers on it, and approve only trusted revisions. Scheduled `main` benchmarks do not use this environment, so they remain unattended.
 

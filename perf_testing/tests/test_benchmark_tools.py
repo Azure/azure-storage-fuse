@@ -353,6 +353,35 @@ class WorkflowShapeTests(unittest.TestCase):
             comparison_workflow,
         )
 
+    def test_comparison_runs_quick_and_public_suites(self):
+        comparison_workflow = (
+            REPO_ROOT / ".github/workflows/benchmark-compare.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("timeout-minutes: 480", comparison_workflow)
+        self.assertIn("suites=(quick public)", comparison_workflow)
+        self.assertEqual(comparison_workflow.count('--suite "$suite"'), 2)
+        self.assertIn(
+            '--output-dir "$PERF_ROOT/results/fixture-setup/${suite}"',
+            comparison_workflow,
+        )
+        self.assertIn(
+            '--output-dir "$PERF_ROOT/results/${label}/${suite}"',
+            comparison_workflow,
+        )
+        self.assertEqual(comparison_workflow.count('--cache-dir "$PERF_ROOT/cache"'), 2)
+        self.assertNotIn('--cache-dir "$PERF_ROOT/cache-${label}"', comparison_workflow)
+        self.assertIn(
+            '--baseline "$PERF_ROOT/results/baseline/quick/summary.json"',
+            comparison_workflow,
+        )
+        self.assertIn(
+            '--candidate "$PERF_ROOT/results/candidate/public/summary.json"',
+            comparison_workflow,
+        )
+        self.assertIn("1024 * 1024 * 1024 * 1024", comparison_workflow)
+        self.assertIn("suites=quick,public", comparison_workflow)
+
     def test_profile_results_are_isolated_below_architecture_artifacts(self):
         action = (REPO_ROOT / ".github/actions/perftesting/action.yml").read_text(encoding="utf-8")
         comparison_workflow = (
@@ -793,6 +822,81 @@ class FioResultTests(unittest.TestCase):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_cli_combines_repeated_summary_pairs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            arguments = ["compare_benchmarks.py"]
+            for suite, benchmark_id, candidate_value in (
+                ("quick", "quick-read", 980.0),
+                ("public", "public-read", 850.0),
+            ):
+                baseline = make_summary(suite=suite, value=1000.0)
+                candidate = make_summary(suite=suite, value=candidate_value)
+                baseline["benchmarks"][0]["id"] = benchmark_id
+                candidate["benchmarks"][0]["id"] = benchmark_id
+                baseline_path = root / f"baseline-{suite}.json"
+                candidate_path = root / f"candidate-{suite}.json"
+                baseline_path.write_text(json.dumps(baseline))
+                candidate_path.write_text(json.dumps(candidate))
+                arguments.extend(
+                    [
+                        "--baseline",
+                        str(baseline_path),
+                        "--candidate",
+                        str(candidate_path),
+                    ]
+                )
+            output_dir = root / "report"
+            arguments.extend(["--output-dir", str(output_dir)])
+
+            with mock.patch.object(comparator.sys, "argv", arguments):
+                status = comparator.main()
+
+            comparison = json.loads((output_dir / "comparison.json").read_text())
+            self.assertEqual(status, 0)
+            self.assertEqual(comparison["suites"], ["quick", "public"])
+            self.assertEqual(comparison["overall_status"], "regression")
+            self.assertTrue((output_dir / "comparison.html").is_file())
+            self.assertTrue((output_dir / "summary.md").is_file())
+
+    def test_quick_and_public_comparisons_are_combined(self):
+        comparisons = []
+        for suite, benchmark_id, baseline_value, candidate_value in (
+            ("quick", "quick-read", 1000.0, 980.0),
+            ("public", "public-read", 1000.0, 850.0),
+        ):
+            baseline = make_summary(suite=suite, value=baseline_value)
+            candidate = make_summary(suite=suite, value=candidate_value)
+            baseline["benchmarks"][0]["id"] = benchmark_id
+            candidate["benchmarks"][0]["id"] = benchmark_id
+            comparisons.append(
+                comparator.compare_summaries(baseline, candidate, 10.0, 20.0)
+            )
+
+        combined = comparator.combine_comparisons(comparisons)
+
+        self.assertEqual(combined["suites"], ["quick", "public"])
+        self.assertEqual(combined["baseline"]["suite"], "quick+public")
+        self.assertEqual(combined["overall_status"], "regression")
+        self.assertEqual(
+            [(item["suite"], item["id"]) for item in combined["benchmarks"]],
+            [("quick", "quick-read"), ("public", "public-read")],
+        )
+        self.assertIn("| public |", comparator.render_markdown(combined))
+        self.assertIn('<span class="suite">public</span>', comparator.render_html(combined))
+
+    def test_comparison_rejects_mismatched_suites(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "Cannot compare baseline suite 'quick' with candidate suite 'public'",
+        ):
+            comparator.compare_summaries(
+                make_summary(suite="quick"),
+                make_summary(suite="public"),
+                10.0,
+                20.0,
+            )
+
     def test_metadata_operation_rate_regression_uses_ops_per_second(self):
         baseline = make_summary(value=1000.0)
         candidate = make_summary(value=1000.0)
