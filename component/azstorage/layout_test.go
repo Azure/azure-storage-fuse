@@ -289,13 +289,12 @@ func (s *layoutTestSuite) TestGetAttrWithLayoutEnabled() {
 	s.assert.NotNil(attr.Layout, "Layout should be populated when blob-layout-aware-routing is enabled")
 }
 
-// TestGetAttrWithLayoutDisabled verifies that when blob-layout-aware-routing is false
-// (the default), GetAttr returns an ObjAttr whose Layout field is nil.
+// TestGetAttrWithLayoutDisabled verifies that explicitly disabling
+// blob-layout-aware-routing makes GetAttr return an ObjAttr whose Layout field is nil.
 func (s *layoutTestSuite) TestGetAttrWithLayoutDisabled() {
 	defer s.cleanupTest()
 
-	// Reconfigure without blob-layout-aware-routing.
-	defaultCfg := fmt.Sprintf(
+	disabledCfg := fmt.Sprintf(
 		"azstorage:\n"+
 			"  account-name: %s\n"+
 			"  endpoint: https://%s.blob.preprod.core.windows.net/\n"+
@@ -303,13 +302,14 @@ func (s *layoutTestSuite) TestGetAttrWithLayoutDisabled() {
 			"  account-key: %s\n"+
 			"  mode: key\n"+
 			"  container: %s\n"+
-			"  fail-unsupported-op: true",
+			"  fail-unsupported-op: true\n"+
+			"  blob-layout-aware-routing: false",
 		storageTestConfigurationParameters.BlockAccount,
 		storageTestConfigurationParameters.BlockAccount,
 		storageTestConfigurationParameters.BlockKey,
 		s.container,
 	)
-	s.setupTestHelper(defaultCfg, s.container, false)
+	s.setupTestHelper(disabledCfg, s.container, false)
 
 	name := s.uploadTestBlob("no layout routing test content")
 

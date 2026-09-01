@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -52,7 +53,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -98,11 +98,16 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 		}
 	}
 
+	layoutAwareRouting := blob.LayoutAwareRoutingDisabled
+	if bb.Config.isBlobLayoutAwareRoutingEnabled {
+		layoutAwareRouting = blob.LayoutAwareRoutingEnabled
+	}
+
 	bb.downloadOptions = &blob.DownloadFileOptions{
-		EnableLayoutAwareRouting: bb.Config.isBlobLayoutAwareRoutingEnabled,
-		BlockSize:                bb.Config.blockSize,
-		Concurrency:              bb.Config.maxConcurrency,
-		CPKInfo:                  bb.blobCPKOpt,
+		LayoutAwareRouting: layoutAwareRouting,
+		BlockSize:          bb.Config.blockSize,
+		Concurrency:        bb.Config.maxConcurrency,
+		CPKInfo:            bb.blobCPKOpt,
 	}
 
 	bb.listDetails = container.ListBlobsInclude{
@@ -499,9 +504,10 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	if bb.Config.isBlobLayoutAwareRoutingEnabled {
 		// Get the properties from layout call.
 		layoutResp, err := bb.getBlobLayout(name)
-		sc := bloberror.GetStatusCode(err)
 		if err != nil {
-			if sc == 400 || sc >= 500 {
+			var responseError *azcore.ResponseError
+			if errors.As(err, &responseError) &&
+				(responseError.StatusCode == http.StatusBadRequest || responseError.StatusCode >= http.StatusInternalServerError) {
 				// fall back to old behavior if service doesn't support layout or layout wasn't fetched
 				// TODO: do we need to disable this feature here? after GA this wouldn't be a problem since all accounts
 				// should support layout by then.
@@ -1042,10 +1048,11 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 			Offset: offset,
 			Count:  length,
 		},
-		CPKInfo: bb.blobCPKOpt,
+		CPKInfo:        bb.blobCPKOpt,
+		LayoutEndpoint: endpoint,
 	}
 
-	downloadResponse, err := blobClient.DownloadStream(WithLayoutEndpoint(ctx, endpoint), opt)
+	downloadResponse, err := blobClient.DownloadStream(ctx, opt)
 	if err != nil {
 		e := storeBlobErrToErr(err)
 		switch e {
