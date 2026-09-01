@@ -323,6 +323,36 @@ class WorkflowShapeTests(unittest.TestCase):
             ),
         )
 
+    def test_comparison_provisions_runner_owned_mountpoints(self):
+        comparison_workflow = (
+            REPO_ROOT / ".github/workflows/benchmark-compare.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            'mount_prefix="/mnt/blobfuse-benchmark-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"',
+            comparison_workflow,
+        )
+        self.assertIn(
+            "for label in fixture-setup baseline candidate",
+            comparison_workflow,
+        )
+        self.assertIn(
+            'sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$mount_dir"',
+            comparison_workflow,
+        )
+        self.assertIn(
+            '--mount-dir "${PERF_MOUNT_PREFIX}-fixture-setup"',
+            comparison_workflow,
+        )
+        self.assertIn(
+            '--mount-dir "${PERF_MOUNT_PREFIX}-${label}"',
+            comparison_workflow,
+        )
+        self.assertIn(
+            'sudo -n rmdir "${PERF_MOUNT_PREFIX}-${label}"',
+            comparison_workflow,
+        )
+
     def test_profile_results_are_isolated_below_architecture_artifacts(self):
         action = (REPO_ROOT / ".github/actions/perftesting/action.yml").read_text(encoding="utf-8")
         comparison_workflow = (

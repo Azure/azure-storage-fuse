@@ -180,6 +180,12 @@ jobs:
           cache_root="${cache_root:-/mnt/localssd}"
           sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "${cache_root}/blobfuse-${suffix}"
           echo "PERF_ROOT=${cache_root}/blobfuse-${suffix}" >> "$GITHUB_ENV"
+          mount_prefix="/mnt/blobfuse-benchmark-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          for label in fixture-setup baseline candidate; do
+            mount_dir="${mount_prefix}-${label}"
+            sudo -n install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$mount_dir"
+          done
+          echo "PERF_MOUNT_PREFIX=${mount_prefix}" >> "$GITHUB_ENV"
 
       - name: Generate comparison mount config
         working-directory: benchmark-harness
@@ -211,7 +217,7 @@ jobs:
             --binary "$RUNNER_TEMP/blobfuse2-baseline" \
             --config "$PERF_CONFIG" \
             --suite quick \
-            --mount-dir "/mnt/blobfuse-benchmark-${GITHUB_RUN_ID}-fixture-setup" \
+            --mount-dir "${PERF_MOUNT_PREFIX}-fixture-setup" \
             --cache-dir "$PERF_ROOT/cache-fixture-setup" \
             --output-dir "$PERF_ROOT/results/fixture-setup" \
             --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
@@ -241,7 +247,7 @@ jobs:
               --binary "$binary" \
               --config "$PERF_CONFIG" \
               --suite quick \
-              --mount-dir "/mnt/blobfuse-benchmark-${GITHUB_RUN_ID}-${label}" \
+              --mount-dir "${PERF_MOUNT_PREFIX}-${label}" \
               --cache-dir "$PERF_ROOT/cache-${label}" \
               --output-dir "$PERF_ROOT/results/${label}" \
               --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
@@ -337,3 +343,8 @@ jobs:
           "$RUNNER_TEMP/blobfuse2-baseline" unmount all >/dev/null 2>&1
           "$RUNNER_TEMP/blobfuse2-candidate" unmount all >/dev/null 2>&1
           rm -f "${PERF_CONFIG:-}"
+          if [[ -n "${PERF_MOUNT_PREFIX:-}" ]]; then
+            for label in fixture-setup baseline candidate; do
+              sudo -n rmdir "${PERF_MOUNT_PREFIX}-${label}" >/dev/null 2>&1 || true
+            done
+          fi
