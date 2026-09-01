@@ -81,6 +81,7 @@ type ObjAttr struct {
 	MD5      []byte             // MD5 of the blob as per last GetAttr
 	ETag     string             // ETag of the blob as per last GetAttr
 	Metadata map[string]*string // extra information to preserve
+	Layout   *common.Layout     // layout of the blob, only used for files
 }
 
 // IsDir : Test blob is a directory or not

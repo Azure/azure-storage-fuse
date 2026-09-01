@@ -114,7 +114,7 @@ steps:
       parameters:
         copy_data: false
         check_consistency: true
-  
+
     # Mount in Block Cache with Disk path
     - template: 'mount.yml'
       parameters:

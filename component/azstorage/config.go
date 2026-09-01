@@ -197,6 +197,15 @@ type AzStorageOptions struct {
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
 	CapMbpsRead             int64  `config:"cap-mbps-read" yaml:"cap-mbps-read"`
 	CapIOps                 int64  `config:"cap-iops" yaml:"cap-iops"`
+	BlobLayoutAwareRouting  bool   `config:"blob-layout-aware-routing" yaml:"blob-layout-aware-routing"`
+
+	// UseSession enables the Session API for Azure Blob Storage (fns/block) accounts.
+	// Only supported with OAuth-based authentication (MSI, SPN, Azure CLI, Workload Identity).
+	// Ignored when using shared key or SAS token authentication.
+	// Not applicable to DFS/ADLS accounts.
+	// Currently limited to Get Blob requests (HTTP GET on blob URLs without a comp query
+	// parameter); all other requests fall back to standard bearer token authentication.
+	UseSession bool `config:"use-session" yaml:"use-session,omitempty"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -525,10 +534,31 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	az.stConfig.preserveACL = opt.PreserveACL
+	az.stConfig.isBlobLayoutAwareRoutingEnabled = opt.BlobLayoutAwareRouting
+
 	if opt.Filter != "" {
 		err = configureBlobFilter(az, opt)
 		if err != nil {
 			return err
+		}
+	}
+
+	// Session API is only supported for Azure Blob Storage (fns/block) accounts with OAuth-based
+	// authentication (MSI, SPN, Azure CLI, Workload Identity). It is not available for DFS/ADLS
+	// accounts, and is ignored when shared key or SAS token authentication is used.
+	// It also requires a single explicitly configured container, so it is ignored for
+	// mount-all-containers mode or when no container name is provided.
+	if opt.UseSession {
+		if az.stConfig.authConfig.AccountType == EAccountType.ADLS() {
+			log.Warn("ParseAndValidateConfig : Session API (use-session) is not supported for DFS/ADLS accounts; ignoring the flag.")
+		} else if az.stConfig.authConfig.AuthMode == EAuthType.KEY() || az.stConfig.authConfig.AuthMode == EAuthType.SAS() {
+			log.Warn("ParseAndValidateConfig : Session API (use-session) requires OAuth-based authentication; ignoring the flag for %s auth.", az.stConfig.authConfig.AuthMode)
+		} else if az.stConfig.mountAllContainers {
+			log.Warn("ParseAndValidateConfig : Session API (use-session) requires a single specified container and is not supported with mount-all-containers; ignoring the flag.")
+		} else if strings.TrimSpace(az.stConfig.container) == "" {
+			log.Warn("ParseAndValidateConfig : Session API (use-session) requires a non-empty container name; ignoring the flag.")
+		} else {
+			az.stConfig.useSession = true
 		}
 	}
 
@@ -539,8 +569,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps-read %d, cap-iops %d",
-		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbpsRead, az.stConfig.capIOps)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps-read %d, cap-iops %d, blob-layout-aware-routing %t, use-session %v",
+		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbpsRead, az.stConfig.capIOps, az.stConfig.isBlobLayoutAwareRoutingEnabled, az.stConfig.useSession)
 
 	return nil
 }

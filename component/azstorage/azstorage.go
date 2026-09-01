@@ -62,6 +62,13 @@ type AzStorage struct {
 
 const compName = "azstorage"
 
+func defaultAzStorageOptions() AzStorageOptions {
+	return AzStorageOptions{
+		BlobLayoutAwareRouting: true,
+		UseSession:             true,
+	}
+}
+
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AzStorage{}
 
@@ -83,7 +90,7 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
 
-	conf := AzStorageOptions{}
+	conf := defaultAzStorageOptions()
 	err := config.UnmarshalKey(az.Name(), &conf)
 	if err != nil {
 		log.Err("AzStorage::Configure : config error [invalid config attributes]")
@@ -478,7 +485,7 @@ func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length
 	}
 
 	length = int(dataLen)
-	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag)
+	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag, options.Layout)
 	if err != nil {
 		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", path, err.Error())
 		length = 0
@@ -690,6 +697,10 @@ func init() {
 	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL and Permissions set on file during updates")
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
 
+	// TODO: Remove this flag once the feature is merged to main. This is an internal config option.
+	blobLayoutAwareRouting := config.AddBoolFlag("blob-layout-aware-routing", true, "Uses GetBlobLayout API to route read requests to the optimal endpoint based on the layout of the blob.")
+	config.BindPFlag(compName+".blob-layout-aware-routing", blobLayoutAwareRouting)
+
 	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
 	config.BindPFlag(compName+".filter", blobFilter)
 
@@ -698,6 +709,20 @@ func init() {
 
 	capIOps := config.AddInt64Flag("cap-iops", -1, "Limit the total storage operations per second. Default is -1 (no limit)")
 	config.BindPFlag(compName+".cap-iops", capIOps)
+
+	// use-session enables the Session API for Azure Blob Storage (fns/block) accounts.
+	// Requirements and limitations:
+	//   - Only supported with OAuth-based authentication (MSI, SPN, Azure CLI, Workload Identity).
+	//   - Ignored when using shared key or SAS token authentication.
+	//   - Not applicable to DFS/ADLS accounts; the flag is ignored when use-adls is set.
+	//   - Currently limited to Get Blob requests (HTTP GET on blob URLs without a comp query
+	//     parameter). All other requests fall back to standard bearer token authentication.
+	useSession := config.AddBoolFlag("use-session", true,
+		"Enables Session API for Azure Blob Storage (fns) accounts. "+
+			"Only supported with OAuth-based authentication (MSI/SPN/AzCLI/WorkloadIdentity). "+
+			"Ignored for key/SAS authentication and DFS/ADLS accounts. "+
+			"Currently limited to Get Blob requests; other requests use bearer token authentication.")
+	config.BindPFlag(compName+".use-session", useSession)
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

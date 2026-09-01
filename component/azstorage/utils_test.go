@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -41,12 +42,31 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
+
+// blobEndpoint returns the full Azure Blob Storage endpoint URL for the given account,
+// using the preprod endpoint when "use-preprod": true is set in azuretest.json.
+func blobEndpoint(account string) string {
+	if storageTestConfigurationParameters.UsePreprod {
+		return fmt.Sprintf("https://%s.blob.preprod.core.windows.net/", account)
+	}
+	return fmt.Sprintf("https://%s.blob.core.windows.net/", account)
+}
+
+// dfsEndpoint returns the full Azure Data Lake Storage endpoint URL for the given account,
+// using the preprod endpoint when "use-preprod": true is set in azuretest.json.
+func dfsEndpoint(account string) string {
+	if storageTestConfigurationParameters.UsePreprod {
+		return fmt.Sprintf("https://%s.dfs.preprod.core.windows.net/", account)
+	}
+	return fmt.Sprintf("https://%s.dfs.core.windows.net/", account)
+}
 
 type utilsTestSuite struct {
 	suite.Suite
@@ -292,6 +312,31 @@ func (s *utilsTestSuite) TestBlockProxyOptions() {
 	opt, err = getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "https://128.0.0.1:8080", maxRetries: 3})
 	assert.NoError(err)
 	assert.EqualValues(3, opt.Retry.MaxRetries)
+}
+
+func (s *utilsTestSuite) TestBlockBlobOptionsSessionDisabled() {
+	// useSession=false: Session must remain at its zero value.
+	assert := assert.New(s.T())
+	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{useSession: false})
+	assert.NoError(err)
+	assert.Equal(azblob.SessionModeDefault, opt.Session.Mode)
+	assert.Empty(opt.Session.AccountName)
+	assert.Nil(opt.Session.Provider)
+}
+
+func (s *utilsTestSuite) TestBlockBlobOptionsSessionEnabled() {
+	// A nil provider makes the SDK create its default container-scoped session provider.
+	assert := assert.New(s.T())
+	conf := &AzStorageConfig{
+		useSession: true,
+		authConfig: azAuthConfig{AccountName: "testaccount"},
+		container:  "testcontainer",
+	}
+	opt, err := getAzBlobServiceClientOptions(conf)
+	assert.NoError(err)
+	assert.Equal(azblob.SessionModeEnabled, opt.Session.Mode)
+	assert.Equal("testaccount", opt.Session.AccountName)
+	assert.Nil(opt.Session.Provider)
 }
 
 func (s *utilsTestSuite) TestBfsNonProxyOptions() {

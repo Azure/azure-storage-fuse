@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	azlog "github.com/Azure/azure-sdk-for-go/sdk/azcore/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -133,12 +134,29 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 	}, err
 }
 
-// getAzBlobServiceClientOptions : Create azblob service client options based on the config
+// getAzBlobServiceClientOptions : Create azblob service client options based on the config.
+// If the config has useSession enabled, Session is populated to activate the Session API.
+// The SDK's default provider creates container-scoped sessions based on each request. Session API requires OAuth-based
+// authentication (MSI, SPN, Azure CLI, Workload Identity); it is not supported with shared key
+// or SAS token authentication, and must not be used with DFS/ADLS accounts.
+// Note: the Session API is currently limited to Get Blob requests (HTTP GET on blob URLs without
+// a comp query parameter). All other requests fall back to standard bearer token authentication.
 func getAzBlobServiceClientOptions(conf *AzStorageConfig) (*service.ClientOptions, error) {
 	opts, err := getAzStorageClientOptions(conf)
-	return &service.ClientOptions{
+	svcOpts := &service.ClientOptions{
 		ClientOptions: opts,
-	}, err
+	}
+
+	if conf.useSession {
+		svcOpts.Session = azblob.SessionOptions{
+			Mode:        azblob.SessionModeEnabled,
+			AccountName: conf.authConfig.AccountName,
+		}
+		log.Info("getAzBlobServiceClientOptions : Session API enabled for account %s, container %s",
+			conf.authConfig.AccountName, conf.container)
+	}
+
+	return svcOpts, err
 }
 
 // getAzDatalakeServiceClientOptions : Create azdatalake service client options based on the config
