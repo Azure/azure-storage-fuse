@@ -283,7 +283,9 @@ func (se *StatsExporter) getNewFile() error {
 	_ = os.Rename(fname, fnameNew)
 
 	fname = fmt.Sprintf("%v_%v.%v", baseName, hmcommon.Pid, hmcommon.OutputFileExtension)
-	se.opFile, err = os.OpenFile(fname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
+	// Restrict report files to owner read/write only (0600) since they may
+	// contain sensitive path information from the monitored blobfuse2 process.
+	se.opFile, err = os.OpenFile(fname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		log.Err("stats_exporter::getNewFile : Unable to create output file [%v]", err)
 		return err
