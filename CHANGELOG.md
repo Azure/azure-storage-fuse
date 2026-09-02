@@ -4,6 +4,7 @@
 **Bug Fixes**
 
 **Other Changes**
+- Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
 
 ## 2.5.5 (2026-08-11)
 **Features**
