@@ -116,13 +116,19 @@ func main() {
 	// If it already exists, do not silently change its permissions (the user
 	// may have intentionally chosen a shared/existing directory); only warn
 	// when the existing permissions are broader than owner-only.
-	if info, err := os.Stat(hmcommon.OutputPath); os.IsNotExist(err) {
+	info, err := os.Stat(hmcommon.OutputPath)
+	if os.IsNotExist(err) {
 		if err := os.MkdirAll(hmcommon.OutputPath, 0700); err != nil {
 			fmt.Printf("health-monitor : failed to create output directory [%s]\n", err.Error())
 			log.Err("main::main : failed to create output directory [%s]", err.Error())
 			os.Exit(1)
 		}
-	} else if err != nil {
+		// Re-stat to handle races where the directory is created by another
+		// process between the initial Stat and MkdirAll (possibly with broader
+		// permissions), so the permission check below is always applied.
+		info, err = os.Stat(hmcommon.OutputPath)
+	}
+	if err != nil {
 		fmt.Printf("health-monitor : failed to stat output directory [%s]\n", err.Error())
 		log.Err("main::main : failed to stat output directory [%s]", err.Error())
 		os.Exit(1)
