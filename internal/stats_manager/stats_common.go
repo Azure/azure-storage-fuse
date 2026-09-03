@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package stats_manager
+package statsmanager
 
 const (
 	// Stats collection operation types
