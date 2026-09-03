@@ -2,6 +2,7 @@
 **Features**
 
 **Bug Fixes**
+- Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with HTTP 400, such as for an unsupported blob or path name.
 
 **Other Changes**
 
