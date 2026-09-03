@@ -43,12 +43,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -3156,4 +3158,97 @@ func (s *datalakeTestSuite) TestList() {
 // a normal test function and pass our suite to suite.Run
 func TestDatalake(t *testing.T) {
 	suite.Run(t, new(datalakeTestSuite))
+}
+
+// TestRunProbesConcurrentlyOverlap deterministically proves that the DFS and Blob
+// validation probes run concurrently. Each probe signals that it has started and
+// then blocks until the other has also started. If the probes ran sequentially,
+// the first probe would never observe the second starting and the test would fail
+// via timeout. This does not require any Azure credentials or network access.
+func TestRunProbesConcurrentlyOverlap(t *testing.T) {
+	assert := assert.New(t)
+
+	dfsStarted := make(chan struct{})
+	blobStarted := make(chan struct{})
+
+	dfsProbe := func() error {
+		close(dfsStarted)
+		select {
+		case <-blobStarted:
+			return nil
+		case <-time.After(5 * time.Second):
+			return errors.New("blob probe did not start concurrently with dfs probe")
+		}
+	}
+	blobProbe := func() error {
+		close(blobStarted)
+		select {
+		case <-dfsStarted:
+			return nil
+		case <-time.After(5 * time.Second):
+			return errors.New("dfs probe did not start concurrently with blob probe")
+		}
+	}
+
+	err := runProbesConcurrently(dfsProbe, blobProbe)
+	assert.NoError(err)
+}
+
+// TestRunProbesConcurrentlyBothAlwaysRun verifies that both probes are always
+// executed even when one of them fails, confirming the trade-off that the Blob
+// probe is issued regardless of the DFS probe outcome.
+func TestRunProbesConcurrentlyBothAlwaysRun(t *testing.T) {
+	assert := assert.New(t)
+
+	var dfsRan, blobRan atomic.Bool
+	dfsProbe := func() error {
+		dfsRan.Store(true)
+		return errors.New("dfs failure")
+	}
+	blobProbe := func() error {
+		blobRan.Store(true)
+		return nil
+	}
+
+	err := runProbesConcurrently(dfsProbe, blobProbe)
+	assert.Error(err)
+	assert.True(dfsRan.Load())
+	assert.True(blobRan.Load())
+}
+
+// TestRunProbesConcurrentlyErrorPrecedence verifies that the DFS probe error takes
+// precedence over the Blob probe error while both probes run concurrently.
+func TestRunProbesConcurrentlyErrorPrecedence(t *testing.T) {
+	assert := assert.New(t)
+
+	dfsErr := errors.New("dfs failure")
+	blobErr := errors.New("blob failure")
+
+	// Both fail: DFS error wins.
+	err := runProbesConcurrently(
+		func() error { return dfsErr },
+		func() error { return blobErr },
+	)
+	assert.Equal(dfsErr, err)
+
+	// Only DFS fails.
+	err = runProbesConcurrently(
+		func() error { return dfsErr },
+		func() error { return nil },
+	)
+	assert.Equal(dfsErr, err)
+
+	// Only Blob fails.
+	err = runProbesConcurrently(
+		func() error { return nil },
+		func() error { return blobErr },
+	)
+	assert.Equal(blobErr, err)
+
+	// Both succeed.
+	err = runProbesConcurrently(
+		func() error { return nil },
+		func() error { return nil },
+	)
+	assert.NoError(err)
 }

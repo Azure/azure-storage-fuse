@@ -195,18 +195,25 @@ func (dl *Datalake) TestPipeline() error {
 
 	// The DFS and Blob validation probes use separate clients and have no result
 	// dependency, so run them concurrently to reduce mount latency. The DFS-first
-	// error precedence is preserved when evaluating the results below.
+	// error precedence is preserved by runProbesConcurrently.
+	return runProbesConcurrently(dl.testDFSPipeline, dl.BlockBlob.TestPipeline)
+}
+
+// runProbesConcurrently runs the DFS and Blob validation probes concurrently and
+// waits for both to complete. The DFS probe error takes precedence over the Blob
+// probe error, preserving the deterministic DFS-first error precedence.
+func runProbesConcurrently(dfsProbe, blobProbe func() error) error {
 	var wg sync.WaitGroup
 	var dfsErr, blobErr error
 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		dfsErr = dl.testDFSPipeline()
+		dfsErr = dfsProbe()
 	}()
 	go func() {
 		defer wg.Done()
-		blobErr = dl.BlockBlob.TestPipeline()
+		blobErr = blobProbe()
 	}()
 	wg.Wait()
 
