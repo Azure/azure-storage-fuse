@@ -491,6 +491,11 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	})
 
 	if err != nil {
+		if isHTTPBadRequest(err) {
+			log.Err("BlockBlob::getAttrUsingRest : Storage rejected blob name %s [%s]", name, err.Error())
+			return attr, syscall.EINVAL
+		}
+
 		serr := storeBlobErrToErr(err)
 		switch serr {
 		case ErrFileNotFound:
@@ -538,6 +543,11 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	for marker != nil || iteration == 0 {
 		blobs, new_marker, err = bb.List(name, marker, bb.Config.maxResultsForList)
 		if err != nil {
+			if isHTTPBadRequest(err) {
+				log.Err("BlockBlob::getAttrUsingList : Storage rejected blob name %s [%s]", name, err.Error())
+				return attr, syscall.EINVAL
+			}
+
 			e := storeBlobErrToErr(err)
 			switch e {
 			case ErrFileNotFound:
