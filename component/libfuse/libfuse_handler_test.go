@@ -219,6 +219,10 @@ func (suite *libfuseTestSuite) TestCreateError() {
 	testCreateError(suite)
 }
 
+func (suite *libfuseTestSuite) TestGetAttrInvalidArgument() {
+	testGetAttrInvalidArgument(suite)
+}
+
 func (suite *libfuseTestSuite) TestOpen() {
 	testOpen(suite)
 }
