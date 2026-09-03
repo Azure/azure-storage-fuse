@@ -430,6 +430,11 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		CPKInfo: dl.datalakeCPKOpt,
 	})
 	if err != nil {
+		if isHTTPBadRequest(err) {
+			log.Err("Datalake::GetAttr : Storage rejected path name %s [%s]", name, err.Error())
+			return blobAttr, syscall.EINVAL
+		}
+
 		e := storeDatalakeErrToErr(err)
 		switch e {
 		case ErrFileNotFound:

@@ -244,6 +244,12 @@ const (
 	ErrPathTooDeep
 )
 
+// isHTTPBadRequest checks whether Azure Storage rejected the request itself.
+func isHTTPBadRequest(err error) bool {
+	var respErr *azcore.ResponseError
+	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusBadRequest
+}
+
 // For detailed error list refer below link,
 // https://github.com/Azure/azure-sdk-for-go/blob/main/sdk/storage/azblob/bloberror/error_codes.go
 // Convert blob storage error to common errors
