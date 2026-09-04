@@ -2056,6 +2056,14 @@ func (s *datalakeTestSuite) TestGetAttrError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
+func (s *datalakeTestSuite) TestGetAttrInvalidName() {
+	defer s.cleanupTest()
+	datalake := s.az.storage.(*Datalake)
+
+	_, err := datalake.GetAttr(invalidStorageName)
+	s.assert.ErrorIs(err, syscall.EINVAL)
+}
+
 func (s *datalakeTestSuite) TestChmod() {
 	defer s.cleanupTest()
 	// Setup
