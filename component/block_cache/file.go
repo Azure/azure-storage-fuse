@@ -308,7 +308,7 @@ func (f *file) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 // Behavior:
 //   - Only schedules read-ahead for sequential patterns
 //   - Keeps a window of up to bc.prefetch blocks ahead
-//   - Schedules at most maxReadAheadScheduleBurst blocks per demand block
+//   - Starts with a bounded burst, then refills in proportion to demand progress
 //   - Tracks next read-ahead block index to avoid duplicate prefetches
 //   - Skips blocks that are already in cache
 //   - Stops when reaching end of file
@@ -350,9 +350,21 @@ func (f *file) scheduleReadAhead(bc *BlockCache, pd *patternDetector, offset int
 	if nextBlockIdx > targetBlockIdx {
 		return
 	}
-	scheduleCount := min(maxReadAheadScheduleBurst, int(targetBlockIdx-nextBlockIdx+1))
+	initialBurst := initialReadAheadScheduleBurst(bc.workers, bc.prefetch)
+	demandAdvance := lastDemandBlockIdx - previousDemandBlockIdx
+	if previousDemandBlockIdx < 0 {
+		demandAdvance = initialBurst
+	} else {
+		// Refill consumed blocks and use equal incremental capacity to ramp a
+		// lone stream toward its window without monopolizing startup admission.
+		demandAdvance *= 2
+	}
+	if demandAdvance <= 0 {
+		return
+	}
+	scheduleCount := min(initialBurst, demandAdvance, targetBlockIdx-nextBlockIdx+1)
 
-	for scheduled := 0; scheduled < scheduleCount; {
+	for scheduled := int64(0); scheduled < scheduleCount; {
 		nextBlockIdx := pd.nxtReadAheadBlockIdx.Load()
 		if nextBlockIdx > targetBlockIdx {
 			return

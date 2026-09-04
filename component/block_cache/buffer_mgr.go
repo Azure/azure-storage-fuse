@@ -118,7 +118,7 @@ func (b bufDescStatus) String() string {
 // Thread-safety: Uses block-level locking to prevent concurrent creation for the same block
 func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, workerPool *workerPool, blk *block, access bufferAccessKind) (*bufferDescriptor, bufDescStatus, error) {
 	sync := access.synchronous()
-	var prefetch *prefetchPermit
+	var prefetch *backgroundPermit
 	if access == accessPrefetch {
 		prefetch = workerPool.tryAcquirePrefetch()
 		if prefetch == nil {

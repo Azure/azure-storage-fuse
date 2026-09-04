@@ -69,38 +69,48 @@ const (
 )
 
 func TestScheduleReadAhead_RefillsIncrementallyPerDemandBlock(t *testing.T) {
-	const expectedScheduleBurst = 5
+	const initialScheduleBurst = 16
 
 	bc = &BlockCache{
-		blockSize:         1024,
-		prefetch:          100,
-		prefetchTaskLimit: 1,
+		blockSize: 1024,
+		workers:   192,
+		prefetch:  32,
 	}
-	setupTestFreeList(t, bc.blockSize, 20*bc.blockSize)
+	setupTestFreeList(t, bc.blockSize, 64*bc.blockSize)
 	defer destroyFreeList()
 
 	btm = newBufferTableMgr()
 	bc.btm = btm
 	f := createFile("incremental_readahead.txt")
-	f.size.Store(20 * int64(bc.blockSize))
+	f.size.Store(64 * int64(bc.blockSize))
 	f.blockList.state = blockListValid
-	for blockIdx := range 20 {
+	for blockIdx := range 64 {
 		f.blockList.list = append(f.blockList.list, createBlock(blockIdx, "id", localBlock, f))
 	}
 	pd := newPatternDetector()
 
 	f.scheduleReadAhead(bc, pd, 0, 1)
-	assert.Len(t, btm.table, expectedScheduleBurst)
-	assert.Equal(t, int64(expectedScheduleBurst+1), pd.nxtReadAheadBlockIdx.Load())
+	assert.Len(t, btm.table, initialScheduleBurst)
+	assert.Equal(t, int64(initialScheduleBurst+1), pd.nxtReadAheadBlockIdx.Load())
 	assert.Equal(t, int64(0), pd.lastReadAheadDemandBlockIdx.Load())
 
 	f.scheduleReadAhead(bc, pd, int64(bc.blockSize/2), 1)
-	assert.Len(t, btm.table, expectedScheduleBurst, "same demand block must not refill")
+	assert.Len(t, btm.table, initialScheduleBurst, "same demand block must not refill")
 
 	f.scheduleReadAhead(bc, pd, int64(bc.blockSize), 1)
-	assert.Len(t, btm.table, expectedScheduleBurst*2)
-	assert.Equal(t, int64(expectedScheduleBurst*2+1), pd.nxtReadAheadBlockIdx.Load())
+	assert.Len(t, btm.table, initialScheduleBurst+2)
+	assert.Equal(t, int64(initialScheduleBurst+3), pd.nxtReadAheadBlockIdx.Load())
 	assert.Equal(t, int64(1), pd.lastReadAheadDemandBlockIdx.Load())
+
+	for blockIdx := int64(2); blockIdx <= 16; blockIdx++ {
+		f.scheduleReadAhead(bc, pd, blockIdx*int64(bc.blockSize), 1)
+	}
+	assert.Len(t, btm.table, 48)
+	assert.Equal(t, int64(49), pd.nxtReadAheadBlockIdx.Load())
+
+	f.scheduleReadAhead(bc, pd, 17*int64(bc.blockSize), 1)
+	assert.Len(t, btm.table, 49, "a full window should refill only the consumed block")
+	assert.Equal(t, int64(50), pd.nxtReadAheadBlockIdx.Load())
 }
 
 // FileOperationsTestSuite tests read, write, flush, and truncate on File objects

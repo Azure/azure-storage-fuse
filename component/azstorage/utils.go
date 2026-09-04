@@ -73,9 +73,9 @@ const (
 	Timeout                time.Duration = 30 * time.Second
 	KeepAlive              time.Duration = 30 * time.Second
 	DualStack              bool          = true
-	MaxIdleConns           int           = 0 // No limit
-	MaxIdleConnsPerHost    int           = 200
-	MaxConnsPerHost        int           = 300
+	MaxIdleConns           int           = 0   // No limit
+	MaxIdleConnsPerHost    int           = 384 // Reuse the default D192 block-cache worker set
+	MaxConnsPerHost        int           = 512 // D192 block I/O plus metadata and retry headroom
 	IdleConnTimeout        time.Duration = 90 * time.Second
 	TLSHandshakeTimeout    time.Duration = 10 * time.Second
 	ExpectContinueTimeout  time.Duration = 1 * time.Second

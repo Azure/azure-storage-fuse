@@ -36,11 +36,20 @@ package block_cache
 import "sync/atomic"
 
 const (
-	sequentialWindowBlocks    = 2
-	minStreakForSeqPattern    = 3
-	maxStreakForRandomPattern = -3
-	maxReadAheadScheduleBurst = 5
+	sequentialWindowBlocks           = 2
+	minStreakForSeqPattern           = 3
+	maxStreakForRandomPattern        = -3
+	readAheadBurstWorkerDivisor      = 12 // Start with roughly 42 ms of the 500 ms worker BDP budget
+	maxInitialReadAheadScheduleBurst = 32 // D192 default at the 16 MiB block size
 )
+
+func initialReadAheadScheduleBurst(workers uint32, prefetch uint32) int64 {
+	if workers == 0 || prefetch == 0 {
+		return 0
+	}
+	workerBurst := (uint64(workers) + readAheadBurstWorkerDivisor - 1) / readAheadBurstWorkerDivisor
+	return int64(min(workerBurst, uint64(maxInitialReadAheadScheduleBurst), uint64(prefetch)))
+}
 
 // patternDetector analyzes file access patterns to optimize read-ahead behavior.
 //

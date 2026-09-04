@@ -274,15 +274,15 @@ func TestBufferDescriptor_UsageCount(t *testing.T) {
 	assert.Zero(t, bd.usageCount.Load())
 	bd.recordAccess(accessDemand)
 	bd.recordAccess(accessWrite)
-	assert.Equal(t, uint32(2), bd.usageCount.Load())
+	assert.Equal(t, uint32(1), bd.usageCount.Load())
 	for range maxBufferUsageCount * 2 {
 		bd.recordAccess(accessDemand)
 	}
 	assert.Equal(t, uint32(maxBufferUsageCount), bd.usageCount.Load())
 	assert.True(t, bd.ageUsage())
-	assert.Equal(t, uint32(maxBufferUsageCount-1), bd.usageCount.Load())
+	assert.Zero(t, bd.usageCount.Load())
 	bd.recordAccess(bufferAccessKind(255))
-	assert.Equal(t, uint32(maxBufferUsageCount-1), bd.usageCount.Load())
+	assert.Zero(t, bd.usageCount.Load())
 }
 
 func TestFreeList_ClockSweepPrefersColdBuffer(t *testing.T) {
@@ -302,7 +302,7 @@ func TestFreeList_ClockSweepPrefersColdBuffer(t *testing.T) {
 		bc.btm.table[blk] = bd
 		descriptors[i] = bd
 	}
-	descriptors[0].usageCount.Store(3)
+	descriptors[0].usageCount.Store(1)
 	descriptors[1].usageCount.Store(0)
 	descriptors[2].usageCount.Store(1)
 
@@ -310,7 +310,7 @@ func TestFreeList_ClockSweepPrefersColdBuffer(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Same(t, descriptors[1], victim)
 	assert.Nil(t, victim.block)
-	assert.Equal(t, uint32(2), descriptors[0].usageCount.Load())
+	assert.Zero(t, descriptors[0].usageCount.Load())
 }
 
 func TestFreeList_ClockSweepPrefersPrefetchOverDemand(t *testing.T) {

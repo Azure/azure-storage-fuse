@@ -26,8 +26,9 @@ block_cache:
   path: <path to local disk cache where downloaded blocks will be stored>
   disk-size-mb: <maximum disk cache size allowed. Default - 80% of free disk space>
   disk-timeout-sec: <default disk cache eviction timeout (in sec). Default - 120 sec>
-  prefetch: <number of blocks prefetched for sequential reads. Default - max(11, 2 * CPU count), capped at half the buffer pool>
-  parallelism: <number of parallel upload/download workers. Default - 3 * CPU count, capped to leave one foreground buffer>
+  prefetch: <number of blocks prefetched per sequential stream. Default - background worker budget, capped at half the buffer pool>
+  parallelism: <number of parallel upload/download workers. Default - targets 768 MB to 6 GB in flight based on CPU count and block size, capped at 384 workers and half the buffer pool>
+  # For a measured high-latency path, parallelism ~= ceil(target throughput in MB/s * REST latency in seconds / block-size-mb).
 
 # Attribute cache related configuration
 attr_cache:

@@ -541,18 +541,17 @@ func Test_getOrCreateBufferDescriptor_PrefetchAgesOnePassPerRequest(t *testing.T
 
 func Test_getOrCreateBufferDescriptor_PrefetchQueueFullRollsBackAllocation(t *testing.T) {
 	bc = &BlockCache{
-		blockSize:         1024 * 1024,
-		prefetchTaskLimit: 1,
+		blockSize: 1024 * 1024,
 	}
 	setupTestFreeList(t, bc.blockSize, bc.blockSize)
 	defer destroyFreeList()
 
 	bc.workerPool.destroy()
 	bc.workerPool = &workerPool{
-		tasks:         make(chan *task),
-		prefetchTasks: make(chan *task),
-		prefetchSlots: make(chan struct{}, 1),
-		bc:            bc,
+		tasks:           make(chan *task),
+		prefetchTasks:   make(chan *task),
+		backgroundSlots: make(chan struct{}, 1),
+		bc:              bc,
 	}
 	btm = newBufferTableMgr()
 	bc.btm = btm
@@ -565,7 +564,7 @@ func Test_getOrCreateBufferDescriptor_PrefetchQueueFullRollsBackAllocation(t *te
 	assert.Nil(t, bufDesc)
 	assert.Equal(t, bufDescStatusInvalid, status)
 	assert.Empty(t, btm.table)
-	assert.Zero(t, len(bc.workerPool.prefetchSlots))
+	assert.Zero(t, len(bc.workerPool.backgroundSlots))
 	assert.Equal(t, 0, freeList.firstFreeBuffer)
 	assert.Zero(t, freeList.bufDescriptors[0].refCnt.Load())
 	assert.Nil(t, freeList.bufDescriptors[0].block)

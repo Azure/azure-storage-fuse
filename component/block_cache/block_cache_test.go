@@ -179,7 +179,6 @@ block_cache:
 	bc := NewBlockCacheComponent().(*BlockCache)
 	err := bc.Configure(true)
 	assert.NoError(t, err)
-	assert.True(t, bc.noPrefetch)
 	assert.Equal(t, uint32(0), bc.prefetch)
 }
 
@@ -298,12 +297,12 @@ func TestBlockCacheConfigure_DefaultParallelism(t *testing.T) {
 	config.ResetConfig()
 	t.Cleanup(config.ResetConfig)
 
-	expectedWorkers := runtime.NumCPU() * 3
+	expectedWorkers := defaultWorkerCount(runtime.NumCPU(), common.MbToBytes, uint64(maxDefaultWorkers*2+2))
 	cfg := fmt.Sprintf(`
 block_cache:
   block-size-mb: 1
   mem-size-mb: %d
-`, expectedWorkers+1)
+`, expectedWorkers*2+2)
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
 	bc := NewBlockCacheComponent().(*BlockCache)
@@ -315,18 +314,78 @@ func TestBlockCacheConfigure_DefaultPrefetch(t *testing.T) {
 	config.ResetConfig()
 	t.Cleanup(config.ResetConfig)
 
-	expectedPrefetch := max((minPrefetch*2)+1, defaultPrefetchPerCPU*runtime.NumCPU())
+	const workers = 192
+	expectedPrefetch := defaultPrefetchCount(workers, 1024)
 	cfg := fmt.Sprintf(`
 block_cache:
   block-size-mb: 1
-  mem-size-mb: %d
+  mem-size-mb: 1024
   parallelism: %d
-`, expectedPrefetch*2, expectedPrefetch+1)
+`, workers)
 	assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
 	bc := NewBlockCacheComponent().(*BlockCache)
 	assert.NoError(t, bc.Configure(true))
 	assert.Equal(t, uint32(expectedPrefetch), bc.prefetch)
+}
+
+func TestBlockCache_DefaultResourceBudgets(t *testing.T) {
+	tests := []struct {
+		name                 string
+		cpus                 int
+		blockSize            uint64
+		buffers              uint64
+		workers              uint32
+		prefetch             uint32
+		writebackLimit       int
+		backgroundLimit      int
+		foregroundQueueDepth int
+	}{
+		{name: "minimum pool", cpus: 2, blockSize: 16 * common.MbToBytes, buffers: 2, workers: 1, prefetch: 1, writebackLimit: 1, backgroundLimit: 1, foregroundQueueDepth: 0},
+		{name: "small pool", cpus: 96, blockSize: 16 * common.MbToBytes, buffers: 8, workers: 4, prefetch: 3, writebackLimit: 1, backgroundLimit: 3, foregroundQueueDepth: 3},
+		{name: "low core", cpus: 2, blockSize: 16 * common.MbToBytes, buffers: 1024, workers: 48, prefetch: 42, writebackLimit: 42, backgroundLimit: 42, foregroundQueueDepth: 48},
+		{name: "medium", cpus: 32, blockSize: 16 * common.MbToBytes, buffers: 1024, workers: 64, prefetch: 56, writebackLimit: 56, backgroundLimit: 56, foregroundQueueDepth: 64},
+		{name: "large", cpus: 48, blockSize: 16 * common.MbToBytes, buffers: 1024, workers: 96, prefetch: 84, writebackLimit: 84, backgroundLimit: 84, foregroundQueueDepth: 96},
+		{name: "d96", cpus: 96, blockSize: 16 * common.MbToBytes, buffers: 20000, workers: 192, prefetch: 168, writebackLimit: 168, backgroundLimit: 168, foregroundQueueDepth: 128},
+		{name: "d96 large blocks", cpus: 96, blockSize: 32 * common.MbToBytes, buffers: 20000, workers: 96, prefetch: 84, writebackLimit: 84, backgroundLimit: 84, foregroundQueueDepth: 96},
+		{name: "d96 small blocks", cpus: 96, blockSize: 8 * common.MbToBytes, buffers: 20000, workers: 384, prefetch: 336, writebackLimit: 336, backgroundLimit: 336, foregroundQueueDepth: 128},
+		{name: "d192", cpus: 192, blockSize: 16 * common.MbToBytes, buffers: 40000, workers: 384, prefetch: 336, writebackLimit: 336, backgroundLimit: 336, foregroundQueueDepth: 128},
+		{name: "d192 large blocks", cpus: 192, blockSize: 32 * common.MbToBytes, buffers: 40000, workers: 192, prefetch: 168, writebackLimit: 168, backgroundLimit: 168, foregroundQueueDepth: 128},
+		{name: "d192 small blocks", cpus: 192, blockSize: 8 * common.MbToBytes, buffers: 40000, workers: 384, prefetch: 336, writebackLimit: 336, backgroundLimit: 336, foregroundQueueDepth: 128},
+		{name: "worker constrained pool", cpus: 96, blockSize: 16 * common.MbToBytes, buffers: 128, workers: 64, prefetch: 56, writebackLimit: 16, backgroundLimit: 56, foregroundQueueDepth: 63},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			workers := defaultWorkerCount(test.cpus, test.blockSize, test.buffers)
+			prefetch := defaultPrefetchCount(workers, test.buffers)
+			writebackLimit, backgroundLimit, queueDepth := calculateTaskLimits(workers, test.buffers)
+
+			assert.Equal(t, test.workers, workers)
+			assert.Equal(t, test.prefetch, prefetch)
+			assert.Equal(t, test.writebackLimit, writebackLimit)
+			assert.Equal(t, test.backgroundLimit, backgroundLimit)
+			assert.Equal(t, test.foregroundQueueDepth, queueDepth)
+		})
+	}
+}
+
+func TestBackgroundTaskLimit(t *testing.T) {
+	tests := []struct {
+		workers uint32
+		want    int
+	}{
+		{workers: 0, want: 0},
+		{workers: 1, want: 1},
+		{workers: 48, want: 42},
+		{workers: 192, want: 168},
+		{workers: 384, want: 336},
+		{workers: 512, want: 336},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.want, backgroundTaskLimit(test.workers), "workers=%d", test.workers)
+	}
 }
 
 func TestBlockCacheStart_RejectsNoWorkers(t *testing.T) {
@@ -338,13 +397,14 @@ func TestBlockCacheStart_RejectsNoWorkers(t *testing.T) {
 }
 
 func TestCreateWorkerPool_UsesQueueSize(t *testing.T) {
-	wp := createWorkerPool(2, 3, &BlockCache{})
+	wp := createWorkerPool(2, 3, &BlockCache{backgroundLimit: 2})
 	assert.Equal(t, 3, cap(wp.tasks))
+	assert.Equal(t, 3, cap(wp.prefetchTasks))
 	wp.destroy()
 }
 
 func TestWorkerPool_PrefetchAdmission(t *testing.T) {
-	bc := &BlockCache{prefetchTaskLimit: 1}
+	bc := &BlockCache{backgroundLimit: 1}
 	wp := createWorkerPool(2, 2, bc)
 	defer wp.destroy()
 
@@ -356,6 +416,26 @@ func TestWorkerPool_PrefetchAdmission(t *testing.T) {
 	second := wp.tryAcquirePrefetch()
 	assert.NotNil(t, second, "completion must return the global prefetch permit")
 	second.release()
+}
+
+func TestWorkerPool_PrefetchAndUploadsShareBackgroundAdmission(t *testing.T) {
+	bc := &BlockCache{backgroundLimit: 2}
+	wp := createWorkerPool(4, 4, bc)
+	defer wp.destroy()
+
+	firstPrefetch := wp.tryAcquirePrefetch()
+	secondPrefetch := wp.tryAcquirePrefetch()
+	assert.NotNil(t, firstPrefetch)
+	assert.NotNil(t, secondPrefetch)
+	assert.Nil(t, wp.tryAcquirePrefetch())
+
+	firstPrefetch.release()
+	upload := wp.acquireBackground()
+	assert.NotNil(t, upload)
+	assert.Nil(t, wp.tryAcquirePrefetch(), "an admitted upload must consume the shared background budget")
+
+	upload.release()
+	secondPrefetch.release()
 }
 
 func TestWorkerPool_PrefetchUsesDedicatedQueue(t *testing.T) {
@@ -370,37 +450,6 @@ func TestWorkerPool_PrefetchUsesDedicatedQueue(t *testing.T) {
 	assert.Same(t, task, <-wp.prefetchTasks)
 }
 
-func TestBlockCacheConfigure_PrefetchTaskLimit(t *testing.T) {
-	tests := []struct {
-		workers  uint32
-		prefetch uint32
-		want     int
-	}{
-		{workers: 1, prefetch: 32, want: 1},
-		{workers: 4, prefetch: 32, want: 3},
-		{workers: 16, prefetch: 32, want: 11},
-		{workers: 64, prefetch: 64, want: 43},
-		{workers: 16, prefetch: 2, want: 2},
-	}
-
-	for _, test := range tests {
-		config.ResetConfig()
-		cfg := fmt.Sprintf(`
-block_cache:
-  block-size-mb: 1
-  mem-size-mb: 256
-  parallelism: %d
-  prefetch: %d
-`, test.workers, test.prefetch)
-		assert.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
-
-		bc := NewBlockCacheComponent().(*BlockCache)
-		assert.NoError(t, bc.Configure(true))
-		assert.Equal(t, test.want, bc.prefetchTaskLimit, "workers=%d prefetch=%d", test.workers, test.prefetch)
-	}
-	config.ResetConfig()
-}
-
 func TestBlockCache_WritebackLimit(t *testing.T) {
 	tests := []struct {
 		memoryMB uint64
@@ -411,7 +460,7 @@ func TestBlockCache_WritebackLimit(t *testing.T) {
 		{memoryMB: 20, workers: 10, want: 2},
 		{memoryMB: 64, workers: 16, want: 8},
 		{memoryMB: 128, workers: 64, want: 16},
-		{memoryMB: 4096, workers: 288, want: 192},
+		{memoryMB: 4096, workers: 288, want: 252},
 	}
 
 	for _, test := range tests {
@@ -582,7 +631,6 @@ block_cache:
 	assert.Equal(t, uint32(30), bc.diskTimeout)
 	assert.True(t, bc.deferEmptyBlobCreation)
 	assert.True(t, bc.consistency)
-	assert.False(t, bc.noPrefetch)
 }
 
 // Unit tests start from here.

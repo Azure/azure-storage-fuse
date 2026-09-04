@@ -39,6 +39,29 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestInitialReadAheadScheduleBurstScalesWithWorkers(t *testing.T) {
+	tests := []struct {
+		name     string
+		workers  uint32
+		prefetch uint32
+		want     int64
+	}{
+		{name: "disabled", workers: 48, prefetch: 0, want: 0},
+		{name: "minimum pool", workers: 1, prefetch: 1, want: 1},
+		{name: "small pool", workers: 4, prefetch: 3, want: 1},
+		{name: "d2", workers: 48, prefetch: 42, want: 4},
+		{name: "d96", workers: 192, prefetch: 168, want: 16},
+		{name: "d192", workers: 384, prefetch: 336, want: 32},
+		{name: "prefetch cap", workers: 384, prefetch: 8, want: 8},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, initialReadAheadScheduleBurst(test.workers, test.prefetch))
+		})
+	}
+}
+
 func TestNewPatternDetector(t *testing.T) {
 	pd := newPatternDetector()
 

@@ -178,17 +178,17 @@ type BlockCache struct {
 	diskTimeout uint32 // Timeout for disk-cached blocks (in seconds)
 
 	// Worker pool configuration
-	workers           uint32 // Number of worker threads for async download/upload operations
-	prefetch          uint32 // Number of blocks to prefetch for sequential reads
-	writebackLimit    int    // Maximum asynchronous full-block uploads per file
-	prefetchTaskLimit int    // Maximum queued or active prefetch downloads
+	workers         uint32 // Number of worker threads for async download/upload operations
+	prefetch        uint32 // Number of blocks to prefetch for sequential reads
+	writebackLimit  int    // Maximum asynchronous full-block uploads per file
+	backgroundLimit int    // Maximum queued or active prefetch and upload tasks
+	taskQueueDepth  int    // Maximum foreground tasks waiting for workers
 
 	// File and block management
 	openFiles   sync.Map     // Path to shared file state for this cache instance
 	namespaceMu sync.RWMutex // Prevents opens from racing with namespace renames
 
 	// Performance and behavior flags
-	noPrefetch             bool // If true, disables read-ahead prefetching
 	consistency            bool // If true, ensures strong consistency with storage
 	deferEmptyBlobCreation bool // If true, defers creation of empty files until data is written
 
@@ -226,7 +226,8 @@ type BlockCacheOptions struct {
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
 
 	// Workers is the number of goroutines in the worker pool for async I/O operations.
-	// Default: three times the number of CPUs, capped by the number of buffers.
+	// The default targets a bandwidth-delay-product window, scaled by block size
+	// and capped to preserve HTTP transport and buffer-pool headroom.
 	Workers uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
 
 	// Consistency enables strong data consistency mode.
@@ -243,16 +244,69 @@ type BlockCacheOptions struct {
 }
 
 // Component configuration constants
+//
+// Blobfuse cannot reliably discover a VM's usable NIC bandwidth or the storage
+// endpoint's latency. The default therefore uses CPU count only as a proxy for
+// common VM bandwidth tiers and provisions about 500 ms of in-flight data:
+// approximately 0.54 Gbit/s per CPU, bounded to roughly 13-103 Gbit/s. Explicit
+// parallelism remains the override for measured bandwidth-delay products outside
+// this envelope.
 const (
-	compName              = "block_cache" // Component name used in configuration and logs
-	defaultTimeout        = 120           // Default disk cache timeout in seconds
-	defaultBlockSize      = 16            // Default block size in megabytes
-	minPrefetch           = 5             // Minimum number of blocks for prefetch
-	defaultPrefetchPerCPU = 2             // Match the established main-branch sequential read-ahead depth
-	maxBlocks             = 50000         // Maximum number of blocks per file (limits file size)
-	defaultMemoryPercent  = 60            // Available memory used when mem-size-mb is omitted
-	maxFileWritebackTasks = 256           // Maximum asynchronous full-block uploads per file
+	compName                    = "block_cache" // Component name used in configuration and logs
+	defaultTimeout              = 120           // Default disk cache timeout in seconds
+	defaultBlockSize            = 16            // Default block size in megabytes
+	defaultInFlightBytesPerCPU  = 32 * common.MbToBytes
+	minDefaultInFlightBytes     = 768 * common.MbToBytes
+	maxDefaultInFlightBytes     = 6 * common.GbToBytes
+	maxDefaultWorkers           = 384 // D192 at the default 16 MiB block size
+	foregroundWorkerReserve     = 8   // Reserve one worker in eight for demand I/O
+	maxForegroundTaskQueueDepth = 128 // Queueing beyond active concurrency does not increase storage throughput
+	maxBlocks                   = 50000
+	defaultMemoryPercent        = 60
 )
+
+func defaultWorkerCount(cpuCount int, blockSize uint64, bufferCount uint64) uint32 {
+	if blockSize == 0 || bufferCount == 0 {
+		return 0
+	}
+
+	minScaledCPUCount := int(minDefaultInFlightBytes / defaultInFlightBytesPerCPU)
+	maxScaledCPUCount := int(maxDefaultInFlightBytes / defaultInFlightBytesPerCPU)
+	scaledCPUCount := min(max(cpuCount, minScaledCPUCount), maxScaledCPUCount)
+	targetInFlightBytes := uint64(scaledCPUCount) * uint64(defaultInFlightBytesPerCPU)
+	desiredWorkers := (targetInFlightBytes-1)/blockSize + 1
+	desiredWorkers = min(desiredWorkers, uint64(maxDefaultWorkers))
+	desiredWorkers = min(desiredWorkers, max(uint64(1), bufferCount/2))
+	return uint32(desiredWorkers)
+}
+
+func defaultPrefetchCount(workers uint32, bufferCount uint64) uint32 {
+	return uint32(min(uint64(backgroundTaskLimit(workers)), bufferCount/2))
+}
+
+func backgroundTaskLimit(workers uint32) int {
+	if workers == 0 {
+		return 0
+	}
+	// Explicit worker overrides may add demand capacity, but speculative reads
+	// and writeback stay within the audited D192 background budget.
+	cappedWorkers := min(int(workers), maxDefaultWorkers)
+	foregroundReserve := max(1, (cappedWorkers+foregroundWorkerReserve-1)/foregroundWorkerReserve)
+	return max(1, cappedWorkers-foregroundReserve)
+}
+
+func calculateTaskLimits(workers uint32, bufferCount uint64) (writebackLimit, backgroundLimit, queueDepth int) {
+	backgroundLimit = backgroundTaskLimit(workers)
+
+	poolWritebackLimit := max(uint64(1), bufferCount/8)
+	writebackLimit = int(min(uint64(backgroundLimit), poolWritebackLimit))
+
+	if uint64(workers) < bufferCount {
+		availableQueueBuffers := bufferCount - uint64(workers) - 1
+		queueDepth = int(min(uint64(maxForegroundTaskQueueDepth), uint64(workers), availableQueueBuffers))
+	}
+	return
+}
 
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &BlockCache{}
@@ -299,11 +353,9 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	if bc.writebackLimit <= 0 {
 		return fmt.Errorf("failed to start %s [invalid writeback limit %d]", bc.Name(), bc.writebackLimit)
 	}
-	if bc.prefetch > 0 && bc.prefetchTaskLimit <= 0 {
-		return fmt.Errorf("failed to start %s [invalid prefetch task limit %d]", bc.Name(), bc.prefetchTaskLimit)
+	if bc.backgroundLimit <= 0 {
+		return fmt.Errorf("failed to start %s [invalid background task limit %d]", bc.Name(), bc.backgroundLimit)
 	}
-	queueSize := min(uint64(bc.workers)*2, bufferCount-uint64(bc.workers)-1)
-
 	var err error
 	var fl *freeListType
 
@@ -312,7 +364,7 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	}
 
 	bc.freeList = fl
-	bc.workerPool = createWorkerPool(int(bc.workers), int(queueSize), bc)
+	bc.workerPool = createWorkerPool(int(bc.workers), bc.taskQueueDepth, bc)
 	bc.btm = newBufferTableMgr()
 
 	return nil
@@ -426,27 +478,11 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	bc.consistency = conf.Consistency
 
-	prefetchConfigured := config.IsSet(compName + ".prefetch")
-	if prefetchConfigured {
-		bc.prefetch = conf.PrefetchCount
-	} else {
-		bc.prefetch = uint32(max((minPrefetch*2)+1, defaultPrefetchPerCPU*runtime.NumCPU()))
-	}
-	maxPrefetch := bufferCount / 2
-	if uint64(bc.prefetch) > maxPrefetch {
-		if prefetchConfigured {
-			return fmt.Errorf("config error in %s [prefetch %d exceeds half of the %d-buffer pool; maximum is %d]",
-				bc.Name(), bc.prefetch, bufferCount, maxPrefetch)
-		}
-		bc.prefetch = uint32(maxPrefetch)
-	}
-	bc.noPrefetch = bc.prefetch == 0
-
 	workersConfigured := config.IsSet(compName + ".parallelism")
 	if workersConfigured {
 		bc.workers = conf.Workers
 	} else {
-		bc.workers = uint32(runtime.NumCPU() * 3)
+		bc.workers = defaultWorkerCount(runtime.NumCPU(), bc.blockSize, bufferCount)
 	}
 	if bc.workers == 0 {
 		return fmt.Errorf("config error in %s [parallelism must be greater than zero]", bc.Name())
@@ -459,17 +495,22 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 		bc.workers = uint32(maxWorkers)
 	}
-	// Keep one third of the workers available for foreground and mixed I/O while
-	// allowing a sequential stream enough in-flight requests to saturate storage.
-	workerWritebackLimit := (uint64(bc.workers)*2 + 2) / 3
-	poolWritebackLimit := bufferCount / 8
-	bc.writebackLimit = int(max(uint64(1), min(uint64(maxFileWritebackTasks), workerWritebackLimit, poolWritebackLimit)))
-	if bc.prefetch > 0 {
-		workerPrefetchLimit := max(1, (int(bc.workers)*2+2)/3)
-		bc.prefetchTaskLimit = min(int(bc.prefetch), workerPrefetchLimit)
+
+	prefetchConfigured := config.IsSet(compName + ".prefetch")
+	if prefetchConfigured {
+		bc.prefetch = conf.PrefetchCount
 	} else {
-		bc.prefetchTaskLimit = 0
+		bc.prefetch = defaultPrefetchCount(bc.workers, bufferCount)
 	}
+	maxPrefetch := bufferCount / 2
+	if uint64(bc.prefetch) > maxPrefetch {
+		if prefetchConfigured {
+			return fmt.Errorf("config error in %s [prefetch %d exceeds half of the %d-buffer pool; maximum is %d]",
+				bc.Name(), bc.prefetch, bufferCount, maxPrefetch)
+		}
+		bc.prefetch = uint32(maxPrefetch)
+	}
+	bc.writebackLimit, bc.backgroundLimit, bc.taskQueueDepth = calculateTaskLimits(bc.workers, bufferCount)
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
 
@@ -503,8 +544,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("BlockCache::Configure: block_size_bytes=%d memory_bytes=%d buffers=%d workers=%d writeback_limit=%d prefetch=%d prefetch_limit=%d consistency=%t defer_empty_blob=%t",
-		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.writebackLimit, bc.prefetch, bc.prefetchTaskLimit, bc.consistency, bc.deferEmptyBlobCreation)
+	log.Crit("BlockCache::Configure: block_size_bytes=%d memory_bytes=%d buffers=%d workers=%d queue_depth=%d background_limit=%d writeback_limit=%d prefetch=%d consistency=%t defer_empty_blob=%t",
+		bc.blockSize, bc.memSize, bufferCount, bc.workers, bc.taskQueueDepth, bc.backgroundLimit, bc.writebackLimit, bc.prefetch, bc.consistency, bc.deferEmptyBlobCreation)
 
 	return nil
 }
@@ -1170,7 +1211,7 @@ func init() {
 	blockCachePrefetch := config.AddUint32Flag("block-cache-prefetch", 0, "Max number of blocks to prefetch.")
 	config.BindPFlag(compName+".prefetch", blockCachePrefetch)
 
-	blockParallelism := config.AddUint32Flag("block-cache-parallelism", 0, "Number of worker threads responsible for upload/download jobs. Default: auto-tuned to the buffer pool.")
+	blockParallelism := config.AddUint32Flag("block-cache-parallelism", 0, "Number of workers responsible for upload/download jobs. Default: auto-tuned from block size and an in-flight bandwidth-delay-product budget.")
 	config.BindPFlag(compName+".parallelism", blockParallelism)
 
 	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
