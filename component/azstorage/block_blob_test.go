@@ -2361,6 +2361,17 @@ func (s *blockBlobTestSuite) TestGetAttrError() {
 	}
 }
 
+func (s *blockBlobTestSuite) TestGetAttrInvalidName() {
+	defer s.cleanupTest()
+	blockBlob := s.az.storage.(*BlockBlob)
+
+	_, err := blockBlob.getAttrUsingRest(invalidStorageName)
+	s.assert.ErrorIs(err, syscall.EINVAL)
+
+	_, err = blockBlob.getAttrUsingList(invalidStorageName)
+	s.assert.ErrorIs(err, syscall.EINVAL)
+}
+
 // If support for chown or chmod are ever added to blob, add tests for error cases and modify the following tests.
 func (s *blockBlobTestSuite) TestChmod() {
 	defer s.cleanupTest()

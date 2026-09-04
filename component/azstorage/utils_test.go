@@ -55,6 +55,8 @@ type utilsTestSuite struct {
 	suite.Suite
 }
 
+const invalidStorageName = "invalid-\x01-name"
+
 func (s *utilsTestSuite) TestContentType() {
 	assert := assert.New(s.T())
 
