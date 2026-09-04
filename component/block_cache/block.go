@@ -371,6 +371,7 @@ func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescr
 	if err != nil {
 		return nil, err
 	}
+	workerPool.acquireBackground()
 	bufDesc.refCnt.Add(1)
 	task := &task{
 		block:              blk,
@@ -382,6 +383,7 @@ func (blk *block) queueUploadLocked(workerPool *workerPool, bufDesc *bufferDescr
 		uploadSize:         uploadSize,
 		contentLease:       contentLease,
 		writeback:          writeback,
+		ownsBackgroundSlot: true,
 	}
 	workerPool.queueTask(task)
 	return task, nil
@@ -421,9 +423,13 @@ func getUploadSize(fileSize int64, blockIdx int, bufferSize int64) (int, error) 
 //   - Buffer is marked as valid (or invalid if download failed)
 //   - Any download errors are captured in bufDesc.downloadErr
 //   - Content lock is released allowing reads to proceed
-func (blk *block) scheduleDownload(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, sync bool, prefetch *prefetchPermit) error {
+func (blk *block) scheduleDownload(workerPool *workerPool, bufDesc *bufferDescriptor, contentLease *bufferContentLease, sync bool, prefetch bool) error {
 	if !contentLease.belongsTo(bufDesc) {
 		return fmt.Errorf("invalid content lease for block %d", blk.idx)
+	}
+	downloadSize := blk.file.sizeOnStorage.Load()
+	if downloadSize < 0 {
+		downloadSize = blk.file.size.Load()
 	}
 	// Increment refCnt for download
 	bufDesc.refCnt.Add(1)
@@ -435,11 +441,11 @@ func (blk *block) scheduleDownload(workerPool *workerPool, bufDesc *bufferDescri
 		download:           true,
 		signalOnCompletion: make(chan struct{}),
 		path:               blk.file.Name,
-		fileSize:           blk.file.size.Load(),
+		fileSize:           downloadSize,
 		contentLease:       contentLease,
-		prefetch:           prefetch,
+		ownsBackgroundSlot: prefetch,
 	}
-	if prefetch != nil {
+	if prefetch {
 		if !workerPool.tryQueuePrefetch(task) {
 			contentLease.release()
 			bufDesc.release(workerPool.bc.freeList)

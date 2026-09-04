@@ -308,7 +308,7 @@ func (f *file) read(bc *BlockCache, options *internal.ReadInBufferOptions) (int,
 // Behavior:
 //   - Only schedules read-ahead for sequential patterns
 //   - Keeps a window of up to bc.prefetch blocks ahead
-//   - Schedules at most maxReadAheadScheduleBurst blocks per demand block
+//   - Starts with a bounded burst, then refills in proportion to demand progress
 //   - Tracks next read-ahead block index to avoid duplicate prefetches
 //   - Skips blocks that are already in cache
 //   - Stops when reaching end of file
@@ -975,11 +975,20 @@ func (f *file) truncate(bc *BlockCache, options *internal.TruncateFileOptions) e
 		lastBlock.setState(localBlock)
 		bufDesc.dirty.Store(true)
 
-		// Clean the rest of the buffer if file is getting shrank as it may contain old/dirty data.
+		// Truncate must not expose bytes left in a reused cache buffer. Shrink
+		// clears the discarded tail; expansion clears the newly visible range
+		// in the existing last block. Newly appended blocks are sparse zeros.
 		if isFileShrinking {
 			bufDesc.contentLock.Lock()
 			offsetInsideBlock := convertOffsetIntoBlockOffset(f.size.Load()-1, int64(bc.blockSize))
-			copy(bufDesc.buf[offsetInsideBlock+1:], bc.freeList.zeroBuf)
+			clear(bufDesc.buf[offsetInsideBlock+1:])
+			bufDesc.contentLock.Unlock()
+		} else if currentSize%int64(bc.blockSize) != 0 {
+			bufDesc.contentLock.Lock()
+			blockStart := int64(lastBlock.idx) * int64(bc.blockSize)
+			clearStart := currentSize - blockStart
+			clearEnd := min(options.NewSize-blockStart, int64(bc.blockSize))
+			clear(bufDesc.buf[clearStart:clearEnd])
 			bufDesc.contentLock.Unlock()
 		}
 
