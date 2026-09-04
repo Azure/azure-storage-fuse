@@ -35,11 +35,14 @@ package loopback
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -62,6 +65,7 @@ type LoopbackFS struct {
 
 	path        string
 	consistency bool
+	blockLists  sync.Map // map[string]*internal.CommittedBlockList - stores block lists for each file
 }
 
 var _ internal.Component = &LoopbackFS{}
@@ -261,7 +265,21 @@ func (lfs *LoopbackFS) CreateLink(options internal.CreateLinkOptions) error {
 func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("LoopbackFS::DeleteFile : name=%s", options.Name)
 	path := filepath.Join(lfs.path, options.Name)
-	return os.Remove(path)
+
+	// Remove the file
+	err := os.Remove(path)
+	if err != nil {
+		return err
+	}
+
+	// Also remove the saved block list for this file, and all the blocks data.
+	lfs.blockLists.Delete(options.Name)
+	err = removeAllFilesWithGivenPrefix(path)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (lfs *LoopbackFS) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
@@ -294,7 +312,19 @@ func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("LoopbackFS::RenameFile : %s -> %s", options.Src, options.Dst)
 	oldPath := filepath.Join(lfs.path, options.Src)
 	newPath := filepath.Join(lfs.path, options.Dst)
-	return os.Rename(oldPath, newPath)
+
+	err := os.Rename(oldPath, newPath)
+	if err != nil {
+		return err
+	}
+
+	// Move the block list from old name to new name
+	if value, ok := lfs.blockLists.Load(options.Src); ok {
+		lfs.blockLists.Store(options.Dst, value)
+		lfs.blockLists.Delete(options.Src)
+	}
+
+	return nil
 }
 
 func (lfs *LoopbackFS) ReadFile(options internal.ReadFileOptions) ([]byte, error) {
@@ -386,7 +416,16 @@ func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error
 func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("LoopbackFS::TruncateFile : name=%s", options.Name)
 	fsPath := filepath.Join(lfs.path, options.Name)
-	return os.Truncate(fsPath, options.NewSize)
+	err := os.Truncate(fsPath, options.NewSize)
+	if err != nil {
+		return err
+	}
+
+	// Clear the saved block list when truncating
+	// The file structure has changed, so the old block list is no longer valid
+	lfs.blockLists.Delete(options.Name)
+
+	return nil
 }
 
 func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
@@ -449,6 +488,11 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 	info, err := os.Lstat(path)
 	if err != nil {
 		log.Err("LoopbackFS::GetAttr : error [%s]", err)
+		// This returns fs.PathError which cannot be handled by the caller, convert to the appropriate fs error code.
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			return &internal.ObjAttr{}, pathErr.Err
+		}
 		return &internal.ObjAttr{}, err
 	}
 	attr := &internal.ObjAttr{
@@ -496,7 +540,7 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 
 	mainFilepath := filepath.Join(lfs.path, options.Name)
 
-	blob, err := os.OpenFile(mainFilepath, os.O_RDWR|os.O_CREATE, os.FileMode(0777))
+	blob, err := os.OpenFile(mainFilepath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(0777))
 	if err != nil {
 		log.Err("LoopbackFS::CommitData : error opening [%s]", err)
 		return err
@@ -508,6 +552,9 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 			return err
 		}
 	}
+
+	// Build the committed block list
+	committedList := make(internal.CommittedBlockList, 0, len(options.List))
 
 	for idx, id := range options.List {
 		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
@@ -525,7 +572,8 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 				return err
 			}
 
-			n, err = blob.WriteAt(data, int64(idx*(int)(options.BlockSize)))
+			offset := int64(idx * (int)(options.BlockSize))
+			n, err = blob.WriteAt(data, offset)
 			if err != nil {
 				return err
 			}
@@ -533,6 +581,13 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 				log.Err("LoopbackFS::CommitData : error [could not write file]")
 				return err
 			}
+
+			// Add to committed block list
+			committedList = append(committedList, internal.CommittedBlock{
+				Id:     id,
+				Offset: offset,
+				Size:   uint64(info.Size()),
+			})
 
 			err = block.Close()
 			if err != nil {
@@ -543,37 +598,35 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 		}
 	}
 
-	// delete the staged files
-	for _, id := range options.List {
-		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
-		_ = os.Remove(path)
+	err = blob.Close()
+	if err != nil {
+		return err
 	}
 
-	err = blob.Close()
-	return err
+	// Store the committed block list for this file
+	if len(committedList) > 0 {
+		lfs.blockLists.Store(options.Name, &committedList)
+	}
+
+	return nil
 }
 
 func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
-	mainFilepath := filepath.Join(lfs.path, name)
+	// First check if we have a saved block list for this file
+	if value, ok := lfs.blockLists.Load(name); ok {
+		list := value.(*internal.CommittedBlockList)
+		log.Debug("LoopbackFS::GetCommittedBlockList : returning saved block list for %s with %d blocks", name, len(*list))
+		return list, nil
+	}
 
-	info, err := os.Lstat(mainFilepath)
-	if err != nil {
+	// Return (nil, nil) if the file exists but has no committed block list yet (equivalent to a small blob committed via PutBlob).
+	// If the file does not exist, return the underlying os error.
+	path := filepath.Join(lfs.path, name)
+	if _, err := os.Lstat(path); err != nil {
 		return nil, err
 	}
 
-	blockSize := uint64(1 * 1024 * 1024)
-	blocks := info.Size() / (int64)(blockSize)
-	list := make(internal.CommittedBlockList, 0)
-
-	for i := range blocks {
-		list = append(list, internal.CommittedBlock{
-			Id:     fmt.Sprintf("%d", i),
-			Offset: i * (int64)(blockSize),
-			Size:   blockSize,
-		})
-	}
-
-	return &list, nil
+	return nil, nil
 }
 
 func NewLoopbackFSComponent() internal.Component {
