@@ -68,22 +68,8 @@ type task struct {
 	uploadSize         int                 // Validated number of bytes to upload
 	contentLease       *bufferContentLease // Exclusive descriptor content ownership
 	writeback          *writebackLimiter   // Per-file asynchronous writeback permit
-	prefetch           *prefetchPermit     // Global speculative-download permit
+	ownsBackgroundSlot bool                // Release a shared background slot on completion
 	err                error               // Task result, published before completion is signaled
-}
-
-type prefetchPermit struct {
-	pool *workerPool
-	once sync.Once
-}
-
-func (permit *prefetchPermit) release() {
-	if permit == nil {
-		return
-	}
-	permit.once.Do(func() {
-		<-permit.pool.prefetchSlots
-	})
 }
 
 // workerPool manages a pool of goroutines for async I/O operations.
@@ -97,7 +83,7 @@ func (permit *prefetchPermit) release() {
 //
 //   - Fixed number of workers (configured via parallelism parameter)
 //   - Buffered task channel allows queueing pending operations
-//   - Prefetch admission reserves only a bounded fraction of worker capacity
+//   - Background admission bounds speculative downloads and uploads
 //   - Workers run continuously until pool is destroyed
 //   - Each worker handles both downloads and uploads
 //
@@ -114,13 +100,12 @@ func (permit *prefetchPermit) release() {
 // concurrently without synchronization. Demand work applies queue backpressure;
 // speculative work uses nonblocking admission.
 type workerPool struct {
-	workers       int            // Number of worker goroutines
-	wg            sync.WaitGroup // Tracks active workers for clean shutdown
-	tasks         chan *task     // Buffered channel of foreground and writeback tasks
-	prefetchTasks chan *task     // Lower-priority speculative downloads
-	prefetchSlots chan struct{}  // Limits queued and active speculative downloads
-	bc            *BlockCache    // Reference to parent BlockCache for I/O operations
-	stop          sync.Once      // Ensures task channels are closed exactly once
+	wg              sync.WaitGroup // Tracks active workers for clean shutdown
+	tasks           chan *task     // Buffered channel of foreground and writeback tasks
+	prefetchTasks   chan *task     // Lower-priority speculative downloads
+	backgroundSlots chan struct{}  // Limits queued and active speculative downloads and uploads
+	bc              *BlockCache    // Reference to parent BlockCache for I/O operations
+	stop            sync.Once      // Ensures task channels are closed exactly once
 }
 
 // createWorkerPool creates and starts a worker pool with the specified number of workers.
@@ -134,15 +119,14 @@ type workerPool struct {
 func createWorkerPool(workers int, queueSize int, bc *BlockCache) *workerPool {
 	// Create the worker pool.
 	wp := &workerPool{
-		workers:       workers,
-		tasks:         make(chan *task, queueSize),
-		prefetchTasks: make(chan *task, queueSize),
-		prefetchSlots: make(chan struct{}, bc.prefetchTaskLimit),
-		bc:            bc,
+		tasks:           make(chan *task, queueSize),
+		prefetchTasks:   make(chan *task, queueSize),
+		backgroundSlots: make(chan struct{}, bc.backgroundLimit),
+		bc:              bc,
 	}
 
-	wp.wg.Add(wp.workers)
-	for i := 0; i < wp.workers; i++ {
+	wp.wg.Add(workers)
+	for i := 0; i < workers; i++ {
 		go wp.worker()
 	}
 
@@ -250,17 +234,27 @@ func (wp *workerPool) completeTask(task *task) {
 	if task.writeback != nil {
 		task.writeback.release()
 	}
-	task.prefetch.release()
+	if task.ownsBackgroundSlot {
+		wp.releaseBackground()
+	}
 	close(task.signalOnCompletion)
 }
 
-func (wp *workerPool) tryAcquirePrefetch() *prefetchPermit {
+func (wp *workerPool) tryAcquireBackground() bool {
 	select {
-	case wp.prefetchSlots <- struct{}{}:
-		return &prefetchPermit{pool: wp}
+	case wp.backgroundSlots <- struct{}{}:
+		return true
 	default:
-		return nil
+		return false
 	}
+}
+
+func (wp *workerPool) acquireBackground() {
+	wp.backgroundSlots <- struct{}{}
+}
+
+func (wp *workerPool) releaseBackground() {
+	<-wp.backgroundSlots
 }
 
 func (wp *workerPool) tryQueuePrefetch(task *task) bool {

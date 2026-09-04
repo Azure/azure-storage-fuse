@@ -118,14 +118,16 @@ func (b bufDescStatus) String() string {
 // Thread-safety: Uses block-level locking to prevent concurrent creation for the same block
 func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, workerPool *workerPool, blk *block, access bufferAccessKind) (*bufferDescriptor, bufDescStatus, error) {
 	sync := access.synchronous()
-	var prefetch *prefetchPermit
+	backgroundAcquired := false
 	if access == accessPrefetch {
-		prefetch = workerPool.tryAcquirePrefetch()
-		if prefetch == nil {
+		backgroundAcquired = workerPool.tryAcquireBackground()
+		if !backgroundAcquired {
 			return nil, bufDescStatusInvalid, errBuffersExhausted
 		}
 		defer func() {
-			prefetch.release()
+			if backgroundAcquired {
+				workerPool.releaseBackground()
+			}
 		}()
 	}
 
@@ -213,14 +215,12 @@ func (btm *bufferTableMgr) getOrCreateBufferDescriptor(freeList *freeListType, w
 
 	// This is where we should download the blockdata into the buffer, check the blocks flag status.
 	if doRead {
-		if err := blk.scheduleDownload(workerPool, bufDesc, contentLease, sync, prefetch); err != nil {
+		if err := blk.scheduleDownload(workerPool, bufDesc, contentLease, sync, backgroundAcquired); err != nil {
 			btm.detachBufferDescriptor(bufDesc, freeList)
 			bufDesc.release(freeList)
 			return nil, bufDescStatusInvalid, err
 		}
-		if prefetch != nil {
-			prefetch = nil
-		}
+		backgroundAcquired = false
 
 		if sync {
 			// Check if there was any error during download, and also blocks here until download is complete.

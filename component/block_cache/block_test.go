@@ -330,3 +330,31 @@ func TestBlock_NumWrites(t *testing.T) {
 	blk.numWrites.Store(0)
 	assert.Equal(t, int32(0), blk.numWrites.Load())
 }
+
+func TestScheduleDownloadUsesStorageSize(t *testing.T) {
+	const blockSize = uint64(16 * common.MbToBytes)
+
+	bc := &BlockCache{blockSize: blockSize}
+	freeList, err := createFreeList(blockSize, blockSize)
+	assert.NoError(t, err)
+	defer freeList.destroy()
+	bc.freeList = freeList
+
+	workerPool := &workerPool{
+		tasks:           make(chan *task, 1),
+		backgroundSlots: make(chan struct{}, 1),
+		bc:              bc,
+	}
+	f := createFile("extended.txt")
+	f.size.Store(51 * common.MbToBytes)
+	f.sizeOnStorage.Store(20 * common.MbToBytes)
+	blk := createBlock(1, "testId", committedBlock, f)
+	bufDesc, err := freeList.allocateBuffer(blk)
+	assert.NoError(t, err)
+
+	err = blk.scheduleDownload(workerPool, bufDesc, bufDesc.lockContent(), false, false)
+	assert.NoError(t, err)
+	task := <-workerPool.tasks
+	assert.Equal(t, int64(20*common.MbToBytes), task.fileSize)
+	workerPool.completeTask(task)
+}

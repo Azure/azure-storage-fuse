@@ -45,7 +45,7 @@ const (
 	// Reference counting
 	refCountTableOnly       = 1
 	refCountTableAndOneUser = 2
-	maxBufferUsageCount     = 5
+	maxBufferUsageCount     = 1
 )
 
 var (
@@ -103,12 +103,7 @@ func (bd *bufferDescriptor) recordAccess(kind bufferAccessKind) {
 	if kind != accessDemand && kind != accessWrite {
 		return
 	}
-	for {
-		current := bd.usageCount.Load()
-		if current >= maxBufferUsageCount || bd.usageCount.CompareAndSwap(current, current+1) {
-			return
-		}
-	}
+	bd.usageCount.Store(maxBufferUsageCount)
 }
 
 func (bd *bufferDescriptor) ageUsage() bool {
