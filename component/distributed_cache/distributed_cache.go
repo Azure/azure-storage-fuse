@@ -649,7 +649,7 @@ func init() {
 		"distributed cache discovery endpoint (recommended)")
 	config.BindPFlag(compName+".discovery-endpoint", discoveryFlag)
 
-	ttlFlag := config.AddUint32Flag("distributed-cache-ttl", 0,
+	ttlFlag := config.AddUint32Flag("distributed-cache-node-ttl", 0,
 		"distributed cache entry TTL in seconds (0 = no TTL)")
 	config.BindPFlag(compName+".ttl-seconds", ttlFlag)
 
@@ -657,7 +657,7 @@ func init() {
 		"block size in MB for the distributed cache L1 (block_cache)")
 	config.BindPFlag("block_cache.block-size-mb", blockSizeFlag)
 
-	memFlag := config.AddUint32Flag("distributed-cache-memory", 0,
+	memFlag := config.AddUint32Flag("distributed-cache-node-memory", 0,
 		"memory size in MB for the distributed cache L1 (block_cache)")
 	config.BindPFlag("block_cache.mem-size-mb", memFlag)
 

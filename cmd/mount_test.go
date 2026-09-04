@@ -1079,7 +1079,7 @@ func (suite *mountTestSuite) TestDistributedCacheDiscoveryEndpointCLI() {
 	suite.assert.Equal("cli.example.com:9065", endpoint)
 }
 
-func (suite *mountTestSuite) TestDistributedCacheTTLCLI() {
+func (suite *mountTestSuite) TestDistributedCacheNodeTTLCLI() {
 	defer suite.cleanupTest()
 
 	mntDir, err := os.MkdirTemp("", "mntdir")
@@ -1096,7 +1096,7 @@ func (suite *mountTestSuite) TestDistributedCacheTTLCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-ttl=120")
+		"--distributed-cache", "--distributed-cache-node-ttl=120")
 	suite.assert.Error(err)
 
 	var ttl uint32
@@ -1131,7 +1131,7 @@ func (suite *mountTestSuite) TestDistributedCacheBlockSizeCLI() {
 	suite.assert.Equal(uint32(32), blockSize)
 }
 
-func (suite *mountTestSuite) TestDistributedCacheMemoryCLI() {
+func (suite *mountTestSuite) TestDistributedCacheNodeMemoryCLI() {
 	defer suite.cleanupTest()
 
 	mntDir, err := os.MkdirTemp("", "mntdir")
@@ -1148,7 +1148,7 @@ func (suite *mountTestSuite) TestDistributedCacheMemoryCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-memory=512")
+		"--distributed-cache", "--distributed-cache-node-memory=512")
 	suite.assert.Error(err)
 
 	var memSize uint32
