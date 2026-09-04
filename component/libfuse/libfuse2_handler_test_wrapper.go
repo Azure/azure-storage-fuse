@@ -226,6 +226,18 @@ func testCreateError(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
+func testGetAttrInvalidArgument(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+
+	name := "service-rejected-name"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: name}).Return(nil, syscall.EINVAL)
+	result := libfuse2_getattr(path, &C.stat_t{})
+	suite.assert.Equal(C.int(-C.EINVAL), result)
+}
+
 func testOpen(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
