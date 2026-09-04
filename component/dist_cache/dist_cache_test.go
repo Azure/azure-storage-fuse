@@ -1215,25 +1215,6 @@ dist_cache: {}
 	assert.Equal(t, "127.0.0.1:9000", dc.conf.DiscoveryEndpoint)
 }
 
-// TestRegisterEnvVariables_BindsK8sServiceAndNamespace verifies that both
-// K8s discovery env vars land in conf.
-func TestRegisterEnvVariables_BindsK8sServiceAndNamespace(t *testing.T) {
-	loadConfig(t, `
-azstorage:
-  account-name: myacct
-  container: mycontainer
-dist_cache: {}
-`)
-	RegisterEnvVariables()
-	t.Setenv(EnvDistCacheK8sService, "dcache-svc")
-	t.Setenv(EnvDistCacheK8sNamespace, "cache-ns")
-
-	dc := NewDistCacheComponent().(*DistCache)
-	require.NoError(t, dc.Configure(true))
-	assert.Equal(t, "dcache-svc", dc.conf.K8sService)
-	assert.Equal(t, "cache-ns", dc.conf.K8sNamespace)
-}
-
 // TestRegisterEnvVariables_BindsServerList verifies the env-only path for
 // server-list: no YAML entry, only the env var, Configure must succeed.
 func TestRegisterEnvVariables_BindsServerList(t *testing.T) {

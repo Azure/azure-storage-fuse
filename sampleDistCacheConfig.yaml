@@ -28,17 +28,12 @@ libfuse:
   negative-entry-expiration-sec: 240
 
 # Distributed cache configuration
-# At least one discovery method must be configured: discovery-endpoint, k8s-service, or server-list.
+# At least one discovery method must be configured: discovery-endpoint or server-list.
 dist_cache:
   # Option 1: Discovery endpoint (recommended for production)
   discovery-endpoint: "cacheserver-discovery.my-namespace.svc.cluster.local:9065"
 
-  # Option 2: Kubernetes DNS discovery
-  # k8s-service: cacheserver
-  # k8s-namespace: my-namespace
-  # port: 9065
-
-  # Option 3: Static server list (comma-separated host:port)
+  # Option 2: Static server list (comma-separated host:port)
   # server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
 
   # Optional: L1 tuning (applied to the auto-inserted block_cache component)
