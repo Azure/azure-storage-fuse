@@ -94,7 +94,6 @@ type mountOptions struct {
 
 	// v1 support
 	Streaming         bool     `config:"streaming"`
-	DistributedCache  bool     `config:"distributed-cache"`
 	AttrCache         bool     `config:"use-attr-cache"`
 	LibfuseOptions    []string `config:"libfuse-options"`
 	BlockCache        bool     `config:"block-cache"`
@@ -309,7 +308,7 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "block_cache")
 			} else if options.Preload {
 				pipeline = append(pipeline, "xload")
-			} else if config.IsSet("distributed-cache") && options.DistributedCache {
+			} else if config.IsSet("distributed_cache.discovery-endpoint") {
 				pipeline = append(pipeline, "distributed_cache") // L2 cache
 			} else {
 				pipeline = append(pipeline, "file_cache")
@@ -827,27 +826,16 @@ func applyLibfuseReadOnlyOption(libfuseOpts []string) {
 // from the config file, before any synthesis or auto-injection.
 func normalizeDistCacheConfig(userComponents []string) error {
 	// distributed_cache is "wanted" whenever either surface signals it:
-	// either it is listed in components:, or --distributed-cache /
-	// distributed-cache: is set *to true*. Both surfaces are authoritative,
-	// so the incompatible-L1 check below runs whichever one the user chose.
-	// This prevents the case where --distributed-cache is silently ignored
-	// because a components: pipeline was also configured (e.g. with
-	// file_cache), which would otherwise run the sibling L1 with no
-	// dist-cache and no error.
-	//
-	// Crucially, we check the *value* of the enable flag, not merely
-	// whether it was provided: config.IsSet returns true for both
-	// `distributed-cache: false` and `distributed-cache: true`, so gating
-	// on IsSet alone would treat an explicit opt-out as an opt-in and
-	// then reject a legitimate file_cache pipeline as "incompatible".
-	distCacheFlag := false
-	if config.IsSet("distributed-cache") {
-		if err := config.UnmarshalKey("distributed-cache", &distCacheFlag); err != nil {
-			return fmt.Errorf("mount: failed to read distributed-cache flag: %w", err)
-		}
-	}
+	// either it is listed in components:, or a discovery-endpoint has been
+	// provided (via --distributed-cache-discovery-endpoint on the CLI or a
+	// distributed_cache.discovery-endpoint entry in the YAML). Both surfaces
+	// are authoritative, so the incompatible-L1 check below runs whichever
+	// one the user chose. This prevents the case where the CLI/YAML
+	// distributed_cache signal is silently ignored because a components:
+	// pipeline was also configured (e.g. with file_cache), which would
+	// otherwise run the sibling L1 with no dist-cache and no error.
 	userWantsDistCache := common.ComponentInPipeline(userComponents, "distributed_cache") ||
-		distCacheFlag
+		config.IsSet("distributed_cache.discovery-endpoint")
 	if !userWantsDistCache {
 		return nil
 	}
@@ -1041,9 +1029,6 @@ func init() {
 	mountCmd.Flags().BoolVar(&options.Streaming, "streaming", false, "Enable Streaming.")
 	config.BindPFlag("streaming", mountCmd.Flags().Lookup("streaming"))
 	mountCmd.Flags().Lookup("streaming").Hidden = true
-
-	mountCmd.Flags().BoolVar(&options.DistributedCache, "distributed-cache", false, "Enable Distributed-Cache.")
-	config.BindPFlag("distributed-cache", mountCmd.Flags().Lookup("distributed-cache"))
 
 	mountCmd.Flags().BoolVar(&options.BlockCache, "block-cache", false, "Enable Block-Cache.")
 	config.BindPFlag("block-cache", mountCmd.Flags().Lookup("block-cache"))

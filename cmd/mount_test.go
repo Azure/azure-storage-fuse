@@ -837,7 +837,7 @@ func (suite *mountTestSuite) TestDistributedCacheCLIRequiresReadOnly() {
 	suite.assert.NoError(err)
 	confFile.Close()
 
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache")
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache-discovery-endpoint=example.com:9065")
 	suite.assert.Error(err)
 	suite.assert.Contains(op, "distributed cache is allowed only for read-only mounts")
 }
@@ -858,7 +858,7 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithReadOnlyFalse() {
 	suite.assert.NoError(err)
 	confFile.Close()
 
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache", "--read-only=false")
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache-discovery-endpoint=example.com:9065", "--read-only=false")
 	suite.assert.Error(err)
 	suite.assert.Contains(op, "distributed cache is allowed only for read-only mounts")
 }
@@ -879,17 +879,19 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithReadOnlyPasses() {
 	suite.assert.NoError(err)
 	confFile.Close()
 
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache", "--read-only")
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache-discovery-endpoint=example.com:9065", "--read-only")
 	suite.assert.Error(err)
 	suite.assert.NotContains(op, "distributed cache is allowed only for read-only mounts")
-	suite.assert.True(options.DistributedCache)
+	var endpoint string
+	suite.assert.NoError(config.UnmarshalKey("distributed_cache.discovery-endpoint", &endpoint))
+	suite.assert.Equal("example.com:9065", endpoint)
 }
 
 // If the config file already specifies a non-empty components: pipeline (here
-// with file_cache), passing --distributed-cache on the CLI must not silently
-// leave file_cache in place — the resulting pipeline must either error out
-// with the mutual-exclusion message, or reflect the CLI intent by containing
-// distributed_cache + block_cache and dropping file_cache.
+// with file_cache), passing --distributed-cache-discovery-endpoint on the CLI
+// must not silently leave file_cache in place — the resulting pipeline must
+// either error out with the mutual-exclusion message, or reflect the CLI
+// intent by containing distributed_cache + block_cache and dropping file_cache.
 func (suite *mountTestSuite) TestDistributedCacheCLIOverridesExplicitFileCachePipeline() {
 	defer suite.cleanupTest()
 
@@ -920,12 +922,12 @@ azstorage:
 	confFile.Close()
 
 	op, _ := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-discovery-endpoint=example.com:9065")
+		"--distributed-cache-discovery-endpoint=example.com:9065")
 
 	// Either the mutual-exclusion gate fires (preferred, explicit user
 	// signal), or the CLI override wins. Silently keeping file_cache in the
-	// pipeline while --distributed-cache was requested is the bug we're
-	// guarding against.
+	// pipeline while --distributed-cache-discovery-endpoint was requested is
+	// the bug we're guarding against.
 	if strings.Contains(op, "distributed_cache is a single configuration surface") {
 		return
 	}
@@ -952,10 +954,12 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithFuseRoOptionPasses() {
 
 	// Users should be able to satisfy the distributed_cache read-only gate
 	// with the FUSE-style `-o ro` option, not just `--read-only`.
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache", "-o", "ro")
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache-discovery-endpoint=example.com:9065", "-o", "ro")
 	suite.assert.Error(err)
 	suite.assert.NotContains(op, "distributed cache is allowed only for read-only mounts")
-	suite.assert.True(options.DistributedCache)
+	var endpoint string
+	suite.assert.NoError(config.UnmarshalKey("distributed_cache.discovery-endpoint", &endpoint))
+	suite.assert.Equal("example.com:9065", endpoint)
 }
 
 func (suite *mountTestSuite) TestDistributedCacheCLIWithFuseRoTrueOptionPasses() {
@@ -975,10 +979,12 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithFuseRoTrueOptionPasses()
 	confFile.Close()
 
 	// `-o ro=true` is the equivalent long form of `-o ro`.
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache", "-o", "ro=true")
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName), "--distributed-cache-discovery-endpoint=example.com:9065", "-o", "ro=true")
 	suite.assert.Error(err)
 	suite.assert.NotContains(op, "distributed cache is allowed only for read-only mounts")
-	suite.assert.True(options.DistributedCache)
+	var endpoint string
+	suite.assert.NoError(config.UnmarshalKey("distributed_cache.discovery-endpoint", &endpoint))
+	suite.assert.Equal("example.com:9065", endpoint)
 }
 
 func (suite *mountTestSuite) TestDistributedCacheCLIWithBlockCache() {
@@ -1023,9 +1029,10 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithFileCache() {
 	suite.assert.Contains(op, "distributed_cache is a single configuration surface")
 }
 
-// --distributed-cache combined with a sibling L1 enable-flag on the CLI
-// (--streaming, --block-cache, --preload) must be rejected instead of
-// silently picking one via the pipeline-synthesis else-if chain.
+// --distributed-cache-discovery-endpoint combined with a sibling L1
+// enable-flag on the CLI (--streaming, --block-cache, --preload) must be
+// rejected instead of silently picking one via the pipeline-synthesis
+// else-if chain.
 func (suite *mountTestSuite) TestDistributedCacheCLIWithSiblingL1Flags() {
 	for _, siblingFlag := range []string{"--streaming", "--block-cache", "--preload"} {
 		suite.Run(siblingFlag, func() {
@@ -1046,7 +1053,7 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithSiblingL1Flags() {
 
 			op, err := executeCommandC(rootCmd, "mount", mntDir,
 				fmt.Sprintf("--config-file=%s", confFileName),
-				"--distributed-cache", "--read-only", siblingFlag)
+				"--distributed-cache-discovery-endpoint=example.com:9065", "--read-only", siblingFlag)
 			suite.assert.Error(err)
 			suite.assert.Contains(op, "distributed_cache is a single configuration surface")
 		})
@@ -1070,7 +1077,7 @@ func (suite *mountTestSuite) TestDistributedCacheDiscoveryEndpointCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-discovery-endpoint=cli.example.com:9065")
+		"--distributed-cache-discovery-endpoint=cli.example.com:9065")
 	suite.assert.Error(err)
 
 	var endpoint string
@@ -1096,7 +1103,7 @@ func (suite *mountTestSuite) TestDistributedCacheNodeTTLCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-node-ttl=120")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-node-ttl=120")
 	suite.assert.Error(err)
 
 	var ttl uint32
@@ -1122,7 +1129,7 @@ func (suite *mountTestSuite) TestDistributedCacheBlockSizeCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-block-size=32")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-block-size=32")
 	suite.assert.Error(err)
 
 	var blockSize uint32
@@ -1148,7 +1155,7 @@ func (suite *mountTestSuite) TestDistributedCacheNodeMemoryCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-node-memory=512")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-node-memory=512")
 	suite.assert.Error(err)
 
 	var memSize uint32
@@ -1174,7 +1181,7 @@ func (suite *mountTestSuite) TestDistributedCachePrefetchCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-prefetch=16")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-prefetch=16")
 	suite.assert.Error(err)
 
 	var prefetch uint32
@@ -1200,7 +1207,7 @@ func (suite *mountTestSuite) TestDistributedCacheParallelismCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache", "--distributed-cache-parallelism=24")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-parallelism=24")
 	suite.assert.Error(err)
 
 	var parallelism uint32

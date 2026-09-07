@@ -47,7 +47,6 @@ import (
 
 type genConfigParams struct {
 	blockCache                        bool   `config:"block-cache" yaml:"block-cache,omitempty"`
-	distributedCache                  bool   `config:"distributed-cache" yaml:"distributed-cache,omitempty"`
 	distributedCacheDiscoveryEndpoint string `config:"distributed-cache-discovery-endpoint" yaml:"distributed-cache-discovery-endpoint,omitempty"`
 	directIO                          bool   `config:"direct-io" yaml:"direct-io,omitempty"`
 	readOnly                          bool   `config:"ro" yaml:"ro,omitempty"`
@@ -73,15 +72,13 @@ var generatedConfig = &cobra.Command{
 
 		// distributed-cache is mutually exclusive with the L1-only modes and
 		// requires read-only to be set explicitly. It does not require a tmp-path.
-		if optsGenCfg.distributedCache {
+		// It is enabled by providing --distributed-cache-discovery-endpoint.
+		if optsGenCfg.distributedCacheDiscoveryEndpoint != "" {
 			if optsGenCfg.blockCache {
 				return fmt.Errorf("--distributed-cache cannot be combined with --block-cache")
 			}
 			if optsGenCfg.tmpPath != "" {
 				return fmt.Errorf("--distributed-cache cannot be combined with file-cache mode; --distributed-cache does not use --tmp-path")
-			}
-			if optsGenCfg.distributedCacheDiscoveryEndpoint == "" {
-				return fmt.Errorf("--distributed-cache requires --distributed-cache-discovery-endpoint to be set")
 			}
 			// Distributed cache is read-only only; user must opt in explicitly.
 			if !optsGenCfg.readOnly {
@@ -109,7 +106,7 @@ var generatedConfig = &cobra.Command{
 		// time by injecting block_cache immediately before it; the generated config
 		// should not list block_cache in the components section for this mode.
 		pipeline := []string{"libfuse"}
-		if optsGenCfg.distributedCache {
+		if optsGenCfg.distributedCacheDiscoveryEndpoint != "" {
 			pipeline = append(pipeline, "distributed_cache")
 		} else if optsGenCfg.blockCache {
 			pipeline = append(pipeline, "block_cache")
@@ -183,8 +180,7 @@ func init() {
 	rootCmd.AddCommand(generatedConfig)
 
 	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Generate config file for streaming with block-cache mode")
-	generatedConfig.Flags().BoolVar(&optsGenCfg.distributedCache, "distributed-cache", false, "Generate config file for distributed-cache (L2) mode; requires --ro")
-	generatedConfig.Flags().StringVar(&optsGenCfg.distributedCacheDiscoveryEndpoint, "distributed-cache-discovery-endpoint", "", "Discovery endpoint for distributed-cache mode (required)")
+	generatedConfig.Flags().StringVar(&optsGenCfg.distributedCacheDiscoveryEndpoint, "distributed-cache-discovery-endpoint", "", "Discovery endpoint for distributed-cache (L2) mode; setting this enables distributed-cache and requires --ro")
 	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Generate config file for file-cache mode, string specifies temp cache path")
 	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Generate config file for direct-io mode without any caching")
 	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Specifies location for generated config file, default is current directory")

@@ -141,7 +141,6 @@ func TestNormalizeDistCacheConfig_DistCacheSectionWithoutComponents(t *testing.T
 	// distributed_cache: set but components: omitted — the synthesis-path case.
 	setDistCacheYAML(t, `
 read-only: true
-distributed-cache: true
 distributed_cache:
   discovery-endpoint: d
   block-size-mb: 32
@@ -188,14 +187,14 @@ distributed_cache:
 }
 
 func TestNormalizeDistCacheConfig_RejectsWhenReadOnlyFalseViaCLIFlag(t *testing.T) {
-	// CLI-flag synthesis path with read-only explicitly false.
+	// CLI-flag synthesis path with read-only explicitly false; the
+	// discovery-endpoint being set (via CLI or YAML) is the enable signal.
 	setDistCacheYAML(t, `
 read-only: false
 distributed_cache:
   discovery-endpoint: d
 `)
 	defer viper.Reset()
-	config.Set("distributed-cache", "true")
 
 	err := normalizeDistCacheConfig(nil)
 	assert.Error(t, err)
@@ -234,30 +233,10 @@ block_cache:
 }
 
 // A distributed_cache: section alongside an explicit components: that
-// omits distributed_cache is silently ignored, matching how the codebase treats
-// stray block_cache:/file_cache: sections. Normalize must not raise a
-// misleading "incompatible" error against the L1 the user actually chose.
-func TestNormalizeDistCacheConfig_StaleSectionWithOtherL1IsNoop(t *testing.T) {
-	setDistCacheYAML(t, `
-distributed_cache:
-  discovery-endpoint: d
-file_cache:
-  path: /tmp/fc
-components:
-  - libfuse
-  - file_cache
-  - azstorage
-`)
-	defer viper.Reset()
-
-	err := normalizeDistCacheConfig([]string{"libfuse", "file_cache", "azstorage"})
-	assert.NoError(t, err)
-	// Fanout must not run either.
-	assert.False(t, viper.IsSet("block_cache.block-size-mb"))
-}
-
-func TestNormalizeDistCacheConfig_StaleSectionNoL1IsNoop(t *testing.T) {
-	// Explicit components: without distributed_cache; stray section ignored.
+// omits distributed_cache is no longer treated as a stray/no-op: the
+// presence of discovery-endpoint is the enable signal. These paths are
+// covered by the read-only gating and sibling-L1 rejection tests below.
+func TestNormalizeDistCacheConfig_StaleSectionNoL1ErrorsWithoutReadOnly(t *testing.T) {
 	setDistCacheYAML(t, `
 distributed_cache:
   discovery-endpoint: d
@@ -269,52 +248,8 @@ components:
 	defer viper.Reset()
 
 	err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
-	assert.NoError(t, err)
-	assert.False(t, viper.IsSet("block_cache.block-size-mb"))
-}
-
-// distributed-cache: false in a YAML file must not be misread as an opt-in.
-// config.IsSet only checks whether the key was provided, so this guards
-// against treating an explicit disable as an enable and then colliding with
-// a legitimate L1 like file_cache.
-func TestNormalizeDistCacheConfig_DisabledFlagDoesNotConflictWithFileCache(t *testing.T) {
-	setDistCacheYAML(t, `
-read-only: true
-distributed-cache: false
-components:
-  - libfuse
-  - file_cache
-  - azstorage
-`)
-	defer viper.Reset()
-
-	err := normalizeDistCacheConfig(
-		[]string{"libfuse", "file_cache", "azstorage"},
-	)
-
-	assert.NoError(t, err)
-}
-
-// End-to-end CLI variant: `--distributed-cache=false` on the command line
-// (simulated via config.Set, matching TestNormalizeDistCacheConfig_
-// RejectsWhenReadOnlyFalseViaCLIFlag) must behave the same as omitting the
-// flag entirely — a plain file_cache pipeline must not be rejected.
-func TestNormalizeDistCacheConfig_DisabledCLIFlagDoesNotConflictWithFileCache(t *testing.T) {
-	setDistCacheYAML(t, `
-read-only: true
-components:
-  - libfuse
-  - file_cache
-  - azstorage
-`)
-	defer viper.Reset()
-	config.Set("distributed-cache", "false")
-
-	err := normalizeDistCacheConfig(
-		[]string{"libfuse", "file_cache", "azstorage"},
-	)
-
-	assert.NoError(t, err)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
 }
 
 func TestNormalizeDistCacheConfig_RejectsBlockCacheInComponents(t *testing.T) {
@@ -433,10 +368,10 @@ stream:
 	}
 }
 
-// The CLI-flag entry path (`distributed-cache: true`) combined with a
-// sibling L1 already present in components: must be rejected for every
-// incompatible L1 — block_cache, file_cache, xload, stream. Mirrors the
-// components-list entry path (RejectsBlockCacheInComponents /
+// The CLI-flag entry path (discovery-endpoint set via CLI/YAML) combined
+// with a sibling L1 already present in components: must be rejected for
+// every incompatible L1 — block_cache, file_cache, xload, stream. Mirrors
+// the components-list entry path (RejectsBlockCacheInComponents /
 // RejectsOtherL1InComponents), but exercises the flag-driven activation
 // so we catch regressions where the gate only fires when
 // distributed_cache is spelled out in components:.
@@ -449,7 +384,6 @@ distributed_cache:
   discovery-endpoint: d
 `)
 			defer viper.Reset()
-			config.Set("distributed-cache", "true")
 
 			err := normalizeDistCacheConfig([]string{"libfuse", name, "azstorage"})
 			assert.Error(t, err)
@@ -460,7 +394,7 @@ distributed_cache:
 
 // Same as above but the sibling L1 is signalled via its top-level YAML
 // section (e.g. `block_cache:` / `file_cache:`) rather than a components:
-// entry, again with distributed_cache activated through the CLI flag.
+// entry, again with distributed_cache activated through the discovery-endpoint.
 func TestNormalizeDistCacheConfig_RejectsSiblingL1SectionViaCLIFlag(t *testing.T) {
 	cases := []struct {
 		name string
@@ -511,7 +445,6 @@ stream:
 		t.Run(tc.name, func(t *testing.T) {
 			setDistCacheYAML(t, tc.yaml)
 			defer viper.Reset()
-			config.Set("distributed-cache", "true")
 
 			err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
 			assert.Error(t, err)
@@ -522,9 +455,10 @@ stream:
 
 // A sibling L1 tuning knob passed on the CLI (e.g.
 // `--block-cache-block-size=80`, which binds to `block_cache.block-size-mb`)
-// alongside `--distributed-cache` must be rejected — the user likely meant
-// `--distributed-cache-block-size`. The gate fires because viper's IsSet on
-// the parent key ("block_cache") returns true once any nested key is set.
+// alongside a distributed-cache discovery-endpoint must be rejected — the
+// user likely meant `--distributed-cache-block-size`. The gate fires because
+// viper's IsSet on the parent key ("block_cache") returns true once any
+// nested key is set.
 func TestNormalizeDistCacheConfig_RejectsSiblingL1TuningKnobsViaCLI(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -565,7 +499,6 @@ distributed_cache:
   discovery-endpoint: d
 `)
 			defer viper.Reset()
-			config.Set("distributed-cache", "true")
 			config.Set(tc.key, tc.value)
 
 			err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
@@ -576,7 +509,7 @@ distributed_cache:
 }
 
 // Sibling L1 CLI enable-flags must be rejected when combined with
-// --distributed-cache.
+// a distributed-cache discovery-endpoint.
 func TestNormalizeDistCacheConfig_RejectsSiblingL1CLIFlags(t *testing.T) {
 	for _, key := range []string{"streaming", "block-cache", "preload"} {
 		t.Run(key, func(t *testing.T) {
@@ -586,7 +519,6 @@ distributed_cache:
   discovery-endpoint: d
 `)
 			defer viper.Reset()
-			config.Set("distributed-cache", "true")
 			config.Set(key, "true")
 
 			err := normalizeDistCacheConfig(nil)
@@ -596,7 +528,7 @@ distributed_cache:
 	}
 }
 
-// An explicit `--<flag>=false` alongside --distributed-cache=true must NOT reject.
+// An explicit `--<flag>=false` alongside a distributed-cache discovery-endpoint must NOT reject.
 func TestNormalizeDistCacheConfig_DisabledSiblingL1CLIFlagsAreOK(t *testing.T) {
 	for _, key := range []string{"streaming", "block-cache", "preload"} {
 		t.Run(key, func(t *testing.T) {
@@ -606,7 +538,6 @@ distributed_cache:
   discovery-endpoint: d
 `)
 			defer viper.Reset()
-			config.Set("distributed-cache", "true")
 			config.Set(key, "false")
 
 			err := normalizeDistCacheConfig(nil)
