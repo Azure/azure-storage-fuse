@@ -41,6 +41,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -192,6 +193,31 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
+	// The DFS and Blob validation probes use separate clients and have no result
+	// dependency, so run them concurrently to reduce mount latency. The DFS-first
+	// error precedence is preserved when evaluating the results below.
+	var wg sync.WaitGroup
+	var dfsErr, blobErr error
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		dfsErr = dl.testDFSPipeline()
+	}()
+	go func() {
+		defer wg.Done()
+		blobErr = dl.BlockBlob.TestPipeline()
+	}()
+	wg.Wait()
+
+	if dfsErr != nil {
+		return dfsErr
+	}
+	return blobErr
+}
+
+// testDFSPipeline : Validate the credentials using the DFS endpoint
+func (dl *Datalake) testDFSPipeline() error {
 	maxResults := int32(2)
 	listPathPager := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
 		MaxResults: &maxResults,
@@ -220,7 +246,7 @@ func (dl *Datalake) TestPipeline() error {
 		}
 	}
 
-	return dl.BlockBlob.TestPipeline()
+	return nil
 }
 
 // IsAccountADLS : Check account is ADLS or not
