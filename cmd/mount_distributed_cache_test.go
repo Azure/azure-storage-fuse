@@ -91,12 +91,14 @@ func TestInjectBlockCacheForDistCache(t *testing.T) {
 func setDistCacheYAML(t *testing.T, yaml string) {
 	t.Helper()
 	viper.Reset()
+	options = mountOptions{}
 	// ReadFromConfigBuffer has no filename to derive the format from.
 	viper.SetConfigType("yaml")
-	if yaml == "" {
-		return
+	if yaml != "" {
+		err := config.ReadFromConfigBuffer([]byte(yaml))
+		assert.NoError(t, err)
 	}
-	err := config.ReadFromConfigBuffer([]byte(yaml))
+	err := config.Unmarshal(&options)
 	assert.NoError(t, err)
 }
 
@@ -153,6 +155,54 @@ distributed_cache:
 	var blockSize uint32
 	assert.NoError(t, config.UnmarshalKey("block_cache.block-size-mb", &blockSize))
 	assert.Equal(t, uint32(32), blockSize)
+}
+
+func TestDistributedCacheMountOptions_DiscoveryMethods(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{
+			name: "discovery endpoint",
+			yaml: `
+distributed_cache:
+  discovery-endpoint: discovery.example.com:9065
+`,
+		},
+		{
+			name: "kubernetes service",
+			yaml: `
+distributed_cache:
+  k8s-service: cache-service
+`,
+		},
+		{
+			name: "server list",
+			yaml: `
+distributed_cache:
+  server-list: cache-0:9065,cache-1:9065
+`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			setDistCacheYAML(t, tc.yaml)
+			defer viper.Reset()
+
+			assert.True(t, options.DistributedCache.isConfigured())
+		})
+	}
+}
+
+func TestNormalizeDistCacheConfig_DiscoversEndpointFromEnvironment(t *testing.T) {
+	t.Setenv("DISTRIBUTED_CACHE_DISCOVERY_ENDPOINT", "discovery.example.com:9065")
+	setDistCacheYAML(t, "")
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig(nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read-only")
 }
 
 // A distributed_cache: section alongside an explicit components: that omits

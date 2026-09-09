@@ -71,6 +71,18 @@ type LogOptions struct {
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
 }
 
+// distributedCacheMountOptions contains only the discovery values mount needs
+// to determine whether distributed_cache should be included in the pipeline.
+type distributedCacheMountOptions struct {
+	DiscoveryEndpoint string `config:"discovery-endpoint"`
+	K8sService        string `config:"k8s-service"`
+	ServerList        string `config:"server-list"`
+}
+
+func (opt distributedCacheMountOptions) isConfigured() bool {
+	return opt.DiscoveryEndpoint != "" || opt.K8sService != "" || opt.ServerList != ""
+}
+
 type mountOptions struct {
 	MountPath      string
 	inputMountPath string
@@ -99,6 +111,8 @@ type mountOptions struct {
 	BlockCache        bool     `config:"block-cache"`
 	Preload           bool     `config:"preload"`
 	EntryCacheTimeout int      `config:"list-cache-timeout"`
+
+	DistributedCache distributedCacheMountOptions `config:"distributed_cache"`
 }
 
 var options mountOptions
@@ -308,7 +322,7 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "block_cache")
 			} else if options.Preload {
 				pipeline = append(pipeline, "xload")
-			} else if config.IsSet("distributed_cache.discovery-endpoint") {
+			} else if options.DistributedCache.isConfigured() {
 				pipeline = append(pipeline, "distributed_cache") // L2 cache
 			} else {
 				pipeline = append(pipeline, "file_cache")
@@ -826,16 +840,15 @@ func applyLibfuseReadOnlyOption(libfuseOpts []string) {
 // from the config file, before any synthesis or auto-injection.
 func normalizeDistCacheConfig(userComponents []string) error {
 	// distributed_cache is "wanted" whenever either surface signals it:
-	// either it is listed in components:, or a discovery-endpoint has been
-	// provided (via --distributed-cache-discovery-endpoint on the CLI or a
-	// distributed_cache.discovery-endpoint entry in the YAML). Both surfaces
-	// are authoritative, so the incompatible-L1 check below runs whichever
-	// one the user chose. This prevents the case where the CLI/YAML
+	// either it is listed in components:, or a discovery method has been
+	// provided via CLI, environment, or YAML. Both surfaces are authoritative,
+	// so the incompatible-L1 check below runs whichever one the user chose.
+	// This prevents the case where the CLI/YAML/environment
 	// distributed_cache signal is silently ignored because a components:
 	// pipeline was also configured (e.g. with file_cache), which would
 	// otherwise run the sibling L1 with no dist-cache and no error.
 	userWantsDistCache := common.ComponentInPipeline(userComponents, "distributed_cache") ||
-		config.IsSet("distributed_cache.discovery-endpoint")
+		options.DistributedCache.isConfigured()
 	if !userWantsDistCache {
 		return nil
 	}
