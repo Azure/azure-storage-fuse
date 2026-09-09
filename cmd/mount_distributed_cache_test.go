@@ -205,6 +205,27 @@ func TestNormalizeDistCacheConfig_DiscoversEndpointFromEnvironment(t *testing.T)
 	assert.Contains(t, err.Error(), "read-only")
 }
 
+func TestIsLibfuseReadOnlyOption(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{value: "ro", want: true},
+		{value: "ro=true", want: true},
+		{value: " ro ", want: true},
+		{value: " ro=true ", want: true},
+		{value: "rw", want: false},
+		{value: "ro=false", want: false},
+		{value: "ro=1", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.value, func(t *testing.T) {
+			assert.Equal(t, tc.want, isLibfuseReadOnlyOption(tc.value))
+		})
+	}
+}
+
 // A distributed_cache: section alongside an explicit components: that omits
 // distributed_cache is silently ignored, matching how the codebase treats stray
 // block_cache:/file_cache: sections. Normalize must not raise a

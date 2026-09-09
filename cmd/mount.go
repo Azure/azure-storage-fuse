@@ -382,7 +382,7 @@ var mountCmd = &cobra.Command{
 					config.Set("lfuse.entry-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "negative_timeout=") {
 					config.Set("lfuse.negative-entry-expiration-sec", parameter[1])
-				} else if v == "ro" || v == "ro=true" {
+				} else if isLibfuseReadOnlyOption(v) {
 					config.Set("read-only", "true")
 				} else if v == "allow_root" || v == "allow_root=true" {
 					config.Set("allow-root", "true")
@@ -818,15 +818,16 @@ func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
 	return nil
 }
 
-// applyLibfuseReadOnlyOption translates the FUSE-style `-o ro` (or `-o ro=true`)
-// libfuse option into the blobfuse2 `read-only` config key. This runs before the
-// main libfuse-options loop so early checks (e.g. the distributed_cache
-// read-only gate in normalizeDistCacheConfig) treat `-o ro` equivalently to
-// `--read-only`. It is a no-op when neither variant is present.
+func isLibfuseReadOnlyOption(value string) bool {
+	value = strings.TrimSpace(value)
+	return value == "ro" || value == "ro=true"
+}
+
+// applyLibfuseReadOnlyOption processes read-only before the main libfuse-options
+// loop so early checks treat `-o ro` equivalently to `--read-only`.
 func applyLibfuseReadOnlyOption(libfuseOpts []string) {
-	for _, v := range libfuseOpts {
-		v = strings.TrimSpace(v)
-		if v == "ro" || v == "ro=true" {
+	for _, value := range libfuseOpts {
+		if isLibfuseReadOnlyOption(value) {
 			config.Set("read-only", "true")
 			return
 		}
