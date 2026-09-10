@@ -71,13 +71,13 @@ type Spec struct {
 }
 
 type Config1 struct {
-	ApiVer string   `config:"apiVersion"`
+	APIVer string   `config:"apiVersion"`
 	Kind   string   `config:"kind"`
 	Meta   Metadata `config:"metadata"`
 }
 
 type Config2 struct {
-	ApiVer string   `config:"apiVersion"`
+	APIVer string   `config:"apiVersion"`
 	Kind   string   `config:"kind"`
 	Meta   Metadata `config:"metadata"`
 	Specs  Spec     `config:"spec"`
@@ -229,7 +229,7 @@ func (suite *ConfigTestSuite) TestPlainConfig2Reader() {
 	// Case 4
 	opts2 := &Config2{}
 	opts2Truth := &Config2{
-		ApiVer: "apps/v1",
+		APIVer: "apps/v1",
 		Kind:   "Deployment",
 		Meta: Metadata{
 			Name: "rss-site",
@@ -273,7 +273,7 @@ func (suite *ConfigTestSuite) TestPlainConfig1Reader() {
 	//Case1
 	opts1 := &Config1{}
 	opts1Truth := &Config1{
-		ApiVer: "v1",
+		APIVer: "v1",
 		Kind:   "Pod",
 		Meta: Metadata{
 			Name: "rss-site",

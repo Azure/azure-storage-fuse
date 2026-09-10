@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-package e2e_tests
+package e2etests
 
 import (
 	"crypto/rand"

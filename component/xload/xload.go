@@ -215,9 +215,9 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.defaultPermission = common.DefaultFilePermissionBits
 	}
 
-	xl.workerCount = uint32(math.Min(float64(runtime.NumCPU()*3), float64(MAX_WORKER_COUNT)))
+	xl.workerCount = uint32(math.Min(float64(runtime.NumCPU()*3), float64(MaxWorkerCount)))
 	if config.IsSet(compName+".workers") && conf.Workers > 0 {
-		xl.workerCount = uint32(math.Min(float64(conf.Workers), float64(MAX_WORKER_COUNT)))
+		xl.workerCount = uint32(math.Min(float64(conf.Workers), float64(MaxWorkerCount)))
 	}
 
 	xl.blockSize = uint64(blockSize * float64(MB))
@@ -318,7 +318,7 @@ func (xl *Xload) createDownloader() error {
 	// Create remote lister pool to list remote files
 	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              xl.path,
-		workerCount:       uint32(math.Min(float64(runtime.NumCPU()/2), float64(MAX_LISTER))),
+		workerCount:       uint32(math.Min(float64(runtime.NumCPU()/2), float64(MaxLister))),
 		defaultPermission: xl.defaultPermission,
 		remote:            xl.NextComponent(),
 		statsMgr:          xl.statsMgr,
@@ -331,7 +331,7 @@ func (xl *Xload) createDownloader() error {
 	ds, err := newDownloadSplitter(&downloadSplitterOptions{
 		blockPool:   xl.blockPool,
 		path:        xl.path,
-		workerCount: uint32(math.Min(float64(runtime.NumCPU()), float64(MAX_DATA_SPLITTER))),
+		workerCount: uint32(math.Min(float64(runtime.NumCPU()), float64(MaxDataSplitter))),
 		remote:      xl.NextComponent(),
 		statsMgr:    xl.statsMgr,
 		fileLocks:   xl.fileLocks,
@@ -389,7 +389,7 @@ func (xl *Xload) startComponents() error {
 
 func (xl *Xload) getSplitter() XComponent {
 	for _, c := range xl.comps {
-		if c.GetName() == SPLITTER {
+		if c.GetName() == SplitterComp {
 			return c
 		}
 	}

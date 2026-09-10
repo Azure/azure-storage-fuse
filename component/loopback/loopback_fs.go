@@ -486,8 +486,8 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 }
 
 func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
-	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.Id)
-	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(options.Id, "/", "_"))
+	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.ID)
+	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(options.ID, "/", "_"))
 	return os.WriteFile(path, options.Data, 0777)
 }
 
@@ -567,7 +567,7 @@ func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBl
 
 	for i := range blocks {
 		list = append(list, internal.CommittedBlock{
-			Id:     fmt.Sprintf("%d", i),
+			ID:     fmt.Sprintf("%d", i),
 			Offset: i * (int64)(blockSize),
 			Size:   blockSize,
 		})

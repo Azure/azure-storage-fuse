@@ -45,7 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	filecache "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/libfuse"
 
 	"github.com/spf13/cobra"
@@ -53,16 +53,16 @@ import (
 
 var azStorageOpt azstorage.AzStorageOptions
 var libFuseOpt libfuse.LibfuseOptions
-var fileCacheOpt file_cache.FileCacheOptions
+var fileCacheOpt filecache.FileCacheOptions
 var requiredFreeSpace int
 var configFile string
-var generateJsonOnly bool
+var generateJSONOnly bool
 var gen1ConfigFilePath string
 
 func resetGenOneOptions() {
 	azStorageOpt = azstorage.AzStorageOptions{}
 	libFuseOpt = libfuse.LibfuseOptions{}
-	fileCacheOpt = file_cache.FileCacheOptions{}
+	fileCacheOpt = filecache.FileCacheOptions{}
 }
 
 var gen1Cmd = &cobra.Command{
@@ -106,11 +106,11 @@ var gen1Cmd = &cobra.Command{
 
 		// not checking ClientSecret since adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET)
 		if azStorageOpt.ClientID == "" || azStorageOpt.TenantID == "" || azStorageOpt.AccountName == "" {
-			log.Err("mountgen1 : clientId, tenantId or accountName can't be empty")
-			return fmt.Errorf("clientId, tenantId or accountName can't be empty")
+			log.Err("mountgen1 : clientID, tenantID or accountName can't be empty")
+			return fmt.Errorf("clientID, tenantID or accountName can't be empty")
 		}
 
-		// changing authMode to spn since clientId and tenantId are not empty
+		// changing authMode to spn since clientID and tenantID are not empty
 		if azStorageOpt.AuthMode == "" {
 			azStorageOpt.AuthMode = "spn"
 		}
@@ -131,12 +131,12 @@ var gen1Cmd = &cobra.Command{
 			return fmt.Errorf("invalid log level [%s]", err.Error())
 		}
 
-		err = generateAdlsGenOneJson()
+		err = generateAdlsGenOneJSON()
 		if err != nil {
 			return err
 		}
 
-		if !generateJsonOnly {
+		if !generateJSONOnly {
 			err = runAdlsGenOneBinary()
 			if err != nil {
 				return err
@@ -148,7 +148,7 @@ var gen1Cmd = &cobra.Command{
 }
 
 // code to generate json file for rustfuse
-func generateAdlsGenOneJson() error {
+func generateAdlsGenOneJSON() error {
 	rustFuseMap := make(map[string]any)
 	if strings.ToLower(azStorageOpt.AuthMode) == "spn" {
 		// adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET) hence no reason to include this.
@@ -180,7 +180,7 @@ func generateAdlsGenOneJson() error {
 	var allowOther bool
 	err := config.UnmarshalKey("allow-other", &allowOther)
 	if err != nil {
-		log.Err("mountgen1 : generateAdlsGenOneJson:allow-other config error (invalid config attributes) [%s]", err.Error())
+		log.Err("mountgen1 : generateAdlsGenOneJSON:allow-other config error (invalid config attributes) [%s]", err.Error())
 		return fmt.Errorf("unable to parse allow-other config [%s]", err.Error())
 	}
 
@@ -218,7 +218,7 @@ func generateAdlsGenOneJson() error {
 
 	err = os.WriteFile(gen1ConfigFilePath, jsonData, 0777)
 	if err != nil {
-		log.Err("mountgen1 : generateAdlsGenOneJson:failed to write adlsgen1fuse.json [%s]", err.Error())
+		log.Err("mountgen1 : generateAdlsGenOneJSON:failed to write adlsgen1fuse.json [%s]", err.Error())
 		return fmt.Errorf("failed to write adlsgen1fuse.json [%s]", err.Error())
 	}
 
@@ -248,7 +248,7 @@ func init() {
 
 	gen1Cmd.Flags().IntVar(&requiredFreeSpace, "required-free-space-mb", 0, "Required free space in MB")
 
-	gen1Cmd.Flags().BoolVar(&generateJsonOnly, "generate-json-only", false, "Don't mount, only generate the JSON file needed for gen1 mount")
+	gen1Cmd.Flags().BoolVar(&generateJSONOnly, "generate-json-only", false, "Don't mount, only generate the JSON file needed for gen1 mount")
 
 	gen1Cmd.Flags().StringVar(&gen1ConfigFilePath, "output-file", "/tmp/adlsgen1fuse.json", "Output JSON file needed for gen1 mount")
 }

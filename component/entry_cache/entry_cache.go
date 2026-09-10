@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package entry_cache
+package entrycache
 
 import (
 	"container/list"

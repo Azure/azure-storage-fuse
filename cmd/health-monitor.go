@@ -41,7 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	filecache "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
 	"github.com/spf13/cobra"
 )
@@ -55,11 +55,11 @@ type monitorOptions struct {
 }
 
 var pid string
-var cacheMonitorOptions file_cache.FileCacheOptions
+var cacheMonitorOptions filecache.FileCacheOptions
 
 func resetMonitorOptions() {
 	options.MonitorOpt = monitorOptions{}
-	cacheMonitorOptions = file_cache.FileCacheOptions{}
+	cacheMonitorOptions = filecache.FileCacheOptions{}
 }
 
 var healthMonCmd = &cobra.Command{
@@ -159,7 +159,7 @@ func buildCliParamForMonitor() []string {
 		switch v {
 		case hmcommon.BlobfuseStats:
 			cliParams = append(cliParams, "--no-blobfuse2-stats")
-		case hmcommon.CpuProfiler:
+		case hmcommon.CPUProfiler:
 			cliParams = append(cliParams, "--no-cpu-profiler")
 		case hmcommon.MemoryProfiler:
 			cliParams = append(cliParams, "--no-memory-profiler")

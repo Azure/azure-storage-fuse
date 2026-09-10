@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package attr_cache
+package attrcache
 
 import (
 	"container/list"

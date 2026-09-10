@@ -51,7 +51,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var home_dir, _ = os.UserHomeDir()
+var homeDir, _ = os.UserHomeDir()
 
 func randomString(length int) string {
 	b := make([]byte, length)
@@ -199,7 +199,7 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	// Define the file name and the content you want to write
 	fileName := "config.yaml"
 
-	lbpath := filepath.Join(home_dir, "lbpath")
+	lbpath := filepath.Join(homeDir, "lbpath")
 	err := os.MkdirAll(lbpath, 0777)
 	suite.assert.NoError(err)
 	defer os.RemoveAll(lbpath)
@@ -210,7 +210,7 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 		"loopbackfs:\n" +
 		"  path: " + lbpath + "\n\n"
 
-	mntdir := filepath.Join(home_dir, "mountdir")
+	mntdir := filepath.Join(homeDir, "mountdir")
 	err = os.MkdirAll(mntdir, 0777)
 	suite.assert.NoError(err)
 	defer os.RemoveAll(mntdir)
@@ -254,7 +254,7 @@ func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 
 func (suite *typesTestSuite) TestDirectoryExists() {
 	rand := randomString(8)
-	dir := filepath.Join(home_dir, "dir"+rand)
+	dir := filepath.Join(homeDir, "dir"+rand)
 	err := os.MkdirAll(dir, 0777)
 	suite.assert.NoError(err)
 	defer os.RemoveAll(dir)
@@ -265,7 +265,7 @@ func (suite *typesTestSuite) TestDirectoryExists() {
 
 func (suite *typesTestSuite) TestDirectoryDoesNotExist() {
 	rand := randomString(8)
-	dir := filepath.Join(home_dir, "dir"+rand)
+	dir := filepath.Join(homeDir, "dir"+rand)
 
 	exists := DirectoryExists(dir)
 	suite.assert.False(exists)

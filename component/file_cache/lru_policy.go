@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package file_cache
+package filecache
 
 import (
 	"os"

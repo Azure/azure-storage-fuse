@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package block_cache
+package blockcache
 
 import (
 	"container/list"
@@ -62,7 +62,7 @@ const (
 // Block is a memory mapped buffer with its state to hold data
 type Block struct {
 	offset uint64          // Start offset of the data this block holds
-	id     int64           // Id of the block i.e. (offset / block size)
+	id     int64           // ID of the block i.e. (offset / block size)
 	state  chan int        // Channel depicting data has been read for this block or not
 	flags  common.BitMap64 // Various states of the block
 	data   []byte          // Data read from blob

@@ -71,7 +71,7 @@ func newRemoteDataManager(opts *remoteDataManagerOptions) (*remoteDataManager, e
 
 	rdm := &remoteDataManager{}
 
-	rdm.SetName(DATA_MANAGER)
+	rdm.SetName(DataManagerComp)
 	rdm.SetWorkerCount(opts.workerCount)
 	rdm.SetRemote(opts.remote)
 	rdm.SetStatsManager(opts.statsMgr)
@@ -144,7 +144,7 @@ func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 		Name: item.Path,
 		Data: item.Block.Data[0:item.Block.Length],
 		// Offset: uint64(item.block.offset),
-		Id: item.Block.Id,
+		ID: item.Block.ID,
 	})
 	if err != nil {
 		log.Err("remoteDataManager::WriteData : upload failed for %s offset %v [%v]", item.Path, item.Block.Offset, err.Error())
@@ -161,7 +161,7 @@ func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 // send stats to stats manager
 func (rdm *remoteDataManager) sendStats(path string, isDownload bool, bytesTransferred uint64, isSuccess bool) {
 	rdm.GetStatsManager().AddStats(&StatsItem{
-		Component:        DATA_MANAGER,
+		Component:        DataManagerComp,
 		Name:             path,
 		Success:          isSuccess,
 		Download:         isDownload,
