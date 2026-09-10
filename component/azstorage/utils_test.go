@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -53,6 +54,8 @@ import (
 type utilsTestSuite struct {
 	suite.Suite
 }
+
+const invalidStorageName = "invalid-\x01-name"
 
 func (s *utilsTestSuite) TestContentType() {
 	assert := assert.New(s.T())
@@ -509,6 +512,13 @@ func (s *utilsTestSuite) TestStoreDatalakeErrToErr() {
 	// nil error returns ErrNoErr
 	result := storeDatalakeErrToErr(nil)
 	assert.Equal(uint16(ErrNoErr), result)
+}
+
+func (s *utilsTestSuite) TestIsHTTPBadRequest() {
+	assert := assert.New(s.T())
+	assert.True(isHTTPBadRequest(&azcore.ResponseError{StatusCode: http.StatusBadRequest}))
+	assert.False(isHTTPBadRequest(&azcore.ResponseError{StatusCode: http.StatusNotFound}))
+	assert.False(isHTTPBadRequest(nil))
 }
 
 func (s *utilsTestSuite) TestRemovePrefixPath() {
