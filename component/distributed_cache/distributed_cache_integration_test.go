@@ -3,7 +3,7 @@
 
 //go:build unittest
 
-package dist_cache
+package distributed_cache
 
 import (
 	"context"
@@ -340,7 +340,7 @@ func (s *integMockServer) close() {
 }
 
 // ============================================================================
-// Test suite: dist_cache → loopbackfs
+// Test suite: distributed_cache → loopbackfs
 // ============================================================================
 
 type distCacheIntegSuite struct {
@@ -378,11 +378,11 @@ func (suite *distCacheIntegSuite) SetupTest() {
 	// Start embedded mock cache server
 	suite.srv = newIntegMockServer(suite.T())
 
-	// Build config: dist_cache → loopbackfs (no file_cache, test dist_cache directly).
+	// Build config: distributed_cache → loopbackfs (no file_cache, test distributed_cache directly).
 	// block_cache.block-size-mb is the single source of chunk size, even when
 	// block_cache isn't in the pipeline for this suite.
 	suite.configString = fmt.Sprintf(
-		"loopbackfs:\n  path: %s\n\nazstorage:\n  account-name: test\n  container: container\n\nblock_cache:\n  block-size-mb: 1\n\ndist_cache:\n  server-list: %s\n",
+		"loopbackfs:\n  path: %s\n\nazstorage:\n  account-name: test\n  container: container\n\nblock_cache:\n  block-size-mb: 1\n\ndistributed_cache:\n  server-list: %s\n",
 		suite.storagePath, suite.srv.addr)
 
 	err = config.ReadConfigFromReader(strings.NewReader(suite.configString))
@@ -395,7 +395,7 @@ func (suite *distCacheIntegSuite) SetupTest() {
 	err = suite.loopbackComp.Start(context.Background())
 	suite.assert.NoError(err)
 
-	// Setup dist_cache
+	// Setup distributed_cache
 	comp := NewDistCacheComponent()
 	suite.distCache = comp.(*DistCache)
 	suite.distCache.SetNextComponent(suite.loopbackComp)
@@ -870,7 +870,7 @@ func TestConfigure_NoServers_ReturnsError(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(storagePath)
 
-	badConfig := fmt.Sprintf("loopbackfs:\n  path: %s\n\ndist_cache:\n", storagePath)
+	badConfig := fmt.Sprintf("loopbackfs:\n  path: %s\n\ndistributed_cache:\n", storagePath)
 	err = config.ReadConfigFromReader(strings.NewReader(badConfig))
 	require.NoError(t, err)
 
@@ -908,7 +908,7 @@ func TestStart_UnreachableServers_FailsFast(t *testing.T) {
 	defer os.RemoveAll(storagePath)
 
 	cfg := fmt.Sprintf(
-		"loopbackfs:\n  path: %s\n\nazstorage:\n  account-name: test\n  container: container\n\ndist_cache:\n  discovery-endpoint: 127.0.0.1:1\n",
+		"loopbackfs:\n  path: %s\n\nazstorage:\n  account-name: test\n  container: container\n\ndistributed_cache:\n  discovery-endpoint: 127.0.0.1:1\n",
 		storagePath)
 	require.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 
@@ -923,7 +923,7 @@ func TestStart_UnreachableServers_FailsFast(t *testing.T) {
 
 	err = dc.Start(context.Background())
 	require.Error(t, err, "Start() must fail fast when servers are unreachable")
-	assert.Contains(t, err.Error(), "dist_cache: failed to start")
+	assert.Contains(t, err.Error(), "distributed_cache: failed to start")
 	assert.Nil(t, dc.client, "client should remain nil after failed Start()")
 }
 
@@ -935,7 +935,7 @@ func (suite *distCacheIntegSuite) TestChunkSize_FromConfig() {
 }
 
 // ============================================================================
-// Test suite: block_cache → dist_cache → loopbackfs (full pipeline)
+// Test suite: block_cache → distributed_cache → loopbackfs (full pipeline)
 // ============================================================================
 
 var homedir, _ = os.UserHomeDir()
@@ -949,7 +949,7 @@ type blockCacheDistCacheSuite struct {
 	storagePath  string             // loopbackfs path (simulates Azure blob)
 	diskPath     string             // block_cache disk cache directory
 	blockCache   internal.Component // block_cache (top of pipeline)
-	distCache    *DistCache         // dist_cache (middle)
+	distCache    *DistCache         // distributed_cache (middle)
 	loopbackComp internal.Component // loopbackfs (bottom, simulates azstorage)
 }
 
@@ -972,9 +972,9 @@ func (suite *blockCacheDistCacheSuite) SetupTest() {
 	// Start embedded mock cache server
 	suite.srv = newIntegMockServer(suite.T())
 
-	// Build config: block_cache → dist_cache → loopbackfs
+	// Build config: block_cache → distributed_cache → loopbackfs
 	// block-size-mb: 1 to match loopback's GetCommittedBlockList (hardcoded 1MB).
-	// mem-size-mb sized so dist_cache's fair-share (10% of bcRef) covers
+	// mem-size-mb sized so distributed_cache's fair-share (10% of bcRef) covers
 	// distCacheMinBuffers × chunkSize and async populate is enabled — this
 	// suite exercises the L2 population path, so we must stay above the
 	// disable threshold in resolveMemBudget.
@@ -982,7 +982,7 @@ func (suite *blockCacheDistCacheSuite) SetupTest() {
 		"read-only: true\n\n"+
 			"azstorage:\n  account-name: test\n  container: container\n\n"+
 			"block_cache:\n  block-size-mb: 1\n  mem-size-mb: 100\n  prefetch: 12\n  parallelism: 10\n  path: %s\n  disk-size-mb: 50\n  disk-timeout-sec: 20\n\n"+
-			"dist_cache:\n  server-list: %s\n\n"+
+			"distributed_cache:\n  server-list: %s\n\n"+
 			"loopbackfs:\n  path: %s\n",
 		suite.diskPath, suite.srv.addr, suite.storagePath)
 
@@ -990,7 +990,7 @@ func (suite *blockCacheDistCacheSuite) SetupTest() {
 	suite.assert.NoError(err)
 	config.Set("mount-path", mntpoint)
 
-	// Build pipeline bottom-up: loopback → dist_cache → block_cache
+	// Build pipeline bottom-up: loopback → distributed_cache → block_cache
 	suite.loopbackComp = loopback.NewLoopbackFSComponent()
 	err = suite.loopbackComp.Configure(true)
 	suite.assert.NoError(err)
@@ -1039,7 +1039,7 @@ func TestBlockCacheDistCachePipeline(t *testing.T) {
 	suite.Run(t, new(blockCacheDistCacheSuite))
 }
 
-// --- Test: Read through full pipeline (block_cache → dist_cache L2 miss → loopback) ---
+// --- Test: Read through full pipeline (block_cache → distributed_cache L2 miss → loopback) ---
 
 func (suite *blockCacheDistCacheSuite) TestRead_ColdPath() {
 	fileName := "bc_read_cold.bin"
@@ -1049,12 +1049,12 @@ func (suite *blockCacheDistCacheSuite) TestRead_ColdPath() {
 	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), testData, 0644)
 	suite.assert.NoError(err)
 
-	// Open through block_cache → GetAttr → dist_cache → loopback
+	// Open through block_cache → GetAttr → distributed_cache → loopback
 	h, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName})
 	require.NoError(suite.T(), err)
 	suite.assert.Equal(int64(len(testData)), h.Size)
 
-	// Read all data through block_cache → ReadInBuffer → dist_cache → loopback
+	// Read all data through block_cache → ReadInBuffer → distributed_cache → loopback
 	buf := make([]byte, len(testData))
 	offset := 0
 	for offset < len(testData) {
@@ -1069,7 +1069,7 @@ func (suite *blockCacheDistCacheSuite) TestRead_ColdPath() {
 		}
 	}
 	suite.assert.Equal(len(testData), offset)
-	suite.assert.Equal(testData, buf, "block_cache should serve correct data through dist_cache pipeline")
+	suite.assert.Equal(testData, buf, "block_cache should serve correct data through distributed_cache pipeline")
 
 	err = suite.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	suite.assert.NoError(err)
@@ -1077,11 +1077,11 @@ func (suite *blockCacheDistCacheSuite) TestRead_ColdPath() {
 	// Wait for async L2 population
 	time.Sleep(300 * time.Millisecond)
 
-	// L2 should be populated (ReadInBuffer path → dist_cache → L2 upload)
+	// L2 should be populated (ReadInBuffer path → distributed_cache → L2 upload)
 	suite.assert.Greater(suite.srv.chunkCount(), 0, "L2 should have chunks after block_cache read")
 }
 
-// --- Test: Read from L2 (block_cache → dist_cache L2 hit) ---
+// --- Test: Read from L2 (block_cache → distributed_cache L2 hit) ---
 
 func (suite *blockCacheDistCacheSuite) TestRead_L2Hit() {
 	fileName := "bc_read_l2hit.bin"
@@ -1139,7 +1139,7 @@ func (suite *blockCacheDistCacheSuite) TestRead_L2Hit() {
 
 func (suite *blockCacheDistCacheSuite) TestRead_SmallFile() {
 	fileName := "bc_small.txt"
-	testData := []byte("small file through block_cache + dist_cache pipeline")
+	testData := []byte("small file through block_cache + distributed_cache pipeline")
 
 	err := os.WriteFile(filepath.Join(suite.storagePath, fileName), testData, 0644)
 	suite.assert.NoError(err)
@@ -1216,7 +1216,7 @@ func (suite *blockCacheDistCacheSuite) TestGracefulDegradation_ServerDown() {
 	// Kill the cache server
 	suite.srv.close()
 
-	// Read should still work: block_cache → dist_cache (bypass) → loopback
+	// Read should still work: block_cache → distributed_cache (bypass) → loopback
 	h, err := suite.blockCache.OpenFile(internal.OpenFileOptions{Name: fileName})
 	require.NoError(suite.T(), err)
 

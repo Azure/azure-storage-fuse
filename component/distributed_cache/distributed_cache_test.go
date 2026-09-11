@@ -3,7 +3,7 @@
 
 //go:build unittest
 
-package dist_cache
+package distributed_cache
 
 import (
 	"context"
@@ -593,7 +593,7 @@ func TestConfigure_DerivesCachePrefixFromAzStorage(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -601,6 +601,22 @@ dist_cache:
 	err := dc.Configure(true)
 	require.NoError(t, err)
 	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
+}
+
+func TestConfigure_DerivesCachePrefixFromEnvironment(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  container: mycontainer
+distributed_cache:
+  server-list: "localhost:9065"
+`)
+	config.BindEnv("azstorage.account-name", "AZURE_STORAGE_ACCOUNT")
+	t.Setenv("AZURE_STORAGE_ACCOUNT", "envacct")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.NoError(t, err)
+	assert.Equal(t, "envacct/mycontainer", dc.cachePrefix)
 }
 
 func TestConfigure_VerifyChecksumDefaultAndOverride(t *testing.T) {
@@ -621,7 +637,7 @@ azstorage:
   container: mycontainer
 block_cache:
   mem-size-mb: 100
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `+test.setting)
 
@@ -636,7 +652,7 @@ func TestConfigure_FailsWhenAccountNameMissing(t *testing.T) {
 	loadConfig(t, `
 azstorage:
   container: mycontainer
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -651,7 +667,7 @@ func TestConfigure_FailsWhenContainerMissing(t *testing.T) {
 	loadConfig(t, `
 azstorage:
   account-name: myacct
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -663,7 +679,7 @@ dist_cache:
 
 func TestConfigure_FailsWhenBothMissing(t *testing.T) {
 	loadConfig(t, `
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -678,7 +694,7 @@ func TestConfigure_FailsWhenAccountNameEmptyString(t *testing.T) {
 azstorage:
   account-name: ""
   container: mycontainer
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -695,7 +711,7 @@ func TestConfigure_CachePrefixIsolatesTenants(t *testing.T) {
 azstorage:
   account-name: tenantA
   container: shared
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 	dcA := NewDistCacheComponent().(*DistCache)
@@ -705,7 +721,7 @@ dist_cache:
 azstorage:
   account-name: tenantB
   container: shared
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 	dcB := NewDistCacheComponent().(*DistCache)
@@ -733,7 +749,7 @@ block_cache:
   mem-size-mb: 100
   block-size-mb: 16
   parallelism: 2
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -1205,7 +1221,7 @@ func TestRegisterEnvVariables_BindsDiscoveryEndpoint(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache: {}
+distributed_cache: {}
 `)
 	RegisterEnvVariables()
 	t.Setenv(EnvDistCacheDiscoveryEndpoint, "127.0.0.1:9000")
@@ -1222,7 +1238,7 @@ func TestRegisterEnvVariables_BindsK8sServiceAndNamespace(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache: {}
+distributed_cache: {}
 `)
 	RegisterEnvVariables()
 	t.Setenv(EnvDistCacheK8sService, "dcache-svc")
@@ -1241,7 +1257,7 @@ func TestRegisterEnvVariables_BindsServerList(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache: {}
+distributed_cache: {}
 `)
 	RegisterEnvVariables()
 	t.Setenv(EnvDistCacheServerList, "host1:9065,host2:9065")
@@ -1258,7 +1274,7 @@ func TestRegisterEnvVariables_EnvOverridesYAML(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache:
+distributed_cache:
   server-list: "yaml-host:9065"
 `)
 	RegisterEnvVariables()
@@ -1273,7 +1289,7 @@ dist_cache:
 // --- resolveETag: only the storage-returned etag drives L2 population ---
 //
 // azstorage.BlockBlob.ReadInBuffer writes the observed blob ETag into
-// *options.Etag on success. dist_cache must key the L2 populate on that
+// *options.Etag on success. distributed_cache must key the L2 populate on that
 // returned value so the chunk lands under the blob's current version. When
 // storage does not set it (nil pointer or empty string), resolveETag returns
 // "" and schedulePopulate skips the upload rather than falling back to a

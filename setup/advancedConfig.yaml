@@ -117,8 +117,8 @@ attr_cache:
   max-size-mb: <maximum memory the attribute cache may use (in MB). Default - auto-tuned to 1% of total RAM, clamped to [64 MB, 1 GB]. Omit or set to 0 to use the auto-tuned value; set to a value >0 to override. Increase for workloads with large directory trees or many distinct file paths to avoid frequent cache misses.>
 
 # Distributed cache advanced configuration
-# See setup/baseConfig.yaml for the base dist_cache options (e.g. discovery-endpoint).
-dist_cache:
+# See setup/baseConfig.yaml for the base distributed_cache options (e.g. discovery-endpoint).
+distributed_cache:
   k8s-service: <Kubernetes headless service name for DNS-based discovery>
   k8s-namespace: <Kubernetes namespace where the cache service runs>
   port: <cache server port used when Kubernetes DNS falls back from SRV to A records and for discovery responses that omit a port. SRV records provide their own port. Default - 9065. The discovery-endpoint and each server-list entry must include their own port>
