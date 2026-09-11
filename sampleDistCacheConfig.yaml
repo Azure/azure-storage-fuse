@@ -43,6 +43,11 @@ distributed_cache:
   # server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
 
   # Optional: cache tuning
+  # Optional: Custom DNS resolver used for cache endpoint lookups.
+  # Accepts an IP address or host:port.
+  # dns-server: "10.0.0.10:53"
+
+  # Optional: L1 tuning (applied to the auto-inserted block_cache component)
   # block-size-mb: 32
   # mem-size-mb: 4096
   # prefetch: 32

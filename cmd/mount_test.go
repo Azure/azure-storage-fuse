@@ -1112,6 +1112,32 @@ func (suite *mountTestSuite) TestDistributedCacheNodeTTLCLI() {
 	suite.assert.Equal(uint32(120), ttl)
 }
 
+func (suite *mountTestSuite) TestDistributedCacheDNSServerCLI() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.NoError(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.NoError(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configDistCacheCLIBase)
+	suite.assert.NoError(err)
+	confFile.Close()
+
+	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-dns-server=10.0.0.10:53")
+	suite.assert.Error(err)
+
+	var dnsServer string
+	err = config.UnmarshalKey("distributed_cache.dns-server", &dnsServer)
+	suite.assert.NoError(err)
+	suite.assert.Equal("10.0.0.10:53", dnsServer)
+}
+
 func (suite *mountTestSuite) TestDistributedCacheBlockSizeCLI() {
 	defer suite.cleanupTest()
 

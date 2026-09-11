@@ -121,6 +121,7 @@ attr_cache:
 distributed_cache:
   k8s-service: <Kubernetes headless service name for DNS-based discovery>
   k8s-namespace: <Kubernetes namespace where the cache service runs>
+  dns-server: <optional custom DNS server as an IP address or host:port for resolving distributed cache endpoints. Default - system resolver>
   port: <cache server port used when Kubernetes DNS falls back from SRV to A records and for discovery responses that omit a port. SRV records provide their own port. Default - 9065. The discovery-endpoint and each server-list entry must include their own port>
   # OR
   server-list: <comma-separated list of cache server addresses, e.g., "host1:9065,host2:9065,host3:9065">

@@ -50,6 +50,7 @@ file_cache:
 # command line), otherwise mount will fail.
 distributed_cache:
   discovery-endpoint: <discovery endpoint for auto-detecting cache servers. Recommended for production>
+  dns-server: <optional custom DNS server as an IP address or host:port for resolving distributed cache endpoints. Default - system resolver>
 
 # Azure storage configuration
 azstorage:
