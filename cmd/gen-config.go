@@ -48,6 +48,7 @@ import (
 type genConfigParams struct {
 	blockCache                        bool   `config:"block-cache" yaml:"block-cache,omitempty"`
 	distributedCacheDiscoveryEndpoint string `config:"distributed-cache-discovery-endpoint" yaml:"distributed-cache-discovery-endpoint,omitempty"`
+	distributedCacheDNSServer         string `config:"distributed-cache-dns-server" yaml:"distributed-cache-dns-server,omitempty"`
 	directIO                          bool   `config:"direct-io" yaml:"direct-io,omitempty"`
 	readOnly                          bool   `config:"ro" yaml:"ro,omitempty"`
 	tmpPath                           string `config:"tmp-path" yaml:"tmp-path,omitempty"`
@@ -85,6 +86,9 @@ var generatedConfig = &cobra.Command{
 				return fmt.Errorf("--distributed-cache requires --ro to be set explicitly; distributed cache is supported only for read-only mounts")
 			}
 			config.Set("distributed_cache.discovery-endpoint", optsGenCfg.distributedCacheDiscoveryEndpoint)
+			if optsGenCfg.distributedCacheDNSServer != "" {
+				config.Set("distributed_cache.dns-server", optsGenCfg.distributedCacheDNSServer)
+			}
 		} else if (!optsGenCfg.blockCache) && optsGenCfg.tmpPath == "" {
 			// tmp-path is required for file-cache mode.
 			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
@@ -181,6 +185,7 @@ func init() {
 
 	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Generate config file for streaming with block-cache mode")
 	generatedConfig.Flags().StringVar(&optsGenCfg.distributedCacheDiscoveryEndpoint, "distributed-cache-discovery-endpoint", "", "Discovery endpoint for distributed-cache (L2) mode; setting this enables distributed-cache and requires --ro")
+	generatedConfig.Flags().StringVar(&optsGenCfg.distributedCacheDNSServer, "distributed-cache-dns-server", "", "Custom DNS server (IP or host:port) for resolving distributed-cache endpoints")
 	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Generate config file for file-cache mode, string specifies temp cache path")
 	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Generate config file for direct-io mode without any caching")
 	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Specifies location for generated config file, default is current directory")
