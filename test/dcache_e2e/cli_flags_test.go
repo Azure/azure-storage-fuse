@@ -1,3 +1,6 @@
+//go:build !unittest
+// +build !unittest
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -31,17 +34,27 @@
    SOFTWARE
 */
 
-package cmd
+package dcache_e2e
 
-import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/distributed_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
-)
+import "testing"
+
+// TestCLIFlags_ReadPath_NoYAML runs the same L2 miss -> populate -> remount
+// -> hit scenario as TestReadPath_L2MissPopulatesAndHits, but against a
+// blobfuse2 pod launched purely from `--distributed-cache-*` CLI flags and
+// azstorage env vars, with no config.yaml mounted at all.
+//
+// If any of the CLI flag bindings introduced in PR #2316 regresses -- the
+// flag isn't registered, isn't bound to viper, isn't consumed by
+// distributed_cache.Configure, or the pipeline isn't auto-populated when
+// the discovery endpoint is set without a components: list -- either the pod
+// never becomes Ready, the L2 miss produces zero Upload/Success deltas, or the
+// L2 hit returns zero Download/Success deltas. Any of those is a fatal error in
+// runReadPathL2MissHitScenario.
+//
+// Passing this test is a strong end-to-end statement: distributed_cache can
+// be fully driven from the CLI surface, and the CLI surface produces the
+// same L2 populate/hit behavior as the YAML surface exercised by
+// TestReadPath_L2MissPopulatesAndHits.
+func TestCLIFlags_ReadPath_NoYAML(t *testing.T) {
+	runReadPathL2MissHitScenario(t, newCLIPodMounter(t, defaultCLIFlags()))
+}

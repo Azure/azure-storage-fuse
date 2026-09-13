@@ -164,6 +164,19 @@ func uniqueDeploymentName(t *testing.T) string {
 // hostPath volumes in the same namespace.
 func cloneReferenceDeployment(t *testing.T, refName, newName string) {
 	t.Helper()
+	obj := fetchAndRenameReferenceDeployment(t, refName, newName)
+	applyDeploymentObject(t, newName, refName, obj)
+}
+
+// fetchAndRenameReferenceDeployment does the parts of a clone that are
+// independent of what surgery the caller wants to run on the container spec:
+// pull the live Deployment JSON, drop server-managed fields that would make
+// kubectl apply reject the object, rewrite metadata / labels / selector to
+// newName, and reset replicas to 1. Returns the mutable object so callers
+// (e.g. the CLI-mode clone in cli_flags_helpers_test.go) can rewrite the
+// container args / env / volumeMounts before applying.
+func fetchAndRenameReferenceDeployment(t *testing.T, refName, newName string) map[string]any {
+	t.Helper()
 
 	raw, err := exec.Command(testCfg.kubectlBin,
 		"-n", testCfg.podNamespace,
@@ -184,6 +197,10 @@ func cloneReferenceDeployment(t *testing.T, refName, newName string) {
 	if meta == nil {
 		t.Fatalf("clone: reference deployment has no metadata")
 	}
+	// These fields are populated by the API server / controllers on the
+	// live object. Carrying them across to a new object either fails apply
+	// (uid / resourceVersion are immutable) or produces stale state
+	// (last-applied-configuration annotation, ownerReferences).
 	for _, k := range []string{"uid", "resourceVersion", "generation", "creationTimestamp", "managedFields", "ownerReferences", "annotations"} {
 		delete(meta, k)
 	}
@@ -214,11 +231,18 @@ func cloneReferenceDeployment(t *testing.T, refName, newName string) {
 	}
 	delete(obj, "status")
 
+	return obj
+}
+
+// applyDeploymentObject marshals obj and pipes it to `kubectl apply -f -`.
+// refName is included in the log line for traceability; the caller has
+// already rewritten obj.metadata.name to newName.
+func applyDeploymentObject(t *testing.T, newName, refName string, obj map[string]any) {
+	t.Helper()
 	body, err := json.Marshal(obj)
 	if err != nil {
 		t.Fatalf("clone: marshal patched deployment: %v", err)
 	}
-
 	apply := exec.Command(testCfg.kubectlBin, "apply", "-f", "-")
 	apply.Stdin = bytes.NewReader(body)
 	if out, err := apply.CombinedOutput(); err != nil {

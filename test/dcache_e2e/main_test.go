@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-// Package dcache_e2e tests dist_cache against a kind and Tachyon cluster.
+// Package dcache_e2e tests distributed_cache against a kind and Tachyon cluster.
 // Tests restart the blobfuse2 pod when they require a cold local cache.
 package dcache_e2e
 
@@ -170,11 +170,11 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 
 	if err := resolveCfg(); err != nil {
-		fmt.Fprintf(os.Stderr, "dist_cache E2E setup failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "distributed_cache E2E setup failed: %v\n", err)
 		os.Exit(2)
 	}
 
-	fmt.Printf("dist_cache E2E config:\n"+
+	fmt.Printf("distributed_cache E2E config:\n"+
 		"  pod-namespace           = %s\n"+
 		"  pod-deployment          = %s\n"+
 		"  pod-mount-path          = %s\n"+

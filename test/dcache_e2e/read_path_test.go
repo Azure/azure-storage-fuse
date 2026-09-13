@@ -43,9 +43,19 @@ import (
 )
 
 // TestReadPath_L2MissPopulatesAndHits verifies cold-L2 population followed by
-// a warm-L2 hit. Remounting between reads clears the local cache; metrics
-// distinguish L2 behavior while byte comparisons protect data integrity.
+// a warm-L2 hit against the reference (YAML-driven) mount. Remounting between
+// reads clears the local cache; metrics distinguish L2 behavior while byte
+// comparisons protect data integrity.
 func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
+	runReadPathL2MissHitScenario(t, newTestPodMounter(t))
+}
+
+// runReadPathL2MissHitScenario runs the L2 miss -> populate -> remount -> hit
+// sequence against any *podMounter. Reused by the CLI-mode test in
+// cli_flags_test.go so the same behavioral scenario covers both the YAML
+// configuration surface and the distributed-cache CLI flag surface.
+func runReadPathL2MissHitScenario(t *testing.T, m *podMounter) {
+	t.Helper()
 	// Two 16 MiB chunks exercise multi-chunk population.
 	const fileSize = 32 * 1024 * 1024
 	const chunkSize = 16 * 1024 * 1024
@@ -64,8 +74,6 @@ func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
 		fileSize, testCfg.storageContainer, blobPath, originalMD5)
 	uploadBlob(t, blobPath, original)
 	t.Cleanup(func() { deleteBlob(t, blobPath) })
-
-	m := newTestPodMounter(t)
 
 	// A cold read falls back to Azure and populates L2 asynchronously.
 	beforeMiss, ok := scrapeCacheServerMetrics(t)
@@ -127,7 +135,7 @@ func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
 		t.Fatalf("L2-hit read: content mismatch (md5 got=%s want=%s)",
 			secondReadMD5, originalMD5)
 	}
-	t.Logf("L2-hit read: %d bytes, md5 matches (data returned from dist_cache is identical to what was uploaded)",
+	t.Logf("L2-hit read: %d bytes, md5 matches (data returned from distributed_cache is identical to what was uploaded)",
 		len(secondRead))
 
 	afterHit, ok := scrapeCacheServerMetrics(t)

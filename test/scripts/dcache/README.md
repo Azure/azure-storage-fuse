@@ -1,4 +1,4 @@
-# dist_cache nightly E2E helper scripts
+# distributed_cache nightly E2E helper scripts
 
 These scripts stand up a local [kind](https://kind.sigs.k8s.io/) cluster,
 deploy the [Tachyon](https://github.com/Azure/Tachyon) cache-server via its

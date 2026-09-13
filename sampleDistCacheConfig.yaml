@@ -1,16 +1,22 @@
 # Refer ./setup/baseConfig.yaml for full set of config parameters
 #
-# This sample shows dist_cache (distributed cache) configuration.
+# This sample shows distributed_cache (distributed cache) configuration.
 # The distributed cache provides a shared L2 cache between a local in-memory
 # L1 (block_cache) and Azure Blob Storage (L3), reducing Azure egress and
 # read latency for multi-node workloads.
 #
 # block_cache is added to the pipeline automatically as the L1 layer;
-# users only configure dist_cache. Do not add block_cache to components:
+# users only configure distributed_cache. Do not add block_cache to components:
 # or a block_cache: section — mount will fail with a mutual-exclusion error.
 #
 # PREREQUISITE: A running Tachyon cache server cluster is required.
 # See https://github.com/Azure/Tachyon for installation instructions.
+#
+# READ-ONLY REQUIREMENT: distributed_cache is supported only for read-only
+# mounts. You must set `read-only: true` below (or pass --read-only on the
+# mount command line); otherwise the mount will fail.
+
+read-only: true
 
 logging:
   type: syslog
@@ -18,7 +24,7 @@ logging:
 
 components:
   - libfuse
-  - dist_cache
+  - distributed_cache
   - attr_cache
   - azstorage
 
@@ -29,7 +35,7 @@ libfuse:
 
 # Distributed cache configuration
 # At least one discovery method must be configured: discovery-endpoint, k8s-service, or server-list.
-dist_cache:
+distributed_cache:
   # Option 1: Discovery endpoint (recommended for production)
   discovery-endpoint: "cacheserver-discovery.my-namespace.svc.cluster.local:9065"
 
