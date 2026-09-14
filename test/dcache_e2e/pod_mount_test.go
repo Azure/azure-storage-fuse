@@ -442,6 +442,16 @@ func (m *podMounter) ConcurrentReadFile(t *testing.T, pods []string, blobPath st
 
 // Error-returning variant; safe to call from goroutines (no t.Fatal).
 func (m *podMounter) readFileFromPodE(pod, blobPath string) ([]byte, error) {
+	data, err := m.readFileFromPodWithPartialE(pod, blobPath)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// readFileFromPodWithPartialE preserves stdout when cat fails so error-path
+// tests can detect success-shaped partial data.
+func (m *podMounter) readFileFromPodWithPartialE(pod, blobPath string) ([]byte, error) {
 	full := path.Join(m.mountPath, blobPath)
 
 	cmd := exec.Command(testCfg.kubectlBin,
@@ -456,19 +466,19 @@ func (m *podMounter) readFileFromPodE(pod, blobPath string) ([]byte, error) {
 
 	done := make(chan error, 1)
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("kubectl exec start on %s: %w", pod, err)
+		return stdout.Bytes(), fmt.Errorf("kubectl exec start on %s: %w", pod, err)
 	}
 	go func() { done <- cmd.Wait() }()
 
 	select {
 	case err := <-done:
 		if err != nil {
-			return nil, fmt.Errorf("kubectl exec cat %s on %s: %w (stderr: %s)",
+			return stdout.Bytes(), fmt.Errorf("kubectl exec cat %s on %s: %w (stderr: %s)",
 				full, pod, err, strings.TrimSpace(stderr.String()))
 		}
 	case <-time.After(podReadTimeout):
 		_ = cmd.Process.Kill()
-		return nil, fmt.Errorf("kubectl exec cat %s on %s: timed out after %s (stderr so far: %s)",
+		return stdout.Bytes(), fmt.Errorf("kubectl exec cat %s on %s: timed out after %s (stderr so far: %s)",
 			full, pod, podReadTimeout, strings.TrimSpace(stderr.String()))
 	}
 
@@ -504,13 +514,13 @@ func (m *podMounter) WaitDeploymentReady(t *testing.T) {
 		out, err := exec.Command(testCfg.kubectlBin,
 			"-n", m.namespace,
 			"get", "deployment", m.deployment,
-			"-o", `jsonpath={.spec.replicas} {.status.readyReplicas} {.status.replicas}`,
+			"-o", `jsonpath={.spec.replicas}|{.status.readyReplicas}|{.status.replicas}`,
 		).CombinedOutput()
 		if err != nil {
 			t.Fatalf("pod: wait ready: kubectl get deployment: %v (out: %s)",
 				err, strings.TrimSpace(string(out)))
 		}
-		fields := strings.Fields(strings.TrimSpace(string(out)))
+		fields := strings.Split(strings.TrimSpace(string(out)), "|")
 		spec := fieldOrZero(fields, 0)
 		ready := fieldOrZero(fields, 1)
 		total := fieldOrZero(fields, 2)

@@ -18,6 +18,7 @@ for iterative debugging.
 | `setup-kind.sh`             | Create the kind cluster, label worker nodes for cache-server scheduling, and prepare `/var/lib/ssd/cacheserver` on every node container via `docker exec`. |
 | `deploy-tachyon.sh`         | Install the `cache-server-prereq` chart, then the `cache-server` chart, both pulled directly from an OCI-enabled ACR (`oci://...`); imports the image directly into each kind node's containerd store. |
 | `deploy-blobfuse2.sh`       | Render `docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl` with storage credentials + image ref, side-load the blobfuse2 image into every kind node, apply, and wait for rollout. |
+| `docker/Dockerfile.dcache-e2e` | Add the test-only scripted cache fault server to the Blobfuse image used by this suite. |
 | `teardown-kind.sh`          | Delete the cluster. Best-effort (runs under `set +e`). |
 
 ## Local usage
@@ -52,7 +53,12 @@ for iterative debugging.
 #    the image must already exist in the local docker daemon.
 (cd docker && ./buildcontainer.sh Dockerfile x86_64)
 ver=$(./blobfuse2 --version | cut -d ' ' -f 3)
-export BLOBFUSE2_IMAGE="azure-blobfuse2-x86_64.${ver}"
+base_image="azure-blobfuse2-x86_64.${ver}"
+go build -o docker/dcache-fault-server ./test/dcache_e2e/faultserver
+docker build --build-arg BASE_IMAGE="$base_image" \
+  -t "${base_image}-dcache-e2e" -f docker/Dockerfile.dcache-e2e docker
+rm docker/dcache-fault-server
+export BLOBFUSE2_IMAGE="${base_image}-dcache-e2e"
 export STO_ACC_NAME=<account>
 export STO_ACC_KEY=<key>
 export containerName=<container>

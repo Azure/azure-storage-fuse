@@ -69,10 +69,19 @@ steps:
       cd $(WORK_DIR)/docker
       ./buildcontainer.sh Dockerfile x86_64
       ver=$($(WORK_DIR)/blobfuse2 --version | cut -d ' ' -f 3)
-      tag="azure-blobfuse2-x86_64.${ver}"
-      echo "Built blobfuse2 container image: ${tag}"
-      docker images "${tag}"
-      echo "##vso[task.setvariable variable=BLOBFUSE2_IMAGE]${tag}"
+      base_tag="azure-blobfuse2-x86_64.${ver}"
+      e2e_tag="${base_tag}-dcache-e2e"
+      cd $(WORK_DIR)
+      go build -o $(WORK_DIR)/docker/dcache-fault-server ./test/dcache_e2e/faultserver
+      trap 'rm -f $(WORK_DIR)/docker/dcache-fault-server' EXIT
+      docker build \
+        --build-arg BASE_IMAGE="${base_tag}" \
+        -t "${e2e_tag}" \
+        -f $(WORK_DIR)/docker/Dockerfile.dcache-e2e \
+        $(WORK_DIR)/docker
+      echo "Built blobfuse2 E2E container image: ${e2e_tag}"
+      docker images "${e2e_tag}"
+      echo "##vso[task.setvariable variable=BLOBFUSE2_IMAGE]${e2e_tag}"
     displayName: 'DistCache [${{ parameters.run_idstring }}]: Build blobfuse2 container image'
     timeoutInMinutes: 20
 
