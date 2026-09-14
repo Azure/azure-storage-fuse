@@ -2,6 +2,7 @@
 **Features**
 
 **Bug Fixes**
+- Fixed a path traversal vulnerability where a filename containing backslashes (normalized to forward slashes) could escape the file cache directory and cause the root-owned Blobfuse2 process to overwrite host files. File-cache operations now reject any object name that resolves outside the assigned cache root, and the FUSE rename handler rejects non-local names.
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
