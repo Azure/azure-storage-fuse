@@ -66,6 +66,13 @@ var testCfg struct {
 	cacheserverSelector    string
 	cacheserverStatefulSet string
 	cacheserverMetricsPort int
+
+	// Bounded concurrency workload sizing. Defaults are intentionally large
+	// enough to exercise contention while remaining viable on the nightly
+	// four-node kind cluster.
+	concurrencyPods          int
+	concurrencyReadersPerPod int
+	concurrencyFiles         int
 }
 
 func registerFlags() {
@@ -121,6 +128,18 @@ func registerFlags() {
 		flag.IntVar(&testCfg.cacheserverMetricsPort, "cacheserver-metrics-port", 9096,
 			"cache-server: pod-local Prometheus port scraped via kubectl exec curl")
 	}
+	if flag.Lookup("concurrency-pods") == nil {
+		flag.IntVar(&testCfg.concurrencyPods, "concurrency-pods", 5,
+			"concurrency tests: blobfuse2 pod count")
+	}
+	if flag.Lookup("concurrency-readers-per-pod") == nil {
+		flag.IntVar(&testCfg.concurrencyReadersPerPod, "concurrency-readers-per-pod", 2,
+			"concurrency tests: simultaneous readers per pod")
+	}
+	if flag.Lookup("concurrency-files") == nil {
+		flag.IntVar(&testCfg.concurrencyFiles, "concurrency-files", 3,
+			"concurrency tests: number of independent files")
+	}
 }
 
 // envDefault returns v if it is non-empty, otherwise os.Getenv(k).
@@ -146,6 +165,15 @@ func ensurePodMountArgs() error {
 	}
 	if testCfg.dockerBin == "" {
 		return fmt.Errorf("kind fault injection requires -docker-bin")
+	}
+	if testCfg.concurrencyPods < 2 {
+		return fmt.Errorf("concurrency tests require -concurrency-pods >= 2")
+	}
+	if testCfg.concurrencyReadersPerPod < 1 {
+		return fmt.Errorf("concurrency tests require -concurrency-readers-per-pod >= 1")
+	}
+	if testCfg.concurrencyFiles < 2 {
+		return fmt.Errorf("concurrency tests require -concurrency-files >= 2")
 	}
 	return nil
 }

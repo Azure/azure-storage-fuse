@@ -23,6 +23,16 @@ for iterative debugging.
 
 ## Local usage
 
+Concurrency tests default to 5 pods, 2 readers per pod, and 3 files. Override
+the bounded workload size through test arguments:
+
+```bash
+go test -v -tags=fuse3 ./test/dcache_e2e -run '^TestConcurrency_' -args \
+  -concurrency-pods=5 \
+  -concurrency-readers-per-pod=2 \
+  -concurrency-files=3
+```
+
 ```bash
 # 1. Install prerequisites (one-time).
 ./test/scripts/dcache/install-prereqs.sh
