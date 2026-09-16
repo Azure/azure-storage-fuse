@@ -242,13 +242,8 @@ const (
 	BlobIsUnderLease
 	InvalidPermission
 	ErrPathTooDeep
+	ErrInvalidArgument
 )
-
-// isHTTPBadRequest checks whether Azure Storage rejected the request itself.
-func isHTTPBadRequest(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusBadRequest
-}
 
 // For detailed error list refer below link,
 // https://github.com/Azure/azure-sdk-for-go/blob/main/sdk/storage/azblob/bloberror/error_codes.go
@@ -269,6 +264,8 @@ func storeBlobErrToErr(err error) uint16 {
 			return BlobIsUnderLease
 		case bloberror.InsufficientAccountPermissions, bloberror.AuthorizationPermissionMismatch:
 			return InvalidPermission
+		case bloberror.InvalidURI, bloberror.InvalidQueryParameterValue:
+			return ErrInvalidArgument
 		default:
 			return ErrUnknown
 		}
@@ -295,6 +292,8 @@ func storeDatalakeErrToErr(err error) uint16 {
 			return InvalidPermission
 		case datalakeerror.PathIsTooDeep:
 			return ErrPathTooDeep
+		case datalakeerror.InvalidURI, datalakeerror.InvalidQueryParameterValue:
+			return ErrInvalidArgument
 		default:
 			return ErrUnknown
 		}
