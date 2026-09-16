@@ -1701,6 +1701,71 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 	suite.assert.NoError(err)
 }
 
+// TestValidateObjectName exercises the containment guard directly, covering
+// names that stay within the cache root and names that escape it.
+func (suite *fileCacheTestSuite) TestValidateObjectName() {
+	defer suite.cleanupTest()
+
+	// Names that resolve within the cache root must be accepted.
+	validNames := []string{
+		"",
+		"file",
+		"dir/file",
+		"a/b/c/file.txt",
+		"a/./b",
+		"a..b",
+		"..file",
+	}
+	for _, name := range validNames {
+		err := suite.fileCache.validateObjectName(name)
+		suite.assert.NoError(err, "expected %q to be valid", name)
+
+		localPath, err := suite.fileCache.getLocalCachePath(name)
+		suite.assert.NoError(err, "expected %q to be valid", name)
+		suite.assert.Equal(filepath.Join(suite.cache_path, name), localPath)
+		// The resolved path must stay within (or equal) the cache root.
+		suite.assert.True(localPath == suite.cache_path ||
+			strings.HasPrefix(localPath, suite.cache_path+string(os.PathSeparator)))
+	}
+
+	// Names that escape the cache root must be rejected with EINVAL.
+	// Note: absolute-looking names (e.g. "/etc/crontab") are not rejected here
+	// because filepath.Join neutralizes the leading slash, resolving them to a
+	// contained "<cache>/etc/crontab". Absolute-path rejection is enforced at
+	// the FUSE layer by common.IsValidObjectName.
+	invalidNames := []string{
+		"..",
+		"../file",
+		"../../etc/crontab",
+		"a/../../escape",
+		"a/b/../../../escape",
+	}
+	for _, name := range invalidNames {
+		err := suite.fileCache.validateObjectName(name)
+		suite.assert.Equal(syscall.EINVAL, err, "expected %q to be rejected", name)
+
+		localPath, err := suite.fileCache.getLocalCachePath(name)
+		suite.assert.Equal(syscall.EINVAL, err, "expected %q to be rejected", name)
+		suite.assert.Empty(localPath)
+	}
+}
+
+// TestValidateObjectNameBackslashTraversal verifies that a normalized backslash
+// filename that turns into a traversal sequence is rejected by the guard.
+func (suite *fileCacheTestSuite) TestValidateObjectNameBackslashTraversal() {
+	defer suite.cleanupTest()
+
+	// `..\..\etc\crontab` is normalized to `../../etc/crontab` by the FUSE layer.
+	escaping := common.NormalizeObjectName(`..\..\etc\crontab`)
+	suite.assert.Equal("../../etc/crontab", escaping)
+	suite.assert.Equal(syscall.EINVAL, suite.fileCache.validateObjectName(escaping))
+
+	// A backslash name that stays local must remain valid after normalization.
+	local := common.NormalizeObjectName(`dir\file`)
+	suite.assert.Equal("dir/file", local)
+	suite.assert.NoError(suite.fileCache.validateObjectName(local))
+}
+
 // TestRenameFilePathTraversal verifies that a rename whose destination escapes
 // the cache root (as produced by normalizing a Linux filename containing
 // backslashes, e.g. `..\..\etc\crontab` -> `../../etc/crontab`) is rejected and
