@@ -217,6 +217,20 @@ func NormalizeObjectName(name string) string {
 	return strings.ReplaceAll(name, "\\", "/")
 }
 
+// IsValidObjectName reports whether name is a safe relative object name that
+// cannot escape its parent directory. It rejects absolute paths and any name
+// that resolves outside of its parent (e.g. containing ".." traversal
+// segments). This guards against path traversal introduced when backslashes in
+// a Linux filename are normalized to forward slashes by NormalizeObjectName,
+// turning a name such as `..\..\etc\crontab` into `../../etc/crontab`.
+// An empty name is treated as valid since it refers to the root itself.
+func IsValidObjectName(name string) bool {
+	if name == "" {
+		return true
+	}
+	return filepath.IsLocal(name)
+}
+
 // List all mount points which were mounted using blobfuse2
 func ListMountPoints() ([]string, error) {
 	file, err := os.Open("/etc/mtab")

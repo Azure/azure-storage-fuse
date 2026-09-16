@@ -442,6 +442,32 @@ func isLocalDirEmpty(path string) bool {
 	return err == io.EOF
 }
 
+// getLocalCachePath joins the object name with the cache root and guarantees the
+// resulting path cannot escape the cache directory. The FUSE layer converts
+// backslashes in filenames to forward slashes (see common.NormalizeObjectName),
+// which can turn an ordinary Linux filename such as `..\..\etc\crontab` into a
+// `../../etc/crontab` traversal sequence. Since the file-cache runs as root, a
+// traversal would let it operate on host files outside its assigned cache root.
+// filepath.Join cleans the joined path, so any ".." is resolved here and we
+// simply confirm the result is the cache root itself or lives beneath it.
+func (fc *FileCache) getLocalCachePath(name string) (string, error) {
+	localPath := filepath.Join(fc.tmpPath, name)
+	if localPath != fc.tmpPath &&
+		!strings.HasPrefix(localPath, fc.tmpPath+string(os.PathSeparator)) {
+		log.Err("FileCache::getLocalCachePath : path traversal attempt blocked [name=%s]", name)
+		return "", syscall.EINVAL
+	}
+	return localPath, nil
+}
+
+// validateObjectName ensures the given object name stays within the cache root
+// once joined with it. It is used as a guard at the entry of file-cache
+// operations that receive names originating from the FUSE layer.
+func (fc *FileCache) validateObjectName(name string) error {
+	_, err := fc.getLocalCachePath(name)
+	return err
+}
+
 // invalidateDirectory: Recursively invalidates a directory in the file cache.
 func (fc *FileCache) invalidateDirectory(name string) {
 	log.Trace("FileCache::invalidateDirectory : %s", name)
@@ -484,6 +510,11 @@ func (fc *FileCache) invalidateDirectory(name string) {
 func (fc *FileCache) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("FileCache::DeleteDir : %s", options.Name)
 
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::DeleteDir : invalid path %s", options.Name)
+		return err
+	}
+
 	err := fc.NextComponent().DeleteDir(options)
 	if err != nil {
 		log.Err("FileCache::DeleteDir : %s failed", options.Name)
@@ -520,6 +551,11 @@ func newObjAttr(path string, info fs.FileInfo) *internal.ObjAttr {
 // ReadDir: Consolidate entries in storage and local cache to return the children under this path.
 func (fc *FileCache) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
 	log.Trace("FileCache::ReadDir : %s", options.Name)
+
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::ReadDir : invalid path %s", options.Name)
+		return nil, err
+	}
 
 	// For read directory, there are three different child path situations we have to potentially handle.
 	// 1. Path in storage but not in local cache
@@ -582,6 +618,11 @@ func (fc *FileCache) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 
 // StreamDir : Add local files to the list retrieved from storage container
 func (fc *FileCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::StreamDir : invalid path %s", options.Name)
+		return nil, "", err
+	}
+
 	attrs, token, err := fc.NextComponent().StreamDir(options)
 
 	if token == "" {
@@ -621,6 +662,11 @@ func (fc *FileCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 // IsDirEmpty: Whether or not the directory is empty
 func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("FileCache::IsDirEmpty : %s", options.Name)
+
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::IsDirEmpty : invalid path %s", options.Name)
+		return false
+	}
 
 	// Check if directory is empty at remote or not, if container is not empty then return false
 	emptyAtRemote := fc.NextComponent().IsDirEmpty(options)
@@ -689,6 +735,15 @@ func (fc *FileCache) deleteEmptyDirs(options internal.DeleteDirOptions) (bool, e
 func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("FileCache::RenameDir : src=%s, dst=%s", options.Src, options.Dst)
 
+	if err := fc.validateObjectName(options.Src); err != nil {
+		log.Err("FileCache::RenameDir : invalid src path %s", options.Src)
+		return err
+	}
+	if err := fc.validateObjectName(options.Dst); err != nil {
+		log.Err("FileCache::RenameDir : invalid dst path %s", options.Dst)
+		return err
+	}
+
 	err := fc.NextComponent().RenameDir(options)
 	if err != nil {
 		log.Err("FileCache::RenameDir : error %s [%s]", options.Src, err.Error())
@@ -705,6 +760,11 @@ func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::CreateFile")()
 	log.Trace("FileCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
+
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::CreateFile : invalid path %s", options.Name)
+		return nil, err
+	}
 
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
@@ -803,6 +863,11 @@ func (fc *FileCache) validateStorageError(path string, err error, method string,
 // DeleteFile: Invalidate the file in local cache.
 func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("FileCache::DeleteFile : name=%s", options.Name)
+
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::DeleteFile : invalid path %s", options.Name)
+		return err
+	}
 
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
@@ -911,6 +976,11 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("FileCache::OpenFile : name=%s, flags=%s, mode=%s",
 		options.Name, common.PrettyOpenFlags(options.Flags), options.Mode)
+
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::OpenFile : invalid path %s", options.Name)
+		return nil, err
+	}
 
 	localPath := filepath.Join(fc.tmpPath, options.Name)
 	var f *os.File
@@ -1403,6 +1473,11 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 func (fc *FileCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
 	log.Trace("FileCache::GetAttr : %s", options.Name)
 
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::GetAttr : invalid path %s", options.Name)
+		return &internal.ObjAttr{}, err
+	}
+
 	// For get attr, there are three different path situations we have to potentially handle.
 	// 1. Path in storage but not in local cache
 	// 2. Path not in storage but in local cache (this could happen if we recently created the file [and are currently writing to it]) (also supports immutable containers)
@@ -1460,6 +1535,15 @@ func (fc *FileCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 // RenameFile: Invalidate the file in local cache.
 func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("FileCache::RenameFile : src=%s, dst=%s", options.Src, options.Dst)
+
+	if err := fc.validateObjectName(options.Src); err != nil {
+		log.Err("FileCache::RenameFile : invalid src path %s", options.Src)
+		return err
+	}
+	if err := fc.validateObjectName(options.Dst); err != nil {
+		log.Err("FileCache::RenameFile : invalid dst path %s", options.Dst)
+		return err
+	}
 
 	sflock := fc.fileLocks.Get(options.Src)
 	sflock.Lock()
@@ -1521,6 +1605,11 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 // TruncateFile: Update the file with its new size.
 func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("FileCache::TruncateFile : name=%s, size=%d", options.Name, options.NewSize)
+
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::TruncateFile : invalid path %s", options.Name)
+		return err
+	}
 
 	if fc.diskHighWaterMark != 0 {
 		currSize, err := common.GetUsage(fc.tmpPath)
@@ -1587,6 +1676,11 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 	log.Trace("FileCache::Chmod : Change mode of path %s", options.Name)
 
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::Chmod : invalid path %s", options.Name)
+		return err
+	}
+
 	// Update the file in storage
 	err := fc.NextComponent().Chmod(options)
 	err = fc.validateStorageError(options.Name, err, "Chmod", false)
@@ -1620,6 +1714,11 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 // Chown : Update the file with its new owner and group
 func (fc *FileCache) Chown(options internal.ChownOptions) error {
 	log.Trace("FileCache::Chown : Change owner of path %s", options.Name)
+
+	if err := fc.validateObjectName(options.Name); err != nil {
+		log.Err("FileCache::Chown : invalid path %s", options.Name)
+		return err
+	}
 
 	// Update the file in storage
 	err := fc.NextComponent().Chown(options)

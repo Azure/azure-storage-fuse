@@ -945,6 +945,15 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 		return -C.ENOENT
 	}
 
+	// Reject names that escape the mount root. A Linux filename containing
+	// backslashes (e.g. `..\..\etc\crontab`) is normalized above into a
+	// traversal sequence (`../../etc/crontab`). Such names must never be
+	// treated as multi-segment paths escaping the mount.
+	if !common.IsValidObjectName(srcPath) || !common.IsValidObjectName(dstPath) {
+		log.Err("Libfuse::libfuse2_rename : invalid path in rename src: [%s] dst: [%s]", srcPath, dstPath)
+		return -C.EINVAL
+	}
+
 	srcAttr, srcErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: srcPath})
 	if os.IsNotExist(srcErr) {
 		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s [%s]", srcPath, srcErr.Error())
