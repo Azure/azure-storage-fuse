@@ -38,6 +38,8 @@ package dcache_e2e
 
 import (
 	"fmt"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -161,7 +163,43 @@ func newCLIPodMounter(t *testing.T, flags cliFlagSet) *podMounter {
 	})
 	m.WaitDeploymentReady(t)
 	m.assertMountReadOnly(t)
+	assertCLIConfiguration(t, m, flags)
 	return m
+}
+
+// assertCLIConfiguration verifies that every distributed-cache tuning flag
+// reached the component configuration rather than silently falling back to a
+// default value.
+func assertCLIConfiguration(t *testing.T, m *podMounter, flags cliFlagSet) {
+	t.Helper()
+	pod := m.resolvePod(t)
+	out, err := exec.Command(testCfg.kubectlBin,
+		"-n", m.namespace,
+		"exec", pod,
+		"--", "cat", blobfuseDiagnosticLogPath,
+	).CombinedOutput()
+	if err != nil {
+		t.Fatalf("cli-config: read blobfuse log from %s: %v (out: %s)",
+			pod, err, strings.TrimSpace(string(out)))
+	}
+
+	const bytesPerMB = 1024 * 1024
+	blockSizeBytes := flags.blockSizeMB * bytesPerMB
+	memoryBytes := flags.memoryMB * bytesPerMB
+	wants := []string{
+		fmt.Sprintf("DistCache::Configure : block-size=%d", blockSizeBytes),
+		fmt.Sprintf("DistCache::Configure : ttl-seconds=%d", flags.ttlSeconds),
+		fmt.Sprintf("BlockCache::Configure : block size %d, mem size %d, worker %d, prefetch %d",
+			blockSizeBytes, memoryBytes, flags.parallelism, flags.prefetch),
+	}
+	logText := string(out)
+	for _, want := range wants {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("cli-config: blobfuse log from %s does not contain %q", pod, want)
+		}
+	}
+	t.Logf("cli-config: verified block-size=%dMB memory=%dMB prefetch=%d parallelism=%d ttl=%ds",
+		flags.blockSizeMB, flags.memoryMB, flags.prefetch, flags.parallelism, flags.ttlSeconds)
 }
 
 // cloneReferenceDeploymentAsCLI clones the reference Deployment via the

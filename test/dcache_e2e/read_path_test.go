@@ -47,19 +47,21 @@ import (
 // reads clears the local cache; metrics distinguish L2 behavior while byte
 // comparisons protect data integrity.
 func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
-	runReadPathL2MissHitScenario(t, newTestPodMounter(t))
+	const chunkSize = 16 * 1024 * 1024
+	runReadPathL2MissHitScenario(t, newTestPodMounter(t), chunkSize)
 }
 
 // runReadPathL2MissHitScenario runs the L2 miss -> populate -> remount -> hit
 // sequence against any *podMounter. Reused by the CLI-mode test in
 // cli_flags_test.go so the same behavioral scenario covers both the YAML
 // configuration surface and the distributed-cache CLI flag surface.
-func runReadPathL2MissHitScenario(t *testing.T, m *podMounter) {
+func runReadPathL2MissHitScenario(t *testing.T, m *podMounter, chunkSize int) {
 	t.Helper()
-	// Two 16 MiB chunks exercise multi-chunk population.
 	const fileSize = 32 * 1024 * 1024
-	const chunkSize = 16 * 1024 * 1024
-	const expectedChunks = fileSize / chunkSize
+	if chunkSize <= 0 {
+		t.Fatalf("read-path: invalid chunk size %d", chunkSize)
+	}
+	expectedChunks := (fileSize + chunkSize - 1) / chunkSize
 	// block_cache dispatches L2 populate asynchronously to the read; poll
 	// the metric until it lands so the assertion doesn't race the upload.
 	const populateTimeout = 60 * time.Second
