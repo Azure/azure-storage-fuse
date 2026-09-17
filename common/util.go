@@ -472,6 +472,19 @@ func GetUsage(path string) (float64, error) {
 	return currSize, nil
 }
 
+// GetAvailableMemoryInMB returns the available RAM of the host running blobfuse.
+// Note that available memory includes free memory and reclaimable memory, so it's a good estimate for how
+// much memory blobfuse can practically use. Obviously if other processes or the kernel use up more memory
+// the available memory will change, caller should be mindful of that.
+func GetAvailableMemoryInMB() (uint64, error) {
+	availBytes, err := GetAvailableMemoryBytes()
+	if err != nil {
+		return 0, fmt.Errorf("GetAvailableMemoryInMB: failed to read available memory: %v", err)
+	}
+
+	return availBytes / MbToBytes, nil
+}
+
 func GetFuseMinorVersion() int {
 	var out bytes.Buffer
 	cmd := exec.Command("fusermount3", "--version")
@@ -687,4 +700,12 @@ func getAvailableMemoryBytesFromMeminfo(memInfo procfs.Meminfo) (uint64, error) 
 	}
 
 	return 0, fmt.Errorf("neither MemAvailable nor MemFree found in /proc/meminfo")
+}
+
+// If a file has open handle(s) at the time when unlink() is called to delete the file, fuse renames the file to
+// a special name of the form .fuse_hiddenXXX. This enables fuse to provide POSIX semantics of allowing file to be
+// accessed through existing open fds after the file is deleted.
+func IsFuseHiddenFile(filePath string) bool {
+	fileName := filepath.Base(filePath)
+	return strings.HasPrefix(fileName, ".fuse_hidden")
 }
