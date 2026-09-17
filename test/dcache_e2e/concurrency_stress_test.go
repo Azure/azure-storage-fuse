@@ -113,7 +113,7 @@ func seedConcurrencyFiles(t *testing.T, scenario string, count int) ([]string, m
 		blobPath := concurrencyBlobPath(t, scenario, i)
 		payload := generateRandomBytes(t, concurrencyFileSize)
 		uploadBlob(t, blobPath, payload)
-		t.Cleanup(func() { deleteBlob(t, blobPath) })
+		t.Cleanup(func() { deleteBlobBestEffort(t, blobPath) })
 		paths = append(paths, blobPath)
 		payloads[blobPath] = payload
 	}

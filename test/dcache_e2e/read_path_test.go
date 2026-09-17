@@ -73,7 +73,7 @@ func runReadPathL2MissHitScenario(t *testing.T, m *podMounter) {
 	t.Logf("seed %d bytes -> azstorage://%s/%s (md5=%s)",
 		fileSize, testCfg.storageContainer, blobPath, originalMD5)
 	uploadBlob(t, blobPath, original)
-	t.Cleanup(func() { deleteBlob(t, blobPath) })
+	t.Cleanup(func() { deleteBlobBestEffort(t, blobPath) })
 
 	// A cold read falls back to Azure and populates L2 asynchronously.
 	beforeMiss, ok := scrapeCacheServerMetrics(t)

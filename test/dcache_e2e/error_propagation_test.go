@@ -95,6 +95,6 @@ func seedErrorPropagationBlob(t *testing.T, mode string) (string, []byte) {
 	)
 	payload := generateRandomBytes(t, errorPayloadSize)
 	uploadBlob(t, blobPath, payload)
-	t.Cleanup(func() { deleteBlob(t, blobPath) })
+	t.Cleanup(func() { deleteBlobBestEffort(t, blobPath) })
 	return blobPath, payload
 }

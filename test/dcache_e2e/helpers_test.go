@@ -47,6 +47,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 )
@@ -147,8 +148,8 @@ func uploadBlob(t *testing.T, blobPath string, data []byte) {
 	}
 }
 
-// deleteBlob logs cleanup failures to preserve the original test result.
-func deleteBlob(t *testing.T, blobPath string) {
+// deleteBlobBestEffort logs cleanup failures to preserve the original test result.
+func deleteBlobBestEffort(t *testing.T, blobPath string) {
 	t.Helper()
 	client, err := newBlockBlobClient(blobPath)
 	if err != nil {
@@ -158,6 +159,28 @@ func deleteBlob(t *testing.T, blobPath string) {
 	ctx, cancel := context.WithTimeout(context.Background(), azSDKTimeout)
 	defer cancel()
 	if _, err := client.Delete(ctx, nil); err != nil {
+		if bloberror.HasCode(err, bloberror.BlobNotFound) {
+			return
+		}
 		t.Logf("cleanup: delete %s: %v", blobPath, err)
+	}
+}
+
+// deleteBlobStrict deletes a blob required by the test and verifies it is absent.
+func deleteBlobStrict(t *testing.T, blobPath string) {
+	t.Helper()
+	client, err := newBlockBlobClient(blobPath)
+	if err != nil {
+		t.Fatalf("delete %s: %v", blobPath, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), azSDKTimeout)
+	defer cancel()
+	if _, err := client.Delete(ctx, nil); err != nil {
+		t.Fatalf("delete %s: %v", blobPath, err)
+	}
+	if _, err := client.GetProperties(ctx, nil); err == nil {
+		t.Fatalf("delete %s: blob still exists after successful deletion", blobPath)
+	} else if !bloberror.HasCode(err, bloberror.BlobNotFound) {
+		t.Fatalf("verify deletion of %s: %v", blobPath, err)
 	}
 }

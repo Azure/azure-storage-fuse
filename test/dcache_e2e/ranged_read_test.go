@@ -287,7 +287,7 @@ func seedRangedBlob(t *testing.T, blobPath, label string) []byte {
 	t.Logf("%s: seed %d bytes -> azstorage://%s/%s (md5=%s)",
 		label, rangedPayloadSize, testCfg.storageContainer, blobPath, md5Sum(payload))
 	uploadBlob(t, blobPath, payload)
-	t.Cleanup(func() { deleteBlob(t, blobPath) })
+	t.Cleanup(func() { deleteBlobBestEffort(t, blobPath) })
 
 	return payload
 }

@@ -187,7 +187,7 @@ func TestStaleness_Delete_SameMount_ServesCached(t *testing.T) {
 	v1, v1MD5 := seedAndPrime(t, m, blobPath, "same-delete")
 
 	t.Logf("same-delete: deleting %s from Azure", blobPath)
-	deleteBlob(t, blobPath)
+	deleteBlobStrict(t, blobPath)
 
 	got := m.ReadFile(t, blobPath)
 	if len(got) != len(v1) || md5Sum(got) != v1MD5 {
@@ -211,7 +211,7 @@ func TestStaleness_Delete_AfterRestart_ReturnsENOENT(t *testing.T) {
 	_, _ = seedAndPrime(t, m, blobPath, "restart-delete")
 
 	t.Logf("restart-delete: deleting %s from Azure", blobPath)
-	deleteBlob(t, blobPath)
+	deleteBlobStrict(t, blobPath)
 
 	m.Remount(t)
 
@@ -250,7 +250,7 @@ func seedAndPrime(t *testing.T, m *podMounter, blobPath, label string) ([]byte, 
 	t.Logf("%s: seed v1 %d bytes -> azstorage://%s/%s (md5=%s)",
 		label, stalePayloadSize, testCfg.storageContainer, blobPath, v1MD5)
 	uploadBlob(t, blobPath, v1)
-	t.Cleanup(func() { deleteBlob(t, blobPath) })
+	t.Cleanup(func() { deleteBlobBestEffort(t, blobPath) })
 
 	before, ok := scrapeCacheServerMetrics(t)
 	if !ok {
