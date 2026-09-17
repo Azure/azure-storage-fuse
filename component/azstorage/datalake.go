@@ -432,6 +432,9 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		switch e {
+		case ErrInvalidArgument:
+			log.Err("Datalake::GetAttr : Storage rejected path name %s [%s]", name, err.Error())
+			return blobAttr, syscall.EINVAL
 		case ErrFileNotFound:
 			return blobAttr, syscall.ENOENT
 		case InvalidPermission:

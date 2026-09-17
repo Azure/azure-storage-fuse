@@ -464,6 +464,8 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 			return -C.ENOENT
 		case syscall.EACCES:
 			return -C.EACCES
+		case syscall.EINVAL:
+			return -C.EINVAL
 		default:
 			return -C.EIO
 		}

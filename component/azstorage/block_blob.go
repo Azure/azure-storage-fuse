@@ -493,6 +493,9 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
 		switch serr {
+		case ErrInvalidArgument:
+			log.Err("BlockBlob::getAttrUsingRest : Storage rejected blob name %s [%s]", name, err.Error())
+			return attr, syscall.EINVAL
 		case ErrFileNotFound:
 			return attr, syscall.ENOENT
 		case InvalidPermission:
@@ -540,6 +543,9 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 		if err != nil {
 			e := storeBlobErrToErr(err)
 			switch e {
+			case ErrInvalidArgument:
+				log.Err("BlockBlob::getAttrUsingList : Storage rejected blob name %s [%s]", name, err.Error())
+				return attr, syscall.EINVAL
 			case ErrFileNotFound:
 				return attr, syscall.ENOENT
 			case InvalidPermission:

@@ -242,6 +242,7 @@ const (
 	BlobIsUnderLease
 	InvalidPermission
 	ErrPathTooDeep
+	ErrInvalidArgument
 )
 
 // For detailed error list refer below link,
@@ -263,6 +264,8 @@ func storeBlobErrToErr(err error) uint16 {
 			return BlobIsUnderLease
 		case bloberror.InsufficientAccountPermissions, bloberror.AuthorizationPermissionMismatch:
 			return InvalidPermission
+		case bloberror.InvalidURI, bloberror.InvalidQueryParameterValue:
+			return ErrInvalidArgument
 		default:
 			return ErrUnknown
 		}
@@ -289,6 +292,8 @@ func storeDatalakeErrToErr(err error) uint16 {
 			return InvalidPermission
 		case datalakeerror.PathIsTooDeep:
 			return ErrPathTooDeep
+		case datalakeerror.InvalidURI, datalakeerror.InvalidQueryParameterValue:
+			return ErrInvalidArgument
 		default:
 			return ErrUnknown
 		}
