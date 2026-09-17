@@ -83,6 +83,30 @@ steps:
     displayName: "Test bfusemon binary built"
     continueOnError: false
 
+  - script: |
+      set -euo pipefail
+
+      go_version=$(awk '$1 == "go" { print $2; exit }' go.mod)
+      crypto_version=$(go list -m -f '{{.Version}}' golang.org/x/crypto)
+
+      blobfuse_metadata=$(go version -m ./blobfuse2)
+      bfusemon_metadata=$(go version -m ./bfusemon)
+      echo "$blobfuse_metadata"
+      echo "$bfusemon_metadata"
+
+      grep -Fq "./blobfuse2: go${go_version}" <<< "$blobfuse_metadata"
+      grep -Fq "$(printf '\tdep\tgolang.org/x/crypto\t%s' "$crypto_version")" <<< "$blobfuse_metadata"
+      grep -Fq "microsoft_systemcrypto=1" <<< "$blobfuse_metadata"
+      grep -Fq "./bfusemon: go${go_version}" <<< "$bfusemon_metadata"
+      grep -Fq "microsoft_systemcrypto=1" <<< "$bfusemon_metadata"
+
+      go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      "$(go env GOPATH)/bin/govulncheck" -mode=binary -show=verbose ./blobfuse2
+      "$(go env GOPATH)/bin/govulncheck" -mode=binary -show=verbose ./bfusemon
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Verify release binary security metadata"
+    continueOnError: false
+
   # Run Unit tests if parameters is true
   - ${{ if eq(parameters.unit_test, true) }}:
       - script: |

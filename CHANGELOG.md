@@ -6,6 +6,7 @@
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
+- Build release binaries with Microsoft Go 1.26.8 and `golang.org/x/crypto` 0.56.0, and verify their embedded security metadata and reachable vulnerabilities before packaging ([Issue #2350](https://github.com/Azure/azure-storage-fuse/issues/2350))
 
 ## 2.5.5 (2026-08-11)
 **Features**
