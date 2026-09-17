@@ -7,10 +7,10 @@ work_dir=$(echo "$1" | sed 's:/*$::')
 
 # Microsoft build of Go (FIPS-capable; ships systemcrypto GOEXPERIMENT).
 # Pinned to a specific patch version for reproducible builds. Override by
-# exporting GO_VERSION before run (either a specific version like "1.26.4"
+# exporting GO_VERSION before run (either a specific version like "1.26.8"
 # or a major.minor stream like "1.26" which the aka.ms redirector resolves
 # to the latest patch in that line).
-version="${GO_VERSION:-1.26.4}"
+version="${GO_VERSION:-1.26.8}"
 arch=$(dpkg --print-architecture 2>/dev/null || true)
 if [ -z "$arch" ]; then
   case "$(uname -m)" in
@@ -35,9 +35,9 @@ wget --tries=3 --timeout=60 -O "$work_dir/$tarball" \
 # Verify the tarball against the official SHA256 sidecar published next to
 # the release. This guards against a compromised redirector, a corrupted
 # upstream artifact, or a man-in-the-middle that has TLS but not the
-# checksum. The sidecar lists the resolved release filename (e.g.
-# "go1.26.4-20260508.1.linux-amd64.tar.gz"), so we extract just the hash
-# and compare it against the locally computed hash of the downloaded file.
+# checksum. The sidecar lists the resolved release filename, which includes
+# the Microsoft build revision, so we extract just the hash and compare it
+# against the locally computed hash of the downloaded file.
 wget --tries=3 --timeout=60 -O "$work_dir/$tarball.sha256" \
   "https://aka.ms/golang/release/latest/${tarball}.sha256"
 
