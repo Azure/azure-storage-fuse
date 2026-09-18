@@ -42,9 +42,9 @@ distributed_cache:
   # Option 3: Static server list (comma-separated host:port)
   # server-list: "cacheserver-0:9065,cacheserver-1:9065,cacheserver-2:9065"
 
-  # Optional: cache tuning
-  # Optional: Custom DNS resolver used for cache endpoint lookups.
-  # Accepts an IP address or host:port.
+  # DNS server for resolving distributed-cache endpoints.
+  # Set this to the Kubernetes cluster DNS service IP, typically the
+  # kube-dns/CoreDNS ClusterIP. Accepts an IP or host:port.
   # dns-server: "10.0.0.10:53"
 
   # Optional: L1 tuning (applied to the auto-inserted block_cache component)

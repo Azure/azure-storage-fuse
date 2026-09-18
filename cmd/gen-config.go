@@ -185,7 +185,7 @@ func init() {
 
 	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Generate config file for streaming with block-cache mode")
 	generatedConfig.Flags().StringVar(&optsGenCfg.distributedCacheDiscoveryEndpoint, "distributed-cache-discovery-endpoint", "", "Discovery endpoint for distributed-cache (L2) mode; setting this enables distributed-cache and requires --ro")
-	generatedConfig.Flags().StringVar(&optsGenCfg.distributedCacheDNSServer, "distributed-cache-dns-server", "", "Custom DNS server (IP or host:port) for resolving distributed-cache endpoints")
+	generatedConfig.Flags().StringVar(&optsGenCfg.distributedCacheDNSServer, "distributed-cache-dns-server", "", "DNS server for resolving distributed-cache endpoints, typically the Kubernetes cluster DNS service IP (IP or host:port)")
 	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Generate config file for file-cache mode, string specifies temp cache path")
 	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Generate config file for direct-io mode without any caching")
 	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Specifies location for generated config file, default is current directory")
