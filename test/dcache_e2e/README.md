@@ -36,6 +36,7 @@ we wrote, and cache-server metrics move in the expected direction.
 | `node_failure_test.go` | Stops a kind worker hosting one cache-server, verifies mixed L2/Azure fallback, then restores the node. |
 | `stampede_test.go` | Verifies concurrent cold reads coalesce into one Azure GET. |
 | `warm_cache_test.go` | Verifies late-joining pods read previously populated data from L2. |
+| `distro_smoke_test.go` | Verifies the runtime distro, architecture, binary linkage, and FUSE mount before the shared read-path smoke scenario runs. |
 
 ## Running locally
 
@@ -106,3 +107,11 @@ Tachyon Helm chart exposes it somewhere other than 9096.
 Wired from
 [azure-pipeline-templates/dist-cache-e2e.yml](../../azure-pipeline-templates/dist-cache-e2e.yml).
 The template deploys the in-cluster dependencies and runs only this package.
+
+The required runtime matrix is Ubuntu 22.04 amd64 (full suite), Ubuntu 22.04
+ARM64, Debian 13 amd64, RHEL 9 amd64, and Rocky Linux 9 amd64. Non-primary
+entries run `TestDistroSmoke_Runtime` plus the canonical
+`TestReadPath_L2MissPopulatesAndHits` scenario. Runtime images compile
+blobfuse2 inside the target distribution so libc and libfuse linkage are part
+of the compatibility check; the x86 runtime variants may share an Ubuntu kind
+host without being reported as native-host distro coverage.

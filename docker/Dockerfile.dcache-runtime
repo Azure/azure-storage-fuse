@@ -1,0 +1,78 @@
+ARG BASE_IMAGE=mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
+
+FROM ${BASE_IMAGE} AS builder
+
+ARG PACKAGE_FAMILY=deb
+
+RUN set -eux; \
+    case "${PACKAGE_FAMILY}" in \
+        deb) \
+            apt-get update; \
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                ca-certificates build-essential git libfuse3-dev pkg-config sudo wget; \
+            rm -rf /var/lib/apt/lists/* \
+            ;; \
+        rpm) \
+            dnf install -y \
+                ca-certificates fuse3-devel gcc gcc-c++ git make pkgconf-pkg-config \
+                sudo tar gzip wget; \
+            dnf clean all \
+            ;; \
+        *) \
+            echo "Unsupported PACKAGE_FAMILY: ${PACKAGE_FAMILY}" >&2; \
+            exit 1 \
+            ;; \
+    esac
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+COPY go_installer.sh ./
+RUN ./go_installer.sh /tmp && go mod download
+
+COPY build.sh main.go ./
+COPY cmd ./cmd
+COPY common ./common
+COPY component ./component
+COPY exported ./exported
+COPY internal ./internal
+COPY test/dcache_e2e/faultserver ./test/dcache_e2e/faultserver
+COPY tools ./tools
+RUN ./build.sh fuse3 && \
+    go build -o /out/dcache-fault-server ./test/dcache_e2e/faultserver && \
+    install -D -m 0755 blobfuse2 /out/blobfuse2
+
+FROM ${BASE_IMAGE}
+
+ARG PACKAGE_FAMILY=deb
+
+RUN set -eux; \
+    case "${PACKAGE_FAMILY}" in \
+        deb) \
+            apt-get update; \
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                bash ca-certificates curl fuse3 libc-bin procps; \
+            rm -rf /var/lib/apt/lists/* \
+            ;; \
+        rpm) \
+            dnf install -y bash ca-certificates curl-minimal fuse3 fuse3-libs glibc-common procps-ng; \
+            dnf clean all \
+            ;; \
+        *) \
+            echo "Unsupported PACKAGE_FAMILY: ${PACKAGE_FAMILY}" >&2; \
+            exit 1 \
+            ;; \
+    esac; \
+    mkdir -p /etc /mnt/blobfuse_mnt /tmp/blobfuse_temp /usr/share/blobfuse2 /var/log/blobfuse2; \
+    touch /etc/fuse.conf; \
+    grep -qxF user_allow_other /etc/fuse.conf || echo user_allow_other >> /etc/fuse.conf; \
+    chmod 0777 /mnt/blobfuse_mnt /tmp/blobfuse_temp
+
+COPY --from=builder /out/blobfuse2 /usr/local/bin/blobfuse2
+COPY --from=builder /out/dcache-fault-server /usr/local/bin/dcache-fault-server
+
+RUN set -eux; \
+    blobfuse2 --version; \
+    ldd /usr/local/bin/blobfuse2 | grep -q libfuse3; \
+    ! ldd /usr/local/bin/blobfuse2 | grep -q 'not found'; \
+    test -x /usr/local/bin/dcache-fault-server

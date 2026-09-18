@@ -5,9 +5,8 @@
 # the in-cluster blobfuse2 container image from the code under test, deploys
 # it, and runs the dedicated dcache_e2e Go suite.
 #
-# The caller must run azure-pipeline-templates/build.yml (or otherwise
-# provision Go + libfuse3 + docker) before including this template, since
-# the blobfuse2 build step invokes docker/buildcontainer.sh.
+# The caller must provision Go and Docker before including this template.
+# Blobfuse2 itself is compiled inside the selected runtime distro image.
 #
 # Teardown runs unconditionally and publishes cache-server and per-test
 # blobfuse2 logs as an artifact so failures are debuggable.
@@ -17,8 +16,19 @@ parameters:
   # artifacts and per-cluster step display names.
   - name: run_idstring
     type: string
-  - name: distro_name
+  - name: runtime_distro
     type: string
+  - name: runtime_version
+    type: string
+  - name: runtime_arch
+    type: string
+  - name: runtime_base_image
+    type: string
+  - name: runtime_package_family
+    type: string
+  - name: test_pattern
+    type: string
+    default: 'Test'
   - name: account_name
     type: string
   - name: account_key
@@ -59,31 +69,23 @@ steps:
       CACHE_SERVER_CHART_VERSION: $(CACHE_SERVER_CHART_VERSION)
 
   # -------------------------------------------------------------------------
-  # 4. Build the in-cluster blobfuse2 container image from the code under
-  #    test. buildcontainer.sh runs ./build.sh and tags the image as
-  #    azure-blobfuse2-x86_64.<ver>; we expose the tag as pipeline variable
-  #    BLOBFUSE2_IMAGE so the deploy step below picks it up. The image lives
-  #    only in the local Docker daemon; deploy-blobfuse2.sh does not pull.
+  # 4. Build blobfuse2 inside the target runtime distro so libc and libfuse
+  #    linkage are native to the image under test.
   - script: |
       set -euo pipefail
-      cd $(WORK_DIR)/docker
-      ./buildcontainer.sh Dockerfile x86_64
-      ver=$($(WORK_DIR)/blobfuse2 --version | cut -d ' ' -f 3)
-      base_tag="azure-blobfuse2-x86_64.${ver}"
-      e2e_tag="${base_tag}-dcache-e2e"
       cd $(WORK_DIR)
-      go build -o $(WORK_DIR)/docker/dcache-fault-server ./test/dcache_e2e/faultserver
-      trap 'rm -f $(WORK_DIR)/docker/dcache-fault-server' EXIT
+      e2e_tag="azure-blobfuse2-dcache-${{ parameters.runtime_distro }}-${{ parameters.runtime_version }}-${{ parameters.runtime_arch }}:$(Build.BuildId)"
       docker build \
-        --build-arg BASE_IMAGE="${base_tag}" \
+        --build-arg BASE_IMAGE="${{ parameters.runtime_base_image }}" \
+        --build-arg PACKAGE_FAMILY="${{ parameters.runtime_package_family }}" \
         -t "${e2e_tag}" \
-        -f $(WORK_DIR)/docker/Dockerfile.dcache-e2e \
-        $(WORK_DIR)/docker
+        -f $(WORK_DIR)/docker/Dockerfile.dcache-runtime \
+        $(WORK_DIR)
       echo "Built blobfuse2 E2E container image: ${e2e_tag}"
       docker images "${e2e_tag}"
       echo "##vso[task.setvariable variable=BLOBFUSE2_IMAGE]${e2e_tag}"
-    displayName: 'DistCache [${{ parameters.run_idstring }}]: Build blobfuse2 container image'
-    timeoutInMinutes: 20
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Build ${{ parameters.runtime_distro }} image'
+    timeoutInMinutes: 30
 
   # -------------------------------------------------------------------------
   # 5. Deploy the in-cluster blobfuse2 pod driven by dcache_e2e.
@@ -104,7 +106,8 @@ steps:
   - script: |
       set -e
       cd $(WORK_DIR)
-      go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... -args \
+      go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... \
+        -run '${{ parameters.test_pattern }}' -args \
         -pod-namespace=blobfuse2-dist-cache \
         -pod-deployment=blobfuse2-dist-cache \
         -pod-mount-path=/mnt/blobfuse_mnt \
@@ -113,8 +116,11 @@ steps:
         -storage-account=${{ parameters.account_name }} \
         -storage-key=${{ parameters.account_key }} \
         -storage-endpoint=https://${{ parameters.account_name }}.blob.core.windows.net \
-        -storage-container=$(containerName)
-    displayName: 'DistCache: dcache_e2e Go tests'
+        -storage-container=$(containerName) \
+        -runtime-distro=${{ parameters.runtime_distro }} \
+        -runtime-version=${{ parameters.runtime_version }} \
+        -runtime-arch=${{ parameters.runtime_arch }}
+    displayName: 'DistCache: ${{ parameters.runtime_distro }} ${{ parameters.runtime_arch }} tests'
     timeoutInMinutes: 60
     continueOnError: false
     env:
@@ -148,7 +154,7 @@ steps:
     condition: always()
     inputs:
       pathToPublish: '$(Agent.TempDirectory)/dcache_logs_${{ parameters.run_idstring }}'
-      artifactName: 'dcache_logs_${{ parameters.distro_name }}_${{ parameters.run_idstring }}'
+      artifactName: 'dcache_logs_${{ parameters.runtime_distro }}_${{ parameters.runtime_version }}_${{ parameters.runtime_arch }}_${{ parameters.run_idstring }}'
 
   - script: |
       $(WORK_DIR)/test/scripts/dcache/teardown-kind.sh

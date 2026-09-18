@@ -73,6 +73,11 @@ var testCfg struct {
 	concurrencyPods          int
 	concurrencyReadersPerPod int
 	concurrencyFiles         int
+
+	// Expected userspace identity of the blobfuse2 runtime image.
+	runtimeDistro  string
+	runtimeVersion string
+	runtimeArch    string
 }
 
 func registerFlags() {
@@ -139,6 +144,18 @@ func registerFlags() {
 	if flag.Lookup("concurrency-files") == nil {
 		flag.IntVar(&testCfg.concurrencyFiles, "concurrency-files", 3,
 			"concurrency tests: number of independent files")
+	}
+	if flag.Lookup("runtime-distro") == nil {
+		flag.StringVar(&testCfg.runtimeDistro, "runtime-distro", "",
+			"expected ID from the blobfuse2 pod's /etc/os-release")
+	}
+	if flag.Lookup("runtime-version") == nil {
+		flag.StringVar(&testCfg.runtimeVersion, "runtime-version", "",
+			"expected VERSION_ID prefix from the blobfuse2 pod's /etc/os-release")
+	}
+	if flag.Lookup("runtime-arch") == nil {
+		flag.StringVar(&testCfg.runtimeArch, "runtime-arch", "",
+			"expected normalized blobfuse2 pod architecture (amd64 or arm64)")
 	}
 }
 
@@ -212,11 +229,15 @@ func TestMain(m *testing.M) {
 		"  cacheserver-metrics-port= %d\n"+
 		"  storage-account         = %s\n"+
 		"  storage-endpoint        = %s\n"+
-		"  storage-container       = %s\n",
+		"  storage-container       = %s\n"+
+		"  runtime-distro          = %s\n"+
+		"  runtime-version         = %s\n"+
+		"  runtime-arch            = %s\n",
 		testCfg.podNamespace, testCfg.podDeployment, testCfg.podMountPath,
 		testCfg.dockerBin,
 		testCfg.cacheserverNamespace, testCfg.cacheserverSelector, testCfg.cacheserverMetricsPort,
-		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer)
+		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer,
+		testCfg.runtimeDistro, testCfg.runtimeVersion, testCfg.runtimeArch)
 
 	os.Exit(m.Run())
 }

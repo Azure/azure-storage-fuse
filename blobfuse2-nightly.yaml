@@ -1579,14 +1579,73 @@ stages:
           timeoutInMinutes: 360
           strategy:
             matrix:
-              Ubuntu-22-BlockBlob-DistCache:
+              Ubuntu-22-amd64-DistCache:
                 AgentName: 'blobfuse-ubuntu22'
                 distro: 'ubuntu'
                 distro_version: 'ubuntu_22_x86'
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
+                poolName: 'blobfuse-ubuntu-pool'
+                runtimeDistro: 'ubuntu'
+                runtimeVersion: '22.04'
+                runtimeArch: 'amd64'
+                runtimeBaseImage: 'mcr.microsoft.com/mirror/docker/library/ubuntu:22.04'
+                runtimePackageFamily: 'deb'
+                testPattern: 'Test'
+              Ubuntu-22-arm64-DistCache:
+                AgentName: 'blobfuse-ubn22-arm64'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_arm64'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+                poolName: 'blobfuse-ubn-arm64-pool'
+                runtimeDistro: 'ubuntu'
+                runtimeVersion: '22.04'
+                runtimeArch: 'arm64'
+                runtimeBaseImage: 'mcr.microsoft.com/mirror/docker/library/ubuntu:22.04'
+                runtimePackageFamily: 'deb'
+                testPattern: '^(TestDistroSmoke_Runtime|TestReadPath_L2MissPopulatesAndHits)$'
+              Debian-13-amd64-DistCache:
+                AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+                poolName: 'blobfuse-ubuntu-pool'
+                runtimeDistro: 'debian'
+                runtimeVersion: '13'
+                runtimeArch: 'amd64'
+                runtimeBaseImage: 'debian:trixie'
+                runtimePackageFamily: 'deb'
+                testPattern: '^(TestDistroSmoke_Runtime|TestReadPath_L2MissPopulatesAndHits)$'
+              RHEL-9-amd64-DistCache:
+                AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+                poolName: 'blobfuse-ubuntu-pool'
+                runtimeDistro: 'rhel'
+                runtimeVersion: '9'
+                runtimeArch: 'amd64'
+                runtimeBaseImage: 'registry.access.redhat.com/ubi9/ubi:9.6'
+                runtimePackageFamily: 'rpm'
+                testPattern: '^(TestDistroSmoke_Runtime|TestReadPath_L2MissPopulatesAndHits)$'
+              Rocky-9-amd64-DistCache:
+                AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+                poolName: 'blobfuse-ubuntu-pool'
+                runtimeDistro: 'rocky'
+                runtimeVersion: '9'
+                runtimeArch: 'amd64'
+                runtimeBaseImage: 'rockylinux:9'
+                runtimePackageFamily: 'rpm'
+                testPattern: '^(TestDistroSmoke_Runtime|TestReadPath_L2MissPopulatesAndHits)$'
           pool:
-            name: 'blobfuse-ubuntu-pool'
+            name: $(poolName)
             demands:
               - ImageOverride -equals $(AgentName)
           variables:
@@ -1649,7 +1708,12 @@ stages:
             - template: 'azure-pipeline-templates/dist-cache-e2e.yml'
               parameters:
                 run_idstring: 'DistCache'
-                distro_name: $(AgentName)
+                runtime_distro: $(runtimeDistro)
+                runtime_version: $(runtimeVersion)
+                runtime_arch: $(runtimeArch)
+                runtime_base_image: $(runtimeBaseImage)
+                runtime_package_family: $(runtimePackageFamily)
+                test_pattern: $(testPattern)
                 account_name: $(BF2_BLK_ACC_NAME)
                 account_key: $(BF2_BLK_ACC_KEY)
 
