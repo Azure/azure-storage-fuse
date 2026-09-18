@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package network_monitor
+package networkmonitor
 
 import (
 	"fmt"

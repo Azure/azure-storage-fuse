@@ -76,13 +76,13 @@ var rootCmd = &cobra.Command{
 // HEAD is preferred over GET because we only need the HTTP status code, not the
 // file body. raw.githubusercontent.com returns 200 when the file exists and 404
 // when it does not; no authentication is required for public repos.
-func checkVersionExists(fileUrl string) bool {
+func checkVersionExists(fileURL string) bool {
 	client := &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: getTransport(),
 	}
 
-	req, err := http.NewRequest("HEAD", fileUrl, nil)
+	req, err := http.NewRequest("HEAD", fileURL, nil)
 	if err != nil {
 		log.Err("checkVersionExists: error creating request [%s]", err.Error())
 		return false
@@ -105,7 +105,7 @@ func checkVersionExists(fileUrl string) bool {
 	}
 
 	// For other status codes (e.g., 403, 5xx) log error and treat as non-existent.
-	log.Err("checkVersionExists: unexpected status code [%d] for URL %s", resp.StatusCode, fileUrl)
+	log.Err("checkVersionExists: unexpected status code [%d] for URL %s", resp.StatusCode, fileURL)
 	return false
 }
 
@@ -136,14 +136,14 @@ func beginDetectNewVersion() chan any {
 		// --- Security warnings check ---
 		// If a file release/securitywarnings/<version> exists, this version
 		// has known issues that the user should be aware of.
-		warningsUrl := common.GitHubReleaseBaseURL + "/securitywarnings/" + common.Blobfuse2Version
-		hasWarnings := checkVersionExists(warningsUrl)
+		warningsURL := common.GitHubReleaseBaseURL + "/securitywarnings/" + common.Blobfuse2Version
+		hasWarnings := checkVersionExists(warningsURL)
 
 		if hasWarnings {
 			// This version has known issues associated with it.
 			// Check whether the version has been blocked by the dev team.
-			blockedUrl := common.GitHubReleaseBaseURL + "/blockedversions/" + common.Blobfuse2Version
-			isBlocked := checkVersionExists(blockedUrl)
+			blockedURL := common.GitHubReleaseBaseURL + "/blockedversions/" + common.Blobfuse2Version
+			isBlocked := checkVersionExists(blockedURL)
 
 			if isBlocked {
 				// This version is blocked and customer shall not be allowed to use it.
@@ -162,8 +162,8 @@ func beginDetectNewVersion() chan any {
 		// --- Latest-version check ---
 		// If release/latest/<currentVersion> does NOT exist the running
 		// version is outdated and a newer release is available.
-		latestUrl := common.GitHubReleaseBaseURL + "/latest/" + common.Blobfuse2Version
-		isLatest := checkVersionExists(latestUrl)
+		latestURL := common.GitHubReleaseBaseURL + "/latest/" + common.Blobfuse2Version
+		isLatest := checkVersionExists(latestURL)
 		if !isLatest {
 			executablePathSegments := strings.Split(strings.ReplaceAll(os.Args[0], "\\", "/"), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]

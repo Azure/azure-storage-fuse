@@ -43,7 +43,7 @@ type Block struct {
 	Index  int    // Index of the block in the pool
 	Offset int64  // Start offset of the data this block holds
 	Length int64  // Length of data that this block holds
-	Id     string // ID to represent this block in the blob
+	ID     string // ID to represent this block in the blob
 	Data   []byte // Data this block holds
 }
 
@@ -85,7 +85,7 @@ func (b *Block) Delete() error {
 
 // Clear the old data of this block
 func (b *Block) ReUse() {
-	b.Id = ""
+	b.ID = ""
 	b.Index = 0
 	b.Offset = 0
 	b.Length = 0

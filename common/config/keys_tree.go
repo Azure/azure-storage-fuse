@@ -40,7 +40,7 @@ import (
 	"strings"
 )
 
-const STRUCT_TAG = "config"
+const StructTag = "config"
 
 type TreeNode struct {
 	children map[string]*TreeNode
@@ -349,7 +349,7 @@ func assignToField(field reflect.Value, val any) {
 
 // getIdxFromField is a utility function that returns the key to index into the map based on struct tags.
 func getIdxFromField(structField reflect.StructField) string {
-	idx := structField.Tag.Get(STRUCT_TAG)
+	idx := structField.Tag.Get(StructTag)
 	if idx == "" {
 		idx = strings.ToLower(structField.Name)
 	}

@@ -169,54 +169,54 @@ func (s *configTestSuite) TestProxyConfig() {
 	config.SetBool(compName+".use-https", false)
 	opt.UseHTTPS = false
 
-	opt.HttpsProxyAddress = "127.0.0.1"
+	opt.HTTPSProxyAddress = "127.0.0.1"
 	err := ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
-	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
+	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HTTPSProxyAddress, !opt.UseHTTPS))
 
-	opt.HttpsProxyAddress = "https://128.0.0.1:8080/"
+	opt.HTTPSProxyAddress = "https://128.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
-	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
+	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HTTPSProxyAddress, !opt.UseHTTPS))
 
-	opt.HttpsProxyAddress = "http://129.0.0.1:8080/"
+	opt.HTTPSProxyAddress = "http://129.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
-	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
+	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HTTPSProxyAddress, !opt.UseHTTPS))
 
-	opt.HttpProxyAddress = "130.0.0.1"
+	opt.HTTPProxyAddress = "130.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
-	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpProxyAddress, !opt.UseHTTPS))
+	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HTTPProxyAddress, !opt.UseHTTPS))
 
-	opt.HttpProxyAddress = "http://131.0.0.1:8080/"
+	opt.HTTPProxyAddress = "http://131.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
-	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpProxyAddress, !opt.UseHTTPS))
+	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HTTPProxyAddress, !opt.UseHTTPS))
 
 	config.SetBool(compName+".use-https", true)
 	opt.UseHTTPS = true
-	opt.HttpsProxyAddress = ""
+	opt.HTTPSProxyAddress = ""
 
-	opt.HttpProxyAddress = "132.0.0.1"
+	opt.HTTPProxyAddress = "132.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
 	assert.Error(err)
 	assert.Contains(err.Error(), "`http-proxy` Invalid : must set `use-http: true`")
 
-	opt.HttpsProxyAddress = "133.0.0.1"
+	opt.HTTPSProxyAddress = "133.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
-	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
+	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HTTPSProxyAddress, !opt.UseHTTPS))
 
-	opt.HttpsProxyAddress = "http://134.0.0.1:8080/"
+	opt.HTTPSProxyAddress = "http://134.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
-	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
+	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HTTPSProxyAddress, !opt.UseHTTPS))
 
-	opt.HttpsProxyAddress = "https://135.0.0.1:8080/"
+	opt.HTTPSProxyAddress = "https://135.0.0.1:8080/"
 	err = ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
-	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
+	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HTTPSProxyAddress, !opt.UseHTTPS))
 }
 
 func (s *configTestSuite) TestMaxResultsForList() {
@@ -340,13 +340,13 @@ func (s *configTestSuite) TestAuthModeSPN() {
 	err := ParseAndValidateConfig(az, opt)
 	assert.Error(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.SPN())
-	assert.Contains(err.Error(), "Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
+	assert.Contains(err.Error(), "client ID, tenant ID or client secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
 
 	opt.ClientID = "abc"
 	err = ParseAndValidateConfig(az, opt)
 	assert.Error(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.SPN())
-	assert.Contains(err.Error(), "Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
+	assert.Contains(err.Error(), "client ID, tenant ID or client secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
 
 	opt.ClientSecret = "123"
 	opt.TenantID = "xyz"

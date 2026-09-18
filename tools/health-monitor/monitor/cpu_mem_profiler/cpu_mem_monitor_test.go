@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package cpu_mem_profiler
+package cpumemprofiler
 
 import (
 	"fmt"
@@ -59,25 +59,25 @@ func (suite *cpuMemMonitorTestSuite) SetupTest() {
 }
 
 func (suite *cpuMemMonitorTestSuite) TestGetCpuMemoryUsage() {
-	cm := &CpuMemProfiler{
-		name:         hmcommon.CpuMemoryProfiler,
+	cm := &CPUMemProfiler{
+		name:         hmcommon.CPUMemoryProfiler,
 		pid:          fmt.Sprintf("%v", os.Getpid()),
 		pollInterval: 5,
 	}
 
-	c, err := cm.getCpuMemoryUsage()
+	c, err := cm.getCPUMemoryUsage()
 	suite.assert.NotNil(c)
 	suite.assert.NoError(err)
 }
 
 func (suite *cpuMemMonitorTestSuite) TestGetCpuMemoryUsageFailure() {
-	cm := &CpuMemProfiler{
-		name:         hmcommon.CpuMemoryProfiler,
+	cm := &CPUMemProfiler{
+		name:         hmcommon.CPUMemoryProfiler,
 		pid:          "abcd",
 		pollInterval: 5,
 	}
 
-	c, err := cm.getCpuMemoryUsage()
+	c, err := cm.getCPUMemoryUsage()
 	suite.assert.Nil(c)
 	suite.assert.Error(err)
 }
