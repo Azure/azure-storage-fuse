@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+**/*.log
+**/*.trace
+**/.env
+**/.env.*
+bfusemon
+blobfuse2
+dist
+test/ai/kaggle.json

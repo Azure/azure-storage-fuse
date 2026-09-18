@@ -60,7 +60,7 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	t.Logf("seed %d bytes -> azstorage://%s/%s (md5=%s)",
 		fileSize, testCfg.storageContainer, blobPath, originalMD5)
 	uploadBlob(t, blobPath, original)
-	t.Cleanup(func() { deleteBlob(t, blobPath) })
+	t.Cleanup(func() { deleteBlobBestEffort(t, blobPath) })
 
 	m := newTestPodMounter(t)
 

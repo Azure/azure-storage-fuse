@@ -1,14 +1,19 @@
-# dist_cache E2E tests (`test/dcache_e2e/`)
+# distributed_cache E2E tests (`test/dcache_e2e/`)
 
-Read-path E2E tests focused on the `dist_cache` component. These tests assert
-`dist_cache` *behaviour* — L2 miss populates, L2 hit serves the same bytes
+Read-path E2E tests focused on the `distributed_cache` component. These tests assert
+`distributed_cache` *behaviour* — L2 miss populates, L2 hit serves the same bytes
 we wrote, and cache-server metrics move in the expected direction.
 
 ## Design
 
-* **The mount is read-only.** The reference pod config sets `read-only: true`,
-  and every test verifies the cloned pod reports `ro` in `/proc/mounts` before
-  reading. Payloads are uploaded directly to Azure Storage through the Azure SDK.
+* **The mount is read-only.** The reference pod is deployed with the standard
+  YAML configuration. CLI-flag coverage is provided by `cli_flags_test.go`,
+  which clones the reference Deployment into a private test pod that invokes
+  `blobfuse2 mount` directly with `--distributed-cache-discovery-endpoint`
+  (which enables distributed cache) and its tuning flags.
+  Every test verifies the cloned pod reports `ro` in `/proc/mounts`
+  before reading. Payloads are uploaded directly to Azure Storage through the
+  Azure SDK.
 * **Each test owns an isolated Deployment.** A test clones the reference
   blobfuse2 Deployment with a unique name and selector, then deletes it in
   cleanup. Tests that need to clear local `block_cache` restart their clone.
@@ -31,6 +36,7 @@ we wrote, and cache-server metrics move in the expected direction.
 | `node_failure_test.go` | Stops a kind worker hosting one cache-server, verifies mixed L2/Azure fallback, then restores the node. |
 | `stampede_test.go` | Verifies concurrent cold reads coalesce into one Azure GET. |
 | `warm_cache_test.go` | Verifies late-joining pods read previously populated data from L2. |
+| `distro_smoke_test.go` | Verifies the runtime distro, architecture, binary linkage, and FUSE mount before the shared read-path smoke scenario runs. |
 
 ## Running locally
 
@@ -73,6 +79,14 @@ go test -v -tags=fuse3 ./test/dcache_e2e/... \
   -pod-deployment=blobfuse2-dist-cache \
   -pod-mount-path=/mnt/blobfuse_mnt \
   -kubectl-bin=kubectl
+
+# Run the equivalent no-YAML CLI-flags test.
+go test -v -tags=fuse3 ./test/dcache_e2e/... \
+  -run '^TestCLIFlags_ReadPath_NoYAML$' -args \
+  -pod-namespace=blobfuse2-dist-cache \
+  -pod-deployment=blobfuse2-dist-cache \
+  -pod-mount-path=/mnt/blobfuse_mnt \
+  -kubectl-bin=kubectl
 ```
 
 Flags fall back to the environment variables shown above (matching the
@@ -93,3 +107,11 @@ Tachyon Helm chart exposes it somewhere other than 9096.
 Wired from
 [azure-pipeline-templates/dist-cache-e2e.yml](../../azure-pipeline-templates/dist-cache-e2e.yml).
 The template deploys the in-cluster dependencies and runs only this package.
+
+The required runtime matrix is Ubuntu 22.04 amd64 (full suite), Ubuntu 22.04
+ARM64, Debian 13 amd64, RHEL 9 amd64, and Rocky Linux 9 amd64. Non-primary
+entries run `TestDistroSmoke_Runtime` plus the canonical
+`TestReadPath_L2MissPopulatesAndHits` scenario. Runtime images compile
+blobfuse2 inside the target distribution so libc and libfuse linkage are part
+of the compatibility check; the x86 runtime variants may share an Ubuntu kind
+host without being reported as native-host distro coverage.
