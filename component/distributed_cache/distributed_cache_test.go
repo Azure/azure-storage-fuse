@@ -603,6 +603,21 @@ distributed_cache:
 	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
 }
 
+func TestConfigure_LoadsDNSServerFromYAML(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+distributed_cache:
+  server-list: "localhost:9065"
+  dns-server: "10.0.0.10:53"
+`)
+
+	dc := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dc.Configure(true))
+	assert.Equal(t, "10.0.0.10:53", dc.conf.DNSServer)
+}
+
 func TestConfigure_DerivesCachePrefixFromEnvironment(t *testing.T) {
 	loadConfig(t, `
 azstorage:
@@ -1265,6 +1280,22 @@ distributed_cache: {}
 	dc := NewDistCacheComponent().(*DistCache)
 	require.NoError(t, dc.Configure(true))
 	assert.Equal(t, "host1:9065,host2:9065", dc.conf.ServerList)
+}
+
+func TestRegisterEnvVariables_BindsDNSServer(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+distributed_cache:
+  server-list: "localhost:9065"
+`)
+	RegisterEnvVariables()
+	t.Setenv(EnvDistCacheDNSServer, "10.0.0.10:53")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dc.Configure(true))
+	assert.Equal(t, "10.0.0.10:53", dc.conf.DNSServer)
 }
 
 // TestRegisterEnvVariables_EnvOverridesYAML verifies viper precedence:

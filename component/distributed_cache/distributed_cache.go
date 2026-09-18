@@ -73,6 +73,7 @@ const (
 	EnvDistCacheK8sService        = "DISTRIBUTED_CACHE_K8S_SERVICE"
 	EnvDistCacheK8sNamespace      = "DISTRIBUTED_CACHE_K8S_NAMESPACE"
 	EnvDistCacheServerList        = "DISTRIBUTED_CACHE_SERVER_LIST"
+	EnvDistCacheDNSServer         = "DISTRIBUTED_CACHE_DNS_SERVER"
 )
 
 // RegisterEnvVariables binds distributed_cache discovery keys to env vars.
@@ -82,6 +83,7 @@ func RegisterEnvVariables() {
 	config.BindEnv(compName+".k8s-service", EnvDistCacheK8sService)
 	config.BindEnv(compName+".k8s-namespace", EnvDistCacheK8sNamespace)
 	config.BindEnv(compName+".server-list", EnvDistCacheServerList)
+	config.BindEnv(compName+".dns-server", EnvDistCacheDNSServer)
 }
 
 // DistCacheOptions holds configuration for the distributed cache component.
@@ -95,6 +97,11 @@ type DistCacheOptions struct {
 
 	// Static fallback
 	ServerList string `config:"server-list" yaml:"server-list,omitempty"`
+
+	// Optional custom DNS server (IP or host:port) used by the client when
+	// resolving k8s-service / discovery-endpoint hostnames. Empty means
+	// use the system resolver.
+	DNSServer string `config:"dns-server" yaml:"dns-server,omitempty"`
 
 	// Common options
 	Port       int    `config:"port"        yaml:"port,omitempty"`        // Default 9065
@@ -152,6 +159,12 @@ func (dc *DistCache) GenConfig() string {
 	_ = config.UnmarshalKey(compName+".discovery-endpoint", &endpoint)
 	if endpoint != "" {
 		fmt.Fprintf(&sb, "\n  discovery-endpoint: %s", endpoint)
+	}
+
+	dnsServer := ""
+	_ = config.UnmarshalKey(compName+".dns-server", &dnsServer)
+	if dnsServer != "" {
+		fmt.Fprintf(&sb, "\n  dns-server: %s", dnsServer)
 	}
 
 	return sb.String()
@@ -242,6 +255,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 	log.Info("DistCache::Configure : k8s-service=%s", dc.conf.K8sService)
 	log.Info("DistCache::Configure : k8s-namespace=%s", dc.conf.K8sNamespace)
 	log.Info("DistCache::Configure : server-list=%s", dc.conf.ServerList)
+	log.Info("DistCache::Configure : dns-server=%s", dc.conf.DNSServer)
 	log.Info("DistCache::Configure : port=%d", dc.conf.Port)
 	log.Info("DistCache::Configure : ttl-seconds=%d", dc.conf.TTLSeconds)
 	log.Info("DistCache::Configure : verify-checksum=%t", dc.conf.VerifyChecksum)
@@ -279,6 +293,9 @@ func (dc *DistCache) Start(ctx context.Context) error {
 	}
 	if dc.conf.Port > 0 {
 		opts = append(opts, dcache.WithPort(dc.conf.Port))
+	}
+	if dc.conf.DNSServer != "" {
+		opts = append(opts, dcache.WithDNSServer(dc.conf.DNSServer))
 	}
 	opts = append(opts, dcache.WithCachePrefix(dc.cachePrefix))
 
@@ -648,6 +665,10 @@ func init() {
 	discoveryFlag := config.AddStringFlag("distributed-cache-discovery-endpoint", "",
 		"distributed cache discovery endpoint (recommended)")
 	config.BindPFlag(compName+".discovery-endpoint", discoveryFlag)
+
+	dnsServerFlag := config.AddStringFlag("distributed-cache-dns-server", "",
+		"custom DNS server (IP or host:port) for resolving distributed cache endpoints; empty uses the system resolver")
+	config.BindPFlag(compName+".dns-server", dnsServerFlag)
 
 	ttlFlag := config.AddUint32Flag("distributed-cache-node-ttl", 0,
 		"distributed cache entry TTL in seconds (0 = no TTL)")
