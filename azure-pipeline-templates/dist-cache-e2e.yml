@@ -23,6 +23,8 @@ parameters:
     type: string
   - name: account_key
     type: string
+  - name: azure_service_connection
+    type: string
 
 steps:
   # -------------------------------------------------------------------------
@@ -44,10 +46,17 @@ steps:
 
   # -------------------------------------------------------------------------
   # 3. Deploy Tachyon cache-server via helm (chart pulled from ACR over OCI).
-  - script: |
-      set -e
-      $(WORK_DIR)/test/scripts/dcache/deploy-tachyon.sh
+  - task: AzureCLI@2
     displayName: 'DistCache [${{ parameters.run_idstring }}]: Deploy Tachyon'
+    inputs:
+      azureSubscription: '${{ parameters.azure_service_connection }}'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        az --version
+        az account show --query '{name:name, user:user}' -o json
+        $(WORK_DIR)/test/scripts/dcache/deploy-tachyon.sh
     timeoutInMinutes: 30
     env:
       CACHE_SERVER_IMAGE_REGISTRY: $(CACHE_SERVER_IMAGE_REGISTRY)
