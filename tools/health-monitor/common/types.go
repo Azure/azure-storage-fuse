@@ -40,9 +40,9 @@ import (
 const (
 	BlobfuseStats     = "blobfuse_stats"
 	FileCacheMon      = "file_cache_monitor"
-	CpuProfiler       = "cpu_profiler"
+	CPUProfiler       = "cpu_profiler"
 	MemoryProfiler    = "memory_profiler"
-	CpuMemoryProfiler = "cpu_mem_profiler"
+	CPUMemoryProfiler = "cpu_mem_profiler"
 	NetworkProfiler   = "network_profiler"
 
 	BfuseMon = "bfusemon"
@@ -59,7 +59,7 @@ var (
 	ProcMonInterval int
 
 	NoBfsMon       bool
-	NoCpuProf      bool
+	NoCPUProf      bool
 	NoMemProf      bool
 	NoNetProf      bool
 	NoFileCacheMon bool
@@ -87,7 +87,7 @@ type CacheEvent struct {
 	Value           map[string]string `json:"value"`
 }
 
-type CpuMemStat struct {
-	CpuUsage string
+type CPUMemStat struct {
+	CPUUsage string
 	MemUsage string
 }

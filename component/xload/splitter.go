@@ -92,7 +92,7 @@ func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, erro
 		},
 	}
 
-	ds.SetName(SPLITTER)
+	ds.SetName(SplitterComp)
 	ds.SetWorkerCount(opts.workerCount)
 	ds.SetRemote(opts.remote)
 	ds.SetStatsManager(opts.statsMgr)
@@ -165,7 +165,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		log.Debug("downloadSplitter::Process : 0 byte file %s", item.Path)
 		// send the status to stats manager
 		ds.GetStatsManager().AddStats(&StatsItem{
-			Component: SPLITTER,
+			Component: SplitterComp,
 			Name:      item.Path,
 			Success:   true,
 			Download:  true,
@@ -222,7 +222,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 
 					// send the download status to stats manager
 					ds.GetStatsManager().AddStats(&StatsItem{
-						Component:        SPLITTER,
+						Component:        SplitterComp,
 						Name:             item.Path,
 						Success:          false,
 						Download:         false,
@@ -292,7 +292,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 
 	// send the download status to stats manager
 	ds.GetStatsManager().AddStats(&StatsItem{
-		Component: SPLITTER,
+		Component: SplitterComp,
 		Name:      item.Path,
 		Success:   operationSuccess,
 		Download:  true,

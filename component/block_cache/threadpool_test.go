@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-package block_cache
+package blockcache
 
 import (
 	"sync/atomic"
@@ -160,7 +160,7 @@ func (suite *threadPoolTestSuite) TestPriorityScheduleWithWriter() {
 	suite.assert.NotNil(tp.normalCh)
 
 	for i := range 100 {
-		tp.Schedule(i < 20, &workItem{failCnt: 5, upload: true, blockId: "test"})
+		tp.Schedule(i < 20, &workItem{failCnt: 5, upload: true, blockID: "test"})
 	}
 
 	time.Sleep(1 * time.Second)

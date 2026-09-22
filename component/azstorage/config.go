@@ -52,6 +52,7 @@ type AuthType int
 
 var EAuthType = AuthType(0).INVALID_AUTH()
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (AuthType) INVALID_AUTH() AuthType {
 	return AuthType(0)
 }
@@ -97,6 +98,7 @@ type AccountType int
 
 var EAccountType = AccountType(0).INVALID_ACC()
 
+//nolint:staticcheck // ST1003: name maps to user-facing string
 func (a AccountType) INVALID_ACC() AccountType {
 	return AccountType(0)
 }
@@ -133,11 +135,11 @@ const (
 	EnvAzStorageAccountType              = "AZURE_STORAGE_ACCOUNT_TYPE"
 	EnvAzStorageAccessKey                = "AZURE_STORAGE_ACCESS_KEY"
 	EnvAzStorageSasToken                 = "AZURE_STORAGE_SAS_TOKEN"
-	EnvAzStorageIdentityClientId         = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
-	EnvAzStorageIdentityResourceId       = "AZURE_STORAGE_IDENTITY_RESOURCE_ID"
-	EnvAzStorageIdentityObjectId         = "AZURE_STORAGE_IDENTITY_OBJECT_ID"
-	EnvAzStorageSpnTenantId              = "AZURE_STORAGE_SPN_TENANT_ID"
-	EnvAzStorageSpnClientId              = "AZURE_STORAGE_SPN_CLIENT_ID"
+	EnvAzStorageIdentityClientID         = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
+	EnvAzStorageIdentityResourceID       = "AZURE_STORAGE_IDENTITY_RESOURCE_ID"
+	EnvAzStorageIdentityObjectID         = "AZURE_STORAGE_IDENTITY_OBJECT_ID"
+	EnvAzStorageSpnTenantID              = "AZURE_STORAGE_SPN_TENANT_ID"
+	EnvAzStorageSpnClientID              = "AZURE_STORAGE_SPN_CLIENT_ID"
 	EnvAzStorageSpnClientSecret          = "AZURE_STORAGE_SPN_CLIENT_SECRET"
 	EnvAzStorageSpnOAuthTokenFilePath    = "AZURE_OAUTH_TOKEN_FILE"
 	EnvAzStorageSpnWorkloadIdentityToken = "WORKLOAD_IDENTITY_TOKEN"
@@ -178,8 +180,8 @@ type AzStorageOptions struct {
 	MaxTimeout              int32  `config:"max-retry-timeout-sec" yaml:"max-retry-timeout-sec,omitempty"`
 	BackoffTime             int32  `config:"retry-backoff-sec" yaml:"retry-backoff-sec,omitempty"`
 	MaxRetryDelay           int32  `config:"max-retry-delay-sec" yaml:"max-retry-delay-sec,omitempty"`
-	HttpProxyAddress        string `config:"http-proxy" yaml:"http-proxy,omitempty"`
-	HttpsProxyAddress       string `config:"https-proxy" yaml:"https-proxy,omitempty"`
+	HTTPProxyAddress        string `config:"http-proxy" yaml:"http-proxy,omitempty"`
+	HTTPSProxyAddress       string `config:"https-proxy" yaml:"https-proxy,omitempty"`
 	FailUnsupportedOp       bool   `config:"fail-unsupported-op" yaml:"fail-unsupported-op,omitempty"`
 	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
 	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
@@ -214,16 +216,16 @@ func RegisterEnvVariables() {
 
 	config.BindEnv("azstorage.sas", EnvAzStorageSasToken)
 
-	config.BindEnv("azstorage.appid", EnvAzStorageIdentityClientId)
-	config.BindEnv("azstorage.resid", EnvAzStorageIdentityResourceId)
+	config.BindEnv("azstorage.appid", EnvAzStorageIdentityClientID)
+	config.BindEnv("azstorage.resid", EnvAzStorageIdentityResourceID)
 
-	config.BindEnv("azstorage.tenantid", EnvAzStorageSpnTenantId)
-	config.BindEnv("azstorage.clientid", EnvAzStorageSpnClientId)
+	config.BindEnv("azstorage.tenantid", EnvAzStorageSpnTenantID)
+	config.BindEnv("azstorage.clientid", EnvAzStorageSpnClientID)
 	config.BindEnv("azstorage.clientsecret", EnvAzStorageSpnClientSecret)
 	config.BindEnv("azstorage.oauth-token-path", EnvAzStorageSpnOAuthTokenFilePath)
 	config.BindEnv("azstorage.workload-identity-token", EnvAzStorageSpnWorkloadIdentityToken)
 
-	config.BindEnv("azstorage.objid", EnvAzStorageIdentityObjectId)
+	config.BindEnv("azstorage.objid", EnvAzStorageIdentityObjectID)
 
 	config.BindEnv("azstorage.aadendpoint", EnvAzStorageAadEndpoint)
 
@@ -396,20 +398,20 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	az.stConfig.telemetry = opt.Telemetry
 
-	httpProxyProvided := opt.HttpProxyAddress != ""
-	httpsProxyProvided := opt.HttpsProxyAddress != ""
+	httpProxyProvided := opt.HTTPProxyAddress != ""
+	httpsProxyProvided := opt.HTTPSProxyAddress != ""
 
 	// Set whether to use http or https and proxy
 	if opt.UseHTTP {
 		az.stConfig.authConfig.UseHTTP = true
 		if httpProxyProvided {
-			az.stConfig.proxyAddress = opt.HttpProxyAddress
+			az.stConfig.proxyAddress = opt.HTTPProxyAddress
 		} else if httpsProxyProvided {
-			az.stConfig.proxyAddress = opt.HttpsProxyAddress
+			az.stConfig.proxyAddress = opt.HTTPSProxyAddress
 		}
 	} else {
 		if httpsProxyProvided {
-			az.stConfig.proxyAddress = opt.HttpsProxyAddress
+			az.stConfig.proxyAddress = opt.HTTPSProxyAddress
 		} else {
 			if httpProxyProvided {
 				log.Err("ParseAndValidateConfig : `http-proxy` Invalid : must set `use-http: true` in your config file")
@@ -466,8 +468,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.OAuthTokenFilePath == "" && opt.WorkloadIdentityToken == "") || opt.TenantID == "" {
-			//lint:ignore ST1005 ignore
-			return errors.New("Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
+			return errors.New("client ID, tenant ID or client secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
@@ -479,7 +480,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	case EAuthType.WORKLOADIDENTITY():
 		az.stConfig.authConfig.AuthMode = EAuthType.WORKLOADIDENTITY()
 		if opt.ClientID == "" || opt.TenantID == "" || opt.ApplicationID == "" {
-			return errors.New("Client ID, Tenant ID or Application ID not provided")
+			return errors.New("client ID, tenant ID or application ID not provided")
 		}
 
 		az.stConfig.authConfig.ClientID = opt.ClientID

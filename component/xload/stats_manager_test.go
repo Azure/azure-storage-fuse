@@ -87,11 +87,11 @@ func (suite *statsMgrTestSuite) TestStatsManagerStartStop() {
 	}()
 
 	// push lister stats
-	sm.AddStats(&StatsItem{Component: LISTER, Name: "", ListerCount: uint64(10)})
-	sm.AddStats(&StatsItem{Component: LISTER, Name: "dirName", Dir: true, Success: true, Download: true})
+	sm.AddStats(&StatsItem{Component: ListerComp, Name: "", ListerCount: uint64(10)})
+	sm.AddStats(&StatsItem{Component: ListerComp, Name: "dirName", Dir: true, Success: true, Download: true})
 
 	// export stats
-	sm.AddStats(&StatsItem{Component: STATS_MANAGER})
+	sm.AddStats(&StatsItem{Component: StatsManagerComp})
 
 	// incorrect component
 	sm.AddStats(&StatsItem{Component: "random component"})
@@ -103,7 +103,7 @@ func (suite *statsMgrTestSuite) TestStatsManagerStartStop() {
 		if i%2 == 0 {
 			download = true
 		}
-		sm.AddStats(&StatsItem{Component: DATA_MANAGER, Name: fileName, Success: true, Download: download, BytesTransferred: uint64(1024 * i)})
+		sm.AddStats(&StatsItem{Component: DataManagerComp, Name: fileName, Success: true, Download: download, BytesTransferred: uint64(1024 * i)})
 	}
 
 	// add sleep for exporting stats
@@ -116,7 +116,7 @@ func (suite *statsMgrTestSuite) TestStatsManagerStartStop() {
 		if i%2 == 0 {
 			success = true
 		}
-		sm.AddStats(&StatsItem{Component: SPLITTER, Name: fileName, Success: success, Download: true})
+		sm.AddStats(&StatsItem{Component: SplitterComp, Name: fileName, Success: success, Download: true})
 	}
 
 	time.Sleep(10 * time.Second)

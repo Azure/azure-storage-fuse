@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package file_cache
+package filecache
 
 import (
 	"fmt"
@@ -53,7 +53,7 @@ type lruPolicyTestSuite struct {
 	policy *lruPolicy
 }
 
-var cache_path = filepath.Join(home_dir, "file_cache")
+var cachePath = filepath.Join(homeDir, "file_cache")
 
 func (suite *lruPolicyTestSuite) SetupTest() {
 	// err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
@@ -62,11 +62,11 @@ func (suite *lruPolicyTestSuite) SetupTest() {
 	// }
 	suite.assert = assert.New(suite.T())
 
-	err := os.Mkdir(cache_path, fs.FileMode(0777))
+	err := os.Mkdir(cachePath, fs.FileMode(0777))
 	suite.assert.NoError(err)
 
 	config := cachePolicyConfig{
-		tmpPath:       cache_path,
+		tmpPath:       cachePath,
 		cacheTimeout:  0,
 		maxEviction:   defaultMaxEviction,
 		maxSizeMB:     0,
@@ -89,7 +89,7 @@ func (suite *lruPolicyTestSuite) cleanupTest() {
 	err := suite.policy.ShutdownPolicy()
 	suite.assert.NoError(err)
 
-	os.RemoveAll(cache_path)
+	os.RemoveAll(cachePath)
 }
 
 func (suite *lruPolicyTestSuite) TestDefault() {
@@ -105,7 +105,7 @@ func (suite *lruPolicyTestSuite) TestDefault() {
 func (suite *lruPolicyTestSuite) TestUpdateConfig() {
 	defer suite.cleanupTest()
 	config := cachePolicyConfig{
-		tmpPath:       cache_path,
+		tmpPath:       cachePath,
 		cacheTimeout:  120,
 		maxEviction:   100,
 		maxSizeMB:     10,
@@ -138,7 +138,7 @@ func (suite *lruPolicyTestSuite) TestCacheValid() {
 
 func (suite *lruPolicyTestSuite) TestCacheInvalidate() {
 	defer suite.cleanupTest()
-	f, _ := os.Create(cache_path + "/temp")
+	f, _ := os.Create(cachePath + "/temp")
 	f.Close()
 	suite.policy.CacheValid("temp")
 	suite.policy.CacheInvalidate("temp") // this is equivalent to purge since timeout=0
@@ -153,7 +153,7 @@ func (suite *lruPolicyTestSuite) TestCacheInvalidateTimeout() {
 	suite.cleanupTest()
 
 	config := cachePolicyConfig{
-		tmpPath:       cache_path,
+		tmpPath:       cachePath,
 		cacheTimeout:  1,
 		maxEviction:   defaultMaxEviction,
 		maxSizeMB:     0,
@@ -202,7 +202,7 @@ func (suite *lruPolicyTestSuite) TestTimeout() {
 	suite.cleanupTest()
 
 	config := cachePolicyConfig{
-		tmpPath:       cache_path,
+		tmpPath:       cachePath,
 		cacheTimeout:  1,
 		maxEviction:   defaultMaxEviction,
 		maxSizeMB:     0,
@@ -225,7 +225,7 @@ func (suite *lruPolicyTestSuite) TestMaxEvictionDefault() {
 	suite.cleanupTest()
 
 	config := cachePolicyConfig{
-		tmpPath:       cache_path,
+		tmpPath:       cachePath,
 		cacheTimeout:  1,
 		maxEviction:   defaultMaxEviction,
 		maxSizeMB:     0,
@@ -252,7 +252,7 @@ func (suite *lruPolicyTestSuite) TestMaxEviction() {
 	suite.cleanupTest()
 
 	config := cachePolicyConfig{
-		tmpPath:       cache_path,
+		tmpPath:       cachePath,
 		cacheTimeout:  1,
 		maxEviction:   5,
 		maxSizeMB:     0,
