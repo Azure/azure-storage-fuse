@@ -1601,23 +1601,24 @@ stages:
             # (symmetrical for image and chart). Override any of these via
             # the NightlyBlobFuse variable group to pin.
             - name: CACHE_SERVER_IMAGE_REGISTRY
-              value: 'tachyonprodacr.azurecr.io'
+              value: 'storagedevextachyonacr.azurecr.io'
             - name: CACHE_SERVER_IMAGE_REPO
               value: 'cache-server'
             - name: CACHE_SERVER_IMAGE_TAG
               value: ''  # auto-resolved by deploy-tachyon.sh when empty
+            # Tachyon control-plane (manager/controller) image. Data plane
+            # (cache-server) and control plane (cache-controller) are pushed
+            # to the same ACR with the same tag; deploy-tachyon.sh side-loads
+            # both into the kind cluster.
+            - name: CACHE_CONTROLLER_IMAGE_REPO
+              value: 'cache-controller'
             # Helm chart is pulled directly from ACR via OCI. Defaults to the
             # same registry as the image; override only if the chart lives in
             # a different ACR.
             - name: CACHE_SERVER_CHART_REGISTRY
-              value: 'tachyonprodacr.azurecr.io'
+              value: 'storagedevextachyonacr.azurecr.io'
             - name: CACHE_SERVER_CHART_REPO
-              value: 'charts/cache-server'
-            # cache-server-prereq chart is installed first (CRDs / RBAC /
-            # cluster-scoped resources the main chart depends on). Same
-            # version as the main chart.
-            - name: CACHE_SERVER_PREREQ_CHART_REPO
-              value: 'charts/cache-server-prereq'
+              value: 'charts/tachyon-cache'
             - name: CACHE_SERVER_CHART_VERSION
               value: ''  # auto-resolved by deploy-tachyon.sh when empty
             - name: GOPATH

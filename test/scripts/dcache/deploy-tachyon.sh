@@ -2,18 +2,12 @@
 #
 # Deploy the Tachyon cache-server Helm chart into the local kind cluster.
 #
-# Two charts are installed in order, both pulled from an OCI-enabled ACR:
-#   1. cache-server-prereq  - CRDs / RBAC / cluster-scoped resources the main
-#                              chart depends on. Pinned to the same version as
-#                              the main chart.
-#   2. cache-server         - the actual StatefulSet + Service.
+# One chart is installed, pulled from an OCI-enabled ACR:
+#   tachyon-cache - manager (control plane) + cache-server (data plane).
 #
-#
-# Overrides we set on top of the main chart's baked-in values.yaml:
-#   * cacheServer.image.repository / .tag  - use the ACR-hosted image
-#   * cacheServer.numServers               - match CACHE_SERVER_REPLICAS
-#   * cacheServer.scheduler.enabled=false  - blobfuse2 E2E tests do NOT need
-#                                             the scheduler component
+# Overrides we set on top of the chart's baked-in values.yaml:
+#   * manager.image.repository / .tag             - controller image in ACR
+#   * manager.cacheServerImage.repository / .tag  - data plane image in ACR
 #
 # Substrate note: upstream uses `minikube image load`; we `docker save` the
 # image and drive `ctr images import` on each kind node directly. We do NOT
@@ -72,12 +66,16 @@ if [[ -z "${CACHE_SERVER_IMAGE_TAG:-}" ]]; then
 fi
 
 CACHE_SERVER_IMAGE="${CACHE_SERVER_IMAGE_REGISTRY}/${CACHE_SERVER_IMAGE_REPO}:${CACHE_SERVER_IMAGE_TAG}"
+# Controller image lives in the same ACR and uses the same tag as the
+# cache-server image (that's how Tachyon builds are cut). Override
+# CACHE_CONTROLLER_IMAGE_TAG only if a mismatched build needs to be tested.
+CACHE_CONTROLLER_IMAGE_REPO="${CACHE_CONTROLLER_IMAGE_REPO:-cache-controller}"
+CACHE_CONTROLLER_IMAGE_TAG="${CACHE_CONTROLLER_IMAGE_TAG:-$CACHE_SERVER_IMAGE_TAG}"
+CACHE_CONTROLLER_IMAGE="${CACHE_SERVER_IMAGE_REGISTRY}/${CACHE_CONTROLLER_IMAGE_REPO}:${CACHE_CONTROLLER_IMAGE_TAG}"
 CACHE_SERVER_CHART_REF="oci://${CACHE_SERVER_CHART_REGISTRY}/${CACHE_SERVER_CHART_REPO}"
-CACHE_SERVER_PREREQ_CHART_REF="oci://${CACHE_SERVER_CHART_REGISTRY}/${CACHE_SERVER_PREREQ_CHART_REPO}"
 
 # Chart version auto-resolution: when unset, pick the most recently pushed tag
-# under $CACHE_SERVER_CHART_REPO in the chart ACR. The prereq chart is pinned
-# to the same version, so we resolve once against the main chart only.
+# under $CACHE_SERVER_CHART_REPO in the chart ACR.
 if [[ -z "${CACHE_SERVER_CHART_VERSION:-}" ]]; then
     if ! command -v az >/dev/null 2>&1; then
         echo "ERROR: CACHE_SERVER_CHART_VERSION is empty and az CLI not found." >&2
@@ -102,11 +100,10 @@ if [[ -z "${CACHE_SERVER_CHART_VERSION:-}" ]]; then
     echo "Resolved CACHE_SERVER_CHART_VERSION=$CACHE_SERVER_CHART_VERSION"
 fi
 
-echo "Using cache-server image: $CACHE_SERVER_IMAGE"
-echo "Using prereq chart       : $CACHE_SERVER_PREREQ_CHART_REF (version $CACHE_SERVER_CHART_VERSION)"
+echo "Using cache-server image : $CACHE_SERVER_IMAGE"
+echo "Using controller image   : $CACHE_CONTROLLER_IMAGE"
 echo "Using chart              : $CACHE_SERVER_CHART_REF (version $CACHE_SERVER_CHART_VERSION)"
 echo "Namespace                : $NAMESPACE"
-echo "Prereq release           : $PREREQ_RELEASE_NAME"
 echo "Release                  : $RELEASE_NAME"
 echo "Replicas                 : $CACHE_SERVER_REPLICAS"
 
@@ -136,12 +133,13 @@ if [[ -z "$ACR_TOKEN" ]]; then
     exit 1
 fi
 
-# --- Pull + side-load the image -------------------------------------------
+# --- Pull + side-load the images ------------------------------------------
 
-echo "Pulling image ..."
+echo "Pulling images ..."
 docker pull "$CACHE_SERVER_IMAGE"
+docker pull "$CACHE_CONTROLLER_IMAGE"
 
-# Side-load the image into every kind node manually rather than using
+# Side-load images into every kind node manually rather than using
 # `kind load docker-image` or `kind load image-archive`.
 #
 # `kind load` invokes `ctr images import --all-platforms` inside the node,
@@ -155,20 +153,26 @@ docker pull "$CACHE_SERVER_IMAGE"
 # containerd import only the platforms actually present in the archive,
 # which is what we want.
 IMAGE_TAR="$(mktemp --suffix=.tar)"
-trap 'rm -f "$IMAGE_TAR"' EXIT
+CONTROLLER_TAR="$(mktemp --suffix=.tar)"
+trap 'rm -f "$IMAGE_TAR" "$CONTROLLER_TAR"' EXIT
 
-echo "Saving image to $IMAGE_TAR ..."
+echo "Saving cache-server image to $IMAGE_TAR ..."
 docker save "$CACHE_SERVER_IMAGE" -o "$IMAGE_TAR"
+echo "Saving controller image to $CONTROLLER_TAR ..."
+docker save "$CACHE_CONTROLLER_IMAGE" -o "$CONTROLLER_TAR"
 
-echo "Importing image into every node of kind cluster '$CLUSTER_NAME'..."
+echo "Importing images into every node of kind cluster '$CLUSTER_NAME'..."
 for node in $(kind get nodes --name "$CLUSTER_NAME"); do
-    echo "  -> $node"
+    echo "  -> $node (cache-server)"
     # Stream the archive on stdin instead of `docker cp`-ing it into the node
     # first: kind nodes have a tmpfs mount over /tmp that hides files written
     # via `docker cp` (which targets the underlying overlay layer), so the
     # copy silently succeeds but `ctr` inside the node sees no such file.
     docker exec -i "$node" ctr --namespace=k8s.io images import \
         --digests --snapshotter=overlayfs - < "$IMAGE_TAR"
+    echo "  -> $node (controller)"
+    docker exec -i "$node" ctr --namespace=k8s.io images import \
+        --digests --snapshotter=overlayfs - < "$CONTROLLER_TAR"
 done
 
 # --- Deploy via Helm (OCI) -------------------------------------------------
@@ -214,51 +218,28 @@ attach_pull_secret_to_all_sas() {
     done
 }
 
-# Idempotency: drop any previous releases before installing.
+# Idempotency: drop any previous release before installing.
 helm uninstall "$RELEASE_NAME" -n "$NAMESPACE" || true
-helm uninstall "$PREREQ_RELEASE_NAME" -n "$NAMESPACE" || true
+# Prereq release (from the previous two-chart layout) may still exist on a
+# recycled cluster; clean it up so it doesn't leave orphan resources.
+helm uninstall "${PREREQ_RELEASE_NAME:-cache-server-prereq}" -n "$NAMESPACE" || true
 
-# Prereq chart first (CRDs / RBAC / cluster-scoped resources the main chart
-# depends on). Pinned to the same version as the main chart.
-#
-# We install with --wait=false so we can patch chart-created SAs with the
-# ACR pull secret before the pods finish pulling, then block on rollout.
-# `--set (global.)imagePullSecrets[0].name` covers charts that read it
-# directly; the SA-patch + pod-delete dance below covers charts that don't.
-echo "Deploying cache-server prereq chart from $CACHE_SERVER_PREREQ_CHART_REF ..."
-helm install "$PREREQ_RELEASE_NAME" "$CACHE_SERVER_PREREQ_CHART_REF" \
-    --version "$CACHE_SERVER_CHART_VERSION" \
-    -n "$NAMESPACE" \
-    --set "global.imagePullSecrets[0].name=$ACR_PULL_SECRET_NAME" \
-    --set "imagePullSecrets[0].name=$ACR_PULL_SECRET_NAME"
-
-echo "Attaching ACR pull secret to prereq-chart ServiceAccounts ..."
-attach_pull_secret_to_all_sas
-# Delete any pods that were created before the SA patch took effect so they
-# get recreated with the imagePullSecret inherited from the (now-patched) SA.
-kubectl delete pods -n "$NAMESPACE" --all --wait=false >/dev/null || true
-
-echo "Waiting for prereq chart rollout ..."
-prereq_workloads=$(kubectl get deploy,statefulset,daemonset -n "$NAMESPACE" \
-    -l "app.kubernetes.io/instance=$PREREQ_RELEASE_NAME" \
-    -o name 2>/dev/null)
-if [[ -n "$prereq_workloads" ]]; then
-    # shellcheck disable=SC2086
-    kubectl rollout status -n "$NAMESPACE" --timeout=10m $prereq_workloads || true
-fi
-
-echo "Deploying cache-server helm chart from $CACHE_SERVER_CHART_REF ..."
+# Single-chart install: `tachyon-cache` bundles the manager (control plane)
+# and cache-server (data plane). `--set (global.)imagePullSecrets[0].name`
+# covers charts that read it directly; the SA-patch + pod-delete dance below
+# covers charts that don't.
+echo "Deploying tachyon-cache helm chart from $CACHE_SERVER_CHART_REF ..."
 helm install "$RELEASE_NAME" "$CACHE_SERVER_CHART_REF" \
     --version "$CACHE_SERVER_CHART_VERSION" \
     -n "$NAMESPACE" \
     --set "global.imagePullSecrets[0].name=$ACR_PULL_SECRET_NAME" \
     --set "imagePullSecrets[0].name=$ACR_PULL_SECRET_NAME" \
-    --set cacheServer.image.repository="${CACHE_SERVER_IMAGE%:*}" \
-    --set cacheServer.image.tag="${CACHE_SERVER_IMAGE#*:}" \
-    --set cacheServer.numServers="$CACHE_SERVER_REPLICAS" \
-    --set cacheServer.scheduler.enabled=false
+    --set manager.image.repository="${CACHE_CONTROLLER_IMAGE%:*}" \
+    --set manager.image.tag="${CACHE_CONTROLLER_IMAGE#*:}" \
+    --set manager.cacheServerImage.repository="${CACHE_SERVER_IMAGE%:*}" \
+    --set manager.cacheServerImage.tag="${CACHE_SERVER_IMAGE#*:}"
 
-echo "Attaching ACR pull secret to cache-server-chart ServiceAccounts ..."
+echo "Attaching ACR pull secret to tachyon-cache ServiceAccounts ..."
 attach_pull_secret_to_all_sas
 kubectl delete pods -n "$NAMESPACE" --all --wait=false >/dev/null || true
 
