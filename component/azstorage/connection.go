@@ -91,6 +91,10 @@ type AzStorageConfig struct {
 	// Rate limiting
 	capMbpsRead int64
 	capIOps     int64
+
+	// Skip proactive authentication-validation REST calls during mount.
+	// Does not disable authentication for later Storage operations.
+	skipMountValidation bool
 }
 
 type AzStorageConnection struct {

@@ -680,6 +680,16 @@ func (suite *mountTestSuite) TestCleanUpOnStartFlag() {
 	}
 }
 
+func TestSkipMountValidationCLIFlag(t *testing.T) {
+	flag := mountCmd.PersistentFlags().Lookup("skip-mount-validation")
+	assert.NotNil(t, flag)
+	assert.Equal(t, "bool", flag.Value.Type())
+	assert.Equal(t, "false", flag.DefValue)
+	assert.True(t, flag.Hidden)
+	assert.Contains(t, flag.Usage, "Skip proactive Storage authentication validation")
+	assert.Contains(t, flag.Usage, "no longer proves Storage access")
+}
+
 // TestLoggingGoroutineIDDefaultBehavior ensures that when logging.goroutine-id is
 // not set in config, the mount code block sets it based on log level:
 // - LOG_DEBUG and above -> true

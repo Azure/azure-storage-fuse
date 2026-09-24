@@ -165,11 +165,16 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 	}
 
 	// The daemon runs all pipeline Configure code twice. isParent allows us to only validate credentials in parent mode, preventing a second unnecessary REST call.
+	// skip-mount-validation bypasses that probe entirely. It does not enter BlockBlob/Datalake TestPipeline, so the ADLS Blob+DFS parallel probes are unchanged when the flag is false.
 	if isParent {
-		err = az.storage.TestPipeline()
-		if err != nil {
-			log.Err("AzStorage::configureAndTest : Failed to validate credentials [%s]", err.Error())
-			return fmt.Errorf("failed to authenticate %s credentials with error [%s]", az.Name(), err.Error())
+		if az.stConfig.skipMountValidation {
+			log.Crit("AzStorage::configureAndTest : Authentication validation explicitly skipped. A successful mount does not guarantee access to Storage; authentication, permission, and connectivity failures will surface on subsequent filesystem operations.")
+		} else {
+			err = az.storage.TestPipeline()
+			if err != nil {
+				log.Err("AzStorage::configureAndTest : Failed to validate credentials [%s]", err.Error())
+				return fmt.Errorf("failed to authenticate %s credentials with error [%s]", az.Name(), err.Error())
+			}
 		}
 	}
 
@@ -698,6 +703,10 @@ func init() {
 
 	capIOps := config.AddInt64Flag("cap-iops", -1, "Limit the total storage operations per second. Default is -1 (no limit)")
 	config.BindPFlag(compName+".cap-iops", capIOps)
+
+	skipMountValidation := config.AddBoolFlag("skip-mount-validation", false, "Skip proactive Storage authentication validation during mount. Authentication is still used for later operations. A successful mount no longer proves Storage access; auth and connectivity failures surface on filesystem operations. Default false.")
+	config.BindPFlag(compName+".skip-mount-validation", skipMountValidation)
+	skipMountValidation.Hidden = true
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

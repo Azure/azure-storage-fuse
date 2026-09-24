@@ -197,6 +197,9 @@ type AzStorageOptions struct {
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
 	CapMbpsRead             int64  `config:"cap-mbps-read" yaml:"cap-mbps-read"`
 	CapIOps                 int64  `config:"cap-iops" yaml:"cap-iops"`
+	// Skip the proactive Blob/DFS authentication-validation REST calls made during mount.
+	// Authentication itself is unchanged. Default false.
+	SkipMountValidation bool `config:"skip-mount-validation" yaml:"skip-mount-validation,omitempty"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -309,6 +312,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		return errors.New("account name not provided")
 	}
 	az.stConfig.authConfig.AccountName = opt.AccountName
+	// Mount-time only. Later filesystem operations still use the configured credentials.
+	az.stConfig.skipMountValidation = opt.SkipMountValidation
 
 	// Validate account type property
 	if opt.AccountType == "" {
@@ -539,8 +544,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps-read %d, cap-iops %d",
-		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbpsRead, az.stConfig.capIOps)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps-read %d, cap-iops %d, skip-mount-validation %t",
+		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbpsRead, az.stConfig.capIOps, az.stConfig.skipMountValidation)
 
 	return nil
 }
