@@ -163,6 +163,16 @@ func (suite *rootCmdSuite) TestDetectNewVersionCurrentOlder() {
 	suite.assert.Contains(msg, "A new version of Blobfuse2 is available")
 }
 
+func (suite *rootCmdSuite) TestDetectNewVersionPreviewSkipsLatestCheck() {
+	defer suite.cleanupTest()
+	savedVersion := common.Blobfuse2Version
+	common.Blobfuse2Version = "2.5.6~preview.1"
+	defer func() { common.Blobfuse2Version = savedVersion }()
+
+	msg := <-beginDetectNewVersion()
+	suite.assert.Nil(msg)
+}
+
 // TestDetectNewVersionCurrentLatest sets the current version to the actual
 // latest on the benchmarks branch so that release/latest/{Blobfuse2Version}
 // exists and no upgrade message is produced.

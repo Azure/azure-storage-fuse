@@ -68,6 +68,22 @@ func (vSuite *versionTestSuite) TestVersionEquality() {
 	assert.Equal(0, v1.compare(*v2))
 }
 
+func (vSuite *versionTestSuite) TestVersionPreview() {
+	assert := assert.New(vSuite.T())
+
+	stable, err := ParseVersion("10.0.0")
+	assert.NoError(err)
+	assert.False(stable.IsPreview())
+
+	hyphenPreview, err := ParseVersion("10.0.0-preview.1")
+	assert.NoError(err)
+	assert.True(hyphenPreview.IsPreview())
+
+	tildePreview, err := ParseVersion("10.0.0~preview.1")
+	assert.NoError(err)
+	assert.True(tildePreview.IsPreview())
+}
+
 func (vSuite *versionTestSuite) TestVersionSuperiority() {
 	assert := assert.New(vSuite.T())
 
