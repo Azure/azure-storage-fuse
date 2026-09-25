@@ -134,7 +134,50 @@ echo "Applying rendered manifest ..."
 kubectl apply -f "$RENDERED"
 
 echo "Waiting for rollout of deployment/$BLOBFUSE2_DEPLOYMENT in namespace $BLOBFUSE2_NAMESPACE ..."
-kubectl -n "$BLOBFUSE2_NAMESPACE" rollout status \
-    "deployment/$BLOBFUSE2_DEPLOYMENT" --timeout=5m
+if ! kubectl -n "$BLOBFUSE2_NAMESPACE" rollout status \
+        "deployment/$BLOBFUSE2_DEPLOYMENT" --timeout=5m; then
+    echo ""
+    echo "=========================================="
+    echo "Rollout FAILED - diagnostics"
+    echo "=========================================="
+
+    echo ""
+    echo "--- deployment ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" get deploy "$BLOBFUSE2_DEPLOYMENT" -o wide || true
+    kubectl -n "$BLOBFUSE2_NAMESPACE" describe deploy "$BLOBFUSE2_DEPLOYMENT" || true
+
+    echo ""
+    echo "--- pods ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" get pods -o wide --show-labels || true
+    for pod in $(kubectl -n "$BLOBFUSE2_NAMESPACE" get pods \
+                 -l "app=$BLOBFUSE2_DEPLOYMENT" \
+                 -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        echo ""
+        echo "--- describe pod/$pod ---"
+        kubectl -n "$BLOBFUSE2_NAMESPACE" describe pod "$pod" || true
+        echo ""
+        echo "--- logs pod/$pod (all containers, current) ---"
+        kubectl -n "$BLOBFUSE2_NAMESPACE" logs "$pod" --all-containers=true --tail=200 || true
+        echo ""
+        echo "--- logs pod/$pod (all containers, previous) ---"
+        kubectl -n "$BLOBFUSE2_NAMESPACE" logs "$pod" --all-containers=true --tail=200 --previous || true
+    done
+
+    echo ""
+    echo "--- events ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" get events --sort-by=.lastTimestamp || true
+
+    echo ""
+    echo "--- discovery endpoint sanity (does the Service exist?) ---"
+    # DCACHE_DISCOVERY_ENDPOINT is host:port; strip port then FQDN's namespace piece.
+    ep_host="${DCACHE_DISCOVERY_ENDPOINT%:*}"
+    svc_name="${ep_host%%.*}"
+    svc_ns="${NAMESPACE:-cache-server}"
+    echo "expected Service: $svc_name in namespace $svc_ns"
+    kubectl -n "$svc_ns" get svc "$svc_name" -o wide || true
+    kubectl -n "$svc_ns" get endpoints "$svc_name" -o wide || true
+
+    exit 1
+fi
 
 echo "blobfuse2 pod deployed."
