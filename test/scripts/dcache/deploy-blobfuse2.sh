@@ -47,7 +47,11 @@ fi
 BLOBFUSE2_NAMESPACE="${BLOBFUSE2_NAMESPACE:-blobfuse2-dist-cache}"
 BLOBFUSE2_DEPLOYMENT="${BLOBFUSE2_DEPLOYMENT:-blobfuse2-dist-cache}"
 STO_ACC_ENDPOINT="${STO_ACC_ENDPOINT:-https://${STO_ACC_NAME}.blob.core.windows.net}"
-DCACHE_DISCOVERY_ENDPOINT="${DCACHE_DISCOVERY_ENDPOINT:-cacheserver-discovery.${NAMESPACE:-cache-server}.svc.cluster.local:${CACHE_SERVER_PORT:-9065}}"
+# The tachyon-cache operator names its discovery Service after the Cache CR
+# (default CR name is 'cache-sample' when installed with cache.enabled=true).
+# Override CACHE_CR_NAME if a non-default CR name is used.
+CACHE_CR_NAME="${CACHE_CR_NAME:-cache-sample}"
+DCACHE_DISCOVERY_ENDPOINT="${DCACHE_DISCOVERY_ENDPOINT:-${CACHE_CR_NAME}-discovery.${NAMESPACE:-cache-server}.svc.cluster.local:${CACHE_SERVER_PORT:-9065}}"
 BLOBFUSE2_IMAGE_LOAD="${BLOBFUSE2_IMAGE_LOAD:-true}"
 MANIFEST_TEMPLATE="${MANIFEST_TEMPLATE:-$REPO_ROOT/docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl}"
 
