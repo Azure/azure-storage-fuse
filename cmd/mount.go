@@ -75,12 +75,11 @@ type LogOptions struct {
 // to determine whether distributed_cache should be included in the pipeline.
 type distributedCacheMountOptions struct {
 	DiscoveryEndpoint string `config:"discovery-endpoint"`
-	K8sService        string `config:"k8s-service"`
 	ServerList        string `config:"server-list"`
 }
 
 func (opt distributedCacheMountOptions) isConfigured() bool {
-	return opt.DiscoveryEndpoint != "" || opt.K8sService != "" || opt.ServerList != ""
+	return opt.DiscoveryEndpoint != "" || opt.ServerList != ""
 }
 
 type mountOptions struct {
