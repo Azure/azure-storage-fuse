@@ -317,6 +317,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	// Validate account type property
 	if opt.AccountType == "" {
+		if opt.SkipMountValidation && !config.IsSet(compName+".use-adls") {
+			return errors.New("account type must be explicitly provided when skip-mount-validation is enabled")
+		}
 		opt.AccountType = "block"
 	}
 

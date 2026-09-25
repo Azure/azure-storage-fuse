@@ -480,6 +480,7 @@ func (s *configTestSuite) TestSkipMountValidationConfig() {
 	opt := AzStorageOptions{
 		AccountName: "abcd",
 		Container:   "abcd",
+		AccountType: "block",
 	}
 	err := ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
@@ -497,6 +498,21 @@ func (s *configTestSuite) TestSkipMountValidationConfig() {
 	// Account type and auth selection are unchanged by the skip flag.
 	assert.Equal(EAccountType.BLOCK(), az.stConfig.authConfig.AccountType)
 	assert.Equal(EAuthType.MSI(), az.stConfig.authConfig.AuthMode)
+}
+
+func (s *configTestSuite) TestSkipMountValidationRequiresAccountType() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName:         "abcd",
+		Container:           "abcd",
+		SkipMountValidation: true,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.EqualError(err, "account type must be explicitly provided when skip-mount-validation is enabled")
 }
 
 func (s *configTestSuite) TestSkipMountValidationYaml() {
