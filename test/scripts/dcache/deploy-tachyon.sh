@@ -237,7 +237,9 @@ helm install "$RELEASE_NAME" "$CACHE_SERVER_CHART_REF" \
     --set manager.image.repository="${CACHE_CONTROLLER_IMAGE%:*}" \
     --set manager.image.tag="${CACHE_CONTROLLER_IMAGE#*:}" \
     --set manager.cacheServerImage.repository="${CACHE_SERVER_IMAGE%:*}" \
-    --set manager.cacheServerImage.tag="${CACHE_SERVER_IMAGE#*:}"
+    --set manager.cacheServerImage.tag="${CACHE_SERVER_IMAGE#*:}" \
+    --set cache.enabled=true \
+    --set cache.scaling.static.numServers="$CACHE_SERVER_REPLICAS"
 
 echo "Attaching ACR pull secret to tachyon-cache ServiceAccounts ..."
 attach_pull_secret_to_all_sas
