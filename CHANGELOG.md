@@ -1,6 +1,4 @@
-## 2.5.6-preview.1 (2026-09-25)
-**Features**
-
+## 2.5.6~preview.1 (2026-09-25)
 **Bug Fixes**
 - Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with `InvalidUri` or `InvalidQueryParameterValue`, such as for an unsupported blob or path name.
 
