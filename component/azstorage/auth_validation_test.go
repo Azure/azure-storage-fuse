@@ -94,7 +94,7 @@ func TestAuthValidationDefaultRejectsInvalidCredentials(t *testing.T) {
 	_, err := configureValidationTest(t, server.URL, "block", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to authenticate")
-	assert.Greater(t, requests.Load(), int32(0))
+	assert.Positive(t, requests.Load())
 }
 
 func TestSkipMountValidationDefersInvalidCredentialsToStorageOperation(t *testing.T) {
@@ -112,7 +112,7 @@ func TestSkipMountValidationDefersInvalidCredentialsToStorageOperation(t *testin
 
 	_, err = az.storage.GetAttr("file")
 	assert.Error(t, err)
-	assert.Greater(t, requests.Load(), int32(0), "later Storage access must still use the configured authentication")
+	assert.Positive(t, requests.Load(), "later Storage access must still use the configured authentication")
 }
 
 func TestSkipMountValidationRequiresExplicitAccountType(t *testing.T) {
@@ -143,8 +143,8 @@ func TestADLSAuthValidationRemainsParallel(t *testing.T) {
 		current := inFlight.Add(1)
 		defer inFlight.Add(-1)
 		for {
-			max := maxInFlight.Load()
-			if current <= max || maxInFlight.CompareAndSwap(max, current) {
+			maximum := maxInFlight.Load()
+			if current <= maximum || maxInFlight.CompareAndSwap(maximum, current) {
 				break
 			}
 		}
