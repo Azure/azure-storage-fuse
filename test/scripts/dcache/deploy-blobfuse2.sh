@@ -177,6 +177,27 @@ if ! kubectl -n "$BLOBFUSE2_NAMESPACE" rollout status \
     kubectl -n "$svc_ns" get svc "$svc_name" -o wide || true
     kubectl -n "$svc_ns" get endpoints "$svc_name" -o wide || true
 
+    echo ""
+    echo "--- cache-server headless Service + pods (peers blobfuse2 will dial) ---"
+    kubectl -n "$svc_ns" get svc,pods -o wide -l app=cacheserver || true
+
+    echo ""
+    echo "--- DNS probe from a debug pod in $BLOBFUSE2_NAMESPACE ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" run dcache-dnsprobe \
+        --rm -i --restart=Never --image=busybox:1.36 --timeout=60s -- \
+        sh -c "
+          set +e
+          echo '# nslookup discovery endpoint'
+          nslookup $ep_host
+          echo '# nslookup headless service ${CACHE_CR_NAME}.$svc_ns.svc.cluster.local'
+          nslookup ${CACHE_CR_NAME}.$svc_ns.svc.cluster.local
+          for i in 0 1 2; do
+            host=${CACHE_CR_NAME}-\$i.${CACHE_CR_NAME}.$svc_ns.svc.cluster.local
+            echo \"# nslookup peer \$host\"
+            nslookup \$host
+          done
+        " || true
+
     exit 1
 fi
 
