@@ -3,6 +3,7 @@
 
 **Bug Fixes**
 - Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with `InvalidUri` or `InvalidQueryParameterValue`, such as for an unsupported blob or path name. ([PR #2342](https://github.com/Azure/azure-storage-fuse/pull/2342))
+- Return `EFBIG` or `ENOSPC` instead of `EIO` when file-cache operations exceed the supported file size or available cache space. ([PR #2365](https://github.com/Azure/azure-storage-fuse/pull/2365))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
