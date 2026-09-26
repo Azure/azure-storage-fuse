@@ -755,6 +755,12 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 
 	if err != nil {
 		log.Err("Libfuse::libfuse2_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		if errors.Is(err, syscall.EFBIG) {
+			return -C.EFBIG
+		}
+		if errors.Is(err, syscall.ENOSPC) {
+			return -C.ENOSPC
+		}
 		return -C.EIO
 	}
 
@@ -788,6 +794,12 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		if errors.Is(err, syscall.ENOSPC) {
+			return -C.ENOSPC
+		}
+		if errors.Is(err, syscall.EFBIG) {
+			return -C.EFBIG
+		}
 		switch err {
 		case syscall.ENOENT:
 			return -C.ENOENT
@@ -817,6 +829,12 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		if errors.Is(err, syscall.ENOSPC) {
+			return -C.ENOSPC
+		}
+		if errors.Is(err, syscall.EFBIG) {
+			return -C.EFBIG
+		}
 		switch err {
 		case syscall.ENOENT:
 			return -C.ENOENT
@@ -855,6 +873,12 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().SyncFile(options)
 	if err != nil {
 		log.Err("Libfuse::libfuse2_fsync : error syncing file %s [%s]", handle.Path, err.Error())
+		if errors.Is(err, syscall.ENOSPC) {
+			return -C.ENOSPC
+		}
+		if errors.Is(err, syscall.EFBIG) {
+			return -C.EFBIG
+		}
 		return -C.EIO
 	}
 
@@ -891,6 +915,9 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 		log.Err("Libfuse::libfuse2_truncate : error truncating file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		}
+		if errors.Is(err, syscall.EFBIG) {
+			return -C.EFBIG
 		}
 		return -C.EIO
 	}
