@@ -47,6 +47,7 @@ package libfuse
 import "C"
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"runtime"
@@ -712,6 +713,57 @@ func testOpenError(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
+func testWriteFileTooLarge(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	data := C.CString("data")
+	defer C.free(unsafe.Pointer(data))
+
+	_, _, info := newNativeFileObject(name)
+	defer C.release_native_file_object(info)
+
+	suite.mock.EXPECT().WriteFile(gomock.Any()).Return(0, fmt.Errorf("write exceeds maximum file size: %w", syscall.EFBIG))
+
+	result := libfuse_write(path, data, 4, 0, info)
+	suite.assert.Equal(C.int(-C.EFBIG), result)
+}
+
+func testWriteFileNoSpace(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	data := C.CString("data")
+	defer C.free(unsafe.Pointer(data))
+
+	_, _, info := newNativeFileObject(name)
+	defer C.release_native_file_object(info)
+
+	suite.mock.EXPECT().WriteFile(gomock.Any()).Return(0, syscall.ENOSPC)
+
+	result := libfuse_write(path, data, 4, 0, info)
+	suite.assert.Equal(C.int(-C.ENOSPC), result)
+}
+
+func testFlushFileTooLarge(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+
+	handle, _, info := newNativeFileObject(name)
+	defer C.release_native_file_object(info)
+	handle.Flags.Set(handlemap.HandleFlagDirty)
+
+	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).
+		Return(syscall.EFBIG)
+
+	result := libfuse_flush(path, info)
+	suite.assert.Equal(C.int(-C.EFBIG), result)
+}
+
 func testTruncate(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
@@ -736,6 +788,19 @@ func testTruncateError(suite *libfuseTestSuite) {
 
 	err := libfuse_truncate(path, C.off_t(size), nil)
 	suite.assert.Equal(C.int(-C.EIO), err)
+}
+
+func testTruncateFileTooLarge(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	size := int64(1024)
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
+	suite.mock.EXPECT().TruncateFile(options).Return(fmt.Errorf("truncate exceeds maximum file size: %w", syscall.EFBIG))
+
+	result := libfuse_truncate(path, C.off_t(size), nil)
+	suite.assert.Equal(C.int(-C.EFBIG), result)
 }
 
 func testFTruncate(suite *libfuseTestSuite) {

@@ -299,7 +299,19 @@ func (suite *libfuseTestSuite) TestOpenError() {
 
 // write
 
+func (suite *libfuseTestSuite) TestWriteFileTooLarge() {
+	testWriteFileTooLarge(suite)
+}
+
+func (suite *libfuseTestSuite) TestWriteFileNoSpace() {
+	testWriteFileNoSpace(suite)
+}
+
 // flush
+
+func (suite *libfuseTestSuite) TestFlushFileTooLarge() {
+	testFlushFileTooLarge(suite)
+}
 
 func (suite *libfuseTestSuite) TestTruncate() {
 	testTruncate(suite)
@@ -307,6 +319,10 @@ func (suite *libfuseTestSuite) TestTruncate() {
 
 func (suite *libfuseTestSuite) TestTruncateError() {
 	testTruncateError(suite)
+}
+
+func (suite *libfuseTestSuite) TestTruncateFileTooLarge() {
+	testTruncateFileTooLarge(suite)
 }
 
 func (suite *libfuseTestSuite) TestFTruncate() {
