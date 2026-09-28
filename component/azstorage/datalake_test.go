@@ -1941,7 +1941,7 @@ func (s *datalakeTestSuite) TestReadLink() {
 	err = s.az.CreateLink(internal.CreateLinkOptions{Name: name, Target: target})
 	s.assert.NoError(err)
 
-	read, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name})
+	read, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name, Size: int64(len(target))})
 	s.assert.NoError(err)
 	s.assert.Equal(target, read)
 }
@@ -1951,7 +1951,7 @@ func (s *datalakeTestSuite) TestReadLinkError() {
 	// Setup
 	name := generateFileName()
 
-	_, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name})
+	_, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name, Size: 1})
 	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }

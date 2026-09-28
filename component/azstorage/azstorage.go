@@ -538,7 +538,14 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 
 func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) {
 	log.Trace("AzStorage::ReadLink : Read symlink %s", options.Name)
-	data, err := az.storage.ReadBuffer(options.Name, 0, options.Size)
+
+	// ReadBuffer treats a length of 0 as "download the whole blob", so an empty target must not reach it.
+	if options.Size <= 0 {
+		return "", nil
+	}
+
+	// The blob content is not trusted to be small, never download more than a valid target can hold.
+	data, err := az.storage.ReadBuffer(options.Name, 0, min(options.Size, common.MaxSymlinkTargetLen))
 
 	if err != nil {
 		azStatsCollector.PushEvents(readLink, options.Name, nil)
