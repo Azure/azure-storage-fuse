@@ -636,6 +636,18 @@ func (suite *fileCacheTestSuite) TestIsDirEmpty() {
 	suite.assert.True(empty)
 }
 
+func (suite *fileCacheTestSuite) TestIsDirEmptyWithCachePathInName() {
+	defer suite.cleanupTest()
+
+	name := "prefix" + suite.cache_path + "/empty"
+	suite.Require().NoError(os.MkdirAll(filepath.Join(suite.cache_path, name, "child"), 0755))
+	suite.Require().NoError(os.MkdirAll(filepath.Join(suite.fake_storage_path, name), 0755))
+
+	suite.assert.True(suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: name}))
+	_, err := os.Stat(filepath.Join(suite.cache_path, name))
+	suite.assert.True(os.IsNotExist(err))
+}
+
 func (suite *fileCacheTestSuite) TestIsDirEmptyFalse() {
 	defer suite.cleanupTest()
 	// Setup
@@ -1699,6 +1711,166 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 
 	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 	suite.assert.NoError(err)
+}
+
+// TestValidateObjectName exercises the containment guard directly, covering
+// names that stay within the cache root and names that escape it.
+func (suite *fileCacheTestSuite) TestValidateObjectName() {
+	defer suite.cleanupTest()
+
+	// Names that stay within the cache root must be accepted.
+	validNames := []string{
+		"",
+		"file",
+		"dir/file",
+		"a/b/c/file.txt",
+		"a/./b",
+		"a..b",
+		"..file",
+		`..\..\etc\crontab`,
+		`dir\file`,
+	}
+	for _, name := range validNames {
+		err := suite.fileCache.validateObjectName(name)
+		suite.assert.NoError(err, "expected %q to be valid", name)
+
+		localPath, err := suite.fileCache.getLocalCachePath(name)
+		suite.assert.NoError(err, "expected %q to be valid", name)
+		suite.assert.Equal(filepath.Join(suite.cache_path, name), localPath)
+		// The resolved path must stay within (or equal) the cache root.
+		suite.assert.True(localPath == suite.cache_path ||
+			strings.HasPrefix(localPath, suite.cache_path+string(os.PathSeparator)))
+	}
+
+	// Names that escape or leave and re-enter the cache root are invalid.
+	invalidNames := []string{
+		"..",
+		"../file",
+		"../../etc/crontab",
+		"a/../../escape",
+		"a/b/../../../escape",
+		"../" + filepath.Base(suite.cache_path) + "/file",
+		"/etc/crontab",
+		`../dir\file`,
+	}
+	for _, name := range invalidNames {
+		err := suite.fileCache.validateObjectName(name)
+		suite.assert.Equal(syscall.EINVAL, err, "expected %q to be rejected", name)
+
+		localPath, err := suite.fileCache.getLocalCachePath(name)
+		suite.assert.Equal(syscall.EINVAL, err, "expected %q to be rejected", name)
+		suite.assert.Empty(localPath)
+	}
+}
+
+// TestValidateObjectNameBackslashTraversal verifies that backslashes remain
+// literal, while a traversal using forward slashes is rejected.
+func (suite *fileCacheTestSuite) TestValidateObjectNameBackslashTraversal() {
+	defer suite.cleanupTest()
+
+	literal := common.NormalizeObjectName(`..\..\etc\crontab`)
+	suite.assert.Equal(`..\..\etc\crontab`, literal)
+	suite.assert.NoError(suite.fileCache.validateObjectName(literal))
+
+	local := common.NormalizeObjectName(`dir\file`)
+	suite.assert.Equal(`dir\file`, local)
+	suite.assert.NoError(suite.fileCache.validateObjectName(local))
+	suite.assert.Equal(syscall.EINVAL, suite.fileCache.validateObjectName(`../dir\file`))
+}
+
+// TestRenameFilePathTraversal verifies that a rename cannot overwrite a file
+// outside the cache, while a literal backslash name remains valid.
+func (suite *fileCacheTestSuite) TestRenameFilePathTraversal() {
+	defer suite.cleanupTest()
+
+	// Create a canary file outside the cache root that must not be overwritten.
+	victim := filepath.Join(home_dir, "file_cache_victim_"+randomString(6))
+	err := os.WriteFile(victim, []byte("original"), 0644)
+	suite.assert.NoError(err)
+	defer os.Remove(victim)
+
+	src := "payload"
+	createHandle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0666})
+	suite.assert.NoError(err)
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
+	suite.assert.NoError(err)
+
+	// Build a destination that escapes the cache root and lands on the victim.
+	rel, err := filepath.Rel(suite.cache_path, victim)
+	suite.assert.NoError(err)
+	suite.assert.True(strings.HasPrefix(rel, ".."))
+
+	err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: rel})
+	suite.assert.Error(err)
+	suite.assert.Equal(syscall.EINVAL, err)
+
+	literal := `..\` + filepath.Base(victim)
+	err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: literal})
+	suite.assert.NoError(err)
+	_, err = os.Stat(filepath.Join(suite.fake_storage_path, literal))
+	suite.assert.NoError(err)
+
+	// The victim file must remain untouched.
+	data, err := os.ReadFile(victim)
+	suite.assert.NoError(err)
+	suite.assert.Equal("original", string(data))
+}
+
+// TestFileCachePathTraversalRejected verifies that all name-taking file-cache
+// operations reject paths that escape the cache root, covering ".." traversal
+// and absolute-path results.
+func (suite *fileCacheTestSuite) TestFileCachePathTraversalRejected() {
+	defer suite.cleanupTest()
+
+	escapingNames := []string{
+		"../escape",
+		"../../etc/crontab",
+		"a/../../escape",
+		"../" + filepath.Base(suite.cache_path) + "/file",
+		"/absolute",
+		`../dir\file`,
+	}
+
+	for _, name := range escapingNames {
+		_, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0666})
+		suite.assert.Equal(syscall.EINVAL, err, "CreateFile should reject %s", name)
+
+		_, err = suite.fileCache.OpenFile(internal.OpenFileOptions{Name: name, Mode: 0666})
+		suite.assert.Equal(syscall.EINVAL, err, "OpenFile should reject %s", name)
+
+		err = suite.fileCache.DeleteFile(internal.DeleteFileOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "DeleteFile should reject %s", name)
+
+		err = suite.fileCache.DeleteDir(internal.DeleteDirOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "DeleteDir should reject %s", name)
+
+		err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: 0})
+		suite.assert.Equal(syscall.EINVAL, err, "TruncateFile should reject %s", name)
+
+		err = suite.fileCache.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
+		suite.assert.Equal(syscall.EINVAL, err, "Chmod should reject %s", name)
+
+		err = suite.fileCache.Chown(internal.ChownOptions{Name: name, Owner: 0, Group: 0})
+		suite.assert.Equal(syscall.EINVAL, err, "Chown should reject %s", name)
+
+		_, err = suite.fileCache.GetAttr(internal.GetAttrOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "GetAttr should reject %s", name)
+
+		err = suite.fileCache.FileUsed(name)
+		suite.assert.Equal(syscall.EINVAL, err, "FileUsed should reject %s", name)
+
+		err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: name, Dst: "safe"})
+		suite.assert.Equal(syscall.EINVAL, err, "RenameFile should reject src %s", name)
+
+		err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: "safe", Dst: name})
+		suite.assert.Equal(syscall.EINVAL, err, "RenameFile should reject dst %s", name)
+
+		err = suite.fileCache.RenameDir(internal.RenameDirOptions{Src: name, Dst: "safe"})
+		suite.assert.Equal(syscall.EINVAL, err, "RenameDir should reject src %s", name)
+
+		err = suite.fileCache.RenameDir(internal.RenameDirOptions{Src: "safe", Dst: name})
+		suite.assert.Equal(syscall.EINVAL, err, "RenameDir should reject dst %s", name)
+	}
 }
 
 func (suite *fileCacheTestSuite) TestRenameFileCase2() {
