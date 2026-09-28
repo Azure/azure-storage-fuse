@@ -43,7 +43,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	statsmanager "github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
 )
 
@@ -61,12 +61,12 @@ type StatsExporter struct {
 }
 
 type Output struct {
-	Timestamp string                  `json:"Timestamp,omitempty"`
-	Bfs       []stats_manager.PipeMsg `json:"BlobfuseStats,omitempty"`
-	FcEvent   []*hmcommon.CacheEvent  `json:"FileCache,omitempty"`
-	Cpu       string                  `json:"CPUUsage,omitempty"`
-	Mem       string                  `json:"MemoryUsage,omitempty"`
-	Net       string                  `json:"NetworkUsage,omitempty"`
+	Timestamp string                 `json:"Timestamp,omitempty"`
+	Bfs       []statsmanager.PipeMsg `json:"BlobfuseStats,omitempty"`
+	FcEvent   []*hmcommon.CacheEvent `json:"FileCache,omitempty"`
+	CPU       string                 `json:"CPUUsage,omitempty"`
+	Mem       string                 `json:"MemoryUsage,omitempty"`
+	Net       string                 `json:"NetworkUsage,omitempty"`
 }
 
 var expLock sync.Mutex
@@ -176,11 +176,11 @@ func (se *StatsExporter) StatsExporter() {
 func (se *StatsExporter) addToList(st *ExportedStat, idx int) {
 	switch st.MonitorName {
 	case hmcommon.BlobfuseStats:
-		se.outputList[idx].Bfs = append(se.outputList[idx].Bfs, st.Stat.(stats_manager.PipeMsg))
+		se.outputList[idx].Bfs = append(se.outputList[idx].Bfs, st.Stat.(statsmanager.PipeMsg))
 	case hmcommon.FileCacheMon:
 		se.outputList[idx].FcEvent = append(se.outputList[idx].FcEvent, st.Stat.(*hmcommon.CacheEvent))
-	case hmcommon.CpuProfiler:
-		se.outputList[idx].Cpu = st.Stat.(string)
+	case hmcommon.CPUProfiler:
+		se.outputList[idx].CPU = st.Stat.(string)
 	case hmcommon.MemoryProfiler:
 		se.outputList[idx].Mem = st.Stat.(string)
 	case hmcommon.NetworkProfiler:

@@ -43,7 +43,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	filecache "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -121,12 +121,12 @@ func (suite *hmonTestSuite) TestBuildHmonCliParams() {
 	options = mountOptions{}
 	options.MonitorOpt = monitorOptions{
 		EnableMon:       true,
-		DisableList:     []string{hmcommon.BlobfuseStats, hmcommon.CpuProfiler, hmcommon.MemoryProfiler, hmcommon.NetworkProfiler, hmcommon.FileCacheMon, "invalid_monitor"},
+		DisableList:     []string{hmcommon.BlobfuseStats, hmcommon.CPUProfiler, hmcommon.MemoryProfiler, hmcommon.NetworkProfiler, hmcommon.FileCacheMon, "invalid_monitor"},
 		BfsPollInterval: 10,
 		ProcMonInterval: 10,
 		OutputPath:      "/tmp/health_monitor",
 	}
-	cacheMonitorOptions = file_cache.FileCacheOptions{
+	cacheMonitorOptions = filecache.FileCacheOptions{
 		TmpPath:   "/tmp/file_cache",
 		MaxSizeMB: 200,
 	}

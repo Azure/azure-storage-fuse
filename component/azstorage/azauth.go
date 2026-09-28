@@ -89,8 +89,8 @@ func getAzAuth(config azAuthConfig) azAuth {
 	log.Debug("azAuth::getAzAuth : Account: %s, AccountType: %s, Protocol: %s, Endpoint: %s",
 		config.AccountName,
 		config.AccountType,
-		func(useHttp bool) string {
-			if useHttp {
+		func(useHTTP bool) string {
+			if useHTTP {
 				return "http"
 			}
 			return "https"

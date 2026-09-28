@@ -94,8 +94,8 @@ func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
 // no security-warning file on the benchmarks branch.
 func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 	defer suite.cleanupTest()
-	warningsUrl := common.GitHubReleaseBaseURL + "/securitywarnings/" + common.Blobfuse2Version
-	found := checkVersionExists(warningsUrl)
+	warningsURL := common.GitHubReleaseBaseURL + "/securitywarnings/" + common.Blobfuse2Version
+	found := checkVersionExists(warningsURL)
 	suite.assert.False(found)
 }
 
@@ -103,8 +103,8 @@ func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 // file on the benchmarks branch (live HTTP call).
 func (suite *rootCmdSuite) TestSecurityWarnings() {
 	defer suite.cleanupTest()
-	warningsUrl := common.GitHubReleaseBaseURL + "/securitywarnings/" + "1.1.1"
-	found := checkVersionExists(warningsUrl)
+	warningsURL := common.GitHubReleaseBaseURL + "/securitywarnings/" + "1.1.1"
+	found := checkVersionExists(warningsURL)
 	suite.assert.True(found)
 }
 
@@ -112,8 +112,8 @@ func (suite *rootCmdSuite) TestSecurityWarnings() {
 // file on the benchmarks branch (live HTTP call).
 func (suite *rootCmdSuite) TestBlockedVersion() {
 	defer suite.cleanupTest()
-	blockedUrl := common.GitHubReleaseBaseURL + "/blockedversions/" + "1.1.1"
-	isBlocked := checkVersionExists(blockedUrl)
+	blockedURL := common.GitHubReleaseBaseURL + "/blockedversions/" + "1.1.1"
+	isBlocked := checkVersionExists(blockedURL)
 	suite.assert.True(isBlocked)
 }
 
@@ -121,8 +121,8 @@ func (suite *rootCmdSuite) TestBlockedVersion() {
 // blocked-versions list on the benchmarks branch.
 func (suite *rootCmdSuite) TestNonBlockedVersion() {
 	defer suite.cleanupTest()
-	blockedUrl := common.GitHubReleaseBaseURL + "/blockedversions/" + common.Blobfuse2Version
-	found := checkVersionExists(blockedUrl)
+	blockedURL := common.GitHubReleaseBaseURL + "/blockedversions/" + common.Blobfuse2Version
+	found := checkVersionExists(blockedURL)
 	suite.assert.False(found)
 }
 
@@ -131,8 +131,8 @@ func (suite *rootCmdSuite) TestNonBlockedVersion() {
 // present on the benchmarks branch (it is the current GA latest).
 // func (suite *rootCmdSuite) TestLatestVersionExists() {
 // 	defer suite.cleanupTest()
-// 	latestUrl := common.GitHubReleaseBaseURL + "/latest/" + common.Blobfuse2Version
-// 	found := checkVersionExists(latestUrl)
+// 	latestURL := common.GitHubReleaseBaseURL + "/latest/" + common.Blobfuse2Version
+// 	found := checkVersionExists(latestURL)
 // 	suite.assert.True(found)
 // }
 
@@ -140,8 +140,8 @@ func (suite *rootCmdSuite) TestNonBlockedVersion() {
 // have a file under release/latest/.
 func (suite *rootCmdSuite) TestLatestVersionNotExists() {
 	defer suite.cleanupTest()
-	latestUrl := common.GitHubReleaseBaseURL + "/latest/1.0.0"
-	found := checkVersionExists(latestUrl)
+	latestURL := common.GitHubReleaseBaseURL + "/latest/1.0.0"
+	found := checkVersionExists(latestURL)
 	suite.assert.False(found)
 }
 

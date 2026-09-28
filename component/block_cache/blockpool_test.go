@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-package block_cache
+package blockcache
 
 import (
 	"math/rand"

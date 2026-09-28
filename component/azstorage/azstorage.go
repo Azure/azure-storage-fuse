@@ -46,7 +46,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
-	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	statsmanager "github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
 )
@@ -65,7 +65,7 @@ const compName = "azstorage"
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AzStorage{}
 
-var azStatsCollector *stats_manager.StatsCollector
+var azStatsCollector *statsmanager.StatsCollector
 
 func (az *AzStorage) Name() string {
 	return az.BaseComponent.Name()
@@ -189,7 +189,7 @@ func (az *AzStorage) Start(ctx context.Context) error {
 	az.listBlocked = true
 
 	// create stats collector for azstorage
-	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
+	azStatsCollector = statsmanager.NewStatsCollector(az.Name())
 
 	return nil
 }
@@ -216,7 +216,7 @@ func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(createDir, options.Name, map[string]any{mode: options.Mode.String()})
-		azStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, createDir, (int64)(1))
 	}
 
 	return err
@@ -229,7 +229,7 @@ func (az *AzStorage) DeleteDir(options internal.DeleteDirOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(deleteDir, options.Name, nil)
-		azStatsCollector.UpdateStats(stats_manager.Increment, deleteDir, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, deleteDir, (int64)(1))
 	}
 
 	return err
@@ -278,17 +278,17 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 	var iteration = 0
 	var marker *string = nil
 	for {
-		new_list, new_marker, err := az.storage.List(path, marker, common.MaxDirListCount)
+		newList, newMarker, err := az.storage.List(path, marker, common.MaxDirListCount)
 		if err != nil {
 			log.Err("AzStorage::ReadDir : Failed to read dir [%s]", err)
 			return blobList, err
 		}
-		blobList = append(blobList, new_list...)
-		marker = new_marker
+		blobList = append(blobList, newList...)
+		marker = newMarker
 		iteration++
 
 		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
-		if new_marker == nil || *new_marker == "" {
+		if newMarker == nil || *newMarker == "" {
 			break
 		}
 	}
@@ -312,27 +312,27 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	path := formatListDirName(options.Name)
 
-	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
+	newList, newMarker, err := az.storage.List(path, &options.Token, options.Count)
 	if err != nil {
 		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
-		return new_list, "", err
+		return newList, "", err
 	}
 
-	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(new_list), options.Token, path)
+	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(newList), options.Token, path)
 
-	if new_marker == nil {
-		new_marker = to.Ptr("")
-	} else if *new_marker != "" {
-		log.Debug("AzStorage::StreamDir : next-marker %s for Path %s", *new_marker, path)
-		if len(new_list) == 0 {
-			/* In some customer scenario we have seen that new_list is empty but marker is not empty
+	if newMarker == nil {
+		newMarker = to.Ptr("")
+	} else if *newMarker != "" {
+		log.Debug("AzStorage::StreamDir : next-marker %s for Path %s", *newMarker, path)
+		if len(newList) == 0 {
+			/* In some customer scenario we have seen that newList is empty but marker is not empty
 			   which means backend has not returned any items this time but there are more left.
 			   If we return back this empty list to libfuse layer it will assume listing has completed
 			   and will terminate the readdir call. As there are more items left on the server side we
 			   need to retry getting a list here.
 			*/
-			log.Warn("AzStorage::StreamDir : next-marker %s but current list is empty. Need to retry listing", *new_marker)
-			options.Token = *new_marker
+			log.Warn("AzStorage::StreamDir : next-marker %s but current list is empty. Need to retry listing", *newMarker)
+			options.Token = *newMarker
 			return az.StreamDir(options)
 		}
 	}
@@ -341,12 +341,12 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	if len(path) == 0 {
 		path = "/"
 	}
-	azStatsCollector.PushEvents(streamDir, path, map[string]any{count: len(new_list)})
+	azStatsCollector.PushEvents(streamDir, path, map[string]any{count: len(newList)})
 
 	// increment streamdir call count
-	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
+	azStatsCollector.UpdateStats(statsmanager.Increment, streamDir, (int64)(1))
 
-	return new_list, *new_marker, nil
+	return newList, *newMarker, nil
 }
 
 func (az *AzStorage) RenameDir(options internal.RenameDirOptions) error {
@@ -358,7 +358,7 @@ func (az *AzStorage) RenameDir(options internal.RenameDirOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(renameDir, options.Src, map[string]any{src: options.Src, dest: options.Dst})
-		azStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, renameDir, (int64)(1))
 	}
 	return err
 }
@@ -384,7 +384,7 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	azStatsCollector.PushEvents(createFile, options.Name, map[string]any{mode: options.Mode.String()})
 
 	// increment open file handles count
-	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
+	azStatsCollector.UpdateStats(statsmanager.Increment, openHandles, (int64)(1))
 
 	return handle, nil
 }
@@ -408,7 +408,7 @@ func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	handle.Mtime = attr.Mtime
 
 	// increment open file handles count
-	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
+	azStatsCollector.UpdateStats(statsmanager.Increment, openHandles, (int64)(1))
 
 	return handle, nil
 }
@@ -417,7 +417,7 @@ func (az *AzStorage) ReleaseFile(options internal.ReleaseFileOptions) error {
 	log.Trace("AzStorage::ReleaseFile : %s", options.Handle.Path)
 
 	// decrement open file handles count
-	azStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
+	azStatsCollector.UpdateStats(statsmanager.Decrement, openHandles, (int64)(1))
 
 	return nil
 }
@@ -429,7 +429,7 @@ func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(deleteFile, options.Name, nil)
-		azStatsCollector.UpdateStats(stats_manager.Increment, deleteFile, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, deleteFile, (int64)(1))
 	}
 
 	return err
@@ -442,7 +442,7 @@ func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(renameFile, options.Src, map[string]any{src: options.Src, dest: options.Dst})
-		azStatsCollector.UpdateStats(stats_manager.Increment, renameFile, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, renameFile, (int64)(1))
 	}
 	return err
 }
@@ -508,7 +508,7 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]any{size: options.NewSize})
-		azStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, truncateFile, (int64)(1))
 	}
 	return err
 }
@@ -530,7 +530,7 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(createLink, options.Name, map[string]any{target: options.Target})
-		azStatsCollector.UpdateStats(stats_manager.Increment, createLink, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, createLink, (int64)(1))
 	}
 
 	return err
@@ -542,7 +542,7 @@ func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) 
 
 	if err != nil {
 		azStatsCollector.PushEvents(readLink, options.Name, nil)
-		azStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, readLink, (int64)(1))
 	}
 
 	return string(data), err
@@ -560,7 +560,7 @@ func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(chmod, options.Name, map[string]any{mode: options.Mode.String()})
-		azStatsCollector.UpdateStats(stats_manager.Increment, chmod, (int64)(1))
+		azStatsCollector.UpdateStats(statsmanager.Increment, chmod, (int64)(1))
 	}
 
 	return err
@@ -581,7 +581,7 @@ func (az *AzStorage) GetCommittedBlockList(name string) (*internal.CommittedBloc
 }
 
 func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
-	return az.storage.StageBlock(opt.Name, opt.Data, opt.Id)
+	return az.storage.StageBlock(opt.Name, opt.Data, opt.ID)
 }
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
@@ -621,9 +621,9 @@ func init() {
 	internal.AddComponent(compName, NewazstorageComponent)
 	RegisterEnvVariables()
 
-	useHttps := config.AddBoolFlag("use-https", true, "Enables HTTPS communication with Blob storage.")
-	config.BindPFlag(compName+".use-https", useHttps)
-	useHttps.Hidden = true
+	useHTTPS := config.AddBoolFlag("use-https", true, "Enables HTTPS communication with Blob storage.")
+	config.BindPFlag(compName+".use-https", useHTTPS)
+	useHTTPS.Hidden = true
 
 	blockListSecFlag := config.AddInt32Flag("cancel-list-on-mount-seconds", 0, "Number of seconds list call is blocked post mount")
 	config.BindPFlag(compName+".block-list-on-mount-sec", blockListSecFlag)

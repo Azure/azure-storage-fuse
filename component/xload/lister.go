@@ -93,7 +93,7 @@ func newRemoteLister(opts *remoteListerOptions) (*remoteLister, error) {
 		listBlocked: false,
 	}
 
-	rl.SetName(LISTER)
+	rl.SetName(ListerComp)
 	rl.SetWorkerCount(opts.workerCount)
 	rl.SetRemote(opts.remote)
 	rl.SetStatsManager(opts.statsMgr)
@@ -153,7 +153,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 	marker := ""
 	var cnt, iteration int
 	for {
-		entries, new_marker, err := rl.GetRemote().StreamDir(internal.StreamDirOptions{
+		entries, newMarker, err := rl.GetRemote().StreamDir(internal.StreamDirOptions{
 			Name:  relPath,
 			Token: marker,
 		})
@@ -162,14 +162,14 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 			break
 		}
 
-		marker = new_marker
+		marker = newMarker
 		cnt += len(entries)
 		iteration++
 		log.Debug("remoteLister::Process : count: %d , iterations: %d", cnt, iteration)
 
 		// send number of items listed in current iteration to stats manager
 		rl.GetStatsManager().AddStats(&StatsItem{
-			Component:   LISTER,
+			Component:   ListerComp,
 			Name:        relPath,
 			ListerCount: uint64(len(entries)),
 		})
@@ -224,7 +224,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 			}
 		}
 
-		if len(new_marker) == 0 {
+		if len(newMarker) == 0 {
 			log.Debug("remoteLister::Process : remote listing done for %s", relPath)
 			break
 		}
@@ -239,7 +239,7 @@ func (rl *remoteLister) mkdir(name string) error {
 
 	// send stats for dir creation
 	rl.GetStatsManager().AddStats(&StatsItem{
-		Component: LISTER,
+		Component: ListerComp,
 		Name:      name,
 		Dir:       true,
 		Success:   err == nil,
