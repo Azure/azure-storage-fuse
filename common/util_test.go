@@ -497,6 +497,8 @@ func (suite *utilTestSuite) TestIsValidObjectNameValid() {
 		"a..b",
 		"..file",
 		"file..",
+		`..\..\etc\crontab`,
+		`dir\file`,
 	}
 
 	for _, name := range validNames {
@@ -513,6 +515,7 @@ func (suite *utilTestSuite) TestIsValidObjectNameInvalid() {
 		"a/b/../../../escape",
 		"/etc/crontab",
 		"/absolute",
+		`../dir\file`,
 	}
 
 	for _, name := range invalidNames {
@@ -520,18 +523,15 @@ func (suite *utilTestSuite) TestIsValidObjectNameInvalid() {
 	}
 }
 
-// TestIsValidObjectNameBackslashTraversal verifies that a Linux filename
-// containing backslashes, once normalized to forward slashes, is rejected as a
-// path-traversal attempt.
+// TestIsValidObjectNameBackslashTraversal verifies that backslashes remain
+// literal Linux filename characters instead of becoming path separators.
 func (suite *utilTestSuite) TestIsValidObjectNameBackslashTraversal() {
-	// `..\..\etc\crontab` normalizes to `../../etc/crontab`
 	normalized := NormalizeObjectName(`..\..\etc\crontab`)
-	suite.assert.Equal("../../etc/crontab", normalized)
-	suite.assert.False(IsValidObjectName(normalized))
+	suite.assert.Equal(`..\..\etc\crontab`, normalized)
+	suite.assert.True(IsValidObjectName(normalized))
 
-	// A backslash name that stays local should remain valid after normalization.
 	local := NormalizeObjectName(`dir\file`)
-	suite.assert.Equal("dir/file", local)
+	suite.assert.Equal(`dir\file`, local)
 	suite.assert.True(IsValidObjectName(local))
 }
 

@@ -442,27 +442,16 @@ func isLocalDirEmpty(path string) bool {
 	return err == io.EOF
 }
 
-// getLocalCachePath joins the object name with the cache root and guarantees the
-// resulting path cannot escape the cache directory. The FUSE layer converts
-// backslashes in filenames to forward slashes (see common.NormalizeObjectName),
-// which can turn an ordinary Linux filename such as `..\..\etc\crontab` into a
-// `../../etc/crontab` traversal sequence. Since the file-cache runs as root, a
-// traversal would let it operate on host files outside its assigned cache root.
-// filepath.Join cleans the joined path, so any ".." is resolved here and we
-// simply confirm the result is the cache root itself or lives beneath it.
+// getLocalCachePath rejects names that could escape the cache before joining them.
 func (fc *FileCache) getLocalCachePath(name string) (string, error) {
-	localPath := filepath.Join(fc.tmpPath, name)
-	if localPath != fc.tmpPath &&
-		!strings.HasPrefix(localPath, fc.tmpPath+string(os.PathSeparator)) {
+	if !common.IsValidObjectName(name) {
 		log.Err("FileCache::getLocalCachePath : path traversal attempt blocked [name=%s]", name)
 		return "", syscall.EINVAL
 	}
-	return localPath, nil
+	return filepath.Join(fc.tmpPath, name), nil
 }
 
-// validateObjectName ensures the given object name stays within the cache root
-// once joined with it. It is used as a guard at the entry of file-cache
-// operations that receive names originating from the FUSE layer.
+// validateObjectName checks names at file-cache entry points.
 func (fc *FileCache) validateObjectName(name string) error {
 	_, err := fc.getLocalCachePath(name)
 	return err
@@ -689,10 +678,7 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 
 // DeleteEmptyDirs: delete empty directories in local cache, return error if directory is not empty
 func (fc *FileCache) deleteEmptyDirs(options internal.DeleteDirOptions) (bool, error) {
-	localPath := options.Name
-	if !strings.Contains(options.Name, fc.tmpPath) {
-		localPath = filepath.Join(fc.tmpPath, options.Name)
-	}
+	localPath := filepath.Join(fc.tmpPath, options.Name)
 
 	log.Trace("FileCache::DeleteEmptyDirs : %s", localPath)
 
@@ -709,7 +695,7 @@ func (fc *FileCache) deleteEmptyDirs(options internal.DeleteDirOptions) (bool, e
 	for _, entry := range entries {
 		if entry.IsDir() {
 			val, err := fc.deleteEmptyDirs(internal.DeleteDirOptions{
-				Name: filepath.Join(localPath, entry.Name()),
+				Name: filepath.Join(options.Name, entry.Name()),
 			})
 			if err != nil {
 				log.Err("FileCache::deleteEmptyDirs : Unable to delete directory %s [%s]", localPath, err.Error())
@@ -1745,6 +1731,9 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 }
 
 func (fc *FileCache) FileUsed(name string) error {
+	if err := fc.validateObjectName(name); err != nil {
+		return err
+	}
 	// Update the owner and group of the file in the local cache
 	localPath := filepath.Join(fc.tmpPath, name)
 	fc.policy.CacheValid(localPath)
