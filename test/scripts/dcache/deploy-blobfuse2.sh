@@ -202,3 +202,28 @@ if ! kubectl -n "$BLOBFUSE2_NAMESPACE" rollout status \
 fi
 
 echo "blobfuse2 pod deployed."
+
+# DEBUG: unconditional dump of the base pod's stdout so the DEBUG wrapper
+# output from docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl surfaces
+# in the pipeline log even when rollout "succeeds" (probes are disabled, so
+# k8s considers the pod Ready as soon as the containers start, regardless
+# of whether blobfuse2 actually mounted).
+echo ""
+echo "=========================================="
+echo "DEBUG: base pod logs (post-rollout)"
+echo "=========================================="
+# Give the wrapper a moment to print its config + launch banner.
+sleep 5
+for pod in $(kubectl -n "$BLOBFUSE2_NAMESPACE" get pods \
+             -l "app=$BLOBFUSE2_DEPLOYMENT" \
+             -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+    echo ""
+    echo "--- describe pod/$pod ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" describe pod "$pod" || true
+    echo ""
+    echo "--- logs pod/$pod -c blobfuse2 (current) ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" logs "$pod" -c blobfuse2 --tail=500 || true
+    echo ""
+    echo "--- logs pod/$pod -c logtail (current) ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" logs "$pod" -c logtail --tail=200 || true
+done
