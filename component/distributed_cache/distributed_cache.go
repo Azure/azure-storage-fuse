@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -170,6 +172,32 @@ func (dc *DistCache) GenConfig() string {
 	return sb.String()
 }
 
+func validateDNSServer(server string) error {
+	if server == "" {
+		return nil
+	}
+	if strings.TrimSpace(server) != server || strings.ContainsAny(server, "[]") {
+		return errors.New("expected IPv4 or IPv4:port")
+	}
+	if ip := net.ParseIP(server); ip != nil && ip.To4() != nil {
+		return nil
+	}
+
+	host, port, err := net.SplitHostPort(server)
+	if err != nil {
+		return errors.New("expected IPv4 or IPv4:port")
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil {
+		return errors.New("host must be an IPv4 address")
+	}
+	portNumber, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || portNumber == 0 {
+		return errors.New("port must be between 1 and 65535")
+	}
+	return nil
+}
+
 func (dc *DistCache) Configure(isParent bool) error {
 	log.Trace("DistCache::Configure")
 
@@ -178,6 +206,10 @@ func (dc *DistCache) Configure(isParent bool) error {
 	if err != nil {
 		log.Err("DistCache: config error [invalid config attributes]")
 		return fmt.Errorf("distributed_cache: config error: %w", err)
+	}
+
+	if err := validateDNSServer(conf.DNSServer); err != nil {
+		return fmt.Errorf("distributed_cache: invalid dns-server %q: %w", conf.DNSServer, err)
 	}
 
 	// At least one discovery method must be set (YAML, CLI flag, or env).

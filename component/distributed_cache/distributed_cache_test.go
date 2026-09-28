@@ -603,19 +603,40 @@ distributed_cache:
 	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
 }
 
-func TestConfigure_LoadsDNSServerFromYAML(t *testing.T) {
-	loadConfig(t, `
+func TestConfigure_ValidatesDNSServer(t *testing.T) {
+	tests := []struct {
+		name    string
+		server  string
+		wantErr bool
+	}{
+		{name: "IPv4", server: "10.0.0.10"},
+		{name: "IPv4 with port", server: "10.0.0.10:53"},
+		{name: "invalid address", server: "not-an-ip", wantErr: true},
+		{name: "invalid port", server: "10.0.0.10:65536", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			loadConfig(t, fmt.Sprintf(`
 azstorage:
   account-name: myacct
   container: mycontainer
 distributed_cache:
   server-list: "localhost:9065"
-  dns-server: "10.0.0.10:53"
-`)
+  dns-server: %q
+`, test.server))
 
-	dc := NewDistCacheComponent().(*DistCache)
-	require.NoError(t, dc.Configure(true))
-	assert.Equal(t, "10.0.0.10:53", dc.conf.DNSServer)
+			dc := NewDistCacheComponent().(*DistCache)
+			err := dc.Configure(true)
+			if test.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid dns-server")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.server, dc.conf.DNSServer)
+		})
+	}
 }
 
 func TestConfigure_DerivesCachePrefixFromEnvironment(t *testing.T) {
