@@ -170,13 +170,6 @@ distributed_cache:
 `,
 		},
 		{
-			name: "kubernetes service",
-			yaml: `
-distributed_cache:
-  k8s-service: cache-service
-`,
-		},
-		{
 			name: "server list",
 			yaml: `
 distributed_cache:

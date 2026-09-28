@@ -72,8 +72,6 @@ const (
 // identity-vs-tuning split used by azstorage.
 const (
 	EnvDistCacheDiscoveryEndpoint = "DISTRIBUTED_CACHE_DISCOVERY_ENDPOINT"
-	EnvDistCacheK8sService        = "DISTRIBUTED_CACHE_K8S_SERVICE"
-	EnvDistCacheK8sNamespace      = "DISTRIBUTED_CACHE_K8S_NAMESPACE"
 	EnvDistCacheServerList        = "DISTRIBUTED_CACHE_SERVER_LIST"
 	EnvDistCacheDNSServer         = "DISTRIBUTED_CACHE_DNS_SERVER"
 )
@@ -82,8 +80,6 @@ const (
 // Precedence via viper: CLI flag > env > YAML > default.
 func RegisterEnvVariables() {
 	config.BindEnv(compName+".discovery-endpoint", EnvDistCacheDiscoveryEndpoint)
-	config.BindEnv(compName+".k8s-service", EnvDistCacheK8sService)
-	config.BindEnv(compName+".k8s-namespace", EnvDistCacheK8sNamespace)
 	config.BindEnv(compName+".server-list", EnvDistCacheServerList)
 	config.BindEnv(compName+".dns-server", EnvDistCacheDNSServer)
 }
@@ -93,16 +89,12 @@ type DistCacheOptions struct {
 	// Discovery (preferred — auto-detects servers)
 	DiscoveryEndpoint string `config:"discovery-endpoint" yaml:"discovery-endpoint,omitempty"`
 
-	// Kubernetes DNS discovery
-	K8sService   string `config:"k8s-service"   yaml:"k8s-service,omitempty"`
-	K8sNamespace string `config:"k8s-namespace" yaml:"k8s-namespace,omitempty"`
-
 	// Static fallback
 	ServerList string `config:"server-list" yaml:"server-list,omitempty"`
 
 	// Optional custom DNS server (IP or host:port) used by the client when
-	// resolving k8s-service / discovery-endpoint hostnames. Empty means
-	// use the system resolver.
+	// resolving discovery-endpoint hostnames. Empty means use the system
+	// resolver.
 	DNSServer string `config:"dns-server" yaml:"dns-server,omitempty"`
 
 	// Common options
@@ -213,25 +205,22 @@ func (dc *DistCache) Configure(isParent bool) error {
 	}
 
 	// At least one discovery method must be set (YAML, CLI flag, or env).
-	if conf.DiscoveryEndpoint == "" && conf.K8sService == "" && conf.ServerList == "" {
-		return fmt.Errorf("distributed_cache: no server discovery configured (set discovery-endpoint, k8s-service, or server-list)")
+	if conf.DiscoveryEndpoint == "" && conf.ServerList == "" {
+		return fmt.Errorf("distributed_cache: no server discovery configured (set discovery-endpoint or server-list)")
 	}
 
 	// Warn if multiple discovery methods are configured. The dcache client
-	// applies them in precedence order: discovery-endpoint > k8s DNS > server-list;
+	// applies them in precedence order: discovery-endpoint > server-list;
 	// lower-precedence entries are effectively ignored.
 	var configured []string
 	if conf.DiscoveryEndpoint != "" {
 		configured = append(configured, "discovery-endpoint")
 	}
-	if conf.K8sService != "" {
-		configured = append(configured, "k8s-service")
-	}
 	if conf.ServerList != "" {
 		configured = append(configured, "server-list")
 	}
 	if len(configured) > 1 {
-		log.Warn("DistCache::Configure : multiple discovery methods configured (%s); precedence is discovery-endpoint > k8s DNS > server-list, lower-precedence entries will only be used as a fallback",
+		log.Warn("DistCache::Configure : multiple discovery methods configured (%s); precedence is discovery-endpoint > server-list, lower-precedence entries will only be used as a fallback",
 			strings.Join(configured, ", "))
 	}
 
@@ -284,8 +273,6 @@ func (dc *DistCache) Configure(isParent bool) error {
 
 	log.Info("DistCache::Configure : block-size=%d", dc.chunkSize)
 	log.Info("DistCache::Configure : discovery-endpoint=%s", dc.conf.DiscoveryEndpoint)
-	log.Info("DistCache::Configure : k8s-service=%s", dc.conf.K8sService)
-	log.Info("DistCache::Configure : k8s-namespace=%s", dc.conf.K8sNamespace)
 	log.Info("DistCache::Configure : server-list=%s", dc.conf.ServerList)
 	log.Info("DistCache::Configure : dns-server=%s", dc.conf.DNSServer)
 	log.Info("DistCache::Configure : port=%d", dc.conf.Port)
@@ -312,9 +299,6 @@ func (dc *DistCache) Start(ctx context.Context) error {
 
 	if dc.conf.DiscoveryEndpoint != "" {
 		opts = append(opts, dcache.WithDiscoveryURL(dc.conf.DiscoveryEndpoint))
-	}
-	if dc.conf.K8sService != "" && dc.conf.K8sNamespace != "" {
-		opts = append(opts, dcache.WithK8sDiscovery(dc.conf.K8sService, dc.conf.K8sNamespace))
 	}
 	if dc.conf.ServerList != "" {
 		servers := strings.Split(dc.conf.ServerList, ",")
