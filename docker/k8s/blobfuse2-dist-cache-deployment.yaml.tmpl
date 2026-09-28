@@ -134,7 +134,9 @@ spec:
           args:
             - |
               set +e
-              /sbin/rsyslogd || true
+              # NOTE: rsyslogd from the default Dockerfile entrypoint is skipped
+              # on purpose — it blocks ~60s waiting for a startup child that
+              # never responds in this container, delaying every debug print.
               echo "=== config.yaml ==="
               cat /usr/share/blobfuse2/config.yaml
               echo "=== launching blobfuse2 (stderr+stdout captured) ==="

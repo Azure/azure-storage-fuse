@@ -212,8 +212,9 @@ echo ""
 echo "=========================================="
 echo "DEBUG: base pod logs (post-rollout)"
 echo "=========================================="
-# Give the wrapper a moment to print its config + launch banner.
-sleep 5
+# Give the wrapper a moment to print its config + launch banner, plus
+# enough time for blobfuse2 to either succeed or fail with output.
+sleep 60
 for pod in $(kubectl -n "$BLOBFUSE2_NAMESPACE" get pods \
              -l "app=$BLOBFUSE2_DEPLOYMENT" \
              -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
