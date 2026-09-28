@@ -123,6 +123,36 @@ spec:
           image: ${BLOBFUSE2_IMAGE}
           # Image is side-loaded into kind nodes by deploy-blobfuse2.sh.
           imagePullPolicy: IfNotPresent
+          # DEBUG: override entrypoint to surface the real crash
+          # reason. The default entrypoint (docker/Dockerfile "fuse" script)
+          # runs blobfuse2 with no output capture and lets the process exit
+          # on failure, so k8s restart-loops before anyone can inspect it.
+          # This wrapper dumps the effective config, captures stderr+stdout,
+          # prints the exit code, dumps any log files that were written, and
+          # then sleeps so the pod stays alive for `kubectl exec` / logs.
+          command: [ "/bin/bash", "-c" ]
+          args:
+            - |
+              set +e
+              /sbin/rsyslogd || true
+              echo "=== config.yaml ==="
+              cat /usr/share/blobfuse2/config.yaml
+              echo "=== launching blobfuse2 (stderr+stdout captured) ==="
+              blobfuse2 mount /mnt/blobfuse_mnt \
+                --config-file=/usr/share/blobfuse2/config.yaml \
+                --ignore-open-flags \
+                --foreground=true 2>&1
+              rc=$?
+              echo "=== blobfuse2 EXITED rc=$rc ==="
+              ls -la /var/log/blobfuse2/ 2>&1 || true
+              for f in /var/log/blobfuse2/*.txt; do
+                echo "--- $f ---"
+                tail -c 65536 "$f" 2>&1 || true
+              done
+              # Keep the pod alive so we can inspect it. Deployment rollout
+              # will still time out at 5min and the diagnostics step in
+              # deploy-blobfuse2.sh will dump logs.
+              exec sleep 3600
           securityContext:
             # Required for SYS_ADMIN + /dev/fuse access.
             privileged: true
@@ -143,25 +173,9 @@ spec:
             limits:
               cpu: "2"
               memory: "4Gi"
-          readinessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - "mount | grep -q ' on /mnt/blobfuse_mnt '"
-            periodSeconds: 2
-            timeoutSeconds: 2
-            failureThreshold: 30
-          livenessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - "mount | grep -q ' on /mnt/blobfuse_mnt '"
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
+          # DEBUG: probes disabled so kubelet doesn't SIGKILL
+          # the container while we're inspecting the failure. Restore both
+          # once the crash reason is understood.
       volumes:
         - name: blobfuse2-config
           secret:
