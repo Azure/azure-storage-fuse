@@ -689,11 +689,12 @@ func testReadLinkTargetExceedsBuffer(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	getAttrOpt := internal.GetAttrOptions{Name: name}
-	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: 16}, nil)
+	const bufSize = 16
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: bufSize}, nil)
 
-	buf := C.CString("")
+	buf := (*C.char)(C.malloc(bufSize))
 	defer C.free(unsafe.Pointer(buf))
-	err := libfuse_readlink(path, buf, 16)
+	err := libfuse_readlink(path, buf, bufSize)
 	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
 }
 
