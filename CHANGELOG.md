@@ -3,7 +3,7 @@
 
 **Bug Fixes**
 - Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with `InvalidUri` or `InvalidQueryParameterValue`, such as for an unsupported blob or path name. ([PR #2342](https://github.com/Azure/azure-storage-fuse/pull/2342))
-- Fix an out-of-bounds write in `readlink` when a symlink blob's content is longer than the buffer supplied by libfuse. Symlink targets longer than 4095 bytes now fail with `ENAMETOOLONG`, and no more than 4095 bytes of a symlink blob are downloaded. ([PR #2367](https://github.com/Azure/azure-storage-fuse/pull/2367))
+- Fix an out-of-bounds write in `readlink` when a symlink blob's content is longer than the buffer supplied by libfuse. Symlink targets longer than 4095 bytes now fail with `ENAMETOOLONG`, and no more than 4095 bytes of a symlink blob are downloaded. Custom components that call `ReadLink` must set `ReadLinkOptions.Size` to the target length from `GetAttr`, because a size of 0 now means an empty target instead of reading the whole blob. ([PR #2367](https://github.com/Azure/azure-storage-fuse/pull/2367))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))

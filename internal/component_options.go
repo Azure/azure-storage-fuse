@@ -172,7 +172,8 @@ type CreateLinkOptions struct {
 
 type ReadLinkOptions struct {
 	Name string
-	// Size is the length of the link target as reported by GetAttr. 0 means the target is empty.
+	// Size is the length of the link target as reported by GetAttr and must be set by the caller.
+	// 0 means the target is empty; it is not looked up again or treated as "read the whole target".
 	Size int64
 }
 
