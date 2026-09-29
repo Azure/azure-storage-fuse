@@ -482,8 +482,7 @@ func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length
 		return 0, nil
 	}
 
-	length = int(dataLen)
-	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag)
+	length, err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag)
 	if err != nil {
 		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", path, err.Error())
 		length = 0
