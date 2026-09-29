@@ -134,16 +134,29 @@ spec:
           args:
             - |
               set +e
+              set -x
               # NOTE: rsyslogd from the default Dockerfile entrypoint is skipped
               # on purpose — it blocks ~60s waiting for a startup child that
               # never responds in this container, delaying every debug print.
               echo "=== config.yaml ==="
               cat /usr/share/blobfuse2/config.yaml
-              echo "=== launching blobfuse2 (stderr+stdout captured) ==="
-              blobfuse2 mount /mnt/blobfuse_mnt \
-                --config-file=/usr/share/blobfuse2/config.yaml \
-                --ignore-open-flags \
-                --foreground=true 2>&1
+              echo "=== env / fuse device / caps ==="
+              id
+              ls -la /dev/fuse 2>&1 || true
+              cat /proc/self/status | grep -E 'CapEff|Uid' || true
+              echo "=== ldd blobfuse2 ==="
+              ldd $(which blobfuse2) 2>&1 || true
+              echo "=== launching blobfuse2 under strace (stderr+stdout captured) ==="
+              # --disable-version-check to eliminate the raw.githubusercontent.com
+              # HTTP path as a suspect during startup. strace pins the exact
+              # syscall that produces the silent rc=1 exit.
+              strace -f -o /tmp/blobfuse2.strace \
+                -e trace=exit_group,openat,connect,execve,write \
+                blobfuse2 mount /mnt/blobfuse_mnt \
+                  --config-file=/usr/share/blobfuse2/config.yaml \
+                  --ignore-open-flags \
+                  --disable-version-check \
+                  --foreground=true 2>&1
               rc=$?
               echo "=== blobfuse2 EXITED rc=$rc ==="
               ls -la /var/log/blobfuse2/ 2>&1 || true
@@ -151,6 +164,8 @@ spec:
                 echo "--- $f ---"
                 tail -c 65536 "$f" 2>&1 || true
               done
+              echo "=== strace tail (last 200 lines) ==="
+              tail -n 200 /tmp/blobfuse2.strace 2>&1 || true
               # Keep the pod alive so we can inspect it. Deployment rollout
               # will still time out at 5min and the diagnostics step in
               # deploy-blobfuse2.sh will dump logs.
