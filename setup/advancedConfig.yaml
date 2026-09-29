@@ -119,6 +119,7 @@ attr_cache:
 # Distributed cache advanced configuration
 # See setup/baseConfig.yaml for the base distributed_cache options (e.g. discovery-endpoint).
 distributed_cache:
+  dns-server: <DNS server for resolving distributed-cache endpoints. Set this to the Kubernetes cluster DNS service IP, typically the kube-dns/CoreDNS ClusterIP. Accepts an IP or host:port. Default - system resolver>
   port: <cache server port used for discovery responses that omit a port. Default - 9065. The discovery-endpoint and each server-list entry must include their own port>
   server-list: <comma-separated list of cache server addresses, e.g., "host1:9065,host2:9065,host3:9065">
   ttl-seconds: <TTL for cached data in seconds. Default - 0 (no expiry)>

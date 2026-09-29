@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -71,6 +73,7 @@ const (
 const (
 	EnvDistCacheDiscoveryEndpoint = "DISTRIBUTED_CACHE_DISCOVERY_ENDPOINT"
 	EnvDistCacheServerList        = "DISTRIBUTED_CACHE_SERVER_LIST"
+	EnvDistCacheDNSServer         = "DISTRIBUTED_CACHE_DNS_SERVER"
 )
 
 // RegisterEnvVariables binds distributed_cache discovery keys to env vars.
@@ -78,6 +81,7 @@ const (
 func RegisterEnvVariables() {
 	config.BindEnv(compName+".discovery-endpoint", EnvDistCacheDiscoveryEndpoint)
 	config.BindEnv(compName+".server-list", EnvDistCacheServerList)
+	config.BindEnv(compName+".dns-server", EnvDistCacheDNSServer)
 }
 
 // DistCacheOptions holds configuration for the distributed cache component.
@@ -87,6 +91,11 @@ type DistCacheOptions struct {
 
 	// Static fallback
 	ServerList string `config:"server-list" yaml:"server-list,omitempty"`
+
+	// Optional custom DNS server (IP or host:port) used by the client when
+	// resolving discovery-endpoint hostnames. Empty means use the system
+	// resolver.
+	DNSServer string `config:"dns-server" yaml:"dns-server,omitempty"`
 
 	// Common options
 	Port       int    `config:"port"        yaml:"port,omitempty"`        // Default 9065
@@ -146,7 +155,39 @@ func (dc *DistCache) GenConfig() string {
 		fmt.Fprintf(&sb, "\n  discovery-endpoint: %s", endpoint)
 	}
 
+	dnsServer := ""
+	_ = config.UnmarshalKey(compName+".dns-server", &dnsServer)
+	if dnsServer != "" {
+		fmt.Fprintf(&sb, "\n  dns-server: %s", dnsServer)
+	}
+
 	return sb.String()
+}
+
+func validateDNSServer(server string) error {
+	if server == "" {
+		return nil
+	}
+	if strings.TrimSpace(server) != server || strings.ContainsAny(server, "[]") {
+		return errors.New("expected IPv4 or IPv4:port")
+	}
+	if ip := net.ParseIP(server); ip != nil && ip.To4() != nil {
+		return nil
+	}
+
+	host, port, err := net.SplitHostPort(server)
+	if err != nil {
+		return errors.New("expected IPv4 or IPv4:port")
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil {
+		return errors.New("host must be an IPv4 address")
+	}
+	portNumber, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || portNumber == 0 {
+		return errors.New("port must be between 1 and 65535")
+	}
+	return nil
 }
 
 func (dc *DistCache) Configure(isParent bool) error {
@@ -157,6 +198,10 @@ func (dc *DistCache) Configure(isParent bool) error {
 	if err != nil {
 		log.Err("DistCache: config error [invalid config attributes]")
 		return fmt.Errorf("distributed_cache: config error: %w", err)
+	}
+
+	if err := validateDNSServer(conf.DNSServer); err != nil {
+		return fmt.Errorf("distributed_cache: invalid dns-server %q: %w", conf.DNSServer, err)
 	}
 
 	// At least one discovery method must be set (YAML, CLI flag, or env).
@@ -229,6 +274,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 	log.Info("DistCache::Configure : block-size=%d", dc.chunkSize)
 	log.Info("DistCache::Configure : discovery-endpoint=%s", dc.conf.DiscoveryEndpoint)
 	log.Info("DistCache::Configure : server-list=%s", dc.conf.ServerList)
+	log.Info("DistCache::Configure : dns-server=%s", dc.conf.DNSServer)
 	log.Info("DistCache::Configure : port=%d", dc.conf.Port)
 	log.Info("DistCache::Configure : ttl-seconds=%d", dc.conf.TTLSeconds)
 	log.Info("DistCache::Configure : verify-checksum=%t", dc.conf.VerifyChecksum)
@@ -263,6 +309,9 @@ func (dc *DistCache) Start(ctx context.Context) error {
 	}
 	if dc.conf.Port > 0 {
 		opts = append(opts, dcache.WithPort(dc.conf.Port))
+	}
+	if dc.conf.DNSServer != "" {
+		opts = append(opts, dcache.WithDNSServer(dc.conf.DNSServer))
 	}
 	opts = append(opts, dcache.WithCachePrefix(dc.cachePrefix))
 
@@ -632,6 +681,10 @@ func init() {
 	discoveryFlag := config.AddStringFlag("distributed-cache-discovery-endpoint", "",
 		"distributed cache discovery endpoint (recommended)")
 	config.BindPFlag(compName+".discovery-endpoint", discoveryFlag)
+
+	dnsServerFlag := config.AddStringFlag("distributed-cache-dns-server", "",
+		"custom DNS server (IP or host:port) for resolving distributed cache endpoints; empty uses the system resolver")
+	config.BindPFlag(compName+".dns-server", dnsServerFlag)
 
 	ttlFlag := config.AddUint32Flag("distributed-cache-node-ttl", 0,
 		"distributed cache entry TTL in seconds (0 = no TTL)")

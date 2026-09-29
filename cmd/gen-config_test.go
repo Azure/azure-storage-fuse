@@ -225,6 +225,20 @@ func (suite *genConfig) TestDistributedCacheConfigGen() {
 	suite.assert.Contains(out, "discovery-endpoint: example.com:9065")
 }
 
+func (suite *genConfig) TestDistributedCacheGenConfigIncludesDNSServer() {
+	defer suite.cleanupTest()
+
+	_, err := executeCommandC(rootCmd, "gen-config",
+		"--distributed-cache-discovery-endpoint=example.com:9065",
+		"--distributed-cache-dns-server=10.0.0.10:53",
+		"--ro")
+	suite.assert.NoError(err)
+
+	file, err := os.ReadFile(suite.getDefaultLogLocation())
+	suite.assert.NoError(err)
+	suite.assert.Contains(string(file), "dns-server: 10.0.0.10:53")
+}
+
 // --distributed-cache-discovery-endpoint must be paired with --ro; otherwise
 // gen-config errors out because distributed cache is supported only for
 // read-only mounts.
