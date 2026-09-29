@@ -3,6 +3,7 @@
 
 **Bug Fixes**
 - Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with `InvalidUri` or `InvalidQueryParameterValue`, such as for an unsupported blob or path name. ([PR #2342](https://github.com/Azure/azure-storage-fuse/pull/2342))
+- Return only the bytes actually downloaded when a blob is shorter than its recorded size, such as after it was truncated or overwritten while open. Previously, reads with only `libfuse` and `azstorage` in the pipeline could return stale buffer contents past the end of the blob. Truncate operations now fail instead of zero-filling data that could not be read. ([PR #2368](https://github.com/Azure/azure-storage-fuse/pull/2368))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
