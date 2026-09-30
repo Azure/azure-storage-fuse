@@ -146,16 +146,27 @@ spec:
               cat /proc/self/status | grep -E 'CapEff|Uid' || true
               echo "=== ldd blobfuse2 ==="
               ldd $(which blobfuse2) 2>&1 || true
+              echo "=== libssl in image ==="
+              find / -name 'libcrypto*' -o -name 'libssl*' 2>/dev/null | head -20
               echo "=== launching blobfuse2 under strace (stderr+stdout captured) ==="
-              # --disable-version-check to eliminate the raw.githubusercontent.com
-              # HTTP path as a suspect during startup. strace pins the exact
-              # syscall that produces the silent rc=1 exit.
+              # GODEBUG=inittrace=1 prints each Go package init as it starts
+              # (to stderr), so a silent os.Exit(1) in an init or in cobra RunE
+              # will show up as "the last init line before exit_group".
+              # GOTRACEBACK=all dumps full goroutine stacks on any panic.
+              # --log-file-path=/dev/stderr forces the base logger to write
+              # to stderr, bypassing the file logger which was never created.
+              # strace -e trace=all captures every syscall so any write to
+              # fd 2 (cobra "Error:") is preserved.
+              export GODEBUG=inittrace=1
+              export GOTRACEBACK=all
               strace -f -o /tmp/blobfuse2.strace \
-                -e trace=exit_group,openat,connect,execve,write \
+                -e trace=all \
                 blobfuse2 mount /mnt/blobfuse_mnt \
                   --config-file=/usr/share/blobfuse2/config.yaml \
                   --ignore-open-flags \
                   --disable-version-check \
+                  --log-file-path=/dev/stderr \
+                  --log-level=LOG_DEBUG \
                   --foreground=true 2>&1
               rc=$?
               echo "=== blobfuse2 EXITED rc=$rc ==="
@@ -164,8 +175,8 @@ spec:
                 echo "--- $f ---"
                 tail -c 65536 "$f" 2>&1 || true
               done
-              echo "=== strace tail (last 200 lines) ==="
-              tail -n 200 /tmp/blobfuse2.strace 2>&1 || true
+              echo "=== strace tail (last 500 lines) ==="
+              tail -n 500 /tmp/blobfuse2.strace 2>&1 || true
               # Keep the pod alive so we can inspect it. Deployment rollout
               # will still time out at 5min and the diagnostics step in
               # deploy-blobfuse2.sh will dump logs.
