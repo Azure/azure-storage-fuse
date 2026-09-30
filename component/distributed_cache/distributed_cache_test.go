@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,7 +18,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	dcache "github.com/nearora-msft/dist-cache-client-go"
@@ -30,6 +34,7 @@ type mockDCacheClient struct {
 	chunkFn           func(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 	uploadChunkFn     func(ctx context.Context, filename string, offset int64, data []byte) error
 	uploadChunkCalled int
+	servers           []string
 
 	// uploadEtags captures the etag passed to each UploadChunk call in
 	// invocation order. Populated regardless of whether uploadChunkFn is set.
@@ -69,6 +74,10 @@ func (m *mockDCacheClient) UploadChunk(ctx context.Context, filename, etag strin
 	return nil
 }
 
+func (m *mockDCacheClient) Servers() []string {
+	return m.servers
+}
+
 // uploadedEtags returns a snapshot of etags recorded so far.
 func (m *mockDCacheClient) uploadedEtags() []string {
 	m.uploadMu.Lock()
@@ -80,6 +89,61 @@ func (m *mockDCacheClient) uploadedEtags() []string {
 
 func (m *mockDCacheClient) Close() error {
 	return nil
+}
+
+func TestCompleteStart_ServerDiscoveryLogging(t *testing.T) {
+	const (
+		fallbackWarning = "no distributed-cache servers were discovered; mount will continue using block cache and Azure Storage fallback"
+		successMessage  = "connected to distributed cache cluster"
+	)
+
+	t.Cleanup(func() {
+		_ = log.SetDefaultLogger("silent", common.LogConfig{})
+	})
+
+	tests := []struct {
+		name          string
+		servers       []string
+		expectedLog   string
+		unexpectedLog string
+	}{
+		{
+			name:          "empty server list continues with fallback warning",
+			expectedLog:   fallbackWarning,
+			unexpectedLog: successMessage,
+		},
+		{
+			name:          "discovered servers follow normal startup path",
+			servers:       []string{"127.0.0.1:9065"},
+			expectedLog:   successMessage,
+			unexpectedLog: fallbackWarning,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := newMockDCacheClient()
+			client.servers = test.servers
+
+			logPath := filepath.Join(t.TempDir(), "blobfuse2.log")
+			require.NoError(t, log.SetDefaultLogger("base", common.LogConfig{
+				FilePath: logPath,
+				Level:    common.ELogLevel.LOG_INFO(),
+			}))
+
+			dc := &DistCache{chunkSize: 1024}
+			dc.SetName(compName)
+
+			require.NoError(t, dc.completeStart(client, nil))
+			assert.Same(t, client, dc.client)
+			require.NoError(t, log.Destroy())
+
+			logContents, err := os.ReadFile(logPath)
+			require.NoError(t, err)
+			assert.Equal(t, 1, strings.Count(string(logContents), test.expectedLog))
+			assert.NotContains(t, string(logContents), test.unexpectedLog)
+		})
+	}
 }
 
 // mockNextComponent records calls to NextComponent methods.
@@ -1064,6 +1128,10 @@ func (c *blockingUploadClient) UploadChunk(_ context.Context, _, _ string, _ int
 	if c.onUpload != nil {
 		c.onUpload()
 	}
+	return nil
+}
+
+func (c *blockingUploadClient) Servers() []string {
 	return nil
 }
 
