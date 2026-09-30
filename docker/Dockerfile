@@ -11,13 +11,11 @@ COPY ./config.yaml /usr/share/blobfuse2/
 # Install fuse library
 RUN \
 	apt update && \
-	apt-get install -y ca-certificates vim rsyslog && \
+	apt-get install -y ca-certificates vim && \
 	apt-get install -y fuse3
 
 RUN echo "user_allow_other" >> /etc/fuse.conf
 
-# Create syslog filter files
-COPY ./11-blobfuse2.conf /etc/rsyslog.d
 COPY ./blobfuse2-logrotate /etc/logrotate.d/blobfuse2
 
 
@@ -31,8 +29,7 @@ RUN \
 
 # Create the mount script and set it to entry point once container start
 RUN \
-	echo "/sbin/rsyslogd" > /usr/share/blobfuse2/blobfuse2-mount.sh && \
-	echo "blobfuse2 mount /mnt/blobfuse_mnt --config-file=/usr/share/blobfuse2/config.yaml  --ignore-open-flags --foreground=true" >> /usr/share/blobfuse2/blobfuse2-mount.sh && \
+	echo "blobfuse2 mount /mnt/blobfuse_mnt --config-file=/usr/share/blobfuse2/config.yaml  --ignore-open-flags --foreground=true" > /usr/share/blobfuse2/blobfuse2-mount.sh && \
 	echo "blobfuse2 unmount all" > /usr/share/blobfuse2/blobfuse2-umount.sh && \
 	chmod 777 /usr/share/blobfuse2/blobfuse2-mount.sh && \
 	chmod 777 /usr/share/blobfuse2/blobfuse2-umount.sh && \

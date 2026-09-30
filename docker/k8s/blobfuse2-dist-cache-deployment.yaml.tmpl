@@ -23,7 +23,9 @@ stringData:
 
     logging:
       level: log_debug
-      file-path: "/var/log/blobfuse2/blobfuse2-block-logs.txt"
+      # /dev/stdout so `kubectl logs blobfuse2` surfaces every message,
+      # including startup failures that occur before any file could be opened.
+      file-path: "/dev/stdout"
       type: base
 
     components:
@@ -82,49 +84,10 @@ spec:
       annotations:
         # AppArmor must be relaxed for FUSE mounts inside a pod.
         container.apparmor.security.beta.kubernetes.io/blobfuse2: unconfined
-        # `kubectl exec pod -- ...` (without -c) targets this container.
-        # dcache_e2e tests rely on this to inspect /proc/mounts and read
-        # files under /mnt/blobfuse_mnt; without the annotation exec would
-        # default to the first container (logtail) whose mount namespace
-        # does not contain the FUSE mount.
-        kubectl.kubernetes.io/default-container: blobfuse2
     spec:
       nodeSelector:
         kubernetes.io/os: linux
       containers:
-        # Sidecar that tails the blobfuse2 log so `kubectl logs --all-containers`
-        # surfaces mount failures that would otherwise stay in the emptyDir volume.
-        - name: logtail
-          image: ${BLOBFUSE2_IMAGE}
-          imagePullPolicy: IfNotPresent
-          command:
-            - /bin/sh
-            - -c
-            - |
-              set +e
-              LOG=/var/log/blobfuse2/blobfuse2-block-logs.txt
-              # Wait for the file to appear (blobfuse2 creates it after startup).
-              for i in $(seq 1 120); do
-                [ -f "$LOG" ] && break
-                sleep 1
-              done
-              if [ ! -f "$LOG" ]; then
-                echo "[logtail] $LOG never appeared after 120s"
-                # Keep container alive so k8s doesn't restart-loop it.
-                exec sleep infinity
-              fi
-              exec tail -n +1 -F "$LOG"
-          volumeMounts:
-            - name: blobfuse2-logs
-              mountPath: /var/log/blobfuse2
-              readOnly: true
-          resources:
-            requests:
-              cpu: "10m"
-              memory: "32Mi"
-            limits:
-              cpu: "100m"
-              memory: "128Mi"
         - name: blobfuse2
           image: ${BLOBFUSE2_IMAGE}
           # Image is side-loaded into kind nodes by deploy-blobfuse2.sh.
@@ -133,14 +96,13 @@ spec:
           # test/dcache_e2e/cli_flags_test.go, which clones this Deployment
           # and rewrites args to pass --dist-cache-* flags directly.
           command:
-            - bash
-            - -c
+            - blobfuse2
           args:
-            - |
-              /sbin/rsyslogd
-              exec blobfuse2 mount /mnt/blobfuse_mnt \
-                --config-file=/usr/share/blobfuse2/config.yaml \
-                --ignore-open-flags --foreground=true
+            - mount
+            - /mnt/blobfuse_mnt
+            - --config-file=/usr/share/blobfuse2/config.yaml
+            - --ignore-open-flags
+            - --foreground=true
           securityContext:
             # Required for SYS_ADMIN + /dev/fuse access.
             privileged: true
@@ -152,8 +114,6 @@ spec:
               mountPath: /usr/share/blobfuse2/config.yaml
               subPath: config.yaml
               readOnly: true
-            - name: blobfuse2-logs
-              mountPath: /var/log/blobfuse2
           resources:
             requests:
               cpu: "500m"
@@ -184,5 +144,3 @@ spec:
         - name: blobfuse2-config
           secret:
             secretName: blobfuse2-config
-        - name: blobfuse2-logs
-          emptyDir: {}
