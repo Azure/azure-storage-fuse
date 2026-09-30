@@ -12,8 +12,7 @@ COPY ./config.yaml /usr/share/blobfuse2/
 RUN \
 	apt update && \
 	apt-get install -y ca-certificates vim rsyslog && \
-	apt-get install -y fuse3 && \
-	apt-get install -y strace
+	apt-get install -y fuse3
 
 RUN echo "user_allow_other" >> /etc/fuse.conf
 

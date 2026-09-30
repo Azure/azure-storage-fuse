@@ -82,6 +82,12 @@ spec:
       annotations:
         # AppArmor must be relaxed for FUSE mounts inside a pod.
         container.apparmor.security.beta.kubernetes.io/blobfuse2: unconfined
+        # `kubectl exec pod -- ...` (without -c) targets this container.
+        # dcache_e2e tests rely on this to inspect /proc/mounts and read
+        # files under /mnt/blobfuse_mnt; without the annotation exec would
+        # default to the first container (logtail) whose mount namespace
+        # does not contain the FUSE mount.
+        kubectl.kubernetes.io/default-container: blobfuse2
     spec:
       nodeSelector:
         kubernetes.io/os: linux
@@ -123,72 +129,18 @@ spec:
           image: ${BLOBFUSE2_IMAGE}
           # Image is side-loaded into kind nodes by deploy-blobfuse2.sh.
           imagePullPolicy: IfNotPresent
-          # DEBUG: override entrypoint to surface the real crash
-          # reason. The default entrypoint (docker/Dockerfile "fuse" script)
-          # runs blobfuse2 with no output capture and lets the process exit
-          # on failure, so k8s restart-loops before anyone can inspect it.
-          # This wrapper dumps the effective config, captures stderr+stdout,
-          # prints the exit code, dumps any log files that were written, and
-          # then sleeps so the pod stays alive for `kubectl exec` / logs.
-          command: [ "/bin/bash", "-c" ]
+          # Reference deployment is YAML-driven. CLI-flag coverage lives in
+          # test/dcache_e2e/cli_flags_test.go, which clones this Deployment
+          # and rewrites args to pass --dist-cache-* flags directly.
+          command:
+            - bash
+            - -c
           args:
             - |
-              set +e
-              set -x
-              # NOTE: rsyslogd from the default Dockerfile entrypoint is skipped
-              # on purpose — it blocks ~60s waiting for a startup child that
-              # never responds in this container, delaying every debug print.
-              echo "=== config.yaml ==="
-              cat /usr/share/blobfuse2/config.yaml
-              echo "=== env / fuse device / caps ==="
-              id
-              ls -la /dev/fuse 2>&1 || true
-              cat /proc/self/status | grep -E 'CapEff|Uid' || true
-              echo "=== ldd blobfuse2 ==="
-              ldd $(which blobfuse2) 2>&1 || true
-              echo "=== libssl in image ==="
-              find / -name 'libcrypto*' -o -name 'libssl*' 2>/dev/null | head -20
-              echo "=== pre-flight DNS + connectivity ==="
-              # Fast-fail signal: if the storage endpoint won't resolve or connect,
-              # BlockBlob::TestPipeline will silently retry for ~5 min and then
-              # fail. Catching it up front makes the real cause obvious.
-              cat /etc/resolv.conf 2>&1 || true
-              getent hosts blobfusetestblob.blob.core.windows.net 2>&1 || echo "getent: no lookup"
-              timeout 5 bash -c '</dev/tcp/blobfusetestblob.blob.core.windows.net/443' \
-                && echo "tcp:443 OK" || echo "tcp:443 FAIL"
-              echo "=== launching blobfuse2 under strace (stderr+stdout captured) ==="
-              # GODEBUG=inittrace=1 prints each Go package init as it starts
-              # (to stderr), so a silent os.Exit(1) in an init or in cobra RunE
-              # will show up as "the last init line before exit_group".
-              # GOTRACEBACK=all dumps full goroutine stacks on any panic.
-              # --log-file-path=/dev/stderr forces the base logger to write
-              # to stderr, bypassing the file logger which was never created.
-              # strace -e trace=all captures every syscall so any write to
-              # fd 2 (cobra "Error:") is preserved.
-              export GODEBUG=inittrace=1
-              export GOTRACEBACK=all
-              strace -f -o /tmp/blobfuse2.strace \
-                -e trace=all \
-                blobfuse2 mount /mnt/blobfuse_mnt \
-                  --config-file=/usr/share/blobfuse2/config.yaml \
-                  --ignore-open-flags \
-                  --disable-version-check \
-                  --log-file-path=/dev/stderr \
-                  --log-level=LOG_DEBUG \
-                  --foreground=true 2>&1
-              rc=$?
-              echo "=== blobfuse2 EXITED rc=$rc ==="
-              ls -la /var/log/blobfuse2/ 2>&1 || true
-              for f in /var/log/blobfuse2/*.txt; do
-                echo "--- $f ---"
-                tail -c 65536 "$f" 2>&1 || true
-              done
-              echo "=== strace tail (last 500 lines) ==="
-              tail -n 500 /tmp/blobfuse2.strace 2>&1 || true
-              # Keep the pod alive so we can inspect it. Deployment rollout
-              # will still time out at 5min and the diagnostics step in
-              # deploy-blobfuse2.sh will dump logs.
-              exec sleep 3600
+              /sbin/rsyslogd
+              exec blobfuse2 mount /mnt/blobfuse_mnt \
+                --config-file=/usr/share/blobfuse2/config.yaml \
+                --ignore-open-flags --foreground=true
           securityContext:
             # Required for SYS_ADMIN + /dev/fuse access.
             privileged: true
@@ -209,9 +161,25 @@ spec:
             limits:
               cpu: "2"
               memory: "4Gi"
-          # DEBUG: probes disabled so kubelet doesn't SIGKILL
-          # the container while we're inspecting the failure. Restore both
-          # once the crash reason is understood.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "mount | grep -q ' on /mnt/blobfuse_mnt '"
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "mount | grep -q ' on /mnt/blobfuse_mnt '"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: blobfuse2-config
           secret:
