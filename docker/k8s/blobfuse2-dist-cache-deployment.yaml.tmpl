@@ -148,6 +148,14 @@ spec:
               ldd $(which blobfuse2) 2>&1 || true
               echo "=== libssl in image ==="
               find / -name 'libcrypto*' -o -name 'libssl*' 2>/dev/null | head -20
+              echo "=== pre-flight DNS + connectivity ==="
+              # Fast-fail signal: if the storage endpoint won't resolve or connect,
+              # BlockBlob::TestPipeline will silently retry for ~5 min and then
+              # fail. Catching it up front makes the real cause obvious.
+              cat /etc/resolv.conf 2>&1 || true
+              getent hosts blobfusetestblob.blob.core.windows.net 2>&1 || echo "getent: no lookup"
+              timeout 5 bash -c '</dev/tcp/blobfusetestblob.blob.core.windows.net/443' \
+                && echo "tcp:443 OK" || echo "tcp:443 FAIL"
               echo "=== launching blobfuse2 under strace (stderr+stdout captured) ==="
               # GODEBUG=inittrace=1 prints each Go package init as it starts
               # (to stderr), so a silent os.Exit(1) in an init or in cobra RunE
