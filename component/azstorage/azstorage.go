@@ -538,7 +538,19 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 
 func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) {
 	log.Trace("AzStorage::ReadLink : Read symlink %s", options.Name)
-	data, err := az.storage.ReadBuffer(options.Name, 0, options.Size)
+
+	// Size comes from the caller's GetAttr, so 0 means the symlink blob has no content. Linux refuses to
+	// create such a link (symlink(2) fails with ENOENT for an empty target), but a symlink blob can still be
+	// truncated to 0 bytes or uploaded empty with is_symlink=true. POSIX allows empty symlinks: resolving one
+	// either fails with ENOENT or uses the directory containing the link, and Linux does the latter for an
+	// empty readlink reply. So report an empty target rather than an error. This also keeps it away from
+	// ReadBuffer, which treats a length of 0 as "download the whole blob".
+	if options.Size <= 0 {
+		return "", nil
+	}
+
+	// The blob content is not trusted to be small, never download more than a valid target can hold.
+	data, err := az.storage.ReadBuffer(options.Name, 0, min(options.Size, common.MaxSymlinkTargetLen))
 
 	if err != nil {
 		azStatsCollector.PushEvents(readLink, options.Name, nil)

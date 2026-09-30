@@ -305,12 +305,44 @@ func (suite *libfuseTestSuite) TestReadLink() {
 	testReadLink(suite)
 }
 
+func (suite *libfuseTestSuite) TestReadLinkEmpty() {
+	testReadLinkEmpty(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkMaxTarget() {
+	testReadLinkMaxTarget(suite)
+}
+
 func (suite *libfuseTestSuite) TestReadLinkNotExists() {
 	testReadLinkNotExists(suite)
 }
 
+func (suite *libfuseTestSuite) TestReadLinkGetAttrError() {
+	testReadLinkGetAttrError(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkNilAttr() {
+	testReadLinkNilAttr(suite)
+}
+
 func (suite *libfuseTestSuite) TestReadLinkError() {
 	testReadLinkError(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkTargetTooLong() {
+	testReadLinkTargetTooLong(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkTargetExceedsBuffer() {
+	testReadLinkTargetExceedsBuffer(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkTargetLongerThanAttr() {
+	testReadLinkTargetLongerThanAttr(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkZeroSize() {
+	testReadLinkZeroSize(suite)
 }
 
 func (suite *libfuseTestSuite) TestFsync() {
