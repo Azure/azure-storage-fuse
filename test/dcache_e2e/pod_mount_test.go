@@ -44,7 +44,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -479,16 +478,27 @@ func (m *podMounter) WaitDeploymentReady(t *testing.T) {
 		out, err := exec.Command(testCfg.kubectlBin,
 			"-n", m.namespace,
 			"get", "deployment", m.deployment,
-			"-o", `jsonpath={.spec.replicas} {.status.readyReplicas} {.status.replicas}`,
+			"-o", "json",
 		).CombinedOutput()
 		if err != nil {
 			t.Fatalf("pod: wait ready: kubectl get deployment: %v (out: %s)",
 				err, strings.TrimSpace(string(out)))
 		}
-		fields := strings.Fields(strings.TrimSpace(string(out)))
-		spec := fieldOrZero(fields, 0)
-		ready := fieldOrZero(fields, 1)
-		total := fieldOrZero(fields, 2)
+		var deployment struct {
+			Spec struct {
+				Replicas int `json:"replicas"`
+			} `json:"spec"`
+			Status struct {
+				ReadyReplicas int `json:"readyReplicas"`
+				Replicas      int `json:"replicas"`
+			} `json:"status"`
+		}
+		if err := json.Unmarshal(out, &deployment); err != nil {
+			t.Fatalf("pod: wait ready: decode deployment status: %v", err)
+		}
+		spec := deployment.Spec.Replicas
+		ready := deployment.Status.ReadyReplicas
+		total := deployment.Status.Replicas
 
 		livePods, listErr := m.listLivePodsE()
 		live := len(livePods)
@@ -503,17 +513,4 @@ func (m *podMounter) WaitDeploymentReady(t *testing.T) {
 		}
 		time.Sleep(2 * time.Second)
 	}
-}
-
-// fieldOrZero returns fields[i] as int, or 0 when the field is missing/empty.
-// A missing readyReplicas serialises as an absent jsonpath field.
-func fieldOrZero(fields []string, i int) int {
-	if i >= len(fields) {
-		return 0
-	}
-	n, err := strconv.Atoi(fields[i])
-	if err != nil {
-		return 0
-	}
-	return n
 }

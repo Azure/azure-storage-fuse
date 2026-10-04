@@ -105,11 +105,21 @@ func restoreKindNode(t *testing.T, node string) {
 	t.Helper()
 	out, err := exec.Command(testCfg.dockerBin, "start", node).CombinedOutput()
 	if err != nil {
-		t.Logf("cleanup: start kind node %s: %v (out: %s)", node, err, strings.TrimSpace(string(out)))
+		t.Errorf("cleanup: start kind node %s: %v (out: %s)", node, err, strings.TrimSpace(string(out)))
 		return
 	}
+	out, err = exec.Command(testCfg.dockerBin,
+		"exec", node, "sh", "-c",
+		"if [ ! -c /dev/fuse ]; then mknod -m 0666 /dev/fuse c 10 229; else chmod 0666 /dev/fuse; fi; test -c /dev/fuse",
+	).CombinedOutput()
+	if err != nil {
+		t.Errorf("cleanup: restore /dev/fuse on kind node %s: %v (out: %s)",
+			node, err, strings.TrimSpace(string(out)))
+		return
+	}
+	t.Logf("cleanup: kind node %s has a usable /dev/fuse device", node)
 	if err := waitKindNodeReady(node, true); err != nil {
-		t.Logf("cleanup: %v", err)
+		t.Errorf("cleanup: %v", err)
 		return
 	}
 	t.Logf("cleanup: kind node %s is Ready", node)
@@ -144,8 +154,7 @@ func waitCacheserverStatefulSetReady(t *testing.T) {
 	}
 	out, err := exec.Command(testCfg.kubectlBin, args...).CombinedOutput()
 	if err != nil {
-		// Cleanup must not mask the original test result.
-		t.Logf("cacheserver: rollout status failed: %v (out: %s)",
+		t.Errorf("cacheserver: rollout status failed: %v (out: %s)",
 			err, strings.TrimSpace(string(out)))
 		return
 	}
