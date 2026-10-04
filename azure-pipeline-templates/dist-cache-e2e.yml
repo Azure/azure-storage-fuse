@@ -81,6 +81,13 @@ steps:
       tag="azure-blobfuse2-x86_64.${ver}"
       echo "Built blobfuse2 container image: ${tag}"
       docker images "${tag}"
+      echo ""
+      echo "Pre-kind container binary diagnostic:"
+      set +e
+      timeout 15s docker run --rm --entrypoint /usr/local/bin/blobfuse2 "${tag}" --version
+      prekind_rc=$?
+      set -e
+      echo "Pre-kind blobfuse2 --version exit code: ${prekind_rc}"
       echo "##vso[task.setvariable variable=BLOBFUSE2_IMAGE]${tag}"
     displayName: 'DistCache [${{ parameters.run_idstring }}]: Build blobfuse2 container image'
     timeoutInMinutes: 20

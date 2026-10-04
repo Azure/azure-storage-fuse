@@ -219,7 +219,34 @@ echo "Pod: $POD_NAME"
 echo ""
 echo "--- binary identity + linkage ---"
 kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
-    sh -c 'sha256sum /usr/local/bin/blobfuse2; ldd /usr/local/bin/blobfuse2 | grep -E "fuse|crypto" || true'
+    sh -c '
+        sha256sum /usr/local/bin/blobfuse2
+        ldd /usr/local/bin/blobfuse2
+        echo "# embedded top-level error marker"
+        grep -a -F -m1 "blobfuse2: " /usr/local/bin/blobfuse2 >/dev/null &&
+            echo "present" || echo "missing"
+    '
+
+echo ""
+echo "--- basic CLI execution inside kind pod ---"
+set +e
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    timeout 15s /usr/local/bin/blobfuse2 --version
+VERSION_RC=$?
+echo "blobfuse2 --version exit code: $VERSION_RC"
+
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    timeout 15s /usr/local/bin/blobfuse2 --help
+HELP_RC=$?
+echo "blobfuse2 --help exit code: $HELP_RC"
+
+echo ""
+echo "--- Go package initialization trace inside kind pod ---"
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    sh -c 'GODEBUG=inittrace=1 timeout 15s /usr/local/bin/blobfuse2 --version'
+INITTRACE_RC=$?
+echo "blobfuse2 inittrace exit code: $INITTRACE_RC"
+set -e
 
 echo ""
 echo "--- mount directory ---"
