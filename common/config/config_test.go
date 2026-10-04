@@ -34,11 +34,13 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -85,6 +87,22 @@ type Config2 struct {
 
 type ConfigTestSuite struct {
 	suite.Suite
+}
+
+func TestWatchConfigWatcherFailureIsNonFatal(t *testing.T) {
+	originalNewConfigWatcher := newConfigWatcher
+	newConfigWatcher = func() (*fsnotify.Watcher, error) {
+		return nil, errors.New("inotify unavailable")
+	}
+	defer func() {
+		newConfigWatcher = originalNewConfigWatcher
+		ResetConfig()
+	}()
+
+	SetConfigFile("/tmp/blobfuse2-config-test.yaml")
+	WatchConfig()
+
+	assert.Nil(t, userOptions.watcher)
 }
 
 var config1 = `
